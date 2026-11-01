@@ -33,10 +33,12 @@
 #include "item.h"
 #include "item_location.h"
 #include "item_wakeup.h"
+#include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "map_selector.h"
+#include "memory_fast.h"
 #include "monster.h"
 #include "options_helpers.h"
 #include "overmap.h"
@@ -66,12 +68,14 @@ static const itype_id itype_jacket_light( "jacket_light" );
 static const itype_id itype_microwave( "microwave" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_scrap( "scrap" );
+static const itype_id itype_seed_buckwheat( "seed_buckwheat" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
 static const recipe_id recipe_cudgel_test_unattended_with_qual(
     "cudgel_test_unattended_with_qual" );
 
+static const zone_type_id zone_type_FARM_PLOT( "FARM_PLOT" );
 static const zone_type_id zone_type_LOOT_AMMO( "LOOT_AMMO" );
 static const zone_type_id zone_type_LOOT_BOOKS( "LOOT_BOOKS" );
 static const zone_type_id zone_type_LOOT_CLOTHING( "LOOT_CLOTHING" );
@@ -82,7 +86,10 @@ static const zone_type_id zone_type_LOOT_SPARE_PARTS( "LOOT_SPARE_PARTS" );
 static const zone_type_id zone_type_LOOT_TOOLS( "LOOT_TOOLS" );
 static const zone_type_id zone_type_LOOT_WEAPONS( "LOOT_WEAPONS" );
 
+static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
+
 static const ter_str_id ter_t_brick_wall( "t_brick_wall" );
+static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
 static const ter_str_id ter_t_utility_light( "t_utility_light" );
 
 static const trait_id trait_DEBUG_NODMG( "DEBUG_NODMG" );
@@ -590,4 +597,49 @@ TEST_CASE( "bench_craft_unattended_wait", "[.][benchmark_scenario]" )
         // the 10 minute step is still running
         CHECK( u.activity );
     } );
+}
+
+// ACT-P02: a farm scan over a growing plot, which asks every tile whether it is warm enough
+// to plant.
+TEST_CASE( "bench_farm_scan", "[.][benchmark_scenario]" )
+{
+    const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+    run_scenario( "farm_scan", "5 check-only farm scans of a 10x10 plot of planted seeds",
+    [&center]() {
+        clear_avatar();
+        clear_map();
+        zone_manager &zm = zone_manager::get_manager();
+        zm.clear();
+        set_time( calendar::turn_zero + 12_hours );
+        avatar &u = get_avatar();
+        map &here = get_map();
+        u.setpos( here, center );
+        const tripoint_bub_ms corner = center + tripoint_rel_ms( 2, 2, 0 );
+        for( int dy = 0; dy < 10; ++dy ) {
+            for( int dx = 0; dx < 10; ++dx ) {
+                const tripoint_bub_ms p = corner + tripoint_rel_ms( dx, dy, 0 );
+                here.ter_set( p, ter_t_dirtmound );
+                here.furn_set( p, furn_f_plant_seed );
+                here.add_item( p, item( itype_seed_buckwheat ) );
+            }
+        }
+        shared_ptr_fast<plot_options> options = make_shared_fast<plot_options>();
+        options->deserialize(
+            json_loader::from_string( R"({ "seed": "seed_buckwheat" })" ).get_object() );
+        const tripoint_bub_ms far_corner = corner + tripoint_rel_ms( 9, 9, 0 );
+        zm.add( "plot", zone_type_FARM_PLOT, faction_your_followers, false, true,
+                here.get_abs( corner ), here.get_abs( far_corner ), options );
+        here.build_map_cache( 0 );
+    }, []() {
+        avatar &u = get_avatar();
+        int scans_with_work = 0;
+        for( int scan = 0; scan < 5; ++scan ) {
+            multi_farm_activity_actor actor( true );
+            player_activity act( actor );
+            scans_with_work += actor.simulate_turn( act, u, true ) ? 1 : 0;
+        }
+        // seeds are growing, nothing to do yet
+        CHECK( scans_with_work == 0 );
+    } );
+    zone_manager::get_manager().clear();
 }
