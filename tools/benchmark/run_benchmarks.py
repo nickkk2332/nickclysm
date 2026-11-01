@@ -30,8 +30,10 @@ import sys
 import tempfile
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+# Not anchored at the start: a log line printed without a newline (map loading does this)
+# can end up in front of it.
 BENCH_RE = re.compile(
-    r'^BENCH (\S+) median_ms=([\d.]+) min_ms=([\d.]+) max_ms=([\d.]+) reps=(\d+) work="(.*)"$')
+    r'BENCH (\S+) median_ms=([\d.]+) min_ms=([\d.]+) max_ms=([\d.]+) reps=(\d+) work="(.*)"$')
 TIME_RE = re.compile(r'^(\d\d):(\d\d):(\d\d)\.(\d+) ')
 
 
@@ -57,7 +59,7 @@ def run_once(binary, seed, reps, filter_tag):
     scenarios = {}
     start = loaded = None
     for line in proc.stdout.splitlines():
-        m = BENCH_RE.match(line)
+        m = BENCH_RE.search(line)
         if m:
             name, median, lo, hi, n, work = m.groups()
             scenarios[name] = {'median_ms': float(median), 'min_ms': float(lo),

@@ -97,3 +97,30 @@ hold only what each binary measured. The `commit` field names the code each bina
 - **MAP-P01** now keeps the full walk and makes it cheaper: no `map_cursor` for empty
   tiles, and a one-lookup fast path for items with no wakeups. Stack samples put the
   reconcile at about 17% of a map shift in the dense scenario; the saving is within noise.
+
+## Round 3: remaining high-severity performance findings
+
+`before-round3.json` is the round 3 branch with the six measured performance fixes reverted
+in the working tree; `after-round3.json` is the branch itself. Both were run back to back,
+2 runs × 5 repetitions. Each scenario was committed before its fix.
+
+| Scenario | Before (ms) | After (ms) | Change | Fix |
+|---|---|---|---|---|
+| blueprint_build_reqs | 228 | 0.6 | **-99.7%** | TERR-P01: index constructions once per data load |
+| spellbook_damage_preview | 9.4 | 0.2 | **-97%** | MAGIC-P01: no temporary avatars or level-up events |
+| craft_unattended_wait | 186 | 8.0 | **-96%** | CRAFT-P01: run the environment check only when its poll is due |
+| vehicle_collision_check | 262 | 39 | **-85%** | VEH-P01: look up the driver only for creature hits |
+| temp_map_load | 202 | 75 | **-63%** | MAP-P02: allocate temporary maps' caches lazily |
+| farm_scan | 2.0 | 2.1 | none | ACT-P02 (see below) |
+| data_load | 23885 | 22475 | -6% (within noise) | none |
+
+- **ACT-P02** is not visible in `farm_scan`. A check-only scan stops at the first tile it
+  can act on or report, so it runs the planting check once per scan both before and after.
+  The fix pays off in the scans that visit many tiles: tiles to clear, harvest, fertilize
+  or till no longer run the check, and the rest share one weather sample per overmap tile.
+  Its unit tests count the weather samples directly.
+- **UIHUD-P01** (surroundings menu redraw) and **REND-P01** (flying-creature shadows in the
+  tiles renderer) need a display, so they have no scenario.
+- `run_benchmarks.py` now finds `BENCH` lines that a log line without a newline has run
+  into; before, `temp_map_load` (which loads maps, and logs about it) was silently
+  missing from results.
