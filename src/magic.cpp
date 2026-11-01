@@ -2259,6 +2259,8 @@ void spell::cast_spell_effect( const tripoint_bub_ms &target ) const
     map &here = get_map();
 
     avatar fake_avatar;
+    // a temporary caster: never record it as an attacker or killer
+    fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
 
     get_event_bus().send<event_type::character_casts_spell>( character_id( -1 ),
@@ -2288,6 +2290,8 @@ void spell::cast_all_effects( const tripoint_bub_ms &target ) const
     map &here = get_map();
 
     avatar fake_avatar;
+    // a temporary caster: never record it as an attacker or killer
+    fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
 
     if( has_flag( spell_flag::WONDER ) ) {
@@ -2363,6 +2367,8 @@ void spell::cast_extra_spell_effects( const tripoint_bub_ms &target ) const
     map &here = get_map();
 
     avatar fake_avatar;
+    // a temporary caster: never record it as an attacker or killer
+    fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
     for( const fake_spell &extra_spell : type->additional_spells ) {
         spell sp = extra_spell.get_spell( fake_avatar, get_effective_level() );

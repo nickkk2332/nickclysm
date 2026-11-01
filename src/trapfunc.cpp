@@ -1677,6 +1677,8 @@ bool trapfunc::cast_spell( const tripoint_bub_ms &p, Creature *critter, item * )
         trap tr = here.tr_at( p );
         const spell trap_spell = tr.spell_data.get_spell();
         npc dummy;
+        // a temporary caster: never record it as an attacker or killer
+        dummy.set_fake( true );
         if( !tr.has_flag( json_flag_UNCONSUMED ) ) {
             here.remove_trap( p );
         }
@@ -1689,6 +1691,8 @@ bool trapfunc::cast_spell( const tripoint_bub_ms &p, Creature *critter, item * )
         trap tr = here.tr_at( p );
         const spell trap_spell = tr.spell_data.get_spell( *critter, 0 );
         npc dummy;
+        // a temporary caster: never record it as an attacker or killer
+        dummy.set_fake( true );
         if( !tr.has_flag( json_flag_UNCONSUMED ) ) {
             here.remove_trap( p );
         }

@@ -283,6 +283,17 @@ TEST_CASE( "magic-b03_split_and_percentage_spell_damage_credits_the_caster",
         CHECK( guy.get_killer() == &caster );
         CHECK( guy.hit_by_player );
     }
+
+    SECTION( "a temporary caster is never kept as the killer" ) {
+        // a spell cast with no caster (an item activated by nobody) is cast by a stack-local
+        // fake avatar that is gone once the cast returns, before the NPC's death is handled
+        const spell sp( spell_debug_kill_spell );
+
+        sp.cast_spell_effect( guy.pos_bub() );
+
+        REQUIRE( guy.is_dead_state() );
+        CHECK( guy.get_killer() == nullptr );
+    }
 }
 
 // min_pierce, pierce_increment and max_pierce (armor of the spell's damage type that it
