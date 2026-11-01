@@ -38,7 +38,11 @@ without timing it, then times a fixed amount of work.
 | `horde_pathing` | 100 zombies pathing around two rings of wall to an invulnerable player, 100 turns | SPAT-P01, MONAI-P02 |
 | `light_vision` | the player stepping back and forth among lights at night, 200 light and vision cache rebuilds | SPAT-P02 |
 | `submap_travel_dense` | 20 submap crossings over already generated terrain, with a dense base (2,700 items) and a full inventory | MAP-P01 |
-| `crafting_recompute` | crafting time and craftability for 300 recipes, 5 times, in a dense base | CRAFT-P02 |
+| `crafting_recompute` | crafting time and craftability for 300 recipes, 5 times, in a dense base, outside any query cache scope (the path activities and NPCs take) | CRAFT-P02, requirement checks |
+| `crafting_recompute_scoped` | the same, inside the query cache scope the crafting menu opens | crafting menu |
+| `weather_catchup` | `sum_conditions` over 3 days at 4 locations, as a returning player's funnels and solar vehicles run it | LOOP-P01 |
+| `overmap_generate` | generating one overmap from scratch | OMAP-P01, OMAP-P02 |
+| `zone_sort_queries` | 2,000 "which loot zone takes this item" lookups with 9 category zones of 400 tiles | ACT-P01 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then
