@@ -960,7 +960,6 @@ static void draw_ascii( const catacurses::window &w, overmap_draw_data_t &data )
     // Target of current objective
     const tripoint_abs_omt target = player_character.get_active_mission_target();
     const bool has_target = !target.is_invalid();
-    oter_id ccur_ter = oter_str_id::NULL_ID();
     // Debug vision allows seeing everything
     const bool has_debug_vision = player_character.has_trait( trait_DEBUG_NIGHTVISION );
     // sight_points is hoisted for speed reasons.
@@ -1108,16 +1107,13 @@ static void draw_ascii( const catacurses::window &w, overmap_draw_data_t &data )
     for( int i = 0; i < om_map_width; ++i ) {
         for( int j = 0; j < om_map_height; ++j ) {
             const tripoint_abs_omt omp = corner + point( i, j );
-            oter_id cur_ter = oter_str_id::NULL_ID();
             nc_color ter_color = c_black;
             std::string ter_sym = " ";
 
+            // oter_symbol_and_color() only loads the terrain of tiles that have been seen,
+            // so unseen tiles never generate the overmap they lie on.
             const om_vision_level vision = has_debug_vision ? om_vision_level::full :
                                            overmap_buffer.seen( omp );
-            if( vision == om_vision_level::unseen ) {
-                // Only load terrain if we can actually see it
-                cur_ter = overmap_buffer.ter( omp );
-            }
 
             oter_display_args oter_args( vision );
             std::tie( ter_sym, ter_color ) = oter_symbol_and_color( omp, oter_args, oter_opts, &lru_cache );
@@ -1180,7 +1176,6 @@ static void draw_ascii( const catacurses::window &w, overmap_draw_data_t &data )
             }
 
             if( omp.xy() == cursor_pos.xy() && !uistate.place_special ) {
-                ccur_ter = cur_ter;
                 mvwputch_hi( w, point( i, j ), ter_color, ter_sym );
             } else {
                 mvwputch( w, point( i, j ), ter_color, ter_sym );
