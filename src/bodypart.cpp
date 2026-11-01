@@ -1137,10 +1137,15 @@ void bodypart::add_or_worsen_wound( const wound &wd )
     // todo: move one_in( 2 ) to something more reasonable
     // maybe checking hit_size of a limb against some new wound size property?
     if( has_wound( wd.type ) && !wound_progression.empty() && one_in( 2 ) ) {
+        // A single hit progresses at most one existing wound, by at most one step:
+        // the first progression entry that succeeds wins.
         for( const wound_progress &wdp : wound_progression ) {
             if( x_in_y( wdp.chance, 100 ) ) {
 
                 const wound *old_wound = get_wound( wd.type );
+                if( old_wound == nullptr ) {
+                    break;
+                }
                 wound new_wound = wound( wdp.id );
                 new_wound += *old_wound;
 
@@ -1155,8 +1160,11 @@ void bodypart::add_or_worsen_wound( const wound &wd )
                                to_string_writable( new_wound.get_healing_time() )
                              );
 
-                remove_wound( *old_wound );
+                // remove by type: removes the same (first) wound get_wound() returned, without
+                // comparing healing progress (not initialized for newly constructed wounds)
+                remove_wound( wd.type );
                 add_wound( new_wound );
+                break;
             }
         }
 

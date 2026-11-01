@@ -1859,27 +1859,59 @@ double spell::get_failure_exp_percent( Creature &caster ) const
     }
 }
 
-static void blood_magic( Character *you, int cost )
+// Main body parts that can pay an HP spell cost without dropping to 0 HP.
+// Minor parts (hands, eyes, ...) never take damage themselves, so they cannot pay.
+static std::vector<bodypart_id> blood_magic_parts( const Character &guy, int cost )
 {
-    std::vector<uilist_entry> uile;
     std::vector<bodypart_id> parts;
-    int i = 0;
-    for( const bodypart_id &bp : you->get_all_body_parts( get_body_part_flags::only_main ) ) {
-        const int hp_cur = you->get_part_hp_cur( bp );
-        uilist_entry entry( i, hp_cur > cost, i + 49, body_part_hp_bar_ui_text( bp ) );
+    for( const bodypart_id &bp : guy.get_all_body_parts( get_body_part_flags::only_main ) ) {
+        if( guy.get_part_hp_cur( bp ) > cost ) {
+            parts.push_back( bp );
+        }
+    }
+    return parts;
+}
 
-        const std::pair<std::string, nc_color> &hp = get_hp_bar( hp_cur, you->get_part_hp_max( bp ) );
-        entry.ctxt = colorize( hp.first, hp.second );
-        uile.emplace_back( entry );
-        parts.push_back( bp );
-        i++;
+// Draws the HP cost of a spell from one body part.
+// Returns false, without drawing anything, if no body part can pay the cost.
+static bool blood_magic( Character *you, int cost )
+{
+    const std::vector<bodypart_id> eligible = blood_magic_parts( *you, cost );
+    if( eligible.empty() ) {
+        return false;
     }
-    int action = -1;
-    while( action < 0 ) {
-        action = uilist( _( "Choose part\nto draw blood from." ), uile );
+    bodypart_id chosen;
+    if( you->is_avatar() ) {
+        std::vector<uilist_entry> uile;
+        std::vector<bodypart_id> parts;
+        int i = 0;
+        for( const bodypart_id &bp : you->get_all_body_parts( get_body_part_flags::only_main ) ) {
+            const int hp_cur = you->get_part_hp_cur( bp );
+            uilist_entry entry( i, hp_cur > cost, i + 49, body_part_hp_bar_ui_text( bp ) );
+
+            const std::pair<std::string, nc_color> &hp = get_hp_bar( hp_cur,
+                    you->get_part_hp_max( bp ) );
+            entry.ctxt = colorize( hp.first, hp.second );
+            uile.emplace_back( entry );
+            parts.push_back( bp );
+            i++;
+        }
+        // at least one entry is enabled, so the player can always make a valid choice
+        int action = -1;
+        while( action < 0 ) {
+            action = uilist( _( "Choose part\nto draw blood from." ), uile );
+        }
+        chosen = parts[action];
+    } else {
+        // other casters draw from their healthiest eligible part without asking the player
+        chosen = *std::max_element( eligible.begin(), eligible.end(),
+        [you]( const bodypart_id & lhs, const bodypart_id & rhs ) {
+            return you->get_part_hp_cur( lhs ) < you->get_part_hp_cur( rhs );
+        } );
     }
-    you->mod_part_hp_cur( parts[action], - cost );
+    you->mod_part_hp_cur( chosen, - cost );
     you->mod_pain( std::max( 1, cost / 3 ) );
+    return true;
 }
 
 void spell::consume_spell_cost( Character &caster, bool cast_success ) const
@@ -1902,7 +1934,12 @@ void spell::consume_spell_cost( Character &caster, bool cast_success ) const
             caster.mod_power_level( -units::from_kilojoule( static_cast<std::int64_t>( cost ) ) );
             break;
         case magic_energy_type::hp:
-            blood_magic( &caster, cost );
+            // has_enough_energy() is checked before casting, but HP can be lost while casting;
+            // then no body part can pay, and nothing is drawn rather than hanging in the menu
+            if( !blood_magic( &caster, cost ) ) {
+                caster.add_msg_if_player( m_bad,
+                                          _( "You can't spare enough blood for the spell." ) );
+            }
             break;
         case magic_energy_type::none:
         default:
@@ -2732,12 +2769,8 @@ bool known_magic::has_enough_energy( const Character &guy, const spell &sp ) con
             return current_vitamin_level >= cost + min_vitamin_level;
         }
         case magic_energy_type::hp:
-            for( const std::pair<const bodypart_str_id, bodypart> &elem : guy.get_body() ) {
-                if( elem.second.get_hp_cur() > cost ) {
-                    return true;
-                }
-            }
-            return false;
+            // must match the parts blood_magic() can actually draw from
+            return !blood_magic_parts( guy, cost ).empty();
         case magic_energy_type::none:
             return true;
         default:
