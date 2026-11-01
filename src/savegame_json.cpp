@@ -64,6 +64,7 @@
 #include "dialogue_chatbin.h"
 #include "effect.h"
 #include "effect_source.h"
+#include "enum_conversions.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -4980,9 +4981,24 @@ void stats_tracker::serialize( JsonOut &jsout ) const
 void stats_tracker::deserialize( const JsonObject &jo )
 {
     jo.allow_omitted_members();
-    jo.read( "data", data );
-    for( std::pair<const event_type, event_multiset> &d : data ) {
-        d.second.set_type( d.first );
+    data.clear();
+    if( jo.has_object( "data" ) ) {
+        // Read event types by name, skipping any this build does not know (removed,
+        // renamed, or added by a newer build), so they can't make a save, memorial or
+        // achievements file unloadable.
+        for( const JsonMember member : jo.get_object( "data" ) ) {
+            const std::optional<event_type> type =
+                io::string_to_enum_optional<event_type>( member.name() );
+            if( !type ) {
+                DebugLog( D_WARNING, DC_ALL ) << "Ignoring saved statistics for unknown event type '"
+                                              << member.name() << "'";
+                member.get_object().allow_omitted_members();
+                continue;
+            }
+            event_multiset &events = data[*type];
+            events.deserialize( member.get_object() );
+            events.set_type( *type );
+        }
     }
     jo.read( "initial_scores", initial_scores );
 }
