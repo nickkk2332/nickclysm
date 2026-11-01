@@ -4,8 +4,8 @@
 //     tests/cata_test "[benchmark_scenario]"
 // or through tools/benchmark/run_benchmarks.py, which also times data loading and
 // compares runs. Each scenario builds a fixed, seeded setup (not timed), then times a
-// fixed amount of work. It repeats that BENCH_REPS times (default 5) and prints one
-// machine-readable line:
+// fixed amount of work. After one untimed warm-up, it repeats that BENCH_REPS times
+// (default 5) and prints one machine-readable line:
 //     BENCH <name> median_ms=... min_ms=... max_ms=... reps=... work="..."
 //
 // Keep each scenario's work identical between versions of the code, so timings stay
@@ -77,13 +77,17 @@ void run_scenario( const std::string &name, const std::string &work_description,
 {
     std::vector<double> samples;
     const int reps = bench_reps();
-    for( int r = 0; r < reps; ++r ) {
+    // One untimed warm-up repetition first, so cold caches and first-use allocations
+    // don't inflate the first sample.
+    for( int r = -1; r < reps; ++r ) {
         rng_set_engine_seed( scenario_seed );
         setup();
         const auto start = std::chrono::steady_clock::now();
         work();
         const auto end = std::chrono::steady_clock::now();
-        samples.push_back( std::chrono::duration<double, std::milli>( end - start ).count() );
+        if( r >= 0 ) {
+            samples.push_back( std::chrono::duration<double, std::milli>( end - start ).count() );
+        }
     }
     std::sort( samples.begin(), samples.end() );
     std::printf( "BENCH %s median_ms=%.2f min_ms=%.2f max_ms=%.2f reps=%d work=\"%s\"\n",
