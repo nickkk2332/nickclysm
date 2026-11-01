@@ -751,10 +751,18 @@ void Character::invalidate_crafting_inventory()
 {
     crafting_cache.valid = false;
     crafting_cache.crafting_inventory->clear();
+    book_bonus_cache.valid = false;
 }
 
 book_proficiency_bonuses Character::book_bonuses_nearby( int radius ) const
 {
+    const tripoint_bub_ms pos = pos_bub();
+    if( book_bonus_cache.valid && moves == book_bonus_cache.moves &&
+        radius == book_bonus_cache.radius && calendar::turn == book_bonus_cache.time &&
+        pos == book_bonus_cache.position ) {
+        return book_bonus_cache.bonuses;
+    }
+
     book_proficiency_bonuses result;
     // Deduplicate by item type to match inventory stacking behavior --
     // multiple copies of the same book should not compound mitigation.
@@ -773,8 +781,9 @@ book_proficiency_bonuses Character::book_bonuses_nearby( int radius ) const
     } );
 
     // Map items in range (shared reachability/accessibility/vehicle logic)
-    get_map().for_each_reachable_item( pos_bub(), radius, this, collect );
+    get_map().for_each_reachable_item( pos, radius, this, collect );
 
+    book_bonus_cache = { true, calendar::turn, moves, pos, radius, result };
     return result;
 }
 
