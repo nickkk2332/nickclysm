@@ -8492,16 +8492,20 @@ std::optional<int> iuse::wash_items( Character *p, bool soft_items, bool hard_it
 
 std::optional<int> iuse::break_stick( Character *p, item *it, const tripoint_bub_ms & )
 {
-    p->mod_moves( -to_moves<int>( 2_seconds ) );
-    p->mod_stamina( static_cast<int>( 0.05f * p->get_stamina_max() ) );
-
     if( p->get_str() < 5 ) {
         p->add_msg_if_player( _( "You are too weak to even try." ) );
         return std::nullopt;
-    } else if( p->get_str() <= rng( 5, 11 ) ) {
+    }
+
+    // Every real attempt takes time and effort, whether or not the stick breaks.
+    p->mod_moves( -to_moves<int>( 2_seconds ) );
+    p->mod_stamina( -static_cast<int>( 0.05f * p->get_stamina_max() ) );
+
+    if( p->get_str() <= rng( 5, 11 ) ) {
         p->add_msg_if_player(
             _( "You use all your strength, but the stick won't break.  Perhaps try again?" ) );
-        return std::nullopt;
+        // 0 rather than nullopt: the attempt was made, so its time is not refunded.
+        return 0;
     }
     std::vector<item_comp> comps;
     comps.emplace_back( it->typeId(), 1 );

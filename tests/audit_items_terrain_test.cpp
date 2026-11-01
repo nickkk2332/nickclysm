@@ -1,5 +1,7 @@
+#include <optional>
 #include <string>
 
+#include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
@@ -8,9 +10,12 @@
 #include "game_constants.h"
 #include "item.h"
 #include "item_pocket.h"
+#include "item_location.h"
 #include "itype.h"
+#include "iuse.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "player_helpers.h"
 #include "pocket_type.h"
 #include "ret_val.h"
 #include "type_id.h"
@@ -29,6 +34,7 @@ static const itype_id itype_glock_19( "glock_19" );
 static const itype_id itype_glockmag( "glockmag" );
 static const itype_id itype_glocksear( "glocksear" );
 static const itype_id itype_jerky( "jerky" );
+static const itype_id itype_stick_long( "stick_long" );
 static const itype_id itype_test_multimag_capacity_gunmod( "test_multimag_capacity_gunmod" );
 static const itype_id itype_test_multimag_gun_integral_ammo( "test_multimag_gun_integral_ammo" );
 
@@ -163,5 +169,56 @@ TEST_CASE( "inv-b01_ammo_pocket_overflow_moves_the_excess", "[audit][inventory]"
         // Used to fail the unscaled volume check and drop the whole stack.
         CHECK( gun.ammo_remaining_in_pocket( "ammo" ) == 2 );
         CHECK( count_items_at( here, pos ) == 0 );
+    }
+}
+
+// USE-B03: BREAK_STICK added 5% of max stamina before any check, and both failure
+// branches returned nullopt, so invoke_item refunded the attempt's moves.  A weak
+// character could spam it for free stamina at no time cost; a successful break also
+// restored stamina instead of costing it.
+TEST_CASE( "use-b03_break_stick_costs_stamina_and_time", "[audit][iuse]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &u = get_avatar();
+    const int half_stamina = u.get_stamina_max() / 2;
+    u.set_stamina( half_stamina );
+    REQUIRE( u.get_stamina() == half_stamina );
+
+    SECTION( "too weak to try: no stamina is gained" ) {
+        u.set_str_bonus( 4 - u.get_str_base() );
+        REQUIRE( u.get_str() == 4 );
+        item stick( itype_stick_long );
+
+        CHECK_FALSE( iuse::break_stick( &u, &stick, u.pos_bub() ).has_value() );
+        CHECK( u.get_stamina() == half_stamina );
+    }
+
+    SECTION( "a failed attempt costs time and stamina" ) {
+        // At STR 5, get_str() <= rng( 5, 11 ) always holds, so the stick never breaks.
+        u.set_str_bonus( 5 - u.get_str_base() );
+        REQUIRE( u.get_str() == 5 );
+        item_location stick = u.i_add( item( itype_stick_long ) );
+        REQUIRE( stick );
+        u.set_moves( 100 );
+
+        u.invoke_item( stick.get_item(), "BREAK_STICK", u.pos_bub(), 100 );
+
+        CHECK( stick );
+        CHECK( u.get_moves() < 100 );
+        CHECK( u.get_stamina() < half_stamina );
+    }
+
+    SECTION( "a successful break costs stamina" ) {
+        // Above STR 11 the strength roll always succeeds.
+        u.set_str_bonus( 15 - u.get_str_base() );
+        REQUIRE( u.get_str() == 15 );
+        item_location stick = u.i_add( item( itype_stick_long ) );
+        REQUIRE( stick );
+
+        const std::optional<int> used = iuse::break_stick( &u, stick.get_item(), u.pos_bub() );
+
+        CHECK( used == 0 );
+        CHECK( u.get_stamina() < half_stamina );
     }
 }
