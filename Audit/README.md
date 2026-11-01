@@ -189,9 +189,85 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | EOC-J01 | partial | `3ce1e2f5` | `tests/audit_spawned_eocs_test.cpp`. Adds `spawned_eocs`, `npc_variables` and `item_variables`. Still open: a stable handle to a monster, item or vehicle in an EOC variable |
 | OMAP-J01 | partial | `917f2c3c` | `tests/audit_overmap_eoc_test.cpp`. Adds `set_overmap_terrain`, `place_overmap_special`, `add_overmap_note`, `delete_overmap_note`, `reveal_map` levels, `map_in_overmap_special` and `map_omt_seen`. Still open: overmap hordes, `closest_city` filters, overmap math functions |
 
+**Remaining small high-severity bugs.** All 48 small-effort critical and high bugs left after "Fix first" are in: 44 fixed, 4 partial. Agents fixed them in nine batches, each in its own worktree. A separate reviewer read each batch's diff, and review comments were applied before merging (10 of 48 needed changes). The batches were made against `master`, so they were cherry-picked onto this branch, with two conflicts resolved by hand: NPC-B02 with NPC-B01 in `npc_attack.cpp`, and LOOP-B02 with LOOP-P01 in `weather.cpp`. Running the new tests found two more real bugs, fixed here, and two test mistakes.
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| EOC-B03 | fixed | `3edccab5` | `tests/audit_eoc_math_test.cpp` |
+| EOC-B04 | fixed | `8e551898` | `tests/audit_eoc_math_test.cpp` |
+| MATH-B02 | fixed | `8e063988` | `tests/audit_eoc_math_test.cpp` |
+| PROG-B01 | fixed | `43d8122f` | `tests/audit_progression_test.cpp` |
+| PROG-B02 | fixed | `811496ae` | `tests/audit_progression_test.cpp` |
+| PROG-B03 | partial | `2e3e06e6` | `tests/audit_progression_test.cpp`. Still open: NPC professions and hobbies still come from different scenario sources |
+| ITEM-B01 | fixed | `fe9050ad`, `494287b0` | `tests/audit_items_terrain_test.cpp` |
+| IINF-B02 | fixed | `ff1bb2f9` | `tests/audit_items_terrain_test.cpp` |
+| INV-B01 | fixed | `538d692f` | `tests/audit_items_terrain_test.cpp` |
+| USE-B03 | fixed | `c6c22195` | `tests/audit_items_terrain_test.cpp` |
+| TERR-B01 | fixed | `d43dce71` | `tests/audit_items_terrain_test.cpp` |
+| TERR-B02 | fixed | `256d2225` | none: every path that sets or reads the digester's biogas timer runs through query_yn or uilist, which answer no or cancel in test mode, and the old read and write past map_stack::end() is undefined behaviour with no deterministic symptom |
+| HLTH-B01 | fixed | `02d2e621` | `tests/audit_character_mutation_combat_test.cpp` |
+| MUT-B02 | fixed | `11685f59` | `tests/audit_character_mutation_combat_test.cpp` |
+| MUT-B03 | fixed | `9c2914c4` | `tests/audit_character_mutation_combat_test.cpp` |
+| MUT-B04 | fixed | `45143af4` | `tests/audit_character_mutation_combat_test.cpp` |
+| CMBT-B02 | partial | `097c8831` | `tests/audit_character_mutation_combat_test.cpp`. Still open: on_damage still checks damage before armor |
+| CMBT-B03 | fixed | `0631addd` | `tests/audit_character_mutation_combat_test.cpp` |
+| MONAI-B02 | fixed | `1c6d9845`, `c2c461f7` | `tests/audit_monsters_test.cpp` |
+| MONAI-B03 | fixed | `bd329db5`, `128718b5` | `tests/audit_monsters_test.cpp`. The test then showed absorb_meat never used the meat up (a range-0 flood fill returned no tiles); fixed in `128718b5` |
+| MONDT-B01 | fixed | `d9408762` | `tests/audit_monsters_test.cpp` |
+| MONDT-B03 | fixed | `9266be1f` | `tests/audit_monsters_test.cpp` |
+| MONDT-B04 | partial | `956ea6d4` | `tests/audit_monsters_test.cpp`. Still open: signals still visit every horde bucket (performance only) |
+| NPC-B02 | fixed | `c3fdf56f`, `c7f4aafa` | `tests/audit_npc_magic_test.cpp` |
+| NPC-B03 | fixed | `5320ff5d` | `tests/audit_npc_magic_test.cpp` |
+| MAGIC-B02 | fixed | `75ebd188`, `a55bad1a` | `tests/audit_npc_magic_test.cpp` |
+| MAGIC-B03 | fixed | `156be011`, `dcd374b6` | `tests/audit_npc_magic_test.cpp` |
+| MAGIC-B04 | fixed | `f34f95f8` | `tests/audit_npc_magic_test.cpp` |
+| MAP-B01 | fixed | `d9bf2f4a` | `tests/audit_map_spatial_weather_test.cpp` |
+| MAP-B02 | fixed | `1bdc675c` | `tests/audit_map_spatial_weather_test.cpp` |
+| SPAT-B01 | fixed | `cbece3f9` | `tests/audit_map_spatial_weather_test.cpp` |
+| SPAT-B02 | fixed | `0ff19060` | `tests/audit_map_spatial_weather_test.cpp` |
+| MGEN-B01 | fixed | `dcc95415` | `tests/audit_map_spatial_weather_test.cpp` |
+| LOOP-B02 | fixed | `bb2f420d`, `faf42359` | `tests/audit_map_spatial_weather_test.cpp`. The test then showed the off-screen catch-up added at most one charge; fixed in `faf42359` |
+| CAMP-B01 | fixed | `de881c51`, `52f6930a` | `tests/audit_basecamp_test.cpp` |
+| CAMP-B02 | fixed | `8f728529`, `288de6f1` | `tests/audit_basecamp_test.cpp` |
+| CAMP-B03 | fixed | `3f180ca6` | `tests/audit_basecamp_test.cpp` |
+| CAMP-B04 | fixed | `997fd996` | `tests/audit_basecamp_test.cpp` |
+| VEH-B01 | fixed | `f560f991` | `tests/audit_vehicles_activities_test.cpp` |
+| VEH-B02 | fixed | `c618107c`, `93ff7b93` | `tests/audit_vehicles_activities_test.cpp` |
+| VINT-B01 | fixed | `f77455b7` | none: the bug only happens inside uilist's interactive filter loop (uilist asserts !test_mode), and veh_menu_cb lives in an anonymous namespace |
+| VINT-B02 | fixed | `38eacff3` | none: control_engines() is only reached through the interactive veh_menu (uilist asserts !test_mode); a testable helper would have meant changing vehicle.h |
+| ACT-B02 | partial | `d996679a` | `tests/audit_vehicles_activities_test.cpp`. Still open: repair_part's clear-path check is not mirrored in the zone check |
+| UIHUD-B01 | fixed | `180c285f` | `tests/audit_ui_render_test.cpp` |
+| UIHUD-B02 | fixed | `53f628dd` | `tests/audit_ui_render_test.cpp` |
+| UIHUD-B03 | fixed | `1669b081` | none: draw_ascii() is a file-static function reachable only from the interactive overmap UI loop (needs input and a window); exposing it would mean changing overmap_ui.h, which 31 files include |
+| REND-B01 | fixed | `d016c926` | `tests/audit_ui_render_tiles_test.cpp`. Tiles-only: compile-checked against SDL3 headers with `-DTILES`; the test runs only in a tiles build |
+| REND-B02 | fixed | `15431373` | `tests/audit_ui_render_tiles_test.cpp`. Tiles-only: compile-checked against SDL3 headers with `-DTILES`; the test runs only in a tiles build |
+
+Four fixes have no regression test, because the code is only reachable through interactive menus, or because the old bug was undefined behaviour with no reliable symptom. The two REND tests only run in a tiles build.
+
+**Gameplay changes from these 48 fixes** (the list further down covers groups 1-3):
+
+- Funnels collect rain at the actual rate. Light drizzle no longer gives a charge every turn, and an off-screen funnel gets the same rain as a watched one (LOOP-B02).
+- In wind, fire and gas drift downwind instead of into the wind (MAP-B01).
+- Frozen food left outside the reality bubble for more than two days rots according to the weather while you were away (ITEM-B01).
+- Breaking a long stick costs stamina and time on every attempt; the infinite-stamina exploit is gone (USE-B03).
+- Characters with DISTRIBUTED_DAMAGE (Omnicellular) take the full damage of every hit; hits under 12 used to do nothing (HLTH-B01).
+- POWER_TRICKLE enchantments give their stated power, instead of scaling with the number of switched-off CBMs (MUT-B04).
+- Martial arts techniques whose effects have no condition, including every disarm, now apply them (CMBT-B02). The MELEE_DAMAGE enchantment now affects melee attacks (CMBT-B03).
+- NPCs fire whole bursts and use underbarrel gunmods (NPC-B02); hostile NPC casters can use loud spells (NPC-B03).
+- Blast spells aimed past a wall explode on the near side (MAGIC-B02). Spell armor penetration works (MAGIC-B04). Killing an NPC with a split or multi-projectile spell credits the caster (MAGIC-B03).
+- Monster group entries limited to NIGHT spawn at night (MONDT-B01). Off-screen hordes stop losing zombies (MONDT-B03). Meat-absorbing monsters use up the meat (MONAI-B03).
+- Vehicle fuel tanks with explosive fuel can explode (VEH-B02). "Control individual engines" no longer starts a stopped vehicle without the normal start checks (VINT-B02).
+- Zone vehicle repair takes time per damage level and fetches enough materials (ACT-B02).
+- Camp missions charge food once, about half what they did. Camp fuel no longer multiplies each time the board opens, planting takes the right seeds once, and leftover seeds come back once (CAMP-B01 to B04).
+- New characters get every proficiency their profession or hobby lists (PROG-B02). Random NPCs no longer get player-only professions such as psionic knacks (PROG-B03).
+- In math, `u_addiction_turns(...) =`, `u_pain('type': 'perceived') +=` and the stat bonus setters now set or add as written. Sleeping pill withdrawal is prolonged instead of shortened (MATH-B02).
+- Per-character safemode rules are saved (UIHUD-B01).
+
 Every mod in `data/mods` was loaded with these changes. All load without errors, except Limb_WIP (marked obsolete), which still reports armor and mutation-category warnings that predate this branch.
 
-**Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passes: 2313 of 2313 test cases with `--rng-seed 4242`.
+**Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
+
+After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242`. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
 
 Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five tests failed in full-suite runs but passed alone, because earlier tests left state behind. The main culprit: `clear_character()` did not reset the stat bonuses that hardcoded effects add, so after a frostbite test the avatar kept -2 INT, which slowed learning by 10% in later crafting tests. Three other tests (`memorials`, `available_reloadables`, `monster_speed_description`) now clear the map or the avatar themselves.
 
