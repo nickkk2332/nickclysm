@@ -623,8 +623,9 @@ static void damage_targets( const spell &sp, Creature &caster,
                     for( damage_unit &val : atk.proj.impact.damage_units ) {
                         val.amount = roll_remainder( val.amount / multishot );
                     }
+                    // the caster is the attacker on every path, not the target itself
                     for( int i = 0; i < multishot; ++i ) {
-                        cr->deal_projectile_attack( &here, cr, atk, atk.missed_by, true );
+                        cr->deal_projectile_attack( &here, &caster, atk, atk.missed_by, true );
                     }
                 } else if( sp.has_flag( spell_flag::SPLIT_DAMAGE ) ) {
                     int amount_of_bp = target_bdpts.size();
@@ -632,14 +633,15 @@ static void damage_targets( const spell &sp, Creature &caster,
                         val.amount = roll_remainder( val.amount / amount_of_bp );
                     }
                     for( bodypart_id bp_id : target_bdpts ) {
-                        cr->deal_damage( cr, bp_id, atk.proj.impact );
+                        cr->deal_damage( &caster, bp_id, atk.proj.impact );
                     }
                 } else if( sp.has_flag( spell_flag::PERCENTAGE_DAMAGE ) ) {
                     for( bodypart_id bp_id : target_bdpts ) {
                         for( damage_unit &val : atk.proj.impact.damage_units ) {
                             val.amount = roll_remainder( cr->get_hp( bp_id ) * sp.damage( caster ) / 100.0 );
-                            cr->deal_damage( cr, bp_id, atk.proj.impact );
                         }
+                        // once per body part, not once per damage unit
+                        cr->deal_damage( &caster, bp_id, atk.proj.impact );
                     }
                 } else {
                     cr->deal_projectile_attack( &here, &caster, atk, atk.missed_by, true );

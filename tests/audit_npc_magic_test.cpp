@@ -2,6 +2,7 @@
 #include <set>
 #include <utility>
 
+#include "avatar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "character_id.h"
@@ -37,6 +38,8 @@ static const itype_id itype_u_shotgun( "u_shotgun" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
+static const spell_id spell_boomer_claymore( "boomer_claymore" );
+static const spell_id spell_debug_kill_spell( "debug_kill_spell" );
 static const spell_id spell_spell_corrosive_spray( "spell_corrosive_spray" );
 static const spell_id spell_weaponpod_saw( "weaponpod_saw" );
 
@@ -198,5 +201,44 @@ TEST_CASE( "magic-b02_blast_spell_explodes_short_of_a_wall", "[audit][magic]" )
     for( const tripoint_bub_ms &p : area ) {
         CAPTURE( p );
         CHECK( p.x() < wall_x );
+    }
+}
+
+// damage_targets() passed the victim as the damage source on the multi-projectile,
+// SPLIT_DAMAGE and PERCENTAGE_DAMAGE paths for characters, so the victim was its own
+// attacker and killer: hurting or killing an NPC with such a spell (fireball is
+// SPLIT_DAMAGE) had no consequences for the caster.
+TEST_CASE( "magic-b03_split_and_percentage_spell_damage_credits_the_caster",
+           "[audit][magic]" )
+{
+    npc &guy = audit_spawn_npc();
+    avatar &caster = get_avatar();
+    caster.setpos( get_map(), audit_npc_pos + tripoint::west );
+    REQUIRE( !guy.guaranteed_hostile() );
+    REQUIRE( !guy.hit_by_player );
+
+    SECTION( "SPLIT_DAMAGE" ) {
+        // a dodge only scales the damage down, but keep it out of the way
+        guy.set_stamina( 0 );
+        const spell sp( spell_boomer_claymore );
+        REQUIRE( sp.has_flag( spell_flag::SPLIT_DAMAGE ) );
+        REQUIRE( sp.damage( caster ) > 0 );
+        const int hp_before = guy.get_hp();
+
+        sp.cast_spell_effect( caster, guy.pos_bub() );
+
+        REQUIRE( guy.get_hp() < hp_before );
+        CHECK( guy.hit_by_player );
+    }
+
+    SECTION( "PERCENTAGE_DAMAGE" ) {
+        const spell sp( spell_debug_kill_spell );
+        REQUIRE( sp.has_flag( spell_flag::PERCENTAGE_DAMAGE ) );
+
+        sp.cast_spell_effect( caster, guy.pos_bub() );
+
+        REQUIRE( guy.is_dead_state() );
+        CHECK( guy.get_killer() == &caster );
+        CHECK( guy.hit_by_player );
     }
 }
