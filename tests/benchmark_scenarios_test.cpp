@@ -476,3 +476,36 @@ TEST_CASE( "bench_zone_sort_queries", "[.][benchmark_scenario]" )
     } );
     zone_manager::get_manager().clear();
 }
+
+// MAP-P02: temporary maps, which mapgen, NPC activities, blueprints and vehicles load all
+// the time, each with a terrain edit like the ones mapgen and construction make.
+TEST_CASE( "bench_temp_map_load", "[.][benchmark_scenario]" )
+{
+    run_scenario( "temp_map_load",
+                  "load 100 tinymaps and 20 smallmaps over generated terrain, one wall edit each",
+    []() {
+        clear_avatar();
+        clear_map();
+    }, []() {
+        const tripoint_abs_omt base = project_to<coords::omt>( get_map().get_abs_sub() );
+        int edits = 0;
+        const auto edit = [&edits]( tinymap & tm, int i ) {
+            const tripoint_omt_ms p( i % SEEX, ( i * 7 ) % SEEY, 0 );
+            const ter_id old_ter = tm.ter( p );
+            edits += tm.ter_set( p, ter_t_brick_wall ) ? 1 : 0;
+            tm.ter_set( p, old_ter );
+        };
+        // OMTs well inside the reality bubble, which clear_map has already generated
+        for( int i = 0; i < 100; ++i ) {
+            tinymap tm;
+            tm.load( base + tripoint_rel_omt( 1 + i % 4, 1 + ( i / 4 ) % 4, 0 ), false );
+            edit( tm, i );
+        }
+        for( int i = 0; i < 20; ++i ) {
+            smallmap sm;
+            sm.load( base + tripoint_rel_omt( 1 + i % 4, 1 + ( i / 4 ) % 4, 0 ), false );
+            edit( sm, i );
+        }
+        CHECK( edits == 120 );
+    } );
+}
