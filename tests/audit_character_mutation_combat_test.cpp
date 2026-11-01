@@ -1,11 +1,22 @@
+#include <optional>
 #include <vector>
 
+#include "avatar.h"
+#include "bionics.h"
 #include "bodypart.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "creature.h"
+#include "flag.h"
+#include "item.h"
+#include "item_location.h"
+#include "npc.h"
 #include "player_helpers.h"
 #include "type_id.h"
+#include "units.h"
+
+static const bionic_id bio_claws( "bio_claws" );
+static const bionic_id bio_power_storage( "bio_power_storage" );
 
 static const json_character_flag json_flag_DISTRIBUTED_DAMAGE( "DISTRIBUTED_DAMAGE" );
 
@@ -82,5 +93,36 @@ TEST_CASE( "mut-b02_deactivating_mutation_removes_active_enchantment_traits",
     // The per-turn recalc must not bring it back.
     dummy.recalculate_enchantment_cache();
     CHECK( !dummy.has_trait( trait_WINGS_INSECT_active ) );
+    clear_avatar();
+}
+
+// MUT-B03: remove_bionic() never retracted an extended weapon bionic, so its NO_UNWIELD
+// fake weapon stayed wielded with weapon_bionic_uid pointing at a removed bionic and
+// could never be put away. uninstall_bionic() also retracted the installer's weapon
+// bionics instead of the patient's.
+TEST_CASE( "mut-b03_removing_extended_weapon_bionic_retracts_weapon", "[audit][bionics]" )
+{
+    clear_avatar();
+    avatar &dummy = get_avatar();
+    dummy.add_bionic( bio_power_storage );
+    dummy.set_power_level( dummy.get_max_power_level() );
+    dummy.add_bionic( bio_claws );
+    const std::optional<bionic *> claws = dummy.find_bionic_by_type( bio_claws );
+    REQUIRE( claws );
+    REQUIRE( dummy.activate_bionic( **claws ) );
+    REQUIRE( dummy.is_using_bionic_weapon() );
+    REQUIRE( dummy.get_wielded_item() );
+    REQUIRE( dummy.get_wielded_item()->has_flag( flag_NO_UNWIELD ) );
+
+    SECTION( "the bionic is removed" ) {
+        dummy.remove_bionic( **claws );
+        REQUIRE_FALSE( dummy.has_bionic( bio_claws ) );
+    }
+    SECTION( "someone else starts removing a bionic" ) {
+        standard_npc surgeon( "Surgeon" );
+        dummy.uninstall_bionic( **claws, surgeon );
+    }
+    CHECK_FALSE( dummy.is_using_bionic_weapon() );
+    CHECK( !dummy.get_wielded_item() );
     clear_avatar();
 }
