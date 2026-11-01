@@ -3834,11 +3834,13 @@ void iexamine::fvat_full( Character &you, const tripoint_bub_ms &examp )
         return;
     }
 
-    for( item &it : items_here ) {
-        if( !it.made_of_from_type( phase_id::LIQUID ) ) {
-            add_msg( _( "You remove %s from the vat." ), it.tname() );
-            here.add_item_or_charges( you.pos_bub(), it );
-            here.i_rem( examp, &it );
+    for( map_stack::iterator it = items_here.begin(); it != items_here.end(); ) {
+        if( !it->made_of_from_type( phase_id::LIQUID ) ) {
+            add_msg( _( "You remove %s from the vat." ), it->tname() );
+            here.add_item_or_charges( you.pos_bub(), *it );
+            it = items_here.erase( it );
+        } else {
+            ++it;
         }
     }
 
@@ -3910,6 +3912,9 @@ void iexamine::fvat_full( Character &you, const tripoint_bub_ms &examp )
         add_msg( _( "You squeeze the last drops of %s from the vat." ), booze_name );
     }
 }
+
+// Item var on the biomass in an anaerobic digester: turn of the last biogas release.
+static const std::string compost_gas_release_var( "last_gas_release" );
 
 // Borrowed and modified fermenting vat functions
 static void compost_set_empty( const tripoint_bub_ms &pos )
@@ -4045,18 +4050,16 @@ void iexamine::compost_empty( Character &you, const tripoint_bub_ms &examp )
         }
     }
     if( tank_full || ferment ) {
-        here.i_at( examp ).only_item().set_age( 0_turns );
+        item &biomass = here.i_at( examp ).only_item();
+        biomass.set_age( 0_turns );
+        // Set timer for biogas production
+        biomass.set_var( compost_gas_release_var, to_turn<int>( calendar::turn ) );
         compost_set_full( examp );
         if( tank_full ) {
             add_msg( _( "The tank is full, so you close the lid and start anaerobic digestion." ) );
         } else {
             add_msg( _( "You close the lid and start anaerobic digestion." ) );
         }
-        // Set timer for biogas production
-        map &here = get_map();
-        map_stack items_here = here.i_at( examp );
-        item &ferm = *items_here.end();
-        ferm.set_birthday( calendar::turn );
     }
 }
 
@@ -4070,11 +4073,13 @@ void iexamine::compost_full( Character &you, const tripoint_bub_ms &examp )
         return;
     }
 
-    for( item &it : items_here ) {
-        if( !it.made_of_from_type( phase_id::LIQUID ) ) {
-            add_msg( _( "You remove %s from the tank." ), it.tname() );
-            here.add_item_or_charges( you.pos_bub(), it );
-            here.i_rem( examp, &it );
+    for( map_stack::iterator it = items_here.begin(); it != items_here.end(); ) {
+        if( !it->made_of_from_type( phase_id::LIQUID ) ) {
+            add_msg( _( "You remove %s from the tank." ), it->tname() );
+            here.add_item_or_charges( you.pos_bub(), *it );
+            it = items_here.erase( it );
+        } else {
+            ++it;
         }
     }
 
@@ -4084,8 +4089,13 @@ void iexamine::compost_full( Character &you, const tripoint_bub_ms &examp )
     }
 
     item &compost_i = *items_here.begin();
-    item &ferm = *items_here.end();
-    const time_duration last_open_time = ferm.age();
+    // Biogas timer: when gas was last released, or when digestion started.
+    time_point last_gas_release = compost_i.birthday();
+    if( compost_i.has_var( compost_gas_release_var ) ) {
+        const double release_turn = compost_i.get_var( compost_gas_release_var, 0.0 );
+        last_gas_release = time_point::from_turn( static_cast<int>( release_turn ) );
+    }
+    const time_duration last_open_time = calendar::turn - last_gas_release;
     int fermented_days =  to_days<int>( last_open_time );
     // Biogas generating process starts after one month.
     int gas_gatherable =  fermented_days < 30 ? fermented_days : fermented_days - 30 ;
@@ -4140,7 +4150,7 @@ void iexamine::compost_full( Character &you, const tripoint_bub_ms &examp )
                     add_msg( n_gettext( "Biogas generating process started for about %d day.",
                                         "Biogas generating process started for about %d days.",
                                         max_gas_gatherable ), max_gas_gatherable );
-                    ferm.set_birthday( calendar::turn );
+                    compost_i.set_var( compost_gas_release_var, to_turn<int>( calendar::turn ) );
                 }
             }
             return;
