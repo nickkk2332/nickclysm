@@ -1215,38 +1215,12 @@ int item::chip_resistance( bool worst, const bodypart_id &bp ) const
     return res;
 }
 
-void item::mitigate_damage( damage_unit &du, const bodypart_id &bp, int roll ) const
-{
-    const resistances res = resistances( *this, false, roll, bp );
-    const float mitigation = res.get_effective_resist( du );
-    // get_effective_resist subtracts the flat penetration value before multiplying the remaining armor.
-    // therefore, res_pen is reduced by the full value of the item's armor value even though mitigation might be smaller (such as an attack with a 0.5 armor multiplier)
-    du.res_pen -= res.type_resist( du.type );
-    du.res_pen = std::max( 0.0f, du.res_pen );
-    du.amount -= mitigation;
-    du.amount = std::max( 0.0f, du.amount );
-}
-
-void item::mitigate_damage( damage_unit &du, const sub_bodypart_id &bp, int roll ) const
-{
-    const resistances res = resistances( *this, false, roll, bp );
-    const float mitigation = res.get_effective_resist( du );
-    // get_effective_resist subtracts the flat penetration value before multiplying the remaining armor.
-    // therefore, res_pen is reduced by the full value of the item's armor value even though mitigation might be smaller (such as an attack with a 0.5 armor multiplier)
-    du.res_pen -= res.type_resist( du.type );
-    du.res_pen = std::max( 0.0f, du.res_pen );
-    du.amount -= mitigation;
-    du.amount = std::max( 0.0f, du.amount );
-}
-
-std::vector<const part_material *> item::armor_made_of( const bodypart_id &bp ) const
+// Materials of the armor's own portion covering bp, ignoring any ablative plates inserted in it.
+static std::vector<const part_material *> own_armor_made_of( const islot_armor &a,
+        const bodypart_id &bp )
 {
     std::vector<const part_material *> matlist;
-    const islot_armor *a = find_armor_data();
-    if( a == nullptr || a->data.empty() || !covers( bp ) ) {
-        return matlist;
-    }
-    for( const armor_portion_data &d : a->data ) {
+    for( const armor_portion_data &d : a.data ) {
         if( !d.covers.has_value() ) {
             continue;
         }
@@ -1264,6 +1238,89 @@ std::vector<const part_material *> item::armor_made_of( const bodypart_id &bp ) 
             break;
         }
     }
+    return matlist;
+}
+
+static std::vector<const part_material *> own_armor_made_of( const islot_armor &a,
+        const sub_bodypart_id &bp )
+{
+    std::vector<const part_material *> matlist;
+    for( const armor_portion_data &d : a.sub_data ) {
+        if( d.sub_coverage.empty() ) {
+            continue;
+        }
+        for( const sub_bodypart_str_id &bpid : d.sub_coverage ) {
+            if( bp != bpid ) {
+                continue;
+            }
+            for( const part_material &m : d.materials ) {
+                matlist.emplace_back( &m );
+            }
+            break;
+        }
+        if( !matlist.empty() ) {
+            break;
+        }
+    }
+    return matlist;
+}
+
+void item::mitigate_damage( damage_unit &du, const bodypart_id &bp, int roll ) const
+{
+    resistances res;
+    if( is_ablative() && bp != bodypart_id() ) {
+        // See the sub_bodypart_id overload: inserted ablative plates are not counted here.
+        const std::vector<const part_material *> own_mats = own_armor_made_of( *find_armor_data(),
+                bp );
+        if( !own_mats.empty() && !du.type.is_null() && du.type.is_valid() ) {
+            res.set_resist( du.type, _resist( du.type, false, roll, false, own_mats ) );
+        }
+    } else {
+        res = resistances( *this, false, roll, bp );
+    }
+    const float mitigation = res.get_effective_resist( du );
+    // get_effective_resist subtracts the flat penetration value before multiplying the remaining armor.
+    // therefore, res_pen is reduced by the full value of the item's armor value even though mitigation might be smaller (such as an attack with a 0.5 armor multiplier)
+    du.res_pen -= res.type_resist( du.type );
+    du.res_pen = std::max( 0.0f, du.res_pen );
+    du.amount -= mitigation;
+    du.amount = std::max( 0.0f, du.amount );
+}
+
+void item::mitigate_damage( damage_unit &du, const sub_bodypart_id &bp, int roll ) const
+{
+    resistances res;
+    if( is_ablative() && bp != sub_bodypart_id() ) {
+        // Inserted ablative plates roll against their own coverage and mitigate the hit on their
+        // own in Character::ablative_armor_absorb, so only this item's own materials count here.
+        // resist() would include the plate via armor_made_of(), making it protect twice per hit
+        // and even when the coverage roll missed it. If only a plate covers bp, the item itself
+        // adds no protection.
+        const std::vector<const part_material *> own_mats = own_armor_made_of( *find_armor_data(),
+                bp );
+        if( !own_mats.empty() && !du.type.is_null() && du.type.is_valid() ) {
+            res.set_resist( du.type, _resist( du.type, false, roll, false, own_mats ) );
+        }
+    } else {
+        res = resistances( *this, false, roll, bp );
+    }
+    const float mitigation = res.get_effective_resist( du );
+    // get_effective_resist subtracts the flat penetration value before multiplying the remaining armor.
+    // therefore, res_pen is reduced by the full value of the item's armor value even though mitigation might be smaller (such as an attack with a 0.5 armor multiplier)
+    du.res_pen -= res.type_resist( du.type );
+    du.res_pen = std::max( 0.0f, du.res_pen );
+    du.amount -= mitigation;
+    du.amount = std::max( 0.0f, du.amount );
+}
+
+std::vector<const part_material *> item::armor_made_of( const bodypart_id &bp ) const
+{
+    std::vector<const part_material *> matlist;
+    const islot_armor *a = find_armor_data();
+    if( a == nullptr || a->data.empty() || !covers( bp ) ) {
+        return matlist;
+    }
+    matlist = own_armor_made_of( *a, bp );
     if( is_ablative() ) {
         for( const item_pocket *pocket : contents.get_ablative_pockets() ) {
             if( !pocket->empty() ) {
@@ -1292,23 +1349,7 @@ std::vector<const part_material *> item::armor_made_of( const sub_bodypart_id &b
     if( a == nullptr || a->data.empty() || !covers( bp ) ) {
         return matlist;
     }
-    for( const armor_portion_data &d : a->sub_data ) {
-        if( d.sub_coverage.empty() ) {
-            continue;
-        }
-        for( const sub_bodypart_str_id &bpid : d.sub_coverage ) {
-            if( bp != bpid ) {
-                continue;
-            }
-            for( const part_material &m : d.materials ) {
-                matlist.emplace_back( &m );
-            }
-            break;
-        }
-        if( !matlist.empty() ) {
-            break;
-        }
-    }
+    matlist = own_armor_made_of( *a, bp );
     if( is_ablative() ) {
         for( const item_pocket *pocket : contents.get_ablative_pockets() ) {
             if( !pocket->empty() ) {
