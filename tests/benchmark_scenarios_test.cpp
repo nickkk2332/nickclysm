@@ -24,6 +24,7 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "clzones.h"
 #include "coordinates.h"
 #include "game.h"
 #include "item.h"
@@ -55,6 +56,18 @@ static const itype_id itype_hammer( "hammer" );
 static const itype_id itype_jacket_light( "jacket_light" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_scrap( "scrap" );
+
+static const faction_id faction_your_followers( "your_followers" );
+
+static const zone_type_id zone_type_LOOT_AMMO( "LOOT_AMMO" );
+static const zone_type_id zone_type_LOOT_BOOKS( "LOOT_BOOKS" );
+static const zone_type_id zone_type_LOOT_CLOTHING( "LOOT_CLOTHING" );
+static const zone_type_id zone_type_LOOT_DRINK( "LOOT_DRINK" );
+static const zone_type_id zone_type_LOOT_FOOD( "LOOT_FOOD" );
+static const zone_type_id zone_type_LOOT_OTHER( "LOOT_OTHER" );
+static const zone_type_id zone_type_LOOT_SPARE_PARTS( "LOOT_SPARE_PARTS" );
+static const zone_type_id zone_type_LOOT_TOOLS( "LOOT_TOOLS" );
+static const zone_type_id zone_type_LOOT_WEAPONS( "LOOT_WEAPONS" );
 
 static const ter_str_id ter_t_brick_wall( "t_brick_wall" );
 static const ter_str_id ter_t_utility_light( "t_utility_light" );
@@ -377,4 +390,88 @@ TEST_CASE( "bench_overmap_generate", "[.][benchmark_scenario]" )
         CHECK( om.pos() == where );
     } );
     overmap_buffer.clear();
+}
+
+// The same work as crafting_recompute, inside the query cache scope the crafting menu opens
+// (crafting_gui.cpp), so inventory queries use the per-type index.
+TEST_CASE( "bench_crafting_recompute_scoped", "[.][benchmark_scenario]" )
+{
+    fixed_weather weather;
+    std::vector<const recipe *> recipes;
+    for( const auto &entry : recipe_dict ) {
+        if( !entry.second.obsolete && !entry.second.is_practice() ) {
+            recipes.push_back( &entry.second );
+        }
+        if( recipes.size() >= 300 ) {
+            break;
+        }
+    }
+    REQUIRE( recipes.size() == 300 );
+    run_scenario( "crafting_recompute_scoped",
+                  "time and craftability for 300 recipes, 5 times, in a dense base, menu cache scope",
+    []() {
+        clear_avatar();
+        clear_map();
+        avatar &u = get_avatar();
+        const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+        u.setpos( get_map(), center );
+        build_dense_base( center );
+        fill_inventory( u );
+    }, [&recipes]() {
+        temp_crafting_inventory::query_cache_scope cache_scope;
+        avatar &u = get_avatar();
+        int64_t checksum = 0;
+        for( int redraw = 0; redraw < 5; ++redraw ) {
+            u.invalidate_crafting_inventory();
+            const temp_crafting_inventory &inv = u.crafting_inventory();
+            for( const recipe *rec : recipes ) {
+                checksum += u.expected_time_to_craft( *rec );
+                checksum += rec->deduped_requirements().can_make_with_inventory( &u, inv,
+                            rec->get_component_filter() );
+            }
+        }
+        CHECK( checksum != 0 );
+    } );
+}
+
+// ACT-P01: zone sorting asks, for every item, which nearby loot zone takes it.
+TEST_CASE( "bench_zone_sort_queries", "[.][benchmark_scenario]" )
+{
+    const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+    run_scenario( "zone_sort_queries",
+                  "loot zone lookup for 2000 items, 9 category zones of 400 tiles each",
+    [&center]() {
+        clear_avatar();
+        clear_map();
+        zone_manager &zm = zone_manager::get_manager();
+        zm.clear();
+        map &here = get_map();
+        const std::vector<zone_type_id> types = { zone_type_LOOT_FOOD, zone_type_LOOT_DRINK,
+                                                  zone_type_LOOT_TOOLS, zone_type_LOOT_CLOTHING, zone_type_LOOT_AMMO,
+                                                  zone_type_LOOT_WEAPONS, zone_type_LOOT_BOOKS, zone_type_LOOT_SPARE_PARTS,
+                                                  zone_type_LOOT_OTHER
+                                                };
+        for( size_t i = 0; i < types.size(); ++i ) {
+            const tripoint_bub_ms start = center + tripoint_rel_ms( -30 + static_cast<int>( i % 3 ) * 20,
+                                          -30 + static_cast<int>( i / 3 ) * 20, 0 );
+            zm.add( types[i].str(), types[i], faction_your_followers, false, true, here.get_abs( start ),
+                    here.get_abs( start + tripoint_rel_ms( 19, 19, 0 ) ) );
+        }
+    }, [&center]() {
+        const zone_manager &zm = zone_manager::get_manager();
+        const tripoint_abs_ms where = get_map().get_abs( center );
+        const std::vector<item> items = { item( itype_apple ), item( itype_2x4 ), item( itype_rock ),
+                                          item( itype_scrap ), item( itype_bottle_plastic ), item( itype_jacket_light ),
+                                          item( itype_can_beans ), item( itype_hammer ), item( itype_flashlight ),
+                                          item( itype_backpack )
+                                        };
+        int found = 0;
+        for( int i = 0; i < 200; ++i ) {
+            for( const item &it : items ) {
+                found += !zm.get_near_zone_type_for_item( it, where, 60, faction_your_followers ).is_null();
+            }
+        }
+        CHECK( found > 0 );
+    } );
+    zone_manager::get_manager().clear();
 }
