@@ -145,7 +145,7 @@ A cross-chapter shortlist, grouped by kind of impact. Format: ID · title · sev
 
 ## Fixes applied
 
-The small-effort items in "Fix first" groups 1-3 have been fixed on this branch, one commit per group of related findings. ITEM-B02 and EVT-B02 are rated medium effort and were left for later.
+Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit per group of related findings. The two medium-effort items, ITEM-B02 and EVT-B02, were done in a second round.
 
 | ID | Status | Commit | Regression test |
 |---|---|---|---|
@@ -160,9 +160,9 @@ The small-effort items in "Fix first" groups 1-3 have been fixed on this branch,
 | MUT-B01 | fixed | `b329e834` | `tests/audit_mutation_activation_test.cpp` |
 | USE-B02 | fixed | `0706a779` | `tests/audit_item_use_test.cpp` |
 | DATA-B01 | fixed | `9a8b2c7b` | `tests/audit_saves_options_test.cpp` |
-| ITEM-B02 | not done | | medium effort |
+| ITEM-B02 | fixed | `abed57e8`, `2dc6bb71`, `dbd2a623` | `tests/audit_item_rle_test.cpp`. Runs are still saved as `[item, count]`, so older builds can read new saves; the copies' uids are stored inside the item as `"rle_uids"` |
 | LOOP-B04 | fixed | `90c08ef9` | none: needs the OS to refuse to map the save file |
-| EVT-B02 | not done | | medium effort |
+| EVT-B02 | fixed | `bc57ebfb`, `b2997abd` | `tests/audit_events_test.cpp`. Still open: renaming a `cata_variant_type` or achievement state still fails the save load (now with an error message instead of a crash) |
 | DATA-B02 | fixed | `9a8b2c7b` | `tests/audit_saves_options_test.cpp` |
 | LOOP-B03 | fixed | `90c08ef9` | none: `game::setup()` cannot run inside the test harness |
 | EVT-B01 | partial | `90c08ef9` | none: `is_game_over()` is private and reached only through the input loop. Still open: `character_dies` can fire twice when a follower death-switch takes over the body |
@@ -176,7 +176,11 @@ The small-effort items in "Fix first" groups 1-3 have been fixed on this branch,
 | MONDT-B02 | fixed | `ac239624` | `tests/audit_mongroup_evolution_test.cpp` |
 | MONAI-B01 | fixed | `5bc22c4b` | `tests/audit_monster_speed_mod_test.cpp` |
 
-**Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1`) and run. All 31 `[audit]` test cases pass, and every one of them fails or crashes on a build with its fix reverted, so they really catch the bugs. The full suite passes 2304 of 2309 test cases. The 5 failures (`crafting_skill_gain`, `proficiency_gain_short_crafts`, `memorials`, `available_reloadables`, `monster_speed_description`) already happen on a build with every fix reverted and the audit tests removed, at the same lines with the same seed. They depend on test order: each passes on its own. (That pre-fix full run also stopped making progress partway through for reasons not yet identified; the fixed build completed.) `stats_tracker` failed once on another seed and is flaky.
+**Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passes: 2313 of 2313 test cases with `--rng-seed 4242`.
+
+Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five tests failed in full-suite runs but passed alone, because earlier tests left state behind. The main culprit: `clear_character()` did not reset the stat bonuses that hardcoded effects add, so after a frostbite test the avatar kept -2 INT, which slowed learning by 10% in later crafting tests. Three other tests (`memorials`, `available_reloadables`, `monster_speed_description`) now clear the map or the avatar themselves.
+
+**Build note.** With the default precompiled header (`PCH=1`) and GCC 13, the build's dependency files list no project headers, so editing a `.h` file does not rebuild the files that include it. Build with `PCH=0` (or clean first) after any header change. A full test-suite run peaks around 9 GB of memory, so two runs at once do not fit in a 16 GB container.
 
 **Gameplay changes players will notice.**
 
