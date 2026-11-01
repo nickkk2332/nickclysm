@@ -7107,11 +7107,18 @@ bool craft_activity_actor::unattended_craft_step( player_activity &act, Characte
     }
 
     if( plan.choice == step_choice::do_wait ) {
-        // Per-turn env check fast-path.  do_something / set_timer
-        // rely on the periodic env_check wakeup at 1-minute cadence
-        // since no actor runs for those modes.
-        craft_actualize_scheduled( *craft_item, item_wakeup_kind::env_check,
-                                   calendar::turn, craft_item );
+        // The item wakeups run the env check on its 1-minute cadence, as for
+        // do_something / set_timer, and a paused step's recheck at ready_at (the
+        // past-due branch above).  This turn only runs the check when it is due or no
+        // poll is armed: each check reruns reservations and inventory scans, and
+        // repeating it every turn of an hours-long step is the cost of waiting.
+        const time_point env_check_at = craft_item->get_env_check_at();
+        const bool paused = craft_item->get_pause_started_at() != calendar::before_time_starts;
+        if( !paused && ( env_check_at == calendar::before_time_starts ||
+                         calendar::turn >= env_check_at ) ) {
+            craft_actualize_scheduled( *craft_item, item_wakeup_kind::env_check,
+                                       calendar::turn, craft_item );
+        }
         crafter.set_moves( 0 );
         return true;
     }
