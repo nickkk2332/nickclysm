@@ -128,7 +128,8 @@ TEST_CASE( "act-p02_planting_memo_samples_the_weather_once_per_overmap_tile",
     clear_map();
     set_time( calendar::turn_zero + 12_hours );
     map &here = get_map();
-    const tripoint_abs_omt omt = project_to<coords::omt>( here.get_abs( { 60, 60, 0 } ) );
+    const tripoint_abs_omt omt =
+        project_to<coords::omt>( here.get_abs( tripoint_bub_ms( 60, 60, 0 ) ) );
     const tripoint_bub_ms omt_origin = here.get_bub( project_to<coords::ms>( omt ) );
     const tripoint_bub_ms first = omt_origin + tripoint_rel_ms( 1, 1, 0 );
     const tripoint_bub_ms second = omt_origin + tripoint_rel_ms( 20, 20, 0 );
