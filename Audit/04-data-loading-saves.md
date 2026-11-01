@@ -222,7 +222,7 @@ json.write( world->active_mod_order );              // mod_manager.cpp:452
 
 ## 2. Bugs, oversights & quirks
 
-### DATA-B01 · Overmap predecessors are thrown away on every load (fork regression from ff91f4a3)
+### DATA-B01 · Overmap predecessors are thrown away on every load (upstream regression from ff91f4a3)
 **Severity:** High · **Effort:** Small · **Verified:** confirmed
 **Where:** `src/savegame.cpp:806-814`, `src/savegame.cpp:1533-1535`, `src/mapgen.cpp:6316-6327`, `src/overmap.cpp:412-419`, `src/mapgendata.cpp:73`
 
