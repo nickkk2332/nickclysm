@@ -7839,8 +7839,8 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
             const auto is_copy_target = [&]( const Creature & critter ) -> bool {
                 const tripoint_bub_ms critter_pos = critter.pos_bub( here );
                 return critter.is_monster() && search_center != critter_pos &&
-                       std::round( rl_dist_exact( search_center, critter_pos ) ) <= target_range &&
-                       observer->attitude_to( critter ) == Creature::Attitude::HOSTILE;
+                std::round( rl_dist_exact( search_center, critter_pos ) ) <= target_range &&
+                observer->attitude_to( critter ) == Creature::Attitude::HOSTILE;
             };
             if( single_target ) {
                 // Find a hostile creature in range to be used to create a hallucination or a copy of
