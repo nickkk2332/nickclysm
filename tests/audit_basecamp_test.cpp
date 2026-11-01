@@ -1,6 +1,7 @@
 #include <list>
 #include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,6 +18,8 @@
 #include "game_constants.h"
 #include "item.h"
 #include "item_location.h"
+#include "json.h"
+#include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_scale_constants.h"
@@ -208,6 +211,47 @@ TEST_CASE( "camp-b02_camp_board_openings_do_not_multiply_camp_fuel", "[audit][ca
     }
     CHECK( drawn == 100 );
     CHECK( wanted == 200 );
+}
+
+// CAMP-B02: a legacy expansion (a save with cur_level and no provides) gets its levels'
+// provides from reset_camp_resources.  They must be added once, not again on every opening,
+// and the loader's own entry for level 0 must not hide the rest of what level 0 provides.
+TEST_CASE( "camp-b02_legacy_camp_levels_are_counted_once", "[audit][camp]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    get_player_character().camps.clear();
+    map &here = get_map();
+    tripoint_abs_omt camp_omt;
+    basecamp &camp = place_audit_camp( "faction_base_bare_bones_NPC_camp_0", camp_omt );
+    on_out_of_scope cleanup( [&camp_omt]() {
+        overmap_buffer.clear_camps( camp_omt.xy() );
+    } );
+    std::ostringstream os;
+    JsonOut jsout( os );
+    jsout.start_object();
+    jsout.member( "expansions" );
+    jsout.start_array();
+    jsout.start_object();
+    jsout.member( "dir", base_camps::base_dir );
+    jsout.member( "type", "bare_bones_NPC_camp" );
+    jsout.member( "cur_level", 0 );
+    jsout.member( "pos", camp_omt );
+    jsout.end_object();
+    jsout.end_array();
+    jsout.end_object();
+    camp.deserialize( json_loader::from_string( os.str() ).get_object() );
+    // the loader adds the level-0 blueprint itself and nothing else
+    REQUIRE( camp.has_provides( "faction_base_bare_bones_NPC_camp_0", base_camps::base_dir ) );
+    REQUIRE_FALSE( camp.has_provides( "gathering", base_camps::base_dir ) );
+
+    for( int opened = 0; opened < 3; ++opened ) {
+        mission_data missions;
+        camp.get_available_missions( missions, here );
+    }
+
+    CHECK( camp.has_provides( "gathering", base_camps::base_dir ) );
+    CHECK_FALSE( camp.has_provides( "gathering", base_camps::base_dir, 1 ) );
 }
 
 // CAMP-B03: start_farm_op cut the selected seed stack down to the chosen count before anyone

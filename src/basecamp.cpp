@@ -551,13 +551,26 @@ void basecamp::reset_camp_resources( map &here )
     fuel_types.clear();
     for( auto &e : expansions ) {
         expansion_data &e_data = e.second;
+        // a legacy level is counted once all it provides is there (a blueprint provides
+        // itself, so that is unique per level); the loader may have added only that self entry
+        const auto level_counted = [&e_data]( const std::string & bldg ) {
+            const recipe_id making( bldg );
+            if( !making.is_valid() ) {
+                return false;
+            }
+            for( const std::pair<std::string, int> &bp_provides : making->blueprint_provides() ) {
+                if( e_data.provides.count( bp_provides.first ) == 0 ) {
+                    return false;
+                }
+            }
+            return true;
+        };
         for( int level = 0; level <= e_data.cur_level; level++ ) {
             const std::string &bldg = base_camps::faction_encode_abs( e_data, level );
             if( bldg == "null" ) {
                 break;
             }
-            // a blueprint provides itself: a legacy level already counted is not added again
-            if( e_data.provides.count( bldg ) == 0 ) {
+            if( !level_counted( bldg ) ) {
                 update_provides( bldg, e_data );
             }
         }
@@ -856,12 +869,23 @@ void basecamp::form_crafting_inventory( map &target_map )
         _inv.add_item_copy( camp_item );
     }
 
-    //  We're potentially adding the same item multiple times if present in multiple expansions,
-    //  but we're already that with the resources above. The resources are stored in expansions
-    //  rather than in a common pool to allow them to apply only to their respective expansion
-    //  in the future.
+    //  The resources are stored in expansions rather than in a common pool to allow them to
+    //  apply only to their respective expansion in the future.
+    //  reset_camp_resources also lists them as resources, added above with the fuel stock:
+    //  a second copy would count that stock twice.
+    const auto is_resource = [this]( const itype_id & it ) {
+        for( const basecamp_resource &bcp_r : resources ) {
+            if( bcp_r.fake_id == it ) {
+                return true;
+            }
+        }
+        return false;
+    };
     for( auto &expansion : expansions ) {
         for( itype_id &it : expansion.second.available_pseudo_items ) {
+            if( is_resource( it ) ) {
+                continue;
+            }
             item camp_item = item( it );
             if( camp_item.is_magazine() ) {
                 for( basecamp_fuel &bcp_f : fuels ) {
