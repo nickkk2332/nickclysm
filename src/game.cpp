@@ -751,6 +751,13 @@ void game::setup()
     globvars.clear_global_values();
     unique_npcs.clear();
     get_weather().weather_override = WEATHER_NULL;
+    // Tutorial and debug overrides (and the previous world's snow) must not leak into the
+    // next game: forced_temperature and snow_depth_map would also be saved into it.
+    // Loading a save restores the serialized ones.
+    get_weather().forced_temperature.reset();
+    get_weather().wind_direction_override.reset();
+    get_weather().windspeed_override.reset();
+    get_weather().snow_depth_map.clear();
     // back to menu for save loading, new game etc
 }
 
@@ -2860,15 +2867,9 @@ bool game::is_game_over()
 {
     map &here = get_map();
 
-    if( uquit == QUIT_DIED || uquit == QUIT_WATCH ) {
-        Creature *player_killer = u.get_killer();
-        if( player_killer && player_killer->as_character() ) {
-            events().send<event_type::character_kills_character>(
-                player_killer->as_character()->getID(), u.getID(), u.get_name(), "" );
-        }
-        events().send<event_type::character_dies>( u.getID() );
-        events().send<event_type::avatar_dies>();
-    }
+    // The death events are sent once, below, when the death becomes final. This function runs
+    // several times per turn during deathcam, so it must not send them again for QUIT_WATCH or
+    // QUIT_DIED.
     if( uquit == QUIT_WATCH ) {
         // deny player movement and dodging
         u.set_moves( 0 );
@@ -2901,11 +2902,30 @@ bool game::is_game_over()
         if( !u.is_dead_state() ) {
             return false;
         }
+        // Like npc::die, send character_dies before the death is final, so EVENT EOCs can still
+        // use u_prevent_death on the avatar.
+        events().send<event_type::character_dies>( u.getID() );
+        if( !u.is_dead_state() ) {
+            u.clear_killer();
+            return false;
+        }
         bury_screen();
         effect_on_conditions::avatar_death();
         if( !u.is_dead_state() ) {
             return false;
         }
+        Creature *player_killer = u.get_killer();
+        if( player_killer != nullptr ) {
+            // Make sure the killer still exists in game
+            player_killer = get_creature_if( [player_killer]( const Creature & c ) {
+                return &c == player_killer;
+            } );
+        }
+        if( player_killer && player_killer->as_character() ) {
+            events().send<event_type::character_kills_character>(
+                player_killer->as_character()->getID(), u.getID(), u.get_name(), "" );
+        }
+        events().send<event_type::avatar_dies>();
         Messages::deactivate();
         if( get_option<std::string>( "DEATHCAM" ) == "always" ) {
             uquit = QUIT_WATCH;
@@ -9122,13 +9142,13 @@ void game::water_affect_items( Character &ch ) const
 bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bool controlled,
                            bool intentional )
 {
-    map &here = get_map();
-    tripoint_bub_ms pos = c->pos_bub( here );
-
     if( c == nullptr ) {
         debugmsg( "game::fling_creature invoked on null target" );
         return false;
     }
+
+    map &here = get_map();
+    tripoint_bub_ms pos = c->pos_bub( here );
 
     if( c->is_dead_state() ) {
         // Flinging a corpse causes problems, don't enable without testing
@@ -9195,7 +9215,9 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         pt.y() = pos.y() + tdir.dy();
         float force = 0.0f;
 
-        if( monster *const mon_ptr = creatures.creature_at<monster>( pt ) ) {
+        monster *const mon_ptr = creatures.creature_at<monster>( pt );
+        // The flung creature is never an obstacle to itself
+        if( mon_ptr != nullptr && mon_ptr != c ) {
             monster &critter = *mon_ptr;
             // Approximate critter's "stopping power" with its max hp
             force = std::min<float>( 1.5f * critter.type->hp, flvel );
@@ -9210,6 +9232,14 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             if( !critter.is_dead() ) {
                 thru = false;
             }
+        } else if( const Character *const blocker = creatures.creature_at<Character>( pt );
+                   blocker != nullptr && blocker != c ) {
+            // Another character stops the flight like a wall would, so the flung
+            // creature never ends up sharing a tile with them.
+            force = flvel;
+            const int damage = rng( force, force * 2.0f ) / 9;
+            c->impact( damage, pt );
+            thru = false;
         } else if( here.impassable( pt ) ) {
             if( !here.veh_at( pt ).obstacle_at_part() ) {
                 force = std::min<float>( here.bash_strength( pt ), flvel );
@@ -9244,8 +9274,6 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                 // If we're flinging the player around, make sure the map stays centered on them.
                 if( is_u ) {
                     update_map( pt.x(), pt.y() );
-                    // update_map invalidates all bubble coordinates if it shifts the map.
-                    pos = c->pos_bub( here );
                 } else {
                     you->setpos( here, pt );
                 }
@@ -9255,6 +9283,9 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                 // or the monster will stop a tile before the unpassable one
                 c->setpos( here, pt );
             }
+            // The next step and the landing start from wherever the creature is now.
+            // update_map invalidates all bubble coordinates if it shifts the map.
+            pos = c->pos_bub( here );
         } else {
             // Don't zero flvel - count this as slamming both the obstacle and the ground
             // although at lower velocity

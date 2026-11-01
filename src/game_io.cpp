@@ -611,11 +611,18 @@ bool game::save_player_data()
         std::filesystem::path tmp_path = save_path;
         tmp_path.concat( ".tmp" ); // NOLINT(cata-u8-path)
         std::optional<zzip> z = zzip::load( save_path );
-        saved_data = z->add_file( ( playerfile + SAVE_EXTENSION ).get_unrelative_path().filename(),
-                                  save.str() );
-        if( saved_data && z->compact_to( tmp_path, 2.0 ) ) {
-            z.reset();
-            saved_data = rename_file( tmp_path, save_path );
+        if( !z ) {
+            // The file could not be mapped (e.g. locked by OneDrive or an antivirus)
+            debugmsg( "Failed to open compressed save file %s", save_path.generic_u8string() );
+            saved_data = false;
+        } else {
+            const std::filesystem::path save_name =
+                ( playerfile + SAVE_EXTENSION ).get_unrelative_path().filename();
+            saved_data = z->add_file( save_name, save.str() );
+            if( saved_data && z->compact_to( tmp_path, 2.0 ) ) {
+                z.reset();
+                saved_data = rename_file( tmp_path, save_path );
+            }
         }
     } else {
         saved_data = write_to_file( playerfile + SAVE_EXTENSION, [&]( std::ostream & fout ) {

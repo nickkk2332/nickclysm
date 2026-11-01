@@ -5011,7 +5011,8 @@ const std::vector<debug_action_entry> &all_actions()
             debug_menu_index::TEST_END_SCREEN, translate_marker( "Test end screen" ), "test end screen credits", "Game", []()
             {
                 end_screen_data new_instance;
-                new_instance.draw_end_screen_ui();
+                // Only a preview: don't log a real avatar death
+                new_instance.draw_end_screen_ui( false );
             }
         },
         {
