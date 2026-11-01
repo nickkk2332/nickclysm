@@ -4,6 +4,7 @@
 #include "cata_catch.h"
 #include "coordinates.h"
 #include "enums.h"
+#include "explosion.h"
 #include "item.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -13,9 +14,13 @@
 #include "units.h"
 #include "vehicle.h"
 
+static const damage_type_id damage_heat( "heat" );
+
+static const itype_id itype_gasoline( "gasoline" );
 static const itype_id itype_test_vp_unmount_on_move( "test_vp_unmount_on_move" );
 
 static const vpart_id vpart_frame( "frame" );
+static const vpart_id vpart_tank( "tank" );
 static const vpart_id vpart_test_vp_unmount_on_move( "test_vp_unmount_on_move" );
 
 static const vproto_id vehicle_prototype_none( "none" );
@@ -61,4 +66,35 @@ TEST_CASE( "veh-b01_moving_vehicle_drops_unmount_on_move_part", "[audit][vehicle
         }
     }
     CHECK( dropped == 1 );
+}
+
+// VEH-B02: explode_fuel() looked up vehicle_part::fuel_current(), which is the vpart's
+// fuel_type and is null for every tank, so a tank full of gasoline could never explode.
+// It must key on the tank's contents instead.
+TEST_CASE( "veh-b02_heated_gasoline_tank_can_explode", "[audit][vehicle]" )
+{
+    clear_avatar();
+    clear_map();
+    explosion_handler::_explosions.clear();
+    map &here = get_map();
+    vehicle &veh = place_frame_vehicle( here );
+    const int tank_idx = veh.install_part( here, point_rel_ms::zero, vpart_tank );
+    REQUIRE( tank_idx != -1 );
+    veh.refresh();
+    here.add_vehicle_to_cache( &veh );
+    vehicle_part &tank = veh.part( tank_idx );
+    REQUIRE( tank.ammo_set( itype_gasoline, 100 ) == 100 );
+    REQUIRE( tank.ammo_current() == itype_gasoline );
+    REQUIRE( tank.fuel_current().is_null() );
+
+    // A heat hit too weak to damage the tank still rolls for an explosion. Gasoline's
+    // chance_hot is 2, so 100 hits miss every roll with probability 2^-100.
+    for( int i = 0; i < 100 && explosion_handler::_explosions.empty(); ++i ) {
+        veh.damage_direct( here, tank, 1, damage_heat );
+    }
+
+    CHECK( explosion_handler::_explosions.size() == 1 );
+    CHECK( tank.ammo_remaining() == 0 );
+    CHECK( tank.is_broken() );
+    explosion_handler::_explosions.clear();
 }

@@ -8137,7 +8137,8 @@ int vehicle::break_off( map &here, vehicle_part &vp, int dmg )
 
 bool vehicle::explode_fuel( map &here, vehicle_part &vp, const damage_type_id &type )
 {
-    const itype_id &ft = vp.fuel_current();
+    // What explodes is what the part holds: vpart fuel_type is unset for tanks.
+    const itype_id ft = vp.ammo_current();
     if( ft.is_null() ) {
         return false;
     }
@@ -8152,7 +8153,8 @@ bool vehicle::explode_fuel( map &here, vehicle_part &vp, const damage_type_id &t
 
     int explosion_chance = type == damage_heat ? data.explosion_chance_hot :
                            data.explosion_chance_cold;
-    if( one_in( explosion_chance ) ) {
+    // An omitted (zero) chance means never; one_in( 0 ) would mean always.
+    if( explosion_chance > 0 && one_in( explosion_chance ) ) {
         get_event_bus().send<event_type::fuel_tank_explodes>( name );
         const int pow = 120 * ( 1 - std::exp( data.explosion_factor / -5000 *
                                               ( vp.ammo_remaining( ) * data.fuel_size_factor ) ) );
