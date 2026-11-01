@@ -1808,6 +1808,7 @@ npc_ptr basecamp::start_mission( const mission_id &miss_id, time_duration total_
     if( comp != nullptr ) {
         comp->companion_mission_time_ret = calendar::turn + total_time;
         comp->companion_mission_exertion = exertion_level;
+        comp->companion_mission_travel_time = travel_time;
         if( must_feed ) {
             // TODO update spent food after assigning a specific worker to the mission and recalculating travel time
             feed_workers( *comp.get()->as_character(), camp_food_supply( total_time, exertion_level,
@@ -1895,6 +1896,7 @@ comp_list basecamp::start_multi_mission( const mission_id &miss_id,
         for( npc_ptr &comp : result ) {
             comp->companion_mission_time_ret = calendar::turn + work_days;
             comp->companion_mission_exertion = making.exertion_level();
+            comp->companion_mission_travel_time = 0_hours;
         }
         if( must_feed ) {
             std::vector<std::reference_wrapper <Character>> work_party;
@@ -3717,12 +3719,15 @@ void basecamp::finish_return( npc &comp, const bool fixed_time, const std::strin
         talk_function::companion_skill_trainer( comp, skill, mission_time, difficulty );
     }
 
-    // Missions that are not fixed_time pay their food costs at the end, instead of up-front.
+    // Every mission paid for its reserve time when it started; missions that are not
+    // fixed_time pay at the end only for the time they ran past that.
     int need_food = 0;
-    if( !fixed_time ) {
+    if( !fixed_time && mission_time > reserve_time ) {
         // Assume the travel time is constant and any unplanned time was non-travel
-        need_food = time_to_food( mission_time, comp.companion_mission_exertion,
-                                  comp.companion_mission_travel_time );
+        const float exertion = comp.companion_mission_exertion;
+        const time_duration travel = comp.companion_mission_travel_time;
+        need_food = std::max( 0, time_to_food( mission_time, exertion, travel ) -
+                              time_to_food( reserve_time, exertion, travel ) );
     }
     if( fac()->food_supply().kcal() < need_food ) {
         popup( _( "Your companion seems disappointed that your pantry is empty…" ) );
@@ -3806,7 +3811,7 @@ npc_ptr basecamp::emergency_recall( const mission_id &miss_id )
         }
 
         const std::string return_msg = _( "responds to the emergency recall…" );
-        // FIXME this might charge food for someone who was already fed?
+        // paid up front; only time past the reserve is billed
         finish_return( *comp, false, return_msg, skill_menial.str(), 0, true );
     }
     return comp;
