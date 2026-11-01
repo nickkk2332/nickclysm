@@ -354,8 +354,15 @@ void item_wakeup_manager::rebuild_for_item( const item_location &loc )
         return;
     }
     const int64_t uid = it->uid().get_value();
-    const item_locator_hint hint = hint_from_location( loc );
     const std::vector<desired_wakeup> desired = it->enumerate_scheduled_wakeups( loc );
+    // Most items want no wakeup and have none: one lookup instead of an erase per kind.
+    if( desired.empty() ) {
+        const auto first = by_key_.lower_bound( { uid, static_cast<item_wakeup_kind>( 0 ) } );
+        if( first == by_key_.end() || first->first.first != uid ) {
+            return;
+        }
+    }
+    const item_locator_hint hint = hint_from_location( loc );
 
     for( int k = 0; k < static_cast<int>( item_wakeup_kind::last ); ++k ) {
         const item_wakeup_kind kind = static_cast<item_wakeup_kind>( k );
