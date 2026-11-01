@@ -863,7 +863,9 @@ void Character::set_proficiencies_from_hobbies()
         for( const proficiency_id &proficiency : profession->proficiencies() ) {
             // Do not duplicate proficiencies
             if( !_proficiencies->has_learned( proficiency ) ) {
-                add_proficiency( proficiency );
+                // Recursive, so a proficiency listed before its prerequisites (or whose
+                // prerequisites come from another hobby) is still granted.
+                add_proficiency( proficiency, false, true );
             }
         }
     }
@@ -951,7 +953,8 @@ void Character::initialize( bool learn_recipes )
 
     // Add profession proficiencies
     for( const proficiency_id &pri : prof->proficiencies() ) {
-        add_proficiency( pri );
+        // Recursive, so a proficiency listed before its prerequisites is still granted.
+        add_proficiency( pri, false, true );
     }
 
     // Add profession recipes
