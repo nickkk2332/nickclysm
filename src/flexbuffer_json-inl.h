@@ -519,6 +519,8 @@ bool JsonValue::read( cata::colony<T> &v, bool throw_on_error ) const
                     std::vector<int64_t> uids;
                     if( rle_element[ 0 ].test_object() ) {
                         const JsonObject run_item = rle_element[ 0 ].get_object();
+                        // item::deserialize has read the rest of this object
+                        run_item.allow_omitted_members();
                         if( run_item.has_array( "rle_uids" ) ) {
                             for( const JsonValue uid : run_item.get_array( "rle_uids" ) ) {
                                 uids.push_back( uid.test_int() ? uid.get_int64() : 0 );
