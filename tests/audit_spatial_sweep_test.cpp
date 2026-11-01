@@ -6,6 +6,7 @@
 #include "avatar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "game.h"
 #include "level_cache.h"
 #include "line.h"
 #include "map.h"
@@ -134,4 +135,37 @@ TEST_CASE( "spat-b05_wall_light_on_the_bubble_edge_stays_in_the_light_buffers",
     here.destroy_vehicle( &lamp );
     here.set_lightmap_cache_dirty( 0 );
     here.build_map_cache( 0 );
+}
+
+// Sounds wait in queues until monsters and the player hear them. Kept in bubble
+// coordinates, they moved along with the map when it shifted in between, as it
+// does when the noise of a step across a submap boundary is made before the shift.
+TEST_CASE( "spat-b06_queued_sounds_stay_put_when_the_map_shifts", "[audit][sound]" )
+{
+    clear_map();
+    clear_avatar();
+    sounds::reset_sounds();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms src = u.pos_bub() + tripoint_rel_ms( 5, 3, 0 );
+    const tripoint_abs_ms src_abs = here.get_abs( src );
+    sounds::sound( src, 40, sounds::sound_t::combat, "a crash" );
+
+    const auto heard_at_source = [&]() {
+        const std::vector<tripoint_bub_ms> queued = sounds::get_monster_sounds().first;
+        return std::any_of( queued.begin(), queued.end(), [&]( const tripoint_bub_ms & p ) {
+            return here.get_abs( p ) == src_abs;
+        } );
+    };
+    REQUIRE( heard_at_source() );
+
+    // Two submaps east and back again, recentring the map each time.
+    u.setpos( here, u.pos_bub() + tripoint_rel_ms( 2 * SEEX, 0, 0 ) );
+    REQUIRE( g->update_map( u ) != point_rel_sm::zero );
+    CHECK( heard_at_source() );
+
+    u.setpos( here, u.pos_bub() - tripoint_rel_ms( 2 * SEEX, 0, 0 ) );
+    REQUIRE( g->update_map( u ) != point_rel_sm::zero );
+    CHECK( heard_at_source() );
+    sounds::reset_sounds();
 }

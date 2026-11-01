@@ -243,12 +243,27 @@ std::string enum_to_string<sounds::sound_t>( sounds::sound_t data )
 } // namespace io
 
 // Static globals tracking sounds events of various kinds.
+// They hold absolute positions: the map can shift (crossing a submap boundary,
+// teleporting) between a sound being made and it being heard or drawn.
 // The sound events since the last monster turn.
-static std::vector<std::pair<tripoint_bub_ms, monster_sound_event>> recent_sounds;
+static std::vector<std::pair<tripoint_abs_ms, monster_sound_event>> recent_sounds;
 // The sound events since the last interactive player turn. (doesn't count sleep etc)
-static std::vector<std::pair<tripoint_bub_ms, sound_event>> sounds_since_last_turn;
+static std::vector<std::pair<tripoint_abs_ms, sound_event>> sounds_since_last_turn;
 // The sound events currently displayed to the player.
-static std::unordered_map<tripoint_bub_ms, sound_event> sound_markers;
+static std::unordered_map<tripoint_abs_ms, sound_event> sound_markers;
+
+// The monster sounds where the reality bubble is now.
+static std::vector<std::pair<tripoint_bub_ms, monster_sound_event>> monster_sounds_in_bubble(
+            const std::vector<std::pair<tripoint_abs_ms, monster_sound_event>> &sounds )
+{
+    const map &here = get_map();
+    std::vector<std::pair<tripoint_bub_ms, monster_sound_event>> ret;
+    ret.reserve( sounds.size() );
+    for( const std::pair<tripoint_abs_ms, monster_sound_event> &snd : sounds ) {
+        ret.emplace_back( here.get_bub( snd.first ), snd.second );
+    }
+    return ret;
+}
 
 // This is an attempt to handle attenuation of sound for underground areas.
 // The main issue it addresses is that you can hear activity
@@ -335,11 +350,12 @@ void sounds::sound( const tripoint_bub_ms &p, int vol, sound_t category,
     }
     const season_type seas = season_of_year( calendar::turn );
     const std::string seas_str = season_str( seas );
+    const tripoint_abs_ms pos = get_map().get_abs( p );
     // Silent sounds are inaudible to monsters and would divide by zero in cluster_sounds.
     if( vol > 0 ) {
-        recent_sounds.emplace_back( p, monster_sound_event{ vol, is_provocative( category ) } );
+        recent_sounds.emplace_back( pos, monster_sound_event{ vol, is_provocative( category ) } );
     }
-    sounds_since_last_turn.emplace_back( p,
+    sounds_since_last_turn.emplace_back( pos,
                                          sound_event{ vol, category, description, ambient,
                                                  false, id, variant, seas_str } );
 }
@@ -356,7 +372,7 @@ void sounds::add_footstep( const tripoint_bub_ms &p, int volume, int, monster *,
 {
     const season_type seas = season_of_year( calendar::turn );
     const std::string seas_str = season_str( seas );
-    sounds_since_last_turn.emplace_back( p, sound_event { volume,
+    sounds_since_last_turn.emplace_back( get_map().get_abs( p ), sound_event { volume,
                                          sound_t::movement, footstep, false, true, "", "", seas_str} );
 }
 
@@ -479,9 +495,10 @@ void sounds::process_sounds()
 
     // Sounds the reactions below make (a trap waking up, say) are heard next turn
     // instead of being cleared unheard.
-    std::vector<std::pair<tripoint_bub_ms, monster_sound_event>> sounds_to_process;
+    std::vector<std::pair<tripoint_abs_ms, monster_sound_event>> sounds_to_process;
     sounds_to_process.swap( recent_sounds );
-    std::vector<centroid> sound_clusters = cluster_sounds( sounds_to_process );
+    std::vector<centroid> sound_clusters =
+        cluster_sounds( monster_sounds_in_bubble( sounds_to_process ) );
     const int weather_vol = get_weather().weather_id->sound_attn;
     for( const centroid &this_centroid : sound_clusters ) {
         // Since monsters don't go deaf ATM we can just use the weather modified volume
@@ -591,7 +608,7 @@ void sounds::process_sound_markers( Character *you )
         // copy values instead of making references here to fix use-after-free error
         // sounds_since_last_turn may be inserted with new elements inside the loop
         // so the references may become invalid after the vector enlarged its internal buffer
-        const tripoint_bub_ms pos = tripoint_bub_ms( sounds_since_last_turn[i].first );
+        const tripoint_bub_ms pos = here.get_bub( sounds_since_last_turn[i].first );
         const sound_event sound = sounds_since_last_turn[i].second;
         const int distance_to_sound = sound_distance( you->pos_bub(), pos );
         const int raw_volume = sound.volume;
@@ -797,7 +814,7 @@ void sounds::process_sound_markers( Character *you )
 
         // Then place the sound marker in a random one.
         if( !unseen_points.empty() ) {
-            sound_markers.emplace( random_entry( unseen_points ), sound );
+            sound_markers.emplace( here.get_abs( random_entry( unseen_points ) ), sound );
         }
     }
     if( you->is_avatar() ) {
@@ -820,20 +837,23 @@ void sounds::reset_markers()
 std::vector<tripoint_bub_ms> sounds::get_footstep_markers()
 {
     // Optimization, make this static and clear it in reset_markers?
+    const map &here = get_map();
     std::vector<tripoint_bub_ms> footsteps;
     footsteps.reserve( sound_markers.size() );
     for( const auto &mark : sound_markers ) {
-        footsteps.push_back( mark.first );
+        footsteps.push_back( here.get_bub( mark.first ) );
     }
     return footsteps;
 }
 
 std::pair<std::vector<tripoint_bub_ms>, std::vector<tripoint_bub_ms>> sounds::get_monster_sounds()
 {
-    auto sound_clusters = cluster_sounds( recent_sounds );
+    const std::vector<std::pair<tripoint_bub_ms, monster_sound_event>> sounds =
+                monster_sounds_in_bubble( recent_sounds );
+    auto sound_clusters = cluster_sounds( sounds );
     std::vector<tripoint_bub_ms> sound_locations;
-    sound_locations.reserve( recent_sounds.size() );
-    for( const auto &sound : recent_sounds ) {
+    sound_locations.reserve( sounds.size() );
+    for( const auto &sound : sounds ) {
         sound_locations.push_back( sound.first );
     }
     std::vector<tripoint_bub_ms> cluster_centroids;
@@ -847,7 +867,7 @@ std::pair<std::vector<tripoint_bub_ms>, std::vector<tripoint_bub_ms>> sounds::ge
 
 std::string sounds::sound_at( const tripoint_bub_ms &location )
 {
-    auto this_sound = sound_markers.find( location );
+    auto this_sound = sound_markers.find( get_map().get_abs( location ) );
     if( this_sound == sound_markers.end() ) {
         return std::string();
     }
