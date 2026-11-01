@@ -2652,23 +2652,30 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
 
     const bodypart_id &part_to_damage = hurt->main_part;
 
-    const int dam_to_bodypart = std::min( dam, get_part_hp_cur( part_to_damage ) );
+    int dam_to_bodypart = std::min( dam, get_part_hp_cur( part_to_damage ) );
 
+    std::vector<bodypart_id> distributed_parts;
     if( has_flag( json_flag_DISTRIBUTED_DAMAGE ) ) {
-        int num_limbs = 0; // number of limbs
-        for( const std::pair<const bodypart_str_id, bodypart> &elem : get_body() ) {
-            if( elem.first == bodypart_str_id::NULL_ID() ) {
-                continue;
+        // Only main parts have HP that counts; minor parts (hands, eyes...) share theirs.
+        distributed_parts = get_all_body_parts( get_body_part_flags::only_main );
+    }
+    if( !distributed_parts.empty() ) {
+        const int num_parts = static_cast<int>( distributed_parts.size() );
+        const int dam_per_part = dam / num_parts;
+        // Hand the remainder to random parts so small hits are not rounded away.
+        int remainder = dam % num_parts;
+        std::shuffle( distributed_parts.begin(), distributed_parts.end(), rng_get_engine() );
+        dam_to_bodypart = 0;
+        for( const bodypart_id &bp : distributed_parts ) {
+            int share = dam_per_part;
+            if( remainder > 0 ) {
+                share++;
+                remainder--;
             }
-            num_limbs++;
+            share = std::min( share, std::max( get_part_hp_cur( bp ), 0 ) );
+            mod_part_hp_cur( bp, -share );
+            dam_to_bodypart += share;
         }
-        const int dam_per_part = dam / num_limbs;
-        for( const bodypart_id &bp : get_all_body_parts() ) {
-            if( bp->main_part ) {
-                mod_part_hp_cur( bp, -dam_per_part );
-            }
-        }
-
     } else {
         mod_part_hp_cur( part_to_damage, - dam_to_bodypart );
     }
