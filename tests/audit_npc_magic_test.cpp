@@ -1,5 +1,6 @@
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "avatar.h"
@@ -9,6 +10,7 @@
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "damage.h"
+#include "debug.h"
 #include "flag.h"
 #include "game.h"
 #include "gun_mode.h"
@@ -109,6 +111,35 @@ TEST_CASE( "npc-b02_npc_gun_attack_fires_the_evaluated_mode", "[audit][npc_attac
 
         CHECK( guy.get_wielded_item()->ammo_remaining() == rifle_ammo - 3 );
         CHECK( guy.get_wielded_item()->gun_get_mode_id() == gun_mode_BURST );
+    }
+
+    SECTION( "a hallucination fakes the burst, capped by the ammo left" ) {
+        guy.hallucination = true;
+        REQUIRE( guy.is_hallucination() );
+        REQUIRE( rifle_ammo >= 4 );
+        const int unloaded = rifle_ammo - 4;
+        REQUIRE( gun->ammo_consume( unloaded, guy.pos_bub(), &guy ) == unloaded );
+        REQUIRE( gun->ammo_remaining() == 4 );
+
+        const std::map<gun_mode_id, gun_mode> modes = gun->gun_all_modes();
+        const auto burst = modes.find( gun_mode_BURST );
+        REQUIRE( burst != modes.end() );
+        REQUIRE( burst->second.qty == 3 );
+        const npc_attack_gun attack( *gun, burst->second );
+
+        // a full burst
+        std::string dmsg = capture_debugmsg_during( [&]() {
+            attack.use( guy, zombie.pos_bub() );
+        } );
+        CHECK( dmsg.empty() );
+        CHECK( guy.get_wielded_item()->ammo_remaining() == 1 );
+
+        // one round left: one shot, not a burst that runs dry with a debugmsg
+        dmsg = capture_debugmsg_during( [&]() {
+            attack.use( guy, zombie.pos_bub() );
+        } );
+        CHECK( dmsg.empty() );
+        CHECK( guy.get_wielded_item()->ammo_remaining() == 0 );
     }
 
     SECTION( "an underbarrel gunmod mode fires the gunmod" ) {

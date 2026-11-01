@@ -546,7 +546,12 @@ void npc_attack_gun::use( npc &source, const tripoint_bub_ms &location ) const
         }
         // fire the evaluated mode's burst, not one shot of the wielded base gun
         if( source.is_hallucination() ) {
-            source.pretend_fire( &source, gunmode.qty, firing_gun );
+            // pretend_fire doesn't cap the burst by the ammo left, so cap it as fire_gun does
+            const int shots = std::min( gunmode.qty,
+                                        firing_gun.shots_remaining( get_map(), &source ) );
+            if( shots > 0 ) {
+                source.pretend_fire( &source, shots, firing_gun );
+            }
         } else {
             source.fire_gun( get_map(), location, gunmode.qty, firing_gun );
         }
