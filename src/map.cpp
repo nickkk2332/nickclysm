@@ -1597,34 +1597,43 @@ std::set<tripoint_bub_ms> map::get_moving_vehicle_targets( const Creature &z, in
     const tripoint_bub_ms zpos( z.pos_bub() );
     std::set<tripoint_bub_ms> priority;
     std::set<tripoint_bub_ms> visible;
-    for( wrapped_vehicle &v : get_vehicles() ) {
-        if( !v.v->is_moving() ) {
+    // Monsters without a target call this on every plan step, so walk the per-level
+    // vehicle lists within sight range rather than every submap in the bubble
+    // (get_vehicles()). Usually no vehicle is moving and this returns at once.
+    const int zmin = std::max( zpos.z() - fov_3d_z_range, -OVERMAP_DEPTH );
+    const int zmax = std::min( zpos.z() + fov_3d_z_range, OVERMAP_HEIGHT );
+    for( int zlev = zmin; zlev <= zmax; ++zlev ) {
+        const level_cache *cache = get_cache_lazy( zlev );
+        if( cache == nullptr ) {
             continue;
         }
-        if( v.v->get_driver( *this ) != nullptr &&
-            z.attitude_to( *v.v->get_driver( *this ) ) != Creature::Attitude::HOSTILE ) {
-            continue;
-        }
-        if( std::abs( v.pos.z() - zpos.z() ) > fov_3d_z_range ) {
-            continue;
-        }
-        if( rl_dist( zpos, tripoint_bub_ms( v.pos ) ) > max_range + 40 ) {
-            continue; // coarse distance filter, 40 = ~24 * sqrt(2) - rough max diameter of a vehicle
-        }
-        for( const vpart_reference &vpr : v.v->get_all_parts() ) {
-            const tripoint_bub_ms vppos = vpr.pos_bub( *this );
-            if( rl_dist( zpos, vppos ) > max_range ) {
+        for( vehicle *veh : cache->vehicle_list ) {
+            if( !veh->is_moving() ) {
                 continue;
             }
-            if( !z.sees( *this, vppos ) ) {
+            Character *driver = veh->get_driver( *this );
+            if( driver != nullptr && z.attitude_to( *driver ) != Creature::Attitude::HOSTILE ) {
                 continue;
             }
-            if( vpr.has_feature( VPFLAG_CONTROLS ) ||
-                vpr.has_feature( VPFLAG_ENGINE ) ||
-                vpr.has_feature( VPFLAG_WHEEL ) ) {
-                priority.emplace( vppos );
-            } else {
-                visible.emplace( vppos );
+            // coarse distance filter, 40 = ~24 * sqrt(2) - rough max diameter of a vehicle
+            if( rl_dist( zpos, veh->pos_bub( *this ) ) > max_range + 40 ) {
+                continue;
+            }
+            for( const vpart_reference &vpr : veh->get_all_parts() ) {
+                const tripoint_bub_ms vppos = vpr.pos_bub( *this );
+                if( rl_dist( zpos, vppos ) > max_range ) {
+                    continue;
+                }
+                if( !z.sees( *this, vppos ) ) {
+                    continue;
+                }
+                if( vpr.has_feature( VPFLAG_CONTROLS ) ||
+                    vpr.has_feature( VPFLAG_ENGINE ) ||
+                    vpr.has_feature( VPFLAG_WHEEL ) ) {
+                    priority.emplace( vppos );
+                } else {
+                    visible.emplace( vppos );
+                }
             }
         }
     }
@@ -7631,10 +7640,28 @@ void map::clear_fields( const tripoint_bub_ms &p )
     set_transparency_cache_dirty( p, true );
 }
 
+// Whether any intensity of this field type adds light or overrides the local light level.
+// Fields that block light relight through the transparency cache instead.
+static bool field_type_lights( const field_type &fd_type )
+{
+    for( int level = 0; level < fd_type.get_max_intensity(); ++level ) {
+        const field_intensity_level &intensity = fd_type.get_intensity_level( level );
+        if( intensity.light_emitted > 0 || intensity.local_light_override >= 0.0f ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void map::on_field_modified( const tripoint_bub_ms &p, const field_type &fd_type )
 {
     invalidate_max_populated_zlev( p.z() );
-    set_lightmap_cache_dirty( p.z() );
+    // A whole-level relight is expensive, and most fields (blood, smoke, acid) can't change
+    // the light: only relight for fields that emit or override light. Fields that block
+    // light are covered by the transparency cache below, which dirties the lightmap too.
+    if( field_type_lights( fd_type ) ) {
+        set_lightmap_cache_dirty( p.z() );
+    }
     get_cache( p.z() ).field_revision = next_cache_generation();
 
     get_cache( p.z() ).field_cache.set(
@@ -8698,7 +8725,9 @@ std::vector<tripoint_bub_ms> map::reachable_flood_steps( const tripoint_bub_ms &
     // init to -1 as "not visited yet"
     std::vector<int> t_grid( grid_area, -1 );
     const tripoint_rel_ms origin_offset = { range, range, 0 };
-    const int initial_visit_distance = range * range; // Large unreachable value
+    // Large unreachable value. At least 1, or at range 0 it equals the origin's distance and
+    // the origin itself is dropped (MONAI-B03: absorb_meat never used its meat up).
+    const int initial_visit_distance = std::max( range * range, 1 );
 
     // Fill positions that are visitable with initial_visit_distance
     for( const tripoint_bub_ms &p : points_in_radius( f, range ) ) {
@@ -9059,13 +9088,18 @@ void map::reconcile_loaded_items( const reconcile_scope scope )
                 }
                 for( int sx = 0; sx < SEEX; ++sx ) {
                     for( int sy = 0; sy < SEEY; ++sy ) {
-                        const tripoint_bub_ms p( sx + gridx * SEEX,
-                                                 sy + gridy * SEEY, gridz );
-                        const map_cursor cur( this, p );
                         // rather than visiting the map_cursor, we need to pull the items out
                         // otherwise we get an infinite loop with reconcile since map_cursor::visit
                         // loads a tinymap off-bubble, and that load reconciles again
-                        for( item &it : sm->get_items( { sx, sy } ) ) {
+                        auto &items = sm->get_items( { sx, sy } );
+                        // Most tiles are empty: skip building their cursor (MAP-P01).
+                        if( items.empty() ) {
+                            continue;
+                        }
+                        const tripoint_bub_ms p( sx + gridx * SEEX,
+                                                 sy + gridy * SEEY, gridz );
+                        const map_cursor cur( this, p );
+                        for( item &it : items ) {
                             item_location( cur, &it ).visit_items( reconcile_recursive );
                         }
                     }
@@ -11044,22 +11078,30 @@ void map::build_map_cache( const int zlev, bool skip_lightmap )
     // glowing or burning monsters, and vehicle lamps that lose power or break.
     // A level relights only if its own sources changed.
     {
-        auto character_light = []( const Character & ch ) -> light_source_state {
-            float light = ch.active_light();
-            if( ch.has_effect( effect_onfire ) )
-            {
+        // The light a character adds, as map::apply_character_light() applies it. A
+        // character that adds none is left out, so an unlit avatar or NPC moving around
+        // doesn't relight the whole level.
+        auto add_character_light = [&]( std::vector<light_source_state> &lights,
+        const Character & ch ) {
+            float light = 0.0f;
+            if( ch.has_effect( effect_onfire ) ) {
                 light += 8.0f;
-            } else if( ch.has_effect( effect_haslight ) )
-            {
+            } else if( ch.has_effect( effect_haslight ) ) {
                 light += 4.0f;
             }
-            return { light, ch.pos_bub(), 0 };
+            const float held = ch.active_light();
+            if( held > LIGHT_AMBIENT_LOW ) {
+                light += held;
+            }
+            if( light > 0.0f ) {
+                lights.push_back( { light, ch.pos_bub(), 0 } );
+            }
         };
 
         std::vector<light_source_state> current_lights;
-        current_lights.push_back( character_light( get_player_character() ) );
+        add_character_light( current_lights, get_player_character() );
         for( const npc &guy : g->all_npcs() ) {
-            current_lights.push_back( character_light( guy ) );
+            add_character_light( current_lights, guy );
         }
         for( const monster &critter : g->all_monsters() ) {
             if( critter.is_hallucination() ) {

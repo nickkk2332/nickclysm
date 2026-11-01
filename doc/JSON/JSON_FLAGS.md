@@ -1818,7 +1818,7 @@ Note: Vehicle parts requiring other parts is defined by setting a `requires_flag
 - ```TURRET_MOUNT``` Parts with this flag are suitable for installing turrets.
 - ```TURRET``` Is a weapon turret. Can only be installed on a part with `TURRET_MOUNT` flag.
 - ```UNMOUNT_ON_DAMAGE``` Part breaks off the vehicle when destroyed by damage.  Item is new and typically undamaged.
-- ```UNMOUNT_ON_MOVE``` Dismount this part when the vehicle moves.  Doesn't drop the part, unless you give it special handling.
+- ```UNMOUNT_ON_MOVE``` Dismount this part when the vehicle moves or falls, dropping it onto the ground as an item.
 - ```UNSTABLE_WHEEL``` This will not provide for the wheeling needs of your vehicle if installed alone.  Opposite of `STABLE`.
 - ```VARIABLE_SIZE``` Has 'bigness' for power, wheel radius, etc.
 - ```VISION``` Gives vision of otherwise unseen directions (e.g. mirrors).

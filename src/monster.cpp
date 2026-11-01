@@ -367,10 +367,9 @@ float monster::luminance() const
 void monster::on_effect_int_change( const efftype_id &/*eid*/, int /*intensity*/,
                                     const bodypart_id &/*bp*/ )
 {
-    map &here = get_map();
-    if( here.inbounds( pos_bub() ) ) {
-        here.set_lightmap_cache_dirty( posz() );
-    }
+    // Nothing to do. A monster's light (its luminance, which effects can change through
+    // enchantments, and being on fire) is compared on every map::build_map_cache(), which
+    // relights the level when it changes; relighting on every effect change was redundant.
 }
 
 void monster::poly( const mtype_id &id )
@@ -3519,6 +3518,21 @@ void monster::spawn_dissectables_on_death( item *corpse ) const
     }
 }
 
+// Rebuilds the monster's enchantment cache from the enchantments of its effects.
+static void rebuild_effect_enchantments( monster &mon, const effects_map &mon_effects )
+{
+    mon.enchantment_cache->clear();
+
+    for( const auto &elem : mon_effects ) {
+        for( const enchantment_id &ench_id : elem.first->enchantments ) {
+            const enchantment &ench = ench_id.obj();
+            if( ench.is_active( mon ) && ench.is_monster_relevant() ) {
+                mon.enchantment_cache->force_add( ench, mon );
+            }
+        }
+    }
+}
+
 void monster::process_one_effect( effect &it, bool is_new )
 {
     map &here = get_map();
@@ -3599,20 +3613,11 @@ void monster::process_one_effect( effect &it, bool is_new )
         }
     }
 
-    //Process enchantments that apply to monsters.
-    enchantment_cache->clear();
-
-    for( const auto &elem : *effects ) {
-        for( const enchantment_id &ench_id : elem.first->enchantments ) {
-            const enchantment &ench = ench_id.obj();
-            if( ench.is_active( *this ) && ench.is_monster_relevant() ) {
-                enchantment_cache->force_add( ench, *this );
-            }
-        }
+    if( is_new ) {
+        // Let the new effect's enchantments apply right away. Their speed is applied by
+        // process_effects(), on top of the effect speed modifiers, so don't touch it here.
+        rebuild_effect_enchantments( *this, *effects );
     }
-    //Reset max speed
-    set_speed_bonus( calculate_by_enchantment( get_speed_base(), enchant_vals::mod::SPEED,
-                     true ) - get_speed_base() );
 }
 
 void monster::process_effects()
@@ -3626,11 +3631,8 @@ void monster::process_effects()
         }
     }
 
-    // Like with player/NPCs - keep the speed above 0
-    const int min_speed_bonus = -0.75 * get_speed_base();
-    if( get_speed_bonus() < min_speed_bonus ) {
-        set_speed_bonus( min_speed_bonus );
-    }
+    //Process enchantments that apply to monsters.
+    rebuild_effect_enchantments( *this, *effects );
 
     Character &player_character = get_player_character();
     //If this monster has the ability to heal in combat, do it now.
@@ -3752,6 +3754,17 @@ void monster::process_effects()
 
     if( !will_be_cramped_in_vehicle_tile( here, pos_abs() ) ) {
         remove_effect( effect_cramped_space );
+    }
+
+    // Add the enchanted speed on top of the effect speed modifiers gathered above.
+    // Done last so the enchantments of effects added this turn count as well.
+    mod_speed_bonus( calculate_by_enchantment( get_speed_base(), enchant_vals::mod::SPEED,
+                     true ) - get_speed_base() );
+
+    // Like with player/NPCs - keep the speed above 0
+    const int min_speed_bonus = -0.75 * get_speed_base();
+    if( get_speed_bonus() < min_speed_bonus ) {
+        set_speed_bonus( min_speed_bonus );
     }
 
     Creature::process_effects();

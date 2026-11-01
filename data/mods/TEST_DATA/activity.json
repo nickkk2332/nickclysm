@@ -14,5 +14,25 @@
     "verb": "incrementing a variable",
     "based_on": "time",
     "do_turn_eoc": "EOC_increment_var"
+  },
+  {
+    "abstract": "ACT_TEST_ABSTRACT_BASE",
+    "type": "activity_type",
+    "activity_level": "LIGHT_EXERCISE",
+    "verb": "testing inheritance",
+    "based_on": "time",
+    "rooted": true
+  },
+  {
+    "id": "ACT_TEST_COPY_FROM_ABSTRACT",
+    "type": "activity_type",
+    "copy-from": "ACT_TEST_ABSTRACT_BASE",
+    "completion_eoc": { "id": "EOC_TEST_ACT_INLINE_COMPLETE", "effect": [ { "math": [ "act_inline_complete++" ] } ] }
+  },
+  {
+    "id": "ACT_MEDITATE",
+    "type": "activity_type",
+    "copy-from": "ACT_MEDITATE",
+    "do_turn_eoc": { "id": "EOC_TEST_ACT_MEDITATE_TICK", "effect": [ { "math": [ "act_meditate_ticks++" ] } ] }
   }
 ]

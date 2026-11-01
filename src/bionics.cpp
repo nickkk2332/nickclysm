@@ -1394,23 +1394,12 @@ Character::bionic_fuels Character::bionic_fuel_check( bionic &bio,
 
 void Character::burn_fuel( bionic &bio )
 {
-    float efficiency;
+    // Passive generation (muscle) is handled elsewhere; POWER_TRICKLE is applied once per
+    // turn in Character::suffer(), not per bionic.
     if( !bio.powered ) {
-        // Modifiers for passive bionic
-        units::energy trickle = enchantment_cache->modify_value( enchant_vals::mod::POWER_TRICKLE,
-                                0_J );
-        if( trickle != 0_J ) {
-            mod_power_level( trickle );
-        }
-
-        efficiency = get_effective_efficiency( bio, bio.info().passive_fuel_efficiency );
-        if( efficiency == 0.f ) {
-            return;
-        }
         return;
-    } else {
-        efficiency = get_effective_efficiency( bio, bio.info().fuel_efficiency );
     }
+    const float efficiency = get_effective_efficiency( bio, bio.info().fuel_efficiency );
 
     if( bio.is_safe_fuel_on()
         && get_power_level() + 1_kJ * efficiency >= get_max_power_level() * std::min( 1.0f,
@@ -1616,7 +1605,6 @@ void Character::process_bionic( bionic &bio )
 
     // Only powered bionics should be processed
     if( !bio.powered ) {
-        burn_fuel( bio );
         return;
     }
 
@@ -2216,10 +2204,10 @@ bool Character::uninstall_bionic( const bionic &bio, Character &installer, bool 
     int pl_skill = bionics_pl_skill( autodoc, skill_level );
     int chance_of_success = bionic_success_chance( autodoc, skill_level, difficulty + 2, installer );
 
-    // Surgery is imminent, retract claws or blade if active
-    for( bionic &it : *installer.my_bionics ) {
+    // Surgery is imminent, retract the patient's claws or blade if active
+    for( bionic &it : *my_bionics ) {
         if( it.powered && it.info().has_flag( json_flag_BIONIC_WEAPON ) ) {
-            installer.deactivate_bionic( it );
+            deactivate_bionic( it );
         }
     }
 
@@ -2958,6 +2946,23 @@ void Character::remove_bionic( const bionic &bio )
     if( !bio_opt ) {
         debugmsg( "Tried to uninstall non-existent bionic with UID %d", bio_uid );
         return;
+    }
+
+    // An extended weapon from this bionic or a linked one goes with it. Otherwise its
+    // NO_UNWIELD weapon stays wielded with no bionic left to retract it.
+    if( weapon_bionic_uid != 0 ) {
+        for( const bionic &i : *my_bionics ) {
+            if( i.get_uid() == weapon_bionic_uid &&
+                ( i.get_uid() == bio_uid || i.get_parent_uid() == bio_uid ) ) {
+                if( weapon.has_flag( flag_NO_UNWIELD ) ) {
+                    add_msg_if_player( _( "You withdraw your %s." ), weapon.tname() );
+                    set_wielded_item( item() );
+                }
+                weapon_bionic_uid = 0;
+                cached_info.erase( "weapon_value" );
+                break;
+            }
+        }
     }
 
     bionic_collection new_my_bionics;

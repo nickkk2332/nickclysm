@@ -149,6 +149,14 @@ void clear_character( Character &dummy, bool skip_nutrition )
 
     // Make sure we don't carry around weird effects.
     dummy.clear_effects();
+    // clear_effects() leaves the stat bonuses that hardcoded effects (e.g. cold) added. The
+    // game recalculates them every turn in process_effects(), which tests rarely run, so
+    // without this they leak into later tests: a cold avatar's -2 INT slowed learning in
+    // crafting tests that ran after a frostbite test.
+    dummy.str_bonus_hardcoded = 0;
+    dummy.dex_bonus_hardcoded = 0;
+    dummy.int_bonus_hardcoded = 0;
+    dummy.per_bonus_hardcoded = 0;
     dummy.set_dodges_left( dummy.get_num_dodges() );
     dummy.set_underwater( false );
 

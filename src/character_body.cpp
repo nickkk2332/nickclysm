@@ -828,15 +828,17 @@ void Character::update_frostbite( const bodypart_id &bp, const int FBwindPower,
     >> Chunked into 8 parts (http://imgur.com/xlTPmJF)
     -- 2 hour risk --
     Between 30F and 10F
-    Between 10F and -5F, less than 20mph, -4x + 3y - 20 > 0, x : F, y : mph
-    -- 45 minute risk --
     Between 10F and -5F, less than 20mph, -4x + 3y - 20 < 0, x : F, y : mph
+    -- 45 minute risk --
+    Between 10F and -5F, less than 20mph, -4x + 3y - 20 >= 0, x : F, y : mph
     Between 10F and -5F, greater than 20mph
     Less than -5F, less than 10 mph
-    Less than -5F, more than 10 mph, -4x + 3y - 170 > 0, x : F, y : mph
-    -- 5 minute risk --
     Less than -5F, more than 10 mph, -4x + 3y - 170 < 0, x : F, y : mph
+    -- 5 minute risk --
+    Less than -5F, more than 10 mph, -4x + 3y - 170 >= 0, x : F, y : mph
     Less than -35F, more than 10 mp
+
+    -4x + 3y grows as it gets colder or windier, so the >= 0 side of each line is the harsher one.
     **/
 
     const float player_local_temp = units::to_fahrenheit( get_weather().get_temperature( pos_bub() ) );
@@ -858,7 +860,7 @@ void Character::update_frostbite( const bodypart_id &bp, const int FBwindPower,
         // Low risk zones (stops at frostnip)
         if( temp_after < BODYTEMP_COLD && ( ( Ftemperature < 30 && Ftemperature >= 10 ) ||
                                             ( Ftemperature < 10 && Ftemperature >= -5 && FBwindPower < 20 &&
-                                              -4 * Ftemperature + 3 * FBwindPower - 20 >= 0 ) ) ) {
+                                              -4 * Ftemperature + 3 * FBwindPower - 20 < 0 ) ) ) {
             if( get_part_frostbite_timer( bp ) < 2000 ) {
                 mod_part_frostbite_timer( bp, 3 );
             }
@@ -869,11 +871,11 @@ void Character::update_frostbite( const bodypart_id &bp, const int FBwindPower,
             // Medium risk zones
         } else if( temp_after < BODYTEMP_COLD &&
                    ( ( Ftemperature < 10 && Ftemperature >= -5 && FBwindPower < 20 &&
-                       -4 * Ftemperature + 3 * FBwindPower - 20 < 0 ) ||
+                       -4 * Ftemperature + 3 * FBwindPower - 20 >= 0 ) ||
                      ( Ftemperature < 10 && Ftemperature >= -5 && FBwindPower >= 20 ) ||
                      ( Ftemperature < -5 && FBwindPower < 10 ) ||
                      ( Ftemperature < -5 && FBwindPower >= 10 &&
-                       -4 * Ftemperature + 3 * FBwindPower - 170 >= 0 ) ) ) {
+                       -4 * Ftemperature + 3 * FBwindPower - 170 < 0 ) ) ) {
             mod_part_frostbite_timer( bp, 8 );
             if( one_in( 100 ) && intense < 2 ) {
                 add_msg_if_player( m_warning, _( "Your %s will be frostbitten within the hour!" ),
@@ -882,7 +884,7 @@ void Character::update_frostbite( const bodypart_id &bp, const int FBwindPower,
             // High risk zones
         } else if( temp_after < BODYTEMP_COLD &&
                    ( ( Ftemperature < -5 && FBwindPower >= 10 &&
-                       -4 * Ftemperature + 3 * FBwindPower - 170 < 0 ) ||
+                       -4 * Ftemperature + 3 * FBwindPower - 170 >= 0 ) ||
                      ( Ftemperature < -35 && FBwindPower >= 10 ) ) ) {
             mod_part_frostbite_timer( bp, 72 );
             if( one_in( 100 ) && intense < 2 ) {

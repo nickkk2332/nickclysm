@@ -236,6 +236,12 @@ std::vector<overmap_special_locations> fixed_overmap_special_data::required_loca
     return result;
 }
 
+bool fixed_overmap_special_data::all_required_locations(
+    const std::function<bool( const overmap_special_locations & )> &pred ) const
+{
+    return std::all_of( terrains.begin(), terrains.end(), pred );
+}
+
 int fixed_overmap_special_data::score_rotation_at( const overmap &om, const tripoint_om_omt &p,
         om_direction::type r ) const
 {

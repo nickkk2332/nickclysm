@@ -876,5 +876,82 @@
         ]
       }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_SPELL_CONTEXT",
+    "effect": [
+      { "copy_var": { "context_val": "spell_id" }, "target_var": { "global_val": "spell_ctx_id" } },
+      { "copy_var": { "context_val": "spell_damage_type" }, "target_var": { "global_val": "spell_ctx_damage_type" } },
+      { "math": [ "spell_ctx_level = _spell_level" ] },
+      { "math": [ "spell_ctx_damage = _spell_damage" ] },
+      { "math": [ "spell_ctx_dot = _spell_dot" ] },
+      { "math": [ "spell_ctx_duration = _spell_duration" ] },
+      { "math": [ "spell_ctx_aoe = _spell_aoe" ] },
+      { "math": [ "spell_ctx_range = _spell_range" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_SPAWNED_EOCS",
+    "//": "EOC-J01: spawn effects run spawned_eocs on each spawned entity and can set its variables.",
+    "effect": [
+      {
+        "u_spawn_monster": "mon_zombie",
+        "real_count": 2,
+        "min_radius": 1,
+        "max_radius": 4,
+        "spawned_eocs": [
+          {
+            "id": "EOC_TEST_SPAWNED_MONSTER_TAG",
+            "effect": [ { "math": [ "u_spawned_marker = 1" ] }, { "math": [ "n_monsters_tagged++" ] } ]
+          }
+        ]
+      },
+      {
+        "u_spawn_npc": "thug",
+        "real_count": 1,
+        "min_radius": 1,
+        "max_radius": 4,
+        "npc_variables": { "quest_tag": "bandit" },
+        "spawned_eocs": [ { "id": "EOC_TEST_SPAWNED_NPC_TAG", "effect": [ { "math": [ "u_spawned_marker = 7" ] } ] } ]
+      },
+      { "u_spawn_item": "rock", "suppress_message": true, "item_variables": { "quest_tag": "loot" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_OVERMAP_WRITE",
+    "//": "OMAP-J01: EOCs can change the overmap and read it back.",
+    "effect": [
+      { "set_overmap_terrain": { "context_val": "ter_loc" }, "oter": "field" },
+      {
+        "add_overmap_note": { "context_val": "note_loc" },
+        "text": "Bandit camp",
+        "symbol": "B",
+        "color": "R",
+        "danger_radius": 2
+      },
+      { "reveal_map": { "context_val": "reveal_loc" }, "radius": 1, "level": "outlines" },
+      {
+        "place_overmap_special": "natural_spring",
+        "target_var": { "context_val": "special_loc" },
+        "rotation": "north",
+        "force": true,
+        "true_eocs": [ { "id": "EOC_TEST_OVERMAP_SPECIAL_PLACED", "effect": [ { "math": [ "overmap_special_placed = 1" ] } ] } ]
+      },
+      {
+        "if": { "map_in_overmap_special": "natural_spring", "loc": { "context_val": "special_loc" } },
+        "then": [ { "math": [ "in_special_check = 1" ] } ]
+      },
+      {
+        "if": { "map_omt_seen": "outlines", "loc": { "context_val": "reveal_loc" } },
+        "then": [ { "math": [ "seen_outlines_check = 1" ] } ]
+      },
+      {
+        "if": { "map_omt_seen": "details", "loc": { "context_val": "reveal_loc" } },
+        "then": [ { "math": [ "seen_details_check = 1" ] } ]
+      }
+    ]
   }
 ]

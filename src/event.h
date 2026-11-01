@@ -196,9 +196,11 @@ struct event_spec_character_item {
     };
 };
 
-// NOTE: Events are saved to the character file for later memorializing them. It's currently unsafe to ever remove any of these.
-// Removal will cause any save file with one of the saved events to be unable to load.
-// FIXME.
+// NOTE: Event statistics are saved, keyed by event type name, in the character file, memorial
+// files and achievement files. Loading skips names this build does not know (see
+// stats_tracker::deserialize), so removing or renaming an event type drops its saved
+// statistics instead of making those files unloadable. Achievements, scores and EOCs that
+// refer to a removed event type still need updating.
 static_assert( static_cast<int>( event_type::num_event_types ) == 110,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );

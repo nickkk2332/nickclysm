@@ -969,6 +969,10 @@ In the example above, the widget would print out the following text:
 | Topographagnosia | `Observation: Bad!`
 | -                | `Observation: Neutral!`
 
+A layout whose `clauses` list `widgets` may leave out the default clause. While none of its
+clauses pass, such a layout is empty and draws nothing (add `W_DISABLED_WHEN_EMPTY` to give its
+lines back to the sidebar).
+
 
 # Variable ranges
 

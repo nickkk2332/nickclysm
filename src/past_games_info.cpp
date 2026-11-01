@@ -31,7 +31,7 @@ static void no_op( const achievement *, bool ) {}
 
 namespace
 {
-class too_old_memorial_file_error : std::runtime_error
+class too_old_memorial_file_error : public std::runtime_error
 {
         using runtime_error::runtime_error;
 };
@@ -39,7 +39,7 @@ class too_old_memorial_file_error : std::runtime_error
 
 past_game_info::past_game_info( const JsonObject &jo )
 {
-    int version;
+    int version = -1;
     jo.read( "memorial_version", version );
     if( version == 0 || version == 1 ) {
         jo.read( "log", log_ );
@@ -161,6 +161,10 @@ void past_games_info::ensure_loaded( bool show_popup )
             debugmsg( "Error reading memorial file %s: %s", filename.generic_u8string(), err.what() );
         } catch( const too_old_memorial_file_error & ) {
             // do nothing
+        } catch( const std::exception &err ) {
+            // Memorial files are shared by every world and game version, so one file this
+            // build can't read must not stop the others from loading.
+            debugmsg( "Error reading memorial file %s: %s", filename.generic_u8string(), err.what() );
         }
     }
 

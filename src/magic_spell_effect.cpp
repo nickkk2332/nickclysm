@@ -445,36 +445,47 @@ std::set<tripoint_bub_ms> spell_effect::spell_effect_line( const override_parame
     return result;
 }
 
+tripoint_bub_ms spell_effect_epicenter( const spell &sp, const tripoint_bub_ms &source,
+                                        const tripoint_bub_ms &target )
+{
+    const map &here = get_map();
+    // A caster that isn't on the map (a trap's or a timed event's dummy) fires no
+    // projectile from where it stands, and a teleport isn't a projectile at all.
+    if( !here.inbounds( source ) || sp.has_flag( spell_flag::TARGET_TELEPORT ) ) {
+        return target;
+    }
+    // stop short if we hit a wall, if the spell has a projectile
+    if( sp.shape() == spell_shape::blast && !sp.has_flag( spell_flag::NO_PROJECTILE ) ) {
+        const std::vector<tripoint_bub_ms> trajectory = line_to( source, target );
+        for( std::vector<tripoint_bub_ms>::const_iterator iter = trajectory.begin();
+             iter != trajectory.end(); iter++ ) {
+            if( here.impassable( *iter ) ) {
+                if( iter != trajectory.begin() ) {
+                    return *( iter - 1 );
+                } else {
+                    return *iter;
+                }
+            }
+        }
+    }
+    return target;
+}
+
 // spells do not reduce in damage the further away from the epicenter the targets are
 // rather they do their full damage in the entire area of effect
 std::set<tripoint_bub_ms> calculate_spell_effect_area( const spell &sp,
         const tripoint_bub_ms &target, const Creature &caster )
 {
     // the actual target that the spell will hit.
-    tripoint_bub_ms epicenter( target );
-
-    // stop short if we hit a wall, if the spell has a projectile
-    if( sp.shape() == spell_shape::blast && !sp.has_flag( spell_flag::NO_PROJECTILE ) ) {
-        std::vector<tripoint_bub_ms> trajectory = line_to( caster.pos_bub(), target );
-        for( std::vector<tripoint_bub_ms>::iterator iter = trajectory.begin(); iter != trajectory.end();
-             iter++ ) {
-            if( get_map().impassable( *iter ) ) {
-                if( iter != trajectory.begin() ) {
-                    epicenter = *( iter - 1 );
-                } else {
-                    epicenter = *iter;
-                }
-                break;
-            }
-        }
-    }
+    const tripoint_bub_ms epicenter = spell_effect_epicenter( sp, caster.pos_bub(), target );
 
     std::set<tripoint_bub_ms> targets = { epicenter }; // initialize with epicenter
     if( sp.aoe( caster ) < 1 && sp.shape() != spell_shape::line ) {
         return targets;
     }
 
-    targets = sp.effect_area( caster.pos_bub(), target, caster );
+    // a blast centers on where its projectile stopped, not on the tile behind the wall
+    targets = sp.effect_area( caster.pos_bub(), epicenter, caster );
 
     for( std::set<tripoint_bub_ms>::iterator it = targets.begin(); it != targets.end(); ) {
         if( !sp.is_valid_target( caster, *it ) ) {
@@ -617,8 +628,9 @@ static void damage_targets( const spell &sp, Creature &caster,
                     for( damage_unit &val : atk.proj.impact.damage_units ) {
                         val.amount = roll_remainder( val.amount / multishot );
                     }
+                    // the caster is the attacker on every path, not the target itself
                     for( int i = 0; i < multishot; ++i ) {
-                        cr->deal_projectile_attack( &here, cr, atk, atk.missed_by, true );
+                        cr->deal_projectile_attack( &here, &caster, atk, atk.missed_by, true );
                     }
                 } else if( sp.has_flag( spell_flag::SPLIT_DAMAGE ) ) {
                     int amount_of_bp = target_bdpts.size();
@@ -626,14 +638,15 @@ static void damage_targets( const spell &sp, Creature &caster,
                         val.amount = roll_remainder( val.amount / amount_of_bp );
                     }
                     for( bodypart_id bp_id : target_bdpts ) {
-                        cr->deal_damage( cr, bp_id, atk.proj.impact );
+                        cr->deal_damage( &caster, bp_id, atk.proj.impact );
                     }
                 } else if( sp.has_flag( spell_flag::PERCENTAGE_DAMAGE ) ) {
                     for( bodypart_id bp_id : target_bdpts ) {
                         for( damage_unit &val : atk.proj.impact.damage_units ) {
                             val.amount = roll_remainder( cr->get_hp( bp_id ) * sp.damage( caster ) / 100.0 );
-                            cr->deal_damage( cr, bp_id, atk.proj.impact );
                         }
+                        // once per body part, not once per damage unit
+                        cr->deal_damage( &caster, bp_id, atk.proj.impact );
                     }
                 } else {
                     cr->deal_projectile_attack( &here, &caster, atk, atk.missed_by, true );
@@ -2022,13 +2035,24 @@ void spell_effect::effect_on_condition( const spell &sp, Creature &caster,
 
     const std::set<tripoint_bub_ms> area = spell_effect_area( sp, target, caster );
 
+    // The values computed for this cast, so the EOC can tell which spell called it and
+    // scale with it. Durations are in turns, as duration context vals are read.
+    const std::string spell_id = sp.id().str();
+    const double spell_level = sp.get_effective_level();
+    const double spell_damage = sp.damage( caster );
+    const double spell_dot = sp.damage_dot( caster );
+    const double spell_duration = to_turns<double>( sp.duration_turns( caster ) );
+    const double spell_aoe = sp.aoe( caster );
+    const double spell_range = sp.range( caster );
+    const std::string spell_damage_type = sp.id()->dmg_type.str();
+
     creature_tracker &creatures = get_creature_tracker();
     for( const tripoint_bub_ms &potential_target : area ) {
         if( !sp.is_valid_target( caster, potential_target ) ) {
             continue;
         }
         dialogue d;
-        optional_vpart_position veh = here.veh_at( target );
+        optional_vpart_position veh = here.veh_at( potential_target );
         Creature *victim = creatures.creature_at<Creature>( potential_target );
         if( victim && ( sp.is_valid_target( spell_target::ally ) ||
                         sp.is_valid_target( spell_target::hostile ) || sp.is_valid_target( spell_target::self ) ) ) {
@@ -2040,6 +2064,14 @@ void spell_effect::effect_on_condition( const spell &sp, Creature &caster,
         }
         const tripoint_abs_ms target_abs = here.get_abs( potential_target );
         write_var_value( var_type::context, "spell_location", &d, target_abs );
+        write_var_value( var_type::context, "spell_id", &d, spell_id );
+        write_var_value( var_type::context, "spell_level", &d, spell_level );
+        write_var_value( var_type::context, "spell_damage", &d, spell_damage );
+        write_var_value( var_type::context, "spell_dot", &d, spell_dot );
+        write_var_value( var_type::context, "spell_duration", &d, spell_duration );
+        write_var_value( var_type::context, "spell_aoe", &d, spell_aoe );
+        write_var_value( var_type::context, "spell_range", &d, spell_range );
+        write_var_value( var_type::context, "spell_damage_type", &d, spell_damage_type );
         d.amend_callstack( string_format( "Spell: %s Caster: %s", sp.id().c_str(), caster.disp_name() ) );
         effect_on_condition_id eoc = effect_on_condition_id( sp.effect_data() );
         eoc->activate_activation_only( d, "a spell", "spell being cast", "spell" );

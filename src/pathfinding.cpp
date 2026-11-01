@@ -51,13 +51,16 @@ struct path_data_layer {
     // Closed/open is accessed way more often than all other values here
     std::bitset< MAPSIZE_X *MAPSIZE_Y > closed;
     std::bitset< MAPSIZE_X *MAPSIZE_Y > open;
-    std::array< int, MAPSIZE_X *MAPSIZE_Y > score;
+    // Tiles whose avoid() callback has already been asked this search. The callback has
+    // no side effects and depends only on the tile, so each tile needs asking once.
+    std::bitset< MAPSIZE_X *MAPSIZE_Y > avoid_checked;
     std::array< int, MAPSIZE_X *MAPSIZE_Y > gscore;
     std::array< tripoint_bub_ms, MAPSIZE_X *MAPSIZE_Y > parent;
 
     void reset() {
         closed.reset();
         open.reset();
+        avoid_checked.reset();
     }
 };
 
@@ -111,7 +114,6 @@ struct pathfinder {
         layer.open[index] = true;
         layer.gscore[index] = gscore;
         layer.parent[index] = from;
-        layer.score [index] = score;
         open.emplace( score, to );
     }
 
@@ -163,11 +165,11 @@ static void for_each_vertical_step( const map &m, const tripoint_bub_ms &cur,
         !settings.allow_climb_stairs ) {
         return;
     }
-    bool rope_ladder = false;
     const ter_t &parent_terrain = m.ter( cur ).obj();
+    // Use the side-effect free stair lookup: find_or_make_stairs is the avatar's interactive
+    // climb (prompts, rope use) and would run whenever cur is the avatar's tile.
     if( cur.z() > z_min && parent_terrain.has_flag( ter_furn_flag::TFLAG_GOES_DOWN ) ) {
-        std::optional<tripoint_bub_ms> opt_dest = g->find_or_make_stairs( get_map(),
-                cur.z() - 1, rope_ladder, false, cur );
+        std::optional<tripoint_bub_ms> opt_dest = g->find_stairs( m, cur.z() - 1, cur );
         if( !opt_dest ) {
             return;
         }
@@ -180,8 +182,7 @@ static void for_each_vertical_step( const map &m, const tripoint_bub_ms &cur,
         }
     }
     if( cur.z() < z_max && parent_terrain.has_flag( ter_furn_flag::TFLAG_GOES_UP ) ) {
-        std::optional<tripoint_bub_ms> opt_dest = g->find_or_make_stairs( get_map(),
-                cur.z() + 1, rope_ladder, false, cur );
+        std::optional<tripoint_bub_ms> opt_dest = g->find_stairs( m, cur.z() + 1, cur );
         if( !opt_dest ) {
             return;
         }
@@ -610,13 +611,18 @@ std::vector<tripoint_bub_ms> map::route( const tripoint_bub_ms &f,
                 continue;
             }
 
-            if( !target.contains( p ) && avoid( p ) ) {
-                layer.closed[index] = true;
+            // Closed first: avoid() is expensive (for monsters a can_move_to(), for NPCs
+            // several creature and terrain probes) and a closed tile is skipped anyway.
+            if( layer.closed[index] ) {
                 continue;
             }
 
-            if( layer.closed[index] ) {
-                continue;
+            if( !layer.avoid_checked[index] ) {
+                layer.avoid_checked[index] = true;
+                if( !target.contains( p ) && avoid( p ) ) {
+                    layer.closed[index] = true;
+                    continue;
+                }
             }
 
             // Penalize for diagonals or the path will look "unnatural"

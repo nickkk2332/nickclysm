@@ -206,7 +206,8 @@ float Character::get_greater_skill_or_knowledge_level( const skill_id &ident ) c
 
 void Character::set_skill_level( const skill_id &ident, const int level )
 {
-    get_skill_level_object( ident ).level( level );
+    // Levels below 0 make SkillLevel::exercise() divide by zero.
+    get_skill_level_object( ident ).level( std::max( level, 0 ) );
 }
 
 void Character::mod_skill_level( const skill_id &ident, const int delta )
@@ -215,7 +216,7 @@ void Character::mod_skill_level( const skill_id &ident, const int delta )
 }
 void Character::set_knowledge_level( const skill_id &ident, const int level )
 {
-    get_skill_level_object( ident ).knowledgeLevel( level );
+    get_skill_level_object( ident ).knowledgeLevel( std::max( level, 0 ) );
 }
 
 void Character::mod_knowledge_level( const skill_id &ident, const int delta )

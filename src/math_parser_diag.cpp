@@ -345,7 +345,16 @@ double limb_score_eval( const_dialogue const &d, char scope,
                         std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     const limb_score_id ls( params[0].str( d ) );
-    const bp_type bp_t = io::string_to_enum<bp_type>( kwargs.kwarg_or( "type" ).str( d ) );
+    // 'type' is optional: when omitted, sum the score over all body part types
+    std::string const type_str = kwargs.kwarg_or( "type" ).str( d );
+    bp_type bp_t = bp_type::num_types;
+    if( !type_str.empty() ) {
+        std::optional<bp_type> const parsed = io::string_to_enum_optional<bp_type>( type_str );
+        if( !parsed ) {
+            throw math::runtime_error( "Unknown body part type '%s' in limb_score()", type_str );
+        }
+        bp_t = *parsed;
+    }
 
     return d.const_actor( is_beta( scope ) )->get_limb_score( ls, bp_t );
 }
@@ -1073,7 +1082,10 @@ void pain_ass( double val, dialogue &d, char scope, std::vector<diag_value> cons
 
     std::string const &format = format_value.str( d );
     if( format == "perceived" ) {
-        d.actor( is_beta( scope ) )->mod_pain( val );
+        // val is the target value; apply the difference through mod_pain so that pain
+        // sensitivity and immunity still apply to the change.
+        talker *const actor = d.actor( is_beta( scope ) );
+        actor->mod_pain( static_cast<int>( val ) - actor->perceived_pain_cur() );
     } else if( format == "raw" ) {
         d.actor( is_beta( scope ) )->set_pain( val );
     } else {

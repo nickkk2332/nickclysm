@@ -746,6 +746,21 @@ int spell::damage( const Creature &caster ) const
     }
 }
 
+// Armor of the spell's damage type that its damage ignores (min_pierce, pierce_increment and
+// max_pierce), leveled and clamped like the spell's other stats.
+static float spell_armor_penetration( const spell &sp, const Creature &caster )
+{
+    const spell_type &type = sp.id().obj();
+    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const float min_pierce = type.min_pierce.evaluate( d );
+    const float max_pierce = type.max_pierce.evaluate( d );
+    const float leveled_pierce = min_pierce + sp.get_effective_level() *
+                                 type.pierce_increment.evaluate( d );
+    const float pierce = max_pierce >= min_pierce ? std::min( leveled_pierce, max_pierce ) :
+                         std::max( leveled_pierce, max_pierce );
+    return std::max( pierce, 0.0f );
+}
+
 int spell::min_leveled_accuracy( const Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr );
@@ -1859,27 +1874,59 @@ double spell::get_failure_exp_percent( Creature &caster ) const
     }
 }
 
-static void blood_magic( Character *you, int cost )
+// Main body parts that can pay an HP spell cost without dropping to 0 HP.
+// Minor parts (hands, eyes, ...) never take damage themselves, so they cannot pay.
+static std::vector<bodypart_id> blood_magic_parts( const Character &guy, int cost )
 {
-    std::vector<uilist_entry> uile;
     std::vector<bodypart_id> parts;
-    int i = 0;
-    for( const bodypart_id &bp : you->get_all_body_parts( get_body_part_flags::only_main ) ) {
-        const int hp_cur = you->get_part_hp_cur( bp );
-        uilist_entry entry( i, hp_cur > cost, i + 49, body_part_hp_bar_ui_text( bp ) );
+    for( const bodypart_id &bp : guy.get_all_body_parts( get_body_part_flags::only_main ) ) {
+        if( guy.get_part_hp_cur( bp ) > cost ) {
+            parts.push_back( bp );
+        }
+    }
+    return parts;
+}
 
-        const std::pair<std::string, nc_color> &hp = get_hp_bar( hp_cur, you->get_part_hp_max( bp ) );
-        entry.ctxt = colorize( hp.first, hp.second );
-        uile.emplace_back( entry );
-        parts.push_back( bp );
-        i++;
+// Draws the HP cost of a spell from one body part.
+// Returns false, without drawing anything, if no body part can pay the cost.
+static bool blood_magic( Character *you, int cost )
+{
+    const std::vector<bodypart_id> eligible = blood_magic_parts( *you, cost );
+    if( eligible.empty() ) {
+        return false;
     }
-    int action = -1;
-    while( action < 0 ) {
-        action = uilist( _( "Choose part\nto draw blood from." ), uile );
+    bodypart_id chosen;
+    if( you->is_avatar() ) {
+        std::vector<uilist_entry> uile;
+        std::vector<bodypart_id> parts;
+        int i = 0;
+        for( const bodypart_id &bp : you->get_all_body_parts( get_body_part_flags::only_main ) ) {
+            const int hp_cur = you->get_part_hp_cur( bp );
+            uilist_entry entry( i, hp_cur > cost, i + 49, body_part_hp_bar_ui_text( bp ) );
+
+            const std::pair<std::string, nc_color> &hp = get_hp_bar( hp_cur,
+                    you->get_part_hp_max( bp ) );
+            entry.ctxt = colorize( hp.first, hp.second );
+            uile.emplace_back( entry );
+            parts.push_back( bp );
+            i++;
+        }
+        // at least one entry is enabled, so the player can always make a valid choice
+        int action = -1;
+        while( action < 0 ) {
+            action = uilist( _( "Choose part\nto draw blood from." ), uile );
+        }
+        chosen = parts[action];
+    } else {
+        // other casters draw from their healthiest eligible part without asking the player
+        chosen = *std::max_element( eligible.begin(), eligible.end(),
+        [you]( const bodypart_id & lhs, const bodypart_id & rhs ) {
+            return you->get_part_hp_cur( lhs ) < you->get_part_hp_cur( rhs );
+        } );
     }
-    you->mod_part_hp_cur( parts[action], - cost );
+    you->mod_part_hp_cur( chosen, - cost );
     you->mod_pain( std::max( 1, cost / 3 ) );
+    return true;
 }
 
 void spell::consume_spell_cost( Character &caster, bool cast_success ) const
@@ -1902,7 +1949,12 @@ void spell::consume_spell_cost( Character &caster, bool cast_success ) const
             caster.mod_power_level( -units::from_kilojoule( static_cast<std::int64_t>( cost ) ) );
             break;
         case magic_energy_type::hp:
-            blood_magic( &caster, cost );
+            // has_enough_energy() is checked before casting, but HP can be lost while casting;
+            // then no body part can pay, and nothing is drawn rather than hanging in the menu
+            if( !blood_magic( &caster, cost ) ) {
+                caster.add_msg_if_player( m_bad,
+                                          _( "You can't spare enough blood for the spell." ) );
+            }
             break;
         case magic_energy_type::none:
         default:
@@ -2149,7 +2201,7 @@ const damage_type_id &spell::dmg_type() const
 damage_instance spell::get_damage_instance( Creature &caster ) const
 {
     damage_instance dmg;
-    dmg.add_damage( dmg_type(), damage( caster ) );
+    dmg.add_damage( dmg_type(), damage( caster ), spell_armor_penetration( *this, caster ) );
     return dmg;
 }
 
@@ -2207,6 +2259,8 @@ void spell::cast_spell_effect( const tripoint_bub_ms &target ) const
     map &here = get_map();
 
     avatar fake_avatar;
+    // a temporary caster: never record it as an attacker or killer
+    fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
 
     get_event_bus().send<event_type::character_casts_spell>( character_id( -1 ),
@@ -2236,6 +2290,8 @@ void spell::cast_all_effects( const tripoint_bub_ms &target ) const
     map &here = get_map();
 
     avatar fake_avatar;
+    // a temporary caster: never record it as an attacker or killer
+    fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
 
     if( has_flag( spell_flag::WONDER ) ) {
@@ -2311,6 +2367,8 @@ void spell::cast_extra_spell_effects( const tripoint_bub_ms &target ) const
     map &here = get_map();
 
     avatar fake_avatar;
+    // a temporary caster: never record it as an attacker or killer
+    fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
     for( const fake_spell &extra_spell : type->additional_spells ) {
         spell sp = extra_spell.get_spell( fake_avatar, get_effective_level() );
@@ -2732,12 +2790,8 @@ bool known_magic::has_enough_energy( const Character &guy, const spell &sp ) con
             return current_vitamin_level >= cost + min_vitamin_level;
         }
         case magic_energy_type::hp:
-            for( const std::pair<const bodypart_str_id, bodypart> &elem : guy.get_body() ) {
-                if( elem.second.get_hp_cur() > cost ) {
-                    return true;
-                }
-            }
-            return false;
+            // must match the parts blood_magic() can actually draw from
+            return !blood_magic_parts( guy, cost ).empty();
         case magic_energy_type::none:
             return true;
         default:
@@ -3171,6 +3225,10 @@ void spellcasting_callback::display_spell_info( size_t index )
                                 sp.damage_string( pc ).c_str(),
                                 sp.damage_type_string().c_str(),
                                 dot_string.c_str() );
+            const float pierce = spell_armor_penetration( sp, pc );
+            if( pierce > 0.0f ) {
+                ImGui::Text( "%s: %.1f", _( "Armor penetration" ), pierce );
+            }
         } else if( damage < 0 ) {
             ImGui::Text( "%s: ", _( "Healing" ) );
             ImGui::SameLine( 0, 0 );

@@ -515,8 +515,14 @@ void SkillLevel::set_exercise( int value, bool raw )
 void SkillLevel::on_exercise_change( bool allow_multilevel )
 {
     if( _exercise < 0 ) {
-        _exercise = ( 100 * 100 * pow( unadjustedLevel(), 2U ) ) - 1;
-        --_level;
+        if( unadjustedLevel() <= 0 ) {
+            // There is no level below 0 to drop to; a negative level makes exercise()
+            // divide by zero.
+            _exercise = 0;
+        } else {
+            _exercise = ( 100 * 100 * pow( unadjustedLevel(), 2U ) ) - 1;
+            --_level;
+        }
     } else {
         const auto xp_to_level = [&]() {
             return 100 * 100 * pow( unadjustedLevel() + 1, 2U );
@@ -577,13 +583,14 @@ SkillLevel &SkillLevelMap::get_skill_level_object( const skill_id &ident )
 void SkillLevelMap::mod_skill_level( const skill_id &ident, int delta )
 {
     SkillLevel &obj = get_skill_level_object( ident );
-    obj.level( obj.level() + delta );
+    // Levels below 0 make exercise() divide by zero.
+    obj.level( std::max( obj.level() + delta, 0 ) );
 }
 
 void SkillLevelMap::mod_knowledge_level( const skill_id &ident, int delta )
 {
     SkillLevel &obj = get_skill_level_object( ident );
-    obj.knowledgeLevel( obj.knowledgeLevel() + delta );
+    obj.knowledgeLevel( std::max( obj.knowledgeLevel() + delta, 0 ) );
 }
 
 int SkillLevelMap::get_skill_level( const skill_id &ident ) const

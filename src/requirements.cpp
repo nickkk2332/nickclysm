@@ -958,6 +958,10 @@ bool requirement_data::can_make_with_inventory( const Character *actor,
         return true;
     }
 
+    // Nothing below changes an item, so the queries can share the inventory's per-type index
+    // instead of each walking every item (a no-op inside a caller's scope, e.g. the crafting
+    // menu's).
+    temp_crafting_inventory::query_cache_scope cache_scope;
     bool retval = true;
     // All functions must be called to update the available settings in the components.
     if( !has_comps( actor, crafting_inv, qualities, return_true<item>, 1, flags ) ) {
@@ -1839,6 +1843,8 @@ bool deduped_requirement_data::can_make_with_inventory(
     const temp_crafting_inventory &crafting_inv, const std::function<bool( const item & )> &filter,
     int batch, craft_flags flags ) const
 {
+    // Lets every alternative reuse one index of the inventory, see requirement_data's version.
+    temp_crafting_inventory::query_cache_scope cache_scope;
     return std::any_of( alternatives().begin(), alternatives().end(),
     [&]( const requirement_data & alt ) {
         return alt.can_make_with_inventory( actor, crafting_inv, filter, batch, flags );
@@ -1850,6 +1856,7 @@ std::vector<const requirement_data *> deduped_requirement_data::feasible_alterna
     const std::function<bool( const item & )> &filter,
     int batch, craft_flags flags ) const
 {
+    temp_crafting_inventory::query_cache_scope cache_scope;
     std::vector<const requirement_data *> result;
     for( const requirement_data &req : alternatives() ) {
         if( req.can_make_with_inventory( actor, crafting_inv, filter, batch, flags ) ) {

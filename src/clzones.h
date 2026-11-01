@@ -609,9 +609,11 @@ class zone_manager
         std::unordered_map<std::string, std::unordered_set<tripoint_abs_ms>> area_cache;
         // NOLINTNEXTLINE(cata-serialize)
         std::unordered_map<std::string, std::unordered_set<tripoint_abs_ms>> vzone_cache;
-        std::unordered_set<tripoint_abs_ms> get_point_set( const zone_type_id &type,
+        // References into the zone caches: the vehicle zone set is invalidated whenever
+        // cache_vzones() runs, which map::get_vehicle_zones() can trigger.
+        const std::unordered_set<tripoint_abs_ms> &get_point_set( const zone_type_id &type,
                 const faction_id &fac = your_fac ) const;
-        std::unordered_set<tripoint_abs_ms> get_vzone_set( const zone_type_id &type,
+        const std::unordered_set<tripoint_abs_ms> &get_vzone_set( const zone_type_id &type,
                 const faction_id &fac = your_fac ) const;
 
         // compiled zone filters, keyed by filter string. compiling costs far

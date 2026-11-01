@@ -895,6 +895,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Monster factions" ), &monfactions::finalize },
             { _( "Factions" ), &npc_factions::finalize },
             { _( "Move modes" ), &move_mode::finalize_all },
+            { _( "Activities" ), &activity_type::finalize_all },
             { _( "Constructions" ), &finalize_constructions },
             { _( "Crafting recipes" ), &recipe_dictionary::finalize },
             { _( "Recipe groups" ), &recipe_group::check },

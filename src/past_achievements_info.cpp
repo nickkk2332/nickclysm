@@ -1,6 +1,8 @@
+#include <exception>
 #include <utility>
 #include <vector>
 
+#include "debug.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "json_loader.h"
@@ -53,22 +55,32 @@ void past_achievements_info::load()
     std::vector<cata_path> filenames = get_files_from_path( ".json", achievement_dir, true, true );
 
     for( const cata_path &filename : filenames ) {
-        int version;
-        std::vector<achievement_id> achievements;
-        std::string avatar_name;
-        JsonValue jsin = json_loader::from_path( filename );
-        JsonObject jo = jsin.get_object();
-        jo.read( "achievement_version", version );
-        if( version == 0 ) {
-            // version 0 has no `avatar_name` member, skip them
-            continue;
-        } else if( version != 1 ) {
-            throw JsonError( string_format( "unexpected past achievements version %d", version ) );
-        }
-        jo.read( "achievements", achievements );
-        jo.read( "avatar_name", avatar_name );
-        for( const achievement_id &id : achievements ) {
-            completed_achievements_[id].emplace_back( avatar_name );
+        // Achievement files are shared by every world and game version, so one file this
+        // build can't read must not stop the others from loading.
+        try {
+            int version = -1;
+            std::vector<achievement_id> achievements;
+            std::string avatar_name;
+            JsonValue jsin = json_loader::from_path( filename );
+            JsonObject jo = jsin.get_object();
+            jo.allow_omitted_members();
+            jo.read( "achievement_version", version );
+            if( version == 0 ) {
+                // version 0 has no `avatar_name` member, skip them
+                continue;
+            } else if( version != 1 ) {
+                // Usually a file written by a newer build; not worth a popup every session.
+                DebugLog( D_WARNING, DC_ALL ) << "Skipping achievements file " << filename.generic_u8string()
+                                              << ": unexpected version " << version;
+                continue;
+            }
+            jo.read( "achievements", achievements );
+            jo.read( "avatar_name", avatar_name );
+            for( const achievement_id &id : achievements ) {
+                completed_achievements_[id].emplace_back( avatar_name );
+            }
+        } catch( const std::exception &err ) {
+            debugmsg( "Error reading achievements file %s: %s", filename.generic_u8string(), err.what() );
         }
     }
 

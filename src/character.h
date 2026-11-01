@@ -4396,6 +4396,17 @@ class Character : public Creature, public visitable
             pimpl<temp_crafting_inventory> crafting_inventory;
         };
         mutable crafting_cache_type crafting_cache;
+        // book_bonuses_nearby() walks the inventory and every reachable map item; the
+        // crafting menu asks for it for every recipe on every redraw. Same key as above.
+        struct book_bonus_cache_type {
+            bool valid = false; // other fields are only valid if this flag is true
+            time_point time;
+            int moves = 0;
+            tripoint_bub_ms position;
+            int radius = 0;
+            book_proficiency_bonuses bonuses;
+        };
+        mutable book_bonus_cache_type book_bonus_cache;
 
         time_point melee_warning_turn = calendar::turn_zero;
 

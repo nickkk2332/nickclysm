@@ -556,13 +556,16 @@ TEST_CASE( "camp_mission_puts_the_workers_craft_aside", "[camp][npc]" )
     };
     const auto go_on_mission = [&]() {
         const mission_id menial{ Camp_Menial, "", {}, base_camps::base_dir };
-        REQUIRE( camp.start_mission( menial, 5_hours, false, "", false, {}, std::map<skill_id, int>(),
+        REQUIRE( camp.start_mission( menial, 5_hours, true, "", false, {}, std::map<skill_id, int>(),
                                      NO_EXERCISE, 0_hours, comp ) );
         REQUIRE_FALSE( comp->is_active() );
         calendar::turn += 5_hours;
     };
     const auto back_at_the_craft = [&]( npc & worker ) {
         REQUIRE( worker.is_active() );
+        // workers eat once, at departure, so a returning worker may want a camp meal
+        worker.set_stored_kcal( worker.get_healthy_kcal() );
+        worker.set_hunger( 0 );
         CHECK( worker.has_player_activity() );
         CHECK( worker.activity.id() == task );
         CHECK( worker.backlog.size() == backlog_size );

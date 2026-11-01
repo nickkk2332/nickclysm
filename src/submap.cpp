@@ -405,7 +405,9 @@ void submap::merge_submaps( submap *copy_from, bool copy_from_is_overlay )
                 this->m->frn[x][y] = copy_from->m->frn[x][y];
             }
 
-            this->m->lum[x][y] += copy_from->m->lum[x][y];
+            // lum saturates at 255 (see update_lum_add)
+            this->m->lum[x][y] = static_cast<uint8_t>( std::min( 255,
+                                 this->m->lum[x][y] + copy_from->m->lum[x][y] ) );
 
             for( const item &itm : copy_from->m->itm[x][y] ) {
                 const auto iter = this->m->itm[x][y].emplace( itm );
@@ -468,10 +470,11 @@ void submap::merge_submaps( submap *copy_from, bool copy_from_is_overlay )
         this->spawns.emplace_back( spawn );
     }
 
-    for( const auto &vehicle : copy_from->vehicles ) {
-        this->vehicles.emplace_back( vehicle.get() );
+    // Take ownership of the vehicles, so that submap doesn't delete them when it's destroyed.
+    // Both submaps cover the same location, so the vehicles' sm_pos stays valid.
+    for( std::unique_ptr<vehicle> &veh : copy_from->vehicles ) {
+        this->vehicles.emplace_back( std::move( veh ) );
     }
-    // Can't let that submap delete the vehicles when it's destroyed
     copy_from->vehicles.clear();
 
     if( !copy_from->partial_constructions.empty() ) {

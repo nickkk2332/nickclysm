@@ -1,0 +1,49 @@
+{
+  "label": "before-round2",
+  "commit": "917f2c3c",
+  "date": "2026-11-01T14:04:04",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpus": 4,
+    "system": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39"
+  },
+  "binary": "../../../tmp/fixprep/cata_test_g5",
+  "seed": 4242,
+  "scenarios": {
+    "crafting_recompute": {
+      "median_ms": 2005.6799999999998,
+      "min_ms": 1955.24,
+      "max_ms": 2180.25,
+      "samples": 10,
+      "work": "time and craftability for 300 recipes, 5 times, in a dense base"
+    },
+    "overmap_generate": {
+      "median_ms": 666.425,
+      "min_ms": 558.38,
+      "max_ms": 864.56,
+      "samples": 10,
+      "work": "generate one overmap from scratch"
+    },
+    "submap_travel_dense": {
+      "median_ms": 778.155,
+      "min_ms": 696.59,
+      "max_ms": 833.24,
+      "samples": 10,
+      "work": "20 submap crossings over generated terrain, dense base and full inventory"
+    },
+    "weather_catchup": {
+      "median_ms": 91.85,
+      "min_ms": 81.83,
+      "max_ms": 132.22,
+      "samples": 10,
+      "work": "sum_conditions over 3 days at 4 locations"
+    },
+    "data_load": {
+      "median_ms": 27824.5,
+      "min_ms": 27113,
+      "max_ms": 28536,
+      "samples": 2,
+      "work": "test binary start to \"Game data loaded\""
+    }
+  }
+}

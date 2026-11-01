@@ -85,9 +85,37 @@ drink from specific auto_consume zones during long activities.
 * multi_activity (false): This activity will repeat until it cannot do
 any more work, used for NPC and avatar zone activities.
 
-* completion_eoc: an EOC that is run when this activity completes
+* fetch_items_to_zone (true): For multi-activities, whether the character
+fetches the tools and components the job needs from nearby zones.
 
-* do_turn_eoc: an EOC that is run when this activity performs a turn
+* mute_npc_completion (false): If true, no message is shown when an NPC
+finishes the activity.
+
+* ignored_distractions: A list of distractions that don't interrupt the
+activity, for example `[ "hunger", "thirst" ]`. Valid values: `noise`, `pain`,
+`attacked`, `hostile_spotted_far`, `hostile_spotted_near`, `talked_to`,
+`asthma`, `motion_alarm`, `weather_change`, `portal_storm_popup`, `eoc`,
+`dangerous_field`, `hunger`, `thirst`, `temperature`, `mutation`, `oxygen`,
+`withdrawal`, `craft_step_complete`.
+
+* completion_eoc: an EOC that is run when this activity completes. Either an
+EOC id or an inline EOC object.
+
+* do_turn_eoc: an EOC that is run when this activity performs a turn. Either
+an EOC id or an inline EOC object.
+
+Activity types support `copy-from`, `abstract`, `extend` and `delete`, so a
+mod can change a vanilla activity without redefining it. For example, to run
+an EOC on every turn of reading:
+
+```json
+{
+  "type": "activity_type",
+  "id": "ACT_READ",
+  "copy-from": "ACT_READ",
+  "do_turn_eoc": { "id": "EOC_MY_MOD_READ_TICK", "effect": [ { "math": [ "u_pages_read++" ] } ] }
+}
+```
 
 ## Termination
 

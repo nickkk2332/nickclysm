@@ -3955,7 +3955,8 @@ void receive_item( const itype_id &item_id, int count, const itype_id &container
                    const dialogue &d, bool suppress_message,
                    const std::vector<std::string> &flags,
                    bool add_talker = true,
-                   const tripoint_abs_ms &p = tripoint_abs_ms::zero, bool force_equip = false )
+                   const tripoint_abs_ms &p = tripoint_abs_ms::zero, bool force_equip = false,
+                   const std::map<std::string, diag_value> &item_vars = {} )
 {
     item new_item = item( item_id, calendar::turn );
     if( new_item.has_flag( flag_PRESERVE_SPAWN_LOC ) ) {
@@ -3963,6 +3964,9 @@ void receive_item( const itype_id &item_id, int count, const itype_id &container
     }
     for( const std::string &flag : flags ) {
         new_item.set_flag( flag_id( flag ) );
+    }
+    for( const auto &var : item_vars ) {
+        new_item.set_var( var.first, var.second );
     }
 
     if( !container_id.is_valid() ) {
@@ -4014,7 +4018,8 @@ void receive_item( const itype_id &item_id, int count, const itype_id &container
 
 void receive_item_group( const item_group_id &group_id, const dialogue &d, bool suppress_message,
                          const std::vector<std::string> &flags, bool add_talker = true,
-                         const tripoint_abs_ms &p = tripoint_abs_ms::zero, bool force_equip = false )
+                         const tripoint_abs_ms &p = tripoint_abs_ms::zero, bool force_equip = false,
+                         const std::map<std::string, diag_value> &item_vars = {} )
 {
     item_group::ItemList new_items;
     new_items = item_group::items_from( group_id, calendar::turn );
@@ -4022,6 +4027,9 @@ void receive_item_group( const item_group_id &group_id, const dialogue &d, bool 
     for( item &new_item : new_items ) {
         for( const std::string &flag : flags ) {
             new_item.set_flag( flag_id( flag ) );
+        }
+        for( const auto &var : item_vars ) {
+            new_item.set_var( var.first, var.second );
         }
         if( new_item.has_flag( flag_PRESERVE_SPAWN_LOC ) ) {
             new_item.preserve_location( p );
@@ -4073,8 +4081,19 @@ talk_effect_fun_t f_spawn_item( const JsonObject &jo, std::string_view member,
     for( JsonValue jv : jo.get_array( "flags" ) ) {
         flags.emplace_back( get_str_or_var( jv, "flags" ) );
     }
+    std::map<std::string, diag_value_or_var> item_variables;
+    if( jo.has_object( "item_variables" ) ) {
+        const JsonObject &variables = jo.get_object( "item_variables" );
+        for( const JsonMember &jv : variables ) {
+            mandatory( variables, false, jv.name(), item_variables[jv.name()] );
+        }
+    }
     talk_effect_fun_t ret( [item_name, count, container_name, use_item_group, suppress_message,
-               add_talker, loc_var, force_equip, flags]( dialogue & d ) {
+               add_talker, loc_var, force_equip, flags, item_variables]( dialogue & d ) {
+        std::map<std::string, diag_value> item_vars;
+        for( const auto &var : item_variables ) {
+            item_vars.emplace( var.first, var.second.evaluate( d ) );
+        }
         tripoint_abs_ms target_location;
         if( loc_var ) {
             target_location = read_var_value( *loc_var, d ).tripoint();
@@ -4089,12 +4108,12 @@ talk_effect_fun_t f_spawn_item( const JsonObject &jo, std::string_view member,
         if( use_item_group ) {
             const item_group_id group_id = item_group_id( item_name.evaluate( d ) );
             receive_item_group( group_id, d, suppress_message, flags_str, add_talker, target_location,
-                                force_equip );
+                                force_equip, item_vars );
         } else {
             const itype_id item_id = itype_id( item_name.evaluate( d ) );
             const itype_id container_id = itype_id( container_name.evaluate( d ) );
             receive_item( item_id, count.evaluate( d ), container_id, d, suppress_message,
-                          flags_str, add_talker, target_location, force_equip );
+                          flags_str, add_talker, target_location, force_equip, item_vars );
         }
     } );
     ret.get_likely_rewards().emplace_back( count, item_name );
@@ -4779,7 +4798,7 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
     dov_max_noise = get_dbl_or_var( jo_explosion, "max_noise", false, 90000000 );
     fire = jo_explosion.get_bool( "fire", false );
     if( jo_explosion.has_int( "shrapnel" ) ) {
-        mandatory( jo_explosion, false, "casing_mass", dov_shrapnel_casing_mass );
+        mandatory( jo_explosion, false, "shrapnel", dov_shrapnel_casing_mass );
     } else if( jo_explosion.has_object( "shrapnel" ) ) {
         JsonObject jo_shr = jo_explosion.get_object( "shrapnel" );
         mandatory( jo_shr, false, "casing_mass", dov_shrapnel_casing_mass );
@@ -4804,7 +4823,8 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
         } else {
             target_pos = d.actor( is_npc )->pos_bub( here );
         }
-        Creature &guy = *d.actor( is_npc )->get_creature();
+        // Item, furniture and vehicle talkers have no creature; explosion() accepts a null source
+        Creature *guy = d.actor( is_npc )->get_creature();
 
         explosion_data expl_data;
         expl_data.power = dov_power.evaluate( d );
@@ -4816,7 +4836,7 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
         expl_data.shrapnel.recovery = dov_shrapnel_recovery.evaluate( d );
         expl_data.shrapnel.drop = itype_id( dov_shrapnel_drop.evaluate( d ) );
 
-        explosion_handler::explosion( &guy, target_pos, expl_data );
+        explosion_handler::explosion( guy, target_pos, expl_data );
 
         if( emp_blast ) {
             explosion_handler::emp_blast( target_pos );
@@ -5948,10 +5968,11 @@ talk_effect_fun_t::func f_ranged_attack( bool is_npc )
         Character *attacker = d.actor( is_npc )->get_character();
         Creature *c = target->get_creature();
 
-        if( c ) {
+        // Only characters can fire a wielded gun; monster and item talkers have none
+        if( c && attacker ) {
             tripoint_bub_ms target_pos = c->pos_bub();
             item_location wielded = attacker->get_wielded_item();
-            if( wielded->is_gun() ) {
+            if( wielded && wielded->is_gun() ) {
                 gun_mode mode = wielded->gun_current_mode();
                 if( wielded->ammo_sufficient( attacker, mode.qty * 2 ) ) {
                     attacker->fire_gun( target_pos, mode.qty );
@@ -7230,7 +7251,14 @@ talk_effect_fun_t::func f_weighted_list_eocs( const JsonObject &jo,
         std::string_view member, std::string_view src )
 {
     std::vector<std::pair<effect_on_condition_id, dbl_or_var>> eoc_pairs;
-    for( JsonArray ja : jo.get_array( member ) ) {
+    for( const JsonValue entry : jo.get_array( member ) ) {
+        if( !entry.test_array() ) {
+            // A bare EOC id or inline EOC has weight 1.
+            eoc_pairs.emplace_back( effect_on_conditions::load_inline_eoc( entry, src ),
+                                    dbl_or_var( 1.0 ) );
+            continue;
+        }
+        JsonArray ja = entry.get_array();
         JsonValue eoc = ja.next_value();
         dbl_or_var eoc_weight;
         eoc_weight.deserialize( ja.next_value() );
@@ -7238,14 +7266,19 @@ talk_effect_fun_t::func f_weighted_list_eocs( const JsonObject &jo,
                                 eoc_weight );
     }
     return [eoc_pairs]( dialogue & d ) {
-        weighted_int_list<effect_on_condition_id> eocs;
+        // Weights may be fractional (0.3/0.7), so don't truncate them to int.
+        weighted_float_list<effect_on_condition_id> eocs;
         for( const std::pair<effect_on_condition_id, dbl_or_var> &eoc_pair :
              eoc_pairs ) {
             eocs.add( eoc_pair.first, eoc_pair.second.evaluate( d ) );
         }
-        effect_on_condition_id picked_eoc = *eocs.pick();
+        // Every weight evaluated to 0 or less: nothing to run.
+        const effect_on_condition_id *picked_eoc = eocs.pick();
+        if( picked_eoc == nullptr ) {
+            return;
+        }
         dialogue newDialog( d );
-        picked_eoc->activate( newDialog );
+        ( *picked_eoc )->activate( newDialog );
     };
 }
 
@@ -7762,6 +7795,37 @@ talk_effect_fun_t::func f_deal_damage( const JsonObject &jo, std::string_view me
     };
 }
 
+// Runs a spawn effect's "spawned_eocs" on one spawned creature, with it as alpha and the
+// talker that spawned it as beta, so the EOC can act on what was spawned.
+static void run_spawned_eocs( const std::vector<effect_on_condition_id> &eocs, Creature &spawned,
+                              const dialogue &d, bool is_npc )
+{
+    if( eocs.empty() ) {
+        return;
+    }
+    dialogue spawned_d( get_talker_for( spawned ),
+                        d.has_actor( is_npc ) ? d.actor( is_npc )->clone() : nullptr,
+                        d.get_conditionals(), d.get_context() );
+    for( const effect_on_condition_id &eoc : eocs ) {
+        eoc->activate( spawned_d );
+    }
+}
+
+static std::unordered_map<std::string, diag_value_or_var> load_spawn_variables(
+    const JsonObject &jo, std::string_view member )
+{
+    std::unordered_map<std::string, diag_value_or_var> vars;
+    if( jo.has_object( member ) ) {
+        const JsonObject &variables = jo.get_object( member );
+        for( const JsonMember &jv : variables ) {
+            diag_value_or_var vov;
+            mandatory( variables, false, jv.name(), vov );
+            vars[jv.name()] = vov;
+        }
+    }
+    return vars;
+}
+
 talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view member,
         std::string_view src, bool is_npc )
 {
@@ -7777,15 +7841,8 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
     dbl_or_var dov_max_radius = get_dbl_or_var( jo, "max_radius", false, 10 );
     bool summoner_is_alpha = jo.get_bool( "summoner_is_alpha", false );
     bool summoner_is_beta = jo.get_bool( "summoner_is_beta", false );
-    std::unordered_map<std::string, diag_value_or_var> set_mon_var;
-    if( jo.has_object( "mon_variables" ) ) {
-        const JsonObject &variables = jo.get_object( "mon_variables" );
-        for( const JsonMember &jv : variables ) {
-            diag_value_or_var vov;
-            mandatory( variables, false, jv.name(), vov );
-            set_mon_var[jv.name()] = vov;
-        }
-    }
+    const std::unordered_map<std::string, diag_value_or_var> set_mon_var =
+        load_spawn_variables( jo, "mon_variables" );
 
     const bool outdoor_only = jo.get_bool( "outdoor_only", false );
     const bool indoor_only = jo.get_bool( "indoor_only", false );
@@ -7806,10 +7863,12 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
     jo.read( "spawn_message_plural", spawn_message_plural );
     std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
     std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    std::vector<effect_on_condition_id> spawned_eocs = load_eoc_vector( jo, "spawned_eocs", src );
     return [monster_id, dov_target_range, dov_hallucination_count, dov_real_count, dov_min_radius,
                         dov_max_radius, outdoor_only, indoor_only, group, single_target, dov_lifespan, target_var,
-                        spawn_message, spawn_message_plural, true_eocs, false_eocs, open_air_allowed, temporary_drop_items,
-                friendly, summoner_is_alpha, summoner_is_beta, set_mon_var, is_npc, &here]( dialogue & d ) {
+                        spawn_message, spawn_message_plural, true_eocs, false_eocs, spawned_eocs, open_air_allowed,
+                        temporary_drop_items, friendly, summoner_is_alpha, summoner_is_beta, set_mon_var, is_npc,
+                &here]( dialogue & d ) {
         monster target_monster;
         std::vector<Creature *> target_monsters;
         mongroup_id target_mongroup;
@@ -7827,14 +7886,22 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
             }
         } else if( monster_id.evaluate( d ).empty() ) {
             int target_range = dov_target_range.evaluate( d );
+            // Look for hostiles around the acting talker, as judged by that talker
+            const tripoint_bub_ms search_center = d.actor( is_npc )->pos_bub( here );
+            const Creature *observer = d.actor( is_npc )->get_creature();
+            if( observer == nullptr ) {
+                observer = &get_player_character();
+            }
+            // Only monsters can be copied; a hostile NPC has no monster to copy
+            const auto is_copy_target = [&]( const Creature & critter ) -> bool {
+                const tripoint_bub_ms critter_pos = critter.pos_bub( here );
+                return critter.is_monster() && search_center != critter_pos &&
+                std::round( rl_dist_exact( search_center, critter_pos ) ) <= target_range &&
+                observer->attitude_to( critter ) == Creature::Attitude::HOSTILE;
+            };
             if( single_target ) {
                 // Find a hostile creature in range to be used to create a hallucination or a copy of
-                Creature *copy = g->get_creature_if( [target_range]( const Creature & critter ) -> bool {
-                    bool not_self = get_player_character().pos_bub() != critter.pos_bub();
-                    bool in_range = std::round( rl_dist_exact( get_player_character().pos_bub(), critter.pos_bub() ) ) <= target_range;
-                    bool valid_target = get_player_character().attitude_to( critter ) == Creature::Attitude::HOSTILE;
-                    return not_self && in_range && valid_target;
-                } );
+                Creature *copy = g->get_creature_if( is_copy_target );
                 if( copy == nullptr ) {
                     run_eoc_vector( false_eocs, d );
                     return;
@@ -7842,13 +7909,7 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
                 target_monster = *copy->as_monster();
             } else {
                 // Find all hostile creatures in range to be used to create hallucinations or copies of
-                std::vector<Creature *> monsters_in_range = g->get_creatures_if( [target_range](
-                const Creature & critter ) -> bool {
-                    bool not_self = get_player_character().pos_bub() != critter.pos_bub();
-                    bool in_range = std::round( rl_dist_exact( get_player_character().pos_bub(), critter.pos_bub() ) ) <= target_range;
-                    bool valid_target = get_player_character().attitude_to( critter ) == Creature::Attitude::HOSTILE;
-                    return not_self && in_range && valid_target;
-                } );
+                std::vector<Creature *> monsters_in_range = g->get_creatures_if( is_copy_target );
                 int valid_monsters = monsters_in_range.size();
                 if( valid_monsters == 0 ) {
                     run_eoc_vector( false_eocs, d );
@@ -7906,6 +7967,7 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
                         if( get_avatar().sees( here, *critter ) ) {
                             visible_spawns++;
                         }
+                        run_spawned_eocs( spawned_eocs, *critter, d, is_npc );
                     }
                 }
             }
@@ -7949,6 +8011,7 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
                         spawned->no_extra_death_drops = !temporary_drop_items;
                         spawned->no_corpse_quiet = !temporary_drop_items;
                     }
+                    run_spawned_eocs( spawned_eocs, *spawned, d, is_npc );
                 }
             }
         }
@@ -8002,10 +8065,20 @@ talk_effect_fun_t::func f_spawn_npc( const JsonObject &jo, std::string_view memb
     jo.read( "spawn_message_plural", spawn_message_plural );
     std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
     std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    std::vector<effect_on_condition_id> spawned_eocs = load_eoc_vector( jo, "spawned_eocs", src );
+    const std::unordered_map<std::string, diag_value_or_var> set_npc_var =
+        load_spawn_variables( jo, "npc_variables" );
     return [sov_npc_class, unique_id, traits, dov_hallucination_count, dov_real_count,
                            dov_min_radius,
                            dov_max_radius, outdoor_only, indoor_only, dov_lifespan, target_var, spawn_message,
-                   spawn_message_plural, true_eocs, false_eocs, open_air_allowed, is_npc, &here]( dialogue & d ) {
+                           spawn_message_plural, true_eocs, false_eocs, spawned_eocs, set_npc_var, open_air_allowed,
+                   is_npc, &here]( dialogue & d ) {
+        const auto on_spawned = [&]( Creature & guy ) {
+            for( const auto &val : set_npc_var ) {
+                guy.set_value( val.first, val.second.evaluate( d ) );
+            }
+            run_spawned_eocs( spawned_eocs, guy, d, is_npc );
+        };
         int min_radius = dov_min_radius.evaluate( d );
         int max_radius = dov_max_radius.evaluate( d );
         int real_count = dov_real_count.evaluate( d );
@@ -8039,6 +8112,7 @@ talk_effect_fun_t::func f_spawn_npc( const JsonObject &jo, std::string_view memb
                         if( get_avatar().sees( here, *guy ) ) {
                             visible_spawns++;
                         }
+                        on_spawned( *guy );
                     }
                 }
             }
@@ -8060,6 +8134,7 @@ talk_effect_fun_t::func f_spawn_npc( const JsonObject &jo, std::string_view memb
                         if( get_avatar().sees( here, *guy ) ) {
                             visible_spawns++;
                         }
+                        on_spawned( *guy );
                     }
                 }
             }
@@ -8237,10 +8312,130 @@ talk_effect_fun_t::func f_reveal_map( const JsonObject &jo, std::string_view mem
 {
     var_info target_var = read_var_info( jo.get_object( member ) );
     dbl_or_var radius = get_dbl_or_var( jo, "radius", false, 0 );
+    om_vision_level level = om_vision_level::full;
+    optional( jo, false, "level", level, om_vision_level::full );
+    if( level == om_vision_level::unseen ) {
+        jo.throw_error_at( "level", "reveal_map can't reveal to \"unseen\"" );
+    }
 
-    return [ radius, target_var ]( dialogue & d ) {
+    return [ radius, target_var, level ]( dialogue & d ) {
         tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var, d ).tripoint() );
-        overmap_buffer.reveal( omt, radius.evaluate( d ) );
+        if( level == om_vision_level::full ) {
+            overmap_buffer.reveal( omt, radius.evaluate( d ) );
+            return;
+        }
+        // Same area as overmapbuffer::reveal, but raising tiles only to the given level.
+        const int r = radius.evaluate( d );
+        for( int i = -r; i <= r; i++ ) {
+            for( int j = -r; j <= r; j++ ) {
+                if( trigdist && i * i + j * j > r * r ) {
+                    continue;
+                }
+                const tripoint_abs_omt p = omt + point( i, j );
+                if( overmap_buffer.seen( p ) < level ) {
+                    overmap_buffer.set_seen( p, level );
+                }
+            }
+        }
+    };
+}
+
+// OMAP-J01: overmap write effects, thin wrappers over overmapbuffer.
+talk_effect_fun_t::func f_set_overmap_terrain( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    str_or_var oter = get_str_or_var( jo.get_member( "oter" ), "oter", true );
+    return [target_var, oter]( dialogue & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var, d ).tripoint() );
+        const oter_str_id new_ter( oter.evaluate( d ) );
+        if( !new_ter.is_valid() ) {
+            debugmsg( "set_overmap_terrain: unknown overmap terrain \"%s\".  %s", new_ter.str(),
+                      d.get_callstack() );
+            return;
+        }
+        overmap_buffer.ter_set( omt, new_ter.id() );
+    };
+}
+
+talk_effect_fun_t::func f_place_overmap_special( const JsonObject &jo, std::string_view member,
+        std::string_view src )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    var_info target_var = read_var_info( jo.get_object( "target_var" ) );
+    str_or_var rotation;
+    optional( jo, false, "rotation", rotation );
+    const bool force = jo.get_bool( "force", false );
+    const bool must_be_unexplored = jo.get_bool( "must_be_unexplored", false );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [special, target_var, rotation, force, must_be_unexplored, true_eocs,
+             false_eocs]( dialogue & d ) {
+        const overmap_special_id special_id( special.evaluate( d ) );
+        if( !special_id.is_valid() ) {
+            debugmsg( "place_overmap_special: unknown overmap special \"%s\".  %s", special_id.str(),
+                      d.get_callstack() );
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        const std::string rot = rotation.evaluate( d );
+        om_direction::type dir = om_direction::random();
+        if( !rot.empty() && rot != "random" ) {
+            if( !io::enum_is_valid<om_direction::type>( rot ) ) {
+                debugmsg( "place_overmap_special: unknown rotation \"%s\".  %s", rot, d.get_callstack() );
+                run_eoc_vector( false_eocs, d );
+                return;
+            }
+            dir = io::string_to_enum<om_direction::type>( rot );
+        }
+        const tripoint_abs_omt origin = project_to<coords::omt>( read_var_value( target_var,
+                                        d ).tripoint() );
+        const std::optional<std::vector<tripoint_abs_omt>> placed = overmap_buffer.place_special(
+                    *special_id, origin, dir, must_be_unexplored, force );
+        run_eoc_vector( placed ? true_eocs : false_eocs, d );
+    };
+}
+
+talk_effect_fun_t::func f_add_overmap_note( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    str_or_var text = get_str_or_var( jo.get_member( "text" ), "text", true );
+    str_or_var symbol;
+    optional( jo, false, "symbol", symbol );
+    str_or_var color;
+    optional( jo, false, "color", color );
+    std::optional<dbl_or_var> danger_radius;
+    if( jo.has_member( "danger_radius" ) ) {
+        danger_radius = get_dbl_or_var( jo, "danger_radius" );
+    }
+    return [target_var, text, symbol, color, danger_radius]( dialogue & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var, d ).tripoint() );
+        // Overmap notes encode their symbol and color as "S:color;text".
+        std::string note;
+        const std::string sym = symbol.evaluate( d );
+        if( !sym.empty() ) {
+            note += sym + ":";
+        }
+        const std::string col = color.evaluate( d );
+        if( !col.empty() ) {
+            note += col + ";";
+        }
+        note += text.evaluate( d );
+        overmap_buffer.add_note( omt, note );
+        if( danger_radius ) {
+            overmap_buffer.mark_note_dangerous( omt, danger_radius->evaluate( d ), true );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_delete_overmap_note( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    return [target_var]( dialogue & d ) {
+        overmap_buffer.delete_note( project_to<coords::omt>( read_var_value( target_var,
+                                    d ).tripoint() ) );
     };
 }
 
@@ -8690,6 +8885,10 @@ parsers = {
     { "companion_mission", jarg::string, &talk_effect_fun::f_companion_mission },
     { "copy_var", jarg::member, &talk_effect_fun::f_copy_var },
     { "reveal_map", jarg::object, &talk_effect_fun::f_reveal_map },
+    { "set_overmap_terrain", jarg::object, &talk_effect_fun::f_set_overmap_terrain },
+    { "place_overmap_special", jarg::member, &talk_effect_fun::f_place_overmap_special },
+    { "add_overmap_note", jarg::object, &talk_effect_fun::f_add_overmap_note },
+    { "delete_overmap_note", jarg::object, &talk_effect_fun::f_delete_overmap_note },
     { "reveal_route", jarg::object, &talk_effect_fun::f_reveal_route },
     { "closest_city", jarg::object, &talk_effect_fun::f_closest_city },
     { "u_spend_cash", jarg::member | jarg::array, &talk_effect_fun::f_u_spend_cash },

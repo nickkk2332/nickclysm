@@ -151,7 +151,7 @@
     "effect": [
       { "u_message": "It tastes extremely strange!" },
       { "u_mutate": 1, "use_vitamins": false },
-      { "math": [ "u_pain('type': 'perceived') = 2 * (1 + rand(4))" ] },
+      { "math": [ "u_pain('type': 'perceived') += 2 * (1 + rand(4))" ] },
       { "math": [ "u_calories() -= 87" ] },
       { "math": [ "u_val('thirst') += 10" ] },
       { "math": [ "u_val('sleepiness') += 5" ] }
@@ -163,7 +163,7 @@
     "effect": [
       { "u_message": "You feel better all over.", "type": "good" },
       { "math": [ "u_val('pkill') += 30" ] },
-      { "math": [ "u_pain('type': 'perceived') = -40" ] }
+      { "math": [ "u_pain('type': 'perceived') -= 40" ] }
     ]
   },
   {
@@ -247,7 +247,7 @@
         "u_add_memorial": { "str": "Suffered Marloss Rejection.", "ctxt": "memorial_male" },
         "female": { "str": "Suffered Marloss Rejection.", "ctxt": "memorial_female" }
       },
-      { "math": [ "u_pain('type': 'perceived') = 90" ] },
+      { "math": [ "u_pain('type': 'perceived') += 90" ] },
       { "u_hurt_all": { "math": [ "40 + rand(25)" ] } },
       { "run_eocs": "EOC_MARLOSS_REJECTION_AFTER_CONSUMPTION", "time_in_future": 0 },
       { "run_eocs": "EOC_MARLOSS_CLEAR_COMPONENTS" },
@@ -326,7 +326,7 @@
     "effect": [
       { "u_message": "This tastes really weird!  You're not sure it's good for you…" },
       { "u_mutate": 1, "use_vitamins": false },
-      { "math": [ "u_pain('type': 'perceived') = 2 * (1 + rand(4))" ] },
+      { "math": [ "u_pain('type': 'perceived') += 2 * (1 + rand(4))" ] },
       { "math": [ "u_calories() -= 87" ] },
       { "math": [ "u_val('thirst') += 10" ] },
       { "math": [ "u_val('sleepiness') += 5" ] },

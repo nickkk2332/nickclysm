@@ -1189,14 +1189,10 @@ npc_ptr talk_function::individual_mission( const tripoint_abs_omt &omt_pos,
         comp->npc_dismount();
     }
 
-    //Ensure we have someone to give equipment to before we lose it
+    // The companion carries copies of the equipment; the caller takes the originals from
+    // wherever they were.  Nothing is taken from the companion's own inventory.
     for( item *i : equipment ) {
         comp->companion_mission_inv.insert( *i );
-        if( item::count_by_charges( i->typeId() ) ) {
-            comp->as_character()->use_charges( i->typeId(), i->charges );
-        } else {
-            comp->as_character()->use_amount( i->typeId(), 1 );
-        }
     }
     if( comp->in_vehicle ) {
         get_map().unboard_vehicle( comp->pos_bub() );

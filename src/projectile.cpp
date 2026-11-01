@@ -222,7 +222,11 @@ void apply_ammo_effects( Creature *source, const tripoint_bub_ms &p,
             //run EoCs
             for( const effect_on_condition_id &eoc : ae.eoc ) {
                 Creature *critter = get_creature_tracker().creature_at( p );
-                dialogue d( get_talker_for( *source ), critter == nullptr ? nullptr : get_talker_for( critter ) );
+                // Cook-off detonations and NULL_SOURCE projectiles have no shooter; give the
+                // EoC an empty alpha talker rather than dereferencing a null source
+                dialogue d( source == nullptr ? std::make_unique<talker>() :
+                            get_talker_for( *source ),
+                            critter == nullptr ? nullptr : get_talker_for( critter ) );
                 write_var_value( var_type::context, "proj_damage", &d, dealt_damage );
                 const tripoint_abs_ms target_location = here.get_abs( p );
                 write_var_value( var_type::context, "targeted_location", &d, target_location );
@@ -233,8 +237,13 @@ void apply_ammo_effects( Creature *source, const tripoint_bub_ms &p,
             for( const fake_spell &f_spell : ae.spell_data ) {
                 const spell ammo_spell = f_spell.get_spell();
                 if( ae.always_cast_spell || dealt_damage > 0 ) {
-                    ammo_spell.cast_all_effects( *source, p );
-                    ammo_spell.make_sound( p, *source );
+                    if( source != nullptr ) {
+                        ammo_spell.cast_all_effects( *source, p );
+                        ammo_spell.make_sound( p, *source );
+                    } else {
+                        // No caster (e.g. cook-off detonation or NULL_SOURCE projectile)
+                        ammo_spell.cast_all_effects( p );
+                    }
                 }
             }
         }

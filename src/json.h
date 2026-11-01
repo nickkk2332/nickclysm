@@ -919,19 +919,28 @@ class JsonOut
             // run_l is the length of the "running sequence" of identical items, ending with the current item.
             // when sequence ends, it's written as either the single item object (run_l==1) or as a two-element
             // array (run_l > 1), where the first element is the item and second element is the size of the sequence.
+            // The item object of a sequence also lists the uids of the other items in the sequence, in order, as
+            // "rle_uids", so that references to those items survive saving and loading. Builds that don't know
+            // "rle_uids" ignore it and give the copies fresh uids.
             int run_l = 1;
+            auto run_start = container.begin();
             for( auto it = container.begin(); it != container.end(); ++it ) {
                 const auto nxt = std::next( it );
                 if( nxt == container.end() || !it->same_for_rle( *nxt ) ) {
                     if( run_l == 1 ) {
                         write( *it );
                     } else {
+                        std::vector<int64_t> other_uids;
+                        for( auto in_run = run_start; in_run != it; ++in_run ) {
+                            other_uids.push_back( in_run->uid().get_value() );
+                        }
                         start_array();
-                        write( *it );
+                        it->serialize_rle_run( *this, other_uids );
                         write( run_l );
                         end_array();
                     }
                     run_l = 1;
+                    run_start = nxt;
                 } else {
                     run_l++;
                 }

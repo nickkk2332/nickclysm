@@ -4,6 +4,7 @@
 #include <array>
 #include <climits>
 #include <cstddef>
+#include <exception>
 #include <functional>
 #include <map>
 #include <memory>
@@ -361,6 +362,19 @@ static bodypart_id get_bp_from_str( const std::string &ctxt )
     return bid;
 }
 
+// A string condition names one of the simple condition parsers. An unknown name used to
+// compile to an always-false condition (always true under "not") without any error, so
+// typos went unnoticed; report them at load time instead.
+static bool is_known_string_condition( std::string_view type )
+{
+    return dialogue_data::simple_string_conds().count( std::string( type ) ) > 0;
+}
+
+static std::string unknown_string_condition_error( std::string_view type )
+{
+    return string_format( "unknown condition \"%s\"", type );
+}
+
 void read_condition( const JsonObject &jo, const std::string &member_name,
                      conditional_t::func &condition, bool default_val )
 {
@@ -372,6 +386,9 @@ void read_condition( const JsonObject &jo, const std::string &member_name,
         condition = null_function;
     } else if( jo.has_string( member_name ) ) {
         const std::string type = jo.get_string( member_name );
+        if( !is_known_string_condition( type ) ) {
+            jo.throw_error_at( member_name, unknown_string_condition_error( type ) );
+        }
         conditional_t sub_condition( type );
         condition = [sub_condition]( const_dialogue const & d ) {
             return sub_condition( d );
@@ -431,6 +448,18 @@ conditional_t::func f_has_trait( const JsonObject &jo, std::string_view member, 
     str_or_var trait_to_check = get_str_or_var( jo.get_member( member ), member, true );
     return [trait_to_check, is_npc]( const_dialogue const & d ) {
         return d.const_actor( is_npc )->has_trait( trait_id( trait_to_check.evaluate( d ) ) );
+    };
+}
+
+// True if the character has the mutation and it is switched on (an active mutation that
+// was activated); always false for talkers that aren't characters.
+conditional_t::func f_has_active_trait( const JsonObject &jo, std::string_view member,
+                                        bool is_npc )
+{
+    str_or_var trait_to_check = get_str_or_var( jo.get_member( member ), member, true );
+    return [trait_to_check, is_npc]( const_dialogue const & d ) {
+        const Character *guy = d.const_actor( is_npc )->get_const_character();
+        return guy != nullptr && guy->has_active_mutation( trait_id( trait_to_check.evaluate( d ) ) );
     };
 }
 
@@ -1016,6 +1045,39 @@ conditional_t::func f_overmap_at_point( const JsonObject &jo, std::string_view m
         std::string location_value = location.evaluate( d );
 
         return oter_no_dir_or_connections( omt_ter ) == location_value;
+    };
+}
+
+// OMAP-J01: which overmap special a tile belongs to, and how well the player has seen it.
+static tripoint_abs_omt read_omt_or_alpha( const std::optional<var_info> &loc_var,
+        const_dialogue const &d )
+{
+    if( loc_var.has_value() ) {
+        return project_to<coords::omt>( read_var_value( *loc_var, d ).tripoint() );
+    }
+    return d.const_actor( false )->pos_abs_omt();
+}
+
+conditional_t::func f_map_in_overmap_special( const JsonObject &jo, std::string_view member )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    std::optional<var_info> loc_var;
+    optional( jo, false, "loc", loc_var );
+    return [special, loc_var]( const_dialogue const & d ) {
+        const std::optional<overmap_special_id> at = overmap_buffer.overmap_special_at(
+                    read_omt_or_alpha( loc_var, d ) );
+        return at.has_value() && at->str() == special.evaluate( d );
+    };
+}
+
+conditional_t::func f_map_omt_seen( const JsonObject &jo, std::string_view member )
+{
+    om_vision_level level = om_vision_level::full;
+    mandatory( jo, false, member, level );
+    std::optional<var_info> loc_var;
+    optional( jo, false, "loc", loc_var );
+    return [level, loc_var]( const_dialogue const & d ) {
+        return overmap_buffer.seen( read_omt_or_alpha( loc_var, d ) ) >= level;
     };
 }
 
@@ -1867,7 +1929,7 @@ conditional_t::func f_map_is_outside( const JsonObject &jo, std::string_view mem
         map &here = get_map();
         tripoint_bub_ms loc = here.get_bub( read_var_value( loc_var, d ).tripoint() );
         if( here.inbounds( loc ) ) {
-            return !here.is_outside( loc );
+            return here.is_outside( loc );
         }
         //TODO: Make work outside of reality bubble?
         return false;
@@ -2571,6 +2633,9 @@ double eoc_math::act( D &d ) const
         return exp->eval( d );
     } catch( math::exception const &re ) {
         debugmsg( "%s\n\n%s", re.what(), d.get_callstack() );
+    } catch( std::exception const &e ) {
+        // a non-math exception escaping a math expression must not terminate the game
+        debugmsg( "Unexpected error in math expression: %s\n\n%s", e.what(), d.get_callstack() );
     }
 
     return 0;
@@ -2584,6 +2649,7 @@ std::vector<condition_parser>
 parsers = {
     {"u_has_any_trait", "npc_has_any_trait", jarg::array, &conditional_fun::f_has_any_trait },
     {"u_has_trait", "npc_has_trait", jarg::member, &conditional_fun::f_has_trait },
+    {"u_has_active_trait", "npc_has_active_trait", jarg::member, &conditional_fun::f_has_active_trait },
     { "u_is_trait_purifiable", "npc_is_trait_purifiable", jarg::member, &conditional_fun::f_is_trait_purifiable},
     {"u_has_visible_trait", "npc_has_visible_trait", jarg::member, &conditional_fun::f_has_visible_trait },
     {"u_has_profession", "npc_has_profession", jarg::string, &conditional_fun::f_has_profession },
@@ -2670,6 +2736,8 @@ parsers = {
     {"u_has_faction_trust", jarg::member | jarg::array, &conditional_fun::f_has_faction_trust },
     {"math", jarg::member, &conditional_fun::f_math },
     {"overmap_at_point", jarg::member, &conditional_fun::f_overmap_at_point },
+    {"map_in_overmap_special", jarg::member, &conditional_fun::f_map_in_overmap_special },
+    {"map_omt_seen", jarg::member, &conditional_fun::f_map_omt_seen },
     {"compare_string", jarg::member, &conditional_fun::f_compare_string },
     {"compare_string_match_all", jarg::member, &conditional_fun::f_compare_string_match_all },
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },
@@ -2771,7 +2839,11 @@ conditional_t::conditional_t( const JsonObject &jo )
         std::vector<conditional_t> conditionals;
         for( const JsonValue entry : jo.get_array( type ) ) {
             if( entry.test_string() ) {
-                conditional_t type_condition( entry.get_string() );
+                const std::string type = entry.get_string();
+                if( !is_known_string_condition( type ) ) {
+                    entry.throw_error( unknown_string_condition_error( type ) );
+                }
+                conditional_t type_condition( type );
                 conditionals.emplace_back( type_condition );
             } else {
                 JsonObject cond = entry.get_object();
@@ -2805,7 +2877,11 @@ conditional_t::conditional_t( const JsonObject &jo )
             return !sub_condition( d );
         };
     } else if( jo.has_string( "not" ) ) {
-        const conditional_t sub_condition = conditional_t( jo.get_string( "not" ) );
+        const std::string type = jo.get_string( "not" );
+        if( !is_known_string_condition( type ) ) {
+            jo.throw_error_at( "not", unknown_string_condition_error( type ) );
+        }
+        const conditional_t sub_condition = conditional_t( type );
         found_sub_member = true;
         condition = [sub_condition]( const_dialogue const & d ) {
             return !sub_condition( d );

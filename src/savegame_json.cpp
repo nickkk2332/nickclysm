@@ -64,6 +64,7 @@
 #include "dialogue_chatbin.h"
 #include "effect.h"
 #include "effect_source.h"
+#include "enum_conversions.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -363,19 +364,19 @@ void item_pocket::favorite_settings::deserialize( const JsonObject &data )
 
 void pocket_data::deserialize( const JsonObject &data )
 {
-    data.allow_omitted_members();
+    // Only read from item definitions, never from saves: report unknown keys.
     load( data );
 }
 
 void sealable_data::deserialize( const JsonObject &data )
 {
-    data.allow_omitted_members();
+    // Only read from item definitions, never from saves: report unknown keys.
     load( data );
 }
 
 void pocket_noise::deserialize( const JsonObject &data )
 {
-    data.allow_omitted_members();
+    // Only read from item definitions, never from saves: report unknown keys.
     load( data );
 }
 
@@ -3634,10 +3635,23 @@ void item::serialize( JsonOut &json ) const
     // another function
     // CATA_DO_NOT_CHECK_SERIALIZE
 
+    serialize_rle_run( json, {} );
+}
+
+void item::serialize_rle_run( JsonOut &json, const std::vector<int64_t> &other_uids ) const
+{
+    // Skip the serialization check because this is forwarding serialization to
+    // another function
+    // CATA_DO_NOT_CHECK_SERIALIZE
+
     io::JsonObjectOutputArchive archive( json );
     const_cast<item *>( this )->io( archive );
     if( !contents.empty_with_no_mods() || contents.has_additional_pockets() ) {
         json.member( "contents", contents );
+    }
+    // Read back by the colony<item> reader, which gives these uids to the copies it makes.
+    if( !other_uids.empty() ) {
+        json.member( "rle_uids", other_uids );
     }
 }
 
@@ -4980,9 +4994,24 @@ void stats_tracker::serialize( JsonOut &jsout ) const
 void stats_tracker::deserialize( const JsonObject &jo )
 {
     jo.allow_omitted_members();
-    jo.read( "data", data );
-    for( std::pair<const event_type, event_multiset> &d : data ) {
-        d.second.set_type( d.first );
+    data.clear();
+    if( jo.has_object( "data" ) ) {
+        // Read event types by name, skipping any this build does not know (removed,
+        // renamed, or added by a newer build), so they can't make a save, memorial or
+        // achievements file unloadable.
+        for( const JsonMember member : jo.get_object( "data" ) ) {
+            const std::optional<event_type> type =
+                io::string_to_enum_optional<event_type>( member.name() );
+            if( !type ) {
+                DebugLog( D_WARNING, DC_ALL ) << "Ignoring saved statistics for unknown event type '"
+                                              << member.name() << "'";
+                member.get_object().allow_omitted_members();
+                continue;
+            }
+            event_multiset &events = data[*type];
+            events.deserialize( member.get_object() );
+            events.set_type( *type );
+        }
     }
     jo.read( "initial_scores", initial_scores );
 }

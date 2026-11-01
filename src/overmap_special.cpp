@@ -261,6 +261,12 @@ std::vector<overmap_special_locations> overmap_special::required_locations() con
     return data_->required_locations();
 }
 
+bool overmap_special::all_required_locations(
+    const std::function<bool( const overmap_special_locations & )> &pred ) const
+{
+    return data_->all_required_locations( pred );
+}
+
 int overmap_special::score_rotation_at( const overmap &om, const tripoint_om_omt &p,
                                         om_direction::type r ) const
 {

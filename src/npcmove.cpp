@@ -3465,10 +3465,6 @@ int npc::confident_throw_range( const item &thrown, Creature *target ) const
 // Index defaults to -1, i.e., wielded weapon
 bool npc::wont_hit_friend( const tripoint_bub_ms &tar, const item &it, bool throwing ) const
 {
-    if( !throwing && it.is_gun() && it.empty() ) {
-        return true;    // Prevent calling nullptr ammo_data
-    }
-
     if( throwing && rl_dist( pos_bub(), tar ) == 1 ) {
         return true;    // If we're *really* sure that our aim is dead-on
     }
@@ -3477,8 +3473,12 @@ bool npc::wont_hit_friend( const tripoint_bub_ms &tar, const item &it, bool thro
     std::vector<tripoint_bub_ms> trajectory = here.find_clear_path( pos_bub(), tar );
 
     units::angle target_angle = coord_to_angle( pos_bub(), tar );
+    // An empty gun (about to be reloaded) or a UPS/bionic energy gun has no ammo_data().
+    // It still needs the friendly fire check, so assume no shot spread.
+    const itype *loaded_ammo = throwing ? nullptr : it.ammo_data();
+    const int shot_spread = loaded_ammo && loaded_ammo->ammo ? loaded_ammo->ammo->shot_spread : 0;
     double dispersion = throwing ? throwing_dispersion( it, nullptr ) : total_gun_dispersion( it,
-                        recoil_total(), it.ammo_data()->ammo->shot_spread ).max();
+                        recoil_total(), shot_spread ).max();
     units::angle safe_angle = units::from_arcmin( dispersion );
 
     for( const auto &fr : ai_cache.friends ) {
@@ -3515,11 +3515,22 @@ bool npc::enough_time_to_reload( const item &gun ) const
 {
     const map &here = get_map();
 
-    const std::optional<ammotype> at = item::ammotype_of( gun.ammo_default() );
-    item temp_ammo( gun.ammo_default() );
-    item_location loc( const_cast<npc &>( *this ), &temp_ammo );
-    int rltime = item_reload_cost( gun, *loc,
-                                   at ? gun.ammo_capacity( *at ) : 0 );
+    // Cost the reload do_reload() would actually do. With a magazine well that is one
+    // magazine swap, not a magazine's worth of loose rounds.
+    // select_ammo() is only non-const because the avatar's version can prompt.
+    const item_location wielded = get_wielded_item();
+    const item::reload_option opt = wielded && wielded.get_item() == &gun ?
+                                    const_cast<npc &>( *this ).select_ammo( wielded ) :
+                                    item::reload_option();
+    int rltime = 0;
+    if( opt ) {
+        rltime = item_reload_cost( gun, *opt.ammo, opt.qty() );
+    } else {
+        const std::optional<ammotype> at = item::ammotype_of( gun.ammo_default() );
+        item temp_ammo( gun.ammo_default() );
+        item_location loc( const_cast<npc &>( *this ), &temp_ammo );
+        rltime = item_reload_cost( gun, *loc, at ? gun.ammo_capacity( *at ) : 0 );
+    }
     const float turns_til_reloaded = static_cast<float>( rltime ) / get_speed();
 
     const Creature *target = current_target();
@@ -3539,7 +3550,7 @@ bool npc::enough_time_to_reload( const item &gun ) const
         if( sees( here, foe ) && weapon && weapon->is_gun() && rltime > 200 &&
             weapon->gun_range( true ) > distance + turns_til_reloaded / target_speed ) {
             // Don't take longer than 2 turns if player has a gun
-            add_msg_debug( debugmode::DF_NPC_ITEMAI, "%s is shy about reloading with &s standing right there.",
+            add_msg_debug( debugmode::DF_NPC_ITEMAI, "%s is shy about reloading with %s standing right there.",
                            name, foe.name );
             return false;
         }
@@ -8356,8 +8367,9 @@ bool outfit::adjust_worn( npc &guy )
 
 void npc::set_movement_mode( const move_mode_id &new_mode )
 {
-    // Enchantments based on move modes can stack inappropriately without a recalc here
-    recalculate_enchantment_cache();
     mod_moves( -move_mode_switch_cost( move_mode, new_mode ) );
     move_mode = new_mode;
+    // Enchantments based on move modes can stack inappropriately without a recalc here.
+    // Recalculate after the new mode is set, so the cache reflects it.
+    recalculate_enchantment_cache();
 }

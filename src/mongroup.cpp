@@ -173,8 +173,14 @@ static bool is_spawn_valid(
         is_valid_time_of_day = true;
     } else {
         //Otherwise, it's valid if it matches any of the times of day
-        for( auto &elem : valid_times_of_day ) {
-            if( calendar::turn > elem.first && calendar::turn < elem.second ) {
+        for( const std::pair<time_point, time_point> &elem : valid_times_of_day ) {
+            // sunrise and sunset are both of the current day, so a range that starts after it
+            // ends (NIGHT: sunset to sunrise) wraps around midnight
+            const bool wraps = elem.first > elem.second;
+            const bool in_range = wraps ?
+                                  ( calendar::turn > elem.first || calendar::turn < elem.second ) :
+                                  ( calendar::turn > elem.first && calendar::turn < elem.second );
+            if( in_range ) {
                 is_valid_time_of_day = true;
             }
         }
@@ -506,15 +512,23 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
                 pack_min = packarr.next_int();
                 pack_max = packarr.next_int();
             }
-            const int upgrade_mult = mon_upgrade_factor > 0 ? mon_upgrade_factor : 1;
-            const time_duration starts = mon.has_member( "starts" )
-                                         ? read_from_json_string<time_duration>( mon.get_member( "starts" ),
-                                                 time_duration::units ) * upgrade_mult
-                                         : 0_turns;
-            const time_duration ends = mon.has_member( "ends" )
-                                       ? read_from_json_string<time_duration> ( mon.get_member( "ends" ),
-                                               time_duration::units ) * upgrade_mult
-                                       : 0_turns;
+            // Must stay fractional: difficulty presets use values like 0.75 or 1.5.
+            const double upgrade_mult = mon_upgrade_factor > 0 ? mon_upgrade_factor : 1.0;
+            const auto read_scaled_time = [&mon, upgrade_mult]( const std::string & member ) {
+                if( !mon.has_member( member ) ) {
+                    return 0_turns;
+                }
+                const time_duration raw = read_from_json_string<time_duration>(
+                                              mon.get_member( member ), time_duration::units );
+                const time_duration scaled = raw * upgrade_mult;
+                // A non-zero time must not scale down to 0 ("ends" of 0 means "lasts forever").
+                if( raw > 0_turns && scaled < 1_turns ) {
+                    return 1_turns;
+                }
+                return scaled;
+            };
+            const time_duration starts = read_scaled_time( "starts" );
+            const time_duration ends = read_scaled_time( "ends" );
             spawn_data data;
             if( mon.has_object( "spawn_data" ) ) {
                 const JsonObject &sd = mon.get_object( "spawn_data" );

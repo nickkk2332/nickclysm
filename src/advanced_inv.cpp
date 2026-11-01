@@ -1050,6 +1050,13 @@ bool advanced_inventory::move_all_items()
         popup_getkey( _( "Source container can't be unloaded." ) );
         return false;
     }
+    // The destination container may have been invalidated (destroyed, dropped, or no
+    // longer adjacent, see recalc_pane), leaving the pane in AIM_CONTAINER with no item.
+    if( dpane.get_area() == AIM_CONTAINER &&
+        dpane.container.get_item() == nullptr ) {
+        popup_getkey( _( "Destination container isn't valid." ) );
+        return false;
+    }
     if( dpane.get_area() == AIM_CONTAINER &&
         dpane.container.get_item()->has_flag( json_flag_NO_RELOAD ) ) {
         popup_getkey( _( "Destination container can't be reloaded." ) );

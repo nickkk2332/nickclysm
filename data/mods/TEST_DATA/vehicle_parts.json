@@ -119,6 +119,36 @@
     "melee_damage": { "bash": 4 }
   },
   {
+    "//": "VEH-B01 fixture: a loose part that falls off when the vehicle moves.",
+    "type": "vehicle_part",
+    "id": "test_vp_unmount_on_move",
+    "name": { "str": "test loose part" },
+    "item": "test_vp_unmount_on_move",
+    "description": "TestPart",
+    "durability": 100,
+    "categories": [ "other" ],
+    "broken_color": "dark_gray",
+    "location": "center",
+    "flags": [ "NO_REPAIR", "UNMOUNT_ON_MOVE" ],
+    "requirements": { "install": { "skills": [ [ "mechanics", 0 ] ] }, "removal": { "skills": [ [ "mechanics", 0 ] ] } },
+    "breaks_into": [  ],
+    "variants": [ { "symbols": ";", "symbols_broken": "*" } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_vp_unmount_on_move",
+    "category": "other",
+    "name": { "str": "test loose part" },
+    "description": "Frame item for the UNMOUNT_ON_MOVE vehicle-part fixture.",
+    "weight": "1 kg",
+    "volume": "1 L",
+    "price": "0 cent",
+    "price_postapoc": "0 cent",
+    "material": [ "steel" ],
+    "symbol": ";",
+    "color": "light_gray"
+  },
+  {
     "type": "vehicle_part",
     "id": "test_red_headlight",
     "copy-from": "headlight",

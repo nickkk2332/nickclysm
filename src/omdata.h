@@ -6,6 +6,7 @@
 #include <array>
 #include <climits>
 #include <cstddef>
+#include <functional>
 #include <cstdint>
 #include <list>
 #include <map>
@@ -805,6 +806,8 @@ class overmap_special
         std::vector<overmap_special_terrain> preview_terrains() const;
         std::vector<oter_type_id> get_terrain_type_ids() const;
         std::vector<overmap_special_locations> required_locations() const;
+        bool all_required_locations(
+            const std::function<bool( const overmap_special_locations & )> &pred ) const;
         int score_rotation_at( const overmap &om, const tripoint_om_omt &p,
                                om_direction::type r ) const;
         special_placement_result place(
@@ -934,6 +937,10 @@ struct overmap_special_data {
     virtual std::vector<overmap_special_terrain> preview_terrains() const = 0;
     virtual std::vector<oter_type_id> get_terrain_type_ids() const = 0;
     virtual std::vector<overmap_special_locations> required_locations() const = 0;
+    // Whether pred holds for every required location, stopping at the first that fails.
+    // Unlike required_locations(), copies nothing (worldgen's innermost check, OMAP-P01).
+    virtual bool all_required_locations(
+        const std::function<bool( const overmap_special_locations & )> &pred ) const = 0;
     virtual int score_rotation_at( const overmap &om, const tripoint_om_omt &p,
                                    om_direction::type r ) const = 0;
     virtual special_placement_result place(
@@ -958,6 +965,8 @@ struct fixed_overmap_special_data : overmap_special_data {
     std::vector<overmap_special_terrain> preview_terrains() const override;
     std::vector<oter_type_id> get_terrain_type_ids() const override;
     std::vector<overmap_special_locations> required_locations() const override;
+    bool all_required_locations(
+        const std::function<bool( const overmap_special_locations & )> &pred ) const override;
     int score_rotation_at( const overmap &om, const tripoint_om_omt &p,
                            om_direction::type r ) const override;
     special_placement_result place(
@@ -1345,6 +1354,8 @@ struct mutable_overmap_special_data : overmap_special_data {
     std::vector<overmap_special_terrain> preview_terrains() const override;
     std::vector<oter_type_id> get_terrain_type_ids() const override;
     std::vector<overmap_special_locations> required_locations() const override;
+    bool all_required_locations(
+        const std::function<bool( const overmap_special_locations & )> &pred ) const override;
     int score_rotation_at( const overmap &, const tripoint_om_omt &,
                            om_direction::type ) const override;
     special_placement_result place(

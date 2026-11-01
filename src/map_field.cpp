@@ -37,6 +37,7 @@
 #include "item.h"
 #include "itype.h"
 #include "level_cache.h"
+#include "line.h"
 #include "map.h"
 #include "map_field.h"
 #include "map_iterator.h"
@@ -1165,9 +1166,9 @@ void field_processor_fd_fire( const tripoint_bub_ms &p, field_entry &cur, field_
          count != neighs.size();
          i = ( i + 1 ) % neighs.size(), count++ ) {
         const maptile &neigh = neighs[i].second;
-        if( ( neigh.pos().x() != remove_tile.pos().x() && neigh.pos().y() != remove_tile.pos().y() ) ||
-            ( neigh.pos().x() != remove_tile2.pos().x() && neigh.pos().y() != remove_tile2.pos().y() ) ||
-            ( neigh.pos().x() != remove_tile3.pos().x() && neigh.pos().y() != remove_tile3.pos().y() ) ||
+        if( ( neigh.pos() != remove_tile.pos() &&
+              neigh.pos() != remove_tile2.pos() &&
+              neigh.pos() != remove_tile3.pos() ) ||
             x_in_y( 1, std::max( 2, windpower ) ) ) {
             neighbour_vec.push_back( i );
         }
@@ -2132,30 +2133,25 @@ void map::monster_in_field( monster &z )
 std::tuple<maptile, maptile, maptile> map::get_wind_blockers( const int &winddirection,
         const tripoint_bub_ms &pos )
 {
-    static const std::array<std::pair<int, std::tuple< point_rel_ms, point_rel_ms, point_rel_ms >>, 9>
-    outputs = { {
-            { 330, std::make_tuple( point_rel_ms::east, point_rel_ms::north_east, point_rel_ms::south_east ) },
-            { 301, std::make_tuple( point_rel_ms::south_east, point_rel_ms::east, point_rel_ms::south ) },
-            { 240, std::make_tuple( point_rel_ms::south, point_rel_ms::south_west, point_rel_ms::south_east ) },
-            { 211, std::make_tuple( point_rel_ms::south_west, point_rel_ms::west, point_rel_ms::south ) },
-            { 150, std::make_tuple( point_rel_ms::west, point_rel_ms::north_west, point_rel_ms::south_west ) },
-            { 121, std::make_tuple( point_rel_ms::north_west, point_rel_ms::north, point_rel_ms::west ) },
-            { 60, std::make_tuple( point_rel_ms::north, point_rel_ms::north_west, point_rel_ms::north_east ) },
-            { 31, std::make_tuple( point_rel_ms::north_east, point_rel_ms::east, point_rel_ms::north ) },
-            { 0, std::make_tuple( point_rel_ms::east, point_rel_ms::north_east, point_rel_ms::south_east ) }
-        }
-    };
-
-    tripoint_bub_ms removepoint;
-    tripoint_bub_ms removepoint2;
-    tripoint_bub_ms removepoint3;
-    for( const std::pair<int, std::tuple< point_rel_ms, point_rel_ms, point_rel_ms >> &val : outputs ) {
-        if( winddirection >= val.first ) {
-            removepoint = pos + std::get<0>( val.second );
-            removepoint2 = pos + std::get<1>( val.second );
-            removepoint3 = pos + std::get<2>( val.second );
-            break;
-        }
+    // winddirection is the compass bearing the wind blows from (0 = north, clockwise).
+    // convert_wind_to_coord() turns it into the upwind offset; the blockers are that
+    // tile and the two tiles 45 degrees to either side of it.
+    const rl_vec2d upwind_vec = convert_wind_to_coord( winddirection );
+    const point_rel_ms upwind( static_cast<int>( upwind_vec.x ), static_cast<int>( upwind_vec.y ) );
+    tripoint_bub_ms removepoint = pos;
+    tripoint_bub_ms removepoint2 = pos;
+    tripoint_bub_ms removepoint3 = pos;
+    if( upwind.x() != 0 && upwind.y() != 0 ) {
+        // Diagonal wind: the two orthogonal tiles next to the upwind corner
+        removepoint = pos + upwind;
+        removepoint2 = pos + point_rel_ms( upwind.x(), 0 );
+        removepoint3 = pos + point_rel_ms( 0, upwind.y() );
+    } else if( upwind.x() != 0 || upwind.y() != 0 ) {
+        // Orthogonal wind: the upwind tile and the two corners next to it
+        const point_rel_ms side( upwind.y(), upwind.x() );
+        removepoint = pos + upwind;
+        removepoint2 = pos + upwind + side;
+        removepoint3 = pos + upwind - side;
     }
 
     const maptile remove_tile = maptile_at( removepoint );

@@ -230,6 +230,8 @@ void game::unserialize( std::istream &fin, const cata_path &path )
         debugmsg( "Bad save json\n%s", jsonerr.c_str() );
         return;
     }
+    // Other exceptions (e.g. an enum value this build does not know) propagate to
+    // read_from_file / read_from_zzip_optional, which report them and abort the load.
 }
 
 void game::unserialize( std::string fin )
@@ -242,6 +244,8 @@ void game::unserialize( std::string fin )
         debugmsg( "Bad save json\n%s", jsonerr.c_str() );
         return;
     }
+    // Other exceptions (e.g. an enum value this build does not know) propagate to
+    // read_from_file / read_from_zzip_optional, which report them and abort the load.
 }
 
 void game::unserialize_impl( const JsonObject &data )
@@ -803,14 +807,8 @@ void overmap::unserialize( const JsonObject &jsobj )
                 flattened_predecessors.emplace_back( point, std::move( predecessors ) );
             }
 
-            std::vector<oter_id> om_predecessors;
-
             for( auto& [p, serialized_predecessors] : flattened_predecessors ) {
-                predecessors_.insert_or_assign( p, std::move( om_predecessors ) );
-
-                // Reuse allocations because it's a good habit.
-                om_predecessors = std::move( serialized_predecessors );
-                om_predecessors.clear();
+                predecessors_.insert_or_assign( p, std::move( serialized_predecessors ) );
             }
         }
     }

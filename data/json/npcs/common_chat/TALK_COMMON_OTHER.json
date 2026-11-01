@@ -210,7 +210,7 @@
     "type": "talk_topic",
     "dynamic_line": "What is it?",
     "responses": [
-      { "text": "How much further?", "topic": "TALK_HOW_MUCH_FURTHER", "condition": "npc_has_destination" },
+      { "text": "How much further?", "topic": "TALK_HOW_MUCH_FURTHER", "condition": "npc_is_travelling" },
       {
         "text": "I'd like to lead for a while.",
         "trial": {

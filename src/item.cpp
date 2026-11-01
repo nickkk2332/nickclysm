@@ -606,6 +606,34 @@ bool item::combine( const item &rhs )
     return true;
 }
 
+// The item's saved JSON without any uids (its own, and those of nested items such as
+// components). Only the run's own uids are kept, separately; nested items get fresh uids
+// when the run is loaded, as before. A uid is always saved as a bare number, so a "uid"
+// key with a string value (e.g. in item_vars) is left alone.
+static std::string rle_identity( const item &it )
+{
+    std::ostringstream os;
+    JsonOut jsout( os );
+    it.serialize( jsout );
+    std::string saved = os.str();
+    const std::string uid_key = "\"uid\":";
+    size_t pos = 0;
+    while( ( pos = saved.find( uid_key, pos ) ) != std::string::npos ) {
+        size_t end = pos + uid_key.size();
+        while( end < saved.size() && ( saved[end] == '-' ||
+                                       ( saved[end] >= '0' && saved[end] <= '9' ) ) ) {
+            ++end;
+        }
+        if( end == pos + uid_key.size() ) {
+            // Not a number: not a uid.
+            pos = end;
+            continue;
+        }
+        saved.erase( pos, end - pos );
+    }
+    return saved;
+}
+
 bool item::same_for_rle( const item &rhs ) const
 {
     if( type != rhs.type ) {
@@ -622,7 +650,14 @@ bool item::same_for_rle( const item &rhs ) const
           itype_variant().id != rhs.itype_variant().id ) ) {
         return false;
     }
-    return stacks_with( rhs, true, false, false, 0, 999, true );
+    if( !stacks_with( rhs, true, false, false, 0, 999, true ) ) {
+        return false;
+    }
+    // A run is saved as one item plus a count, so every copy is loaded as that item.
+    // stacks_with() only checks what the player can see; owner, birthday, snippet,
+    // poison, temperature and other saved state must match too. This check is only
+    // reached for items that already look identical, so it costs little on most saves.
+    return rle_identity( *this ) == rle_identity( rhs );
 }
 
 namespace

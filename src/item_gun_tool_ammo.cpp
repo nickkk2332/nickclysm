@@ -3084,15 +3084,15 @@ ret_val<void> item::is_gunmod_compatible( const item &mod ) const
     } else if( mod.typeId() == itype_brass_catcher && has_flag( flag_RELOAD_EJECT ) ) {
         return ret_val<void>::make_failure( _( "cannot have a brass catcher" ) );
 
-    } else if( ( mod.type->gunmod->location.name() == "magazine" ||
-                 mod.type->gunmod->location.name() == "mechanism" ||
-                 mod.type->gunmod->location.name() == "loading port" ||
-                 mod.type->gunmod->location.name() == "bore" ) &&
+    } else if( ( mod.type->gunmod->location.str() == "magazine" ||
+                 mod.type->gunmod->location.str() == "mechanism" ||
+                 mod.type->gunmod->location.str() == "loading port" ||
+                 mod.type->gunmod->location.str() == "bore" ) &&
                ( ammo_remaining( ) > 0 || magazine_current() ) ) {
         return ret_val<void>::make_failure( _( "must be unloaded before installing this mod" ) );
 
     } else if( gunmod_find( itype_stock_none ) &&
-               mod.type->gunmod->location.name() == "stock accessory" ) {
+               mod.type->gunmod->location.str() == "stock accessory" ) {
         return ret_val<void>::make_failure( _( "doesn't have a stock to attach this mod" ) );
 
     } else if( mod.typeId() == itype_arredondo_chute ) {

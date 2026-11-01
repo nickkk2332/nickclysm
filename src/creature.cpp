@@ -1087,8 +1087,6 @@ void Creature::deal_melee_hit( Creature *source, int hit_spread, bool critical_h
         return;
     }
 
-    dam = source->modify_damage_dealt_with_enchantments( dam );
-
     // If carrying a rider, there is a chance the hits may hit rider instead.
     // melee attack will start off as targeted at mount
     if( has_effect( effect_ridden ) ) {
@@ -1101,6 +1099,7 @@ void Creature::deal_melee_hit( Creature *source, int hit_spread, bool critical_h
             }
         }
     }
+    dam = source->modify_damage_dealt_with_enchantments( dam );
     damage_instance d = dam; // copy, since we will mutate in block_hit
     bodypart_id bp_hit = bp == nullptr ? select_body_part( -1, -1, source->can_attack_high(),
                          hit_spread ) : *bp;

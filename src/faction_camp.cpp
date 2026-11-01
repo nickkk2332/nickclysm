@@ -1808,28 +1808,14 @@ npc_ptr basecamp::start_mission( const mission_id &miss_id, time_duration total_
     if( comp != nullptr ) {
         comp->companion_mission_time_ret = calendar::turn + total_time;
         comp->companion_mission_exertion = exertion_level;
+        comp->companion_mission_travel_time = travel_time;
         if( must_feed ) {
             // TODO update spent food after assigning a specific worker to the mission and recalculating travel time
             feed_workers( *comp.get()->as_character(), camp_food_supply( total_time, exertion_level,
                           travel_time ), camp_meal::mission_cost );
         }
-        if( !equipment.empty() ) {
-            map &target_map = get_camp_map();
-            std::vector<tripoint_bub_ms> src_set_pt;
-            src_set_pt.resize( src_set.size() );
-            for( const tripoint_abs_ms &p : src_set ) {
-                src_set_pt.emplace_back( target_map.get_bub( p ) );
-            }
-            for( item *i : equipment ) {
-                int count = i->count();
-                if( i->count_by_charges() ) {
-                    target_map.use_charges( src_set_pt, i->typeId(), count );
-                } else {
-                    target_map.use_amount( src_set_pt, i->typeId(), count );
-                }
-            }
-            target_map.save();
-        }
+        // the companion carries copies of the equipment; callers take the originals, by
+        // location, once this returns a companion (see camp_start_planting)
     }
     return comp;
 }
@@ -1895,6 +1881,7 @@ comp_list basecamp::start_multi_mission( const mission_id &miss_id,
         for( npc_ptr &comp : result ) {
             comp->companion_mission_time_ret = calendar::turn + work_days;
             comp->companion_mission_exertion = making.exertion_level();
+            comp->companion_mission_travel_time = 0_hours;
         }
         if( must_feed ) {
             std::vector<std::reference_wrapper <Character>> work_party;
@@ -3611,8 +3598,6 @@ std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, 
 void basecamp::start_farm_op( const point_rel_omt &dir, const mission_id &miss_id,
                               float exertion_level )
 {
-    map &here = get_map();
-
     farm_ops op = farm_ops::plow;
     if( miss_id.id == Camp_Plow ) {
         op = farm_ops::plow;
@@ -3648,26 +3633,7 @@ void basecamp::start_farm_op( const point_rel_omt &dir, const mission_id &miss_i
             if( seed_selection.empty() ) {
                 return;
             }
-            size_t seed_cnt = 0;
-            std::vector<item *> to_plant;
-            for( std::pair<item_location, int> &seeds : seed_selection ) {
-                size_t num_seeds = seeds.second;
-                item_location seed = seeds.first;
-                seed.overflow( here );
-                if( seed->count_by_charges() ) {
-                    seed->charges = num_seeds;
-                }
-                to_plant.push_back( &*seed );
-                seed_cnt += num_seeds;
-            }
-
-            if( !seed_cnt ) {
-                return;
-            }
-            work += 1_minutes * seed_cnt;
-            start_mission( miss_id, work, true,
-                           _( "begins planting the field…" ), false, to_plant,
-                           skill_survival, 1, exertion_level );
+            talk_function::camp_start_planting( *this, miss_id, seed_selection, exertion_level );
             break;
         }
         case farm_ops::plow:
@@ -3679,6 +3645,54 @@ void basecamp::start_farm_op( const point_rel_omt &dir, const mission_id &miss_i
             debugmsg( "Farm operations called with no operation" );
     }
 }
+
+npc_ptr talk_function::camp_start_planting( basecamp &camp, const mission_id &miss_id,
+        const drop_locations &seeds, float exertion_level, const npc_ptr &preselected_choice )
+{
+    // the companion carries copies; the stacks stay as they are until it sets off
+    std::vector<item> to_plant;
+    to_plant.reserve( seeds.size() );
+    int seed_cnt = 0;
+    for( const drop_location &seed : seeds ) {
+        if( seed.second <= 0 ) {
+            continue;
+        }
+        item planted = *seed.first;
+        if( planted.count_by_charges() ) {
+            planted.charges = seed.second;
+        }
+        to_plant.push_back( planted );
+        seed_cnt += seed.second;
+    }
+    if( seed_cnt == 0 ) {
+        return nullptr;
+    }
+    std::vector<item *> equipment;
+    equipment.reserve( to_plant.size() );
+    for( item &planted : to_plant ) {
+        equipment.push_back( &planted );
+    }
+    const std::map<skill_id, int> required_skills = { { skill_survival, 1 } };
+    npc_ptr comp = camp.start_mission( miss_id, 1_minutes * seed_cnt, true,
+                                       _( "begins planting the field…" ), false, equipment,
+                                       required_skills, exertion_level, 0_hours, preselected_choice );
+    if( comp == nullptr ) {
+        return comp;
+    }
+    // take exactly the chosen seeds from storage
+    for( const drop_location &seed : seeds ) {
+        if( seed.second <= 0 ) {
+            continue;
+        }
+        item_location loc = seed.first;
+        // split() leaves the rest of a stack and fails when the whole item goes
+        if( loc->split( seed.second ).is_null() ) {
+            loc.remove_item();
+        }
+    }
+    return comp;
+}
+
 // camp faction companion mission recovery functions
 npc_ptr basecamp::companion_choose_return( const mission_id &miss_id,
         time_duration min_duration )
@@ -3717,12 +3731,15 @@ void basecamp::finish_return( npc &comp, const bool fixed_time, const std::strin
         talk_function::companion_skill_trainer( comp, skill, mission_time, difficulty );
     }
 
-    // Missions that are not fixed_time pay their food costs at the end, instead of up-front.
+    // Every mission paid for its reserve time when it started; missions that are not
+    // fixed_time pay at the end only for the time they ran past that.
     int need_food = 0;
-    if( !fixed_time ) {
+    if( !fixed_time && mission_time > reserve_time ) {
         // Assume the travel time is constant and any unplanned time was non-travel
-        need_food = time_to_food( mission_time, comp.companion_mission_exertion,
-                                  comp.companion_mission_travel_time );
+        const float exertion = comp.companion_mission_exertion;
+        const time_duration travel = comp.companion_mission_travel_time;
+        need_food = std::max( 0, time_to_food( mission_time, exertion, travel ) -
+                              time_to_food( reserve_time, exertion, travel ) );
     }
     if( fac()->food_supply().kcal() < need_food ) {
         popup( _( "Your companion seems disappointed that your pantry is empty…" ) );
@@ -3806,7 +3823,7 @@ npc_ptr basecamp::emergency_recall( const mission_id &miss_id )
         }
 
         const std::string return_msg = _( "responds to the emergency recall…" );
-        // FIXME this might charge food for someone who was already fed?
+        // paid up front; only time past the reserve is billed
         finish_return( *comp, false, return_msg, skill_menial.str(), 0, true );
     }
     return comp;
@@ -4581,14 +4598,7 @@ bool basecamp::farm_return( const mission_id &miss_id, const point_rel_omt &dir 
 
     farm_action( dir, op, comp );
 
-    Character &player_character = get_player_character();
-    //Give any seeds the NPC didn't use back to you.
-    for( const item &it : comp->companion_mission_inv ) {
-        if( it.charges > 0 ) {
-            player_character.i_add( it );
-        }
-    }
-
+    // finish_return puts any seeds the companion didn't plant back in camp storage
     finish_return( *comp, true, msg, skill_survival.str(), 2 );
     return true;
 }

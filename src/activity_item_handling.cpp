@@ -777,8 +777,8 @@ static bool vehicle_activity( Character &you, const tripoint_bub_ms &src_loc, in
     const vehicle_part &vp = veh->part( vpindex );
     const vpart_info &vpi = vp.info();
     if( type == VEHICLE_REPAIR ) {
-        const int frac = ( vp.damage() - vp.degradation() ) / ( vp.max_damage() - vp.degradation() );
-        time_to_take = vpi.repair_time( you ) * frac;
+        // Same as veh_interact: repair_part() fixes every repairable level at once.
+        time_to_take = vpi.repair_time( you ) * vp.get_base().repairable_levels();
     } else if( type == VEHICLE_REMOVE ) {
         time_to_take = vpi.removal_time( you );
     }
@@ -2191,7 +2191,9 @@ activity_reason_info multi_vehicle_repair_activity_actor::multi_activity_can_do(
             }
             continue;
         }
-        const requirement_data &reqs = vpinfo.repair_requirements();
+        // repair_part() consumes one set of requirements per repairable level.
+        const requirement_data reqs = vpinfo.repair_requirements() *
+                                      part_elem->get_base().repairable_levels();
         const temp_crafting_inventory &inv =
             you.crafting_inventory( src_loc, PICKUP_RANGE - 1, false );
         const bool can_make = reqs.can_make_with_inventory( &you, inv, is_crafting_component );
@@ -2852,17 +2854,19 @@ std::optional<requirement_id> vehicle_work_requirements( Character &you,
         const vehicle *veh = veh_pointer_or_null( here.veh_at( src_loc ) );
         // we already checked this in can_do_activity() but check again just incase.
         if( !veh ) {
-            you.activity_vehicle_part_index = 1;
+            you.activity_vehicle_part_index = -1;
             return std::nullopt;
         }
         requirement_data reqs;
         if( you.activity_vehicle_part_index >= 0 &&
             you.activity_vehicle_part_index < static_cast<int>( veh->part_count() ) ) {
-            const vpart_info &vpi = veh->part( you.activity_vehicle_part_index ).info();
+            const vehicle_part &vp = veh->part( you.activity_vehicle_part_index );
+            const vpart_info &vpi = vp.info();
             if( reason == do_activity_reason::NEEDS_VEH_DECONST ) {
                 reqs = vpi.removal_requirements();
             } else if( reason == do_activity_reason::NEEDS_VEH_REPAIR ) {
-                reqs = vpi.repair_requirements();
+                // repair_part() consumes one set of requirements per repairable level.
+                reqs = vpi.repair_requirements() * vp.get_base().repairable_levels();
             }
         }
         return multi_activity_actor::hash_and_cache_requirement_data( reqs );

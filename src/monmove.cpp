@@ -508,12 +508,21 @@ void monster::anger_mating_season( const monster_plan &mon_plan )
 
 void monster::anger_cub_threatened( monster_plan &mon_plan )
 {
-    if( mon_plan.angers_cub_threatened < 0 ) {
-        // return early, not angered by cubs being threatened
+    // Only species with the PLAYER_NEAR_BABY trigger and a baby type care. The value is 0
+    // or 8, so the old `< 0` test never returned early: every hostile monster that saw the
+    // player scanned every monster each plan step, and species without the trigger still
+    // got angry near babies.
+    if( mon_plan.angers_cub_threatened == 0 || mon_plan.target == nullptr ||
+        ( type->baby_type.baby_monster.is_null() &&
+          type->baby_type.baby_monster_group.is_null() ) ) {
         return;
     }
 
-    for( monster &tmp : g->all_monsters() ) {
+    for( const shared_ptr_fast<monster> &tmp_ptr : get_creature_tracker().get_monsters_list() ) {
+        monster &tmp = *tmp_ptr;
+        if( tmp.is_dead() ) {
+            continue;
+        }
         bool is_baby = false;
         if( !type->baby_type.baby_monster.is_null() ) {
             is_baby = type->baby_type.baby_monster == tmp.type->id;
@@ -523,10 +532,11 @@ void monster::anger_cub_threatened( monster_plan &mon_plan )
                           type->baby_type.baby_monster_group, tmp.type->id );
         }
         if( is_baby ) {
-            // baby nearby; is the player too close?
-            mon_plan.dist = tmp.rate_target( *mon_plan.target, mon_plan.dist,
-                                             mon_plan.smart_planning );
-            if( mon_plan.dist <= 3 ) {
+            // baby nearby; is the player too close? (Rated from the baby's position; this
+            // must not overwrite this monster's own target distance.)
+            const float baby_dist = tmp.rate_target( *mon_plan.target, mon_plan.dist,
+                                    mon_plan.smart_planning );
+            if( baby_dist <= 3 ) {
                 // proximity to baby; monster gets furious and less likely to flee
                 anger += mon_plan.angers_cub_threatened;
                 morale += mon_plan.angers_cub_threatened / 2;
@@ -627,11 +637,19 @@ void monster::plan()
             continue;
         }
 
-        float rating = rate_target( who, mon_plan.dist, mon_plan.smart_planning );
+        // A hated NPC is preferred over a current target up to half as far away, but
+        // only if it is seen and we aren't ignoring it.
+        const bool hated = faction_att == MFA_HATE;
+        float rating = rate_target( who, hated ? mon_plan.dist * 2 : mon_plan.dist,
+                                    mon_plan.smart_planning );
+        const monster_attitude att_to_who = attitude( &who );
+        const bool prefer_hated = hated && rating < FLT_MAX && rating * 0.5f < mon_plan.dist &&
+                                  att_to_who != MATT_FPASSIVE && att_to_who != MATT_IGNORE &&
+                                  att_to_who != MATT_FRIEND;
         bool fleeing_from = is_fleeing( who );
         if( rating == mon_plan.dist &&
-            ( mon_plan.fleeing || attitude( &who ) == MATT_ATTACK ||
-              attitude( &who ) == MATT_FOLLOW ) ) {
+            ( mon_plan.fleeing || att_to_who == MATT_ATTACK ||
+              att_to_who == MATT_FOLLOW ) ) {
             ++valid_targets;
             if( one_in( valid_targets ) ) {
                 mon_plan.target = &who;
@@ -639,11 +657,13 @@ void monster::plan()
         }
         // Switch targets if closer and hostile or scarier than current target
         if( ( rating < mon_plan.dist && mon_plan.fleeing ) ||
-            ( faction_att == MFA_HATE ) ||
-            ( rating < mon_plan.dist && attitude( &who ) == MATT_ATTACK ) ||
+            prefer_hated ||
+            ( rating < mon_plan.dist && att_to_who == MATT_ATTACK ) ||
             ( !mon_plan.fleeing && fleeing_from ) ) {
             mon_plan.target = &who;
-            mon_plan.dist = rating;
+            // Keep the hated bonus, so a later target has to beat it to take over and
+            // another hated NPC has to be nearer.
+            mon_plan.dist = prefer_hated ? rating * 0.5f : rating;
             valid_targets = 1;
         }
         mon_plan.fleeing = mon_plan.fleeing || fleeing_from;
@@ -725,13 +745,11 @@ void monster::plan()
         } );
     }
 
-    if( !mon_plan.target ) {
-        // No other valid targets found, maybe there's a vehicle!
+    // No other valid targets found, maybe there's a vehicle! Check the cheap condition first.
+    if( !mon_plan.target && !get_pathfinding_settings().avoid_dangerous_fields ) {
         std::set<tripoint_bub_ms> target_vehicles =
             here.get_moving_vehicle_targets( *this, MAX_VIEW_DISTANCE );
-        const bool will_throw_self_at_vehicle =
-            !get_pathfinding_settings().avoid_dangerous_fields;
-        if( !target_vehicles.empty() && will_throw_self_at_vehicle ) {
+        if( !target_vehicles.empty() ) {
             tripoint_bub_ms target_pt = random_entry( target_vehicles );
             Character *driver = here.veh_at( target_pt )->vehicle().get_driver( here );
             // NOTE: no hostility check here, we already filtered for that when

@@ -180,7 +180,10 @@
         "max_contains_volume": "10 L",
         "max_contains_weight": "20 kg",
         "default_magazine": "inventor_heavy_cell"
-      },
+      }
+    ],
+    "use_action": [
+      { "type": "cast_spell", "spell_id": "inventor_portal_closer_spell", "no_fail": true, "level": 0 },
       {
         "type": "link_up",
         "menu_text": "Plug in / Unplug",
@@ -189,7 +192,6 @@
         "charge_rate": "500 W"
       }
     ],
-    "use_action": [ { "type": "cast_spell", "spell_id": "inventor_portal_closer_spell", "no_fail": true, "level": 0 } ],
     "flags": [ "ELECTRONIC", "INVENTOR_CRAFTED" ],
     "faults": [ { "fault_group": "electronic_general" } ],
     "tool_ammo": "battery"

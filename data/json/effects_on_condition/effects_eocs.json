@@ -279,7 +279,7 @@
         },
         "then": [
           { "u_message": "Your arms feel like they're going to burst!", "type": "bad" },
-          { "math": [ "u_pain('type': 'perceived') = 90" ] },
+          { "math": [ "u_pain('type': 'perceived') += 90" ] },
           { "u_add_effect": "stunned", "duration": 1 },
           { "u_deal_damage": "biological", "amount": { "math": [ "5 - rand(5)" ] }, "bodypart": "arm_l" },
           { "u_deal_damage": "biological", "amount": { "math": [ "5 - rand(5)" ] }, "bodypart": "arm_r" }
@@ -289,14 +289,14 @@
             "if": { "and": [ { "math": [ "u_hp('arm_l') > 1" ] }, { "math": [ "u_hp('arm_r') > 1" ] } ] },
             "then": [
               { "u_message": "Your hands bulge.  Fungus stalks burst through the bulge!", "type": "bad" },
-              { "math": [ "u_pain('type': 'perceived') = 90" ] },
+              { "math": [ "u_pain('type': 'perceived') += 90" ] },
               { "u_add_effect": "stunned", "duration": 10 },
               { "u_deal_damage": "biological", "amount": { "math": [ "999" ] }, "bodypart": "arm_l" },
               { "u_deal_damage": "biological", "amount": { "math": [ "999" ] }, "bodypart": "arm_r" }
             ],
             "else": [
               { "u_message": "The flesh on your broken arms bulges.  Fungus stalks burst through!", "type": "bad" },
-              { "math": [ "u_pain('type': 'perceived') = 90" ] },
+              { "math": [ "u_pain('type': 'perceived') += 90" ] },
               { "u_add_effect": "stunned", "duration": 10 },
               { "u_deal_damage": "biological", "amount": { "math": [ "999" ] }, "bodypart": "arm_l" },
               { "u_deal_damage": "biological", "amount": { "math": [ "999" ] }, "bodypart": "arm_r" }

@@ -4,9 +4,11 @@
 
 // IWYU pragma: private, include "flexbuffer_json.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include <flatbuffers/flexbuffers.h>
 
@@ -512,9 +514,27 @@ bool JsonValue::read( cata::colony<T> &v, bool throw_on_error ) const
                 if( rle_element[ 0 ].read( element, throw_on_error ) &&
                     rle_element[ 1 ].read( run_l, throw_on_error )
                   ) { // all is good
+                    // The uids of the other items in the run (see item::serialize_rle_run).
+                    // Older saves don't have them; bad entries are skipped.
+                    std::vector<int64_t> uids;
+                    if( rle_element[ 0 ].test_object() ) {
+                        const JsonObject run_item = rle_element[ 0 ].get_object();
+                        // item::deserialize has read the rest of this object
+                        run_item.allow_omitted_members();
+                        if( run_item.has_array( "rle_uids" ) ) {
+                            for( const JsonValue uid : run_item.get_array( "rle_uids" ) ) {
+                                uids.push_back( uid.test_int() ? uid.get_int64() : 0 );
+                            }
+                        }
+                    }
                     // first insert (run_l-1) elements
                     for( int i = 0; i < run_l - 1; i++ ) {
-                        v.insert( element );
+                        auto copy = v.insert( element );
+                        // A copy gets a fresh uid; restore the saved one so that references
+                        // to this item (by uid) still find it.
+                        if( static_cast<size_t>( i ) < uids.size() && uids[i] > 0 ) {
+                            copy->set_uid( uids[i] );
+                        }
                     }
                     // micro-optimization, move last element
                     v.insert( std::move( element ) );

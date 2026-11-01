@@ -66,7 +66,7 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | Use computer                                     | player (Avatar)             | computer (Furniture)        |
 | furniture: "examine_action"                      | player (Avatar)             | NONE                        | `this`, string, furniture id; `pos`; string, coordinates of the furniture
 | furniture: "mortar"                              | player (Avatar)             | NONE                        | `this`, string, furniture id; `pos`; string, coordinates of the furniture; `target`, string, coordinates of picked tile
-| spell: "effect": "effect_on_condition"           | target (Character, Monster) | spell caster (Character, Monster) | `spell_location`, location variable, location of target for use primarily when the target isn't a creature
+| spell: "effect": "effect_on_condition"           | target (Character, Monster) | spell caster (Character, Monster) | `spell_location`, location variable, location of target for use primarily when the target isn't a creature; `spell_id` and `spell_damage_type`, strings; `spell_level` (effective level), `spell_damage`, `spell_dot`, `spell_duration` (in turns), `spell_aoe` and `spell_range`, numbers, the values computed for this cast
 | spell: "description"                             | avatar                      | avatar                      | Used for tags
 | trap: "action": "eocs"                           | triggerer (Creature, item not supported yet) | NONE | `trap_location`, location variable, location of the trap to use primarily with ranged traps
 | monster_attack: "eoc"                            | attacker ( Monster)         | victim (Creature)           | `damage`, int, damage dealt by attack
@@ -86,7 +86,7 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | recipe: "result_eocs"                            | crafter (Character)         | NONE                        |
 | monster weakpoint: "effect_on_conditions"        | attacker (Creature, if exists, otherwise NONE) | victim (Creature) | note that if weakpoint was hit without attacker, EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
 | monster death: "death_function"                  | killer (Creature, if exists, otherwise NONE)| victim (Creature) | Note that if monster was killed without a killer (falling anvil, explosion of a bomb etc), EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
-| ammo_effect: "eoc"                               | shooter (Creature)          | victim (if exist, otherwise NONE) (Creature) | `targeted_location`: location_variable, the tile impacted by the projectile, `proj_damage`: int, amount of damage projectile dealt. Detonation via SPECIAL_COOKOFF ammo effect return `proj_damage` as 1. Note that if projectile miss the target, EoC would be built without beta talker, so using EoC referencing `npc_` or `n_` would result in error. Use `has_beta` condition before manipulating npc
+| ammo_effect: "eoc"                               | shooter (Creature), or an empty talker with no creature if there is no shooter (SPECIAL_COOKOFF detonation, NULL_SOURCE projectile) | victim (if exist, otherwise NONE) (Creature) | `targeted_location`: location_variable, the tile impacted by the projectile, `proj_damage`: int, amount of damage projectile dealt. Detonation via SPECIAL_COOKOFF ammo effect return `proj_damage` as 1. Note that if projectile miss the target, EoC would be built without beta talker, so using EoC referencing `npc_` or `n_` would result in error. Use `has_beta` condition before manipulating npc
 
 Some actions sent additional context variables, that can be used in EoC, in format:
 
@@ -400,6 +400,22 @@ using `_has_any_trait` with single trait is also possible
 
 ```jsonc
 { "u_has_any_trait": [ "CANINE_EARS", "LUPINE_EARS", "FELINE_EARS", "URSINE_EARS", "ELFA_EARS" ] }
+```
+
+### `u_has_active_trait`, `npc_has_active_trait`
+- type: string or [variable object](#variable-object)
+- check whether alpha or beta talker has the mutation and has it switched on (an `"active": true` mutation that was activated). Useful in enchantment conditions, which can't combine `"ACTIVE"` with other conditions
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+An enchantment on an active mutation that only works while the character has enough blood
+```jsonc
+"condition": { "and": [ { "u_has_active_trait": "VAMPIRE_BLOOD_FOR_POTENCY" }, { "math": [ "u_vitamin('human_blood_vitamin') >= -500" ] } ] }
 ```
 
 ### `u_has_visible_trait`, `npc_has_visible_trait`
@@ -1415,6 +1431,14 @@ No talker is needed.
 - type: location string or [variable object](#variable-object)
 - return true if the location is in the bounds of a city at or above z-1
 
+### `map_in_overmap_special`
+- type: string or [variable object](#variable-object)
+- return true if the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) is part of the given overmap special, e.g. `{ "map_in_overmap_special": "Necropolis", "loc": { "context_val": "loc" } }`
+
+### `map_omt_seen`
+- type: `unseen`, `vague`, `outlines`, `details` or `full`
+- return true if the player has seen the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) at least at this level, e.g. `{ "map_omt_seen": "outlines", "loc": { "context_val": "loc" } }`
+
 ### `map_is_outside`
 - type: location string or [variable object](#variable-object)
 - return true if the location is outside. Currently always returns false if the location is outside the reality bubble.
@@ -1546,7 +1570,7 @@ You can see selected location.
 ]
 ```
 
-### `u_see_npc`, `npc_see_you`
+### `u_see_npc`, `npc_see_u`
 - type: simple string
 - return true if alpha talker can see beta talker, or vice versa
 - require both talkers to be presented
@@ -1574,10 +1598,10 @@ You can see selected location.
 ```
 
 ```jsonc
-{ "not": "npc_see_you" }
+{ "not": "npc_see_u" }
 ```
 
-### `u_see_npc_loc`, `npc_see_you_loc`
+### `u_see_npc_loc`, `npc_see_u_loc`
 - type: simple string
 - return true if beta talker' position is visible from the alpha talker position, and vice versa
 - doesn't check vision condition, can return true even if one or other is blind or it is a night
@@ -1596,7 +1620,7 @@ You can see selected location.
 ```
 
 ```jsonc
-{ "not": "npc_see_you_loc" }
+{ "not": "npc_see_u_loc" }
 ```
 
 ### `line_of_sight`
@@ -3072,6 +3096,7 @@ Reveal the overmap area around specific location variable
 | --- | --- | --- | --- |
 | "reveal_map" | **mandatory** | [variable object](#variable-object) | location variable, around which the map would be revealed |
 | "radius" | **mandatory** | int or [variable object](#variable-object) | default 0; the size of revealed zone |
+| "level" | optional | string | default `full`; how much is revealed: `vague`, `outlines`, `details` or `full`. Tiles already seen at a higher level are not lowered |
 
 ##### Examples
 
@@ -3112,6 +3137,50 @@ Find overmap tile using `target_params`, store coordinates in `loc`, and reveal 
     { "reveal_map": { "context_val": "loc" }, "radius": 20 }
   ]
 }
+```
+
+#### `set_overmap_terrain`
+Change the overmap terrain at a location. Only the overmap tile changes: a map that has already been generated there is not regenerated.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_overmap_terrain" | **mandatory** | [variable object](#variable-object) | location variable of the overmap tile to change |
+| "oter" | **mandatory** | string or [variable object](#variable-object) | id of the new overmap terrain, with its rotation, e.g. `house_burnt_north` |
+
+```jsonc
+{ "set_overmap_terrain": { "context_val": "loc" }, "oter": "field" }
+```
+
+#### `place_overmap_special`
+Place an overmap special with its origin at a location, as the overmap generator would.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "place_overmap_special" | **mandatory** | string or [variable object](#variable-object) | id of the overmap special |
+| "target_var" | **mandatory** | [variable object](#variable-object) | location variable of the special's origin |
+| "rotation" | optional | string or [variable object](#variable-object) | default `random`; `north`, `east`, `south`, `west` or `random` |
+| "must_be_unexplored" | optional | bool | default false; if true, every tile of the special must be unexplored |
+| "force" | optional | bool | default false; if true, skip the placement checks (terrain, overlap). Mostly for debugging, as a forced special may not work correctly |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | `true_eocs` run if the special was placed, `false_eocs` otherwise |
+
+```jsonc
+{ "place_overmap_special": "Necropolis", "target_var": { "context_val": "loc" }, "rotation": "north", "false_eocs": [ "EOC_NECROPOLIS_FAILED" ] }
+```
+
+#### `add_overmap_note`, `delete_overmap_note`
+Write or remove an overmap note.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "add_overmap_note" / "delete_overmap_note" | **mandatory** | [variable object](#variable-object) | location variable of the noted tile |
+| "text" | **mandatory** for add | string or [variable object](#variable-object) | the note |
+| "symbol" | optional | string or [variable object](#variable-object) | one character shown on the overmap; default `N` |
+| "color" | optional | string or [variable object](#variable-object) | note color code, as in the note editor (`R`, `r`, `G`, `g`, `B`, `b`, `W`, `br`, `lg`, `dg`, ...); default yellow |
+| "danger_radius" | optional | int or [variable object](#variable-object) | if set, the note is marked dangerous with this radius, so auto travel avoids it |
+
+```jsonc
+{ "add_overmap_note": { "context_val": "loc" }, "text": "Bandit camp", "symbol": "B", "color": "R", "danger_radius": 2 },
+{ "delete_overmap_note": { "context_val": "loc" } }
 ```
 
 #### `reveal_route`
@@ -3204,7 +3273,7 @@ Will choose one of a list of eocs to activate based on it's weight
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
-| "weighted_list_eocs" | **mandatory** | n/a | EoC that would be run, and it's weight; EoC can be either id or inline EoC, and weight can be int or variable object |
+| "weighted_list_eocs" | **mandatory** | n/a | EoC that would be run, and it's weight; each entry is either `[ eoc, weight ]` or a bare EoC (weight 1). EoC can be either id or inline EoC, and weight can be a number (fractions like 0.3 are kept) or variable object. Entries whose weight is 0 or less are skipped; if every weight is 0 or less, nothing runs |
 
 ##### Examples
 
@@ -5340,6 +5409,25 @@ Picks random pankration technique, assign it to `pankration_random_attack`, and 
 }
 ```
 
+#### `u_ranged_attack`, `npc_ranged_attack`
+Alpha or beta talker fires its wielded gun, in its current gun mode, at the other talker. Takes no parameters, and is written as a plain string. Nothing happens if the attacker is not a character, wields no gun, does not have enough ammo, or if the other talker is not a creature.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Alpha talker shoots at the beta talker
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_ranged_attack_test",
+  "effect": [ "u_ranged_attack" ]
+}
+```
+
 ## Item effects
 
 #### `u_set_flag`, `npc_set_flag`
@@ -5474,6 +5562,7 @@ Spawn and place the item
 | "container" | optional | string or [variable object](#variable-object) | id of container. Item is contained in container if specified |
 | "use_item_group" | optional | bool | default false; If true, it will instead create items from the item group given. ("count" and "containter" will be ignored since they are defined in the item group.) |
 | "flags" | optional | array of string or [variable object](#variable-object) | The item will have all the flags from the array `flags` |
+| "item_variables" | optional | [inline variables](#inline-variables) | The item will have these item variables when spawned. In a container, they are set on the contained item |
 
 ##### Examples
 Spawn a plastic bottle on ground
@@ -5701,6 +5790,7 @@ Spawn some monsters around you, NPC or `target_var`
 | "summoner_is_alpha", "summoner_is_beta" | optional | bool | if used, the monster would define alpha/beta talker as it's summoner
 | "spawn_message", "spawn_message_plural" | optional | string or [variable object](#variable-object) | if you see monster or monsters that was spawned, related message would be printed |
 | "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if at least 1 monster was spawned, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
+| "spawned_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once for every monster spawned (hallucinations included), right after it spawns, with that monster as alpha (`u`) and the talker that spawned it as beta (`npc`). Context variables are passed on |
 
 ##### Examples
 Spawn 2-5 zombies in range 3-24 around player with lifespan 40-120 seconds, with messages if player see spawn
@@ -5738,6 +5828,15 @@ spawns `mon_photokin_army_image`. assing alpha talker as it's summoner, and defi
 },
 ```
 
+Spawn a zombie and knock it down; in `spawned_eocs`, `u` is the spawned zombie and `npc` is whoever spawned it
+```jsonc
+{
+  "u_spawn_monster": "mon_zombie",
+  "real_count": 1,
+  "spawned_eocs": [ { "id": "EOC_KNOCK_DOWN_SPAWNED_ZOMBIE", "effect": [ { "u_add_effect": "downed", "duration": "2 turns" } ] } ]
+}
+```
+
 #### `u_spawn_npc`, `npc_spawn_npc`
 Spawn some NPC near you or another NPC
 
@@ -5754,7 +5853,9 @@ Spawn some NPC near you or another NPC
 | "lifespan" | optional | int, duration, [variable object](#variable-object) or value between two | if used, NPC would live that amount of time, and disappear in the end |
 | "target_var" | optional | [variable object](#variable-object) | if used, the NPC would spawn from this location instead of you or NPC |
 | "spawn_message", "spawn_message_plural" | optional | string or [variable object](#variable-object) | if you see NPC or NPCs that was spawned, related message would be printed |
-| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if at least 1 monster was spawned, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
+| "npc_variables" | optional | [inline variables](#inline-variables) | if used, the NPC would have these variables when spawned |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if at least 1 NPC was spawned, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
+| "spawned_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once for every NPC spawned (hallucinations included), right after it spawns, with that NPC as alpha (`u`) and the talker that spawned it as beta (`npc`). Context variables are passed on |
 
 ##### Examples
 Spawn 2 hallucination `portal_person`s, outdoor, 3-5 tiles around the player, for 1-3 minutes and with messages

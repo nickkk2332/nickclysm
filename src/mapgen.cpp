@@ -5906,10 +5906,11 @@ bool jmapgen_setmap::apply( const mapgendata &dat, const tripoint_rel_ms &offset
 
     map &m = dat.m;
     const int trepeat = repeat.get();
-    const tripoint_bub_ms target_pos( x_get(), y_get(), dat.zlevel() + z_get() );
     const int z_level = dat.zlevel() + z_get();
 
     for( int i = 0; i < trepeat; i++ ) {
+        // Roll the point on every repeat, so a ranged point is repeated across the area
+        const tripoint_bub_ms target_pos( x_get(), y_get(), dat.zlevel() + z_get() );
         switch( op ) {
             case JMAPGEN_SETMAP_TER: {
                 // TODO: the ter_id should be stored separately and not be wrapped in an jmapgen_int

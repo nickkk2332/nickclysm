@@ -288,5 +288,26 @@
     "final_casting_time": 2,
     "casting_time_increment": 1,
     "learn_spells": { "test_fake_spell": 1 }
+  },
+  {
+    "id": "test_eoc_spell_context",
+    "type": "SPELL",
+    "name": "Context Probe",
+    "description": "Runs an EOC that records the spell context it was given.",
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_SPELL_CONTEXT",
+    "shape": "blast",
+    "max_level": 20,
+    "min_damage": 10,
+    "max_damage": 100,
+    "damage_increment": 5,
+    "damage_type": "pure",
+    "min_duration": 100,
+    "max_duration": 1000,
+    "duration_increment": 100,
+    "min_range": 5,
+    "max_range": 30,
+    "range_increment": 1
   }
 ]

@@ -190,7 +190,7 @@ Effect                 | Description
 `charm_monster`        | Charms a monster that has less hp than damage() for approximately duration().
 `dash`                 | Dashes forward up to range and hits targets in a cone at the target.
 `directed_push`        | Pushes `valid_targets` in aoe away from the target location, with a distance of damage().  Negative values pull instead.
-`effect_on_condition`  | Runs the `effect_on_condition` from `effect_str` on all valid targets.  The EOC will be centered on the player, with the NPC as caster and a context val location variable `spell_location` for the target primarily useful if the target isn't a creature.
+`effect_on_condition`  | Runs the `effect_on_condition` from `effect_str` on all valid targets.  The EOC will be centered on the player, with the NPC as caster and a context val location variable `spell_location` for the target primarily useful if the target isn't a creature.  The context vals `spell_id`, `spell_level`, `spell_damage`, `spell_dot`, `spell_duration` (in turns), `spell_aoe`, `spell_range` and `spell_damage_type` hold the values computed for this cast (for a `RANDOM_AOE` spell, `spell_aoe` is its own roll and may differ from the area actually hit), so one EOC can scale with the spell, e.g. `{ "u_add_effect": "burning", "duration": { "context_val": "spell_duration" } }` or `{ "math": [ "_spell_damage / 2" ] }`.
 `emit`                 | Causes an `emit` at the target.
 `explosion`            | Causes an explosion centered on the target.  Uses damage() for power and factor aoe()/10.
 `fertilize_plant`      | Works the same as fertilizer, making plants grow faster. The growth time reduction is equal to damage() (50 is a 50% of a season length in growth time reduction).
@@ -1037,7 +1037,7 @@ Character status value  | Description
 `MAX_HP`                | 
 `MAX_MANA`              | 
 `MAX_STAMINA`           | 
-`MELEE_DAMAGE`          | Adds damage to melee attacks
+`MELEE_DAMAGE`          | Modifies melee attack damage: `add` goes to the attack's biggest damage type (bash if it has none), then `multiply` scales every damage type.
 `MELEE_RANGE_MODIFIER`  | Modifies the range of melee attacks, with positive values acting similarly to reach attacks.  Will never reduce melee range below 1.
 `MELEE_TO_HIT`          | Modifies melee attacks' `to_hit`. `add` is recommended since `to_hit` can be below 0 and has a small typical range.
 `MELEE_STAMINA_CONSUMPTION` | Changes amount of stamina used when swing in melee; stamina consumption is a negative value, so `"add": 100` decreases amount of stamina consumed, when `"add": -100` increases it; `"multiply": 1` increases, `"multiply": -0.5` decreases it. Can't be bigger than -50.
