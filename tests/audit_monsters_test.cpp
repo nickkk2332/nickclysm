@@ -1,3 +1,4 @@
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -6,12 +7,15 @@
 #include "cata_catch.h"
 #include "character.h"
 #include "coordinates.h"
+#include "flexbuffer_json.h"
 #include "item.h"
+#include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "messages.h"
 #include "monattack.h"
+#include "mongroup.h"
 #include "monster.h"
 #include "npc.h"
 #include "options_helpers.h"
@@ -28,6 +32,9 @@ static const mfaction_str_id monfaction_attack_player_only( "attack_player_only"
 // hates the "player" monster faction, ignores NPCs with PORTAL_STORM_IGNORE_NPC
 static const mfaction_str_id monfaction_nether_player_hate( "nether_player_hate" );
 
+static const mongroup_id GROUP_AUDIT_MONDT_B01( "GROUP_AUDIT_MONDT_B01" );
+
+static const mtype_id mon_null( "mon_null" );
 static const mtype_id mon_zombie( "mon_zombie" );
 
 static const ter_str_id ter_t_wall( "t_wall" );
@@ -171,4 +178,39 @@ TEST_CASE( "monai-b03_absorb_meat_names_meat_and_skips_oversized_meat", "[audit]
         CHECK( here.i_at( first_tile ).size() == 1 );
         CHECK( !has_message_containing( "quivers hungrily" ) );
     }
+}
+
+// Rolls a throwaway group whose only entry spawns at NIGHT, at the given time past midnight.
+static mtype_id roll_night_only_group( const time_duration &time_of_day )
+{
+    calendar::turn = calendar::turn_zero + 10_days + time_of_day;
+    const std::vector<MonsterGroupResult> res =
+        MonsterGroupManager::GetResultFromGroup( GROUP_AUDIT_MONDT_B01 );
+    return res.empty() ? mtype_id::NULL_ID() : res.front().id;
+}
+
+// The NIGHT spawn window runs from sunset to the next sunrise, but both were taken from the
+// same day, so it was empty and NIGHT-only entries never spawned.
+TEST_CASE( "mondt-b01_night_only_entries_spawn_at_night", "[audit][mongroup]" )
+{
+    const time_point old_turn = calendar::turn;
+    const time_point old_start = calendar::start_of_cataclysm;
+    calendar::start_of_cataclysm = calendar::turn_zero;
+
+    const std::string json = R"({
+        "id": "GROUP_AUDIT_MONDT_B01",
+        "default": "mon_null",
+        "monsters": [ { "monster": "mon_zombie", "weight": 1, "conditions": [ "NIGHT" ] } ]
+    })";
+    JsonObject jo = json_loader::from_string( json );
+    MonsterGroupManager::LoadMonsterGroup( jo );
+
+    // a group with a single entry of weight 1 always picks it when it is valid
+    CHECK( roll_night_only_group( 2_hours ) == mon_zombie );
+    CHECK( roll_night_only_group( 23_hours ) == mon_zombie );
+    CHECK( roll_night_only_group( 12_hours ) == mon_null );
+
+    MonsterGroupManager::Get_all_Groups().erase( GROUP_AUDIT_MONDT_B01 );
+    calendar::turn = old_turn;
+    calendar::start_of_cataclysm = old_start;
 }

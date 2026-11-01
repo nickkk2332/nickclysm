@@ -173,8 +173,14 @@ static bool is_spawn_valid(
         is_valid_time_of_day = true;
     } else {
         //Otherwise, it's valid if it matches any of the times of day
-        for( auto &elem : valid_times_of_day ) {
-            if( calendar::turn > elem.first && calendar::turn < elem.second ) {
+        for( const std::pair<time_point, time_point> &elem : valid_times_of_day ) {
+            // sunrise and sunset are both of the current day, so a range that starts after it
+            // ends (NIGHT: sunset to sunrise) wraps around midnight
+            const bool wraps = elem.first > elem.second;
+            const bool in_range = wraps ?
+                                  ( calendar::turn > elem.first || calendar::turn < elem.second ) :
+                                  ( calendar::turn > elem.first && calendar::turn < elem.second );
+            if( in_range ) {
                 is_valid_time_of_day = true;
             }
         }
