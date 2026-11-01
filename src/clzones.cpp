@@ -1094,12 +1094,13 @@ void zone_manager::cache_vzones( map *pmap )
     }
 }
 
-std::unordered_set<tripoint_abs_ms> zone_manager::get_point_set( const zone_type_id &type,
+const std::unordered_set<tripoint_abs_ms> &zone_manager::get_point_set( const zone_type_id &type,
         const faction_id &fac ) const
 {
     const auto &type_iter = area_cache.find( zone_data::make_type_hash( type, fac ) );
     if( type_iter == area_cache.end() ) {
-        return std::unordered_set<tripoint_abs_ms>();
+        static const std::unordered_set<tripoint_abs_ms> empty;
+        return empty;
     }
 
     return type_iter->second;
@@ -1153,13 +1154,14 @@ std::unordered_set<tripoint_bub_ms> zone_manager::get_point_set_loot( const trip
     return res;
 }
 
-std::unordered_set<tripoint_abs_ms> zone_manager::get_vzone_set( const zone_type_id &type,
+const std::unordered_set<tripoint_abs_ms> &zone_manager::get_vzone_set( const zone_type_id &type,
         const faction_id &fac ) const
 {
     //Only regenerate the vehicle zone cache if any vehicles have moved
     const auto &type_iter = vzone_cache.find( zone_data::make_type_hash( type, fac ) );
     if( type_iter == vzone_cache.end() ) {
-        return std::unordered_set<tripoint_abs_ms>();
+        static const std::unordered_set<tripoint_abs_ms> empty;
+        return empty;
     }
 
     return type_iter->second;
