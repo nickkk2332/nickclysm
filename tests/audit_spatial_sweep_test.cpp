@@ -25,6 +25,8 @@
 #include "vehicle.h"
 #include "vpart_position.h"
 
+static const ter_str_id ter_t_door_c( "t_door_c" );
+
 static const trap_str_id tr_dormant_corpse( "tr_dormant_corpse" );
 
 static const vpart_id vpart_ap_wall_light( "ap_wall_light" );
@@ -217,4 +219,27 @@ TEST_CASE( "spat-b08_short_teleports_move_at_least_the_minimum_distance", "[audi
         CHECK( moved >= 3 );
         CHECK( moved <= 5 );
     }
+}
+
+// get_path_avoid() closed the tiles a monster can't enter when it *could* bash
+// them, so bashers with path_settings never routed through a closed door.
+TEST_CASE( "spat-b09_bashing_monsters_may_path_through_bashable_obstacles",
+           "[audit][pathfinding][monster]" )
+{
+    clear_map();
+    clear_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms door( 40, 40, 0 );
+    here.ter_set( door, ter_t_door_c );
+    REQUIRE( here.is_bashable( door ) );
+
+    monster &zed = spawn_test_monster( "mon_test_zombie", door + tripoint_rel_ms::west );
+    REQUIRE_FALSE( zed.bash_skill().empty() );
+    REQUIRE_FALSE( zed.can_move_to( door ) );
+    CHECK_FALSE( zed.get_path_avoid()( door ) );
+
+    // One that can't bash still keeps out.
+    monster &blob = spawn_test_monster( "mon_test_base", door + tripoint_rel_ms::east );
+    REQUIRE( blob.bash_skill().empty() );
+    CHECK( blob.get_path_avoid()( door ) );
 }
