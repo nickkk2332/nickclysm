@@ -1394,23 +1394,12 @@ Character::bionic_fuels Character::bionic_fuel_check( bionic &bio,
 
 void Character::burn_fuel( bionic &bio )
 {
-    float efficiency;
+    // Passive generation (muscle) is handled elsewhere; POWER_TRICKLE is applied once per
+    // turn in Character::suffer(), not per bionic.
     if( !bio.powered ) {
-        // Modifiers for passive bionic
-        units::energy trickle = enchantment_cache->modify_value( enchant_vals::mod::POWER_TRICKLE,
-                                0_J );
-        if( trickle != 0_J ) {
-            mod_power_level( trickle );
-        }
-
-        efficiency = get_effective_efficiency( bio, bio.info().passive_fuel_efficiency );
-        if( efficiency == 0.f ) {
-            return;
-        }
         return;
-    } else {
-        efficiency = get_effective_efficiency( bio, bio.info().fuel_efficiency );
     }
+    const float efficiency = get_effective_efficiency( bio, bio.info().fuel_efficiency );
 
     if( bio.is_safe_fuel_on()
         && get_power_level() + 1_kJ * efficiency >= get_max_power_level() * std::min( 1.0f,
@@ -1616,7 +1605,6 @@ void Character::process_bionic( bionic &bio )
 
     // Only powered bionics should be processed
     if( !bio.powered ) {
-        burn_fuel( bio );
         return;
     }
 

@@ -21,6 +21,7 @@ static const bionic_id bio_power_storage( "bio_power_storage" );
 static const json_character_flag json_flag_DISTRIBUTED_DAMAGE( "DISTRIBUTED_DAMAGE" );
 
 static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
+static const trait_id trait_TEST_POWER_TRICKLE( "TEST_POWER_TRICKLE" );
 static const trait_id trait_WINGS_INSECT( "WINGS_INSECT" );
 static const trait_id trait_WINGS_INSECT_active( "WINGS_INSECT_active" );
 
@@ -124,5 +125,33 @@ TEST_CASE( "mut-b03_removing_extended_weapon_bionic_retracts_weapon", "[audit][b
     }
     CHECK_FALSE( dummy.is_using_bionic_weapon() );
     CHECK( !dummy.get_wielded_item() );
+    clear_avatar();
+}
+
+// MUT-B04: POWER_TRICKLE was only read in burn_fuel()'s branch for unpowered bionics, so
+// it was applied once per passive CBM each turn, and never without one.
+TEST_CASE( "mut-b04_power_trickle_applies_once_per_turn", "[audit][bionics]" )
+{
+    clear_avatar();
+    Character &dummy = get_player_character();
+    // TEST_POWER_TRICKLE adds 1000 mJ per second.
+    dummy.set_mutation( trait_TEST_POWER_TRICKLE );
+    const units::energy trickle = 1_J;
+
+    SECTION( "with several passive bionics" ) {
+        dummy.add_bionic( bio_power_storage );
+        dummy.add_bionic( bio_power_storage );
+        dummy.add_bionic( bio_power_storage );
+    }
+    SECTION( "with no bionics" ) {
+        dummy.set_max_power_level_modifier( 100_kJ );
+    }
+    REQUIRE( dummy.get_max_power_level() >= 100_kJ );
+    dummy.set_power_level( 0_kJ );
+
+    dummy.suffer();
+    CHECK( dummy.get_power_level() == trickle );
+    dummy.suffer();
+    CHECK( dummy.get_power_level() == trickle * 2 );
     clear_avatar();
 }

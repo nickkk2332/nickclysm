@@ -482,5 +482,14 @@
     "points": 0,
     "description": "Test torso that bleeds.",
     "enchantments": [ { "modified_bodyparts": [ { "lose": "torso" }, { "gain": "test_torso" } ] } ]
+  },
+  {
+    "//": "MUT-B04 fixture: a character-wide POWER_TRICKLE of 1 J per second.",
+    "type": "mutation",
+    "id": "TEST_POWER_TRICKLE",
+    "name": { "str": "Test Power Trickle" },
+    "points": 0,
+    "description": "Test mutation that generates a trickle of bionic power.",
+    "enchantments": [ { "values": [ { "value": "POWER_TRICKLE", "add": 1000 } ] } ]
   }
 ]
