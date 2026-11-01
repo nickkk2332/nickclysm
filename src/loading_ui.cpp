@@ -1,5 +1,7 @@
 #include "loading_ui.h"
 
+#include <chrono>
+
 #include "cached_options.h"
 #include "input.h"
 #include "options.h"
@@ -262,8 +264,17 @@ void loading_ui::show( const std::string &context, const std::string &step )
     }
     update_state( context, step );
     drain_renderer_recovery();
-    ui_manager::redraw();
-    refresh_display();
+    // Each redraw ends in a vsync-blocked present, about one frame, and data loading calls
+    // this for every step (some 180 finalize and check steps alone, most well under a
+    // millisecond), which added seconds to every world load. Redraw at most every 50 ms;
+    // the state above is always kept current, and the first call always draws.
+    static std::chrono::steady_clock::time_point last_draw;
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    if( now - last_draw >= std::chrono::milliseconds( 50 ) ) {
+        last_draw = now;
+        ui_manager::redraw();
+        refresh_display();
+    }
     inp_mngr.pump_events();
 }
 
