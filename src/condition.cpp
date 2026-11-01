@@ -362,6 +362,19 @@ static bodypart_id get_bp_from_str( const std::string &ctxt )
     return bid;
 }
 
+// A string condition names one of the simple condition parsers. An unknown name used to
+// compile to an always-false condition (always true under "not") without any error, so
+// typos went unnoticed; report them at load time instead.
+static bool is_known_string_condition( std::string_view type )
+{
+    return dialogue_data::simple_string_conds().count( std::string( type ) ) > 0;
+}
+
+static std::string unknown_string_condition_error( std::string_view type )
+{
+    return string_format( "unknown condition \"%s\"", type );
+}
+
 void read_condition( const JsonObject &jo, const std::string &member_name,
                      conditional_t::func &condition, bool default_val )
 {
@@ -373,6 +386,9 @@ void read_condition( const JsonObject &jo, const std::string &member_name,
         condition = null_function;
     } else if( jo.has_string( member_name ) ) {
         const std::string type = jo.get_string( member_name );
+        if( !is_known_string_condition( type ) ) {
+            jo.throw_error_at( member_name, unknown_string_condition_error( type ) );
+        }
         conditional_t sub_condition( type );
         condition = [sub_condition]( const_dialogue const & d ) {
             return sub_condition( d );
@@ -2775,7 +2791,11 @@ conditional_t::conditional_t( const JsonObject &jo )
         std::vector<conditional_t> conditionals;
         for( const JsonValue entry : jo.get_array( type ) ) {
             if( entry.test_string() ) {
-                conditional_t type_condition( entry.get_string() );
+                const std::string type = entry.get_string();
+                if( !is_known_string_condition( type ) ) {
+                    entry.throw_error( unknown_string_condition_error( type ) );
+                }
+                conditional_t type_condition( type );
                 conditionals.emplace_back( type_condition );
             } else {
                 JsonObject cond = entry.get_object();
@@ -2809,7 +2829,11 @@ conditional_t::conditional_t( const JsonObject &jo )
             return !sub_condition( d );
         };
     } else if( jo.has_string( "not" ) ) {
-        const conditional_t sub_condition = conditional_t( jo.get_string( "not" ) );
+        const std::string type = jo.get_string( "not" );
+        if( !is_known_string_condition( type ) ) {
+            jo.throw_error_at( "not", unknown_string_condition_error( type ) );
+        }
+        const conditional_t sub_condition = conditional_t( type );
         found_sub_member = true;
         condition = [sub_condition]( const_dialogue const & d ) {
             return !sub_condition( d );

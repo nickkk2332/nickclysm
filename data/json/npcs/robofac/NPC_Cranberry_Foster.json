@@ -188,7 +188,7 @@
           "and": [
             { "compare_string": [ "yes", { "u_val": "general_robofac_merc_1_helped_with_missions" } ] },
             { "not": { "compare_string": [ "yes", { "npc_val": "general_robofac_merc_1_temporal_follower" } ] } },
-            { "not": "has_many_assigned_mission" },
+            { "not": "has_many_assigned_missions" },
             { "not": "has_assigned_mission" }
           ]
         },
@@ -220,7 +220,7 @@
         "condition": {
           "and": [
             { "not": { "compare_string": [ "yes", { "u_val": "general_robofac_merc_1_has_gold_deal" } ] } },
-            { "not": "has_many_assigned_mission" },
+            { "not": "has_many_assigned_missions" },
             { "not": "has_assigned_mission" }
           ]
         },
@@ -487,12 +487,12 @@
     "responses": [
       {
         "text": "Anything I can do to change your mind?",
-        "condition": { "and": [ { "not": "has_many_assigned_mission" }, { "not": "has_assigned_mission" } ] },
+        "condition": { "and": [ { "not": "has_many_assigned_missions" }, { "not": "has_assigned_mission" } ] },
         "topic": "TALK_MISSION_LIST"
       },
       {
         "text": "Anything I can do to change your mind?",
-        "condition": { "not": { "and": [ { "not": "has_many_assigned_mission" }, { "not": "has_assigned_mission" } ] } },
+        "condition": { "not": { "and": [ { "not": "has_many_assigned_missions" }, { "not": "has_assigned_mission" } ] } },
         "topic": "TALK_ROBOFAC_MERC_1_HWP_IF_I_OWE_YOU"
       },
       { "text": "Alright.", "topic": "TALK_ROBOFAC_MERC_1_MAIN" }

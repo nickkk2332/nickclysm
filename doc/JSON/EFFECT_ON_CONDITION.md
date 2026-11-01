@@ -1546,7 +1546,7 @@ You can see selected location.
 ]
 ```
 
-### `u_see_npc`, `npc_see_you`
+### `u_see_npc`, `npc_see_u`
 - type: simple string
 - return true if alpha talker can see beta talker, or vice versa
 - require both talkers to be presented
@@ -1574,10 +1574,10 @@ You can see selected location.
 ```
 
 ```jsonc
-{ "not": "npc_see_you" }
+{ "not": "npc_see_u" }
 ```
 
-### `u_see_npc_loc`, `npc_see_you_loc`
+### `u_see_npc_loc`, `npc_see_u_loc`
 - type: simple string
 - return true if beta talker' position is visible from the alpha talker position, and vice versa
 - doesn't check vision condition, can return true even if one or other is blind or it is a night
@@ -1596,7 +1596,7 @@ You can see selected location.
 ```
 
 ```jsonc
-{ "not": "npc_see_you_loc" }
+{ "not": "npc_see_u_loc" }
 ```
 
 ### `line_of_sight`
