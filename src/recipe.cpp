@@ -251,6 +251,60 @@ bool recipe::has_flag( const std::string &flag_name ) const
     return flags.count( flag_name );
 }
 
+// "extend" and "delete" of "proficiencies" are keyed by proficiency id: extend replaces the
+// entry with the same id or adds it, delete removes the entry for each id
+static void load_proficiency_extend_delete( const JsonObject &jo, const bool was_loaded,
+        std::vector<recipe_proficiency> &profs )
+{
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", "proficiencies", "no copy-from" );
+        warn_disabled_feature( jo, "delete", "proficiencies", "no copy-from" );
+        return;
+    }
+    const auto find_prof = [&profs]( const proficiency_id & prof ) {
+        return std::find_if( profs.begin(), profs.end(), [&prof]( const recipe_proficiency & rp ) {
+            return rp.id == prof;
+        } );
+    };
+    if( jo.has_object( "extend" ) ) {
+        JsonObject jext = jo.get_object( "extend" );
+        jext.allow_omitted_members();
+        if( jext.has_member( "proficiencies" ) ) {
+            for( JsonObject jprof : jext.get_array( "proficiencies" ) ) {
+                recipe_proficiency added;
+                added.load( jprof );
+                auto it = find_prof( added.id );
+                if( it == profs.end() ) {
+                    profs.push_back( added );
+                } else {
+                    *it = added;
+                }
+            }
+        }
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject jdel = jo.get_object( "delete" );
+        jdel.allow_omitted_members();
+        if( jdel.has_member( "proficiencies" ) ) {
+            for( JsonValue jv : jdel.get_array( "proficiencies" ) ) {
+                proficiency_id prof;
+                if( jv.test_string() ) {
+                    prof = proficiency_id( jv.get_string() );
+                } else {
+                    JsonObject jprof = jv.get_object();
+                    jprof.allow_omitted_members();
+                    prof = proficiency_id( jprof.get_string( "proficiency" ) );
+                }
+                auto it = find_prof( prof );
+                if( it == profs.end() ) {
+                    jv.throw_error( "no proficiency to delete" );
+                }
+                profs.erase( it );
+            }
+        }
+    }
+}
+
 void recipe::load( const JsonObject &jo, const std::string_view src )
 {
     abstract = jo.has_string( "abstract" );
@@ -457,6 +511,10 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
 
     if( !effectively_step_recipe ) {
         jo.read( "proficiencies", proficiencies );
+        load_proficiency_extend_delete( jo, was_loaded, proficiencies );
+    } else {
+        warn_disabled_feature( jo, "extend", "proficiencies", "step recipes take them per step" );
+        warn_disabled_feature( jo, "delete", "proficiencies", "step recipes take them per step" );
     }
 
     // simplified autolearn sets requirements equal to required skills at finalization
@@ -655,6 +713,14 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         jo.throw_error_at( "type", "unknown recipe type" );
     }
 
+    // Inline requirements are read whole and not inherited, so extend and delete can't apply
+    // to them; say so instead of dropping them
+    for( const char *member : {
+             "components", "tools", "qualities"
+         } ) {
+        warn_disabled_feature( jo, "extend", member, "restate the whole list instead" );
+        warn_disabled_feature( jo, "delete", member, "restate the whole list instead" );
+    }
     const requirement_id req_id( "inline_" + type + "_" + id.str() );
     // Step recipes legitimately have root-level components; suppress abstract
     // debugmsg for them (tools/qualities are already caught by field validation).

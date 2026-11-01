@@ -158,6 +158,28 @@ A value of `0` is valid but has no effect. The recipe cannot be started while an
 
 When a recipe with `copy-from` defines `character_requirements`, the entire inherited object is replaced. Members omitted from the child object are not inherited individually.
 
+#### Changing proficiencies and requirements with `copy-from`
+
+A recipe with `copy-from` inherits its parent's `proficiencies`. Giving `proficiencies` replaces the whole list; `extend` and `delete` change it by proficiency id:
+
+- `"extend": { "proficiencies": [ ... ] }` takes entries in the same format as `proficiencies`. An entry for an id the list already has replaces that entry (to change its `required` flag or multipliers); any other entry is added at the end.
+- `"delete": { "proficiencies": [ ... ] }` takes proficiency ids, or entries with a `proficiency` member, and removes the entry for each. Deleting an id the list doesn't have is a load error.
+
+When both are given, `extend` is applied before `delete`. Neither is allowed without `copy-from`, or on a recipe with `steps` (whose proficiencies are given per step).
+
+```jsonc
+{
+  "result": "qt_sheet_metal_small",
+  "type": "recipe",
+  "copy-from": "sheet_metal_small",
+  "extend": { "proficiencies": [ { "proficiency": "prof_tempering" } ] },
+  "delete": { "proficiencies": [ "prof_blacksmithing" ] },
+  "components": [ [ [ "mc_steel_chunk", 1 ] ] ]
+}
+```
+
+`using` can be extended and deleted too. The inline `components`, `tools` and `qualities` of a recipe are not inherited, so a recipe with `copy-from` must restate them; `extend` or `delete` of them is a load error.
+
 #### `batch_time_factors`
 
 `batch_time_factors` supports several formats, with two different scaling functions.
