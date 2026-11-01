@@ -1,18 +1,27 @@
 #if defined(TILES)
 
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <string>
 
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
+#include "cata_path.h"
 #include "cata_scope_helpers.h"
 #include "cata_tiles.h"
+#include "cata_utility.h"
 #include "coordinates.h"
+#include "debug.h"
+#include "filesystem.h"
 #include "game.h"
 #include "map.h"
 #include "map_helpers_tests.h"
 #include "map_memory.h"
+#include "options.h"
 #include "output.h"
+#include "path_info.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "sdl_renderer_recovery.h"
@@ -82,6 +91,77 @@ TEST_CASE( "rend-b01_ortho_tiles_memorize_seen_terrain_north_of_the_screen",
     you.prepare_map_memory_region( here.get_abs( north_point ), here.get_abs( player_pos ) );
     CHECK( you.get_memorized_tile( here.get_abs( north_point ) ).get_ter_id() ==
            ter_t_wall.str() );
+}
+
+// REND-B02: the tileset loader erased tiles without valid sprites from tile_ids, but
+// left pointers to them in tile_ids_by_season, which every draw looks tiles up in.
+TEST_CASE( "rend-b02_tileset_load_drops_season_lookups_of_invalid_tiles", "[audit][tiles]" )
+{
+    software_render_fixture fx;
+    if( !fx.available() ) {
+        WARN( "dummy SDL video backend unavailable; skipping" );
+        return;
+    }
+    const std::string tileset_id = "audit_rend_b02_ts";
+    const cata_path dir = PATH_INFO::user_dir_path() / "audit_rend_b02_tileset";
+    const cata_path conf = dir / PATH_INFO::tileset_conf();
+    const cata_path json = dir / "tile_config.json";
+    const cata_path png = dir / "tiles.png";
+    const auto cleanup = [&]() {
+        TILESETS.erase( tileset_id );
+        remove_file( conf );
+        remove_file( json );
+        remove_file( png );
+        remove_directory( dir.get_unrelative_path() );
+    };
+    on_out_of_scope restore( cleanup );
+    cleanup();
+
+    REQUIRE( assure_dir_exist( dir ) );
+    // 16x16 atlas of sixteen 4x4 sprites
+    REQUIRE( copy_file( cata_path( cata_path::root_path::unknown,
+                                   "tests/data/opaque_bounds_atlas.png" ), png ) );
+    write_to_file( conf, []( std::ostream & os ) {
+        os << "NAME: audit_rend_b02_ts\nJSON: tile_config.json\nTILESET: tiles.png\n";
+    } );
+    // Sprite 99 does not exist, so audit_bad and audit_mixed_season_winter are invalid.
+    write_to_file( json, []( std::ostream & os ) {
+        os << R"({"tile_info":[{"width":4,"height":4}],"tiles-new":[{"file":"tiles.png",)"
+           << R"("tiles":[{"id":"unknown","fg":0},{"id":"audit_good","fg":1},)"
+           << R"({"id":"audit_bad","fg":99},{"id":"audit_mixed","fg":2},)"
+           << R"({"id":"audit_mixed_season_winter","fg":99}]}]})";
+    } );
+    TILESETS[tileset_id] = dir;
+
+    const bool error_seen_before = debug_has_error_been_observed();
+    const std::shared_ptr<const tileset> ts = renderer_recovery_test_support::fetch_cached_bundle(
+                tileset_id, "color_pixel_darken", renderer_coordinator.instance_generation(),
+                renderer_coordinator.textures_generation() );
+    REQUIRE( ts );
+    // The loader reports the invalid tiles as D_ERROR. They are expected here, so do not
+    // let them fail the whole test run.
+    CHECK( debug_has_error_been_observed() );
+    if( !error_seen_before ) {
+        debug_reset_error_observed();
+    }
+    REQUIRE( ts->get_tileset_id() == tileset_id );
+    REQUIRE( ts->find_tile_type( "audit_good" ) != nullptr );
+    REQUIRE( ts->find_tile_type( "audit_mixed" ) != nullptr );
+    REQUIRE( ts->find_tile_type( "audit_bad" ) == nullptr );
+    REQUIRE( ts->find_tile_type( "audit_mixed_season_winter" ) == nullptr );
+
+    for( int s = 0; s < NUM_SEASONS; ++s ) {
+        const season_type season = static_cast<season_type>( s );
+        CAPTURE( s );
+        CHECK( ts->find_tile_type_by_season( "audit_good", season ).has_value() );
+        // The season lookup agrees with find_tile_type: the invalid tile is gone.
+        CHECK_FALSE( ts->find_tile_type_by_season( "audit_bad", season ).has_value() );
+        // An invalid seasonal variant falls back to the valid base tile.
+        std::optional<tile_lookup_res> mixed =
+            ts->find_tile_type_by_season( "audit_mixed", season );
+        REQUIRE( mixed.has_value() );
+        CHECK( mixed->id() == "audit_mixed" );
+    }
 }
 
 #endif // TILES

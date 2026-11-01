@@ -463,18 +463,45 @@ atlas_upload_interrupt tileset_cache::loader::load( const std::string &tileset_i
         }
     }
 
-    // loop through all tile ids and eliminate empty/invalid things
-    for( auto it = ts.tile_ids.begin(); it != ts.tile_ids.end(); ) {
+    // loop through all tile ids and find empty/invalid things
+    std::unordered_set<const tile_type *> invalid_tiles;
+    for( std::pair<const std::string, tile_type> &tile_entry : ts.tile_ids ) {
         // second is the tile_type describing that id
-        tile_type &td = it->second;
+        tile_type &td = tile_entry.second;
         process_variations_after_loading( td.fg );
         process_variations_after_loading( td.bg );
         // All tiles need at least foreground or background data, otherwise they are useless.
         if( td.bg.empty() && td.fg.empty() ) {
-            dbg( D_ERROR ) << "tile " << it->first << " has no (valid) foreground nor background";
-            ts.tile_ids.erase( it++ );
-        } else {
-            ++it;
+            dbg( D_ERROR ) << "tile " << tile_entry.first
+                           << " has no (valid) foreground nor background";
+            invalid_tiles.insert( &td );
+        }
+    }
+    if( !invalid_tiles.empty() ) {
+        // tile_ids_by_season points into tile_ids: drop what refers to the tiles erased
+        // below, or season lookups would return freed tiles
+        for( auto &by_season : ts.tile_ids_by_season ) {
+            for( auto it = by_season.begin(); it != by_season.end(); ) {
+                auto &value = it->second;
+                if( invalid_tiles.count( value.default_tile ) ) {
+                    value.default_tile = nullptr;
+                }
+                if( value.season_tile && invalid_tiles.count( &value.season_tile->tile() ) ) {
+                    value.season_tile = std::nullopt;
+                }
+                if( !value.default_tile && !value.season_tile ) {
+                    it = by_season.erase( it );
+                } else {
+                    ++it;
+                }
+            }
+        }
+        for( auto it = ts.tile_ids.begin(); it != ts.tile_ids.end(); ) {
+            if( invalid_tiles.count( &it->second ) ) {
+                it = ts.tile_ids.erase( it );
+            } else {
+                ++it;
+            }
         }
     }
 
