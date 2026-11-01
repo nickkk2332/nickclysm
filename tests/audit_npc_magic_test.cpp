@@ -8,6 +8,7 @@
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature_tracker.h"
+#include "damage.h"
 #include "flag.h"
 #include "game.h"
 #include "gun_mode.h"
@@ -24,6 +25,7 @@
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "projectile.h"
 #include "type_id.h"
 
 class Creature;
@@ -241,4 +243,37 @@ TEST_CASE( "magic-b03_split_and_percentage_spell_damage_credits_the_caster",
         CHECK( guy.get_killer() == &caster );
         CHECK( guy.hit_by_player );
     }
+}
+
+// min_pierce, pierce_increment and max_pierce (armor of the spell's damage type that it
+// ignores) were loaded and documented, but get_damage_instance() never used them, so
+// armor-piercing spells did full armor-mitigated damage.
+TEST_CASE( "magic-b04_spell_pierce_becomes_armor_penetration", "[audit][magic]" )
+{
+    clear_avatar();
+    Character &caster = get_player_character();
+    // stab damage, min_pierce 3, pierce_increment 1, max_pierce 5, max_level 3
+    spell sp( spell_weaponpod_saw );
+    REQUIRE( sp.get_level() == 0 );
+
+    const auto armor_penetration = [&sp, &caster]() {
+        const damage_instance dmg = sp.get_damage_instance( caster );
+        REQUIRE( dmg.damage_units.size() == 1 );
+        return dmg.damage_units.front().res_pen;
+    };
+
+    CHECK( armor_penetration() == Approx( 3.0f ) );
+    sp.set_level( caster, 1 );
+    REQUIRE( sp.get_level() == 1 );
+    CHECK( armor_penetration() == Approx( 4.0f ) );
+    sp.set_level( caster, 3 );
+    REQUIRE( sp.get_level() == 3 );
+    // 3 + 3 * 1 is capped at max_pierce
+    CHECK( armor_penetration() == Approx( 5.0f ) );
+
+    // the projectile spell attacks hit with carries it too
+    const dealt_projectile_attack atk =
+        sp.get_projectile_attack( caster.pos_bub(), caster, caster );
+    REQUIRE( atk.proj.impact.damage_units.size() == 1 );
+    CHECK( atk.proj.impact.damage_units.front().res_pen == Approx( 5.0f ) );
 }

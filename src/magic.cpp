@@ -746,6 +746,21 @@ int spell::damage( const Creature &caster ) const
     }
 }
 
+// Armor of the spell's damage type that its damage ignores (min_pierce, pierce_increment and
+// max_pierce), leveled and clamped like the spell's other stats.
+static float spell_armor_penetration( const spell &sp, const Creature &caster )
+{
+    const spell_type &type = sp.id().obj();
+    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const float min_pierce = type.min_pierce.evaluate( d );
+    const float max_pierce = type.max_pierce.evaluate( d );
+    const float leveled_pierce = min_pierce + sp.get_effective_level() *
+                                 type.pierce_increment.evaluate( d );
+    const float pierce = max_pierce >= min_pierce ? std::min( leveled_pierce, max_pierce ) :
+                         std::max( leveled_pierce, max_pierce );
+    return std::max( pierce, 0.0f );
+}
+
 int spell::min_leveled_accuracy( const Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr );
@@ -2186,7 +2201,7 @@ const damage_type_id &spell::dmg_type() const
 damage_instance spell::get_damage_instance( Creature &caster ) const
 {
     damage_instance dmg;
-    dmg.add_damage( dmg_type(), damage( caster ) );
+    dmg.add_damage( dmg_type(), damage( caster ), spell_armor_penetration( *this, caster ) );
     return dmg;
 }
 
@@ -3204,6 +3219,10 @@ void spellcasting_callback::display_spell_info( size_t index )
                                 sp.damage_string( pc ).c_str(),
                                 sp.damage_type_string().c_str(),
                                 dot_string.c_str() );
+            const float pierce = spell_armor_penetration( sp, pc );
+            if( pierce > 0.0f ) {
+                ImGui::Text( "%s: %.1f", _( "Armor penetration" ), pierce );
+            }
         } else if( damage < 0 ) {
             ImGui::Text( "%s: ", _( "Healing" ) );
             ImGui::SameLine( 0, 0 );
