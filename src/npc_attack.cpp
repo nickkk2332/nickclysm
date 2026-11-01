@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -17,6 +18,7 @@
 #include "dialogue.h"
 #include "dialogue_helpers.h"
 #include "flag.h"
+#include "gun_mode.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
@@ -112,6 +114,18 @@ static int gun_range_estimate( const item &gun )
         range_multiplier *= mod->type->gunmod->range_multiplier;
     }
     return clamp( static_cast<int>( range * range_multiplier ), 0, RANGE_HARD_CAP );
+}
+
+// npc_attack_gun keeps the evaluated gun_mode but not its id, so look the id up.
+static void set_gun_mode( item &gun, const gun_mode &mode )
+{
+    for( const std::pair<const gun_mode_id, gun_mode> &m : gun.gun_all_modes() ) {
+        if( m.second.target == mode.target && m.second.qty == mode.qty &&
+            m.second.flags == mode.flags && m.second.tname() == mode.tname() ) {
+            gun.gun_set_mode( m.first );
+            return;
+        }
+    }
 }
 
 bool npc_attack_rating::operator>( const npc_attack_rating &rhs ) const
@@ -487,7 +501,15 @@ void npc_attack_gun::use( npc &source, const tripoint_bub_ms &location ) const
         return;
     }
 
-    if( !gun.ammo_sufficient( &source ) ) {
+    // The evaluated mode fires either the base gun or an underbarrel gunmod.
+    item &firing_gun = *gunmode.target;
+    if( &firing_gun != &gun && !firing_gun.ammo_sufficient( &source ) ) {
+        // can_use() rejects an empty gunmod, and only the base gun is reloaded here.
+        source.move_pause();
+        return;
+    }
+
+    if( &firing_gun == &gun && !gun.ammo_sufficient( &source ) ) {
         // todo: make gun an item_location instead of getting wielded item here
         // but since wielding is required before this, it should be fine
         source.do_reload( source.get_wielded_item() );
@@ -517,19 +539,28 @@ void npc_attack_gun::use( npc &source, const tripoint_bub_ms &location ) const
         add_msg_debug( debugmode::debug_filter::DF_NPC, "%s is aiming", source.disp_name() );
         source.aim( Target_attributes( source.pos_bub(), location ) );
     } else {
+        if( &firing_gun == &gun ) {
+            // as the avatar does: recoil and multimag ammo use the gun's current mode
+            set_gun_mode( gun, gunmode );
+        }
+        // fire the evaluated mode's burst, not one shot of the wielded base gun
         if( source.is_hallucination() ) {
-            gun_mode mode = source.get_wielded_item()->gun_current_mode();
-            source.pretend_fire( &source, mode.qty, *mode );
+            source.pretend_fire( &source, gunmode.qty, firing_gun );
         } else {
-            source.fire_gun( location );
+            source.fire_gun( get_map(), location, gunmode.qty, firing_gun );
         }
         add_msg_debug( debugmode::debug_filter::DF_NPC, "%s fires %s", source.disp_name(),
-                       gun.display_name() );
+                       firing_gun.display_name() );
     }
 }
 
 bool npc_attack_gun::can_use( const npc &source ) const
 {
+    if( gunmode.target != &gun ) {
+        // An underbarrel gunmod fires its own ammo, and use() only reloads the base gun.
+        return ( source.is_wielding( gun ) || source.can_wield( gun ).success() ) &&
+               gunmode->ammo_sufficient( &source );
+    }
     // can't attack with something you can't wield.
     if( !source.is_wielding( *gunmode ) && !source.can_wield( *gunmode ).success() ) {
         return false;
