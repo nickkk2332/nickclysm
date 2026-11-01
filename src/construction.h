@@ -20,6 +20,7 @@
 
 class Character;
 class temp_crafting_inventory;
+struct const_dialogue;
 struct point;
 
 namespace catacurses
@@ -86,6 +87,18 @@ struct construction {
         std::vector<void ( * )( const tripoint_bub_ms &, Character & )> post_specials;
         // Custom error message display
         void ( *explain_failure )( const tripoint_bub_ms & );
+        // JSON "condition": the builder (alpha) must meet it to start this construction
+        std::function<bool( const_dialogue const & )> condition;
+        bool has_condition = false;
+        // JSON "do_turn_eocs": run each turn of work, with the builder as alpha
+        std::vector<effect_on_condition_id> do_turn_eocs;
+        // JSON "post_eocs": run once the construction is finished, with the builder as alpha
+        std::vector<effect_on_condition_id> post_eocs;
+        // Whether builder meets "condition" to build this at p
+        bool meets_condition( const Character &builder, const tripoint_bub_ms &p ) const;
+        // Runs eocs with builder as alpha and the context values "construction" and "pos"
+        void run_eocs( const std::vector<effect_on_condition_id> &eocs, Character &builder,
+                       const tripoint_abs_ms &p ) const;
         // Whether it's furniture or terrain
         bool pre_is_furniture = false;
         // Whether it's furniture or terrain
@@ -119,6 +132,9 @@ void load_construction( const JsonObject &jo, const std::string &src );
 void reset_constructions();
 construction_id construction_menu( bool blueprint );
 bool has_pre_flags( const construction &con, furn_id const &f, ter_id const &t );
+// Whether con can be started at p by builder (the site checks plus con's "condition")
+bool can_construct( const construction &con, const tripoint_bub_ms &p, const Character &builder );
+// As above, with the avatar as the builder
 bool can_construct( const construction &con, const tripoint_bub_ms &p );
 bool player_can_build( Character &you, const temp_crafting_inventory &inv, const construction &con,
                        bool can_construct_skip = false );

@@ -44,6 +44,7 @@ enum class event_type : int {
     character_eats_item,
     character_effect_intensity_changed,
     character_finished_activity,
+    character_finishes_construction,
     character_forgets_spell,
     character_gains_effect,
     character_gets_headshot,
@@ -201,7 +202,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 110,
+static_assert( static_cast<int>( event_type::num_event_types ) == 111,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -335,6 +336,16 @@ struct event_spec<event_type::character_finished_activity> {
             { "character", cata_variant_type::character_id },
             { "activity", cata_variant_type::activity_id },
             { "canceled", cata_variant_type::bool_ }
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::character_finishes_construction> {
+    static constexpr std::array<event_field, 3> fields = { {
+            { "character", cata_variant_type::character_id },
+            { "construction", cata_variant_type::string },
+            { "pos", cata_variant_type::tripoint }
         }
     };
 };

@@ -9568,6 +9568,17 @@ void build_construction_activity_actor::do_turn( player_activity &act, Character
                                     delta_progress;
     you.set_moves( 0 );
     pc->id->do_turn_special( construction_bub, you );
+    if( !built.do_turn_eocs.empty() ) {
+        built.run_eocs( built.do_turn_eocs, you, construction_location );
+        // An EOC that cancels or replaces the activity destroys this actor
+        if( !act || act.actor.get() != this ) {
+            return;
+        }
+        pc = here.partial_con_at( construction_bub );
+        if( !pc ) {
+            return;
+        }
+    }
     // Current progress as a percent of base_total_moves to 2 decimal places
     pc->counter = std::round( current_progress / base_total_moves * 10000000.0 );
     pc->counter = std::min( pc->counter, 10000000 );

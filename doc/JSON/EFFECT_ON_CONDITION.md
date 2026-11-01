@@ -78,6 +78,9 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | activity_type: "completion_eoc"                  | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
 | activity_type: "cancel_eoc"                      | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
 | activity_type: "do_turn_eoc"                     | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
+| construction: "condition"                        | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile being built on
+| construction: "do_turn_eocs"                     | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile being built on
+| construction: "post_eocs"                        | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile that was built on
 | addiction_type: "effect_on_condition"            | character (Character)       | NONE                        |
 | bionics: "activated_eocs"                        | character (Character)       | NONE                        | `act_cost`, int, cost of activation of item
 | bionics: "deactivated_eocs"                      | character (Character)       | NONE                        |
@@ -1894,6 +1897,7 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | character_dies |  | { "character", `character_id` }, | character / NONE |
 | character_eats_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
 | character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended and after its `completion_eoc` or `cancel_eoc`. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a drop dropped everything, or a zone job ran out of work | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` } | character / NONE |
+| character_finishes_construction | Triggers when a character finishes a construction, after its `post_special` and `post_eocs` | { "character", `character_id` },<br/> { "construction", `string` } (construction id),<br/> { "pos", `tripoint` } (location of the tile) | character / NONE |
 | character_forgets_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_gains_effect |  | { "character", `character_id` },<br/> { "effect", `efftype_id` },<br/> { "bodypart", `bodypart_id` }, { "intensity", `int` }</br> | character / NONE |
 | character_gets_headshot |  | { "character", `character_id` } | character / NONE |

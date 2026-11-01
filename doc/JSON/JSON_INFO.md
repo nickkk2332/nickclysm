@@ -2158,7 +2158,47 @@ The array of hobbies (listed as professions) is whitelisted to all characters.  
 "dark_craftable": true,                                             // If true, you can construct it with lack of light
 "byproducts": [ { "item": "material_soil", "count": [ 2, 5 ] } ],   // Items, that would be left after construction
 "strict": false,                                                    // If true, the build activity for this construction will only look for prerequisites in the same group
-"on_display": false                                                 // This is a hidden construction item, used by faction camps to calculate construction times but not available to the player
+"on_display": false,                                                // This is a hidden construction item, used by faction camps to calculate construction times but not available to the player
+"condition": { "math": [ "u_val('mana') >= 50" ] },                 // Dialogue condition the builder must meet to start this construction, see below
+"do_turn_eocs": [ "EOC_WARD_CHANT" ],                               // Effect on conditions run on every turn of work, see below
+"post_eocs": [ "EOC_WARD_DONE" ]                                    // Effect on conditions run once the construction is finished, see below
+```
+
+#### Construction conditions and EOCs
+
+`condition`, `do_turn_eocs` and `post_eocs` let a construction do things the hardcoded `pre_special`, `do_turn_special` and `post_special` can't.
+
+- `condition` is a [dialogue condition](EFFECT_ON_CONDITION.md#condition). The builder is alpha (`u_`), and there is no beta. It is checked with the other pre-checks whenever a construction and a tile are chosen: in the construction menu (with the avatar as builder) and when a character works a construction blueprint zone. A construction whose condition fails can't be started, like one whose `pre_terrain` is missing. It is not checked again while the work goes on, and resuming a construction that was already started doesn't check it. The game doesn't say why the condition failed, so describe it in `pre_note`.
+- `do_turn_eocs` is an array of effect on conditions (ids or inline objects), run on every turn the builder works on the construction, after `do_turn_special`. An EOC that cancels the builder's activity stops the work.
+- `post_eocs` is an array of effect on conditions run once the construction is finished: after the terrain is set, the byproducts are spawned and `post_special` has run.
+
+All three get the builder as alpha, no beta, and two context values: `construction` (string, the construction id) and `pos` (location of the tile being built on, `_pos` in math). When `copy-from` is used, each of these fields replaces the inherited one when present.
+
+When a construction is finished, the `character_finishes_construction` event is also sent, so an `EVENT` EOC can react to every construction, see [EVENT EOCs](EFFECT_ON_CONDITION.md#event-eocs).
+
+```jsonc
+{
+  "type": "construction",
+  "id": "constr_ward_circle",
+  "group": "ward_circle",
+  "category": "OTHER",
+  "required_skills": [ [ "spellcraft", 2 ] ],
+  "time": "30 m",
+  "pre_special": "check_empty",
+  "post_terrain": "f_ward_circle",
+  "pre_note": "Needs at least 50 mana.",
+  "condition": { "math": [ "u_val('mana') >= 50" ] },
+  "do_turn_eocs": [ { "id": "EOC_WARD_CHANT", "effect": [ { "math": [ "u_val('mana') -= 1" ] } ] } ],
+  "post_eocs": [
+    {
+      "id": "EOC_WARD_DONE",
+      "effect": [
+        { "u_cast_spell": { "id": "ward" }, "targeted": false },
+        { "copy_var": { "context_val": "pos" }, "target_var": { "global_val": "ward_pos" } }
+      ]
+    }
+  ]
+}
 ```
 
 | pre_special            | Description
