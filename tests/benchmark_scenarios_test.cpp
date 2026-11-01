@@ -20,21 +20,28 @@
 #include <string>
 #include <vector>
 
+#include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "clzones.h"
 #include "coordinates.h"
+#include "crafting.h"
+#include "crafting_enums.h"
 #include "game.h"
 #include "item.h"
+#include "item_location.h"
+#include "item_wakeup.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_selector.h"
 #include "monster.h"
 #include "options_helpers.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "recipe.h"
@@ -56,10 +63,14 @@ static const itype_id itype_can_beans( "can_beans" );
 static const itype_id itype_flashlight( "flashlight" );
 static const itype_id itype_hammer( "hammer" );
 static const itype_id itype_jacket_light( "jacket_light" );
+static const itype_id itype_microwave( "microwave" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_scrap( "scrap" );
 
 static const faction_id faction_your_followers( "your_followers" );
+
+static const recipe_id recipe_cudgel_test_unattended_with_qual(
+    "cudgel_test_unattended_with_qual" );
 
 static const zone_type_id zone_type_LOOT_AMMO( "LOOT_AMMO" );
 static const zone_type_id zone_type_LOOT_BOOKS( "LOOT_BOOKS" );
@@ -537,5 +548,46 @@ TEST_CASE( "bench_vehicle_collision_check", "[.][benchmark_scenario]" )
             bus->collision( here, colls, tripoint_rel_ms( step % 2 == 0 ? 1 : -1, 0, 0 ), false );
         }
         CHECK( colls.empty() );
+    } );
+}
+
+// CRAFT-P01: the crafter waits (the default plan) on an unattended step that needs an
+// oven, in a dense base. The game runs the item wakeups each turn, then the activity.
+TEST_CASE( "bench_craft_unattended_wait", "[.][benchmark_scenario]" )
+{
+    const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+    run_scenario( "craft_unattended_wait",
+                  "300 turns waiting on an unattended step needing an oven, in a dense base",
+    [&center]() {
+        clear_avatar();
+        clear_map();
+        avatar &u = get_avatar();
+        map &here = get_map();
+        u.setpos( here, center );
+        build_dense_base( center );
+        fill_inventory( u );
+        u.i_add( item( itype_microwave ) );
+        u.invalidate_crafting_inventory();
+        item ingredient( itype_2x4, calendar::turn );
+        item placed( &recipe_cudgel_test_unattended_with_qual.obj(), 1, ingredient );
+        item &on_map = here.add_item( center, placed );
+        REQUIRE( on_map.is_craft() );
+        on_map.set_current_step( 1 );
+        on_map.set_crafter_id( u.getID() );
+        on_map.set_step_plans( std::vector<attention_plan>( 2 ) );
+        item_location loc( map_cursor( here.get_abs( center ) ), &on_map );
+        craft_stamp_passive_entry( on_map, u, calendar::turn, loc );
+        u.activity = player_activity( craft_activity_actor( loc, false ) );
+        u.activity.targets.push_back( loc );
+    }, []() {
+        avatar &u = get_avatar();
+        for( int turn = 0; turn < 300; ++turn ) {
+            calendar::turn += 1_turns;
+            get_item_wakeups().process( calendar::turn );
+            u.set_moves( u.get_speed() );
+            u.activity.do_turn( u );
+        }
+        // the 10 minute step is still running
+        CHECK( u.activity );
     } );
 }
