@@ -588,6 +588,29 @@ size_t item_pocket::size() const
     return contents.size();
 }
 
+// Volume an ammo-restricted pocket needs to hold its full ammo capacity, with each
+// ammo type's count scaled by capacity_mult the same way item_pocket::ammo_capacity does.
+static units::volume ammo_restricted_volume_capacity(
+    const std::map<ammotype, int> &ammo_restriction, float capacity_mult )
+{
+    // Find all valid ammo itypes
+    std::vector<const itype *> ammo_types = Item_factory::find( [&]( const itype & t ) {
+        return t.ammo && ammo_restriction.count( t.ammo->type );
+    } );
+    // Figure out which has the greatest volume and calculate on that basis
+    units::volume max_total_volume = 0_ml;
+    for( const itype *ammo_type : ammo_types ) {
+        int stack_size = ammo_type->stack_size ? ammo_type->stack_size : 1;
+        const int base_count = ammo_restriction.at( ammo_type->ammo->type );
+        const int max_count = capacity_mult == 1.0f ? base_count :
+                              static_cast<int>( std::lround( base_count * capacity_mult ) );
+        units::volume this_volume =
+            1_ml * divide_round_up( ammo_type->volume * max_count / 1_ml, stack_size );
+        max_total_volume = std::max( max_total_volume, this_volume );
+    }
+    return max_total_volume;
+}
+
 units::volume item_pocket::magazine_well() const
 {
     return data->magazine_well;
@@ -600,6 +623,11 @@ units::mass item_pocket::weight_capacity() const
 
 units::volume item_pocket::volume_capacity() const
 {
+    // An ammo-restricted pocket's volume is derived from its ammo capacity, which
+    // installed capacity_mods scale, so scale the derived volume with it.
+    if( capacity_mult != 1.0f && !data->ammo_restriction.empty() ) {
+        return ammo_restricted_volume_capacity( data->ammo_restriction, capacity_mult );
+    }
     return data->volume_capacity();
 }
 
@@ -1900,21 +1928,31 @@ void item_pocket::overflow( map &here, const tripoint_bub_ms &pos, const item_lo
             spill_contents( &here, pos );
             return;
         }
+        // capacity_mods may scale the pocket's capacity
+        const int capacity = ammo_capacity( ammo_iter->first );
         int total_qty = 0;
         for( auto iter = contents.begin(); iter != contents.end(); ) {
             item &ammo = *iter;
             total_qty += ammo.count();
-            const int overflow_count = total_qty - ammo_iter->second;
-            if( overflow_count > 0 ) {
+            const int overflow_count = total_qty - capacity;
+            if( overflow_count <= 0 ) {
+                if( ammo.count() == 0 ) {
+                    iter = contents.erase( iter );
+                } else {
+                    ++iter;
+                }
+            } else if( ammo.count_by_charges() && overflow_count < ammo.charges ) {
+                // only the excess leaves, the rest of the stack stays
+                item dropped_ammo( ammo );
+                dropped_ammo.charges = overflow_count;
                 ammo.charges -= overflow_count;
-                item dropped_ammo( ammo.typeId(), ammo.birthday(), overflow_count );
-                move_to_parent_pocket_recursive( here, pos, *iter, loc, carrier );
+                move_to_parent_pocket_recursive( here, pos, dropped_ammo, loc, carrier );
                 total_qty -= overflow_count;
-            }
-            if( ammo.count() == 0 ) {
-                iter = contents.erase( iter );
-            } else {
                 ++iter;
+            } else {
+                total_qty -= ammo.count();
+                move_to_parent_pocket_recursive( here, pos, ammo, loc, carrier );
+                iter = contents.erase( iter );
             }
         }
         // return early, the rest of this function checks against volume and weight
@@ -2589,20 +2627,7 @@ units::volume pocket_data::volume_capacity() const
         return raw_volume_capacity;
     }
     // If pocket is ammo-restricted, its volume capacity is derived from its ammo capacity.
-    // Find all valid ammo itypes
-    std::vector<const itype *> ammo_types = Item_factory::find( [&]( const itype & t ) {
-        return t.ammo && ammo_restriction.count( t.ammo->type );
-    } );
-    // Figure out which has the greatest volume and calculate on that basis
-    units::volume max_total_volume = 0_ml;
-    for( const auto *ammo_type : ammo_types ) {
-        int stack_size = ammo_type->stack_size ? ammo_type->stack_size : 1;
-        int max_count = ammo_restriction.at( ammo_type->ammo->type );
-        units::volume this_volume =
-            1_ml * divide_round_up( ammo_type->volume * max_count / 1_ml, stack_size );
-        max_total_volume = std::max( max_total_volume, this_volume );
-    }
-    return max_total_volume;
+    return ammo_restricted_volume_capacity( ammo_restriction, 1.0f );
 }
 
 void item_pocket::favorite_settings::clear()
