@@ -3401,7 +3401,7 @@ For examples: An overhead light is 120, a utility light, 240, and a console, 10.
 ```
 
 #### `oxytorch`
-(Optional) Data for using with an oxytorch.
+(Optional) Data for using with an oxytorch.  A `copy-from` keeps the parent's `oxytorch`, `boltcut`, `hacksaw` and `prying` blocks; a block in the child overrides only the keys it names, and `"delete": { "prying": true }` removes an inherited block.
 ```jsonc
 oxytorch: {
     "result": "furniture_id", // (optional) furniture it will become when done, defaults to f_null

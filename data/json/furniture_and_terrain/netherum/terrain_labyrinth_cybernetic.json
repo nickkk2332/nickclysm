@@ -528,6 +528,7 @@
     "id": "t_nl_metal_wall_border",
     "name": "metallic wall",
     "copy-from": "t_nl_metal_wall",
+    "delete": { "oxytorch": true },
     "description": "A durable wall of ordinary looking sheet metal, at first.  Staring closer, the welds and joins seem to form strange fractal patterns.",
     "symbol": "-",
     "color": "cyan",
