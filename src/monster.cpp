@@ -367,10 +367,9 @@ float monster::luminance() const
 void monster::on_effect_int_change( const efftype_id &/*eid*/, int /*intensity*/,
                                     const bodypart_id &/*bp*/ )
 {
-    map &here = get_map();
-    if( here.inbounds( pos_bub() ) ) {
-        here.set_lightmap_cache_dirty( posz() );
-    }
+    // Nothing to do. A monster's light (its luminance, which effects can change through
+    // enchantments, and being on fire) is compared on every map::build_map_cache(), which
+    // relights the level when it changes; relighting on every effect change was redundant.
 }
 
 void monster::poly( const mtype_id &id )

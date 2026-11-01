@@ -7640,10 +7640,28 @@ void map::clear_fields( const tripoint_bub_ms &p )
     set_transparency_cache_dirty( p, true );
 }
 
+// Whether any intensity of this field type adds light or overrides the local light level.
+// Fields that block light relight through the transparency cache instead.
+static bool field_type_lights( const field_type &fd_type )
+{
+    for( int level = 0; level < fd_type.get_max_intensity(); ++level ) {
+        const field_intensity_level &intensity = fd_type.get_intensity_level( level );
+        if( intensity.light_emitted > 0 || intensity.local_light_override >= 0.0f ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void map::on_field_modified( const tripoint_bub_ms &p, const field_type &fd_type )
 {
     invalidate_max_populated_zlev( p.z() );
-    set_lightmap_cache_dirty( p.z() );
+    // A whole-level relight is expensive, and most fields (blood, smoke, acid) can't change
+    // the light: only relight for fields that emit or override light. Fields that block
+    // light are covered by the transparency cache below, which dirties the lightmap too.
+    if( field_type_lights( fd_type ) ) {
+        set_lightmap_cache_dirty( p.z() );
+    }
     get_cache( p.z() ).field_revision = next_cache_generation();
 
     get_cache( p.z() ).field_cache.set(
@@ -11053,22 +11071,30 @@ void map::build_map_cache( const int zlev, bool skip_lightmap )
     // glowing or burning monsters, and vehicle lamps that lose power or break.
     // A level relights only if its own sources changed.
     {
-        auto character_light = []( const Character & ch ) -> light_source_state {
-            float light = ch.active_light();
-            if( ch.has_effect( effect_onfire ) )
-            {
+        // The light a character adds, as map::apply_character_light() applies it. A
+        // character that adds none is left out, so an unlit avatar or NPC moving around
+        // doesn't relight the whole level.
+        auto add_character_light = [&]( std::vector<light_source_state> &lights,
+        const Character & ch ) {
+            float light = 0.0f;
+            if( ch.has_effect( effect_onfire ) ) {
                 light += 8.0f;
-            } else if( ch.has_effect( effect_haslight ) )
-            {
+            } else if( ch.has_effect( effect_haslight ) ) {
                 light += 4.0f;
             }
-            return { light, ch.pos_bub(), 0 };
+            const float held = ch.active_light();
+            if( held > LIGHT_AMBIENT_LOW ) {
+                light += held;
+            }
+            if( light > 0.0f ) {
+                lights.push_back( { light, ch.pos_bub(), 0 } );
+            }
         };
 
         std::vector<light_source_state> current_lights;
-        current_lights.push_back( character_light( get_player_character() ) );
+        add_character_light( current_lights, get_player_character() );
         for( const npc &guy : g->all_npcs() ) {
-            current_lights.push_back( character_light( guy ) );
+            add_character_light( current_lights, guy );
         }
         for( const monster &critter : g->all_monsters() ) {
             if( critter.is_hallucination() ) {
