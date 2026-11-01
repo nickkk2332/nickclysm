@@ -173,10 +173,9 @@ bool teleport::teleport_creature( Creature &critter, int min_distance, int max_d
         const units::angle rangle = units::from_degrees( rng( 0, 359 ) );
         const int rdistance = rng( min_distance, max_distance );
         // Rounded, not truncated, or a 1 tile shift would land on the origin.
-        new_pos = { origin.x() + static_cast<int>( std::lround( rdistance * units::cos( rangle ) ) ),
-                    origin.y() + static_cast<int>( std::lround( rdistance * units::sin( rangle ) ) ),
-                    new_pos.z()
-                  };
+        const int dx = static_cast<int>( std::lround( rdistance * units::cos( rangle ) ) );
+        const int dy = static_cast<int>( std::lround( rdistance * units::sin( rangle ) ) );
+        new_pos = { origin.x() + dx, origin.y() + dy, new_pos.z() };
         tries++;
         // Diagonals round inwards; retry those that end up closer than min_distance.
     } while( ( new_pos == origin || square_dist( origin, new_pos ) < min_distance ||
@@ -358,11 +357,13 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
                     }
                 }
                 // The collision itself happens whoever teleports, the player and NPCs included.
-                //once collision this if block shouldn't run so everything here should only happen once
+                //once collision this if block shouldn't run so everything here should only
+                //happen once
                 collision = true;
                 //determine a random angle to throw the thing it teleported into, then fling it.
                 collision_angle = rng( 0, 360 );
-                g->fling_creature( poor_soul, units::from_degrees( collision_angle - 180 ), 40, false, true );
+                g->fling_creature( poor_soul, units::from_degrees( collision_angle - 180 ), 40, false,
+                                   true );
                 //spawn a mostly cosmetic explosion for flair.
                 explosion_handler::explosion( &critter, target, 10 );
                 //if it was grabbed, it isn't anymore.
@@ -374,7 +375,8 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
                         get_body_part_flags::only_main );
                 for( const bodypart_id &bp_id : target_bdpts ) {
                     const float damage_to_deal =
-                        static_cast<float>( poor_soul->get_part_hp_max( bp_id ) ) / static_cast<float>( rng( 6, 12 ) );
+                        static_cast<float>( poor_soul->get_part_hp_max( bp_id ) ) /
+                        static_cast<float>( rng( 6, 12 ) );
                     poor_soul->apply_damage( nullptr, bp_id, damage_to_deal );
                 }
                 poor_soul->check_dead_state( &here );
