@@ -6,19 +6,32 @@
 #include "bodypart.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "coordinates.h"
 #include "creature.h"
+#include "damage.h"
 #include "flag.h"
 #include "item.h"
 #include "item_location.h"
+#include "map_helpers.h"
+#include "map_helpers_tests.h"
+#include "martialarts.h"
+#include "monster.h"
 #include "npc.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "type_id.h"
 #include "units.h"
 
 static const bionic_id bio_claws( "bio_claws" );
 static const bionic_id bio_power_storage( "bio_power_storage" );
 
+static const damage_type_id damage_bash( "bash" );
+
+static const efftype_id effect_disarmed( "disarmed" );
+
 static const json_character_flag json_flag_DISTRIBUTED_DAMAGE( "DISTRIBUTED_DAMAGE" );
+
+static const matec_id tec_DEF_DISARM( "DEF_DISARM" );
 
 static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
 static const trait_id trait_TEST_POWER_TRICKLE( "TEST_POWER_TRICKLE" );
@@ -154,4 +167,30 @@ TEST_CASE( "mut-b04_power_trickle_applies_once_per_turn", "[audit][bionics]" )
     dummy.suffer();
     CHECK( dummy.get_power_level() == trickle * 2 );
     clear_avatar();
+}
+
+// CMBT-B02: perform_technique() applied a tech_effect only when it had a condition that
+// passed, so the 33 tech_effects without a "condition" (every disarm against monsters,
+// most "downed" and "bleed" effects) were never applied.
+TEST_CASE( "cmbt-b02_tech_effect_without_condition_is_applied", "[audit][melee]" )
+{
+    clear_avatar();
+    clear_map();
+    Character &dummy = get_player_character();
+    const ma_technique &tech = tec_DEF_DISARM.obj();
+    REQUIRE( tech.tech_effects.size() == 1 );
+    const tech_effect_data &eff = tech.tech_effects.front();
+    REQUIRE( eff.id == effect_disarmed );
+    REQUIRE_FALSE( eff.has_condition );
+    REQUIRE( eff.chance == 100 );
+
+    monster &zed = spawn_test_monster( "mon_zombie", dummy.pos_bub() + tripoint::east );
+    REQUIRE_FALSE( zed.has_effect( effect_disarmed ) );
+    // on_damage: the attack must carry damage for the effect to apply.
+    damage_instance di( damage_bash, 10.0f );
+    int move_cost = 100;
+    item_location weapon = dummy.get_wielded_item();
+    dummy.perform_technique( tech, zed, di, move_cost, weapon );
+    CHECK( zed.has_effect( effect_disarmed ) );
+    clear_map();
 }

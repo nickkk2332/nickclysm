@@ -1774,7 +1774,8 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
             const_dialogue d( get_const_talker_for( *this ), get_const_talker_for( t ) );
             // Add the tech's effects if it rolls the chance and either did damage or ignores it
             if( x_in_y( eff.chance, 100 ) && ( di.total_damage() != 0 || !eff.on_damage ) ) {
-                if( eff.has_condition && eff.condition( d ) ) {
+                // An effect without a condition always applies
+                if( !eff.has_condition || eff.condition( d ) ) {
                     t.add_effect( eff.id, time_duration::from_turns( eff.duration ), eff.permanent );
                     add_msg_if_player( m_good, _( eff.message ), t.disp_name() );
                 }
