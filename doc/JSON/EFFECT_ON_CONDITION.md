@@ -86,7 +86,7 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | recipe: "result_eocs"                            | crafter (Character)         | NONE                        |
 | monster weakpoint: "effect_on_conditions"        | attacker (Creature, if exists, otherwise NONE) | victim (Creature) | note that if weakpoint was hit without attacker, EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
 | monster death: "death_function"                  | killer (Creature, if exists, otherwise NONE)| victim (Creature) | Note that if monster was killed without a killer (falling anvil, explosion of a bomb etc), EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
-| ammo_effect: "eoc"                               | shooter (Creature)          | victim (if exist, otherwise NONE) (Creature) | `targeted_location`: location_variable, the tile impacted by the projectile, `proj_damage`: int, amount of damage projectile dealt. Detonation via SPECIAL_COOKOFF ammo effect return `proj_damage` as 1. Note that if projectile miss the target, EoC would be built without beta talker, so using EoC referencing `npc_` or `n_` would result in error. Use `has_beta` condition before manipulating npc
+| ammo_effect: "eoc"                               | shooter (Creature), or an empty talker with no creature if there is no shooter (SPECIAL_COOKOFF detonation, NULL_SOURCE projectile) | victim (if exist, otherwise NONE) (Creature) | `targeted_location`: location_variable, the tile impacted by the projectile, `proj_damage`: int, amount of damage projectile dealt. Detonation via SPECIAL_COOKOFF ammo effect return `proj_damage` as 1. Note that if projectile miss the target, EoC would be built without beta talker, so using EoC referencing `npc_` or `n_` would result in error. Use `has_beta` condition before manipulating npc
 
 Some actions sent additional context variables, that can be used in EoC, in format:
 
@@ -5337,6 +5337,25 @@ Picks random pankration technique, assign it to `pankration_random_attack`, and 
     },
     { "u_attack": { "context_val": "pankration_random_attack" } }
   ]
+}
+```
+
+#### `u_ranged_attack`, `npc_ranged_attack`
+Alpha or beta talker fires its wielded gun, in its current gun mode, at the other talker. Takes no parameters, and is written as a plain string. Nothing happens if the attacker is not a character, wields no gun, does not have enough ammo, or if the other talker is not a creature.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Alpha talker shoots at the beta talker
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_ranged_attack_test",
+  "effect": [ "u_ranged_attack" ]
 }
 ```
 

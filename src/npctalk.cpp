@@ -4779,7 +4779,7 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
     dov_max_noise = get_dbl_or_var( jo_explosion, "max_noise", false, 90000000 );
     fire = jo_explosion.get_bool( "fire", false );
     if( jo_explosion.has_int( "shrapnel" ) ) {
-        mandatory( jo_explosion, false, "casing_mass", dov_shrapnel_casing_mass );
+        mandatory( jo_explosion, false, "shrapnel", dov_shrapnel_casing_mass );
     } else if( jo_explosion.has_object( "shrapnel" ) ) {
         JsonObject jo_shr = jo_explosion.get_object( "shrapnel" );
         mandatory( jo_shr, false, "casing_mass", dov_shrapnel_casing_mass );
@@ -4804,7 +4804,8 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
         } else {
             target_pos = d.actor( is_npc )->pos_bub( here );
         }
-        Creature &guy = *d.actor( is_npc )->get_creature();
+        // Item, furniture and vehicle talkers have no creature; explosion() accepts a null source
+        Creature *guy = d.actor( is_npc )->get_creature();
 
         explosion_data expl_data;
         expl_data.power = dov_power.evaluate( d );
@@ -4816,7 +4817,7 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
         expl_data.shrapnel.recovery = dov_shrapnel_recovery.evaluate( d );
         expl_data.shrapnel.drop = itype_id( dov_shrapnel_drop.evaluate( d ) );
 
-        explosion_handler::explosion( &guy, target_pos, expl_data );
+        explosion_handler::explosion( guy, target_pos, expl_data );
 
         if( emp_blast ) {
             explosion_handler::emp_blast( target_pos );
@@ -5948,10 +5949,11 @@ talk_effect_fun_t::func f_ranged_attack( bool is_npc )
         Character *attacker = d.actor( is_npc )->get_character();
         Creature *c = target->get_creature();
 
-        if( c ) {
+        // Only characters can fire a wielded gun; monster and item talkers have none
+        if( c && attacker ) {
             tripoint_bub_ms target_pos = c->pos_bub();
             item_location wielded = attacker->get_wielded_item();
-            if( wielded->is_gun() ) {
+            if( wielded && wielded->is_gun() ) {
                 gun_mode mode = wielded->gun_current_mode();
                 if( wielded->ammo_sufficient( attacker, mode.qty * 2 ) ) {
                     attacker->fire_gun( target_pos, mode.qty );
@@ -7827,14 +7829,22 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
             }
         } else if( monster_id.evaluate( d ).empty() ) {
             int target_range = dov_target_range.evaluate( d );
+            // Look for hostiles around the acting talker, as judged by that talker
+            const tripoint_bub_ms search_center = d.actor( is_npc )->pos_bub( here );
+            const Creature *observer = d.actor( is_npc )->get_creature();
+            if( observer == nullptr ) {
+                observer = &get_player_character();
+            }
+            // Only monsters can be copied; a hostile NPC has no monster to copy
+            const auto is_copy_target = [&]( const Creature & critter ) -> bool {
+                const tripoint_bub_ms critter_pos = critter.pos_bub( here );
+                return critter.is_monster() && search_center != critter_pos &&
+                       std::round( rl_dist_exact( search_center, critter_pos ) ) <= target_range &&
+                       observer->attitude_to( critter ) == Creature::Attitude::HOSTILE;
+            };
             if( single_target ) {
                 // Find a hostile creature in range to be used to create a hallucination or a copy of
-                Creature *copy = g->get_creature_if( [target_range]( const Creature & critter ) -> bool {
-                    bool not_self = get_player_character().pos_bub() != critter.pos_bub();
-                    bool in_range = std::round( rl_dist_exact( get_player_character().pos_bub(), critter.pos_bub() ) ) <= target_range;
-                    bool valid_target = get_player_character().attitude_to( critter ) == Creature::Attitude::HOSTILE;
-                    return not_self && in_range && valid_target;
-                } );
+                Creature *copy = g->get_creature_if( is_copy_target );
                 if( copy == nullptr ) {
                     run_eoc_vector( false_eocs, d );
                     return;
@@ -7842,13 +7852,7 @@ talk_effect_fun_t::func f_spawn_monster( const JsonObject &jo, std::string_view 
                 target_monster = *copy->as_monster();
             } else {
                 // Find all hostile creatures in range to be used to create hallucinations or copies of
-                std::vector<Creature *> monsters_in_range = g->get_creatures_if( [target_range](
-                const Creature & critter ) -> bool {
-                    bool not_self = get_player_character().pos_bub() != critter.pos_bub();
-                    bool in_range = std::round( rl_dist_exact( get_player_character().pos_bub(), critter.pos_bub() ) ) <= target_range;
-                    bool valid_target = get_player_character().attitude_to( critter ) == Creature::Attitude::HOSTILE;
-                    return not_self && in_range && valid_target;
-                } );
+                std::vector<Creature *> monsters_in_range = g->get_creatures_if( is_copy_target );
                 int valid_monsters = monsters_in_range.size();
                 if( valid_monsters == 0 ) {
                     run_eoc_vector( false_eocs, d );
