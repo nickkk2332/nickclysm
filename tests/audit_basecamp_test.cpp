@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "basecamp.h"
 #include "calendar.h"
@@ -12,11 +13,14 @@
 #include "clzones.h"
 #include "coordinates.h"
 #include "faction.h"
+#include "faction_camp.h"
 #include "game_constants.h"
 #include "item.h"
+#include "item_location.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_scale_constants.h"
+#include "map_selector.h"
 #include "memory_fast.h"
 #include "mission_companion.h"
 #include "npc.h"
@@ -25,12 +29,14 @@
 #include "point.h"
 #include "stomach.h"
 #include "type_id.h"
+#include "visitable.h"
 
 static const faction_id faction_your_followers( "your_followers" );
 
 static const furn_str_id furn_f_fireplace( "f_fireplace" );
 
 static const itype_id itype_fake_fireplace( "fake_fireplace" );
+static const itype_id itype_seed_hops( "seed_hops" );
 static const itype_id itype_tinder( "tinder" );
 
 static const skill_id skill_menial( "menial" );
@@ -72,6 +78,47 @@ static npc_ptr spawn_camp_worker( const point_bub_ms &where )
     const npc_ptr comp = overmap_buffer.find_npc( guy.getID() );
     REQUIRE( comp );
     return comp;
+}
+
+static int count_at( const tripoint_bub_ms &p, const itype_id &type )
+{
+    int found = 0;
+    for( const item &it : get_map().i_at( p ) ) {
+        if( it.typeId() == type ) {
+            found += it.count();
+        }
+    }
+    return found;
+}
+
+static int count_carried( const Character &who, const itype_id &type )
+{
+    int found = 0;
+    who.visit_items( [&found, &type]( const item_location & it ) {
+        if( it->typeId() == type ) {
+            found += it->count();
+        }
+        return VisitResponse::NEXT;
+    } );
+    return found;
+}
+
+static int count_on_mission( npc &comp, const itype_id &type )
+{
+    int found = 0;
+    for( const item &it : comp.companion_mission_inv ) {
+        if( it.typeId() == type ) {
+            found += it.count();
+        }
+    }
+    return found;
+}
+
+// ends the worker's mission, so later tests don't find it waiting at the same camp
+static void call_off_mission( npc &comp )
+{
+    comp.reset_companion_mission();
+    comp.companion_mission_inv.clear();
 }
 
 // CAMP-B01: missions paid for their whole planned time when they set off, then finish_return
@@ -158,4 +205,125 @@ TEST_CASE( "camp-b02_camp_board_openings_do_not_multiply_camp_fuel", "[audit][ca
     }
     CHECK( drawn == 100 );
     CHECK( wanted == 200 );
+}
+
+// CAMP-B03: start_farm_op cut the selected seed stack down to the chosen count before anyone
+// set off, so a cancelled or unfed mission destroyed the rest.  When a companion did go,
+// individual_mission also used up the companion's own seeds of that type, and start_mission
+// took the same count again by type from a tile list that began with the bubble's corner
+// tile.  Only the chosen seeds may leave storage, and only once a companion sets off.
+TEST_CASE( "camp-b03_camp_planting_takes_only_the_chosen_seeds", "[audit][camp]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    get_player_character().camps.clear();
+    map &here = get_map();
+    tripoint_abs_omt camp_omt;
+    basecamp &camp = place_audit_camp( "faction_base_bare_bones_NPC_camp_0", camp_omt );
+    faction &fac = *get_player_character().get_faction();
+    const npc_ptr comp = spawn_camp_worker( camp_mid.xy() + point::south );
+    on_out_of_scope cleanup( [&camp_omt, &fac, &comp]() {
+        call_off_mission( *comp );
+        overmap_buffer.clear_camps( camp_omt.xy() );
+        fac.empty_food_supply();
+    } );
+    stock_audit_larder( fac, 10000 );
+    const tripoint_bub_ms storage = camp_mid + tripoint::east;
+    const tripoint_bub_ms corner{ 0, 0, 0 };
+    here.i_clear( storage );
+    here.i_clear( corner );
+    std::vector<item *> stored;
+    for( int i = 0; i < 5; ++i ) {
+        stored.push_back( &here.add_item( storage, item( itype_seed_hops ) ) );
+    }
+    here.add_item( corner, item( itype_seed_hops ) );
+    camp.set_storage_tiles( { here.get_abs( storage ) } );
+    comp->i_add( item( itype_seed_hops ) );
+    REQUIRE( count_at( storage, itype_seed_hops ) == 5 );
+    REQUIRE( count_at( corner, itype_seed_hops ) == 1 );
+    REQUIRE( count_carried( *comp, itype_seed_hops ) == 1 );
+    const mission_id plant{ Camp_Plant, "", {}, base_camps::base_dir };
+    const drop_locations two_stored{
+        { item_location( map_cursor( storage ), stored[0] ), 1 },
+        { item_location( map_cursor( storage ), stored[1] ), 1 }
+    };
+
+    WHEN( "a camp mission is handed copies of two seeds" ) {
+        item seed_copy( itype_seed_hops );
+        const std::vector<item *> equipment{ &seed_copy, &seed_copy };
+        REQUIRE( camp.start_mission( plant, 2_minutes, true, "", false, equipment,
+                                     std::map<skill_id, int>(), LIGHT_EXERCISE, 0_hours, comp ) );
+        THEN( "companion carries the copies and nothing else is taken" ) {
+            CHECK( count_on_mission( *comp, itype_seed_hops ) == 2 );
+            CHECK( count_carried( *comp, itype_seed_hops ) == 1 );
+            CHECK( count_at( storage, itype_seed_hops ) == 5 );
+            CHECK( count_at( corner, itype_seed_hops ) == 1 );
+        }
+    }
+    WHEN( "two of the stored seeds are sent to be planted" ) {
+        REQUIRE( talk_function::camp_start_planting( camp, plant, two_stored, LIGHT_EXERCISE,
+                 comp ) );
+        THEN( "just those two leave storage, with the companion" ) {
+            CHECK( count_on_mission( *comp, itype_seed_hops ) == 2 );
+            CHECK( count_carried( *comp, itype_seed_hops ) == 1 );
+            CHECK( count_at( storage, itype_seed_hops ) == 3 );
+            CHECK( count_at( corner, itype_seed_hops ) == 1 );
+        }
+    }
+    WHEN( "there is no food to send a planter" ) {
+        fac.empty_food_supply();
+        CHECK_FALSE( talk_function::camp_start_planting( camp, plant, two_stored, LIGHT_EXERCISE,
+                     comp ) );
+        THEN( "every seed stays where it was" ) {
+            CHECK( count_on_mission( *comp, itype_seed_hops ) == 0 );
+            CHECK( count_carried( *comp, itype_seed_hops ) == 1 );
+            CHECK( count_at( storage, itype_seed_hops ) == 5 );
+            CHECK( count_at( corner, itype_seed_hops ) == 1 );
+        }
+    }
+}
+
+// CAMP-B03, stacks: no core seed counts by charges, so a stack of tinder stands in for a
+// stack of seeds.  The old code set the stack to the chosen count before the mission started.
+TEST_CASE( "camp-b03_camp_planting_leaves_the_rest_of_a_stack", "[audit][camp]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    get_player_character().camps.clear();
+    map &here = get_map();
+    tripoint_abs_omt camp_omt;
+    basecamp &camp = place_audit_camp( "faction_base_bare_bones_NPC_camp_0", camp_omt );
+    faction &fac = *get_player_character().get_faction();
+    const npc_ptr comp = spawn_camp_worker( camp_mid.xy() + point::south );
+    on_out_of_scope cleanup( [&camp_omt, &fac, &comp]() {
+        call_off_mission( *comp );
+        overmap_buffer.clear_camps( camp_omt.xy() );
+        fac.empty_food_supply();
+    } );
+    stock_audit_larder( fac, 10000 );
+    const tripoint_bub_ms storage = camp_mid + tripoint::east;
+    here.i_clear( storage );
+    item &stack = here.add_item( storage, item( itype_tinder, calendar::turn, 50 ) );
+    camp.set_storage_tiles( { here.get_abs( storage ) } );
+    REQUIRE( stack.count_by_charges() );
+    REQUIRE( count_at( storage, itype_tinder ) == 50 );
+    const mission_id plant{ Camp_Plant, "", {}, base_camps::base_dir };
+    const drop_locations ten_of_fifty{ { item_location( map_cursor( storage ), &stack ), 10 } };
+
+    WHEN( "10 of the 50 are sent with a companion" ) {
+        REQUIRE( talk_function::camp_start_planting( camp, plant, ten_of_fifty, LIGHT_EXERCISE,
+                 comp ) );
+        THEN( "10 go and 40 stay" ) {
+            CHECK( count_on_mission( *comp, itype_tinder ) == 10 );
+            CHECK( count_at( storage, itype_tinder ) == 40 );
+        }
+    }
+    WHEN( "there is no food to send a planter" ) {
+        fac.empty_food_supply();
+        CHECK_FALSE( talk_function::camp_start_planting( camp, plant, ten_of_fifty,
+                     LIGHT_EXERCISE, comp ) );
+        THEN( "all 50 stay" ) {
+            CHECK( count_at( storage, itype_tinder ) == 50 );
+        }
+    }
 }

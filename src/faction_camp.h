@@ -3,6 +3,7 @@
 #define CATA_SRC_FACTION_CAMP_H
 
 #include <functional>
+#include <list>
 #include <stdint.h>
 #include <string>
 #include <string_view>
@@ -21,8 +22,11 @@ namespace catacurses
 {
 class window;
 } // namespace catacurses
+class basecamp;
+class item_location;
 class npc;
 struct mission_entry;
+struct mission_id;
 
 namespace base_camps
 {
@@ -70,6 +74,12 @@ struct mass_volume {
 /// @ref take, whether you take the item or count it
 mass_volume om_harvest_itm( const shared_ptr_fast<npc> &comp, const tripoint_abs_omt &omt_tgt,
                             int chance = 100, bool take = true );
+/// Sends a companion from @ref camp to plant @ref seeds, each a location and a count. The
+/// companion carries copies; the chosen counts leave storage only once a companion has set off.
+/// Returns the companion, or nullptr if no one went.
+shared_ptr_fast<npc> camp_start_planting( basecamp &camp, const mission_id &miss_id,
+        const std::list<std::pair<item_location, int>> &seeds, float exertion_level,
+        const shared_ptr_fast<npc> &preselected_choice = nullptr );
 } // namespace talk_function
 
 enum class risk_diff_level {

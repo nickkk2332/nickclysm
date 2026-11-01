@@ -1814,23 +1814,8 @@ npc_ptr basecamp::start_mission( const mission_id &miss_id, time_duration total_
             feed_workers( *comp.get()->as_character(), camp_food_supply( total_time, exertion_level,
                           travel_time ), camp_meal::mission_cost );
         }
-        if( !equipment.empty() ) {
-            map &target_map = get_camp_map();
-            std::vector<tripoint_bub_ms> src_set_pt;
-            src_set_pt.resize( src_set.size() );
-            for( const tripoint_abs_ms &p : src_set ) {
-                src_set_pt.emplace_back( target_map.get_bub( p ) );
-            }
-            for( item *i : equipment ) {
-                int count = i->count();
-                if( i->count_by_charges() ) {
-                    target_map.use_charges( src_set_pt, i->typeId(), count );
-                } else {
-                    target_map.use_amount( src_set_pt, i->typeId(), count );
-                }
-            }
-            target_map.save();
-        }
+        // the companion carries copies of the equipment; callers take the originals, by
+        // location, once this returns a companion (see camp_start_planting)
     }
     return comp;
 }
@@ -3613,8 +3598,6 @@ std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, 
 void basecamp::start_farm_op( const point_rel_omt &dir, const mission_id &miss_id,
                               float exertion_level )
 {
-    map &here = get_map();
-
     farm_ops op = farm_ops::plow;
     if( miss_id.id == Camp_Plow ) {
         op = farm_ops::plow;
@@ -3650,26 +3633,7 @@ void basecamp::start_farm_op( const point_rel_omt &dir, const mission_id &miss_i
             if( seed_selection.empty() ) {
                 return;
             }
-            size_t seed_cnt = 0;
-            std::vector<item *> to_plant;
-            for( std::pair<item_location, int> &seeds : seed_selection ) {
-                size_t num_seeds = seeds.second;
-                item_location seed = seeds.first;
-                seed.overflow( here );
-                if( seed->count_by_charges() ) {
-                    seed->charges = num_seeds;
-                }
-                to_plant.push_back( &*seed );
-                seed_cnt += num_seeds;
-            }
-
-            if( !seed_cnt ) {
-                return;
-            }
-            work += 1_minutes * seed_cnt;
-            start_mission( miss_id, work, true,
-                           _( "begins planting the field…" ), false, to_plant,
-                           skill_survival, 1, exertion_level );
+            talk_function::camp_start_planting( *this, miss_id, seed_selection, exertion_level );
             break;
         }
         case farm_ops::plow:
@@ -3681,6 +3645,54 @@ void basecamp::start_farm_op( const point_rel_omt &dir, const mission_id &miss_i
             debugmsg( "Farm operations called with no operation" );
     }
 }
+
+npc_ptr talk_function::camp_start_planting( basecamp &camp, const mission_id &miss_id,
+        const drop_locations &seeds, float exertion_level, const npc_ptr &preselected_choice )
+{
+    // the companion carries copies; the stacks stay as they are until it sets off
+    std::vector<item> to_plant;
+    to_plant.reserve( seeds.size() );
+    int seed_cnt = 0;
+    for( const drop_location &seed : seeds ) {
+        if( seed.second <= 0 ) {
+            continue;
+        }
+        item planted = *seed.first;
+        if( planted.count_by_charges() ) {
+            planted.charges = seed.second;
+        }
+        to_plant.push_back( planted );
+        seed_cnt += seed.second;
+    }
+    if( seed_cnt == 0 ) {
+        return nullptr;
+    }
+    std::vector<item *> equipment;
+    equipment.reserve( to_plant.size() );
+    for( item &planted : to_plant ) {
+        equipment.push_back( &planted );
+    }
+    const std::map<skill_id, int> required_skills = { { skill_survival, 1 } };
+    npc_ptr comp = camp.start_mission( miss_id, 1_minutes * seed_cnt, true,
+                                       _( "begins planting the field…" ), false, equipment,
+                                       required_skills, exertion_level, 0_hours, preselected_choice );
+    if( comp == nullptr ) {
+        return comp;
+    }
+    // take exactly the chosen seeds from storage
+    for( const drop_location &seed : seeds ) {
+        if( seed.second <= 0 ) {
+            continue;
+        }
+        item_location loc = seed.first;
+        // split() leaves the rest of a stack and fails when the whole item goes
+        if( loc->split( seed.second ).is_null() ) {
+            loc.remove_item();
+        }
+    }
+    return comp;
+}
+
 // camp faction companion mission recovery functions
 npc_ptr basecamp::companion_choose_return( const mission_id &miss_id,
         time_duration min_duration )
