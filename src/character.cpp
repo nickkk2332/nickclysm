@@ -3223,6 +3223,9 @@ void Character::reset_stats()
             mod_dex_bonus( it.get_mod( "DEX", reduced ) );
             mod_per_bonus( it.get_mod( "PER", reduced ) );
             mod_int_bonus( it.get_mod( "INT", reduced ) );
+            // dodge_mod and hit_mod; bash/cut/size_mod are monster-only
+            mod_dodge_bonus( it.get_mod( "DODGE", reduced ) );
+            mod_hit_bonus( it.get_mod( "HIT", reduced ) );
         }
     }
 

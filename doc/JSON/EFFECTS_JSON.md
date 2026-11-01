@@ -644,9 +644,20 @@ Valid arguments:
 
 "dodge_mod"         // Effective dodge chance
 "hit_mod"           // Effective melee skill
-"bash_mod"          // Additional bash bonus/penalty
+"bash_mod"          // Additional bash bonus/penalty (monsters only)
+"cut_mod"           // Additional cut bonus/penalty (monsters only)
+"size_mod"          // Size bonus/penalty (monsters only)
 
 ```
+Which creatures each stat modifier applies to:
+
+| Modifier | Avatar | NPC | Monster |
+|---|---|---|---|
+| `str_mod`, `dex_mod`, `per_mod`, `int_mod` | yes | yes | no |
+| `speed_mod` | yes | yes | yes |
+| `dodge_mod`, `hit_mod` | yes | yes | yes |
+| `bash_mod`, `cut_mod`, `size_mod` | no | no | yes |
+
 Each argument can also take either one or two values.
 ```jsonc
     "thirst_min": [1]

@@ -1,4 +1,5 @@
 #include "avatar.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
@@ -9,6 +10,8 @@
 #include "point.h"
 #include "type_id.h"
 
+static const efftype_id effect_bio_creeyncaggii_bonus_human( "bio_creeyncaggii_bonus_human" );
+static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_shakes( "shakes" );
 
 static npc &audit_effects_spawn_npc()
@@ -86,5 +89,45 @@ TEST_CASE( "char-b04_avatar_gets_effect_stat_mods_once", "[audit][character]" )
     audit_reset_stats( u );
     CHECK( u.get_str() == str - 1 );
     CHECK( u.get_dex() == dex - 4 );
+    clear_avatar();
+}
+
+// HLTH-J01: effect dodge_mod and hit_mod were read only by monster::process_one_effect.
+// The core grabbed effect's dodge_mod -10 did nothing to characters, and hit_mod could
+// not reach a character's melee to-hit at all.
+TEST_CASE( "hlth-j01_effect_dodge_and_hit_mods_apply_to_characters", "[audit][health]" )
+{
+    SECTION( "avatar" ) {
+        clear_avatar();
+        avatar &u = get_avatar();
+        audit_reset_stats( u );
+        const float dodge = u.get_dodge_bonus();
+        const float hit = u.get_melee_hit_base();
+
+        // grabbed: dodge_mod -10
+        u.add_effect( effect_grabbed, 1_hours, body_part_arm_l );
+        audit_reset_stats( u );
+        CHECK( u.get_dodge_bonus() == Approx( dodge - 10 ) );
+        u.remove_effect( effect_grabbed );
+
+        // hit_mod 1.1 and dodge_mod 1.1, rounded towards zero
+        u.add_effect( effect_bio_creeyncaggii_bonus_human, 1_hours );
+        audit_reset_stats( u );
+        CHECK( u.get_dodge_bonus() == Approx( dodge + 1 ) );
+        CHECK( u.get_melee_hit_base() == Approx( hit + 1 ) );
+    }
+
+    SECTION( "npc" ) {
+        npc &guy = audit_effects_spawn_npc();
+        audit_reset_stats( guy );
+        const float dodge = guy.get_dodge_bonus();
+        const float hit = guy.get_melee_hit_base();
+
+        guy.add_effect( effect_bio_creeyncaggii_bonus_human, 1_hours );
+        audit_reset_stats( guy );
+        CHECK( guy.get_dodge_bonus() == Approx( dodge + 1 ) );
+        CHECK( guy.get_melee_hit_base() == Approx( hit + 1 ) );
+    }
+
     clear_avatar();
 }
