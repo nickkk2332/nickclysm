@@ -135,5 +135,19 @@
     "blocks_effects": [ "staggered_character", "bouldering" ],
     "rating": "good",
     "max_duration": 99999999
+  },
+  {
+    "type": "effect_type",
+    "id": "test_effect_tail",
+    "name": [ "Test Tail" ],
+    "desc": [ "Grows the test tail through an enchantment while it lasts." ],
+    "enchantments": [ "ENCH_TEST_TAIL" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_effect_bird_body",
+    "name": [ "Test Bird Body" ],
+    "desc": [ "Swaps hands, feet and mouth for bird parts through an enchantment while it lasts." ],
+    "enchantments": [ "ENCH_TEST_BIRD_PARTS" ]
   }
 ]

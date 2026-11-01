@@ -5057,6 +5057,20 @@ void Character::recalculate_bodyparts()
                    get_cached_organic_size() );
 }
 
+// True when the body holds exactly the anatomy's parts, so no enchantment that added or
+// removed a part is still reflected in it.
+static bool body_matches_anatomy( const Creature &who )
+{
+    const std::map<bodypart_str_id, bodypart> &body = who.get_body();
+    const std::vector<bodypart_id> parts = who.get_anatomy()->get_bodyparts();
+    if( parts.size() != body.size() ) {
+        return false;
+    }
+    return std::all_of( parts.begin(), parts.end(), [&body]( const bodypart_id & bp ) {
+        return body.count( bp.id() ) > 0;
+    } );
+}
+
 void Character::recalculate_enchantment_cache()
 {
     enchantment_cache->clear();
@@ -5125,7 +5139,9 @@ void Character::recalculate_enchantment_cache()
         }
     }
 
-    if( enchantment_cache->modifies_bodyparts() ) {
+    // Also rebuild once the last body-part enchantment is gone (an effect expired, an item
+    // was taken off), or the parts it added or removed would stay forever.
+    if( enchantment_cache->modifies_bodyparts() || !body_matches_anatomy( *this ) ) {
         recalculate_bodyparts();
     }
 

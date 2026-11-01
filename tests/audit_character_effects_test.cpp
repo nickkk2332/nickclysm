@@ -10,9 +10,14 @@
 #include "point.h"
 #include "type_id.h"
 
+static const bodypart_str_id body_part_test_bird_wing_l( "test_bird_wing_l" );
+static const bodypart_str_id body_part_test_tail( "test_tail" );
+
 static const efftype_id effect_bio_creeyncaggii_bonus_human( "bio_creeyncaggii_bonus_human" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_shakes( "shakes" );
+static const efftype_id effect_test_effect_bird_body( "test_effect_bird_body" );
+static const efftype_id effect_test_effect_tail( "test_effect_tail" );
 
 static npc &audit_effects_spawn_npc()
 {
@@ -127,6 +132,49 @@ TEST_CASE( "hlth-j01_effect_dodge_and_hit_mods_apply_to_characters", "[audit][he
         audit_reset_stats( guy );
         CHECK( guy.get_dodge_bonus() == Approx( dodge + 1 ) );
         CHECK( guy.get_melee_hit_base() == Approx( hit + 1 ) );
+    }
+
+    clear_avatar();
+}
+
+static bool has_body_entry( const Character &who, const bodypart_str_id &bp )
+{
+    return who.get_body().count( bp ) > 0;
+}
+
+// CHAR-J01: recalculate_enchantment_cache rebuilt the body only while the new cache still
+// had modified_bodyparts. Once the effect (or worn item) that added or removed a part was
+// gone, nothing rebuilt it, so gained parts stayed forever and lost parts never came back.
+TEST_CASE( "char-j01_body_parts_from_effect_enchantments_revert", "[audit][character]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    REQUIRE( !has_body_entry( u, body_part_test_tail ) );
+    REQUIRE( has_body_entry( u, body_part_hand_l ) );
+    const size_t human_parts = u.get_body().size();
+
+    SECTION( "gained part is removed when the effect ends" ) {
+        u.add_effect( effect_test_effect_tail, 1_hours );
+        u.recalculate_enchantment_cache();
+        REQUIRE( has_body_entry( u, body_part_test_tail ) );
+
+        u.remove_effect( effect_test_effect_tail );
+        u.recalculate_enchantment_cache();
+        CHECK( !has_body_entry( u, body_part_test_tail ) );
+        CHECK( u.get_body().size() == human_parts );
+    }
+
+    SECTION( "lost parts come back when the effect ends" ) {
+        u.add_effect( effect_test_effect_bird_body, 1_hours );
+        u.recalculate_enchantment_cache();
+        REQUIRE( !has_body_entry( u, body_part_hand_l ) );
+        REQUIRE( has_body_entry( u, body_part_test_bird_wing_l ) );
+
+        u.remove_effect( effect_test_effect_bird_body );
+        u.recalculate_enchantment_cache();
+        CHECK( has_body_entry( u, body_part_hand_l ) );
+        CHECK( !has_body_entry( u, body_part_test_bird_wing_l ) );
+        CHECK( u.get_body().size() == human_parts );
     }
 
     clear_avatar();
