@@ -2113,6 +2113,26 @@ furn_id map::furn( const tripoint_bub_ms p ) const
     return current_submap->get_furn( l );
 }
 
+// The avatar forgets the remembered decoration of a changed tile they can see. Only the
+// reality bubble has the avatar's view, so a temporary map overlapping it checks the tile
+// there; asking the temporary map itself would build its sunlight caches for nothing.
+static void forget_decoration_if_seen( map &changed, const tripoint_bub_ms &p,
+                                       const std::string &prefix )
+{
+    avatar &u = get_avatar();
+    map &bubble = reality_bubble();
+    const tripoint_abs_ms abs_p = changed.get_abs( p );
+    if( &changed == &bubble ) {
+        if( u.sees( bubble, p ) ) {
+            u.memorize_clear_decoration( abs_p, prefix );
+        }
+        return;
+    }
+    if( bubble.inbounds( abs_p ) && u.sees( bubble, bubble.get_bub( abs_p ) ) ) {
+        u.memorize_clear_decoration( abs_p, prefix );
+    }
+}
+
 bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, const bool furn_reset,
                     bool avoid_creatures, bool allow_on_open_air )
 {
@@ -2223,11 +2243,7 @@ bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, cons
     invalidate_max_populated_zlev( p.z() );
 
     memory_cache_dec_set_dirty( p, true );
-    // only the reality bubble has the avatar's view; asking a temporary map would build
-    // its sunlight for nothing
-    if( this == &reality_bubble() && player_character.sees( *this, p ) ) {
-        player_character.memorize_clear_decoration( get_abs( p ), "f_" );
-    }
+    forget_decoration_if_seen( *this, p, "f_" );
 
     if( ( old_f.movecost < 0 ) != ( new_f.movecost < 0 ) ) {
         get_creature_tracker().invalidate_reachability_cache();
@@ -2723,12 +2739,7 @@ bool map::ter_set( const tripoint_bub_ms &p, const ter_id &new_terrain, bool avo
 
     memory_cache_dec_set_dirty( p, true );
     memory_cache_ter_set_dirty( p, true );
-    avatar &player_character = get_avatar();
-    // only the reality bubble has the avatar's view; asking a temporary map would build
-    // its sunlight for nothing
-    if( this == &reality_bubble() && player_character.sees( *this, p ) ) {
-        player_character.memorize_clear_decoration( get_abs( p ), "t_" );
-    }
+    forget_decoration_if_seen( *this, p, "t_" );
 
     if( ( old_t.movecost == 0 ) != ( new_t.movecost == 0 ) ) {
         get_creature_tracker().invalidate_reachability_cache();
