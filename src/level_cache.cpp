@@ -28,9 +28,11 @@ void level_cache::clear()
 
     transparency_cache_dirty.set();
     vision_transparency_dirty.set();
+    // a new cache is dirty everywhere, so a level whose dirty setters ran before it had
+    // a cache (they skip it) is still built in full on first use
     outside_cache_dirty = true;
-    floor_cache_dirty = false;
-    seen_cache_dirty = false;
+    floor_cache_dirty = true;
+    seen_cache_dirty = true;
     lightmap_dirty = true;
     // the memset above marked every memory cache bit dirty
     map_memory_sweep_pending = true;

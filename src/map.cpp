@@ -360,9 +360,8 @@ map::map( int mapsize, bool zlev ) : my_MAPSIZE( mapsize ), my_HALF_MAPSIZE( map
         grid.resize( static_cast<size_t>( my_MAPSIZE ) * my_MAPSIZE, nullptr );
     }
 
-    for( auto &ptr : pathfinding_caches ) {
-        ptr = std::make_unique<pathfinding_cache>();
-    }
+    // pathfinding and level caches are allocated on first use: most temporary maps
+    // never path and touch one or two levels
 
     dbg( D_INFO ) << "map::map(): my_MAPSIZE: " << my_MAPSIZE << " z-levels enabled:" << zlevels;
     traplocs.resize( trap::count() );
@@ -399,10 +398,14 @@ std::unique_ptr<level_cache, map::level_cache_free> map::alloc_cache()
     return cache;
 }
 
+// The set_*_dirty helpers below skip a level with no cache yet: a cache is fully dirty
+// when it is allocated (level_cache::clear), so marking it now would only allocate it.
 void map::set_transparency_cache_dirty( const int zlev )
 {
     if( inbounds_z( zlev ) ) {
-        get_cache( zlev ).transparency_cache_dirty.set();
+        if( level_cache *ch = get_cache_lazy( zlev ) ) {
+            ch->transparency_cache_dirty.set();
+        }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( zlev );
         bump_geometry_revision( zlev );
@@ -413,7 +416,9 @@ void map::set_transparency_cache_dirty( const tripoint_bub_ms &p, bool field )
 {
     if( inbounds( p ) ) {
         const tripoint_bub_sm smp = coords::project_to<coords::sm>( p );
-        get_cache( smp.z() ).transparency_cache_dirty.set( smp.x() * MAPSIZE + smp.y() );
+        if( level_cache *ch = get_cache_lazy( smp.z() ) ) {
+            ch->transparency_cache_dirty.set( smp.x() * MAPSIZE + smp.y() );
+        }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( smp.z() );
         if( !field ) {
@@ -426,12 +431,12 @@ void map::set_transparency_cache_dirty( const tripoint_bub_ms &p, bool field )
 void map::set_seen_cache_dirty( const tripoint_bub_ms &change_location )
 {
     if( inbounds( change_location ) ) {
-        level_cache &cache = get_cache( change_location.z() );
-        if( cache.seen_cache_dirty ) {
+        level_cache *cache = get_cache_lazy( change_location.z() );
+        if( cache == nullptr || cache->seen_cache_dirty ) {
             return;
         }
         if( cast_reached( change_location ) ) {
-            cache.seen_cache_dirty = true;
+            cache->seen_cache_dirty = true;
         }
     }
 }
@@ -439,15 +444,18 @@ void map::set_seen_cache_dirty( const tripoint_bub_ms &change_location )
 void map::set_seen_cache_dirty( const int zlevel )
 {
     if( inbounds_z( zlevel ) ) {
-        level_cache &cache = get_cache( zlevel );
-        cache.seen_cache_dirty = true;
+        if( level_cache *cache = get_cache_lazy( zlevel ) ) {
+            cache->seen_cache_dirty = true;
+        }
     }
 }
 
 void map::set_outside_cache_dirty( const int zlev )
 {
     if( inbounds_z( zlev ) ) {
-        get_cache( zlev ).outside_cache_dirty = true;
+        if( level_cache *ch = get_cache_lazy( zlev ) ) {
+            ch->outside_cache_dirty = true;
+        }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( zlev );
     }
@@ -456,7 +464,9 @@ void map::set_outside_cache_dirty( const int zlev )
 void map::set_floor_cache_dirty( const int zlev )
 {
     if( inbounds_z( zlev ) ) {
-        get_cache( zlev ).floor_cache_dirty = true;
+        if( level_cache *ch = get_cache_lazy( zlev ) ) {
+            ch->floor_cache_dirty = true;
+        }
         scene_build_pending = true;
         set_lightmap_cache_dirty_below( zlev );
         bump_geometry_revision( zlev );
@@ -465,23 +475,33 @@ void map::set_floor_cache_dirty( const int zlev )
 
 bool map::cast_reached( const tripoint_bub_ms &p ) const
 {
-    const level_cache &ch = get_cache_ref( p.z() );
-    return ch.seen_cache[p.x()][p.y()] > 0.0f || ch.camera_cache[p.x()][p.y()] > 0.0f ||
-           ch.ledge_hidden[p.x()][p.y()];
+    // no cast has written a level that has no cache
+    const level_cache *ch = get_cache_lazy( p.z() );
+    if( ch == nullptr ) {
+        return false;
+    }
+    return ch->seen_cache[p.x()][p.y()] > 0.0f || ch->camera_cache[p.x()][p.y()] > 0.0f ||
+           ch->ledge_hidden[p.x()][p.y()];
 }
 
 void map::bump_geometry_revision( const int zlev )
 {
     if( inbounds_z( zlev ) ) {
-        get_cache( zlev ).geometry_revision = next_cache_generation();
-        last_scene_change = get_cache( zlev ).geometry_revision;
+        // the scene changes whether or not the level has a cache yet; a new cache
+        // takes a fresh revision of its own
+        last_scene_change = next_cache_generation();
+        if( level_cache *ch = get_cache_lazy( zlev ) ) {
+            ch->geometry_revision = last_scene_change;
+        }
     }
 }
 
 void map::set_lightmap_cache_dirty( const int zlev )
 {
     if( inbounds_z( zlev ) ) {
-        get_cache( zlev ).lightmap_dirty = true;
+        if( level_cache *ch = get_cache_lazy( zlev ) ) {
+            ch->lightmap_dirty = true;
+        }
     }
 }
 
@@ -489,7 +509,9 @@ void map::set_lightmap_cache_dirty_below( const int zlev )
 {
     for( int z = zlev; z >= -OVERMAP_DEPTH; z-- ) {
         if( inbounds_z( z ) ) {
-            get_cache( z ).lightmap_dirty = true;
+            if( level_cache *ch = get_cache_lazy( z ) ) {
+                ch->lightmap_dirty = true;
+            }
         }
     }
 }
@@ -507,6 +529,10 @@ void map::memory_cache_dec_set_dirty( const tripoint_bub_ms &p, bool value ) con
 {
     if( !inbounds( p ) ) {
         debugmsg( "memory_cache_dec_set_dirty called on out of bounds position" );
+        return;
+    }
+    if( value && get_cache_lazy( p.z() ) == nullptr ) {
+        // a new cache starts with every tile dirty
         return;
     }
     level_cache &ch = get_cache( p.z() );
@@ -527,6 +553,10 @@ void map::memory_cache_ter_set_dirty( const tripoint_bub_ms &p, bool value ) con
 {
     if( !inbounds( p ) ) {
         debugmsg( "memory_cache_ter_set_dirty called on out of bounds position" );
+        return;
+    }
+    if( value && get_cache_lazy( p.z() ) == nullptr ) {
+        // a new cache starts with every tile dirty
         return;
     }
     level_cache &ch = get_cache( p.z() );
@@ -2193,7 +2223,9 @@ bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, cons
     invalidate_max_populated_zlev( p.z() );
 
     memory_cache_dec_set_dirty( p, true );
-    if( player_character.sees( *this, p ) ) {
+    // only the reality bubble has the avatar's view; asking a temporary map would build
+    // its sunlight for nothing
+    if( this == &reality_bubble() && player_character.sees( *this, p ) ) {
         player_character.memorize_clear_decoration( get_abs( p ), "f_" );
     }
 
@@ -2692,7 +2724,9 @@ bool map::ter_set( const tripoint_bub_ms &p, const ter_id &new_terrain, bool avo
     memory_cache_dec_set_dirty( p, true );
     memory_cache_ter_set_dirty( p, true );
     avatar &player_character = get_avatar();
-    if( player_character.sees( *this, p ) ) {
+    // only the reality bubble has the avatar's view; asking a temporary map would build
+    // its sunlight for nothing
+    if( this == &reality_bubble() && player_character.sees( *this, p ) ) {
         player_character.memorize_clear_decoration( get_abs( p ), "t_" );
     }
 
@@ -9507,7 +9541,7 @@ void map::loadn( const point_bub_sm &grid, bool update_vehicles )
         }
 
         // Update vehicle data
-        if( update_vehicles ) {
+        if( update_vehicles && !tmpsub->vehicles.empty() ) {
             level_cache &map_cache = get_cache( z );
             for( const auto &veh : tmpsub->vehicles ) {
                 // Only add if not tracking already.
@@ -10658,11 +10692,12 @@ int map::determine_wall_corner( const tripoint_bub_ms &p ) const
 
 void map::build_outside_cache( const int zlev )
 {
-    auto *ch_lazy = get_cache_lazy( zlev );
-    if( !ch_lazy || !ch_lazy->outside_cache_dirty ) {
+    // allocates the level: the dirty setters skip a level with no cache, and a new
+    // cache is dirty, so a temporary map's first build happens here
+    level_cache &ch = get_cache( zlev );
+    if( !ch.outside_cache_dirty ) {
         return;
     }
-    level_cache &ch = *ch_lazy;
 
     // Make a bigger cache to avoid bounds checking
     // We will later copy it to our regular cache
@@ -10817,11 +10852,11 @@ std::bitset<OVERMAP_LAYERS> map::get_inter_level_visibility( const int origin_zl
 
 void map::build_floor_cache( const int zlev )
 {
-    auto *ch_lazy = get_cache_lazy( zlev );
-    if( !ch_lazy || !ch_lazy->floor_cache_dirty ) {
+    // allocates the level, like build_outside_cache
+    level_cache &ch = get_cache( zlev );
+    if( !ch.floor_cache_dirty ) {
         return;
     }
-    level_cache &ch = *ch_lazy;
 
     auto &floor_cache = ch.floor_cache;
     std::uninitialized_fill_n(
@@ -12076,20 +12111,30 @@ pathfinding_cache::pathfinding_cache()
 
 pathfinding_cache &map::get_pathfinding_cache( int zlev ) const
 {
-    return *pathfinding_caches[zlev + OVERMAP_DEPTH];
+    std::unique_ptr<pathfinding_cache> &cache = pathfinding_caches[zlev + OVERMAP_DEPTH];
+    if( !cache ) {
+        // a new cache is dirty, so its first use builds the whole level
+        cache = std::make_unique<pathfinding_cache>();
+    }
+    return *cache;
 }
 
 void map::set_pathfinding_cache_dirty( const int zlev )
 {
     if( inbounds_z( zlev ) ) {
-        get_pathfinding_cache( zlev ).dirty = true;
+        if( pathfinding_cache *cache = pathfinding_caches[zlev + OVERMAP_DEPTH].get() ) {
+            cache->dirty = true;
+        }
     }
 }
 
 void map::set_pathfinding_cache_dirty( const tripoint_bub_ms &p )
 {
     if( inbounds( p ) ) {
-        get_pathfinding_cache( p.z() ).dirty_points.insert( p.xy() );
+        // a level with no cache yet will be built whole
+        if( pathfinding_cache *cache = pathfinding_caches[p.z() + OVERMAP_DEPTH].get() ) {
+            cache->dirty_points.insert( p.xy() );
+        }
     }
 }
 
@@ -12114,7 +12159,7 @@ const pathfinding_cache &map::get_pathfinding_cache_ref( int zlev ) const
 {
     if( !inbounds_z( zlev ) ) {
         debugmsg( "Tried to get pathfinding cache for out of bounds z-level %d", zlev );
-        return *pathfinding_caches[ OVERMAP_DEPTH ];
+        return get_pathfinding_cache( 0 );
     }
     pathfinding_cache &cache = get_pathfinding_cache( zlev );
     if( cache.dirty || !cache.dirty_points.empty() ) {
