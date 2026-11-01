@@ -703,7 +703,7 @@ void cata_tiles::draw( const point &dest, const tripoint_bub_ms &center, int wid
             screen_min = *northwest;
             screen_max = *southeast;
             min_mm_reg = point( std::min( min_mm_reg.x, northwest->x ),
-                                std::min( max_mm_reg.y, northwest->y ) );
+                                std::min( min_mm_reg.y, northwest->y ) );
             max_mm_reg = point( std::max( max_mm_reg.x, southeast->x ),
                                 std::max( max_mm_reg.y, southeast->y ) );
         }
