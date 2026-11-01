@@ -11,17 +11,21 @@
 #include "gun_mode.h"
 #include "item.h"
 #include "item_location.h"
+#include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "monster.h"
 #include "npc.h"
 #include "npc_attack.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
 #include "type_id.h"
 
 class Creature;
+
+static const faction_id faction_your_followers( "your_followers" );
 
 static const gun_mode_id gun_mode_BURST( "BURST" );
 
@@ -30,6 +34,8 @@ static const itype_id itype_shot_00( "shot_00" );
 static const itype_id itype_u_shotgun( "u_shotgun" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
+
+static const spell_id spell_weaponpod_saw( "weaponpod_saw" );
 
 static const string_id<npc_template> npc_template_test_talker( "test_talker" );
 
@@ -118,5 +124,34 @@ TEST_CASE( "npc-b02_npc_gun_attack_fires_the_evaluated_mode", "[audit][npc_attac
 
         CHECK( mod->ammo_remaining() == 1 );
         CHECK( guy.get_wielded_item()->ammo_remaining() == rifle_ammo );
+    }
+}
+
+// npc_attack_spell::can_use() rejected any spell louder than 4 for every NPC that has the
+// use_silent rule, and the npc_follower_rules constructor gives that rule to every NPC.
+// The gun checks only apply it to the player's followers, so hostile casters could never
+// cast their stronger attack spells.
+TEST_CASE( "npc-b03_hostile_npc_casts_loud_attack_spells", "[audit][npc_attack]" )
+{
+    npc &guy = audit_spawn_npc();
+    guy.magic->learn_spell( spell_weaponpod_saw, guy, true );
+    const spell &saw = guy.magic->get_spell( spell_weaponpod_saw );
+    REQUIRE( saw.can_cast( guy ) );
+    REQUIRE( saw.sound_volume( guy ) >= 5 );
+    REQUIRE( guy.rules.has_flag( ally_rule::use_silent ) );
+
+    monster &zombie = audit_spawn_zombie( audit_npc_pos + tripoint::east );
+    const npc_attack_spell attack( spell_weaponpod_saw );
+
+    SECTION( "a hostile NPC is not bound by the follower rule" ) {
+        guy.set_attitude( NPCATT_KILL );
+        REQUIRE( !guy.is_player_ally() );
+        CHECK( attack.evaluate( guy, &zombie ).value() );
+    }
+
+    SECTION( "a follower told to stay silent still keeps quiet" ) {
+        guy.set_fac( faction_your_followers );
+        REQUIRE( guy.is_player_ally() );
+        CHECK( !attack.evaluate( guy, &zombie ).value() );
     }
 }

@@ -217,8 +217,9 @@ bool npc_attack_spell::can_use( const npc &source ) const
     const spell &attack_spell = source.magic->get_spell( attack_spell_id );
     // missing components or energy or something
     return attack_spell.can_cast( source ) &&
-           // use the same rules as silent guns
-           !( source.rules.has_flag( ally_rule::use_silent ) && attack_spell.sound_volume( source ) >= 5 );
+           // use the same rules as silent guns: every NPC has the flag, but only followers obey it
+           !( source.is_player_ally() && source.rules.has_flag( ally_rule::use_silent ) &&
+              attack_spell.sound_volume( source ) >= 5 );
 }
 
 int npc_attack_spell::base_time_penalty( const npc &source ) const
