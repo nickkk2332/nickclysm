@@ -8725,7 +8725,9 @@ std::vector<tripoint_bub_ms> map::reachable_flood_steps( const tripoint_bub_ms &
     // init to -1 as "not visited yet"
     std::vector<int> t_grid( grid_area, -1 );
     const tripoint_rel_ms origin_offset = { range, range, 0 };
-    const int initial_visit_distance = range * range; // Large unreachable value
+    // Large unreachable value. At least 1, or at range 0 it equals the origin's distance and
+    // the origin itself is dropped (MONAI-B03: absorb_meat never used its meat up).
+    const int initial_visit_distance = std::max( range * range, 1 );
 
     // Fill positions that are visitable with initial_visit_distance
     for( const tripoint_bub_ms &p : points_in_radius( f, range ) ) {
