@@ -1,0 +1,11 @@
+[
+  {
+    "//": "Core art_robe copies from robe, which loads after it, so core's definition is deferred to finalize.  This later redefinition must survive that (DATA-B03).",
+    "id": "art_robe",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "copy-from": "robe",
+    "name": { "str": "royal robe" },
+    "description": "Test data's royal robe, loaded after core's deferred one."
+  }
+]

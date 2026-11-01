@@ -263,11 +263,46 @@ Four fixes have no regression test, because the code is only reachable through i
 - In math, `u_addiction_turns(...) =`, `u_pain('type': 'perceived') +=` and the stat bonus setters now set or add as written. Sleeping pill withdrawal is prolonged instead of shortened (MATH-B02).
 - Per-character safemode rules are saved (UIHUD-B01).
 
+**Second round: the remaining high-severity small and medium findings.** 18 findings: 13 fixed, 5 partial, made the same way (agent batches, separate review, central build and test). The performance numbers are in [benchmarks/README.md](benchmarks/README.md#round-3-remaining-high-severity-performance-findings). Integrating them needed one test fix (a new active item has to be registered before an NPC can see it) and a fix to the benchmark runner, which had been dropping results that followed a log line with no newline.
+
+| ID | Status | Commits | Regression test or benchmark |
+|---|---|---|---|
+| CHAR-B04 | fixed | `a5a4b6e1` | `tests/audit_character_effects_test.cpp` |
+| HLTH-J01 | fixed | `291add8b` | `tests/audit_character_effects_test.cpp` |
+| CHAR-J01 | partial | `30c665af` | `tests/audit_character_effects_test.cpp`. Still open: `u_add_body_part` / `u_lose_body_part` EOC effects |
+| MUT-B05 | partial | `a9089239`, `846840db` | `tests/audit_mutation_towards_test.cpp`. Still open: filtering mutation candidates with unmet thresholds (would change mutation pacing) |
+| MUT-J01 | partial | `b65fd9a9` | `tests/audit_mutation_towards_test.cpp`. Still open: validating every trait's category at load (core Mycus traits and mods use undefined categories) |
+| EOC-B05 | fixed | `2f8d333f`, `0aad6359` | `tests/audit_items_npc_loading_test.cpp` |
+| UIINV-B02 | partial | `edcb168d` | none: the move goes through a uilist. Still open: routing the move through the AIM insert activity |
+| ACT-B03 | fixed | `4d5bffa7`, `9c9df48a` | `tests/audit_items_npc_loading_test.cpp` |
+| NPC-B04 | fixed | `67a6f426`, `4f9a1228` | `tests/audit_items_npc_loading_test.cpp` |
+| DATA-B03 | fixed | `4862b868` | `tests/audit_items_npc_loading_test.cpp` |
+| MAP-P02 | fixed | `56f3c41f`, `13d01ac1` | benchmark `temp_map_load` |
+| VEH-P01 | fixed | `45efaeba`, `5d8a43e4` | benchmark `vehicle_collision_check` |
+| CRAFT-P01 | fixed | `6fdaa74c`, `9805272f` | benchmark `craft_unattended_wait`. A tool or heat source lost during a waiting step is noticed at the next one-minute poll, as with other steps |
+| ACT-P02 | fixed | `81616d1d`, `6917bd82`, `4ad151f9` | `tests/audit_perf_world_activities_test.cpp`; benchmark `farm_scan` can't show it |
+| TERR-P01 | fixed | `a0fce99f`, `1d0f11f6` | benchmark `blueprint_build_reqs` |
+| MAGIC-P01 | partial | `d3f7852b`, `7738db12` | `tests/audit_perf_ui_test.cpp`; benchmark `spellbook_damage_preview`. Still open: one shared fake caster for casterless spell casts |
+| UIHUD-P01 | fixed | `5521c271` | none: needs a display |
+| REND-P01 | fixed | `32187d3e` | none: tiles renderer; compile-checked with `-DTILES` |
+
+**Gameplay changes from the second round:**
+
+- NPCs feel their effects, pain, hunger and thirst like the player: drunk, poisoned or starving NPCs are weaker, and effect dodge and to-hit modifiers now apply to everyone (CHAR-B04, HLTH-J01).
+- NPCs notice live grenades, dynamite and C4 near them and get away (NPC-B04).
+- A failed mutation no longer strips the traits it would have replaced, and starting traits survive an unaffordable mutation (MUT-B05).
+- Body parts from an effect or worn item (e.g. Xedra's Wings of Gossamer) go away when it ends (CHAR-J01).
+- Missions that take items (GodCo, Isherwood, robofac and others) take exactly what they need, including part of a stack (EOC-B05).
+- Zone sorting no longer carries off your own matching ammo, nails or pills (ACT-B03).
+- Inventory drag-and-drop refuses moves that used to crash or duplicate (UIINV-B02).
+- Previewing a spell scroll no longer teaches follow-up spells (MAGIC-P01).
+- A mod's redefinition of a core item is no longer overwritten by the core version at load (DATA-B03).
+
 Every mod in `data/mods` was loaded with these changes. All load without errors, except Limb_WIP (marked obsolete), which still reports armor and mutation-category warnings that predate this branch.
 
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
-After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
+After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
 
 Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five tests failed in full-suite runs but passed alone, because earlier tests left state behind. The main culprit: `clear_character()` did not reset the stat bonuses that hardcoded effects add, so after a frostbite test the avatar kept -2 INT, which slowed learning by 10% in later crafting tests. Three other tests (`memorials`, `available_reloadables`, `monster_speed_description`) now clear the map or the avatar themselves.
 

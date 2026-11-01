@@ -1,0 +1,63 @@
+{
+  "label": "after-round3",
+  "commit": "4f9a1228",
+  "date": "2026-11-01T22:47:49",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpus": 4,
+    "system": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39"
+  },
+  "binary": "../../../tmp/fixprep/cata_test_r2after",
+  "seed": 4242,
+  "scenarios": {
+    "blueprint_build_reqs": {
+      "median_ms": 0.615,
+      "min_ms": 0.55,
+      "max_ms": 0.75,
+      "samples": 10,
+      "work": "build reqs of each constructible terrain and furniture, 10 a call, 5 passes"
+    },
+    "craft_unattended_wait": {
+      "median_ms": 7.975,
+      "min_ms": 6.57,
+      "max_ms": 11.54,
+      "samples": 10,
+      "work": "300 turns waiting on an unattended step needing an oven, in a dense base"
+    },
+    "farm_scan": {
+      "median_ms": 2.095,
+      "min_ms": 1.78,
+      "max_ms": 2.63,
+      "samples": 10,
+      "work": "5 check-only farm scans of a 10x10 plot of planted seeds"
+    },
+    "spellbook_damage_preview": {
+      "median_ms": 0.235,
+      "min_ms": 0.22,
+      "max_ms": 0.28,
+      "samples": 10,
+      "work": "damage range at max level and per level of a RANDOM_DAMAGE spell, 200 redraws"
+    },
+    "temp_map_load": {
+      "median_ms": 75.16499999999999,
+      "min_ms": 66.63,
+      "max_ms": 88.32,
+      "samples": 10,
+      "work": "load 100 tinymaps and 20 smallmaps over generated terrain, one wall edit each"
+    },
+    "vehicle_collision_check": {
+      "median_ms": 38.945,
+      "min_ms": 31.5,
+      "max_ms": 51.19,
+      "samples": 10,
+      "work": "collision check of a moving bus over open ground, 2000 tile steps"
+    },
+    "data_load": {
+      "median_ms": 22474.5,
+      "min_ms": 22201,
+      "max_ms": 22748,
+      "samples": 2,
+      "work": "test binary start to \"Game data loaded\""
+    }
+  }
+}

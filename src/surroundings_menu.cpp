@@ -1194,9 +1194,19 @@ void surroundings_menu::draw_examine_info()
 
 void surroundings_menu::execute()
 {
+    // The 10 ms input timeout only keeps ImGui responsive. The map under the menu shows just
+    // the selection (the trail to path_end, and view_offset), so redraw it after real input
+    // or when the selection moved, not on every idle TIMEOUT pass.
+    bool redraw_main_ui = true;
+    std::optional<tripoint_bub_ms> drawn_path_end;
+    tripoint_rel_ms drawn_view_offset;
     while( true ) {
         update_path_end();
-        g->invalidate_main_ui_adaptor();
+        if( redraw_main_ui || path_end != drawn_path_end || you.view_offset != drawn_view_offset ) {
+            g->invalidate_main_ui_adaptor();
+            drawn_path_end = path_end;
+            drawn_view_offset = you.view_offset;
+        }
 
         ui_manager::redraw();
 
@@ -1206,6 +1216,7 @@ void surroundings_menu::execute()
         } else {
             action = get_selected_data()->ctxt.handle_input();
         }
+        redraw_main_ui = action != "TIMEOUT";
 
         if( action == "UP" ) {
             select_prev();

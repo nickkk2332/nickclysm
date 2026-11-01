@@ -330,8 +330,13 @@ static const species_id species_HUMAN( "HUMAN" );
 
 static const start_location_id start_location_sloc_shelter_safe( "sloc_shelter_safe" );
 
+static const trait_id trait_ARACHNID_ARMS( "ARACHNID_ARMS" );
+static const trait_id trait_ARACHNID_ARMS_OK( "ARACHNID_ARMS_OK" );
 static const trait_id trait_BIRD_EYE( "BIRD_EYE" );
 static const trait_id trait_CF_HAIR( "CF_HAIR" );
+static const trait_id trait_CHITIN2( "CHITIN2" );
+static const trait_id trait_CHITIN3( "CHITIN3" );
+static const trait_id trait_CHITIN_FUR3( "CHITIN_FUR3" );
 static const trait_id trait_CHLOROMORPH( "CHLOROMORPH" );
 static const trait_id trait_CLUMSY( "CLUMSY" );
 static const trait_id trait_DEBUG_CLOAK( "DEBUG_CLOAK" );
@@ -348,6 +353,8 @@ static const trait_id trait_FAT( "FAT" );
 static const trait_id trait_GILLS( "GILLS" );
 static const trait_id trait_GILLS_CEPH( "GILLS_CEPH" );
 static const trait_id trait_HIBERNATE( "HIBERNATE" );
+static const trait_id trait_INSECT_ARMS( "INSECT_ARMS" );
+static const trait_id trait_INSECT_ARMS_OK( "INSECT_ARMS_OK" );
 static const trait_id trait_INSOMNIA( "INSOMNIA" );
 static const trait_id trait_LEG_TENT_BRACE( "LEG_TENT_BRACE" );
 static const trait_id trait_LIGHTSTEP( "LIGHTSTEP" );
@@ -376,8 +383,11 @@ static const trait_id trait_SHOUT3( "SHOUT3" );
 static const trait_id trait_SLIMY( "SLIMY" );
 static const trait_id trait_SPINES( "SPINES" );
 static const trait_id trait_SUNLIGHT_DEPENDENT( "SUNLIGHT_DEPENDENT" );
+static const trait_id trait_THICK_SCALES( "THICK_SCALES" );
 static const trait_id trait_THORNS( "THORNS" );
 static const trait_id trait_VISCOUS( "VISCOUS" );
+static const trait_id trait_WHISKERS( "WHISKERS" );
+static const trait_id trait_WHISKERS_RAT( "WHISKERS_RAT" );
 
 static const std::set<material_id> ferric = { material_iron, material_steel, material_budget_steel, material_ch_steel, material_hc_steel, material_lc_steel, material_mc_steel, material_qt_steel };
 
@@ -3101,6 +3111,124 @@ std::map<damage_type_id, int> Character::smash_ability() const
 
 void Character::reset_stats()
 {
+    // Trait / mutation buffs
+    if( has_trait( trait_THICK_SCALES ) ) {
+        add_miss_reason( _( "Your thick scales get in the way." ), 2 );
+    }
+    if( has_trait( trait_CHITIN2 ) || has_trait( trait_CHITIN3 ) || has_trait( trait_CHITIN_FUR3 ) ) {
+        add_miss_reason( _( "Your chitin gets in the way." ), 1 );
+    }
+    if( has_trait( trait_INSECT_ARMS ) ) {
+        add_miss_reason( _( "Your insect limbs get in the way." ), 2 );
+    }
+    if( has_trait( trait_INSECT_ARMS_OK ) ) {
+        if( !wearing_fitting_on( bodypart_id( "torso" ) ) ) {
+            mod_dex_bonus( 1 );
+        } else {
+            add_miss_reason( _( "Your clothing restricts your insect arms." ), 1 );
+        }
+    }
+    if( has_flag( json_flag_WEBBED_HANDS ) ) {
+        add_miss_reason( _( "Your webbed hands get in the way." ), 1 );
+    }
+    if( has_trait( trait_ARACHNID_ARMS ) ) {
+        add_miss_reason( _( "Your arachnid limbs get in the way." ), 4 );
+    }
+    if( has_trait( trait_ARACHNID_ARMS_OK ) ) {
+        if( !wearing_fitting_on( bodypart_id( "torso" ) ) ) {
+            mod_dex_bonus( 2 );
+        } else {
+            add_miss_reason( _( "Your clothing constricts your arachnid limbs." ), 2 );
+        }
+    }
+
+    // Pain
+    if( get_perceived_pain() > 0 ) {
+        const stat_mod ppen = get_pain_penalty();
+        ppen_str = ppen.strength;
+        ppen_dex = ppen.dexterity;
+        ppen_int = ppen.intelligence;
+        ppen_per = ppen.perception;
+        ppen_spd = ppen.speed;
+        mod_str_bonus( -ppen_str );
+        mod_dex_bonus( -ppen_dex );
+        mod_int_bonus( -ppen_int );
+        mod_per_bonus( -ppen_per );
+        if( ppen.dexterity > 0 ) {
+            add_miss_reason( _( "Your pain distracts you!" ), static_cast<unsigned>( ppen.dexterity ) );
+        }
+    }
+
+    // Starvation
+    const float bmi = get_bmi_fat();
+    if( bmi < character_weight_category::normal ) {
+        const stat_mod wpen = get_weight_penalty();
+        add_miss_reason( _( "You're weak from hunger." ),
+                         static_cast<unsigned>( ( get_starvation() + 300 ) / 1000 ) );
+        mod_str_bonus( -wpen.strength );
+        mod_dex_bonus( -wpen.dexterity );
+        mod_int_bonus( -wpen.intelligence );
+    }
+    // Thirst
+    if( get_thirst() >= 200 ) {
+        // We die at 1200
+        const int dex_mod = -get_thirst() / 200;
+        add_miss_reason( _( "You're weak from thirst." ), static_cast<unsigned>( -dex_mod ) );
+        mod_str_bonus( -get_thirst() / 200 );
+        mod_dex_bonus( dex_mod );
+        mod_int_bonus( -get_thirst() / 200 );
+        mod_per_bonus( -get_thirst() / 200 );
+    }
+
+    // Dodge-related effects
+    mod_dodge_bonus( mabuff_dodge_bonus() );
+    // Whiskers don't work so well if they're covered
+    if( has_trait( trait_WHISKERS ) && !natural_attack_restricted_on( bodypart_id( "mouth" ) ) ) {
+        mod_dodge_bonus( 1 );
+    }
+    if( has_trait( trait_WHISKERS_RAT ) && !natural_attack_restricted_on( bodypart_id( "mouth" ) ) ) {
+        mod_dodge_bonus( 2 );
+    }
+    // depending on mounts size, attacks will hit the mount and use their dodge rating.
+    // if they hit the player, the player cannot dodge as effectively.
+    if( is_mounted() ) {
+        mod_dodge_bonus( -4 );
+    }
+    // Spider hair is basically a full-body set of whiskers, once you get the brain for it
+    if( has_trait( trait_CHITIN_FUR3 ) ) {
+        static const std::array<bodypart_str_id, 5> parts {
+            body_part_head, body_part_arm_r, body_part_arm_l,
+            body_part_leg_r, body_part_leg_l
+        };
+        for( const bodypart_str_id &bp : parts ) {
+            if( !wearing_something_on( bp ) ) {
+                mod_dodge_bonus( +1 );
+            }
+        }
+        // Torso handled separately, bigger bonus
+        if( !wearing_something_on( bodypart_id( "torso" ) ) ) {
+            mod_dodge_bonus( 4 );
+        }
+    }
+
+    // Apply static martial arts buffs
+    martial_arts_data->ma_static_effects( *this );
+
+    // Effects
+    for( const auto &maps : *effects ) {
+        for( const auto &i : maps.second ) {
+            const effect &it = i.second;
+            bool reduced = resists_effect( it );
+            mod_str_bonus( it.get_mod( "STR", reduced ) );
+            mod_dex_bonus( it.get_mod( "DEX", reduced ) );
+            mod_per_bonus( it.get_mod( "PER", reduced ) );
+            mod_int_bonus( it.get_mod( "INT", reduced ) );
+            // dodge_mod and hit_mod; bash/cut/size_mod are monster-only
+            mod_dodge_bonus( it.get_mod( "DODGE", reduced ) );
+            mod_hit_bonus( it.get_mod( "HIT", reduced ) );
+        }
+    }
+
     if( calendar::once_every( 1_minutes ) ) {
         update_mental_focus();
     }
@@ -4929,6 +5057,20 @@ void Character::recalculate_bodyparts()
                    get_cached_organic_size() );
 }
 
+// True when the body holds exactly the anatomy's parts, so no enchantment that added or
+// removed a part is still reflected in it.
+static bool body_matches_anatomy( const Creature &who )
+{
+    const std::map<bodypart_str_id, bodypart> &body = who.get_body();
+    const std::vector<bodypart_id> parts = who.get_anatomy()->get_bodyparts();
+    if( parts.size() != body.size() ) {
+        return false;
+    }
+    return std::all_of( parts.begin(), parts.end(), [&body]( const bodypart_id & bp ) {
+        return body.count( bp.id() ) > 0;
+    } );
+}
+
 void Character::recalculate_enchantment_cache()
 {
     enchantment_cache->clear();
@@ -4997,7 +5139,9 @@ void Character::recalculate_enchantment_cache()
         }
     }
 
-    if( enchantment_cache->modifies_bodyparts() ) {
+    // Also rebuild once the last body-part enchantment is gone (an effect expired, an item
+    // was taken off), or the parts it added or removed would stay forever.
+    if( enchantment_cache->modifies_bodyparts() || !body_matches_anatomy( *this ) ) {
         recalculate_bodyparts();
     }
 

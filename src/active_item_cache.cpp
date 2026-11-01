@@ -7,6 +7,8 @@
 
 #include "item.h"
 #include "item_pocket.h"
+#include "itype.h"
+#include "iuse.h"
 #include "safe_reference.h"
 
 float item_reference::spoil_multiplier() const
@@ -80,7 +82,9 @@ bool active_item_cache::add( item &it, point_rel_ms location, item *parent,
     if( it.can_revive() ) {
         special_items[special_item_type::corpse].emplace_back( ref );
     }
-    if( it.get_use( "explosion" ) ) {
+    // Timed explosives (grenades, dynamite, C4) keep their blast in countdown_action.
+    const iuse_actor *countdown = it.type->countdown_action.get_actor_ptr();
+    if( it.get_use( "explosion" ) || ( countdown && countdown->type == "explosion" ) ) {
         special_items[special_item_type::explosive].emplace_back( ref );
     }
     target_list.emplace_back( std::move( ref ) );

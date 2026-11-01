@@ -110,7 +110,6 @@ static const itype_id itype_mut_longpull( "mut_longpull" );
 static const json_character_flag json_flag_ALARMCLOCK( "ALARMCLOCK" );
 static const json_character_flag json_flag_CANNOT_READ_SPELLBOOKS( "CANNOT_READ_SPELLBOOKS" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
-static const json_character_flag json_flag_WEBBED_HANDS( "WEBBED_HANDS" );
 
 static const mfaction_str_id monfaction_player( "player" );
 
@@ -124,21 +123,11 @@ static const move_mode_id move_mode_prone( "prone" );
 static const move_mode_id move_mode_run( "run" );
 static const move_mode_id move_mode_walk( "walk" );
 
-static const trait_id trait_ARACHNID_ARMS( "ARACHNID_ARMS" );
-static const trait_id trait_ARACHNID_ARMS_OK( "ARACHNID_ARMS_OK" );
-static const trait_id trait_CHITIN2( "CHITIN2" );
-static const trait_id trait_CHITIN3( "CHITIN3" );
-static const trait_id trait_CHITIN_FUR3( "CHITIN_FUR3" );
 static const trait_id trait_DEBUG_CLOAK( "DEBUG_CLOAK" );
-static const trait_id trait_INSECT_ARMS( "INSECT_ARMS" );
-static const trait_id trait_INSECT_ARMS_OK( "INSECT_ARMS_OK" );
 static const trait_id trait_PROF_DICEMASTER( "PROF_DICEMASTER" );
 static const trait_id trait_SHELL2( "SHELL2" );
 static const trait_id trait_SHELL3( "SHELL3" );
 static const trait_id trait_STIMBOOST( "STIMBOOST" );
-static const trait_id trait_THICK_SCALES( "THICK_SCALES" );
-static const trait_id trait_WHISKERS( "WHISKERS" );
-static const trait_id trait_WHISKERS_RAT( "WHISKERS_RAT" );
 
 avatar::avatar()
 {
@@ -1038,36 +1027,6 @@ void avatar::reset_stats()
 {
     const int current_stim = get_stim();
 
-    // Trait / mutation buffs
-    if( has_trait( trait_THICK_SCALES ) ) {
-        add_miss_reason( _( "Your thick scales get in the way." ), 2 );
-    }
-    if( has_trait( trait_CHITIN2 ) || has_trait( trait_CHITIN3 ) || has_trait( trait_CHITIN_FUR3 ) ) {
-        add_miss_reason( _( "Your chitin gets in the way." ), 1 );
-    }
-    if( has_trait( trait_INSECT_ARMS ) ) {
-        add_miss_reason( _( "Your insect limbs get in the way." ), 2 );
-    }
-    if( has_trait( trait_INSECT_ARMS_OK ) ) {
-        if( !wearing_fitting_on( bodypart_id( "torso" ) ) ) {
-            mod_dex_bonus( 1 );
-        } else {
-            add_miss_reason( _( "Your clothing restricts your insect arms." ), 1 );
-        }
-    }
-    if( has_flag( json_flag_WEBBED_HANDS ) ) {
-        add_miss_reason( _( "Your webbed hands get in the way." ), 1 );
-    }
-    if( has_trait( trait_ARACHNID_ARMS ) ) {
-        add_miss_reason( _( "Your arachnid limbs get in the way." ), 4 );
-    }
-    if( has_trait( trait_ARACHNID_ARMS_OK ) ) {
-        if( !wearing_fitting_on( bodypart_id( "torso" ) ) ) {
-            mod_dex_bonus( 2 );
-        } else {
-            add_miss_reason( _( "Your clothing constricts your arachnid limbs." ), 2 );
-        }
-    }
     const auto set_fake_effect_dur = [this]( const efftype_id & type, const time_duration & dur ) {
         effect &eff = get_effect( type );
         if( eff.get_duration() == dur ) {
@@ -1085,23 +1044,6 @@ void avatar::reset_stats()
     // Painkiller
     set_fake_effect_dur( effect_pkill, 1_turns * get_painkiller() );
 
-    // Pain
-    if( get_perceived_pain() > 0 ) {
-        const stat_mod ppen = get_pain_penalty();
-        ppen_str = ppen.strength;
-        ppen_dex = ppen.dexterity;
-        ppen_int = ppen.intelligence;
-        ppen_per = ppen.perception;
-        ppen_spd = ppen.speed;
-        mod_str_bonus( -ppen_str );
-        mod_dex_bonus( -ppen_dex );
-        mod_int_bonus( -ppen_int );
-        mod_per_bonus( -ppen_per );
-        if( ppen.dexterity > 0 ) {
-            add_miss_reason( _( "Your pain distracts you!" ), static_cast<unsigned>( ppen.dexterity ) );
-        }
-    }
-
     // Radiation
     set_fake_effect_dur( effect_irradiated, 1_turns * get_rad() );
     // Morale
@@ -1117,78 +1059,14 @@ void avatar::reset_stats()
     } else {
         set_fake_effect_dur( effect_stim_overdose, 1_turns * ( current_stim - 30 ) );
     }
-    // Starvation
-    const float bmi = get_bmi_fat();
-    if( bmi < character_weight_category::normal ) {
-        const stat_mod wpen = get_weight_penalty();
-        add_miss_reason( _( "You're weak from hunger." ),
-                         static_cast<unsigned>( ( get_starvation() + 300 ) / 1000 ) );
-        mod_str_bonus( -wpen.strength );
-        mod_dex_bonus( -wpen.dexterity );
-        mod_int_bonus( -wpen.intelligence );
-    }
-    // Thirst
-    if( get_thirst() >= 200 ) {
-        // We die at 1200
-        const int dex_mod = -get_thirst() / 200;
-        add_miss_reason( _( "You're weak from thirst." ), static_cast<unsigned>( -dex_mod ) );
-        mod_str_bonus( -get_thirst() / 200 );
-        mod_dex_bonus( dex_mod );
-        mod_int_bonus( -get_thirst() / 200 );
-        mod_per_bonus( -get_thirst() / 200 );
-    }
     if( get_sleep_deprivation() >= SLEEP_DEPRIVATION_HARMLESS ) {
         set_fake_effect_dur( effect_sleep_deprived, 1_turns * get_sleep_deprivation() );
     } else if( has_effect( effect_sleep_deprived ) ) {
         remove_effect( effect_sleep_deprived );
     }
 
-    // Dodge-related effects
-    mod_dodge_bonus( mabuff_dodge_bonus() );
-    // Whiskers don't work so well if they're covered
-    if( has_trait( trait_WHISKERS ) && !natural_attack_restricted_on( bodypart_id( "mouth" ) ) ) {
-        mod_dodge_bonus( 1 );
-    }
-    if( has_trait( trait_WHISKERS_RAT ) && !natural_attack_restricted_on( bodypart_id( "mouth" ) ) ) {
-        mod_dodge_bonus( 2 );
-    }
-    // depending on mounts size, attacks will hit the mount and use their dodge rating.
-    // if they hit the player, the player cannot dodge as effectively.
-    if( is_mounted() ) {
-        mod_dodge_bonus( -4 );
-    }
-    // Spider hair is basically a full-body set of whiskers, once you get the brain for it
-    if( has_trait( trait_CHITIN_FUR3 ) ) {
-        static const std::array<bodypart_str_id, 5> parts {
-            body_part_head, body_part_arm_r, body_part_arm_l,
-            body_part_leg_r, body_part_leg_l
-        };
-        for( const bodypart_str_id &bp : parts ) {
-            if( !wearing_something_on( bp ) ) {
-                mod_dodge_bonus( +1 );
-            }
-        }
-        // Torso handled separately, bigger bonus
-        if( !wearing_something_on( bodypart_id( "torso" ) ) ) {
-            mod_dodge_bonus( 4 );
-        }
-    }
-
-    // Apply static martial arts buffs
-    martial_arts_data->ma_static_effects( *this );
-
-    // Effects
-    for( const auto &maps : *effects ) {
-        for( const auto &i : maps.second ) {
-            const effect &it = i.second;
-            bool reduced = resists_effect( it );
-            mod_str_bonus( it.get_mod( "STR", reduced ) );
-            mod_dex_bonus( it.get_mod( "DEX", reduced ) );
-            mod_per_bonus( it.get_mod( "PER", reduced ) );
-            mod_int_bonus( it.get_mod( "INT", reduced ) );
-        }
-    }
-
+    // Trait buffs, pain/hunger/thirst penalties, martial arts static buffs and
+    // effect stat mods apply to every character, see Character::reset_stats.
     Character::reset_stats();
 
     recalc_sight_limits();

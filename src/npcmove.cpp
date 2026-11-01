@@ -620,13 +620,21 @@ std::vector<sphere> npc::find_dangerous_explosives() const
                               special_item_type::explosive );
 
     for( const item_location &elem : active_items ) {
-        const use_function *use = elem->type->get_use( "explosion" );
-
-        if( !use ) {
+        // Timed explosives (grenades, dynamite, C4) keep their blast in countdown_action and
+        // go off at countdown_point; the rest are an "explosion" use action.
+        const explosion_iuse *actor = dynamic_cast<const explosion_iuse *>
+                                      ( elem->type->countdown_action.get_actor_ptr() );
+        const bool timed = actor != nullptr;
+        if( !timed ) {
+            const use_function *use = elem->type->get_use( "explosion" );
+            if( use ) {
+                actor = dynamic_cast<const explosion_iuse *>( use->get_actor_ptr() );
+            }
+        }
+        if( !actor ) {
             continue;
         }
 
-        const explosion_iuse *actor = dynamic_cast<const explosion_iuse *>( use->get_actor_ptr() );
         const int safe_range = actor->explosion.safe_range();
 
         if( rl_dist( pos_abs(), elem.pos_abs() ) >= safe_range ) {
@@ -634,8 +642,13 @@ std::vector<sphere> npc::find_dangerous_explosives() const
         }
 
         const int turns_to_evacuate = 2 * safe_range / speed_rating();
+        if( timed && elem->countdown_point == calendar::turn_max ) {
+            continue;   // Not counting down.
+        }
+        const int fuse = timed ? to_turns<int>( elem->countdown_point - calendar::turn ) :
+                         elem->charges;
 
-        if( elem->charges > turns_to_evacuate ) {
+        if( fuse > turns_to_evacuate ) {
             continue;   // Consider only imminent dangers.
         }
 

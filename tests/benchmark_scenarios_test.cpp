@@ -17,24 +17,38 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "activity_actor_definitions.h"
 #include "avatar.h"
+#include "build_reqs.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "clzones.h"
+#include "construction.h"
 #include "coordinates.h"
+#include "crafting.h"
+#include "crafting_enums.h"
 #include "game.h"
 #include "item.h"
+#include "item_location.h"
+#include "item_wakeup.h"
+#include "json_loader.h"
+#include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_selector.h"
+#include "memory_fast.h"
 #include "monster.h"
 #include "options_helpers.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "recipe.h"
@@ -43,6 +57,8 @@
 #include "rng.h"
 #include "temp_crafting_inventory.h"
 #include "type_id.h"
+#include "units.h"
+#include "vehicle.h"
 #include "weather.h"
 #include "weather_type.h"
 
@@ -54,11 +70,19 @@ static const itype_id itype_can_beans( "can_beans" );
 static const itype_id itype_flashlight( "flashlight" );
 static const itype_id itype_hammer( "hammer" );
 static const itype_id itype_jacket_light( "jacket_light" );
+static const itype_id itype_microwave( "microwave" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_scrap( "scrap" );
+static const itype_id itype_seed_buckwheat( "seed_buckwheat" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
+static const recipe_id recipe_cudgel_test_unattended_with_qual(
+    "cudgel_test_unattended_with_qual" );
+
+static const spell_id spell_test_spell_random_damage( "test_spell_random_damage" );
+
+static const zone_type_id zone_type_FARM_PLOT( "FARM_PLOT" );
 static const zone_type_id zone_type_LOOT_AMMO( "LOOT_AMMO" );
 static const zone_type_id zone_type_LOOT_BOOKS( "LOOT_BOOKS" );
 static const zone_type_id zone_type_LOOT_CLOTHING( "LOOT_CLOTHING" );
@@ -69,10 +93,15 @@ static const zone_type_id zone_type_LOOT_SPARE_PARTS( "LOOT_SPARE_PARTS" );
 static const zone_type_id zone_type_LOOT_TOOLS( "LOOT_TOOLS" );
 static const zone_type_id zone_type_LOOT_WEAPONS( "LOOT_WEAPONS" );
 
+static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
+
 static const ter_str_id ter_t_brick_wall( "t_brick_wall" );
+static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
 static const ter_str_id ter_t_utility_light( "t_utility_light" );
 
 static const trait_id trait_DEBUG_NODMG( "DEBUG_NODMG" );
+
+static const vproto_id vehicle_prototype_bus( "bus" );
 
 namespace
 {
@@ -475,4 +504,212 @@ TEST_CASE( "bench_zone_sort_queries", "[.][benchmark_scenario]" )
         CHECK( found > 0 );
     } );
     zone_manager::get_manager().clear();
+}
+
+// MAP-P02: temporary maps, which mapgen, NPC activities, blueprints and vehicles load all
+// the time, each with a terrain edit like the ones mapgen and construction make.
+TEST_CASE( "bench_temp_map_load", "[.][benchmark_scenario]" )
+{
+    run_scenario( "temp_map_load",
+                  "load 100 tinymaps and 20 smallmaps over generated terrain, one wall edit each",
+    []() {
+        clear_avatar();
+        clear_map();
+    }, []() {
+        const tripoint_abs_omt base = project_to<coords::omt>( get_map().get_abs_sub() );
+        int edits = 0;
+        const auto edit = [&edits]( tinymap & tm, int i ) {
+            const tripoint_omt_ms p( i % SEEX, ( i * 7 ) % SEEY, 0 );
+            const ter_id old_ter = tm.ter( p );
+            edits += tm.ter_set( p, ter_t_brick_wall ) ? 1 : 0;
+            tm.ter_set( p, old_ter );
+        };
+        // OMTs well inside the reality bubble, which clear_map has already generated
+        for( int i = 0; i < 100; ++i ) {
+            tinymap tm;
+            tm.load( base + tripoint_rel_omt( 1 + i % 4, 1 + ( i / 4 ) % 4, 0 ), false );
+            edit( tm, i );
+        }
+        for( int i = 0; i < 20; ++i ) {
+            smallmap sm;
+            sm.load( base + tripoint_rel_omt( 1 + i % 4, 1 + ( i / 4 ) % 4, 0 ), false );
+            edit( sm, i );
+        }
+        CHECK( edits == 120 );
+    } );
+}
+
+// VEH-P01: the collision check vehmove runs for every tile a moving vehicle advances.
+TEST_CASE( "bench_vehicle_collision_check", "[.][benchmark_scenario]" )
+{
+    vehicle *bus = nullptr;
+    run_scenario( "vehicle_collision_check",
+                  "collision check of a moving bus over open ground, 2000 tile steps",
+    [&bus]() {
+        clear_avatar();
+        clear_map();
+        map &here = get_map();
+        get_avatar().setpos( here, tripoint_bub_ms( 30, 30, 0 ) );
+        bus = here.add_vehicle( vehicle_prototype_bus, tripoint_bub_ms( 60, 60, 0 ), 0_degrees, 0,
+                                veh_spawn_status::UNDAMAGED );
+        REQUIRE( bus != nullptr );
+        bus->velocity = 1000;
+    }, [&bus]() {
+        map &here = get_map();
+        std::vector<veh_collision> colls;
+        for( int step = 0; step < 2000; ++step ) {
+            colls.clear();
+            bus->collision( here, colls, tripoint_rel_ms( step % 2 == 0 ? 1 : -1, 0, 0 ), false );
+        }
+        CHECK( colls.empty() );
+    } );
+}
+
+// CRAFT-P01: the crafter waits (the default plan) on an unattended step that needs an
+// oven, in a dense base. The game runs the item wakeups each turn, then the activity.
+TEST_CASE( "bench_craft_unattended_wait", "[.][benchmark_scenario]" )
+{
+    const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+    run_scenario( "craft_unattended_wait",
+                  "300 turns waiting on an unattended step needing an oven, in a dense base",
+    [&center]() {
+        clear_avatar();
+        clear_map();
+        avatar &u = get_avatar();
+        map &here = get_map();
+        u.setpos( here, center );
+        build_dense_base( center );
+        fill_inventory( u );
+        u.i_add( item( itype_microwave ) );
+        u.invalidate_crafting_inventory();
+        item ingredient( itype_2x4, calendar::turn );
+        item placed( &recipe_cudgel_test_unattended_with_qual.obj(), 1, ingredient );
+        item &on_map = here.add_item( center, placed );
+        REQUIRE( on_map.is_craft() );
+        on_map.set_current_step( 1 );
+        on_map.set_crafter_id( u.getID() );
+        on_map.set_step_plans( std::vector<attention_plan>( 2 ) );
+        item_location loc( map_cursor( here.get_abs( center ) ), &on_map );
+        craft_stamp_passive_entry( on_map, u, calendar::turn, loc );
+        u.activity = player_activity( craft_activity_actor( loc, false ) );
+        u.activity.targets.push_back( loc );
+    }, []() {
+        avatar &u = get_avatar();
+        for( int turn = 0; turn < 300; ++turn ) {
+            calendar::turn += 1_turns;
+            get_item_wakeups().process( calendar::turn );
+            u.set_moves( u.get_speed() );
+            u.activity.do_turn( u );
+        }
+        // the 10 minute step is still running
+        CHECK( u.activity );
+    } );
+}
+
+// ACT-P02: a farm scan over a growing plot, which asks every tile whether it is warm enough
+// to plant.
+TEST_CASE( "bench_farm_scan", "[.][benchmark_scenario]" )
+{
+    const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+    run_scenario( "farm_scan", "5 check-only farm scans of a 10x10 plot of planted seeds",
+    [&center]() {
+        clear_avatar();
+        clear_map();
+        zone_manager &zm = zone_manager::get_manager();
+        zm.clear();
+        set_time( calendar::turn_zero + 12_hours );
+        avatar &u = get_avatar();
+        map &here = get_map();
+        u.setpos( here, center );
+        const tripoint_bub_ms corner = center + tripoint_rel_ms( 2, 2, 0 );
+        for( int dy = 0; dy < 10; ++dy ) {
+            for( int dx = 0; dx < 10; ++dx ) {
+                const tripoint_bub_ms p = corner + tripoint_rel_ms( dx, dy, 0 );
+                here.ter_set( p, ter_t_dirtmound );
+                here.furn_set( p, furn_f_plant_seed );
+                here.add_item( p, item( itype_seed_buckwheat ) );
+            }
+        }
+        shared_ptr_fast<plot_options> options = make_shared_fast<plot_options>();
+        options->deserialize(
+            json_loader::from_string( R"({ "seed": "seed_buckwheat" })" ).get_object() );
+        const tripoint_bub_ms far_corner = corner + tripoint_rel_ms( 9, 9, 0 );
+        zm.add( "plot", zone_type_FARM_PLOT, faction_your_followers, false, true,
+                here.get_abs( corner ), here.get_abs( far_corner ), options );
+        here.build_map_cache( 0 );
+    }, []() {
+        avatar &u = get_avatar();
+        int scans_with_work = 0;
+        for( int scan = 0; scan < 5; ++scan ) {
+            multi_farm_activity_actor actor( true );
+            player_activity act( actor );
+            scans_with_work += actor.simulate_turn( act, u, true ) ? 1 : 0;
+        }
+        // seeds are growing, nothing to do yet
+        CHECK( scans_with_work == 0 );
+    } );
+    zone_manager::get_manager().clear();
+}
+
+// TERR-P01: the build requirements recipe finalization works out for every mapgen-parameter
+// combination of every autocalc blueprint, thousands of calls per data load.
+TEST_CASE( "bench_blueprint_build_reqs", "[.][benchmark_scenario]" )
+{
+    // stand-in blueprints: every terrain and furniture some construction builds, in groups
+    // of ten
+    using changed_ids = std::pair<std::map<ter_id, int>, std::map<furn_id, int>>;
+    std::vector<changed_ids> blueprints( 1 );
+    int in_last = 0;
+    for( const construction &con : get_constructions() ) {
+        if( con.post_terrain.empty() ) {
+            continue;
+        }
+        if( con.post_is_furniture ) {
+            const furn_str_id furn( con.post_terrain );
+            if( !furn.is_valid() ) {
+                continue;
+            }
+            blueprints.back().second[furn.id()] += 1;
+        } else {
+            const ter_str_id ter( con.post_terrain );
+            if( !ter.is_valid() ) {
+                continue;
+            }
+            blueprints.back().first[ter.id()] += 1;
+        }
+        if( ++in_last == 10 ) {
+            blueprints.emplace_back();
+            in_last = 0;
+        }
+    }
+    REQUIRE( blueprints.size() > 20 );
+    run_scenario( "blueprint_build_reqs",
+                  "build reqs of each constructible terrain and furniture, 10 a call, 5 passes",
+    []() {}, [&blueprints]() {
+        int64_t total_time = 0;
+        for( int pass = 0; pass < 5; ++pass ) {
+            for( const changed_ids &blueprint : blueprints ) {
+                total_time += get_build_reqs_for_furn_ter_ids( blueprint ).time;
+            }
+        }
+        CHECK( total_time > 0 );
+    } );
+}
+
+// MAGIC-P01: the "Study a spell" menu works out the RANDOM_DAMAGE row on every redraw.
+TEST_CASE( "bench_spellbook_damage_preview", "[.][benchmark_scenario]" )
+{
+    run_scenario( "spellbook_damage_preview",
+                  "damage range at max level and per level of a RANDOM_DAMAGE spell, 200 redraws",
+    []() {
+        clear_avatar();
+    }, []() {
+        const spell_type &sp = spell_test_spell_random_damage.obj();
+        int checksum = 0;
+        for( int redraw = 0; redraw < 200; ++redraw ) {
+            checksum += sp.damage_at_max_level().second;
+            checksum += static_cast<int>( sp.calculate_damage_increment().first );
+        }
+        CHECK( checksum != 0 );
+    } );
 }

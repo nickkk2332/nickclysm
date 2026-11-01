@@ -1339,15 +1339,6 @@ static bool env_qualities_satisfied_for_step( const recipe_step &step, const ite
     if( quals.empty() ) {
         return true;
     }
-    map &m = get_map();
-    const step_source_context src = resolve_step_source( craft, loc );
-
-    temp_crafting_inventory inv;
-    if( src.present_char != nullptr ) {
-        inv = src.present_char->crafting_inventory( src.origin, src.radius );
-    } else {
-        inv.form_from_map( &m, src.origin, src.radius, /*pl=*/nullptr );
-    }
     // A reserved provider is invisible to every inventory query including its owner's,
     // so bound groups are validated through their bindings instead.
     std::set<int> bound_groups;
@@ -1356,6 +1347,26 @@ static bool env_qualities_satisfied_for_step( const recipe_step &step, const ite
             bound_groups.insert( b.group_index );
         }
     }
+    bool all_bound = true;
+    for( size_t g = 0; g < quals.size() && all_bound; ++g ) {
+        all_bound = bound_groups.count( static_cast<int>( g ) ) > 0;
+    }
+    if( all_bound ) {
+        // nothing left to look up, so build no inventory
+        return true;
+    }
+
+    map &m = get_map();
+    const step_source_context src = resolve_step_source( craft, loc );
+    // the present crafter's cached inventory is read in place; copying it costs a deep
+    // copy each check
+    temp_crafting_inventory map_inv;
+    if( src.present_char == nullptr ) {
+        map_inv.form_from_map( &m, src.origin, src.radius, /*pl=*/nullptr );
+    }
+    const Character *who = src.present_char;
+    const temp_crafting_inventory &inv =
+        who != nullptr ? who->crafting_inventory( src.origin, src.radius ) : map_inv;
 
     for( size_t g = 0; g < quals.size(); ++g ) {
         if( bound_groups.count( static_cast<int>( g ) ) > 0 ) {
@@ -4782,7 +4793,6 @@ static int step_buckets_for_fraction( double f )
 bool Character::consume_step_tool_targets( item &craft, const std::vector<int> &targets,
         const tripoint_bub_ms &origin, int radius, bool pin_to_map )
 {
-    const craft_reservation::scoped_own_claims own_claims( craft );
     std::vector<std::vector<step_tool_alloc>> allocs = craft.get_step_tool_allocs();
 
     // A selected non-charged tool drains nothing but must still be present, or
@@ -4818,6 +4828,10 @@ bool Character::consume_step_tool_targets( item &craft, const std::vector<int> &
         craft.set_step_tool_allocs( allocs );
         return true;
     }
+    // Only the inventory queries below read the overlay; for a craft holding claims,
+    // setting and clearing it moves the reservation generation, which drops every
+    // character's crafting inventory cache.
+    const craft_reservation::scoped_own_claims own_claims( craft );
 
     std::map<itype_id, int> need_player;
     std::map<itype_id, int> need_map;

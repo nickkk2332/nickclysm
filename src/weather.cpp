@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "body_part_set.h"
@@ -37,6 +38,7 @@
 #include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
+#include "planting_memo.h"
 #include "pocket_type.h"
 #include "point.h"
 #include "regional_settings.h"
@@ -965,10 +967,60 @@ bool can_creature_see_sky( const Creature &target )
     return false;
 }
 
+using planting_temperatures = std::map<time_point, units::temperature>;
+
+// The highest temperature on the day of planting and on each growth stage after it, at an
+// overmap tile. Each day samples the weather about a hundred times.
+static planting_temperatures compute_planting_temperatures( const tripoint_abs_omt &checked_omt,
+        const itype_id &it )
+{
+    planting_temperatures planting_times;
+    const std::vector<std::pair<flag_id, time_duration>> &growth_stages =
+                it->seed->get_growth_stages();
+    // we will iterate the weather into the future to see if they'll be plantable then as well.
+    const weather_generator &weather_gen = get_weather().get_cur_weather_gen();
+    // initialize the first...
+    time_point check_date = calendar::turn;
+    planting_times[check_date] = highest_temp_on_day( check_date, checked_omt, weather_gen );
+    for( const auto &pair : growth_stages ) {
+        // TODO: Replace epoch checks with data from a farmer's almanac
+        check_date = check_date + pair.second;
+        // The [] operator in std::map inserts an entry if it doesn't already exist.
+        planting_times[check_date] = highest_temp_on_day( check_date, checked_omt, weather_gen );
+    }
+    return planting_times;
+}
+
+namespace
+{
+// what a scoped_planting_memo keeps: temperatures per overmap tile and seed type
+struct planting_memo_state {
+    int depth = 0;
+    std::map<std::pair<tripoint_abs_omt, itype_id>, planting_temperatures> temperatures;
+};
+
+planting_memo_state &planting_memo()
+{
+    static planting_memo_state state;
+    return state;
+}
+} // namespace
+
+scoped_planting_memo::scoped_planting_memo()
+{
+    ++planting_memo().depth;
+}
+
+scoped_planting_memo::~scoped_planting_memo()
+{
+    planting_memo_state &state = planting_memo();
+    if( --state.depth == 0 ) {
+        state.temperatures.clear();
+    }
+}
+
 ret_val<void> warm_enough_to_plant( const tripoint_bub_ms &pos, const itype_id &it )
 {
-    std::map<time_point, units::temperature> planting_times;
-
     if( !has_sunlight_access( pos ) ) {
         return ret_val<void>::make_failure( _( "Plants need sunlight to grow!  You can't plant there." ) );
     }
@@ -981,18 +1033,22 @@ ret_val<void> warm_enough_to_plant( const tripoint_bub_ms &pos, const itype_id &
     const tripoint_abs_ms abs = get_map().get_abs( pos );
     const tripoint_abs_omt checked_omt = project_to<coords::omt>( abs );
 
-    const std::vector<std::pair<flag_id, time_duration>> &growth_stages = it->seed->get_growth_stages();
-    // we will iterate a copy of the weather into the future to see if they'll be plantable then as well.
-    const weather_generator weather_gen = get_weather().get_cur_weather_gen();
-    // initialize the first...
-    time_point check_date = calendar::turn;
-    planting_times[check_date] = highest_temp_on_day( check_date, checked_omt, weather_gen );
-    for( const auto &pair : growth_stages ) {
-        // TODO: Replace epoch checks with data from a farmer's almanac
-        check_date = check_date + pair.second;
-        // The [] operator in std::map inserts an entry if it doesn't already exist.
-        planting_times[check_date] = highest_temp_on_day( check_date, checked_omt, weather_gen );
+    planting_memo_state &memo = planting_memo();
+    planting_temperatures uncached;
+    const planting_temperatures *found = nullptr;
+    if( memo.depth > 0 ) {
+        const std::pair<tripoint_abs_omt, itype_id> key( checked_omt, it );
+        auto iter = memo.temperatures.find( key );
+        if( iter == memo.temperatures.end() ) {
+            iter = memo.temperatures.emplace( key, compute_planting_temperatures( checked_omt,
+                                              it ) ).first;
+        }
+        found = &iter->second;
+    } else {
+        uncached = compute_planting_temperatures( checked_omt, it );
+        found = &uncached;
     }
+    const planting_temperatures &planting_times = *found;
     for( const std::pair<const time_point, units::temperature> &pair : planting_times ) {
         // This absolutely needs to be a time point.
         add_msg_debug( debugmode::DF_MAP,

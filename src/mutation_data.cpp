@@ -123,10 +123,24 @@ const std::map<mutation_category_id, mutation_category_trait> &mutation_category
     return mutation_category_traits;
 }
 
+static mutation_category_trait make_null_mutation_category()
+{
+    mutation_category_trait ret;
+    ret.vitamin = vitamin_id::NULL_ID();
+    return ret;
+}
+
 const mutation_category_trait &mutation_category_trait::get_category(
     const mutation_category_id &category_id )
 {
-    return mutation_category_traits.find( category_id )->second;
+    const auto iter = mutation_category_traits.find( category_id );
+    if( iter == mutation_category_traits.end() ) {
+        // Dereferencing end() here was undefined behavior.
+        debugmsg( "Tried to get invalid mutation category \"%s\"", category_id.str() );
+        static const mutation_category_trait null_category = make_null_mutation_category();
+        return null_category;
+    }
+    return iter->second;
 }
 
 void mutation_category_trait::reset()

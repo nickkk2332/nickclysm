@@ -429,6 +429,39 @@
     "category": [ "REMOVAL_TEST" ]
   },
   {
+    "type": "mutation_type",
+    "id": "TEST_MUTB05_SLOT"
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_MUTB05_LOW",
+    "name": { "str": "Test slot, plain" },
+    "points": 1,
+    "valid": false,
+    "types": [ "TEST_MUTB05_SLOT" ],
+    "description": "Occupies the test slot; any other trait of that slot replaces it."
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_MUTB05_POST_THRESH",
+    "name": { "str": "Test slot, post-threshold" },
+    "points": 1,
+    "valid": false,
+    "types": [ "TEST_MUTB05_SLOT" ],
+    "threshreq": [ "THRESH_TEST_REMOVAL" ],
+    "description": "Takes the test slot, but only past the removal test threshold."
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_MUTB05_PRICEY",
+    "name": { "str": "Test slot, expensive" },
+    "points": 1,
+    "valid": false,
+    "types": [ "TEST_MUTB05_SLOT" ],
+    "vitamin_cost": 200,
+    "description": "Takes the test slot; costs 200 mutagen, doubled when it replaces a starting trait."
+  },
+  {
     "type": "mutation",
     "id": "TEST_OVERMAP_SIGHT_5",
     "name": { "str": "TEST_OVERMAP_SIGHT_5" },

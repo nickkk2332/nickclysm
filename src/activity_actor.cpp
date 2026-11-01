@@ -111,6 +111,7 @@
 #include "overmapbuffer.h"
 #include "pickup.h"
 #include "pimpl.h"
+#include "planting_memo.h"
 #include "player_activity.h"
 #include "pocket_type.h"
 #include "point.h"
@@ -5489,6 +5490,9 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     bool &missing_items_reported = use_cache ? cache.missing_items_reported :
                                    uncached_missing_items_reported;
 
+    // a farm scan asks every tile whether it is warm enough to plant; the answer is the
+    // same across an overmap tile within this turn
+    const scoped_planting_memo planting_memo;
     for( const tripoint_abs_ms &src : src_sorted ) {
         const tripoint_bub_ms &src_bub = here.get_bub( src );
         if( !check_only ) {
@@ -7107,11 +7111,18 @@ bool craft_activity_actor::unattended_craft_step( player_activity &act, Characte
     }
 
     if( plan.choice == step_choice::do_wait ) {
-        // Per-turn env check fast-path.  do_something / set_timer
-        // rely on the periodic env_check wakeup at 1-minute cadence
-        // since no actor runs for those modes.
-        craft_actualize_scheduled( *craft_item, item_wakeup_kind::env_check,
-                                   calendar::turn, craft_item );
+        // The item wakeups run the env check on its 1-minute cadence, as for
+        // do_something / set_timer, and a paused step's recheck at ready_at (the
+        // past-due branch above).  This turn only runs the check when it is due or no
+        // poll is armed: each check reruns reservations and inventory scans, and
+        // repeating it every turn of an hours-long step is the cost of waiting.
+        const time_point env_check_at = craft_item->get_env_check_at();
+        const bool paused = craft_item->get_pause_started_at() != calendar::before_time_starts;
+        if( !paused && ( env_check_at == calendar::before_time_starts ||
+                         calendar::turn >= env_check_at ) ) {
+            craft_actualize_scheduled( *craft_item, item_wakeup_kind::env_check,
+                                       calendar::turn, craft_item );
+        }
         crafter.set_moves( 0 );
         return true;
     }
@@ -14583,6 +14594,48 @@ bool zone_sort_activity_actor::stage_think( player_activity &act, Character &you
     return true;
 }
 
+// The part of a carried item that a sorter picked up: `charges` of the stack, or all of it
+// for 0. The stack may hold charges the carrier had before the pickup merged into it.
+static item zone_sort_picked_part( const item_location &loc, int charges )
+{
+    item part( *loc );
+    if( charges > 0 && part.count_by_charges() && part.charges > charges ) {
+        part.charges = charges;
+    }
+    return part;
+}
+
+// The volume of zone_sort_picked_part(), without copying the item and its contents.
+static units::volume zone_sort_picked_volume( const item_location &loc, int charges )
+{
+    if( charges > 0 && loc->count_by_charges() && loc->charges > charges ) {
+        return loc->volume( false, false, charges );
+    }
+    return loc->volume();
+}
+
+// Takes the part zone_sort_picked_part() returns off the character or cart carrying it.
+static void zone_sort_remove_picked_part( item_location &loc, int charges )
+{
+    if( charges > 0 && loc->count_by_charges() && loc->charges > charges ) {
+        loc.get_item()->mod_charges( -charges );
+        // Refresh the stack and its container, as try_add does at pickup.
+        loc.on_contents_changed();
+        if( const vehicle_cursor *veh_curs = loc.veh_cursor() ) {
+            veh_curs->veh.invalidate_mass();
+        } else if( loc.carrier() ) {
+            loc.carrier()->invalidate_weight_carried_cache();
+        }
+        return;
+    }
+    if( const vehicle_cursor *veh_curs = loc.veh_cursor() ) {
+        vehicle &cart = veh_curs->veh;
+        cart.remove_item( cart.part( veh_curs->part ), loc.get_item() );
+    } else if( loc.carrier() ) {
+        loc.carrier()->i_rem( loc.get_item() );
+    }
+}
+
 void zone_sort_activity_actor::on_no_progress( Character &you )
 {
     // stage_think clears picked_up_stuff and dropoff_coords, so a staged batch
@@ -14598,8 +14651,8 @@ void zone_sort_activity_actor::return_items_to_source( Character &you,
 {
     // Purge stale item_locations (can expire if items merged during multi-turn pickup)
     auto stale = std::remove_if( picked_up_stuff.begin(), picked_up_stuff.end(),
-    []( const item_location & loc ) {
-        return !loc.get_item();
+    []( const std::pair<item_location, int> &picked ) {
+        return !picked.first.get_item();
     } );
     if( stale != picked_up_stuff.end() ) {
         add_msg_debug( debugmode::DF_ACTIVITY,
@@ -14612,32 +14665,28 @@ void zone_sort_activity_actor::return_items_to_source( Character &you,
     // rather than lost, but are skipped by return logic.
     // Fixing this requires reworking item_location lifetime guarantees.
     int return_failures = 0;
-    for( item_location &item : picked_up_stuff ) {
-        if( item.get_item() ) {
+    for( auto &[loc, charges] : picked_up_stuff ) {
+        if( loc.get_item() ) {
             // Skip virtual pickup items still at source - they were never moved.
-            if( const vehicle_cursor *vc = item.veh_cursor() ) {
+            if( const vehicle_cursor *vc = loc.veh_cursor() ) {
                 if( vc->veh.abs_part_pos( vc->part ) == get_map().get_abs( src_bub ) ) {
                     continue;
                 }
             }
             // Place the item back at the source tile
             std::vector<item_location> returned = put_into_vehicle_or_drop_ret_locs(
-                    you, item_drop_reason::deliberate, { *item }, src_bub );
+                    you, item_drop_reason::deliberate, { zone_sort_picked_part( loc, charges ) },
+                    src_bub );
             if( returned.empty() ) {
                 // Placement failed - keep item on carrier rather than silently destroying it.
                 add_msg_debug( debugmode::DF_ACTIVITY,
                                "zone_sort return_items: failed to place '%s' at source, keeping on carrier",
-                               item->tname() );
+                               loc->tname() );
                 return_failures++;
                 continue;
             }
             // Remove from carrier (inventory or grabbed vehicle)
-            if( const vehicle_cursor *veh_curs = item.veh_cursor() ) {
-                vehicle &cart = veh_curs->veh;
-                cart.remove_item( cart.part( veh_curs->part ), item.get_item() );
-            } else if( item.carrier() ) {
-                item.carrier()->i_rem( item.get_item() );
-            }
+            zone_sort_remove_picked_part( loc, charges );
         }
     }
     if( return_failures > 0 ) {
@@ -14681,8 +14730,8 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
             if( is_adjacent_or_closer_to_dest ) {
                 auto iter = picked_up_stuff.begin();
                 // ensure validity of all item_locations before we start this - if any have been invalidated there's a bug somewhere earlier
-                for( item_location itm_loc : picked_up_stuff ) {
-                    if( !itm_loc.get_item() ) {
+                for( const std::pair<item_location, int> &picked : picked_up_stuff ) {
+                    if( !picked.first.get_item() ) {
                         debugmsg( "Lost item_location during sorting" );
                         stage = LAST;
                         return;
@@ -14696,39 +14745,34 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
                     // Place item at destination directly. Zone binding
                     // determines the fallback chain: vehicle-only zones skip
                     // ground, everything else tries cargo then ground.
-                    const zone_type_id drop_zt = mgr.get_near_zone_type_for_item( **iter,
+                    item_location &picked_loc = iter->first;
+                    const zone_type_id drop_zt = mgr.get_near_zone_type_for_item( *picked_loc,
                                                  drop_dest, 0, fac_id );
                     const bool vehicle_only = drop_zt != zone_type_id::NULL_ID() &&
                                               mgr.has_vehicle( drop_zt, drop_dest, fac_id ) &&
                                               !mgr.has_terrain( drop_zt, drop_dest, fac_id );
                     bool placed = false;
                     const tripoint_bub_ms drop_bub = here.get_bub( drop_dest );
+                    const item copy = zone_sort_picked_part( picked_loc, iter->second );
                     if( std::optional<vpart_reference> ovp = here.veh_at( drop_bub ).cargo() ) {
-                        item copy( **iter );
                         if( ovp->vehicle().add_item( here, ovp->part(), copy ) ) {
                             placed = true;
                         }
                     }
                     if( !placed && !vehicle_only ) {
-                        item copy( **iter );
                         item_location ground = here.add_item_or_charges_ret_loc(
                                                    drop_bub, copy, false );
                         placed = ground.get_item() != nullptr;
                     }
                     if( placed ) {
-                        you.mod_moves( -you.item_handling_cost( **iter ) );
-                        if( const vehicle_cursor *veh_curs = iter->veh_cursor() ) {
-                            vehicle &cart_with_items = veh_curs->veh;
-                            cart_with_items.remove_item( cart_with_items.part( veh_curs->part ), iter->get_item() );
-                        } else if( iter->carrier() ) {
-                            iter->carrier()->i_rem( iter->get_item() );
-                        }
+                        you.mod_moves( -you.item_handling_cost( copy ) );
+                        zone_sort_remove_picked_part( picked_loc, iter->second );
                         iter = picked_up_stuff.erase( iter );
                         // dumb. Go through and clear our any now-invalidated item_locations. Then reset iter to the start, to *make sure* we iterate everything.
                         // Definitely wasteful, but I am not paid enough to figure out a better way.
                         auto cleanup_iter = picked_up_stuff.begin();
                         while( cleanup_iter != picked_up_stuff.end() ) {
-                            if( !cleanup_iter->get_item() ) {
+                            if( !cleanup_iter->first.get_item() ) {
                                 cleanup_iter = picked_up_stuff.erase( cleanup_iter );
                             } else {
                                 cleanup_iter++;
@@ -15030,6 +15074,8 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
         }
 
         item_location thisitem_loc;
+        // charges picked up, for a stack that may merge into one already carried
+        int picked_charges = 0;
         bool cart_at_source = false;
         if( you.is_avatar() && you.as_avatar()->get_grab_type() == object_type::VEHICLE ) {
             const tripoint_bub_ms cart_position = you.pos_bub() + you.as_avatar()->grab_point;
@@ -15046,6 +15092,9 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
         } else {
             // Physical pickup: copy item to cart or inventory, remove from source.
             item copy_thisitem( thisitem );
+            if( copy_thisitem.count_by_charges() ) {
+                picked_charges = copy_thisitem.charges;
+            }
             if( you.is_avatar() && you.as_avatar()->get_grab_type() == object_type::VEHICLE ) {
                 const tripoint_bub_ms cart_position = you.pos_bub() + you.as_avatar()->grab_point;
                 if( std::optional<vpart_reference> ovp = get_map().veh_at( cart_position ).cargo() ) {
@@ -15137,8 +15186,9 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
             return;
         }
 
-        // OK, we can sort this!
-        picked_up_stuff.emplace_back( thisitem_loc );
+        // OK, we can sort this! A charge stack may have merged into one already carried, so
+        // remember how many charges were picked up.
+        picked_up_stuff.emplace_back( thisitem_loc, picked_charges );
         picked_up_this_pass = true;
         picked_anything_this_call = true;
         note_progress();
@@ -15188,8 +15238,8 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
     } else if( !dropoff_coords.empty() && !you.has_destination() )  {
         // Purge item_locations invalidated by inventory restacking.
         auto stale = std::remove_if( picked_up_stuff.begin(), picked_up_stuff.end(),
-        []( const item_location & loc ) {
-            return !loc.get_item();
+        []( const std::pair<item_location, int> &picked ) {
+            return !picked.first.get_item();
         } );
         if( stale != picked_up_stuff.end() ) {
             add_msg_debug( debugmode::DF_ACTIVITY,
@@ -15422,9 +15472,9 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
 
         // Find a dropoff location that can take all the items picked up.
         units::volume batch_volume = 0_ml;
-        for( const item_location &loc : picked_up_stuff ) {
+        for( const auto &[loc, charges] : picked_up_stuff ) {
             if( loc.get_item() ) {
-                batch_volume += loc->volume();
+                batch_volume += zone_sort_picked_volume( loc, charges );
             }
         }
         for( const tripoint_abs_ms &dest : dropoff_coords ) {
@@ -15440,9 +15490,9 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
             // that can accept at least the first item. The dropoff loop handles
             // partial delivery and tries remaining destinations for leftovers.
             units::volume first_vol = 0_ml;
-            for( const item_location &loc : picked_up_stuff ) {
+            for( const auto &[loc, charges] : picked_up_stuff ) {
                 if( loc.get_item() ) {
-                    first_vol = loc->volume();
+                    first_vol = zone_sort_picked_volume( loc, charges );
                     break;
                 }
             }
@@ -15507,8 +15557,9 @@ void zone_sort_activity_actor::serialize( JsonOut &jsout ) const
     // Purge stale item_locations before serializing - items on vehicles that
     // are no longer on the map would trigger debugmsg during serialization.
     std::vector<item_location> valid_picked;
+    std::vector<int> valid_picked_charges;
     const VehicleList &vehicles = get_map().get_vehicles();
-    for( const item_location &loc : picked_up_stuff ) {
+    for( const auto &[loc, charges] : picked_up_stuff ) {
         if( !loc.get_item() ) {
             continue;
         }
@@ -15522,8 +15573,10 @@ void zone_sort_activity_actor::serialize( JsonOut &jsout ) const
             }
         }
         valid_picked.push_back( loc );
+        valid_picked_charges.push_back( charges );
     }
     jsout.member( "picked_up_stuff", valid_picked );
+    jsout.member( "picked_up_charges", valid_picked_charges );
     jsout.member( "dropoff_coords", dropoff_coords );
     jsout.member( "pickup_failure_reported", pickup_failure_reported );
     jsout.member( "virtual_pickup_active", virtual_pickup_active );
@@ -15545,7 +15598,17 @@ std::unique_ptr<activity_actor> zone_sort_activity_actor::deserialize( JsonValue
     data.read( "coord_set", actor.coord_set );
     data.read( "placement", actor.placement );
     data.read( "other_activity_items", actor.other_activity_items );
-    data.read( "picked_up_stuff", actor.picked_up_stuff );
+    std::vector<item_location> picked;
+    data.read( "picked_up_stuff", picked );
+    // Saves from before picked_up_charges carried whole items.
+    std::vector<int> picked_charges;
+    if( data.has_array( "picked_up_charges" ) ) {
+        data.read( "picked_up_charges", picked_charges );
+    }
+    picked_charges.resize( picked.size(), 0 );
+    for( size_t i = 0; i < picked.size(); i++ ) {
+        actor.picked_up_stuff.emplace_back( picked[i], picked_charges[i] );
+    }
     data.read( "dropoff_coords", actor.dropoff_coords );
     // Element introduced 2026-01-26. Existence check to be removed when support for older saves is dropped.
     if( data.has_bool( "pickup_failure_reported" ) ) {

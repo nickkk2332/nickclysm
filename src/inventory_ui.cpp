@@ -2051,6 +2051,37 @@ bool inventory_selector::add_entry_rec( inventory_column &entry_column,
     return vis_contents;
 }
 
+// Whether `who` may drag `src` into `dest`; shows why not. The checks mirror
+// inventory_holster_preset::get_denial, except that an item may move between the pockets of
+// the container holding it.
+static bool drag_drop_allowed( Character &who, const item_location &src,
+                               const item_location &dest )
+{
+    // Taking src out would destroy dest, and the pocket it is put into, along with it.
+    if( src == dest || src.eventually_contains( dest ) ) {
+        popup( _( "You can't put an item inside itself." ) );
+        return false;
+    }
+    if( who.is_worn( *src ) ) {
+        const ret_val<void> ret = who.can_takeoff( *src );
+        if( !ret.success() ) {
+            popup( ret.str() );
+            return false;
+        }
+    }
+    // drag_drop_item turns down a destination without pockets itself.
+    if( !dest->get_container_pockets().empty() ) {
+        item copy( *src );
+        const ret_val<void> ret = dest.parents_can_contain_recursive( &copy );
+        if( !ret.success() ) {
+            popup( _( "Cannot put item in pocket: %s" ),
+                   ret.str().empty() ? _( "item can't be stored there" ) : ret.str() );
+            return false;
+        }
+    }
+    return true;
+}
+
 bool inventory_selector::drag_drop_item( item *sourceItem, item *destItem )
 {
     if( sourceItem == destItem ) {
@@ -3961,7 +3992,8 @@ item_location inventory_pick_selector::execute()
                 if( input.entry->is_item() ) {
                     endDragItem = input.entry->locations.front();
                     if( startDragItemCpy && endDragItem && startDragItemCpy != endDragItem ) {
-                        if( drag_drop_item( startDragItemCpy.get_item(), endDragItem.get_item() ) ) {
+                        if( drag_drop_allowed( u, startDragItemCpy, endDragItem ) &&
+                            drag_drop_item( startDragItemCpy.get_item(), endDragItem.get_item() ) ) {
                             clear_items();
                             add_character_items( u );
                         }
@@ -5348,7 +5380,8 @@ std::pair<item_location, bool> unload_selector::execute()
                 if( input.entry->is_item() ) {
                     endDragItem = input.entry->locations.front();
                     if( startDragItemCpy && endDragItem && startDragItemCpy != endDragItem ) {
-                        if( drag_drop_item( startDragItemCpy.get_item(), endDragItem.get_item() ) ) {
+                        if( drag_drop_allowed( u, startDragItemCpy, endDragItem ) &&
+                            drag_drop_item( startDragItemCpy.get_item(), endDragItem.get_item() ) ) {
                             clear_items();
                             add_character_items( u );
                         }
