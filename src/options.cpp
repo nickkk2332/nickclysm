@@ -133,6 +133,9 @@ void option_slider::option_slider_level::deserialize( const JsonObject &jo )
     for( JsonObject jobj : jo.get_array( "options" ) ) {
         const std::string stype = jobj.get_string( "type" );
         std::stringstream valss;
+        // cOpt::setValue( std::string ) parses with the classic locale, so the
+        // value must not be formatted with the UI locale (e.g. "0,8" or "1.000").
+        valss.imbue( std::locale::classic() );
         if( stype == "int" ) {
             valss << jobj.get_int( "val" );
         } else if( stype == "float" ) {

@@ -803,14 +803,8 @@ void overmap::unserialize( const JsonObject &jsobj )
                 flattened_predecessors.emplace_back( point, std::move( predecessors ) );
             }
 
-            std::vector<oter_id> om_predecessors;
-
             for( auto& [p, serialized_predecessors] : flattened_predecessors ) {
-                predecessors_.insert_or_assign( p, std::move( om_predecessors ) );
-
-                // Reuse allocations because it's a good habit.
-                om_predecessors = std::move( serialized_predecessors );
-                om_predecessors.clear();
+                predecessors_.insert_or_assign( p, std::move( serialized_predecessors ) );
             }
         }
     }
