@@ -69,6 +69,9 @@ def run_once(binary, seed, reps, filter_tag):
     if proc.returncode != 0:
         sys.stderr.write(proc.stdout[-4000:])
         raise SystemExit(f'benchmark run failed with exit code {proc.returncode}')
+    if not scenarios:
+        sys.stderr.write(proc.stdout[-4000:])
+        raise SystemExit(f'no scenario matched {filter_tag!r} (no BENCH lines in the output)')
     load_ms = None
     if start is not None and loaded is not None:
         load_ms = (loaded - start) % (24 * 3600 * 1000)
@@ -122,7 +125,7 @@ def collect(args):
         }
     return {
         'label': args.label,
-        'commit': git_commit(),
+        'commit': args.commit or git_commit(),
         'date': datetime.datetime.now().isoformat(timespec='seconds'),
         'machine': {'cpu': cpu_model(), 'cpus': os.cpu_count(), 'system': platform.platform()},
         'binary': os.path.relpath(os.path.abspath(args.binary), REPO),
@@ -166,6 +169,8 @@ def main():
     parser.add_argument('--filter', default='[benchmark_scenario]',
                         help='Catch2 test spec, e.g. bench_light_vision')
     parser.add_argument('--label', default='')
+    parser.add_argument('--commit', default='',
+                        help='commit the binary was built from (default: the checkout\'s HEAD)')
     parser.add_argument('--out', help='write the results as JSON to this file')
     parser.add_argument('--compare', help='baseline JSON to compare against')
     args = parser.parse_args()

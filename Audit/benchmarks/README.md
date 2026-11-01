@@ -66,8 +66,11 @@ in `item_wakeup_manager::rebuild_for_item` for items with nothing scheduled).
 `before-round2.json` is the code after the group 5 fixes (`917f2c3c`, no round-2
 changes); `after-round2.json` is after them (`e43227b3`). Both were run back to back
 on the same machine, 2 runs × 5 repetitions, while other work was using the CPU, so
-treat the noise floor as about 10%. `zone_sort_queries` was not in the before binary;
-its before number comes from a separate build with only that change left out.
+treat the noise floor as about 10%. `zone_sort_queries` and `crafting_recompute_scoped`
+were not in the before binary. Their before numbers come from separate builds, measured with
+5 repetitions in one run: for `zone_sort_queries`, the final code without the ACT-P01 change;
+for `crafting_recompute_scoped`, the code before the requirement-check change. The JSON files
+hold only what each binary measured. The `commit` field names the code each binary was built from.
 
 | Scenario | Before (ms) | After (ms) | Change | Fix |
 |---|---|---|---|---|

@@ -360,11 +360,12 @@ TEST_CASE( "bench_crafting_recompute", "[.][benchmark_scenario]" )
 // comes back after being away.
 TEST_CASE( "bench_weather_catchup", "[.][benchmark_scenario]" )
 {
+    // Natural weather, restored to whatever was set when the scenario ends.
+    scoped_weather_override natural_weather( WEATHER_NULL );
     run_scenario( "weather_catchup", "sum_conditions over 3 days at 4 locations",
     []() {
         clear_avatar();
         clear_map();
-        get_weather().weather_override = WEATHER_NULL;
     }, []() {
         const tripoint_abs_ms base = get_avatar().pos_abs();
         const time_point start = calendar::turn_zero + 30_days;
