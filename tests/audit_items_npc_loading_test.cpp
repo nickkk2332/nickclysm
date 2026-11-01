@@ -1,9 +1,11 @@
 #include <string>
 
+#include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "clzones.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -25,6 +27,11 @@ static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_nail( "nail" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_stick( "stick" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+
+static const zone_type_id zone_type_LOOT_SPARE_PARTS( "LOOT_SPARE_PARTS" );
+static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
 
 static talk_effect_t load_effect( const std::string &json )
 {
@@ -147,4 +154,52 @@ TEST_CASE( "eoc-b05_item_sum_on_a_non_character_does_nothing", "[audit][eoc]" )
     CHECK_FALSE( has_one( d ) );
     effect.apply( d );
     CHECK( get_map().i_at( spot ).size() == 1 );
+}
+
+// ACT-B03: a picked-up charge stack merges into the sorter's own stack of the same item, and
+// drop-off then carried off the whole merged stack, the sorter's own charges included.
+TEST_CASE( "act-b03_zone_sort_leaves_the_sorters_own_charges", "[audit][activities][zones]" )
+{
+    avatar &u = get_avatar();
+    map &here = get_map();
+    clear_avatar();
+    clear_map_without_vision();
+    zone_manager &zm = zone_manager::get_manager();
+    zm.clear();
+
+    const tripoint_bub_ms start_pos( 60, 60, 0 );
+    u.setpos( here, start_pos );
+    u.clear_destination();
+    u.wear_item( item( itype_backpack ), false );
+    u.i_add( item( itype_nail, calendar::turn, 50 ) );
+    REQUIRE( u.charges_of( itype_nail ) == 50 );
+
+    // The destination is out of reach, so the nails are carried rather than handed over.
+    const tripoint_bub_ms src_pos = start_pos + tripoint::south;
+    const tripoint_bub_ms dest_pos = start_pos + tripoint::east * 5;
+    here.ter_set( src_pos, ter_t_floor );
+    here.ter_set( dest_pos, ter_t_floor );
+    zm.add( "Unsorted", zone_type_LOOT_UNSORTED, u.get_faction_id(), false, true,
+            here.get_abs( src_pos ), here.get_abs( src_pos ) );
+    zm.add( "Parts", zone_type_LOOT_SPARE_PARTS, u.get_faction_id(), false, true,
+            here.get_abs( dest_pos ), here.get_abs( dest_pos ) );
+    here.add_item_or_charges( src_pos, item( itype_nail, calendar::turn, 5 ) );
+    REQUIRE( zm.get_near_zone_type_for_item( item( itype_nail ), here.get_abs( start_pos ) ) ==
+             zone_type_LOOT_SPARE_PARTS );
+    here.invalidate_map_cache( 0 );
+    here.build_map_cache( 0, true );
+
+    u.assign_activity( zone_sort_activity_actor() );
+    CHECK( process_activity_with_travel( u, 1000 ) );
+
+    int sorted = 0;
+    for( const item &it : here.i_at( dest_pos ) ) {
+        if( it.typeId() == itype_nail ) {
+            sorted += it.charges;
+        }
+    }
+    CHECK( here.i_at( src_pos ).empty() );
+    CHECK( sorted == 5 );
+    CHECK( u.charges_of( itype_nail ) == 50 );
+    zm.clear();
 }

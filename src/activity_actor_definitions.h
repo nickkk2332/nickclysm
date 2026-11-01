@@ -4344,8 +4344,10 @@ class zone_sort_activity_actor : public zone_activity_actor
 
     private:
         std::vector<item_location> other_activity_items;
-        // Items we've picked up and are queued to drop at their sorted destination
-        std::vector<item_location> picked_up_stuff;
+        // Items we've picked up and are queued to drop at their sorted destination, each with
+        // the charges picked up (0 for the whole item). A picked-up stack can merge into one
+        // the carrier already held, so only those charges belong to the sort.
+        std::vector<std::pair<item_location, int>> picked_up_stuff;
         // Place(s) that the current stuff can be dropped off at.
         std::vector<tripoint_abs_ms> dropoff_coords;
         bool pickup_failure_reported = false;
