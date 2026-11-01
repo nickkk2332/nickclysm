@@ -247,6 +247,12 @@ class item
             return uid_;
         }
 
+        /** Restores a saved uid when loading, e.g. for the copies expanded from a
+         * run-length encoded run of identical items. */
+        void set_uid( int64_t saved_uid ) {
+            uid_ = item_uid( saved_uid );
+        }
+
         /**
          * Filter converting this instance to another type preserving all other aspects
          * @param new_type the type id to convert to

@@ -917,9 +917,12 @@ class JsonOut
             start_array();
             // simple RLE implementation:
             // run_l is the length of the "running sequence" of identical items, ending with the current item.
-            // when sequence ends, it's written as either the single item object (run_l==1) or as a two-element
-            // array (run_l > 1), where the first element is the item and second element is the size of the sequence.
+            // when sequence ends, it's written as either the single item object (run_l==1) or as a three-element
+            // array (run_l > 1): the last item of the sequence, the size of the sequence, and the uids of the
+            // other items in the sequence in order, so that references to those items survive saving and loading.
+            // Older saves use a two-element array without the uids.
             int run_l = 1;
+            auto run_start = container.begin();
             for( auto it = container.begin(); it != container.end(); ++it ) {
                 const auto nxt = std::next( it );
                 if( nxt == container.end() || !it->same_for_rle( *nxt ) ) {
@@ -929,9 +932,15 @@ class JsonOut
                         start_array();
                         write( *it );
                         write( run_l );
+                        start_array();
+                        for( auto in_run = run_start; in_run != it; ++in_run ) {
+                            write( in_run->uid().get_value() );
+                        }
+                        end_array();
                         end_array();
                     }
                     run_l = 1;
+                    run_start = nxt;
                 } else {
                     run_l++;
                 }

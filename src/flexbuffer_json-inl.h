@@ -4,9 +4,11 @@
 
 // IWYU pragma: private, include "flexbuffer_json.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include <flatbuffers/flexbuffers.h>
 
@@ -504,7 +506,8 @@ bool JsonValue::read( cata::colony<T> &v, bool throw_on_error ) const
             T element;
             if( jv.test_array() ) {
                 JsonArray rle_element = jv;
-                if( rle_element.size() != 2 ) {
+                // [item, count] in older saves, [item, count, [uids of the other items]] since
+                if( rle_element.size() != 2 && rle_element.size() != 3 ) {
                     rle_element.error_or_false( throw_on_error, "Not enough values for RLE" );
                     continue;
                 }
@@ -512,9 +515,20 @@ bool JsonValue::read( cata::colony<T> &v, bool throw_on_error ) const
                 if( rle_element[ 0 ].read( element, throw_on_error ) &&
                     rle_element[ 1 ].read( run_l, throw_on_error )
                   ) { // all is good
+                    std::vector<int64_t> uids;
+                    if( rle_element.size() == 3 ) {
+                        for( JsonValue uid : rle_element.get_array( 2 ) ) {
+                            uids.push_back( uid.get_int64() );
+                        }
+                    }
                     // first insert (run_l-1) elements
                     for( int i = 0; i < run_l - 1; i++ ) {
-                        v.insert( element );
+                        auto copy = v.insert( element );
+                        // A copy gets a fresh uid; restore the saved one so that references
+                        // to this item (by uid) still find it.
+                        if( static_cast<size_t>( i ) < uids.size() && uids[i] > 0 ) {
+                            copy->set_uid( uids[i] );
+                        }
                     }
                     // micro-optimization, move last element
                     v.insert( std::move( element ) );
