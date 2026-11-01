@@ -1,5 +1,6 @@
 #include <map>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -8,6 +9,8 @@
 #include "character.h"
 #include "coordinates.h"
 #include "flexbuffer_json.h"
+#include "horde_entity.h"
+#include "horde_map.h"
 #include "item.h"
 #include "json_loader.h"
 #include "map.h"
@@ -19,6 +22,8 @@
 #include "monster.h"
 #include "npc.h"
 #include "options_helpers.h"
+#include "overmap.h"
+#include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
@@ -35,6 +40,7 @@ static const mfaction_str_id monfaction_nether_player_hate( "nether_player_hate"
 static const mongroup_id GROUP_AUDIT_MONDT_B01( "GROUP_AUDIT_MONDT_B01" );
 
 static const mtype_id mon_null( "mon_null" );
+static const mtype_id mon_test_zombie( "mon_test_zombie" );
 static const mtype_id mon_zombie( "mon_zombie" );
 
 static const ter_str_id ter_t_wall( "t_wall" );
@@ -213,4 +219,66 @@ TEST_CASE( "mondt-b01_night_only_entries_spawn_at_night", "[audit][mongroup]" )
     MonsterGroupManager::Get_all_Groups().erase( GROUP_AUDIT_MONDT_B01 );
     calendar::turn = old_turn;
     calendar::start_of_cataclysm = old_start;
+}
+
+// Removes the horde entities of every submap touching the square of the given radius around
+// center, and makes the square passable at overmap scale.
+static void clear_horde_area( const tripoint_abs_ms &center, int radius )
+{
+    for( int dx = -radius; dx <= radius; ++dx ) {
+        for( int dy = -radius; dy <= radius; ++dy ) {
+            const tripoint_abs_ms p = center + point( dx, dy );
+            point_abs_om omp;
+            tripoint_om_sm sm;
+            std::tie( omp, sm ) = project_remain<coords::om>( project_to<coords::sm>( p ) );
+            overmap_buffer.get( omp ).hordes.clear_chunk( sm );
+            overmap_buffer.set_passable( p, true );
+        }
+    }
+}
+
+static int count_horde_entities( const tripoint_abs_ms &center, int radius )
+{
+    int count = 0;
+    for( int dx = -radius; dx <= radius; ++dx ) {
+        for( int dy = -radius; dy <= radius; ++dy ) {
+            if( overmap_buffer.entity_at( center + point( dx, dy ) ) != nullptr ) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+// Two horde entities that step onto the same tile in one move_hordes() must both survive.
+TEST_CASE( "mondt-b03_horde_entities_moving_to_the_same_tile_both_survive",
+           "[audit][hordes]" )
+{
+    clear_map_and_put_player_underground();
+    map &here = get_map();
+    // Off the reality bubble, so the entities keep moving at overmap scale.
+    const tripoint_abs_ms base = here.get_abs( tripoint_bub_ms( -40, 60, 0 ) );
+    // a moves diagonally to base + (4, 4); b, one tile north of a, steps west onto it too
+    const tripoint_abs_ms a_pos = base + point( 5, 5 );
+    const tripoint_abs_ms b_pos = base + point( 5, 4 );
+    const tripoint_abs_ms meeting_pos = base + point( 4, 4 );
+    const tripoint_abs_ms destination = base + point( -5, -5 );
+    clear_horde_area( a_pos, 3 );
+
+    for( const tripoint_abs_ms &pos : {
+             a_pos, b_pos
+         } ) {
+        overmap_buffer.spawn_monster( pos, mon_test_zombie );
+        overmap_buffer.alert_entity( pos, destination, 100 );
+        horde_entity *entity = overmap_buffer.entity_at( pos );
+        REQUIRE( entity != nullptr );
+        REQUIRE( entity->is_active() );
+        entity->last_processed = calendar::turn - 1_turns;
+    }
+    REQUIRE( count_horde_entities( a_pos, 3 ) == 2 );
+
+    overmap_buffer.move_hordes();
+
+    CHECK( overmap_buffer.entity_at( meeting_pos ) != nullptr );
+    CHECK( count_horde_entities( a_pos, 3 ) == 2 );
 }

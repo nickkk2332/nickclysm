@@ -1585,7 +1585,10 @@ void overmap::move_hordes()
             for( const tripoint_abs_ms &candidate :
                  squares_closer_to( mon->first, mon->second.destination ) ) {
                 // Just filter out cross-level candidates for now.
-                if( candidate.z() == mon->first.z() && overmap_buffer.passable( candidate ) ) {
+                // Entities that moved this turn are only in migrating_hordes, so passable()
+                // doesn't see them; don't move onto them.
+                if( candidate.z() == mon->first.z() && overmap_buffer.passable( candidate ) &&
+                    migrating_hordes.count( candidate ) == 0 ) {
                     viable_candidates.push_back( candidate );
                 }
             }

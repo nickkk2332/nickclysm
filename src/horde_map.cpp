@@ -245,7 +245,14 @@ void horde_map::insert( std::unordered_map<tripoint_abs_ms, horde_entity>::node_
     tripoint_om_sm sm;
     std::tie( omp, sm ) = project_remain<coords::om>( project_to<coords::sm> ( node.key() ) );
     // The [] operator creates a nested std::map if not present already.
-    target_map[sm].insert( std::move( node ) );
+    const std::unordered_map<tripoint_abs_ms, horde_entity>::insert_return_type result =
+        target_map[sm].insert( std::move( node ) );
+    if( !result.inserted && !result.node.empty() ) {
+        // The node is destroyed when result goes out of scope, so the entity is lost.
+        debugmsg( "Dropped a %s horde entity at %s, there's already a %s there!",
+                  result.node.mapped().get_type()->nname(), result.position->first.to_string(),
+                  result.position->second.get_type()->nname() );
+    }
 }
 
 void horde_map::clear()
