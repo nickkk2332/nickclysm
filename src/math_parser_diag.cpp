@@ -1082,7 +1082,10 @@ void pain_ass( double val, dialogue &d, char scope, std::vector<diag_value> cons
 
     std::string const &format = format_value.str( d );
     if( format == "perceived" ) {
-        d.actor( is_beta( scope ) )->mod_pain( val );
+        // val is the target value; apply the difference through mod_pain so that pain
+        // sensitivity and immunity still apply to the change.
+        talker *const actor = d.actor( is_beta( scope ) );
+        actor->mod_pain( static_cast<int>( val ) - actor->perceived_pain_cur() );
     } else if( format == "raw" ) {
         d.actor( is_beta( scope ) )->set_pain( val );
     } else {

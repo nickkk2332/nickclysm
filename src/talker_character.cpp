@@ -212,22 +212,22 @@ void talker_character::set_per_max( int value )
 
 void talker_character::set_str_bonus( int value )
 {
-    me_chr->mod_str_bonus( value );
+    me_chr->set_str_bonus( value );
 }
 
 void talker_character::set_dex_bonus( int value )
 {
-    me_chr->mod_dex_bonus( value );
+    me_chr->set_dex_bonus( value );
 }
 
 void talker_character::set_int_bonus( int value )
 {
-    me_chr->mod_int_bonus( value );
+    me_chr->set_int_bonus( value );
 }
 
 void talker_character::set_per_bonus( int value )
 {
-    me_chr->mod_per_bonus( value );
+    me_chr->set_per_bonus( value );
 }
 
 void talker_character::set_cash( int value )
@@ -1093,10 +1093,17 @@ int talker_character_const::get_addiction_turns( const addiction_id &add_id ) co
 
 void talker_character::set_addiction_turns( const addiction_id &add_id, int amount )
 {
+    // amount is the new value, not a change: math's += and ++ already add the old value.
     for( addiction &add : me_chr->addictions ) {
         if( add.type == add_id ) {
-            add.sated += time_duration::from_turns( amount );
+            add.sated = time_duration::from_turns( amount );
+            return;
         }
+    }
+    // A missing addiction reads as 0 turns, so only a non-zero value needs one to exist.
+    if( amount != 0 && !add_id.is_null() && add_id.is_valid() ) {
+        addiction &add = me_chr->addictions.emplace_back( add_id );
+        add.sated = time_duration::from_turns( amount );
     }
 }
 

@@ -1,7 +1,10 @@
 #include <string>
 
+#include "addiction.h"
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
+#include "character.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "dialogue.h"
@@ -10,9 +13,13 @@
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "math_parser.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
+
+static const addiction_id addiction_alcohol( "alcohol" );
+static const addiction_id addiction_caffeine( "caffeine" );
 
 static const ter_str_id ter_t_thconc_floor( "t_thconc_floor" );
 
@@ -95,4 +102,84 @@ TEST_CASE( "eoc-b04_weighted_list_eocs_fractional_and_zero_weights", "[audit][eo
     CHECK( run_weighted_list( all_zero ) == 5 );
     // A bare EOC entry has weight 1.
     CHECK( run_weighted_list( R"([ "EOC_mess_pass", [ "EOC_mess_fail", 0 ] ])" ) == 1 );
+}
+
+static double eval_math( dialogue &d, const std::string &expr )
+{
+    math_exp exp;
+    REQUIRE( exp.parse( expr ) );
+    return exp.eval( d );
+}
+
+static int caffeine_turns( const Character &you )
+{
+    for( const addiction &add : you.addictions ) {
+        if( add.type == addiction_caffeine ) {
+            return to_turns<int>( add.sated );
+        }
+    }
+    return 0;
+}
+
+// MATH-B02: math passes an assign function the new value (for += and ++ that is old + rhs),
+// but several setters added it to the current value, so = didn't set and += doubled.
+TEST_CASE( "math-b02_assignable_math_functions_set_their_value", "[audit][math_parser]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    dialogue d( get_talker_for( u ), nullptr );
+
+    SECTION( "addiction_turns" ) {
+        u.addictions.clear();
+        u.addictions.emplace_back( addiction_caffeine, 5 );
+        u.addictions.back().sated = 1_hours;
+        REQUIRE( eval_math( d, "u_addiction_turns('caffeine')" ) == 3600 );
+
+        eval_math( d, "u_addiction_turns('caffeine') = 0" );
+        CHECK( caffeine_turns( u ) == 0 );
+        eval_math( d, "u_addiction_turns('caffeine') = -50" );
+        CHECK( caffeine_turns( u ) == -50 );
+        eval_math( d, "u_addiction_turns('caffeine')++" );
+        CHECK( caffeine_turns( u ) == -49 );
+        eval_math( d, "u_addiction_turns('caffeine') += 100" );
+        CHECK( caffeine_turns( u ) == 51 );
+
+        // A missing addiction can be given a duration.
+        eval_math( d, "u_addiction_turns('alcohol') = 600" );
+        CHECK( eval_math( d, "u_addiction_turns('alcohol')" ) == 600 );
+        CHECK( u.addiction_level( addiction_alcohol ) == 1 );
+    }
+
+    SECTION( "perceived pain" ) {
+        u.set_pain( 0 );
+        u.set_painkiller( 0 );
+        eval_math( d, "u_pain('type': 'perceived') = 10" );
+        REQUIRE( u.get_perceived_pain() == 10 );
+        eval_math( d, "u_pain('type': 'perceived') = 10" );
+        CHECK( u.get_perceived_pain() == 10 );
+        eval_math( d, "u_pain('type': 'perceived') += 5" );
+        CHECK( u.get_perceived_pain() == 15 );
+        eval_math( d, "u_pain('type': 'perceived') = 4" );
+        CHECK( u.get_perceived_pain() == 4 );
+    }
+
+    SECTION( "stat bonuses" ) {
+        u.reset_bonuses();
+        eval_math( d, "u_val('strength_bonus') = 3" );
+        REQUIRE( u.get_str_bonus() == 3 );
+        eval_math( d, "u_val('strength_bonus') = 3" );
+        CHECK( u.get_str_bonus() == 3 );
+        eval_math( d, "u_val('strength_bonus') += 1" );
+        CHECK( u.get_str_bonus() == 4 );
+        eval_math( d, "u_val('dexterity_bonus') = -2" );
+        eval_math( d, "u_val('dexterity_bonus') = -2" );
+        CHECK( u.get_dex_bonus() == -2 );
+        eval_math( d, "u_val('intelligence_bonus') = 1" );
+        eval_math( d, "u_val('intelligence_bonus') = 1" );
+        CHECK( u.get_int_bonus() == 1 );
+        eval_math( d, "u_val('perception_bonus') = 2" );
+        eval_math( d, "u_val('perception_bonus') = 2" );
+        CHECK( u.get_per_bonus() == 2 );
+        u.reset_bonuses();
+    }
 }
