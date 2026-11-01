@@ -51,13 +51,16 @@ struct path_data_layer {
     // Closed/open is accessed way more often than all other values here
     std::bitset< MAPSIZE_X *MAPSIZE_Y > closed;
     std::bitset< MAPSIZE_X *MAPSIZE_Y > open;
-    std::array< int, MAPSIZE_X *MAPSIZE_Y > score;
+    // Tiles whose avoid() callback has already been asked this search. The callback has
+    // no side effects and depends only on the tile, so each tile needs asking once.
+    std::bitset< MAPSIZE_X *MAPSIZE_Y > avoid_checked;
     std::array< int, MAPSIZE_X *MAPSIZE_Y > gscore;
     std::array< tripoint_bub_ms, MAPSIZE_X *MAPSIZE_Y > parent;
 
     void reset() {
         closed.reset();
         open.reset();
+        avoid_checked.reset();
     }
 };
 
@@ -111,7 +114,6 @@ struct pathfinder {
         layer.open[index] = true;
         layer.gscore[index] = gscore;
         layer.parent[index] = from;
-        layer.score [index] = score;
         open.emplace( score, to );
     }
 
@@ -610,13 +612,18 @@ std::vector<tripoint_bub_ms> map::route( const tripoint_bub_ms &f,
                 continue;
             }
 
-            if( !target.contains( p ) && avoid( p ) ) {
-                layer.closed[index] = true;
+            // Closed first: avoid() is expensive (for monsters a can_move_to(), for NPCs
+            // several creature and terrain probes) and a closed tile is skipped anyway.
+            if( layer.closed[index] ) {
                 continue;
             }
 
-            if( layer.closed[index] ) {
-                continue;
+            if( !layer.avoid_checked[index] ) {
+                layer.avoid_checked[index] = true;
+                if( !target.contains( p ) && avoid( p ) ) {
+                    layer.closed[index] = true;
+                    continue;
+                }
             }
 
             // Penalize for diagonals or the path will look "unnatural"
