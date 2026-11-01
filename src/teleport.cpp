@@ -170,11 +170,17 @@ bool teleport::teleport_creature( Creature &critter, int min_distance, int max_d
     tripoint_bub_ms new_pos = origin;
     map &here = get_map();
     do {
-        int rangle = rng( 0, 360 );
-        int rdistance = rng( min_distance, max_distance );
-        new_pos = { origin.x() + int( rdistance * std::cos( rangle ) ), origin.y() + int( rdistance * std::sin( rangle ) ), new_pos.z() };
+        const units::angle rangle = units::from_degrees( rng( 0, 359 ) );
+        const int rdistance = rng( min_distance, max_distance );
+        // Rounded, not truncated, or a 1 tile shift would land on the origin.
+        new_pos = { origin.x() + static_cast<int>( std::lround( rdistance * units::cos( rangle ) ) ),
+                    origin.y() + static_cast<int>( std::lround( rdistance * units::sin( rangle ) ) ),
+                    new_pos.z()
+                  };
         tries++;
-    } while( here.impassable( new_pos ) && tries < 20 );
+        // Diagonals round inwards; retry those that end up closer than min_distance.
+    } while( ( new_pos == origin || square_dist( origin, new_pos ) < min_distance ||
+               here.impassable( new_pos ) ) && tries < 20 );
     return teleport_to_point( critter, new_pos, safe, add_teleglow );
 }
 

@@ -194,3 +194,27 @@ TEST_CASE( "spat-b07_teleporting_npc_telefrags_the_monster_in_its_way", "[audit]
     // the cosmetic blast is queued; let it go off while its source still exists
     explosion_handler::process_explosions();
 }
+
+// The angle was integer degrees handed to cos/sin as radians and the offset was
+// truncated, so a 1 tile shift nearly always landed back on the origin (and the
+// teleport failed), and short teleports often fell short of their minimum.
+TEST_CASE( "spat-b08_short_teleports_move_at_least_the_minimum_distance", "[audit][teleport]" )
+{
+    clear_map();
+    clear_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms home( 40, 40, 0 );
+    monster &zed = spawn_test_monster( "mon_test_zombie", home );
+    for( int i = 0; i < 20; ++i ) {
+        zed.setpos( here, home );
+        CHECK( teleport::teleport_creature( zed, 1, 1, true, false ) );
+        CHECK( square_dist( home, zed.pos_bub() ) == 1 );
+    }
+    for( int i = 0; i < 20; ++i ) {
+        zed.setpos( here, home );
+        CHECK( teleport::teleport_creature( zed, 3, 5, true, false ) );
+        const int moved = square_dist( home, zed.pos_bub() );
+        CHECK( moved >= 3 );
+        CHECK( moved <= 5 );
+    }
+}
