@@ -402,6 +402,22 @@ using `_has_any_trait` with single trait is also possible
 { "u_has_any_trait": [ "CANINE_EARS", "LUPINE_EARS", "FELINE_EARS", "URSINE_EARS", "ELFA_EARS" ] }
 ```
 
+### `u_has_active_trait`, `npc_has_active_trait`
+- type: string or [variable object](#variable-object)
+- check whether alpha or beta talker has the mutation and has it switched on (an `"active": true` mutation that was activated). Useful in enchantment conditions, which can't combine `"ACTIVE"` with other conditions
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+An enchantment on an active mutation that only works while the character has enough blood
+```jsonc
+"condition": { "and": [ { "u_has_active_trait": "VAMPIRE_BLOOD_FOR_POTENCY" }, { "math": [ "u_vitamin('human_blood_vitamin') >= -500" ] } ] }
+```
+
 ### `u_has_visible_trait`, `npc_has_visible_trait`
 - type: string or [variable object](#variable-object)
 - return true if the alpha or beta talker has a trait/mutation that has any visibility (defined in mutation `visibility` field); probably was designed if alpha or beta talker was able to hide it's mutations, but it's hard to say

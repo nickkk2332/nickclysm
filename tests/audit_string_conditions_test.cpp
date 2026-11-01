@@ -1,11 +1,17 @@
 #include <string>
 
+#include "avatar.h"
 #include "cata_catch.h"
+#include "character.h"
 #include "condition.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "json_error.h"
 #include "json_loader.h"
+#include "player_helpers.h"
+#include "type_id.h"
+
+static const trait_id trait_NIGHTVISION( "NIGHTVISION" );
 
 static void load_condition( const std::string &json )
 {
@@ -39,4 +45,30 @@ TEST_CASE( "eoc-b02_unknown_string_conditions_fail_to_load", "[audit][condition]
         CHECK_NOTHROW( load_condition(
                            R"({ "condition": { "and": [ "u_male", { "not": "is_day" } ] } })" ) );
     }
+}
+
+// EOC-B02 found an enchantment that wrote { "and": [ "ACTIVE", ... ] }, which can't work:
+// "ACTIVE" is only meaningful as the whole enchantment condition. u_has_active_trait lets
+// a dialogue condition check whether a mutation is switched on.
+TEST_CASE( "u_has_active_trait_checks_the_mutation_is_switched_on", "[audit][condition]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    const JsonObject jo = json_loader::from_string(
+                              R"({ "condition": { "u_has_active_trait": "NIGHTVISION" } })" );
+    conditional_t::func condition;
+    read_condition( jo, "condition", condition, false );
+    dialogue d( get_talker_for( u ), nullptr );
+
+    CHECK_FALSE( condition( d ) );
+    // NIGHTVISION starts switched on when gained.
+    u.set_mutation( trait_NIGHTVISION );
+    u.deactivate_mutation( trait_NIGHTVISION );
+    REQUIRE( u.has_trait( trait_NIGHTVISION ) );
+    CHECK_FALSE( condition( d ) );
+    u.activate_mutation( trait_NIGHTVISION );
+    REQUIRE( u.has_active_mutation( trait_NIGHTVISION ) );
+    CHECK( condition( d ) );
+    u.deactivate_mutation( trait_NIGHTVISION );
+    CHECK_FALSE( condition( d ) );
 }
