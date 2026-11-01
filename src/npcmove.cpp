@@ -8356,8 +8356,9 @@ bool outfit::adjust_worn( npc &guy )
 
 void npc::set_movement_mode( const move_mode_id &new_mode )
 {
-    // Enchantments based on move modes can stack inappropriately without a recalc here
-    recalculate_enchantment_cache();
     mod_moves( -move_mode_switch_cost( move_mode, new_mode ) );
     move_mode = new_mode;
+    // Enchantments based on move modes can stack inappropriately without a recalc here.
+    // Recalculate after the new mode is set, so the cache reflects it.
+    recalculate_enchantment_cache();
 }

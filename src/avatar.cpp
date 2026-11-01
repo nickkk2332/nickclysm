@@ -1312,6 +1312,9 @@ void avatar::set_movement_mode( const move_mode_id &new_mode )
         }
         add_msg( new_mode->change_message( true, get_steed_type() ) );
         move_mode = new_mode;
+        // A direct change (falling prone, mounting, waking up...) is also the new desired mode.
+        // Otherwise the next action would switch back to the old desired mode and charge for it.
+        desired_move_mode = new_mode;
         // Enchantments based on move modes can stack inappropriately without a recalc here
         recalculate_enchantment_cache();
         recoil = MAX_RECOIL;
@@ -1375,7 +1378,7 @@ bool avatar::is_crouch_mode_desired() const
 
 void avatar::toggle_crouch_mode_desired()
 {
-    if( is_crouching() ) {
+    if( is_crouch_mode_desired() ) {
         set_desired_movement_mode( move_mode_walk );
     } else {
         set_desired_movement_mode( move_mode_crouch );
@@ -1389,7 +1392,7 @@ bool avatar::is_prone_mode_desired() const
 
 void avatar::toggle_prone_mode_desired()
 {
-    if( is_prone() ) {
+    if( is_prone_mode_desired() ) {
         set_desired_movement_mode( move_mode_walk );
     } else {
         set_desired_movement_mode( move_mode_prone );

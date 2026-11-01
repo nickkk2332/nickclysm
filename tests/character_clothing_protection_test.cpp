@@ -76,7 +76,9 @@ TEST_CASE( "wind_resistance_is_applied_independently_per_body_part", "[character
     scoped_weather_override weather_clear( WEATHER_CLEAR );
     weather_clear.with_windspeed( 30 );
     restore_on_out_of_scope restore_temperature( get_weather().forced_temperature );
-    get_weather().forced_temperature = units::from_fahrenheit( -10 );
+    // Cold enough that a windy bare hand is in the high frostbite risk zone, while a hand
+    // shielded from the wind would only be in the medium risk zone.
+    get_weather().forced_temperature = units::from_fahrenheit( -40 );
 
     const auto hand_frostbite_timer = [&]( const bool wear_protective_clothing ) {
         clear_character( dummy );
