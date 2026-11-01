@@ -229,6 +229,10 @@ void game::unserialize( std::istream &fin, const cata_path &path )
     } catch( const JsonError &jsonerr ) {
         debugmsg( "Bad save json\n%s", jsonerr.c_str() );
         return;
+    } catch( const std::exception &err ) {
+        // e.g. an enum value this build does not know; report it instead of crashing
+        debugmsg( "Error loading save\n%s", err.what() );
+        return;
     }
 }
 
@@ -240,6 +244,10 @@ void game::unserialize( std::string fin )
         unserialize_impl( data );
     } catch( const JsonError &jsonerr ) {
         debugmsg( "Bad save json\n%s", jsonerr.c_str() );
+        return;
+    } catch( const std::exception &err ) {
+        // e.g. an enum value this build does not know; report it instead of crashing
+        debugmsg( "Error loading save\n%s", err.what() );
         return;
     }
 }

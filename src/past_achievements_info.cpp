@@ -1,6 +1,8 @@
+#include <exception>
 #include <utility>
 #include <vector>
 
+#include "debug.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "json_loader.h"
@@ -67,8 +69,9 @@ void past_achievements_info::load()
                 // version 0 has no `avatar_name` member, skip them
                 continue;
             } else if( version != 1 ) {
-                debugmsg( "Error reading achievements file %s: unexpected version %d",
-                          filename.generic_u8string(), version );
+                // Usually a file written by a newer build; not worth a popup every session.
+                DebugLog( D_WARNING, DC_ALL ) << "Skipping achievements file " << filename.generic_u8string()
+                                              << ": unexpected version " << version;
                 continue;
             }
             jo.read( "achievements", achievements );

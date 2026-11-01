@@ -5,10 +5,10 @@
 
 #include "cata_catch.h"
 #include "cata_path.h"
+#include "cata_scope_helpers.h"
 #include "cata_utility.h"
 #include "character.h"
 #include "character_id.h"
-#include "debug.h"
 #include "event.h"
 #include "event_bus.h"
 #include "filesystem.h"
@@ -62,6 +62,15 @@ TEST_CASE( "evt-b02_bad_achievements_file_does_not_stop_others", "[audit][stats]
     assure_dir_exist( dir );
     const cata_path bad_file = dir / "audit_evt_b02_bad.json";
     const cata_path good_file = dir / "audit_evt_b02_good.json";
+    // Remove the files even if a check below aborts the test, so they can't leak into
+    // later tests that load past achievements.
+    const auto remove_files = [&]() {
+        remove_file( bad_file );
+        remove_file( good_file );
+        clear_past_achievements();
+    };
+    on_out_of_scope cleanup( remove_files );
+    remove_files();
     write_to_file( bad_file, []( std::ostream & os ) {
         os << R"({"achievement_version":99,"achievements":[],"avatar_name":"Nobody"})";
     } );
@@ -70,16 +79,7 @@ TEST_CASE( "evt-b02_bad_achievements_file_does_not_stop_others", "[audit][stats]
            << R"("avatar_name":"Audit Tester"})";
     } );
 
-    clear_past_achievements();
-    bool completed = false;
-    const std::string msg = capture_debugmsg_during( [&]() {
-        completed = get_past_achievements().is_completed(
-                        achievement_id( "achievement_kill_zombie" ) );
-    } );
-    CHECK( msg.find( "unexpected version 99" ) != std::string::npos );
-    CHECK( completed );
-
-    remove_file( bad_file.generic_u8string() );
-    remove_file( good_file.generic_u8string() );
-    clear_past_achievements();
+    // The file with an unknown version is skipped (with a log entry, not a popup) and the
+    // other file still loads.
+    CHECK( get_past_achievements().is_completed( achievement_id( "achievement_kill_zombie" ) ) );
 }
