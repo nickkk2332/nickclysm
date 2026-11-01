@@ -2069,8 +2069,21 @@ static bool drag_drop_allowed( Character &who, const item_location &src,
             return false;
         }
     }
+    // Containers holding both src and dest hold src before and after the move, so their
+    // capacity doesn't change; checking them as if src were added would refuse moves between
+    // pockets of one full bag. The move's own pocket checks still apply.
+    std::unordered_set<const item *> src_ancestors;
+    for( item_location p = src; p.has_parent(); ) {
+        p = p.parent_item();
+        src_ancestors.insert( p.get_item() );
+    }
+    bool shares_ancestor = src_ancestors.count( dest.get_item() ) > 0;
+    for( item_location p = dest; !shares_ancestor && p.has_parent(); ) {
+        p = p.parent_item();
+        shares_ancestor = src_ancestors.count( p.get_item() ) > 0;
+    }
     // drag_drop_item turns down a destination without pockets itself.
-    if( !dest->get_container_pockets().empty() ) {
+    if( !shares_ancestor && !dest->get_container_pockets().empty() ) {
         item copy( *src );
         const ret_val<void> ret = dest.parents_can_contain_recursive( &copy );
         if( !ret.success() ) {
