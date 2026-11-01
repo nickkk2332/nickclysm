@@ -143,6 +143,53 @@ A cross-chapter shortlist, grouped by kind of impact. Format: ID · title · sev
 - **[EOC-J01](01-eoc-dialogue.md)** · EOC variables cannot hold a handle to a monster, item or vehicle; spawns expose nothing · high/medium · the main EOC gap: spawned quest NPCs, summons and items cannot be tagged or scripted afterwards without indirect workarounds.
 - **[OMAP-J01](09-overmap-worldgen.md)** · EOCs can barely read and cannot write overmap state · high/medium · unlocks world-changing content (burnt OMTs, specials at a chosen point, map notes, overmap hordes); `overmapbuffer` already has the APIs, so the work is mostly thin wrappers.
 
+## Fixes applied
+
+The small-effort items in "Fix first" groups 1-3 have been fixed on this branch, one commit per group of related findings. ITEM-B02 and EVT-B02 are rated medium effort and were left for later.
+
+| ID | Status | Commit | Regression test |
+|---|---|---|---|
+| CHAR-B01 | fixed | `4c4457f7` | `tests/audit_wounds_blood_magic_test.cpp` |
+| USE-B01 | fixed | `0706a779` | none: the draw path always opens a `uilist`, which tests cannot drive |
+| ACT-B01 | fixed | `1f5051d6` | `tests/audit_butchery_test.cpp` |
+| MATH-B01 | fixed | `13dee1ed` | `tests/audit_math_limb_score_test.cpp` |
+| UIINV-B01 | fixed | `d885c004` | `tests/audit_aim_move_all_test.cpp` |
+| MAGIC-B01 | fixed | `4c4457f7` | `tests/audit_wounds_blood_magic_test.cpp` |
+| EOC-B01 | fixed | `aace1613` | `tests/audit_eoc_combat_null_test.cpp` |
+| CMBT-B01 | fixed | `aace1613` | `tests/audit_eoc_combat_null_test.cpp` (also fixes the `u_explosion` integer `shrapnel` shorthand) |
+| MUT-B01 | fixed | `b329e834` | `tests/audit_mutation_activation_test.cpp` |
+| USE-B02 | fixed | `0706a779` | `tests/audit_item_use_test.cpp` |
+| DATA-B01 | fixed | `9a8b2c7b` | `tests/audit_saves_options_test.cpp` |
+| ITEM-B02 | not done | | medium effort |
+| LOOP-B04 | fixed | `90c08ef9` | none: needs the OS to refuse to map the save file |
+| EVT-B02 | not done | | medium effort |
+| DATA-B02 | fixed | `9a8b2c7b` | `tests/audit_saves_options_test.cpp` |
+| LOOP-B03 | fixed | `90c08ef9` | none: `game::setup()` cannot run inside the test harness |
+| EVT-B01 | partial | `90c08ef9` | none: `is_game_over()` is private and reached only through the input loop. Still open: `character_dies` can fire twice when a follower death-switch takes over the body |
+| USE-B04 | fixed | `0706a779` | `tests/audit_item_use_test.cpp` |
+| CHAR-B02 | fixed | `7ce602d6` | `tests/audit_frostbite_move_mode_test.cpp` |
+| CHAR-B03 | fixed | `7ce602d6` | `tests/audit_frostbite_move_mode_test.cpp` |
+| NPC-B01 | partial | `1966b6c1` | `tests/audit_npc_attack_gun_test.cpp`. Still open: NPCs cannot use wielded CBM pseudo-guns |
+| IINF-B01 | fixed | `1129cda8` | `tests/audit_ablative_armor_test.cpp` |
+| CRAFT-B01 | fixed | `04e8cea9` | `tests/audit_craft_failure_test.cpp` |
+| LOOP-B01 | fixed | `90c08ef9` | `tests/audit_game_loop_test.cpp` |
+| MONDT-B02 | fixed | `ac239624` | `tests/audit_mongroup_evolution_test.cpp` |
+| MONAI-B01 | fixed | `5bc22c4b` | `tests/audit_monster_speed_mod_test.cpp` |
+
+**Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1`) and run. All 31 `[audit]` test cases pass, and every one of them fails or crashes on a build with its fix reverted, so they really catch the bugs. The full suite passes 2304 of 2309 test cases. The 5 failures (`crafting_skill_gain`, `proficiency_gain_short_crafts`, `memorials`, `available_reloadables`, `monster_speed_description`) already happen on a build with every fix reverted and the audit tests removed, at the same lines with the same seed. They depend on test order: each passes on its own. (That pre-fix full run also stopped making progress partway through for reasons not yet identified; the fixed build completed.) `stats_tracker` failed once on another seed and is flaky.
+
+**Gameplay changes players will notice.**
+
+- Bandages and other stop-bleed items now work at First Aid 0, and stop-bleed power is higher at every skill level (USE-B04).
+- Ablative plates protect only on hits that land on them, and only once, so torso damage from bullets rises for plated vests (IINF-B01).
+- Craft failures now happen at the rate the crafting menu shows, so low-skill crafting loses components and progress more often (CRAFT-B01).
+- Frostbite risk rises with wind and cold instead of falling (CHAR-B02).
+- Creatures hit by vehicles or thrown by hulks fly the full distance and no longer take self-collision damage; other characters in the way stop them (LOOP-B01).
+- Effects that change speed now change monster speed (MONAI-B01).
+- On hard difficulty presets, monster group time gating works again (MONDT-B02).
+- With broken legs you stay prone until you choose to stand, and running no longer turns itself back on after running out of stamina (CHAR-B03).
+- NPCs reload mid-fight, fire UPS energy guns, and hold fire when a friend is in the line of fire (NPC-B01).
+
 ## Cross-cutting themes
 
 Many findings in different chapters share a root cause. Fixing the cause once is usually cheaper than fixing each finding on its own, and it stops the same mistake from coming back.
