@@ -1401,9 +1401,14 @@ bool item::process_temperature_rot( float insulation, const tripoint_bub_ms &pos
             }
 
             // Calculate item temperature from environment temperature
-            // If the time was more than 2 d ago we do not care about item temperature.
+            // If the time was more than 2 d ago we do not simulate heat flow: the item
+            // has long since settled to the environment temperature. Still set it, so
+            // the FROZEN/COLD flags calc_rot reads describe this hour rather than the
+            // moment the item left the reality bubble.
             if( now - time < 2_days ) {
                 calc_temp( env_temperature, insulation, time_delta );
+            } else {
+                set_item_temperature( env_temperature );
             }
             last_temp_check = time;
 
