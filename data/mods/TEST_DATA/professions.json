@@ -1,0 +1,19 @@
+[
+  {
+    "type": "profession",
+    "id": "test_player_only_profession",
+    "name": "Player-only test profession",
+    "description": "A profession that random NPCs must never get.",
+    "points": 0,
+    "chargen_allow_npc": false
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_player_only_hobby",
+    "name": "Player-only test hobby",
+    "description": "A hobby that random NPCs must never get.",
+    "points": 0,
+    "chargen_allow_npc": false
+  }
+]

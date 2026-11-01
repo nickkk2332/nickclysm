@@ -419,8 +419,31 @@ void reset_scenarios_blacklist()
     sc_blacklist.whitelist = false;
 }
 
+// The permitted lists are cached for the avatar, and the chargen_allow_npc filter is applied
+// on top of them per call: a single cache filled by whichever kind of caller came first used
+// to decide the list for the other.
+static std::vector<string_id<profession>> filter_for_npcs(
+        const std::vector<string_id<profession>> &list )
+{
+    std::vector<string_id<profession>> res;
+    for( const string_id<profession> &p : list ) {
+        if( p->chargen_allow_npc() ) {
+            res.push_back( p );
+        }
+    }
+    return res;
+}
+
 std::vector<string_id<profession>> scenario::permitted_professions( bool is_npc ) const
 {
+    if( is_npc ) {
+        std::vector<string_id<profession>> res = filter_for_npcs( permitted_professions( false ) );
+        if( res.empty() ) {
+            res.push_back( profession::generic()->ident() );
+        }
+        return res;
+    }
+
     if( !cached_permitted_professions.empty() ) {
         return cached_permitted_professions;
     }
@@ -428,7 +451,7 @@ std::vector<string_id<profession>> scenario::permitted_professions( bool is_npc 
     const std::vector<profession> &all = profession::get_all();
     std::vector<string_id<profession>> &res = cached_permitted_professions;
     for( const profession &p : all ) {
-        if( p.is_hobby() || p.is_blacklisted() || ( is_npc && !p.chargen_allow_npc() ) ) {
+        if( p.is_hobby() || p.is_blacklisted() ) {
             continue;
         }
         const bool present = std::find( professions.begin(), professions.end(),
@@ -463,6 +486,10 @@ std::vector<string_id<profession>> scenario::permitted_professions( bool is_npc 
 
 std::vector<string_id<profession>> scenario::permitted_hobbies( bool is_npc ) const
 {
+    if( is_npc ) {
+        return filter_for_npcs( permitted_hobbies( false ) );
+    }
+
     if( !cached_permitted_hobbies.empty() ) {
         return cached_permitted_hobbies;
     }
@@ -480,9 +507,6 @@ std::vector<string_id<profession>> scenario::permitted_hobbies( bool is_npc ) co
             continue;
         }
         if( hobbies_whitelist && !hobby_exclusion.empty() && hobby_exclusion.count( hobby ) == 0 ) {
-            continue;
-        }
-        if( is_npc && !hobby->chargen_allow_npc() ) {
             continue;
         }
 

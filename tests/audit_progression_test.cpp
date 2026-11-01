@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <set>
 #include <string>
 #include <vector>
@@ -10,6 +11,7 @@
 #include "player_helpers.h"
 #include "proficiency.h"
 #include "profession.h"
+#include "scenario.h"
 #include "skill.h"
 #include "type_id.h"
 
@@ -19,6 +21,8 @@ static const proficiency_id proficiency_prof_wound_care( "prof_wound_care" );
 
 static const profession_id profession_firefighter( "firefighter" );
 static const profession_id profession_frying( "frying" );
+static const profession_id profession_test_player_only_hobby( "test_player_only_hobby" );
+static const profession_id profession_test_player_only_profession( "test_player_only_profession" );
 
 static const skill_id skill_melee( "melee" );
 
@@ -105,4 +109,45 @@ TEST_CASE( "prog-b02_listed_proficiencies_are_granted_regardless_of_order", "[au
     }
 
     clear_avatar();
+}
+
+static bool contains( const std::vector<profession_id> &list, const profession_id &id )
+{
+    return std::find( list.begin(), list.end(), id ) != list.end();
+}
+
+// PROG-B03: each scenario kept one cache per list, filled by whichever is_npc value asked
+// first. The creator and scenario::check() ask for the avatar's list, so random NPCs then got
+// the avatar's list, and chargen_allow_npc: false had no effect.
+TEST_CASE( "prog-b03_npc_lists_respect_chargen_allow_npc", "[audit][chargen]" )
+{
+    const scenario *scen = scenario::generic();
+    REQUIRE_FALSE( profession_test_player_only_profession->chargen_allow_npc() );
+    REQUIRE_FALSE( profession_test_player_only_hobby->chargen_allow_npc() );
+
+    // The character creator asks for the avatar's lists first.
+    const std::vector<profession_id> avatar_profs = scen->permitted_professions( false );
+    const std::vector<profession_id> avatar_hobbies = scen->permitted_hobbies( false );
+    CHECK( contains( avatar_profs, profession_test_player_only_profession ) );
+    CHECK( contains( avatar_hobbies, profession_test_player_only_hobby ) );
+
+    const std::vector<profession_id> npc_profs = scen->permitted_professions( true );
+    const std::vector<profession_id> npc_hobbies = scen->permitted_hobbies( true );
+    CHECK_FALSE( contains( npc_profs, profession_test_player_only_profession ) );
+    CHECK_FALSE( contains( npc_hobbies, profession_test_player_only_hobby ) );
+    // Everything else NPCs may take is still offered to them.
+    for( const profession_id &prof : avatar_profs ) {
+        CAPTURE( prof.str() );
+        CHECK( contains( npc_profs, prof ) == prof->chargen_allow_npc() );
+    }
+    for( const profession_id &hobby : avatar_hobbies ) {
+        CAPTURE( hobby.str() );
+        CHECK( contains( npc_hobbies, hobby ) == hobby->chargen_allow_npc() );
+    }
+
+    // Asking for the NPC lists doesn't hide player-only choices from the avatar.
+    const std::vector<profession_id> avatar_profs_after = scen->permitted_professions( false );
+    const std::vector<profession_id> avatar_hobbies_after = scen->permitted_hobbies( false );
+    CHECK( contains( avatar_profs_after, profession_test_player_only_profession ) );
+    CHECK( contains( avatar_hobbies_after, profession_test_player_only_hobby ) );
 }
