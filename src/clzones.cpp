@@ -1350,7 +1350,9 @@ std::unordered_set<tripoint_abs_ms> zone_manager::get_near( const zone_type_id &
         }
     }
 
-    const auto &vzone_set = get_vzone_set( type, fac );
+    // A copy: custom_loot_has() can rebuild the vehicle zone cache (through
+    // map::get_vehicle_zones()), which would invalidate a reference into it.
+    const std::unordered_set<tripoint_abs_ms> vzone_set = get_vzone_set( type, fac );
     for( const tripoint_abs_ms &point : vzone_set ) {
         if( point.z() == where.z() ) {
             if( square_dist( point, where ) <= range ) {
