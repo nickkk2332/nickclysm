@@ -7251,7 +7251,14 @@ talk_effect_fun_t::func f_weighted_list_eocs( const JsonObject &jo,
         std::string_view member, std::string_view src )
 {
     std::vector<std::pair<effect_on_condition_id, dbl_or_var>> eoc_pairs;
-    for( JsonArray ja : jo.get_array( member ) ) {
+    for( const JsonValue entry : jo.get_array( member ) ) {
+        if( !entry.test_array() ) {
+            // A bare EOC id or inline EOC has weight 1.
+            eoc_pairs.emplace_back( effect_on_conditions::load_inline_eoc( entry, src ),
+                                    dbl_or_var( 1.0 ) );
+            continue;
+        }
+        JsonArray ja = entry.get_array();
         JsonValue eoc = ja.next_value();
         dbl_or_var eoc_weight;
         eoc_weight.deserialize( ja.next_value() );
@@ -7259,14 +7266,19 @@ talk_effect_fun_t::func f_weighted_list_eocs( const JsonObject &jo,
                                 eoc_weight );
     }
     return [eoc_pairs]( dialogue & d ) {
-        weighted_int_list<effect_on_condition_id> eocs;
+        // Weights may be fractional (0.3/0.7), so don't truncate them to int.
+        weighted_float_list<effect_on_condition_id> eocs;
         for( const std::pair<effect_on_condition_id, dbl_or_var> &eoc_pair :
              eoc_pairs ) {
             eocs.add( eoc_pair.first, eoc_pair.second.evaluate( d ) );
         }
-        effect_on_condition_id picked_eoc = *eocs.pick();
+        // Every weight evaluated to 0 or less: nothing to run.
+        const effect_on_condition_id *picked_eoc = eocs.pick();
+        if( picked_eoc == nullptr ) {
+            return;
+        }
         dialogue newDialog( d );
-        picked_eoc->activate( newDialog );
+        ( *picked_eoc )->activate( newDialog );
     };
 }
 

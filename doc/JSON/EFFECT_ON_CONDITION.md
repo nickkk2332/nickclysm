@@ -3273,7 +3273,7 @@ Will choose one of a list of eocs to activate based on it's weight
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
-| "weighted_list_eocs" | **mandatory** | n/a | EoC that would be run, and it's weight; EoC can be either id or inline EoC, and weight can be int or variable object |
+| "weighted_list_eocs" | **mandatory** | n/a | EoC that would be run, and it's weight; each entry is either `[ eoc, weight ]` or a bare EoC (weight 1). EoC can be either id or inline EoC, and weight can be a number (fractions like 0.3 are kept) or variable object. Entries whose weight is 0 or less are skipped; if every weight is 0 or less, nothing runs |
 
 ##### Examples
 
