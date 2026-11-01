@@ -118,6 +118,12 @@ std::list<item> npc_trading::transfer_items( trade_selector::select_t &stuff, Ch
             from_map.push_back( &ip.first );
         }
     }
+    if( !stuff.empty() ) {
+        // A trade takes no moves, so the crafting caches (including nearby book bonuses)
+        // would otherwise keep the old inventories until either character acts.
+        giver.invalidate_crafting_inventory();
+        receiver.invalidate_crafting_inventory();
+    }
     return escrow;
 }
 
