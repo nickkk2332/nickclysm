@@ -4,6 +4,7 @@
 #include <array>
 #include <climits>
 #include <cstddef>
+#include <exception>
 #include <functional>
 #include <map>
 #include <memory>
@@ -2571,6 +2572,9 @@ double eoc_math::act( D &d ) const
         return exp->eval( d );
     } catch( math::exception const &re ) {
         debugmsg( "%s\n\n%s", re.what(), d.get_callstack() );
+    } catch( std::exception const &e ) {
+        // a non-math exception escaping a math expression must not terminate the game
+        debugmsg( "Unexpected error in math expression: %s\n\n%s", e.what(), d.get_callstack() );
     }
 
     return 0;
