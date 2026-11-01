@@ -4373,7 +4373,8 @@ void map::smash_items( const tripoint_bub_ms &p, int power, const std::string &c
         }
 
         if( vp_wheel != nullptr && vehicle::hit_probability( *i, vp_wheel ) < rng_float( 0.0, 1.0 ) ) {
-            // The wheel missed the item.
+            // The wheel missed the item, move on to the next one
+            i++;
             continue;
         }
 
@@ -4440,9 +4441,13 @@ void map::smash_items( const tripoint_bub_ms &p, int power, const std::string &c
             } else {
                 // Small chance: Eject item away from wheel
                 if( one_in( 5 ) ) {
-                    point_rel_ms move_to( rng( 0, 1 ), rng( 0, 1 ) );
-                    if( move_to != point_rel_ms() ) {  // Don't "move" to the same tile, always an adjacent one
-                        add_item( p + move_to, *i );
+                    const point_rel_ms move_to( rng( -1, 1 ), rng( -1, 1 ) );
+                    const tripoint_bub_ms dest = p + move_to;
+                    // Don't "move" to the same tile, always an adjacent one that takes items;
+                    // if it can't, the item stays where it is
+                    if( move_to != point_rel_ms() && inbounds( dest ) &&
+                        can_put_items_ter_furn( dest ) &&
+                        !add_item_or_charges( dest, *i, false ).is_null() ) {
                         i = i_rem( p, i );
                         continue;
                     }

@@ -6,24 +6,32 @@
 #include "cata_catch.h"
 #include "coordinates.h"
 #include "debug.h"
+#include "enums.h"
 #include "field.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
+#include "item.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "mapdata.h"
 #include "point.h"
 #include "type_id.h"
+#include "units.h"
+#include "vehicle.h"
 
 static const field_type_str_id field_fd_blood( "fd_blood" );
 static const field_type_str_id field_fd_smoke( "fd_smoke" );
 static const field_type_str_id field_fd_weedsmoke( "fd_weedsmoke" );
 
+static const itype_id itype_jointer( "jointer" );
+static const itype_id itype_tshirt( "tshirt" );
+
 static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_nl_metal_wall( "t_nl_metal_wall" );
 static const ter_str_id ter_t_nl_metal_wall_border( "t_nl_metal_wall_border" );
+static const ter_str_id ter_t_wall( "t_wall" );
 static const ter_str_id ter_t_window( "t_window" );
 static const ter_str_id ter_t_window_boarded( "t_window_boarded" );
 static const ter_str_id ter_t_window_boarded_shutters_closed( "t_window_boarded_shutters_closed" );
@@ -31,6 +39,8 @@ static const ter_str_id ter_t_window_boarded_shutters_open( "t_window_boarded_sh
 static const ter_str_id
 ter_t_window_boarded_shutters_open_fully( "t_window_boarded_shutters_open_fully" );
 static const ter_str_id ter_t_window_frame( "t_window_frame" );
+
+static const vproto_id vehicle_prototype_bicycle( "bicycle" );
 
 // Rain ages outdoor fields by amount / decay_amount_factor. Before the fix the loop aged a
 // copy of each field entry, so nothing on the map changed, and only the bubble's own level
@@ -202,5 +212,101 @@ TEST_CASE( "map-b05_terrain_copy_from_keeps_tool_activities_and_shoot", "[audit]
         CHECK_FALSE( ter_t_window_boarded_shutters_open_fully->prying->valid() );
         CHECK( ter_t_nl_metal_wall->oxytorch->valid() );
         CHECK_FALSE( ter_t_nl_metal_wall_border->oxytorch->valid() );
+    }
+}
+
+static int count_items_of( const tripoint_bub_ms &p, const itype_id &type )
+{
+    int n = 0;
+    for( const item &it : get_map().i_at( p ) ) {
+        if( it.typeId() == type ) {
+            n++;
+        }
+    }
+    return n;
+}
+
+// A bicycle parked away from the items, whose wheel runs over them
+static vehicle_part &place_bicycle_wheel( vehicle *&veh )
+{
+    veh = get_map().add_vehicle( vehicle_prototype_bicycle, tripoint_bub_ms( 40, 40, 0 ),
+                                 0_degrees, 0, veh_spawn_status::UNDAMAGED );
+    REQUIRE( veh != nullptr );
+    REQUIRE( !veh->wheelcache.empty() );
+    return veh->part( veh->wheelcache.front() );
+}
+
+// When a wheel misses an item it must move on to the next one. Before the fix it re-rolled
+// the same item until it hit, so every item under the wheel was hit: here every t-shirt was
+// salvaged away, although a wheel hits a soft t-shirt well under 5% of the time.
+TEST_CASE( "map-b06_wheel_miss_moves_on_to_the_next_item", "[audit][map][vehicle]" )
+{
+    clear_map();
+    map &here = get_map();
+    vehicle *veh = nullptr;
+    vehicle_part &wheel = place_bicycle_wheel( veh );
+    const item tshirt( itype_tshirt );
+    REQUIRE( tshirt.is_salvageable() );
+    REQUIRE( vehicle::hit_probability( tshirt, &wheel ) < 0.05 );
+
+    const tripoint_bub_ms pos( 65, 65, 0 );
+    const int count = 10;
+    for( int n = 0; n < count; n++ ) {
+        here.add_item( pos, tshirt );
+    }
+    REQUIRE( count_items_of( pos, itype_tshirt ) == count );
+
+    here.smash_items( pos, 100000, "audit", &wheel, veh );
+
+    CHECK( count_items_of( pos, itype_tshirt ) >= count / 2 );
+}
+
+// An item a wheel ejects can fly to any neighbour that takes items, and is never lost. Before
+// the fix it only flew east, south or south-east, and was put into walls or lost off the map.
+TEST_CASE( "map-b06_wheel_ejects_items_in_every_direction", "[audit][map][vehicle]" )
+{
+    clear_map();
+    map &here = get_map();
+    vehicle *veh = nullptr;
+    vehicle_part &wheel = place_bicycle_wheel( veh );
+    const item jointer( itype_jointer );
+    REQUIRE_FALSE( jointer.is_salvageable() );
+    REQUIRE( vehicle::hit_probability( jointer, &wheel ) == 1.0 );
+
+    const tripoint_bub_ms pos( 65, 65, 0 );
+
+    SECTION( "on open ground" ) {
+        bool ejected_west_or_north = false;
+        for( int trial = 0; trial < 300; trial++ ) {
+            for( const tripoint_bub_ms &pt : here.points_in_radius( pos, 1 ) ) {
+                here.i_clear( pt );
+            }
+            here.add_item( pos, jointer );
+            here.smash_items( pos, 100000, "audit", &wheel, veh );
+            int found = 0;
+            for( const tripoint_bub_ms &pt : here.points_in_radius( pos, 1 ) ) {
+                const int here_count = count_items_of( pt, itype_jointer );
+                found += here_count;
+                if( here_count > 0 && ( pt.x() < pos.x() || pt.y() < pos.y() ) ) {
+                    ejected_west_or_north = true;
+                }
+            }
+            REQUIRE( found == 1 );
+        }
+        CHECK( ejected_west_or_north );
+    }
+
+    SECTION( "surrounded by walls" ) {
+        for( const tripoint_bub_ms &pt : here.points_in_radius( pos, 1 ) ) {
+            if( pt != pos ) {
+                here.ter_set( pt, ter_t_wall );
+                REQUIRE( here.has_flag( ter_furn_flag::TFLAG_NOITEM, pt ) );
+            }
+        }
+        here.add_item( pos, jointer );
+        for( int trial = 0; trial < 100; trial++ ) {
+            here.smash_items( pos, 100000, "audit", &wheel, veh );
+            REQUIRE( count_items_of( pos, itype_jointer ) == 1 );
+        }
     }
 }
