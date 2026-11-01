@@ -886,8 +886,6 @@ veh_collision vehicle::part_collision( map &here, int part, const tripoint_abs_m
     Creature *critter = get_creature_tracker().creature_at( p, true );
     Character *ph = dynamic_cast<Character *>( critter );
 
-    Character *driver = get_driver( here );
-
     // If in a vehicle assume it's this one
     if( ph != nullptr && ph->in_vehicle ) {
         critter = nullptr;
@@ -1017,6 +1015,9 @@ veh_collision vehicle::part_collision( map &here, int part, const tripoint_abs_m
         // Hit nothing or we aren't actually hitting
         return ret;
     }
+    // only a creature hit is credited to the driver; looking them up walks every part, and
+    // this runs for each structural part on each tile the vehicle moves
+    Character *const driver = ret.type == veh_coll_body ? get_driver( here ) : nullptr;
     stop_autodriving();
     // Calculate mass AFTER checking for collision
     //  because it involves iterating over all cargo
