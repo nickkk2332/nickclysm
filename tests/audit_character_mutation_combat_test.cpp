@@ -10,6 +10,8 @@
 static const json_character_flag json_flag_DISTRIBUTED_DAMAGE( "DISTRIBUTED_DAMAGE" );
 
 static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
+static const trait_id trait_WINGS_INSECT( "WINGS_INSECT" );
+static const trait_id trait_WINGS_INSECT_active( "WINGS_INSECT_active" );
 
 static int total_part_hp( const Character &who, const std::vector<bodypart_id> &parts )
 {
@@ -50,5 +52,35 @@ TEST_CASE( "hlth-b01_distributed_damage_spreads_whole_hit_over_main_parts",
         CHECK( total_part_hp( dummy, main_parts ) == main_before - dam );
         CHECK( total_part_hp( dummy, minor_parts ) == minor_before );
     }
+    clear_avatar();
+}
+
+// MUT-B02: activate_mutation() copied powered = true into my_mutations, but
+// deactivate_mutation() only cleared cached_mutations, and the enchantment recalc read
+// my_mutations. An ACTIVE enchantment's granted trait (Insect Wings -> buzzing) then
+// stayed forever, and it was granted one recalc late on activation.
+TEST_CASE( "mut-b02_deactivating_mutation_removes_active_enchantment_traits",
+           "[audit][mutation]" )
+{
+    clear_avatar();
+    Character &dummy = get_player_character();
+    dummy.set_mutation( trait_WINGS_INSECT );
+    REQUIRE( dummy.has_trait( trait_WINGS_INSECT ) );
+    REQUIRE( !dummy.has_trait( trait_WINGS_INSECT_active ) );
+    REQUIRE( dummy.can_power_mutation( trait_WINGS_INSECT ) );
+
+    dummy.activate_mutation( trait_WINGS_INSECT );
+    REQUIRE( dummy.has_active_mutation( trait_WINGS_INSECT ) );
+    // Granted by the activation itself, not a turn later.
+    CHECK( dummy.has_trait( trait_WINGS_INSECT_active ) );
+    dummy.recalculate_enchantment_cache();
+    CHECK( dummy.has_trait( trait_WINGS_INSECT_active ) );
+
+    dummy.deactivate_mutation( trait_WINGS_INSECT );
+    REQUIRE( !dummy.has_active_mutation( trait_WINGS_INSECT ) );
+    CHECK( !dummy.has_trait( trait_WINGS_INSECT_active ) );
+    // The per-turn recalc must not bring it back.
+    dummy.recalculate_enchantment_cache();
+    CHECK( !dummy.has_trait( trait_WINGS_INSECT_active ) );
     clear_avatar();
 }

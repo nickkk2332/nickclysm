@@ -4971,9 +4971,13 @@ void Character::recalculate_enchantment_cache()
     for( const std::pair<const trait_id, trait_data> &mut_map : my_mutations ) {
         if( mut_map.second.corrupted == 0 ) {
             const mutation_branch &mut = mut_map.first.obj();
+            // cached_mutations holds the live powered state: (de)activation updates it first.
+            const auto cached = cached_mutations.find( mut_map.first );
+            const bool powered = cached != cached_mutations.end() ? cached->second.powered :
+                                 mut_map.second.powered;
             for( const enchantment_id &ench_id : mut.enchantments ) {
                 const enchantment &ench = ench_id.obj();
-                if( ench.is_active( *this, mut.activated && mut_map.second.powered ) ) {
+                if( ench.is_active( *this, mut.activated && powered ) ) {
                     enchantment_cache->force_add_mutation( ench );
                 }
             }

@@ -412,7 +412,17 @@ void Character::switch_mutations( const trait_id &switched, const trait_id &targ
         set_mutation( target );
     }
     if( has_trait( target ) ) {
-        cached_mutations[target].powered = start_powered;
+        trait_data &tdata = cached_mutations[target];
+        const bool changed = tdata.powered != start_powered;
+        tdata.powered = start_powered;
+        // Keep the permanent copy in sync, it is saved and copied back on activation.
+        const auto my_it = my_mutations.find( target );
+        if( my_it != my_mutations.end() ) {
+            my_it->second.powered = start_powered;
+        }
+        if( changed && !target->enchantments.empty() ) {
+            recalculate_enchantment_cache();
+        }
     }
     trait_flag_cache.clear();
 }
@@ -1058,6 +1068,11 @@ void Character::activate_cached_mutation( const trait_id &mut )
 void Character::deactivate_mutation( const trait_id &mut )
 {
     cached_mutations[mut].powered = false;
+    // Keep the permanent copy in sync, it is saved and copied back on activation.
+    const auto my_it = my_mutations.find( mut );
+    if( my_it != my_mutations.end() ) {
+        my_it->second.powered = false;
+    }
     trait_flag_cache.clear();
 
     recalc_sight_limits();
