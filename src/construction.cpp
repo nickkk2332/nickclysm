@@ -2484,8 +2484,34 @@ void construction::load( const JsonObject &jo, const std::string_view )
     optional( jo, was_loaded, "strict", strict, false );
 }
 
+namespace
+{
+using constructions_by_post_terrain = std::unordered_multimap<std::string, const construction *>;
+
+// get_build_reqs_for_furn_ter_ids searches with one fixed filter and goal, so the index of
+// the constructions it may chain and the chain found for each target are kept until the
+// constructions are reloaded or finalized again
+struct blueprint_build_search {
+    bool indexed = false;
+    constructions_by_post_terrain by_post_terrain;
+    std::unordered_map<std::string, std::vector<construction_id>> chains;
+};
+
+blueprint_build_search &get_blueprint_build_search()
+{
+    static blueprint_build_search search;
+    return search;
+}
+
+void reset_blueprint_build_search()
+{
+    get_blueprint_build_search() = blueprint_build_search();
+}
+} // namespace
+
 void reset_constructions()
 {
+    reset_blueprint_build_search();
     construction_factory.reset();
 }
 
@@ -2602,6 +2628,7 @@ void finalize_constructions()
         debugmsg( "No valid frames detected for vehicle construction" );
     }
 
+    reset_blueprint_build_search();
     construction_factory.finalize();
 }
 
@@ -2688,20 +2715,37 @@ bool construction::is_blacklisted() const
     return requirements->is_blacklisted();
 }
 
-// Using BFS to find the shortest route to create target terrain from empty or base terrain,
-std::vector<construction_id> find_build_sequence( const std::string &target_id,
-        std::function<bool( construction const & )> const &filter,
-        std::function<bool( construction const & )> const &can_build )
+// a post_terrain->construction multimap for speedy search
+static constructions_by_post_terrain index_constructions_by_post_terrain(
+    std::function<bool( construction const & )> const &filter )
 {
-    // make a post_terrain->construction multimap for speedy search
-    std::unordered_multimap<std::string, const construction *> construction_map;
+    constructions_by_post_terrain construction_map;
     for( construction const &cons : get_constructions() ) {
         if( !filter( cons ) || cons.is_blacklisted() ) {
             continue;
         }
         construction_map.insert( { cons.post_terrain, &cons } );
     }
+    return construction_map;
+}
 
+static std::vector<construction_id> find_build_sequence_in(
+    const constructions_by_post_terrain &construction_map, const std::string &target_id,
+    std::function<bool( construction const & )> const &can_build );
+
+// Using BFS to find the shortest route to create target terrain from empty or base terrain,
+std::vector<construction_id> find_build_sequence( const std::string &target_id,
+        std::function<bool( construction const & )> const &filter,
+        std::function<bool( construction const & )> const &can_build )
+{
+    return find_build_sequence_in( index_constructions_by_post_terrain( filter ), target_id,
+                                   can_build );
+}
+
+static std::vector<construction_id> find_build_sequence_in(
+    const constructions_by_post_terrain &construction_map, const std::string &target_id,
+    std::function<bool( construction const & )> const &can_build )
+{
     std::queue<std::string> terrain_queue;
     std::unordered_map<std::string, std::pair<const construction *, std::string>>
             parent; // pre, cons , post
@@ -2774,18 +2818,35 @@ build_reqs get_build_reqs_for_furn_ter_ids(
 
     std::map<construction_id, int> total_builds;
 
-    // find the shortest route to create target terrain from empty or base terrain,
-    // adding the constructions to the total_builds map
-    const auto add_builds = [&total_builds, &base_ter]( const std::string & target_id, int count ) {
-
-        std::vector<construction_id> construction_chain = find_build_sequence( target_id, [](
+    // Recipe finalization calls this for every parameter combination of every autocalc
+    // blueprint, with this filter and goal each time, so the index and each target's
+    // chain are worked out once.
+    blueprint_build_search &search = get_blueprint_build_search();
+    if( !search.indexed ) {
+        search.by_post_terrain = index_constructions_by_post_terrain( [](
         construction const & cons ) {
             return !( cons.post_terrain.empty() || cons.pre_terrain.size() > 1 ||
                       cons.category == construction_category_REPAIR ||
                       cons.category == construction_category_DECONSTRUCT );
-        }, [&base_ter]( construction const & cons ) {
-            return cons.pre_terrain.empty() || *cons.pre_terrain.begin() == base_ter.id().str();
         } );
+        search.indexed = true;
+    }
+
+    const auto can_build = [&base_ter]( construction const & cons ) {
+        return cons.pre_terrain.empty() || *cons.pre_terrain.begin() == base_ter.id().str();
+    };
+
+    // find the shortest route to create target terrain from empty or base terrain,
+    // adding the constructions to the total_builds map
+    const auto add_builds = [&total_builds, &search, &can_build]( const std::string & target_id,
+    int count ) {
+        auto known = search.chains.find( target_id );
+        if( known == search.chains.end() ) {
+            std::vector<construction_id> chain =
+                find_build_sequence_in( search.by_post_terrain, target_id, can_build );
+            known = search.chains.emplace( target_id, std::move( chain ) ).first;
+        }
+        const std::vector<construction_id> &construction_chain = known->second;
 
         // count == 0 means we cannot find a valid route to construct this terrain from the ground up
         // thus skip it.
