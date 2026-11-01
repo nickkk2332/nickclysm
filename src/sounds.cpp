@@ -477,7 +477,11 @@ void sounds::process_sounds()
 {
     map &here = get_map();
 
-    std::vector<centroid> sound_clusters = cluster_sounds( recent_sounds );
+    // Sounds the reactions below make (a trap waking up, say) are heard next turn
+    // instead of being cleared unheard.
+    std::vector<std::pair<tripoint_bub_ms, monster_sound_event>> sounds_to_process;
+    sounds_to_process.swap( recent_sounds );
+    std::vector<centroid> sound_clusters = cluster_sounds( sounds_to_process );
     const int weather_vol = get_weather().weather_id->sound_attn;
     for( const centroid &this_centroid : sound_clusters ) {
         // Since monsters don't go deaf ATM we can just use the weather modified volume
@@ -506,9 +510,14 @@ void sounds::process_sounds()
         }
         // Trigger sound-triggered traps and ensure they are still valid
         for( const trap *trapType : trap::get_sound_triggered_traps() ) {
-            for( const tripoint_bub_ms &tp : here.trap_locations( trapType->id ) ) {
-                const int dist = sound_distance( source, tp );
+            // A copy: triggering a trap removes it (and maybe others) from the list.
+            const std::vector<tripoint_bub_ms> trap_spots = here.trap_locations( trapType->id );
+            for( const tripoint_bub_ms &tp : trap_spots ) {
                 const trap &tr = here.tr_at( tp );
+                if( tr.loadid != trapType->loadid ) {
+                    continue;
+                }
+                const int dist = sound_distance( source, tp );
                 // Exclude traps that certainly won't hear the sound
                 if( vol * 2 > dist ) {
                     if( tr.triggered_by_sound( vol, dist ) ) {
@@ -518,7 +527,6 @@ void sounds::process_sounds()
             }
         }
     }
-    recent_sounds.clear();
 }
 
 // skip some sounds to avoid message spam

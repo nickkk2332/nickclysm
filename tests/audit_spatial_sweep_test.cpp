@@ -5,8 +5,15 @@
 #include "cata_catch.h"
 #include "coordinates.h"
 #include "line.h"
+#include "map.h"
+#include "map_helpers.h"
+#include "player_helpers.h"
 #include "point.h"
 #include "sounds.h"
+#include "trap.h"
+#include "type_id.h"
+
+static const trap_str_id tr_dormant_corpse( "tr_dormant_corpse" );
 
 // With more than ten sounds in a turn the extra ones merge into a cluster. A sound
 // no seed was within ~12 tiles of went into the first cluster, wherever it was,
@@ -52,5 +59,35 @@ TEST_CASE( "spat-b03_sound_clusters_merge_into_the_nearest_cluster", "[audit][so
         // The unseeded one of the two joined its nearest neighbour.
         CHECK( ( d == nearest( merged[0] ) || d == nearest( merged[1] ) ) );
     }
+    sounds::reset_sounds();
+}
+
+// Triggering a sound trap erases it from the list process_sounds() was walking,
+// so the next trap was skipped (and the spell went off at the wrong corpse).
+TEST_CASE( "spat-b04_sound_triggers_every_dormant_corpse_in_earshot", "[audit][sound][trap]" )
+{
+    clear_map();
+    clear_avatar();
+    sounds::reset_sounds();
+    map &here = get_map();
+    const std::vector<tripoint_bub_ms> corpses = {
+        { 50, 70, 0 }, { 53, 70, 0 }, { 56, 70, 0 }
+    };
+    for( const tripoint_bub_ms &p : corpses ) {
+        here.trap_set( p, tr_dormant_corpse.id() );
+    }
+    REQUIRE( here.trap_locations( tr_dormant_corpse.id() ).size() == corpses.size() );
+
+    // Loud and close enough to trigger each of them for certain.
+    sounds::sound( { 53, 73, 0 }, 100, sounds::sound_t::combat, "a gunshot" );
+    sounds::process_sounds();
+
+    for( const tripoint_bub_ms &p : corpses ) {
+        CAPTURE( p.to_string() );
+        CHECK( here.tr_at( p ).is_null() );
+    }
+    CHECK( here.trap_locations( tr_dormant_corpse.id() ).empty() );
+    // The moans of the woken corpses are left for the next turn, not dropped.
+    CHECK_FALSE( sounds::get_monster_sounds().first.empty() );
     sounds::reset_sounds();
 }
