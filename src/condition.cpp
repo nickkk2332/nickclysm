@@ -1048,6 +1048,39 @@ conditional_t::func f_overmap_at_point( const JsonObject &jo, std::string_view m
     };
 }
 
+// OMAP-J01: which overmap special a tile belongs to, and how well the player has seen it.
+static tripoint_abs_omt read_omt_or_alpha( const std::optional<var_info> &loc_var,
+        const_dialogue const &d )
+{
+    if( loc_var.has_value() ) {
+        return project_to<coords::omt>( read_var_value( *loc_var, d ).tripoint() );
+    }
+    return d.const_actor( false )->pos_abs_omt();
+}
+
+conditional_t::func f_map_in_overmap_special( const JsonObject &jo, std::string_view member )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    std::optional<var_info> loc_var;
+    optional( jo, false, "loc", loc_var );
+    return [special, loc_var]( const_dialogue const & d ) {
+        const std::optional<overmap_special_id> at = overmap_buffer.overmap_special_at(
+                    read_omt_or_alpha( loc_var, d ) );
+        return at.has_value() && at->str() == special.evaluate( d );
+    };
+}
+
+conditional_t::func f_map_omt_seen( const JsonObject &jo, std::string_view member )
+{
+    om_vision_level level = om_vision_level::full;
+    mandatory( jo, false, member, level );
+    std::optional<var_info> loc_var;
+    optional( jo, false, "loc", loc_var );
+    return [level, loc_var]( const_dialogue const & d ) {
+        return overmap_buffer.seen( read_omt_or_alpha( loc_var, d ) ) >= level;
+    };
+}
+
 conditional_t::func f_near_om_location( const JsonObject &jo, std::string_view member,
                                         bool is_npc )
 {
@@ -2703,6 +2736,8 @@ parsers = {
     {"u_has_faction_trust", jarg::member | jarg::array, &conditional_fun::f_has_faction_trust },
     {"math", jarg::member, &conditional_fun::f_math },
     {"overmap_at_point", jarg::member, &conditional_fun::f_overmap_at_point },
+    {"map_in_overmap_special", jarg::member, &conditional_fun::f_map_in_overmap_special },
+    {"map_omt_seen", jarg::member, &conditional_fun::f_map_omt_seen },
     {"compare_string", jarg::member, &conditional_fun::f_compare_string },
     {"compare_string_match_all", jarg::member, &conditional_fun::f_compare_string_match_all },
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },

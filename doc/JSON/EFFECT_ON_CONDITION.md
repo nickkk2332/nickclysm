@@ -1431,6 +1431,14 @@ No talker is needed.
 - type: location string or [variable object](#variable-object)
 - return true if the location is in the bounds of a city at or above z-1
 
+### `map_in_overmap_special`
+- type: string or [variable object](#variable-object)
+- return true if the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) is part of the given overmap special, e.g. `{ "map_in_overmap_special": "Necropolis", "loc": { "context_val": "loc" } }`
+
+### `map_omt_seen`
+- type: `unseen`, `vague`, `outlines`, `details` or `full`
+- return true if the player has seen the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) at least at this level, e.g. `{ "map_omt_seen": "outlines", "loc": { "context_val": "loc" } }`
+
 ### `map_is_outside`
 - type: location string or [variable object](#variable-object)
 - return true if the location is outside. Currently always returns false if the location is outside the reality bubble.
@@ -3088,6 +3096,7 @@ Reveal the overmap area around specific location variable
 | --- | --- | --- | --- |
 | "reveal_map" | **mandatory** | [variable object](#variable-object) | location variable, around which the map would be revealed |
 | "radius" | **mandatory** | int or [variable object](#variable-object) | default 0; the size of revealed zone |
+| "level" | optional | string | default `full`; how much is revealed: `vague`, `outlines`, `details` or `full`. Tiles already seen at a higher level are not lowered |
 
 ##### Examples
 
@@ -3128,6 +3137,50 @@ Find overmap tile using `target_params`, store coordinates in `loc`, and reveal 
     { "reveal_map": { "context_val": "loc" }, "radius": 20 }
   ]
 }
+```
+
+#### `set_overmap_terrain`
+Change the overmap terrain at a location. Only the overmap tile changes: a map that has already been generated there is not regenerated.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_overmap_terrain" | **mandatory** | [variable object](#variable-object) | location variable of the overmap tile to change |
+| "oter" | **mandatory** | string or [variable object](#variable-object) | id of the new overmap terrain, with its rotation, e.g. `house_burnt_north` |
+
+```jsonc
+{ "set_overmap_terrain": { "context_val": "loc" }, "oter": "field" }
+```
+
+#### `place_overmap_special`
+Place an overmap special with its origin at a location, as the overmap generator would.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "place_overmap_special" | **mandatory** | string or [variable object](#variable-object) | id of the overmap special |
+| "target_var" | **mandatory** | [variable object](#variable-object) | location variable of the special's origin |
+| "rotation" | optional | string or [variable object](#variable-object) | default `random`; `north`, `east`, `south`, `west` or `random` |
+| "must_be_unexplored" | optional | bool | default false; if true, every tile of the special must be unexplored |
+| "force" | optional | bool | default false; if true, skip the placement checks (terrain, overlap). Mostly for debugging, as a forced special may not work correctly |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | `true_eocs` run if the special was placed, `false_eocs` otherwise |
+
+```jsonc
+{ "place_overmap_special": "Necropolis", "target_var": { "context_val": "loc" }, "rotation": "north", "false_eocs": [ "EOC_NECROPOLIS_FAILED" ] }
+```
+
+#### `add_overmap_note`, `delete_overmap_note`
+Write or remove an overmap note.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "add_overmap_note" / "delete_overmap_note" | **mandatory** | [variable object](#variable-object) | location variable of the noted tile |
+| "text" | **mandatory** for add | string or [variable object](#variable-object) | the note |
+| "symbol" | optional | string or [variable object](#variable-object) | one character shown on the overmap; default `N` |
+| "color" | optional | string or [variable object](#variable-object) | note color code, as in the note editor (`R`, `r`, `G`, `g`, `B`, `b`, `W`, `br`, `lg`, `dg`, ...); default yellow |
+| "danger_radius" | optional | int or [variable object](#variable-object) | if set, the note is marked dangerous with this radius, so auto travel avoids it |
+
+```jsonc
+{ "add_overmap_note": { "context_val": "loc" }, "text": "Bandit camp", "symbol": "B", "color": "R", "danger_radius": 2 },
+{ "delete_overmap_note": { "context_val": "loc" } }
 ```
 
 #### `reveal_route`

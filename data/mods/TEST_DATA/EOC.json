@@ -918,5 +918,40 @@
       },
       { "u_spawn_item": "rock", "suppress_message": true, "item_variables": { "quest_tag": "loot" } }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_OVERMAP_WRITE",
+    "//": "OMAP-J01: EOCs can change the overmap and read it back.",
+    "effect": [
+      { "set_overmap_terrain": { "context_val": "ter_loc" }, "oter": "field" },
+      {
+        "add_overmap_note": { "context_val": "note_loc" },
+        "text": "Bandit camp",
+        "symbol": "B",
+        "color": "R",
+        "danger_radius": 2
+      },
+      { "reveal_map": { "context_val": "reveal_loc" }, "radius": 1, "level": "outlines" },
+      {
+        "place_overmap_special": "natural_spring",
+        "target_var": { "context_val": "special_loc" },
+        "rotation": "north",
+        "force": true,
+        "true_eocs": [ { "id": "EOC_TEST_OVERMAP_SPECIAL_PLACED", "effect": [ { "math": [ "overmap_special_placed = 1" ] } ] } ]
+      },
+      {
+        "if": { "map_in_overmap_special": "natural_spring", "loc": { "context_val": "special_loc" } },
+        "then": [ { "math": [ "in_special_check = 1" ] } ]
+      },
+      {
+        "if": { "map_omt_seen": "outlines", "loc": { "context_val": "reveal_loc" } },
+        "then": [ { "math": [ "seen_outlines_check = 1" ] } ]
+      },
+      {
+        "if": { "map_omt_seen": "details", "loc": { "context_val": "reveal_loc" } },
+        "then": [ { "math": [ "seen_details_check = 1" ] } ]
+      }
+    ]
   }
 ]

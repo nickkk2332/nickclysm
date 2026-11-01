@@ -8300,10 +8300,130 @@ talk_effect_fun_t::func f_reveal_map( const JsonObject &jo, std::string_view mem
 {
     var_info target_var = read_var_info( jo.get_object( member ) );
     dbl_or_var radius = get_dbl_or_var( jo, "radius", false, 0 );
+    om_vision_level level = om_vision_level::full;
+    optional( jo, false, "level", level, om_vision_level::full );
+    if( level == om_vision_level::unseen ) {
+        jo.throw_error_at( "level", "reveal_map can't reveal to \"unseen\"" );
+    }
 
-    return [ radius, target_var ]( dialogue & d ) {
+    return [ radius, target_var, level ]( dialogue & d ) {
         tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var, d ).tripoint() );
-        overmap_buffer.reveal( omt, radius.evaluate( d ) );
+        if( level == om_vision_level::full ) {
+            overmap_buffer.reveal( omt, radius.evaluate( d ) );
+            return;
+        }
+        // Same area as overmapbuffer::reveal, but raising tiles only to the given level.
+        const int r = radius.evaluate( d );
+        for( int i = -r; i <= r; i++ ) {
+            for( int j = -r; j <= r; j++ ) {
+                if( trigdist && i * i + j * j > r * r ) {
+                    continue;
+                }
+                const tripoint_abs_omt p = omt + point( i, j );
+                if( overmap_buffer.seen( p ) < level ) {
+                    overmap_buffer.set_seen( p, level );
+                }
+            }
+        }
+    };
+}
+
+// OMAP-J01: overmap write effects, thin wrappers over overmapbuffer.
+talk_effect_fun_t::func f_set_overmap_terrain( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    str_or_var oter = get_str_or_var( jo.get_member( "oter" ), "oter", true );
+    return [target_var, oter]( dialogue & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var, d ).tripoint() );
+        const oter_str_id new_ter( oter.evaluate( d ) );
+        if( !new_ter.is_valid() ) {
+            debugmsg( "set_overmap_terrain: unknown overmap terrain \"%s\".  %s", new_ter.str(),
+                      d.get_callstack() );
+            return;
+        }
+        overmap_buffer.ter_set( omt, new_ter.id() );
+    };
+}
+
+talk_effect_fun_t::func f_place_overmap_special( const JsonObject &jo, std::string_view member,
+        std::string_view src )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    var_info target_var = read_var_info( jo.get_object( "target_var" ) );
+    str_or_var rotation;
+    optional( jo, false, "rotation", rotation );
+    const bool force = jo.get_bool( "force", false );
+    const bool must_be_unexplored = jo.get_bool( "must_be_unexplored", false );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [special, target_var, rotation, force, must_be_unexplored, true_eocs,
+             false_eocs]( dialogue & d ) {
+        const overmap_special_id special_id( special.evaluate( d ) );
+        if( !special_id.is_valid() ) {
+            debugmsg( "place_overmap_special: unknown overmap special \"%s\".  %s", special_id.str(),
+                      d.get_callstack() );
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        const std::string rot = rotation.evaluate( d );
+        om_direction::type dir = om_direction::random();
+        if( !rot.empty() && rot != "random" ) {
+            if( !io::enum_is_valid<om_direction::type>( rot ) ) {
+                debugmsg( "place_overmap_special: unknown rotation \"%s\".  %s", rot, d.get_callstack() );
+                run_eoc_vector( false_eocs, d );
+                return;
+            }
+            dir = io::string_to_enum<om_direction::type>( rot );
+        }
+        const tripoint_abs_omt origin = project_to<coords::omt>( read_var_value( target_var,
+                                        d ).tripoint() );
+        const std::optional<std::vector<tripoint_abs_omt>> placed = overmap_buffer.place_special(
+                    *special_id, origin, dir, must_be_unexplored, force );
+        run_eoc_vector( placed ? true_eocs : false_eocs, d );
+    };
+}
+
+talk_effect_fun_t::func f_add_overmap_note( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    str_or_var text = get_str_or_var( jo.get_member( "text" ), "text", true );
+    str_or_var symbol;
+    optional( jo, false, "symbol", symbol );
+    str_or_var color;
+    optional( jo, false, "color", color );
+    std::optional<dbl_or_var> danger_radius;
+    if( jo.has_member( "danger_radius" ) ) {
+        danger_radius = get_dbl_or_var( jo, "danger_radius" );
+    }
+    return [target_var, text, symbol, color, danger_radius]( dialogue & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var, d ).tripoint() );
+        // Overmap notes encode their symbol and color as "S:color;text".
+        std::string note;
+        const std::string sym = symbol.evaluate( d );
+        if( !sym.empty() ) {
+            note += sym + ":";
+        }
+        const std::string col = color.evaluate( d );
+        if( !col.empty() ) {
+            note += col + ";";
+        }
+        note += text.evaluate( d );
+        overmap_buffer.add_note( omt, note );
+        if( danger_radius ) {
+            overmap_buffer.mark_note_dangerous( omt, danger_radius->evaluate( d ), true );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_delete_overmap_note( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    return [target_var]( dialogue & d ) {
+        overmap_buffer.delete_note( project_to<coords::omt>( read_var_value( target_var,
+                                    d ).tripoint() ) );
     };
 }
 
@@ -8753,6 +8873,10 @@ parsers = {
     { "companion_mission", jarg::string, &talk_effect_fun::f_companion_mission },
     { "copy_var", jarg::member, &talk_effect_fun::f_copy_var },
     { "reveal_map", jarg::object, &talk_effect_fun::f_reveal_map },
+    { "set_overmap_terrain", jarg::object, &talk_effect_fun::f_set_overmap_terrain },
+    { "place_overmap_special", jarg::member, &talk_effect_fun::f_place_overmap_special },
+    { "add_overmap_note", jarg::object, &talk_effect_fun::f_add_overmap_note },
+    { "delete_overmap_note", jarg::object, &talk_effect_fun::f_delete_overmap_note },
     { "reveal_route", jarg::object, &talk_effect_fun::f_reveal_route },
     { "closest_city", jarg::object, &talk_effect_fun::f_closest_city },
     { "u_spend_cash", jarg::member | jarg::array, &talk_effect_fun::f_u_spend_cash },
