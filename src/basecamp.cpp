@@ -481,6 +481,12 @@ std::map<recipe_id, translation> basecamp::recipe_deck( const std::string &bldg 
 
 void basecamp::add_resource( const itype_id &camp_resource )
 {
+    // each entry becomes a pseudo tool loaded with the whole fuel stock, so keep one per tool
+    for( const basecamp_resource &known : resources ) {
+        if( known.fake_id == camp_resource ) {
+            return;
+        }
+    }
     basecamp_resource bcp_r;
     bcp_r.fake_id = camp_resource;
     item camp_item( bcp_r.fake_id, calendar::turn_zero );
@@ -540,6 +546,9 @@ void basecamp::update_in_progress( const std::string &bldg, const point_rel_omt 
 void basecamp::reset_camp_resources( map &here )
 {
     reset_camp_workers();
+    // rebuilt from the provides and pseudo items on every call
+    resources.clear();
+    fuel_types.clear();
     for( auto &e : expansions ) {
         expansion_data &e_data = e.second;
         for( int level = 0; level <= e_data.cur_level; level++ ) {
@@ -547,7 +556,10 @@ void basecamp::reset_camp_resources( map &here )
             if( bldg == "null" ) {
                 break;
             }
-            update_provides( bldg, e_data );
+            // a blueprint provides itself: a legacy level already counted is not added again
+            if( e_data.provides.count( bldg ) == 0 ) {
+                update_provides( bldg, e_data );
+            }
         }
         for( const auto &bp_provides : e_data.provides ) {
             update_resources( bp_provides.first );

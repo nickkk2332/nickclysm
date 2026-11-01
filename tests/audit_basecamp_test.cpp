@@ -1,3 +1,4 @@
+#include <list>
 #include <map>
 #include <optional>
 #include <string>
@@ -12,6 +13,7 @@
 #include "coordinates.h"
 #include "faction.h"
 #include "game_constants.h"
+#include "item.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_scale_constants.h"
@@ -25,6 +27,11 @@
 #include "type_id.h"
 
 static const faction_id faction_your_followers( "your_followers" );
+
+static const furn_str_id furn_f_fireplace( "f_fireplace" );
+
+static const itype_id itype_fake_fireplace( "fake_fireplace" );
+static const itype_id itype_tinder( "tinder" );
 
 static const skill_id skill_menial( "menial" );
 static const skill_id skill_survival( "survival" );
@@ -115,4 +122,40 @@ TEST_CASE( "camp-b01_camp_mission_food_is_billed_once", "[audit][camp]" )
             CHECK( fac.food_supply().kcal() == 10000 - prepaid );
         }
     }
+}
+
+// CAMP-B02: every opening of the camp board re-ran reset_camp_resources, and add_resource
+// appended a new entry each time.  Each entry is a pseudo tool loaded with the whole fuel
+// stock, so after K openings a camp tool could draw K times the fuel in storage.
+TEST_CASE( "camp-b02_camp_board_openings_do_not_multiply_camp_fuel", "[audit][camp]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    get_player_character().camps.clear();
+    map &here = get_map();
+    tripoint_abs_omt camp_omt;
+    basecamp &camp = place_audit_camp( "faction_base_bare_bones_NPC_camp_0", camp_omt );
+    on_out_of_scope cleanup( [&camp_omt]() {
+        overmap_buffer.clear_camps( camp_omt.xy() );
+    } );
+    const tripoint_bub_ms storage = camp_mid + tripoint::east;
+    here.i_clear( storage );
+    here.add_item_or_charges( storage, item( itype_tinder, calendar::turn, 100 ) );
+    camp.set_storage_tiles( { here.get_abs( storage ) } );
+    // a fireplace in the camp gives it a camp fireplace that burns tinder
+    here.furn_set( camp_mid + tripoint::west * 2, furn_f_fireplace );
+    camp.scan_pseudo_items();
+
+    for( int opened = 0; opened < 3; ++opened ) {
+        mission_data missions;
+        camp.get_available_missions( missions, here );
+    }
+
+    int wanted = 300;
+    int drawn = 0;
+    for( const item &fuel : camp.use_charges( itype_fake_fireplace, wanted ) ) {
+        drawn += fuel.charges;
+    }
+    CHECK( drawn == 100 );
+    CHECK( wanted == 200 );
 }
