@@ -235,6 +235,15 @@ TEST_CASE( "magic-b02_blast_spell_explodes_short_of_a_wall", "[audit][magic]" )
         CAPTURE( p );
         CHECK( p.x() < wall_x );
     }
+
+    // A caster that isn't on the map, like the dummy a trap casts its spell with, has no
+    // projectile path from where it stands: its blast still centers on the target.
+    npc dummy;
+    REQUIRE( !here.inbounds( dummy.pos_bub() ) );
+    REQUIRE( sp.aoe( dummy ) >= 1 );
+    const std::set<tripoint_bub_ms> dummy_area =
+        calculate_spell_effect_area( sp, behind_wall, dummy );
+    CHECK( dummy_area.count( behind_wall ) == 1 );
 }
 
 // damage_targets() passed the victim as the damage source on the multi-projectile,

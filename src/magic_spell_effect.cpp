@@ -448,9 +448,14 @@ std::set<tripoint_bub_ms> spell_effect::spell_effect_line( const override_parame
 tripoint_bub_ms spell_effect_epicenter( const spell &sp, const tripoint_bub_ms &source,
                                         const tripoint_bub_ms &target )
 {
+    const map &here = get_map();
+    // A caster that isn't on the map (a trap's or a timed event's dummy) fires no
+    // projectile from where it stands, and a teleport isn't a projectile at all.
+    if( !here.inbounds( source ) || sp.has_flag( spell_flag::TARGET_TELEPORT ) ) {
+        return target;
+    }
     // stop short if we hit a wall, if the spell has a projectile
     if( sp.shape() == spell_shape::blast && !sp.has_flag( spell_flag::NO_PROJECTILE ) ) {
-        const map &here = get_map();
         const std::vector<tripoint_bub_ms> trajectory = line_to( source, target );
         for( std::vector<tripoint_bub_ms>::const_iterator iter = trajectory.begin();
              iter != trajectory.end(); iter++ ) {

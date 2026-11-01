@@ -11,7 +11,8 @@ class Creature;
 class spell;
 
 // where the spell actually lands when cast from source at target: a blast spell's
-// projectile stops on the last tile before a wall
+// projectile stops on the last tile before a wall. Teleports, and casters that aren't
+// on the map (trap and timed event dummies), land on the target.
 tripoint_bub_ms spell_effect_epicenter( const spell &sp, const tripoint_bub_ms &source,
                                         const tripoint_bub_ms &target );
 
