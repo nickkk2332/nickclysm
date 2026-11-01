@@ -2,12 +2,16 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "achievement.h"
@@ -135,6 +139,99 @@
 #include "sdltiles.h"
 #endif
 
+namespace
+{
+// When each source first loaded each object id. A copy-from whose parent isn't loaded yet is
+// deferred and replayed at finalize, after every mod has loaded; the replay must not
+// overwrite a definition of the same id that a later load made.
+struct load_history {
+    // source -> a small number standing for it
+    std::unordered_map<std::string, int> src_index;
+    // object_keys() key -> ( source index, load number ) of each source's first load of it
+    std::unordered_map<std::string, std::vector<std::pair<int, uint64_t>>> loaded_by;
+    uint64_t next_load = 0;
+
+    void clear() {
+        src_index.clear();
+        loaded_by.clear();
+        next_load = 0;
+    }
+};
+
+load_history object_load_history;
+
+// One key per object id ("type\nid"), or one for the abstract id.
+std::vector<std::string> object_keys( const JsonObject &jo )
+{
+    std::vector<std::string> keys;
+    if( !jo.has_string( "type" ) ) {
+        return keys;
+    }
+    const std::string prefix = jo.get_string( "type" ) + '\n';
+    if( jo.has_string( "id" ) ) {
+        keys.push_back( prefix + jo.get_string( "id" ) );
+    } else if( jo.has_array( "id" ) ) {
+        for( const JsonValue id : jo.get_array( "id" ) ) {
+            if( id.test_string() ) {
+                keys.push_back( prefix + id.get_string() );
+            }
+        }
+    } else if( jo.has_string( "abstract" ) ) {
+        keys.push_back( prefix + "abstract\n" + jo.get_string( "abstract" ) );
+    }
+    return keys;
+}
+
+// Whether another source loaded every id `jo` defines after `src` deferred it, other than
+// through an object still waiting in [pending, pending_end). Replaying `jo` would then
+// overwrite that later definition.
+bool superseded_by_later_load( const JsonObject &jo, const std::string &src,
+                               DynamicDataLoader::deferred_json::const_iterator pending,
+                               DynamicDataLoader::deferred_json::const_iterator pending_end )
+{
+    const load_history &history = object_load_history;
+    const auto own_src = history.src_index.find( src );
+    const std::vector<std::string> keys = object_keys( jo );
+    if( own_src == history.src_index.end() || keys.empty() ) {
+        return false;
+    }
+    for( const std::string &key : keys ) {
+        const auto loaded = history.loaded_by.find( key );
+        if( loaded == history.loaded_by.end() ) {
+            return false;
+        }
+        const std::vector<std::pair<int, uint64_t>> &loads = loaded->second;
+        const auto own_load = std::find_if( loads.begin(), loads.end(),
+        [&]( const std::pair<int, uint64_t> &load ) {
+            return load.first == own_src->second;
+        } );
+        if( own_load == loads.end() ) {
+            return false;
+        }
+        const bool superseded = std::any_of( loads.begin(), loads.end(),
+        [&]( const std::pair<int, uint64_t> &later ) {
+            if( later.second <= own_load->second ) {
+                return false;
+            }
+            // a later definition that is deferred too is replayed after this one
+            return std::none_of( pending, pending_end,
+            [&]( const std::pair<JsonObject, std::string> &other ) {
+                const auto other_src = history.src_index.find( other.second );
+                if( other_src == history.src_index.end() || other_src->second != later.first ) {
+                    return false;
+                }
+                const std::vector<std::string> other_keys = object_keys( other.first );
+                return std::find( other_keys.begin(), other_keys.end(), key ) != other_keys.end();
+            } );
+        } );
+        if( !superseded ) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
 DynamicDataLoader::DynamicDataLoader()
 {
     initialize();
@@ -156,6 +253,20 @@ void DynamicDataLoader::load_object( const JsonObject &jo, const std::string &sr
     const t_type_function_map::iterator it = type_function_map.find( type );
     if( it == type_function_map.end() ) {
         jo.throw_error_at( "type", "unrecognized JSON object" );
+    }
+    load_history &history = object_load_history;
+    const int src_index = history.src_index.try_emplace( src,
+                          static_cast<int>( history.src_index.size() ) ).first->second;
+    const uint64_t load = history.next_load++;
+    for( std::string &key : object_keys( jo ) ) {
+        std::vector<std::pair<int, uint64_t>> &loads = history.loaded_by[std::move( key )];
+        const bool first_from_src = std::none_of( loads.begin(), loads.end(),
+        [src_index]( const std::pair<int, uint64_t> &earlier ) {
+            return earlier.first == src_index;
+        } );
+        if( first_from_src ) {
+            loads.emplace_back( src_index, load );
+        }
     }
     it->second( jo, src, base_path, full_path );
 }
@@ -191,7 +302,12 @@ void DynamicDataLoader::load_deferred( deferred_json &data )
         for( size_t idx = 0; idx != n; ++idx ) {
             try {
                 const JsonObject &jo = it->first;
-                load_object( jo, it->second );
+                if( superseded_by_later_load( jo, it->second, std::next( it ), data.end() ) ) {
+                    // A later load redefined it; loading it now would undo that.
+                    jo.allow_omitted_members();
+                } else {
+                    load_object( jo, it->second );
+                }
             } catch( const JsonError &err ) {
                 debugmsg( "(json-error)\n%s", err.what() );
             }
@@ -200,9 +316,25 @@ void DynamicDataLoader::load_deferred( deferred_json &data )
         }
         data.erase( data.begin(), it );
         if( data.size() == n ) {
+            // A copy-from target among the stuck objects is part of a cycle or chain; any
+            // other target was never loaded.
+            std::unordered_set<std::string> stuck_ids;
+            for( const auto &elem : data ) {
+                for( const std::string &key : object_keys( elem.first ) ) {
+                    stuck_ids.insert( key.substr( key.rfind( '\n' ) + 1 ) );
+                }
+            }
             for( const auto &elem : data ) {
                 try {
-                    elem.first.throw_error( "JSON contains circular dependency, this object is discarded" );
+                    const JsonObject &jo = elem.first;
+                    if( jo.has_string( "copy-from" ) ) {
+                        const std::string parent = jo.get_string( "copy-from" );
+                        const bool stuck = stuck_ids.count( parent ) != 0;
+                        jo.throw_error_at( "copy-from", "copy-from target \"" + parent + "\" " +
+                                           ( stuck ? "could not be loaded" : "was not found" ) +
+                                           ", this object is discarded" );
+                    }
+                    jo.throw_error( "JSON contains circular dependency, this object is discarded" );
                 } catch( const JsonError &err ) {
                     debugmsg( "(json-error)\n%s", err.what() );
                 }
@@ -645,6 +777,7 @@ void DynamicDataLoader::load_all_from_json( const JsonValue &jsin, const std::st
 void DynamicDataLoader::unload_data()
 {
     finalized = false;
+    object_load_history.clear();
 
     achievement::reset();
     activity_type::reset();
@@ -945,6 +1078,8 @@ void DynamicDataLoader::finalize_loaded_data()
         loading_ui::show( _( "Finalizing" ), e.first );
         e.second();
     }
+    // every deferred object has been replayed
+    object_load_history.clear();
 
     if( !get_option<bool>( "SKIP_VERIFICATION" ) ) {
         check_consistency();

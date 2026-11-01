@@ -12,6 +12,7 @@
 #include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "item.h"
+#include "itype.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -24,6 +25,7 @@
 
 static const faction_id faction_free_merchants( "free_merchants" );
 
+static const itype_id itype_art_robe( "art_robe" );
 static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_grenade_act( "grenade_act" );
 static const itype_id itype_nail( "nail" );
@@ -234,4 +236,13 @@ TEST_CASE( "npc-b04_npcs_notice_a_live_grenade", "[audit][npc]" )
     }
     // Don't leave a live grenade for later tests.
     here.i_clear( guy.pos_bub() );
+}
+
+// DATA-B03: a copy-from whose parent hadn't loaded yet was replayed at finalize, after every mod,
+// and replaced any later mod's definition of the same id. Core art_robe copies from robe, which
+// loads after it, and TEST_DATA (audit_load_order.json) redefines art_robe.
+TEST_CASE( "data-b03_deferred_core_object_does_not_replace_a_later_mods", "[audit][data]" )
+{
+    CHECK( itype_art_robe->description.translated() ==
+           "Test data's royal robe, loaded after core's deferred one." );
 }
