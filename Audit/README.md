@@ -176,6 +176,21 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | MONDT-B02 | fixed | `ac239624` | `tests/audit_mongroup_evolution_test.cpp` |
 | MONAI-B01 | fixed | `5bc22c4b` | `tests/audit_monster_speed_mod_test.cpp` |
 
+**Group 4 (performance).** Seven of the eight quick wins are in; MAP-P01 was reverted because it broke a wakeup test and gained little. Before-and-after numbers are in [benchmarks/README.md](benchmarks/README.md).
+
+**Group 5 (modding gaps).** All six are in. EOC-J01 and OMAP-J01 cover the core of each finding; what is left is listed in each row.
+
+| ID | Status | Commit | Regression test |
+|---|---|---|---|
+| EOC-B02 | fixed | `98907571`, `2266c297` | `tests/audit_string_conditions_test.cpp`. The new check found seven broken conditions in vanilla dialogue (refugee center, Cranberry Foster, a common NPC line), two wrong names in the docs, and one condition in Xedra_Evolved; all fixed. `u_has_active_trait` was added so the Xedra one could be written correctly |
+| INV-J01 | fixed | `827993a0` | `tests/audit_pocket_keys_test.cpp`. Fixed 12 clothing pockets with `max_length`, plus pockets in hobo_stove, an Xedra tool and six monster guns. Bandoliers, pouches and quivers now get their `volume_encumber_modifier`, so they encumber less |
+| ACT-J01 | fixed | `cbbf71f0` | `tests/audit_activity_type_test.cpp`. The new EOC check found a misspelled `completion_eoc` in Limb_WIP |
+| MAGIC-J01 | fixed | `c9fdb7d1` | `tests/audit_spell_context_test.cpp`. Also fixes MAGIC-B19 (vehicle check on the wrong tile) |
+| EOC-J01 | partial | `3ce1e2f5` | `tests/audit_spawned_eocs_test.cpp`. Adds `spawned_eocs`, `npc_variables` and `item_variables`. Still open: a stable handle to a monster, item or vehicle in an EOC variable |
+| OMAP-J01 | partial | `917f2c3c` | `tests/audit_overmap_eoc_test.cpp`. Adds `set_overmap_terrain`, `place_overmap_special`, `add_overmap_note`, `delete_overmap_note`, `reveal_map` levels, `map_in_overmap_special` and `map_omt_seen`. Still open: overmap hordes, `closest_city` filters, overmap math functions |
+
+Every mod in `data/mods` was loaded with these changes. All load without errors, except Limb_WIP (marked obsolete), which still reports armor and mutation-category warnings that predate this branch.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passes: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five tests failed in full-suite runs but passed alone, because earlier tests left state behind. The main culprit: `clear_character()` did not reset the stat bonuses that hardcoded effects add, so after a frostbite test the avatar kept -2 INT, which slowed learning by 10% in later crafting tests. Three other tests (`memorials`, `available_reloadables`, `monster_speed_description`) now clear the map or the avatar themselves.
