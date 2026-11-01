@@ -1,5 +1,10 @@
+#include <optional>
 #include <vector>
 
+#include "activity_actor_definitions.h"
+#include "activity_handlers.h"
+#include "activity_item_handling.h"
+#include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
@@ -8,10 +13,13 @@
 #include "item.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "requirements.h"
 #include "type_id.h"
 #include "units.h"
+#include "veh_type.h"
 #include "vehicle.h"
 
 static const damage_type_id damage_heat( "heat" );
@@ -27,7 +35,7 @@ static const vproto_id vehicle_prototype_none( "none" );
 
 static constexpr tripoint_bub_ms veh_pos( 60, 60, 0 );
 
-// A one-tile vehicle with a frame, placed at veh_pos and registered with the map caches.
+// A one-tile vehicle with only a frame, placed at veh_pos.
 static vehicle &place_frame_vehicle( map &here )
 {
     vehicle *veh = here.add_vehicle( vehicle_prototype_none, veh_pos, 0_degrees, 0,
@@ -97,4 +105,102 @@ TEST_CASE( "veh-b02_heated_gasoline_tank_can_explode", "[audit][vehicle]" )
     CHECK( tank.ammo_remaining() == 0 );
     CHECK( tank.is_broken() );
     explosion_handler::_explosions.clear();
+}
+
+// A frame on veh_pos damaged by several levels (no degradation), with the avatar standing next
+// to it. Returns the frame's part index.
+static int damaged_frame_with_avatar( map &here, vehicle *&veh_out )
+{
+    clear_avatar();
+    clear_map();
+    avatar &u = get_avatar();
+    u.setpos( here, veh_pos + tripoint_rel_ms::west );
+    vehicle &veh = place_frame_vehicle( here );
+    veh.refresh();
+    here.add_vehicle_to_cache( &veh );
+    const int frame_idx = veh.part_with_feature( point_rel_ms::zero, "MOUNTABLE", false );
+    REQUIRE( frame_idx >= 0 );
+    vehicle_part &frame = veh.part( frame_idx );
+    veh.set_hp( frame, frame.info().durability / 4, false, 0 );
+    REQUIRE( frame.is_repairable() );
+    REQUIRE( frame.get_base().repairable_levels() >= 2 );
+    veh_out = &veh;
+    return frame_idx;
+}
+
+// ACT-B02 (1): zone repair scaled repair_time by an integer division of damage over max damage,
+// which is always 0 for a repairable (not broken) part, so repair_part() restored the whole
+// part instantly. It must take repair_time per repairable level, as the vehicle UI charges.
+TEST_CASE( "act-b02_zone_vehicle_repair_takes_time_per_damage_level", "[audit][activity]" )
+{
+    map &here = get_map();
+    vehicle *veh = nullptr;
+    const int frame_idx = damaged_frame_with_avatar( here, veh );
+    avatar &u = get_avatar();
+    const vehicle_part &frame = veh->part( frame_idx );
+    const time_duration expected = frame.info().repair_time( u ) *
+                                   frame.get_base().repairable_levels();
+    REQUIRE( expected > 0_seconds );
+
+    u.activity_vehicle_part_index = frame_idx;
+    multi_vehicle_repair_activity_actor zone_repair;
+    const bool continue_scan = zone_repair.multi_activity_do( u,
+                               activity_reason_info::ok( do_activity_reason::NEEDS_VEH_REPAIR ),
+                               here.get_abs( veh_pos ), veh_pos );
+
+    CHECK_FALSE( continue_scan );
+    REQUIRE( u.activity );
+    CHECK( u.activity.moves_left == to_moves<int>( expected ) );
+    u.activity.set_to_null();
+    u.activity_vehicle_part_index = -1;
+}
+
+// ACT-B02 (2): the zone repair fetched and checked a single level of repair requirements, but
+// repair_part() needs them once per repairable level, so a zone worker holding one level's
+// worth kept failing and retrying. The fetched requirements must cover every level.
+TEST_CASE( "act-b02_zone_vehicle_repair_fetches_requirements_for_every_level",
+           "[audit][activity]" )
+{
+    map &here = get_map();
+    vehicle *veh = nullptr;
+    const int frame_idx = damaged_frame_with_avatar( here, veh );
+    avatar &u = get_avatar();
+    const vehicle_part &frame = veh->part( frame_idx );
+    const int levels = frame.get_base().repairable_levels();
+    const requirement_data &per_level = frame.info().repair_requirements();
+    const requirement_id one_level =
+        multi_activity_actor::hash_and_cache_requirement_data( per_level );
+    const requirement_id all_levels =
+        multi_activity_actor::hash_and_cache_requirement_data( per_level * levels );
+    REQUIRE( one_level != all_levels );
+
+    u.activity_vehicle_part_index = frame_idx;
+    activity_reason_info act_info =
+        activity_reason_info::fail( do_activity_reason::NEEDS_VEH_REPAIR );
+    const std::optional<requirement_id> reqs =
+        multi_activity_actor::vehicle_work_requirements( u, act_info, veh_pos );
+
+    REQUIRE( reqs.has_value() );
+    CHECK( *reqs == all_levels );
+    // Don't leak the part index into later tests: NPC zone workers skip the player's index.
+    u.activity_vehicle_part_index = -1;
+}
+
+// ACT-B02 (3): with no vehicle at the spot, vehicle_work_requirements() reset the worker's part
+// index to 1 (a real part index) instead of -1.
+TEST_CASE( "act-b02_vehicle_work_requirements_without_vehicle_clears_part_index",
+           "[audit][activity]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &u = get_avatar();
+    u.activity_vehicle_part_index = 5;
+    activity_reason_info act_info =
+        activity_reason_info::fail( do_activity_reason::NEEDS_VEH_REPAIR );
+
+    const std::optional<requirement_id> reqs =
+        multi_activity_actor::vehicle_work_requirements( u, act_info, veh_pos );
+
+    CHECK_FALSE( reqs.has_value() );
+    CHECK( u.activity_vehicle_part_index == -1 );
 }
