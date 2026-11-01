@@ -508,12 +508,21 @@ void monster::anger_mating_season( const monster_plan &mon_plan )
 
 void monster::anger_cub_threatened( monster_plan &mon_plan )
 {
-    if( mon_plan.angers_cub_threatened < 0 ) {
-        // return early, not angered by cubs being threatened
+    // Only species with the PLAYER_NEAR_BABY trigger and a baby type care. The value is 0
+    // or 8, so the old `< 0` test never returned early: every hostile monster that saw the
+    // player scanned every monster each plan step, and species without the trigger still
+    // got angry near babies.
+    if( mon_plan.angers_cub_threatened == 0 || mon_plan.target == nullptr ||
+        ( type->baby_type.baby_monster.is_null() &&
+          type->baby_type.baby_monster_group.is_null() ) ) {
         return;
     }
 
-    for( monster &tmp : g->all_monsters() ) {
+    for( const shared_ptr_fast<monster> &tmp_ptr : get_creature_tracker().get_monsters_list() ) {
+        monster &tmp = *tmp_ptr;
+        if( tmp.is_dead() ) {
+            continue;
+        }
         bool is_baby = false;
         if( !type->baby_type.baby_monster.is_null() ) {
             is_baby = type->baby_type.baby_monster == tmp.type->id;
@@ -523,10 +532,11 @@ void monster::anger_cub_threatened( monster_plan &mon_plan )
                           type->baby_type.baby_monster_group, tmp.type->id );
         }
         if( is_baby ) {
-            // baby nearby; is the player too close?
-            mon_plan.dist = tmp.rate_target( *mon_plan.target, mon_plan.dist,
-                                             mon_plan.smart_planning );
-            if( mon_plan.dist <= 3 ) {
+            // baby nearby; is the player too close? (Rated from the baby's position; this
+            // must not overwrite this monster's own target distance.)
+            const float baby_dist = tmp.rate_target( *mon_plan.target, mon_plan.dist,
+                                    mon_plan.smart_planning );
+            if( baby_dist <= 3 ) {
                 // proximity to baby; monster gets furious and less likely to flee
                 anger += mon_plan.angers_cub_threatened;
                 morale += mon_plan.angers_cub_threatened / 2;
