@@ -86,7 +86,7 @@
     },
     "effect": [
       {
-        "mapgen_update": "nest_RandEnc_RC_Shoppers_remove",
+        "mapgen_update": "nest_RandEnc_RC_JohnBailey_remove",
         "om_terrain": "evac_center_13",
         "target_var": { "global_val": "randenc_johnbailey_loc" }
       },
