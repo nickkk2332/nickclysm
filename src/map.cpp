@@ -1597,34 +1597,43 @@ std::set<tripoint_bub_ms> map::get_moving_vehicle_targets( const Creature &z, in
     const tripoint_bub_ms zpos( z.pos_bub() );
     std::set<tripoint_bub_ms> priority;
     std::set<tripoint_bub_ms> visible;
-    for( wrapped_vehicle &v : get_vehicles() ) {
-        if( !v.v->is_moving() ) {
+    // Monsters without a target call this on every plan step, so walk the per-level
+    // vehicle lists within sight range rather than every submap in the bubble
+    // (get_vehicles()). Usually no vehicle is moving and this returns at once.
+    const int zmin = std::max( zpos.z() - fov_3d_z_range, -OVERMAP_DEPTH );
+    const int zmax = std::min( zpos.z() + fov_3d_z_range, OVERMAP_HEIGHT );
+    for( int zlev = zmin; zlev <= zmax; ++zlev ) {
+        const level_cache *cache = get_cache_lazy( zlev );
+        if( cache == nullptr ) {
             continue;
         }
-        if( v.v->get_driver( *this ) != nullptr &&
-            z.attitude_to( *v.v->get_driver( *this ) ) != Creature::Attitude::HOSTILE ) {
-            continue;
-        }
-        if( std::abs( v.pos.z() - zpos.z() ) > fov_3d_z_range ) {
-            continue;
-        }
-        if( rl_dist( zpos, tripoint_bub_ms( v.pos ) ) > max_range + 40 ) {
-            continue; // coarse distance filter, 40 = ~24 * sqrt(2) - rough max diameter of a vehicle
-        }
-        for( const vpart_reference &vpr : v.v->get_all_parts() ) {
-            const tripoint_bub_ms vppos = vpr.pos_bub( *this );
-            if( rl_dist( zpos, vppos ) > max_range ) {
+        for( vehicle *veh : cache->vehicle_list ) {
+            if( !veh->is_moving() ) {
                 continue;
             }
-            if( !z.sees( *this, vppos ) ) {
+            Character *driver = veh->get_driver( *this );
+            if( driver != nullptr && z.attitude_to( *driver ) != Creature::Attitude::HOSTILE ) {
                 continue;
             }
-            if( vpr.has_feature( VPFLAG_CONTROLS ) ||
-                vpr.has_feature( VPFLAG_ENGINE ) ||
-                vpr.has_feature( VPFLAG_WHEEL ) ) {
-                priority.emplace( vppos );
-            } else {
-                visible.emplace( vppos );
+            // coarse distance filter, 40 = ~24 * sqrt(2) - rough max diameter of a vehicle
+            if( rl_dist( zpos, veh->pos_bub( *this ) ) > max_range + 40 ) {
+                continue;
+            }
+            for( const vpart_reference &vpr : veh->get_all_parts() ) {
+                const tripoint_bub_ms vppos = vpr.pos_bub( *this );
+                if( rl_dist( zpos, vppos ) > max_range ) {
+                    continue;
+                }
+                if( !z.sees( *this, vppos ) ) {
+                    continue;
+                }
+                if( vpr.has_feature( VPFLAG_CONTROLS ) ||
+                    vpr.has_feature( VPFLAG_ENGINE ) ||
+                    vpr.has_feature( VPFLAG_WHEEL ) ) {
+                    priority.emplace( vppos );
+                } else {
+                    visible.emplace( vppos );
+                }
             }
         }
     }

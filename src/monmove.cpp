@@ -725,13 +725,11 @@ void monster::plan()
         } );
     }
 
-    if( !mon_plan.target ) {
-        // No other valid targets found, maybe there's a vehicle!
+    // No other valid targets found, maybe there's a vehicle! Check the cheap condition first.
+    if( !mon_plan.target && !get_pathfinding_settings().avoid_dangerous_fields ) {
         std::set<tripoint_bub_ms> target_vehicles =
             here.get_moving_vehicle_targets( *this, MAX_VIEW_DISTANCE );
-        const bool will_throw_self_at_vehicle =
-            !get_pathfinding_settings().avoid_dangerous_fields;
-        if( !target_vehicles.empty() && will_throw_self_at_vehicle ) {
+        if( !target_vehicles.empty() ) {
             tripoint_bub_ms target_pt = random_entry( target_vehicles );
             Character *driver = here.veh_at( target_pt )->vehicle().get_driver( here );
             // NOTE: no hostility check here, we already filtered for that when
