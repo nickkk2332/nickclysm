@@ -43,6 +43,8 @@
 #include "rng.h"
 #include "temp_crafting_inventory.h"
 #include "type_id.h"
+#include "units.h"
+#include "vehicle.h"
 #include "weather.h"
 #include "weather_type.h"
 
@@ -73,6 +75,8 @@ static const ter_str_id ter_t_brick_wall( "t_brick_wall" );
 static const ter_str_id ter_t_utility_light( "t_utility_light" );
 
 static const trait_id trait_DEBUG_NODMG( "DEBUG_NODMG" );
+
+static const vproto_id vehicle_prototype_bus( "bus" );
 
 namespace
 {
@@ -507,5 +511,31 @@ TEST_CASE( "bench_temp_map_load", "[.][benchmark_scenario]" )
             edit( sm, i );
         }
         CHECK( edits == 120 );
+    } );
+}
+
+// VEH-P01: the collision check vehmove runs for every tile a moving vehicle advances.
+TEST_CASE( "bench_vehicle_collision_check", "[.][benchmark_scenario]" )
+{
+    vehicle *bus = nullptr;
+    run_scenario( "vehicle_collision_check",
+                  "collision check of a moving bus over open ground, 2000 tile steps",
+    [&bus]() {
+        clear_avatar();
+        clear_map();
+        map &here = get_map();
+        get_avatar().setpos( here, tripoint_bub_ms( 30, 30, 0 ) );
+        bus = here.add_vehicle( vehicle_prototype_bus, tripoint_bub_ms( 60, 60, 0 ), 0_degrees, 0,
+                                veh_spawn_status::UNDAMAGED );
+        REQUIRE( bus != nullptr );
+        bus->velocity = 1000;
+    }, [&bus]() {
+        map &here = get_map();
+        std::vector<veh_collision> colls;
+        for( int step = 0; step < 2000; ++step ) {
+            colls.clear();
+            bus->collision( here, colls, tripoint_rel_ms( step % 2 == 0 ? 1 : -1, 0, 0 ), false );
+        }
+        CHECK( colls.empty() );
     } );
 }
