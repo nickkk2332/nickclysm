@@ -4368,6 +4368,8 @@ talk_effect_fun_t::func f_consume_item_sum( const JsonObject &jo, std::string_vi
                 }
                 if( it->count_by_charges() && it->charges > left ) {
                     it->mod_charges( -left );
+                    // Refresh the stack, its container and, for vehicle cargo, the vehicle mass.
+                    it.on_contents_changed();
                     left = 0;
                 } else {
                     left -= it->count_by_charges() ? it->charges : 1;
@@ -4382,6 +4384,7 @@ talk_effect_fun_t::func f_consume_item_sum( const JsonObject &jo, std::string_vi
         }
         // A _has_items_sum later this turn must not count from the cached inventory.
         you->invalidate_crafting_inventory();
+        you->invalidate_weight_carried_cache();
     };
 }
 

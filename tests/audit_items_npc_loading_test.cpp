@@ -22,6 +22,7 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
+#include "units.h"
 
 static const faction_id faction_free_merchants( "free_merchants" );
 
@@ -74,9 +75,15 @@ TEST_CASE( "eoc-b05_consume_item_sum_removes_partial_charges", "[audit][eoc]" )
     REQUIRE( item( itype_nail ).count_by_charges() );
     u.i_add( item( itype_nail, calendar::turn, 50 ) );
     REQUIRE( u.charges_of( itype_nail ) == 50 );
+    // Fill the carried weight cache before the nails are taken.
+    REQUIRE( u.weight_carried() > 0_gram );
 
     consume_item_sum( u, R"([ { "item": "nail", "amount": 3 } ])" );
     CHECK( u.charges_of( itype_nail ) == 47 );
+    // The cached weight must not still count the nails taken.
+    const units::mass cached_weight = u.weight_carried();
+    u.invalidate_weight_carried_cache();
+    CHECK( cached_weight == u.weight_carried() );
 }
 
 // EOC-B05: _has_items_sum treats each entry as a share of one requirement, but the effect took
