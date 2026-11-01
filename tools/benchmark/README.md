@@ -18,7 +18,9 @@ tools/benchmark/run_benchmarks.py --runs 3 --out /tmp/after.json --compare Audit
 - `--compare FILE` prints the change against a saved run. A change is marked "within
   noise" when the min–max ranges of the two runs overlap.
 - Run on an otherwise idle machine. Each scenario is single-threaded, but other load,
-  CPU frequency scaling and thermal throttling all add noise.
+  CPU frequency scaling and thermal throttling all add noise. On the 4-vCPU cloud VM the
+  baseline was recorded on, two runs of the same code differed by 1–5% (11% for
+  `horde_pathing`); see `Audit/benchmarks/README.md`.
 - Build with `PCH=0` if you have edited headers: with the precompiled header the build
   does not notice header changes.
 
