@@ -229,11 +229,9 @@ void game::unserialize( std::istream &fin, const cata_path &path )
     } catch( const JsonError &jsonerr ) {
         debugmsg( "Bad save json\n%s", jsonerr.c_str() );
         return;
-    } catch( const std::exception &err ) {
-        // e.g. an enum value this build does not know; report it instead of crashing
-        debugmsg( "Error loading save\n%s", err.what() );
-        return;
     }
+    // Other exceptions (e.g. an enum value this build does not know) propagate to
+    // read_from_file / read_from_zzip_optional, which report them and abort the load.
 }
 
 void game::unserialize( std::string fin )
@@ -245,11 +243,9 @@ void game::unserialize( std::string fin )
     } catch( const JsonError &jsonerr ) {
         debugmsg( "Bad save json\n%s", jsonerr.c_str() );
         return;
-    } catch( const std::exception &err ) {
-        // e.g. an enum value this build does not know; report it instead of crashing
-        debugmsg( "Error loading save\n%s", err.what() );
-        return;
     }
+    // Other exceptions (e.g. an enum value this build does not know) propagate to
+    // read_from_file / read_from_zzip_optional, which report them and abort the load.
 }
 
 void game::unserialize_impl( const JsonObject &data )
