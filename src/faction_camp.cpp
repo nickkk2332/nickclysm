@@ -4598,14 +4598,7 @@ bool basecamp::farm_return( const mission_id &miss_id, const point_rel_omt &dir 
 
     farm_action( dir, op, comp );
 
-    Character &player_character = get_player_character();
-    //Give any seeds the NPC didn't use back to you.
-    for( const item &it : comp->companion_mission_inv ) {
-        if( it.charges > 0 ) {
-            player_character.i_add( it );
-        }
-    }
-
+    // finish_return puts any seeds the companion didn't plant back in camp storage
     finish_return( *comp, true, msg, skill_survival.str(), 2 );
     return true;
 }

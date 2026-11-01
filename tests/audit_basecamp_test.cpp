@@ -34,6 +34,7 @@
 static const faction_id faction_your_followers( "your_followers" );
 
 static const furn_str_id furn_f_fireplace( "f_fireplace" );
+static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 
 static const itype_id itype_fake_fireplace( "fake_fireplace" );
 static const itype_id itype_seed_hops( "seed_hops" );
@@ -41,6 +42,8 @@ static const itype_id itype_tinder( "tinder" );
 
 static const skill_id skill_menial( "menial" );
 static const skill_id skill_survival( "survival" );
+
+static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
 
 static constexpr tripoint_bub_ms camp_mid{ MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 };
 
@@ -326,4 +329,55 @@ TEST_CASE( "camp-b03_camp_planting_leaves_the_rest_of_a_stack", "[audit][camp]" 
             CHECK( count_at( storage, itype_tinder ) == 50 );
         }
     }
+}
+
+// CAMP-B04: farm_return gave every unplanted item with charges to the player, then
+// finish_return also put everything still in the companion's mission inventory in camp
+// storage, so each leftover stack came back twice.  Leftovers must come back once, to camp.
+TEST_CASE( "camp-b04_unplanted_seeds_come_back_once", "[audit][camp]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    get_player_character().camps.clear();
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    map &here = get_map();
+    tripoint_abs_omt camp_omt;
+    basecamp &camp = place_audit_camp( "faction_base_bare_bones_NPC_camp_0", camp_omt );
+    faction &fac = *get_player_character().get_faction();
+    const npc_ptr comp = spawn_camp_worker( camp_mid.xy() + point::south );
+    on_out_of_scope cleanup( [&camp_omt, &fac, &comp]() {
+        call_off_mission( *comp );
+        overmap_buffer.clear_camps( camp_omt.xy() );
+        fac.empty_food_supply();
+    } );
+    stock_audit_larder( fac, 10000 );
+    // one plot ready for planting, in the camp's own tile
+    const tripoint_bub_ms plot = camp_mid + tripoint::west * 2;
+    here.ter_set( plot, ter_t_dirtmound );
+    const mission_id plant{ Camp_Plant, "", {}, base_camps::base_dir };
+    // two seeds for the one plot, and a stack that counts by charges that is left over (no
+    // core seed counts by charges; tinder stands in for such a stack of seeds)
+    item seed( itype_seed_hops );
+    item stack( itype_tinder, calendar::turn, 10 );
+    const std::vector<item *> equipment{ &seed, &seed, &stack };
+    REQUIRE( camp.start_mission( plant, 12_minutes, true, "", false, equipment,
+                                 std::map<skill_id, int>(), LIGHT_EXERCISE, 0_hours, comp ) );
+    calendar::turn += 12_minutes;
+    REQUIRE( camp.farm_return( plant, base_camps::base_dir ) );
+
+    // carried by the player or anywhere on the map except the plot
+    const auto count_back = [&here, &plot]( const itype_id & type ) {
+        int found = count_carried( get_player_character(), type );
+        for( const tripoint_bub_ms &p : here.points_on_zlevel( 0 ) ) {
+            if( p != plot ) {
+                found += count_at( p, type );
+            }
+        }
+        return found;
+    };
+    CHECK( here.furn( plot ) == furn_f_plant_seed );
+    CHECK( count_back( itype_seed_hops ) == 1 );
+    CHECK( count_back( itype_tinder ) == 10 );
+    CHECK( count_carried( get_player_character(), itype_tinder ) == 0 );
+    CHECK( comp->companion_mission_inv.empty() );
 }
