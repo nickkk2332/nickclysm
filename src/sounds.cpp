@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -386,8 +387,6 @@ static std::vector<centroid> cluster_sounds(
         std::max( std::min( input_sounds.size(), static_cast<size_t>( 10 ) ),
                   static_cast<size_t>( std::log( input_sounds.size() ) ) );
     const size_t stopping_point = input_sounds.size() - num_seed_clusters;
-    const size_t max_map_distance = sound_distance( { point_bub_ms::zero, OVERMAP_DEPTH },
-    { MAPSIZE_X, MAPSIZE_Y, OVERMAP_HEIGHT } );
     // Randomly choose cluster seeds.
     for( size_t i = input_sounds.size(); i > stopping_point; i-- ) {
         size_t index = rng( 0, i - 1 );
@@ -403,17 +402,18 @@ static std::vector<centroid> cluster_sounds(
         vector_quick_remove( input_sounds, index );
     }
     for( const auto &sound_event_pair : input_sounds ) {
+        // Merge into the nearest cluster, however far it is: a cap here sent every
+        // sound out of reach of all seeds into the first cluster instead.
         auto found_centroid = sound_clusters.begin();
-        float dist_factor = max_map_distance;
+        int best_dist = std::numeric_limits<int>::max();
         const auto cluster_end = sound_clusters.end();
         for( auto centroid_iter = sound_clusters.begin(); centroid_iter != cluster_end;
              ++centroid_iter ) {
-            // Scale the distance between the two by the max possible distance.
             tripoint_bub_ms centroid_pos { static_cast<int>( centroid_iter->x ), static_cast<int>( centroid_iter->y ), static_cast<int>( centroid_iter->z ) };
             const int dist = sound_distance( tripoint_bub_ms( sound_event_pair.first ), centroid_pos );
-            if( dist * dist < dist_factor ) {
+            if( dist < best_dist ) {
                 found_centroid = centroid_iter;
-                dist_factor = dist * dist;
+                best_dist = dist;
             }
         }
         const float volume_sum = static_cast<float>( sound_event_pair.second.volume ) +
@@ -455,7 +455,10 @@ static int get_signal_for_hordes( const centroid &centr )
     const int min_sig_cap = 8; //Signal for hordes can't be lower that this if it pass min_vol_cap
     const int max_sig_cap = 180; //Signal for hordes can't be higher that this
     //Lower the level - lower the sound
-    int vol_hordes = ( ( centr.z < 0 ) ? vol / ( underground_div * std::abs( centr.z ) ) : vol );
+    // A cluster merged across levels has a fractional z; dividing by it as is
+    // amplified sounds just below ground instead of muffling them.
+    const int z = static_cast<int>( std::lround( centr.z ) );
+    int vol_hordes = z <= -1 ? vol / ( underground_div * -z ) : vol;
     if( vol_hordes > min_vol_cap ) {
         //Calculating horde hearing signal
         int sig_power = std::ceil( static_cast<float>( vol_hordes ) / hordes_sig_div );
