@@ -6191,6 +6191,24 @@ static bool is_non_rotten_crafting_component( const item &it )
     return is_crafting_component( it ) && !it.rotten();
 }
 
+// Smoking racks and mills mark their contents PROCESSING, which stops them rotting while
+// the process runs. When the process stops without converting an item, the flag has to
+// go, or the food never rots again. With remove_timer the fake smoke plume or milling
+// item that times the process is removed as well.
+static void stop_processing( map &here, const tripoint_bub_ms &examp, bool remove_timer )
+{
+    map_stack items = here.i_at( examp );
+    for( map_stack::iterator it = items.begin(); it != items.end(); ) {
+        if( remove_timer && ( it->typeId() == itype_fake_smoke_plume ||
+                              it->typeId() == itype_fake_milling_item ) ) {
+            it = items.erase( it );
+        } else {
+            it->unset_flag( flag_PROCESSING );
+            ++it;
+        }
+    }
+}
+
 static void mill_activate( Character &you, const tripoint_bub_ms &examp )
 {
     map &here = get_map();
@@ -6618,6 +6636,9 @@ void iexamine::mill_finalize( Character &, map &here, const tripoint_bub_ms &exa
         }
     }
 
+    // Whatever was not milled (partial batches) is ordinary food again.
+    // The fake milling item calling this is destroyed by its caller.
+    stop_processing( here, examp, false );
     here.furn_set( examp, next_mill_type );
 }
 
@@ -6999,6 +7020,7 @@ void iexamine::quern_examine( Character &you, const tripoint_bub_ms &examp )
             break;
         case 3:
             // remove food
+            stop_processing( here, examp, true );
             for( map_stack::iterator it = items_here.begin(); it != items_here.end(); ) {
                 if( it->typeId() != itype_fake_milling_item ) {
                     // get handling cost before the item reference is invalidated
@@ -7032,13 +7054,7 @@ void iexamine::quern_examine( Character &you, const tripoint_bub_ms &examp )
             } else if( f == furn_f_wind_mill_active ) {
                 here.furn_set( examp, furn_f_wind_mill );
             }
-            for( map_stack::iterator it = items_here.begin(); it != items_here.end(); ) {
-                if( it->typeId() == itype_fake_milling_item ) {
-                    it = items_here.erase( it );
-                } else {
-                    ++it;
-                }
-            }
+            stop_processing( here, examp, true );
             add_msg( m_info, _( "You stop the milling process." ) );
             break;
     }
@@ -7232,6 +7248,10 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
             rem_f_opt = true;
             [[fallthrough]];
         case 5: {
+            if( rem_f_opt ) {
+                // taking the food out stops the smoking
+                stop_processing( here, examp, true );
+            }
             //remove charcoal
             for( map_stack::iterator it = items_here.begin(); it != items_here.end(); ) {
                 if( ( rem_f_opt && it->is_food() ) || ( !rem_f_opt && ( it->typeId() == itype_charcoal ) ) ) {
@@ -7259,6 +7279,7 @@ void iexamine::smoker_options( Character &you, const tripoint_bub_ms &examp )
             add_msg( m_info, _( "Never mind." ) );
             break;
         case 7:
+            stop_processing( here, examp, true );
             if( portable ) {
                 here.furn_set( examp, furn_f_metal_smoking_rack );
                 add_msg( m_info, _( "You stop the smoking process." ) );

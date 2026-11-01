@@ -8,6 +8,7 @@
 #include "coordinates.h"
 #include "enums.h"
 #include "game_constants.h"
+#include "iexamine.h"
 #include "item.h"
 #include "item_pocket.h"
 #include "item_location.h"
@@ -27,6 +28,10 @@
 #endif
 
 static const flag_id json_flag_FROZEN( "FROZEN" );
+static const flag_id json_flag_PROCESSING( "PROCESSING" );
+
+static const furn_str_id furn_f_wind_mill( "f_wind_mill" );
+static const furn_str_id furn_f_wind_mill_active( "f_wind_mill_active" );
 
 static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_9mmfmj( "9mmfmj" );
@@ -34,6 +39,7 @@ static const itype_id itype_glock_19( "glock_19" );
 static const itype_id itype_glockmag( "glockmag" );
 static const itype_id itype_glocksear( "glocksear" );
 static const itype_id itype_jerky( "jerky" );
+static const itype_id itype_oats( "oats" );
 static const itype_id itype_stick_long( "stick_long" );
 static const itype_id itype_test_multimag_capacity_gunmod( "test_multimag_capacity_gunmod" );
 static const itype_id itype_test_multimag_gun_integral_ammo( "test_multimag_gun_integral_ammo" );
@@ -221,4 +227,40 @@ TEST_CASE( "use-b03_break_stick_costs_stamina_and_time", "[audit][iuse]" )
         CHECK( used == 0 );
         CHECK( u.get_stamina() < half_stamina );
     }
+}
+
+// TERR-B01: smoker_fire() and mill_activate() flag the food PROCESSING, which makes
+// goes_bad() false.  Only a completed smoke cleared it; quenching the rack, braking the
+// mill and the unmilled leftovers of a partial batch kept the flag forever, so that food
+// never rotted.  The quench and brake paths are menu-driven; this covers the shared
+// cleanup through the leftovers of mill_finalize.
+TEST_CASE( "terr-b01_mill_leftovers_lose_processing_flag", "[audit][terrain][iexamine]" )
+{
+    clear_map();
+    map &here = get_map();
+    const tripoint_bub_ms mill_pos( 60, 60, 0 );
+    here.furn_set( mill_pos, furn_f_wind_mill_active );
+    REQUIRE( here.furn( mill_pos ).id() == furn_f_wind_mill_active );
+
+    // Oats mill in lots of 4, so the fifth handful stays in the mill unmilled.
+    for( int i = 0; i < 5; i++ ) {
+        item oats( itype_oats );
+        // as mill_activate() leaves them
+        oats.set_flag( json_flag_PROCESSING );
+        here.add_item( mill_pos, oats );
+    }
+    REQUIRE( here.i_at( mill_pos ).size() == 5 );
+
+    iexamine::mill_finalize( get_avatar(), here, mill_pos );
+
+    CHECK( here.furn( mill_pos ).id() == furn_f_wind_mill );
+    int leftover_oats = 0;
+    for( const item &it : here.i_at( mill_pos ) ) {
+        CAPTURE( it.typeId().str() );
+        CHECK_FALSE( it.has_own_flag( json_flag_PROCESSING ) );
+        if( it.typeId() == itype_oats ) {
+            leftover_oats++;
+        }
+    }
+    CHECK( leftover_oats == 1 );
 }
