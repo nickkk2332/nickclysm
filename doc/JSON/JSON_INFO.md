@@ -4461,7 +4461,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "concentration": 1, // How concentrated this intensity of gas is. Generally the thin/hazy cloud intensity will be 1, the standard gas will be 2, and thick gas will be 4. The amount of time a gas mask filter will last will be divided by this value.
         "convection_temperature_mod": 12, // Heat given off by this level of intensity
         "effects": [  ] // List of effects applied to any creatures within the field as long as they aren't immune to the effect or the field itself. See field_effect below for syntax
-        "scent_neutralization": 3, // Reduce scents at the field's position by this value        
+        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on its tile and the 8 around it by this value
     ],
     "npc_complain": { "chance": 20, "issue": "weed_smoke", "duration": "10 minutes", "speech": "<weed_smoke>" }, // NPCs in this field will complain about being in it once per <duration> if a 1-in-<chance> roll succeeds, giving off a <speech> bark that supports snippets
     "immunity_data": {...} // See Immunity Data below
@@ -4474,7 +4474,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
     "accelerated_decay": true, // If the field should use a more simple decay calculation, used for cosmetic fields like gibs
     "percent_spread": 90, // The field must succeed on a `rng( 1, 100 - local windpower ) > percent_spread` roll to spread. The field must have a non-zero spread percent and the GAS phase to be eligible to spread in the first place
     "phase": "gas", // Phase of the field. Gases can spread after spawning and can be spawned out of emitters through impassable terrain with the PERMEABLE flag
-    "apply_slime_factor": 10, // Intensity of slime to apply to creatures standing in this field (Why not use an effect? No idea.)
+    "apply_slime_factor": 10, // Each turn the field raises the scent on its tile to at least its intensity times this value (of the scent map's single scent type, normally the player's)
     "gas_absorption_factor": "80m", // Length a full 100 charge gas mask filter will last in this gas. Will be divided by the concentration of the gas, and should be 80m for concentration 1 toxic gas or similar. The worst gas should still be kept out for 20 minutes in a concentration 4 thick gas.
     "is_splattering": true, // If splatters of this field should bloody vehicle parts
     "dirty_transparency_cache": true, // Should the transparency cache be recalculated when the field is modified (used for nontransparent, spreading fields)

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
 #include "explosion.h"
@@ -17,6 +18,8 @@
 #include "npc.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "scent_block.h"
+#include "scent_map.h"
 #include "sounds.h"
 #include "teleport.h"
 #include "trap.h"
@@ -24,6 +27,8 @@
 #include "veh_appliance.h"
 #include "vehicle.h"
 #include "vpart_position.h"
+
+static const field_type_str_id field_fd_smoke( "fd_smoke" );
 
 static const ter_str_id ter_t_door_c( "t_door_c" );
 
@@ -242,4 +247,59 @@ TEST_CASE( "spat-b09_bashing_monsters_may_path_through_bashable_obstacles",
     monster &blob = spawn_test_monster( "mon_test_base", door + tripoint_rel_ms::east );
     REQUIRE( blob.bash_skill().empty() );
     CHECK( blob.get_path_avoid()( door ) );
+}
+
+// Neutralizing gas set the scent to max( 0, 0 - n ), i.e. wiped it whatever n
+// was, and gas on another level wiped the (single level) scent map as well.
+TEST_CASE( "spat-b10_scent_neutralization_lowers_scent_by_its_value", "[audit][scent][field]" )
+{
+    clear_map();
+    clear_avatar();
+    map &here = get_map();
+    scent_map &scent = get_scent();
+    scent.reset();
+    const tripoint_bub_ms p( 65, 65, 0 );
+    const tripoint_bub_sm sub = coords::project_to<coords::sm>( p );
+
+    scent.set( p, 100 );
+    {
+        scent_block blk( sub, scent );
+        blk.apply_gas( p, 5 );
+        blk.apply_gas( p, 5 );
+        blk.commit_modifications();
+    }
+    CHECK( scent.get( p ) == 90 );
+
+    {
+        scent_block blk( sub, scent );
+        blk.apply_gas( p, 500 );
+        blk.commit_modifications();
+    }
+    CHECK( scent.get( p ) == 0 );
+
+    // Slime still lays a trail, and gas after it lowers that.
+    {
+        scent_block blk( sub, scent );
+        blk.apply_slime( p, 200 );
+        blk.apply_gas( p, 5 );
+        blk.commit_modifications();
+    }
+    CHECK( scent.get( p ) == 195 );
+
+    // Gas a level up leaves this level's scent alone.
+    scent.set( p, 100 );
+    {
+        scent_block blk( tripoint_bub_sm( sub.xy(), 1 ), scent );
+        blk.apply_gas( p + tripoint_rel_ms::above, 5 );
+        blk.commit_modifications();
+    }
+    CHECK( scent.get( p ) == 100 );
+
+    // Through field processing: thick smoke (scent_neutralization 5) next door.
+    REQUIRE( here.add_field( p + tripoint_rel_ms::east, field_fd_smoke.id(), 3, 1_turns ) );
+    here.process_fields();
+    const int left = scent.get( p );
+    CHECK( left > 0 );
+    CHECK( left < 100 );
+    scent.reset();
 }

@@ -16,13 +16,16 @@ struct scent_block {
 
     enum class data_mode : int {
         NONE = 0,
-        SET = 1,
-        MAX = 2
+        // the scent becomes max( intensity, scent - subtract )
+        MODIFY = 1
     };
 
     struct datum {
         data_mode mode;
+        // what slime raises the scent to at least
         int intensity;
+        // what neutralizing gas lowers the scent by
+        int subtract;
     };
     data_block<datum> assignment;
 
@@ -39,7 +42,9 @@ struct scent_block {
     }
 
     // We should be working entirely within the range, so don't range check here
-    void apply_gas( const tripoint_bub_ms &p, int nintensity = 0 );
+    // lowers the scent by nintensity, to no less than 0
+    void apply_gas( const tripoint_bub_ms &p, int nintensity );
+    // raises the scent to at least intensity
     void apply_slime( const tripoint_bub_ms &p, int intensity );
 };
 
