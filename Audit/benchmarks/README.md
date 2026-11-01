@@ -38,7 +38,7 @@ Commit `49a3b018`, same machine and settings (`after-group4.json`).
 | monsters_idle | 161 | 67 | **-58%** | MONAI-P01 |
 | horde_pathing | 217 | 74 | **-66%** | MONAI-P01, SPAT-P01, MONAI-P02 |
 | light_vision | 1436 | 803 | **-44%** | SPAT-P02 |
-| submap_travel_dense | 728 | 617 | -15% (ranges overlap) | MAP-P01 |
+| submap_travel_dense | 728 | 617 | -15% (ranges overlap) | MAP-P01, since reverted (see below) |
 | crafting_recompute | 1957 | 1925 | none | CRAFT-P02 |
 | data_load | 25166 | 25566 | none | ITEM-P01 |
 
@@ -54,3 +54,9 @@ MONAI-P02 and SPAT-P01 added nothing measurable on top at 100 monsters.
     next target for crafting-menu lag.
 - **Not measurable here:** DATA-P01 (loading screen redraws) only affects the tiles
   build with a display.
+
+**MAP-P01 was reverted** (`edc768f7`). Narrowing the reconcile on a map shift to the newly
+loaded submaps broke `item_wakeup_shift_reconciles_dropped_entries`: the full walk on
+every shift deliberately re-arms wakeup entries that were dropped for items already in
+the bubble. A future fix should make that walk cheaper instead (for example a fast path
+in `item_wakeup_manager::rebuild_for_item` for items with nothing scheduled).
