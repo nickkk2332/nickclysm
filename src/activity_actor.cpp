@@ -14594,11 +14594,22 @@ static item zone_sort_picked_part( const item_location &loc, int charges )
     return part;
 }
 
+// The volume of zone_sort_picked_part(), without copying the item and its contents.
+static units::volume zone_sort_picked_volume( const item_location &loc, int charges )
+{
+    if( charges > 0 && loc->count_by_charges() && loc->charges > charges ) {
+        return loc->volume( false, false, charges );
+    }
+    return loc->volume();
+}
+
 // Takes the part zone_sort_picked_part() returns off the character or cart carrying it.
 static void zone_sort_remove_picked_part( item_location &loc, int charges )
 {
     if( charges > 0 && loc->count_by_charges() && loc->charges > charges ) {
         loc.get_item()->mod_charges( -charges );
+        // Refresh the stack and its container, as try_add does at pickup.
+        loc.on_contents_changed();
         if( const vehicle_cursor *veh_curs = loc.veh_cursor() ) {
             veh_curs->veh.invalidate_mass();
         } else if( loc.carrier() ) {
@@ -15452,7 +15463,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
         units::volume batch_volume = 0_ml;
         for( const auto &[loc, charges] : picked_up_stuff ) {
             if( loc.get_item() ) {
-                batch_volume += zone_sort_picked_part( loc, charges ).volume();
+                batch_volume += zone_sort_picked_volume( loc, charges );
             }
         }
         for( const tripoint_abs_ms &dest : dropoff_coords ) {
@@ -15470,7 +15481,7 @@ void zone_sort_activity_actor::stage_do( player_activity &act, Character &you )
             units::volume first_vol = 0_ml;
             for( const auto &[loc, charges] : picked_up_stuff ) {
                 if( loc.get_item() ) {
-                    first_vol = zone_sort_picked_part( loc, charges ).volume();
+                    first_vol = zone_sort_picked_volume( loc, charges );
                     break;
                 }
             }

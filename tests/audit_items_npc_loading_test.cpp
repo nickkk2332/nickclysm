@@ -4,6 +4,7 @@
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "clzones.h"
 #include "condition.h"
@@ -177,6 +178,10 @@ TEST_CASE( "act-b03_zone_sort_leaves_the_sorters_own_charges", "[audit][activiti
     clear_map_without_vision();
     zone_manager &zm = zone_manager::get_manager();
     zm.clear();
+    // Clear the zones even when a REQUIRE fails, so they don't leak into later tests.
+    on_out_of_scope clear_zones( [&zm]() {
+        zm.clear();
+    } );
 
     const tripoint_bub_ms start_pos( 60, 60, 0 );
     u.setpos( here, start_pos );
@@ -212,7 +217,6 @@ TEST_CASE( "act-b03_zone_sort_leaves_the_sorters_own_charges", "[audit][activiti
     CHECK( here.i_at( src_pos ).empty() );
     CHECK( sorted == 5 );
     CHECK( u.charges_of( itype_nail ) == 50 );
-    zm.clear();
 }
 
 // NPC-B04: the explosive scan only knew items with an "explosion" use action, but grenades,
