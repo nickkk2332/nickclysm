@@ -2972,6 +2972,37 @@ bool overmap::can_place_special( const overmap_special &special, const tripoint_
     if( !special.id ) {
         return false;
     }
+
+    // The terrain check first: it is the cheapest and rejects most candidates, so the
+    // unique, EOC and spawn-radius checks below only run where the special could fit. All
+    // are side-effect free, so the order doesn't change the result (OMAP-P01).
+    const bool terrain_fits = special.all_required_locations(
+    [&]( const overmap_special_locations & elem ) {
+        const tripoint_om_omt rp = p + om_direction::rotate( elem.p, dir );
+
+        if( !inbounds( rp, 1 ) ) {
+            return false;
+        }
+
+        if( must_be_unexplored ) {
+            // If this must be unexplored, check if we've already got a submap generated.
+            const bool existing_submap = is_omt_generated( rp );
+
+            // If there is an existing submap, this area has already been explored and this
+            // isn't a valid placement.
+            if( existing_submap ) {
+                return false;
+            }
+        }
+
+        const oter_id &tid = ter( rp );
+
+        return elem.can_be_placed_on( tid ) || ( rp.z() != 0 && tid == get_default_terrain( rp.z() ) );
+    } );
+    if( !terrain_fits ) {
+        return false;
+    }
+
     if( ( special.has_flag( "GLOBALLY_UNIQUE" ) &&
           overmap_buffer.contains_unique_special( special.id ) ) ||
         ( special.has_flag( "OVERMAP_UNIQUE" ) && contains_unique_special( special.id ) ) ) {
@@ -3005,31 +3036,7 @@ bool overmap::can_place_special( const overmap_special &special, const tripoint_
         }
     }
 
-    const std::vector<overmap_special_locations> fixed_terrains = special.required_locations();
-
-    return std::all_of( fixed_terrains.begin(), fixed_terrains.end(),
-    [&]( const overmap_special_locations & elem ) {
-        const tripoint_om_omt rp = p + om_direction::rotate( elem.p, dir );
-
-        if( !inbounds( rp, 1 ) ) {
-            return false;
-        }
-
-        if( must_be_unexplored ) {
-            // If this must be unexplored, check if we've already got a submap generated.
-            const bool existing_submap = is_omt_generated( rp );
-
-            // If there is an existing submap, this area has already been explored and this
-            // isn't a valid placement.
-            if( existing_submap ) {
-                return false;
-            }
-        }
-
-        const oter_id &tid = ter( rp );
-
-        return elem.can_be_placed_on( tid ) || ( rp.z() != 0 && tid == get_default_terrain( rp.z() ) );
-    } );
+    return true;
 }
 
 // checks around the selected point to see if the special can be placed there

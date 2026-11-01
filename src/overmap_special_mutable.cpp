@@ -763,6 +763,12 @@ std::vector<overmap_special_locations> mutable_overmap_special_data::required_lo
     return check_for_locations;
 }
 
+bool mutable_overmap_special_data::all_required_locations(
+    const std::function<bool( const overmap_special_locations & )> &pred ) const
+{
+    return std::all_of( check_for_locations.begin(), check_for_locations.end(), pred );
+}
+
 int mutable_overmap_special_data::score_rotation_at( const overmap &, const tripoint_om_omt &,
         om_direction::type ) const
 {
