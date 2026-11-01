@@ -236,12 +236,15 @@ TEST_CASE( "npc-b04_npcs_notice_a_live_grenade", "[audit][npc]" )
     SECTION( "about to go off" ) {
         grenade.countdown_point = calendar::turn;
         here.add_item_or_charges( guy.pos_bub(), grenade );
+        // New active items are registered at the start of the next turn; do it now.
+        here.update_submaps_with_active_items();
         guy.regen_ai_cache();
         CHECK( guy.in_harms_way() );
     }
     SECTION( "long fuse" ) {
         grenade.countdown_point = calendar::turn + 1_hours;
         here.add_item_or_charges( guy.pos_bub(), grenade );
+        here.update_submaps_with_active_items();
         guy.regen_ai_cache();
         CHECK_FALSE( guy.in_harms_way() );
     }
