@@ -13907,24 +13907,24 @@ void butchery_activity_actor::do_turn( player_activity &act, Character &you )
     }
 
     butchery_data *this_bd = &bd.back();
-
-    if( this_bd->progress == 0_seconds ) {
-        if( !initiate_butchery( act, you, *this_bd ) ) {
-            bd.pop_back();
-            if( bd.empty() ) {
-                act.moves_left = 0;
-                return;
-            }
-        }
-    }
-
     const item_location &target = this_bd->corpse;
 
-    // Corpses can disappear (rezzing!), so check for that
+    // Corpses can disappear (rezzing!), so check for that.
+    // Check before `initiate_butchery`, which dereferences the corpse.
     if( !target || !target->is_corpse() ) {
         you.add_msg_if_player( m_info, _( "There's no corpse to butcher!" ) );
         act.moves_left = 0;
         return;
+    }
+
+    if( this_bd->progress == 0_seconds ) {
+        if( !initiate_butchery( act, you, *this_bd ) ) {
+            // pop_back() destroys `*this_bd` (and `target`), so neither may be used after it.
+            // Move on to the next corpse, if any, on the next turn.
+            bd.pop_back();
+            act.moves_left = bd.empty() ? 0 : 1;
+            return;
+        }
     }
 
     if( this_bd->progress >= this_bd->time_to_butcher ) {
@@ -13963,9 +13963,11 @@ void butchery_activity_actor::canceled( player_activity &, Character & )
     }
     butchery_data *this_bd = &bd.back();
     item_location &target = this_bd->corpse;
-    item &corpse_item = *target;
 
-    if( target ) {
+    // An entry that was never initiated has no `time_to_butcher` yet; saving 0/0 would
+    // overwrite any earlier progress on the corpse with NaN.
+    if( target && this_bd->time_to_butcher > 0_seconds ) {
+        item &corpse_item = *target;
         corpse_item.set_var( butcher_progress_var( this_bd->b_type ),
                              this_bd->progress / this_bd->time_to_butcher );
     }
