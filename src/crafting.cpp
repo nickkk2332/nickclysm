@@ -3439,7 +3439,8 @@ float Character::crafting_failure_roll( const recipe &making ) const
     add_msg_debug( debugmode::DF_CHARACTER, "Crafting skill roll: %f, final difficulty %g", craft_roll,
                    data.final_difficulty );
 
-    return std::max( craft_roll, 0.0f );
+    // Subtract the difficulty, matching item_destruction_chance()
+    return std::max( craft_roll - data.final_difficulty, 0.0f );
 }
 
 float Character::recipe_success_chance( const recipe &making ) const
@@ -3518,7 +3519,9 @@ bool item::handle_craft_failure( Character &crafter )
         set_flag( flag_FAULT_ON_COMPLETION );
     }
 
-    const double success_roll = crafter.crafting_failure_roll( get_making() );
+    const float failure_roll = crafter.crafting_failure_roll( get_making() );
+    // Clamp to [0, 1]: it is used as a probability below
+    const double success_roll = clamp( failure_roll, 0.0f, 1.0f );
     const int starting_components = this->components.size();
     // Destroy at most 75% of the components, always a chance of losing 1 though
     const size_t max_destroyed = std::max<size_t>( 1, components.size() * 3 / 4 );
