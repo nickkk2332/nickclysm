@@ -169,16 +169,7 @@
     "range": 6,
     "dispersion": 150,
     "durability": 8,
-    "pocket_data": [
-      {
-        "pocket_type": "MAGAZINE",
-        "rigid": true,
-        "max_contains_volume": "200 L",
-        "max_contains_weight": "400 kg",
-        "max_item_length": "2000 m",
-        "ammo_restriction": { "rock": 5 }
-      }
-    ],
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "max_contains_weight": "400 kg", "ammo_restriction": { "rock": 5 } } ],
     "melee_damage": { "bash": 2 }
   },
   {
@@ -214,14 +205,7 @@
     "dispersion": 130,
     "durability": 8,
     "pocket_data": [
-      {
-        "pocket_type": "MAGAZINE",
-        "rigid": true,
-        "max_contains_volume": "200 L",
-        "max_contains_weight": "400 kg",
-        "max_item_length": "2000 m",
-        "ammo_restriction": { "bone_dart": 20 }
-      }
+      { "pocket_type": "MAGAZINE", "rigid": true, "max_contains_weight": "400 kg", "ammo_restriction": { "bone_dart": 20 } }
     ],
     "melee_damage": { "bash": 2 }
   },
@@ -259,9 +243,7 @@
       {
         "pocket_type": "MAGAZINE",
         "rigid": true,
-        "max_contains_volume": "1400 ml",
         "max_contains_weight": "1200 g",
-        "max_item_length": "76 cm",
         "ammo_restriction": { "nether_huntsman_javelin_ammo": 1 }
       }
     ]

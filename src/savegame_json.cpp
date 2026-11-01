@@ -364,19 +364,19 @@ void item_pocket::favorite_settings::deserialize( const JsonObject &data )
 
 void pocket_data::deserialize( const JsonObject &data )
 {
-    data.allow_omitted_members();
+    // Only read from item definitions, never from saves: report unknown keys.
     load( data );
 }
 
 void sealable_data::deserialize( const JsonObject &data )
 {
-    data.allow_omitted_members();
+    // Only read from item definitions, never from saves: report unknown keys.
     load( data );
 }
 
 void pocket_noise::deserialize( const JsonObject &data )
 {
-    data.allow_omitted_members();
+    // Only read from item definitions, never from saves: report unknown keys.
     load( data );
 }
 

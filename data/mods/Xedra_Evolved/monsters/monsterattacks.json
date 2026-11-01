@@ -35,9 +35,7 @@
       {
         "pocket_type": "MAGAZINE",
         "rigid": true,
-        "max_contains_volume": "200 L",
         "max_contains_weight": "400 kg",
-        "max_item_length": "2000 m",
         "ammo_restriction": { "throwing_knives": 3 }
       }
     ],

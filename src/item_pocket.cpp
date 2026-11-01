@@ -152,8 +152,8 @@ void pocket_data::load( const JsonObject &jo )
     if( jo.has_member( "ammo_restriction" ) && ammo_restriction.empty() ) {
         jo.throw_error( "pocket defines empty ammo_restriction" );
     }
-    if( jo.has_member( "flag_restrictions" ) && flag_restrictions.empty() ) {
-        jo.throw_error( "pocket defines empty flag_restrictions" );
+    if( jo.has_member( "flag_restriction" ) && flag_restrictions.empty() ) {
+        jo.throw_error( "pocket defines empty flag_restriction" );
     }
     if( jo.has_member( "item_restriction" ) && item_id_restriction.empty() ) {
         jo.throw_error( "pocket defines empty item_restriction" );
@@ -163,8 +163,8 @@ void pocket_data::load( const JsonObject &jo )
         mandatory( jo, was_loaded, "item_restriction", item_restriction );
         default_magazine = item_restriction.front();
     }
-    // ammo_restriction is a type of override, making the mandatory members not mandatory and superfluous
-    // putting it in an if statement like this should allow for report_unvisited_member to work here
+    // ammo_restriction sets the pocket's size from the ammo, so the size members are
+    // superfluous for it; leaving them unread makes the loader report them as errors.
     if( ammo_restriction.empty() ) {
         optional( jo, was_loaded, "min_item_volume", min_item_volume, volume_reader(), 0_ml );
         units::volume temp = -1_ml;
@@ -174,16 +174,17 @@ void pocket_data::load( const JsonObject &jo )
         }
         optional( jo, was_loaded, "max_contains_volume", raw_volume_capacity, volume_reader(),
                   max_volume_for_container );
-        optional( jo, was_loaded, "max_contains_weight", max_contains_weight, mass_reader(),
-                  max_weight_for_container );
         optional( jo, was_loaded, "max_item_length", max_item_length,
                   units::default_length_from_volume( raw_volume_capacity ) * M_SQRT2 );
         optional( jo, was_loaded, "min_item_length", min_item_length );
-        optional( jo, was_loaded, "extra_encumbrance", extra_encumbrance, 0 );
-        optional( jo, was_loaded, "volume_encumber_modifier", volume_encumber_modifier, 1 );
-        optional( jo, was_loaded, "ripoff", ripoff, 0 );
-        optional( jo, was_loaded, "activity_noise", activity_noise );
     }
+    // These apply to any pocket, ammo pockets (bandoliers, ammo belts) included.
+    optional( jo, was_loaded, "max_contains_weight", max_contains_weight, mass_reader(),
+              max_weight_for_container );
+    optional( jo, was_loaded, "extra_encumbrance", extra_encumbrance, 0 );
+    optional( jo, was_loaded, "volume_encumber_modifier", volume_encumber_modifier, 1 );
+    optional( jo, was_loaded, "ripoff", ripoff, 0 );
+    optional( jo, was_loaded, "activity_noise", activity_noise );
     optional( jo, was_loaded, "spoil_multiplier", spoil_multiplier, 1.0f );
     optional( jo, was_loaded, "insulation", insulation, 1.0f );
     optional( jo, was_loaded, "weight_multiplier", weight_multiplier, 1.0f );
