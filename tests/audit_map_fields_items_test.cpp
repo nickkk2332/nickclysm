@@ -14,8 +14,10 @@
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_helpers_tests.h"
 #include "mapdata.h"
 #include "point.h"
+#include "submap.h"
 #include "type_id.h"
 #include "units.h"
 #include "vehicle.h"
@@ -24,6 +26,7 @@ static const field_type_str_id field_fd_blood( "fd_blood" );
 static const field_type_str_id field_fd_smoke( "fd_smoke" );
 static const field_type_str_id field_fd_weedsmoke( "fd_weedsmoke" );
 
+static const itype_id itype_flashlight_on( "flashlight_on" );
 static const itype_id itype_jointer( "jointer" );
 static const itype_id itype_tshirt( "tshirt" );
 
@@ -309,4 +312,29 @@ TEST_CASE( "map-b06_wheel_ejects_items_in_every_direction", "[audit][map][vehicl
             REQUIRE( count_items_of( pos, itype_jointer ) == 1 );
         }
     }
+}
+
+// Every copy map::add_item places is a separate item, so each one must be in the active item
+// cache and light the tile. Before the fix only the first copy was registered and counted.
+TEST_CASE( "map-b07_add_item_copies_are_all_active_and_lit", "[audit][map][item]" )
+{
+    clear_map();
+    map &here = get_map();
+    tripoint_bub_ms pos( 65, 65, 0 );
+    point_sm_ms l;
+    const submap *const sm = map_meddler::unsafe_get_submap_at( pos, l );
+    REQUIRE( sm != nullptr );
+    REQUIRE( sm->get_lum( l ) == 0 );
+
+    item flashlight( itype_flashlight_on );
+    flashlight.active = true;
+    REQUIRE( flashlight.needs_processing() );
+    REQUIRE( flashlight.is_emissive() );
+
+    here.add_item( pos, flashlight, 3 );
+    REQUIRE( count_items_of( pos, itype_flashlight_on ) == 3 );
+
+    here.update_submaps_with_active_items();
+    CHECK( here.get_active_items_in_radius( pos, 0 ).size() == 3 );
+    CHECK( sm->get_lum( l ) == 3 );
 }

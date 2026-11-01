@@ -6205,17 +6205,21 @@ item &map::add_item( const tripoint_bub_ms &p, item new_item, int copies )
     current_submap->ensure_nonuniform();
     invalidate_max_populated_zlev( p.z() );
 
-    current_submap->update_lum_add( l, new_item );
     if( new_item.is_emissive() ) {
         set_lightmap_cache_dirty( p.z() );
     }
 
+    // Every copy is a separate item on the map: each one lights the tile and is processed
+    current_submap->update_lum_add( l, new_item );
     const map_stack::iterator new_pos = current_submap->get_items( l ).insert( new_item );
+    bool added_active = current_submap->active_items.add( *new_pos, l );
     while( --copies > 0 ) {
-        current_submap->get_items( l ).insert( new_item );
+        current_submap->update_lum_add( l, new_item );
+        const map_stack::iterator copy_pos = current_submap->get_items( l ).insert( new_item );
+        added_active |= current_submap->active_items.add( *copy_pos, l );
     }
 
-    if( current_submap->active_items.add( *new_pos, l ) ) {
+    if( added_active ) {
         // TODO: fix point types
         tripoint_abs_sm const loc( abs_sub.x() + p.x() / SEEX, abs_sub.y() + p.y() / SEEY, p.z() );
         submaps_with_active_items_dirty.insert( loc );
