@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "cata_catch.h"
+#include "map_helpers.h"
 #include "monster.h"
 #include "mtype.h"
 #include "player_helpers.h"
@@ -20,6 +21,9 @@ speed_description_ID_THAT_DOES_NOT_EXIST( "ID_THAT_DOES_NOT_EXIST" );
 
 TEST_CASE( "monster_speed_description", "[monster][speed_description]" )
 {
+    // The player's move cost depends on the terrain they stand on (e.g. roads are cheaper),
+    // so don't inherit terrain left by earlier tests.
+    clear_map();
     /*
      * A default character has a speed of 100 and a base move cost of 116
      * That means their tiles per turn is 100 / 116 == 0.86206896551
