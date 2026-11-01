@@ -2022,13 +2022,24 @@ void spell_effect::effect_on_condition( const spell &sp, Creature &caster,
 
     const std::set<tripoint_bub_ms> area = spell_effect_area( sp, target, caster );
 
+    // The values computed for this cast, so the EOC can tell which spell called it and
+    // scale with it. Durations are in turns, as duration context vals are read.
+    const std::string spell_id = sp.id().str();
+    const double spell_level = sp.get_effective_level();
+    const double spell_damage = sp.damage( caster );
+    const double spell_dot = sp.damage_dot( caster );
+    const double spell_duration = to_turns<double>( sp.duration_turns( caster ) );
+    const double spell_aoe = sp.aoe( caster );
+    const double spell_range = sp.range( caster );
+    const std::string spell_damage_type = sp.id()->dmg_type.str();
+
     creature_tracker &creatures = get_creature_tracker();
     for( const tripoint_bub_ms &potential_target : area ) {
         if( !sp.is_valid_target( caster, potential_target ) ) {
             continue;
         }
         dialogue d;
-        optional_vpart_position veh = here.veh_at( target );
+        optional_vpart_position veh = here.veh_at( potential_target );
         Creature *victim = creatures.creature_at<Creature>( potential_target );
         if( victim && ( sp.is_valid_target( spell_target::ally ) ||
                         sp.is_valid_target( spell_target::hostile ) || sp.is_valid_target( spell_target::self ) ) ) {
@@ -2040,6 +2051,14 @@ void spell_effect::effect_on_condition( const spell &sp, Creature &caster,
         }
         const tripoint_abs_ms target_abs = here.get_abs( potential_target );
         write_var_value( var_type::context, "spell_location", &d, target_abs );
+        write_var_value( var_type::context, "spell_id", &d, spell_id );
+        write_var_value( var_type::context, "spell_level", &d, spell_level );
+        write_var_value( var_type::context, "spell_damage", &d, spell_damage );
+        write_var_value( var_type::context, "spell_dot", &d, spell_dot );
+        write_var_value( var_type::context, "spell_duration", &d, spell_duration );
+        write_var_value( var_type::context, "spell_aoe", &d, spell_aoe );
+        write_var_value( var_type::context, "spell_range", &d, spell_range );
+        write_var_value( var_type::context, "spell_damage_type", &d, spell_damage_type );
         d.amend_callstack( string_format( "Spell: %s Caster: %s", sp.id().c_str(), caster.disp_name() ) );
         effect_on_condition_id eoc = effect_on_condition_id( sp.effect_data() );
         eoc->activate_activation_only( d, "a spell", "spell being cast", "spell" );

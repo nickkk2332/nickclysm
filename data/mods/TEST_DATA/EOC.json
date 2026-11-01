@@ -876,5 +876,19 @@
         ]
       }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_SPELL_CONTEXT",
+    "effect": [
+      { "copy_var": { "context_val": "spell_id" }, "target_var": { "global_val": "spell_ctx_id" } },
+      { "copy_var": { "context_val": "spell_damage_type" }, "target_var": { "global_val": "spell_ctx_damage_type" } },
+      { "math": [ "spell_ctx_level = _spell_level" ] },
+      { "math": [ "spell_ctx_damage = _spell_damage" ] },
+      { "math": [ "spell_ctx_dot = _spell_dot" ] },
+      { "math": [ "spell_ctx_duration = _spell_duration" ] },
+      { "math": [ "spell_ctx_aoe = _spell_aoe" ] },
+      { "math": [ "spell_ctx_range = _spell_range" ] }
+    ]
   }
 ]
