@@ -17,6 +17,7 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "monster.h"
+#include "npc.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
@@ -24,6 +25,7 @@
 static const faction_id faction_free_merchants( "free_merchants" );
 
 static const itype_id itype_backpack( "backpack" );
+static const itype_id itype_grenade_act( "grenade_act" );
 static const itype_id itype_nail( "nail" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_stick( "stick" );
@@ -202,4 +204,34 @@ TEST_CASE( "act-b03_zone_sort_leaves_the_sorters_own_charges", "[audit][activiti
     CHECK( sorted == 5 );
     CHECK( u.charges_of( itype_nail ) == 50 );
     zm.clear();
+}
+
+// NPC-B04: the explosive scan only knew items with an "explosion" use action, but grenades,
+// dynamite and C4 keep their blast in countdown_action, so NPCs never noticed a live one.
+// The fuse was also read from charges instead of countdown_point.
+TEST_CASE( "npc-b04_npcs_notice_a_live_grenade", "[audit][npc]" )
+{
+    clear_avatar();
+    clear_map();
+    map &here = get_map();
+    npc &guy = spawn_npc( get_avatar().pos_bub().xy() + point::east * 5, "test_talker" );
+    guy.regen_ai_cache();
+    REQUIRE_FALSE( guy.in_harms_way() );
+
+    item grenade( itype_grenade_act );
+    REQUIRE( grenade.active );
+    SECTION( "about to go off" ) {
+        grenade.countdown_point = calendar::turn;
+        here.add_item_or_charges( guy.pos_bub(), grenade );
+        guy.regen_ai_cache();
+        CHECK( guy.in_harms_way() );
+    }
+    SECTION( "long fuse" ) {
+        grenade.countdown_point = calendar::turn + 1_hours;
+        here.add_item_or_charges( guy.pos_bub(), grenade );
+        guy.regen_ai_cache();
+        CHECK_FALSE( guy.in_harms_way() );
+    }
+    // Don't leave a live grenade for later tests.
+    here.i_clear( guy.pos_bub() );
 }
