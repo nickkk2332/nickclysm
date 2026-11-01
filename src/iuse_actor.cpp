@@ -2953,11 +2953,14 @@ std::optional<int> holster_actor::use( Character *you, item &it, map *here,
             pos = -2;
         } else {
             pos += ret;
-            if( opts.size() != it.num_item_stacks() ) {
-                ret--;
-            }
+            // Entry 0 is the holster prompt, entry k >= 1 draws all_items[k - 1].
+            ret--;
             // If the action selected is Holster item / sheath item, then don't pick an item to use.
             if( ret >= 0 ) {
+                if( static_cast<size_t>( ret ) >= all_items.size() ) {
+                    debugmsg( "Invalid holster menu selection %d for %s", ret, it.tname() );
+                    return std::nullopt;
+                }
                 auto iter = std::next( all_items.begin(), ret );
                 internal_item = *iter;
             }
@@ -3800,7 +3803,8 @@ int heal_actor::get_stopbleed_level( const Character &healer ) const
                      prof_bonus + 1 : prof_bonus;
         prof_bonus = healer.has_proficiency( proficiency_prof_wound_care_expert ) ?
                      prof_bonus + 2 : prof_bonus;
-        float total_bonus = bleed * prof_bonus;
+        // bleed is the base value at First Aid 0; skill and proficiencies add multiples of it.
+        float total_bonus = bleed * ( 1.0f + prof_bonus );
         total_bonus = healer.enchantment_cache->modify_value( enchant_vals::mod::BLEED_STOP_BONUS,
                       total_bonus );
         return round( total_bonus );

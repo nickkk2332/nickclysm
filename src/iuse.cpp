@@ -3739,7 +3739,8 @@ std::optional<int> iuse::papr_blower( Character *p, item *it, const tripoint_bub
     if( it->get_var( "gas_absorbed", 0 ) >= 60 ) {
         it->ammo_consume_in_pocket( "papr_blower_filter", 1, here, pos );
         it->set_var( "gas_absorbed", 0 );
-        if( it->ammo_remaining_in_pocket( "papr_blower_filter" ) < 10 ) {
+        // p is null when the blower is ticked on the ground (map item processing).
+        if( p && it->ammo_remaining_in_pocket( "papr_blower_filter" ) < 10 ) {
             p->add_msg_player_or_npc(
                 m_bad,
                 _( "Your %s is struggling to filter gas!" ),
@@ -3748,12 +3749,14 @@ std::optional<int> iuse::papr_blower( Character *p, item *it, const tripoint_bub
         }
     }
     if( it->ammo_remaining_in_pocket( "papr_blower_filter" ) == 0 ) {
-        p->add_msg_player_or_npc(
-            m_bad,
-            _( "Your %s requires new filters!" ),
-            _( "<npcname> needs new PAPR blower filters!" )
-            , it->tname() );
-        it->deactivate();
+        if( p ) {
+            p->add_msg_player_or_npc(
+                m_bad,
+                _( "Your %s requires new filters!" ),
+                _( "<npcname> needs new PAPR blower filters!" )
+                , it->tname() );
+        }
+        it->deactivate( p );
     }
     return 0;
 }
