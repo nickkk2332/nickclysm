@@ -165,11 +165,11 @@ static void for_each_vertical_step( const map &m, const tripoint_bub_ms &cur,
         !settings.allow_climb_stairs ) {
         return;
     }
-    bool rope_ladder = false;
     const ter_t &parent_terrain = m.ter( cur ).obj();
+    // Use the side-effect free stair lookup: find_or_make_stairs is the avatar's interactive
+    // climb (prompts, rope use) and would run whenever cur is the avatar's tile.
     if( cur.z() > z_min && parent_terrain.has_flag( ter_furn_flag::TFLAG_GOES_DOWN ) ) {
-        std::optional<tripoint_bub_ms> opt_dest = g->find_or_make_stairs( get_map(),
-                cur.z() - 1, rope_ladder, false, cur );
+        std::optional<tripoint_bub_ms> opt_dest = g->find_stairs( m, cur.z() - 1, cur );
         if( !opt_dest ) {
             return;
         }
@@ -182,8 +182,7 @@ static void for_each_vertical_step( const map &m, const tripoint_bub_ms &cur,
         }
     }
     if( cur.z() < z_max && parent_terrain.has_flag( ter_furn_flag::TFLAG_GOES_UP ) ) {
-        std::optional<tripoint_bub_ms> opt_dest = g->find_or_make_stairs( get_map(),
-                cur.z() + 1, rope_ladder, false, cur );
+        std::optional<tripoint_bub_ms> opt_dest = g->find_stairs( m, cur.z() + 1, cur );
         if( !opt_dest ) {
             return;
         }

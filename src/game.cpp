@@ -10026,6 +10026,7 @@ std::optional<tripoint_bub_ms> game::find_stairs( const map &mp, int z_after,
     }
     // We did not find stairs directly above or below, so search the map for them
     // If there's empty space right below us, we can just go down that way.
+    // Rank by distance to pos, not the avatar: the pathfinder asks this for any creature.
     int best = INT_MAX;
     std::optional<tripoint_bub_ms> stairs;
     const int omtilesz = SEEX * 2 - 1;
@@ -10036,16 +10037,16 @@ std::optional<tripoint_bub_ms> game::find_stairs( const map &mp, int z_after,
                                         z_after ) ) );
     tripoint_bub_ms omtile_align_end( omtile_align_start + point( omtilesz, omtilesz ) );
 
-    if( !mp.is_open_air( u.pos_bub( mp ) ) ) {
+    if( !mp.is_open_air( pos ) ) {
         for( const tripoint_bub_ms &dest : mp.points_in_rectangle( omtile_align_start,
                 omtile_align_end ) ) {
-            if( rl_dist( u.pos_bub( mp ), dest ) <= best &&
+            if( rl_dist( pos, dest ) <= best &&
                 ( ( going_down_1 && mp.has_flag( ter_furn_flag::TFLAG_GOES_UP, dest ) ) ||
                   ( going_up_1 && ( mp.has_flag( ter_furn_flag::TFLAG_GOES_DOWN, dest ) ||
                                     mp.ter( dest ) == ter_t_manhole_cover ) ) ||
                   ( ( movez == 2 || movez == -2 ) && mp.ter( dest ) == ter_t_elevator ) ) ) {
                 stairs.emplace( dest );
-                best = rl_dist( u.pos_bub( mp ), dest );
+                best = rl_dist( pos, dest );
             }
         }
     }
