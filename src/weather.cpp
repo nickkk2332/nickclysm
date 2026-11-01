@@ -192,11 +192,10 @@ static void proc_weather_sum( const weather_type_id &wtype, weather_sum &data,
 weather_type_id current_weather( const tripoint_abs_ms &location, const time_point &t )
 {
     weather_manager &weather = get_weather();
-    const weather_generator wgen = weather.get_cur_weather_gen();
     if( weather.weather_override != WEATHER_NULL ) {
         return weather.weather_override;
     }
-    return wgen.get_weather_conditions( location, t, g->get_seed() );
+    return weather.get_cur_weather_gen().get_weather_conditions( location, t, g->get_seed() );
 }
 
 ////// Funnels.
@@ -207,22 +206,29 @@ weather_sum sum_conditions( const time_point &start, const time_point &end,
     weather_sum data;
 
     weather_manager &weather = get_weather();
+    // Wind uses the current speed and direction for the whole span, so it is the same every
+    // tick: look the terrain and wind up once.
+    const int windpower = get_local_windpower( weather.windspeed,
+                          overmap_buffer.ter( project_to<coords::omt>( location ) ), location,
+                          weather.winddirection, false );
     for( time_point t = start; t < end; t += tick_size ) {
         const time_duration diff = end - t;
+        // Live weather is re-rolled every 5 minutes (every weather type's default duration),
+        // so 5-minute samples (hourly past a week) follow it as well as 1-minute ones at a
+        // fifth of the cost.
         if( diff < 10_turns ) {
             tick_size = 1_turns;
         } else if( diff > 7_days ) {
             tick_size = 1_hours;
+        } else if( diff >= 5_minutes ) {
+            tick_size = 5_minutes;
         } else {
             tick_size = 1_minutes;
         }
 
         weather_type_id wtype = current_weather( location, t );
         proc_weather_sum( wtype, data, t, tick_size );
-        data.wind_amount += get_local_windpower( weather.windspeed,
-                            overmap_buffer.ter( project_to<coords::omt>( location ) ),
-                            location,
-                            weather.winddirection, false ) * to_turns<int>( tick_size );
+        data.wind_amount += windpower * to_turns<int>( tick_size );
     }
     return data;
 }
