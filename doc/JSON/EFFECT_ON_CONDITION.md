@@ -4588,6 +4588,7 @@ removes morale type, delivered by `morale_id`
 #### `u_consume_item_sum`, `npc_consume_item_sum`
 Consumes the items `_has_items_sum` counts (what you carry, items you may take within reach, and the cargo of nearby or owned vehicles), treating count as weight and stopping once the requirement is covered
 Effect does not validate do player actually has enough items to consume, use `_has_items_sum`
+Pseudo items (such as a nearby fire, or tools provided by furniture) can satisfy `_has_items_sum` but can't be consumed, so don't ask for them as payment
 See examples for more info
 
 | Syntax | Optionality | Value  | Info |
