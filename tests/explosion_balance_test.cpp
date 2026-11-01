@@ -196,8 +196,10 @@ static void check_vehicle_damage( const itype_id &explosive_id, const std::strin
     clear_map_and_put_player_underground();
     tripoint_bub_ms origin( 30, 30, 0 );
 
+    // Spawn with empty tanks: fuel-tank explosions are covered by
+    // veh-b02_heated_gasoline_tank_can_explode and are kept out of this grenade-damage budget.
     vehicle *target_vehicle = get_map().add_vehicle( vproto_id( vehicle_id ), origin, 0_degrees,
-                              -1, veh_spawn_status::UNDAMAGED );
+                              0, veh_spawn_status::UNDAMAGED );
     std::vector<int> before_hp = get_part_hp( target_vehicle );
 
     while( get_map().veh_at( origin ) ) {
