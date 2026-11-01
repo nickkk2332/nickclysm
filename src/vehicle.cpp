@@ -6730,7 +6730,10 @@ void vehicle::gain_moves( map &here )
     const bool pl_control = player_is_driving_this_veh( &here );
     if( is_moving() || is_falling ) {
         if( !loose_parts.empty() ) {
-            shed_loose_parts();
+            // Only UNMOUNT_ON_MOVE parts are shed here (cables are skipped), so the current
+            // position serves as the destination; the map must not be left null.
+            const tripoint_bub_ms cur_pos = pos_bub( here );
+            shed_loose_parts( trinary::NONE, &here, &cur_pos );
         }
         of_turn = 1 + of_turn_carry;
         const int vslowdown = slowdown( here, velocity );
@@ -7664,6 +7667,8 @@ void vehicle::shed_loose_parts( const trinary shed_cables, map *here, const trip
         debugmsg( "map and dst have to both be nullptr or both refer to a value" );
         return;
     }
+    // Both default to null; never dereference a null map when dropping the parts.
+    map &m = here != nullptr ? *here : get_map();
 
     // remove_part rebuilds the loose_parts vector, so iterate over a copy to preserve
     // power transfer lines that still have some slack to them
@@ -7681,32 +7686,32 @@ void vehicle::shed_loose_parts( const trinary shed_cables, map *here, const trip
                 // Skip cables if we're only calling shed_loose_parts to remove parts with UNMOUNT_ON_MOVE.
                 continue;
             }
-            tripoint_abs_ms vp_loose_dst = dst ? here->get_abs( *dst + vp_loose.precalc[1] ) : abs_part_pos(
-                                               vp_loose );
+            const tripoint_abs_ms vp_loose_dst = dst ? m.get_abs( *dst + vp_loose.precalc[1] ) :
+                                                 abs_part_pos( vp_loose );
             const int distance = rl_dist( vp_loose_dst, vp_loose.target.first );
             const int max_dist = vp_loose.get_base().max_link_length();
 
             if( distance > max_dist || shed_cables == trinary::ALL ) {
-                add_msg_if_player_sees( bub_part_pos( *here, vp_loose ), m_warning,
+                add_msg_if_player_sees( bub_part_pos( m, vp_loose ), m_warning,
                                         _( "The %1$s's %2$s was detached!" ), name, vp_loose.name( false ) );
                 remove_remote = true;
             } else {
                 // cable still has some slack to it, so update the remote part's target and continue.
-                const auto remote = get_remote_part( *here, vp_loose );
+                const auto remote = get_remote_part( m, vp_loose );
                 if( remote ) {
                     remote->part().target.first = vp_loose_dst;
-                    remote->part().target.second =  dst ? here->get_abs( *dst ) : pos_abs();
+                    remote->part().target.second =  dst ? m.get_abs( *dst ) : pos_abs();
                 }
                 continue;
             }
         }
-        const item drop = part_to_item( *here, vp_loose );
+        const item drop = part_to_item( m, vp_loose );
         if( !magic ) {
-            here->add_item_or_charges( bub_part_pos( *here, vp_loose ), drop );
+            m.add_item_or_charges( bub_part_pos( m, vp_loose ), drop );
         }
 
         if( remove_remote ) {
-            remove_remote_part( *here, vp_loose );
+            remove_remote_part( m, vp_loose );
         }
         remove_part( vp_loose );
     }
