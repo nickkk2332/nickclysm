@@ -1768,43 +1768,21 @@ bool Character::mutate_towards( const trait_id &mut, const mutation_category_id 
         }
     }
 
-    for( size_t i = 0; i < cancel.size(); i++ ) {
-        if( !cancel.empty() ) {
-            trait_id removed = cancel[i];
-            add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: attempting to remove canceled trait %s",
-                           removed.c_str() );
-            if( has_base_trait( removed ) ) {
-                add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: canceled trait %s is a base trait",
-                               cancel[i].c_str() );
-                // Need to pass this on, since we might end up gaining prerequisites that would not know about the removal otherwise
-                removed_base_trait = true;
-                my_traits.erase( removed );
-                add_msg_if_player( _( "Something integral to you has changed.  Good riddance." ) );
-            }
-            remove_mutation( removed );
-            cancel.erase( cancel.begin() + i );
-            i--;
-            //We intentionally don't cancel entire trees, we prune the current top
-        }
+    // Nothing is changed until every check below has passed, so a mutation that fails
+    // (threshold, bionic, vitamins) never costs the traits it would have replaced.
+    // A conflicting trait that can't be removed (not purifiable, or a starting trait that
+    // resisted its removal roll) blocks the mutation outright.
+    if( !canceltrait.empty() ) {
+        add_msg_debug( debugmode::DF_MUTATION,
+                       "mutate_towards: failed, conflicting trait %s can't be removed",
+                       canceltrait.front().c_str() );
+        return false;
     }
-
-    //If we still have anything to cancel, we aren't done pruning, but should stop for now
-    for( const trait_id &trait : cancel_recheck ) {
-        if( has_permanent_trait( trait ) ) {
-            add_msg_debug( debugmode::DF_MUTATION,
-                           "mutate_towards: bailed out on cancel_recheck because of trait %s still existing", trait.c_str() );
-            return true;
-        }
-    }
-
-    for( auto &m : canceltrait ) {
-        if( !purifiable( m ) ) {
-            add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: canceltrait %s is not purifiable",
-                           m.c_str() );
-            // We can't cancel unpurifiable mutations
-            return false;
-        }
-    }
+    // Starting traits the prune would remove make the mutation cost more.
+    const bool removes_base_trait = std::any_of( cancel.begin(), cancel.end(),
+    [this]( const trait_id & tr ) {
+        return has_base_trait( tr );
+    } );
 
     for( size_t i = 0; ( !c_has_prereq1 ) && i < prereqs1.size(); i++ ) {
         if( has_permanent_trait( prereqs1[i] ) ) {
@@ -1917,24 +1895,60 @@ bool Character::mutate_towards( const trait_id &mut, const mutation_category_id 
                                !use_vitamins ? vitamin_id::NULL_ID() :
                                category.vitamin;
 
+    float vitamin_cost = 0.0f;
     if( mut_vit != vitamin_id::NULL_ID() ) {
-        float vitamin_cost = mdata.vitamin_cost;
-        if( removed_base_trait ) {
+        vitamin_cost = mdata.vitamin_cost;
+        if( removed_base_trait || removes_base_trait ) {
             vitamin_cost *= category.base_removal_cost_mul;
-            add_msg_debug( debugmode::DF_MUTATION,
-                           "mutate_towards: removed starting trait, vitamin cost multiplier of category %s %.1f",
+            add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: removing starting trait, "
+                           "vitamin cost multiplier of category %s %.1f",
                            mut_cat.c_str(), category.base_removal_cost_mul );
         }
-        if( vitamin_get( mut_vit ) >= vitamin_cost ) {
-            add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: vitamin %s level %d, vitamin cost %.1f",
-                           mut_vit.c_str(), vitamin_get( mut_vit ), vitamin_cost );
-            vitamin_mod( mut_vit, -vitamin_cost );
-            add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: vitamin level %d", vitamin_get( mut_vit ) );
-        } else {
-            add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: vitamin %s level %d below vitamin cost %d",
+        if( vitamin_get( mut_vit ) < vitamin_cost ) {
+            add_msg_debug( debugmode::DF_MUTATION,
+                           "mutate_towards: vitamin %s level %d below vitamin cost %.1f",
                            mut_vit.c_str(), vitamin_get( mut_vit ), vitamin_cost );
             return false;
         }
+    }
+
+    // Every check passed: prune the conflicting traits.
+    for( size_t i = 0; i < cancel.size(); i++ ) {
+        if( !cancel.empty() ) {
+            trait_id removed = cancel[i];
+            add_msg_debug( debugmode::DF_MUTATION,
+                           "mutate_towards: attempting to remove canceled trait %s",
+                           removed.c_str() );
+            if( has_base_trait( removed ) ) {
+                add_msg_debug( debugmode::DF_MUTATION,
+                               "mutate_towards: canceled trait %s is a base trait",
+                               cancel[i].c_str() );
+                my_traits.erase( removed );
+                add_msg_if_player( _( "Something integral to you has changed.  Good riddance." ) );
+            }
+            remove_mutation( removed );
+            cancel.erase( cancel.begin() + i );
+            i--;
+            //We intentionally don't cancel entire trees, we prune the current top
+        }
+    }
+
+    //If we still have anything to cancel, we aren't done pruning, but should stop for now
+    for( const trait_id &trait : cancel_recheck ) {
+        if( has_permanent_trait( trait ) ) {
+            add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: bailed out on cancel_recheck "
+                           "because of trait %s still existing", trait.c_str() );
+            return true;
+        }
+    }
+
+    if( mut_vit != vitamin_id::NULL_ID() ) {
+        add_msg_debug( debugmode::DF_MUTATION,
+                       "mutate_towards: vitamin %s level %d, vitamin cost %.1f",
+                       mut_vit.c_str(), vitamin_get( mut_vit ), vitamin_cost );
+        vitamin_mod( mut_vit, -vitamin_cost );
+        add_msg_debug( debugmode::DF_MUTATION, "mutate_towards: vitamin level %d",
+                       vitamin_get( mut_vit ) );
     }
 
     // Check if one of the prerequisites that we have TURNS INTO this one
@@ -2061,35 +2075,6 @@ bool Character::mutate_towards( const trait_id &mut, const mutation_category_id 
         get_event_bus().send<event_type::evolves_mutation>( getID(), replace_mdata.id, mdata.id );
         get_event_bus().send<event_type::loses_mutation>( getID(), replace_mdata.id );
         unset_mutation( replacing2 );
-        mutation_replaced = true;
-    }
-    for( const auto &i : canceltrait ) {
-        const mutation_branch &cancel_mdata = i.obj();
-        const std::string lost_name = mutation_name( i );
-        if( mdata.mixed_effect || cancel_mdata.mixed_effect ) {
-            rating = m_mixed;
-        } else if( mdata.points < cancel_mdata.points ) {
-            rating = m_bad;
-        } else if( mdata.points > cancel_mdata.points ) {
-            rating = m_good;
-        } else {
-            rating = m_neutral;
-        }
-        // If this new mutation cancels a base trait, remove it and add the mutation at the same time
-        if( mdata.player_display ) {
-            add_msg_player_or_npc( rating,
-                                   _( "Your innate %1$s trait turns into %2$s!" ),
-                                   _( "<npcname>'s innate %1$s trait turns into %2$s!" ),
-                                   lost_name, gained_name );
-        } else {
-            add_msg_player_or_npc( rating,
-                                   _( "You lose your innate %1$s trait!" ),
-                                   _( "<npcname> loses their innate %1$s trait!" ),
-                                   lost_name );
-        }
-        get_event_bus().send<event_type::evolves_mutation>( getID(), cancel_mdata.id, mdata.id );
-        get_event_bus().send<event_type::loses_mutation>( getID(), cancel_mdata.id );
-        unset_mutation( i );
         mutation_replaced = true;
     }
     if( !mutation_replaced ) {
