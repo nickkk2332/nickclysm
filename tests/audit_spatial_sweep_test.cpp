@@ -1,9 +1,12 @@
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <vector>
 
+#include "avatar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "level_cache.h"
 #include "line.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -12,8 +15,13 @@
 #include "sounds.h"
 #include "trap.h"
 #include "type_id.h"
+#include "veh_appliance.h"
+#include "vehicle.h"
+#include "vpart_position.h"
 
 static const trap_str_id tr_dormant_corpse( "tr_dormant_corpse" );
+
+static const vpart_id vpart_ap_wall_light( "ap_wall_light" );
 
 // With more than ten sounds in a turn the extra ones merge into a cluster. A sound
 // no seed was within ~12 tiles of went into the first cluster, wherever it was,
@@ -90,4 +98,40 @@ TEST_CASE( "spat-b04_sound_triggers_every_dormant_corpse_in_earshot", "[audit][s
     // The moans of the woken corpses are left for the next turn, not dropped.
     CHECK_FALSE( sounds::get_monster_sounds().first.empty() );
     sounds::reset_sounds();
+}
+
+// A wall light shines from the tile in front of it, and appliances face east, so
+// a lamp on the bubble's east edge put its light source one column past the end
+// of the light buffers. The write landed in the next cache, outside_cache.
+TEST_CASE( "spat-b05_wall_light_on_the_bubble_edge_stays_in_the_light_buffers",
+           "[audit][lightmap]" )
+{
+    clear_map();
+    clear_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms lamp_pos( MAPSIZE_X - 1, 5, 0 );
+    REQUIRE( place_appliance( here, lamp_pos, vpart_ap_wall_light, get_avatar() ) );
+    const optional_vpart_position vp = here.veh_at( lamp_pos );
+    REQUIRE( vp );
+    vehicle &lamp = vp->vehicle();
+    for( int i = 0; i < lamp.part_count(); ++i ) {
+        lamp.part( i ).enabled = true;
+    }
+    REQUIRE( lamp.lights().size() == 1 );
+
+    here.set_lightmap_cache_dirty( 0 );
+    here.build_map_cache( 0 );
+
+    // Every byte of outside_cache must still be a bool's 0 or 1.
+    const level_cache &cache = here.get_cache_ref( 0 );
+    std::vector<unsigned char> bytes( sizeof( cache.outside_cache ) );
+    std::memcpy( bytes.data(), &cache.outside_cache, bytes.size() );
+    const auto garbage = std::count_if( bytes.begin(), bytes.end(), []( unsigned char b ) {
+        return b > 1;
+    } );
+    CHECK( garbage == 0 );
+
+    here.destroy_vehicle( &lamp );
+    here.set_lightmap_cache_dirty( 0 );
+    here.build_map_cache( 0 );
 }
