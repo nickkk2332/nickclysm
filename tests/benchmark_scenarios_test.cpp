@@ -17,15 +17,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "activity_actor_definitions.h"
 #include "avatar.h"
+#include "build_reqs.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "clzones.h"
+#include "construction.h"
 #include "coordinates.h"
 #include "crafting.h"
 #include "crafting_enums.h"
@@ -642,4 +646,49 @@ TEST_CASE( "bench_farm_scan", "[.][benchmark_scenario]" )
         CHECK( scans_with_work == 0 );
     } );
     zone_manager::get_manager().clear();
+}
+
+// TERR-P01: the build requirements recipe finalization works out for every mapgen-parameter
+// combination of every autocalc blueprint, thousands of calls per data load.
+TEST_CASE( "bench_blueprint_build_reqs", "[.][benchmark_scenario]" )
+{
+    // stand-in blueprints: every terrain and furniture some construction builds, in groups
+    // of ten
+    using changed_ids = std::pair<std::map<ter_id, int>, std::map<furn_id, int>>;
+    std::vector<changed_ids> blueprints( 1 );
+    int in_last = 0;
+    for( const construction &con : get_constructions() ) {
+        if( con.post_terrain.empty() ) {
+            continue;
+        }
+        if( con.post_is_furniture ) {
+            const furn_str_id furn( con.post_terrain );
+            if( !furn.is_valid() ) {
+                continue;
+            }
+            blueprints.back().second[furn.id()] += 1;
+        } else {
+            const ter_str_id ter( con.post_terrain );
+            if( !ter.is_valid() ) {
+                continue;
+            }
+            blueprints.back().first[ter.id()] += 1;
+        }
+        if( ++in_last == 10 ) {
+            blueprints.emplace_back();
+            in_last = 0;
+        }
+    }
+    REQUIRE( blueprints.size() > 20 );
+    run_scenario( "blueprint_build_reqs",
+                  "build reqs of each constructible terrain and furniture, 10 a call, 5 passes",
+    []() {}, [&blueprints]() {
+        int64_t total_time = 0;
+        for( int pass = 0; pass < 5; ++pass ) {
+            for( const changed_ids &blueprint : blueprints ) {
+                total_time += get_build_reqs_for_furn_ter_ids( blueprint ).time;
+            }
+        }
+        CHECK( total_time > 0 );
+    } );
 }
