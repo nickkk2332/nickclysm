@@ -1,5 +1,7 @@
 #include <array>
+#include <memory>
 #include <set>
+#include <string>
 #include <tuple>
 
 #include "cata_catch.h"
@@ -10,6 +12,8 @@
 #include "maptile_fwd.h"
 #include "point.h"
 #include "submap.h"
+#include "type_id.h"
+#include "vehicle.h"
 #include "weather.h"
 
 // Which of the 8 horizontal neighbours of pos get_wind_blockers() blocks
@@ -69,4 +73,31 @@ TEST_CASE( "map-b01_wind_blockers_face_the_upwind_side", "[audit][map][weather]"
     CHECK( wind_blocked_offsets( 0, pos ) == std::set<point_rel_ms> {
         point_rel_ms::north_west, point_rel_ms::north, point_rel_ms::north_east
     } );
+}
+
+// Merging a mapgen overlay submap must move its vehicles into the target submap. Before the
+// fix the target got a second unique_ptr to each vehicle and the overlay then deleted them,
+// leaving dangling pointers that were freed again when the target was destroyed.
+TEST_CASE( "map-b02_merge_submaps_moves_overlay_vehicles", "[audit][map][mapgen]" )
+{
+    std::unique_ptr<submap> target = std::make_unique<submap>();
+    target->ensure_nonuniform();
+    std::unique_ptr<submap> overlay = std::make_unique<submap>();
+    overlay->ensure_nonuniform();
+
+    std::unique_ptr<vehicle> veh = std::make_unique<vehicle>( vproto_id() );
+    veh->name = "merged overlay vehicle";
+    const vehicle *const veh_ptr = veh.get();
+    overlay->vehicles.push_back( std::move( veh ) );
+
+    target->merge_submaps( overlay.get(), true );
+
+    CHECK( overlay->vehicles.empty() );
+    REQUIRE( target->vehicles.size() == 1 );
+    REQUIRE( target->vehicles.front().get() == veh_ptr );
+    CHECK( target->vehicles.front()->name == "merged overlay vehicle" );
+
+    // Destroying both submaps must free the vehicle exactly once
+    overlay.reset();
+    target.reset();
 }
