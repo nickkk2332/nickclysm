@@ -32,6 +32,8 @@
 #include "map_helpers_tests.h"
 #include "monster.h"
 #include "options_helpers.h"
+#include "overmap.h"
+#include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "recipe.h"
@@ -339,4 +341,40 @@ TEST_CASE( "bench_crafting_recompute", "[.][benchmark_scenario]" )
         }
         CHECK( checksum != 0 );
     } );
+}
+
+// LOOP-P01: the weather catch-up a rain collector or solar vehicle runs when the player
+// comes back after being away.
+TEST_CASE( "bench_weather_catchup", "[.][benchmark_scenario]" )
+{
+    run_scenario( "weather_catchup", "sum_conditions over 3 days at 4 locations",
+    []() {
+        clear_avatar();
+        clear_map();
+        get_weather().weather_override = WEATHER_NULL;
+    }, []() {
+        const tripoint_abs_ms base = get_avatar().pos_abs();
+        const time_point start = calendar::turn_zero + 30_days;
+        double checksum = 0;
+        for( int i = 0; i < 4; ++i ) {
+            const weather_sum sum = sum_conditions( start, start + 3_days,
+                                                    base + tripoint_rel_ms( i * 24, 0, 0 ) );
+            checksum += sum.rain_amount + sum.sunlight + sum.wind_amount;
+        }
+        CHECK( checksum > 0 );
+    } );
+}
+
+// OMAP-P01, OMAP-P02: worldgen, mostly overmap special placement.
+TEST_CASE( "bench_overmap_generate", "[.][benchmark_scenario]" )
+{
+    const point_abs_om where( 7, 7 );
+    run_scenario( "overmap_generate", "generate one overmap from scratch",
+    []() {
+        overmap_buffer.clear();
+    }, [&where]() {
+        const overmap &om = overmap_buffer.get( where );
+        CHECK( om.pos() == where );
+    } );
+    overmap_buffer.clear();
 }
