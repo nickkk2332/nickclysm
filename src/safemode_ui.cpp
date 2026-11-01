@@ -779,7 +779,8 @@ bool safemode::save( const bool is_character_in )
 
     if( is_character ) {
         file = PATH_INFO::player_base_save_path() + ".sfm.json";
-        if( !file_exist( PATH_INFO::player_base_save_path() + ".sav" ) ||
+        // A world stores the character as either .sav or .sav.zzip, never both.
+        if( !file_exist( PATH_INFO::player_base_save_path() + ".sav" ) &&
             !file_exist( PATH_INFO::player_base_save_path() + ".sav" + zzip_suffix ) ) {
             return true; //Character not saved yet.
         }
