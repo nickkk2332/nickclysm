@@ -3253,6 +3253,8 @@ bool mattack::absorb_meat( monster *z )
     const float meat_absorption_factor = 0.01f;
     Character &player_character = get_player_character();
     map &here = get_map();
+    // Name of the first meat found that is too big to absorb
+    std::string oversized_meat;
     //Search surrounding tiles for meat
     for( const tripoint_bub_ms &p : here.points_in_radius( z->pos_bub(), 1 ) ) {
         map_stack items = here.i_at( p );
@@ -3266,10 +3268,13 @@ bool mattack::absorb_meat( monster *z )
                 const int ml_per_charge = ml_of_meat / total_charges;
                 //We have a max size of meat here to avoid absorbing whole corpses.
                 if( ml_per_charge > max_meat_absorbed * 1000 ) {
-                    add_msg( m_info, _( "The %1$s quivers hungrily in the direction of the %2$s." ), z->name(),
-                             current_item.tname() );
-                    return false;
+                    if( oversized_meat.empty() ) {
+                        oversized_meat = current_item.tname();
+                    }
+                    continue;
                 }
+                // Using the meat up can destroy the item, so get its name first
+                const std::string meat_name = current_item.tname();
                 if( current_item.count_by_charges() ) {
                     //Choose a random amount of meat charges to absorb
                     int meat_absorbed = std::min( max_meat_absorbed, rng( 1, total_charges ) );
@@ -3285,7 +3290,7 @@ bool mattack::absorb_meat( monster *z )
                 }
                 if( player_character.sees( here, *z ) ) {
                     add_msg( m_warning, _( "The %1$s absorbs the %2$s, growing larger." ), z->name(),
-                             current_item.tname() );
+                             meat_name );
                     add_msg_debug( debugmode::DF_MATTACK, "The %1$s now has %2$s out of %3$s hp", z->name(),
                                    z->get_hp(),
                                    z->get_hp_max() );
@@ -3293,6 +3298,11 @@ bool mattack::absorb_meat( monster *z )
                 return true;
             }
         }
+    }
+    if( !oversized_meat.empty() ) {
+        add_msg_if_player_sees( *z, m_info,
+                                _( "The %1$s quivers hungrily in the direction of the %2$s." ),
+                                z->name(), oversized_meat );
     }
     return false;
 }

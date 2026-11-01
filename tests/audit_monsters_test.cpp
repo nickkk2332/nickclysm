@@ -1,12 +1,17 @@
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "coordinates.h"
+#include "item.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "messages.h"
+#include "monattack.h"
 #include "monster.h"
 #include "npc.h"
 #include "options_helpers.h"
@@ -16,12 +21,27 @@
 
 static const faction_id faction_your_followers( "your_followers" );
 
+static const itype_id itype_meat( "meat" );
+
 // hates the "player" and "human" monster factions
 static const mfaction_str_id monfaction_attack_player_only( "attack_player_only" );
 // hates the "player" monster faction, ignores NPCs with PORTAL_STORM_IGNORE_NPC
 static const mfaction_str_id monfaction_nether_player_hate( "nether_player_hate" );
 
+static const mtype_id mon_zombie( "mon_zombie" );
+
 static const ter_str_id ter_t_wall( "t_wall" );
+
+static bool has_message_containing( const std::string &text )
+{
+    for( const std::pair<std::string, std::string> &msg :
+         Messages::recent_messages( Messages::size() ) ) {
+        if( msg.second.find( text ) != std::string::npos ) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // A monster whose faction hates an NPC's faction must not drop the player it can see for
 // an NPC it can't see, or for a hated NPC much farther away, or for one it ignores.
@@ -95,5 +115,60 @@ TEST_CASE( "monai-b02_hated_npc_needs_to_be_seen_and_near", "[audit][monster]" )
         zed.unset_dest();
         zed.plan();
         CHECK( zed.get_dest() == player_character.pos_abs() );
+    }
+}
+
+// absorb_meat must name the meat it absorbed (it used to read the name from the item it had
+// just destroyed), must keep looking past meat too big to absorb, and must only tell the
+// player about meat they can see being quivered at.
+TEST_CASE( "monai-b03_absorb_meat_names_meat_and_skips_oversized_meat", "[audit][monster]" )
+{
+    clear_map();
+    clear_avatar();
+    map &here = get_map();
+    Character &you = get_player_character();
+    const tripoint_bub_ms mon_pos( 50, 50, 0 );
+    // the tiles around the monster are searched starting north-west, ending south-east
+    const tripoint_bub_ms first_tile = mon_pos + tripoint( -1, -1, 0 );
+    const tripoint_bub_ms last_tile = mon_pos + tripoint( 1, 1, 0 );
+    you.setpos( here, mon_pos + point( 5, 0 ) );
+    // a zombie (62 L) absorbs meat of up to 3 L a piece
+    monster &zed = spawn_test_monster( "mon_zombie", mon_pos );
+
+    SECTION( "the message names the meat that was used up" ) {
+        here.add_item( last_tile, item( itype_meat ) );
+        set_time_to_day();
+        REQUIRE( you.sees( here, zed ) );
+
+        Messages::clear_messages();
+        CHECK( mattack::absorb_meat( &zed ) );
+        CHECK( here.i_at( last_tile ).empty() );
+        CHECK( has_message_containing( "absorbs the chunk of meat" ) );
+    }
+
+    SECTION( "meat too big to absorb doesn't stop the search" ) {
+        here.add_item( first_tile, item::make_corpse( mon_zombie ) );
+        here.add_item( last_tile, item( itype_meat ) );
+        set_time_to_day();
+        REQUIRE( you.sees( here, zed ) );
+
+        Messages::clear_messages();
+        CHECK( mattack::absorb_meat( &zed ) );
+        CHECK( here.i_at( first_tile ).size() == 1 );
+        CHECK( here.i_at( last_tile ).empty() );
+        CHECK( has_message_containing( "absorbs the chunk of meat" ) );
+        CHECK( !has_message_containing( "quivers hungrily" ) );
+    }
+
+    SECTION( "quivering at meat too big to absorb is only shown when seen" ) {
+        here.add_item( first_tile, item::make_corpse( mon_zombie ) );
+        player_wear_blindfold();
+        set_time_to_day();
+        REQUIRE( !you.sees( here, zed ) );
+
+        Messages::clear_messages();
+        CHECK( !mattack::absorb_meat( &zed ) );
+        CHECK( here.i_at( first_tile ).size() == 1 );
+        CHECK( !has_message_containing( "quivers hungrily" ) );
     }
 }
