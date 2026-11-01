@@ -24,6 +24,7 @@
 
 #include "action.h"
 #include "activity_actor_definitions.h"
+#include "activity_actor_eoc.h"
 #include "activity_handlers.h"
 #include "activity_item_handling.h"
 #include "advanced_inv.h"
@@ -15759,6 +15760,110 @@ deserialize_functions = {
     { ACT_WORKOUT_LIGHT, &workout_activity_actor::deserialize },
     { ACT_WORKOUT_MODERATE, &workout_activity_actor::deserialize },
 };
+
+bool has_actor( const activity_id &type )
+{
+    return deserialize_functions.find( type ) != deserialize_functions.end();
+}
+
+namespace
+{
+struct eoc_start_args {
+    const Character &who;
+    const std::string &other_name;
+    const std::optional<time_duration> &duration;
+};
+
+struct eoc_starter {
+    std::unique_ptr<activity_actor>( *build )( const eoc_start_args & );
+    bool takes_duration;
+};
+
+template<typename Actor>
+std::unique_ptr<activity_actor> build_plain( const eoc_start_args & )
+{
+    return std::make_unique<Actor>();
+}
+
+std::unique_ptr<activity_actor> build_wait( const eoc_start_args &args )
+{
+    if( args.duration ) {
+        return std::make_unique<wait_activity_actor>( *args.duration );
+    }
+    return std::make_unique<wait_activity_actor>();
+}
+
+std::unique_ptr<activity_actor> build_wait_npc( const eoc_start_args &args )
+{
+    if( args.other_name.empty() ) {
+        // Nobody to name in "%s finishes with you…": a plain wait.
+        return build_wait( args );
+    }
+    return std::make_unique<wait_npc_activity_actor>( args.duration.value_or(
+                time_duration::from_turns( calendar::INDEFINITELY_LONG ) ), args.other_name );
+}
+
+template<typename Game>
+std::unique_ptr<activity_actor> build_game( const eoc_start_args &args )
+{
+    // No game item: nothing runs out of batteries.
+    return std::make_unique<Game>( args.duration.value_or( 15_minutes ), item_location(),
+                                   std::vector<character_id> { args.who.getID() } );
+}
+
+// Activities with an actor that u_assign_activity can start. Please keep this sorted.
+const std::unordered_map<activity_id, eoc_starter> eoc_starters = {
+    { ACT_GAME, { &build_game<portable_game_activity_actor>, true } },
+    { ACT_GENERIC_GAME, { &build_game<tabletop_game_activity_actor>, true } },
+    { ACT_MEDITATE, { &build_plain<meditate_activity_actor>, false } },
+    { ACT_MOVE_LOOT, { &build_plain<zone_sort_activity_actor>, false } },
+    { ACT_MULTIPLE_BUTCHER, { &build_plain<multi_butchery_activity_actor>, false } },
+    { ACT_MULTIPLE_CHOP_PLANKS, { &build_plain<multi_chop_planks_activity_actor>, false } },
+    { ACT_MULTIPLE_CHOP_TREES, { &build_plain<multi_chop_trees_activity_actor>, false } },
+    { ACT_MULTIPLE_CONSTRUCTION, { &build_plain<multi_build_construction_activity_actor>, false } },
+    { ACT_MULTIPLE_CRAFT, { &build_plain<multi_craft_activity_actor>, false } },
+    { ACT_MULTIPLE_DIS, { &build_plain<multi_disassemble_activity_actor>, false } },
+    { ACT_MULTIPLE_FARM, { &build_plain<multi_farm_activity_actor>, false } },
+    { ACT_MULTIPLE_FISH, { &build_plain<multi_fish_activity_actor>, false } },
+    { ACT_MULTIPLE_MINE, { &build_plain<multi_mine_activity_actor>, false } },
+    { ACT_MULTIPLE_MOP, { &build_plain<multi_mop_activity_actor>, false } },
+    { ACT_MULTIPLE_READ, { &build_plain<multi_read_activity_actor>, false } },
+    { ACT_MULTIPLE_STUDY, { &build_plain<multi_study_activity_actor>, false } },
+    { ACT_TARGET_PRACTICE, { &build_plain<target_practice_activity_actor>, false } },
+    { ACT_UNLOAD_LOOT, { &build_plain<unload_loot_activity_actor>, false } },
+    {
+        ACT_VEHICLE_DECONSTRUCTION,
+        { &build_plain<multi_vehicle_deconstruct_activity_actor>, false }
+    },
+    { ACT_VEHICLE_REPAIR, { &build_plain<multi_vehicle_repair_activity_actor>, false } },
+    { ACT_WAIT, { &build_wait, true } },
+    { ACT_WAIT_FOLLOWERS, { &build_plain<wait_followers_activity_actor>, false } },
+    { ACT_WAIT_NPC, { &build_wait_npc, true } },
+    { ACT_WAIT_STAMINA, { &build_plain<wait_stamina_activity_actor>, false } },
+    { ACT_WAIT_WEATHER, { &build_plain<wait_weather_activity_actor>, false } },
+};
+} // namespace
+
+bool can_start_from_eoc( const activity_id &type )
+{
+    return eoc_starters.find( type ) != eoc_starters.end();
+}
+
+bool eoc_start_takes_duration( const activity_id &type )
+{
+    const auto it = eoc_starters.find( type );
+    return it != eoc_starters.end() && it->second.takes_duration;
+}
+
+std::unique_ptr<activity_actor> make_for_eoc( const activity_id &type, const Character &who,
+        const std::string &other_name, const std::optional<time_duration> &duration )
+{
+    const auto it = eoc_starters.find( type );
+    if( it == eoc_starters.end() ) {
+        return nullptr;
+    }
+    return it->second.build( { who, other_name, duration } );
+}
 } // namespace activity_actors
 
 void serialize( const cata::clone_ptr<activity_actor> &actor, JsonOut &jsout )

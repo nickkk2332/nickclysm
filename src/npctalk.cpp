@@ -25,6 +25,7 @@
 #include "achievement.h"
 #include "action.h"
 #include "activity_actor_definitions.h"
+#include "activity_actor_eoc.h"
 #include "auto_pickup.h"
 #include "avatar.h"
 #include "bionics.h"
@@ -164,7 +165,6 @@ class recipe_subset;
 
 static const activity_id ACT_AIM( "ACT_AIM" );
 static const activity_id ACT_SOCIALIZE( "ACT_SOCIALIZE" );
-static const activity_id ACT_TARGET_PRACTICE( "ACT_TARGET_PRACTICE" );
 static const activity_id ACT_TRAIN( "ACT_TRAIN" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
@@ -5776,18 +5776,52 @@ talk_effect_fun_t::func f_message( const JsonObject &jo, std::string_view member
 talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_view member,
         std::string_view, bool is_npc )
 {
+    const bool has_duration = jo.has_member( "duration" );
     duration_or_var dov = get_duration_or_var( jo, "duration", false );
     str_or_var act = get_str_or_var( jo.get_member( member ), member, true );
-    return [is_npc, dov, act]( dialogue & d ) {
-        Character *target = d.actor( is_npc )->get_character();
-        if( target ) {
-            const activity_id a = activity_id( act.evaluate( d ) );
-            if( a == ACT_TARGET_PRACTICE ) {
-                target->assign_activity( target_practice_activity_actor() );
-            } else {
-                target->assign_activity( a, to_moves<int>( dov.evaluate( d ) ) );
+    if( jo.has_string( member ) ) {
+        // A literal id can be checked now; one from a variable is checked when it runs.
+        const activity_id literal( jo.get_string( member ) );
+        if( activity_actors::has_actor( literal ) ) {
+            if( !activity_actors::can_start_from_eoc( literal ) ) {
+                jo.throw_error_at( member, string_format( "%s needs more than a duration to start, "
+                                   "so an EOC can't start it", literal.str() ) );
+            }
+            if( has_duration && !activity_actors::eoc_start_takes_duration( literal ) ) {
+                jo.throw_error_at( "duration", string_format( "%s runs until its own work is done; "
+                                   "it takes no duration", literal.str() ) );
             }
         }
+    }
+    return [is_npc, has_duration, dov, act, member = std::string( member )]( dialogue & d ) {
+        Character *target = d.actor( is_npc )->get_character();
+        if( !target ) {
+            return;
+        }
+        const activity_id a( act.evaluate( d ) );
+        if( !a.is_valid() ) {
+            debugmsg( "%s: unknown activity %s", member, a.str() );
+            return;
+        }
+        if( !activity_actors::has_actor( a ) ) {
+            target->assign_activity( a, to_moves<int>( dov.evaluate( d ) ) );
+            return;
+        }
+        // The other talker is who ACT_WAIT_NPC waits for.
+        const bool has_other = is_npc ? d.has_alpha : d.has_beta;
+        const std::string other_name = has_other ? d.actor( !is_npc )->get_name() : std::string();
+        std::optional<time_duration> duration;
+        if( has_duration ) {
+            duration = dov.evaluate( d );
+        }
+        const std::unique_ptr<activity_actor> actor = activity_actors::make_for_eoc( a, *target,
+                other_name, duration );
+        if( !actor ) {
+            debugmsg( "%s: %s needs more than a duration to start, so an EOC can't start it",
+                      member, a.str() );
+            return;
+        }
+        target->assign_activity( *actor );
     };
 }
 

@@ -43,6 +43,10 @@ some complex state that should be restored upon cancellation / interruption.
 `player_activity`. The newly constructed activity can then be assigned
 to the character and started using `Character::assign_activity`.
 
+6. If the actor needs nothing but an optional duration, add it to
+`eoc_starters` next to `deserialize_functions` so `u_assign_activity` can
+start it from an EOC.
+
 ## JSON Properties
 
 * verb: A descriptive term to describe the activity to be used in the

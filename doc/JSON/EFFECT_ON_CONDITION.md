@@ -4855,7 +4855,25 @@ NPC or character will start an activity
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_assign_activity" / "npc_assign_activity" | **mandatory** | string or [variable object](#variable-object), | id of activity to start |
-| "duration" | **mandatory** | int, duration or [variable object](#variable-object) | how long the activity would last |
+| "duration" | optional | int, duration or [variable object](#variable-object) | how long the activity would last; see below |
+
+Activities defined only in JSON (like `ACT_GENERIC_EOC` or a mod's own activity) last `duration`.
+
+Most vanilla activities are run by an activity actor in C++. The ones whose actor needs nothing
+but a duration can be started too:
+
+| Activity | `duration` |
+| --- | --- |
+| `ACT_WAIT` | how long to wait; without it, wait until interrupted |
+| `ACT_WAIT_NPC` | as `ACT_WAIT`; the finish message names the other talker (the beta talker for `u_assign_activity`, the alpha talker for `npc_assign_activity`). Without another talker this is a plain `ACT_WAIT` |
+| `ACT_GAME`, `ACT_GENERIC_GAME` | how long to play, 15 minutes by default; no game item is used |
+| `ACT_MEDITATE`, `ACT_TARGET_PRACTICE`, `ACT_WAIT_FOLLOWERS`, `ACT_WAIT_STAMINA`, `ACT_WAIT_WEATHER` | not allowed: they end on their own |
+| Zone jobs: `ACT_MOVE_LOOT`, `ACT_UNLOAD_LOOT`, `ACT_MULTIPLE_BUTCHER`, `ACT_MULTIPLE_CHOP_PLANKS`, `ACT_MULTIPLE_CHOP_TREES`, `ACT_MULTIPLE_CONSTRUCTION`, `ACT_MULTIPLE_CRAFT`, `ACT_MULTIPLE_DIS`, `ACT_MULTIPLE_FARM`, `ACT_MULTIPLE_FISH`, `ACT_MULTIPLE_MINE`, `ACT_MULTIPLE_MOP`, `ACT_MULTIPLE_READ`, `ACT_MULTIPLE_STUDY`, `ACT_VEHICLE_DECONSTRUCTION`, `ACT_VEHICLE_REPAIR` | not allowed: the job runs until its zones have no more work |
+
+Any other activity with an actor (for example `ACT_READ`, which needs a book) can't be started
+from an EOC. Naming one, or giving `duration` to an activity that takes none, is a load error.
+An activity id that comes from a variable is checked when the effect runs: an unknown id, or one
+that can't be started, is reported and nothing starts.
 
 ##### Valid talkers:
 
@@ -4868,6 +4886,16 @@ NPC or character will start an activity
 You assign activity `ACT_GAME` for 45 minutes
 ```jsonc
 { "u_assign_activity": "ACT_GAME", "duration": "45 minutes" }
+```
+
+You wait 30 minutes for the NPC you are talking to
+```jsonc
+{ "u_assign_activity": "ACT_WAIT_NPC", "duration": "30 minutes" }
+```
+
+The NPC you are talking to starts working on your farm zones
+```jsonc
+{ "npc_assign_activity": "ACT_MULTIPLE_FARM" }
 ```
 
 #### `u_cancel_activity`, `npc_cancel_activity`
