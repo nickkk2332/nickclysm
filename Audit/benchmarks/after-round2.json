@@ -1,0 +1,63 @@
+{
+  "label": "after-round2",
+  "commit": "d999247f",
+  "date": "2026-11-01T14:05:38",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpus": 4,
+    "system": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39"
+  },
+  "binary": "../../../tmp/fixprep/cata_test_r2",
+  "seed": 4242,
+  "scenarios": {
+    "crafting_recompute": {
+      "median_ms": 388.41999999999996,
+      "min_ms": 362.94,
+      "max_ms": 481.23,
+      "samples": 10,
+      "work": "time and craftability for 300 recipes, 5 times, in a dense base"
+    },
+    "crafting_recompute_scoped": {
+      "median_ms": 51.81,
+      "min_ms": 48.45,
+      "max_ms": 90.97,
+      "samples": 10,
+      "work": "time and craftability for 300 recipes, 5 times, in a dense base, menu cache scope"
+    },
+    "overmap_generate": {
+      "median_ms": 255.24,
+      "min_ms": 231.93,
+      "max_ms": 358.47,
+      "samples": 10,
+      "work": "generate one overmap from scratch"
+    },
+    "submap_travel_dense": {
+      "median_ms": 735.79,
+      "min_ms": 628.81,
+      "max_ms": 811.56,
+      "samples": 10,
+      "work": "20 submap crossings over generated terrain, dense base and full inventory"
+    },
+    "weather_catchup": {
+      "median_ms": 19.425,
+      "min_ms": 16.1,
+      "max_ms": 29.54,
+      "samples": 10,
+      "work": "sum_conditions over 3 days at 4 locations"
+    },
+    "zone_sort_queries": {
+      "median_ms": 5.1,
+      "min_ms": 4.95,
+      "max_ms": 8.55,
+      "samples": 10,
+      "work": "loot zone lookup for 2000 items, 9 category zones of 400 tiles each"
+    },
+    "data_load": {
+      "median_ms": 26316.5,
+      "min_ms": 25337,
+      "max_ms": 27296,
+      "samples": 2,
+      "work": "test binary start to \"Game data loaded\""
+    }
+  }
+}
