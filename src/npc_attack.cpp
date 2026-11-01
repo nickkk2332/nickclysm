@@ -19,9 +19,11 @@
 #include "flag.h"
 #include "item.h"
 #include "item_location.h"
+#include "itype.h"
 #include "magic.h"
 #include "magic_spell_effect_helpers.h"
 #include "map.h"
+#include "map_scale_constants.h"
 #include "mapdata.h"
 #include "messages.h"
 #include "npc.h"
@@ -80,6 +82,36 @@ static bool can_move_melee( const npc &source )
 {
     return can_move( source ) && source.rules.engagement != combat_engagement::FREE_FIRE &&
            source.rules.engagement != combat_engagement::NO_MOVE && !source.has_flag( json_flag_CANNOT_MOVE );
+}
+
+// gun_range() and gun_damage() only count loaded ammo. An empty wielded gun can
+// still be rated (npc_attack_gun::use() reloads it first), so rate it by its default ammo.
+static itype_id unloaded_gun_ammo_estimate( const item &gun )
+{
+    if( gun.has_ammo() ) {
+        return itype_id::NULL_ID();
+    }
+    const itype_id ammo = gun.ammo_default();
+    if( ammo.is_null() || !ammo->ammo ) {
+        return itype_id::NULL_ID();
+    }
+    return ammo;
+}
+
+static int gun_range_estimate( const item &gun )
+{
+    const itype_id ammo = unloaded_gun_ammo_estimate( gun );
+    if( ammo.is_null() || !gun.is_gun() ) {
+        return gun.gun_range();
+    }
+    // Same as item::gun_range( true ), with the default ammo in place of the loaded ammo.
+    int range = gun.type->gun->range + ammo->ammo->range;
+    float range_multiplier = ammo->ammo->range_multiplier;
+    for( const item *mod : gun.gunmods() ) {
+        range += mod->type->gunmod->range;
+        range_multiplier *= mod->type->gunmod->range_multiplier;
+    }
+    return clamp( static_cast<int>( range * range_multiplier ), 0, RANGE_HARD_CAP );
 }
 
 bool npc_attack_rating::operator>( const npc_attack_rating &rhs ) const
@@ -498,9 +530,19 @@ void npc_attack_gun::use( npc &source, const tripoint_bub_ms &location ) const
 
 bool npc_attack_gun::can_use( const npc &source ) const
 {
-    // can't attack with something you can't wield or which lacks ammo.
-    return ( source.is_wielding( *gunmode ) || source.can_wield( *gunmode ).success() )
-           && gun.has_ammo();
+    // can't attack with something you can't wield.
+    if( !source.is_wielding( *gunmode ) && !source.can_wield( *gunmode ).success() ) {
+        return false;
+    }
+    // ammo_sufficient() goes through shots_remaining(), so it also counts
+    // UPS/bionic power for energy_drain guns that have no magazine.
+    if( gun.ammo_sufficient( &source ) ) {
+        return true;
+    }
+    // An empty wielded gun is still usable: use() reloads it first.
+    // can_reload_current() is only non-const because select_ammo() is.
+    return source.is_wielding( gun ) && const_cast<npc &>( source ).can_reload_current() &&
+           source.enough_time_to_reload( gun );
 }
 
 int npc_attack_gun::base_time_penalty( const npc &source ) const
@@ -520,7 +562,9 @@ int npc_attack_gun::base_time_penalty( const npc &source ) const
 tripoint_range<tripoint_bub_ms> npc_attack_gun::targetable_points( const npc &source ) const
 {
     const item &weapon = *gunmode;
-    return get_map().points_in_radius( source.pos_bub(), weapon.gun_range() );
+    // use() only reloads the base gun, so an empty gunmod mode keeps its real (zero) range.
+    const int range = &weapon == &gun ? gun_range_estimate( weapon ) : weapon.gun_range();
+    return get_map().points_in_radius( source.pos_bub(), range );
 }
 
 npc_attack_rating npc_attack_gun::evaluate(
@@ -569,7 +613,13 @@ npc_attack_rating npc_attack_gun::evaluate_tripoint(
     const npc &source, const Creature *target, const tripoint_bub_ms &location ) const
 {
     const item &gun = *gunmode.target;
-    const int damage = gun.gun_damage().total_damage() * gunmode.qty;
+    // use() only reloads the base gun, not an underbarrel gunmod, so only the base gun
+    // is rated with its default ammo when empty.
+    const itype_id reload_ammo = &gun == &this->gun ? unloaded_gun_ammo_estimate( gun ) :
+                                 itype_id::NULL_ID();
+    const damage_instance gun_damage = reload_ammo.is_null() ? gun.gun_damage() :
+                                       gun.gun_damage( reload_ammo );
+    const int damage = gun_damage.total_damage() * gunmode.qty;
     double potential = damage;
 
     const Creature *critter = get_creature_tracker().creature_at( location );
