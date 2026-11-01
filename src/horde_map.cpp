@@ -223,9 +223,15 @@ void horde_map::signal_entities( const tripoint_abs_ms &origin, int volume )
     }
     for( std::unordered_map
          <tripoint_om_sm, std::unordered_map<tripoint_abs_ms, horde_entity>>::iterator idle_sm_iter =
-             idle_monster_map.begin(); idle_sm_iter != idle_monster_map.end(); ++idle_sm_iter ) {
+             idle_monster_map.begin(); idle_sm_iter != idle_monster_map.end(); ) {
         tripoint_abs_sm abs_sm = project_combine( location, idle_sm_iter->first );
         signal_sm( origin, sm_dest, abs_sm, volume, idle_sm_iter, false, migrating_hordes );
+        // The iterator relies on there being no empty submap maps, cull the ones we emptied.
+        if( idle_sm_iter->second.empty() ) {
+            idle_sm_iter = idle_monster_map.erase( idle_sm_iter );
+        } else {
+            ++idle_sm_iter;
+        }
     }
 
     while( !migrating_hordes.empty() ) {
@@ -318,11 +324,12 @@ void horde_map::iterator::insure_valid()
         } while( outer_map->empty() );
         outer_iter = outer_map->begin();
     }
-    // This is not obviously correct, but it is correct because
-    // horde_map::erase() insures that we cull empty maps, so if
-    // outer_map is not empty, outer_map->begin() is valid and so is
-    // outer_map->begin()->second.begin()
     inner_iter = outer_iter->second.begin();
+    // horde_map::erase() and extract() cull empty maps, but an empty map left behind by
+    // anything else must be skipped rather than dereferenced.
+    if( inner_iter == outer_iter->second.end() ) {
+        ++( *this );
+    }
 }
 
 horde_map::iterator &horde_map::iterator::operator++()

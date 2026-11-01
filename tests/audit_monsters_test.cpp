@@ -16,6 +16,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "messages.h"
 #include "monattack.h"
 #include "mongroup.h"
@@ -281,4 +282,55 @@ TEST_CASE( "mondt-b03_horde_entities_moving_to_the_same_tile_both_survive",
 
     CHECK( overmap_buffer.entity_at( meeting_pos ) != nullptr );
     CHECK( count_horde_entities( a_pos, 3 ) == 2 );
+}
+
+static int count_all_horde_entities( horde_map &hordes )
+{
+    int count = 0;
+    for( [[maybe_unused]] std::pair<const tripoint_abs_ms, horde_entity> &entity : hordes ) {
+        ++count;
+    }
+    return count;
+}
+
+// signal_entities() moved idle entities out of their submap map without removing the map once
+// it was empty, and the horde_map iterator dereferenced such an empty map as if it held an
+// entity (e.g. while saving an overmap with no active entities).
+TEST_CASE( "mondt-b04_horde_map_has_and_skips_no_empty_submap_maps", "[audit][hordes]" )
+{
+    horde_map hordes;
+    hordes.set_location( point_abs_om( 42, 42 ) );
+    const tripoint_om_ms local( 30, 30, 0 );
+    const tripoint_om_sm local_sm = project_to<coords::sm>( local );
+    const tripoint_abs_ms entity_pos = project_combine( hordes.get_location(), local );
+    // an idle zombie
+    hordes.spawn_entity( entity_pos, mon_zombie );
+    REQUIRE( hordes.entity_group_at( local_sm, horde_map_flavors::idle ).size() == 1 );
+    REQUIRE( hordes.entity_group_at( local_sm, horde_map_flavors::active ).empty() );
+
+    SECTION( "a signal that wakes up every idle entity of a submap removes its idle map" ) {
+        hordes.signal_entities( entity_pos + point( 5, 0 ), 10 );
+        const horde_entity *entity = hordes.entity_at( local );
+        REQUIRE( entity != nullptr );
+        REQUIRE( entity->is_active() );
+        CHECK( hordes.entity_group_at( local_sm, horde_map_flavors::idle ).empty() );
+
+        // Without active entities, iteration goes straight to the idle maps.
+        hordes.extract( hordes.find( local ) );
+        REQUIRE( hordes.entity_at( local ) == nullptr );
+        REQUIRE( hordes.begin() == hordes.end() );
+        CHECK( count_all_horde_entities( hordes ) == 0 );
+    }
+
+    SECTION( "iteration skips an empty submap map" ) {
+        hordes.entity_group_at( local_sm, horde_map_flavors::idle ).front()->clear();
+        REQUIRE( hordes.begin() == hordes.end() );
+        CHECK( count_all_horde_entities( hordes ) == 0 );
+
+        // and goes on to the entities after it
+        const tripoint_om_ms other_local = local + point( 3 * SEEX, 0 );
+        hordes.spawn_entity( project_combine( hordes.get_location(), other_local ), mon_zombie );
+        REQUIRE( hordes.entity_at( other_local ) != nullptr );
+        CHECK( count_all_horde_entities( hordes ) == 1 );
+    }
 }
