@@ -405,6 +405,14 @@ void vehicle::build_electronics_menu( map &here, veh_menu &menu )
 void vehicle::control_engines( map &here )
 {
     bool dirty = false;
+    const bool engines_were_on = engine_on;
+    // Engines enabled before the menu; one enabled in it must still pass start_engine().
+    std::vector<int> enabled_before;
+    for( const int p : engines ) {
+        if( parts[p].enabled ) {
+            enabled_before.push_back( p );
+        }
+    }
 
     veh_menu menu( this, _( "Toggle which?" ) );
     do {
@@ -436,11 +444,23 @@ void vehicle::control_engines( map &here )
         return;
     }
 
-    bool engines_were_on = engine_on;
-    for( const int p : engines ) {
-        const vehicle_part &vp = parts[p];
-        engine_on |= vp.enabled;
+    // Changing the configuration never starts a stopped vehicle: that goes through
+    // start_engines() and its start checks. On a running vehicle, an engine that was just
+    // enabled is started individually and stays disabled if it fails to start.
+    if( engines_were_on ) {
+        for( const int p : engines ) {
+            vehicle_part &vp = parts[p];
+            const bool newly_enabled = std::find( enabled_before.begin(), enabled_before.end(),
+                                                  p ) == enabled_before.end();
+            if( vp.enabled && newly_enabled && !start_engine( here, vp ) ) {
+                vp.enabled = false;
+            }
+        }
     }
+    const bool any_engine_enabled = std::any_of( engines.begin(), engines.end(),
+    [this]( const int p ) {
+        return parts[p].enabled;
+    } );
 
     // if current velocity greater than new configuration safe speed
     // drop down cruise velocity.
@@ -449,15 +469,13 @@ void vehicle::control_engines( map &here )
         cruise_velocity = safe_vel;
     }
 
-    if( engines_were_on && !engine_on ) {
+    if( engines_were_on && !any_engine_enabled ) {
         add_msg( _( "You turn off the %s's engines to change their configurations." ), name );
+        stop_engines( here );
     } else if( !get_player_character().controlling_vehicle ) {
         add_msg( _( "You change the %s's engine configuration." ), name );
     }
-
-    if( engine_on ) {
-        start_engines( here );
-    }
+    refresh();
 }
 
 void vehicle::smash_security_system( map &here )
