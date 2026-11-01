@@ -172,3 +172,28 @@ TEST_CASE( "spat-b01_pathfinding_stair_lookup_has_no_side_effects", "[audit][pat
         CHECK_FALSE( here.can_pass( stairs_top, far_bottom, settings ) );
     }
 }
+
+// A 3D line must reach its end point and move one tile per step. When the minor horizontal
+// axis tied with z, the tie branches looped on the shorter axis and stopped after
+// min( |dx|, |dy| ) steps, so map::sees() and projectiles skipped most of the tiles.
+TEST_CASE( "spat-b02_3d_bresenham_reaches_target_when_z_ties_minor_axis", "[audit][line]" )
+{
+    const std::vector<tripoint> targets = {
+        { 1, 5, 1 }, { 5, 1, 1 }, { 2, 6, 2 }, { 6, 2, 2 },
+        { -1, 5, -1 }, { 5, -1, -1 }, { -2, -6, 2 }, { -6, -2, -2 },
+        { 3, 4, 3 }, { 4, 3, 3 }
+    };
+    const tripoint origin( 0, 0, 0 );
+    for( const tripoint &target : targets ) {
+        CAPTURE( target );
+        const std::vector<tripoint> line = line_to( origin, target );
+        REQUIRE( !line.empty() );
+        CHECK( line.back() == target );
+        CHECK( static_cast<int>( line.size() ) == square_dist( origin, target ) );
+        tripoint prev = origin;
+        for( const tripoint &p : line ) {
+            CHECK( square_dist( prev, p ) == 1 );
+            prev = p;
+        }
+    }
+}

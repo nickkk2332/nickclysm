@@ -155,7 +155,8 @@ void bresenham( const tripoint_bub_ms &loc1, const tripoint_bub_ms &loc2, int t,
                     break;
                 }
             }
-        } else if( a.x == a.z ) {
+        } else if( a.x == a.z && a.x > a.y ) {
+            // x and z tie as the major axes; if y is longer, the y-major branch below handles it
             while( cur.x() != loc2.x() ) {
                 if( t > 0 ) {
                     cur.y() += s.y;
@@ -168,7 +169,8 @@ void bresenham( const tripoint_bub_ms &loc1, const tripoint_bub_ms &loc2, int t,
                     break;
                 }
             }
-        } else if( a.y == a.z ) {
+        } else if( a.y == a.z && a.y > a.x ) {
+            // y and z tie as the major axes; if x is longer, the x-major branch below handles it
             while( cur.y() != loc2.y() ) {
                 if( t > 0 ) {
                     cur.x() += s.x;
