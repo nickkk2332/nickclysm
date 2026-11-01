@@ -111,6 +111,7 @@
 #include "overmapbuffer.h"
 #include "pickup.h"
 #include "pimpl.h"
+#include "planting_memo.h"
 #include "player_activity.h"
 #include "pocket_type.h"
 #include "point.h"
@@ -5489,6 +5490,9 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     bool &missing_items_reported = use_cache ? cache.missing_items_reported :
                                    uncached_missing_items_reported;
 
+    // a farm scan asks every tile whether it is warm enough to plant; the answer is the
+    // same across an overmap tile within this turn
+    const scoped_planting_memo planting_memo;
     for( const tripoint_abs_ms &src : src_sorted ) {
         const tripoint_bub_ms &src_bub = here.get_bub( src );
         if( !check_only ) {

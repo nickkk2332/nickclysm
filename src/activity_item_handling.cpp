@@ -2455,8 +2455,17 @@ activity_reason_info multi_farm_activity_actor::multi_activity_can_do( Character
     for( const zone_data &zone : zones ) {
         const plot_options &options = dynamic_cast<const plot_options &>( zone.get_options() );
         const itype_id seed = options.get_seed();
-        ret_val<void>can_plant = !seed.is_empty() ?
-                                 warm_enough_to_plant( src_loc, seed ) : ret_val<void>::make_success();
+        // Only the planting branch and its failure message read this, and it samples the
+        // weather hundreds of times, so tiles to clear, harvest, fertilize or till skip it.
+        std::optional<ret_val<void>> can_plant_result;
+        const auto can_plant = [&]() -> const ret_val<void>& {
+            if( !can_plant_result )
+            {
+                can_plant_result = !seed.is_empty() ? warm_enough_to_plant( src_loc, seed ) :
+                ret_val<void>::make_success();
+            }
+            return *can_plant_result;
+        };
 
         if( here.has_flag_furn( ter_furn_flag::TFLAG_GROWTH_OVERGROWN, src_loc ) ) {
             return activity_reason_info::ok( do_activity_reason::NEEDS_CLEARING );
@@ -2500,7 +2509,7 @@ activity_reason_info multi_farm_activity_actor::multi_activity_can_do( Character
             // If its a farm zone with no specified seed, and we've checked for tilling and harvesting.
             // then it means no further work can be done here
         } else if( !seed.is_empty() &&
-                   can_plant.success() &&
+                   can_plant().success() &&
                    here.has_flag_ter_or_furn( seed->seed->required_terrain_flag, src_loc ) ) {
             if( here.has_items( src_loc ) ) {
                 return activity_reason_info::fail( do_activity_reason::BLOCKING_TILE );
@@ -2518,8 +2527,8 @@ activity_reason_info multi_farm_activity_actor::multi_activity_can_do( Character
 
         } else {
             // Extra, specific messaging returned from warm_enough_to_plant()
-            if( !can_plant.success() ) {
-                you.add_msg_if_player( can_plant.c_str() );
+            if( !can_plant().success() ) {
+                you.add_msg_if_player( can_plant().c_str() );
             }
             // can't plant, till or harvest
             return activity_reason_info::fail( do_activity_reason::ALREADY_DONE );
