@@ -18,6 +18,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "filesystem.h"
+#include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "memorial_logger.h"
 #include "monster.h"
@@ -98,6 +99,9 @@ TEST_CASE( "memorials", "[memorial]" )
     memorial_logger &m = get_memorial();
     m.clear();
     clear_avatar();
+    // A monster is spawned next to the avatar below; don't let creatures left by earlier
+    // tests occupy that tile.
+    clear_map();
     get_stats().clear();
     get_achievements().clear();
 

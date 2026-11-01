@@ -4,6 +4,7 @@
 #include "cata_catch.h"
 #include "item.h"
 #include "item_location.h"
+#include "player_helpers.h"
 #include "pocket_type.h"
 #include "ret_val.h"
 #include "type_id.h"
@@ -13,6 +14,8 @@ static const itype_id itype_m1911( "m1911" );
 
 TEST_CASE( "available_reloadables", "[ammo][pockets]" )
 {
+    // Start from an empty inventory, so reloadable items left by earlier tests don't count.
+    clear_avatar();
     avatar &guy = get_avatar();
     item_location m1911 = guy.i_add( item( itype_m1911 ) );
     auto reloadables = guy.find_reloadables();
