@@ -303,13 +303,22 @@ bool string_id<spell_type>::is_valid() const
     return spell_factory.is_valid( *this );
 }
 
+// The spellbook preview (draw_spellbook_info) calls these two every redraw. They evaluate against
+// the player and set spell levels directly: building temporary avatars and leveling through
+// gain_exp() sent player_levels_spell for each level, and that event's learn_spells handler
+// taught the real player follow-up spells just for looking at a scroll.
 std::pair<int, int> spell_type::damage_at_max_level() const
 {
-    avatar guy;
+    const Character &guy = get_player_character();
     const_dialogue d( get_const_talker_for( guy ), nullptr );
 
     spell cur_spell( id );
-    cur_spell.gain_levels( guy, 84 ); // 84 is just max possible spell level
+    // the levels gain_levels( guy, 84 ) reached, without gain_exp()'s level-up events
+    // 84 is just max possible spell level
+    const double max_lvl = max_level.evaluate( d );
+    for( int gained = 0; gained < 84 && cur_spell.get_level() < max_lvl; gained++ ) {
+        cur_spell.set_exp( cur_spell.exp_for_level( cur_spell.get_level() + 1 ) );
+    }
 
     const int min = std::min( static_cast<float>( cur_spell.min_leveled_damage( guy ) ),
                               static_cast<float>( max_damage.evaluate( d ) ) ) * cur_spell.get_eoc_damage_multiplier();
@@ -322,30 +331,25 @@ std::pair<int, int> spell_type::damage_at_max_level() const
 
 std::pair<float, float> spell_type::calculate_damage_increment() const
 {
-    avatar min_guy;
-    const_dialogue min_d( get_const_talker_for( min_guy ), nullptr );
-
-    avatar max_guy;
-    const_dialogue max_d( get_const_talker_for( max_guy ), nullptr );
+    const Character &guy = get_player_character();
+    const_dialogue d( get_const_talker_for( guy ), nullptr );
 
     spell spell_0( id );
     spell spell_1( id );
-    spell_1.gain_level( max_guy );
+    // level 1, as gain_level() reached, without its level-up event
+    spell_1.set_exp( spell_1.exp_for_level( 1 ) );
 
-    const float spell_0_leveled = min_damage.evaluate( min_d ) + spell_0.get_effective_level() *
-                                  damage_increment.evaluate( min_d );
-    const float spell_1_leveled = min_damage.evaluate( max_d ) + spell_1.get_effective_level() *
-                                  damage_increment.evaluate( max_d );
+    const double min_dmg = min_damage.evaluate( d );
+    const double dmg_inc = damage_increment.evaluate( d );
+    const float max_dmg = max_damage.evaluate( d );
+    const float spell_0_leveled = min_dmg + spell_0.get_effective_level() * dmg_inc;
+    const float spell_1_leveled = min_dmg + spell_1.get_effective_level() * dmg_inc;
 
-    const float min_0 = std::min( static_cast<float>( spell_0_leveled ),
-                                  static_cast<float>( max_damage.evaluate( min_d ) ) ) * spell_0.get_eoc_damage_multiplier();
-    const float min_1 = std::min( static_cast<float>( spell_1_leveled ),
-                                  static_cast<float>( max_damage.evaluate( max_d ) ) ) * spell_1.get_eoc_damage_multiplier();
+    const float min_0 = std::min( spell_0_leveled, max_dmg ) * spell_0.get_eoc_damage_multiplier();
+    const float min_1 = std::min( spell_1_leveled, max_dmg ) * spell_1.get_eoc_damage_multiplier();
 
-    const float max_0 = std::max( static_cast<float>( spell_0_leveled ),
-                                  static_cast<float>( max_damage.evaluate( min_d ) ) ) * spell_0.get_eoc_damage_multiplier();
-    const float max_1 = std::max( static_cast<float>( spell_1_leveled ),
-                                  static_cast<float>( max_damage.evaluate( max_d ) ) ) * spell_1.get_eoc_damage_multiplier();
+    const float max_0 = std::max( spell_0_leveled, max_dmg ) * spell_0.get_eoc_damage_multiplier();
+    const float max_1 = std::max( spell_1_leveled, max_dmg ) * spell_1.get_eoc_damage_multiplier();
 
     return std::make_pair( min_1 - min_0, max_1 - max_0 );
 }
