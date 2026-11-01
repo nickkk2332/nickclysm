@@ -56,8 +56,10 @@ TEST_CASE( "item-b02_rle_keeps_saved_state_and_uids", "[audit][item]" )
 
     const std::string saved = save_pile( pile );
     CAPTURE( saved );
-    // The two leading unowned hammers are still compressed into one run.
-    CHECK( saved.find( ",2,[" ) != std::string::npos );
+    // The two leading unowned hammers are still compressed into one two-element run, which
+    // older builds can read; the other hammer's uid travels inside the item as "rle_uids".
+    CHECK( saved.find( "\"rle_uids\":[" + std::to_string( uids[0] ) + "]" ) != std::string::npos );
+    CHECK( saved.find( "},2]" ) != std::string::npos );
 
     const cata::colony<item> loaded = load_pile( saved );
     REQUIRE( loaded.size() == 4 );

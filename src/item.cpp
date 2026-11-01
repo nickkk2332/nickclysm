@@ -606,9 +606,10 @@ bool item::combine( const item &rhs )
     return true;
 }
 
-// The item's saved JSON without its uid (the uid is saved separately for run-length
-// encoded runs). item::io writes "uid" right after "typeid", so the first "uid" member
-// is always the item's own and never one inside item_vars.
+// The item's saved JSON without any uids (its own, and those of nested items such as
+// components). Only the run's own uids are kept, separately; nested items get fresh uids
+// when the run is loaded, as before. A uid is always saved as a bare number, so a "uid"
+// key with a string value (e.g. in item_vars) is left alone.
 static std::string rle_identity( const item &it )
 {
     std::ostringstream os;
@@ -616,12 +617,17 @@ static std::string rle_identity( const item &it )
     it.serialize( jsout );
     std::string saved = os.str();
     const std::string uid_key = "\"uid\":";
-    const size_t pos = saved.find( uid_key );
-    if( pos != std::string::npos ) {
+    size_t pos = 0;
+    while( ( pos = saved.find( uid_key, pos ) ) != std::string::npos ) {
         size_t end = pos + uid_key.size();
         while( end < saved.size() && ( saved[end] == '-' ||
                                        ( saved[end] >= '0' && saved[end] <= '9' ) ) ) {
             ++end;
+        }
+        if( end == pos + uid_key.size() ) {
+            // Not a number: not a uid.
+            pos = end;
+            continue;
         }
         saved.erase( pos, end - pos );
     }

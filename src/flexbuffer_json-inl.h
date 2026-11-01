@@ -506,8 +506,7 @@ bool JsonValue::read( cata::colony<T> &v, bool throw_on_error ) const
             T element;
             if( jv.test_array() ) {
                 JsonArray rle_element = jv;
-                // [item, count] in older saves, [item, count, [uids of the other items]] since
-                if( rle_element.size() != 2 && rle_element.size() != 3 ) {
+                if( rle_element.size() != 2 ) {
                     rle_element.error_or_false( throw_on_error, "Not enough values for RLE" );
                     continue;
                 }
@@ -515,10 +514,15 @@ bool JsonValue::read( cata::colony<T> &v, bool throw_on_error ) const
                 if( rle_element[ 0 ].read( element, throw_on_error ) &&
                     rle_element[ 1 ].read( run_l, throw_on_error )
                   ) { // all is good
+                    // The uids of the other items in the run (see item::serialize_rle_run).
+                    // Older saves don't have them; bad entries are skipped.
                     std::vector<int64_t> uids;
-                    if( rle_element.size() == 3 ) {
-                        for( JsonValue uid : rle_element.get_array( 2 ) ) {
-                            uids.push_back( uid.get_int64() );
+                    if( rle_element[ 0 ].test_object() ) {
+                        const JsonObject run_item = rle_element[ 0 ].get_object();
+                        if( run_item.has_array( "rle_uids" ) ) {
+                            for( const JsonValue uid : run_item.get_array( "rle_uids" ) ) {
+                                uids.push_back( uid.test_int() ? uid.get_int64() : 0 );
+                            }
                         }
                     }
                     // first insert (run_l-1) elements

@@ -917,10 +917,11 @@ class JsonOut
             start_array();
             // simple RLE implementation:
             // run_l is the length of the "running sequence" of identical items, ending with the current item.
-            // when sequence ends, it's written as either the single item object (run_l==1) or as a three-element
-            // array (run_l > 1): the last item of the sequence, the size of the sequence, and the uids of the
-            // other items in the sequence in order, so that references to those items survive saving and loading.
-            // Older saves use a two-element array without the uids.
+            // when sequence ends, it's written as either the single item object (run_l==1) or as a two-element
+            // array (run_l > 1), where the first element is the item and second element is the size of the sequence.
+            // The item object of a sequence also lists the uids of the other items in the sequence, in order, as
+            // "rle_uids", so that references to those items survive saving and loading. Builds that don't know
+            // "rle_uids" ignore it and give the copies fresh uids.
             int run_l = 1;
             auto run_start = container.begin();
             for( auto it = container.begin(); it != container.end(); ++it ) {
@@ -929,14 +930,13 @@ class JsonOut
                     if( run_l == 1 ) {
                         write( *it );
                     } else {
-                        start_array();
-                        write( *it );
-                        write( run_l );
-                        start_array();
+                        std::vector<int64_t> other_uids;
                         for( auto in_run = run_start; in_run != it; ++in_run ) {
-                            write( in_run->uid().get_value() );
+                            other_uids.push_back( in_run->uid().get_value() );
                         }
-                        end_array();
+                        start_array();
+                        it->serialize_rle_run( *this, other_uids );
+                        write( run_l );
                         end_array();
                     }
                     run_l = 1;

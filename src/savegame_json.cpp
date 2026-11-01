@@ -3635,10 +3635,23 @@ void item::serialize( JsonOut &json ) const
     // another function
     // CATA_DO_NOT_CHECK_SERIALIZE
 
+    serialize_rle_run( json, {} );
+}
+
+void item::serialize_rle_run( JsonOut &json, const std::vector<int64_t> &other_uids ) const
+{
+    // Skip the serialization check because this is forwarding serialization to
+    // another function
+    // CATA_DO_NOT_CHECK_SERIALIZE
+
     io::JsonObjectOutputArchive archive( json );
     const_cast<item *>( this )->io( archive );
     if( !contents.empty_with_no_mods() || contents.has_additional_pockets() ) {
         json.member( "contents", contents );
+    }
+    // Read back by the colony<item> reader, which gives these uids to the copies it makes.
+    if( !other_uids.empty() ) {
+        json.member( "rle_uids", other_uids );
     }
 }
 
