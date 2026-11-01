@@ -46,3 +46,7 @@ msgstr "FAULTS DIRT OVERHEAT FAVORITE_PRE DURABILITY WHEEL_DIAMETER WEAPON_MODS 
 msgctxt "burnt adjective"
 msgid "burnt "
 msgstr " (burnt)"
+
+#. ~ Location of gun mod
+msgid "mechanism"
+msgstr "механизм"

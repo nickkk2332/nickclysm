@@ -1,16 +1,30 @@
+#include <string>
+
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "coordinates.h"
 #include "enums.h"
 #include "game_constants.h"
 #include "item.h"
+#include "itype.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "pocket_type.h"
+#include "ret_val.h"
 #include "type_id.h"
 #include "units.h"
 
+#if defined(LOCALIZE)
+#include "translation_manager.h"
+#include "translations.h"
+#endif
+
 static const flag_id json_flag_FROZEN( "FROZEN" );
 
+static const itype_id itype_glock_19( "glock_19" );
+static const itype_id itype_glockmag( "glockmag" );
+static const itype_id itype_glocksear( "glocksear" );
 static const itype_id itype_jerky( "jerky" );
 
 // ITEM-B01: process_temperature_rot replays time spent outside the reality bubble in
@@ -52,3 +66,43 @@ TEST_CASE( "item-b01_frozen_food_left_out_of_bubble_rots", "[audit][item][rot]" 
     CHECK( to_turns<double>( frozen.get_rot() ) >= 0.9 * to_turns<double>( thawed.get_rot() ) );
     CHECK_FALSE( frozen.has_own_flag( json_flag_FROZEN ) );
 }
+
+#if defined(LOCALIZE)
+// IINF-B02: is_gunmod_compatible compared the *translated* slot name with the English
+// strings "magazine", "mechanism", "loading port", "bore" and "stock accessory".  In any
+// translated game the "must be unloaded" guard never matched, so a mod that rebuilds the
+// magazine well could be installed on a loaded gun and delete the magazine and its ammo.
+TEST_CASE( "iinf-b02_gunmod_unload_check_ignores_language", "[audit][item][gunmod]" )
+{
+    const std::string must_unload = "must be unloaded before installing this mod";
+
+    item gun( itype_glock_19 );
+    item sear( itype_glocksear );
+    REQUIRE( sear.type->gunmod->location.str() == "mechanism" );
+    REQUIRE( gun.is_gunmod_compatible( sear ).success() );
+
+    item mag( itype_glockmag );
+    mag.ammo_set( mag.ammo_default() );
+    REQUIRE( gun.put_in( mag, pocket_type::MAGAZINE_WELL ).success() );
+    REQUIRE( gun.magazine_current() != nullptr );
+
+    // English: the loaded gun refuses the mechanism mod.
+    ret_val<void> english = gun.is_gunmod_compatible( sear );
+    REQUIRE_FALSE( english.success() );
+    REQUIRE( english.str() == must_unload );
+
+    on_out_of_scope reset_language( []() {
+        set_language( "en" );
+    } );
+    set_language( "ru" );
+    TranslationManager::GetInstance().LoadDocuments( {
+        "./data/mods/TEST_DATA/lang/mo/ru/LC_MESSAGES/TEST_DATA.mo"
+    } );
+    // TEST_DATA translates the "mechanism" slot name, so name() no longer returns the id.
+    REQUIRE( sear.type->gunmod->location.name() != "mechanism" );
+
+    ret_val<void> translated = gun.is_gunmod_compatible( sear );
+    CHECK_FALSE( translated.success() );
+    CHECK( translated.str() == must_unload );
+}
+#endif
