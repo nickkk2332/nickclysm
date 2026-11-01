@@ -853,8 +853,12 @@ bool Character::can_install_cbm_on_bp( const std::vector<bodypart_id> &bps ) con
 void Character::activate_mutation( const trait_id &mut )
 {
     activate_cached_mutation( mut );
-    if( my_mutations.count( mut ) ) {
-        my_mutations[mut] = cached_mutations[mut];
+    // The activation may have removed the mutation (e.g. an activation EOC running
+    // u_lose_trait on it), so don't recreate a cache entry for it here.
+    const auto cached = cached_mutations.find( mut );
+    const auto owned = my_mutations.find( mut );
+    if( cached != cached_mutations.end() && owned != my_mutations.end() ) {
+        owned->second = cached->second;
     }
 }
 
@@ -863,7 +867,16 @@ void Character::activate_cached_mutation( const trait_id &mut )
     map &here = get_map();
 
     const mutation_branch &mdata = mut.obj();
+    // Only use this reference until the enchantment recalculation and activation EOCs below:
+    // they can add or remove mutations (an activation EOC may even run u_lose_trait on this
+    // one), which would leave it dangling.  After that point, use set_powered() instead.
     trait_data &tdata = cached_mutations[mut];
+    const auto set_powered = [this, &mut]( const bool powered ) {
+        const auto it = cached_mutations.find( mut );
+        if( it != cached_mutations.end() ) {
+            it->second.powered = powered;
+        }
+    };
     int cost = mdata.cost;
     // You can take yourself halfway to Near Death levels of hunger/thirst.
     // Sleepiness can go to Exhausted.
@@ -914,7 +927,13 @@ void Character::activate_cached_mutation( const trait_id &mut )
             eoc->activate_activation_only( d, "a mutation activation", "mutation being activated", "mutation" );
         }
         // if the activation EOCs are not just setup for processing then turn the mutation off
-        tdata.powered = mut->activated_is_setup;
+        set_powered( mut->activated_is_setup );
+    }
+
+    // The enchantment recalculation or an activation EOC may have removed this mutation,
+    // in which case there is nothing left to activate.
+    if( !cached_mutations.count( mut ) ) {
+        return;
     }
 
     if( mdata.transform ) {
@@ -934,14 +953,14 @@ void Character::activate_cached_mutation( const trait_id &mut )
     } else if( mut == trait_LONG_TONGUE2 ||
                mut == trait_GASTROPOD_EXTREMITY2 ||
                mut == trait_GASTROPOD_EXTREMITY3 ) {
-        tdata.powered = false;
+        set_powered( false );
         assign_activity( pull_creature_activity_actor( 1_seconds, mut ) );
         return;
     } else if( mut == trait_SNAIL_TRAIL ) {
         here.add_field( pos_bub(), fd_sludge, 1 );
         add_msg_if_player( _( "You start leaving a trail of sludge as you go." ) );
     } else if( mut == trait_BURROW || mut == trait_BURROWLARGE ) {
-        tdata.powered = false;
+        set_powered( false );
         item burrowing_item( itype_fake_burrowing );
         invoke_item( &burrowing_item );
         return;  // handled when the activity finishes
@@ -950,7 +969,7 @@ void Character::activate_cached_mutation( const trait_id &mut )
         if( !slime ) {
             // Oops, no room to divide!
             add_msg_if_player( m_bad, _( "You focus, but are too hemmed in to birth a new slime microbian!" ) );
-            tdata.powered = false;
+            set_powered( false );
             return;
         }
         add_msg_if_player( m_good,
@@ -958,30 +977,30 @@ void Character::activate_cached_mutation( const trait_id &mut )
         slime->friendly = -1;
         add_msg_if_player( m_good, SNIPPET.random_from_category( "slime_generate" ).value_or(
                                translation() ).translated() );
-        tdata.powered = false;
+        set_powered( false );
         return;
     } else if( mut == trait_NAUSEA || mut == trait_VOMITOUS ) {
         vomit();
-        tdata.powered = false;
+        set_powered( false );
         return;
     } else if( mut == trait_M_FERTILE ) {
         spores();
-        tdata.powered = false;
+        set_powered( false );
         return;
     } else if( mut == trait_M_BLOOM ) {
         blossoms();
-        tdata.powered = false;
+        set_powered( false );
         return;
     } else if( mut == trait_M_PROVENANCE ) {
         spores(); // double trouble!
         blossoms();
-        tdata.powered = false;
+        set_powered( false );
         return;
     } else if( mut == trait_ECHOLOCATION ) {
         echo_pulse();
         deactivate_mutation( mut );
     } else if( mut == trait_TREE_COMMUNION || mut == trait_ARVORE_FOREST_MAPPING ) {
-        tdata.powered = false;
+        set_powered( false );
         if( !overmap_buffer.ter( pos_abs_omt() ).obj().is_wooded() ) {
             add_msg_if_player( m_info, _( "You can only do that in a wooded area." ) );
             return;
@@ -1026,12 +1045,12 @@ void Character::activate_cached_mutation( const trait_id &mut )
         item tmpitem( mdata.spawn_item );
         i_add_or_drop( tmpitem );
         add_msg_if_player( mdata.spawn_item_message() );
-        tdata.powered = false;
+        set_powered( false );
         return;
     } else if( !mdata.ranged_mutation.is_empty() ) {
         add_msg_if_player( mdata.ranged_mutation_message() );
         avatar_action::fire_ranged_mutation( *this, item( mdata.ranged_mutation ) );
-        tdata.powered = false;
+        set_powered( false );
         return;
     }
 }
