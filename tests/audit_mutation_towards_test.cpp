@@ -1,17 +1,25 @@
+#include <string>
+
 #include "avatar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "condition.h"
+#include "debug.h"
+#include "dialogue.h"
+#include "flexbuffer_json.h"
+#include "json_loader.h"
+#include "mutation.h"
 #include "player_helpers.h"
 #include "type_id.h"
 
 static const mutation_category_id mutation_category_REMOVAL_TEST( "REMOVAL_TEST" );
 
-static const trait_id trait_THRESH_TEST_REMOVAL( "THRESH_TEST_REMOVAL" );
 static const trait_id trait_TEST_MUTB05_LOW( "TEST_MUTB05_LOW" );
 static const trait_id trait_TEST_MUTB05_POST_THRESH( "TEST_MUTB05_POST_THRESH" );
 static const trait_id trait_TEST_MUTB05_PRICEY( "TEST_MUTB05_PRICEY" );
 static const trait_id trait_TEST_REMOVAL_0( "TEST_REMOVAL_0" );
 static const trait_id trait_TEST_REMOVAL_2( "TEST_REMOVAL_2" );
+static const trait_id trait_THRESH_TEST_REMOVAL( "THRESH_TEST_REMOVAL" );
 
 static const vitamin_id vitamin_mutagen_test_removal( "mutagen_test_removal" );
 
@@ -75,5 +83,58 @@ TEST_CASE( "mut-b05_unpurifiable_conflict_reports_failure", "[audit][mutation]" 
     CHECK( !dummy.mutate_towards( trait_TEST_REMOVAL_2 ) );
     CHECK( dummy.has_trait( trait_TEST_REMOVAL_0 ) );
     CHECK( !dummy.has_trait( trait_TEST_REMOVAL_2 ) );
+    clear_avatar();
+}
+
+static talk_effect_t load_mutation_effect( const std::string &json )
+{
+    const JsonObject jo = json_loader::from_string( json );
+    talk_effect_t effect( jo, "effect", "audit_mutation_towards_test" );
+    finalize_conditions();
+    return effect;
+}
+
+// MUT-J01: u_mutate_towards read "category" into a default str_or_var, so leaving it out
+// (the documented default is ANY) gave "", and get_category("") dereferenced map::end().
+TEST_CASE( "mut-j01_mutate_towards_without_category_defaults_to_any", "[audit][mutation]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    REQUIRE( !u.has_trait( trait_TEST_MUTB05_LOW ) );
+
+    const talk_effect_t effect = load_mutation_effect(
+                                     R"({ "effect": { "u_mutate_towards": "TEST_MUTB05_LOW" } })" );
+    dialogue d( get_talker_for( u ), nullptr );
+    effect.apply( d );
+    CHECK( u.has_trait( trait_TEST_MUTB05_LOW ) );
+    clear_avatar();
+}
+
+// MUT-J01: an unknown category id reached get_category() through the EOC effects and
+// dereferenced map::end(). The effects now report it and do nothing, and get_category()
+// itself returns an empty category instead.
+TEST_CASE( "mut-j01_unknown_mutation_category_is_reported", "[audit][mutation]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    const mutation_category_id bogus( "AUDIT_NOT_A_CATEGORY" );
+    REQUIRE( !mutation_category_is_valid( bogus ) );
+
+    const std::string get_msg = capture_debugmsg_during( [&bogus]() {
+        const mutation_category_trait &cat = mutation_category_trait::get_category( bogus );
+        CHECK( cat.vitamin.is_null() );
+        CHECK( cat.threshold_mut.is_empty() );
+    } );
+    CHECK( get_msg.find( "invalid mutation category" ) != std::string::npos );
+
+    const talk_effect_t effect = load_mutation_effect(
+                                     R"({ "effect": { "u_mutate_towards": "TEST_MUTB05_LOW", )"
+                                     R"("category": "AUDIT_NOT_A_CATEGORY" } })" );
+    dialogue d( get_talker_for( u ), nullptr );
+    const std::string eoc_msg = capture_debugmsg_during( [&effect, &d]() {
+        effect.apply( d );
+    } );
+    CHECK( eoc_msg.find( "invalid mutation category" ) != std::string::npos );
+    CHECK( !u.has_trait( trait_TEST_MUTB05_LOW ) );
     clear_avatar();
 }

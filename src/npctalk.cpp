@@ -3660,8 +3660,12 @@ talk_effect_fun_t::func f_mutate_category( const JsonObject &jo, std::string_vie
     const bool use_vitamins = jo.get_bool( "use_vitamins", true );
     const bool true_random = jo.get_bool( "true_random", false );
     return [is_npc, mut_cat, use_vitamins, true_random]( dialogue const & d ) {
-        d.actor( is_npc )->mutate_category( mutation_category_id( mut_cat.evaluate( d ) ), use_vitamins,
-                                            true_random );
+        const mutation_category_id cat( mut_cat.evaluate( d ) );
+        if( !mutation_category_is_valid( cat ) ) {
+            debugmsg( "u_mutate_category: invalid mutation category \"%s\"", cat.str() );
+            return;
+        }
+        d.actor( is_npc )->mutate_category( cat, use_vitamins, true_random );
     };
 }
 
@@ -3670,13 +3674,18 @@ talk_effect_fun_t::func f_mutate_towards( const JsonObject &jo, std::string_view
 {
     str_or_var trait = get_str_or_var( jo.get_member( member ), member, true, "" );
     str_or_var mut_cat;
-    optional( jo, false, "category", mut_cat );
+    // Documented default; an unset category used to evaluate to "".
+    optional( jo, false, "category", mut_cat, "ANY" );
 
     const bool use_vitamins = jo.get_bool( "use_vitamins", true );
 
     return [is_npc, trait, mut_cat, use_vitamins]( dialogue const & d ) {
-        d.actor( is_npc )->mutate_towards( trait_id( trait.evaluate( d ) ),
-                                           mutation_category_id( mut_cat.evaluate( d ) ), use_vitamins );
+        const mutation_category_id cat( mut_cat.evaluate( d ) );
+        if( !mutation_category_is_valid( cat ) ) {
+            debugmsg( "u_mutate_towards: invalid mutation category \"%s\"", cat.str() );
+            return;
+        }
+        d.actor( is_npc )->mutate_towards( trait_id( trait.evaluate( d ) ), cat, use_vitamins );
     };
 }
 
