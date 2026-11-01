@@ -54,6 +54,7 @@
 #include "line.h"
 #include "magic.h"
 #include "magic_enchantment.h"
+#include "magic_spell_effect_helpers.h"
 #include "magic_type.h"
 #include "map.h"
 #include "map_scale_constants.h"
@@ -3400,10 +3401,13 @@ bool target_ui::set_cursor_pos( const tripoint_bub_ms &new_pos )
         recalc_aim_turning_penalty();
     } else if( mode == TargetMode::Spell ) {
         switch( casting->shape() ) {
-            case spell_shape::blast:
-                spell_aoe = spell_effect::spell_effect_blast(
-                                spell_effect::override_parameters( *casting, get_player_character() ), src, dst );
+            case spell_shape::blast: {
+                const spell_effect::override_parameters params( *casting, get_player_character() );
+                // preview the blast where the cast will center it: short of any wall
+                spell_aoe = spell_effect::spell_effect_blast( params, src,
+                            spell_effect_epicenter( *casting, src, dst ) );
                 break;
+            }
             case spell_shape::cone:
                 spell_aoe = spell_effect::spell_effect_cone(
                                 spell_effect::override_parameters( *casting, get_player_character() ), src, dst );

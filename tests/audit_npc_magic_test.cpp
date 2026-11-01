@@ -1,4 +1,5 @@
 #include <map>
+#include <set>
 #include <utility>
 
 #include "cata_catch.h"
@@ -12,6 +13,7 @@
 #include "item.h"
 #include "item_location.h"
 #include "magic.h"
+#include "magic_spell_effect_helpers.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "monster.h"
@@ -35,7 +37,10 @@ static const itype_id itype_u_shotgun( "u_shotgun" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
+static const spell_id spell_spell_corrosive_spray( "spell_corrosive_spray" );
 static const spell_id spell_weaponpod_saw( "weaponpod_saw" );
+
+static const ter_str_id ter_t_wall( "t_wall" );
 
 static const string_id<npc_template> npc_template_test_talker( "test_talker" );
 
@@ -153,5 +158,45 @@ TEST_CASE( "npc-b03_hostile_npc_casts_loud_attack_spells", "[audit][npc_attack]"
         guy.set_fac( faction_your_followers );
         REQUIRE( guy.is_player_ally() );
         CHECK( !attack.evaluate( guy, &zombie ).value() );
+    }
+}
+
+// calculate_spell_effect_area() stopped a blast spell's projectile on the last tile before
+// a wall, but only used that epicenter for spells without an area: any real blast was
+// centered on the original target, so a fireball aimed past a wall exploded behind it.
+TEST_CASE( "magic-b02_blast_spell_explodes_short_of_a_wall", "[audit][magic]" )
+{
+    map &here = get_map();
+    clear_avatar();
+    clear_map();
+    Character &caster = get_player_character();
+    const tripoint_bub_ms caster_pos{ 60, 60, 0 };
+    caster.setpos( here, caster_pos );
+
+    // a wall 3 tiles east of the caster, much longer than the blast is wide
+    const int wall_x = caster_pos.x() + 3;
+    for( int dy = -10; dy <= 10; dy++ ) {
+        here.ter_set( tripoint_bub_ms( wall_x, caster_pos.y() + dy, 0 ), ter_t_wall );
+    }
+    const tripoint_bub_ms behind_wall = caster_pos + tripoint_rel_ms( 6, 0, 0 );
+    REQUIRE( here.impassable( tripoint_bub_ms( wall_x, caster_pos.y(), 0 ) ) );
+    REQUIRE( !here.impassable( behind_wall ) );
+
+    // a blast with a projectile (no NO_PROJECTILE flag) that can target the ground
+    const spell sp( spell_spell_corrosive_spray );
+    REQUIRE( sp.shape() == spell_shape::blast );
+    REQUIRE( !sp.has_flag( spell_flag::NO_PROJECTILE ) );
+    REQUIRE( sp.aoe( caster ) >= 1 );
+    REQUIRE( sp.range( caster ) >= rl_dist( caster_pos, behind_wall ) );
+
+    // the last tile before the wall
+    const tripoint_bub_ms epicenter = caster_pos + tripoint_rel_ms( 2, 0, 0 );
+
+    const std::set<tripoint_bub_ms> area = calculate_spell_effect_area( sp, behind_wall, caster );
+    CHECK( area.count( epicenter ) == 1 );
+    CHECK( area.count( behind_wall ) == 0 );
+    for( const tripoint_bub_ms &p : area ) {
+        CAPTURE( p );
+        CHECK( p.x() < wall_x );
     }
 }

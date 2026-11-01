@@ -445,36 +445,42 @@ std::set<tripoint_bub_ms> spell_effect::spell_effect_line( const override_parame
     return result;
 }
 
+tripoint_bub_ms spell_effect_epicenter( const spell &sp, const tripoint_bub_ms &source,
+                                        const tripoint_bub_ms &target )
+{
+    // stop short if we hit a wall, if the spell has a projectile
+    if( sp.shape() == spell_shape::blast && !sp.has_flag( spell_flag::NO_PROJECTILE ) ) {
+        const map &here = get_map();
+        const std::vector<tripoint_bub_ms> trajectory = line_to( source, target );
+        for( std::vector<tripoint_bub_ms>::const_iterator iter = trajectory.begin();
+             iter != trajectory.end(); iter++ ) {
+            if( here.impassable( *iter ) ) {
+                if( iter != trajectory.begin() ) {
+                    return *( iter - 1 );
+                } else {
+                    return *iter;
+                }
+            }
+        }
+    }
+    return target;
+}
+
 // spells do not reduce in damage the further away from the epicenter the targets are
 // rather they do their full damage in the entire area of effect
 std::set<tripoint_bub_ms> calculate_spell_effect_area( const spell &sp,
         const tripoint_bub_ms &target, const Creature &caster )
 {
     // the actual target that the spell will hit.
-    tripoint_bub_ms epicenter( target );
-
-    // stop short if we hit a wall, if the spell has a projectile
-    if( sp.shape() == spell_shape::blast && !sp.has_flag( spell_flag::NO_PROJECTILE ) ) {
-        std::vector<tripoint_bub_ms> trajectory = line_to( caster.pos_bub(), target );
-        for( std::vector<tripoint_bub_ms>::iterator iter = trajectory.begin(); iter != trajectory.end();
-             iter++ ) {
-            if( get_map().impassable( *iter ) ) {
-                if( iter != trajectory.begin() ) {
-                    epicenter = *( iter - 1 );
-                } else {
-                    epicenter = *iter;
-                }
-                break;
-            }
-        }
-    }
+    const tripoint_bub_ms epicenter = spell_effect_epicenter( sp, caster.pos_bub(), target );
 
     std::set<tripoint_bub_ms> targets = { epicenter }; // initialize with epicenter
     if( sp.aoe( caster ) < 1 && sp.shape() != spell_shape::line ) {
         return targets;
     }
 
-    targets = sp.effect_area( caster.pos_bub(), target, caster );
+    // a blast centers on where its projectile stopped, not on the tile behind the wall
+    targets = sp.effect_area( caster.pos_bub(), epicenter, caster );
 
     for( std::set<tripoint_bub_ms>::iterator it = targets.begin(); it != targets.end(); ) {
         if( !sp.is_valid_target( caster, *it ) ) {
