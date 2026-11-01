@@ -1052,6 +1052,32 @@ void cata_tiles::draw( const point &dest, const tripoint_bub_ms &center, int wid
     if( find_tile_looks_like( "shadow", TILE_CATEGORY::NONE, "" ) ) {
         do_draw_shadow = true;
     }
+    // Highest z-level holding a creature, per map column. draw_critter_above() scans up to
+    // fov_3d_z_range levels with creature_at() from every open-air tile; a column with no
+    // creature above the tile has no shadow to draw, so the scan is skipped there.
+    std::vector<int> top_creature_z;
+    if( do_draw_shadow ) {
+        top_creature_z.assign( static_cast<size_t>( MAPSIZE_X ) * MAPSIZE_Y, INT_MIN );
+        const auto note_creature = [&here, &top_creature_z]( const Creature & critter ) {
+            const tripoint_bub_ms pos = here.get_bub( critter.pos_abs() );
+            if( here.inbounds( pos ) ) {
+                int &top = top_creature_z[static_cast<size_t>( pos.x() ) * MAPSIZE_Y + pos.y()];
+                top = std::max( top, pos.z() );
+            }
+        };
+        // every creature creature_at() can return: tracked monsters, active NPCs, the avatar
+        for( const shared_ptr_fast<monster> &mon : get_creature_tracker().get_monsters_list() ) {
+            note_creature( *mon );
+        }
+        for( const npc &guy : g->all_npcs() ) {
+            note_creature( guy );
+        }
+        note_creature( you );
+    }
+    const auto may_have_creature_above = [&here, &top_creature_z]( const tripoint_bub_ms & p ) {
+        return !here.inbounds( p ) ||
+               top_creature_z[static_cast<size_t>( p.x() ) * MAPSIZE_Y + p.y()] > p.z();
+    };
 
     const half_open_rectangle<point> light_fill_area = smooth_lighting::lightmap_fill_area(
                 min_visible, max_visible, screen_min, screen_max );
@@ -1187,6 +1213,7 @@ void cata_tiles::draw( const point &dest, const tripoint_bub_ms &center, int wid
                         } else if( f == &cata_tiles::draw_critter_at ) {
                             // Draw
                             if( !( this->*f )( p.com.pos, ll, p.com.height_3d, invisible, false ) && do_draw_shadow &&
+                                may_have_creature_above( p.com.pos ) &&
                                 here.dont_draw_lower_floor( p.com.pos ) ) {
                                 // Draw shadow of flying critters on bottom-most tile if no other critter drawn
                                 draw_critter_above( p.com.pos, ll, p.com.height_3d, invisible );
