@@ -26,7 +26,10 @@ static const ter_str_id ter_t_thconc_floor( "t_thconc_floor" );
 static talk_effect_t load_effect( const std::string &json )
 {
     const JsonObject jo = json_loader::from_string( json );
-    return talk_effect_t( jo, "effect", "audit_eoc_math_test" );
+    talk_effect_t effect( jo, "effect", "audit_eoc_math_test" );
+    // Math is parsed after loading; outside data loading that has to be done by hand.
+    finalize_conditions();
+    return effect;
 }
 
 static conditional_t::func load_condition( const std::string &json )
