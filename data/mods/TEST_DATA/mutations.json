@@ -491,5 +491,14 @@
     "points": 0,
     "description": "Test mutation that generates a trickle of bionic power.",
     "enchantments": [ { "values": [ { "value": "POWER_TRICKLE", "add": 1000 } ] } ]
+  },
+  {
+    "//": "CMBT-B03 fixture: MELEE_DAMAGE adds 10 to an attack, then doubles it.",
+    "type": "mutation",
+    "id": "TEST_MELEE_DAMAGE",
+    "name": { "str": "Test Melee Damage" },
+    "points": 0,
+    "description": "Test mutation that strengthens melee attacks.",
+    "enchantments": [ { "values": [ { "value": "MELEE_DAMAGE", "add": 10, "multiply": 1 } ] } ]
   }
 ]

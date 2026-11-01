@@ -550,8 +550,31 @@ damage_instance Creature::modify_damage_dealt_with_enchantments( const damage_in
         double dmg_mod = enchantment_cache->modify_melee_damage( dt.id, 0.0f );
         if( dmg_mod != 0 ) {
             modified.add_damage( dt.id, dmg_mod );
-            modified.add_damage( dt.id, enchantment_cache->modify_value( enchant_vals::mod::MELEE_DAMAGE,
-                                 0.0f ) );
+        }
+    }
+
+    // MELEE_DAMAGE applies once to the whole attack: the flat amount goes to its biggest
+    // damage type (bash if it has none), then every damage type is scaled.
+    const double melee_add = enchantment_cache->get_value_add( enchant_vals::mod::MELEE_DAMAGE );
+    if( melee_add != 0 ) {
+        damage_unit *dominant = nullptr;
+        for( damage_unit &du : modified.damage_units ) {
+            if( dominant == nullptr || du.amount > dominant->amount ) {
+                dominant = &du;
+            }
+        }
+        if( dominant != nullptr ) {
+            dominant->amount = static_cast<float>( std::max( 0.0, dominant->amount + melee_add ) );
+        } else if( melee_add > 0 ) {
+            modified.add_damage( damage_bash, static_cast<float>( melee_add ) );
+        }
+    }
+    const double melee_mult = enchantment_cache->get_value_multiply(
+                                  enchant_vals::mod::MELEE_DAMAGE );
+    if( melee_mult != 0 ) {
+        const double scale = std::max( 0.0, 1.0 + melee_mult );
+        for( damage_unit &du : modified.damage_units ) {
+            du.amount = static_cast<float>( du.amount * scale );
         }
     }
 

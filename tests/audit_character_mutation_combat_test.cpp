@@ -26,6 +26,7 @@ static const bionic_id bio_claws( "bio_claws" );
 static const bionic_id bio_power_storage( "bio_power_storage" );
 
 static const damage_type_id damage_bash( "bash" );
+static const damage_type_id damage_cut( "cut" );
 
 static const efftype_id effect_disarmed( "disarmed" );
 
@@ -34,6 +35,7 @@ static const json_character_flag json_flag_DISTRIBUTED_DAMAGE( "DISTRIBUTED_DAMA
 static const matec_id tec_DEF_DISARM( "DEF_DISARM" );
 
 static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
+static const trait_id trait_TEST_MELEE_DAMAGE( "TEST_MELEE_DAMAGE" );
 static const trait_id trait_TEST_POWER_TRICKLE( "TEST_POWER_TRICKLE" );
 static const trait_id trait_WINGS_INSECT( "WINGS_INSECT" );
 static const trait_id trait_WINGS_INSECT_active( "WINGS_INSECT_active" );
@@ -193,4 +195,32 @@ TEST_CASE( "cmbt-b02_tech_effect_without_condition_is_applied", "[audit][melee]"
     dummy.perform_technique( tech, zed, di, move_cost, weapon );
     CHECK( zed.has_effect( effect_disarmed ) );
     clear_map();
+}
+
+// CMBT-B03: the generic MELEE_DAMAGE value was only read for damage types missing from
+// the attack, and only when that type also had its own bonus, so it never changed melee
+// attacks against creatures.
+TEST_CASE( "cmbt-b03_melee_damage_enchantment_modifies_melee_attacks", "[audit][melee]" )
+{
+    clear_avatar();
+    Character &dummy = get_player_character();
+    // TEST_MELEE_DAMAGE: MELEE_DAMAGE add 10, multiply 1.
+    dummy.set_mutation( trait_TEST_MELEE_DAMAGE );
+
+    SECTION( "single damage type" ) {
+        const damage_instance modified =
+            dummy.modify_damage_dealt_with_enchantments( damage_instance( damage_cut, 20.0f ) );
+        // ( 20 + 10 ) * 2
+        CHECK( modified.type_damage( damage_cut ) == Approx( 60.0f ) );
+        CHECK( modified.total_damage() == Approx( 60.0f ) );
+    }
+    SECTION( "the flat bonus goes to the biggest damage type once" ) {
+        damage_instance di( damage_cut, 20.0f );
+        di.add_damage( damage_bash, 5.0f );
+        const damage_instance modified = dummy.modify_damage_dealt_with_enchantments( di );
+        CHECK( modified.type_damage( damage_cut ) == Approx( 60.0f ) );
+        CHECK( modified.type_damage( damage_bash ) == Approx( 10.0f ) );
+        CHECK( modified.total_damage() == Approx( 70.0f ) );
+    }
+    clear_avatar();
 }
