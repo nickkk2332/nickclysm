@@ -5409,7 +5409,9 @@ std::list<itype_id> Item_factory::subtype_replacement( const itype_id &base ) co
 
 void items::load( const JsonObject &jo, const std::string &src )
 {
-    item_controller->init();
+    // No item_controller->init() here: DynamicDataLoader::unload_data() runs items::reset()
+    // (which calls init()) before any data loads, and repeating it for each of the ~15k
+    // ITEM objects only re-registered every use action each time.
     item_controller->get_generic_factory().load( jo, src );
 }
 
