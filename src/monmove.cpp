@@ -637,11 +637,19 @@ void monster::plan()
             continue;
         }
 
-        float rating = rate_target( who, mon_plan.dist, mon_plan.smart_planning );
+        // A hated NPC is preferred over a current target up to half as far away, but
+        // only if it is seen and we aren't ignoring it.
+        const bool hated = faction_att == MFA_HATE;
+        float rating = rate_target( who, hated ? mon_plan.dist * 2 : mon_plan.dist,
+                                    mon_plan.smart_planning );
+        const monster_attitude att_to_who = attitude( &who );
+        const bool prefer_hated = hated && rating < FLT_MAX && rating * 0.5f < mon_plan.dist &&
+                                  att_to_who != MATT_FPASSIVE && att_to_who != MATT_IGNORE &&
+                                  att_to_who != MATT_FRIEND;
         bool fleeing_from = is_fleeing( who );
         if( rating == mon_plan.dist &&
-            ( mon_plan.fleeing || attitude( &who ) == MATT_ATTACK ||
-              attitude( &who ) == MATT_FOLLOW ) ) {
+            ( mon_plan.fleeing || att_to_who == MATT_ATTACK ||
+              att_to_who == MATT_FOLLOW ) ) {
             ++valid_targets;
             if( one_in( valid_targets ) ) {
                 mon_plan.target = &who;
@@ -649,8 +657,8 @@ void monster::plan()
         }
         // Switch targets if closer and hostile or scarier than current target
         if( ( rating < mon_plan.dist && mon_plan.fleeing ) ||
-            ( faction_att == MFA_HATE ) ||
-            ( rating < mon_plan.dist && attitude( &who ) == MATT_ATTACK ) ||
+            prefer_hated ||
+            ( rating < mon_plan.dist && att_to_who == MATT_ATTACK ) ||
             ( !mon_plan.fleeing && fleeing_from ) ) {
             mon_plan.target = &who;
             mon_plan.dist = rating;
