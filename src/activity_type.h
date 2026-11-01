@@ -4,6 +4,9 @@
 
 #include <set>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "game_constants.h"
 #include "translation.h"
@@ -35,12 +38,14 @@ struct enum_traits<based_on_type> {
 /** A class that stores constant information that doesn't differ between activities of the same type */
 class activity_type
 {
-    private:
+    public:
+        // Used by generic_factory.
         bool was_loaded = false;
-
-        activity_id id_;
+        activity_id id;
+        std::vector<std::pair<activity_id, mod_id>> src;
+    private:
         bool rooted_ = false;
-        translation verb_ = to_translation( "THIS IS A BUG" );
+        translation verb_;
         bool interruptable_ = true;
         bool interruptable_with_kb_ = true;
         based_on_type based_on_ = based_on_type::SPEED;
@@ -56,9 +61,6 @@ class activity_type
         effect_on_condition_id completion_EOC;
         effect_on_condition_id do_turn_EOC;
 
-        const activity_id &id() const {
-            return id_;
-        }
         const std::set<distraction_type> &default_ignored_distractions() const {
             return default_ignored_distractions_;
         }
@@ -111,10 +113,12 @@ class activity_type
         bool call_finish( player_activity *, Character * ) const;
 
         /** JSON stuff */
-        void load( const JsonObject &jo );
-        static void load_all( const JsonObject &jo );
+        void load( const JsonObject &jo, std::string_view src );
+        static void load_all( const JsonObject &jo, const std::string &src );
+        static void finalize_all();
         static void check_consistency();
         static void reset();
+        static const std::vector<activity_type> &get_all();
 };
 
 #endif // CATA_SRC_ACTIVITY_TYPE_H

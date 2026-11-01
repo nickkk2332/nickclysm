@@ -9,6 +9,7 @@
 #include "activity_actor.h"
 #include "activity_handlers.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "generic_factory.h"
 #include "sounds.h"
@@ -17,25 +18,22 @@
 #include "type_id.h"
 
 // activity_type functions
-static std::map< activity_id, activity_type > activity_type_all;
+namespace
+{
+generic_factory<activity_type> activity_type_factory( "activity_type" );
+} // namespace
 
 /** @relates string_id */
 template<>
 const activity_type &string_id<activity_type>::obj() const
 {
-    const auto found = activity_type_all.find( *this );
-    if( found == activity_type_all.end() ) {
-        debugmsg( "Tried to get invalid activity_type: %s", c_str() );
-        static const activity_type null_activity_type {};
-        return null_activity_type;
-    }
-    return found->second;
+    return activity_type_factory.obj( *this );
 }
 
 template<>
 bool string_id<activity_type>::is_valid() const
 {
-    return activity_type_all.find( *this ) != activity_type_all.end();
+    return activity_type_factory.is_valid( *this );
 }
 
 namespace io
@@ -85,11 +83,10 @@ std::string enum_to_string<distraction_type>( distraction_type data )
 }
 }  // namespace io
 
-void activity_type::load( const JsonObject &jo )
+void activity_type::load( const JsonObject &jo, std::string_view src )
 {
-    mandatory( jo, was_loaded, "id", id_ );
     optional( jo, was_loaded, "rooted", rooted_, false );
-    optional( jo, was_loaded, "verb", verb_, to_translation( "THIS IS A BUG" ) );
+    mandatory( jo, was_loaded, "verb", verb_ );
     optional( jo, was_loaded, "interruptable", interruptable_, true );
     optional( jo, was_loaded, "interruptable_with_kb", interruptable_with_kb_, true );
     optional( jo, was_loaded, "can_resume", can_resume_, true );
@@ -98,53 +95,66 @@ void activity_type::load( const JsonObject &jo )
     optional( jo, was_loaded, "refuel_fires", refuel_fires, false );
     optional( jo, was_loaded, "auto_needs", auto_needs, false );
     optional( jo, was_loaded, "mute_npc_completion", mute_npc_completion, false );
-    optional( jo, was_loaded, "completion_eoc", completion_EOC );
-    optional( jo, was_loaded, "do_turn_eoc", do_turn_EOC );
+    // An EOC id or an inline EOC object.
+    if( jo.has_member( "completion_eoc" ) ) {
+        completion_EOC = effect_on_conditions::load_inline_eoc( jo.get_member( "completion_eoc" ), src );
+    }
+    if( jo.has_member( "do_turn_eoc" ) ) {
+        do_turn_EOC = effect_on_conditions::load_inline_eoc( jo.get_member( "do_turn_eoc" ), src );
+    }
     optional( jo, was_loaded, "ignored_distractions", default_ignored_distractions_ );
     optional( jo, was_loaded, "based_on", based_on_ );
     mandatory( jo, was_loaded, "activity_level", activity_level, activity_level_reader{} );
 }
 
-void activity_type::load_all( const JsonObject &jo )
+void activity_type::load_all( const JsonObject &jo, const std::string &src )
 {
-    activity_type result;
-    result.load( jo );
-    // FIXME: use generic factory
-    result.was_loaded = true;
+    activity_type_factory.load( jo, src );
+}
 
-    if( activity_type_all.count( result.id_ ) ) {
-        debugmsg( "Redefinition of %s", result.id_.c_str() );
-    } else {
-        activity_type_all.emplace( result.id_, result );
-    }
+void activity_type::finalize_all()
+{
+    activity_type_factory.finalize();
+}
+
+const std::vector<activity_type> &activity_type::get_all()
+{
+    return activity_type_factory.get_all();
 }
 
 void activity_type::check_consistency()
 {
-    for( const auto &pair : activity_type_all ) {
-        if( pair.second.verb_.empty() ) {
-            debugmsg( "%s doesn't have a verb", pair.first.c_str() );
+    for( const activity_type &act : activity_type_factory.get_all() ) {
+        if( act.verb_.empty() ) {
+            debugmsg( "%s doesn't have a verb", act.id.c_str() );
         }
-        const bool has_actor = activity_actors::deserialize_functions.find( pair.second.id_ ) !=
+        for( const effect_on_condition_id &eoc : {
+                 act.completion_EOC, act.do_turn_EOC
+             } ) {
+            if( !eoc.is_null() && !eoc.is_valid() ) {
+                debugmsg( "%s uses unknown effect_on_condition %s", act.id.c_str(), eoc.c_str() );
+            }
+        }
+        const bool has_actor = activity_actors::deserialize_functions.find( act.id ) !=
                                activity_actors::deserialize_functions.end();
-        const bool has_turn_func = activity_handlers::do_turn_functions.find( pair.second.id_ ) !=
+        const bool has_turn_func = activity_handlers::do_turn_functions.find( act.id ) !=
                                    activity_handlers::do_turn_functions.end();
 
-        if( pair.second.based_on_ == based_on_type::NEITHER && !( has_turn_func || has_actor ) ) {
+        if( act.based_on_ == based_on_type::NEITHER && !( has_turn_func || has_actor ) ) {
             debugmsg( "%s needs a do_turn function or activity actor if it's not based on time or speed.",
-                      pair.second.id_.c_str() );
+                      act.id.c_str() );
         }
     }
 
     for( const auto &pair : activity_handlers::do_turn_functions ) {
-        if( activity_type_all.find( pair.first ) == activity_type_all.end() ) {
+        if( !pair.first.is_valid() ) {
             debugmsg( "The do_turn function %s doesn't correspond to a valid activity_type.",
                       pair.first.c_str() );
         }
     }
 
     for( const auto &pair : activity_handlers::finish_functions ) {
-        if( activity_type_all.find( pair.first ) == activity_type_all.end() ) {
+        if( !pair.first.is_valid() ) {
             debugmsg( "The finish_function %s doesn't correspond to a valid activity_type",
                       pair.first.c_str() );
         }
@@ -153,7 +163,7 @@ void activity_type::check_consistency()
 
 void activity_type::call_do_turn( player_activity *act, Character *you ) const
 {
-    const auto &pair = activity_handlers::do_turn_functions.find( id_ );
+    const auto &pair = activity_handlers::do_turn_functions.find( id );
     if( pair != activity_handlers::do_turn_functions.end() ) {
         pair->second( act, you );
     }
@@ -161,7 +171,7 @@ void activity_type::call_do_turn( player_activity *act, Character *you ) const
 
 bool activity_type::call_finish( player_activity *act, Character *you ) const
 {
-    const auto &pair = activity_handlers::finish_functions.find( id_ );
+    const auto &pair = activity_handlers::finish_functions.find( id );
     if( pair != activity_handlers::finish_functions.end() ) {
         pair->second( act, you );
         // kill activity sounds at finish
@@ -174,7 +184,7 @@ bool activity_type::call_finish( player_activity *act, Character *you ) const
 
 void activity_type::reset()
 {
-    activity_type_all.clear();
+    activity_type_factory.reset();
 }
 
 std::string activity_type::stop_phrase() const

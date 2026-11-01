@@ -78,7 +78,7 @@
     "activity_level": "LIGHT_EXERCISE",
     "verb": "meditating",
     "based_on": "time",
-    "completion_eoc": "EOC_VITAKIN_RESTORE_LIMB_RIGHT_LEFT_RESULT"
+    "completion_eoc": "EOC_VITAKIN_RESTORE_LIMB_LEFT_LEG_RESULT"
   },
   {
     "type": "effect_on_condition",
