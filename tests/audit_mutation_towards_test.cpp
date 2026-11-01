@@ -12,12 +12,16 @@
 #include "player_helpers.h"
 #include "type_id.h"
 
+static const mutation_category_id mutation_category_HUMAN( "HUMAN" );
 static const mutation_category_id mutation_category_REMOVAL_TEST( "REMOVAL_TEST" );
 
+static const trait_id trait_TEST_DUMMY( "TEST_DUMMY" );
+static const trait_id trait_TEST_GOOD1( "TEST_GOOD1" );
 static const trait_id trait_TEST_MUTB05_LOW( "TEST_MUTB05_LOW" );
 static const trait_id trait_TEST_MUTB05_POST_THRESH( "TEST_MUTB05_POST_THRESH" );
 static const trait_id trait_TEST_MUTB05_PRICEY( "TEST_MUTB05_PRICEY" );
 static const trait_id trait_TEST_REMOVAL_0( "TEST_REMOVAL_0" );
+static const trait_id trait_TEST_REMOVAL_1( "TEST_REMOVAL_1" );
 static const trait_id trait_TEST_REMOVAL_2( "TEST_REMOVAL_2" );
 static const trait_id trait_THRESH_TEST_REMOVAL( "THRESH_TEST_REMOVAL" );
 
@@ -83,6 +87,33 @@ TEST_CASE( "mut-b05_unpurifiable_conflict_reports_failure", "[audit][mutation]" 
     CHECK( !dummy.mutate_towards( trait_TEST_REMOVAL_2 ) );
     CHECK( dummy.has_trait( trait_TEST_REMOVAL_0 ) );
     CHECK( !dummy.has_trait( trait_TEST_REMOVAL_2 ) );
+    clear_avatar();
+}
+
+// MUT-B05 review: purifiers work through dummy traits (HUMAN_EYES, ...), whose conflicts
+// usually include a starting trait that HUMAN (base_removal_chance 0) never removes. The
+// dummy must still purge the removable conflicts and keep the protected one, instead of
+// failing on the protected trait and purging nothing.
+TEST_CASE( "mut-b05_dummy_trait_purges_removable_conflicts_past_starting_trait",
+           "[audit][mutation]" )
+{
+    clear_avatar();
+    Character &dummy = get_player_character();
+    dummy.my_traits.insert( trait_TEST_REMOVAL_1 );
+    dummy.set_mutation( trait_TEST_REMOVAL_1 );
+    dummy.set_mutation( trait_TEST_GOOD1 );
+    REQUIRE( trait_TEST_DUMMY->dummy );
+    REQUIRE( mutation_category_trait::get_category( mutation_category_HUMAN ).base_removal_chance ==
+             0 );
+    REQUIRE( dummy.has_base_trait( trait_TEST_REMOVAL_1 ) );
+    REQUIRE( dummy.has_trait( trait_TEST_GOOD1 ) );
+
+    // Both traits are in TEST_DUMMY's cancels: TEST_GOOD1 goes, the starting trait stays.
+    CHECK( dummy.mutate_towards( trait_TEST_DUMMY, mutation_category_HUMAN, nullptr, false ) );
+    CHECK( !dummy.has_trait( trait_TEST_GOOD1 ) );
+    CHECK( dummy.has_trait( trait_TEST_REMOVAL_1 ) );
+    CHECK( dummy.has_base_trait( trait_TEST_REMOVAL_1 ) );
+    CHECK( !dummy.has_trait( trait_TEST_DUMMY ) );
     clear_avatar();
 }
 

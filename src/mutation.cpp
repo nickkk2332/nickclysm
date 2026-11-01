@@ -1771,8 +1771,10 @@ bool Character::mutate_towards( const trait_id &mut, const mutation_category_id 
     // Nothing is changed until every check below has passed, so a mutation that fails
     // (threshold, bionic, vitamins) never costs the traits it would have replaced.
     // A conflicting trait that can't be removed (not purifiable, or a starting trait that
-    // resisted its removal roll) blocks the mutation outright.
-    if( !canceltrait.empty() ) {
+    // resisted its removal roll) blocks the mutation outright. Dummy traits (purifier groups)
+    // instead prune the removable conflicts and keep the protected ones: the cancel_recheck
+    // bail below then reports the partial purge as done.
+    if( !canceltrait.empty() && !mdata.dummy ) {
         add_msg_debug( debugmode::DF_MUTATION,
                        "mutate_towards: failed, conflicting trait %s can't be removed",
                        canceltrait.front().c_str() );
