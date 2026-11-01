@@ -1865,7 +1865,17 @@ std::string widget::layout( const avatar &ava, unsigned int max_width, int label
         } else { // columns
             const int num_widgets = wgts.size();
             if( num_widgets == 0 ) {
-                debugmsg( "widget layout has no widgets" );
+                // A conditional layout without a default_clause is empty while none of its
+                // clauses apply; it then shows nothing. The height is kept unless dynamic,
+                // so W_DISABLED_WHEN_EMPTY can give those lines back to the sidebar.
+                if( _clauses.empty() ) {
+                    debugmsg( "widget layout has no widgets" );
+                }
+                if( has_flag( json_flag_W_DYNAMIC_HEIGHT ) ) {
+                    _height = 0;
+                    set_height_for_widget( id, 0 );
+                }
+                return ret;
             }
             // Number of spaces between columns
             const int col_padding = _padding;

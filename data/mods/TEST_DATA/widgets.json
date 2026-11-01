@@ -1288,6 +1288,13 @@
     "widgets": [ "test_layout_rows3", "test_layout_rows_in_columns" ]
   },
   {
+    "id": "test_layout_cols_conditional_no_default",
+    "type": "widget",
+    "style": "layout",
+    "arrange": "columns",
+    "clauses": [ { "id": "debugged", "widgets": [ "test_text_widget" ], "condition": { "u_has_effect": "debugged" } } ]
+  },
+  {
     "id": "test_bp_bleed_sym_arm_l",
     "type": "widget",
     "style": "symbol",
