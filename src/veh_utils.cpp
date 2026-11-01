@@ -507,6 +507,10 @@ bool veh_menu::query()
     veh_menu_cb cb( locations );
 
     cb.on_select = [this, &menu]() {
+        // A filter that matches no entry leaves selected at -1.
+        if( menu.selected < 0 || menu.selected >= static_cast<int>( items.size() ) ) {
+            return;
+        }
         if( items[menu.selected]._on_select ) {
             items[menu.selected]._on_select();
         }
