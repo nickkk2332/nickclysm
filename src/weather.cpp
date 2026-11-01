@@ -257,7 +257,13 @@ void item::add_rain_to_container( int charges )
         return;
     }
     item ret( itype_water, calendar::turn );
+    // The capacity is capped at the liquid's own charges, so ask about all of them; a
+    // 1-charge item made every catch-up add at most one charge.
+    ret.charges = charges;
     const int capa = get_remaining_capacity_for_liquid( ret, true );
+    if( capa <= 0 ) {
+        return;
+    }
     ret.charges = std::min( charges, capa );
     if( contents.can_contain( ret ).success() ) {
         // This is easy. Just add 1 charge of the rain liquid to the container.
