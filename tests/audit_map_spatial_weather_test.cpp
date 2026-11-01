@@ -1,4 +1,5 @@
 #include <array>
+#include <list>
 #include <memory>
 #include <set>
 #include <string>
@@ -6,8 +7,10 @@
 #include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "item.h"
 #include "line.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -17,19 +20,29 @@
 #include "mapgendata.h"
 #include "maptile_fwd.h"
 #include "messages.h"
+#include "options_helpers.h"
 #include "pathfinding.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "submap.h"
+#include "trap.h"
 #include "type_id.h"
 #include "vehicle.h"
 #include "weather.h"
 
 static const furn_str_id furn_f_chair( "f_chair" );
 
+static const itype_id itype_bucket( "bucket" );
+static const itype_id itype_water( "water" );
+
 static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_stairs_down( "t_stairs_down" );
 static const ter_str_id ter_t_stairs_up( "t_stairs_up" );
+
+static const trap_str_id tr_funnel( "tr_funnel" );
+
+static const weather_type_id weather_drizzle( "drizzle" );
+static const weather_type_id weather_light_drizzle( "light_drizzle" );
 
 // Which of the 8 horizontal neighbours of pos get_wind_blockers() blocks
 static std::set<point_rel_ms> wind_blocked_offsets( int winddirection, const tripoint_bub_ms &pos )
@@ -227,4 +240,55 @@ TEST_CASE( "mgen-b01_set_point_with_repeat_rolls_each_repeat", "[audit][mapgen]"
         }
     }
     CHECK( placed > 1 );
+}
+
+static int water_charges_in( const item &container )
+{
+    int charges = 0;
+    for( const item *it : container.all_items_top() ) {
+        if( it->typeId() == itype_water ) {
+            charges += it->charges;
+        }
+    }
+    return charges;
+}
+
+// Funnels must collect rain at the rate of the precipitation. Light drizzle (0.5 mm/h) was
+// truncated to 0 mm/h, funnel_turns_per_charge( 0 ) is 0 and one_in( 0 ) is true, so every
+// funnel gained a charge every turn. The off-screen catch-up used a different 1/4/8 per turn
+// scale and collected 2-2.7 times the live amount.
+TEST_CASE( "loop-b02_funnels_collect_rain_at_the_precipitation_rate", "[audit][weather]" )
+{
+    clear_map();
+    clear_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms funnel_pos( 60, 60, 0 );
+    const trap &funnel = tr_funnel.obj();
+    REQUIRE( funnel.is_funnel() );
+
+    SECTION( "light drizzle on the map" ) {
+        here.trap_set( funnel_pos, tr_funnel.id() );
+        REQUIRE( here.tr_at( funnel_pos ).loadid == tr_funnel.id() );
+        const item &bucket = here.add_item( funnel_pos, item( itype_bucket ) );
+        REQUIRE( bucket.typeId() == itype_bucket );
+        // A 300 mm funnel catches about 0.57 charges an hour in 0.5 mm/h drizzle, so 100 turns
+        // should almost never give more than one charge. Before the fix it got one per turn
+        // until the 20 charge bucket was full.
+        for( int i = 0; i < 100; i++ ) {
+            handle_weather_effects( weather_light_drizzle );
+        }
+        CHECK( water_charges_in( bucket ) <= 2 );
+    }
+
+    SECTION( "drizzle while the funnel was off-screen" ) {
+        scoped_weather_override drizzle( weather_drizzle );
+        item bucket( itype_bucket );
+        // 6 hours at 1.5 mm/h is 9 mm over pi * 300^2 mm^2, about 2.5 L or 10.2 charges.
+        // The old 4 per turn scale gave about 27 charges, more than the bucket holds.
+        retroactively_fill_from_funnel( bucket, funnel, calendar::turn - 6_hours, calendar::turn,
+                                        here.get_abs( funnel_pos ) );
+        const int charges = water_charges_in( bucket );
+        CHECK( charges >= 9 );
+        CHECK( charges <= 12 );
+    }
 }

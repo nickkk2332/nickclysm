@@ -161,26 +161,16 @@ float incident_sun_irradiance( const weather_type_id &wtype, const time_point &t
     return std::max<float>( 0.0f, sun_irradiance( t ) * wtype->sun_multiplier );
 }
 
+// rain_rate_turns accumulates the rain rate in mm/h summed over turns, so that
+// funnel_charges_per_turn( area, total ) is what a funnel collects over the whole period,
+// the same calibration fill_funnels() uses turn by turn.
 static void proc_weather_sum( const weather_type_id &wtype, weather_sum &data,
-                              const time_point &t, const time_duration &tick_size )
+                              double &rain_rate_turns, const time_point &t,
+                              const time_duration &tick_size )
 {
-    int amount = 0;
     if( wtype->rains ) {
-        switch( wtype->precip ) {
-            case precip_class::very_light:
-                amount = 1 * to_turns<int>( tick_size );
-                break;
-            case precip_class::light:
-                amount = 4 * to_turns<int>( tick_size );
-                break;
-            case precip_class::heavy:
-                amount = 8 * to_turns<int>( tick_size );
-                break;
-            default:
-                break;
-        }
+        rain_rate_turns += precip_mm_per_hour( wtype->precip ) * to_turns<int>( tick_size );
     }
-    data.rain_amount += amount;
 
     // TODO: Change this sunlight "sampling" here into a proper interpolation
     const float tick_sunlight = incident_sunlight( wtype, t );
@@ -204,6 +194,7 @@ weather_sum sum_conditions( const time_point &start, const time_point &end,
 {
     time_duration tick_size = 0_turns;
     weather_sum data;
+    double rain_rate_turns = 0.0;
 
     weather_manager &weather = get_weather();
     // Wind uses the current speed and direction for the whole span, so it is the same every
@@ -227,9 +218,11 @@ weather_sum sum_conditions( const time_point &start, const time_point &end,
         }
 
         weather_type_id wtype = current_weather( location, t );
-        proc_weather_sum( wtype, data, t, tick_size );
+        proc_weather_sum( wtype, data, rain_rate_turns, t, tick_size );
         data.wind_amount += windpower * to_turns<int>( tick_size );
     }
+    data.rain_amount = static_cast<int>( std::lround( std::min( rain_rate_turns,
+                                         static_cast<double>( INT_MAX ) ) ) );
     return data;
 }
 
@@ -337,15 +330,19 @@ double trap::funnel_turns_per_charge( double rain_depth_mm_per_hour ) const
 /**
  * Main routine for filling funnels from weather effects.
  */
-static void fill_funnels( int rain_depth_mm_per_hour, const trap &tr )
+static void fill_funnels( double rain_depth_mm_per_hour, const trap &tr )
 {
     const double turns_per_charge = tr.funnel_turns_per_charge( rain_depth_mm_per_hour );
+    if( turns_per_charge <= 0.0 ) {
+        // No rain (one_in( 0 ) would fill the funnel every turn)
+        return;
+    }
     map &here = get_map();
     // Give each funnel on the map a chance to collect the rain.
     const std::vector<tripoint_bub_ms> &funnel_locs = here.trap_locations( tr.loadid );
     for( const tripoint_bub_ms &loc : funnel_locs ) {
         units::volume maxcontains = 0_ml;
-        if( one_in( turns_per_charge ) ) {
+        if( x_in_y( 1.0, turns_per_charge ) ) {
             // FIXME:
             //add_msg("%d mm/h %d tps %.4f: fill",int(calendar::turn),rain_depth_mm_per_hour,turns_per_charge);
             // This funnel has collected some rain! Put the rain in the largest
@@ -371,7 +368,7 @@ static void fill_funnels( int rain_depth_mm_per_hour, const trap &tr )
  * Fill funnels and makeshift funnels from weather effects.
  * @see fill_funnels
  */
-static void fill_water_collectors( int mmPerHour )
+static void fill_water_collectors( double mmPerHour )
 {
     for( const trap * const &e : trap::get_funnels() ) {
         fill_funnels( mmPerHour, *e );
