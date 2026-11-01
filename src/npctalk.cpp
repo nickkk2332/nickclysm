@@ -43,6 +43,7 @@
 #include "color.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "craft_reservation.h"
 #include "crafting_gui.h"
 #include "creature.h"
 #include "creature_tracker.h"
@@ -150,6 +151,7 @@
 #include "units.h"
 #include "veh_type.h"
 #include "vehicle.h"
+#include "vehicle_selector.h"
 #include "visitable.h"
 #include "vitamin.h"
 #include "vpart_position.h"
@@ -4284,45 +4286,102 @@ talk_effect_fun_t::func f_consume_item_sum( const JsonObject &jo, std::string_vi
     return [item_and_amount, is_npc]( dialogue & d ) {
         add_msg_debug( debugmode::DF_TALKER, "using _consume_item_sum:" );
 
-        itype_id item_to_remove;
-        double amount_desired = 0.0f;
         Character *you = d.actor( is_npc )->get_character();
-        auto legal_to_consume = [&]( const item & it ) {
-            return it.is_owned_by( *you );
+        if( you == nullptr ) {
+            return;
+        }
+        map &here = get_map();
+        // The items _has_items_sum counts through Character::crafting_inventory: everything you
+        // carry, items you may take within PICKUP_RANGE, and the cargo of vehicles there or
+        // owned by your faction. Anything a craft in progress has reserved is left alone.
+        std::vector<item_location> candidates;
+        const auto add_tree = [&candidates]( const item_location & root ) {
+            root.visit_items( [&candidates]( const item_location & it ) {
+                candidates.push_back( it );
+                return VisitResponse::NEXT;
+            } );
         };
-        std::unordered_set<item_location> all_items = get_map().all_items( legal_to_consume,
-                *you,
-                Access_Inventory | Access_Map_Around | Access_Vehicle );
-
-        for( const auto &pair : item_and_amount ) {
-            item_to_remove = itype_id( pair.first.evaluate( d ) );
-            amount_desired = pair.second.evaluate( d );
-            auto iter = all_items.begin();
-            while( iter != all_items.end() && amount_desired > 0 ) {
-                item_location it = *iter;
-                if( it && it->typeId() == item_to_remove ) {
-                    if( it->count_by_charges() ) {
-                        if( it->charges <= amount_desired ) {
-                            amount_desired -= it->charges;
-                            it->spill_contents( it.pos_bub( get_map() ) );
-                            it.remove_item();
-                            iter = all_items.erase( iter );
-                        } else {
-                            amount_desired = 0;
-                            it->mod_charges( -amount_desired );
-                            iter++;
-                        }
-                    } else {
-                        it->spill_contents( it.pos_bub( get_map() ) );
-                        it.remove_item();
-                        iter = all_items.erase( iter );
-                        amount_desired--;
+        you->visit_items( [&candidates]( const item_location & it ) {
+            if( !it.has_parent() && craft_reservation::contains_reserved( *it ) ) {
+                return VisitResponse::SKIP;
+            }
+            candidates.push_back( it );
+            return VisitResponse::NEXT;
+        } );
+        std::set<std::pair<const vehicle *, int>> cargo_seen;
+        const auto add_cargo = [&]( const vpart_position & vp ) {
+            const std::optional<vpart_reference> cargo = vp.part_with_feature( VPFLAG_CARGO, true );
+            if( !cargo || !cargo_seen.emplace( &cargo->vehicle(), cargo->part_index() ).second ) {
+                return;
+            }
+            const vehicle_cursor cursor( cargo->vehicle(), cargo->part_index() );
+            for( item &it : cargo->items() ) {
+                if( !craft_reservation::contains_reserved( it ) ) {
+                    add_tree( item_location( cursor, &it ) );
+                }
+            }
+        };
+        for( const tripoint_bub_ms &p : here.reachable_flood_steps( you->pos_bub( here ),
+                PICKUP_RANGE ) ) {
+            if( here.accessible_items( p ) ) {
+                for( item &it : here.i_at( p ) ) {
+                    const bool may_take = it.is_owned_by( *you, true );
+                    if( may_take && !craft_reservation::contains_reserved( it ) ) {
+                        add_tree( item_location( map_cursor( &here, p ), &it ) );
                     }
-                } else {
-                    iter++; // Not an item we're looking for. NEXT!
+                }
+            }
+            if( const optional_vpart_position vp = here.veh_at( p ) ) {
+                add_cargo( *vp );
+            }
+        }
+        for( const wrapped_vehicle &wv : here.get_vehicles() ) {
+            if( wv.v->owner != you->get_faction_id() ) {
+                continue;
+            }
+            for( const tripoint_abs_ms &veh_pt : wv.v->get_points() ) {
+                if( const optional_vpart_position vp = here.veh_at( veh_pt ) ) {
+                    add_cargo( *vp );
                 }
             }
         }
+
+        // Like _has_items_sum, each entry covers ( taken / amount ) of the requirement. Stop
+        // once the whole requirement is covered.
+        double uncovered = 1.0;
+        for( const auto &pair : item_and_amount ) {
+            const itype_id item_to_remove( pair.first.evaluate( d ) );
+            const double amount = pair.second.evaluate( d );
+            if( amount <= 0 ) {
+                continue;
+            }
+            // The slack keeps float error from asking for one item too many.
+            const int wanted = static_cast<int>( std::ceil( uncovered * amount - 1e-6 ) );
+            int left = wanted;
+            for( item_location &it : candidates ) {
+                if( left <= 0 ) {
+                    break;
+                }
+                // Removing a container invalidates the locations of its contents.
+                if( !it || it->typeId() != item_to_remove ) {
+                    continue;
+                }
+                if( it->count_by_charges() && it->charges > left ) {
+                    it->mod_charges( -left );
+                    left = 0;
+                } else {
+                    left -= it->count_by_charges() ? it->charges : 1;
+                    it->spill_contents( it.pos_bub( here ) );
+                    it.remove_item();
+                }
+            }
+            uncovered -= ( wanted - std::max( left, 0 ) ) / amount;
+            if( uncovered <= 1e-6 ) {
+                break;
+            }
+        }
+        // A _has_items_sum later this turn must not count from the cached inventory.
+        you->invalidate_crafting_inventory();
     };
 }
 
