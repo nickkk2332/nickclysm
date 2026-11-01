@@ -2061,12 +2061,8 @@ class map
          * item uid: wakeup entries and craft reservation records.  Run after submaps come
          * back into range, so both re-arm from authoritative item state.  One walk rather
          * than two, since both duties visit the same locations.
-         * With @p only_grids, walk just the items and vehicles in those submaps (the ones a
-         * shift has just loaded): the rest of the bubble and every character's inventory
-         * were reconciled before, and their records are keyed by uid and absolute position.
          */
-        void reconcile_loaded_items( reconcile_scope scope,
-                                     const std::vector<tripoint_rel_sm> *only_grids = nullptr );
+        void reconcile_loaded_items( reconcile_scope scope );
         /**
          * Fast forward a submap that has just been loading into this map.
          * This is used to rot and remove rotten items, grow plants, fill funnels etc.

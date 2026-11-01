@@ -9033,8 +9033,7 @@ void map::load( const tripoint_abs_sm &w, const bool update_vehicle,
                             : reconcile_scope::additive );
 }
 
-void map::reconcile_loaded_items( const reconcile_scope scope,
-                                  const std::vector<tripoint_rel_sm> *only_grids )
+void map::reconcile_loaded_items( const reconcile_scope scope )
 {
     item_wakeup_manager &wakeups = get_item_wakeups();
     craft_reservation_index &index = get_craft_reservations();
@@ -9072,68 +9071,48 @@ void map::reconcile_loaded_items( const reconcile_scope scope,
         return VisitResponse::NEXT;
     };
 
-    const auto reconcile_grid_items = [&]( const tripoint_rel_sm & grid, submap & sm ) {
-        for( int sx = 0; sx < SEEX; ++sx ) {
-            for( int sy = 0; sy < SEEY; ++sy ) {
-                const tripoint_bub_ms p( sx + grid.x() * SEEX, sy + grid.y() * SEEY, grid.z() );
-                const map_cursor cur( this, p );
-                // rather than visiting the map_cursor, we need to pull the items out
-                // otherwise we get an infinite loop with reconcile since map_cursor::visit
-                // loads a tinymap off-bubble, and that load reconciles again
-                for( item &it : sm.get_items( { sx, sy } ) ) {
-                    item_location( cur, &it ).visit_items( reconcile_recursive );
+    // Submaps rather than tiles, and the z range guarded by zlevels: get_nonant drops the z
+    // index on a map that does not support z levels, so every level would alias the one the
+    // map holds and the walk would repeat itself once per level.
+    for( int gridx = 0; gridx < my_MAPSIZE; gridx++ ) {
+        for( int gridy = 0; gridy < my_MAPSIZE; gridy++ ) {
+            const int zmin = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
+            const int zmax = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
+            for( int gridz = zmin; gridz <= zmax; gridz++ ) {
+                const tripoint_rel_sm grid( gridx, gridy, gridz );
+                submap *const sm = get_submap_at_grid( grid );
+                if( sm == nullptr ) {
+                    continue;
                 }
-            }
-        }
-    };
-    const auto reconcile_vehicle = [&]( vehicle & veh ) {
-        for( const vpart_reference &vpr : veh.get_all_parts() ) {
-            vehicle_cursor( veh, vpr.part_index() ).visit_items( reconcile_recursive );
-        }
-    };
-
-    if( only_grids != nullptr ) {
-        // Only the given submaps (and the vehicles they hold) are new to the bubble.
-        for( const tripoint_rel_sm &grid : *only_grids ) {
-            submap *const sm = get_submap_at_grid( grid );
-            if( sm == nullptr ) {
-                continue;
-            }
-            reconcile_grid_items( grid, *sm );
-            for( const auto &veh : sm->vehicles ) {
-                if( veh ) {
-                    reconcile_vehicle( *veh );
-                }
-            }
-        }
-    } else {
-        // Submaps rather than tiles, and the z range guarded by zlevels: get_nonant drops the z
-        // index on a map that does not support z levels, so every level would alias the one
-        // the map holds and the walk would repeat itself once per level.
-        for( int gridx = 0; gridx < my_MAPSIZE; gridx++ ) {
-            for( int gridy = 0; gridy < my_MAPSIZE; gridy++ ) {
-                const int zmin = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
-                const int zmax = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
-                for( int gridz = zmin; gridz <= zmax; gridz++ ) {
-                    const tripoint_rel_sm grid( gridx, gridy, gridz );
-                    submap *const sm = get_submap_at_grid( grid );
-                    if( sm != nullptr ) {
-                        reconcile_grid_items( grid, *sm );
+                for( int sx = 0; sx < SEEX; ++sx ) {
+                    for( int sy = 0; sy < SEEY; ++sy ) {
+                        const tripoint_bub_ms p( sx + gridx * SEEX,
+                                                 sy + gridy * SEEY, gridz );
+                        const map_cursor cur( this, p );
+                        // rather than visiting the map_cursor, we need to pull the items out
+                        // otherwise we get an infinite loop with reconcile since map_cursor::visit
+                        // loads a tinymap off-bubble, and that load reconciles again
+                        for( item &it : sm->get_items( { sx, sy } ) ) {
+                            item_location( cur, &it ).visit_items( reconcile_recursive );
+                        }
                     }
                 }
             }
         }
+    }
 
-        for( wrapped_vehicle &wv : get_vehicles() ) {
-            if( wv.v != nullptr ) {
-                reconcile_vehicle( *wv.v );
-            }
+    for( wrapped_vehicle &wv : get_vehicles() ) {
+        if( wv.v == nullptr ) {
+            continue;
         }
+        for( const vpart_reference &vpr : wv.v->get_all_parts() ) {
+            vehicle_cursor( *wv.v, vpr.part_index() ).visit_items( reconcile_recursive );
+        }
+    }
 
-        get_avatar().visit_carried( reconcile_recursive );
-        for( npc &n : g->all_npcs() ) {
-            n.visit_carried( reconcile_recursive );
-        }
+    get_avatar().visit_carried( reconcile_recursive );
+    for( npc &n : g->all_npcs() ) {
+        n.visit_carried( reconcile_recursive );
     }
 
     // Crafts this pass did not walk are left alone: the index retains earlier entries.
@@ -9336,9 +9315,9 @@ void map::shift( const point_rel_sm &sp )
         actualize( loaded_grid );
     }
     if( !loaded_grids.empty() ) {
-        // A shift only walks the submaps it just loaded, so the crafts it scrolled away
-        // from are not seen and must keep the claims their leases still cover.
-        reconcile_loaded_items( reconcile_scope::additive, &loaded_grids );
+        // A shift walks the bubble it now has, so the crafts it scrolled away from are
+        // not seen and must keep the claims their leases still cover.
+        reconcile_loaded_items( reconcile_scope::additive );
     }
 }
 
