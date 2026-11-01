@@ -4012,69 +4012,79 @@ bool map::is_flammable( const tripoint_bub_ms &p )
 
 void map::decay_fields_and_scent( const time_duration &amount )
 {
-    // TODO: Make this happen on all z-levels
-
     // Decay scent separately, so that later we can use field count to skip empty submaps
     get_scent().decay();
 
-    // Coordinate code copied from lightmap calculations
-    // TODO: Z
-    const int smz = abs_sub.z();
-    const auto &outside_cache = get_cache_ref( smz ).outside_cache;
-    for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
-        for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
-            submap *cur_submap = get_submap_at_grid( tripoint_rel_sm{ smx, smy, smz } );
-            if( cur_submap == nullptr ) {
-                debugmsg( "Tried to process field at (%d,%d,%d) but the submap is not loaded", smx, smy, smz );
-                continue;
-            }
-            int to_proc = cur_submap->field_count;
-            if( to_proc < 1 ) {
-                if( to_proc < 0 ) {
-                    cur_submap->field_count = 0;
-                    dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
-                                   << ( abs_sub + point( smx, smy ) ).to_string()
-                                   << "has " << to_proc << " field_count";
+    // Rain falls on every level the map holds, but never underground
+    const int minz = std::max( 0, zlevels ? -OVERMAP_DEPTH : abs_sub.z() );
+    const int maxz = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
+    for( int smz = minz; smz <= maxz; ++smz ) {
+        level_cache *const ch = get_cache_lazy( smz );
+        if( ch == nullptr ) {
+            // A level without a cache never had a submap marked as holding fields
+            continue;
+        }
+        const auto &outside_cache = ch->outside_cache;
+        for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
+            for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
+                if( !ch->field_cache[smx + smy * MAPSIZE] ) {
+                    // This submap has no fields
+                    continue;
                 }
-                get_cache( smz ).field_cache.reset( smx + ( smy * MAPSIZE ) );
-                // This submap has no fields
-                continue;
-            }
-
-            for( int sx = 0; sx < SEEX; ++sx ) {
+                submap *cur_submap = get_submap_at_grid( tripoint_rel_sm{ smx, smy, smz } );
+                if( cur_submap == nullptr ) {
+                    debugmsg( "Tried to process field at (%d,%d,%d) but the submap is not loaded",
+                              smx, smy, smz );
+                    continue;
+                }
+                int to_proc = cur_submap->field_count;
                 if( to_proc < 1 ) {
-                    // This submap had some fields, but all got proc'd already
-                    break;
+                    if( to_proc < 0 ) {
+                        cur_submap->field_count = 0;
+                        dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
+                                       << ( abs_sub + point( smx, smy ) ).to_string()
+                                       << "has " << to_proc << " field_count";
+                    }
+                    ch->field_cache.reset( smx + ( smy * MAPSIZE ) );
+                    // This submap has no fields
+                    continue;
                 }
 
-                for( int sy = 0; sy < SEEY; ++sy ) {
-                    const point p( sx + smx * SEEX, sy + smy * SEEY );
-
-                    const field &fields = cur_submap->get_field( { sx, sy} );
-                    if( !outside_cache[p.x][p.y] ) {
-                        to_proc -= fields.field_count();
-                        continue;
+                for( int sx = 0; sx < SEEX; ++sx ) {
+                    if( to_proc < 1 ) {
+                        // This submap had some fields, but all got proc'd already
+                        break;
                     }
 
-                    for( const auto &fp : fields ) {
-                        to_proc--;
-                        field_entry cur = fp.second;
-                        const field_type_id type = cur.get_field_type();
-                        const int decay_amount_factor =  type.obj().decay_amount_factor;
-                        if( decay_amount_factor != 0 ) {
-                            const time_duration decay_amount = amount / decay_amount_factor;
-                            cur.set_field_age( cur.get_field_age() + decay_amount );
+                    for( int sy = 0; sy < SEEY; ++sy ) {
+                        const point p( sx + smx * SEEX, sy + smy * SEEY );
+
+                        field &fields = cur_submap->get_field( { sx, sy} );
+                        if( !outside_cache[p.x][p.y] ) {
+                            to_proc -= fields.field_count();
+                            continue;
+                        }
+
+                        for( auto &fp : fields ) {
+                            to_proc--;
+                            // Age the entry on the map, not a copy of it
+                            field_entry &cur = fp.second;
+                            const int decay_amount_factor =
+                                cur.get_field_type().obj().decay_amount_factor;
+                            if( decay_amount_factor != 0 ) {
+                                cur.mod_field_age( amount / decay_amount_factor );
+                            }
                         }
                     }
                 }
-            }
 
-            if( to_proc > 0 ) {
-                cur_submap->field_count = cur_submap->field_count - to_proc;
-                dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
-                               << abs_sub.to_string()
-                               << "has " << cur_submap->field_count - to_proc << "fields, but "
-                               << cur_submap->field_count << " field_count";
+                if( to_proc > 0 ) {
+                    cur_submap->field_count = cur_submap->field_count - to_proc;
+                    dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
+                                   << abs_sub.to_string()
+                                   << "has " << cur_submap->field_count - to_proc << "fields, but "
+                                   << cur_submap->field_count << " field_count";
+                }
             }
         }
     }
