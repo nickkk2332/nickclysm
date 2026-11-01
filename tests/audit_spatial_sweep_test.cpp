@@ -6,14 +6,19 @@
 #include "avatar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "explosion.h"
 #include "game.h"
 #include "level_cache.h"
 #include "line.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_helpers_tests.h"
+#include "monster.h"
+#include "npc.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "sounds.h"
+#include "teleport.h"
 #include "trap.h"
 #include "type_id.h"
 #include "veh_appliance.h"
@@ -168,4 +173,24 @@ TEST_CASE( "spat-b06_queued_sounds_stay_put_when_the_map_shifts", "[audit][sound
     REQUIRE( g->update_map( u ) != point_rel_sm::zero );
     CHECK( heard_at_source() );
     sounds::reset_sounds();
+}
+
+// The telefrag (both knocked away, the occupant hurt) ran only for monsters
+// teleporting. A character got the collision message five times, then "flickered"
+// and stayed where it was.
+TEST_CASE( "spat-b07_teleporting_npc_telefrags_the_monster_in_its_way", "[audit][teleport]" )
+{
+    clear_map();
+    clear_avatar();
+    const tripoint_bub_ms start( 50, 60, 0 );
+    const tripoint_bub_ms target( 50, 72, 0 );
+    npc &guy = spawn_npc( start.xy(), "test_talker" );
+    monster &zed = spawn_test_monster( "mon_test_zombie", target );
+    const int zed_hp = zed.get_hp();
+
+    CHECK( teleport::teleport_to_point( guy, target, false, false, false ) );
+    CHECK( guy.pos_bub() != start );
+    CHECK( zed.get_hp() < zed_hp );
+    // the cosmetic blast is queued; let it go off while its source still exists
+    explosion_handler::process_explosions();
 }
