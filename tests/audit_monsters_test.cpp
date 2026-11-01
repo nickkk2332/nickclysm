@@ -67,11 +67,12 @@ TEST_CASE( "monai-b02_hated_npc_needs_to_be_seen_and_near", "[audit][monster]" )
     Character &player_character = get_player_character();
     const tripoint_bub_ms mon_pos( 50, 50, 0 );
 
-    SECTION( "an NPC behind walls does not replace an adjacent player" ) {
-        player_character.setpos( here, mon_pos + tripoint::east );
+    SECTION( "an NPC behind walls does not replace a player it can see" ) {
+        // the NPC is near enough for the hated bonus, so only not seeing it rules it out
+        player_character.setpos( here, mon_pos + point( 3, 0 ) );
         monster &zed = spawn_test_monster( "mon_zombie", mon_pos );
         zed.faction = monfaction_attack_player_only.id();
-        npc &guy = spawn_npc( ( mon_pos + point( 0, 8 ) ).xy(), "test_talker" );
+        npc &guy = spawn_npc( ( mon_pos + point( 0, 4 ) ).xy(), "test_talker" );
         for( const tripoint_bub_ms &p : here.points_in_radius( guy.pos_bub(), 1 ) ) {
             if( p != guy.pos_bub() ) {
                 here.ter_set( p, ter_t_wall );
@@ -129,6 +130,23 @@ TEST_CASE( "monai-b02_hated_npc_needs_to_be_seen_and_near", "[audit][monster]" )
         zed.unset_dest();
         zed.plan();
         CHECK( zed.get_dest() == player_character.pos_abs() );
+    }
+
+    SECTION( "the nearest of several hated NPCs is preferred" ) {
+        // the farther NPC comes later and is within twice the nearer one's distance
+        player_character.setpos( here, mon_pos + point( 6, 0 ) );
+        monster &zed = spawn_test_monster( "mon_zombie", mon_pos );
+        zed.faction = monfaction_attack_player_only.id();
+        npc &near_guy = spawn_npc( ( mon_pos + point( 0, 3 ) ).xy(), "test_talker" );
+        npc &far_guy = spawn_npc( ( mon_pos + point( 0, -5 ) ).xy(), "test_talker" );
+        set_time_to_day();
+        REQUIRE( zed.sees( here, player_character ) );
+        REQUIRE( zed.sees( here, near_guy ) );
+        REQUIRE( zed.sees( here, far_guy ) );
+
+        zed.unset_dest();
+        zed.plan();
+        CHECK( zed.get_dest() == near_guy.pos_abs() );
     }
 }
 

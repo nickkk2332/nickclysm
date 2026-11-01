@@ -661,7 +661,9 @@ void monster::plan()
             ( rating < mon_plan.dist && att_to_who == MATT_ATTACK ) ||
             ( !mon_plan.fleeing && fleeing_from ) ) {
             mon_plan.target = &who;
-            mon_plan.dist = rating;
+            // Keep the hated bonus, so a later target has to beat it to take over and
+            // another hated NPC has to be nearer.
+            mon_plan.dist = prefer_hated ? rating * 0.5f : rating;
             valid_targets = 1;
         }
         mon_plan.fleeing = mon_plan.fleeing || fleeing_from;
