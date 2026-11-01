@@ -1929,7 +1929,7 @@ conditional_t::func f_map_is_outside( const JsonObject &jo, std::string_view mem
         map &here = get_map();
         tripoint_bub_ms loc = here.get_bub( read_var_value( loc_var, d ).tripoint() );
         if( here.inbounds( loc ) ) {
-            return !here.is_outside( loc );
+            return here.is_outside( loc );
         }
         //TODO: Make work outside of reality bubble?
         return false;
