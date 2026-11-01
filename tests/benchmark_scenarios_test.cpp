@@ -38,6 +38,7 @@
 #include "item_location.h"
 #include "item_wakeup.h"
 #include "json_loader.h"
+#include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
@@ -78,6 +79,8 @@ static const faction_id faction_your_followers( "your_followers" );
 
 static const recipe_id recipe_cudgel_test_unattended_with_qual(
     "cudgel_test_unattended_with_qual" );
+
+static const spell_id spell_test_spell_random_damage( "test_spell_random_damage" );
 
 static const zone_type_id zone_type_FARM_PLOT( "FARM_PLOT" );
 static const zone_type_id zone_type_LOOT_AMMO( "LOOT_AMMO" );
@@ -690,5 +693,19 @@ TEST_CASE( "bench_blueprint_build_reqs", "[.][benchmark_scenario]" )
             }
         }
         CHECK( total_time > 0 );
-    } );
-}
+        // MAGIC-P01: the "Study a spell" menu works out the RANDOM_DAMAGE row on every redraw.
+        TEST_CASE( "bench_spellbook_damage_preview", "[.][benchmark_scenario]" ) {
+            run_scenario( "spellbook_damage_preview",
+                          "damage range at max level and per level of a RANDOM_DAMAGE spell, 200 redraws",
+            []() {
+                clear_avatar();
+            }, []() {
+                const spell_type &sp = spell_test_spell_random_damage.obj();
+                int checksum = 0;
+                for( int redraw = 0; redraw < 200; ++redraw ) {
+                    checksum += sp.damage_at_max_level().second;
+                    checksum += static_cast<int>( sp.calculate_damage_increment().first );
+                }
+                CHECK( checksum != 0 );
+            } );
+        }

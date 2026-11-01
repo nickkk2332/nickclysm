@@ -43,6 +43,7 @@ without timing it, then times a fixed amount of work.
 | `weather_catchup` | `sum_conditions` over 3 days at 4 locations, as a returning player's funnels and solar vehicles run it | LOOP-P01 |
 | `overmap_generate` | generating one overmap from scratch | OMAP-P01, OMAP-P02 |
 | `zone_sort_queries` | 2,000 "which loot zone takes this item" lookups with 9 category zones of 400 tiles | ACT-P01 |
+| `spellbook_damage_preview` | the RANDOM_DAMAGE row of the "Study a spell" preview (damage at max level and per level), 200 redraws | MAGIC-P01 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then
