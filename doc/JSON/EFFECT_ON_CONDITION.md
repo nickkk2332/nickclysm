@@ -5509,6 +5509,7 @@ Spawn and place the item
 | "container" | optional | string or [variable object](#variable-object) | id of container. Item is contained in container if specified |
 | "use_item_group" | optional | bool | default false; If true, it will instead create items from the item group given. ("count" and "containter" will be ignored since they are defined in the item group.) |
 | "flags" | optional | array of string or [variable object](#variable-object) | The item will have all the flags from the array `flags` |
+| "item_variables" | optional | [inline variables](#inline-variables) | The item will have these item variables when spawned. In a container, they are set on the contained item |
 
 ##### Examples
 Spawn a plastic bottle on ground
@@ -5736,6 +5737,7 @@ Spawn some monsters around you, NPC or `target_var`
 | "summoner_is_alpha", "summoner_is_beta" | optional | bool | if used, the monster would define alpha/beta talker as it's summoner
 | "spawn_message", "spawn_message_plural" | optional | string or [variable object](#variable-object) | if you see monster or monsters that was spawned, related message would be printed |
 | "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if at least 1 monster was spawned, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
+| "spawned_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once for every monster spawned (hallucinations included), right after it spawns, with that monster as alpha (`u`) and the talker that spawned it as beta (`npc`). Context variables are passed on |
 
 ##### Examples
 Spawn 2-5 zombies in range 3-24 around player with lifespan 40-120 seconds, with messages if player see spawn
@@ -5773,6 +5775,15 @@ spawns `mon_photokin_army_image`. assing alpha talker as it's summoner, and defi
 },
 ```
 
+Spawn a zombie and knock it down; in `spawned_eocs`, `u` is the spawned zombie and `npc` is whoever spawned it
+```jsonc
+{
+  "u_spawn_monster": "mon_zombie",
+  "real_count": 1,
+  "spawned_eocs": [ { "id": "EOC_KNOCK_DOWN_SPAWNED_ZOMBIE", "effect": [ { "u_add_effect": "downed", "duration": "2 turns" } ] } ]
+}
+```
+
 #### `u_spawn_npc`, `npc_spawn_npc`
 Spawn some NPC near you or another NPC
 
@@ -5789,7 +5800,9 @@ Spawn some NPC near you or another NPC
 | "lifespan" | optional | int, duration, [variable object](#variable-object) or value between two | if used, NPC would live that amount of time, and disappear in the end |
 | "target_var" | optional | [variable object](#variable-object) | if used, the NPC would spawn from this location instead of you or NPC |
 | "spawn_message", "spawn_message_plural" | optional | string or [variable object](#variable-object) | if you see NPC or NPCs that was spawned, related message would be printed |
-| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if at least 1 monster was spawned, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
+| "npc_variables" | optional | [inline variables](#inline-variables) | if used, the NPC would have these variables when spawned |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if at least 1 NPC was spawned, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
+| "spawned_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once for every NPC spawned (hallucinations included), right after it spawns, with that NPC as alpha (`u`) and the talker that spawned it as beta (`npc`). Context variables are passed on |
 
 ##### Examples
 Spawn 2 hallucination `portal_person`s, outdoor, 3-5 tiles around the player, for 1-3 minutes and with messages

@@ -890,5 +890,33 @@
       { "math": [ "spell_ctx_aoe = _spell_aoe" ] },
       { "math": [ "spell_ctx_range = _spell_range" ] }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_SPAWNED_EOCS",
+    "//": "EOC-J01: spawn effects run spawned_eocs on each spawned entity and can set its variables.",
+    "effect": [
+      {
+        "u_spawn_monster": "mon_zombie",
+        "real_count": 2,
+        "min_radius": 1,
+        "max_radius": 4,
+        "spawned_eocs": [
+          {
+            "id": "EOC_TEST_SPAWNED_MONSTER_TAG",
+            "effect": [ { "math": [ "u_spawned_marker = 1" ] }, { "math": [ "n_monsters_tagged++" ] } ]
+          }
+        ]
+      },
+      {
+        "u_spawn_npc": "thug",
+        "real_count": 1,
+        "min_radius": 1,
+        "max_radius": 4,
+        "npc_variables": { "quest_tag": "bandit" },
+        "spawned_eocs": [ { "id": "EOC_TEST_SPAWNED_NPC_TAG", "effect": [ { "math": [ "u_spawned_marker = 7" ] } ] } ]
+      },
+      { "u_spawn_item": "rock", "suppress_message": true, "item_variables": { "quest_tag": "loot" } }
+    ]
   }
 ]
