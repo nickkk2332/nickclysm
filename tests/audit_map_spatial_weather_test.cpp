@@ -12,6 +12,9 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "mapgen.h"
+#include "mapgen_primitives.h"
+#include "mapgendata.h"
 #include "maptile_fwd.h"
 #include "messages.h"
 #include "pathfinding.h"
@@ -21,6 +24,8 @@
 #include "type_id.h"
 #include "vehicle.h"
 #include "weather.h"
+
+static const furn_str_id furn_f_chair( "f_chair" );
 
 static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_stairs_down( "t_stairs_down" );
@@ -196,4 +201,30 @@ TEST_CASE( "spat-b02_3d_bresenham_reaches_target_when_z_ties_minor_axis", "[audi
             prev = p;
         }
     }
+}
+
+// A "set" point with a ranged x/y and "repeat" must roll a new tile for every repeat, as
+// MAPGEN.md documents and as the line and square ops already do. It used to roll once and
+// place every repeat on that same tile.
+TEST_CASE( "mgen-b01_set_point_with_repeat_rolls_each_repeat", "[audit][mapgen]" )
+{
+    clear_map();
+    map &here = get_map();
+    mapgendata md( here, mapgendata::dummy_settings );
+    const tripoint_bub_ms area_min( 10, 10, 0 );
+    const tripoint_bub_ms area_max( 19, 19, 0 );
+    // 20 chairs over 100 tiles: all of them landing on one tile is a 1 in 100^19 chance
+    const jmapgen_setmap chairs( jmapgen_int( area_min.x(), area_max.x() ),
+                                 jmapgen_int( area_min.y(), area_max.y() ), jmapgen_int( 0 ),
+                                 jmapgen_int( 0 ), jmapgen_int( 0 ), JMAPGEN_SETMAP_FURN,
+                                 jmapgen_int( furn_f_chair.id().to_i() ), 1, jmapgen_int( 20 ) );
+    REQUIRE( chairs.apply( md, tripoint_rel_ms::zero ) );
+
+    int placed = 0;
+    for( const tripoint_bub_ms &p : here.points_in_rectangle( area_min, area_max ) ) {
+        if( here.furn( p ) == furn_f_chair ) {
+            placed++;
+        }
+    }
+    CHECK( placed > 1 );
 }
