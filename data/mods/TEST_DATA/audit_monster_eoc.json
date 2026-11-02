@@ -27,6 +27,24 @@
     "effect": [ { "u_attack": "test_eoc_mark_target" } ]
   },
   {
+    "type": "monster_attack",
+    "id": "test_eoc_unowned_attack",
+    "//": "MONAI-J01: a special attack no monster has, which u_attack can still use.",
+    "attack_type": "eoc",
+    "eoc": [ "EOC_TEST_MON_UNOWNED_HIT" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_UNOWNED_HIT",
+    "effect": [ { "if": "npc_is_avatar", "then": [ { "math": [ "test_mon_unowned_hit_avatar = 1" ] } ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_USE_UNOWNED",
+    "//": "MONAI-J01: the monster (alpha) uses a JSON monster attack it doesn't have on beta.",
+    "effect": [ { "u_attack": "test_eoc_unowned_attack" } ]
+  },
+  {
     "type": "effect_on_condition",
     "id": "EOC_TEST_MON_MELEE",
     "//": "MONAI-J01: the monster (alpha) hits beta with a basic melee attack costing 30 moves.",

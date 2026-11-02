@@ -1295,6 +1295,16 @@ class mattack_hardcoded_wrapper : public mattack_actor
 mtype_special_attack::mtype_special_attack( const mattack_id &id, const mon_action_attack f )
     : mtype_special_attack( std::make_unique<mattack_hardcoded_wrapper>( id, f ) ) {}
 
+const mtype_special_attack *MonsterGenerator::find_json_attack( const std::string &id ) const
+{
+    const auto iter = attack_map.find( id );
+    if( iter == attack_map.end() ||
+        dynamic_cast<const mattack_hardcoded_wrapper *>( iter->second.get() ) != nullptr ) {
+        return nullptr;
+    }
+    return &iter->second;
+}
+
 void MonsterGenerator::add_hardcoded_attack( const std::string &type, const mon_action_attack f )
 {
     add_attack( mtype_special_attack( type, f ) );

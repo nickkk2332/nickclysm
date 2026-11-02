@@ -6147,6 +6147,8 @@ talk_effect_fun_t::func f_set_monster_faction( const JsonObject &jo, std::string
             return;
         }
         mon->faction = new_faction.id();
+        // Monsters find their targets through a cache sorted by faction
+        get_creature_tracker().invalidate_reachability_cache();
     };
 }
 

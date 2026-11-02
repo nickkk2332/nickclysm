@@ -5626,7 +5626,7 @@ NPC is prevented from death.
 #### `u_attack`, `npc_attack`
 Alpha or beta talker forced to use a technique or special attack on the other talker.
 
-For a monster, the value names one of its own special attacks (as in its `special_attacks`): with `allow_special` it uses that attack on the other talker right away, ignoring its cooldown and whether it is enabled, and the cooldown starts again afterwards. Any other value (such as `"tec_none"`), or `allow_special: false`, makes it do a basic melee attack, if the other talker is adjacent and seen. `allow_unarmed` doesn't apply to monsters.
+For a monster, the value names a special attack: one of its own (as in its `special_attacks`), or else any `monster_attack` defined in JSON, which the monster doesn't need to have. With `allow_special` it uses that attack on the other talker right away, ignoring its cooldown and whether it is enabled; for one of its own the cooldown starts again afterwards. The attack still checks its own range and `condition`, so it may do nothing. Any other value (such as `"tec_none"`, or a hardcoded attack the monster doesn't have), or `allow_special: false`, makes it do a basic melee attack, if the other talker is adjacent and seen. `allow_unarmed` doesn't apply to monsters.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -5684,7 +5684,7 @@ Picks random pankration technique, assign it to `pankration_random_attack`, and 
 }
 ```
 
-A monster (alpha) bites its target (beta) with its `void_spider_bite` special attack
+The void spider (alpha) bites its target (beta) with the `void_spider_bite` monster attack, which isn't one of its own special attacks; the bite only lands on an adjacent target that is webbed or grabbed, as its `condition` requires
 ```jsonc
 { "u_attack": "void_spider_bite" }
 ```
