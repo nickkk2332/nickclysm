@@ -7,6 +7,8 @@
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
+#include "catacharset.h"
 #include "character.h"
 #include "condition.h"
 #include "coordinates.h"
@@ -244,6 +246,10 @@ TEST_CASE( "eoc_show_text", "[eoc][ui][errands_ui]" )
         shown_buttons = buttons;
         return answer;
     };
+    // The hook captures this test's locals: unset it however the test ends.
+    on_out_of_scope reset_hook( []() {
+        eoc_ui::show_text_test_answer = nullptr;
+    } );
     const auto run = [&]( const std::string & json, Character & alpha ) {
         dialogue d( get_talker_for( alpha ), get_talker_for( guy ) );
         load_effect( json ).apply( d );
@@ -328,6 +334,9 @@ TEST_CASE( "eoc_run_eoc_checklist", "[eoc][ui][errands_ui]" )
         shown_max = max;
         return answer;
     };
+    on_out_of_scope reset_hook( []() {
+        eoc_ui::checklist_test_answer = nullptr;
+    } );
     const auto run = [&]( const std::string & json, Character & alpha ) {
         dialogue d( get_talker_for( alpha ), get_talker_for( guy ) );
         load_effect( json ).apply( d );
@@ -411,4 +420,24 @@ TEST_CASE( "eoc_run_eoc_checklist", "[eoc][ui][errands_ui]" )
         CHECK_NOTHROW( load_effect( effect ) );
     }
     teardown();
+}
+
+TEST_CASE( "eoc_show_text_buttons_wrap_to_fit", "[eoc][ui][errands_ui]" )
+{
+    std::vector<eoc_ui::text_button> buttons;
+    for( int i = 0; i < 6; i++ ) {
+        buttons.push_back( { "Button number " + std::to_string( i ), i % 2 == 0 } );
+    }
+    const int width = 40;
+    const std::vector<point> places = eoc_ui::layout_buttons( buttons, width );
+    REQUIRE( places.size() == buttons.size() );
+    CHECK( places.back().y > 0 );
+    for( size_t i = 0; i < buttons.size(); i++ ) {
+        CAPTURE( i );
+        // Every button, greyed out or not, fits inside the border.
+        CHECK( places[i].x + utf8_width( "[ " + buttons[i].name + " ]" ) <= width - 2 );
+        if( i > 0 && places[i].y == places[i - 1].y ) {
+            CHECK( places[i].x > places[i - 1].x );
+        }
+    }
 }

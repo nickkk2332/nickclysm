@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "point.h"
+
 // The windows EOCs show the player: u_show_text and run_eoc_checklist.
 namespace eoc_ui
 {
@@ -24,6 +26,13 @@ struct text_button {
  */
 std::optional<size_t> show_text( const std::string &title, const std::string &text,
                                  const std::vector<text_button> &buttons );
+
+/**
+ * Where show_text puts each of @p buttons in a window @p width wide: the column, and the line of
+ * the button area. A button that doesn't fit on a line starts the next one, so every button the
+ * player can pick is shown.
+ */
+std::vector<point> layout_buttons( const std::vector<text_button> &buttons, int width );
 
 /**
  * Tests can't show windows: in test mode show_text returns this function's answer to its

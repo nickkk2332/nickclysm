@@ -25,24 +25,44 @@ std::function<std::optional<std::vector<size_t>>( const std::string &,
 namespace
 {
 
-// The buttons on one line, the selected one highlighted and greyed-out ones dark.
-void draw_buttons( const catacurses::window &w, int y, int width,
-                   const std::vector<eoc_ui::text_button> &buttons, size_t selected )
+std::string button_label( const eoc_ui::text_button &button )
 {
-    int x = 2;
-    for( size_t i = 0; i < buttons.size(); i++ ) {
-        const std::string label = "[ " + buttons[i].name + " ]";
-        const int label_width = utf8_width( label );
-        if( x + label_width > width - 2 && x > 2 ) {
-            // No room left on the line; the rest can't be shown.
-            break;
+    return "[ " + button.name + " ]";
+}
+
+} // namespace
+
+std::vector<point> eoc_ui::layout_buttons( const std::vector<text_button> &buttons, int width )
+{
+    std::vector<point> places;
+    point at( 2, 0 );
+    for( const eoc_ui::text_button &button : buttons ) {
+        const int label_width = utf8_width( button_label( button ) );
+        if( at.x + label_width > width - 2 && at.x > 2 ) {
+            at = point( 2, at.y + 1 );
         }
+        places.push_back( at );
+        at.x += label_width + 2;
+    }
+    return places;
+}
+
+namespace
+{
+
+// The buttons from line `top` on, the selected one highlighted and greyed-out ones dark. A label
+// wider than the window is cut.
+void draw_buttons( const catacurses::window &w, int top, int width,
+                   const std::vector<eoc_ui::text_button> &buttons, const std::vector<point> &places,
+                   size_t selected )
+{
+    for( size_t i = 0; i < buttons.size(); i++ ) {
         nc_color color = buttons[i].enabled ? c_white : c_dark_gray;
         if( i == selected ) {
             color = hilite( color );
         }
-        trim_and_print( w, point( x, y ), width - 2 - x, color, label );
-        x += label_width + 2;
+        trim_and_print( w, point( places[i].x, top + places[i].y ), width - 2 - places[i].x, color,
+                        button_label( buttons[i] ) );
     }
 }
 
@@ -109,13 +129,17 @@ std::optional<size_t> eoc_ui::show_text( const std::string &title, const std::st
     std::vector<std::string> lines;
     int beg_line = 0;
     int max_beg_line = 0;
-    const int button_lines = buttons.empty() ? 0 : 2;
+    std::vector<point> button_places;
+    // the button area: a separator, then the lines of buttons
+    int button_lines = 0;
 
     ui_adaptor ui;
     const auto screen_resize_cb = [&]( ui_adaptor & ui ) {
         width = std::min( TERMX, std::max( 60, TERMX * 2 / 3 ) );
         text_w = std::max( 1, width - 3 );
         lines = foldstring( text, text_w );
+        button_places = layout_buttons( buttons, width );
+        button_lines = buttons.empty() ? 0 : button_places.back().y + 2;
         const int wanted = static_cast<int>( lines.size() ) + 2 + button_lines;
         height = std::min( TERMY, std::max( 8, wanted ) );
         text_h = std::max( 1, height - 2 - button_lines );
@@ -142,7 +166,8 @@ std::optional<size_t> eoc_ui::show_text( const std::string &title, const std::st
             for( int x = 1; x < width - 1; x++ ) {
                 mvwputch( w, point( x, separator ), BORDER_COLOR, LINE_OXOX );
             }
-            draw_buttons( w, height - 2, width, buttons, any_enabled ? selected : buttons.size() );
+            draw_buttons( w, separator + 1, width, buttons, button_places,
+                          any_enabled ? selected : buttons.size() );
         }
         wnoutrefresh( w );
     } );
