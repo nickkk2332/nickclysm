@@ -21,12 +21,31 @@
     "attack_vectors": [ "vector_punch" ]
   },
   {
+    "type": "technique",
+    "id": "test_tech_aimed_knockback",
+    "name": "Test Aimed Knockback",
+    "//": "A knockback the avatar aims in manual combat mode.",
+    "unarmed_allowed": true,
+    "knockback_dist": 2,
+    "controlled_knockback": true,
+    "messages": [ "You test-shove %s", "<npcname> test-shoves %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
     "type": "martial_art",
     "id": "test_style_grab_counter",
     "name": { "str": "Test Grab Counter Style" },
     "description": "Test martial art that answers every grab with a knockback strike.",
     "initiate": [ "You get ready to counter a grab.", "%s gets ready to counter a grab." ],
     "techniques": [ "test_tech_grab_counter" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_aimed_knockback",
+    "name": { "str": "Test Aimed Knockback Style" },
+    "description": "Test martial art with a knockback the avatar aims in manual combat mode.",
+    "initiate": [ "You get ready to shove.", "%s gets ready to shove." ],
+    "techniques": [ "test_tech_aimed_knockback" ]
   },
   {
     "type": "martial_art",

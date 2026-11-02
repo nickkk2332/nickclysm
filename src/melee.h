@@ -3,9 +3,11 @@
 #define CATA_SRC_MELEE_H
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "coords_fwd.h"
 #include "type_id.h"
 
 class Character;
@@ -133,6 +135,21 @@ bool technique_menu_suppressed();
  */
 extern std::function<technique_choice( const std::vector<technique_menu_entry> & )>
 technique_menu_test_answer;
+
+/**
+ * Why `attacker`'s technique can't knock `target` back toward `dest`; nullopt if it can. A
+ * knockback goes across (not up or down), and never through the attacker.
+ */
+std::optional<std::string> knockback_aim_refusal( const Character &attacker,
+        const Creature &target, const tripoint_bub_ms &dest );
+
+/**
+ * Tests can't aim: in test mode aiming a controlled knockback returns this function's answer
+ * for the target and the technique's knockback distance (nullopt: cancelled), or cancels when
+ * it is unset.
+ */
+extern std::function<std::optional<tripoint_bub_ms>( const Creature &, int )>
+knockback_aim_test_answer;
 
 } // namespace melee
 

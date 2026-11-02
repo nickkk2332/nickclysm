@@ -340,6 +340,9 @@ class ma_technique
         float knockback_spread = 0.0f;  // adding randomness to knockback, like tec_throw
         std::string aoe;                // corresponds to an aoe shape, defaults to just the target
         bool knockback_follow = false;  // Character follows the knocked-back party into their former tile
+        // In manual combat mode, the avatar aims the knockback of this technique when it was
+        // chosen in the technique menu (Cataclysm-BN's controlled_knockback)
+        bool controlled_knockback = false;
 
         // offensive
         bool disarms = false;       // like tec_disarm

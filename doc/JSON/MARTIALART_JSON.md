@@ -284,6 +284,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "knockback_dist": 1,                   // Distance target is knocked back
   "knockback_spread": 1,                 // The knockback may not send the target straight back
   "knockback_follow": true,              // Attacker will follow target if they are knocked back
+  "controlled_knockback": true,          // In manual combat mode, you aim the knockback of this technique when you choose it in the technique menu. Needs knockback_dist. See The manual technique menu
   "stun_dur": 2,                         // Duration that target is stunned for
   "down_dur": 2,                         // Duration that target is downed for
   "side_switch": true,                   // Technique moves the target behind user
@@ -313,7 +314,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
 
 All fields, except for the ID, type and name are optional.
 
-Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those), a technique that is more than one kind of counter (it could never be used), `grab_counter` on a `dummy`, `defensive` or `crit_tec` technique.
+Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those), a technique that is more than one kind of counter (it could never be used), `grab_counter` on a `dummy`, `defensive` or `crit_tec` technique, and `controlled_knockback` without a `knockback_dist`.
 
 A technique's knockback breaks the target's holds on both sides: a monster lets go of every grab it had, and every character hold the target is part of, holding or held, ends.
 
@@ -379,6 +380,8 @@ Any other string is a load error.  For example, Pankration's arm lock is listed 
 "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
 "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
 ```
+
+A technique with `"controlled_knockback": true` (from Cataclysm-BN) lets you aim its knockback when you choose it in the menu: once the hit lands, the creature-throw targeting screen opens on the target, with the technique's `knockback_dist` as its range, and the target is knocked back toward the tile you pick, as far as you pick.  It goes in any direction across, but not through you.  Cancelling knocks it back as usual.  The automatic choice, counters, NPCs and attacks outside manual combat mode are unchanged.  Aikido's counter and disarming throws and Pankration's Grab and Throw are aimable.
 
 
 ### Technique effects

@@ -1,3 +1,5 @@
+#include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -6,6 +8,7 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_martial_arts.h"
 #include "coordinates.h"
@@ -20,6 +23,7 @@
 #include "martialarts.h"
 #include "math_parser_diag_value.h"
 #include "mattack_common.h"
+#include "melee.h"
 #include "messages.h"
 #include "monster.h"
 #include "mtype.h"
@@ -29,7 +33,8 @@
 #include "point.h"
 #include "type_id.h"
 
-// Grab counters, and the ongrab / ongrabbed martial-art hooks.
+// Grab counters and the ongrab / ongrabbed martial-art hooks, and aimed knockbacks
+// (Cataclysm-BN's controlled_knockback).
 
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
@@ -46,12 +51,14 @@ static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const matec_id tec_aikido_grab_counter( "tec_aikido_grab_counter" );
 static const matec_id tec_judo_grab_counter( "tec_judo_grab_counter" );
 static const matec_id tec_krav_maga_grab_counter( "tec_krav_maga_grab_counter" );
+static const matec_id test_tech_aimed_knockback( "test_tech_aimed_knockback" );
 static const matec_id test_tech_grab_counter( "test_tech_grab_counter" );
 static const matec_id test_tm_strike( "test_tm_strike" );
 
 static const matype_id style_aikido( "style_aikido" );
 static const matype_id style_judo( "style_judo" );
 static const matype_id style_krav_maga( "style_krav_maga" );
+static const matype_id test_style_aimed_knockback( "test_style_aimed_knockback" );
 static const matype_id test_style_grab_counter( "test_style_grab_counter" );
 static const matype_id test_style_grab_hooks( "test_style_grab_hooks" );
 
@@ -364,5 +371,92 @@ TEST_CASE( "grab_hooks_fire_with_the_hold_as_context", "[grapple][martial_arts][
         CHECK( str_var( guy, "test_ongrabbed_part" ) == "arm_l" );
         CHECK( num_var( you, "test_grabbed_a_stylist" ) == 1 );
         CHECK( guy.has_effect( effect_mabuff_test_buff_ongrabbed ) );
+    }
+}
+
+TEST_CASE( "controlled_knockback_load_checks", "[martial_arts]" )
+{
+    CHECK( capture_debugmsg_during( []() {
+        test_tech_aimed_knockback->check();
+    } ).empty() );
+    ma_technique tech;
+    tech.id = matec_id( "test_tech_aim_nothing" );
+    tech.controlled_knockback = true;
+    CHECK_THAT( capture_debugmsg_during( [&tech]() {
+        tech.check();
+    } ), Catch::Matchers::Contains( "no knockback to aim" ) );
+}
+
+TEST_CASE( "controlled_knockback_is_aimed_in_manual_combat_mode", "[martial_arts][melee]" )
+{
+    avatar &you = setup_scene( test_style_aimed_knockback );
+    monster &mon = spawn_test_monster( "mon_test_counter_grabber", you_pos + tripoint::east );
+    const tripoint_bub_ms start = mon.pos_bub();
+    const restore_on_out_of_scope restore_mode( you.manual_combat_mode );
+    const on_out_of_scope reset_hooks( []() {
+        melee::technique_menu_test_answer = nullptr;
+        melee::knockback_aim_test_answer = nullptr;
+    } );
+    melee::technique_menu_test_answer = []( const std::vector<melee::technique_menu_entry> & ) {
+        return technique_choice( technique_choice::mode::chosen, test_tech_aimed_knockback );
+    };
+    int aims = 0;
+    std::optional<tripoint_bub_ms> aim_at;
+    melee::knockback_aim_test_answer = [&]( const Creature & target, int range ) {
+        ++aims;
+        CHECK( &target == &mon );
+        CHECK( range == 2 );
+        return aim_at;
+    };
+    // Attacks until one lands (and knocks the target somewhere)
+    const auto hit = [&]( const std::function<void()> &attack ) {
+        for( int tries = 0; tries < 20 && mon.pos_bub() == start; ++tries ) {
+            you.set_moves( 100 );
+            attack();
+        }
+        REQUIRE( mon.pos_bub() != start );
+    };
+    const auto choose_in_menu = [&]() {
+        you.melee_attack( mon, true );
+    };
+
+    SECTION( "chosen in manual combat mode: where you aim, as far as you aim" ) {
+        you.manual_combat_mode = true;
+        aim_at = start + tripoint( 0, -2, 0 );
+        hit( choose_in_menu );
+        CHECK( aims > 0 );
+        CHECK( mon.pos_bub() == start + tripoint( 0, -2, 0 ) );
+    }
+    SECTION( "a shorter aim, diagonally" ) {
+        you.manual_combat_mode = true;
+        aim_at = start + tripoint( 1, 1, 0 );
+        hit( choose_in_menu );
+        CHECK( mon.pos_bub() == start + tripoint( 1, 1, 0 ) );
+    }
+    SECTION( "cancelled: knocked back as usual, away from you" ) {
+        you.manual_combat_mode = true;
+        aim_at = std::nullopt;
+        hit( choose_in_menu );
+        CHECK( aims > 0 );
+        CHECK( mon.pos_bub().y() == start.y() );
+        CHECK( mon.pos_bub().x() > start.x() );
+    }
+    SECTION( "not through yourself: refused, and knocked back as usual" ) {
+        you.manual_combat_mode = true;
+        aim_at = you_pos + tripoint::west;
+        REQUIRE( melee::knockback_aim_refusal( you, mon, *aim_at ) );
+        Messages::clear_messages();
+        hit( choose_in_menu );
+        CHECK( has_message_containing( "back through yourself" ) );
+        CHECK( mon.pos_bub().x() > start.x() );
+    }
+    SECTION( "forced (a counter, an EOC attack): never aimed" ) {
+        you.manual_combat_mode = true;
+        aim_at = start + tripoint( 0, -2, 0 );
+        hit( [&]() {
+            you.melee_attack_abstract( mon, false, test_tech_aimed_knockback );
+        } );
+        CHECK( aims == 0 );
+        CHECK( mon.pos_bub().x() > start.x() );
     }
 }

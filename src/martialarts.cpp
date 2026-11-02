@@ -364,6 +364,7 @@ void ma_technique::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "knockback_dist", knockback_dist, 0 );
     optional( jo, was_loaded, "knockback_spread", knockback_spread, 0 );
     optional( jo, was_loaded, "knockback_follow", knockback_follow, false );
+    optional( jo, was_loaded, "controlled_knockback", controlled_knockback, false );
 
     optional( jo, was_loaded, "aoe", aoe, "" );
     optional( jo, was_loaded, "flags", flags, auto_flags_reader<> {} );
@@ -449,6 +450,10 @@ void ma_technique::check() const
     if( grab_counter && crit_tec ) {
         debugmsg( "MA technique %s is a \"crit_tec\", which a grab counter never is, so "
                   "\"grab_counter\" has no effect", id.c_str() );
+    }
+    if( controlled_knockback && knockback_dist <= 0 ) {
+        debugmsg( "MA technique %s sets \"controlled_knockback\" without a \"knockback_dist\", so "
+                  "there is no knockback to aim", id.c_str() );
     }
 }
 
@@ -2606,6 +2611,11 @@ std::string ma_technique::get_description() const
                                           "* Will <info>knock back</info> enemies <stat>%d tiles</stat>",
                                           knockback_dist ),
                                knockback_dist ) + "\n";
+    }
+
+    if( controlled_knockback ) {
+        dump += _( "* You can <info>aim</info> the knockback when you choose this technique in "
+                   "<info>manual combat mode</info>" ) + std::string( "\n" );
     }
 
     if( knockback_follow ) {

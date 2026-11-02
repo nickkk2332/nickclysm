@@ -1243,8 +1243,12 @@ class Character : public Creature, public visitable
             const matec_id &tec_id, Creature const &t, const item_location &weap,
             const technique_query &query,
             std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> *chosen = nullptr ) const;
+        /**
+         * Applies the technique's effects to t. `chosen`: the technique was chosen in the manual
+         * technique menu, so the avatar in manual combat mode aims a controlled_knockback.
+         */
         void perform_technique( const ma_technique &technique, Creature &t, damage_instance &di,
-                                int &move_cost, item_location &cur_weapon );
+                                int &move_cost, item_location &cur_weapon, bool chosen = false );
 
         /**
          * Sets up a melee attack and handles melee attack function calls

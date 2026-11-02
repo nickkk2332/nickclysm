@@ -72,6 +72,7 @@
 #include "popup.h"
 #include "proficiency.h"
 #include "projectile.h"
+#include "ranged.h"
 #include "ret_val.h"
 #include "rng.h"
 #include "sounds.h"
@@ -973,7 +974,8 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
         // Handles effects as well; not done in melee_affect_*
         if( technique.id != tec_none ) {
-            perform_technique( technique, t, d, move_cost, cur_weapon );
+            perform_technique( technique, t, d, move_cost, cur_weapon,
+                               choice.how == technique_choice::mode::chosen && technique.id == choice.tec );
         }
 
         //player has a very small chance, based on their intelligence, to learn a style whilst using the CQB bionic
@@ -1966,9 +1968,64 @@ static void print_damage_info( const damage_instance &di )
     add_msg_debug( debugmode::DF_MELEE, "%stotal: %d", ss, total );
 }
 
+// Where the avatar aims the knockback of a technique it chose in manual combat mode, or
+// nullopt to knock back as usual (cancelled, or not the avatar in manual combat mode).
+// Cataclysm-BN's controlled_knockback.
+static std::optional<tripoint_bub_ms> aim_knockback( Character &attacker, const Creature &target,
+        int range )
+{
+    avatar *const you = attacker.as_avatar();
+    if( you == nullptr || !you->manual_combat_mode ) {
+        return std::nullopt;
+    }
+    std::optional<tripoint_bub_ms> dest;
+    if( test_mode ) {
+        if( melee::knockback_aim_test_answer ) {
+            dest = melee::knockback_aim_test_answer( target, range );
+        }
+    } else {
+        const target_handler::trajectory aimed = target_handler::mode_aim_knockback( *you, target,
+                range );
+        if( !aimed.empty() ) {
+            dest = aimed.back();
+        }
+    }
+    if( !dest ) {
+        return std::nullopt;
+    }
+    if( const std::optional<std::string> refusal = melee::knockback_aim_refusal( attacker, target,
+            *dest ) ) {
+        attacker.add_msg_if_player( m_info, *refusal );
+        return std::nullopt;
+    }
+    return dest;
+}
+
+std::optional<std::string> melee::knockback_aim_refusal( const Character &attacker,
+        const Creature &target, const tripoint_bub_ms &dest )
+{
+    map &here = get_map();
+    const tripoint_bub_ms from = target.pos_bub( here );
+    if( dest.xy() == from.xy() ) {
+        return string_format( _( "Knock %s back where?" ), target.disp_name() );
+    }
+    if( dest.z() != from.z() ) {
+        return std::string( _( "You can only knock it back across, not up or down." ) );
+    }
+    const std::vector<tripoint_bub_ms> path = grapple::throw_path( from, dest, 1 );
+    if( !path.empty() && path.front() == attacker.pos_bub( here ) ) {
+        return string_format( _( "You can't knock %s back through yourself." ),
+                              target.disp_name() );
+    }
+    return std::nullopt;
+}
+
+std::function<std::optional<tripoint_bub_ms>( const Creature &, int )>
+melee::knockback_aim_test_answer;
+
 void Character::perform_technique( const ma_technique &technique, Creature &t,
                                    damage_instance &di,
-                                   int &move_cost, item_location &cur_weapon )
+                                   int &move_cost, item_location &cur_weapon, bool chosen )
 {
     map &here = get_map();
     const tripoint_bub_ms pos = pos_bub( here );
@@ -2078,9 +2135,6 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         }
     }
 
-    // TODO: in manual combat mode, let the player aim the knockback of a technique chosen in
-    // the technique menu (Cataclysm-BN's controlled_knockback), with the throw targeting of the
-    // grappling port's Phase 5 once it exists
     if( technique.knockback_dist && !( t.has_flag( mon_flag_IMMOBILE ) ||
                                        t.has_flag( json_flag_CANNOT_MOVE ) ) ) {
         const tripoint_bub_ms prev_pos = t_pos; // track target startpoint for knockback_follow
@@ -2089,11 +2143,29 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         if( monster *const mon = t.as_monster() ) {
             grapple::release_grabs_by( *mon );
         }
-        const point_rel_ms kb_offset( rng( -technique.knockback_spread, technique.knockback_spread ),
-                                      rng( -technique.knockback_spread, technique.knockback_spread ) );
-        tripoint_bub_ms kb_point( pos.x() + kb_offset.x(), pos.y() + kb_offset.y(), pos.z() );
-        for( int dist = rng( 1, technique.knockback_dist ); dist > 0; dist-- ) {
-            t.knock_back_from( kb_point );
+        // In manual combat mode the avatar aims the knockback of a technique it chose
+        // (Cataclysm-BN's controlled_knockback). The hit has landed: cancelling knocks back as usual.
+        const std::optional<tripoint_bub_ms> aimed = chosen && technique.controlled_knockback ?
+                aim_knockback( *this, t, technique.knockback_dist ) : std::nullopt;
+        if( aimed ) {
+            // As far as aimed, one tile at a time along the line, as a knockback steps
+            const int dist = std::clamp( square_dist( t_pos.xy(), aimed->xy() ), 1,
+                                         technique.knockback_dist );
+            tripoint_bub_ms last = t_pos;
+            for( const tripoint_bub_ms &step : grapple::throw_path( t_pos, *aimed, dist ) ) {
+                if( t.is_dead_state() ) {
+                    break;
+                }
+                t.knock_back_from( t.pos_bub( here ) - ( step - last ) );
+                last = step;
+            }
+        } else {
+            const point_rel_ms kb_offset( rng( -technique.knockback_spread, technique.knockback_spread ),
+                                          rng( -technique.knockback_spread, technique.knockback_spread ) );
+            tripoint_bub_ms kb_point( pos.x() + kb_offset.x(), pos.y() + kb_offset.y(), pos.z() );
+            for( int dist = rng( 1, technique.knockback_dist ); dist > 0; dist-- ) {
+                t.knock_back_from( kb_point );
+            }
         }
 
         Character *passenger = t.as_character();

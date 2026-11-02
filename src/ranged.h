@@ -46,6 +46,13 @@ trajectory mode_throw( avatar &you, item &relevant, bool blind_throwing );
  */
 trajectory mode_throw_creature( avatar &you, const Creature &thrown, int range );
 
+/**
+ * Aiming the knockback of a technique (controlled_knockback): as mode_throw_creature, but the
+ * panel shows only how far the target flies and what it hits, and the targets allowed are
+ * melee::knockback_aim_refusal's.
+ */
+trajectory mode_aim_knockback( avatar &you, const Creature &target, int range );
+
 /** Reach attacking */
 trajectory mode_reach( avatar &you, item_location weapon );
 
