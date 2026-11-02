@@ -3,11 +3,15 @@
 #include <string>
 #include <utility>
 
+#include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
+#include "item.h"
+#include "item_category.h"
 #include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
@@ -17,9 +21,14 @@
 #include "mapgen.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
+#include "options_helpers.h"
 #include "overmapbuffer.h"
 #include "point.h"
 #include "type_id.h"
+
+static const item_group_id item_group_test_audit_two_hammers( "test_audit_two_hammers" );
+
+static const itype_id itype_hammer( "hammer" );
 
 static const oter_str_id oter_field( "field" );
 
@@ -27,6 +36,7 @@ static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_linoleum_gray( "t_linoleum_gray" );
 static const ter_str_id ter_t_linoleum_white( "t_linoleum_white" );
 
+static const update_mapgen_id update_mapgen_test_audit_place_hammer( "test_audit_place_hammer" );
 static const update_mapgen_id
 update_mapgen_test_audit_place_variable_weight_nest( "test_audit_place_variable_weight_nest" );
 static const update_mapgen_id update_mapgen_test_audit_queue_other_point(
@@ -218,4 +228,61 @@ TEST_CASE( "mgen-b04_map_rotate_moves_queued_points_with_their_tile", "[audit][m
 
     globals.remove_global_value( "audit_queued_point" );
     globals.remove_global_value( "audit_other_queued_point" );
+}
+
+static int hammers_at( const tripoint_bub_ms &p )
+{
+    int count = 0;
+    for( const item &it : get_map().i_at( p ) ) {
+        if( it.typeId() == itype_hammer ) {
+            count++;
+        }
+    }
+    return count;
+}
+
+// Above a rate of 1, place_items re-rolled the whole group for every item and added the
+// same-category results rate more times: 2 hammers at rate 2 gave 10 instead of 4. And only
+// "items"/"place_items" applied the rates; "item"/"place_item", loot, liquids, corpses and
+// vehicle cargo ignored them.
+TEST_CASE( "mgen-b05_item_category_spawn_rate_scales_each_item_once", "[audit][mapgen]" )
+{
+    clear_map();
+    override_option spawn_rate( "ITEM_SPAWNRATE", "1" );
+    map &here = get_map();
+    const item_category &tools = item( itype_hammer ).get_category_of_contents();
+    on_out_of_scope reset_rate( [&tools]() {
+        tools.set_spawn_rate( 1.0f );
+    } );
+    const tripoint_bub_ms group_spot( 30, 30, 0 );
+    // test_audit_place_hammer places one hammer at ( 5, 5 )
+    const tripoint_bub_ms item_spot( 5, 5, 0 );
+    const auto place_hammer = [&here]() {
+        mapgendata md( here, mapgendata::dummy_settings );
+        run_mapgen_update_func( update_mapgen_test_audit_place_hammer, md, false );
+    };
+
+    SECTION( "rate 2 doubles every item" ) {
+        tools.set_spawn_rate( 2.0f );
+        here.place_items( item_group_test_audit_two_hammers, 100, group_spot, group_spot, true,
+                          calendar::start_of_cataclysm );
+        CHECK( hammers_at( group_spot ) == 4 );
+        place_hammer();
+        CHECK( hammers_at( item_spot ) == 2 );
+    }
+    SECTION( "rate 0 removes every item" ) {
+        tools.set_spawn_rate( 0.0f );
+        here.place_items( item_group_test_audit_two_hammers, 100, group_spot, group_spot, true,
+                          calendar::start_of_cataclysm );
+        CHECK( hammers_at( group_spot ) == 0 );
+        place_hammer();
+        CHECK( hammers_at( item_spot ) == 0 );
+    }
+    SECTION( "rate 1 changes nothing" ) {
+        here.place_items( item_group_test_audit_two_hammers, 100, group_spot, group_spot, true,
+                          calendar::start_of_cataclysm );
+        CHECK( hammers_at( group_spot ) == 2 );
+        place_hammer();
+        CHECK( hammers_at( item_spot ) == 1 );
+    }
 }

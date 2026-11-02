@@ -6669,6 +6669,8 @@ void vehicle::place_spawn_items( map &here )
                     created.insert( created.end(), group_items.begin(), group_items.end() );
                 }
             }
+            // The item categories' spawn rates drop or copy each item
+            item_group::apply_category_spawn_rates( created );
             for( item &e : created ) {
                 if( e.is_null() ) {
                     continue;

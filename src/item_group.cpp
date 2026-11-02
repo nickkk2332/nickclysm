@@ -18,6 +18,7 @@
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item.h"
+#include "item_category.h"
 #include "item_components.h"
 #include "item_contents.h"
 #include "item_factory.h"
@@ -1094,6 +1095,37 @@ item_group::ItemList item_group::items_from( const item_group_id &group_id,
 item_group::ItemList item_group::items_from( const item_group_id &group_id )
 {
     return items_from( group_id, calendar::turn_zero );
+}
+
+int item_group::category_spawn_count( const item &it )
+{
+    if( it.has_flag( json_flag_MISSION_ITEM ) ) {
+        return 1;
+    }
+    const float rate = std::max( 0.0f, it.get_category_of_contents().get_spawn_rate() );
+    if( rate == 1.0f ) {
+        return 1;
+    }
+    if( rate < 1.0f ) {
+        return rng_float( 0.0f, 1.0f ) < rate ? 1 : 0;
+    }
+    return roll_remainder( rate );
+}
+
+void item_group::apply_category_spawn_rates( ItemList &items )
+{
+    ItemList result;
+    result.reserve( items.size() );
+    for( item &it : items ) {
+        const int count = category_spawn_count( it );
+        for( int i = 1; i < count; ++i ) {
+            result.push_back( it );
+        }
+        if( count > 0 ) {
+            result.push_back( std::move( it ) );
+        }
+    }
+    items = std::move( result );
 }
 
 item item_group::item_from( const item_group_id &group_id, const time_point &birthday )

@@ -2391,8 +2391,12 @@ class jmapgen_liquid_item : public jmapgen_piece
                     }
                 }
                 if( newliquid.charges > 0 ) {
-                    dat.m.add_item_or_charges(
-                        tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ), newliquid );
+                    // The item category's spawn rate drops or copies the liquid
+                    for( int copies = item_group::category_spawn_count( newliquid ); copies > 0;
+                         copies-- ) {
+                        dat.m.add_item_or_charges(
+                            tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ), newliquid );
+                    }
                 }
             }
         }
@@ -2445,8 +2449,11 @@ class jmapgen_corpse : public jmapgen_piece
             const mtype_id &corpse_type = random_entry_ref( monster_group );
             item corpse = item::make_corpse( corpse_type,
                                              std::max( calendar::turn - age, calendar::start_of_cataclysm ) );
-            dat.m.add_item_or_charges( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ),
-                                       corpse );
+            // The item category's spawn rate drops or copies the corpse
+            for( int copies = item_group::category_spawn_count( corpse ); copies > 0; copies-- ) {
+                dat.m.add_item_or_charges( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ),
+                                           corpse );
+            }
         }
 };
 
@@ -2538,6 +2545,7 @@ class jmapgen_loot : public jmapgen_piece
                 spawn.reserve( 20 );
                 isd->create( spawn, calendar::start_of_cataclysm,
                              spawn_flags::use_spawn_rate );
+                item_group::apply_category_spawn_rates( spawn );
                 dat.m.spawn_items( tripoint_bub_ms( rng( x.val, x.valmax ), rng( y.val, y.valmax ),
                                                     dat.zlevel() + z.get() ), spawn );
             }
@@ -2902,10 +2910,18 @@ class jmapgen_spawn_item : public jmapgen_piece
             // 100% chance = exactly 1 item, otherwise scale by item spawn rate.
             const float spawn_rate = get_option<float>( "ITEM_SPAWNRATE" );
             int spawn_count = ( c == 100 ) ? 1 : roll_remainder( c * spawn_rate / 100.0f );
+            if( spawn_count <= 0 ) {
+                return;
+            }
+            const item category_sample( chosen_id, calendar::start_of_cataclysm );
             for( int i = 0; i < spawn_count; i++ ) {
-                dat.m.spawn_item( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ), chosen_id,
-                                  amount.get(),
-                                  0, calendar::start_of_cataclysm, 0, flags, variant, faction );
+                // The item category's spawn rate drops or copies each item
+                for( int copies = item_group::category_spawn_count( category_sample ); copies > 0;
+                     copies-- ) {
+                    dat.m.spawn_item( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ),
+                                      chosen_id, amount.get(), 0, calendar::start_of_cataclysm, 0, flags,
+                                      variant, faction );
+                }
             }
         }
 
@@ -6851,35 +6867,9 @@ std::vector<item *> map::place_items(
             };
 
             for( const item &itm : item_group::items_from( group_id, turn, spawn_flags::use_spawn_rate ) ) {
-                const float item_cat_spawn_rate = std::max( 0.0f, item_category_spawn_rate( itm ) );
-                if( item_cat_spawn_rate == 0.0f ) {
-                    continue;
-                } else if( item_cat_spawn_rate < 1.0f ) {
-                    // for items with category spawn rate less than 1, roll a dice to see if they should spawn
-                    if( rng_float( 0.0f, 1.0f ) <= item_cat_spawn_rate ) {
-                        add_res_itm( itm );
-                    }
-                } else {
-                    // for items with category spawn rate more or equal to 1, spawn item at least one time...
+                // The item category's spawn rate drops or copies each item, once
+                for( int copies = item_group::category_spawn_count( itm ); copies > 0; copies-- ) {
                     add_res_itm( itm );
-
-                    if( item_cat_spawn_rate > 1.0f ) {
-                        // ...then create a list with items from the same item group and remove all items with differing category from that list
-                        // so if the original item was e.g. from 'guns' category, the list will contain only items from the 'guns' category...
-                        Item_list extra_spawn = item_group::items_from( group_id, turn, spawn_flags::use_spawn_rate );
-                        extra_spawn.erase( std::remove_if( extra_spawn.begin(), extra_spawn.end(), [&itm]( item & it ) {
-                            return it.get_category_of_contents() != itm.get_category_of_contents();
-                        } ), extra_spawn.end() );
-
-                        // ...then add a chance to spawn additional items from the list, amount is based on the item category spawn rate
-                        for( int i = 0; i < item_cat_spawn_rate; i++ ) {
-                            for( const item &it : extra_spawn ) {
-                                if( rng( 1, 100 ) <= chance ) {
-                                    add_res_itm( it );
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

@@ -44,5 +44,17 @@
     "type": "mapgen",
     "update_mapgen_id": "test_audit_queue_other_point",
     "object": { "set": [ { "point": "variable", "id": "audit_other_queued_point", "x": 5, "y": 7 } ] }
+  },
+  {
+    "//": "Item category spawn rates apply once per spawned item, on every mapgen item path (MGEN-B05).",
+    "type": "item_group",
+    "id": "test_audit_two_hammers",
+    "subtype": "collection",
+    "items": [ { "item": "hammer", "prob": 100 }, { "item": "hammer", "prob": 100 } ]
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_place_hammer",
+    "object": { "place_item": [ { "item": "hammer", "x": 5, "y": 5 } ] }
   }
 ]
