@@ -24,7 +24,9 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::broken_bone: return "broken_bone";
         case event_type::broken_bone_mends: return "broken_bone_mends";
         case event_type::buries_corpse: return "buries_corpse";
+        case event_type::camp_expansion_added: return "camp_expansion_added";
         case event_type::camp_taken_over: return "camp_taken_over";
+        case event_type::camp_upgrade_completed: return "camp_upgrade_completed";
         case event_type::causes_resonance_cascade: return "causes_resonance_cascade";
         case event_type::character_consumes_item: return "character_consumes_item";
         case event_type::character_dies: return "character_dies";
@@ -62,6 +64,8 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::character_takeoff_item: return "character_takeoff_item";
          case event_type::character_armor_destroyed: return "character_armor_destroyed";
         case event_type::character_wields_item: return "character_wields_item";
+        case event_type::companion_mission_finished: return "companion_mission_finished";
+        case event_type::companion_mission_started: return "companion_mission_started";
         case event_type::consumes_marloss_item: return "consumes_marloss_item";
         case event_type::crosses_marloss_threshold: return "crosses_marloss_threshold";
         case event_type::crosses_mutation_threshold: return "crosses_mutation_threshold";
@@ -149,7 +153,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 111,
+static_assert( static_cast<int>( event_type::num_event_types ) == 115,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -166,7 +170,11 @@ DEFINE_EVENT_FIELDS( avatar_moves )
 DEFINE_EVENT_FIELDS( broken_bone )
 DEFINE_EVENT_FIELDS( broken_bone_mends )
 DEFINE_EVENT_FIELDS( buries_corpse )
+DEFINE_EVENT_FIELDS( camp_expansion_added )
 DEFINE_EVENT_FIELDS( camp_taken_over )
+DEFINE_EVENT_FIELDS( camp_upgrade_completed )
+DEFINE_EVENT_FIELDS( companion_mission_finished )
+DEFINE_EVENT_FIELDS( companion_mission_started )
 DEFINE_EVENT_FIELDS( character_finished_activity )
 DEFINE_EVENT_FIELDS( character_finishes_construction )
 DEFINE_EVENT_FIELDS( character_forgets_spell )

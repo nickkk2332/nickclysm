@@ -34,7 +34,9 @@ enum class event_type : int {
     broken_bone,
     broken_bone_mends,
     buries_corpse,
+    camp_expansion_added,
     camp_taken_over,
+    camp_upgrade_completed,
     causes_resonance_cascade,
     // Eating is always consuming, but consuming also covers medication and
     // fueling bionics
@@ -70,6 +72,8 @@ enum class event_type : int {
     character_wears_item,
     character_takeoff_item,
     character_armor_destroyed,
+    companion_mission_finished,
+    companion_mission_started,
     consumes_marloss_item,
     crosses_marloss_threshold,
     crosses_mutation_threshold,
@@ -202,7 +206,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 111,
+static_assert( static_cast<int>( event_type::num_event_types ) == 115,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -289,12 +293,33 @@ struct event_spec<event_type::buries_corpse> {
 };
 
 template<>
+struct event_spec<event_type::camp_expansion_added> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "camp_name", cata_variant_type::string },
+            { "pos", cata_variant_type::tripoint },
+            { "expansion", cata_variant_type::string },
+        }
+    };
+};
+
+template<>
 struct event_spec<event_type::camp_taken_over> {
-    static constexpr std::array<event_field, 4> fields = {{
+    static constexpr std::array<event_field, 5> fields = {{
             { "old_owner", cata_variant_type::faction_id },
             { "new_owner", cata_variant_type::faction_id },
             { "camp_name", cata_variant_type::string },
             { "was_violent", cata_variant_type::bool_ },
+            { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::camp_upgrade_completed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "camp_name", cata_variant_type::string },
+            { "pos", cata_variant_type::tripoint },
+            { "upgrade", cata_variant_type::string },
         }
     };
 };
@@ -578,6 +603,27 @@ struct event_spec<event_type::character_armor_destroyed> : event_spec_character_
 
 template<>
 struct event_spec<event_type::character_wields_item> : event_spec_character_item {};
+
+template<>
+struct event_spec<event_type::companion_mission_finished> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "mission", cata_variant_type::string },
+            { "pos", cata_variant_type::tripoint },
+            { "outcome", cata_variant_type::string },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::companion_mission_started> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "mission", cata_variant_type::string },
+            { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
 
 template<>
 struct event_spec<event_type::consumes_marloss_item> : event_spec_character_item {};

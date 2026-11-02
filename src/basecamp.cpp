@@ -935,7 +935,8 @@ faction_id basecamp::get_owner()
 
 void basecamp::handle_takeover_by( faction_id new_owner, bool violent_takeover )
 {
-    get_event_bus().send<event_type::camp_taken_over>( get_owner(), new_owner, name, violent_takeover );
+    get_event_bus().send<event_type::camp_taken_over>( get_owner(), new_owner, name,
+            violent_takeover, project_to<coords::ms>( omt_pos ).raw() );
 
     // If anyone was somehow assigned here, they aren't any longer.
     assigned_npcs.clear();

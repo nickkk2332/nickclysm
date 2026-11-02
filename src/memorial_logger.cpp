@@ -1137,7 +1137,9 @@ void memorial_logger::notify( const cata::event &e )
         // All the events for which we have no memorial log are here
         case event_type::avatar_enters_omt:
         case event_type::avatar_moves:
+        case event_type::camp_expansion_added:
         case event_type::camp_taken_over:
+        case event_type::camp_upgrade_completed:
         case event_type::character_consumes_item:
         case event_type::character_dies:
         case event_type::character_eats_item:
@@ -1174,6 +1176,8 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::u_var_changed:
         case event_type::vehicle_moves:
         case event_type::character_butchered_corpse:
+        case event_type::companion_mission_finished:
+        case event_type::companion_mission_started:
             break;
         case event_type::num_event_types: {
             debugmsg( "Invalid event type" );

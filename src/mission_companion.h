@@ -243,6 +243,16 @@ npc_ptr companion_choose_return( comp_list &npc_list );
 
 //Return NPC to your party
 void companion_return( npc &comp );
+/// Sends companion_mission_finished for @ref comp's current mission; call before it is reset.
+/// @param outcome "returned", "canceled" or "died"
+void send_companion_mission_finished( const npc &comp, const std::string &outcome );
+/**
+ * @ref comp died on a mission, away from the reality bubble: runs its death (death EOCs,
+ * character_dies, failing the quests it gave, leaving its camp and faction) without a corpse
+ * or message here, sends companion_mission_finished and forgets it.
+ * @returns false if a death EOC kept it alive, in which case it is still on its mission.
+ */
+bool companion_mission_death( npc &comp );
 //Smash stuff, steal valuables, and change map marker
 std::set<item> loot_building( const tripoint_abs_omt &site, const oter_str_id &looted_replacement );
 

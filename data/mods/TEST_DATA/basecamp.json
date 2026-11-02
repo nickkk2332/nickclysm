@@ -122,5 +122,43 @@
     "blueprint_name": "stove",
     "//": "This doesn't declare blueprint_needs at all, and disables checking, so they are taken exclusively from the recipe needs",
     "check_blueprint_needs": false
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_COMPANION_MISSION_STARTED",
+    "//": "CAMP-J01: records the last companion_mission_started event; the companion is alpha.",
+    "eoc_type": "EVENT",
+    "required_event": "companion_mission_started",
+    "effect": [
+      { "copy_var": { "context_val": "mission" }, "target_var": { "global_val": "test_mission_started" } },
+      { "copy_var": { "context_val": "pos" }, "target_var": { "global_val": "test_mission_started_pos" } },
+      { "math": [ "u_test_mission_alpha = 1" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_COMPANION_MISSION_FINISHED",
+    "//": "CAMP-J01: records the last companion_mission_finished event.",
+    "eoc_type": "EVENT",
+    "required_event": "companion_mission_finished",
+    "effect": [
+      { "copy_var": { "context_val": "mission" }, "target_var": { "global_val": "test_mission_finished" } },
+      { "copy_var": { "context_val": "outcome" }, "target_var": { "global_val": "test_mission_outcome" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CAMP_TAKEN_OVER",
+    "//": "CAMP-J01: records where the last camp_taken_over event happened.",
+    "eoc_type": "EVENT",
+    "required_event": "camp_taken_over",
+    "effect": [ { "copy_var": { "context_val": "pos" }, "target_var": { "global_val": "test_camp_taken_over_pos" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MISSION_DEATH",
+    "//": "CAMP-J01: given to a companion as a death EOC.",
+    "eoc_type": "NPC_DEATH",
+    "effect": [ { "math": [ "test_mission_death_eoc = 1" ] } ]
   }
 ]

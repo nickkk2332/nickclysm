@@ -1,21 +1,36 @@
 #include <algorithm>
+#include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "activity_actor_definitions.h"
 #include "avatar.h"
+#include "basecamp.h"
+#include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "construction.h"
 #include "coordinates.h"
+#include "faction.h"
+#include "faction_camp.h"
 #include "flexbuffer_json.h"
+#include "game.h"
+#include "game_constants.h"
 #include "global_vars.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_scale_constants.h"
 #include "math_parser_diag_value.h"
+#include "memory_fast.h"
+#include "mission_companion.h"
 #include "npc.h"
+#include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
@@ -25,6 +40,12 @@
 static const activity_id ACT_BUILD( "ACT_BUILD" );
 
 static const construction_str_id construction_test_constr_eoc_hooks( "test_constr_eoc_hooks" );
+
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_MISSION_DEATH( "EOC_TEST_MISSION_DEATH" );
+
+static const faction_id faction_free_merchants( "free_merchants" );
+static const faction_id faction_your_followers( "your_followers" );
 
 static const proficiency_id proficiency_prof_blacksmithing( "prof_blacksmithing" );
 static const proficiency_id proficiency_prof_carving( "prof_carving" );
@@ -215,5 +236,94 @@ TEST_CASE( "craft-j01_recipe_copy_from_extends_and_deletes_proficiencies",
             "components": [ [ [ "2x4", 1 ] ] ],
             "extend": { "proficiencies": [ { "proficiency": "prof_tempering" } ] }
         })" ), JsonError );
+    }
+}
+
+static std::string global_string( const std::string &name )
+{
+    const diag_value *val = get_globals().maybe_get_global_value( name );
+    return val == nullptr ? std::string() : val->to_string();
+}
+
+// CAMP-J01: nothing was sent when companions left on or came back from missions, and a
+// companion killed on a mission was erased with remove_npc instead of dying: no death EOCs,
+// no character_dies, and it stayed a faction member and camp assignee.
+TEST_CASE( "camp-j01_companion_missions_send_events_and_deaths_run_die",
+           "[audit][camp]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    get_player_character().camps.clear();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    map &here = get_map();
+    const tripoint_bub_ms camp_mid{ MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 };
+    const tripoint_abs_omt camp_omt = project_to<coords::omt>( here.get_abs( camp_mid ) );
+    const tripoint_abs_ms camp_ms = project_to<coords::ms>( camp_omt );
+    here.add_camp( camp_omt, "faction_camp" );
+    std::optional<basecamp *> bcp = overmap_buffer.find_camp( camp_omt.xy() );
+    REQUIRE( bcp );
+    basecamp &camp = **bcp;
+    on_out_of_scope cleanup( [&camp_omt]() {
+        overmap_buffer.clear_camps( camp_omt.xy() );
+    } );
+    camp.set_owner( faction_your_followers );
+    camp.define_camp( camp_omt, "faction_base_bare_bones_NPC_camp_0", false );
+
+    npc &guy = spawn_npc( camp_mid.xy(), "test_talker" );
+    clear_character( guy, true );
+    guy.set_fac( faction_your_followers );
+    const npc_ptr comp = overmap_buffer.find_npc( guy.getID() );
+    REQUIRE( comp );
+    const character_id comp_id = comp->getID();
+
+    const mission_id gather{ Camp_Gather_Materials, "", {}, base_camps::base_dir };
+    REQUIRE( camp.start_mission( gather, 3_hours, false, "", false, {},
+                                 std::map<skill_id, int>(), LIGHT_EXERCISE, 0_hours, comp ) );
+    CHECK( global_string( "test_mission_started" ) == "Camp_Gather_Materials" );
+    const diag_value *started_pos = globvars.maybe_get_global_value( "test_mission_started_pos" );
+    REQUIRE( started_pos != nullptr );
+    REQUIRE( started_pos->is_tripoint() );
+    CHECK( started_pos->tripoint() == camp_ms );
+    // The companion is alpha of the event EOC.
+    const diag_value *alpha_mark = comp->maybe_get_value( "test_mission_alpha" );
+    REQUIRE( alpha_mark != nullptr );
+    CHECK( alpha_mark->dbl() == 1 );
+
+    SECTION( "companion back from the mission" ) {
+        camp.finish_return( *comp, false, "returns.", "survival", 1 );
+        CHECK( global_string( "test_mission_finished" ) == "Camp_Gather_Materials" );
+        CHECK( global_string( "test_mission_outcome" ) == "returned" );
+    }
+    SECTION( "companion called back" ) {
+        camp.finish_return( *comp, false, "responds.", "menial", 0, true );
+        CHECK( global_string( "test_mission_outcome" ) == "canceled" );
+    }
+    SECTION( "companion killed on the mission dies like any NPC" ) {
+        comp->death_eocs.push_back( effect_on_condition_EOC_TEST_MISSION_DEATH );
+        camp.add_assignee( comp_id );
+        REQUIRE( comp->assigned_camp );
+        faction *followers = g->faction_manager_ptr->get( faction_your_followers );
+        REQUIRE( followers != nullptr );
+        REQUIRE( followers->members.count( comp_id ) == 1 );
+
+        CHECK( talk_function::companion_mission_death( *comp ) );
+        CHECK( comp->is_dead() );
+        const diag_value *death_eoc = globvars.maybe_get_global_value( "test_mission_death_eoc" );
+        REQUIRE( death_eoc != nullptr );
+        CHECK( death_eoc->dbl() == 1 );
+        CHECK( global_string( "test_mission_finished" ) == "Camp_Gather_Materials" );
+        CHECK( global_string( "test_mission_outcome" ) == "died" );
+        CHECK( followers->members.count( comp_id ) == 0 );
+        CHECK_FALSE( comp->assigned_camp );
+        CHECK( overmap_buffer.find_npc( comp_id ) == nullptr );
+    }
+    SECTION( "camp_taken_over says where the camp is" ) {
+        camp.finish_return( *comp, false, "returns.", "survival", 1 );
+        camp.handle_takeover_by( faction_free_merchants, false );
+        const diag_value *taken_pos = globvars.maybe_get_global_value( "test_camp_taken_over_pos" );
+        REQUIRE( taken_pos != nullptr );
+        REQUIRE( taken_pos->is_tripoint() );
+        CHECK( taken_pos->tripoint() == camp_ms );
     }
 }
