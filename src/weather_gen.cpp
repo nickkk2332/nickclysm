@@ -16,6 +16,7 @@
 #include "game_constants.h"
 #include "generic_factory.h"
 #include "math_defines.h"
+#include "phase_change.h"
 #include "pimpl.h"
 #include "point.h"
 #include "rng.h"
@@ -91,21 +92,25 @@ struct weather_gen_common {
 };
 } // namespace
 
-static weather_gen_common get_common_data( const tripoint_abs_ms &location,
-        const time_point &real_t,
-        unsigned seed )
+// The parts of weather_gen_common that depend on the place.
+static void set_common_location( weather_gen_common &result, const tripoint_abs_ms &location,
+                                 unsigned seed )
 {
-    season_effective_time t( real_t );
-    weather_gen_common result;
     // Integer x position / widening factor of the Perlin function.
     result.x = location.x() / 2000.0;
     // Integer y position / widening factor of the Perlin function.
     result.y = location.y() / 2000.0;
-    // Integer turn / widening factor of the Perlin function.
-    result.z = to_days<double>( real_t - calendar::turn_zero );
     // Limit the random seed during noise calculation, a large value flattens the noise generator to zero
     // Windows has a rand limit of 32768, other operating systems can have higher limits
     result.modSEED = seed % SIMPLEX_NOISE_RANDOM_SEED_LIMIT;
+}
+
+// The parts of weather_gen_common that depend on the time.
+static void set_common_time( weather_gen_common &result, const time_point &real_t )
+{
+    season_effective_time t( real_t );
+    // Integer turn / widening factor of the Perlin function.
+    result.z = to_days<double>( real_t - calendar::turn_zero );
     const double year_fraction( time_past_new_year( t.t ) /
                                 calendar::year_length() ); // [0,1)
     // We add an offset to line up `cyf` so that 1 is at
@@ -118,18 +123,31 @@ static weather_gen_common get_common_data( const tripoint_abs_ms &location,
     const double offset = days_year_start_to_midwinter / to_days<double>( calendar::year_length() );
     result.cyf = std::cos( tau * ( year_fraction - offset ) ); // [-1, 1]
     result.season = season_of_year( t.t );
+}
 
+static weather_gen_common get_common_data( const tripoint_abs_ms &location,
+        const time_point &real_t,
+        unsigned seed )
+{
+    weather_gen_common result;
+    set_common_location( result, location, seed );
+    set_common_time( result, real_t );
     return result;
 }
 
-static units::temperature weather_temperature_from_common_data( const weather_generator &wg,
-        const weather_gen_common &common, const season_effective_time &t )
+namespace
 {
-    const double x( common.x );
-    const double y( common.y );
-    const double z( common.z );
+// The terms of the temperature that depend only on the time: the noise-free baseline and how
+// strongly the noise counts.
+struct weather_temperature_terms {
+    double baseline = 0;
+    double noise_scale = 0;
+};
+} // namespace
 
-    const unsigned modSEED = common.modSEED;
+static weather_temperature_terms weather_temperature_terms_from_common_data(
+    const weather_generator &wg, const weather_gen_common &common, const season_effective_time &t )
+{
     const double seasonality = -common.cyf;
     // -1 in midwinter, +1 in midsummer
     const season_type season = common.season;
@@ -142,16 +160,55 @@ static units::temperature weather_temperature_from_common_data( const weather_ge
         wg.spring_temp_manual_mod, wg.summer_temp_manual_mod, wg.autumn_temp_manual_mod,
         wg.winter_temp_manual_mod
     };
-    const double baseline(
+    weather_temperature_terms terms;
+    terms.baseline =
         wg.base_temperature +
         seasonal_temp_mod[season] +
         dayv * ( daily_magnitude_K + daily_seasonal_range_K * ( -seasonality + 1 ) / 2 ) +
-        seasonality * seasonality_magnitude_K );
+        seasonality * seasonality_magnitude_K;
+    terms.noise_scale = 1 + ( 1 + -seasonality ) * seasonal_noise_magnitude / 2;
+    return terms;
+}
 
-    const double T = baseline + raw_noise_4d( x, y, z, modSEED ) *
-                     ( 1 + ( 1 + -seasonality ) * seasonal_noise_magnitude / 2 ) * noise_magnitude_K;
+static units::temperature weather_temperature_from_terms( const weather_temperature_terms &terms,
+        const weather_gen_common &common )
+{
+    const double T = terms.baseline + raw_noise_4d( common.x, common.y, common.z, common.modSEED ) *
+                     terms.noise_scale * noise_magnitude_K;
 
     return units::from_celsius( T );
+}
+
+static units::temperature weather_temperature_from_common_data( const weather_generator &wg,
+        const weather_gen_common &common, const season_effective_time &t )
+{
+    return weather_temperature_from_terms( weather_temperature_terms_from_common_data( wg, common, t ),
+                                           common );
+}
+
+weather_temperature_sampler::weather_temperature_sampler( const weather_generator &wgen,
+        const std::vector<time_point> &times )
+{
+    samples.reserve( times.size() );
+    for( const time_point &t : times ) {
+        weather_gen_common common;
+        set_common_time( common, t );
+        const weather_temperature_terms terms = weather_temperature_terms_from_common_data( wgen, common,
+                                                season_effective_time( t ) );
+        samples.push_back( { common.z, terms.baseline, terms.noise_scale } );
+    }
+}
+
+units::temperature weather_temperature_sampler::temperature( size_t i,
+        const tripoint_abs_ms &location, unsigned seed ) const
+{
+    weather_gen_common common;
+    set_common_location( common, location, seed );
+    common.z = samples[i].z;
+    weather_temperature_terms terms;
+    terms.baseline = samples[i].baseline;
+    terms.noise_scale = samples[i].noise_scale;
+    return weather_temperature_from_terms( terms, common );
 }
 
 units::temperature weather_generator::get_weather_temperature(

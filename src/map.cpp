@@ -88,6 +88,7 @@
 #include "overmap_map_data_cache.h"
 #include "overmapbuffer.h"
 #include "pathfinding.h"
+#include "phase_change.h"
 #include "pocket_type.h"
 #include "power_network.h"
 #include "projectile.h"
@@ -9643,14 +9644,19 @@ void map::loadn( const point_bub_sm &grid, bool update_vehicles )
             add_tree_tops( { grid.x(), grid.y(), z } );
         }
         // When a submap is loaded into the reality bubble, apply
-        // temperature-based phase changes
+        // temperature-based phase changes. Only tiles whose terrain has phase rules, or that
+        // phase rules changed before, can change.
         const weather_generator &wgen = get_weather().get_cur_weather_gen();
+        const scoped_phase_temperatures phase_temperatures( wgen );
         const tripoint_abs_sm pos_sm = { grid_abs_sub.xy(), z };
         const tripoint_abs_ms sm_abs_ms = project_to<coords::ms>( pos_sm );
         const tripoint_bub_ms sm_origin = get_bub( sm_abs_ms );
         for( int sx = 0; sx < SEEX; ++sx ) {
             for( int sy = 0; sy < SEEX; ++sy ) {
-                temp_based_phase_change_at( sm_origin + point( sx, sy ), wgen );
+                const point_sm_ms l( sx, sy );
+                if( tmpsub->has_original_ter( l ) || !tmpsub->get_ter( l )->phase_method.empty() ) {
+                    temp_based_phase_change_at( sm_origin + point( sx, sy ), wgen );
+                }
             }
         }
     }
