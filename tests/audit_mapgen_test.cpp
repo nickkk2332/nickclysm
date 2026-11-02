@@ -1,10 +1,16 @@
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "cata_catch.h"
+#include "debug.h"
+#include "flexbuffer_json.h"
 #include "global_vars.h"
+#include "json_error.h"
+#include "json_loader.h"
 #include "mapdata.h"
+#include "mapgen.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
 #include "type_id.h"
@@ -61,4 +67,103 @@ TEST_CASE( "mgen-b02_nested_mapgen_weight_can_be_math", "[audit][mapgen]" )
     CHECK( disabled.count( ter_t_linoleum_white.id() ) == 0 );
     CHECK( disabled.count( ter_t_linoleum_gray.id() ) == 1 );
     CHECK( favoured.count( ter_t_linoleum_white.id() ) == 1 );
+}
+
+// Sets up a 24x24 nested mapgen from the json members in @p members and returns what its
+// load-time check() reports
+static std::string check_messages_for( const std::string &members )
+{
+    JsonObject jo = json_loader::from_string( R"({ "mapgensize": [ 24, 24 ], )" + members + "}" );
+    jo.allow_omitted_members();
+    mapgen_function_json_nested func( std::move( jo ), "audit check mapgen" );
+    func.setup();
+    func.finalize_parameters();
+    return capture_debugmsg_during( [&func]() {
+        func.check();
+    } );
+}
+
+static bool mentions( const std::string &messages, const std::string &what )
+{
+    return messages.find( what ) != std::string::npos;
+}
+
+// jmapgen_nested::check iterated "chunks" twice and never "else_chunks", so an undefined
+// parameter there only surfaced at runtime.
+TEST_CASE( "mgen-b03_nested_else_chunks_are_checked", "[audit][mapgen]" )
+{
+    const std::string messages = check_messages_for( R"( "place_nested": [
+        { "else_chunks": [ { "param": "audit_no_such_param" } ], "x": 0, "y": 0 } ] )" );
+    CAPTURE( messages );
+    CHECK( mentions( messages, "undefined parameter 'audit_no_such_param'" ) );
+}
+
+// The first PLANT furniture in "set" returned from the whole check, skipping every piece check.
+TEST_CASE( "mgen-b03_plant_furniture_does_not_skip_the_other_checks", "[audit][mapgen]" )
+{
+    const std::string messages = check_messages_for( R"(
+        "set": [ { "point": "furniture", "id": "f_plant_unharvested_overgrown", "x": 0, "y": 0 } ],
+        "place_items": [ { "item": "audit_no_such_group", "x": 3, "y": 3, "chance": 100 } ] )" );
+    CAPTURE( messages );
+    CHECK( mentions( messages, "f_plant_unharvested_overgrown" ) );
+    CHECK( mentions( messages, "Invalid item_group_id \"audit_no_such_group\"" ) );
+}
+
+// Computer eocs and chat topics, corpse groups and the factions owning items and vehicles
+// were never validated.
+TEST_CASE( "mgen-b03_check_validates_computer_corpse_and_faction_ids", "[audit][mapgen]" )
+{
+    SECTION( "unknown ids are reported" ) {
+        const std::string messages = check_messages_for( R"(
+            "place_computers": [ { "name": "audit", "x": 1, "y": 1,
+                "eocs": [ "audit_no_such_eoc" ], "chat_topics": [ "AUDIT_NO_SUCH_TOPIC" ] } ],
+            "place_corpses": [ { "group": "GROUP_AUDIT_NO_SUCH", "x": 2, "y": 2 } ],
+            "place_items": [ { "item": "trash_junkyard", "x": 3, "y": 3, "chance": 100,
+                "faction": "audit_no_such_item_faction" } ],
+            "place_item": [ { "item": "rock", "x": 4, "y": 4,
+                "faction": "audit_no_such_spawn_faction" } ],
+            "place_vehicles": [ { "vehicle": "shopping_cart", "x": 12, "y": 12,
+                "faction": "audit_no_such_vehicle_faction" } ] )" );
+        CAPTURE( messages );
+        CHECK( mentions( messages, "\"audit_no_such_eoc\"" ) );
+        CHECK( mentions( messages, "\"AUDIT_NO_SUCH_TOPIC\"" ) );
+        CHECK( mentions( messages, "\"GROUP_AUDIT_NO_SUCH\"" ) );
+        CHECK( mentions( messages, "\"audit_no_such_item_faction\"" ) );
+        CHECK( mentions( messages, "\"audit_no_such_spawn_faction\"" ) );
+        CHECK( mentions( messages, "\"audit_no_such_vehicle_faction\"" ) );
+    }
+    SECTION( "known ids pass" ) {
+        const std::string messages = check_messages_for( R"(
+            "place_computers": [ { "name": "audit", "x": 1, "y": 1,
+                "eocs": [ "EOC_CAFFEINE_ADDICTION" ] } ],
+            "place_corpses": [ { "group": "GROUP_ZOMBIE", "x": 2, "y": 2 } ],
+            "place_items": [ { "item": "trash_junkyard", "x": 3, "y": 3, "chance": 100,
+                "faction": "no_faction" } ],
+            "place_item": [ { "item": "rock", "x": 4, "y": 4, "faction": "no_faction" } ],
+            "place_vehicles": [ { "vehicle": "shopping_cart", "x": 12, "y": 12,
+                "faction": "no_faction" } ] )" );
+        CAPTURE( messages );
+        CHECK( messages.empty() );
+    }
+}
+
+// "line" and "square" with "bash", "burn" or "variable" made op values with no case in
+// apply(), so they loaded and then silently did nothing.
+TEST_CASE( "mgen-b03_line_and_square_reject_point_only_ops", "[audit][mapgen]" )
+{
+    const auto setup = []( const std::string & set ) {
+        JsonObject jo = json_loader::from_string(
+                            R"({ "mapgensize": [ 24, 24 ], "set": [ )" + set + " ] }" );
+        jo.allow_omitted_members();
+        mapgen_function_json_nested func( std::move( jo ), "audit setmap mapgen" );
+        func.setup();
+    };
+    CHECK_THROWS_AS( setup( R"({ "line": "bash", "x": 0, "y": 0, "x2": 5, "y2": 5 })" ),
+                     JsonError );
+    CHECK_THROWS_AS( setup( R"({ "square": "burn", "x": 0, "y": 0, "x2": 5, "y2": 5 })" ),
+                     JsonError );
+    CHECK_THROWS_AS(
+        setup( R"({ "line": "variable", "id": "audit_var", "x": 0, "y": 0, "x2": 5, "y2": 5 })" ),
+        JsonError );
+    CHECK_NOTHROW( setup( R"({ "point": "bash", "x": 0, "y": 0 })" ) );
 }

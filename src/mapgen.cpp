@@ -68,6 +68,7 @@
 #include "mission.h"
 #include "mongroup.h"
 #include "npc.h"
+#include "npctalk.h"
 #include "omdata.h"
 #include "options.h"
 #include "output.h"
@@ -1134,6 +1135,12 @@ void mapgen_function_json_base::setup_setmap( const JsonArray &parray )
         }
 
         tmpop = sm_it->second;
+        // These ops have no line or square variant, apply() would silently do nothing
+        if( setmap_optype != JMAPGEN_SETMAP_OPTYPE_POINT && ( tmpop == JMAPGEN_SETMAP_BASH ||
+                tmpop == JMAPGEN_SETMAP_BURN || tmpop == JMAPGEN_SETMAP_VARIABLE ) ) {
+            pjo.throw_error_at( setmap_optype == JMAPGEN_SETMAP_OPTYPE_LINE ? "line" : "square",
+                                string_format( "\"%s\" is only supported with \"point\"", tmpval ) );
+        }
         jmapgen_int tmp_x2( 0, 0 );
         jmapgen_int tmp_y2( 0, 0 );
         jmapgen_int tmp_i( 0, 0 );
@@ -2397,6 +2404,14 @@ class jmapgen_liquid_item : public jmapgen_piece
         }
 };
 
+// The "faction" owning spawned items or vehicles must exist; empty means none
+static void check_faction( const std::string &faction, const std::string &context )
+{
+    if( !faction.empty() && !faction_id( faction ).is_valid() ) {
+        debugmsg( "Invalid faction \"%s\" in %s", faction, context );
+    }
+}
+
 /**
  * Place a corpse of a random monster from a monster group into the map.
  * "group": id of monster group to choose from
@@ -2410,6 +2425,14 @@ class jmapgen_corpse : public jmapgen_piece
         jmapgen_corpse( const JsonObject &jsi, std::string_view/*context*/ ) :
             group( jsi.get_member( "group" ) )
             , age( time_duration::from_days( jsi.get_int( "age", 0 ) ) ) {
+        }
+
+        void check( const std::string &context, const mapgen_parameters &,
+                    const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
+                  ) const override {
+            if( !group.is_valid() ) {
+                debugmsg( "Invalid monster group \"%s\" for a corpse in %s", group.str(), context );
+            }
         }
 
         void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
@@ -2458,6 +2481,7 @@ class jmapgen_item_group : public jmapgen_piece
             if( !group_id.is_valid() ) {
                 debugmsg( "Invalid item_group_id \"%s\" in %s", group_id.str(), context );
             }
+            check_faction( faction, context );
         }
         void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
                     const std::string &/*context*/ ) const override {
@@ -2769,6 +2793,7 @@ class jmapgen_vehicle : public jmapgen_piece_with_has_vehicle_collision
                     const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &/*z*/
                   ) const override {
             type.check( context, parameters );
+            check_faction( faction, context );
 
             if( x.val == -1 ) {
                 // We are in a palette, so no need to verify that the positions
@@ -2888,6 +2913,7 @@ class jmapgen_spawn_item : public jmapgen_piece
                     const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
                   ) const override {
             type.check( oter_name, parameters );
+            check_faction( faction, oter_name );
         }
 };
 /**
@@ -3268,6 +3294,22 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
             // The default access denied message is defined in computer's constructor
             if( !access_denied.empty() ) {
                 cpu->set_access_denied_msg( access_denied.translated() );
+            }
+        }
+
+        void check( const std::string &context, const mapgen_parameters &,
+                    const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
+                  ) const override {
+            for( const effect_on_condition_id &eoc : eocs ) {
+                if( !eoc.is_valid() ) {
+                    debugmsg( "Invalid effect_on_condition \"%s\" for a computer in %s", eoc.str(),
+                              context );
+                }
+            }
+            for( const std::string &topic : chat_topics ) {
+                if( get_talk_topic( topic ) == nullptr ) {
+                    debugmsg( "Invalid chat topic \"%s\" for a computer in %s", topic, context );
+                }
             }
         }
 };
@@ -3881,7 +3923,7 @@ class jmapgen_nested : public jmapgen_piece
             for( const std::pair<mapgen_value<nested_mapgen_id>, dbl_or_var> &p : entries ) {
                 p.first.check( oter_name, parameters );
             }
-            for( const std::pair<mapgen_value<nested_mapgen_id>, dbl_or_var> &p : entries ) {
+            for( const std::pair<mapgen_value<nested_mapgen_id>, dbl_or_var> &p : else_entries ) {
                 p.first.check( oter_name, parameters );
             }
             neighbor_joins.check( oter_name, parameters );
@@ -4919,8 +4961,9 @@ void mapgen_function_json_base::check_common() const
             continue;
         }
         furn_id id( setmap.val.get() );
+        // Report a PLANT once per mapgen, but still run the checks below
         if( check_furn( id, context_ ) ) {
-            return;
+            break;
         }
     }
 
