@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <climits>
+#include <list>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -40,6 +42,7 @@ static const itype_id itype_rock( "rock" );
 static const itype_id itype_test_fault_self_damaging_rod( "test_fault_self_damaging_rod" );
 static const itype_id itype_test_fault_two_mech_rod( "test_fault_two_mech_rod" );
 static const itype_id itype_test_glock( "test_glock" );
+static const itype_id itype_test_quiver( "test_quiver" );
 static const itype_id itype_test_transform_timed_baton( "test_transform_timed_baton" );
 
 static const relic_procgen_id relic_procgen_data_test_relic_hit_me( "test_relic_hit_me" );
@@ -291,4 +294,26 @@ TEST_CASE( "iinf-b03_gun_recoil_never_rises_with_arm_strength", "[audit][item][g
     guy.set_str_base( 1 );
     const int recoil_handling_one = gun.gun_recoil( guy );
     CHECK( recoil_no_handling == 2 * recoil_handling_one );
+}
+
+// IINF-B04: item::on_wear() picked the side of a sided item by summing the character's
+// cached encumbrance with the item on the left and then on the right.  The cache knew
+// nothing of the new item or its side (it's recalculated after on_wear), so both sums were
+// equal and every sided item went on the left: two quivers both ended up on the left leg.
+TEST_CASE( "iinf-b04_second_sided_item_goes_on_the_free_side", "[audit][item][armor]" )
+{
+    clear_avatar();
+    avatar &guy = get_avatar();
+
+    std::optional<std::list<item>::iterator> first = guy.wear_item( item( itype_test_quiver ),
+            false );
+    REQUIRE( first.has_value() );
+    const side first_side = ( *first )->get_side();
+    REQUIRE( first_side != side::BOTH );
+
+    std::optional<std::list<item>::iterator> second = guy.wear_item( item( itype_test_quiver ),
+            false );
+    REQUIRE( second.has_value() );
+    CHECK( ( *second )->get_side() != side::BOTH );
+    CHECK( ( *second )->get_side() != first_side );
 }
