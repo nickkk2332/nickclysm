@@ -300,6 +300,114 @@ Four fixes have no regression test, because the code is only reachable through i
 
 Every mod in `data/mods` was loaded with these changes. All load without errors, except Limb_WIP (marked obsolete), which still reports armor and mutation-category warnings that predate this branch.
 
+**Third round: modding round 1 and bug sweep 1.** 70 findings, made the same way as the second round (agent batches in worktrees, a separate reviewer, central build and test):
+
+- **Bug sweep:** the 46 medium-severity bugs in the map, spatial, mapgen, overmap, item and health chapters. 39 fixed, 7 partial. Reviewers asked for changes to 5 of them.
+- **Modding round:** the 24 medium-effort modding features. 5 complete, 19 partial; for most partial ones the core is in and the table says what is left. Each agent wrote a design first (JSON syntax with an example, semantics, edge cases), kept existing JSON working, documented the feature and tested it through TEST_DATA JSON. Reviewers also checked that shipped mods behave the same and asked for changes to 11 of the 24. Among other things, that review caught a reordering of activity hooks that would have broken Xedra Evolved's spirit quest and a Mind Over Matter power, and a monster-AI change that would have given the void spider a free extra hit every turn.
+
+Merging the batches needed only documentation conflicts resolved by hand (the EOC talker and event tables in `EFFECT_ON_CONDITION.md`, and two new sections in `MUTATIONS.md`). The agents compile-checked their work but did not run it. Running the new tests found five mistakes in the tests themselves: TEST_DATA that failed to load (a same-mod redefinition and a missing mandatory `cooldown`), a venom effect whose intensity comes from its duration, a wall light whose placement asks the player for a direction, and wind checks that compared two different random rolls. It also found one real bug, fixed in `f4d64d6b`: with no known basher, MAP-J01 ran bash EOCs with no talker at all, which would have shown an error in game for every explosion or fire that hit such a tile. The SPAT-B05 test was re-run against a build with its fix reverted and fails there.
+
+Bug sweep:
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| MAP-B03 | fixed | `48892eff` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B04 | fixed | `04dee5de` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B05 | fixed | `f6c96eeb` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B06 | fixed | `4119cc83` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B07 | fixed | `fdf96a44` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B08 | fixed | `db007203`, `3b60f73a` | `tests/audit_map_fields_items_test.cpp` |
+| SPAT-B03 | fixed | `6e3fc6d5` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B04 | fixed | `b2ad29a7` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B05 | fixed | `a078bbf4`, `87629287` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B06 | fixed | `89c56b9a` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B07 | fixed | `042a6fc0`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B08 | fixed | `cdaa9b92`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B09 | fixed | `9012c702` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B10 | partial | `0d52b78c` | `tests/audit_spatial_sweep_test.cpp`. Still open: an optional `scent_neutralization_radius`, and a load warning for scent-neutralizing fields that do not spread |
+| MGEN-B02 | fixed | `efa28db1`, `f99a8cbf` | `tests/audit_mapgen_test.cpp` |
+| MGEN-B03 | partial | `2bfdf130`, `f24378f3` | `tests/audit_mapgen_test.cpp`. Still open: validating `remove_npcs` classes (the robofac intercom map removes NPC classes that no longer exist on purpose, as a save migration) |
+| MGEN-B04 | fixed | `30fae9f2` | `tests/audit_mapgen_test.cpp` |
+| MGEN-B05 | fixed | `9ff01839`, `359d63d0`, `737dcfd6` | `tests/audit_mapgen_test.cpp` |
+| MGEN-B06 | partial | `d34e62ee` | `tests/audit_mapgen_test.cpp`. Still open: the consistency check between variable-weight mapgens and their predecessors (`road_nesw_manhole` needs its own data fix first) |
+| MGEN-B07 | fixed | `38d80875`, `6755a3ea` | `tests/audit_mapgen_test.cpp` |
+| OMAP-B01 | partial | `5322035b` | `tests/audit_overmap_worldgen_test.cpp`. Still open: the non-root pieces of mutable specials still ignore "must be unexplored" |
+| OMAP-B02 | partial | `e1f926a7` | `tests/audit_overmap_worldgen_test.cpp`. Still open: generating overmaps to find a mission target that does not exist yet (too costly) |
+| OMAP-B03 | fixed | `ab91d69d` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B04 | fixed | `1d3f3350`, `3d7bce37` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B05 | fixed | `75c6455b` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B06 | fixed | `6b985104` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B07 | fixed | `c8f641b1` | `tests/audit_overmap_worldgen_test.cpp` |
+| ITEM-B03 | fixed | `c85b1c60` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B04 | fixed | `64984162` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B05 | fixed | `2bc5d36f` | none: an iteration fix with no observable symptom in tests |
+| ITEM-B06 | fixed | `6ece818f` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B07 | fixed | `1e27a025`, `9f118c7f` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B08 | fixed | `00a37ff1` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B09 | fixed | `755dc3f8`, `3aba34c5` | `tests/audit_items_sweep_test.cpp` |
+| IINF-B03 | fixed | `032ba713` | `tests/audit_items_sweep_test.cpp` |
+| IINF-B04 | fixed | `fc6dbacb` | `tests/audit_items_sweep_test.cpp` |
+| IINF-B05 | partial | `459fe6a2` | `tests/audit_items_sweep_test.cpp`. Still open: filtering the summed `ammo_remaining()` by ammo type |
+| HLTH-B02 | fixed | `dd7947b4` | `tests/audit_health_test.cpp` |
+| HLTH-B03 | fixed | `69cc6806` | `tests/audit_health_test.cpp` |
+| HLTH-B04 | fixed | `56649dbb` | `tests/audit_health_test.cpp` |
+| HLTH-B05 | partial | `7dbca179`, `87629287` | `tests/audit_health_test.cpp`. Still open: clamping a defined chance to at least 1 (vanilla effects use negative chances to mean "never") |
+| HLTH-B06 | fixed | `a6bbbcaa` | `tests/audit_health_test.cpp` |
+| HLTH-B07 | fixed | `f83a3649` | `tests/audit_health_test.cpp` |
+| HLTH-B08 | fixed | `99a20b73`, `f8b2a332`, `cd38b39a` | `tests/audit_health_test.cpp` |
+| HLTH-B09 | fixed | `867d4cb1`, `f8b2a332` | `tests/audit_health_test.cpp` |
+| HLTH-B10 | fixed | `474baa01`, `37f22ce8` | `tests/audit_health_test.cpp` |
+
+Modding features:
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| ACT-J02 | partial | `06f6c4a4` | `tests/audit_activities_crafting_test.cpp`. Still open: activities that need an item or a target (reading a specific book, for example) |
+| ACT-J03 | partial | `2d596bc0`, `b53594ec` | `tests/audit_activities_crafting_test.cpp`. Still open: an "outcome" field on the event, and a context object on `u_assign_activity` |
+| CRAFT-J02 | partial | `e7222c8a` | `tests/audit_activities_crafting_test.cpp`. Still open: recipe start and fail hooks, and events for crafting, disassembly and recipe learning |
+| TERR-J01 | partial | `33e6f99a`, `f93e4745` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: moving the hardcoded vanilla `post_special` functions to JSON |
+| CRAFT-J01 | partial | `b33ebcb7` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: inheriting inline requirements and extending or deleting component, tool and quality groups |
+| CAMP-J01 | fixed | `bda202de` | `tests/audit_construction_recipe_camp_test.cpp` |
+| MUT-J02 | partial | `baea3c27` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: a refund channel for cancelled activations, and a menu pre-check before the activation message |
+| MUT-J03 | partial | `eceb79dd`, `e3212448` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: bionic math functions, an ignore-cost option, and access to per-bionic state |
+| NPC-J01 | partial | `90eb6d45` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: giving other toggled bionics an `npc_use` (a content decision), priorities, and NPC use of spell bionics |
+| CMBT-J01 | partial | `7dfdc8e4` | `tests/audit_martial_art_events_test.cpp`. Still open: get-hit hooks for projectile and explosion hits, and context values for pre-hit technique EOCs |
+| HLTH-J03 | partial | `79ed5939` | `tests/audit_diet_rules_test.cpp`. Still open: moving vanilla diet traits (vegan, gourmand, picky eater, ruminant and others) to these fields |
+| MAGIC-J02 | partial | `5c4fb57a` | `tests/audit_spell_enchant_test.cpp`. Still open: fail chance, difficulty, spell XP and sound values |
+| INV-J03 | fixed | `35ca98d9` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
+| VEH-J01 | partial | `ae836b32`, `398d4f09`, `673b3770` | `tests/audit_eoc_inventory_vehicle_test.cpp`. Still open: damaging vehicle parts from an EOC (it can split or delete the vehicle mid-EOC), owner, and weight (VINT-J04) |
+| VINT-J02 | fixed | `f28f99e1`, `743f2e40` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
+| LOOP-J01 | fixed | `a17a8639`, `ccfba742`, `374ce76a` | `tests/audit_weather_eoc_test.cpp` |
+| MAP-J01 | partial | `210feefe`, `85598110`, `f4d64d6b` | `tests/audit_bash_eoc_test.cpp`. Still open: a general "tile destroyed" event and a cause value for bashes with no creature (explosions, fire, vehicles) |
+| MONAI-J01 | partial | `e08fb87c`, `54d15f8c`, `530d442b` | `tests/audit_monster_eoc_test.cpp`. Still open: forcing a monster's target or destination (the monster AI replaces both every turn) |
+| INV-J02 | fixed | `ca101f02`, `0dcb820a` | `tests/audit_mod_overrides_test.cpp` |
+| HLTH-J02 | partial | `c47dbf59`, `58e3fada` | `tests/audit_mod_overrides_test.cpp`. Still open: validating resist, remove and block lists in effects, because shipped data still has stale ids there |
+| NPC-J02 | partial | `92f0de07` | `tests/audit_mod_overrides_test.cpp`. Still open: moving NPC templates and factions onto `generic_factory`, and `extend`/`delete` on their lists |
+| MONDT-J01 | partial | `eb828cdb` | `tests/audit_mod_validation_test.cpp`. Still open: a location context value, and spawn data such as effects, variables and factions on group entries |
+| MAGIC-J03 | partial | `9c38b68a`, `e15db0f0`, `12c7974f` | `tests/audit_mod_validation_test.cpp`. Still open: enchantment and terrain-transform consistency checks (MAGIC-J06) |
+| USE-J01 | partial | `9ee18e2d`, `4cbf0b89` | `tests/audit_mod_validation_test.cpp`. Still open: `_method` and `_item_pos` context values (they need USE-J02, several use actions per item) |
+
+**Gameplay changes from the third round:**
+
+- Rain washes fields away as documented: fires go out faster, and smoke and blood clear, also on roofs and upper floors (MAP-B03).
+- Driving over a pile of items no longer shreds all of it, and thrown-off items can land in any direction (MAP-B06).
+- Every copy of a batch craft placed at a workbench now rots, cools and gives off light (MAP-B07).
+- A save that is missing a submap regenerates it instead of crashing (MAP-B08).
+- Smoke and tear gas weaken scent by their strength instead of erasing it (SPAT-B10). Bashing monsters path through obstacles they can break (SPAT-B09). Teleports keep their minimum distance and telefrag the creature in the way (SPAT-B07, SPAT-B08).
+- The second and third prison bus layouts can appear (MGEN-B02).
+- No Hope's spawn-rate settings now thin out every kind of spawned item, not just some, and survive a save and load (MGEN-B05, ITEM-B09).
+- City size follows the urbanity setting (OMAP-B04). Mission and EOC specials no longer overwrite explored map (OMAP-B01), and missions pick the nearest target (OMAP-B02).
+- Sided armor goes on the side you choose (IINF-B04), recoil no longer doubles at an arm-strength threshold (IINF-B03), and multi-magazine guns with a battery can be reloaded (IINF-B05). Countdown items count down (ITEM-B08).
+- Broken limbs mend at their own rate, heavier addictions slow fracture healing more, calorie burn scales smoothly with activity, morale stacks the way it is documented, and incorporeal characters keep items they cannot take off (HLTH-B02, B03, B04, B06, B07). Speed serum now changes breathing as written (HLTH-B10).
+- Companions killed on camp missions die properly: their death EOCs run and they leave the camp and faction (CAMP-J01).
+- NPCs use any weapon bionic flagged for them, such as Aftershock's monowhip (NPC-J01).
+- Martial-art get-hit buffs work while asleep, winded or driving, and on-hit buffs trigger right after the hit (CMBT-J01).
+- A few vanilla recipes now require the proficiencies their JSON adds (CRAFT-J01). Electronics menu toggles are sorted by name (VINT-J02).
+- The Scarlet storm's wind gusts now actually raise the wind (LOOP-J01).
+- Mod content that never worked now does: Godco's waiting and game dialogue (ACT-J02); about a dozen spells in Magiclysm, Xedra Evolved, Aftershock and TropiCataclysm that showed an error when cast (MAGIC-J03); Xedra Evolved's Snow-Fox's Stride and Footsteps in the Snow (HLTH-J02); Deadly Bites' antivirals and BombasticPerks' salt toss (USE-J01); No Hope's thug and bandit names, and mod factions that were reverting to vanilla values (NPC-J02).
+
+**For modders**, each new field, effect, condition and math function is documented with an example in `doc/JSON/` (mainly `EFFECT_ON_CONDITION.md`, `JSON_INFO.md`, `MUTATIONS.md`, `MAGIC.md`, `MARTIALART_JSON.md`, `EFFECTS_JSON.md`, `NPCs.md`, `ITEM_CRAFT_AND_DISASSEMBLY.md`) and in `doc/PLAYER_ACTIVITY.md`. Several mistakes that used to load silently are now load errors: unknown activity ids in `u_assign_activity`, crafting EOCs that can never run, unknown monster group condition tags, wrong effect or EOC ids in spells, bad ids in mapgen `else_chunks`, computers, corpses and factions, and misused recipe `extend`/`delete`. Every mod in `data/mods` still loads with no errors or warnings.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
