@@ -20,7 +20,9 @@
 #include "map_helpers.h"
 #include "math_parser_diag_value.h"
 #include "mongroup.h"
+#include "npc.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "ret_val.h"
 #include "type_id.h"
 
@@ -242,4 +244,61 @@ TEST_CASE( "use-j01_eoc_use_action_condition_charges_cancel_and_target", "[audit
         CHECK( globvars.get_global_value( "test_use_rune_runs" ) == 0 );
         CHECK( rune->ammo_remaining() == 20 );
     }
+}
+
+// USE-J01 (review): a huge _charges went through lround and a cast to int, which wrapped to
+// a negative number and then 0, so nothing was spent (or, with other values, a negative or
+// overflowing qty reached item::activation_consume). It is now clamped with a debugmsg.
+TEST_CASE( "use-j01_eoc_use_action_clamps_huge_charges", "[audit][iuse][eoc]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    avatar &u = get_avatar();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    globvars.set_global_value( "test_use_rune_runs", 0 );
+    globvars.set_global_value( "test_use_rune_allowed", 1 );
+    globvars.set_global_value( "test_use_rune_charges", 1e12 );
+    globvars.set_global_value( "test_use_rune_cancel", 0 );
+
+    item_location rune = u.i_add( item( itype_test_eoc_use_rune ) );
+    REQUIRE( rune );
+    rune->ammo_set( itype_match, 20 );
+    REQUIRE( rune->ammo_remaining() == 20 );
+    u.set_moves( 200 );
+    const std::string msg = capture_debugmsg_during( [&]() {
+        u.invoke_item( rune.get_item(), "effect_on_conditions", u.pos_bub() );
+    } );
+    CAPTURE( msg );
+    CHECK( contains( msg, "_charges" ) );
+    CHECK( globvars.get_global_value( "test_use_rune_runs" ) == 1 );
+    // Clamped to 10000 uses: everything loaded is spent.
+    CHECK( rune->ammo_remaining() == 0 );
+}
+
+// USE-J01 (review): a cancelled use returns std::nullopt and Character::invoke_item restores
+// pre_obtain_moves, but NPCs pass the default -1, so their moves were set to -1 instead of
+// refunded.
+TEST_CASE( "use-j01_eoc_use_action_cancel_refunds_npc_moves", "[audit][iuse][eoc]" )
+{
+    clear_avatar();
+    clear_map();
+    npc &guy = spawn_npc( get_avatar().pos_bub().xy() + point( 3, 0 ), "test_talker" );
+    clear_character( guy );
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    globvars.set_global_value( "test_use_rune_runs", 0 );
+    globvars.set_global_value( "test_use_rune_allowed", 1 );
+    globvars.set_global_value( "test_use_rune_charges", 3 );
+    globvars.set_global_value( "test_use_rune_cancel", 1 );
+
+    item_location rune = guy.i_add( item( itype_test_eoc_use_rune ) );
+    REQUIRE( rune );
+    rune->ammo_set( itype_match, 20 );
+    REQUIRE( rune->ammo_remaining() == 20 );
+    guy.set_moves( 200 );
+    guy.invoke_item( rune.get_item(), "effect_on_conditions" );
+    CHECK( globvars.get_global_value( "test_use_rune_runs" ) == 1 );
+    CHECK( rune->ammo_remaining() == 20 );
+    CHECK( guy.get_moves() == 200 );
 }

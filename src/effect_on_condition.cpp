@@ -358,7 +358,8 @@ void effect_on_conditions::process_reactivate()
                           g->queued_global_effect_on_conditions, d );
 }
 
-bool effect_on_condition::activate( dialogue &d, bool require_callstack_check ) const
+bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
+                                    const std::function<void( const dialogue & )> &on_done ) const
 {
     const bool tracing = debug_menu::debug_capture::is_eoc_tracing();
     std::chrono::steady_clock::time_point trace_start;
@@ -382,6 +383,9 @@ bool effect_on_condition::activate( dialogue &d, bool require_callstack_check ) 
         retval = true;
     } else if( has_false_effect ) {
         false_effect.apply( d_eoc );
+    }
+    if( on_done ) {
+        on_done( d_eoc );
     }
     // This works because if global is true then this is recurring and thus should only ever be passed containing the player
     // Thus we just need to run the npcs.

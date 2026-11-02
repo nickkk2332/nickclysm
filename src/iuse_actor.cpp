@@ -6054,27 +6054,25 @@ struct eoc_use_request {
 };
 } // namespace
 
-// Runs one of the use action's EOCs the way effect_on_condition::activate() does, on its own
-// copy of the dialogue, but keeps that copy so the context values it set can be read back.
-static void run_use_eoc( const effect_on_condition &eoc, const dialogue &d,
-                         eoc_use_request &request )
+// Most uses one activation can spend through "_charges"; keeps the qty * ammo_required()
+// in item::activation_consume from overflowing.
+static constexpr int max_eoc_use_charges = 10000;
+
+// Reads the context values "charges" and "cancel" an EOC of the use action set on its own
+// copy of the dialogue.
+static void read_use_request( const effect_on_condition &eoc, const dialogue &d_eoc,
+                              eoc_use_request &request )
 {
-    if( eoc.type != eoc_type::ACTIVATION ) {
-        debugmsg( "Must use an activation eoc for item activation, but %s is not one.  Create a "
-                  "non-recurring effect_on_condition with its condition and effects instead.",
-                  eoc.id.str() );
-        return;
-    }
-    dialogue d_eoc( d );
-    d_eoc.amend_callstack( "EOC: " + eoc.id.str() );
-    if( !eoc.has_condition || eoc.condition( d_eoc ) ) {
-        eoc.true_effect.apply( d_eoc );
-    } else if( eoc.has_false_effect ) {
-        eoc.false_effect.apply( d_eoc );
-    }
     if( const diag_value *charges = d_eoc.maybe_get_value( "charges" ) ) {
         if( charges->is_dbl() ) {
-            request.charges = std::max( 0, static_cast<int>( std::lround( charges->dbl() ) ) );
+            const double wanted = charges->dbl();
+            const double limit = static_cast<double>( max_eoc_use_charges );
+            const double used = std::isnan( wanted ) ? 0.0 : std::clamp( wanted, 0.0, limit );
+            if( std::isnan( wanted ) || wanted < 0.0 || wanted > limit ) {
+                debugmsg( "EOC %s set _charges to %g, outside 0 to %d; using %g", eoc.id.str(),
+                          wanted, max_eoc_use_charges, used );
+            }
+            request.charges = static_cast<int>( std::lround( used ) );
         } else {
             debugmsg( "EOC %s set the context value charges to a non-number", eoc.id.str() );
         }
@@ -6082,6 +6080,21 @@ static void run_use_eoc( const effect_on_condition &eoc, const dialogue &d,
     if( const diag_value *cancel = d_eoc.maybe_get_value( "cancel" ) ) {
         request.cancel = cancel->is_dbl() ? cancel->dbl() != 0 : !cancel->is_empty();
     }
+}
+
+// Runs one of the use action's EOCs through effect_on_condition::activate(), which runs it on
+// its own copy of the dialogue, and reads back the context values that copy got.
+static void run_use_eoc( const effect_on_condition &eoc, dialogue &d, eoc_use_request &request )
+{
+    if( eoc.type != eoc_type::ACTIVATION ) {
+        debugmsg( "Must use an activation eoc for item activation, but %s is not one.  Create a "
+                  "non-recurring effect_on_condition with its condition and effects instead.",
+                  eoc.id.str() );
+        return;
+    }
+    eoc.activate( d, true, [&eoc, &request]( const dialogue & d_eoc ) {
+        read_use_request( eoc, d_eoc, request );
+    } );
 }
 
 std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,

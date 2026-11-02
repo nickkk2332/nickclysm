@@ -66,7 +66,12 @@ struct effect_on_condition {
         bool has_false_effect = false;
         event_type required_event;
         duration_or_var recurrence;
-        bool activate( dialogue &d, bool require_callstack_check = true ) const;
+        /**
+         * @param on_done if set, called with the copy of @p d the effects ran on (not the
+         * run_for_npcs ones), so the caller can read back context values they set.
+         */
+        bool activate( dialogue &d, bool require_callstack_check = true,
+                       const std::function<void( const dialogue & )> &on_done = {} ) const;
         bool activate_activation_only( dialogue &d, const std::string &text1, const std::string &text2 = "",
                                        const std::string &text3 = "", bool require_callstack_check = true ) const;
         bool check_deactivate( const_dialogue const &d ) const;

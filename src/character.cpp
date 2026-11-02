@@ -4655,6 +4655,11 @@ bool Character::invoke_item( item *used, const std::string &method )
 bool Character::invoke_item( item *used, const std::string &method, const tripoint_bub_ms &pt,
                              int pre_obtain_moves )
 {
+    // As avatar::invoke_item does: a cancelled use refunds the moves spent from here on, so an
+    // NPC's moves aren't set to -1.
+    if( pre_obtain_moves == -1 ) {
+        pre_obtain_moves = get_moves();
+    }
     if( method.empty() ) {
         return invoke_item( used, pt, pre_obtain_moves );
     }
