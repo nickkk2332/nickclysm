@@ -1116,25 +1116,53 @@ void Character::on_damage_of_type( const effect_source &source, int adjusted_dam
                                scaled_int,
                                eff_scale );
 
-                // Handle intensity/duration clamping
+                // Handle intensity/duration clamping against the effect this hit adds to: the
+                // character-wide one for global effects, the main part for main-parts-only
+                // effects. A missing effect counts as intensity 0 and duration 0.
+                bodypart_id target_bp = bp;
+                if( eff.global ) {
+                    target_bp = bodypart_str_id::NULL_ID();
+                } else if( eff.id->get_main_parts() ) {
+                    target_bp = bp->main_part;
+                }
+                const effect &prev_eff = get_effect( eff.id, target_bp );
+                const int prev_int = prev_eff.is_null() ? 0 : prev_eff.get_intensity();
+                const int prev_dur = prev_eff.is_null() ? 0 : to_turns<int>( prev_eff.get_duration() );
+                bool int_capped = false;
+                bool dur_capped = false;
                 if( eff.max_intensity != INT_MAX ) {
-                    int prev_int = get_effect( eff.id, bp ).get_intensity();
                     add_msg_debug( debugmode::DF_CHARACTER,
                                    "Max intensity %d, current intensity %d", eff.max_intensity, prev_int );
                     if( ( prev_int + scaled_int ) > eff.max_intensity ) {
                         scaled_int = eff.max_intensity - prev_int;
+                        int_capped = scaled_int <= 0;
                         add_msg_debug( debugmode::DF_CHARACTER,
                                        "Limiting added intensity to %d", scaled_int );
                     }
                 }
                 if( eff.max_duration != INT_MAX ) {
-                    int prev_dur = to_turns<int>( get_effect( eff.id, bp ).get_duration() );
                     add_msg_debug( debugmode::DF_CHARACTER,
                                    "Max duration %d, current duration %d", eff.max_duration, prev_dur );
                     if( ( prev_dur + scaled_dur ) > eff.max_duration ) {
                         scaled_dur = eff.max_duration - prev_dur;
+                        dur_capped = scaled_dur <= 0;
                         add_msg_debug( debugmode::DF_CHARACTER,
                                        "Limiting added duration to %d seconds", scaled_dur );
+                    }
+                }
+                if( int_capped || dur_capped ) {
+                    if( prev_eff.is_null() || ( int_capped && dur_capped ) ) {
+                        // Nothing is left to add under the caps.
+                        continue;
+                    }
+                    // add_effect sets the intensity of an existing effect and adds to its
+                    // duration: keep the intensity instead of lowering it, and add no time
+                    // instead of taking some away.
+                    if( int_capped ) {
+                        scaled_int = prev_int;
+                    }
+                    if( dur_capped ) {
+                        scaled_dur = 0;
                     }
                 }
                 // Add the effect globally if defined

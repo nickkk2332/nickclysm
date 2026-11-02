@@ -6,8 +6,11 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
+#include "damage.h"
 #include "effect.h"
+#include "effect_source.h"
 #include "flag.h"
 #include "game_constants.h"
 #include "item.h"
@@ -22,6 +25,9 @@ static const addiction_id addiction_nicotine( "nicotine" );
 static const bodypart_str_id body_part_arm_insect_l( "arm_insect_l" );
 static const bodypart_str_id body_part_wing_insect_l( "wing_insect_l" );
 
+static const damage_type_id damage_bash( "bash" );
+
+static const efftype_id effect_debugged( "debugged" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_mending( "mending" );
 static const efftype_id effect_venom_dmg( "venom_dmg" );
@@ -248,4 +254,82 @@ TEST_CASE( "hlth-b07_incorporeal_keeps_worn_no_takeoff_items", "[audit][health]"
     u.remove_effect( effect_incorporeal );
     clear_avatar();
     clear_map();
+}
+
+// Hits the torso hard enough for any on-hit effect with a threshold of 0.
+static void audit_bash_torso( Character &who )
+{
+    int damage = 0;
+    int pain = 0;
+    who.deal_damage_handle_type( effect_source::empty(), damage_unit( damage_bash, 50.0f ),
+                                 body_part_torso, damage, pain );
+}
+
+// HLTH-B08: on-hit effect caps read the current effect from the hit part, but global
+// effects live on the NULL part, so the lookup found nothing (reported as intensity 1,
+// duration 0): global effects ran past max_duration and new effects got one intensity
+// level less than the cap. A value already over the cap passed a negative duration to
+// add_effect, which shortened the effect.
+TEST_CASE( "hlth-b08_onhit_effect_caps_use_the_effect_they_add_to", "[audit][health]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    std::vector<bp_onhit_effect> &onhit =
+        const_cast<body_part_type &>( body_part_torso.obj() ).effects_on_hit;
+    restore_on_out_of_scope<std::vector<bp_onhit_effect>> restore_onhit( onhit );
+    onhit.clear();
+    bp_onhit_effect hit;
+    hit.id = effect_debugged;
+    hit.dtype = damage_bash;
+    hit.dmg_threshold = 0;
+    hit.scale_increment = 1.0f;
+    hit.chance = 100;
+
+    SECTION( "global effect respects max_intensity and max_duration" ) {
+        hit.global = true;
+        hit.intensity = 3;
+        hit.max_intensity = 3;
+        hit.duration = 10;
+        hit.max_duration = 20;
+        onhit.push_back( hit );
+
+        audit_bash_torso( u );
+        REQUIRE( u.has_effect( effect_debugged ) );
+        // The old code counted the missing effect as intensity 1 and capped the add at 2.
+        CHECK( u.get_effect( effect_debugged ).get_intensity() == 3 );
+        CHECK( u.get_effect_dur( effect_debugged ) == 10_turns );
+
+        audit_bash_torso( u );
+        audit_bash_torso( u );
+        // The old code compared against the torso, found nothing and reached 30.
+        CHECK( u.get_effect_dur( effect_debugged ) == 20_turns );
+        CHECK( u.get_effect( effect_debugged ).get_intensity() == 3 );
+    }
+
+    SECTION( "an effect already over the cap is not shortened" ) {
+        hit.duration = 1;
+        hit.max_duration = 15;
+        onhit.push_back( hit );
+        u.add_effect( effect_debugged, 25_turns, body_part_torso );
+        REQUIRE( u.get_effect_dur( effect_debugged, body_part_torso ) == 25_turns );
+
+        audit_bash_torso( u );
+        // The old code added 15 - 25 = -10 turns.
+        CHECK( u.get_effect_dur( effect_debugged, body_part_torso ) == 25_turns );
+    }
+
+    SECTION( "an effect already over the intensity cap is not lowered" ) {
+        hit.intensity = 1;
+        hit.max_intensity = 2;
+        hit.duration = 5;
+        onhit.push_back( hit );
+        u.add_effect( effect_debugged, 10_turns, body_part_torso, false, 4 );
+        REQUIRE( u.get_effect( effect_debugged, body_part_torso ).get_intensity() == 4 );
+
+        audit_bash_torso( u );
+        // At the intensity cap the hit keeps the intensity it has and still adds duration.
+        CHECK( u.get_effect( effect_debugged, body_part_torso ).get_intensity() == 4 );
+        CHECK( u.get_effect_dur( effect_debugged, body_part_torso ) == 15_turns );
+    }
+    clear_avatar();
 }
