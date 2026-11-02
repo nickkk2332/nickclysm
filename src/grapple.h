@@ -2,6 +2,9 @@
 #ifndef CATA_SRC_GRAPPLE_H
 #define CATA_SRC_GRAPPLE_H
 
+#include <optional>
+#include <string>
+
 #include "type_id.h"
 
 class Character;
@@ -78,6 +81,37 @@ int stamina_floor();
 
 /** Per-turn upkeep for a grabber. Called from Character::process_turn. */
 void process_turn( Character &grabber );
+
+// The grab action
+
+/** Arm stamina spent on a grab attempt. */
+int arm_stamina_cost();
+
+/** A body part of @p target that nobody holds yet, weighted by hit size; nullopt if none. */
+std::optional<bodypart_id> free_grab_part( const Creature &target );
+
+/**
+ * Why @p grabber can't try to grab @p target now, or nullopt if it can. Checked before any cost
+ * is paid, so a refusal changes nothing.
+ */
+std::optional<std::string> grab_refusal( const Character &grabber, const Creature &target );
+
+/** Whether @p target accepts the grab: no hit roll, and no anger. */
+bool grab_tolerated( const Character &grabber, const Creature &target );
+
+enum class grab_confirmation : int {
+    none,           // just do it
+    attack_npc,     // the avatar is about to attack a neutral NPC
+    anger_faction   // the avatar is grabbing a non-hostile monster
+};
+/** What the avatar must confirm before grabbing @p target. */
+grab_confirmation needs_confirmation( const Character &grabber, const Creature &target );
+
+/**
+ * Pay the cost and roll the grab (a hit roll the target can dodge, unless it tolerates the
+ * grab). Returns true when the hold is established. Call grab_refusal() first.
+ */
+bool attempt_grab( Character &grabber, Creature &target );
 
 } // namespace grapple
 

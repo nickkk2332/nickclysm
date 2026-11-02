@@ -43,7 +43,10 @@ static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_pet( "pet" );
+static const efftype_id effect_test_no_grab( "test_no_grab" );
 static const efftype_id effect_winded( "winded" );
+
+static const faction_id faction_your_followers( "your_followers" );
 
 static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
@@ -102,6 +105,12 @@ static void make_pet( monster &mon )
     mon.friendly = -1;
     mon.add_effect( effect_pet, 1_turns, true );
     REQUIRE( mon.is_pet() );
+}
+
+static void make_follower( npc &guy )
+{
+    guy.set_fac( faction_your_followers );
+    REQUIRE( guy.is_player_ally() );
 }
 
 // Phase 0: groundwork
@@ -307,4 +316,172 @@ TEST_CASE( "grapple_hold_survives_save_and_load", "[grapple]" )
     const effect *const hold = grapple::hold_effect( you, mon );
     REQUIRE( hold != nullptr );
     CHECK( hold->get_intensity() == 27 );
+}
+
+// Phase 2: the grab action
+
+TEST_CASE( "grapple_refusals_change_nothing", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    monster &zed = spawn_test_monster( "mon_zombie", you.pos_bub() + tripoint::east );
+    const Creature *target = &zed;
+
+    SECTION( "armed" ) {
+        item rock( itype_rock );
+        REQUIRE( you.wield( rock ) );
+    }
+    SECTION( "no working arm" ) {
+        you.set_part_hp_cur( body_part_arm_l, 0 );
+        you.set_part_hp_cur( body_part_arm_r, 0 );
+        REQUIRE( you.get_working_arm_count() == 0 );
+    }
+    SECTION( "an effect with the NO_GRAB flag" ) {
+        you.add_effect( effect_test_no_grab, 1_hours );
+    }
+    SECTION( "too little stamina" ) {
+        you.set_stamina( grapple::stamina_floor() - 1 );
+    }
+    SECTION( "a GRAB_IMMUNE target" ) {
+        target = &spawn_test_monster( "mon_test_grab_immune", you.pos_bub() + tripoint::south );
+    }
+    SECTION( "an incorporeal target (grab_condition)" ) {
+        zed.add_effect( effect_incorporeal, 1_hours );
+    }
+    SECTION( "out of reach" ) {
+        zed.setpos( here, you.pos_bub() + tripoint{ 2, 0, 0 } );
+    }
+    SECTION( "no free body part" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::south, "thug" );
+        for( const bodypart_id &bp : guy.get_all_body_parts( get_body_part_flags::only_main ) ) {
+            guy.add_effect( effect_grabbed, 1_days, bp, true, 10 );
+        }
+        REQUIRE( !grapple::free_grab_part( guy ).has_value() );
+        target = &guy;
+    }
+
+    const int stamina = you.get_stamina();
+    const int moves = you.get_moves();
+    CHECK( grapple::grab_refusal( you, *target ).has_value() );
+    CHECK( you.get_stamina() == stamina );
+    CHECK( you.get_moves() == moves );
+    CHECK( !you.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+    CHECK( grapple::hold_effect( you, *target ) == nullptr );
+}
+
+TEST_CASE( "grapple_tolerated_grab_sets_both_effects", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    you.set_str_base( 10 );
+    you.set_skill_level( skill_unarmed, 2 );
+    you.set_skill_level( skill_melee, 2 );
+    const int stamina = you.get_stamina();
+    const int moves = you.get_moves();
+
+    SECTION( "a pet" ) {
+        monster &cow = spawn_test_monster( "mon_cow", you.pos_bub() + tripoint::east );
+        make_pet( cow );
+        REQUIRE( grapple::grab_tolerated( you, cow ) );
+        REQUIRE( !grapple::grab_refusal( you, cow ).has_value() );
+        REQUIRE( grapple::attempt_grab( you, cow ) );
+        CHECK( holds( you, cow ) );
+        const effect *const hold = grapple::hold_effect( you, cow );
+        REQUIRE( hold != nullptr );
+        CHECK( hold->get_bp() == no_part() );
+        CHECK( hold->get_intensity() == 18 );
+        CHECK( hold->get_intensity() == grapple::grab_strength( you, cow ) );
+    }
+    SECTION( "a follower" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+        make_follower( guy );
+        REQUIRE( grapple::grab_tolerated( you, guy ) );
+        REQUIRE( !grapple::grab_refusal( you, guy ).has_value() );
+        REQUIRE( grapple::attempt_grab( you, guy ) );
+        CHECK( holds( you, guy ) );
+        const effect *const hold = grapple::hold_effect( you, guy );
+        REQUIRE( hold != nullptr );
+        CHECK( hold->get_bp() == hold->get_bp()->main_part.id() );
+        CHECK( hold->get_bp() != no_part() );
+        CHECK( hold->get_intensity() == 18 );
+    }
+    // The grab costs a hundred moves plus an unarmed attack, and arm stamina.
+    CHECK( you.get_moves() <= moves - 100 );
+    CHECK( you.get_stamina() == stamina - grapple::arm_stamina_cost() );
+}
+
+TEST_CASE( "grapple_skips_body_parts_already_held", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    make_follower( guy );
+    for( const bodypart_id &bp : guy.get_all_body_parts( get_body_part_flags::only_main ) ) {
+        if( bp != body_part_torso.id() ) {
+            guy.add_effect( effect_grabbed, 1_days, bp, true, 10 );
+        }
+    }
+    const std::optional<bodypart_id> free_part = grapple::free_grab_part( guy );
+    REQUIRE( free_part.has_value() );
+    REQUIRE( *free_part == body_part_torso.id() );
+    REQUIRE( grapple::attempt_grab( you, guy ) );
+    const effect *const hold = grapple::hold_effect( you, guy );
+    REQUIRE( hold != nullptr );
+    CHECK( hold->get_bp() == body_part_torso.id() );
+}
+
+TEST_CASE( "grapple_second_grabber_wrests_a_held_monster_free", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    monster &cow = spawn_test_monster( "mon_cow", you.pos_bub() + tripoint::east );
+    make_pet( cow );
+    monster &grabber = spawn_test_monster( "mon_debug_grabber",
+                                           cow.pos_bub() + tripoint::east );
+    grabber.add_effect( effect_grabbing, 1_days, true, 1 );
+    // A weak hold: half our strength beats it for sure.
+    cow.add_effect( effect_grabbed, 1_days, true, 1 );
+    REQUIRE( grapple::monster_grabber( cow, no_part() ) == &grabber );
+
+    REQUIRE( grapple::attempt_grab( you, cow ) );
+    CHECK( holds( you, cow ) );
+    const effect *const hold = grapple::hold_effect( you, cow );
+    REQUIRE( hold != nullptr );
+    CHECK( hold->get_intensity() == grapple::grab_strength( you, cow ) );
+}
+
+TEST_CASE( "grapple_who_tolerates_a_grab_and_who_must_be_confirmed", "[grapple]" )
+{
+    using grapple::grab_confirmation;
+    avatar &you = setup_grapple_scene();
+
+    SECTION( "a neutral NPC: really attack?" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+        guy.set_attitude( NPCATT_NULL );
+        REQUIRE( !guy.is_player_ally() );
+        REQUIRE( !guy.is_enemy() );
+        CHECK( !grapple::grab_tolerated( you, guy ) );
+        CHECK( grapple::needs_confirmation( you, guy ) == grab_confirmation::attack_npc );
+    }
+    SECTION( "a follower" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+        make_follower( guy );
+        CHECK( grapple::grab_tolerated( you, guy ) );
+        CHECK( grapple::needs_confirmation( you, guy ) == grab_confirmation::none );
+    }
+    SECTION( "a hostile monster" ) {
+        monster &zed = spawn_test_monster( "mon_zombie", you.pos_bub() + tripoint::east );
+        REQUIRE( zed.attitude_to( you ) == Creature::Attitude::HOSTILE );
+        CHECK( !grapple::grab_tolerated( you, zed ) );
+        CHECK( grapple::needs_confirmation( you, zed ) == grab_confirmation::none );
+    }
+    SECTION( "a peaceful monster" ) {
+        monster &cow = spawn_test_monster( "mon_cow", you.pos_bub() + tripoint::east );
+        REQUIRE( cow.attitude_to( you ) != Creature::Attitude::HOSTILE );
+        CHECK( !grapple::grab_tolerated( you, cow ) );
+        CHECK( grapple::needs_confirmation( you, cow ) == grab_confirmation::anger_faction );
+    }
+    SECTION( "a pet" ) {
+        monster &cow = spawn_test_monster( "mon_cow", you.pos_bub() + tripoint::east );
+        make_pet( cow );
+        CHECK( grapple::grab_tolerated( you, cow ) );
+        CHECK( grapple::needs_confirmation( you, cow ) == grab_confirmation::none );
+    }
 }

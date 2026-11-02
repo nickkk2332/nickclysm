@@ -248,6 +248,19 @@ The attack's behavior is determined by the `grab_data` array, using the below va
 
 `GRAB`-flagged effects prevent movement for monsters and characters as well, and might have additional debuffs like every effect.  Grab break attempts happen effect by effect on non-attack movement or waiting in place, with the chance affected by limb scores, stats, and the existence of grab break MA techniques.  A successful grab removal removes the effect in question from the limb, as well as the bodypart's `grabbing_effect` from whichever monster has the latter.  If all grabs are broken movement is allowed on the same turn.  The grabbing monster is looked for within the range of its grab attacks and one z-level up or down, so a grab made from two tiles away is not lost as an orphan.
 
+### Characters grabbing creatures
+
+A character can grab an adjacent creature with the grab action (`G`), ported from Cataclysm: The Last Generation.  The character needs free hands, a working arm, no `NO_GRAB` flag and enough stamina.  A grab costs moves and arm stamina, and the target can dodge it unless it tolerates the grab (followers, pets, hostile or helpless NPCs).  A character target is held by one body part that nobody holds yet.  A monster already held by someone else is pulled free on a `grab strength / 2 in the other hold's strength` roll, as an `exclusive_grab` does.  Pressing `G` again lets go.
+
+The held creature gets a `grabbed` effect whose source is the grabbing character, and the character gets `grabbing`.  Each side finds the other by adjacency plus that source, so a hold is saved with the effects and needs no other data.  The hold ends when the two are no longer adjacent, when either is incorporeal or dead, when the grabber is winded, asleep or below the stamina floor, wields something, mounts a creature, is flung, has a seizure or swaps characters, and when either side is teleported or knocked back.  Until the held creature learns to struggle against a character, it drops the hold as an orphan when it next moves.
+
+These parts are data:
+
+| What | Where
+| ---  | ---
+| `grapple_grab_strength` | `jmath_function` in `data/json/grappling.json`, `u` = grabber, `n` = target: the intensity of the target's `grabbed` effect, 1 to 100.
+| `grab_condition` | `effect_on_condition` in `data/json/grappling.json` whose `condition` is tested (not run) before the grab roll, with `u` = grabber and `npc` = target.  If it is false, the grab is refused before any cost is paid.  By default it refuses incorporeal grabbers and targets.
+| `GRAPPLE_STAMINA_FLOOR`, `GRAPPLE_ARM_STAMINA_COST` | `EXTERNAL_OPTION`s in `data/core/external_options.json`: the stamina needed to start or keep a hold (400), and the arm stamina a grab attempt costs (120).
 
 ### `gun`
 

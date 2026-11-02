@@ -65,6 +65,11 @@
     "//": "Its attacks may grab us!"
   },
   {
+    "id": "GRAB_IMMUNE",
+    "type": "monster_flag",
+    "//": "Characters can't grab it."
+  },
+  {
     "id": "BASHES",
     "type": "monster_flag",
     "//": "Bashes down doors"

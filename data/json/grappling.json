@@ -5,5 +5,11 @@
     "//": "Strength of a character's grab, 1 to 100: the intensity of the target's grabbed effect.  u = grabber, n = target (the grabber itself when there is none).  From Cataclysm: The Last Generation: grip (at least 0.5) times arm strength, unarmed and melee skill and size; 18 for strength 10, skills 2 and medium size.",
     "num_args": 0,
     "return": "min( 100, 1 + round( max( 0.5, u_limb_score('grip') ) * ( u_arm_strength() + u_skill('unarmed') + u_skill('melee') + u_val('size') ) ) )"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "grab_condition",
+    "//": "Tested, not run, before a character tries to grab a creature, with u = grabber and npc = target.  If the condition is false the grab is refused before any cost is paid.  Mods can extend it, e.g. to forbid grabbing blobs.",
+    "condition": { "and": [ { "not": { "u_has_effect": "incorporeal" } }, { "not": { "npc_has_effect": "incorporeal" } } ] }
   }
 ]

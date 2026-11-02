@@ -46,12 +46,20 @@
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_incorporeal( "incorporeal" );
+static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_winded( "winded" );
+
+static const effect_on_condition_id effect_on_condition_grab_condition( "grab_condition" );
 
 static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
+static const flag_id json_flag_NO_GRAB( "NO_GRAB" );
 
 static const jmath_func_id jmath_func_grapple_grab_strength( "grapple_grab_strength" );
+
+static const trait_id trait_CLAWS_TENTACLE( "CLAWS_TENTACLE" );
+static const trait_id trait_PAWS_LARGE( "PAWS_LARGE" );
+static const trait_id trait_THRESH_FISH( "THRESH_FISH" );
 
 // Finding a monster grabber, and how strong a character grabs
 
@@ -308,4 +316,217 @@ void grapple::process_turn( Character &grabber )
         grabber.add_msg_if_player( m_bad, _( "You're too exhausted to maintain your hold." ) );
         end_hold( grabber, victim );
     }
+}
+
+// The grab action
+
+namespace
+{
+
+// Every body part a grab can take, mapped to its main part and weighted by hit size like
+// Creature::random_body_part( true ). Parts somebody already holds are left out.
+weighted_float_list<bodypart_id> grab_part_weights( const Creature &target )
+{
+    weighted_float_list<bodypart_id> weights;
+    for( const bodypart_id &bp : target.get_all_body_parts() ) {
+        const bodypart_id main_part = bp->main_part.id();
+        if( !target.has_effect_with_flag( json_flag_GRAB, main_part ) ) {
+            weights.add( main_part, bp->hit_size );
+        }
+    }
+    return weights;
+}
+
+} // namespace
+
+int grapple::arm_stamina_cost()
+{
+    return get_option<int>( "GRAPPLE_ARM_STAMINA_COST" );
+}
+
+std::optional<bodypart_id> grapple::free_grab_part( const Creature &target )
+{
+    const weighted_float_list<bodypart_id> weights = grab_part_weights( target );
+    const bodypart_id *const picked = weights.pick();
+    if( picked == nullptr ) {
+        return std::nullopt;
+    }
+    return *picked;
+}
+
+std::optional<std::string> grapple::grab_refusal( const Character &grabber,
+        const Creature &target )
+{
+    map &here = get_map();
+    if( &target == &grabber ) {
+        return std::string( _( "You get a hold of yourself." ) );
+    }
+    if( !in_reach( grabber, target ) ) {
+        return string_format( _( "You can't reach %s." ), target.disp_name() );
+    }
+    if( grabber.is_underwater() != target.is_underwater() &&
+        ( here.has_flag( ter_furn_flag::TFLAG_SWIM_UNDER, grabber.pos_bub( here ) ) ||
+          here.has_flag( ter_furn_flag::TFLAG_SWIM_UNDER, target.pos_bub( here ) ) ) ) {
+        return std::string( _( "You can't grab through the floor." ) );
+    }
+    if( !grabber.can_grapple_while_wielding() ) {
+        return std::string( _( "You'll need your hands free for grappling." ) );
+    }
+    if( grabber.get_working_arm_count() < 1 || grabber.has_flag( json_flag_NO_GRAB ) ) {
+        return std::string( _( "You can't manage that in your current condition." ) );
+    }
+    if( grabber.get_stamina() < stamina_floor() ) {
+        return std::string( _( "You're too exhausted to wrestle anything." ) );
+    }
+    const monster *const mon = target.as_monster();
+    if( mon != nullptr && mon->has_flag( mon_flag_GRAB_IMMUNE ) ) {
+        return string_format( _( "You can't grab %s." ), target.disp_name() );
+    }
+    if( const Creature *const held = grabber.grabbed_creature() ) {
+        return string_format( _( "You're already holding %s." ), held->disp_name() );
+    }
+    const_dialogue d( get_const_talker_for( grabber ), get_const_talker_for( target ) );
+    if( !effect_on_condition_grab_condition->test_condition( d ) ) {
+        return string_format( _( "You can't get a grip on %s." ), target.disp_name() );
+    }
+    if( mon == nullptr && grab_part_weights( target ).get_weight() <= 0 ) {
+        return string_format( _( "There's nowhere left to grab on %s." ), target.disp_name() );
+    }
+    return std::nullopt;
+}
+
+bool grapple::grab_tolerated( const Character &grabber, const Creature &target )
+{
+    // These rules are written from the avatar's side. Other grabbers always roll.
+    if( !grabber.is_avatar() ) {
+        return false;
+    }
+    // Friends tolerate a grab and enemies are already angry. Neutral NPCs only put up with it
+    // when they're helpless.
+    if( const npc *const guy = target.as_npc() ) {
+        return guy->is_player_ally() || guy->is_enemy() || guy->has_effect( effect_narcosis ) ||
+               !guy->enough_working_legs();
+    }
+    // You can grab your own pets.
+    if( const monster *const mon = target.as_monster() ) {
+        return mon->is_pet();
+    }
+    return false;
+}
+
+grapple::grab_confirmation grapple::needs_confirmation( const Character &grabber,
+        const Creature &target )
+{
+    if( !grabber.is_avatar() || grab_tolerated( grabber, target ) ) {
+        return grab_confirmation::none;
+    }
+    if( target.is_npc() ) {
+        return grab_confirmation::attack_npc;
+    }
+    const monster *const mon = target.as_monster();
+    if( mon != nullptr && mon->attitude_to( grabber ) != Creature::Attitude::HOSTILE ) {
+        return grab_confirmation::anger_faction;
+    }
+    return grab_confirmation::none;
+}
+
+bool grapple::attempt_grab( Character &grabber, Creature &target )
+{
+    map &here = get_map();
+    const bool tolerate = grab_tolerated( grabber, target );
+    const int strength = grab_strength( grabber, target );
+
+    // Grabbing on is lighter work than striking, so weariness is taken at EXTRA_EXERCISE.
+    const float weary_mult = grabber.exertion_adjusted_move_multiplier( EXTRA_EXERCISE );
+    grabber.mod_moves( -100 - static_cast<int>( grabber.attack_speed( null_item_reference() ) /
+                       weary_mult ) );
+    grabber.burn_energy_arms( -arm_stamina_cost() );
+
+    if( monster *const z = target.as_monster() ) {
+        float accuracy_penalty = 0.0f;
+        if( z->has_flag( mon_flag_AQUATIC ) ) {
+            const tripoint_bub_ms pos = grabber.pos_bub( here );
+            const bool in_water = here.has_flag( ter_furn_flag::TFLAG_SWIMMABLE, pos ) ||
+                                  here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, pos );
+            const bool hand_fisher = grabber.has_trait( trait_PAWS_LARGE ) ||
+                                     grabber.has_trait( trait_CLAWS_TENTACLE ) ||
+                                     ( grabber.has_trait( trait_THRESH_FISH ) && in_water );
+            if( !hand_fisher ) {
+                if( one_in( 5 ) ) {
+                    grabber.add_msg_if_player( m_warning,
+                                               _( "Grabbing onto %s is particularly difficult." ),
+                                               z->disp_name() );
+                }
+                accuracy_penalty = -8.0f;
+            }
+        }
+        const int hitspread = z->deal_melee_attack( &grabber,
+                              static_cast<int>( grabber.hit_roll() + accuracy_penalty ) );
+        if( hitspread < 0 && !tolerate ) {
+            grabber.add_msg_player_or_npc(
+                m_warning, _( "You reach for %s, but fail to make contact!" ),
+                _( "<npcname> reaches for %s, but fails to make contact!" ), z->disp_name() );
+            return false;
+        }
+        // Someone else already holds it. Pull it free as an exclusive monster grab would, or fail.
+        if( z->has_effect_with_flag( json_flag_GRAB ) ) {
+            int held_strength = 0;
+            std::vector<std::pair<efftype_id, bodypart_id>> held;
+            for( const effect &eff : z->get_effects_with_flag( json_flag_GRAB ) ) {
+                held_strength = std::max( held_strength, eff.get_intensity() );
+                held.emplace_back( eff.get_id(), eff.get_bp() );
+            }
+            if( !x_in_y( strength / 2.0f, held_strength ) ) {
+                grabber.add_msg_if_player( m_bad,
+                                           _( "%s is held too tightly for you to get a grip." ),
+                                           z->disp_name( true ) );
+                return false;
+            }
+            for( const std::pair<efftype_id, bodypart_id> &grab : held ) {
+                z->remove_effect( grab.first, grab.second );
+            }
+            grabber.add_msg_if_player( m_good, _( "You wrest %s from another hold." ),
+                                       z->disp_name() );
+        }
+        if( rng( 0, 100 ) <= static_cast<int>( z->type->def_chance ) ) {
+            z->type->sp_defense( *z, &grabber, nullptr );
+        }
+        if( z->is_dead_state() || grabber.is_dead_state() || !in_reach( grabber, *z ) ||
+            !start_hold( grabber, *z, strength, bodypart_str_id::NULL_ID().id() ) ) {
+            grabber.add_msg_if_player( m_bad, _( "You can't get a grip on %s." ), z->disp_name() );
+            return false;
+        }
+        grabber.add_msg_player_or_npc( m_good, _( "You grab %s." ), _( "<npcname> grabs %s." ),
+                                       z->disp_name() );
+        return true;
+    }
+
+    npc *const guy = target.as_npc();
+    if( !tolerate ) {
+        const int hitspread = target.deal_melee_attack( &grabber,
+                              static_cast<int>( grabber.hit_roll() ) );
+        if( hitspread < 0 ) {
+            grabber.add_msg_player_or_npc(
+                m_warning, _( "You reach for %s, but fail to make contact!" ),
+                _( "<npcname> reaches for %s, but fails to make contact!" ), target.disp_name() );
+            if( guy != nullptr ) {
+                guy->on_attacked( grabber );
+            }
+            return false;
+        }
+    }
+    // Characters are held by a limb. Skip the limbs somebody already holds.
+    const std::optional<bodypart_id> bp = free_grab_part( target );
+    if( !bp || !start_hold( grabber, target, strength, *bp ) ) {
+        grabber.add_msg_if_player( m_bad, _( "You can't get a grip on %s." ), target.disp_name() );
+        return false;
+    }
+    //~ %1$s: the creature grabbed, %2$s: its body part
+    grabber.add_msg_player_or_npc( m_good, _( "You grab %1$s by the %2$s." ),
+                                   _( "<npcname> grabs %1$s by the %2$s." ), target.disp_name(),
+                                   body_part_name( *bp ) );
+    if( guy != nullptr && !tolerate ) {
+        guy->on_attacked( grabber );
+    }
+    return true;
 }

@@ -49,6 +49,7 @@
 #include "game_constants.h"
 #include "game_inventory.h"
 #include "gamemode.h"
+#include "grapple.h"
 #include "gun_mode.h"
 #include "help.h"
 #include "input_context.h"
@@ -646,11 +647,18 @@ static void auto_features_warn()
     }
 }
 
-// Establish or release a grab on a vehicle
+// Grab a creature, a vehicle or furniture, or let go of what you hold.
 static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
 {
     avatar &you = get_avatar();
     map &here = get_map();
+    creature_tracker &creatures = get_creature_tracker();
+
+    // Press G again to let go of a creature.
+    if( you.is_grabbing_creature() ) {
+        you.release_grapple();
+        return;
+    }
 
     if( you.get_grab_type() != object_type::NONE ) {
         if( const optional_vpart_position vp = here.veh_at( you.pos_bub() + you.grab_point ) ) {
@@ -681,7 +689,7 @@ static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
 
     const optional_vpart_position &vp = here.veh_at( grabp );
     // Object might not be on the same z level if on a ramp.
-    if( !( vp || here.has_furn( grabp ) ) ) {
+    if( !( vp || here.has_furn( grabp ) || creatures.creature_at( grabp ) ) ) {
         if( here.has_flag( ter_furn_flag::TFLAG_RAMP_UP, grabp ) ||
             here.has_flag( ter_furn_flag::TFLAG_RAMP_UP, you.pos_bub() ) ) {
             grabp.z() += 1;
@@ -689,6 +697,30 @@ static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
                    here.has_flag( ter_furn_flag::TFLAG_RAMP_DOWN, you.pos_bub() ) ) {
             grabp.z() -= 1;
         }
+    }
+
+    // A creature comes first: grab it rather than what it stands on. Hallucinations are skipped.
+    if( Creature *const target = creatures.creature_at( grabp ) ) {
+        if( const std::optional<std::string> refusal = grapple::grab_refusal( you, *target ) ) {
+            add_msg( m_info, *refusal );
+            return;
+        }
+        switch( grapple::needs_confirmation( you, *target ) ) {
+            case grapple::grab_confirmation::attack_npc:
+                if( !query_yn( _( "Really attack %s?" ), target->disp_name() ) ) {
+                    return;
+                }
+                break;
+            case grapple::grab_confirmation::anger_faction:
+                if( !g->warn_player_maybe_anger_local_faction( true, false ) ) {
+                    return;
+                }
+                break;
+            case grapple::grab_confirmation::none:
+                break;
+        }
+        grapple::attempt_grab( you, *target );
+        return;
     }
 
     if( vp ) {
@@ -751,7 +783,7 @@ static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
         } else {
             add_msg( _( "You grab the %s." ), here.furnname( grabp ) );
         }
-    } else { // TODO: grab mob? Captured squirrel = pet (or meat that stays fresh longer).
+    } else {
         add_msg( m_info, _( "There's nothing to grab there!" ) );
     }
 }

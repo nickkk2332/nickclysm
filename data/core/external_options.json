@@ -36,6 +36,13 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_ARM_STAMINA_COST",
+    "//": "Arm stamina a character spends on each attempt to grab a creature.",
+    "stype": "int",
+    "value": 120
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "PLAYER_MAX_STR_VALUE",
     "//": "Sets a cap on maximum effective strength for characters.",
     "stype": "int",

@@ -194,5 +194,12 @@
     "name": [ "Test Grapple Mark" ],
     "desc": [ "Set on both sides by test_tech_self_effects." ],
     "max_intensity": 5
+  },
+  {
+    "type": "effect_type",
+    "id": "test_no_grab",
+    "name": [ "Test No Grab" ],
+    "desc": [ "Keeps its bearer from starting a grab, for grappling tests." ],
+    "flags": [ "NO_GRAB" ]
   }
 ]

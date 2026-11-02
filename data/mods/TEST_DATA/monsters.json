@@ -625,5 +625,13 @@
     "move_skills": { "climb": 8 },
     "flags": [ "SEES", "HEARS", "SMELLS" ],
     "upgrades": { "half_life": 0, "into_group": "test_upgrades_multi", "multiple_spawns": true, "spawn_range": 5 }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_grab_immune",
+    "copy-from": "mon_zombie",
+    "name": { "str": "grab-immune test zombie" },
+    "description": "A zombie that no character can grab, for grappling tests.",
+    "extend": { "flags": [ "GRAB_IMMUNE" ] }
   }
 ]

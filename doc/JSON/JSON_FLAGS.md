@@ -635,8 +635,9 @@ These are checked by hardcode for monsters (introducing new flags will require C
 - ```EFFECT_LIMB_DISABLE_CONDITIONAL_FLAGS``` Effect disables any conditional flags the limb has.
 - ```EFFECT_LIMB_SCORE_MOD``` Effect with a limb score component to be used in Character::get_limb_score.  See [EFFECTS_JSON.md](EFFECTS_JSON.md) for the exact function of limb score modifiers and [JSON_INFO.md](JSON_INFO.md#limb-scores) for the effects of the scores.
 - ```EFFECT_LIMB_SCORE_MOD_LOCAL``` Same as `EFFECT_LIMB_SCORE_MOD`, but limb score is modified only if effect is applied to body part, that has said score; effect, that apply -50% vision debuff, won't have effect if applied to leg with this flag.
-- ```GRAB``` This effect is a grab, creatures will attempt to break it as such (see `character_escape.cpp`).
-- ```GRAB_FILTER``` This effect is a grab filter effect, assigning grabs to their grabbing monster.  Handles targeted grab removal on grab break, as well as potentially acting as a filter for monster attack logic.  Bodypart `grabbing_effects` should have it defined.
+- ```GRAB``` This effect is a grab, creatures will attempt to break it as such (see `character_escape.cpp`).  When a character holds the creature, the effect's source is that character (see [Grab attacks](MONSTER_SPECIAL_ATTACKS.md#characters-grabbing-creatures)).
+- ```GRAB_FILTER``` This effect is a grab filter effect, assigning grabs to their grabbing monster or character.  Handles targeted grab removal on grab break, as well as potentially acting as a filter for monster attack logic.  Bodypart `grabbing_effects` should have it defined.
+- ```NO_GRAB``` A creature with this flag can't start a grab: the `grab`, `grab_2` and `grab_3` monster attacks check it, and so does a character's grab (for characters any character flag counts, not only effect flags).
 
 
 ## Furniture and Terrain
@@ -1199,6 +1200,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```FLIES``` Can fly over open air without dropping z-level, over water, etc.
 - ```GOODHEARING``` Pursues sounds more than most monsters.
 - ```GRABS``` Its attacks may grab you!
+- ```GRAB_IMMUNE``` Characters can't grab it.
 - ```GROUP_BASH``` Gets help from monsters around it when bashing, adding their strength together.  Also lets it crowd-crush a grabbed character: with the `CROWD_CRUSH` world option on, a character held by a grab with enough adjacent `GROUP_BASH` monsters (not hallucinations, and of a size set by the `CROWD_CRUSH_*` external options) loses breath and is eventually crushed.  The crowd needed is the character's size class plus 1 (at least 2), one more while they stand; walls count only when crushers plus walls exceed 6; it doesn't happen underwater.  See `CROWD_CRUSH_RESIST` in [MAGIC.md](MAGIC.md).
 - ```GROUP_MORALE``` More courageous when near friends.
 - ```GUILT_ANIMAL``` Killing this monster(i.e. a hatchling or a kitten) causes guilt to the player and is counted for the kill thresholds of animals where player experiences progressively less morale penalty. WARNING: Do not use without 'death_guilt' death function or together with other guilt flags.

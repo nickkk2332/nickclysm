@@ -1587,6 +1587,11 @@
     "type": "json_flag"
   },
   {
+    "id": "NO_GRAB",
+    "type": "json_flag",
+    "//": "A creature with this flag (on an effect, or for characters any character flag) can't start a grab."
+  },
+  {
     "id": "ENCUMBRANCE_UPDATE",
     "type": "json_flag"
   },

@@ -67,7 +67,14 @@
     "grab": true,
     "grab_data": { "grab_effect": "grabbed", "pull_from_vehicle": true },
     "//": "grab_strength preferentially set in the monster definition for clarity",
-    "condition": { "and": [ { "not": { "u_has_flag": "GRAB_FILTER" } }, { "not": { "u_has_effect": "maimed_arm" } } ] },
+    "condition": {
+      "and": [
+        { "not": { "u_has_flag": "GRAB_FILTER" } },
+        { "not": { "u_has_effect": "maimed_arm" } },
+        { "not": { "u_has_flag": "NO_GRAB" } },
+        { "not": { "npc_has_effect": "incorporeal" } }
+      ]
+    },
     "hit_dmg_u": "%1$s grabs your %2$s!",
     "hit_dmg_npc": "%1$s grabs <npcname>'s %2$s!",
     "miss_msg_u": "%s tries to grab you, but you dodge!",
@@ -83,7 +90,15 @@
     "damage_max_instance": [ { "damage_type": "bash", "amount": 0 } ],
     "grab": true,
     "grab_data": { "grab_effect": "grabbed", "pull_from_vehicle": true },
-    "condition": { "and": [ { "u_has_flag": "GRAB_FILTER" }, { "npc_has_flag": "GRAB" }, { "not": { "u_has_effect": "grabbing_2" } } ] },
+    "condition": {
+      "and": [
+        { "u_has_flag": "GRAB_FILTER" },
+        { "npc_has_flag": "GRAB" },
+        { "not": { "u_has_effect": "grabbing_2" } },
+        { "not": { "u_has_flag": "NO_GRAB" } },
+        { "not": { "npc_has_effect": "incorporeal" } }
+      ]
+    },
     "//": "We can't count grab filters, so grabbing 2 works as a soft cooldown",
     "self_effects_onhit": [ { "id": "grabbing_2", "duration": 150, "permanent": false } ],
     "hit_dmg_u": "%1$s grabs your %2$s with another appendage!",
@@ -101,7 +116,15 @@
     "damage_max_instance": [ { "damage_type": "bash", "amount": 0 } ],
     "grab": true,
     "grab_data": { "grab_effect": "grabbed", "pull_from_vehicle": true },
-    "condition": { "and": [ { "u_has_flag": "GRAB_FILTER" }, { "npc_has_flag": "GRAB" }, { "not": { "u_has_effect": "grabbing_3" } } ] },
+    "condition": {
+      "and": [
+        { "u_has_flag": "GRAB_FILTER" },
+        { "npc_has_flag": "GRAB" },
+        { "not": { "u_has_effect": "grabbing_3" } },
+        { "not": { "u_has_flag": "NO_GRAB" } },
+        { "not": { "npc_has_effect": "incorporeal" } }
+      ]
+    },
     "//": "We can't count grab filters, so grabbing 3 works as a soft cooldown",
     "self_effects_onhit": [ { "id": "grabbing_3", "duration": 150, "permanent": false } ],
     "hit_dmg_u": "%1$s grabs your %2$s with its other hand!",
