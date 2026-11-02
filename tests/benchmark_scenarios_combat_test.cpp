@@ -48,11 +48,22 @@
 #include "weather.h"
 #include "weather_type.h"
 
+static const faction_id faction_your_followers( "your_followers" );
+
 static const itype_id itype_273x110flock( "273x110flock" );
 static const itype_id itype_brogyaga( "brogyaga" );
 static const itype_id itype_grenade_act( "grenade_act" );
 static const itype_id itype_shot_bird( "shot_bird" );
 static const itype_id itype_shotgun_s( "shotgun_s" );
+
+static const mtype_id mon_zombie( "mon_zombie" );
+
+static const spell_id spell_test_npc_cone_cold( "test_npc_cone_cold" );
+static const spell_id spell_test_npc_fireball( "test_npc_fireball" );
+static const spell_id spell_test_npc_lightning_bolt( "test_npc_lightning_bolt" );
+static const spell_id spell_test_npc_magic_missile( "test_npc_magic_missile" );
+
+static const string_id<npc_template> npc_template_test_talker( "test_talker" );
 
 namespace
 {
@@ -100,6 +111,26 @@ struct fixed_weather {
 };
 
 const tripoint_bub_ms scenario_center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+// load_npcs() only loads NPCs near the player, who waits underground at (0, 0)
+const tripoint_bub_ms npc_center( 50, 50, 0 );
+
+// An NPC at the given place on a cleared map, in daylight, with the avatar out of the way.
+npc &spawn_scenario_npc( const tripoint_bub_ms &pos )
+{
+    map &here = get_map();
+    clear_avatar();
+    get_avatar().setpos( here, pos );
+    clear_map_and_put_player_underground();
+    clear_vehicles();
+    const character_id guy_id = here.place_npc( pos.xy(), npc_template_test_talker );
+    npc &guy = *g->find_npc( guy_id );
+    clear_character( guy );
+    guy.setpos( here, pos );
+    g->load_npcs();
+    REQUIRE( get_creature_tracker().creature_at<npc>( pos ) == &guy );
+    set_time( calendar::turn_zero + 12_hours );
+    return guy;
+}
 
 // A shot from a standard shooter, as the ranged balance tests fire them.
 void fire_once( standard_npc &shooter, const itype_id &gun, const itype_id &ammo,
@@ -183,4 +214,52 @@ TEST_CASE( "bench_shrapnel_armored", "[.][benchmark_scenario]" )
         explosion_handler::process_explosions();
     } );
     clear_creatures();
+}
+
+// NPC-P01, MAGIC-P02: an NPC caster rates each attack spell it knows on every combat move.
+// A follower knowing four attack spells (a fireball-like blast, a cone and a line that
+// leave fields, and a single-target bolt), with six zombies and the player in range.
+TEST_CASE( "bench_npc_spell_eval", "[.][benchmark_scenario]" )
+{
+    fixed_weather weather;
+    npc *caster = nullptr;
+    monster *target = nullptr;
+    run_scenario( "npc_spell_eval",
+                  "20 attack choices of an NPC knowing 4 attack spells, 6 zombies and the player in range",
+    [&caster, &target]() {
+        npc &guy = spawn_scenario_npc( npc_center );
+        guy.set_fac( faction_your_followers );
+        guy.rules.clear_flag( ally_rule::use_silent );
+        for( const spell_id &sp : {
+                 spell_test_npc_fireball, spell_test_npc_cone_cold, spell_test_npc_lightning_bolt,
+                 spell_test_npc_magic_missile
+             } ) {
+            guy.magic->learn_spell( sp, guy, true );
+            guy.magic->get_spell( sp ).set_level( guy, 10 );
+        }
+        guy.magic->set_mana( 100000 );
+        map &here = get_map();
+        get_avatar().setpos( here, npc_center + tripoint_rel_ms( 7, 3, 0 ) );
+        const std::vector<tripoint_rel_ms> offsets = { { 4, 1, 0 }, { 6, -2, 0 }, { 9, 2, 0 },
+            { -5, 5, 0 }, { 12, -6, 0 }, { 3, 11, 0 }
+        };
+        target = nullptr;
+        for( const tripoint_rel_ms &off : offsets ) {
+            monster *zombie = g->place_critter_at( mon_zombie, npc_center + off );
+            REQUIRE( zombie != nullptr );
+            if( target == nullptr ) {
+                target = zombie;
+            }
+        }
+        here.build_map_cache( 0 );
+        caster = &guy;
+    }, [&caster, &target]() {
+        for( int i = 0; i < 20; ++i ) {
+            caster->evaluate_best_attack( target );
+        }
+        CHECK( caster->get_current_attack() );
+    } );
+    clear_creatures();
+    clear_npcs();
+    clear_avatar();
 }
