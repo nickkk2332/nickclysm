@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <set>
 #include <string>
 #include <utility>
@@ -343,12 +344,19 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
         // some of its pellets carry their own projectile, so they fly one by one
         bool one_by_one = false;
         tripoint_bub_ms prev;
+        // its pellets that have a held_prev
+        std::vector<int> held;
     };
     struct pellet {
         double spread = 0.0;
         int path = 0;
         int own_state = -1;
         bool flying = true;
+        // Where the pellet was before the tiles it passed over without touching (the
+        // creature was underwater, was the avatar under its own turret, or was a friend not
+        // to shoot), when that isn't where its path was, and the step it last did so.
+        std::optional<tripoint_bub_ms> held_prev;
+        size_t held_step = 0;
     };
     std::vector<pellet_path> paths;
     std::map<tripoint_bub_ms, int> path_to;
@@ -449,6 +457,8 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
             held_state = key;
         }
     };
+    // the last pellet's projectile, when it changed on the tile it stopped on
+    std::optional<projectile> last_state;
     const auto stop = [&]( const int k, pellet & pl, const tripoint_bub_ms & end, Creature * hit ) {
         pl.flying = false;
         paths[pl.path].flying--;
@@ -457,13 +467,18 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
             last_hit = hit;
         }
     };
+    // projectile_attack()'s prev_point for this pellet
+    const auto pellet_prev = [&]( const pellet & pl ) {
+        return pl.held_prev ? *pl.held_prev : paths[pl.path].prev;
+    };
     // where a pellet that flew all of its trajectory stops
-    const auto path_end = [&]( const pellet_path & path ) {
+    const auto path_end = [&]( const pellet & pl ) {
+        const pellet_path &path = paths[pl.path];
         if( path.length < 2 ) {
             return attack.end_point;
         }
         const tripoint_bub_ms &end = path.points[path.length - 1];
-        return here->impassable( end ) ? path.prev : end;
+        return here->impassable( end ) ? pellet_prev( pl ) : end;
     };
 
     // One pellet through a tile that isn't quiet, as projectile_attack() flies each pellet.
@@ -498,6 +513,14 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
                                       critter->ranged_target_size(), 0.4 );
         }
 
+        // projectile_attack() goes on to the next tile without moving prev_point
+        const auto pass_over = [&]() {
+            if( !pl.held_prev ) {
+                pl.held_prev = path.prev;
+                path.held.push_back( k );
+            }
+            pl.held_step = i;
+        };
         const auto keep_state = [&]() {
             if( !changed ) {
                 return;
@@ -538,15 +561,18 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
                     add_msg( m_info, _( "Your shot is blocked by the surface." ) );
                 }
                 keep_state();
+                pass_over();
                 return;
             }
             if( shot.in_veh != nullptr && veh_pointer_or_null( here->veh_at( tp ) ) == shot.in_veh &&
                 critter->is_avatar() ) {
+                pass_over();
                 return;
             }
             // avoid friendly fire
             if( critter->attitude_to( *shot.origin ) == Creature::Attitude::FRIENDLY &&
                 shot.origin->check_avoid_friendly_fire() ) {
+                pass_over();
                 return;
             }
             critter->deal_projectile_attack( here, shot.null_source ? nullptr : shot.origin, attack,
@@ -588,12 +614,11 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
             has_momentum = false;
         }
 
-        if( ( !has_momentum || !shot.is_bullet ) && here->impassable( tp ) ) {
-            stop( k, pl, path.prev, attack.last_hit_critter );
-            return;
-        }
-        if( !has_momentum ) {
-            stop( k, pl, tp, attack.last_hit_critter );
+        if( !has_momentum || ( !shot.is_bullet && here->impassable( tp ) ) ) {
+            if( k == last && changed ) {
+                last_state = attack.proj;
+            }
+            stop( k, pl, here->impassable( tp ) ? pellet_prev( pl ) : tp, attack.last_hit_critter );
             return;
         }
         keep_state();
@@ -603,11 +628,22 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
     for( const pellet_path &path : paths ) {
         longest = std::max( longest, path.length );
     }
-    std::vector<int> pending;
-    std::vector<int> visited;
+    // Paths on the same tile in a step share its quiet check.
+    struct quiet_check {
+        tripoint_bub_ms tp;
+        bool hit_items = false;
+        int distance = 0;
+        bool quiet = false;
+        std::vector<int> paths;
+    };
+    std::vector<quiet_check> checks;
+    // the pellets to fly through their tile this step, first fired first
+    std::priority_queue<int, std::vector<int>, std::greater<>> pending;
+    // the paths whose pellets moved on this step
+    std::vector<int> moved;
     for( size_t i = 1; i < longest; ++i ) {
-        pending.clear();
-        visited.clear();
+        checks.clear();
+        moved.clear();
         for( size_t p = 0; p < paths.size(); ++p ) {
             pellet_path &path = paths[p];
             if( path.flying == 0 ) {
@@ -617,7 +653,7 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
                 // the end of the trajectory
                 for( const int k : path.pellets ) {
                     if( pellets[k].flying ) {
-                        stop( k, pellets[k], path_end( path ), nullptr );
+                        stop( k, pellets[k], path_end( pellets[k] ), nullptr );
                     }
                 }
                 continue;
@@ -627,7 +663,7 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
                 debugmsg( "Shot along %s out-of-bounds", tp.to_string() );
                 for( const int k : path.pellets ) {
                     if( pellets[k].flying ) {
-                        stop( k, pellets[k], path.prev, nullptr );
+                        stop( k, pellets[k], pellet_prev( pellets[k] ), nullptr );
                     }
                 }
                 continue;
@@ -642,7 +678,7 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
                     }
                 }
                 held_state = INT_MIN;
-                path.prev = tp;
+                moved.push_back( static_cast<int>( p ) );
                 continue;
             }
             if( shot.in_veh != nullptr ) {
@@ -652,37 +688,76 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
                     continue;
                 }
             }
-            if( !path.one_by_one &&
-                quiet_tile( shot, tp, distance, !shot.no_item_damage && tp == path.target_c ) ) {
-                path.prev = tp;
-                continue;
+            moved.push_back( static_cast<int>( p ) );
+            if( !path.one_by_one ) {
+                const bool hit_items = !shot.no_item_damage && tp == path.target_c;
+                auto check = std::find_if( checks.begin(), checks.end(), [&]( const quiet_check & c ) {
+                    return c.tp == tp && c.hit_items == hit_items;
+                } );
+                if( check == checks.end() ) {
+                    checks.push_back( { tp, hit_items, distance, quiet_tile( shot, tp, distance, hit_items ), {} } );
+                    check = checks.end() - 1;
+                }
+                if( check->quiet ) {
+                    check->paths.push_back( static_cast<int>( p ) );
+                    continue;
+                }
             }
-            visited.push_back( static_cast<int>( p ) );
             for( const int k : path.pellets ) {
                 if( pellets[k].flying ) {
-                    pending.push_back( k );
+                    pending.push( k );
                 }
             }
         }
         // in the order the pellets were fired, as projectile_attack() flies them
-        std::sort( pending.begin(), pending.end() );
-        for( const int k : pending ) {
+        while( !pending.empty() ) {
+            const int k = pending.top();
+            pending.pop();
             fly_through( k, i );
+            // What happened there can reach other tiles of this step (a creature spawned or
+            // moved there, a field, items): the pellets fired after this one that are still
+            // to pass such a tile now fly through it one by one.
+            for( quiet_check &check : checks ) {
+                if( check.quiet && !quiet_tile( shot, check.tp, check.distance, check.hit_items ) ) {
+                    check.quiet = false;
+                    for( const int p : check.paths ) {
+                        for( const int later : paths[p].pellets ) {
+                            if( later > k && pellets[later].flying ) {
+                                pending.push( later );
+                            }
+                        }
+                    }
+                }
+            }
         }
-        for( const int p : visited ) {
-            paths[p].prev = paths[p].points[i];
+        for( const int p : moved ) {
+            pellet_path &path = paths[p];
+            path.prev = path.points[i];
+            // pellets that didn't pass over this tile moved their prev_point here
+            path.held.erase( std::remove_if( path.held.begin(), path.held.end(), [&]( const int k ) {
+                pellet &pl = pellets[k];
+                if( pl.flying && pl.held_step == i ) {
+                    return false;
+                }
+                pl.held_prev.reset();
+                return true;
+            } ), path.held.end() );
         }
     }
     for( pellet_path &path : paths ) {
         for( const int k : path.pellets ) {
             if( pellets[k].flying ) {
-                stop( k, pellets[k], path_end( path ), nullptr );
+                stop( k, pellets[k], path_end( pellets[k] ), nullptr );
             }
         }
     }
 
-    attack.proj = pellets[last].own_state >= 0 ? own_states[pellets[last].own_state] :
-                  paths[pellets[last].path].state;
+    if( last_state ) {
+        attack.proj = *last_state;
+    } else {
+        attack.proj = pellets[last].own_state >= 0 ? own_states[pellets[last].own_state] :
+                      paths[pellets[last].path].state;
+    }
     attack.end_point = last_end;
     attack.last_hit_critter = last_hit;
     attack.headshot = hit_headshot;
