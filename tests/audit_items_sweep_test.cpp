@@ -160,15 +160,30 @@ static int relic_negative_power( const relic &art, const relic_procgen_id &rules
     return negative;
 }
 
+// total STRENGTH of an artifact's procgen enchantments
+static double relic_strength( const relic &art )
+{
+    double strength = 0.0;
+    for( const enchant_cache &ench : art.get_proc_enchantments() ) {
+        strength += ench.get_value_add( enchant_vals::mod::STRENGTH );
+    }
+    return strength;
+}
+
 TEST_CASE( "item-b07_relic_negative_power_stays_within_cap", "[audit][item][relic]" )
 {
     relic_procgen_data::generation_rules rules;
     rules.power_level = 500;
     rules.max_negative_power = -300;
-    // each negative attribute is -250, so only one fits under -300
+    // each negative attribute is STRENGTH -1 worth -250, so only one fits under -300.  The old
+    // check let a second one in (about 5 artifacts in 8).  All attributes share the HELD
+    // condition and merge into one enchantment, whose power hides the negatives, so count the
+    // STRENGTH they add instead.
     for( int i = 0; i < 50; ++i ) {
-        const relic art = relic_procgen_data_test_relic_negative_cap->generate( rules, itype_rock );
-        CHECK( relic_negative_power( art, relic_procgen_data_test_relic_negative_cap ) >= -300 );
+        const relic art =
+            relic_procgen_data_test_relic_negative_cap->generate( rules, itype_rock );
+        // at most one STRENGTH -1 (two would be -2)
+        CHECK( relic_strength( art ) > -1.5 );
         CHECK( art.power_level( relic_procgen_data_test_relic_negative_cap ) >= 500 );
     }
 }
@@ -188,20 +203,36 @@ TEST_CASE( "item-b07_relic_with_only_rejected_candidates_ends_empty", "[audit][i
 
 TEST_CASE( "item-b07_relic_hit_me_values_are_loaded", "[audit][item][relic]" )
 {
-    relic_procgen_data::generation_rules rules;
-    rules.power_level = 500;
-    const relic art = relic_procgen_data_test_relic_hit_me->generate( rules, itype_rock );
-    bool has_hit_me = false;
-    for( const enchant_cache &ench : art.get_proc_enchantments() ) {
-        for( const fake_spell &sp : ench.hit_me_effect ) {
-            CHECK( sp.id == spell_test_spell_pew );
-            has_hit_me = true;
-        }
+    SECTION( "a hit_me spell counts toward the enchantment's power" ) {
+        enchant_cache ench;
+        ench.add_hit_me( fake_spell( spell_test_spell_pew ) );
+        // base_power 300 at spell level 0
+        CHECK( relic_procgen_data_test_relic_hit_me->power_level( ench ) == 300 );
     }
-    CHECK( has_hit_me );
-    // each hit_me attribute is worth its 300 base power, so two attributes reach 500
-    CHECK( art.get_proc_enchantments().size() <= 2 );
-    CHECK( art.power_level( relic_procgen_data_test_relic_hit_me ) >= 500 );
+
+    SECTION( "generated artifacts get hit_me attributes" ) {
+        relic_procgen_data::generation_rules rules;
+        rules.power_level = 500;
+        int artifacts_with_hit_me = 0;
+        for( int i = 0; i < 20; ++i ) {
+            const relic art = relic_procgen_data_test_relic_hit_me->generate( rules, itype_rock );
+            int hit_me_count = 0;
+            for( const enchant_cache &ench : art.get_proc_enchantments() ) {
+                for( const fake_spell &sp : ench.hit_me_effect ) {
+                    CHECK( sp.id == spell_test_spell_pew );
+                    ++hit_me_count;
+                }
+            }
+            if( hit_me_count > 0 ) {
+                ++artifacts_with_hit_me;
+            }
+            // each hit_me attribute is worth its 300 base power, so two of them reach 500
+            CHECK( hit_me_count <= 2 );
+            CHECK( art.power_level( relic_procgen_data_test_relic_hit_me ) >= 500 );
+        }
+        // an artifact only misses hit_me when both its picks are the weight-1 add attribute
+        CHECK( artifacts_with_hit_me > 0 );
+    }
 }
 
 // ITEM-B08: the countdown of a countdown_interval item is only checked while the item is
