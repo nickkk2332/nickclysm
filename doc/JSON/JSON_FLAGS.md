@@ -314,7 +314,7 @@ Some armor flags, such as `WATCH` and `ALARMCLOCK` are compatible with other ite
 - ```BIONIC_ARMOR_INTERFACE``` This bionic can provide power to powered armor.
 - ```BIONIC_FAULTY``` This bionic is a "faulty" bionic.
 - ```BIONIC_GUN``` This bionic is a gun bionic and activating it will fire it.  Prevents all other activation effects including power draw by bionic.
-- ```BIONIC_NPC_USABLE``` The NPC AI knows how to use this CBM, and it can be installed on an NPC.
+- ```BIONIC_NPC_USABLE``` The NPC AI knows how to use this CBM.  NPCs extend or fire `BIONIC_WEAPON` and `BIONIC_GUN` CBMs with this flag in combat; other CBMs need an `npc_use` (see JSON_INFO.md) for NPCs to switch them on.  Passive CBMs with this flag simply work for the NPC.
 - ```BIONIC_POWER_SOURCE``` This bionic is a power source bionic.
 - ```BIONIC_SLEEP_FRIENDLY``` This bionic won't prompt the user to turn it off if they try to sleep while it's active.
 - ```BIONIC_TOGGLED``` This bionic only has a function when activated, else it causes its effect every turn.
@@ -429,6 +429,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```LARGE``` Changes your size to `creature_size::large`.  Checked third of the size category flags.
 - ```LEVITATION``` You can walk on air. Does not allow you to ascend unless paired with `CLIMB_FLYING`
 - ```MAGICAL_MIND_PROTECTION``` Your mind is protected by magic from being attacked, such as from a flaming eye's stare.
+- ```MA_BASIC_FALLBACK``` Your basic attacks are fallbacks: techniques with `"fallback": true` (the base punch, kick and headbutt) are used only when no other technique is possible, and the base techniques follow the grappling rules (headbutt only in a grapple, either way round; no kicks while you hold someone).  Without this flag a fallback technique is an ordinary technique.  A martial art usually grants it through a static buff (see [MARTIALART_JSON.md](MARTIALART_JSON.md#fallback-and-basic-techniques)).
 - ```MEND_ALL``` You need no splint to heal broken bones.
 - ```MUSCLE_VEH_BOOST``` Something, such as buzzing insect wings, is speeding you up when you use a muscle-powered vehicle.
 - ```MYCUS_IMMUNE``` Critter is immune to fungal hase field (`fd_fungal_haze`)
@@ -634,8 +635,9 @@ These are checked by hardcode for monsters (introducing new flags will require C
 - ```EFFECT_LIMB_DISABLE_CONDITIONAL_FLAGS``` Effect disables any conditional flags the limb has.
 - ```EFFECT_LIMB_SCORE_MOD``` Effect with a limb score component to be used in Character::get_limb_score.  See [EFFECTS_JSON.md](EFFECTS_JSON.md) for the exact function of limb score modifiers and [JSON_INFO.md](JSON_INFO.md#limb-scores) for the effects of the scores.
 - ```EFFECT_LIMB_SCORE_MOD_LOCAL``` Same as `EFFECT_LIMB_SCORE_MOD`, but limb score is modified only if effect is applied to body part, that has said score; effect, that apply -50% vision debuff, won't have effect if applied to leg with this flag.
-- ```GRAB``` This effect is a grab, creatures will attempt to break it as such (see `character_escape.cpp`).
-- ```GRAB_FILTER``` This effect is a grab filter effect, assigning grabs to their grabbing monster.  Handles targeted grab removal on grab break, as well as potentially acting as a filter for monster attack logic.  Bodypart `grabbing_effects` should have it defined.
+- ```GRAB``` This effect is a grab, creatures will attempt to break it as such (see `character_escape.cpp`).  When a character holds the creature, the effect's source is that character (see [Grab attacks](MONSTER_SPECIAL_ATTACKS.md#characters-grabbing-creatures)).
+- ```GRAB_FILTER``` This effect is a grab filter effect, assigning grabs to their grabbing monster or character.  Handles targeted grab removal on grab break, as well as potentially acting as a filter for monster attack logic.  Bodypart `grabbing_effects` should have it defined.
+- ```NO_GRAB``` A creature with this flag can't start a grab: the `grab`, `grab_2` and `grab_3` monster attacks check it, and so does a character's grab (for characters any character flag counts, not only effect flags).
 
 
 ## Furniture and Terrain
@@ -815,7 +817,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```BATTERY_ULTRA_LIGHT``` This item is an ultra light battery, and can be put in pockets that have ultra light battery restriction.
 - ```BIONIC_ARMOR_INTERFACE``` This bionic can provide power to powered armor.
 - ```BIONIC_FUEL_SOURCE``` Contents of this item is used for fueling bionics.
-- ```BIONIC_NPC_USABLE``` Safe CBMs that NPCs can use without extensive NPC rewrites to utilize toggle CBMs.
+- ```BIONIC_NPC_USABLE``` On a CBM item: shows that a follower could make use of the CBM.  Keep it in step with the flag on the bionic itself (see the Bionics section).
 - ```BIONIC_POWER_SOURCE``` This bionic is a source of bionic power.
 - ```BIONIC_SLEEP_FRIENDLY``` This bionic won't provide a warning if the player tries to sleep while it's active.
 - ```BIONIC_TOGGLED``` This bionic only has a function when activated, instead of causing its effect every turn.
@@ -1198,7 +1200,8 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```FLIES``` Can fly over open air without dropping z-level, over water, etc.
 - ```GOODHEARING``` Pursues sounds more than most monsters.
 - ```GRABS``` Its attacks may grab you!
-- ```GROUP_BASH``` Gets help from monsters around it when bashing, adding their strength together.
+- ```GRAB_IMMUNE``` Characters can't grab it.
+- ```GROUP_BASH``` Gets help from monsters around it when bashing, adding their strength together.  Also lets it crowd-crush a grabbed character: with the `CROWD_CRUSH` world option on, a character held by a grab with enough adjacent `GROUP_BASH` monsters (not hallucinations, and of a size set by the `CROWD_CRUSH_*` external options) loses breath and is eventually crushed.  The crowd needed is the character's size class plus 1 (at least 2), one more while they stand; walls count only when crushers plus walls exceed 6; it doesn't happen underwater.  See `CROWD_CRUSH_RESIST` in [MAGIC.md](MAGIC.md).
 - ```GROUP_MORALE``` More courageous when near friends.
 - ```GUILT_ANIMAL``` Killing this monster(i.e. a hatchling or a kitten) causes guilt to the player and is counted for the kill thresholds of animals where player experiences progressively less morale penalty. WARNING: Do not use without 'death_guilt' death function or together with other guilt flags.
 - ```GUILT_CHILD``` Killing this monster(i.e. a zombie child or mutant child) causes guilt to the player and is counted for the kill thresholds of children where player experiences progressively less morale penalty. WARNING: Do not use without 'death_guilt' death function or together with other guilt flags.
@@ -1696,6 +1699,8 @@ These flags apply to the `use_action` field, instead of the `flags` field.
 ### Parts
 
 Note: Vehicle parts requiring other parts is defined by setting a `requires_flag` field with the flag requirement (i.e. the `ON_ROOF` flag contains the field `"requires_flag": "ROOF"`).
+
+Note: Parts that can be switched on and off from the vehicle's electronics menu get that switch from their flag: a flag whose definition has a `vehicle_toggle` field (i.e. the `CONE_LIGHT` flag contains `"vehicle_toggle": { "name": "headlights", "hotkey": "TOGGLE_HEADLIGHT" }`). All parts with the flag switch together. See [Vehicle toggles](JSON_INFO.md#vehicle-toggles) for adding one in a mod.
 
 - ```ADVANCED_PLANTER``` This planter doesn't spill seeds and avoids damaging itself on non-diggable surfaces.
 - ```AIRCRAFT_REPAIRABLE_NOPROF``` Allows the player to safely remove part from an aircraft without any proficiency.

@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include "action.h"
 #include "activity_actor_definitions.h"
@@ -24,6 +25,7 @@
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "flag.h"
 #include "flat_set.h"
 #include "game.h"
 #include "game_inventory.h"
@@ -34,6 +36,7 @@
 #include "item_pocket.h"
 #include "itype.h"
 #include "iuse.h"
+#include "localized_comparator.h"
 #include "map.h"
 #include "map_iterator.h"
 #include "map_scale_constants.h"
@@ -285,9 +288,13 @@ static void add_electronic_toggle( map &here, vehicle &veh, veh_menu &menu, cons
 
     const std::string msg = state ? _( "Turn on %s" ) : colorize( _( "Turn off %s" ), c_pink );
 
-    menu.add( string_format( msg, name ) )
-    .enable( allow )
-    .hotkey( action )
+    veh_menu_item &item = menu.add( string_format( msg, name ) );
+    if( action.empty() ) {
+        item.hotkey_auto();
+    } else {
+        item.hotkey( action );
+    }
+    item.enable( allow )
     .keep_menu_open()
     .on_submit( [found, state] {
         for( const vpart_reference &vp : found )
@@ -334,60 +341,22 @@ void vehicle::build_electronics_menu( map &here, veh_menu &menu )
         } );
     }
 
-    auto add_toggle = [&here, this, &menu]( const std::string & name, const std::string & action,
-    const std::string & flag ) {
-        add_electronic_toggle( here, *this, menu, name, action, flag );
-    };
-    add_toggle( pgettext( "electronics menu option", "reactor" ),
-                "TOGGLE_REACTOR", "REACTOR" );
-    add_toggle( pgettext( "electronics menu option", "headlights" ),
-                "TOGGLE_HEADLIGHT", "CONE_LIGHT" );
-    add_toggle( pgettext( "electronics menu option", "wide angle headlights" ),
-                "TOGGLE_WIDE_HEADLIGHT", "WIDE_CONE_LIGHT" );
-    add_toggle( pgettext( "electronics menu option", "directed overhead lights" ),
-                "TOGGLE_HALF_OVERHEAD_LIGHT", "HALF_CIRCLE_LIGHT" );
-    add_toggle( pgettext( "electronics menu option", "overhead lights" ),
-                "TOGGLE_OVERHEAD_LIGHT", "CIRCLE_LIGHT" );
-    add_toggle( pgettext( "electronics menu option", "aisle lights" ),
-                "TOGGLE_AISLE_LIGHT", "AISLE_LIGHT" );
-    add_toggle( pgettext( "electronics menu option", "dome lights" ),
-                "TOGGLE_DOME_LIGHT", "DOME_LIGHT" );
-    add_toggle( pgettext( "electronics menu option", "atomic lights" ),
-                "TOGGLE_ATOMIC_LIGHT", "ATOMIC_LIGHT" );
-    add_toggle( pgettext( "electronics menu option", "stereo" ),
-                "TOGGLE_STEREO", "STEREO" );
-    add_toggle( pgettext( "electronics menu option", "chimes" ),
-                "TOGGLE_CHIMES", "CHIMES" );
-    add_toggle( pgettext( "electronics menu option", "fridge" ),
-                "TOGGLE_FRIDGE", "FRIDGE" );
-    add_toggle( pgettext( "electronics menu option", "freezer" ),
-                "TOGGLE_FREEZER", "FREEZER" );
-    add_toggle( pgettext( "electronics menu option", "arcade" ),
-                "TOGGLE_ARCADE", "ARCADE" );
-    add_toggle( pgettext( "electronics menu option", "space heater" ),
-                "TOGGLE_SPACE_HEATER", "SPACE_HEATER" );
-    add_toggle( pgettext( "electronics menu option", "heated tank" ),
-                "TOGGLE_HEATED_TANK", "HEATED_TANK" );
-    add_toggle( pgettext( "electronics menu option", "cooler" ),
-                "TOGGLE_COOLER", "COOLER" );
-    add_toggle( pgettext( "electronics menu option", "recharger" ),
-                "TOGGLE_RECHARGER", "RECHARGE" );
-    add_toggle( pgettext( "electronics menu option", "plow" ),
-                "TOGGLE_PLOW", "PLOW" );
-    add_toggle( pgettext( "electronics menu option", "reaper" ),
-                "TOGGLE_REAPER", "REAPER" );
-    add_toggle( pgettext( "electronics menu option", "planter" ),
-                "TOGGLE_PLANTER", "PLANTER" );
-    add_toggle( pgettext( "electronics menu option", "rockwheel" ),
-                "TOGGLE_PLOW", "ROCKWHEEL" );
-    add_toggle( pgettext( "electronics menu option", "roadheader" ),
-                "TOGGLE_PLOW", "ROADHEAD" );
-    add_toggle( pgettext( "electronics menu option", "scoop" ),
-                "TOGGLE_SCOOP", "SCOOP" );
-    add_toggle( pgettext( "electronics menu option", "water purifier" ),
-                "TOGGLE_WATER_PURIFIER", "WATER_PURIFIER" );
-    add_toggle( pgettext( "electronics menu option", "smart controller" ),
-                "TOGGLE_SMART_ENGINE_CONTROLLER", "SMART_ENGINE_CONTROLLER" );
+    // every flag with a named vehicle_toggle gets an entry, which switches all the vehicle's
+    // parts with that flag together; sorted by name so mods' toggles fall in place
+    std::vector<const json_flag *> toggles;
+    for( const json_flag &flag : json_flag::get_all() ) {
+        if( flag.is_vehicle_toggle() && !flag.vehicle_toggle_name().empty() ) {
+            toggles.push_back( &flag );
+        }
+    }
+    std::sort( toggles.begin(), toggles.end(), []( const json_flag * a, const json_flag * b ) {
+        return localized_compare( a->vehicle_toggle_name().translated(),
+                                  b->vehicle_toggle_name().translated() );
+    } );
+    for( const json_flag *flag : toggles ) {
+        add_electronic_toggle( here, *this, menu, flag->vehicle_toggle_name().translated(),
+                               flag->vehicle_toggle_hotkey(), flag->id.str() );
+    }
 
     for( const vpart_reference &arc_vp : get_any_parts( "ARCADE" ) ) {
         if( arc_vp.part().enabled ) {

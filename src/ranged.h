@@ -8,6 +8,7 @@
 #include "coordinates.h"
 
 class Character;
+class Creature;
 class aim_activity_actor;
 class avatar;
 class gun_mode;
@@ -38,6 +39,19 @@ trajectory mode_fire( avatar &you, aim_activity_actor &activity );
 
 /** Throwing item */
 trajectory mode_throw( avatar &you, item &relevant, bool blind_throwing );
+
+/**
+ * Throwing the creature you hold (grappling): the cursor starts on it, range counts from it,
+ * and the panel shows the force of the throw and what it will hit.
+ */
+trajectory mode_throw_creature( avatar &you, const Creature &thrown, int range );
+
+/**
+ * Aiming the knockback of a technique (controlled_knockback): as mode_throw_creature, but the
+ * panel shows only how far the target flies and what it hits, and the targets allowed are
+ * melee::knockback_aim_refusal's.
+ */
+trajectory mode_aim_knockback( avatar &you, const Creature &target, int range );
 
 /** Reach attacking */
 trajectory mode_reach( avatar &you, item_location weapon );

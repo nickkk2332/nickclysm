@@ -1770,22 +1770,23 @@ namespace
 {
 
 bool _can_construct(
-    tripoint_bub_ms const &loc, construction_id const &idx, construction const &check,
-    std::optional<construction_id> const &part_con_idx )
+    Character const &you, tripoint_bub_ms const &loc, construction_id const &idx,
+    construction const &check, std::optional<construction_id> const &part_con_idx )
 {
     return ( part_con_idx && *part_con_idx == check.id ) ||
            ( ( check.pre_terrain.find( idx->post_terrain ) == check.pre_terrain.end() ) &&
-             can_construct( check, loc ) );
+             can_construct( check, loc, you ) );
 }
 
 construction const *
-_find_alt_construction( tripoint_bub_ms const &loc, construction_id const &idx,
+_find_alt_construction( Character const &you, tripoint_bub_ms const &loc,
+                        construction_id const &idx,
                         std::optional<construction_id> const &part_con_idx,
                         std::function<bool( construction const & )> const &filter )
 {
     std::vector<const construction *> cons = constructions_by_filter( filter );
     for( construction const *el : cons ) {
-        if( _can_construct( loc, idx, *el, part_con_idx ) ) {
+        if( _can_construct( you, loc, idx, *el, part_con_idx ) ) {
             return el;
         }
     }
@@ -1799,8 +1800,8 @@ ID _get_id( construction_id const &idx )
 }
 
 using checked_cache_t = std::vector<construction_id>;
-construction const *_find_prereq( tripoint_bub_ms const &loc, construction_id const &idx,
-                                  construction_id const &top_idx,
+construction const *_find_prereq( Character const &you, tripoint_bub_ms const &loc,
+                                  construction_id const &idx, construction_id const &top_idx,
                                   std::optional<construction_id> const &part_con_idx, checked_cache_t &checked_cache )
 {
     construction const *con = nullptr;
@@ -1821,12 +1822,12 @@ construction const *_find_prereq( tripoint_bub_ms const &loc, construction_id co
             continue;
         }
         checked_cache.emplace_back( gcon->id );
-        if( _can_construct( loc, idx, *gcon, part_con_idx ) ) {
+        if( _can_construct( you, loc, idx, *gcon, part_con_idx ) ) {
             return gcon;
         }
         // try to find a prerequisite of this prerequisite
         if( !gcon->pre_terrain.empty() || !gcon->pre_flags.empty() ) {
-            con = _find_prereq( loc, gcon->id, top_idx, part_con_idx, checked_cache );
+            con = _find_prereq( you, loc, gcon->id, top_idx, part_con_idx, checked_cache );
         }
         if( con != nullptr ) {
             return con;
@@ -1857,19 +1858,20 @@ static activity_reason_info find_base_construction(
     if( already_done( idx.obj(), loc ) ) {
         return activity_reason_info::build( do_activity_reason::ALREADY_DONE, false, idx->id );
     }
-    bool cc = can_construct( idx.obj(), loc );
+    bool cc = can_construct( idx.obj(), loc, you );
     construction const *con = nullptr;
 
     if( !cc ) {
         // try to build a variant from the same group
-        con = _find_alt_construction( loc, idx, part_con_idx, [&idx]( construction const & it ) {
+        const auto same_group = [&idx]( construction const & it ) {
             return it.group == idx->group;
-        } );
+        };
+        con = _find_alt_construction( you, loc, idx, part_con_idx, same_group );
         if( !idx->strict && con == nullptr ) {
             // try to build a pre-requisite from a different group, recursively
             checked_cache_t checked_cache;
             for( construction const *vcon : constructions_by_group( idx->group ) ) {
-                con = _find_prereq( loc, vcon->id, vcon->id, part_con_idx, checked_cache );
+                con = _find_prereq( you, loc, vcon->id, vcon->id, part_con_idx, checked_cache );
                 if( con != nullptr ) {
                     break;
                 }
@@ -2458,7 +2460,7 @@ activity_reason_info multi_farm_activity_actor::multi_activity_can_do( Character
         // Only the planting branch and its failure message read this, and it samples the
         // weather hundreds of times, so tiles to clear, harvest, fertilize or till skip it.
         std::optional<ret_val<void>> can_plant_result;
-        const auto can_plant = [&]() -> const ret_val<void>& {
+        const auto can_plant = [&]() -> const ret_val<void> & {
             if( !can_plant_result )
             {
                 can_plant_result = !seed.is_empty() ? warm_enough_to_plant( src_loc, seed ) :

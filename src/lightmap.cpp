@@ -818,6 +818,10 @@ void map::generate_lightmap( const int zlev )
                     tripoint_bub_ms offset = src;
                     offset.x() = src.x() + tdir.dx();
                     offset.y() = src.y() + tdir.dy();
+                    if( !inbounds( offset ) ) {
+                        // a lamp on the bubble's edge shining out of it
+                        continue;
+                    }
                     add_light_source( offset, M_SQRT2, vp.light_color ); // Add a little surrounding light
                     apply_light_arc( offset, v->face.dir() + pt->direction, vp.bonus, 180_degrees,
                                      vp.light_color );
@@ -915,6 +919,9 @@ void map::generate_lightmap( const int zlev )
 void map::add_light_source( const tripoint_bub_ms &p, float luminance,
                             const light_color_rgb &color )
 {
+    if( !inbounds( p ) ) {
+        return;
+    }
     auto &buf = get_cache( p.z() ).light_source_buffer[p.x()][p.y()];
     if( luminance > buf.luminance ) {
         buf.luminance = luminance;
@@ -1610,11 +1617,13 @@ void map::apply_light_source( const tripoint_bub_ms &p, float luminance )
 
     const point_bub_ms p2( p.xy() );
 
-    if( inbounds( p ) ) {
-        const float min_light = std::max( static_cast<float>( lit_level::LOW ), luminance );
-        lm[p2.x()][p2.y()] = elementwise_max( lm[p2.x()][p2.y()], min_light );
-        sm[p2.x()][p2.y()] = std::max( sm[p2.x()][p2.y()], luminance );
+    if( !inbounds( p ) ) {
+        // the buffers read and written below have no room for it
+        return;
     }
+    const float min_light = std::max( static_cast<float>( lit_level::LOW ), luminance );
+    lm[p2.x()][p2.y()] = elementwise_max( lm[p2.x()][p2.y()], min_light );
+    sm[p2.x()][p2.y()] = std::max( sm[p2.x()][p2.y()], luminance );
     if( luminance <= lit_level::LOW ) {
         return;
     } else if( luminance <= lit_level::BRIGHT_ONLY ) {
@@ -1747,7 +1756,7 @@ void map::apply_directional_light( const tripoint_bub_ms &p, int direction,
 void map::apply_light_arc( const tripoint_bub_ms &p, const units::angle &angle, float luminance,
                            const units::angle &wideangle, const light_color_rgb &color )
 {
-    if( luminance <= LIGHT_SOURCE_LOCAL ) {
+    if( luminance <= LIGHT_SOURCE_LOCAL || !inbounds( p ) ) {
         return;
     }
 

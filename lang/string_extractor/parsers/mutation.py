@@ -72,3 +72,8 @@ def parse_mutation(json, origin):
     if "activation_msg" in json:
         write_text(json["activation_msg"], origin,
                    comment=f"Activation message of mutation '{name}'")
+
+    if "activation_fail_message" in json:
+        write_text(json["activation_fail_message"], origin,
+                   comment=f"Message when mutation '{name}' fails its "
+                   "activation condition")

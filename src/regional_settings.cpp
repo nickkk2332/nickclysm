@@ -921,7 +921,9 @@ overmap_special_id building_bin::pick() const
         return null_special;
     }
 
-    return *buildings.pick();
+    // An empty or all-zero-weight bin has nothing to pick (OMAP-B05).
+    const overmap_special_id *picked = buildings.pick();
+    return picked ? *picked : overmap_special_id::NULL_ID();
 }
 
 void building_bin::clear()

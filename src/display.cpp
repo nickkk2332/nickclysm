@@ -605,17 +605,19 @@ std::pair<std::string, nc_color> display::weary_malus_text_color( const Characte
 
 std::string display::activity_level_str( float level )
 {
-    static const std::array<translation, 6> activity_descriptions { {
+    static const std::array<translation, 7> activity_descriptions { {
             to_translation( "activity description", "None" ),
             to_translation( "activity description", "Light" ),
             to_translation( "activity description", "Moderate" ),
             to_translation( "activity description", "Brisk" ),
             to_translation( "activity description", "Active" ),
             to_translation( "activity description", "Extreme" ),
+            to_translation( "activity description", "Explosive" ),
         } };
-    // Activity levels are 1, 2, 4, 6, 8, 10
+    // Activity levels are 1, 2, 4, 6, 8, 10, 12
     // So we can easily cut them in half and round down for an index
-    int idx = std::floor( level / 2 );
+    const int idx = std::clamp( static_cast<int>( std::floor( level / 2 ) ), 0,
+                                static_cast<int>( activity_descriptions.size() ) - 1 );
 
     return activity_descriptions[idx].translated();
 }

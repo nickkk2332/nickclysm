@@ -1,0 +1,92 @@
+[
+  {
+    "type": "furniture",
+    "id": "test_f_bash_eoc_altar",
+    "name": "bash EOC test altar",
+    "description": "MAP-J01: runs an EOC on each hit that doesn't break it.",
+    "symbol": "A",
+    "color": "red",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "bash": {
+      "str_min": 1,
+      "str_max": 100,
+      "furn_set": "f_null",
+      "eoc_on_hit": {
+        "id": "EOC_TEST_BASH_ALTAR_HIT",
+        "effect": [
+          { "if": "u_is_avatar", "then": [ { "math": [ "test_bash_hit_by_avatar = 1" ] } ] },
+          { "copy_var": { "context_val": "loc" }, "target_var": { "global_val": "test_bash_hit_loc" } },
+          { "copy_var": { "context_val": "old_furn" }, "target_var": { "global_val": "test_bash_hit_old_furn" } },
+          { "copy_var": { "context_val": "new_furn" }, "target_var": { "global_val": "test_bash_hit_new_furn" } }
+        ]
+      }
+    }
+  },
+  {
+    "type": "furniture",
+    "id": "test_f_bash_eoc_crate",
+    "name": "bash EOC test crate",
+    "description": "MAP-J01: runs an EOC when it breaks.",
+    "symbol": "C",
+    "color": "brown",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "bash": { "str_min": 1, "str_max": 2, "furn_set": "f_null", "eoc_on_destroy": "EOC_TEST_BASH_CRATE_BROKEN" }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_BASH_CRATE_BROKEN",
+    "effect": [
+      { "if": "u_is_monster", "then": [ { "math": [ "test_bash_crate_by_monster = 1" ] } ] },
+      { "copy_var": { "context_val": "old_furn" }, "target_var": { "global_val": "test_bash_crate_old_furn" } },
+      { "copy_var": { "context_val": "new_furn" }, "target_var": { "global_val": "test_bash_crate_new_furn" } }
+    ]
+  },
+  {
+    "type": "terrain",
+    "id": "test_t_bash_eoc_wall",
+    "name": "bash EOC test wall",
+    "description": "MAP-J01: runs an EOC when it breaks.",
+    "symbol": "#",
+    "color": "light_gray",
+    "move_cost": 0,
+    "bash": {
+      "str_min": 1,
+      "str_max": 2,
+      "ter_set": "t_floor",
+      "eoc_on_destroy": {
+        "id": "EOC_TEST_BASH_WALL_BROKEN",
+        "effect": [
+          {
+            "if": { "or": [ "u_is_character", "u_is_monster" ] },
+            "then": [ { "math": [ "test_bash_wall_alpha = 1" ] } ],
+            "else": [ { "math": [ "test_bash_wall_alpha = 0" ] } ]
+          },
+          { "copy_var": { "context_val": "old_ter" }, "target_var": { "global_val": "test_bash_wall_old_ter" } },
+          { "copy_var": { "context_val": "new_ter" }, "target_var": { "global_val": "test_bash_wall_new_ter" } }
+        ]
+      }
+    }
+  },
+  {
+    "type": "field_type",
+    "id": "test_fd_bash_eoc_web",
+    "//": "MAP-J01: runs an EOC when bashing clears it.",
+    "intensity_levels": [ { "name": "test web", "sym": "}" } ],
+    "bash": {
+      "str_min": 1,
+      "str_max": 1,
+      "sound_vol": 2,
+      "sound": "shnip.",
+      "eoc_on_destroy": {
+        "id": "EOC_TEST_BASH_WEB_CLEARED",
+        "effect": [
+          { "math": [ "test_bash_web_cleared_count += 1" ] },
+          { "if": "u_is_avatar", "then": [ { "math": [ "test_bash_web_by_avatar = 1" ] } ] },
+          { "copy_var": { "context_val": "field" }, "target_var": { "global_val": "test_bash_web_field" } }
+        ]
+      }
+    }
+  }
+]

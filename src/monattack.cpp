@@ -655,7 +655,7 @@ bool mattack::shriek_stun( monster *z )
         }
         // Affect the target
         // Small bash to every square, silent to not flood message box
-        here.bash( cone, 4, true );
+        here.bash( cone, 4, true, false, false, nullptr, true, z );
 
         // If a monster is there, chance for stun
         Creature *target = creatures.creature_at( cone );

@@ -1352,53 +1352,52 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
     // than searching the whole OM.
     if( params.om_special.has_value() ) {
         const int om_range = max_dist / OMAPX + 1; // +1 because we may be close to OM borders.
-        const tripoint_abs_om center = coords::project_to<coords::om>( origin );
+        point_abs_om center;
+        point_om_omt local;
+        std::tie( center, local ) = project_remain<coords::om>( origin.xy() );
+        // The closest any OMT of an overmap in ring i (i > 0) can be to origin: the gap from
+        // origin to the nearest edge of its own overmap, plus i - 1 whole overmaps.
+        const int edge_gap_x = std::min( local.x() + 1, OMAPX - local.x() );
+        const int edge_gap_y = std::min( local.y() + 1, OMAPY - local.y() );
         const overmap_special_id special_id = params.om_special.value();
+        tripoint_abs_omt result_pos = tripoint_abs_omt::invalid;
 
+        // Keep going outward until no closer match can exist, rather than returning the first
+        // ring with a hit: a match just across the border can be far closer than one at the
+        // other end of the origin's own overmap (OMAP-B02).
         for( int i = 0; i <= om_range; i++ ) {
-            for( const point_abs_om &om : closest_points_first( center.xy(), i, i ) ) {
-                if( has( om ) ) {
-                    overmap &om_data = get( om );
-                    point_abs_omt om_base = coords::project_to<coords::omt>( om );
-
-                    for( auto &element : om_data.overmap_special_placements ) {
-                        if( element.second == special_id ) {
-                            const tripoint_abs_omt loc = om_base + element.first.raw();
-                            if( is_findable_location( loc, params ) ) {
-                                const int dist_xy = square_dist( origin.xy(), loc.xy() );
-
-                                if( dist_xy >= min_dist && dist_xy < max_dist ) {
-                                    result.push_back( loc );
-                                }
-                            }
-                        }
-                    }
-                }
+            const int ring_min_dist = i == 0 ? 0 : std::min( ( i - 1 ) * OMAPX + edge_gap_x,
+                                      ( i - 1 ) * OMAPY + edge_gap_y );
+            if( ring_min_dist >= found_dist ) {
+                break;
             }
+            for( const point_abs_om &om : closest_points_first( center, i, i ) ) {
+                overmap *om_data = get_existing( om );
+                if( om_data == nullptr ) {
+                    continue;
+                }
+                const point_abs_omt om_base = coords::project_to<coords::omt>( om );
 
-            if( !result.empty() ) {
-                tripoint_abs_omt result_pos = result.front();
-                int found_dist = square_dist( origin.xy(), result_pos.xy() );
-
-                for( const tripoint_abs_omt &loc : result ) {
+                for( const auto &element : om_data->overmap_special_placements ) {
+                    if( element.second != special_id || element.first.z() < params.min_z ||
+                        element.first.z() > params.max_z ) {
+                        continue;
+                    }
+                    const tripoint_abs_omt loc = om_base + element.first.raw();
                     const int dist_xy = square_dist( origin.xy(), loc.xy() );
-
-                    if( dist_xy < found_dist ) {
+                    // Ties keep the first match; the unsorted map supplies the randomness.
+                    if( dist_xy < min_dist || dist_xy > max_dist || dist_xy >= found_dist ) {
+                        continue;
+                    }
+                    if( is_findable_location( loc, params ) ) {
                         result_pos = loc;
                         found_dist = dist_xy;
                     }
                 }
-
-                // Note that this logic is less fancy than the non special one below. Here we just
-                // return the first position with the shortest distance found in the unsorted map,
-                // rather than collecting all positions with an equal distance and randomly select
-                // one. The assumption is that an unsorted map provides the random element, while
-                // the logic below removes the search order bias that would occur otherwise.
-                return result_pos;
             }
         }
 
-        return tripoint_abs_omt::invalid;
+        return result_pos;
     } else {
 
         for( const point_abs_omt &loc_xy : closest_points_first( origin.xy(), min_dist, max_dist ) ) {
@@ -1417,6 +1416,10 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
                 }
 
                 if( is_findable_location( loc, params ) ) {
+                    if( dist < found_dist ) {
+                        // A strictly closer match replaces the farther ones found so far.
+                        result.clear();
+                    }
                     found_dist = dist;
                     result.push_back( loc );
                 }
@@ -1574,17 +1577,29 @@ shared_ptr_fast<npc> overmapbuffer::find_npc_by_unique_id( const std::string &un
 
 std::optional<basecamp *> overmapbuffer::find_camp( const point_abs_omt &p )
 {
-    for( auto &it : overmaps ) {
-        const point_abs_omt p2( p );
-        for( int x2 = p2.x() - 3; x2 < p2.x() + 3; x2++ ) {
-            for( int y2 = p2.y() - 3; y2 < p2.y() + 3; y2++ ) {
-                if( std::optional<basecamp *> camp = it.second->find_camp( point_abs_omt( x2, y2 ) ) ) {
-                    return camp;
-                }
+    // The camp at p, or else the nearest camp at most search_radius OMTs away. This used to scan
+    // an off-by-one [-3, +2] window and return the first camp it met, so with two camps close
+    // together a lookup of one could return the other (OMAP-B03).
+    constexpr int search_radius = 3;
+    std::optional<basecamp *> best;
+    point_abs_omt best_pos;
+    int best_dist = 0;
+    for( auto &om_entry : overmaps ) {
+        for( std::pair<const point_abs_omt, basecamp> &camp_entry : om_entry.second->camps ) {
+            const point_rel_omt offset = camp_entry.first - p;
+            if( std::abs( offset.x() ) > search_radius || std::abs( offset.y() ) > search_radius ) {
+                continue;
+            }
+            const int dist = offset.x() * offset.x() + offset.y() * offset.y();
+            // Break ties on position so the result doesn't depend on hash map order.
+            if( !best || dist < best_dist || ( dist == best_dist && camp_entry.first < best_pos ) ) {
+                best = &camp_entry.second;
+                best_pos = camp_entry.first;
+                best_dist = dist;
             }
         }
     }
-    return std::nullopt;
+    return best;
 }
 
 void overmapbuffer::clear_camps( const point_abs_omt &p )

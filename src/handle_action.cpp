@@ -35,9 +35,11 @@
 #include "damage.h"
 #include "debug.h"
 #include "debug_menu.h"
+#include "dialogue.h"
 #include "diary.h"
 #include "distraction_manager.h"
 #include "do_turn.h"
+#include "effect_on_condition.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -47,6 +49,7 @@
 #include "game_constants.h"
 #include "game_inventory.h"
 #include "gamemode.h"
+#include "grapple.h"
 #include "gun_mode.h"
 #include "help.h"
 #include "input_context.h"
@@ -644,11 +647,18 @@ static void auto_features_warn()
     }
 }
 
-// Establish or release a grab on a vehicle
+// Grab a creature, a vehicle or furniture, or let go of what you hold.
 static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
 {
     avatar &you = get_avatar();
     map &here = get_map();
+    creature_tracker &creatures = get_creature_tracker();
+
+    // Press G again to let go of a creature.
+    if( you.is_grabbing_creature() ) {
+        you.release_grapple();
+        return;
+    }
 
     if( you.get_grab_type() != object_type::NONE ) {
         if( const optional_vpart_position vp = here.veh_at( you.pos_bub() + you.grab_point ) ) {
@@ -679,7 +689,7 @@ static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
 
     const optional_vpart_position &vp = here.veh_at( grabp );
     // Object might not be on the same z level if on a ramp.
-    if( !( vp || here.has_furn( grabp ) ) ) {
+    if( !( vp || here.has_furn( grabp ) || creatures.creature_at( grabp ) ) ) {
         if( here.has_flag( ter_furn_flag::TFLAG_RAMP_UP, grabp ) ||
             here.has_flag( ter_furn_flag::TFLAG_RAMP_UP, you.pos_bub() ) ) {
             grabp.z() += 1;
@@ -687,6 +697,30 @@ static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
                    here.has_flag( ter_furn_flag::TFLAG_RAMP_DOWN, you.pos_bub() ) ) {
             grabp.z() -= 1;
         }
+    }
+
+    // A creature comes first: grab it rather than what it stands on. Hallucinations are skipped.
+    if( Creature *const target = creatures.creature_at( grabp ) ) {
+        if( const std::optional<std::string> refusal = grapple::grab_refusal( you, *target ) ) {
+            add_msg( m_info, *refusal );
+            return;
+        }
+        switch( grapple::needs_confirmation( you, *target ) ) {
+            case grapple::grab_confirmation::attack_npc:
+                if( !query_yn( _( "Really attack %s?" ), target->disp_name() ) ) {
+                    return;
+                }
+                break;
+            case grapple::grab_confirmation::anger_faction:
+                if( !g->warn_player_maybe_anger_local_faction( true, false ) ) {
+                    return;
+                }
+                break;
+            case grapple::grab_confirmation::none:
+                break;
+        }
+        grapple::attempt_grab( you, *target );
+        return;
     }
 
     if( vp ) {
@@ -749,7 +783,7 @@ static void grab( const std::optional<tripoint_bub_ms> &p = std::nullopt )
         } else {
             add_msg( _( "You grab the %s." ), here.furnname( grabp ) );
         }
-    } else { // TODO: grab mob? Captured squirrel = pet (or meat that stays fresh longer).
+    } else {
         add_msg( m_info, _( "There's nothing to grab there!" ) );
     }
 }
@@ -954,7 +988,8 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
     std::map<damage_type_id, int> smash_damage = smash_ability();
     for( std::pair<const field_type_id, field_entry> &fd_to_smsh : here.field_at( smashp ) ) {
         const std::optional<map_fd_bash_info> &bash_info = fd_to_smsh.first->bash_info;
-        if( !bash_info ) {
+        // A field removed earlier (removal is lazy) stays listed until fields are processed
+        if( !bash_info || !fd_to_smsh.second.is_field_alive() ) {
             continue;
         }
         int damage = bash_info->damage_to( smash_damage );
@@ -984,6 +1019,14 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
         }
         if( ret.did_smash && !bash_info->hit_field.first.is_null() ) {
             here.add_field( smashp, bash_info->hit_field.first, bash_info->hit_field.second );
+        }
+        const effect_on_condition_id &bash_eoc = ret.success ? bash_info->eoc_on_destroy :
+                bash_info->eoc_on_hit;
+        if( ret.did_smash && !bash_eoc.is_null() ) {
+            dialogue d( get_talker_for( *this ), nullptr );
+            d.set_value( "loc", here.get_abs( smashp ) );
+            d.set_value( "field", fd_to_smsh.first.id().str() );
+            bash_eoc->activate( d );
         }
         return ret;
     }
@@ -1026,7 +1069,8 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
         }
     }
 
-    const bash_params bash_result = here.bash( smashp, smash_damage, false, false, smash_floor );
+    const bash_params bash_result = here.bash( smashp, smash_damage, false, false, smash_floor,
+                                    nullptr, true, this );
     ret.can_smash = bash_result.can_bash;
     // Weariness scaling
     float weary_mult = 1.0f;
@@ -3158,6 +3202,16 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
 
         case ACTION_AUTOATTACK:
             avatar_action::autoattack( player_character, here );
+            break;
+
+        case ACTION_TOGGLE_MANUAL_COMBAT:
+            player_character.manual_combat_mode = !player_character.manual_combat_mode;
+            if( player_character.manual_combat_mode ) {
+                add_msg( m_info,
+                         _( "Manual combat mode ON!  You choose each attack's technique." ) );
+            } else {
+                add_msg( m_info, _( "Manual combat mode OFF!  Techniques are chosen for you." ) );
+            }
             break;
 
         default:

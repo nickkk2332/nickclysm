@@ -1,0 +1,92 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_SAY_TRUE",
+    "//": "Grappling EOC tests: the true_eocs of u_grab and u_throw_grabbed.",
+    "effect": [ { "set_string_var": "true", "target_var": { "global_val": "test_grapple_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_SAY_FALSE",
+    "//": "Grappling EOC tests: the false_eocs of u_grab and u_throw_grabbed.",
+    "effect": [ { "set_string_var": "false", "target_var": { "global_val": "test_grapple_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_GRAB_ARM",
+    "//": "u_grab test: the alpha talker takes hold of the beta talker's left arm, as hard as the global test_grapple_strength says.",
+    "effect": [
+      {
+        "u_grab": { "strength": { "global_val": "test_grapple_strength" }, "body_part": "arm_l" },
+        "true_eocs": [ "EOC_TEST_GRAPPLE_SAY_TRUE" ],
+        "false_eocs": [ "EOC_TEST_GRAPPLE_SAY_FALSE" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_NPC_RELEASES_U",
+    "//": "npc_release_grab test: the beta talker lets go of the alpha talker only.",
+    "condition": { "npc_is_grabbing": "u" },
+    "effect": [ { "npc_release_grab": { "target": "u" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_THROW_TOWARD",
+    "//": "u_throw_grabbed test: the alpha talker throws what it holds toward the location in the global test_grapple_throw_to.",
+    "effect": [
+      {
+        "u_throw_grabbed": { "target_var": { "global_val": "test_grapple_throw_to" } },
+        "true_eocs": [ "EOC_TEST_GRAPPLE_SAY_TRUE" ],
+        "false_eocs": [ "EOC_TEST_GRAPPLE_SAY_FALSE" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_GRABS_EVENT",
+    "eoc_type": "EVENT",
+    "required_event": "character_grabs_creature",
+    "//": "Grab event test: marks both talkers and keeps the event's fields in globals.",
+    "effect": [
+      { "u_add_var": "test_grapple_event", "value": "grabs" },
+      { "if": "has_beta", "then": [ { "npc_add_var": "test_grapple_event", "value": "grabbed" } ] },
+      { "copy_var": { "context_val": "victim" }, "target_var": { "global_val": "test_grapple_victim" } },
+      { "copy_var": { "context_val": "victim_type" }, "target_var": { "global_val": "test_grapple_victim_type" } },
+      { "copy_var": { "context_val": "victim_name" }, "target_var": { "global_val": "test_grapple_victim_name" } },
+      { "copy_var": { "context_val": "bodypart" }, "target_var": { "global_val": "test_grapple_bodypart" } },
+      { "math": [ "test_grapple_event_strength = _strength" ] },
+      { "math": [ "test_grapple_grabs++" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_RELEASES_EVENT",
+    "eoc_type": "EVENT",
+    "required_event": "character_releases_grab",
+    "//": "Release event test: marks both talkers and keeps the event's fields in globals.",
+    "effect": [
+      { "u_add_var": "test_grapple_event", "value": "releases" },
+      { "if": "has_beta", "then": [ { "npc_add_var": "test_grapple_event", "value": "released" } ] },
+      { "copy_var": { "context_val": "victim_type" }, "target_var": { "global_val": "test_grapple_victim_type" } },
+      { "copy_var": { "context_val": "victim_name" }, "target_var": { "global_val": "test_grapple_victim_name" } },
+      { "math": [ "test_grapple_releases++" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_THROWS_EVENT",
+    "eoc_type": "EVENT",
+    "required_event": "character_throws_creature",
+    "//": "Throw event test: marks both talkers and keeps the event's fields in globals.",
+    "effect": [
+      { "u_add_var": "test_grapple_event", "value": "throws" },
+      { "if": "has_beta", "then": [ { "npc_add_var": "test_grapple_event", "value": "thrown" } ] },
+      { "copy_var": { "context_val": "victim_type" }, "target_var": { "global_val": "test_grapple_victim_type" } },
+      { "copy_var": { "context_val": "victim_name" }, "target_var": { "global_val": "test_grapple_victim_name" } },
+      { "math": [ "test_grapple_throw_force = _force" ] },
+      { "math": [ "test_grapple_throw_distance = _distance" ] },
+      { "math": [ "test_grapple_throws++" ] }
+    ]
+  }
+]

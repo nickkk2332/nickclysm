@@ -476,8 +476,10 @@ TEST_CASE( "activity_levels_and_calories_in_daily_diary", "[avatar][biometrics][
         test_activity_duration( dummy, NO_EXERCISE, 1_minutes );
 
         int expect_gained_kcal = 1283;
-        int expect_net_kcal = 527;
-        int expect_spent_kcal = 756;
+        // The five-minute windows that straddle a level change burn calories in proportion
+        // to their average activity, not at the next whole level (HLTH-B04).
+        int expect_net_kcal = 553;
+        int expect_spent_kcal = 730;
 
         CHECK( condensed_spaces( dummy.total_daily_calories_string() ) == string_format(
                    "<color_c_white> Minutes at each exercise level Calories per day</color>\n"

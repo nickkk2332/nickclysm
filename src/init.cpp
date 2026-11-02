@@ -258,7 +258,12 @@ void DynamicDataLoader::load_object( const JsonObject &jo, const std::string &sr
     const int src_index = history.src_index.try_emplace( src,
                           static_cast<int>( history.src_index.size() ) ).first->second;
     const uint64_t load = history.next_load++;
+    // These types are loaded outside generic_factory and don't record where each id came
+    // from, so two definitions of one id from the same source are reported here (NPC-J02).
+    static const std::unordered_set<std::string> untracked_types = { "faction", "npc" };
+    const bool report_duplicates = untracked_types.count( type ) > 0;
     for( std::string &key : object_keys( jo ) ) {
+        const std::string id = report_duplicates ? key.substr( key.rfind( '\n' ) + 1 ) : "";
         std::vector<std::pair<int, uint64_t>> &loads = history.loaded_by[std::move( key )];
         const bool first_from_src = std::none_of( loads.begin(), loads.end(),
         [src_index]( const std::pair<int, uint64_t> &earlier ) {
@@ -266,6 +271,8 @@ void DynamicDataLoader::load_object( const JsonObject &jo, const std::string &sr
         } );
         if( first_from_src ) {
             loads.emplace_back( src_index, load );
+        } else if( report_duplicates ) {
+            debugmsg( "%s \"%s\" has two definitions from the same source (%s)", type, id, src );
         }
     }
     it->second( jo, src, base_path, full_path );
@@ -1170,6 +1177,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Body parts" ), &body_part_type::check_consistency },
             { _( "Body graphs" ), &bodygraph::check_all },
             { _( "Anatomies" ), &anatomy::check_consistency },
+            { _( "Magic types" ), &magic_type::check_consistency },
             { _( "Spells" ), &spell_type::check_consistency },
             { _( "Spell migration" ), &spell_migration::check },
             { _( "Transformations" ), &event_transformation::check_consistency },

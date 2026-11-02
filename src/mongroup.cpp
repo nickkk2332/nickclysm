@@ -4,15 +4,20 @@
 #include <string>
 #include <utility>
 
+#include "avatar.h"
 #include "calendar.h"
 #include "cata_utility.h"
+#include "condition.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "mtype.h"
 #include "options.h"
 #include "rng.h"
+#include "string_formatter.h"
+#include "talker.h"
 #include "units.h"
 
 //  Frequency: If you don't use the whole 1000 points of frequency for each of
@@ -118,6 +123,14 @@ float mongroup::avg_speed() const
     return avg_speed;
 }
 
+static bool is_valid_spawn_condition( const std::string &cond )
+{
+    static const std::set<std::string> valid = {
+        "DAY", "NIGHT", "DUSK", "DAWN", "SPRING", "SUMMER", "AUTUMN", "WINTER"
+    };
+    return valid.count( cond ) > 0;
+}
+
 static bool is_spawn_valid(
     const MonsterGroupEntry &entry, const time_point &sunset, const time_point &sunrise,
     const season_type season, const bool can_spawn_events )
@@ -192,6 +205,14 @@ static bool is_spawn_valid(
     //If we are limited by season, make sure we matched a season
     if( season_limited && !season_matched ) {
         return false;
+    }
+
+    // The dialogue condition is the most expensive check, so it runs last.
+    if( entry.condition ) {
+        const const_dialogue d( get_const_talker_for( get_avatar() ), nullptr );
+        if( !entry.condition( d ) ) {
+            return false;
+        }
     }
 
     return true;
@@ -546,8 +567,18 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
                                                       pack_max, data, starts, ends, event );
             if( mon.has_member( "conditions" ) ) {
                 for( const std::string line : mon.get_array( "conditions" ) ) {
+                    // Unknown tags used to be ignored, so a typo spawned the entry at all times.
+                    if( !is_valid_spawn_condition( line ) ) {
+                        mon.throw_error_at( "conditions", string_format(
+                                                "unknown spawn condition \"%s\"; valid values are DAY, "
+                                                "NIGHT, DUSK, DAWN, SPRING, SUMMER, AUTUMN and WINTER",
+                                                line ) );
+                    }
                     new_mon_group.conditions.push_back( line );
                 }
+            }
+            if( mon.has_member( "condition" ) ) {
+                read_condition( mon, "condition", new_mon_group.condition, true );
             }
 
             g.event_freq[event] += freq;

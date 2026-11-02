@@ -76,6 +76,16 @@ ItemList items_from( const item_group_id &group_id, const time_point &birthday,
  */
 ItemList items_from( const item_group_id &group_id );
 /**
+ * How many of @p it to spawn under the spawn rate of its item category (see
+ * item_category::get_spawn_rate): below 1.0 the item spawns once with that probability,
+ * above it roll_remainder( rate ) times. Mission items always spawn once.
+ */
+int category_spawn_count( const item &it );
+/** The same for a new item of @p type, without making one */
+int category_spawn_count( const itype &type );
+/** Applies @ref category_spawn_count to each of @p items, dropping or copying it. */
+void apply_category_spawn_rates( ItemList &items );
+/**
  * Check whether a specific item group contains a specific item type.
  */
 bool group_contains_item( const item_group_id &group_id, const itype_id & );

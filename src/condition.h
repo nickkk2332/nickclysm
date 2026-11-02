@@ -68,6 +68,12 @@ void read_condition( const JsonObject &jo, const std::string &member_name,
 
 void finalize_conditions();
 
+/** For ids written as literals in EOC JSON: once all data is loaded, report (debugmsg) a
+ *  monster type id that doesn't exist, or a special attack name no monster type has.
+ *  @p context says where it was written. */
+void check_mtype_id_at_load( const str_or_var &id, const std::string &context );
+void check_special_attack_name_at_load( const str_or_var &name, const std::string &context );
+
 /**
  * A condition for a response spoken by the player.
  * This struct only adds the constructors which will load the data from json

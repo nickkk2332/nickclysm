@@ -688,7 +688,7 @@ class const_talker
             return 0;
         }
         virtual matec_id get_random_technique( Creature const &, bool, bool,
-                                               bool, const std::vector<matec_id> & = {} ) const {
+                                               bool, bool, const std::vector<matec_id> & = {} ) const {
             return matec_id();
         }
         virtual bool knows_martial_art( const matype_id & ) const {

@@ -204,47 +204,59 @@ void field_effect::deserialize( const JsonObject &jo )
     field_types::load_immunity( jid, immunity_data );
 }
 
-void field_type::load( const JsonObject &jo, std::string_view )
+void field_type::load( const JsonObject &jo, std::string_view src )
 {
     optional( jo, was_loaded, "legacy_enum_id", legacy_enum_id, -1 );
+    if( jo.has_array( "intensity_levels" ) ) {
+        // A copy-from that lists levels replaces the inherited ones rather than adding to them
+        intensity_levels.clear();
+    }
+    // Each level inherits whatever it leaves out from the level below it, so the per-level
+    // reads always apply their fallback, even on a copy-from
     for( const JsonObject jao : jo.get_array( "intensity_levels" ) ) {
         field_intensity_level intensity_level;
         field_intensity_level fallback_intensity_level = !intensity_levels.empty() ? intensity_levels.back()
                 : intensity_level;
-        optional( jao, was_loaded, "name", intensity_level.name, fallback_intensity_level.name );
-        optional( jao, was_loaded, "sym", intensity_level.symbol, unicode_codepoint_from_symbol_reader,
+        // The first level defaults to a concentration of 1
+        const int fallback_concentration = !intensity_levels.empty() ?
+                                           intensity_levels.back().concentration : 1;
+        optional( jao, false, "name", intensity_level.name, fallback_intensity_level.name );
+        optional( jao, false, "sym", intensity_level.symbol, unicode_codepoint_from_symbol_reader,
                   fallback_intensity_level.symbol );
         intensity_level.color = jao.has_member( "color" ) ? color_from_string( jao.get_string( "color" ) ) :
                                 fallback_intensity_level.color;
-        optional( jao, was_loaded, "transparent", intensity_level.transparent,
+        optional( jao, false, "transparent", intensity_level.transparent,
                   fallback_intensity_level.transparent );
-        optional( jao, was_loaded, "dangerous", intensity_level.dangerous,
+        optional( jao, false, "dangerous", intensity_level.dangerous,
                   fallback_intensity_level.dangerous );
-        optional( jao, was_loaded, "move_cost", intensity_level.move_cost,
+        optional( jao, false, "move_cost", intensity_level.move_cost,
                   fallback_intensity_level.move_cost );
-        optional( jao, was_loaded, "extra_radiation_min", intensity_level.extra_radiation_min,
+        optional( jao, false, "extra_radiation_min", intensity_level.extra_radiation_min,
                   fallback_intensity_level.extra_radiation_min );
-        optional( jao, was_loaded, "extra_radiation_max", intensity_level.extra_radiation_max,
+        optional( jao, false, "extra_radiation_max", intensity_level.extra_radiation_max,
                   fallback_intensity_level.extra_radiation_max );
-        optional( jao, was_loaded, "radiation_hurt_damage_min", intensity_level.radiation_hurt_damage_min,
+        optional( jao, false, "radiation_hurt_damage_min",
+                  intensity_level.radiation_hurt_damage_min,
                   fallback_intensity_level.radiation_hurt_damage_min );
-        optional( jao, was_loaded, "radiation_hurt_damage_max", intensity_level.radiation_hurt_damage_max,
+        optional( jao, false, "radiation_hurt_damage_max",
+                  intensity_level.radiation_hurt_damage_max,
                   fallback_intensity_level.radiation_hurt_damage_max );
-        optional( jao, was_loaded, "radiation_hurt_message", intensity_level.radiation_hurt_message,
+        optional( jao, false, "radiation_hurt_message", intensity_level.radiation_hurt_message,
                   fallback_intensity_level.radiation_hurt_message );
-        optional( jao, was_loaded, "intensity_upgrade_chance", intensity_level.intensity_upgrade_chance,
+        optional( jao, false, "intensity_upgrade_chance", intensity_level.intensity_upgrade_chance,
                   fallback_intensity_level.intensity_upgrade_chance );
-        optional( jao, was_loaded, "intensity_upgrade_duration", intensity_level.intensity_upgrade_duration,
+        optional( jao, false, "intensity_upgrade_duration",
+                  intensity_level.intensity_upgrade_duration,
                   fallback_intensity_level.intensity_upgrade_duration );
-        optional( jao, was_loaded, "monster_spawn_chance", intensity_level.monster_spawn_chance,
+        optional( jao, false, "monster_spawn_chance", intensity_level.monster_spawn_chance,
                   fallback_intensity_level.monster_spawn_chance );
-        optional( jao, was_loaded, "monster_spawn_count", intensity_level.monster_spawn_count,
+        optional( jao, false, "monster_spawn_count", intensity_level.monster_spawn_count,
                   fallback_intensity_level.monster_spawn_count );
-        optional( jao, was_loaded, "monster_spawn_radius", intensity_level.monster_spawn_radius,
+        optional( jao, false, "monster_spawn_radius", intensity_level.monster_spawn_radius,
                   fallback_intensity_level.monster_spawn_radius );
-        optional( jao, was_loaded, "monster_spawn_group", intensity_level.monster_spawn_group,
+        optional( jao, false, "monster_spawn_group", intensity_level.monster_spawn_group,
                   fallback_intensity_level.monster_spawn_group );
-        optional( jao, was_loaded, "light_emitted", intensity_level.light_emitted,
+        optional( jao, false, "light_emitted", intensity_level.light_emitted,
                   fallback_intensity_level.light_emitted );
         if( jao.has_array( "light_color" ) ) {
             JsonArray jarr = jao.get_array( "light_color" );
@@ -254,13 +266,14 @@ void field_type::load( const JsonObject &jo, std::string_view )
         } else {
             intensity_level.light_color = fallback_intensity_level.light_color;
         }
-        optional( jao, was_loaded, "light_override", intensity_level.local_light_override,
+        optional( jao, false, "light_override", intensity_level.local_light_override,
                   fallback_intensity_level.local_light_override );
-        optional( jao, was_loaded, "translucency", intensity_level.translucency,
+        optional( jao, false, "translucency", intensity_level.translucency,
                   fallback_intensity_level.translucency );
-        optional( jao, was_loaded, "concentration", intensity_level.concentration,
-                  1 );
-        optional( jao, was_loaded, "convection_temperature_mod", intensity_level.convection_temperature_mod,
+        optional( jao, false, "concentration", intensity_level.concentration,
+                  fallback_concentration );
+        optional( jao, false, "convection_temperature_mod",
+                  intensity_level.convection_temperature_mod,
                   fallback_intensity_level.convection_temperature_mod );
         if( jao.has_array( "effects" ) ) {
             for( const JsonObject joe : jao.get_array( "effects" ) ) {
@@ -272,7 +285,7 @@ void field_type::load( const JsonObject &jo, std::string_view )
             // Use effects from previous intensity level
             intensity_level.field_effects = fallback_intensity_level.field_effects;
         }
-        optional( jao, was_loaded, "scent_neutralization", intensity_level.scent_neutralization,
+        optional( jao, false, "scent_neutralization", intensity_level.scent_neutralization,
                   fallback_intensity_level.scent_neutralization );
         intensity_levels.emplace_back( intensity_level );
     }
@@ -282,15 +295,12 @@ void field_type::load( const JsonObject &jo, std::string_view )
 
     if( jo.has_object( "npc_complain" ) ) {
         JsonObject joc = jo.get_object( "npc_complain" );
-        int chance;
-        std::string issue;
-        time_duration duration;
-        translation speech;
+        // Start from the inherited values, so a partial copy-from override keeps the rest
+        auto &[chance, issue, duration, speech] = npc_complain_data;
         optional( joc, was_loaded, "chance", chance, 0 );
         optional( joc, was_loaded, "issue", issue );
         optional( joc, was_loaded, "duration", duration, 0_turns );
         optional( joc, was_loaded, "speech", speech );
-        npc_complain_data = std::make_tuple( chance, issue, duration, speech );
     }
 
     JsonObject jid = jo.get_object( "immunity_data" );
@@ -334,7 +344,7 @@ void field_type::load( const JsonObject &jo, std::string_view )
         if( !bash_info ) {
             bash_info.emplace();
         }
-        bash_info->load( jo.get_object( "bash" ), was_loaded, "field " + id.str() );
+        bash_info->load( jo.get_object( "bash" ), was_loaded, "field " + id.str(), src );
     }
     if( was_loaded && jo.has_member( "copy-from" ) && looks_like.empty() ) {
         looks_like = jo.get_string( "copy-from" );
@@ -382,6 +392,24 @@ void field_type::check() const
         if( intensity_level.name.empty() ) {
             debugmsg( "Intensity level %d defined for field type \"%s\" has empty name.", i, id.c_str() );
         }
+        for( const field_effect &fe : intensity_level.field_effects ) {
+            if( !fe.id.is_valid() ) {
+                debugmsg( "Intensity level %d of field type \"%s\" has invalid effect \"%s\".",
+                          i, id.c_str(), fe.id.c_str() );
+            }
+            if( !fe.bp.is_null() && !fe.bp.is_valid() ) {
+                debugmsg( "Intensity level %d of field type \"%s\" has invalid body part \"%s\".",
+                          i, id.c_str(), fe.bp.c_str() );
+            }
+        }
+        const mongroup_id &group = intensity_level.monster_spawn_group;
+        if( !group.is_empty() && !group.is_null() && !group.is_valid() ) {
+            debugmsg( "Intensity level %d of field type \"%s\" has invalid monster group \"%s\".",
+                      i, id.c_str(), group.c_str() );
+        }
+    }
+    if( bash_info ) {
+        bash_info->check( "field " + id.str() );
     }
 }
 

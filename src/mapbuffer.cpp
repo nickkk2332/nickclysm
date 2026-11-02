@@ -80,7 +80,13 @@ void mapbuffer::clear_outside_reality_bubble()
 
 bool mapbuffer::add_submap( const tripoint_abs_sm &p, std::unique_ptr<submap> &sm )
 {
-    if( submaps.count( p ) ) {
+    // The buffer never holds an entry without a submap: submap_exists and lookup_submap would
+    // disagree about it
+    if( !sm ) {
+        return false;
+    }
+    const auto iter = submaps.find( p );
+    if( iter != submaps.end() && iter->second ) {
         return false;
     }
 
@@ -117,7 +123,7 @@ submap *mapbuffer::lookup_submap( const tripoint_abs_sm &p )
                   << p.z() << "])";
 
     const auto iter = submaps.find( p );
-    if( iter == submaps.end() ) {
+    if( iter == submaps.end() || !iter->second ) {
         try {
             return unserialize_submaps( p );
         } catch( const std::exception &err ) {
@@ -133,9 +139,9 @@ bool mapbuffer::submap_exists( const tripoint_abs_sm &p )
 {
     // Could so with a second check against a std::unordered_set<tripoint_abs_sm> of already checked existing but not loaded submaps before resorting to unserializing?
     const auto iter = submaps.find( p );
-    if( iter == submaps.end() ) {
+    if( iter == submaps.end() || !iter->second ) {
         try {
-            return unserialize_submaps( p );
+            return unserialize_submaps( p ) != nullptr;
         } catch( const std::exception &err ) {
             debugmsg( "Failed to load submap %s: %s", p.to_string(), err.what() );
         }
@@ -269,7 +275,9 @@ void mapbuffer::save_quad(
         tripoint_abs_sm submap_addr = project_to<coords::sm>( om_addr );
         submap_addr += offsets_offset.raw(); // TODO: Make += etc. available to relative parameters as well.
         submap_addrs.push_back( submap_addr );
-        submap *sm = submaps[submap_addr].get();
+        // find rather than [], which would insert an entry without a submap
+        const auto iter = submaps.find( submap_addr );
+        const submap *sm = iter == submaps.end() ? nullptr : iter->second.get();
         if( sm != nullptr ) {
             if( !sm->is_uniform() ) {
                 all_uniform = false;
@@ -416,12 +424,15 @@ submap *mapbuffer::unserialize_submaps( const tripoint_abs_sm &p )
     // not being uniform is OK and results in any missing uniform submaps being generated.
     oter_id const oid = overmap_buffer.ter( om_addr );
     generate_uniform_omt( project_to<coords::sm>( om_addr ), oid );
-    if( submaps.count( p ) == 0 ) {
+    // Don't insert an empty entry for a missing submap, so it can still be generated
+    const auto iter = submaps.find( p );
+    if( iter == submaps.end() || !iter->second ) {
         debugmsg( "file %s did not contain the expected submap %s for non-uniform terrain %s",
                   quad_path.generic_u8string(), p.to_string(), oid.id().str() );
+        return nullptr;
     }
 
-    return submaps[ p ].get();
+    return iter->second.get();
 }
 
 void mapbuffer::deserialize( const JsonArray &ja )

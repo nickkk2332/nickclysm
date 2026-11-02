@@ -1,0 +1,83 @@
+[
+  {
+    "//": "Two update_mapgen definitions share an id; each run must pick one of them by weight (MGEN-B02).",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_update_variants",
+    "object": { "set": [ { "point": "terrain", "id": "t_floor", "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_update_variants",
+    "object": { "set": [ { "point": "terrain", "id": "t_linoleum_white", "x": 0, "y": 0 } ] }
+  },
+  {
+    "//": "Weight 0 disables this definition.",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_update_variants",
+    "weight": 0,
+    "object": { "set": [ { "point": "terrain", "id": "t_linoleum_gray", "x": 0, "y": 0 } ] }
+  },
+  {
+    "//": "A nested chunk's own weight can be a math expression (MGEN-B02).",
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_nested_variable_weight",
+    "weight": { "math": [ "value_or( audit_nest_weight, 0 )" ] },
+    "object": { "mapgensize": [ 1, 1 ], "set": [ { "point": "terrain", "id": "t_linoleum_white", "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_nested_variable_weight",
+    "object": { "mapgensize": [ 1, 1 ], "set": [ { "point": "terrain", "id": "t_linoleum_gray", "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_place_variable_weight_nest",
+    "object": { "place_nested": [ { "chunks": [ "test_audit_nested_variable_weight" ], "x": 0, "y": 0 } ] }
+  },
+  {
+    "//": "Queues mapgen variable points that map::rotate must move with the tile (MGEN-B04).",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_queue_point",
+    "object": { "set": [ { "point": "variable", "id": "audit_queued_point", "x": 2, "y": 3 } ] }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_queue_other_point",
+    "object": { "set": [ { "point": "variable", "id": "audit_other_queued_point", "x": 5, "y": 7 } ] }
+  },
+  {
+    "//": "Item category spawn rates apply once per spawned item, on every mapgen item path (MGEN-B05).",
+    "type": "item_group",
+    "id": "test_audit_two_hammers",
+    "subtype": "collection",
+    "items": [ { "item": "hammer", "prob": 100 }, { "item": "hammer", "prob": 100 } ]
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_place_hammer",
+    "object": { "place_item": [ { "item": "hammer", "x": 5, "y": 5 } ] }
+  },
+  {
+    "//": "Its only mapgen has a math weight; its parameters must still be collected (MGEN-B06).",
+    "type": "overmap_terrain",
+    "id": "test_audit_variable_weight_omt",
+    "name": "audit variable weight test",
+    "sym": "%",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ]
+  },
+  {
+    "type": "mapgen",
+    "om_terrain": "test_audit_variable_weight_omt",
+    "weight": { "math": [ "1000" ] },
+    "object": {
+      "fill_ter": "t_floor",
+      "parameters": {
+        "audit_special_param": { "type": "ter_str_id", "scope": "overmap_special", "default": { "distribution": [ "t_floor" ] } }
+      }
+    }
+  }
+]

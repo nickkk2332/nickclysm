@@ -27,7 +27,9 @@ def parse_martial_art(json, origin):
         *json.get("ongethit_buffs", []),
         *json.get("onmiss_buffs", []),
         *json.get("oncrit_buffs", []),
-        *json.get("onkill_buffs", [])
+        *json.get("onkill_buffs", []),
+        *json.get("ongrab_buffs", []),
+        *json.get("ongrabbed_buffs", [])
     ]
 
     for buff in buffs:

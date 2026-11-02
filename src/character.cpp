@@ -52,6 +52,7 @@
 #include "flag.h"
 #include "game.h"
 #include "game_constants.h"
+#include "grapple.h"
 #include "input_context.h"
 #include "input_enums.h"
 #include "item_location.h"
@@ -237,6 +238,7 @@ static const json_character_flag json_flag_ACIDBLOOD( "ACIDBLOOD" );
 static const json_character_flag json_flag_BIONIC_LIMB( "BIONIC_LIMB" );
 static const json_character_flag json_flag_BIONIC_TOGGLED( "BIONIC_TOGGLED" );
 static const json_character_flag json_flag_CANNIBAL( "CANNIBAL" );
+static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_CHANGE_TEMPERATURE( "CANNOT_CHANGE_TEMPERATURE" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
@@ -250,6 +252,7 @@ static const json_character_flag json_flag_FREEZE_EFFECTS( "FREEZE_EFFECTS" );
 static const json_character_flag json_flag_GLIDE( "GLIDE" );
 static const json_character_flag json_flag_GLIDING( "GLIDING" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
+static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HEATSINK( "HEATSINK" );
 static const json_character_flag json_flag_IMMUNE_HEARING_DAMAGE( "IMMUNE_HEARING_DAMAGE" );
 static const json_character_flag json_flag_INFECTION_IMMUNE( "INFECTION_IMMUNE" );
@@ -617,6 +620,9 @@ character_id Character::getID() const
 
 void Character::swap_character( Character &other )
 {
+    // Holds are tied to who and where each character is, so neither survives the swap.
+    grapple::release_all( *this );
+    grapple::release_all( other );
     npc tmp_npc;
     Character &tmp = tmp_npc;
     tmp = std::move( other );
@@ -1527,6 +1533,10 @@ void Character::mount_creature( monster &z )
         return;
     }
 
+    // You need your hands for the reins.
+    if( has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
+        release_grapple();
+    }
     add_effect( effect_riding, 1_turns, true );
     z.add_effect( effect_ridden, 1_turns, true );
     if( z.has_effect( effect_tied ) ) {
@@ -1854,7 +1864,7 @@ void Character::on_try_dodge()
         const float dodge_skill_modifier = ( 20.0f - get_skill_level( skill_dodge ) ) / 20.0f;
         burn_energy_legs( - std::floor( static_cast<float>( base_burn_rate ) * 6.0f *
                                         dodge_skill_modifier ) );
-        set_activity_level( EXTRA_EXERCISE );
+        set_activity_level( melee_exertion_level() );
     }
 }
 
@@ -1884,7 +1894,9 @@ void Character::on_dodge( Creature *source, float difficulty, float training_lev
         source->times_combatted_player++;
         practice( skill_dodge, difficulty * 2, difficulty );
     }
-    martial_arts_data->ma_ondodge_effects( *this );
+    ma_event_context dodge_ctx;
+    dodge_ctx.opponent = source;
+    martial_arts_data->ma_ondodge_effects( *this, dodge_ctx );
 
     magic->break_channeling( *this );
 
@@ -1900,6 +1912,40 @@ void Character::on_dodge( Creature *source, float difficulty, float training_lev
             }
         }
     }
+}
+
+void Character::on_grabbed( Creature &grabber, const bodypart_id &bp, int strength )
+{
+    ma_event_context grabbed_ctx;
+    grabbed_ctx.opponent = &grabber;
+    grabbed_ctx.grab_strength = strength;
+    grabbed_ctx.grab_part = bp.id();
+    martial_arts_data->ma_ongrabbed_effects( *this, grabbed_ctx );
+
+    // A grab this character goes along with is no attack to answer.
+    const Character *const grabbing_character = grabber.as_character();
+    if( grabbing_character != nullptr && grapple::grab_tolerated( *grabbing_character, *this ) ) {
+        return;
+    }
+    // Nor can it answer when it can't act, or the grabber is out of reach or gone
+    if( is_dead_state() || in_sleep_state() || has_effect( effect_narcosis ) ||
+        has_effect( effect_fearparalyze ) || has_effect( effect_winded ) ||
+        has_effect( effect_incorporeal ) || has_flag( json_flag_CANNOT_MOVE ) ||
+        has_flag( json_flag_CANNOT_ATTACK ) || is_driving() || grabber.is_dead_state() ||
+        !is_adjacent( &grabber, false ) ) {
+        return;
+    }
+    technique_query query;
+    query.grab_counter = true;
+    const matec_id tec = std::get<0>( pick_technique( grabber, used_weapon(), query ) );
+    if( tec == tec_none ) {
+        return;
+    }
+    if( get_stamina() < get_stamina_max() / 3 ) {
+        add_msg_if_player( m_bad, _( "You try to counterattack, but you are too exhausted!" ) );
+        return;
+    }
+    melee_attack( grabber, false, tec );
 }
 
 float Character::get_melee() const
@@ -2426,6 +2472,8 @@ void Character::process_turn()
             ++it;
         }
     }
+    // Keep holding a creature only while the hold can last.
+    grapple::process_turn( *this );
     effect_on_conditions::process_effect_on_conditions( *this );
 }
 
@@ -4653,6 +4701,11 @@ bool Character::invoke_item( item *used, const std::string &method )
 bool Character::invoke_item( item *used, const std::string &method, const tripoint_bub_ms &pt,
                              int pre_obtain_moves )
 {
+    // As avatar::invoke_item does: a cancelled use refunds the moves spent from here on, so an
+    // NPC's moves aren't set to -1.
+    if( pre_obtain_moves == -1 ) {
+        pre_obtain_moves = get_moves();
+    }
     if( method.empty() ) {
         return invoke_item( used, pt, pre_obtain_moves );
     }
@@ -5549,6 +5602,8 @@ bool Character::has_activity( const std::vector<activity_id> &types ) const
 
 void Character::cancel_activity()
 {
+    // The cancel hooks run once the activity is gone, so an EOC there can start another one.
+    activity_end_hooks ended = activity.take_end_hooks();
     activity.canceled( *this );
     if( has_activity( ACT_MOVE_ITEMS ) && is_hauling() ) {
         stop_hauling();
@@ -5590,6 +5645,7 @@ void Character::cancel_activity()
         // nothing reads stale task mission or attitude
         guy->end_cancelled_task();
     }
+    ended.run( *this, true );
 }
 
 void Character::resume_backlog_activity()
@@ -6233,7 +6289,8 @@ bool Character::crush_frozen_liquid( item_location loc )
                                        hammering_item.tname() );
                     // FIXME: Hardcoded damage type
                     const int smashskill = get_arm_str() + hammering_item.damage_melee( damage_bash );
-                    here.bash( loc.pos_bub( here ), smashskill );
+                    here.bash( loc.pos_bub( here ), smashskill, false, false, false, nullptr, true,
+                               this );
                 }
             } else {
                 done_crush = false;
@@ -7049,26 +7106,32 @@ void Character::process_one_effect( effect &it, bool is_new )
     // Handle Blood Pressure
     val = get_effect( "BLOOD_PRESSURE", reduced );
     if( val != 0 ) {
+        mod = 1;
         if( is_new || it.activated( calendar::turn, "BLOOD_PRESSURE", val, reduced, mod ) ) {
-            modify_bp_effect_mod( bound_mod_to_vals( get_bp_effect_mod(), val, it.get_max_val( "BLOOD_PRESSURE",
-                                  reduced ), 0 ) );
+            modify_bp_effect_mod( bound_mod_to_vals( get_bp_effect_mod(), val,
+                                  it.get_max_val( "BLOOD_PRESSURE", reduced ),
+                                  it.get_min_val( "BLOOD_PRESSURE", reduced ) ) );
         }
     }
 
     // handle heart rate
     val = get_effect( "HEART_RATE", reduced );
     if( val != 0 ) {
+        mod = 1;
         if( is_new || it.activated( calendar::turn, "HEART_RATE", val, reduced, mod ) ) {
             modify_heartrate_effect_mod( bound_mod_to_vals( get_heartrate_effect_mod(), val,
-                                         it.get_max_val( "HEART_RATE", reduced ), 0 ) );
+                                         it.get_max_val( "HEART_RATE", reduced ),
+                                         it.get_min_val( "HEART_RATE", reduced ) ) );
         }
     }
-    // handle perspiration rate
-    val = get_effect( "RESPIRATION_RATE", reduced );
+    // handle respiratory rate (the key effect_type::load_mod_data stores it under)
+    val = get_effect( "RESPIRATORY_RATE", reduced );
     if( val != 0 ) {
-        if( is_new || it.activated( calendar::turn, "RESPIRATION_RATE", val, reduced, mod ) ) {
+        mod = 1;
+        if( is_new || it.activated( calendar::turn, "RESPIRATORY_RATE", val, reduced, mod ) ) {
             modify_respiration_effect_mod( bound_mod_to_vals( get_respiration_effect_mod(), val,
-                                           it.get_max_val( "RESPIRATION_RATE", reduced ), 0 ) );
+                                           it.get_max_val( "RESPIRATORY_RATE", reduced ),
+                                           it.get_min_val( "RESPIRATORY_RATE", reduced ) ) );
         }
     }
 

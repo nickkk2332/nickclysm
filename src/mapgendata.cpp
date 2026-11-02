@@ -100,9 +100,16 @@ mapgendata::mapgendata( const tripoint_abs_omt &over, map &mp, const float densi
             if( std::optional<overmap_special_id> s = overmap_buffer.overmap_special_at( over ) ) {
                 const overmap_special &special = **s;
                 mapgen_arguments internally_set_args = special.get_args( *this );
-                if( overmap_buffer.externally_set_args ) {
-                    maybe_args->value().map.merge( internally_set_args.map );
-                    overmap_buffer.externally_set_args = false;
+                if( *maybe_args ) {
+                    // Some arguments were set from outside (a start location): keep them and
+                    // add the rest. Only that special's arguments lack any, so it's the one
+                    // that clears the flag, whichever special is generated first.
+                    std::unordered_map<std::string, cata_variant> &args = maybe_args->value().map;
+                    const size_t externally_set = args.size();
+                    args.merge( internally_set_args.map );
+                    if( args.size() != externally_set ) {
+                        overmap_buffer.externally_set_args = false;
+                    }
                 } else {
                     *maybe_args = internally_set_args;
                 }

@@ -11,6 +11,9 @@ def parse_bionic(json, origin):
                comment=f"Description of bionic '{name}'")
     write_text(json.get("cant_remove_reason"), origin,
                comment=f"Reason bionic '{name}' cannot be removed")
+    write_text(json.get("activation_fail_message"), origin,
+               comment=f"Message when bionic '{name}' fails its "
+               "activation condition")
 
     for enchantment in json.get("enchantments", []):
         parse_enchant(enchantment, origin)

@@ -171,6 +171,7 @@ class talker_character_const: virtual public const_talker
         int get_stored_kcal() const override;
         int get_healthy_kcal() const override;
         int get_size() const override;
+        int get_grab_strength() const override;
         bool is_in_control_of( const vehicle &veh ) const override;
 
         bool worn_with_flag( const flag_id &flag, const bodypart_id &bp ) const override;
@@ -218,7 +219,7 @@ class talker_character_const: virtual public const_talker
         int climate_control_str_heat() const override;
         int climate_control_str_chill() const override;
         matec_id get_random_technique( Creature const &t, bool crit, bool dodge_counter,
-                                       bool block_counter,
+                                       bool block_counter, bool grab_counter,
                                        const std::vector<matec_id> &blacklist = {} ) const override;
         bool is_in_vehicle() const override;
 

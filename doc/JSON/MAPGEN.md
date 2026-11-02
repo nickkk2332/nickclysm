@@ -277,6 +277,10 @@ Examples:
     "weight": { "math": [ "my_weight * time_since('cataclysm', 'unit': 'days')" ] }
 ```
 
+The same applies to several definitions sharing a `"nested_mapgen_id"` or an `"update_mapgen_id"`: each time the
+chunk is placed or the update runs, one of them is picked by weight. A lone `update_mapgen_id` definition always runs,
+whatever its weight. Camp blueprints must have exactly one definition.
+
 
 ## How "overmap_terrain" variables affect mapgen
 
@@ -705,7 +709,7 @@ Using `place_variables` to set a group of variables.
 
 |Field|Description  |
 |--|--|
-| x, y        | Spawn coordinates ( specific or area rectangle ). Value: 0-23 or `[ 0-23, 0-23 ]` - random value between `[ a, b ]`.
+| x, y        | Coordinates. Value: 0-23. A range `[ a, b ]` is not rolled: the variable is set to `a`.
 | z           | (optional) Relative Z coordinate for placement at a different Z level than the nominal one. Value from `-20 to 20`. Also note that range is not supported.
 | name        | The name of the global variable to set with the absolute coordinates of x and y.
 
@@ -1236,7 +1240,7 @@ Example:
     { "else_chunks": [ "nest5" ], "x": 0, "y": 0, "flags": { "north_west": [ "RIVER", "LAKE", "LAKE_SHORE" ] } },
     { "chunks": [ "nest6" ], "x": 0, "y": 0, "predecessors": [ "field", { "om_terrain": "river", "om_terrain_match_type": "PREFIX" } ] },
     { "chunks": [ "nest7" ], "x": 0, "y": 0, "neighbors": { "north": [  { "om_terrain": "road_curved", "om_terrain_match_type": "SUBTYPE" } ] } },
-    { "chunks": [ "nest8" ], "x": 0, "y": 0, "neighbors": { "check_z": [ -3, 1, 3, 5 ] } }
+    { "chunks": [ "nest8" ], "x": 0, "y": 0, "check_z": [ -3, 1, 3, 5 ] }
   ],
 ```
 The code excerpt above will place chunks as follows:

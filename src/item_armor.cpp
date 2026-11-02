@@ -440,18 +440,24 @@ void item::on_wear( Character &p )
                 set_side( side::RIGHT );
             }
         } else {
-            // for sided items wear the item on the side which results in least encumbrance
-            int lhs = 0;
-            int rhs = 0;
-            set_side( side::LEFT );
-            for( const bodypart_id &bp : p.get_all_body_parts() ) {
-                lhs += p.get_part_encumbrance( bp );
-            }
-
-            set_side( side::RIGHT );
-            for( const bodypart_id &bp : p.get_all_body_parts() ) {
-                rhs += p.get_part_encumbrance( bp );
-            }
+            // for sided items wear the item on the side where the parts it covers end up least
+            // encumbered.  The cached encumbrance doesn't know about this item or its side yet,
+            // so lay the clothing out afresh for each side.
+            const bool already_worn = p.is_worn( *this );
+            const auto encumbrance_on_side = [&]( side s ) {
+                set_side( s );
+                std::map<bodypart_id, encumbrance_data> enc;
+                p.worn.item_encumb( enc, already_worn ? item() : *this, p );
+                int total = 0;
+                for( const bodypart_id &bp : p.get_all_body_parts() ) {
+                    if( covers( bp ) ) {
+                        total += enc[bp].encumbrance;
+                    }
+                }
+                return total;
+            };
+            const int lhs = encumbrance_on_side( side::LEFT );
+            const int rhs = encumbrance_on_side( side::RIGHT );
 
             set_side( lhs <= rhs ? side::LEFT : side::RIGHT );
         }

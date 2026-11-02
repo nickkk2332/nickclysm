@@ -30,6 +30,7 @@
   - [The `relic_data` field](#the-relic_data-field)
   - [Variables](#variables)
   - [ID values](#id-values)
+  - [Spell values](#spell-values)
   - [Enchantments on monsters](#enchantments-on-monsters)
   - [Enchantments on vehicles](#enchantments-on-vehicles)
   - [Enchantment value examples](#enchantment-value-examples)
@@ -195,6 +196,7 @@ Effect                 | Description
 `explosion`            | Causes an explosion centered on the target.  Uses damage() for power and factor aoe()/10.
 `fertilize_plant`      | Works the same as fertilizer, making plants grow faster. The growth time reduction is equal to damage() (50 is a 50% of a season length in growth time reduction).
 `flashbang`            | Causes a flashbang effect, centered on the target.  AoE affects the flashbang radius.
+`fling`                | Throws every creature among `valid_targets` in its aoe away from the caster, with damage() as the force: it flies damage() / 10 tiles and takes impact damage from what it hits and where it lands, as in `u_fling` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).  A creature on the caster's own tile isn't thrown.  Damage must be positive.  TLG calls it `fling_away`.
 `fungalize`            | Fungalizes the target.
 `guilt`                | Target gets the guilt morale as if it killed the caster.
 `map`                  | Maps out the overmap centered on the player, to a radius of aoe().
@@ -222,6 +224,31 @@ Effect                 | Description
 `translocate`          | Opens up a window that allows the caster to choose a translocation gate to teleport to.
 `upgrade`              | Immediately upgrades a target `MONSTER`.
 `vomit`                | Any creature within its aoe will instantly vomit, if it's able to do so.
+
+#### `effect_str` checks
+
+When the game loads, `effect_str` is checked against the type of id the spell's `effect` reads it as, and an unknown id is a load error instead of a debug message when the spell is cast:
+
+Effect                                  | `effect_str` must be
+---                                     |---
+`attack`                                | an `effect_type` id, or empty for no effect
+`remove_effect`                         | an `effect_type` id
+`summon`                                | a `MONSTER` id, or a `monstergroup` id with the `SPAWN_GROUP` flag
+`targeted_polymorph`                    | a `MONSTER` id, a `monstergroup` id with the `POLYMORPH_GROUP` flag, or empty for a random monster
+`spawn_item`                            | an item id, or an `item_group` id with the `SPAWN_GROUP` flag
+`effect_on_condition`                   | an `effect_on_condition` id
+`ter_transform`                         | a `ter_furn_transform` id
+`emit`                                  | an `emit` id
+`add_trap`                              | a `trap` id
+`remove_field`                          | a `field_type` id
+`recover_energy`                        | one of `MANA`, `STAMINA`, `SLEEPINESS`, `BIONIC`, `PAIN` or `HEALTH`
+`mutate`                                | a `mutation_category` id, a mutation id with the `MUTATE_TRAIT` flag, or empty for a random mutation
+`morale`                                | a `morale_type` id
+`revive`, `revive_dormant`              | a `SPECIES` id
+`guilt`                                 | a `SPECIES` id, or empty
+`summon_vehicle`                        | a `vehicle` id, or empty
+
+The spell ids in `learn_spells` and in `channel_data` (`channel_spell`, `channel_end_spell`, `channel_interrupt_spell`) and the `magic_type` id are checked the same way.  A spell that is only a base for `copy-from` should be an `abstract` instead of a spell with an empty or placeholder `effect_str`.
 
 
 ### Spell shape
@@ -738,6 +765,8 @@ Magic Type Example:
   }
 ```
 
+At load, every formula id must name an existing `jmath_function` with the right number of arguments (`get_level_formula_id` and `exp_for_level_formula_id` take 1, `casting_xp_formula_id` and `failure_chance_formula_id` take none), and the energy `vitamin` and `failure_eocs` ids must exist; anything else is a load error.
+
 
 ## Enchantments
 
@@ -753,6 +782,7 @@ Identifier                  | Description
 `intermittent_activation`   | Spells that activate centered on you depending on the duration.  The spells follow the `fake_spell` template.
 `values`                    | Numbers that can be modified (see [list](#id-values)).  `add` is added to the base value, `multiply` is **also added** and treated as percentage: 2.5 is +250% and -1 is -100%.  `add` is always applied before `multiply`.  Either `add` or `multiply` can be a variable_object/math expression (see [below](#variables) for syntax and application, and [NPCs](NPCs.md) for the in depth explanation).
 `skills`                    | A bonus or penalty to skills. Syntax is the same as for values, using the id of the skill name.
+`spell_values`              | Changes the damage, range, area, duration, cost or casting time of the spells you cast, optionally only for some spells.  See [Spell values](#spell-values).
 `emitter`                   | Grants the emit_id.
 `modified_bodyparts`        | Modifies the body plan (standard is human).  `gain` adds body_part_id, `lose` removes body_part_id.
 `mutations`                 | Grants the mutation/trait ID.  Note: enchantments effects added this way won't stack, due how mutations work.
@@ -1013,6 +1043,7 @@ Character status value  | Description
 `CLIMATE_CONTROL_HEAT`  | Moves body temperature up towards comfortable by number of warmth units up to value.
 `CLIMATE_CONTROL_CHILL` | Moves body temperature down towards comfortable by number of warmth units up to value.
 `CRAFTING_SPEED_MULTIPLIER` | Changes your crafting speed. Since it's a percent, using `multiply` is recommended.  Positive values decrease crafting time, negative values increase it.
+`CROWD_CRUSH_RESIST`    | Percent chance to resist losing breath to crowd crush when the crowd around you is only just big enough to crush you.  It modifies the external option `CROWD_CRUSH_RESIST_BASE` (5), so use `add`; a poor breathing limb score lowers the chance (down to half at a score of 0).  At 100 or more you can't be crowd-crushed at all.  Vanilla sources: the `downed` and `overburdened` effects (-4), Transpiration (+4), Omnicellular (+4, and +4 more while downed or prone), an active Roomy or Nacreous Shell (+20).
 `DEXTERITY`             | Affects the dexterity stat.
 `DISINFECTANT_BONUS`    | Affects the `disinfectant_power` you have when applying medicine.
 `DODGE_CHANCE`          | Modifies the probability to dodge an attack. Default is 0, so better to use `add`
@@ -1114,6 +1145,48 @@ Enchanted item value | Description
 ---                  |---
 `ITEM_ATTACK_SPEED`  | 
 
+### Spell values
+
+`spell_values` changes the values of the spells the enchantment's owner casts.  Each entry names one `value`, an `add` and/or a `multiply` (numbers or [variable objects](#variables), evaluated when the enchantment is applied, like `values`), and optional filters.  An entry applies only to spells that match every filter it has; an entry without filters applies to every spell.  Like `values`, the matching `add`s are summed and applied first, then the summed `multiply`s: `( base + add ) * ( 1 + multiply )`.  The result is never negative.
+
+Value       | Changes
+---         |---
+`DAMAGE`    | The spell's damage.  It is applied to the size of the damage, so a healing spell (negative damage) heals more with a positive bonus.  A spell with 0 damage stays at 0.  Some effects use damage as their strength (healing, energy recovered and so on), and those change too.
+`RANGE`     | The spell's range, in tiles.
+`AOE`       | The spell's area of effect.
+`DURATION`  | The spell's duration, in moves (100 per second).
+`COST`      | The spell's energy cost, after encumbrance.  Spells that cost nothing stay free.
+`CAST_TIME` | The spell's casting time, in moves, after encumbrance and `CASTING_TIME_MULTIPLIER`.
+
+Filter        | The spell must
+---           |---
+`spell`       | be this spell id.
+`spell_class` | have this `spell_class` (a trait id).
+`magic_type`  | have this `magic_type`.
+`damage_type` | have this `damage_type`.
+`flag`        | have this flag in its `flags`.
+
+They apply on every cast path, since they are read from the caster's enchantments whenever the spell's value is computed: spells cast from the spellbook, item and enchantment spells (`fake_spell`s), EOC `u_cast_spell`, `extra_effects`, NPC and monster spells (monsters get them from enchantments on their effects).  The spellbook shows the changed values.  Unknown `spell`, `spell_class`, `magic_type` and `damage_type` ids are reported at load.
+
+```jsonc
+  {
+    "type": "enchantment",
+    "id": "ench_ring_of_fire_mastery",
+    "has": "WORN",
+    "condition": "ALWAYS",
+    "spell_values": [
+      { "value": "DAMAGE", "damage_type": "heat", "multiply": 0.2 },   // +20% damage for fire spells
+      { "value": "RANGE", "spell_class": "KELVINIST", "add": 2 },      // +2 tiles for Kelvinist spells
+      { "value": "COST", "flag": "SOMATIC", "multiply": -0.1 },        // somatic spells cost 10% less
+      { "value": "CAST_TIME", "add": { "math": [ "u_val('intelligence') * -5" ] } } // every spell is faster for smart casters
+    ]
+  }
+```
+
+An item's `relic_data` must reference such an enchantment by id, `"passive_effects": [ { "id": "ench_ring_of_fire_mastery" } ]`: inline `passive_effects` don't support `spell_values` (it is a load error).
+
+`u_spellcasting_adjustment` still works, and stacks with these: it is applied first.
+
 ### Enchantments on monsters
 A small subset of enchantments can be applied to monsters via effects. These are listed below:
 
@@ -1125,6 +1198,8 @@ Character status value  | Description
 `RANGE_DODGE`           | Gives the monster a percentage chance to dodge ranged attacks, including firearms
 `LUMINATION`            | Affects monster luminance
 `TOTAL_WEIGHT`          | Affects monsters weight
+
+`spell_values` also apply to monsters: they change the spells the monster casts.
 
 
 ### Enchantments on vehicles

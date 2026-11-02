@@ -1,0 +1,41 @@
+[
+  {
+    "//": "NPC-J02: the parents the copy-from npc and faction below change.",
+    "type": "faction",
+    "id": "audit_faction_parent",
+    "name": "Audit Parents",
+    "likes_u": 10,
+    "respects_u": 5,
+    "known_by_u": true,
+    "size": 10,
+    "power": 20,
+    "wealth": 1000,
+    "currency": "FMCNote",
+    "description": "A faction for the copy-from tests."
+  },
+  {
+    "type": "faction",
+    "id": "audit_faction_child",
+    "copy-from": "audit_faction_parent",
+    "name": "Audit Children",
+    "relative": { "power": 5 }
+  },
+  {
+    "type": "npc",
+    "id": "audit_npc_parent",
+    "class": "NC_NONE",
+    "attitude": 0,
+    "mission": "GUARD",
+    "chat": "TALK_DONE",
+    "faction": "audit_faction_parent",
+    "name_suffix": "Parent",
+    "str": 12
+  },
+  {
+    "type": "npc",
+    "id": "audit_npc_child",
+    "copy-from": "audit_npc_parent",
+    "faction": "audit_faction_child",
+    "name_suffix": "Child"
+  }
+]

@@ -38,6 +38,8 @@
 #include "cursesdef.h"
 #include "debug.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "flag.h"
 #include "game.h"
@@ -345,6 +347,8 @@ static std::string camp_trip_description( const time_duration &total_time,
  * TODO: Convert to JSON basic on dynamic line type structure
  */
 static bool survive_random_encounter( npc &comp, std::string &situation, int favor, int threat );
+static void send_camp_upgrade_completed( const basecamp &camp, const tripoint_abs_omt &pos,
+        const std::string &upgrade );
 
 static std::string mission_ui_activity_of( const mission_id &miss_id )
 {
@@ -3746,6 +3750,7 @@ void basecamp::finish_return( npc &comp, const bool fixed_time, const std::strin
     }
     // movng all the logic from talk_function::companion return here instead of polluting
     // mission_companion
+    talk_function::send_companion_mission_finished( comp, cancel ? "canceled" : "returned" );
     comp.reset_companion_mission();
     comp.companion_mission_time = calendar::before_time_starts;
     comp.companion_mission_time_ret = calendar::before_time_starts;
@@ -3898,6 +3903,7 @@ bool basecamp::upgrade_return( const mission_id &miss_id )
     if( oter_str_id( bldg ).is_valid() ) {
         overmap_buffer.ter_set( upos, oter_id( bldg ) );
     }
+    send_camp_upgrade_completed( *this, upos, bldg );
     const std::string msg = _( "returns from upgrading the camp having earned a bit of "
                                "experience…" );
 
@@ -4102,6 +4108,7 @@ bool basecamp::salt_water_pipe_swamp_return( const mission_id &miss_id,
 
     update_provides( miss_id.parameters, e->second );
     update_resources( miss_id.parameters );
+    send_camp_upgrade_completed( *this, e->second.pos, miss_id.parameters );
 
     for( const npc_ptr &comp : npc_list ) {
         finish_return( *comp, true,
@@ -4225,6 +4232,7 @@ bool basecamp::salt_water_pipe_return( const mission_id &miss_id,
 
     update_provides( miss_id.parameters, e->second );
     update_resources( miss_id.parameters );
+    send_camp_upgrade_completed( *this, e->second.pos, miss_id.parameters );
 
     for( const npc_ptr &comp : npc_list ) {
         finish_return( *comp, true, _( "returns from construction of a salt water pipe segment…" ),
@@ -4381,10 +4389,11 @@ void basecamp::combat_mission_return( const mission_id &miss_id )
                 overmap_buffer.reveal( pt, 2 );
             } else if( comp->is_dead() ) {
                 popup( _( "%s didn't return from patrol…" ), comp->get_name() );
-                comp->place_corpse( pt );
-                overmap_buffer.add_note( pt, "DEAD NPC" );
-                overmap_buffer.remove_npc( comp->getID() );
-                return;
+                if( talk_function::companion_mission_death( *comp ) ) {
+                    comp->place_corpse( pt );
+                    overmap_buffer.add_note( pt, "DEAD NPC" );
+                    return;
+                }
             }
         }
         const std::string msg = _( "returns from patrol…" );
@@ -4569,6 +4578,8 @@ bool basecamp::survey_return( const mission_id &miss_id )
         }
         overmap_buffer.ter_set( where, oter_id( expansion_type.str() ) );
         add_expansion( expansion_type.str(), where, dir );
+        get_event_bus().send<event_type::camp_expansion_added>( camp_name(),
+                project_to<coords::ms>( where ).raw(), expansion_type.str() );
         const std::string msg = _( "returns from surveying for the expansion." );
         finish_return( *comp, true, msg, skill_construction.str(), 2 );
         return true;
@@ -6247,6 +6258,13 @@ void apply_camp_ownership( map &here, const tripoint_bub_ms &camp_pos, int radiu
 
 // combat and danger
 // this entire system is stupid
+void send_camp_upgrade_completed( const basecamp &camp, const tripoint_abs_omt &pos,
+                                  const std::string &upgrade )
+{
+    get_event_bus().send<event_type::camp_upgrade_completed>( camp.camp_name(),
+            project_to<coords::ms>( pos ).raw(), upgrade );
+}
+
 bool survive_random_encounter( npc &comp, std::string &situation, int favor, int threat )
 {
     popup( _( "While %s, a silent specter approaches %s…" ), situation, comp.get_name() );
@@ -6295,8 +6313,8 @@ bool survive_random_encounter( npc &comp, std::string &situation, int favor, int
                 popup( _( "Pieces of %s were found strewn across a few bushes." ), comp.get_name() );
                 popup( _( "(You wonder if your companions are fit to work on their own…)" ) );
             }
-            overmap_buffer.remove_npc( comp.getID() );
-            return false;
+            // a death EOC may keep the companion alive
+            return !talk_function::companion_mission_death( comp );
         }
     }
     return true;

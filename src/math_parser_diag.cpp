@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <list>
 #include <memory>
@@ -31,10 +35,12 @@
 #include "enums.h"
 #include "faction.h"
 #include "field.h"
+#include "flag.h"
 #include "game.h"
 #include "input_popup.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_pocket.h"
 #include "itype.h"
 #include "magic.h"
 #include "map.h"
@@ -56,6 +62,9 @@
 #include "type_id.h"
 #include "units.h"
 #include "value_ptr.h"
+#include "vehicle.h"
+#include "vpart_position.h"
+#include "vpart_range.h"
 #include "weather.h"
 #include "weather_gen.h"
 #include "weather_type.h"
@@ -74,6 +83,8 @@ General guidelines for writing dialogue functions
   ex: school_level() split from spell_level() instead of spell_level('school':blorg)
 - throw math::runtime_error for all errors
 */
+
+static const itype_id itype_battery( "battery" );
 
 static const json_character_flag json_flag_MUTATION_THRESHOLD( "MUTATION_THRESHOLD" );
 
@@ -218,6 +229,17 @@ double armor_eval( const_dialogue const &d, char scope, std::vector<diag_value> 
     damage_type_id dt( params[0].str( d ) );
     bodypart_id bp( params[1].str( d ) );
     return d.const_actor( is_beta( scope ) )->armor_at( dt, bp );
+}
+
+double arm_strength_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */,
+                          diag_kwargs const & /* kwargs */ )
+{
+    const_talker const *actor = d.const_actor( is_beta( scope ) );
+    if( Character const *const guy = actor->get_const_character() ) {
+        return guy->get_arm_str();
+    }
+    return actor->str_cur();
 }
 
 double charge_count_eval( const_dialogue const &d, char scope,
@@ -1793,6 +1815,452 @@ double volume_eval( const_dialogue const &d, char scope,
     throw math::runtime_error( "For volume(), talker is not character nor item" );
 }
 
+Character const *carrier_talker( const_dialogue const &d, char scope, std::string_view func )
+{
+    Character const *const chr = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( chr == nullptr ) {
+        throw math::runtime_error( "For %s(), talker must be a character", func );
+    }
+    return chr;
+}
+
+item const *container_talker( const_dialogue const &d, char scope, std::string_view func )
+{
+    item_location const *const it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "For %s(), talker must be an item", func );
+    }
+    return it->get_item();
+}
+
+// Totals over an item's container pockets (the pockets that hold contents, not magazines,
+// mods or software). Per-pocket free space is clamped at zero, so an overfilled pocket does
+// not hide the room left in its neighbours.
+struct container_totals {
+    units::volume volume_capacity = 0_ml;
+    units::volume contents_volume = 0_ml;
+    units::volume remaining_volume = 0_ml;
+    units::mass weight_capacity = 0_gram;
+    units::mass contents_weight = 0_gram;
+    units::mass remaining_weight = 0_gram;
+    int contents_count = 0;
+};
+
+container_totals get_container_totals( item const &it )
+{
+    container_totals ret;
+    for( item_pocket const *pocket : it.get_pockets( item_pocket::ok_default_containers ) ) {
+        ret.volume_capacity += pocket->volume_capacity();
+        ret.contents_volume += pocket->contents_volume();
+        ret.remaining_volume += std::max( pocket->remaining_volume(), 0_ml );
+        ret.weight_capacity += pocket->weight_capacity();
+        ret.contents_weight += pocket->contains_weight();
+        ret.remaining_weight += std::max( pocket->remaining_weight(), 0_gram );
+        for( item const *content : pocket->all_items_top() ) {
+            ret.contents_count += content->count();
+        }
+    }
+    return ret;
+}
+
+double weight_carried_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milligram( carrier_talker( d, scope, "weight_carried" )->weight_carried() );
+}
+
+double weight_capacity_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    if( Character const *chr = d.const_actor( is_beta( scope ) )->get_const_character() ) {
+        return units::to_milligram( chr->weight_capacity() );
+    }
+    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it && *it ) {
+        return units::to_milligram( get_container_totals( *it->get_item() ).weight_capacity );
+    }
+    throw math::runtime_error( "For weight_capacity(), talker is not character nor item" );
+}
+
+double volume_carried_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( carrier_talker( d, scope, "volume_carried" )->volume_carried() );
+}
+
+double volume_capacity_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    if( Character const *chr = d.const_actor( is_beta( scope ) )->get_const_character() ) {
+        return units::to_milliliter( chr->volume_capacity() );
+    }
+    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it && *it ) {
+        return units::to_milliliter( get_container_totals( *it->get_item() ).volume_capacity );
+    }
+    throw math::runtime_error( "For volume_capacity(), talker is not character nor item" );
+}
+
+double free_volume_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( carrier_talker( d, scope, "free_volume" )->free_space() );
+}
+
+double contents_count_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return get_container_totals( *container_talker( d, scope, "contents_count" ) ).contents_count;
+}
+
+double contents_volume_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( get_container_totals( *container_talker( d, scope,
+                                 "contents_volume" ) ).contents_volume );
+}
+
+double contents_weight_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milligram( get_container_totals( *container_talker( d, scope,
+                                "contents_weight" ) ).contents_weight );
+}
+
+double remaining_volume_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( get_container_totals( *container_talker( d, scope,
+                                 "remaining_volume" ) ).remaining_volume );
+}
+
+double remaining_weight_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milligram( get_container_totals( *container_talker( d, scope,
+                                "remaining_weight" ) ).remaining_weight );
+}
+
+vehicle const *vehicle_talker( const_dialogue const &d, char scope, std::string_view func )
+{
+    vehicle const *const veh = d.const_actor( is_beta( scope ) )->get_const_vehicle();
+    if( veh == nullptr ) {
+        throw math::runtime_error( "For %s(), talker must be a vehicle", func );
+    }
+    return veh;
+}
+
+vehicle *mutable_vehicle_talker( dialogue &d, char scope, std::string_view func )
+{
+    vehicle *const veh = d.actor( is_beta( scope ) )->get_vehicle();
+    if( veh == nullptr ) {
+        throw math::runtime_error( "For %s(), talker must be a vehicle", func );
+    }
+    return veh;
+}
+
+itype_id vehicle_fuel_param( const_dialogue const &d, diag_value const &param )
+{
+    const itype_id fuel( param.str( d ) );
+    if( !fuel.is_valid() ) {
+        throw math::runtime_error( R"(Unknown fuel "%s")", fuel.str() );
+    }
+    return fuel;
+}
+
+std::string vehicle_part_flag_param( const_dialogue const &d, diag_value const &param )
+{
+    std::string const &flag = param.str( d );
+    if( !flag_id( flag ).is_valid() ) {
+        throw math::runtime_error( R"(Unknown vehicle part flag "%s")", flag );
+    }
+    return flag;
+}
+
+// An amount of fuel or charge as the int the vehicle functions take.
+int64_t vehicle_amount( double val )
+{
+    return std::llround( std::clamp( val, 0.0, static_cast<double>( INT_MAX ) ) );
+}
+
+// Battery charge is shared by every vehicle and appliance connected by cables; reading and
+// writing it ignore the cable loss so a written value reads back unchanged.
+void set_vehicle_battery( vehicle &veh, map &here, double val )
+{
+    const int64_t current = veh.battery_left( here, false );
+    const int64_t target = vehicle_amount( val );
+    const int change = static_cast<int>( std::min<int64_t>( std::abs( target - current ),
+                                         INT_MAX ) );
+    if( target > current ) {
+        veh.charge_battery( here, change, false );
+    } else if( target < current ) {
+        veh.discharge_battery( here, change, false );
+    }
+}
+
+double vehicle_battery_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_battery" )->battery_left( get_map(), false );
+}
+
+void vehicle_battery_ass( double val, dialogue &d, char scope,
+                          std::vector<diag_value> const & /* params */,
+                          diag_kwargs const & /* kwargs */ )
+{
+    set_vehicle_battery( *mutable_vehicle_talker( d, scope, "vehicle_battery" ), get_map(), val );
+}
+
+double vehicle_battery_max_eval( const_dialogue const &d, char scope,
+                                 std::vector<diag_value> const & /* params */,
+                                 diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_battery_max" )->fuel_capacity( get_map(),
+            itype_battery );
+}
+
+double vehicle_fuel_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_fuel" );
+    const itype_id fuel = vehicle_fuel_param( d, params[0] );
+    if( fuel == itype_battery ) {
+        return veh->battery_left( get_map(), false );
+    }
+    return veh->fuel_left( get_map(), fuel );
+}
+
+void vehicle_fuel_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                       diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_fuel" );
+    const itype_id fuel = vehicle_fuel_param( d, params[0] );
+    map &here = get_map();
+    if( fuel == itype_battery ) {
+        set_vehicle_battery( *veh, here, val );
+        return;
+    }
+    const int64_t current = veh->fuel_left( here, fuel );
+    const int64_t target = vehicle_amount( val );
+    if( target < current ) {
+        const int excess = static_cast<int>( std::min<int64_t>( current - target, INT_MAX ) );
+        // take it only from the tanks fuel_left() counts: not racked vehicles' or frozen ones
+        veh->drain( here, fuel, excess, []( vehicle_part & vp ) {
+            return !vp.has_flag( vp_flag::carried_flag ) &&
+                   !( vp.is_tank() && !vp.get_base().empty() &&
+                      vp.get_base().legacy_front().made_of( phase_id::SOLID ) );
+        } );
+        return;
+    }
+    int64_t to_add = target - current;
+    const item fuel_item( fuel );
+    const auto fill = [veh, &fuel, &fuel_item, &to_add]( bool empty_stores ) {
+        for( const int idx : veh->fuel_containers ) {
+            vehicle_part &vp = veh->part( idx );
+            if( to_add <= 0 || vp.is_broken() || vp.has_flag( vp_flag::carried_flag ) ||
+                vp.is_battery() ) {
+                continue;
+            }
+            if( empty_stores ? !vp.ammo_current().is_null() || !vp.can_reload( fuel_item ) :
+                vp.ammo_current() != fuel ) {
+                continue;
+            }
+            const int held = empty_stores ? 0 : vp.ammo_remaining();
+            const int room = vp.item_capacity( fuel ) - held;
+            if( room <= 0 ) {
+                continue;
+            }
+            const int added = static_cast<int>( std::min<int64_t>( room, to_add ) );
+            if( vp.ammo_set( fuel, held + added ) > held ) {
+                to_add -= added;
+            }
+        }
+    };
+    // top up the stores that already hold this fuel, then fill empty ones that accept it
+    fill( false );
+    fill( true );
+    veh->invalidate_mass();
+}
+
+double vehicle_fuel_capacity_eval( const_dialogue const &d, char scope,
+                                   std::vector<diag_value> const &params,
+                                   diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_fuel_capacity" );
+    return veh->fuel_capacity( get_map(), vehicle_fuel_param( d, params[0] ) );
+}
+
+double vehicle_engine_on_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const & /* params */,
+                               diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_engine_on" )->engine_on ? 1 : 0;
+}
+
+void vehicle_engine_on_ass( double val, dialogue &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_engine_on" );
+    map &here = get_map();
+    if( !is_true( val ) ) {
+        if( veh->engine_on ) {
+            veh->stop_engines( here );
+        }
+        return;
+    }
+    if( veh->engine_on ) {
+        return;
+    }
+    // like vehicle::start_engines(): with no engine switched on, switch on every working one
+    if( std::none_of( veh->engines.begin(), veh->engines.end(), [veh]( int idx ) {
+    return veh->part( idx ).enabled && !veh->part( idx ).is_broken();
+    } ) ) {
+        for( const int idx : veh->engines ) {
+            veh->part( idx ).enabled = !veh->part( idx ).is_broken();
+        }
+    }
+    // like vehicle::start_engine(), switch an engine to another fuel it burns when its own is out
+    for( const int idx : veh->engines ) {
+        if( veh->part( idx ).enabled ) {
+            veh->auto_select_fuel( here, veh->part( idx ) );
+        }
+    }
+    // engines without fuel would stall on the next turn anyway (vehicle::idle)
+    veh->engine_on = veh->total_power( here ) > 0_W;
+}
+
+// Speeds are stored in hundredths of a mile per hour.
+double vehicle_velocity_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_velocity" )->velocity / 100.0;
+}
+
+void vehicle_velocity_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const & /* params */,
+                           diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_velocity" );
+    map &here = get_map();
+    // what the engines could reach with fuel, so an empty tank does not pin the vehicle
+    const double low = veh->max_reverse_velocity( here, false );
+    const double high = veh->max_velocity( here, false );
+    veh->velocity = static_cast<int>( std::lround( std::clamp( val * 100.0, low, high ) ) );
+}
+
+double vehicle_cruise_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_cruise" )->cruise_velocity / 100.0;
+}
+
+void vehicle_cruise_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_cruise" );
+    map &here = get_map();
+    // the same limits as vehicle::cruise_thrust()
+    const double low = veh->max_reverse_velocity( here );
+    const double high = veh->max_velocity( here );
+    veh->cruise_velocity = static_cast<int>( std::lround( std::clamp( val * 100.0, low, high ) ) );
+}
+
+double vehicle_max_speed_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const & /* params */,
+                               diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_max_speed" )->max_velocity( get_map() ) / 100.0;
+}
+
+double vehicle_power_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const & /* params */,
+                           diag_kwargs const & /* kwargs */ )
+{
+    return units::to_watt( vehicle_talker( d, scope, "vehicle_power" )->total_power( get_map() ) );
+}
+
+double vehicle_locked_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_locked" )->is_locked ? 1 : 0;
+}
+
+void vehicle_locked_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    mutable_vehicle_talker( d, scope, "vehicle_locked" )->is_locked = is_true( val );
+}
+
+double vehicle_part_count_eval( const_dialogue const &d, char scope,
+                                std::vector<diag_value> const &params,
+                                diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_count" );
+    const vehicle_part_with_feature_range<std::string> parts =
+        veh->get_avail_parts( vehicle_part_flag_param( d, params[0] ) );
+    return static_cast<double>( std::distance( parts.begin(), parts.end() ) );
+}
+
+double vehicle_part_broken_count_eval( const_dialogue const &d, char scope,
+                                       std::vector<diag_value> const &params,
+                                       diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_broken_count" );
+    int broken = 0;
+    for( const vpart_reference &vp : veh->get_any_parts( vehicle_part_flag_param( d,
+            params[0] ) ) ) {
+        if( vp.part().is_broken() && !vp.part().has_flag( vp_flag::carried_flag ) ) {
+            ++broken;
+        }
+    }
+    return broken;
+}
+
+double vehicle_part_hp_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_hp" );
+    std::string const &flag = vehicle_part_flag_param( d, params[0] );
+    diag_value const agg_val = kwargs.kwarg_or( "aggregate", "min" );
+    std::string const &agg = agg_val.str( d );
+    if( agg != "min" && agg != "max" && agg != "average" ) {
+        throw math::runtime_error( R"(Unknown aggregate "%s" for vehicle_part_hp())", agg );
+    }
+    std::vector<double> health;
+    for( const vpart_reference &vp : veh->get_any_parts( flag ) ) {
+        if( !vp.part().has_flag( vp_flag::carried_flag ) ) {
+            health.push_back( vp.part().health_percent() * 100.0 );
+        }
+    }
+    if( health.empty() ) {
+        return 0;
+    }
+    if( agg == "max" ) {
+        return *std::max_element( health.begin(), health.end() );
+    }
+    if( agg == "average" ) {
+        return std::accumulate( health.begin(), health.end(), 0.0 ) / health.size();
+    }
+    return *std::min_element( health.begin(), health.end() );
+}
+
 double vitamin_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
                      diag_kwargs const & /* kwargs */ )
 {
@@ -1829,45 +2297,158 @@ double warmth_eval( const_dialogue const &d, char scope, std::vector<diag_value>
 }
 
 double weather_eval( const_dialogue const &d, char /* scope */,
-                     std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+                     std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
+    weather_manager const &weather = get_weather_const();
     std::string const &aspect = params[0].str( d );
     if( aspect == "temperature" ) {
-        return units::to_kelvin( get_weather().weather_precise->temperature );
+        return units::to_kelvin( weather.weather_precise->temperature );
+    }
+    if( aspect == "temperature_offset" ) {
+        return units::to_kelvin_delta( weather.eoc_temperature_offset.value.value_or( 0_K_delta ) );
     }
     if( aspect == "windpower" ) {
-        return get_weather().weather_precise->windpower;
+        return weather.weather_precise->windpower;
+    }
+    if( aspect == "wind_direction" ) {
+        return weather.weather_precise->winddirection;
     }
     if( aspect == "humidity" ) {
-        return get_weather().weather_precise->humidity;
+        return weather.weather_precise->humidity;
     }
     if( aspect == "pressure" ) {
-        return get_weather().weather_precise->pressure;
+        return weather.weather_precise->pressure;
     }
     if( aspect == "precipitation" ) {
-        return precip_mm_per_hour( get_weather().weather_id->precip );
+        return precip_mm_per_hour( weather.weather_id->precip );
+    }
+    if( aspect == "duration_left" ) {
+        const double left = std::max( 0.0,
+                                      to_turns<double>( weather.nextweather - calendar::turn ) );
+        return _time_in_unit( left, kwargs.kwarg_or( "unit" ).str( d ) );
     }
     throw math::syntax_error( "Unknown weather aspect %s", aspect );
 }
 
-void weather_ass( double val, dialogue &d, char /* scope */, std::vector<diag_value> const &params,
-                  diag_kwargs const & /* kwargs */ )
+// When a durable override set by weather() should end: nullopt without a 'duration',
+// calendar::turn_max for 'PERMANENT'. A number is in turns (seconds).
+std::optional<time_point> _weather_override_end( const_dialogue const &d,
+        diag_kwargs const &kwargs )
 {
-    std::string const &aspect = params[0].str( d );
-    if( aspect == "temperature" ) {
-        get_weather().weather_precise->temperature = units::from_kelvin( val );
-        get_weather().temperature = units::from_kelvin( val );
-    } else if( aspect == "windpower" ) {
-        get_weather().weather_precise->windpower = val;
-    } else if( aspect == "humidity" ) {
-        get_weather().weather_precise->humidity = val;
-    } else if( aspect == "pressure" ) {
-        get_weather().weather_precise->pressure = val;
+    diag_value const duration = kwargs.kwarg_or( "duration" );
+    if( duration.is_empty() ) {
+        return std::nullopt;
+    }
+    double turns;
+    if( duration.is_dbl() ) {
+        turns = duration.dbl();
     } else {
-        throw math::syntax_error( "Unknown weather aspect %s", params[0].str( d ) );
+        std::string const &dur_str = duration.str( d );
+        if( dur_str == "PERMANENT" ) {
+            return calendar::turn_max;
+        }
+        turns = to_turns<double>( _read_from_string<time_duration>( dur_str,
+                                  time_duration::units ) );
+    }
+    if( turns >= to_turns<double>( calendar::turn_max - calendar::turn ) ) {
+        return calendar::turn_max;
+    }
+    return calendar::turn + time_duration::from_turns<double>( std::max( turns, 0.0 ) );
+}
+
+// Keeps value until end (a 'duration' of 0 or less removes the override); no end: no change
+template<typename T>
+void _hold_weather_override( timed_weather_override<T> &override,
+                             std::optional<time_point> const &end, T const &value )
+{
+    if( !end ) {
+        return;
+    }
+    if( *end <= calendar::turn ) {
+        override.reset();
+    } else {
+        override.set( value, *end );
+    }
+}
+
+// Without a 'duration' kwarg the value applies to the current weather only, as before, and
+// is regenerated at the next weather change. With one it is also held across weather changes.
+void weather_ass( double val, dialogue &d, char /* scope */, std::vector<diag_value> const &params,
+                  diag_kwargs const &kwargs )
+{
+    weather_manager &weather = get_weather();
+    std::string const &aspect = params[0].str( d );
+    std::optional<time_point> const end = _weather_override_end( d, kwargs );
+    if( aspect == "temperature" ) {
+        units::temperature const temp = units::from_kelvin( val );
+        weather.weather_precise->temperature = temp;
+        weather.temperature = temp;
+        _hold_weather_override( weather.eoc_temperature, end, temp );
+    } else if( aspect == "temperature_offset" ) {
+        // Not part of the generated weather, so it stays until it runs out or is cleared
+        units::temperature_delta const offset = units::from_kelvin_delta( val );
+        const std::optional<time_point> offset_end = end.value_or( calendar::turn_max );
+        // One that ends at once is removed (see _hold_weather_override): the temperature
+        // loses the old offset and gains none.
+        units::temperature_delta const held = *offset_end <= calendar::turn ? 0_K_delta : offset;
+        units::temperature_delta const change =
+            held - weather.eoc_temperature_offset.value.value_or( 0_K_delta );
+        if( !weather.eoc_temperature.value ) {
+            weather.weather_precise->temperature += change;
+            weather.temperature += change;
+        }
+        _hold_weather_override( weather.eoc_temperature_offset, offset_end, offset );
+    } else if( aspect == "windpower" ) {
+        weather.weather_precise->windpower = val;
+        if( !weather.windspeed_override ) {
+            weather.windspeed = static_cast<int>( std::lround( val ) );
+        }
+        _hold_weather_override( weather.eoc_windspeed, end, val );
+    } else if( aspect == "wind_direction" ) {
+        int const direction = ( static_cast<int>( std::lround( val ) ) % 360 + 360 ) % 360;
+        weather.weather_precise->winddirection = direction;
+        if( !weather.wind_direction_override ) {
+            weather.winddirection = direction;
+        }
+        _hold_weather_override( weather.eoc_wind_direction, end, direction );
+    } else if( aspect == "humidity" || aspect == "pressure" ) {
+        if( end ) {
+            throw math::runtime_error( "weather('%s') can't take a 'duration'", aspect );
+        }
+        if( aspect == "humidity" ) {
+            weather.weather_precise->humidity = val;
+        } else {
+            weather.weather_precise->pressure = val;
+        }
+    } else {
+        throw math::syntax_error( "Unknown or read-only weather aspect %s", aspect );
     }
 
-    get_weather().clear_temp_cache();
+    weather.clear_temp_cache();
+}
+
+// Turns until a monster's special attack is ready (0: ready); -1 if the talker isn't a monster
+// or the monster doesn't have that special
+double special_cooldown_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const &params,
+                              diag_kwargs const & /* kwargs */ )
+{
+    monster const *mon = d.const_actor( is_beta( scope ) )->get_const_monster();
+    if( mon == nullptr ) {
+        return -1;
+    }
+    return mon->special_cooldown( params[0].str( d ) ).value_or( -1 );
+}
+
+void special_cooldown_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    monster *mon = d.actor( is_beta( scope ) )->get_monster();
+    std::string const &special = params[0].str( d );
+    if( mon == nullptr || !mon->special_cooldown( special ) ) {
+        return;
+    }
+    mon->set_special( special, std::max( 0, static_cast<int>( std::lround( val ) ) ) );
 }
 
 double climate_control_str_heat_eval( const_dialogue const &d, char scope,
@@ -1892,6 +2473,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "addiction_intensity", { "un", 1, addiction_intensity_eval } },
     { "addiction_turns", { "un", 1, addiction_turns_eval, addiction_turns_ass } },
     { "armor", { "un", 2, armor_eval } },
+    { "arm_strength", { "un", 0, arm_strength_eval } },
     { "artifact_resonance", { "un", 0, artifact_resonance_eval } },
     { "attack_speed", { "un", 0, attack_speed_eval } },
     { "speed", { "un", 0, move_speed_eval } },
@@ -1955,6 +2537,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "quality", { "un", 1, quality_eval, {}, { "strict" } } },
     { "skill", { "un", 1, skill_eval, skill_ass } },
     { "skill_exp", { "un", 1, skill_exp_eval, skill_exp_ass, { "format" } } },
+    { "special_cooldown", { "un", 1, special_cooldown_eval, special_cooldown_ass } },
     { "spell_count", { "un", 0, spell_count_eval, {}, { "school" } } },
     { "spell_difficulty", { "un", 1, spell_difficulty_eval, {}, { "baseline" } } },
     { "spell_exp", { "un", 1, spell_exp_eval, spell_exp_ass } },
@@ -1979,11 +2562,34 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "vitamin", { "un", 1, vitamin_eval, vitamin_ass } },
     { "calories", { "un", 0, calories_eval, calories_ass, { "format", "dont_affect_weariness" } } },
     { "weight", { "un", 0, weight_eval } },
+    { "weight_carried", { "un", 0, weight_carried_eval } },
+    { "weight_capacity", { "un", 0, weight_capacity_eval } },
     { "volume", { "un", 0, volume_eval } },
+    { "volume_carried", { "un", 0, volume_carried_eval } },
+    { "volume_capacity", { "un", 0, volume_capacity_eval } },
+    { "free_volume", { "un", 0, free_volume_eval } },
+    { "contents_count", { "un", 0, contents_count_eval } },
+    { "contents_volume", { "un", 0, contents_volume_eval } },
+    { "contents_weight", { "un", 0, contents_weight_eval } },
+    { "remaining_volume", { "un", 0, remaining_volume_eval } },
+    { "remaining_weight", { "un", 0, remaining_weight_eval } },
     { "warmth", { "un", 1, warmth_eval } },
-    { "weather", { "g", 1, weather_eval, weather_ass } },
+    { "weather", { "g", 1, weather_eval, weather_ass, { "duration", "unit" } } },
     { "climate_control_str_heat", { "un", 0, climate_control_str_heat_eval } },
     { "climate_control_str_chill", { "un", 0, climate_control_str_chill_eval } },
+    { "vehicle_battery", { "un", 0, vehicle_battery_eval, vehicle_battery_ass } },
+    { "vehicle_battery_max", { "un", 0, vehicle_battery_max_eval } },
+    { "vehicle_cruise", { "un", 0, vehicle_cruise_eval, vehicle_cruise_ass } },
+    { "vehicle_engine_on", { "un", 0, vehicle_engine_on_eval, vehicle_engine_on_ass } },
+    { "vehicle_fuel", { "un", 1, vehicle_fuel_eval, vehicle_fuel_ass } },
+    { "vehicle_fuel_capacity", { "un", 1, vehicle_fuel_capacity_eval } },
+    { "vehicle_locked", { "un", 0, vehicle_locked_eval, vehicle_locked_ass } },
+    { "vehicle_max_speed", { "un", 0, vehicle_max_speed_eval } },
+    { "vehicle_part_broken_count", { "un", 1, vehicle_part_broken_count_eval } },
+    { "vehicle_part_count", { "un", 1, vehicle_part_count_eval } },
+    { "vehicle_part_hp", { "un", 1, vehicle_part_hp_eval, {}, { "aggregate" } } },
+    { "vehicle_power", { "un", 0, vehicle_power_eval } },
+    { "vehicle_velocity", { "un", 0, vehicle_velocity_eval, vehicle_velocity_ass } },
 };
 
 } // namespace

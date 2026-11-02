@@ -128,12 +128,19 @@ These are active effects that require the artifact to be activated to be used.  
 - **worn** This enchantment or spell only takes effect while the artifact is wielded or worn
 - **held** This enchantment or spell only takes effect while the artifact is wielded, worn, or in inventory
 
-### type_weights
-This determines the relative weight of the 'add' and 'mult' types.  When generated, an artifact first decides if it is going to apply an 'add' or a 'mult' ability based on the type_weights of each.  Then it uses the weights of the entries under the selected type to pick an ability.  This continues cycling until the artifact reaches the defined power level.  Possible values right now that are functional are:
-- passive_enchantment_add
-- passive_enchantment_mult
+### passive_hit_you_procgen_values and passive_hit_me_procgen_values
 
-This must be included in a dataset or it could cause a crash.
+Passive enchantments that cast a spell when the artifact's carrier hits something (**hit_you**) or gets hit (**hit_me**).  The entries have the same fields as **active_procgen_values**: **weight**, **spell_id**, **base_power**, **power_per_increment**, **increment**, **min_level**, **max_level** and **ench_has**.
+
+### type_weights
+This determines the relative weight of each kind of ability.  When generated, an artifact first picks a kind based on the type_weights, then uses the weights of the entries listed for that kind to pick an ability.  This continues cycling until the artifact reaches the defined power level or its maximum number of attributes.  Generation also stops after 100 picks in a row that don't raise the artifact's power level, for example when every candidate would exceed `max_negative_power`.  Possible values are:
+- passive_enchantment_add (picks from passive_add_procgen_values)
+- passive_enchantment_mult (picks from passive_mult_procgen_values)
+- active_enchantment (picks from active_procgen_values)
+- hit_you (picks from passive_hit_you_procgen_values)
+- hit_me (picks from passive_hit_me_procgen_values)
+
+This must be included in a dataset, or the artifact gets no abilities.
 
 ### items
 This provides a list of possible items that this artifact can spawn as, if it appears randomly in a hard-coded map extra.

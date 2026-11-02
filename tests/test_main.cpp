@@ -295,6 +295,7 @@ struct CataListener : Catch::TestEventListenerBase {
         weather.weather_override = WEATHER_NULL; // NOLINT(cata-tests-must-restore-global-state)
         weather.windspeed_override.reset();
         weather.forced_temperature.reset(); // NOLINT(cata-tests-must-restore-global-state)
+        weather.clear_eoc_overrides();
         weather.set_nextweather( calendar::turn );
         weather.clear_temp_cache();
     }

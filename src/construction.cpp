@@ -8,6 +8,8 @@
 #include <numeric>
 #include <optional>
 #include <queue>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -21,6 +23,7 @@
 #include "cata_utility.h"
 #include "character.h"
 #include "color.h"
+#include "condition.h"
 #include "construction_category.h"
 #include "construction_group.h"
 #include "coordinates.h"
@@ -29,6 +32,8 @@
 #include "creature.h"
 #include "cursesdef.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
@@ -1300,7 +1305,37 @@ static std::string has_pre_flags_colorize( const construction &con )
     return colorize( enumerate_as_string( flags_colorized ), color );
 }
 
+bool construction::meets_condition( const Character &builder, const tripoint_bub_ms &p ) const
+{
+    if( !has_condition ) {
+        return true;
+    }
+    const_dialogue d( get_const_talker_for( builder ), nullptr );
+    d.set_value( "construction", id.str() );
+    d.set_value( "pos", get_map().get_abs( p ) );
+    return condition( d );
+}
+
+void construction::run_eocs( const std::vector<effect_on_condition_id> &eocs, Character &builder,
+                             const tripoint_abs_ms &p ) const
+{
+    if( eocs.empty() ) {
+        return;
+    }
+    dialogue d( get_talker_for( builder ), nullptr );
+    d.set_value( "construction", id.str() );
+    d.set_value( "pos", p );
+    for( const effect_on_condition_id &eoc : eocs ) {
+        eoc->activate( d );
+    }
+}
+
 bool can_construct( const construction &con, const tripoint_bub_ms &p )
+{
+    return can_construct( con, p, get_player_character() );
+}
+
+bool can_construct( const construction &con, const tripoint_bub_ms &p, const Character &builder )
 {
     const map &here = get_map();
     // Both lock kinds: a craft's own tile and any tile supplying it a provider.
@@ -1323,12 +1358,14 @@ bool can_construct( const construction &con, const tripoint_bub_ms &p )
     }
     if( !con.post_terrain.empty() ) { // make sure the construction would actually do something
         if( con.post_is_furniture ) {
-            return f != furn_id( con.post_terrain );
-        } else {
-            return t != ter_id( con.post_terrain );
+            if( f == furn_id( con.post_terrain ) ) {
+                return false;
+            }
+        } else if( t == ter_id( con.post_terrain ) ) {
+            return false;
         }
     }
-    return true;
+    return con.meets_condition( builder, p );
 }
 
 bool can_construct( const construction &con )
@@ -1553,11 +1590,16 @@ void build_construction_activity_actor::complete_construction( player_activity &
     act.set_to_null();
     you.recoil = MAX_RECOIL;
 
+    // A post_special or EOC may assign a new activity, which destroys this actor
+    const tripoint_abs_ms site_abs = construction_location;
     // This comes after clearing the activity, in case the function interrupts
     // activities
     for( const auto &special : built.post_specials ) {
         special( terp, you );
     }
+    built.run_eocs( built.post_eocs, you, site_abs );
+    get_event_bus().send<event_type::character_finishes_construction>( you.getID(),
+            built.id.str(), site_abs.raw() );
     // Players will not automatically resume backlog, other Characters will.
     if( you.is_avatar() && !you.backlog.empty() &&
         you.backlog.front().id() == ACT_MULTIPLE_CONSTRUCTION ) {
@@ -2345,7 +2387,7 @@ void load_construction( const JsonObject &jo, const std::string &src )
     construction_factory.load( jo, src );
 }
 
-void construction::load( const JsonObject &jo, const std::string_view )
+void construction::load( const JsonObject &jo, const std::string_view src )
 {
     mandatory( jo, was_loaded, "group", group );
     if( jo.has_member( "required_skills" ) ) {
@@ -2482,6 +2524,24 @@ void construction::load( const JsonObject &jo, const std::string_view )
     optional( jo, was_loaded, "on_display", on_display, true );
     optional( jo, was_loaded, "dark_craftable", dark_craftable, false );
     optional( jo, was_loaded, "strict", strict, false );
+
+    // Each of these replaces what copy-from inherited when present
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, false );
+        has_condition = true;
+    }
+    const auto read_eocs = [&jo, &src]( const std::string & member,
+    std::vector<effect_on_condition_id> &eocs ) {
+        if( !jo.has_member( member ) ) {
+            return;
+        }
+        eocs.clear();
+        for( JsonValue jv : jo.get_array( member ) ) {
+            eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    };
+    read_eocs( "do_turn_eocs", do_turn_eocs );
+    read_eocs( "post_eocs", post_eocs );
 }
 
 namespace
@@ -2554,6 +2614,17 @@ void construction::check() const
             debugmsg( "Unknown post_terrain (terrain) %s in %s", post_terrain, display_name );
         }
     }
+    const auto check_eocs = [&display_name]( std::string_view member,
+    const std::vector<effect_on_condition_id> &eocs ) {
+        for( const effect_on_condition_id &eoc : eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "Unknown effect_on_condition %s in %s of %s", eoc.str(), member,
+                          display_name );
+            }
+        }
+    };
+    check_eocs( "do_turn_eocs", do_turn_eocs );
+    check_eocs( "post_eocs", post_eocs );
 }
 
 int construction::print_time( const catacurses::window &w, const point &p, int width,

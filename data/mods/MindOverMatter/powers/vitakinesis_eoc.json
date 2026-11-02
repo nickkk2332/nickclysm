@@ -1357,5 +1357,11 @@
       },
       { "u_add_effect": "effect_vita_super_heal_pain_allayed", "duration": "300 seconds" }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_VITAKIN_RESTORE_LIMB_SELECTOR",
+    "//": "Replaced by the limb selector in Limb_WIP/mod_interactions/mindovermatter.",
+    "effect": [ { "u_message": "You find no missing limb to restore.", "type": "neutral" } ]
   }
 ]

@@ -84,8 +84,9 @@ void item_transformation::transform( Character *carrier, item &it, bool dont_tak
             it.countdown_point = calendar::turn + target_timer;
         }
 
+        // keep a countdown type active, as convert() made it: its countdown needs processing
         it.active = it.has_temperature() || it.has_flag( json_flag_SPAWN_ACTIVE )  ||
-                    target_timer > 0_seconds;
+                    target_timer > 0_seconds || it.type->countdown_interval > 0_seconds;
 
     } else {
         item content = it;
@@ -110,7 +111,7 @@ void item_transformation::transform( Character *carrier, item &it, bool dont_tak
         }
 
         content.active = content.has_temperature() || content.has_flag( json_flag_SPAWN_ACTIVE ) ||
-                         target_timer > 0_seconds;
+                         target_timer > 0_seconds || content.type->countdown_interval > 0_seconds;
 
         for( int i = 0; i < count; i++ ) {
             if( !it.put_in( content, pocket_type::CONTAINER ).success() ) {

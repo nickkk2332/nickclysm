@@ -69,21 +69,36 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | spell: "effect": "effect_on_condition"           | target (Character, Monster) | spell caster (Character, Monster) | `spell_location`, location variable, location of target for use primarily when the target isn't a creature; `spell_id` and `spell_damage_type`, strings; `spell_level` (effective level), `spell_damage`, `spell_dot`, `spell_duration` (in turns), `spell_aoe` and `spell_range`, numbers, the values computed for this cast
 | spell: "description"                             | avatar                      | avatar                      | Used for tags
 | trap: "action": "eocs"                           | triggerer (Creature, item not supported yet) | NONE | `trap_location`, location variable, location of the trap to use primarily with ranged traps
+| terrain/furniture/field "bash": "eoc_on_hit", "eoc_on_destroy" | basher (Creature), or an empty talker with no creature if the basher is not known | NONE | `loc`, location variable, the bashed tile; `old_ter`, `old_furn`, `new_ter`, `new_furn`, strings, ids before and after the bash (fields: `field`, string, the field type id). Check `u_is_character` or `u_is_monster` before manipulating the alpha talker
 | monster_attack: "eoc"                            | attacker ( Monster)         | victim (Creature)           | `damage`, int, damage dealt by attack
-| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id
-| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 |
-| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 |
+| martial_art: "onattack_eocs", "onhit_eocs", "oncrit_eocs", "onkill_eocs", "onmiss_eocs" | attacker (Character) | target (Creature) | `weapon`, `technique`, `bp`, strings; `damage`, number, damage dealt; `hit`, `crit`, `killed`, 1 or 0. See [Martial art event EOCs](MARTIALART_JSON.md#martial-art-event-eocs) for which hook gets which
+| martial_art: "ongethit_eocs", "onblock_eocs", "ondodge_eocs" | defender (Character) | attacker (Creature, if exists, otherwise NONE) | `bp`, string, body part hit; `damage`, number, incoming damage (not for `ondodge_eocs`)
+| martial_art: "ongrab_eocs", "ongrabbed_eocs" | the one holding (`ongrab_eocs`) or held (`ongrabbed_eocs`) (Character) | the other one (Creature) | `grab_strength`, number, strength of the hold; `grab_part`, string, body part held (not set when a monster is held)
+| martial_art: "static_eocs", "onmove_eocs", "onpause_eocs" | character (Character) | NONE                        |
+| technique: "eocs"                                | attacker (Character)        | target (Creature)           | runs before the hit, once per repeat
+| technique: "post_hit_eocs"                       | attacker (Character)        | target (Creature)           | runs once after the hit; same values as martial_art "onkill_eocs": `weapon`, `technique`, `bp`, `damage`, `hit`, `crit`, `killed`
+| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id; `use_location`, location variable, the tile the item is used at (the `target_var` of `u_activate`, otherwise the user's tile). The EOCs can set `charges` and `cancel`, see below
+| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
+| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
 | COMESTIBLE: "consumption_effect_on_conditions"   | user (Character)            | item (item)                 |
-| activity_type: "completion_eoc"                  | character (Character)       | NONE                        |
-| activity_type: "do_turn_eoc"                     | character (Character)       | NONE                        |
+| activity_type: "start_eoc"                       | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; `resume`, number, 1 when resuming
+| activity_type: "completion_eoc"                  | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
+| activity_type: "cancel_eoc"                      | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
+| activity_type: "do_turn_eoc"                     | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
+| construction: "condition"                        | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile being built on
+| construction: "do_turn_eocs"                     | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile being built on
+| construction: "post_eocs"                        | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile that was built on
 | addiction_type: "effect_on_condition"            | character (Character)       | NONE                        |
-| bionics: "activated_eocs"                        | character (Character)       | NONE                        | `act_cost`, int, cost of activation of item
-| bionics: "deactivated_eocs"                      | character (Character)       | NONE                        |
-| bionics: "processed_eocs"                        | character (Character)       | NONE                        |
+| bionics: "activated_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id; `act_cost`, int, cost of activation of item
+| bionics: "deactivated_eocs"                      | character (Character)       | NONE                        | `this`, string, the bionic id
+| bionics: "processed_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id
 | mutation: "activated_eocs"                       | character (Character)       | NONE                        |
 | mutation: "deactivated_eocs"                     | character (Character)       | NONE                        |
 | mutation: "processed_eocs"                       | character (Character)       | NONE                        |
-| recipe: "result_eocs"                            | crafter (Character)         | NONE                        |
+| mutation: "eat_condition" (a condition)          | eater (Character)           | food (item)                 | runs before eating; false refuses the food, see [Diet rules](MUTATIONS.md#diet-rules)
+| recipe: "result_eocs"                            | crafter (Character)         | NONE                        | `recipe_id`, string; `batch_size`, `batch_index`, numbers; run once per batch unit
+| recipe: "result_item_eocs"                       | crafter (Character)         | result (item)               | `recipe_id`, string; `batch_size`, number; run once per result item
+| recipe: "disassembly_eocs"                       | character (Character)       | NONE                        | `recipe_id`, `item_id`, strings; `count`, number
 | monster weakpoint: "effect_on_conditions"        | attacker (Creature, if exists, otherwise NONE) | victim (Creature) | note that if weakpoint was hit without attacker, EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
 | monster death: "death_function"                  | killer (Creature, if exists, otherwise NONE)| victim (Creature) | Note that if monster was killed without a killer (falling anvil, explosion of a bomb etc), EoC would be built without alpha talker, so using EoC referencing `u_` would result in error. Use `has_alpha` condition before manipulating alpha talker
 | ammo_effect: "eoc"                               | shooter (Creature), or an empty talker with no creature if there is no shooter (SPECIAL_COOKOFF detonation, NULL_SOURCE projectile) | victim (if exist, otherwise NONE) (Creature) | `targeted_location`: location_variable, the tile impacted by the projectile, `proj_damage`: int, amount of damage projectile dealt. Detonation via SPECIAL_COOKOFF ammo effect return `proj_damage` as 1. Note that if projectile miss the target, EoC would be built without beta talker, so using EoC referencing `npc_` or `n_` would result in error. Use `has_beta` condition before manipulating npc
@@ -96,6 +111,33 @@ Some actions sent additional context variables, that can be used in EoC, in form
 
 ```jsonc
 { "math": [ "_act_cost == 2000" ] }
+```
+
+#### Item use actions: condition, charges and cancel
+
+An `effect_on_conditions` use action can be limited with a `condition` (u is the user, npc is the item), and its EOCs can tell the game what the activation cost by setting context values:
+
+- `"condition"`: a dialogue condition checked before the action runs, together with `need_worn` and `need_wielding`.  While it is false the action can't be used, and the item menu shows `"failure_message"` (or a generic message) as the reason.
+- `_charges`: how many uses to spend.  Each use costs the item's `charges_per_use` (or `ammo_required`), so `_charges = 3` spends three times that.  0 spends nothing; values outside 0 to 10000 are clamped to that range with an error.  It replaces `consume` (which spends 1 use) for this activation.
+- `_cancel`: when set to a non-zero value, the activation is cancelled: nothing is spent, the time the user spent is refunded, and the remaining EOCs of the action don't run.  Effects that already ran are not undone.
+
+Each EOC listed in the action runs on its own copy of the context, so it must set these values itself (in its own `effect` or `false_effect`); values set by EOCs it runs with `run_eocs` are not seen.  If several EOCs set them, the last one wins.  Activating a comestible never uses it up: an action on a comestible can't have `"consume": true` (a load error) and ignores `_charges`; use `consumption_effect_on_conditions` for effects when it is eaten.
+
+```jsonc
+{
+  "type": "effect_on_conditions",
+  "menu_text": "Invoke the rune",
+  "condition": { "not": "is_day" },
+  "failure_message": "The rune is dormant by day.",
+  "effect_on_conditions": [
+    {
+      "id": "EOC_RUNE_INVOKE",
+      "condition": { "u_query": "Pour all your power into the rune?", "default": false },
+      "effect": [ { "u_cast_spell": { "id": "rune_blast", "max_level": 5 }, "targeted": false }, { "math": [ "_charges = 3" ] } ],
+      "false_effect": [ { "math": [ "_cancel = 1" ] } ]
+    }
+  ]
+}
 ```
 
 ## Value types
@@ -500,6 +542,33 @@ Alpha talker has `GRAB` flag, and beta talker has `GRAB_FILTER` flag; monster us
 { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" }
 ```
 
+A held creature has an effect with the `GRAB` flag, and the one holding it an effect with the `GRAB_FILTER` flag.  These flags say that someone holds or is held, not who: to ask whether the alpha talker holds the beta talker, or the other way round, use [`u_is_grabbing` and `u_is_grabbed`](#u_is_grabbing-npc_is_grabbing-u_is_grabbed-npc_is_grabbed).
+
+### `u_is_grabbing`, `npc_is_grabbing`, `u_is_grabbed`, `npc_is_grabbed`
+- type: string, `"any"` or the other talker (`"npc"` for `u_is_grabbing` and `u_is_grabbed`, `"u"` for `npc_is_grabbing` and `npc_is_grabbed`)
+- `u_is_grabbing`: true if the alpha talker holds the other talker (`"npc"`), or any creature (`"any"`).  `npc_is_grabbing` is the same for the beta talker
+- `u_is_grabbed`: true if the other talker holds the alpha talker (`"npc"`), or anyone does (`"any"`).  `npc_is_grabbed` is the same for the beta talker
+- These ask who holds whom, unlike the `GRAB` and `GRAB_FILTER` flags, which a hold between two other creatures can also give: when you hold A and B holds the target, `{ "u_has_flag": "GRAB_FILTER" }` and `{ "npc_has_flag": "GRAB" }` are both true, but `{ "u_is_grabbing": "npc" }` is not
+- Holds by characters (grappling) and by monsters (grab attacks) both count, on characters and monsters.  A hold counts only while the one holding is alive and in reach (a monster's grab reach), as the hold itself does
+- Any other value, or the talker itself (`{ "u_is_grabbing": "u" }`), is a load error.  A talker that isn't a creature holds nothing and isn't held
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
+
+#### Examples
+A grapple technique that works whether you hold the target or it holds you
+```jsonc
+"condition": { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] }
+```
+
+The beta talker is held, by anyone; the alpha talker holds nothing
+```jsonc
+{ "and": [ { "npc_is_grabbed": "any" }, { "not": { "u_is_grabbing": "any" } } ] }
+```
+
 ### `u_has_part_flag`, `npc_has_part_flag`
 - type: string or [variable object](##variable-object)
 - return true if alpha or beta talker is a vehicle with a part with a specific flag
@@ -537,6 +606,38 @@ Beta talker is a vehicle with a stereo which is activated
 alpha talker is `SLIME`
 ```jsonc
 { "u_has_species": "SLIME" }
+```
+
+### `u_is_mtype`, `npc_is_mtype`
+- type: string or [variable object](#variable-object)
+- true if alpha or beta talker is a monster of this monster type (not counting `copy-from` parents). A literal id that no monster type has is a load error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+#### Examples
+beta talker is a zombie brute
+```jsonc
+{ "npc_is_mtype": "mon_zombie_brute" }
+```
+
+### `u_has_special_attack`, `npc_has_special_attack`
+- type: string or [variable object](#variable-object)
+- true if alpha or beta talker is a monster that has this special attack (by its name in the monster's `special_attacks`) and it is enabled, whether or not it is ready. A literal name that no monster type has is a load error. See `u_set_special_enabled` and the `special_cooldown` math function
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+#### Examples
+alpha talker can still shriek
+```jsonc
+{ "u_has_special_attack": "SHRIEK" }
 ```
 
 ### `u_bodytype`, `npc_bodytype`
@@ -881,6 +982,27 @@ check do you have `bio_synlungs`
 check do you have any bionic presented
 ```jsonc
 { "u_has_bionics": "ANY" }
+```
+
+### `u_has_active_bionic`, `npc_has_active_bionic`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker has the bionic installed and switched on (powered); `ANY` returns true if any installed bionic is on.  An unknown bionic id is reported as an error.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+check that your Hydraulic Muscles are on
+```jsonc
+{ "u_has_active_bionic": "bio_hydraulics" }
+```
+
+in a shared bionic EOC, check the bionic that runs it
+```jsonc
+{ "u_has_active_bionic": { "context_val": "this" } }
 ```
 
 ### `u_has_effect`, `npc_has_effect`, `u_has_any_effect`, `npc_has_any_effect`
@@ -1583,7 +1705,7 @@ You can see selected location.
 
 ### `u_is_driven`, `npc_is_driven`
 - type: simple string
-- return true if alpha or beta talker is a vehicle currently being driven
+- return true if alpha or beta talker is a vehicle currently being driven: by the avatar at its controls, by the avatar's remote control within range, or by its autopilot (autodrive, following or patrolling)
 
 #### Valid talkers:
 
@@ -1654,7 +1776,7 @@ You can see selected location.
 
 ### `u_is_remote_controlled`, `npc_is_remote_controlled`
 - type: simple string
-- return true if alpha or beta talker is a vehicle being remote controlled by the player
+- return true if alpha or beta talker is a vehicle being remote controlled by the player, with the remote controls within 40 tiles of the player. Checking it never changes the remote link: the game itself drops a link that is out of range.
 
 #### Valid talkers:
 
@@ -1829,13 +1951,119 @@ You can see selected location.
 "u_is_in_vehicle"
 ```
 
-### `has_ammo`
+### `u_has_ammo`, `npc_has_ammo`
 - type: simple string
-- return true if beta talker is an item and has enough ammo for at least one "shot".
+- return true if alpha or beta talker is an item and has enough ammo or charge for at least one use. When the other talker is a character, power they can supply to the item (a UPS, for example) counts too.
+- `has_ammo` is the old name of `npc_has_ammo` and still works.
 
-### `is_rotten`
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+Only fire the tool's effect when it is loaded
+```jsonc
+{ "if": "npc_has_ammo", "then": { "u_message": "Click." } }
+```
+
+### `u_is_rotten`, `npc_is_rotten`
 - type: simple string
-- return true if beta talker is an item and is rotten.
+- return true if alpha or beta talker is an item and is rotten.
+- `is_rotten` is the old name of `npc_is_rotten` and still works.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+{ "not": "npc_is_rotten" }
+```
+
+### `u_is_container`, `npc_is_container`
+- type: simple string
+- return true if alpha or beta talker is an item with at least one container pocket, a pocket that holds contents (magazines, mod slots and software slots are not container pockets). False for any talker that is not an item.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+"npc_is_container"
+```
+
+### `u_is_container_empty`, `npc_is_container_empty`
+- type: simple string
+- return true if alpha or beta talker is a container item whose container pockets hold nothing. A loaded battery or magazine and installed mods do not count as contents. False for items that are not containers.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+{ "and": [ "npc_is_container", { "not": "npc_is_container_empty" } ] }
+```
+
+### `u_is_sealed`, `npc_is_sealed`
+- type: simple string
+- return true if alpha or beta talker is an item with at least one sealed pocket, like a factory-sealed can or bottle. Sealed pockets keep their contents fresh longer and are opened when the contents are taken out.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+{ "if": "npc_is_sealed", "then": { "u_message": "The lid is still on." } }
+```
+
+### `u_contains_item`, `npc_contains_item`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is an item that holds an item of this id anywhere in its container pockets, inside nested containers too. A container does not contain itself. False for talkers that are not items. An unknown item id is reported as an error.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+Does the backpack hold any water, even inside a bottle?
+```jsonc
+{ "npc_contains_item": "water_clean" }
+```
+
+```jsonc
+{ "u_contains_item": { "context_val": "wanted_item" } }
+```
+
+### `u_is_contained_in`, `npc_is_contained_in`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is an item inside a container of this id, directly or through any number of nested containers. An item that is worn, wielded or on the ground is not contained in anything. False for talkers that are not items. An unknown item id is reported as an error.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+True for a rock in a canvas sack that is itself in a backpack
+```jsonc
+{ "npc_is_contained_in": "backpack" }
+```
 
 ### `test_eoc`
 - type: string or [variable object](#variable-object)
@@ -1882,17 +2110,21 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | broken_bone | Triggered when any body part reaches 0 hp | { "character", `character_id` },<br/> { "part", `body_part` }, | character / NONE |
 | broken_bone_mends | Triggered when `mending` effect is removed by expiry (Character::mend) | { "character", `character_id` },<br/> { "part", `body_part` }, | character / NONE |
 | buries_corpse | Triggers when item with flag CORPSE is located on same tile as construction with post-special `done_grave` is completed | { "character", `character_id` },<br/> { "corpse_type", `mtype_id` },<br/> { "corpse_name", `string` }, | character / NONE |
-| camp_taken_over | Triggers any faction's camp is taken over | { "old_owner", `faction_id` }, <br/> { "new_Owner", `faction_id` }, <br/> { "camp_name", `string` }, <br/> { "was_violent", `bool` }, | avatar / NONE |
+| camp_expansion_added | Triggers when a companion's survey adds an expansion to a camp | { "camp_name", `string` },<br/> { "pos", `tripoint` } (location of the expansion's overmap tile, its north-west corner),<br/> { "expansion", `string` } (overmap terrain id of the expansion) | avatar / NONE |
+| camp_taken_over | Triggers any faction's camp is taken over | { "old_owner", `faction_id` }, <br/> { "new_owner", `faction_id` }, <br/> { "camp_name", `string` }, <br/> { "was_violent", `bool` },<br/> { "pos", `tripoint` } (location of the camp's overmap tile, its north-west corner) | avatar / NONE |
+| camp_upgrade_completed | Triggers when companions finish a camp upgrade, including a salt water pipe segment | { "camp_name", `string` },<br/> { "pos", `tripoint` } (location of the upgraded overmap tile, its north-west corner),<br/> { "upgrade", `string` } (id of the upgrade's recipe) | avatar / NONE |
 | causes_resonance_cascade | Triggers when resonance cascade option is activated via "old lab" finale's computer | NONE | avatar / NONE |
 | character_butchered_corpse | Triggers after succesful butchering action. Possible values of butcher_type are `ACT_BLEED`, `ACT_BUTCHER`, `ACT_BUTCHER_FULL`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT` | { "character", `character_id` }, { "monster_id", `mtype_id` }, { "butcher_type", `string` }, | character / NONE |
 | character_casts_spell | Triggers when a character casts spells. When a spell with multiple effects is cast, the number of effects will be triggered | { "character", `character_id` },<br/> { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` }, | character / NONE |
 | character_consumes_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
 | character_dies |  | { "character", `character_id` }, | character / NONE |
 | character_eats_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
-| character_finished_activity | Triggered when character finished or canceled activity | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` } | character / NONE |
+| character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended and after its `completion_eoc` or `cancel_eoc`. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a drop dropped everything, or a zone job ran out of work | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` } | character / NONE |
+| character_finishes_construction | Triggers when a character finishes a construction, after its `post_special` and `post_eocs` | { "character", `character_id` },<br/> { "construction", `string` } (construction id),<br/> { "pos", `tripoint` } (location of the tile) | character / NONE |
 | character_forgets_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_gains_effect |  | { "character", `character_id` },<br/> { "effect", `efftype_id` },<br/> { "bodypart", `bodypart_id` }, { "intensity", `int` }</br> | character / NONE |
 | character_gets_headshot |  | { "character", `character_id` } | character / NONE |
+| character_grabs_creature | Triggers when a character takes hold of a creature: the grab action, `u_grab`, or anything that sets up a hold (grappling) | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "bodypart", `body_part` } (the part held; `bp_null` for a monster, which is held as a whole),<br/> { "strength", `int` } (of the hold, 1 to 100) | character (grabber) / creature (held: character or monster) |
 | character_heals_damage |  | { "character", `character_id` },<br/> { "damage", `int` }, | character / NONE |
 | character_kills_character |  | { "killer", `character_id` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character / NONE |
 | character_kills_monster |  | { "killer", `character_id` },<br/> { "victim_type", `mtype_id` },<br/> { "exp", `int` }, | character / monster |
@@ -1903,11 +2135,13 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | character_radioactively_mutates | triggered when a character mutates due to being irradiated | { "character", `character_id` }, | character / NONE |
 | character_ranged_attacks_character | |  { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character (attacker) / character (victim) |
 | character_ranged_attacks_monster | | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/>  { "victim_type", `mtype_id` }, | character / monster |
+| character_releases_grab | Triggers when a character's hold on a creature ends, for any reason: letting go (`u_release_grab` too), the creature breaking free, a throw (before `character_throws_creature`), the hold breaking (too tired, flung, out of reach) or either side dying or leaving | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` }, | character (grabber) / creature (held) if it is still there, otherwise NONE | use `has_beta` before interacting with the beta talker; when the hold was lost with the creature gone from the map, the victim fields are empty (a creature out of reach is still named, and its side of the hold ends too)
 | character_smashes_tile | | { "character", `character_id` },<br/> { "terrain", `ter_str_id` },  { "furniture", `furn_str_id` }, | character / NONE |
 | character_starts_activity | Triggered when character starts or resumes activity | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "resume", `bool` } | character / NONE |
 | character_takeoff_item | triggers when character removes a worn item. If using `run_inv_eocs`, remember that the event fires before the items are actually removed | { "character", `character_id` },<br/> { "itype", `itype_id` } |
 | character_takes_damage | triggers when character gets any damage from any creature | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `bodypart_id` },<br/> { "pain", `int` }, | character / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
 | monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding | { "damage", `int` },<br/> { "dies", `bool` }, | monster / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
+| character_throws_creature | Triggers when a character has thrown the creature it held (the throw action or `u_throw_grabbed`), after it lands | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "force", `int` } (the force of the throw: it flew `force / 10` tiles at most),<br/> { "distance", `int` } (the tiles it was thrown) | character (thrower) / creature (thrown; it may be dead) |
 | character_triggers_trap | | { "character", `character_id` },<br/> { "trap", `trap_str_id` }, | character / NONE |
 | character_wakes_up | triggers in the moment player lost it's sleep effect and wakes up | { "character", `character_id` }, | character / NONE |
 | character_attempt_to_fall_asleep | triggers in the moment character tries to fall asleep, after confirming and setting an alarm, but before "you lie down" | { "character", `character_id` }, | character / NONE |
@@ -1915,6 +2149,8 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | character_wields_item | | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / item to wield |
 | character_wears_item | | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / item to wear |
 | character_armor_destroyed | triggers when a worn armor is set to be destroyed from damage. The armor still exists but will be destroyed immediately after the EOCs finish running. | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / item to wear |
+| companion_mission_finished | Triggers when a companion is back from a mission (camp missions and NPC jobs alike), is called back, or dies on it. A companion that dies on a mission also runs its `death_eocs` and sends `character_dies` first | { "npc", `character_id` },<br/> { "mission", `string` } (mission kind, e.g. `Camp_Foraging` or `Scavenging_Patrol_Job`),<br/> { "pos", `tripoint` } (location of the overmap tile the mission was given from, the camp for camp missions, its north-west corner),<br/> { "outcome", `string` } (`returned`, `canceled` or `died`) | companion / NONE |
+| companion_mission_started | Triggers when a companion sets off on a mission | { "npc", `character_id` },<br/> { "mission", `string` } (mission kind, e.g. `Camp_Foraging` or `Scavenging_Patrol_Job`),<br/> { "pos", `tripoint` } (location of the overmap tile the mission was given from, its north-west corner) | companion / NONE |
 | consumes_marloss_item | | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
 | crosses_marloss_threshold | | { "character", `character_id` } | character / NONE |
 | crosses_mutation_threshold | | { "character", `character_id` },<br/> { "category", `mutation_category_id` }, | character / NONE |
@@ -1988,6 +2224,11 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | mutation: "activated_eocs" | { "this", `mutation_id` } |
 | mutation: "processed_eocs" | { "this", `mutation_id` } |
 | mutation: "deactivated_eocs" | { "this", `mutation_id` } |
+| mutation: "activation_condition" | { "this", `mutation_id` } |
+| bionics: "activation_condition" | { "this", `bionic_id` } |
+| bionics: "activated_eocs" | { "this", `bionic_id` }, { "act_cost", `int` activation cost in mJ } |
+| bionics: "processed_eocs" | { "this", `bionic_id` } |
+| bionics: "deactivated_eocs" | { "this", `bionic_id` } |
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
 | furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
 
@@ -2805,6 +3046,38 @@ Run EOC_KILL_SHADOW on any mon_zombie_dog, mon_dog_zombie_cop or mon_dog_zombie_
     "mtype_ids": [ "mon_zombie_dog", "mon_dog_zombie_cop", "mon_dog_zombie_rot" ]
     "monster_range": 12
   }
+```
+
+#### `u_run_vehicle_eocs`, `npc_run_vehicle_eocs`
+Vehicles run EoCs, provided by this effect; only vehicles inside the reality bubble are affected. Each vehicle is the alpha talker of its EoC (there is no beta talker), so `u_vehicle_fuel('gasoline')`, `u_is_driven` and the other vehicle functions and conditions read it. The context variables of the calling EoC are passed on.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_run_vehicle_eocs"/ "npc_run_vehicle_eocs" | **mandatory** | array of eocs | EoCs that would be run by vehicles |
+| "vehicle_range" | optional | int | if used, only vehicles within this distance of the talker are affected |
+| "z_min" | optional | int or [variable object](#variable-object) | if used, only vehicles with z position >= z_min are affected |
+| "z_max" | optional | int or [variable object](#variable-object) | if used, only vehicles with z position <= z_max are affected |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ✔️ | ✔️ | ✔️ |
+
+##### Examples
+
+Drain a little fuel from every vehicle within 30 tiles of the player that is not being driven
+```jsonc
+{
+  "u_run_vehicle_eocs": [
+    {
+      "id": "EOC_SIPHON_PARKED_CARS",
+      "condition": { "and": [ { "not": "u_is_driven" }, { "math": [ "u_vehicle_fuel('gasoline') > 500" ] } ] },
+      "effect": [ { "math": [ "u_vehicle_fuel('gasoline') -= 500" ] } ]
+    }
+  ],
+  "vehicle_range": 30
+}
 ```
 
 #### `u_run_inv_eocs`, `npc_run_inv_eocs`
@@ -3663,6 +3936,35 @@ Uninstall 1 `bio_power_storage` from your character:
 Uninstall 1 bionic, delivered from `bionic_id` context value, onto your character:
 ```jsonc
 { "u_lose_bionic": { "context_val": "bionic_id" } }
+```
+
+#### `u_activate_bionic`, `npc_activate_bionic`, `u_deactivate_bionic`, `npc_deactivate_bionic`
+Switch an installed bionic on or off.  This goes through the same code as the bionics menu: activating pays `act_cost`, checks power, fuel and the bionic's `activation_condition`, and runs its `activated_eocs`; deactivating pays `deact_cost`, refuses bionics that can't be switched off manually, and runs its `deactivated_eocs`.  Interactive CBMs (gun CBMs, lighter, EMP, lockpick, water extractor, remote control) ask the player for a target or a choice, so they only work when the character is the avatar: for an NPC the activation fails and `false_eocs` run.  If several copies are installed, the first one in the other state is switched.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_activate_bionic" / "npc_activate_bionic" / "u_deactivate_bionic" / "npc_deactivate_bionic" | **mandatory** | string or [variable object](#variable-object) | id of the bionic to switch; an unknown id is reported as an error |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when the bionic was switched |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when nothing was switched: the bionic isn't installed, is already in that state, or the (de)activation was refused |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Switch your flashlight CBM on, and tell the player if it could not be:
+```jsonc
+{
+  "u_activate_bionic": "bio_flashlight",
+  "false_eocs": [ { "id": "EOC_FLASHLIGHT_FAILED", "effect": { "u_message": "Your flashlight CBM doesn't respond." } } ]
+}
+```
+
+A shared `deactivated_eocs` entry that also switches off a companion bionic:
+```jsonc
+{ "u_deactivate_bionic": "bio_hydraulics" }
 ```
 
 
@@ -4528,7 +4830,7 @@ Your character or the NPC will gain a morale bonus
 | --- | --- | --- | --- |
 | "u_add_morale" / "npc_add_morale" | **mandatory** | string or [variable object](#variable-object) | `morale_type`, that would be given by effect |
 | "bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default 1; mood bonus or penalty, that would be given by effect; can be stacked up to `max_bonus` cap, but each bonus is lower than previous (e.g. `bonus` of 100 gives mood bonus as 100, 141, 172, 198, 221 and so on) |
-| "max_bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default false; cap, beyond which mood won't increase or decrease |
+| "max_bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default false; cap, beyond which mood won't increase or decrease; 0 means no cap unless `capped` is true (a bonus stacks onto a morale of the same sign with the diminishing formula above, and is added in full to one of the opposite sign) |
 | "duration" | optional | int, duration or [variable object](#variable-object) | default 1 hour; how long the morale effect would last |
 | "decay_start" | optional | int, duration or [variable object](#variable-object) | default 30 min; when the morale effect would start to decay |
 | "capped" | optional | boolean | default false; if true, `bonus` is not decreased when stacked (e.g. `bonus` of 100 gives mood bonus as 100, 200, 300 and so on) |
@@ -4588,6 +4890,7 @@ removes morale type, delivered by `morale_id`
 #### `u_consume_item_sum`, `npc_consume_item_sum`
 Consumes the items `_has_items_sum` counts (what you carry, items you may take within reach, and the cargo of nearby or owned vehicles), treating count as weight and stopping once the requirement is covered
 Effect does not validate do player actually has enough items to consume, use `_has_items_sum`
+Pseudo items (such as a nearby fire, or tools provided by furniture) can satisfy `_has_items_sum` but can't be consumed, so don't ask for them as payment
 See examples for more info
 
 | Syntax | Optionality | Value  | Info |
@@ -4854,7 +5157,29 @@ NPC or character will start an activity
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_assign_activity" / "npc_assign_activity" | **mandatory** | string or [variable object](#variable-object), | id of activity to start |
-| "duration" | **mandatory** | int, duration or [variable object](#variable-object) | how long the activity would last |
+| "duration" | optional | int, duration or [variable object](#variable-object) | how long the activity would last; see below |
+
+Activities defined only in JSON (like `ACT_GENERIC_EOC` or a mod's own activity) last `duration`.
+
+Most vanilla activities are run by an activity actor in C++. The ones whose actor needs nothing
+but a duration can be started too:
+
+| Activity | `duration` |
+| --- | --- |
+| `ACT_WAIT` | how long to wait; without it, wait until interrupted |
+| `ACT_WAIT_NPC` | as `ACT_WAIT`; the finish message names the other talker (the beta talker for `u_assign_activity`, the alpha talker for `npc_assign_activity`). Without another talker this is a plain `ACT_WAIT` |
+| `ACT_GAME`, `ACT_GENERIC_GAME` | how long to play, 15 minutes by default; no game item is used |
+| `ACT_MEDITATE`, `ACT_TARGET_PRACTICE`, `ACT_WAIT_FOLLOWERS`, `ACT_WAIT_STAMINA`, `ACT_WAIT_WEATHER` | not allowed: they end on their own |
+| Zone jobs: `ACT_MOVE_LOOT`, `ACT_UNLOAD_LOOT`, `ACT_MULTIPLE_BUTCHER`, `ACT_MULTIPLE_CHOP_PLANKS`, `ACT_MULTIPLE_CHOP_TREES`, `ACT_MULTIPLE_CONSTRUCTION`, `ACT_MULTIPLE_CRAFT`, `ACT_MULTIPLE_DIS`, `ACT_MULTIPLE_FARM`, `ACT_MULTIPLE_FISH`, `ACT_MULTIPLE_MINE`, `ACT_MULTIPLE_MOP`, `ACT_MULTIPLE_READ`, `ACT_MULTIPLE_STUDY`, `ACT_VEHICLE_DECONSTRUCTION`, `ACT_VEHICLE_REPAIR` | not allowed: the job runs until its zones have no more work |
+
+Any other activity with an actor (for example `ACT_READ`, which needs a book) can't be started
+from an EOC. Naming one, or giving `duration` to an activity that takes none, is a load error.
+An activity id that comes from a variable is checked when the effect runs: an unknown id, or one
+that can't be started, is reported and nothing starts.
+
+`ACT_TARGET_PRACTICE` asks the player for a gun, a round count and a target, so only the avatar
+can be given it. Giving it to an NPC (as `u` or as `npc`) is reported when the effect runs, and
+nothing starts.
 
 ##### Valid talkers:
 
@@ -4867,6 +5192,16 @@ NPC or character will start an activity
 You assign activity `ACT_GAME` for 45 minutes
 ```jsonc
 { "u_assign_activity": "ACT_GAME", "duration": "45 minutes" }
+```
+
+You wait 30 minutes for the NPC you are talking to
+```jsonc
+{ "u_assign_activity": "ACT_WAIT_NPC", "duration": "30 minutes" }
+```
+
+The NPC you are talking to starts working on your farm zones
+```jsonc
+{ "npc_assign_activity": "ACT_MULTIPLE_FARM" }
 ```
 
 #### `u_cancel_activity`, `npc_cancel_activity`
@@ -5242,6 +5577,159 @@ Allow to selects one tile with DIGGABLE flag around the u
   },
 ```
 
+#### `u_fling`, `npc_fling`
+Throws the creature through the air, like a hulk's smash or a grappler's throw (`game::fling_creature`, from Cataclysm: The Last Generation).  It flies `force / 10` tiles in a straight line.  Walls, furniture and vehicles it hits are bashed and hurt it; a monster in the way is hit and stops it unless it dies; a character in the way stops it.  Any hold on it breaks if half the force beats the hold's strength, otherwise it isn't thrown at all, and it lets go of whatever it held.  On the way it is `airborne`: it doesn't fall, step on traps or get trap prompts.  Where it lands it takes landing damage (less with `controlled`), sets off the traps there, and drops to the level below if there is no floor; in deep water it lands with a splash instead.  Compare `u_knockback`, which pushes along a line with its own rules.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_fling" / "npc_fling" | **mandatory** | object | the talker to throw, and how |
+| "force" | **mandatory** | number or [variable object](#variable-object) | the speed of the throw: `force / 10` tiles.  Spent on whatever it hits, and the rest on landing |
+| "direction" | optional | number or [variable object](#variable-object) | the direction in degrees: 0 east, 90 south, 180 west, 270 north |
+| "target_var" | optional | [variable object](#variable-object) | a location: throw the talker toward it.  Nothing happens if it is the talker's own tile.  Only one of `direction` and `target_var` can be given; with neither the direction is random |
+| "controlled" | optional | boolean | default false.  A controlled landing (a dive, a leap) takes half the landing damage, less 5 |
+| "intentional" | optional | boolean | default false.  When false, a character's `KNOCKBACK_RESIST` enchantment lowers the force (and at 1 or more prevents the throw); set it for something the talker does on purpose |
+
+##### Valid talkers:
+
+| Avatar | Character | NPC | Monster |  Furniture | Item |
+| ------ | --------- | ---- | ------- | --- | --- |
+| ✔️ | ✔️ | ✔️ | ✔️ | ❌ | ❌ |
+
+##### Examples
+
+The beta talker is thrown 3 tiles east, and lands on its feet
+```jsonc
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_HURL_EAST",
+    "effect": [ { "npc_fling": { "force": 30, "direction": 0, "controlled": true } } ]
+  }
+```
+
+A leap: the avatar picks a tile, and jumps toward it as far as their strength allows
+```jsonc
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_GREAT_LEAP",
+    "effect": [
+      { "u_query_tile": "anywhere", "target_var": { "context_val": "leap_to" }, "message": "Leap where?" },
+      {
+        "u_fling": { "force": { "math": [ "u_val('strength') * 4" ] }, "target_var": { "context_val": "leap_to" }, "controlled": true, "intentional": true }
+      }
+    ]
+  }
+```
+
+#### `u_grab`, `npc_grab`
+The alpha (or beta) talker takes hold of the other talker, as the grab action does (grappling, from Cataclysm: The Last Generation).  The held creature gets the `grabbed` effect (flag `GRAB`) from the one holding it, which gets `grabbing` (flag `GRAB_FILTER`).  A character is held by a body part, a monster as a whole.  From then on the hold is like any other: the held creature struggles, the holder drags it along and can throw it, and the hold ends as a grab's does (see `u_release_grab`).  Sends the `character_grabs_creature` event.
+
+By default the hold is set up directly: no hit roll, no cost, and none of the grab action's refusals but what a hold needs (the other talker is another living creature in reach, and the talker holds nothing yet).  With `attempt`, it is the grab action itself, without its prompts: its refusals (a weapon in hand the style doesn't allow, no working arm, too little stamina, a creature that can't be grabbed...), its cost in moves and arm stamina, and the hit roll the other talker can dodge unless it puts up with the grab (an ally, a pet).  It prints what the grab action prints.
+
+Only a character can grab this way: a monster talker runs the `false_eocs`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_grab" / "npc_grab" | **mandatory** | object | the options below |
+| "attempt" | optional | boolean | default false: set the hold up directly.  True: roll it as the grab action does |
+| "strength" | optional | number or [variable object](#variable-object) | the hold's strength, 1 to 100 (how hard it is to break free).  Default: the talker's grab strength (`grapple_grab_strength`) |
+| "body_part" | optional | string or [variable object](#variable-object) | the part of a character to hold, by its main part (`"hand_l"` means the left arm).  Default: a part nobody holds, picked by size.  Nothing happens if the character doesn't have it or someone holds it already.  Ignored for a monster.  A literal id that doesn't exist is a load error |
+| "true_eocs" | optional | array of effect_on_conditions | next to `u_grab`, not inside it: run when the hold is made |
+| "false_eocs" | optional | array of effect_on_conditions | next to `u_grab`, not inside it: run when it isn't (a refusal, a missed roll, a talker that can't grab or be grabbed) |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+The other talker can be a character or a monster.
+
+##### Examples
+An NPC (alpha) seizes the avatar's right arm, firmly
+```jsonc
+{ "u_grab": { "body_part": "arm_r", "strength": 60 } }
+```
+
+A technique's EOC tries to grab the target, as the grab action does, and throws it if that works
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_GRAB_AND_THROW",
+  "effect": [ { "u_grab": { "attempt": true }, "true_eocs": [ "EOC_THROW_IT" ] } ]
+},
+{
+  "type": "effect_on_condition",
+  "id": "EOC_THROW_IT",
+  "effect": [ { "u_throw_grabbed": { } } ]
+}
+```
+
+#### `u_release_grab`, `npc_release_grab`
+The alpha (or beta) talker lets go of what it holds: a character of the creature it holds, a monster of everything it holds with its grab attacks.  With `target`, only of the other talker, and only if it holds it.  Prints nothing.  For a character, sends the `character_releases_grab` event.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_release_grab" / "npc_release_grab" | **mandatory** | object | the options below; `{ }` for none |
+| "target" | optional | string | `"npc"` for `u_release_grab`, `"u"` for `npc_release_grab`: let go of the other talker only.  Any other value is a load error |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
+
+##### Examples
+The alpha talker lets go of everything
+```jsonc
+{ "u_release_grab": { } }
+```
+
+The beta talker lets go of the alpha talker, if it holds it
+```jsonc
+{ "npc_release_grab": { "target": "u" } }
+```
+
+#### `u_throw_grabbed`, `npc_throw_grabbed`
+The alpha (or beta) talker throws the creature it holds, as the throw of the grab action does but with no targeting screen and no questions: the hold ends, it pays the moves and the stamina of the throw, a held NPC may get angry, and the creature is thrown with the throw engine of `u_fling` (a short throw is a gentle one, and lands where it was aimed).  Sends the `character_releases_grab` and `character_throws_creature` events.
+
+It checks what the throw action checks first, and a refusal changes nothing: the talker must hold a creature, be strong enough to throw it at all (`grapple_throw_force` gives a range over one tile, and it isn't too large) and have the stamina for it; the avatar must shake off relax gas; a creature that holds the talker too must be broken free of first (failing costs moves); and it can't be thrown through the talker or up or down.  Only a character throws this way: a monster talker runs the `false_eocs`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_throw_grabbed" / "npc_throw_grabbed" | **mandatory** | object | the options below; `{ }` for none |
+| "target_var" | optional | [variable object](#variable-object) | a location: throw the creature toward it, as far as the throw carries.  Default: straight on, away from the talker, as far as it carries |
+| "force" | optional | number or [variable object](#variable-object) | the full force of the throw, instead of the talker's own (`grapple_throw_force`).  It flies `force / 10` tiles; a throw toward `target_var` uses what carries it that far.  The checks that depend on force use it too: the range over one tile and the stamina cost |
+| "true_eocs" | optional | array of effect_on_conditions | next to `u_throw_grabbed`, not inside it: run when the creature is thrown |
+| "false_eocs" | optional | array of effect_on_conditions | next to `u_throw_grabbed`, not inside it: run when it isn't |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Throw what you hold as far as you can, straight on
+```jsonc
+{ "u_throw_grabbed": { } }
+```
+
+An NPC (beta) throws what it holds toward the avatar, with extra force
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_THROW_AT_PLAYER",
+  "condition": { "npc_is_grabbing": "any" },
+  "effect": [
+    { "u_location_variable": { "context_val": "here" } },
+    {
+      "npc_throw_grabbed": { "target_var": { "context_val": "here" }, "force": 50 },
+      "false_eocs": [ "EOC_THROW_FAILED" ]
+    }
+  ]
+}
+```
+
 #### `mirror_coordinates`
 Picks two coordinates, and create a third one in opposite direction
 
@@ -5351,7 +5839,9 @@ NPC is prevented from death.
 ```
 
 #### `u_attack`, `npc_attack`
-Alpha or beta talker forced to use a technique or special attack
+Alpha or beta talker forced to use a technique or special attack on the other talker.  It never opens the manual technique menu, even for the avatar in manual combat mode; a forced technique gets an attack vector (the limb or weapon it lands with) chosen as for an automatic choice.
+
+For a monster, the value names a special attack: one of its own (as in its `special_attacks`), or else any `monster_attack` defined in JSON, which the monster doesn't need to have. With `allow_special` it uses that attack on the other talker right away, ignoring its cooldown and whether it is enabled; for one of its own the cooldown starts again afterwards. The attack still checks its own range and `condition`, so it may do nothing. Any other value (such as `"tec_none"`, or a hardcoded attack the monster doesn't have), or `allow_special: false`, makes it do a basic melee attack, if the other talker is adjacent and seen. `allow_unarmed` doesn't apply to monsters.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -5364,7 +5854,7 @@ Alpha or beta talker forced to use a technique or special attack
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
 
 ##### Examples
 you use autoattack
@@ -5407,6 +5897,120 @@ Picks random pankration technique, assign it to `pankration_random_attack`, and 
     { "u_attack": { "context_val": "pankration_random_attack" } }
   ]
 }
+```
+
+The void spider (alpha) bites its target (beta) with the `void_spider_bite` monster attack, which isn't one of its own special attacks; the bite only lands on an adjacent target that is webbed or grabbed, as its `condition` requires
+```jsonc
+{ "u_attack": "void_spider_bite" }
+```
+
+#### `u_choose_technique`, `npc_choose_technique`
+Lets the alpha (or beta) talker choose a martial-art technique, and by default attack the other talker with it.  For the avatar this opens the manual technique menu (the one of manual combat mode, see [MARTIALART_JSON.md](MARTIALART_JSON.md#the-manual-technique-menu)): the player's techniques with the current weapon and style, greyed out with the reason when they can't be used now, and "Basic attack".  There is no "Automatic" entry: for that, use `u_attack`.  An NPC doesn't get a menu: it makes its usual automatic choice among the listed techniques (a technique that needs a critical hit can't be picked this way), or a basic attack when none can be used.
+
+The choice is made before anything is rolled, as in manual combat: a chosen technique that needs a critical hit becomes a basic attack when the hit isn't one, and any other chosen technique is used whatever the hit.  The attack never opens the menu a second time.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_choose_technique" / "npc_choose_technique" | **mandatory** | object | the options below |
+| "techniques" | optional | array of strings or [variable objects](#variable-object) | only these of the talker's techniques are offered (the ones it doesn't have are left out).  Default: all of them, and the mutation attacks are listed too (they can't be chosen).  An unknown literal id is a load error |
+| "attack" | optional | boolean | default true: attack the other talker with the choice right away (if it is in reach) |
+| "store" | optional | [variable object](#variable-object) | where to write the chosen technique id: `"tec_none"` for "Basic attack", `""` when the menu is cancelled |
+| "include_basic" | optional | boolean | default true: offer "Basic attack".  For an NPC, false means it has nothing to do when no listed technique can be used |
+| "false_eocs" | optional | array of effect_on_conditions | next to `u_choose_technique`, not inside it: run when nothing is chosen (the menu is cancelled, or an NPC has nothing it can use), or the talker isn't a character |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+A monster as the chooser runs the `false_eocs`.  The other talker must be a creature, adjacent if `attack` is true.
+
+##### Examples
+A martial-arts manual's "drill" lets you pick one Judo technique against the beta talker, and remembers what you picked; cancelling prints a message
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_JUDO_DRILL",
+  "effect": [
+    {
+      "u_choose_technique": {
+        "techniques": [ "tec_judo_throw", "tec_judo_disarm", "tec_judo_backthrow" ],
+        "store": { "u_val": "judo_drill_choice" },
+        "include_basic": false
+      },
+      "false_eocs": [ "EOC_JUDO_DRILL_CANCELLED" ]
+    }
+  ]
+},
+{
+  "type": "effect_on_condition",
+  "id": "EOC_JUDO_DRILL_CANCELLED",
+  "effect": [ { "u_message": "You step back from the drill." } ]
+}
+```
+
+Choose without attacking, and attack later with `u_attack` (which uses the technique whatever the hit)
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_PREPARE_TECHNIQUE",
+  "effect": [
+    { "u_choose_technique": { "attack": false, "store": { "context_val": "prepared" } } },
+    {
+      "if": { "not": { "compare_string": [ "", { "context_val": "prepared" } ] } },
+      "then": [ { "u_attack": { "context_val": "prepared" } } ]
+    }
+  ]
+}
+```
+
+The technique to offer can come from a variable; an NPC alpha picks it if it can use it
+```jsonc
+{ "u_choose_technique": { "techniques": [ { "u_val": "signature_move" } ] } }
+```
+
+#### `u_set_special_enabled`, `npc_set_special_enabled`
+Enables or disables one of a monster's special attacks, for example for boss phases. A disabled attack is never used by the monster on its own (`u_attack` can still force it). Nothing happens if the talker isn't a monster or doesn't have that attack. The cooldown can be read and changed with the `special_cooldown` math function.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_special_enabled" / "npc_set_special_enabled" | **mandatory** | string or [variable object](#variable-object) | name of the special attack, as in the monster's `special_attacks`. A literal name that no monster type has is a load error |
+| "value" | optional | boolean | default true; false disables it |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+##### Examples
+In its second phase the boss stops shrieking and starts its leap, ready at once
+```jsonc
+[
+  { "u_set_special_enabled": "SHRIEK", "value": false },
+  { "u_set_special_enabled": "boss_leap" },
+  { "math": [ "u_special_cooldown('boss_leap') = 0" ] }
+]
+```
+
+#### `u_set_monster_faction`, `npc_set_monster_faction`
+Moves a monster to another monster faction, which changes which monsters it fights and which ones leave it alone (see `"default_faction"` in [MONSTERS.md](MONSTERS.md)). Saved with the monster. Nothing happens if the talker isn't a monster.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_monster_faction" / "npc_set_monster_faction" | **mandatory** | string or [variable object](#variable-object) | id of the monster faction. A literal id that doesn't exist is a load error |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+##### Examples
+The charmed monster (beta) joins the bees
+```jsonc
+{ "npc_set_monster_faction": "bee" }
 ```
 
 #### `u_ranged_attack`, `npc_ranged_attack`
@@ -5665,6 +6269,62 @@ Allows supercharging monster in electrical fields, legacy command for lightning 
 
 #### `next_weather`
 Forces a check for what weather it should be. Doesn't force the weather change itself, so if conditions is not met, or custom weather has lower priority, the weather won't change
+
+#### `set_item_category_spawn_rates`
+Overrides the `spawn_rate` of one or more item categories (see the item category `spawn_rate` in JSON_INFO.md) for the current game.  The new rates are saved with the game; a new game starts from the JSON rates again.  Each rate is stored in the global variable `item_category_spawn_rate_<category id>`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_item_category_spawn_rates" | **mandatory** | object or array of objects | each object has an `id` (the item category id) and a `spawn_rate` (number) |
+
+##### Examples
+Halve the spawn rate of guns, and stop food from spawning
+```jsonc
+{
+  "set_item_category_spawn_rates": [ { "id": "guns", "spawn_rate": 0.5 }, { "id": "food", "spawn_rate": 0.0 } ]
+}
+```
+
+#### `set_weather`
+Forces a weather type for some time, whatever the weather generator would pick. The weather changes at once (EOCs that react to a weather change run), stays through later weather changes and saves, and the normal weather comes back when the time runs out. Running it again replaces the previous one. If the weather type no longer exists when a save is loaded (its mod was removed), the override is dropped. The `ETERNAL_WEATHER` option and the debug menu's forced weather take precedence. To hold temperature or wind as well, assign `weather('temperature')`, `weather('temperature_offset')`, `weather('windpower')` or `weather('wind_direction')` with a `'duration'` (see the `weather` function in [NPCs.md](NPCs.md)).
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_weather" | **mandatory** | string or [variable object](#variable-object) | id of the weather type. An unknown id is a load error (a runtime error when it comes from a variable) |
+| "duration" | optional | int, duration, [variable object](#variable-object) or value between two | how long the weather is held. Omitted or `"PERMANENT"`: until `clear_weather_override`. 0 or less ends an earlier `set_weather` at once |
+
+##### Examples
+Summon a thunderstorm for three hours
+```jsonc
+{ "set_weather": "thunder", "duration": "3 h" }
+```
+
+Keep a portal storm until something clears it
+```jsonc
+{ "set_weather": "portal_storm" }
+```
+
+#### `clear_weather_override`
+Removes weather overrides set by `set_weather` or by `weather()` assignments with a `'duration'`, and recomputes the weather at once. Overrides from the debug menu are not touched.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "clear_weather_override" | **mandatory** | string or [variable object](#variable-object) | which override to remove: `weather` (from `set_weather`), `temperature`, `temperature_offset`, `windpower`, `wind_direction`, or `all` |
+
+##### Examples
+End a magical storm and its winds
+```jsonc
+[ { "clear_weather_override": "weather" }, { "clear_weather_override": "windpower" } ]
+```
+
+A week-long nuclear winter, 15 C colder than usual, that a later EOC can lift early
+```jsonc
+[
+  { "math": [ "weather('temperature_offset', 'duration': '7 d') = -15" ] },
+  { "run_eocs": "EOC_NUCLEAR_WINTER_ENDS", "time_in_future": "2 d" }
+]
+```
+where `EOC_NUCLEAR_WINTER_ENDS` runs `{ "clear_weather_override": "temperature_offset" }`
 
 #### `custom_light_level`
 Sets the ambient light of the world for some amount of time, ignoring time or sun/moon light

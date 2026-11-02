@@ -117,6 +117,8 @@ class talker_monster: public talker_monster_const, public talker_cloner<talker_m
         void die( map *here ) override;
 
         void set_all_parts_hp_cur( int ) override;
+        void attack_target( Creature &t, bool allow_special, const matec_id &force_technique,
+                            bool allow_unarmed, int forced_movecost ) override;
         dealt_damage_instance deal_damage( Creature *source, bodypart_id bp,
                                            const damage_instance &dam ) const override;
 

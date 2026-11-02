@@ -1,0 +1,21 @@
+[
+  {
+    "id": "test_wound_capped_pain",
+    "type": "wound",
+    "name": { "str_sp": "test capped pain" },
+    "description": "Pain that grows every second, but never past 6.",
+    "//": "No body part carries MEND_ALL, so hits never roll for it; tests add it directly.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "pain": [ 2, 2 ],
+    "mod_values": [ { "type": "PAIN", "rate": "1 seconds", "amount": 3, "cap_min": 5, "cap_max": 6 } ]
+  },
+  {
+    "id": "test_wound_capped_vitamin",
+    "type": "wound",
+    "name": { "str_sp": "test capped iron drain" },
+    "description": "Drains iron every second, but never below 10.",
+    "//": "No body part carries MEND_ALL, so hits never roll for it; tests add it directly.",
+    "whitelist_bp_with_flag": [ "MEND_ALL" ],
+    "mod_values": [ { "type": "VITAMIN", "vitamin_id": "iron", "rate": "1 seconds", "amount": -3, "cap_min": 10 } ]
+  }
+]

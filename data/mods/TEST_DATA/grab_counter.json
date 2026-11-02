@@ -1,0 +1,121 @@
+[
+  {
+    "type": "MONSTER",
+    "id": "mon_test_counter_grabber",
+    "copy-from": "mon_debug_grabber",
+    "name": { "str": "counter test grabber", "//~": "NO_I18N" },
+    "description": { "str": "A debug grabber that can be knocked about and takes a beating, for grab counter tests.", "//~": "NO_I18N" },
+    "hp": 5000,
+    "dodge": 0,
+    "delete": { "flags": [ "IMMOBILE" ] }
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_grab_counter",
+    "name": "Test Grab Counter",
+    "//": "Answers a grab with a strike that knocks the grabber back, ending the hold.",
+    "unarmed_allowed": true,
+    "grab_counter": true,
+    "knockback_dist": 1,
+    "messages": [ "You test-counter %s", "<npcname> test-counters %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_dodge_or_grab_counter",
+    "name": "Test Dodge or Grab Counter",
+    "//": "Two kinds of counter: it answers a dodge or a grab.",
+    "unarmed_allowed": true,
+    "dodge_counter": true,
+    "grab_counter": true,
+    "messages": [ "You test-answer %s", "<npcname> test-answers %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_aimed_knockback",
+    "name": "Test Aimed Knockback",
+    "//": "A knockback the avatar aims in manual combat mode.",
+    "unarmed_allowed": true,
+    "knockback_dist": 2,
+    "controlled_knockback": true,
+    "messages": [ "You test-shove %s", "<npcname> test-shoves %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_knockback_follow",
+    "name": "Test Knockback Follow",
+    "//": "A knockback that the attacker follows into the target's tile.",
+    "unarmed_allowed": true,
+    "knockback_dist": 1,
+    "knockback_follow": true,
+    "messages": [ "You test-push %s", "<npcname> test-pushes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_grab_counter",
+    "name": { "str": "Test Grab Counter Style" },
+    "description": "Test martial art that answers every grab with a knockback strike.",
+    "initiate": [ "You get ready to counter a grab.", "%s gets ready to counter a grab." ],
+    "techniques": [ "test_tech_grab_counter" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_aimed_knockback",
+    "name": { "str": "Test Aimed Knockback Style" },
+    "description": "Test martial art with a knockback the avatar aims in manual combat mode.",
+    "initiate": [ "You get ready to shove.", "%s gets ready to shove." ],
+    "techniques": [ "test_tech_aimed_knockback" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_grab_hooks",
+    "name": { "str": "Test Grab Hooks Style" },
+    "description": "Test martial art whose grab buffs and EOCs record what they see.",
+    "initiate": [ "You use a test grab style.", "%s enters a test grab stance." ],
+    "ongrab_buffs": [
+      {
+        "id": "test_buff_ongrab",
+        "name": "Test Hold",
+        "description": "You have just grabbed something.",
+        "unarmed_allowed": true,
+        "melee_allowed": true,
+        "buff_duration": 3
+      }
+    ],
+    "ongrabbed_buffs": [
+      {
+        "id": "test_buff_ongrabbed",
+        "name": "Test Held",
+        "description": "Something has just grabbed you.",
+        "unarmed_allowed": true,
+        "melee_allowed": true,
+        "buff_duration": 3
+      }
+    ],
+    "ongrab_eocs": [
+      {
+        "id": "EOC_TEST_ONGRAB",
+        "condition": "has_beta",
+        "effect": [
+          { "copy_var": { "context_val": "grab_strength" }, "target_var": { "u_val": "test_ongrab_strength" } },
+          { "copy_var": { "context_val": "grab_part" }, "target_var": { "u_val": "test_ongrab_part" } },
+          { "math": [ "n_test_grabbed_by_style = 1" ] }
+        ]
+      }
+    ],
+    "ongrabbed_eocs": [
+      {
+        "id": "EOC_TEST_ONGRABBED",
+        "condition": "has_beta",
+        "effect": [
+          { "copy_var": { "context_val": "grab_strength" }, "target_var": { "u_val": "test_ongrabbed_strength" } },
+          { "copy_var": { "context_val": "grab_part" }, "target_var": { "u_val": "test_ongrabbed_part" } },
+          { "math": [ "n_test_grabbed_a_stylist = 1" ] }
+        ]
+      }
+    ]
+  }
+]

@@ -145,11 +145,6 @@ json_flag_TEMPORARY_SHAPESHIFT_NO_HANDS( "TEMPORARY_SHAPESHIFT_NO_HANDS" );
 
 static const material_id material_all( "all" );
 
-static const morale_type morale_antifruit( "morale_antifruit" );
-static const morale_type morale_antijunk( "morale_antijunk" );
-static const morale_type morale_antimeat( "morale_antimeat" );
-static const morale_type morale_antiveggy( "morale_antiveggy" );
-static const morale_type morale_antiwheat( "morale_antiwheat" );
 static const morale_type morale_ate_with_table( "morale_ate_with_table" );
 static const morale_type morale_ate_without_table( "morale_ate_without_table" );
 static const morale_type morale_cannibal( "morale_cannibal" );
@@ -157,7 +152,6 @@ static const morale_type morale_food_bad( "morale_food_bad" );
 static const morale_type morale_food_good( "morale_food_good" );
 static const morale_type morale_food_hot( "morale_food_hot" );
 static const morale_type morale_honey( "morale_honey" );
-static const morale_type morale_lactose( "morale_lactose" );
 static const morale_type morale_meatarian( "morale_meatarian" );
 static const morale_type morale_no_digest( "morale_no_digest" );
 static const morale_type morale_sweettooth( "morale_sweettooth" );
@@ -174,18 +168,13 @@ static const species_id species_HUMAN( "HUMAN" );
 static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
 static const trait_id trait_ALCMET( "ALCMET" );
 static const trait_id trait_AMORPHOUS( "AMORPHOUS" );
-static const trait_id trait_ANTIFRUIT( "ANTIFRUIT" );
-static const trait_id trait_ANTIJUNK( "ANTIJUNK" );
-static const trait_id trait_ANTIWHEAT( "ANTIWHEAT" );
 static const trait_id trait_BLOOD_DRINKER( "BLOOD_DRINKER" );
 static const trait_id trait_EATDEAD( "EATDEAD" );
 static const trait_id trait_EATHEALTH( "EATHEALTH" );
 static const trait_id trait_GOURMAND( "GOURMAND" );
 static const trait_id trait_HIBERNATE( "HIBERNATE" );
-static const trait_id trait_LACTOSE( "LACTOSE" );
 static const trait_id trait_LIGHTWEIGHT( "LIGHTWEIGHT" );
 static const trait_id trait_MARLOSS_AVOID( "MARLOSS_AVOID" );
-static const trait_id trait_MEATARIAN( "MEATARIAN" );
 static const trait_id trait_M_DEPENDENT( "M_DEPENDENT" );
 static const trait_id trait_M_IMMUNE( "M_IMMUNE" );
 static const trait_id trait_PICKYEATER( "PICKYEATER" );
@@ -199,29 +188,19 @@ static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
 static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
 static const trait_id trait_STIMBOOST( "STIMBOOST" );
 static const trait_id trait_TABLEMANNERS( "TABLEMANNERS" );
-static const trait_id trait_THRESH_BIRD( "THRESH_BIRD" );
-static const trait_id trait_THRESH_CATTLE( "THRESH_CATTLE" );
-static const trait_id trait_THRESH_FELINE( "THRESH_FELINE" );
-static const trait_id trait_THRESH_LUPINE( "THRESH_LUPINE" );
-static const trait_id trait_THRESH_MOUSE( "THRESH_MOUSE" );
 static const trait_id trait_THRESH_MYCUS( "THRESH_MYCUS" );
 static const trait_id trait_THRESH_PLANT( "THRESH_PLANT" );
-static const trait_id trait_THRESH_RABBIT( "THRESH_RABBIT" );
-static const trait_id trait_THRESH_RAT( "THRESH_RAT" );
 static const trait_id trait_THRESH_URSINE( "THRESH_URSINE" );
 static const trait_id trait_TOLERANCE( "TOLERANCE" );
 static const trait_id trait_UNDINE_SLEEP_WATER( "UNDINE_SLEEP_WATER" );
 static const trait_id trait_VEGAN( "VEGAN" );
-static const trait_id trait_VEGETARIAN( "VEGETARIAN" );
 static const trait_id trait_WATERSLEEP( "WATERSLEEP" );
 
 static const vitamin_id vitamin_bread_allergen( "bread_allergen" );
 static const vitamin_id vitamin_egg_allergen( "egg_allergen" );
 static const vitamin_id vitamin_fruit_allergen( "fruit_allergen" );
 static const vitamin_id vitamin_human_flesh_vitamin( "human_flesh_vitamin" );
-static const vitamin_id vitamin_junk_allergen( "junk_allergen" );
 static const vitamin_id vitamin_meat_allergen( "meat_allergen" );
-static const vitamin_id vitamin_milk_allergen( "milk_allergen" );
 static const vitamin_id vitamin_nut_allergen( "nut_allergen" );
 static const vitamin_id vitamin_veggy_allergen( "veggy_allergen" );
 static const vitamin_id vitamin_wheat_allergen( "wheat_allergen" );
@@ -237,6 +216,22 @@ static const std::array<vitamin_id, 5> carnivore_blacklist {{
 static const std::array<vitamin_id, 2> herbivore_blacklist{ {
         vitamin_meat_allergen, vitamin_egg_allergen
     }};
+
+// Whether one of the character's mutations lists a flag of the food in edible_food_flags
+static bool has_edible_food_flag_mutation( const Character &you, const item &food )
+{
+    for( const trait_id &tid : mutation_branch::get_diet_traits() ) {
+        if( tid->edible_food_flags.empty() || !you.has_trait( tid ) ) {
+            continue;
+        }
+        for( const flag_id &food_flag : tid->edible_food_flags ) {
+            if( food.has_flag( food_flag ) ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 // TODO: Move pizza scraping here.
 static int compute_default_effective_kcal( const item &comest, const Character &you,
@@ -579,13 +574,8 @@ std::pair<int, int> Character::fun_for( const item &comest, bool ignore_already_
         }
     }
 
-    if( ( comest.has_flag( flag_LUPINE ) && has_trait( trait_THRESH_LUPINE ) ) ||
-        ( comest.has_flag( flag_CATTLE ) && has_trait( trait_THRESH_CATTLE ) ) ||
-        ( comest.has_flag( flag_RABBIT ) && has_trait( trait_THRESH_RABBIT ) ) ||
-        ( comest.has_flag( flag_MOUSE ) && has_trait( trait_THRESH_MOUSE ) ) ||
-        ( comest.has_flag( flag_RAT ) && has_trait( trait_THRESH_RAT ) ) ||
-        ( comest.has_flag( flag_BIRD ) && has_trait( trait_THRESH_BIRD ) ) ||
-        ( comest.has_flag( flag_FELINE ) && has_trait( trait_THRESH_FELINE ) ) ) {
+    // A mutation's edible_food_flags (the animal thresholds) make the food taste fine
+    if( has_edible_food_flag_mutation( *this, comest ) ) {
         if( fun < 0 ) {
             fun = -fun;
             fun /= 2;
@@ -826,21 +816,15 @@ float Character::metabolic_rate() const
 
 morale_type Character::allergy_type( const item &food ) const
 {
-    using allergy_tuple = std::tuple<trait_id, vitamin_id, morale_type>;
-    static const std::array<allergy_tuple, 8> allergy_tuples = {{
-            std::make_tuple( trait_VEGETARIAN, vitamin_meat_allergen, morale_antimeat ),
-            std::make_tuple( trait_MEATARIAN, vitamin_veggy_allergen, morale_antiveggy ),
-            std::make_tuple( trait_LACTOSE, vitamin_milk_allergen, morale_lactose ),
-            std::make_tuple( trait_ANTIFRUIT, vitamin_fruit_allergen, morale_antifruit ),
-            std::make_tuple( trait_ANTIJUNK, vitamin_junk_allergen, morale_antijunk ),
-            std::make_tuple( trait_ANTIWHEAT, vitamin_wheat_allergen, morale_antiwheat )
+    // The mutations' food_allergies, first match in load order
+    for( const trait_id &tid : mutation_branch::get_diet_traits() ) {
+        if( tid->food_allergies.empty() || !has_trait( tid ) ) {
+            continue;
         }
-    };
-
-    for( const auto &tp : allergy_tuples ) {
-        if( has_trait( std::get<0>( tp ) ) &&
-            food.has_vitamin( std::get<1>( tp ) ) ) {
-            return std::get<2>( tp );
+        for( const std::pair<vitamin_id, morale_type> &allergy : tid->food_allergies ) {
+            if( food.has_vitamin( allergy.first ) ) {
+                return allergy.second;
+            }
         }
     }
 
@@ -855,22 +839,9 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
 
     const auto &comest = food.get_comestible();
 
-    if( food.has_flag( flag_INEDIBLE ) ) {
-        bool has_compatible_mutation =
-            ( food.has_flag( flag_CATTLE ) && has_trait( trait_THRESH_CATTLE ) ) ||
-            ( food.has_flag( flag_FELINE ) && has_trait( trait_THRESH_FELINE ) ) ||
-            ( food.has_flag( flag_LUPINE ) && has_trait( trait_THRESH_LUPINE ) ) ||
-            ( food.has_flag( flag_RABBIT ) && has_trait( trait_THRESH_RABBIT ) ) ||
-            ( food.has_flag( flag_MOUSE ) && has_trait( trait_THRESH_MOUSE ) ) ||
-            ( food.has_flag( flag_RAT ) && has_trait( trait_THRESH_RAT ) ) ||
-            ( food.has_flag( flag_BIRD ) && has_trait( trait_THRESH_BIRD ) );
-        if( !has_compatible_mutation ) {
-            return ret_val<edible_rating>::make_failure( _( "That doesn't look edible to you." ) );
-        }
-        if( !food.has_flag( flag_CATTLE ) && !food.has_flag( flag_FELINE ) &&
-            !food.has_flag( flag_LUPINE ) && !food.has_flag( flag_BIRD ) ) {
-            return ret_val<edible_rating>::make_failure( _( "That doesn't look edible." ) );
-        }
+    // INEDIBLE food is edible only to mutations that list one of its flags in edible_food_flags
+    if( food.has_flag( flag_INEDIBLE ) && !has_edible_food_flag_mutation( *this, food ) ) {
+        return ret_val<edible_rating>::make_failure( _( "That doesn't look edible to you." ) );
     }
 
     if( food.is_craft() ) {
@@ -999,6 +970,25 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
     for( const trait_id &mut : get_functioning_mutations() ) {
         if( !food.made_of_any( mut.obj().can_only_eat ) && !mut.obj().can_only_eat.empty() ) {
             return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, _( "You can't eat this." ) );
+        }
+    }
+
+    // A mutation's eat_condition, run with the eater as u_ and the food as npc_, can veto it
+    // The dialogue's food talker points at food_loc, so food_loc must outlive it
+    item_location food_loc;
+    std::optional<const_dialogue> eat_d;
+    for( const trait_id &tid : mutation_branch::get_diet_traits() ) {
+        if( !tid->has_eat_condition || !has_trait( tid ) ) {
+            continue;
+        }
+        if( !eat_d ) {
+            food_loc = item_location( const_cast<Character &>( *this ),
+                                      const_cast<item *>( &food ) );
+            eat_d.emplace( get_const_talker_for( *this ), get_const_talker_for( food_loc ) );
+        }
+        if( !tid->eat_condition( *eat_d ) ) {
+            return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
+                    tid->eat_fail_message.translated() );
         }
     }
 

@@ -416,6 +416,8 @@ Lower and upper bound of limb sizes the monster's melee attack can target - see 
 
 Base intensity of the grab effect applied by this monster as used by a `grab`-type special attack unless overwritten by the `grab_data` of the attack itself, default 1, range 1-100. See [Grab attacks](MONSTER_SPECIAL_ATTACKS.md#grab_attacks) for more information.
 
+Characters can grab monsters too, with the grab action.  A monster with the `GRAB_IMMUNE` flag can't be grabbed that way.  See [Characters grabbing creatures](MONSTER_SPECIAL_ATTACKS.md#characters-grabbing-creatures).
+
 ## "armor"
 (object, optional)
 

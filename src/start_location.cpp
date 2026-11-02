@@ -4,6 +4,9 @@
 #include <climits>
 #include <functional>
 #include <optional>
+#include <set>
+#include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "bodypart.h"
@@ -142,6 +145,61 @@ void start_location::load( const JsonObject &jo, const std::string_view )
     optional( jo, was_loaded, "flags", _flags, auto_flags_reader<> {} );
 }
 
+// Each parameter a start location sets must be an overmap_special parameter, of a special
+// holding its terrain, that can take the given value (what set_parameters requires)
+static void check_location_parameters( const std::string &sloc, const omt_types_parameters &loc )
+{
+    if( loc.parameters.empty() ) {
+        return;
+    }
+    std::set<oter_type_id> types;
+    for( const oter_t &ter : overmap_terrains::get_all() ) {
+        if( is_ot_match( loc.omt, ter.id.id(), loc.omt_type ) ) {
+            types.insert( ter.get_type_id() );
+        }
+    }
+    std::vector<const overmap_special *> specials;
+    for( const overmap_special &special : overmap_specials::get_all() ) {
+        for( const oter_type_id &type : special.get_terrain_type_ids() ) {
+            if( types.count( type ) ) {
+                specials.push_back( &special );
+                break;
+            }
+        }
+    }
+    if( specials.empty() ) {
+        debugmsg( "start_location %s sets parameters, but its om_terrain \"%s\" is in no overmap "
+                  "special", sloc, loc.omt );
+        return;
+    }
+    for( const std::pair<const std::string, std::string> &param : loc.parameters ) {
+        bool known = false;
+        bool value_possible = false;
+        for( const overmap_special *special : specials ) {
+            const mapgen_parameters &params = special->get_params();
+            const auto param_it = params.map.find( param.first );
+            if( param_it == params.map.end() ||
+                param_it->second.scope() != mapgen_parameter_scope::overmap_special ) {
+                continue;
+            }
+            known = true;
+            const std::vector<std::string> values = param_it->second.all_possible_values( params );
+            if( std::find( values.begin(), values.end(), param.second ) != values.end() ) {
+                value_possible = true;
+                break;
+            }
+        }
+        if( !known ) {
+            debugmsg( "start_location %s sets parameter \"%s\", which no overmap special holding "
+                      "om_terrain \"%s\" has with overmap_special scope", sloc, param.first,
+                      loc.omt );
+        } else if( !value_possible ) {
+            debugmsg( "start_location %s sets parameter \"%s\" to \"%s\", a value it can't take",
+                      sloc, param.first, param.second );
+        }
+    }
+}
+
 void start_location::check() const
 {
     if( _locations.empty() ) {
@@ -152,6 +210,7 @@ void start_location::check() const
             debugmsg( "start_location %s has empty om_terrain string", id.c_str() );
             continue;
         }
+        check_location_parameters( id.str(), loc );
         if( loc.omt_type == ot_match_type::exact &&
             !oter_str_id( loc.omt ).is_valid() ) {
             debugmsg( "start_location %s references invalid exact om_terrain \"%s\"",
@@ -347,7 +406,6 @@ void start_location::set_parameters( const tripoint_abs_omt &omtstart,
     if( parameters_to_set.empty() ) {
         return;
     }
-    overmap_buffer.externally_set_args = true;
     std::optional<mapgen_arguments> *maybe_args = overmap_buffer.mapgen_args( omtstart );
     if( !maybe_args ) {
         debugmsg( "No overmap special args at start location." );
@@ -360,7 +418,6 @@ void start_location::set_parameters( const tripoint_abs_omt &omtstart,
     }
     const overmap_special &special = **s;
     const mapgen_parameters &params = special.get_params();
-    mapgen_arguments args;
     for( const auto &param_to_set : parameters_to_set ) {
         const std::string &param_name_to_set = param_to_set.first;
         const std::string &value_to_set = param_to_set.second;
@@ -388,6 +445,19 @@ void start_location::set_parameters( const tripoint_abs_omt &omtstart,
             args.map[param_name_to_set] =
                 cata_variant::from_string( param.type(), std::move( *value_it ) );
             *maybe_args = args;
+        }
+    }
+    if( !*maybe_args ) {
+        // Nothing was set
+        return;
+    }
+    // If the special takes arguments we did not set, mapgendata rolls and merges them in when
+    // the special is first generated
+    for( const std::pair<const std::string, mapgen_parameter> &param : params.map ) {
+        if( param.second.scope() == mapgen_parameter_scope::overmap_special &&
+            !maybe_args->value().map.count( param.first ) ) {
+            overmap_buffer.externally_set_args = true;
+            break;
         }
     }
 }

@@ -147,6 +147,11 @@ void swap( monster &z )
 {
     std::string pet_name = z.get_name();
     Character &player_character = get_player_character();
+    // Whatever you hold couldn't follow you into the pet's tile.
+    if( player_character.is_grabbing_creature() ) {
+        add_msg( m_info, _( "You cannot swap places while grabbing something." ) );
+        return;
+    }
     player_character.mod_moves( -to_moves<int>( 1_seconds ) * 1.5 );
 
     ///\EFFECT_STR increases chance to successfully swap positions with your pet

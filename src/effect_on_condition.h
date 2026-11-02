@@ -66,7 +66,12 @@ struct effect_on_condition {
         bool has_false_effect = false;
         event_type required_event;
         duration_or_var recurrence;
-        bool activate( dialogue &d, bool require_callstack_check = true ) const;
+        /**
+         * @param on_done if set, called with the copy of @p d the effects ran on (not the
+         * run_for_npcs ones), so the caller can read back context values they set.
+         */
+        bool activate( dialogue &d, bool require_callstack_check = true,
+                       const std::function<void( const dialogue & )> &on_done = {} ) const;
         bool activate_activation_only( dialogue &d, const std::string &text1, const std::string &text2 = "",
                                        const std::string &text3 = "", bool require_callstack_check = true ) const;
         bool check_deactivate( const_dialogue const &d ) const;
@@ -95,6 +100,9 @@ void load_new_character( Character &you );
 void load_existing_character( Character &you );
 /** Loads an inline eoc */
 effect_on_condition_id load_inline_eoc( const JsonValue &jv, std::string_view src );
+/** Runs @p check from check_consistency(), once all data is loaded: for ids written in EOC
+ *  JSON whose type may load later. The check reports problems with debugmsg. */
+void add_load_check( std::function<void()> check );
 /** queue an eoc to happen in the future */
 void queue_effect_on_condition( time_duration duration, effect_on_condition_id eoc,
                                 Character &you, global_variables::impl_t const &context );

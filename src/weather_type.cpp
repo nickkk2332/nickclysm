@@ -8,6 +8,8 @@
 namespace
 {
 generic_factory<weather_type> weather_type_factory( "weather_type" );
+// Weather type ids named elsewhere in JSON, with where; checked once everything is loaded
+std::vector<std::pair<std::string, std::string>> pending_weather_refs;
 } // namespace
 
 namespace io
@@ -158,6 +160,12 @@ void weather_animation_t::deserialize( const JsonObject &jo )
 void weather_types::reset()
 {
     weather_type_factory.reset();
+    pending_weather_refs.clear();
+}
+
+void weather_types::add_pending_ref( const std::string &id, const std::string &context )
+{
+    pending_weather_refs.emplace_back( id, context );
 }
 
 void weather_types::finalize_all()
@@ -179,6 +187,13 @@ void weather_types::check_consistency()
         cata_fatal( "Weather type null is required." );
     }
     weather_type_factory.check();
+    for( const auto &[id, context] : pending_weather_refs ) {
+        const weather_type_id wid( id );
+        if( !wid.is_valid() || wid == WEATHER_NULL ) {
+            debugmsg( "Weather type \"%s\" (used by %s) does not exist", id, context );
+        }
+    }
+    pending_weather_refs.clear();
 }
 
 void weather_types::load( const JsonObject &jo, const std::string &src )

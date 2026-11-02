@@ -56,6 +56,8 @@ generic_factory<mutation_branch> trait_factory( "trait" );
 
 std::vector<dream> dreams;
 std::map<mutation_category_id, std::vector<trait_id> > mutations_category;
+// Mutations with edible_food_flags, food_allergies or an eat_condition, in load order
+static std::vector<trait_id> diet_traits;
 static std::map<mutation_category_id, mutation_category_trait> mutation_category_traits;
 
 template<>
@@ -412,6 +414,24 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "empathize_with", empathize_with );
     optional( jo, was_loaded, "no_empathize_with", no_empathize_with );
     optional( jo, was_loaded, "can_only_eat", can_only_eat );
+    optional( jo, was_loaded, "edible_food_flags", edible_food_flags, flag_reader{} );
+    if( jo.has_array( "food_allergies" ) ) {
+        food_allergies.clear();
+        for( JsonObject allergy : jo.get_array( "food_allergies" ) ) {
+            food_allergies.emplace_back( vitamin_id( allergy.get_string( "vitamin" ) ),
+                                         morale_type( allergy.get_string( "morale" ) ) );
+        }
+    }
+    if( jo.has_object( "eat_condition" ) ) {
+        JsonObject eat_jo = jo.get_object( "eat_condition" );
+        if( !eat_jo.has_member( "condition" ) ) {
+            eat_jo.throw_error( "eat_condition needs a \"condition\"" );
+        }
+        read_condition( eat_jo, "condition", eat_condition, true );
+        optional( eat_jo, false, "fail_message", eat_fail_message,
+                  to_translation( "You can't eat that." ) );
+        has_eat_condition = true;
+    }
     optional( jo, was_loaded, "can_only_heal_with", can_only_heal_with );
     optional( jo, was_loaded, "can_heal_with", can_heal_with );
     optional( jo, was_loaded, "activation_msg", activation_msg,
@@ -454,6 +474,10 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     }
 
     optional( jo, was_loaded, "activated_is_setup", activated_is_setup, false );
+    if( jo.has_member( "activation_condition" ) ) {
+        read_condition( jo, "activation_condition", activation_condition, false );
+    }
+    optional( jo, was_loaded, "activation_fail_message", activation_fail_message );
 
     int enchant_num = 0;
     for( JsonValue jv : jo.get_array( "enchantments" ) ) {
@@ -703,6 +727,22 @@ void mutation_branch::check_consistency()
         if( s_id && !s_id.value().is_valid() ) {
             debugmsg( "mutation %s refers to undefined scent type %s", mid.c_str(), s_id.value().c_str() );
         }
+        for( const flag_id &food_flag : mdata.edible_food_flags ) {
+            if( !food_flag.is_valid() ) {
+                debugmsg( "mutation %s has undefined edible_food_flags flag %s", mid.c_str(),
+                          food_flag.c_str() );
+            }
+        }
+        for( const std::pair<vitamin_id, morale_type> &allergy : mdata.food_allergies ) {
+            if( !allergy.first.is_valid() ) {
+                debugmsg( "mutation %s has a food allergy to undefined vitamin %s", mid.c_str(),
+                          allergy.first.c_str() );
+            }
+            if( !allergy.second.is_valid() ) {
+                debugmsg( "mutation %s has a food allergy with undefined morale type %s",
+                          mid.c_str(), allergy.second.c_str() );
+            }
+        }
         // Suppress these onload warnings for overlapping mods
         for( const trait_id &replacement : mdata.replacements ) {
             const mutation_branch &rdata = replacement.obj();
@@ -879,6 +919,7 @@ const std::vector<mutation_branch> &mutation_branch::get_all()
 void mutation_branch::reset_all()
 {
     mutations_category.clear();
+    diet_traits.clear();
     trait_factory.reset();
     trait_blacklist.clear();
     trait_groups.clear();
@@ -1000,8 +1041,17 @@ void mutation_branch::finalize_all()
         if( !branch.dummy ) {
             mutations_category[mutation_category_ANY].emplace_back( branch.id );
         }
+        if( !branch.edible_food_flags.empty() || !branch.food_allergies.empty() ||
+            branch.has_eat_condition ) {
+            diet_traits.emplace_back( branch.id );
+        }
     }
     finalize_trait_blacklist();
+}
+
+const std::vector<trait_id> &mutation_branch::get_diet_traits()
+{
+    return diet_traits;
 }
 
 void mutation_branch::finalize_trait_blacklist()

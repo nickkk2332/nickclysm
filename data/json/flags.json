@@ -1587,6 +1587,11 @@
     "type": "json_flag"
   },
   {
+    "id": "NO_GRAB",
+    "type": "json_flag",
+    "//": "A creature with this flag (on an effect, or for characters any character flag) can't start a grab."
+  },
+  {
     "id": "ENCUMBRANCE_UPDATE",
     "type": "json_flag"
   },
@@ -1996,7 +2001,8 @@
   },
   {
     "id": "RECHARGE",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "recharger" }, "hotkey": "TOGGLE_RECHARGER" }
   },
   {
     "id": "REDUCED_BASHING",
@@ -2952,6 +2958,11 @@
     "id": "CANNOT_MOVE",
     "type": "json_flag",
     "//": "Creatures and players with this flag cannot naturally move."
+  },
+  {
+    "id": "MA_BASIC_FALLBACK",
+    "type": "json_flag",
+    "//": "Character flag, usually granted by a martial art's static buff.  Techniques with \"fallback\" (the base punch, kick and headbutt) are used only when no other technique is possible, and the base techniques follow the grappling rules: headbutt only in a grapple, no kicks while holding someone."
   },
   {
     "id": "CANNOT_TAKE_DAMAGE",

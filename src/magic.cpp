@@ -561,15 +561,124 @@ static bool spell_infinite_loop_check( std::set<spell_id> spell_effects, const s
     return false;
 }
 
+// Checks that effect_str names an existing id of the type the spell effect reads it as.
+// Effects that ignore effect_str, and timed_event (a fixed keyword list), are not checked.
+static void check_spell_effect_str( const spell_type &sp_t )
+{
+    const std::string &str = sp_t.effect_str;
+    const std::string &eff = sp_t.effect_name;
+    const auto invalid = [&sp_t]( const std::string & what ) {
+        debugmsg( R"(spell %s uses effect "%s", but its effect_str "%s" is not a valid %s)",
+                  sp_t.id.c_str(), sp_t.effect_name, sp_t.effect_str, what );
+    };
+    const bool group = sp_t.spell_tags[spell_flag::SPAWN_GROUP];
+    if( eff == "attack" ) {
+        // An empty effect_str means the attack applies no effect.
+        if( !str.empty() && !efftype_id( str ).is_valid() ) {
+            invalid( "effect id" );
+        }
+    } else if( eff == "remove_effect" ) {
+        if( !efftype_id( str ).is_valid() ) {
+            invalid( "effect id" );
+        }
+    } else if( eff == "summon" ) {
+        if( group ? !mongroup_id( str ).is_valid() : !mtype_id( str ).is_valid() ) {
+            invalid( group ? "monster group id (SPAWN_GROUP)" : "monster id" );
+        }
+    } else if( eff == "targeted_polymorph" ) {
+        // An empty effect_str polymorphs into a random monster of similar difficulty.
+        const bool poly_group = sp_t.spell_tags[spell_flag::POLYMORPH_GROUP];
+        if( !str.empty() &&
+            ( poly_group ? !mongroup_id( str ).is_valid() : !mtype_id( str ).is_valid() ) ) {
+            invalid( poly_group ? "monster group id (POLYMORPH_GROUP)" : "monster id" );
+        }
+    } else if( eff == "spawn_item" ) {
+        if( group ? !item_group_id( str ).is_valid() : !itype_id( str ).is_valid() ) {
+            invalid( group ? "item group id (SPAWN_GROUP)" : "item id" );
+        }
+    } else if( eff == "effect_on_condition" ) {
+        if( !effect_on_condition_id( str ).is_valid() ) {
+            invalid( "effect_on_condition id" );
+        }
+    } else if( eff == "ter_transform" ) {
+        if( !ter_furn_transform_id( str ).is_valid() ) {
+            invalid( "ter_furn_transform id" );
+        }
+    } else if( eff == "emit" ) {
+        if( !emit_id( str ).is_valid() ) {
+            invalid( "emit id" );
+        }
+    } else if( eff == "add_trap" ) {
+        if( !trap_str_id( str ).is_valid() ) {
+            invalid( "trap id" );
+        }
+    } else if( eff == "remove_field" ) {
+        if( !field_type_str_id( str ).is_valid() ) {
+            invalid( "field type id" );
+        }
+    } else if( eff == "recover_energy" ) {
+        static const std::set<std::string> energy_types = {
+            "MANA", "STAMINA", "SLEEPINESS", "BIONIC", "PAIN", "HEALTH"
+        };
+        if( energy_types.count( str ) == 0 ) {
+            invalid( "energy type (MANA, STAMINA, SLEEPINESS, BIONIC, PAIN or HEALTH)" );
+        }
+    } else if( eff == "mutate" ) {
+        // An empty effect_str gives a random mutation.
+        const bool trait = sp_t.spell_tags[spell_flag::MUTATE_TRAIT];
+        if( !str.empty() &&
+            ( trait ? !trait_id( str ).is_valid() : !mutation_category_id( str ).is_valid() ) ) {
+            invalid( trait ? "mutation id (MUTATE_TRAIT)" : "mutation category id" );
+        }
+    } else if( eff == "morale" ) {
+        if( !morale_type( str ).is_valid() ) {
+            invalid( "morale type id" );
+        }
+    } else if( eff == "revive" || eff == "revive_dormant" ) {
+        if( !species_id( str ).is_valid() ) {
+            invalid( "species id" );
+        }
+    } else if( eff == "guilt" ) {
+        // An empty effect_str means no extra species counts as the killer's own kind.
+        if( !str.empty() && !species_id( str ).is_valid() ) {
+            invalid( "species id" );
+        }
+    } else if( eff == "summon_vehicle" ) {
+        if( !str.empty() && !vproto_id( str ).is_valid() ) {
+            invalid( "vehicle prototype id" );
+        }
+    }
+}
+
+// Checks the spell and magic_type ids a spell refers to outside extra_effects.
+static void check_spell_references( const spell_type &sp_t )
+{
+    for( const std::pair<const std::string, int> &learn : sp_t.learn_spells ) {
+        if( !spell_id( learn.first ).is_valid() ) {
+            debugmsg( R"(spell %s has unknown spell "%s" in learn_spells)", sp_t.id.c_str(),
+                      learn.first );
+        }
+    }
+    const auto check_channel = [&sp_t]( const std::string & member, const std::string & sp ) {
+        if( !sp.empty() && !spell_id( sp ).is_valid() ) {
+            debugmsg( R"(spell %s has unknown spell "%s" as channel_data %s)", sp_t.id.c_str(), sp,
+                      member );
+        }
+    };
+    check_channel( "channel_spell", sp_t.channel_spell );
+    check_channel( "channel_end_spell", sp_t.channel_end_spell );
+    check_channel( "channel_interrupt_spell", sp_t.channel_interrupt_spell );
+    if( sp_t.magic_type.has_value() && !sp_t.magic_type->is_valid() ) {
+        debugmsg( R"(spell %s has unknown magic_type "%s")", sp_t.id.c_str(),
+                  sp_t.magic_type->c_str() );
+    }
+}
+
 void spell_type::check_consistency()
 {
     for( const spell_type &sp_t : get_all() ) {
-        if( sp_t.effect_name == "summon_vehicle" ) {
-            if( !sp_t.effect_str.empty() && !vproto_id( sp_t.effect_str ).is_valid() ) {
-                debugmsg( "ERROR %s specifies a vehicle to summon, but vehicle %s is not valid", sp_t.id.c_str(),
-                          sp_t.effect_str );
-            }
-        }
+        check_spell_effect_str( sp_t );
+        check_spell_references( sp_t );
         std::set<spell_id> spell_effect_list;
         if( spell_infinite_loop_check( spell_effect_list, sp_t.id ) ) {
             debugmsg( "ERROR: %s has infinite loop in extra_effects", sp_t.id.c_str() );
@@ -729,25 +838,42 @@ float spell::dps( const Character &caster, const Creature & ) const
     return raw_dps * time_modifier * failure_modifier;
 }
 
+// A spell value after the caster's enchantment "spell_values" of that kind; never negative
+static int enchanted_spell_value( const spell &sp, const Creature &caster,
+                                  enchant_vals::spell_mod mod_val, double value )
+{
+    const double enchanted = caster.enchantment_cache->modify_spell_value( mod_val, sp, value );
+    return static_cast<int>( std::max( 0.0, enchanted ) );
+}
+
 int spell::damage( const Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr );
     const int leveled_damage = min_leveled_damage( caster );
+    const auto max_damage = [&]() {
+        return static_cast<int>( type->max_damage.evaluate( d ) );
+    };
+    int base_damage = 0;
 
     if( has_flag( spell_flag::RANDOM_DAMAGE ) ) {
-        return rng( std::min( leveled_damage, static_cast<int>( type->max_damage.evaluate( d ) ) ),
-                    std::max( leveled_damage,
-                              static_cast<int>( type->max_damage.evaluate( d ) ) ) ) * temp_damage_multiplyer;
+        base_damage = rng( std::min( leveled_damage, max_damage() ),
+                           std::max( leveled_damage, max_damage() ) );
     } else {
         if( type->min_damage.evaluate( d ) >= 0 ||
             type->max_damage.evaluate( d ) >= type->min_damage.evaluate( d ) ) {
-            return std::min( leveled_damage,
-                             static_cast<int>( type->max_damage.evaluate( d ) ) ) * temp_damage_multiplyer;
+            base_damage = std::min( leveled_damage, max_damage() );
         } else { // if it's negative, min and max work differently
-            return std::max( leveled_damage,
-                             static_cast<int>( type->max_damage.evaluate( d ) ) ) * temp_damage_multiplyer;
+            base_damage = std::max( leveled_damage, max_damage() );
         }
     }
+    const int dmg = base_damage * temp_damage_multiplyer;
+    if( dmg == 0 ) {
+        return 0;
+    }
+    // Enchantments change the size of the damage, so healing (negative damage) grows too
+    const int size = enchanted_spell_value( *this, caster, enchant_vals::spell_mod::DAMAGE,
+                                            std::abs( dmg ) );
+    return dmg > 0 ? size : -size;
 }
 
 // Armor of the spell's damage type that its damage ignores (min_pierce, pierce_increment and
@@ -914,7 +1040,8 @@ int spell::aoe( const Creature &caster ) const
             return_value = std::max( leveled_aoe, static_cast<int>( type->max_aoe.evaluate( d ) ) );
         }
     }
-    return return_value * temp_aoe_multiplyer;
+    const int scaled_aoe = return_value * temp_aoe_multiplyer;
+    return enchanted_spell_value( *this, caster, enchant_vals::spell_mod::AOE, scaled_aoe );
 }
 
 std::set<tripoint_bub_ms> spell::effect_area( const spell_effect::override_parameters &params,
@@ -962,7 +1089,8 @@ int spell::range( const Creature &caster ) const
     } else {
         range = std::max( leveled_range, static_cast<int>( type->max_range.evaluate( d ) ) );
     }
-    return std::max( range * temp_range_multiplyer, 0.0f );
+    return enchanted_spell_value( *this, caster, enchant_vals::spell_mod::RANGE,
+                                  std::max( range * temp_range_multiplyer, 0.0f ) );
 }
 
 std::vector<tripoint_bub_ms> spell::targetable_locations( const Character &source ) const
@@ -1028,7 +1156,8 @@ int spell::duration( const Creature &caster ) const
             return_value = std::max( leveled_duration, static_cast<int>( type->max_duration.evaluate( d ) ) );
         }
     }
-    return std::max( return_value * temp_duration_multiplyer, 0.0f );
+    return enchanted_spell_value( *this, caster, enchant_vals::spell_mod::DURATION,
+                                  std::max( return_value * temp_duration_multiplyer, 0.0f ) );
 }
 
 std::string spell::duration_string( const Creature &caster ) const
@@ -1127,7 +1256,8 @@ int spell::energy_cost( const Character &guy ) const
                 break;
         }
     }
-    return std::max( cost * temp_spell_cost_multiplyer, 0.0f );
+    return enchanted_spell_value( *this, guy, enchant_vals::spell_mod::COST,
+                                  std::max( cost * temp_spell_cost_multiplyer, 0.0f ) );
 }
 
 bool spell::has_flag( const spell_flag &flag ) const
@@ -1298,7 +1428,8 @@ int spell::casting_time( const Character &guy, bool ignore_encumb ) const
             casting_time += arms_encumb * 2 * temp_somatic_difficulty_multiplyer;
         }
     }
-    return std::max( casting_time * temp_cast_time_multiplyer, 0.0f );
+    return enchanted_spell_value( *this, guy, enchant_vals::spell_mod::CAST_TIME,
+                                  std::max( casting_time * temp_cast_time_multiplyer, 0.0f ) );
 }
 
 const requirement_data &spell::components() const

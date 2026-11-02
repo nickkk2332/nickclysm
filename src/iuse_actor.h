@@ -3,6 +3,7 @@
 #define CATA_SRC_IUSE_ACTOR_H
 
 #include <climits>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -30,6 +31,7 @@ class item_location;
 class map;
 class npc;
 class npc_template;
+struct const_dialogue;
 struct furn_t;
 
 enum class link_state : int;
@@ -1271,16 +1273,23 @@ class effect_on_conditions_actor : public iuse_actor
         bool need_worn = false;
         /**does the item requires to be wielded to be activable*/
         bool need_wielding = false;
+        /** Must be true to use the item; u is the user, npc is the item. Empty when unset. */
+        std::function<bool( const_dialogue const & )> condition;
+        /** Shown when condition is false. */
+        translation failure_message;
         explicit effect_on_conditions_actor( const std::string &type = "effect_on_conditions" ) :
             iuse_actor(
                 type ) {}
-        bool consume;
+        bool consume = false;
 
         ~effect_on_conditions_actor() override = default;
         void load( const JsonObject &obj, const std::string &src ) override;
         using iuse_actor::use;
         std::optional<int> use( Character *p, item &it, map *here,
                                 const tripoint_bub_ms &pos ) const override;
+        ret_val<void> can_use( const Character &p, const item &it, map *here,
+                               const tripoint_bub_ms &pos ) const override;
+        void finalize( const itype_id &my_item_type ) override;
         std::unique_ptr<iuse_actor> clone() const override;
         std::string get_name() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;

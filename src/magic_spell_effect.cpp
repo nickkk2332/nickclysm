@@ -726,7 +726,7 @@ void spell_effect::attack( const spell &sp, Creature &caster, const tripoint_bub
             }
             // the bash already makes noise, so no need for spell::make_sound()
             here.bash( potential_target, sp.damage( caster ) * bash_scaling,
-                       sp.has_flag( spell_flag::SILENT ) );
+                       sp.has_flag( spell_flag::SILENT ), false, false, nullptr, true, &caster );
         }
     }
 }
@@ -1874,7 +1874,32 @@ void spell_effect::bash( const spell &sp, Creature &caster, const tripoint_bub_m
             continue;
         }
         // the bash already makes noise, so no need for spell::make_sound()
-        here.bash( potential_target, sp.damage( caster ), sp.has_flag( spell_flag::SILENT ) );
+        here.bash( potential_target, sp.damage( caster ), sp.has_flag( spell_flag::SILENT ), false,
+                   false, nullptr, true, &caster );
+    }
+}
+
+void spell_effect::fling( const spell &sp, Creature &caster, const tripoint_bub_ms &target )
+{
+    // TLG's fling_away, for every valid target in the area: damage() is the force, and each
+    // flies away from the caster, damage() / 10 tiles.
+    const int force = sp.damage( caster );
+    if( force <= 0 ) {
+        return;
+    }
+    const tripoint_bub_ms from = caster.pos_bub();
+    creature_tracker &creatures = get_creature_tracker();
+    // Pick them all first, or one flung onto a tile not yet visited would fly twice.
+    std::vector<Creature *> flung;
+    for( const tripoint_bub_ms &p : spell_effect_area( sp, target, caster ) ) {
+        Creature *const critter = creatures.creature_at( p );
+        if( critter != nullptr && p.xy() != from.xy() && sp.is_valid_target( caster, p ) ) {
+            flung.push_back( critter );
+        }
+    }
+    for( Creature *const critter : flung ) {
+        g->fling_creature( critter, coord_to_angle( from, critter->pos_bub() ),
+                           static_cast<float>( force ) );
     }
 }
 

@@ -39,6 +39,7 @@
 #include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
+#include "math_parser_jmath.h"
 #include "melee.h"
 #include "messages.h"
 #include "monster.h"
@@ -48,6 +49,7 @@
 #include "output.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "proficiency.h"
 #include "projectile.h"
 #include "ret_val.h"
 #include "rng.h"
@@ -67,6 +69,7 @@ static const damage_type_id damage_bash( "bash" );
 
 static const efftype_id effect_badpoison( "badpoison" );
 static const efftype_id effect_bite( "bite" );
+static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_infected( "infected" );
@@ -86,6 +89,7 @@ static const flag_id json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 
+static const itype_id fuel_type_muscle( "muscle" );
 static const itype_id itype_backpack( "backpack" );
 
 static const json_character_flag json_flag_BIONIC_LIMB( "BIONIC_LIMB" );
@@ -422,6 +426,9 @@ void grab::load_grab( const JsonObject &jo )
     optional( jo, was_loaded, "grab_effect", grab_effect, effect_grabbed );
     optional( jo, was_loaded, "exclusive_grab", exclusive_grab, false );
     optional( jo, was_loaded, "respect_seatbelts", respect_seatbelts, true );
+    optional( jo, was_loaded, "pull_from_vehicle", pull_from_vehicle, false );
+    optional( jo, was_loaded, "vehicle_pull_formula", vehicle_pull_formula,
+              jmath_func_id( "grab_vehicle_pull_chance" ) );
     optional( jo, was_loaded, "drag_distance", drag_distance, 0 );
     optional( jo, was_loaded, "drag_deviation", drag_deviation, 0 );
     optional( jo, was_loaded, "drag_grab_break_distance", drag_grab_break_distance, 0 );
@@ -575,6 +582,60 @@ Creature *melee_actor::find_target( monster &z ) const
     return target;
 }
 
+// A grab from outside a vehicle can pull a rider out of their seat, unless they're belted in.
+// Ported from Cataclysm-TLG PR #1175 by worm-girl.  TLG does this for every grab; here the
+// attack opts in with "pull_from_vehicle", and the chance is a jmath function.
+static void grab_pull_from_vehicle( const grab &grab_data, const monster &z, Character &foe,
+                                    int grab_strength )
+{
+    map &here = get_map();
+    const tripoint_bub_ms foe_pos = foe.pos_bub( here );
+    const optional_vpart_position vp = here.veh_at( foe_pos );
+    const vehicle *const veh = veh_pointer_or_null( vp );
+    if( veh == nullptr || !foe.in_vehicle || z.flies() ||
+        here.has_vehicle_floor( z.pos_bub( here ) ) ) {
+        return;
+    }
+    if( vp.avail_part_with_feature( VPFLAG_SEATBELT ) ) {
+        add_msg_debug( debugmode::DF_MATTACK, "Grab target is belted in, can't be pulled out" );
+        return;
+    }
+    if( !grab_data.vehicle_pull_formula.is_valid() ) {
+        debugmsg( "%s grabs with unknown vehicle_pull_formula %s", z.type->id.str(),
+                  grab_data.vehicle_pull_formula.str() );
+        return;
+    }
+    const int mph = std::abs( veh->velocity ) / 100;
+    const bool muscle = veh->has_engine_type( fuel_type_muscle, true );
+    const int athlete_bonus = muscle ? foe.get_proficiency_bonus( "athlete",
+                              proficiency_bonus_type::strength ) : 0;
+    const_dialogue d( get_const_talker_for( z ), get_const_talker_for( foe ) );
+    const double chance = grab_data.vehicle_pull_formula->eval( d, {
+        static_cast<double>( grab_strength ), static_cast<double>( mph ), muscle ? 1.0 : 0.0,
+        static_cast<double>( athlete_bonus )
+    } );
+    add_msg_debug( debugmode::DF_MATTACK,
+                   "Pull from vehicle: grab strength %d at %d mph, chance %.2f", grab_strength, mph,
+                   chance );
+    if( chance <= 0.0 || !x_in_y( chance, 1.0 ) ) {
+        foe.add_msg_player_or_npc( foe.is_avatar() ? m_good : m_info,
+                                   _( "You manage to stay in your seat!" ),
+                                   _( "<npcname> manages to stay in their seat!" ) );
+        return;
+    }
+    here.unboard_vehicle( foe_pos );
+    foe.add_msg_player_or_npc( foe.is_avatar() ? m_bad : m_info,
+                               _( "You are yanked out of your seat!" ),
+                               _( "<npcname> is yanked out of their seat!" ) );
+    foe.add_effect( effect_downed, 3_seconds );
+    foe.mod_moves( -to_moves<int>( 1_seconds ) );
+    // Falling off a fast vehicle hurts.
+    const int force = static_cast<int>( mph * rng_float( 0.5, 1.25 ) );
+    if( force > 15 ) {
+        foe.impact( force, foe_pos );
+    }
+}
+
 int melee_actor::do_grab( monster &z, Creature *target, bodypart_id bp_id ) const
 {
     map &here = get_map();
@@ -710,6 +771,9 @@ int melee_actor::do_grab( monster &z, Creature *target, bodypart_id bp_id ) cons
                            bp_id->name );
             // Add grabbed - permanent, removal handled in try_remove_grab on move/wait
             target->add_effect( grab_data.grab_effect, 1_days, bp_id, true, eff_grab_strength );
+            if( grab_data.pull_from_vehicle ) {
+                grab_pull_from_vehicle( grab_data, z, *foe, eff_grab_strength );
+            }
         } else {
             // Monsters don't have limb scores, no need to target limbs
             target->add_effect( grab_data.grab_effect, 1_days, bodypart_str_id::NULL_ID().id(), true,
@@ -1140,6 +1204,17 @@ bool melee_actor::call( monster &z ) const
         dialogue d( get_talker_for( z ), get_talker_for( target ) );
         write_var_value( var_type::context, "damage", &d, damage_total );
         eoc->activate( d );
+    }
+
+    // Once the attack is over, a character it grabbed reacts: martial-art hooks, grab counters
+    if( grabbed_bp_id && grab_data.grab_effect != effect_null && !z.is_dead_state() ) {
+        Character *const victim = target->as_character();
+        if( victim != nullptr && target->has_effect( grab_data.grab_effect, *grabbed_bp_id ) ) {
+            const effect &grab = target->get_effect( grab_data.grab_effect, *grabbed_bp_id );
+            if( grab.has_flag( json_flag_GRAB ) ) {
+                victim->on_grabbed( z, *grabbed_bp_id, grab.get_intensity() );
+            }
+        }
     }
 
     return true;

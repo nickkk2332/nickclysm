@@ -149,6 +149,9 @@ constexpr float MODERATE_EXERCISE = 4.0f;
 constexpr float BRISK_EXERCISE = 6.0f;
 constexpr float ACTIVE_EXERCISE = 8.0f;
 constexpr float EXTRA_EXERCISE = 10.0f;
+// Short bursts of all-out effort, from Cataclysm-TLG.  Melee, dodging, grabbing and throwing use
+// it when the EXPLOSIVE_COMBAT_EXERTION world option is on (see Character::melee_exertion_level).
+constexpr float EXPLOSIVE_EXERCISE = 12.0f;
 
 const std::map<std::string, float> activity_levels_map = {
     { "SLEEP_EXERCISE", SLEEP_EXERCISE },
@@ -157,7 +160,8 @@ const std::map<std::string, float> activity_levels_map = {
     { "MODERATE_EXERCISE", MODERATE_EXERCISE },
     { "BRISK_EXERCISE", BRISK_EXERCISE },
     { "ACTIVE_EXERCISE", ACTIVE_EXERCISE },
-    { "EXTRA_EXERCISE", EXTRA_EXERCISE }
+    { "EXTRA_EXERCISE", EXTRA_EXERCISE },
+    { "EXPLOSIVE_EXERCISE", EXPLOSIVE_EXERCISE }
 };
 
 const std::map<float, std::string> activity_levels_str_map = {
@@ -167,7 +171,8 @@ const std::map<float, std::string> activity_levels_str_map = {
     { MODERATE_EXERCISE, "MODERATE_EXERCISE" },
     { BRISK_EXERCISE, "BRISK_EXERCISE" },
     { ACTIVE_EXERCISE, "ACTIVE_EXERCISE" },
-    { EXTRA_EXERCISE, "EXTRA_EXERCISE" }
+    { EXTRA_EXERCISE, "EXTRA_EXERCISE" },
+    { EXPLOSIVE_EXERCISE, "EXPLOSIVE_EXERCISE" }
 };
 
 // these are the lower bounds of each of the weight classes, determined by the amount of BMI coming from stored calories (fat)

@@ -34,6 +34,8 @@ static const oter_str_id oter_road_nesw_manhole( "road_nesw_manhole" );
 static const oter_type_str_id oter_type_road( "road" );
 
 static constexpr int BUILDINGCHANCE = 4;
+// The largest size place_cities rolls for a random city.
+static constexpr int MAX_RANDOM_CITY_SIZE = 55;
 
 static pf::directed_path<point_om_omt> straight_path( const point_om_omt &source,
         om_direction::type dir, size_t len )
@@ -71,17 +73,20 @@ void overmap::place_cities()
     if( op_city_size <= 0 ) {
         return;
     }
-    // make sure city size adjust is never high enough to drop op_city_size below 2
-    int city_size_adjust = std::min( urbanity - static_cast<int>( forestosity / 2.0f ),
-                                     -1 * op_city_size + 2 );
+    // Urbanity grows cities and forestosity shrinks them, but never below size 2. This used
+    // std::min and then clamped back up to op_city_size, so neither ever changed a city's size
+    // and max_urbanity did nothing (OMAP-B04). No rolled size exceeds MAX_RANDOM_CITY_SIZE, so
+    // max_city_size stops there too, which keeps the candidate radius OMAPX / 2 - max_city_size
+    // positive.
+    const int city_size_adjust = std::max( urbanity - static_cast<int>( forestosity / 2.0f ),
+                                           2 - op_city_size );
     int city_space_adjust = urbanity / 2;
-    int max_city_size = std::min( op_city_size + city_size_adjust, op_city_size * max_urbanity );
-    if( max_city_size < op_city_size ) {
-        // funny things happen if max_city_size is less than op_city_size.
-        max_city_size = op_city_size;
-    }
+    const int max_city_size = std::clamp( std::min( op_city_size + city_size_adjust,
+                                          op_city_size * max_urbanity ), 2, MAX_RANDOM_CITY_SIZE );
     if( op_city_spacing > 0 ) {
-        city_space_adjust = std::min( city_space_adjust, op_city_spacing - 2 );
+        // Positive urbanity brings cities closer together, but never below a spacing of 2 (or
+        // the region's own spacing if that is smaller). Negative urbanity spreads them out.
+        city_space_adjust = std::min( city_space_adjust, std::max( 0, op_city_spacing - 2 ) );
         op_city_spacing = op_city_spacing - city_space_adjust + static_cast<int>( forestosity );
     }
     // make sure not to get too extreme on the spacing if you go way far.
@@ -182,7 +187,7 @@ void overmap::place_cities()
             }
             // Ensure that cities are at least size 2, as city of size 1 is just a crossroad with no buildings at all
             size = std::max( size, 2 );
-            size = std::min( size, 55 );
+            size = std::min( size, MAX_RANDOM_CITY_SIZE );
             // TODO: put cities closer to the edge when they can span overmaps
             // don't draw cities across the edge of the map, they will get clipped
             selected_point = random_entry_removed( city_candidates );
@@ -263,19 +268,29 @@ overmap_special_id overmap::pick_random_building_to_place( int town_dist, int to
         }
     };
     auto pick_building = building_type_to_pick();
-    overmap_special_id ret;
-    bool existing_unique;
-    do {
-        ret = pick_building( city_spec );
+    // Redraw until a building fits, but give up (returning a null id) if the bin has nothing
+    // that fits this town; this used to loop forever on such region data (OMAP-B05).
+    constexpr int max_attempts = 50;
+    for( int attempt = 0; attempt < max_attempts; ++attempt ) {
+        const overmap_special_id ret = pick_building( city_spec );
+        if( ret.is_null() ) {
+            // Empty bin.
+            return ret;
+        }
+        bool existing_unique = false;
         if( ret->has_flag( "CITY_UNIQUE" ) ) {
             existing_unique = placed_unique_buildings.find( ret ) != placed_unique_buildings.end();
-        } else if( ret->has_flag( "GLOBALLY_UNIQUE" ) || ret->has_flag( "OVERMAP_UNIQUE" ) ) {
+        } else if( ret->has_flag( "GLOBALLY_UNIQUE" ) ) {
             existing_unique = overmap_buffer.contains_unique_special( ret );
-        } else {
-            existing_unique = false;
+        } else if( ret->has_flag( "OVERMAP_UNIQUE" ) ) {
+            // overmap_buffer only tracks globally unique specials.
+            existing_unique = contains_unique_special( ret );
         }
-    } while( existing_unique || !ret->get_constraints().city_size.contains( town_size ) );
-    return ret;
+        if( !existing_unique && ret->get_constraints().city_size.contains( town_size ) ) {
+            return ret;
+        }
+    }
+    return overmap_special_id::NULL_ID();
 }
 
 void overmap::place_building( const tripoint_om_omt &p, om_direction::type dir, const city &town,
@@ -289,6 +304,10 @@ void overmap::place_building( const tripoint_om_omt &p, om_direction::type dir, 
     for( size_t retries = 10; retries > 0; --retries ) {
         const overmap_special_id building_tid = pick_random_building_to_place( town_dist, town.size,
                                                 placed_unique_buildings );
+        if( building_tid.is_null() ) {
+            // Nothing in the bin fits this town.
+            continue;
+        }
         if( can_place_special( *building_tid, building_pos, building_dir, false ) ) {
             std::vector<tripoint_om_omt> used_tripoints = place_special( *building_tid, building_pos,
                     building_dir, town, false, false );

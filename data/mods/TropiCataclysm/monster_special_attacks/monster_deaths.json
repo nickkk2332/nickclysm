@@ -29,7 +29,7 @@
     "valid_targets": [ "self" ],
     "shape": "blast",
     "effect": "emit",
-    "effect_str": "emit_pollen",
+    "effect_str": "emit_pollen_stream",
     "extra_effects": [ { "id": "death_explosion", "hit_self": true } ]
   }
 ]

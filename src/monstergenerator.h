@@ -79,6 +79,9 @@ class MonsterGenerator
         void check_monster_definitions() const;
 
         std::optional<mon_action_death> get_death_function( const std::string &f ) const;
+        /** The monster attack defined in JSON with this id, or nullptr if there is none or it is
+         *  hardcoded (hardcoded attacks may expect the monster to have them) */
+        const mtype_special_attack *find_json_attack( const std::string &id ) const;
         const std::vector<mtype> &get_all_mtypes() const;
         mtype_id get_valid_hallucination() const;
         friend struct mtype;

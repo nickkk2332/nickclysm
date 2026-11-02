@@ -595,15 +595,23 @@ class mapgen_function_json_nested : public mapgen_function_json_base
 class nested_mapgen
 {
     public:
+        // Every definition that can be picked. A non-constant weight is stored as 1 here;
+        // use pick() to choose one by its current weight.
         const weighted_int_list<std::shared_ptr<mapgen_function_json_nested>> &funcs() const {
             return funcs_;
         }
-        void add( const std::shared_ptr<mapgen_function_json_nested> &p, int weight );
+        void add( const std::shared_ptr<mapgen_function_json_nested> &p,
+                  const dbl_or_var &weight );
+        // Picks one definition by weight, evaluating non-constant weights now; nullptr if none
+        const std::shared_ptr<mapgen_function_json_nested> *pick() const;
         // Returns a set containing every relative coordinate of a point that
         // might have something placed by this mapgen
         std::unordered_set<point_rel_ms> all_placement_coords() const;
     private:
         weighted_int_list<std::shared_ptr<mapgen_function_json_nested>> funcs_;
+        // The definitions whose weight is a variable or math expression
+        std::vector<std::pair<std::shared_ptr<mapgen_function_json_nested>, dbl_or_var>>
+                variable_weights_;
 };
 
 class update_mapgen
@@ -612,9 +620,14 @@ class update_mapgen
         const std::vector<std::unique_ptr<update_mapgen_function_json>> &funcs() const {
             return funcs_;
         }
-        void add( std::unique_ptr<update_mapgen_function_json> &&p );
+        void add( std::unique_ptr<update_mapgen_function_json> &&p, const dbl_or_var &weight );
+        // The definition to run: the only one, or one of several picked by weight.
+        // nullptr if there is none (or all weights are 0).
+        const update_mapgen_function_json *pick() const;
     private:
         std::vector<std::unique_ptr<update_mapgen_function_json>> funcs_;
+        // Parallel to funcs_
+        std::vector<dbl_or_var> weights_;
 };
 
 /////////////////////////////////////////////////////////

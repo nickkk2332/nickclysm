@@ -4,30 +4,138 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "bonuses.h"
 #include "calendar.h"
+#include "enum_traits.h"
 #include "flat_set.h"
 #include "translation.h"
 #include "type_id.h"
 #include "uilist.h"
 
 class Character;
+class Creature;
 class JsonObject;
 class effect;
 class item;
 class item_location;
 struct const_dialogue;
+struct dialogue;
 struct itype;
 template <typename T> class generic_factory;
 enum class bp_type;
 
 const matec_id tec_none( "tec_none" );
+
+/**
+ * Why a technique can't be used in an attack, as Character::check_technique reports it; `none`
+ * when it can. The order is the order of the checks.
+ */
+enum class technique_rejection : int {
+    none = 0,
+    dummy,              // a passive technique (like weapon blocking ability)
+    defensive,          // a defensive technique, used on its own when defending
+    condition,          // the technique's condition (shown with its condition_desc)
+    needs_wall,         // wall_adjacent, and no wall is next to the attacker
+    not_in_reach,       // the attack is a reach attack, the technique isn't reach_ok
+    reach_only,         // reach_tec, and the attack isn't a reach attack
+    dodge_counter_only, // a dodge counter, and the attack isn't one
+    not_dodge_counter,  // the attack is a dodge counter, the technique isn't one
+    block_counter_only, // a block counter, and the attack isn't one
+    not_block_counter,  // the attack is a block counter, the technique isn't one
+    grab_counter_only,  // a grab counter, and the attack isn't one
+    not_grab_counter,   // the attack is a grab counter, the technique isn't one
+    too_slow,           // a counter that would use up more moves than the attacker has
+    crit_only,          // crit_tec, and the hit isn't a critical hit
+    not_on_crit,        // the hit is a critical hit, the technique is neither crit_tec nor crit_ok
+    needs_ammo,         // needs_ammo, and the weapon isn't loaded
+    target_unarmed,     // disarms or take_weapon, and the target has no weapon
+    hands_full,         // take_weapon, and the attacker holds a weapon
+    no_aoe_targets,     // an area technique with no other target
+    weighting_roll,     // a negative weighting, and the roll for it failed this time
+    // ma_requirements
+    buffs,              // required or forbidden martial-art buffs
+    unarmed_only,       // unarmed only, and the attacker is armed
+    needs_weapon,       // needs a weapon (or the style needs one), and the attacker is unarmed
+    wrong_weapon,       // the weapon doesn't suit the technique or the style
+    skill,              // a skill requirement isn't met
+    character_flags,    // required or forbidden character flags
+    weapon_category,    // the weapon isn't in an allowed weapon category
+    no_attack_vector,   // no attack vector (limb or weapon) can deliver it
+    last
+};
+
+template<>
+struct enum_traits<technique_rejection> {
+    static constexpr technique_rejection last = technique_rejection::last;
+};
+
+/** Where an attacker's technique comes from (character_martial_arts::get_all_techniques) */
+enum class technique_source : int {
+    weapon,     // the wielded weapon
+    equipment,  // a worn or carried item with PROVIDES_TECHNIQUES
+    style,      // the selected martial art
+    body,       // a body part (basic punches and kicks, natural weapons)
+};
+
+/** When the manual technique menu lists a technique ("menu_visibility") */
+enum class technique_menu_visibility : int {
+    always,     // always listed, greyed out with the reason when it can't be used
+    grappling,  // only while the attacker holds a creature (GRAB_FILTER)
+    grappled,   // only while the attacker is held (GRAB)
+    grapple,    // only while either is true
+    condition,  // only while the technique's menu_condition is true
+};
+
+/** The kind of attack a technique is checked for (Character::check_technique) */
+struct technique_query {
+    bool crit = false;
+    bool dodge_counter = false;
+    bool block_counter = false;
+    // Answering a grab on the attacker (Character::on_grabbed)
+    bool grab_counter = false;
+    // Roll negative weightings and pick an attack vector, as an attack does. Without it nothing
+    // random happens: the weighting is ignored and an attack vector only has to exist.
+    bool roll = true;
+};
+
+/**
+ * What a martial art's event EOCs (onhit_eocs, ongethit_eocs, ...) and a technique's
+ * post_hit_eocs receive besides their user: the other creature in the exchange, which runs as
+ * the npc_ talker, and context values that describe the attack. Unset values are not sent.
+ */
+struct ma_event_context {
+    // The target of an attack event or the attacker of a defensive event; may be null
+    Creature *opponent = nullptr;
+    // `weapon`: id of the weapon used for the attack ("null" when unarmed)
+    itype_id weapon;
+    // `technique`: id of the technique used for the attack ("tec_none" when none)
+    matec_id technique;
+    // `bp`: body part hit; the target's for attack events, the user's own for defensive events
+    bodypart_str_id bp;
+    // `damage`: damage the hit dealt, or the damage coming in for ongethit and onblock
+    std::optional<double> damage;
+    // `hit`, `crit` and `killed`: 1 or 0
+    std::optional<bool> hit;
+    std::optional<bool> crit;
+    std::optional<bool> killed;
+    // `grab_strength`: strength of the hold (the intensity of its GRAB effect), for ongrab and
+    // ongrabbed events
+    std::optional<int> grab_strength;
+    // `grab_part`: the body part held, for ongrab and ongrabbed events: your own when you are
+    // grabbed, the victim's when you grab; unset when the one held is a monster
+    bodypart_str_id grab_part;
+
+    // Runs the EOCs with the user as alpha, the opponent as beta and the values above
+    void activate( Character &u, const std::vector<effect_on_condition_id> &eocs ) const;
+};
 
 class weapon_category
 {
@@ -139,7 +247,12 @@ struct ma_requirements {
     std::string get_description( bool buff = false ) const;
 
     bool buff_requirements_satisfied( const Character &u ) const;
-    bool is_valid_character( const Character &u ) const;
+    // With ignore_style_weapon_rule, an unarmed user is not turned away because the selected style
+    // is strictly_melee (used for fallback attacks; every other requirement still applies)
+    bool is_valid_character( const Character &u, bool ignore_style_weapon_rule = false ) const;
+    // The first requirement the user fails, or technique_rejection::none
+    technique_rejection check_character( const Character &u,
+                                         bool ignore_style_weapon_rule = false ) const;
     bool is_valid_weapon( const item &i ) const;
 
     void load( const JsonObject &jo, std::string_view src );
@@ -151,6 +264,10 @@ struct tech_effect_data {
     bool permanent;
     bool on_damage;
     int chance;
+    // Intensity to set; 0 keeps the effect's normal starting (or current) intensity
+    int intensity = 0;
+    // The effect lands on the attacker instead of the target (`"target": "self"`)
+    bool on_self = false;
     std::string message;
     // Dialogue conditions of the effect
     std::function<bool( const_dialogue const & )> condition;
@@ -168,7 +285,10 @@ class ma_technique
         void load( const JsonObject &jo, std::string_view src );
         static void verify_ma_techniques();
         static void finalize_all();
+        // Run at load by check_martialarts
         void check() const;
+        // Not run at load yet (audit DATA-J03): core, TEST_DATA and mod techniques still trip it
+        void check_attack_vectors() const;
 
         matec_id id;
         std::vector<std::pair<matec_id, mod_id>> src;
@@ -182,6 +302,16 @@ class ma_technique
 
         // given a Character's state, does this bonus apply to him?
         bool is_valid_character( const Character &u ) const;
+
+        // Short, translated reason for the technique menu (the condition_desc for `condition`)
+        std::string rejection_text( technique_rejection why ) const;
+
+        // When the manual technique menu lists it; usability is unaffected
+        technique_menu_visibility menu_visibility = technique_menu_visibility::always;
+        // For technique_menu_visibility::condition (u = attacker, npc = target)
+        std::function<bool( const_dialogue const & )> menu_condition;
+        // Does the manual technique menu list it in an attack of u on target?
+        bool listed_in_menu( const Character &u, const Creature &target ) const;
 
         std::set<std::string> flags;
 
@@ -210,15 +340,27 @@ class ma_technique
         float knockback_spread = 0.0f;  // adding randomness to knockback, like tec_throw
         std::string aoe;                // corresponds to an aoe shape, defaults to just the target
         bool knockback_follow = false;  // Character follows the knocked-back party into their former tile
+        // In manual combat mode, the avatar aims the knockback of this technique when it was
+        // chosen in the technique menu (Cataclysm-BN's controlled_knockback)
+        bool controlled_knockback = false;
 
         // offensive
         bool disarms = false;       // like tec_disarm
         bool take_weapon = false;   // disarms and equips weapon if hands are free
         bool dodge_counter = false; // counter move activated on a dodge
         bool block_counter = false; // counter move activated on a block
+        bool grab_counter = false;  // counter move activated when something grabs you
 
         bool miss_recovery = false; // reduces the total move cost of a miss by 50%, post stumble modifier
         bool grab_break = false;    // allows grab_breaks, like tec_break
+
+        // Used only when no ordinary technique is possible, for attackers with the
+        // MA_BASIC_FALLBACK character flag; for everyone else an ordinary technique
+        bool fallback = false;
+        // Joins whichever pool pick_technique draws from without keeping fallbacks out
+        bool basic = false;
+        // Is this a fallback for this attacker (fallback and the attacker has MA_BASIC_FALLBACK)?
+        bool is_fallback_for( const Character &u ) const;
 
         int weighting = 0; //how often this technique is used
 
@@ -244,6 +386,43 @@ class ma_technique
         float armor_penetration( const Character &u, const damage_type_id &type ) const;
 
         std::vector<effect_on_condition_id> eocs;
+        // Run once after the hit is dealt, with the target as beta and an ma_event_context
+        std::vector<effect_on_condition_id> post_hit_eocs;
+};
+
+/**
+ * The techniques an attack can use, sorted the way Character::pick_technique chooses among them.
+ * Each technique appears once per point of positive weighting.
+ */
+struct technique_pools {
+    using entry = std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>;
+    // Ordinary techniques
+    std::vector<entry> possible;
+    // Fallback techniques of an attacker with MA_BASIC_FALLBACK
+    std::vector<entry> fallbacks;
+    // `basic` techniques
+    std::vector<entry> basics;
+
+    // The pool pick_technique draws from: the fallbacks when nothing ordinary is possible,
+    // otherwise the ordinary techniques; the basics join either
+    std::vector<entry> winning_pool() const;
+};
+
+/**
+ * What a martial art lets its user hold in hand while grabbing a creature. Grappling is
+ * unarmed unless the selected style lists the weapon here.
+ */
+struct ma_grapple_weapons {
+    // Weapons in any of these categories are allowed
+    std::set<weapon_category_id> categories;
+    // These item types are allowed
+    std::set<itype_id> items;
+    // Every weapon is allowed
+    bool any = false;
+
+    // Does this list allow grabbing while wielding the weapon? A null item is always allowed.
+    bool allows( const item &weapon ) const;
+    void deserialize( const JsonObject &jo );
 };
 
 class ma_buff
@@ -360,7 +539,12 @@ class martialart
 
         void apply_onkill_buffs( Character &u ) const;
 
-        void activate_eocs( Character &u, const std::vector<effect_on_condition_id> &eocs ) const;
+        void apply_ongrab_buffs( Character &u ) const;
+
+        void apply_ongrabbed_buffs( Character &u ) const;
+
+        void activate_eocs( Character &u, const std::vector<effect_on_condition_id> &eocs,
+                            const ma_event_context &ctx = {} ) const;
 
         // activates eocs when conditions are met
         void apply_static_eocs( Character &u ) const;
@@ -369,21 +553,25 @@ class martialart
 
         void apply_onpause_eocs( Character &u ) const;
 
-        void apply_onhit_eocs( Character &u ) const;
+        void apply_onhit_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onattack_eocs( Character &u ) const;
+        void apply_onattack_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_ondodge_eocs( Character &u ) const;
+        void apply_ondodge_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onblock_eocs( Character &u ) const;
+        void apply_onblock_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_ongethit_eocs( Character &u ) const;
+        void apply_ongethit_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onmiss_eocs( Character &u ) const;
+        void apply_onmiss_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_oncrit_eocs( Character &u ) const;
+        void apply_oncrit_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onkill_eocs( Character &u ) const;
+        void apply_onkill_eocs( Character &u, const ma_event_context &ctx ) const;
+
+        void apply_ongrab_eocs( Character &u, const ma_event_context &ctx ) const;
+
+        void apply_ongrabbed_eocs( Character &u, const ma_event_context &ctx ) const;
 
         // determines if a technique is valid or not for this style
         bool has_technique( const Character &u, const matec_id &tec_id ) const;
@@ -391,6 +579,10 @@ class martialart
         bool has_weapon( const itype_id & ) const;
         // Is this weapon OK with this art?
         bool weapon_valid( const item_location &it ) const;
+        // Can the user of this style grab a creature while wielding the weapon (grapple_weapons)?
+        bool grapple_allows_weapon( const item &weapon ) const;
+        // Load-time checks, run by check_martialarts
+        void check() const;
         // Getter for Character style change message
         std::string get_initiate_avatar_message() const;
         // Getter for NPC style change message
@@ -415,6 +607,7 @@ class martialart
         std::set<matec_id> techniques; // all available techniques
         std::set<itype_id> weapons; // all style weapons
         std::set<weapon_category_id> weapon_category; // all style weapon categories
+        ma_grapple_weapons grapple_weapons; // what may be wielded while grabbing a creature
         bool strictly_unarmed = false; // Punch daggers etc.
         bool strictly_melee = false; // Must have a weapon.
         bool allow_all_weapons = false; // Can use unarmed or with ANY weapon
@@ -431,6 +624,8 @@ class martialart
         std::vector<mabuff_id> onmiss_buffs;
         std::vector<mabuff_id> oncrit_buffs;
         std::vector<mabuff_id> onkill_buffs;
+        std::vector<mabuff_id> ongrab_buffs;    // you establish a hold on a creature
+        std::vector<mabuff_id> ongrabbed_buffs; // something establishes a hold on you
         std::vector<effect_on_condition_id> static_eocs; // all eocs triggered by each condition
         std::vector<effect_on_condition_id> onmove_eocs;
         std::vector<effect_on_condition_id> onpause_eocs;
@@ -442,6 +637,8 @@ class martialart
         std::vector<effect_on_condition_id> onmiss_eocs;
         std::vector<effect_on_condition_id> oncrit_eocs;
         std::vector<effect_on_condition_id> onkill_eocs;
+        std::vector<effect_on_condition_id> ongrab_eocs;
+        std::vector<effect_on_condition_id> ongrabbed_eocs;
 };
 
 class ma_style_callback : public uilist_callback

@@ -183,9 +183,25 @@ namespace io
             case enchant_vals::mod::TOTAL_WEIGHT: return "TOTAL_WEIGHT";
             case enchant_vals::mod::FUEL_USAGE: return "FUEL_USAGE";
             case enchant_vals::mod::TURNING_DIFFICULTY: return "TURNING_DIFFICULTY";
+            case enchant_vals::mod::CROWD_CRUSH_RESIST: return "CROWD_CRUSH_RESIST";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );
+    }
+
+    template<>
+    std::string enum_to_string<enchant_vals::spell_mod>( enchant_vals::spell_mod data )
+    {
+        switch ( data ) {
+            case enchant_vals::spell_mod::DAMAGE: return "DAMAGE";
+            case enchant_vals::spell_mod::RANGE: return "RANGE";
+            case enchant_vals::spell_mod::AOE: return "AOE";
+            case enchant_vals::spell_mod::DURATION: return "DURATION";
+            case enchant_vals::spell_mod::COST: return "COST";
+            case enchant_vals::spell_mod::CAST_TIME: return "CAST_TIME";
+            case enchant_vals::spell_mod::NUM_SPELL_MOD: break;
+        }
+        cata_fatal( "Invalid enchant_vals::spell_mod" );
     }
     // *INDENT-ON*
 } // namespace io
@@ -316,6 +332,58 @@ void enchantment::load_enchantment( const JsonObject &jo, const std::string &src
 void enchantment::finalize_all()
 {
     spell_factory.finalize();
+    for( const enchantment &ench : spell_factory.get_all() ) {
+        ench.check_spell_values();
+    }
+}
+
+void enchant_spell_filter::load( const JsonObject &jo )
+{
+    optional( jo, false, "spell", id );
+    optional( jo, false, "spell_class", spell_class );
+    optional( jo, false, "magic_type", magic_type );
+    optional( jo, false, "damage_type", damage_type );
+    optional( jo, false, "flag", flag );
+}
+
+bool enchant_spell_filter::matches( const spell &sp ) const
+{
+    if( id && sp.id() != *id ) {
+        return false;
+    }
+    if( spell_class && sp.spell_class() != *spell_class ) {
+        return false;
+    }
+    if( magic_type && sp.id()->magic_type != magic_type ) {
+        return false;
+    }
+    if( damage_type && sp.id()->dmg_type != *damage_type ) {
+        return false;
+    }
+    return !flag || sp.has_flag( *flag );
+}
+
+void enchantment::check_spell_values() const
+{
+    for( const spell_value &sv : spell_values ) {
+        const enchant_spell_filter &f = sv.filter;
+        if( f.id && !f.id->is_valid() ) {
+            debugmsg( "enchantment %s: spell_values names unknown spell %s", id.str(),
+                      f.id->str() );
+        }
+        if( f.spell_class && !f.spell_class->is_valid() ) {
+            debugmsg( "enchantment %s: spell_values names unknown spell_class %s", id.str(),
+                      f.spell_class->str() );
+        }
+        if( f.magic_type && !f.magic_type->is_valid() ) {
+            debugmsg( "enchantment %s: spell_values names unknown magic_type %s", id.str(),
+                      f.magic_type->str() );
+        }
+        if( f.damage_type && !f.damage_type->is_valid() ) {
+            debugmsg( "enchantment %s: spell_values names unknown damage_type %s", id.str(),
+                      f.damage_type->str() );
+        }
+    }
 }
 
 void enchantment::reset()
@@ -463,6 +531,11 @@ bool enchantment::is_monster_relevant() const
         return true;
     }
 
+    // monsters cast spells too
+    if( !spell_values.empty() ) {
+        return true;
+    }
+
     return false;
 }
 
@@ -600,6 +673,21 @@ void enchantment::load( const JsonObject &jo, std::string_view,
 
     load_add_and_multiply_dbl_or_var<damage_type_id>( jo, "incoming_damage_mod_post_absorbed", "type",
             extra_damage_add, extra_damage_multiply );
+
+    if( jo.has_array( "spell_values" ) ) {
+        spell_values.clear();
+        for( const JsonObject value_obj : jo.get_array( "spell_values" ) ) {
+            spell_value sv;
+            mandatory( value_obj, false, "value", sv.value );
+            sv.filter.load( value_obj );
+            if( !value_obj.has_member( "add" ) && !value_obj.has_member( "multiply" ) ) {
+                value_obj.throw_error( "spell_values entry needs \"add\" or \"multiply\"" );
+            }
+            sv.add = get_dbl_or_var( value_obj, "add", false, 0.0 );
+            sv.multiply = get_dbl_or_var( value_obj, "multiply", false, 0.0 );
+            spell_values.push_back( sv );
+        }
+    }
 
     if( jo.has_array( "special_vision" ) ) {
         for( const JsonObject vision_obj : jo.get_array( "special_vision" ) ) {
@@ -907,6 +995,8 @@ void enchant_cache::force_add( const enchant_cache &rhs )
         // so +10% and -10% will add to 0%
         extra_damage_multiply[pair_values.first] += pair_values.second;
     }
+    spell_value_mods.insert( spell_value_mods.end(), rhs.spell_value_mods.begin(),
+                             rhs.spell_value_mods.end() );
     // from cache to cache?
     for( const special_vision &struc : rhs.special_vision_vector ) {
         special_vision_vector.emplace_back( special_vision{
@@ -1022,6 +1112,10 @@ void enchant_cache::force_add_with_dialogue( const enchantment &rhs, const const
     for( const std::pair<const damage_type_id, dbl_or_var> &pair_values :
          rhs.extra_damage_multiply ) {
         extra_damage_multiply[pair_values.first] += pair_values.second.evaluate( d );
+    }
+    for( const enchantment::spell_value &sv : rhs.spell_values ) {
+        spell_value_mods.push_back( spell_value_mod{ sv.value, sv.filter, sv.add.evaluate( d ),
+                                    sv.multiply.evaluate( d ) } );
     }
     for( const enchantment::special_vision &struc : rhs.special_vision_vector ) {
         special_vision_vector.emplace_back( special_vision{
@@ -1271,6 +1365,21 @@ double enchant_cache::modify_value( const enchant_vals::mod mod_val, double valu
     return value;
 }
 
+double enchant_cache::modify_spell_value( const enchant_vals::spell_mod mod_val, const spell &sp,
+        double value ) const
+{
+    double add = 0.0;
+    double multiply = 0.0;
+    for( const spell_value_mod &sv : spell_value_mods ) {
+        if( sv.value == mod_val && sv.filter.matches( sp ) ) {
+            add += sv.add;
+            // like other enchantment values, multipliers add up: +10% and -10% make 0%
+            multiply += sv.multiply;
+        }
+    }
+    return ( value + add ) * ( 1.0 + multiply );
+}
+
 double enchant_cache::modify_value( const skill_id &mod_val, double value ) const
 {
     value += get_skill_value_add( mod_val );
@@ -1501,6 +1610,7 @@ void enchant_cache::clear()
     encumbrance_values_multiply.clear();
     extra_damage_add.clear();
     extra_damage_multiply.clear();
+    spell_value_mods.clear();
     special_vision_vector.clear();
     hit_me_effect.clear();
     hit_you_effect.clear();

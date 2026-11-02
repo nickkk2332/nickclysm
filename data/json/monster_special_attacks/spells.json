@@ -654,7 +654,7 @@
   },
   {
     "type": "SPELL",
-    "id": "base_portal",
+    "abstract": "base_portal",
     "name": { "str": "Base characteristics of portal spells", "//~": "NO_I18N" },
     "description": { "str": "Base portal stats.", "//~": "NO_I18N" },
     "valid_targets": [ "hostile" ],

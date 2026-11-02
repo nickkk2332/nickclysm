@@ -13,7 +13,8 @@
   {
     "id": "AISLE_LIGHT",
     "type": "json_flag",
-    "info": "A bright light that illuminates several squares inside the vehicle."
+    "info": "A bright light that illuminates several squares inside the vehicle.",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "aisle lights" }, "hotkey": "TOGGLE_AISLE_LIGHT" }
   },
   {
     "id": "ARMOR",
@@ -62,7 +63,8 @@
   {
     "id": "SMART_ENGINE_CONTROLLER",
     "type": "json_flag",
-    "info": "When active, turns engines on and off automatically."
+    "info": "When active, turns engines on and off automatically.",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "smart controller" }, "hotkey": "TOGGLE_SMART_ENGINE_CONTROLLER" }
   },
   {
     "id": "COVERED",
@@ -294,7 +296,8 @@
   },
   {
     "id": "ATOMIC_LIGHT",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "atomic lights" }, "hotkey": "TOGGLE_ATOMIC_LIGHT" }
   },
   {
     "id": "AUTOCLAVE",
@@ -302,7 +305,8 @@
   },
   {
     "id": "AUTOPILOT",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": {  }
   },
   {
     "id": "BATTERY",
@@ -318,7 +322,8 @@
   },
   {
     "id": "ARCADE",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "arcade" }, "hotkey": "TOGGLE_ARCADE" }
   },
   {
     "id": "BEEPER",
@@ -347,17 +352,20 @@
   },
   {
     "id": "CHIMES",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "chimes" }, "hotkey": "TOGGLE_CHIMES" }
   },
   {
     "id": "CIRCLE_LIGHT",
     "type": "json_flag",
-    "info": "A bright light that <color_yellow>illuminates a circular area</color> outside the vehicle when turned on."
+    "info": "A bright light that <color_yellow>illuminates a circular area</color> outside the vehicle when turned on.",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "overhead lights" }, "hotkey": "TOGGLE_OVERHEAD_LIGHT" }
   },
   {
     "id": "CONE_LIGHT",
     "type": "json_flag",
-    "info": "A bright, directed light that <color_yellow>illuminates a narrow cone</color> outside the vehicle when turned on.  During installation, you can choose what direction to point the light."
+    "info": "A bright, directed light that <color_yellow>illuminates a narrow cone</color> outside the vehicle when turned on.  During installation, you can choose what direction to point the light.",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "headlights" }, "hotkey": "TOGGLE_HEADLIGHT" }
   },
   {
     "id": "CONTROL_ANIMAL",
@@ -365,7 +373,8 @@
   },
   {
     "id": "COOLER",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "cooler" }, "hotkey": "TOGGLE_COOLER" }
   },
   {
     "id": "DISHWASHER",
@@ -373,7 +382,8 @@
   },
   {
     "id": "DOME_LIGHT",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "dome lights" }, "hotkey": "TOGGLE_DOME_LIGHT" }
   },
   {
     "id": "E_COLD_START",
@@ -414,11 +424,13 @@
   },
   {
     "id": "FREEZER",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "freezer" }, "hotkey": "TOGGLE_FREEZER" }
   },
   {
     "id": "FRIDGE",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "fridge" }, "hotkey": "TOGGLE_FRIDGE" }
   },
   {
     "id": "FULL_BOARD",
@@ -436,7 +448,11 @@
   {
     "id": "HALF_CIRCLE_LIGHT",
     "type": "json_flag",
-    "info": "A bright, directed light that <color_yellow>illuminates a half-circular area</color> outside the vehicle when turned on.  During installation, you can choose what direction to point the light."
+    "info": "A bright, directed light that <color_yellow>illuminates a half-circular area</color> outside the vehicle when turned on.  During installation, you can choose what direction to point the light.",
+    "vehicle_toggle": {
+      "name": { "ctxt": "electronics menu option", "str": "directed overhead lights" },
+      "hotkey": "TOGGLE_HALF_OVERHEAD_LIGHT"
+    }
   },
   {
     "id": "HARNESS_any",
@@ -449,7 +465,8 @@
   {
     "id": "HEATED_TANK",
     "type": "json_flag",
-    "info": "When turned on, it will <color_light_cyan>prevent the content from freezing</color>."
+    "info": "When turned on, it will <color_light_cyan>prevent the content from freezing</color>.",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "heated tank" }, "hotkey": "TOGGLE_HEATED_TANK" }
   },
   {
     "id": "HORN",
@@ -544,11 +561,13 @@
   },
   {
     "id": "PLANTER",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "planter" }, "hotkey": "TOGGLE_PLANTER" }
   },
   {
     "id": "PLOW",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "plow" }, "hotkey": "TOGGLE_PLOW" }
   },
   {
     "id": "POWER_TRANSFER",
@@ -564,11 +583,13 @@
   },
   {
     "id": "REACTOR",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "reactor" }, "hotkey": "TOGGLE_REACTOR" }
   },
   {
     "id": "REAPER",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "reaper" }, "hotkey": "TOGGLE_REAPER" }
   },
   {
     "id": "REMOTE_CONTROLS",
@@ -576,7 +597,13 @@
   },
   {
     "id": "ROCKWHEEL",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "rockwheel" }, "hotkey": "TOGGLE_PLOW" }
+  },
+  {
+    "id": "ROADHEAD",
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "roadheader" }, "hotkey": "TOGGLE_PLOW" }
   },
   {
     "id": "ROTOR",
@@ -584,7 +611,8 @@
   },
   {
     "id": "SCOOP",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "scoop" }, "hotkey": "TOGGLE_SCOOP" }
   },
   {
     "id": "SECURITY",
@@ -608,11 +636,13 @@
   },
   {
     "id": "SPACE_HEATER",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "space heater" }, "hotkey": "TOGGLE_SPACE_HEATER" }
   },
   {
     "id": "STEREO",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "stereo" }, "hotkey": "TOGGLE_STEREO" }
   },
   {
     "id": "TRACK",
@@ -680,7 +710,13 @@
   {
     "id": "WIDE_CONE_LIGHT",
     "type": "json_flag",
-    "info": "A bright, directed light that <color_yellow>illuminates a wide cone</color> outside the vehicle when turned on.  During installation, you can choose what direction to point the light."
+    "info": "A bright, directed light that <color_yellow>illuminates a wide cone</color> outside the vehicle when turned on.  During installation, you can choose what direction to point the light.",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "wide angle headlights" }, "hotkey": "TOGGLE_WIDE_HEADLIGHT" }
+  },
+  {
+    "id": "WATER_PURIFIER",
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "water purifier" }, "hotkey": "TOGGLE_WATER_PURIFIER" }
   },
   {
     "id": "WIND_POWERED",

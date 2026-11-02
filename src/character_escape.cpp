@@ -16,6 +16,7 @@
 #include "effect.h"
 #include "enums.h"
 #include "flag.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_pocket.h"
 #include "map.h"
@@ -24,6 +25,7 @@
 #include "messages.h"
 #include "monster.h"
 #include "mtype.h"
+#include "npc.h"
 #include "output.h"
 #include "pimpl.h"
 #include "point.h"
@@ -40,6 +42,7 @@ static const efftype_id effect_crushed( "crushed" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_heavysnare( "heavysnare" );
 static const efftype_id effect_in_pit( "in_pit" );
+static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_lightsnare( "lightsnare" );
 static const efftype_id effect_webbed( "webbed" );
 
@@ -219,10 +222,6 @@ bool Character::try_remove_grab( bool attacking )
             }
         }
     } else if( has_effect_with_flag( json_flag_GRAB ) ) {
-        // Need to know who's around for targeted removal
-        map &here = get_map();
-        creature_tracker &creatures = get_creature_tracker();
-
         // No need to recalculate it in-loop, breaking previous grabs doesn't change skills
         float skill_factor = std::min( 0.8f,
         std::max( {
@@ -231,29 +230,57 @@ bool Character::try_remove_grab( bool attacking )
             static_cast<float>( get_skill_level( skill_unarmed ) ) / 8
         } ) );
         int grab_break_factor = has_grab_break_tec() ? 10 : 0;
-        const tripoint_range<tripoint_bub_ms> &surrounding = here.points_in_radius( pos_bub(), 1, 0 );
 
-        // Iterate through all our grabs and attempt to break them one by one
+        // Iterate through all our grabs and attempt to break them one by one. Breaking one ends
+        // a hold, and the events that sends can run EOCs, so walk a copy of what holds us and
+        // look each one up again.
+        std::vector<std::pair<efftype_id, bodypart_id>> grabs;
         for( const effect &eff : get_effects_with_flag( json_flag_GRAB ) ) {
-            float escape_chance = 1.0f;
-            float grabber_roll = static_cast<float>( eff.get_intensity() );
-            // We need to figure out which monster is responsible for this grab early for good messaging
-            // For now, one grabber per limb TODO: handle multiple grabbers and decrement intensity
-            monster *grabber = nullptr;
-            for( const tripoint_bub_ms loc : surrounding ) {
-                monster *mon = creatures.creature_at<monster>( loc );
-                if( mon && mon->is_grabbing( eff.get_bp().id() ) ) {
-                    add_msg_debug( debugmode::DF_MATTACK, "Grabber %s found", mon->name() );
-                    grabber = mon;
-                    break;
-                }
+            grabs.emplace_back( eff.get_id(), eff.get_bp() );
+        }
+        for( const std::pair<efftype_id, bodypart_id> &held : grabs ) {
+            if( is_dead_state() || !has_effect( held.first, held.second ) ) {
+                continue;
             }
+            const effect &eff = get_effect( held.first, held.second );
+            const efftype_id eff_id = eff.get_id();
+            const bodypart_id eff_bp = eff.get_bp();
+            const int grab_str = eff.get_intensity();
+            float escape_chance = 1.0f;
+            float grabber_roll = static_cast<float>( grab_str );
+            // We need to figure out who is responsible for this grab early for good messaging.
+            // A character's grab names it as the effect's source. A monster's grab is found by
+            // searching the monsters in grab reach, which can be past the adjacent tiles.
+            // For now, one grabber per limb TODO: handle multiple grabbers and decrement intensity
+            Character *const char_grabber = grapple::character_grabber( *this, eff );
+            monster *const mon_grabber = char_grabber != nullptr ? nullptr :
+                                         grapple::monster_grabber( *this, eff_bp );
+            Creature *const grabber = char_grabber != nullptr ?
+                                      static_cast<Creature *>( char_grabber ) : mon_grabber;
 
             // Something went wrong, remove grab to be sure and throw an error
             if( grabber == nullptr ) {
-                remove_effect( eff.get_id(), eff.get_bp() );
+                remove_effect( eff_id, eff_bp );
                 add_msg_debug( debugmode::DF_MATTACK, "Orphan grab found and removed" );
                 continue;
+            }
+
+            if( char_grabber != nullptr ) {
+                // Nothing can hold what isn't quite here.
+                if( has_effect( effect_incorporeal ) ||
+                    char_grabber->has_effect( effect_incorporeal ) ) {
+                    grapple::end_hold( *char_grabber, this );
+                    continue;
+                }
+                // Followers assume the player has a good reason; being held doesn't hurt them.
+                if( char_grabber->is_avatar() && is_npc() && as_npc()->is_player_ally() ) {
+                    continue;
+                }
+                // A fresh grab can't be broken at once, or turn order would break every
+                // character's grab on the turn it lands.
+                if( grapple::within_min_hold( *char_grabber, *this, eff ) ) {
+                    continue;
+                }
             }
 
             // Short out the check when attacking after removing any orphan grabs
@@ -264,11 +291,11 @@ bool Character::try_remove_grab( bool attacking )
             }
 
             bool torn_pocket = false;
-            std::vector<item_pocket *> pd = worn.grab_drop_pockets( eff.get_bp() );
+            std::vector<item_pocket *> pd = worn.grab_drop_pockets( eff_bp );
             if( !pd.empty() ) {
                 // choose an item to be ripped off
                 int index = rng( 0, pd.size() - 1 );
-                int chance = rng( 0, get_effect_int( eff.get_id(), eff.get_bp() ) );
+                int chance = rng( 0, get_effect_int( eff_id, eff_bp ) );
                 int sturdiness = rng( 0, pd[index]->get_pocket_data()->ripoff * 10 );
                 add_msg_debug( debugmode::DF_MATTACK, "Tearoff pocket %s chosen, sturdiness %d, tearing chance %d",
                                pd[index]->get_name(), sturdiness, chance );
@@ -293,48 +320,63 @@ bool Character::try_remove_grab( bool attacking )
             grabber_roll = std::max( grabber_roll, escape_chance ) + rng( 1, 10 );
             escape_chance += grab_break_factor;
             if( has_trait( trait_SLIMY ) || has_trait( trait_VISCOUS ) ) {
-                const float slime_factor = worn.clothing_wetness_mult( eff.get_bp() ) * 6;
+                const float slime_factor = worn.clothing_wetness_mult( eff_bp ) * 6;
                 // Slime offers a 6% bonus to escaping from a grab on a naked body part.
                 // Slime exudes from the skin and will only soak through clothes according to their combined breathability and coverage.
                 // Since the attacker is grabbing at the outermost layer, that 6% is multiplied by clothing_wetness_mult for that body part.
                 escape_chance += slime_factor;
                 add_msg_debug( debugmode::DF_MATTACK,
                                "%s is slimy, escape chance increased by %f",
-                               eff.get_bp()->name, slime_factor );
+                               eff_bp->name, slime_factor );
             }
             add_msg_debug( debugmode::DF_MATTACK,
                            "Attempting to break grab on %s, grab strength roll %.1f, skill factor %.1f, limb factor %.1f, stat bonus %.1f, grab break bonus %d, escape chance %.1f, final chance %.1f %%",
-                           eff.get_bp()->name, grabber_roll, skill_factor, limb_factor, stat_factor, grab_break_factor,
+                           eff_bp->name, grabber_roll, skill_factor, limb_factor, stat_factor,
+                           grab_break_factor,
                            escape_chance,
                            escape_chance * 100 / grabber_roll );
             if( torn_pocket ) {
                 escape_chance *= 1.5f;
                 add_msg_debug( debugmode::DF_MATTACK,
                                "Pocket torn off in the attempt, escape chance increased to %.1f",
-                               escape_chance * 100 / eff.get_intensity() );
+                               escape_chance * 100 / grab_str );
             }
 
+            // Holding on against the struggle tires a character grabber.
+            if( char_grabber != nullptr ) {
+                char_grabber->set_activity_level( grapple::exertion_level( *char_grabber ) );
+                const int escape_skill = static_cast<int>( escape_chance / 10.0f );
+                const int cost = grapple::escape_stamina_cost( *char_grabber, *this, grab_str,
+                                 escape_skill );
+                char_grabber->burn_energy_arms( -cost );
+            }
             // Every attempt burns some stamina - maybe some moves?
-            burn_energy_arms( -5 * eff.get_intensity() );
+            burn_energy_arms( -5 * grab_str );
             if( x_in_y( escape_chance, grabber_roll ) ) {
-                grabber->remove_grab( eff.get_bp().id() );
-                add_msg_debug( debugmode::DF_MATTACK, "Removed grab effect %s from monster %s",
-                               eff.get_bp()->name, grabber->name() );
-
                 if( grab_break_factor > 0 ) {
                     add_msg_if_player( m_info, martial_arts_data->get_grab_break( *this ).avatar_message.translated(),
                                        grabber->disp_name() );
                 } else {
                     add_msg_player_or_npc( m_good, _( "You break the grab %s had on your %s!" ),
                                            _( "<npcname> breaks the grab %s had on their %s!" ), grabber->disp_name(),
-                                           eff.get_bp()->name );
+                                           eff_bp->name );
                 }
-                // Remove only this one grab
-                remove_effect( eff.get_id(), eff.get_bp() );
+                if( char_grabber != nullptr ) {
+                    // Removes this grab and the grabber's side of it.
+                    grapple::end_hold( *char_grabber, this );
+                    add_msg_debug( debugmode::DF_CHARACTER, "Removed grab effect %s held by %s",
+                                   eff_bp->name, char_grabber->disp_name() );
+                } else {
+                    mon_grabber->remove_grab( eff_bp.id() );
+                    add_msg_debug( debugmode::DF_MATTACK, "Removed grab effect %s from monster %s",
+                                   eff_bp->name, mon_grabber->name() );
+                    // Remove only this one grab
+                    remove_effect( eff_id, eff_bp );
+                }
             } else {
                 add_msg_player_or_npc( m_bad, _( "You try to break the grab %s has on your %s, but fail!" ),
                                        _( "<npcname> tries to break the grab %s has on their %s, but fails!" ), grabber->disp_name(),
-                                       eff.get_bp()->name );
+                                       eff_bp->name );
             }
         }
 

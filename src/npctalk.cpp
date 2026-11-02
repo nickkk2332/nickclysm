@@ -25,6 +25,7 @@
 #include "achievement.h"
 #include "action.h"
 #include "activity_actor_definitions.h"
+#include "activity_actor_eoc.h"
 #include "auto_pickup.h"
 #include "avatar.h"
 #include "bionics.h"
@@ -38,6 +39,7 @@
 #include "catacharset.h"
 #include "character.h"
 #include "character_id.h"
+#include "character_martial_arts.h"
 #include "city.h"
 #include "clzones.h"
 #include "color.h"
@@ -73,6 +75,7 @@
 #include "game_inventory.h"
 #include "generic_factory.h"
 #include "global_vars.h"
+#include "grapple.h"
 #include "gun_mode.h"
 #include "input.h"
 #include "input_context.h"
@@ -101,8 +104,10 @@
 #include "math_parser_type.h"
 #include "memory_fast.h"
 #include "memorial_logger.h"
+#include "melee.h"
 #include "messages.h"
 #include "mission.h"
+#include "monfaction.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -157,6 +162,7 @@
 #include "vpart_position.h"
 #include "vpart_range.h"
 #include "weather.h"
+#include "weather_type.h"
 #include "weighted_list.h"
 #include "wound.h"
 
@@ -164,7 +170,6 @@ class recipe_subset;
 
 static const activity_id ACT_AIM( "ACT_AIM" );
 static const activity_id ACT_SOCIALIZE( "ACT_SOCIALIZE" );
-static const activity_id ACT_TARGET_PRACTICE( "ACT_TARGET_PRACTICE" );
 static const activity_id ACT_TRAIN( "ACT_TRAIN" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
@@ -174,6 +179,7 @@ static const efftype_id effect_riding( "riding" );
 static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_under_operation( "under_operation" );
 
+static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_NO_UNLOAD( "NO_UNLOAD" );
 
 static const itype_id fuel_type_animal( "animal" );
@@ -1711,6 +1717,30 @@ std::string dialogue::speaker_name( const dialogue_imgui_impl &d_img ) const
     return actor( true )->disp_name();
 }
 
+// Topics the mission system answers in dialogue::dynamic_line.
+static const std::unordered_set<std::string> mission_talk_topics = {
+    "TALK_MISSION_DESCRIBE", "TALK_MISSION_DESCRIBE_URGENT",
+    "TALK_MISSION_OFFER", "TALK_MISSION_ACCEPTED",
+    "TALK_MISSION_REJECTED", "TALK_MISSION_ADVICE", "TALK_MISSION_INQUIRE",
+    "TALK_MISSION_SUCCESS", "TALK_MISSION_SUCCESS_LIE", "TALK_MISSION_FAILURE"
+};
+
+// The other topics dialogue::dynamic_line answers in C++ when no JSON topic has the id.
+// Keep this in step with it.
+static const std::unordered_set<std::string> built_in_talk_topics = {
+    "TALK_NONE", "TALK_DONE",
+    "TALK_NPC_NOFACE", "TALK_NOFACE", "TALK_DEAF", "TALK_DEAF_ANGRY", "TALK_MUTE",
+    "TALK_MUTE_ANGRY", "TALK_CHURL", "TALK_CHURL_ANGRY", "TALK_CHURL_TRADE", "TALK_SEDATED",
+    "TALK_TRAIN", "TALK_TRAIN_NPC", "TALK_TRAIN_SEMINAR", "TALK_HOW_MUCH_FURTHER",
+    "TALK_DESCRIBE_MISSION", "TALK_SHOUT", "TALK_MIND_CONTROL"
+};
+
+bool talk_topic_exists( const std::string &id )
+{
+    return json_talk_topics.count( id ) > 0 || mission_talk_topics.count( id ) > 0 ||
+           built_in_talk_topics.count( id ) > 0;
+}
+
 std::string dialogue::dynamic_line( const talk_topic &the_topic )
 {
     if( !the_topic.item_type.is_null() ) {
@@ -1773,14 +1803,7 @@ std::string dialogue::dynamic_line( const talk_topic &the_topic )
     }
 
     // Those topics are handled by the mission system, see there.
-    static const std::unordered_set<std::string> mission_topics = { {
-            "TALK_MISSION_DESCRIBE", "TALK_MISSION_DESCRIBE_URGENT",
-            "TALK_MISSION_OFFER", "TALK_MISSION_ACCEPTED",
-            "TALK_MISSION_REJECTED", "TALK_MISSION_ADVICE", "TALK_MISSION_INQUIRE",
-            "TALK_MISSION_SUCCESS", "TALK_MISSION_SUCCESS_LIE", "TALK_MISSION_FAILURE"
-        }
-    };
-    if( mission_topics.count( topic ) > 0 ) {
+    if( mission_talk_topics.count( topic ) > 0 ) {
         mission *miss = actor( true )->selected_mission();
         if( miss == nullptr ) {
             return "mission_selected == nullptr; BUG!  (npctalk.cpp:dynamic_line)";
@@ -3718,6 +3741,47 @@ talk_effect_fun_t::func f_lose_bionic( const JsonObject &jo, std::string_view me
     return [is_npc, old_bionic]( dialogue const & d ) {
         d.actor( is_npc )->remove_bionic( bionic_id( old_bionic.evaluate( d ) ) );
     };
+}
+
+// u_activate_bionic / u_deactivate_bionic: switch the first installed bionic of that id that
+// is in the other state, through the same code path as the bionics menu.
+static talk_effect_fun_t::func toggle_bionic_effect( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc, bool activate )
+{
+    str_or_var bionic_name = get_str_or_var( jo.get_member( member ), member, true );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, activate, bionic_name, true_eocs, false_eocs]( dialogue & d ) {
+        const std::string name = bionic_name.evaluate( d );
+        const bionic_id bio_id( name );
+        if( !bio_id.is_valid() ) {
+            debugmsg( "%s: unknown bionic id \"%s\"",
+                      activate ? "activate_bionic" : "deactivate_bionic", name );
+            return;
+        }
+        bool success = false;
+        if( Character *guy = d.actor( is_npc )->get_character() ) {
+            for( bionic &bio : *guy->my_bionics ) {
+                if( bio.id == bio_id && bio.powered != activate ) {
+                    success = activate ? guy->activate_bionic( bio ) : guy->deactivate_bionic( bio );
+                    break;
+                }
+            }
+        }
+        run_eoc_vector( success ? true_eocs : false_eocs, d );
+    };
+}
+
+talk_effect_fun_t::func f_activate_bionic( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    return toggle_bionic_effect( jo, member, src, is_npc, true );
+}
+
+talk_effect_fun_t::func f_deactivate_bionic( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    return toggle_bionic_effect( jo, member, src, is_npc, false );
 }
 
 talk_effect_fun_t::func f_pick_bodypart( const JsonObject &jo, std::string_view member,
@@ -5776,18 +5840,57 @@ talk_effect_fun_t::func f_message( const JsonObject &jo, std::string_view member
 talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_view member,
         std::string_view, bool is_npc )
 {
+    const bool has_duration = jo.has_member( "duration" );
     duration_or_var dov = get_duration_or_var( jo, "duration", false );
     str_or_var act = get_str_or_var( jo.get_member( member ), member, true );
-    return [is_npc, dov, act]( dialogue & d ) {
-        Character *target = d.actor( is_npc )->get_character();
-        if( target ) {
-            const activity_id a = activity_id( act.evaluate( d ) );
-            if( a == ACT_TARGET_PRACTICE ) {
-                target->assign_activity( target_practice_activity_actor() );
-            } else {
-                target->assign_activity( a, to_moves<int>( dov.evaluate( d ) ) );
+    if( jo.has_string( member ) ) {
+        // A literal id can be checked now; one from a variable is checked when it runs.
+        const activity_id literal( jo.get_string( member ) );
+        if( activity_actors::has_actor( literal ) ) {
+            if( !activity_actors::can_start_from_eoc( literal ) ) {
+                jo.throw_error_at( member, string_format( "%s needs more than a duration to start, "
+                                   "so an EOC can't start it", literal.str() ) );
+            }
+            if( has_duration && !activity_actors::eoc_start_takes_duration( literal ) ) {
+                jo.throw_error_at( "duration", string_format( "%s runs until its own work is done; "
+                                   "it takes no duration", literal.str() ) );
             }
         }
+    }
+    return [is_npc, has_duration, dov, act, member = std::string( member )]( dialogue & d ) {
+        Character *target = d.actor( is_npc )->get_character();
+        if( !target ) {
+            return;
+        }
+        const activity_id a( act.evaluate( d ) );
+        if( !a.is_valid() ) {
+            debugmsg( "%s: unknown activity %s", member, a.str() );
+            return;
+        }
+        if( !activity_actors::has_actor( a ) ) {
+            target->assign_activity( a, to_moves<int>( dov.evaluate( d ) ) );
+            return;
+        }
+        if( activity_actors::eoc_start_needs_avatar( a ) && !target->is_avatar() ) {
+            debugmsg( "%s: %s asks the player for input, so only the avatar can be given it, "
+                      "not %s", member, a.str(), target->get_name() );
+            return;
+        }
+        // The other talker is who ACT_WAIT_NPC waits for.
+        const bool has_other = is_npc ? d.has_alpha : d.has_beta;
+        const std::string other_name = has_other ? d.actor( !is_npc )->get_name() : std::string();
+        std::optional<time_duration> duration;
+        if( has_duration ) {
+            duration = dov.evaluate( d );
+        }
+        const std::unique_ptr<activity_actor> actor = activity_actors::make_for_eoc( a, *target,
+                other_name, duration );
+        if( !actor ) {
+            debugmsg( "%s: %s needs more than a duration to start, so an EOC can't start it",
+                      member, a.str() );
+            return;
+        }
+        target->assign_activity( *actor );
     };
 }
 
@@ -6030,6 +6133,156 @@ talk_effect_fun_t::func f_attack( const JsonObject &jo, std::string_view member,
 }
 
 
+// Opens the manual technique menu for u (the avatar), or picks for an NPC, and attacks the other
+// talker with the choice. See u_choose_technique in doc/JSON/EFFECT_ON_CONDITION.md.
+talk_effect_fun_t::func f_choose_technique( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    std::optional<std::vector<str_or_var>> techniques;
+    if( params.has_array( "techniques" ) ) {
+        techniques.emplace();
+        for( const JsonValue &jv : params.get_array( "techniques" ) ) {
+            techniques->emplace_back( get_str_or_var( jv, "techniques" ) );
+        }
+    } else if( params.has_member( "techniques" ) ) {
+        params.throw_error_at( "techniques", "techniques must be an array of techniques" );
+    }
+    const bool attack = params.get_bool( "attack", true );
+    const bool include_basic = params.get_bool( "include_basic", true );
+    std::optional<var_info> store;
+    if( params.has_member( "store" ) ) {
+        store = read_var_info( params.get_object( "store" ) );
+    }
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+    if( techniques ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        for( const str_or_var &tec : *techniques ) {
+            if( tec.is_constant() ) {
+                effect_on_conditions::add_load_check( [name = tec.constant(), context]() {
+                    if( !matec_id( name ).is_valid() ) {
+                        debugmsg( "Technique \"%s\" (in u_choose_technique in %s) does not exist",
+                                  name, context );
+                    }
+                } );
+            }
+        }
+    }
+
+    return [is_npc, techniques, attack, include_basic, store, false_eocs]( dialogue & d ) {
+        const auto write = [&store, &d]( const std::string & value ) {
+            if( store ) {
+                write_var_value( store->type, store->name, &d, value );
+            }
+        };
+        Character *you = d.actor( is_npc )->get_character();
+        Creature *target = d.actor( !is_npc )->get_creature();
+        if( you == nullptr || target == nullptr ) {
+            write( std::string() );
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        std::vector<matec_id> only;
+        if( techniques ) {
+            for( const str_or_var &tec : *techniques ) {
+                const matec_id id( tec.evaluate( d ) );
+                if( id.is_valid() ) {
+                    only.push_back( id );
+                } else {
+                    debugmsg( "u_choose_technique: unknown technique \"%s\".  %s", id.str(),
+                              d.get_callstack() );
+                }
+            }
+        }
+        const item_location weapon = you->used_weapon();
+
+        technique_choice choice( technique_choice::mode::cancel );
+        if( you->is_avatar() ) {
+            melee::technique_menu_options options;
+            options.only = techniques ? &only : nullptr;
+            options.include_basic = include_basic;
+            options.include_automatic = false;
+            choice = melee::choose_technique( *you, *target, weapon, options );
+        } else {
+            // An NPC makes its usual automatic choice, among the techniques given
+            std::vector<matec_id> others;
+            if( techniques ) {
+                for( const matec_id &tec :
+                     you->martial_arts_data->get_all_techniques( weapon, *you ) ) {
+                    if( std::find( only.begin(), only.end(), tec ) == only.end() ) {
+                        others.push_back( tec );
+                    }
+                }
+            }
+            const matec_id picked = std::get<0>( you->pick_technique( *target, weapon, false,
+                                                 false, false, others ) );
+            if( picked != tec_none ) {
+                choice = technique_choice( technique_choice::mode::chosen, picked );
+            } else if( include_basic ) {
+                choice = technique_choice( technique_choice::mode::basic );
+            }
+        }
+
+        if( choice.how == technique_choice::mode::cancel ) {
+            write( std::string() );
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        write( choice.how == technique_choice::mode::basic ? tec_none.str() : choice.tec.str() );
+        if( attack ) {
+            // Chosen already: the attack doesn't ask again
+            const melee::technique_menu_suppressor no_technique_menu;
+            you->melee_attack( *target, true, choice );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_set_special_enabled( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    check_special_attack_name_at_load( special, string_format( "%s (%s)", member,
+                                       jo.get_member( member ).get_root_source_path() ) );
+    const bool enabled = jo.get_bool( "value", true );
+    return [special, enabled, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon != nullptr ) {
+            mon->set_special_enabled( special.evaluate( d ), enabled );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_set_monster_faction( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    str_or_var faction = get_str_or_var( jo.get_member( member ), member, true );
+    if( faction.is_constant() ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name = faction.constant(), context]() {
+            if( !mfaction_str_id( name ).is_valid() ) {
+                debugmsg( "Monster faction \"%s\" (used by set_monster_faction in %s) does not "
+                          "exist", name, context );
+            }
+        } );
+    }
+    return [faction, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon == nullptr ) {
+            return;
+        }
+        const mfaction_str_id new_faction( faction.evaluate( d ) );
+        if( !new_faction.is_valid() ) {
+            debugmsg( "set_monster_faction: unknown monster faction \"%s\".  %s", new_faction.str(),
+                      d.get_callstack() );
+            return;
+        }
+        mon->faction = new_faction.id();
+        // Monsters find their targets through a cache sorted by faction
+        get_creature_tracker().invalidate_reachability_cache();
+    };
+}
+
 talk_effect_fun_t::func f_ranged_attack( bool is_npc )
 {
 
@@ -6126,6 +6379,91 @@ talk_effect_fun_t::func f_next_weather()
 {
     return []( dialogue const &/* d */ ) {
         get_weather().set_nextweather( calendar::turn );
+    };
+}
+
+talk_effect_fun_t::func f_set_weather( const JsonObject &jo, std::string_view member,
+                                       std::string_view src )
+{
+    str_or_var wtype = get_str_or_var( jo.get_member( member ), member, true );
+    if( wtype.is_constant() ) {
+        weather_types::add_pending_ref( wtype.constant(),
+                                        string_format( "set_weather in %s (%s)", src,
+                                                jo.get_member( member ).get_root_source_path() ) );
+    }
+    // Omitted or "PERMANENT": until cleared
+    std::optional<duration_or_var> duration;
+    if( jo.has_member( "duration" ) &&
+        !( jo.has_string( "duration" ) && jo.get_string( "duration" ) == "PERMANENT" ) ) {
+        duration_or_var dov;
+        mandatory( jo, false, "duration", dov );
+        duration = dov;
+    }
+    return [wtype, duration]( dialogue & d ) {
+        const weather_type_id wt( wtype.evaluate( d ) );
+        if( !wt.is_valid() || wt == WEATHER_NULL ) {
+            debugmsg( "set_weather: unknown weather type \"%s\".  %s", wt.str(),
+                      d.get_callstack() );
+            return;
+        }
+        weather_manager &weather = get_weather();
+        // A duration of 0 or less ends at once, which just clears an earlier set_weather;
+        // one reaching past calendar::turn_max (which would overflow) lasts until cleared
+        time_point end = calendar::turn_max;
+        if( duration ) {
+            const time_duration length = duration->evaluate( d );
+            if( length < calendar::turn_max - calendar::turn ) {
+                end = calendar::turn + length;
+            }
+        }
+        weather.eoc_weather.set( wt, end );
+        weather.set_nextweather( calendar::turn );
+    };
+}
+
+static const std::array<std::string_view, 6> weather_override_aspects = { {
+        "weather", "temperature", "temperature_offset", "windpower", "wind_direction", "all"
+    }
+};
+
+talk_effect_fun_t::func f_clear_weather_override( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    str_or_var aspect = get_str_or_var( jo.get_member( member ), member, true );
+    if( aspect.is_constant() &&
+        std::find( weather_override_aspects.begin(), weather_override_aspects.end(),
+                   aspect.constant() ) == weather_override_aspects.end() ) {
+        jo.throw_error_at( member, string_format( "unknown weather override \"%s\"; expected "
+                           "weather, temperature, temperature_offset, windpower, wind_direction "
+                           "or all", aspect.constant() ) );
+    }
+    return [aspect]( dialogue & d ) {
+        const std::string what = aspect.evaluate( d );
+        if( std::find( weather_override_aspects.begin(), weather_override_aspects.end(),
+                       what ) == weather_override_aspects.end() ) {
+            debugmsg( "clear_weather_override: unknown weather override \"%s\".  %s", what,
+                      d.get_callstack() );
+            return;
+        }
+        const bool all = what == "all";
+        weather_manager &weather = get_weather();
+        if( all || what == "weather" ) {
+            weather.eoc_weather.reset();
+        }
+        if( all || what == "temperature" ) {
+            weather.eoc_temperature.reset();
+        }
+        if( all || what == "temperature_offset" ) {
+            weather.eoc_temperature_offset.reset();
+        }
+        if( all || what == "windpower" ) {
+            weather.eoc_windspeed.reset();
+        }
+        if( all || what == "wind_direction" ) {
+            weather.eoc_wind_direction.reset();
+        }
+        // Back to the generated weather now
+        weather.set_nextweather( calendar::turn );
     };
 }
 
@@ -7783,6 +8121,202 @@ talk_effect_fun_t::func f_knockback( const JsonObject &jo, std::string_view memb
     };
 }
 
+talk_effect_fun_t::func f_fling( const JsonObject &jo, std::string_view member,
+                                 std::string_view, bool is_npc )
+{
+    JsonObject jobj = jo.get_object( member );
+    dbl_or_var force = get_dbl_or_var( jobj, "force", true );
+    std::optional<dbl_or_var> direction;
+    if( jobj.has_member( "direction" ) ) {
+        direction = get_dbl_or_var( jobj, "direction" );
+    }
+    std::optional<var_info> target_var;
+    optional( jobj, false, "target_var", target_var );
+    if( direction && target_var ) {
+        jobj.throw_error( "only one of \"direction\" and \"target_var\" can be given" );
+    }
+    const bool controlled = jobj.get_bool( "controlled", false );
+    const bool intentional = jobj.get_bool( "intentional", false );
+
+    return [force, direction, target_var, controlled, intentional, is_npc]( dialogue & d ) {
+        Creature *const flung = d.actor( is_npc )->get_creature();
+        if( flung == nullptr ) {
+            return;
+        }
+        units::angle dir;
+        if( target_var ) {
+            const tripoint_abs_ms toward = read_var_value( *target_var, d ).tripoint();
+            if( toward.xy() == flung->pos_abs().xy() ) {
+                // No way to tell which way is away.
+                return;
+            }
+            dir = coord_to_angle( flung->pos_abs(), toward );
+        } else if( direction ) {
+            dir = units::from_degrees( direction->evaluate( d ) );
+        } else {
+            dir = units::from_degrees( rng_float( 0.0, 360.0 ) );
+        }
+        g->fling_creature( flung, dir, static_cast<float>( force.evaluate( d ) ), controlled,
+                           intentional );
+    };
+}
+
+// The other talker named by "target" in u_release_grab: "npc" for u_, "u" for npc_.
+void check_other_talker( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const std::string value = jo.get_string( member );
+    const std::string other = is_npc ? "u" : "npc";
+    if( value != other ) {
+        jo.throw_error_at( member, string_format(
+                               "%s must be \"%s\" (the other talker), not \"%s\"",
+                               std::string( member ), other, value ) );
+    }
+}
+
+// u_grab / npc_grab: the talker (a character) takes hold of the other talker, directly or by the
+// grab action's roll. See doc/JSON/EFFECT_ON_CONDITION.md.
+talk_effect_fun_t::func f_grab( const JsonObject &jo, std::string_view member,
+                                std::string_view src, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    const bool attempt = params.get_bool( "attempt", false );
+    std::optional<dbl_or_var> strength;
+    if( params.has_member( "strength" ) ) {
+        strength = get_dbl_or_var( params, "strength" );
+    }
+    std::optional<str_or_var> part;
+    if( params.has_member( "body_part" ) ) {
+        part = get_str_or_var( params.get_member( "body_part" ), "body_part" );
+        if( part->is_constant() ) {
+            const std::string context = params.get_member( "body_part" ).get_root_source_path();
+            effect_on_conditions::add_load_check( [name = part->constant(), context]() {
+                if( !bodypart_str_id( name ).is_valid() ) {
+                    debugmsg( "Body part \"%s\" (in u_grab in %s) does not exist", name, context );
+                }
+            } );
+        }
+    }
+    const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+
+    return [is_npc, attempt, strength, part, true_eocs, false_eocs]( dialogue & d ) {
+        const auto grab = [&]() {
+            Character *const grabber = d.actor( is_npc )->get_character();
+            Creature *const target = d.actor( !is_npc )->get_creature();
+            if( grabber == nullptr || target == nullptr ) {
+                return false;
+            }
+            // A character is held by a main part; a monster as a whole, whatever part is named.
+            std::optional<bodypart_id> bp;
+            if( part && !target->is_monster() ) {
+                const bodypart_str_id named( part->evaluate( d ) );
+                if( !named.is_valid() ) {
+                    debugmsg( "u_grab: unknown body part \"%s\".  %s", named.str(),
+                              d.get_callstack() );
+                    return false;
+                }
+                bp = named->main_part.id();
+                if( !target->has_part( *bp ) ||
+                    target->has_effect_with_flag( json_flag_GRAB, *bp ) ) {
+                    return false;
+                }
+            }
+            std::optional<int> hold_strength;
+            if( strength ) {
+                const double wanted = std::round( strength->evaluate( d ) );
+                hold_strength = std::clamp( static_cast<int>( wanted ), 1, 100 );
+            }
+            if( attempt ) {
+                return !grapple::grab_refusal( *grabber, *target ) &&
+                       grapple::attempt_grab( *grabber, *target, hold_strength, bp );
+            }
+            if( grapple::hold_refusal( *grabber, *target ) ) {
+                return false;
+            }
+            if( !bp && !target->is_monster() ) {
+                bp = grapple::free_grab_part( *target );
+                if( !bp ) {
+                    return false;
+                }
+            }
+            if( !hold_strength ) {
+                hold_strength = grapple::grab_strength( *grabber, *target );
+            }
+            return grapple::start_hold( *grabber, *target, *hold_strength,
+                                        bp ? *bp : bodypart_str_id::NULL_ID().id() );
+        };
+        run_eoc_vector( grab() ? true_eocs : false_eocs, d );
+    };
+}
+
+// u_release_grab / npc_release_grab: the talker lets go of what it holds, or only of the other
+// talker.
+talk_effect_fun_t::func f_release_grab( const JsonObject &jo, std::string_view member,
+                                        std::string_view, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    const bool only_other = params.has_member( "target" );
+    if( only_other ) {
+        check_other_talker( params, "target", is_npc );
+    }
+    return [is_npc, only_other]( dialogue & d ) {
+        Creature *const self = d.actor( is_npc )->get_creature();
+        if( self == nullptr ) {
+            return;
+        }
+        Creature *other = nullptr;
+        if( only_other ) {
+            other = d.actor( !is_npc )->get_creature();
+            if( other == nullptr || !grapple::holds( *self, *other ) ) {
+                return;
+            }
+        }
+        if( Character *const guy = self->as_character() ) {
+            grapple::end_hold( *guy, other != nullptr ? other : guy->grabbed_creature() );
+        } else if( monster *const mon = self->as_monster() ) {
+            if( other != nullptr ) {
+                grapple::end_monster_hold( *mon, *other );
+            } else {
+                grapple::release_grabs_by( *mon );
+            }
+        }
+    };
+}
+
+// u_throw_grabbed / npc_throw_grabbed: the talker throws the creature it holds, with the throw
+// action's engine and checks but no targeting.
+talk_effect_fun_t::func f_throw_grabbed( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    std::optional<var_info> target_var;
+    optional( params, false, "target_var", target_var );
+    std::optional<dbl_or_var> force;
+    if( params.has_member( "force" ) ) {
+        force = get_dbl_or_var( params, "force" );
+    }
+    const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+
+    return [is_npc, target_var, force, true_eocs, false_eocs]( dialogue & d ) {
+        bool thrown = false;
+        if( Character *const thrower = d.actor( is_npc )->get_character() ) {
+            std::optional<tripoint_bub_ms> aim;
+            if( target_var ) {
+                aim = get_map().get_bub( read_var_value( *target_var, d ).tripoint() );
+            }
+            std::optional<float> full_force;
+            if( force ) {
+                full_force = static_cast<float>( force->evaluate( d ) );
+            }
+            thrown = grapple::throw_grabbed_creature( *thrower, aim, full_force );
+        }
+        run_eoc_vector( thrown ? true_eocs : false_eocs, d );
+    };
+}
+
 talk_effect_fun_t::func f_give_equipment( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -8927,7 +9461,21 @@ parsers = {
     { "u_add_memorial", "npc_add_memorial", jarg::member, &talk_effect_fun::f_add_memorial },
     { "u_add_bionic", "npc_add_bionic", jarg::member, &talk_effect_fun::f_add_bionic },
     { "u_lose_bionic", "npc_lose_bionic", jarg::member, &talk_effect_fun::f_lose_bionic },
+    { "u_activate_bionic", "npc_activate_bionic", jarg::member, &talk_effect_fun::f_activate_bionic },
+    { "u_deactivate_bionic", "npc_deactivate_bionic", jarg::member, &talk_effect_fun::f_deactivate_bionic },
     { "u_attack", "npc_attack", jarg::member, &talk_effect_fun::f_attack },
+    {
+        "u_choose_technique", "npc_choose_technique", jarg::member,
+        &talk_effect_fun::f_choose_technique
+    },
+    {
+        "u_set_special_enabled", "npc_set_special_enabled", jarg::member,
+        &talk_effect_fun::f_set_special_enabled
+    },
+    {
+        "u_set_monster_faction", "npc_set_monster_faction", jarg::member,
+        &talk_effect_fun::f_set_monster_faction
+    },
     { "u_die", "npc_die", jarg::object, &talk_effect_fun::f_die_advanced},
     { "u_spawn_monster", "npc_spawn_monster", jarg::member, &talk_effect_fun::f_spawn_monster },
     { "u_spawn_npc", "npc_spawn_npc", jarg::member, &talk_effect_fun::f_spawn_npc },
@@ -8984,6 +9532,8 @@ parsers = {
     { "map_spawn_item", jarg::member, &talk_effect_fun::f_spawn_item },
     { "clear_dimension", jarg::member, &talk_effect_fun::f_clear_dimension },
     { "mapgen_update", jarg::member, &talk_effect_fun::f_mapgen_update },
+    { "set_weather", jarg::member, &talk_effect_fun::f_set_weather },
+    { "clear_weather_override", jarg::member, &talk_effect_fun::f_clear_weather_override },
     { "alter_timed_events", jarg::member, &talk_effect_fun::f_alter_timed_events },
     { "revert_location", jarg::member, &talk_effect_fun::f_revert_location },
     { "copy_location", jarg::member, &talk_effect_fun::f_copy_location },
@@ -9009,6 +9559,10 @@ parsers = {
     { "custom_light_level", jarg::member | jarg::array, &talk_effect_fun::f_custom_light_level },
     { "mirror_coordinates", jarg::member, &talk_effect_fun::f_mirror_coordinates },
     { "u_knockback", "npc_knockback", jarg::member, &talk_effect_fun::f_knockback },
+    { "u_fling", "npc_fling", jarg::object, &talk_effect_fun::f_fling },
+    { "u_grab", "npc_grab", jarg::member, &talk_effect_fun::f_grab },
+    { "u_release_grab", "npc_release_grab", jarg::member, &talk_effect_fun::f_release_grab },
+    { "u_throw_grabbed", "npc_throw_grabbed", jarg::member, &talk_effect_fun::f_throw_grabbed },
     { "give_equipment", jarg::object, &talk_effect_fun::f_give_equipment },
     { "set_string_var", jarg::member | jarg::array, &talk_effect_fun::f_set_string_var },
     { "set_condition", jarg::member, &talk_effect_fun::f_set_condition },

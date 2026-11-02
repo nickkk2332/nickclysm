@@ -150,24 +150,6 @@ static const activity_id ACT_START_FIRE( "ACT_START_FIRE" );
 static const activity_id ACT_VEHICLE_DECONSTRUCTION( "ACT_VEHICLE_DECONSTRUCTION" );
 static const activity_id ACT_VEHICLE_REPAIR( "ACT_VEHICLE_REPAIR" );
 
-static const bionic_id bio_ads( "bio_ads" );
-static const bionic_id bio_blade( "bio_blade" );
-static const bionic_id bio_chain_lightning( "bio_chain_lightning" );
-static const bionic_id bio_claws( "bio_claws" );
-static const bionic_id bio_faraday( "bio_faraday" );
-static const bionic_id bio_heat_absorb( "bio_heat_absorb" );
-static const bionic_id bio_heatsink( "bio_heatsink" );
-static const bionic_id bio_hydraulics( "bio_hydraulics" );
-static const bionic_id bio_laser( "bio_laser" );
-static const bionic_id bio_leukocyte( "bio_leukocyte" );
-static const bionic_id bio_nanobots( "bio_nanobots" );
-static const bionic_id bio_ods( "bio_ods" );
-static const bionic_id bio_painkiller( "bio_painkiller" );
-static const bionic_id bio_plutfilter( "bio_plutfilter" );
-static const bionic_id bio_radscrubber( "bio_radscrubber" );
-static const bionic_id bio_shock( "bio_shock" );
-static const bionic_id bio_soporific( "bio_soporific" );
-
 static const damage_type_id damage_bash( "bash" );
 static const damage_type_id damage_bullet( "bullet" );
 static const damage_type_id damage_cut( "cut" );
@@ -209,6 +191,9 @@ static const itype_id itype_smoxygen_tank( "smoxygen_tank" );
 static const itype_id itype_thorazine( "thorazine" );
 static const itype_id itype_water( "water" );
 static const itype_id itype_water_clean( "water_clean" );
+static const json_character_flag json_flag_BIONIC_GUN( "BIONIC_GUN" );
+static const json_character_flag json_flag_BIONIC_NPC_USABLE( "BIONIC_NPC_USABLE" );
+static const json_character_flag json_flag_BIONIC_WEAPON( "BIONIC_WEAPON" );
 static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
@@ -376,30 +361,64 @@ static decision_category cascade_action_to_category( npc_action action )
 
 namespace
 {
-const std::vector<bionic_id> defense_cbms = { {
-        bio_ads,
-        bio_faraday,
-        bio_heat_absorb,
-        bio_heatsink,
-        bio_ods,
-        bio_shock
+// The installed bionics whose JSON "npc_use" is `use`, each id once, in installation order.
+// Ids rather than references: switching one on runs its EOCs, which may add or remove bionics.
+std::vector<bionic_id> npc_cbms_for( const Character &guy, bionic_npc_use use )
+{
+    std::vector<bionic_id> ret;
+    for( const bionic &bio : *guy.my_bionics ) {
+        if( bio.info().npc_use == use &&
+            std::find( ret.begin(), ret.end(), bio.id ) == ret.end() ) {
+            ret.push_back( bio.id );
+        }
     }
-};
+    return ret;
+}
 
-const std::vector<bionic_id> health_cbms = { {
-        bio_leukocyte,
-        bio_plutfilter
+// The installed weapon CBMs NPCs know how to use: BIONIC_NPC_USABLE with BIONIC_GUN or
+// BIONIC_WEAPON.  Guns come first, then melee weapons, each group sorted by id.
+std::vector<bionic_id> npc_weapon_cbms( const Character &guy )
+{
+    std::vector<bionic_id> guns;
+    std::vector<bionic_id> melee;
+    for( const bionic &bio : *guy.my_bionics ) {
+        const bionic_data &data = bio.info();
+        if( !data.has_flag( json_flag_BIONIC_NPC_USABLE ) ) {
+            continue;
+        }
+        std::vector<bionic_id> *pool = data.has_flag( json_flag_BIONIC_GUN ) ? &guns :
+                                       data.has_flag( json_flag_BIONIC_WEAPON ) ? &melee : nullptr;
+        if( pool != nullptr && std::find( pool->begin(), pool->end(), bio.id ) == pool->end() ) {
+            pool->push_back( bio.id );
+        }
     }
-};
+    const auto by_id = []( const bionic_id & a, const bionic_id & b ) {
+        return a.str() < b.str();
+    };
+    std::sort( guns.begin(), guns.end(), by_id );
+    std::sort( melee.begin(), melee.end(), by_id );
+    guns.insert( guns.end(), melee.begin(), melee.end() );
+    return guns;
+}
 
-// lightning, laser, blade, claws in order of use priority
-const std::vector<bionic_id> weapon_cbms = { {
-        bio_chain_lightning,
-        bio_laser,
-        bio_blade,
-        bio_claws
+// Switches on the NPC's bionics with this "npc_use"; true if any of them is on afterwards.
+bool use_npc_cbms( npc &guy, bionic_npc_use use )
+{
+    bool any_on = false;
+    for( const bionic_id &bio_id : npc_cbms_for( guy, use ) ) {
+        if( guy.use_bionic_by_id( bio_id ) ) {
+            any_on = true;
+        }
     }
-};
+    return any_on;
+}
+
+void deactivate_npc_cbms( npc &guy, bionic_npc_use use )
+{
+    for( const bionic_id &bio_id : npc_cbms_for( guy, use ) ) {
+        guy.deactivate_bionic_by_id( bio_id );
+    }
+}
 
 const int avoidance_vehicles_radius = 5;
 
@@ -2292,7 +2311,7 @@ void npc::execute_action( npc_action action )
 
         case npc_reach_attack:
             if( can_use_offensive_cbm() ) {
-                activate_bionic_by_id( bio_hydraulics );
+                use_npc_cbms( *this, bionic_npc_use::melee );
             }
             reach_attack( tar );
             break;
@@ -2303,7 +2322,7 @@ void npc::execute_action( npc_action action )
             } else if( path.size() == 1 ) {
                 if( cur != nullptr ) {
                     if( can_use_offensive_cbm() ) {
-                        activate_bionic_by_id( bio_hydraulics );
+                        use_npc_cbms( *this, bionic_npc_use::melee );
                     }
                     melee_attack( *cur, true );
                 }
@@ -2826,11 +2845,9 @@ item::reload_option npc::select_ammo( const item_location &base, bool, bool empt
 
 void npc::activate_combat_cbms()
 {
-    for( const bionic_id &cbm_id : defense_cbms ) {
-        activate_bionic_by_id( cbm_id );
-    }
+    use_npc_cbms( *this, bionic_npc_use::combat );
     if( can_use_offensive_cbm() ) {
-        for( const bionic_id &cbm_id : weapon_cbms ) {
+        for( const bionic_id &cbm_id : npc_weapon_cbms( *this ) ) {
             check_or_use_weapon_cbm( cbm_id );
         }
     }
@@ -2838,11 +2855,9 @@ void npc::activate_combat_cbms()
 
 void npc::deactivate_combat_cbms()
 {
-    for( const bionic_id &cbm_id : defense_cbms ) {
-        deactivate_bionic_by_id( cbm_id );
-    }
-    deactivate_bionic_by_id( bio_hydraulics );
-    for( const bionic_id &cbm_id : weapon_cbms ) {
+    deactivate_npc_cbms( *this, bionic_npc_use::combat );
+    deactivate_npc_cbms( *this, bionic_npc_use::melee );
+    for( const bionic_id &cbm_id : npc_weapon_cbms( *this ) ) {
         deactivate_bionic_by_id( cbm_id );
     }
     deactivate_or_discharge_bionic_weapon();
@@ -3076,14 +3091,14 @@ npc_action npc::address_needs( float danger )
     if( one_in( 3 ) ) {
         healing_options try_to_fix_me = patient_assessment( *this );
         if( try_to_fix_me.any_true() ) {
-            if( !use_bionic_by_id( bio_nanobots ) ) {
+            if( !use_npc_cbms( *this, bionic_npc_use::wounds ) ) {
                 ai_cache.can_heal = has_healing_options( try_to_fix_me );
                 if( ai_cache.can_heal.any_true() ) {
                     return npc_heal;
                 }
             }
         } else {
-            deactivate_bionic_by_id( bio_nanobots );
+            deactivate_npc_cbms( *this, bionic_npc_use::wounds );
         }
         if( static_cast<int>( get_skill_level( skill_firstaid ) ) > 0 ) {
             if( is_player_ally() ) {
@@ -3114,11 +3129,12 @@ npc_action npc::address_needs( float danger )
 
     if( one_in( 3 ) ) {
         if( get_perceived_pain() >= 15 ) {
-            if( !activate_bionic_by_id( bio_painkiller ) && has_painkiller() && !took_painkiller() ) {
+            if( !use_npc_cbms( *this, bionic_npc_use::pain ) && has_painkiller() &&
+                !took_painkiller() ) {
                 return npc_use_painkiller;
             }
         } else {
-            deactivate_bionic_by_id( bio_painkiller );
+            deactivate_npc_cbms( *this, bionic_npc_use::pain );
         }
     }
 
@@ -3892,7 +3908,7 @@ void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint
                here.bash_rating( smash_ability(), p ) > 0 &&
                !craft_reservation::bashing_would_break_reservation( here, *this, p ) ) {
         mod_moves( -get_speed() * 0.8 );
-        here.bash( p, smash_ability() );
+        here.bash( p, smash_ability(), false, false, false, nullptr, true, this );
     } else {
         if( attitude == NPCATT_MUG ||
             attitude == NPCATT_KILL ||
@@ -4232,10 +4248,8 @@ bool npc::pause_upkeep()
     if( !calendar::once_every( 1_hours ) ) {
         return false;
     }
-    deactivate_bionic_by_id( bio_soporific );
-    for( const bionic_id &bio_id : health_cbms ) {
-        activate_bionic_by_id( bio_id );
-    }
+    deactivate_npc_cbms( *this, bionic_npc_use::sleep );
+    use_npc_cbms( *this, bionic_npc_use::upkeep );
     // make sure we're using the best weapon
     return wield_better_weapon();
 }
@@ -6439,13 +6453,13 @@ bool npc::complain()
 
     // Radiation every 10 minutes
     if( get_rad() > 90 ) {
-        activate_bionic_by_id( bio_radscrubber );
+        use_npc_cbms( *this, bionic_npc_use::radiation );
         std::string speech = chat_snippets().snip_radiation_sickness.translated();
         if( complain_about( radiation_string, 10_minutes, speech, get_rad() > 150 ) ) {
             return true;
         }
     } else if( !get_rad() ) {
-        deactivate_bionic_by_id( bio_radscrubber );
+        deactivate_npc_cbms( *this, bionic_npc_use::radiation );
     }
 
     // Hunger and thirst complaints only fire when NPC has food needs
@@ -7978,7 +7992,7 @@ npc::need_result npc::execute_go_to_sleep()
             complain_about( "napping", 30_minutes,
                             chat_snippets().snip_warn_sleep.translated() );
         }
-        activate_bionic_by_id( bio_soporific );
+        use_npc_cbms( *this, bionic_npc_use::sleep );
         if( !player_character.in_sleep_state() ) {
             add_msg_if_player_sees( *this, _( "%s lies down to sleep." ), get_name() );
         }

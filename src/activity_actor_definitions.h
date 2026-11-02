@@ -162,7 +162,11 @@ class multi_zone_activity_actor : public activity_actor
         void finish( player_activity &, Character & ) override {};
         // for allowing a return value from do_turn
         // @return whether this activity should continue to the next turn
-        bool simulate_turn( player_activity &act, Character &you, bool check_only );
+        // @param scan_exhausted if given, set to true only when the job is done: every work
+        //        location was scanned and none had work left. An early stop (too dark, a fetch
+        //        that gave up, routing away, a cancel, out of moves) sets it to false.
+        bool simulate_turn( player_activity &act, Character &you, bool check_only,
+                            bool *scan_exhausted = nullptr );
 
         /** Check whether activity can be done immediately if it has requirements */
         requirement_check_result check_requirements( Character &you, activity_reason_info &act_info,
@@ -2521,6 +2525,12 @@ class disassemble_activity_actor : public activity_actor
         float exertion_level() const override;
 
         std::string get_progress_message( const player_activity & ) const override;
+
+        // the in-progress disassembly: start took it off act.targets, which holds the items
+        // still queued
+        item_location hook_target( const player_activity & ) const override {
+            return target;
+        }
 
         std::unique_ptr<activity_actor> clone() const override {
             return std::make_unique<disassemble_activity_actor>( *this );

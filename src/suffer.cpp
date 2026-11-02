@@ -223,7 +223,8 @@ static float addiction_scaling( float at_min, float at_max, float add_lvl )
         return 1.0f;
     }
 
-    return lerp( at_min, at_max, ( add_lvl - MIN_ADDICTION_LEVEL ) / MAX_ADDICTION_LEVEL );
+    return lerp_clamped( at_min, at_max, ( add_lvl - MIN_ADDICTION_LEVEL ) /
+                         ( MAX_ADDICTION_LEVEL - MIN_ADDICTION_LEVEL ) );
 }
 
 void suffer::water_damage( Character &you )
@@ -351,8 +352,16 @@ void suffer::while_underwater( Character &you )
     }
 }
 
+// Crowd crush: held in place while enough creatures press in, a character loses breath and is
+// eventually crushed.  The rules and numbers are ported from Cataclysm-TLG (worm-girl) and live in
+// data/core/external_options.json as CROWD_CRUSH_*; the CROWD_CRUSH world option and the
+// CROWD_CRUSH_RESIST enchantment value follow Cataclysm-BN's design.
 void suffer::while_grabbed( Character &you )
 {
+    // Drowning already takes your breath underwater.
+    if( you.is_underwater() && !get_option<bool>( "CROWD_CRUSH_UNDERWATER" ) ) {
+        return;
+    }
     // If you're grabbed you can't move around effectively, triggering the check
     // TODO: crowd crush without grabs
     // Count the number of monsters who can shove you
@@ -362,21 +371,33 @@ void suffer::while_grabbed( Character &you )
     int crowd = 0;
     int impassable_ter = 0;
     // This looks scary, but it's really just casting the enum to an integer. So medium size characters == 3.
-    int your_size = static_cast<std::underlying_type_t<creature_size>>( you.get_size() );
-    int crush_grabs_req = your_size - 1;
-    // minimum of 1 grabber required
-    crush_grabs_req = std::max( 1, crush_grabs_req );
+    const int your_size = static_cast<std::underlying_type_t<creature_size>>( you.get_size() );
+    const int crush_grabs_req = std::max( get_option<int>( "CROWD_CRUSH_MIN_CROWD" ), your_size +
+                                          get_option<int>( "CROWD_CRUSH_SIZE_OFFSET" ) );
+    const int min_crusher_size = get_option<int>( "CROWD_CRUSH_MIN_CRUSHER_SIZE" );
+    const int max_size_gap = get_option<int>( "CROWD_CRUSH_MAX_SIZE_GAP" );
 
     for( auto&& dest : here.points_in_radius( you.pos_bub(), 1, 0 ) ) { // *NOPAD*
         const monster *const mon = creatures.creature_at<monster>( dest );
-        if( mon && mon->has_flag( mon_flag_GROUP_BASH ) ) {
-            crowd++;
-            add_msg_debug( debugmode::DF_CHARACTER, "Crowd pressure check: monster %s found, crowd size %d",
-                           mon->name(), crowd );
-        }
-        if( here.impassable( dest ) ) {
+        if( mon ) {
+            // Too small a monster can't crush you, and tiny ones can't crush anyone.
+            const int mon_size =
+                static_cast<std::underlying_type_t<creature_size>>( mon->get_size() );
+            if( mon->has_flag( mon_flag_GROUP_BASH ) && !mon->is_hallucination() &&
+                mon_size >= min_crusher_size && your_size <= mon_size + max_size_gap ) {
+                crowd++;
+                add_msg_debug( debugmode::DF_CHARACTER,
+                               "Crowd pressure check: monster %s found, crowd size %d", mon->name(),
+                               crowd );
+            }
+        } else if( here.impassable( dest ) ) {
             impassable_ter++;
         }
+    }
+
+    // Standing up, you can brace against the crowd.
+    if( !you.is_on_ground() ) {
+        crowd = std::max( 0, crowd - get_option<int>( "CROWD_CRUSH_UPRIGHT_DISCOUNT" ) );
     }
 
     add_msg_debug( debugmode::DF_CHARACTER,
@@ -392,15 +413,23 @@ void suffer::while_grabbed( Character &you )
         return;
     }
 
-    // Getting crushed against the wall counts as a monster
-    if( impassable_ter ) {
+    const float resist_chance = you.crowd_crush_resist_chance();
+    if( resist_chance >= 1.0f ) {
+        return;
+    }
+
+    // Walls only count once you're boxed in.
+    if( impassable_ter &&
+        crowd + impassable_ter > get_option<int>( "CROWD_CRUSH_WALL_THRESHOLD" ) ) {
         you.add_msg_if_player( m_bad, _( "You're crushed against the walls!" ) );
         crowd += impassable_ter;
     }
 
     if( crowd == crush_grabs_req ) {
-        // only a chance to lose breath at minimum grabs
-        you.oxygen -= rng( 0, 1 );
+        // only a chance to lose breath at minimum grabs, and a chance to resist that
+        if( resist_chance <= 0.0f || !x_in_y( resist_chance, 1.0 ) ) {
+            you.oxygen -= rng( 0, 1 );
+        }
     } else if( crowd <= crush_grabs_req * 2 ) {
         you.oxygen -= 1;
     } else if( crowd <= crush_grabs_req * 3 ) {
@@ -1052,16 +1081,18 @@ void suffer::from_sunburn( Character &you, bool severe )
 void suffer::from_item_dropping( Character &you )
 {
     if( you.has_effect( effect_incorporeal ) && !you.has_flag( json_flag_ETHEREAL ) ) {
-        std::vector<item *> dump = you.inv_dump();
         std::list<item> tumble_items;
-        for( item *dump_item : dump ) {
+        // Only the items that fall are removed; the ones that can't be taken off stay put.
+        std::vector<item *> fallen;
+        for( item *dump_item : you.inv_dump() ) {
             if( !dump_item->has_flag( flag_NO_UNWIELD ) && !dump_item->has_flag( flag_NO_TAKEOFF ) &&
                 !dump_item->has_flag( flag_INTEGRATED ) ) {
                 tumble_items.push_back( *dump_item );
+                fallen.push_back( dump_item );
             }
         }
         put_into_vehicle_or_drop( you, item_drop_reason::tumbling, tumble_items );
-        for( item *i : dump ) {
+        for( item *i : fallen ) {
             you.i_rem( i );
         }
     }
@@ -1725,8 +1756,17 @@ void Character::suffer()
         mod_power_level( trickle );
     }
 
-    for( bionic &bio : *my_bionics ) {
-        process_bionic( bio );
+    // A bionic's EOCs may add or remove bionics, which invalidates iterators into
+    // my_bionics: go by uid, and find each bionic again when its turn comes.
+    std::vector<bionic_uid> bionic_uids;
+    bionic_uids.reserve( my_bionics->size() );
+    for( const bionic &bio : *my_bionics ) {
+        bionic_uids.push_back( bio.get_uid() );
+    }
+    for( const bionic_uid uid : bionic_uids ) {
+        if( const std::optional<bionic *> bio = find_bionic_by_uid( uid ) ) {
+            process_bionic( **bio );
+        }
     }
 
     for( const trait_id &mut_id : get_functioning_mutations() ) {
@@ -1740,7 +1780,7 @@ void Character::suffer()
         }
     }
 
-    if( has_flag( json_flag_GRAB ) ) {
+    if( has_flag( json_flag_GRAB ) && get_option<bool>( "CROWD_CRUSH" ) ) {
         suffer::while_grabbed( *this );
     }
 
@@ -1876,13 +1916,13 @@ void Character::mend( int rate_multiplier )
     if( has_effect( effect_cig ) ) {
         healing_factor *= 0.5;
     } else {
-        healing_factor *= addiction_scaling( 0.25f, 0.75f, addiction_level( addiction_nicotine ) );
+        healing_factor *= addiction_scaling( 0.75f, 0.25f, addiction_level( addiction_nicotine ) );
     }
 
     if( has_effect( effect_drunk ) ) {
         healing_factor *= 0.5;
     } else {
-        healing_factor *= addiction_scaling( 0.25f, 0.75f, addiction_level( addiction_alcohol ) );
+        healing_factor *= addiction_scaling( 0.75f, 0.25f, addiction_level( addiction_alcohol ) );
     }
 
     if( get_rad() > 0 && !has_trait( trait_RADIOGENIC ) ) {
@@ -1937,9 +1977,10 @@ void Character::mend( int rate_multiplier )
             continue;
         }
 
-        healing_factor *= bp->mend_rate;
+        // Per-limb factor: one limb's mend rate must not carry over to the limbs after it.
+        const double limb_factor = healing_factor * bp->mend_rate;
 
-        const time_duration dur_inc = 1_turns * roll_remainder( rate_multiplier * healing_factor );
+        const time_duration dur_inc = 1_turns * roll_remainder( rate_multiplier * limb_factor );
         effect &eff = get_effect( effect_mending, bp );
         if( eff.is_null() ) {
             add_effect( effect_mending, dur_inc, bp, true );

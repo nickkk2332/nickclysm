@@ -865,6 +865,8 @@ void targeted_polymorph( const spell &sp, Creature &caster, const tripoint_bub_m
 void area_pull( const spell &sp, Creature &caster, const tripoint_bub_ms &center );
 void area_push( const spell &sp, Creature &caster, const tripoint_bub_ms &center );
 void directed_push( const spell &sp, Creature &caster, const tripoint_bub_ms &target );
+// flings the creatures in the area away from the caster, with damage() as the force
+void fling( const spell &sp, Creature &caster, const tripoint_bub_ms &target );
 
 std::set<tripoint_bub_ms> spell_effect_blast( const override_parameters &params,
         const tripoint_bub_ms &, const tripoint_bub_ms &target );
@@ -939,6 +941,7 @@ effect_map{
     { "area_pull", spell_effect::area_pull },
     { "area_push", spell_effect::area_push },
     { "directed_push", spell_effect::directed_push },
+    { "fling", spell_effect::fling },
     { "timed_event", spell_effect::timed_event },
     { "ter_transform", spell_effect::transform_blast },
     { "noise", spell_effect::noise },

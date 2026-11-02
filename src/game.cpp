@@ -115,6 +115,7 @@
 #include "gamemode.h"
 #include "gates.h"
 #include "get_version.h"
+#include "grapple.h"
 #include "harvest.h"
 #include "iexamine.h"
 #include "imgui/imgui_stdlib.h"
@@ -153,6 +154,7 @@
 #include "mapdata.h"
 #include "mapsharing.h"
 #include "maptile_fwd.h"
+#include "melee.h"
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
@@ -260,6 +262,7 @@ static const damage_type_id damage_stab( "stab" );
 static const dimension_id dimension_world_default( "default" );
 
 static const efftype_id effect_adrenaline_mycus( "adrenaline_mycus" );
+static const efftype_id effect_airborne( "airborne" );
 static const efftype_id effect_bouldering( "bouldering" );
 static const efftype_id effect_contacts( "contacts" );
 static const efftype_id effect_cramped_space( "cramped_space" );
@@ -317,6 +320,7 @@ static const json_character_flag json_flag_CLIMB_FLYING( "CLIMB_FLYING" );
 static const json_character_flag json_flag_CLIMB_NO_LADDER( "CLIMB_NO_LADDER" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
+static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_INFECTION_IMMUNE( "INFECTION_IMMUNE" );
 static const json_character_flag json_flag_ITEM_WATERPROOFING( "ITEM_WATERPROOFING" );
@@ -757,6 +761,7 @@ void game::setup()
     get_weather().forced_temperature.reset();
     get_weather().wind_direction_override.reset();
     get_weather().windspeed_override.reset();
+    get_weather().clear_eoc_overrides();
     get_weather().snow_depth_map.clear();
     // back to menu for save loading, new game etc
 }
@@ -2672,6 +2677,7 @@ input_context get_default_mode_input_context()
         ctxt.register_action( "safemode" );
         ctxt.register_action( "autosafe" );
         ctxt.register_action( "autoattack" );
+        ctxt.register_action( "toggle_manual_combat" );
         ctxt.register_action( "ignore_enemy" );
         ctxt.register_action( "whitelist_enemy" );
         ctxt.register_action( "workout" );
@@ -5360,7 +5366,7 @@ bool game::npc_menu( npc &who )
         if( !prompt_dangerous_tile( who.pos_bub() ) ) {
             return true;
         }
-        if( u.get_grab_type() == object_type::NONE ) {
+        if( u.get_grab_type() == object_type::NONE && !u.is_grabbing_creature() ) {
             // TODO: Make NPCs protest when displaced onto dangerous crap
             add_msg( _( "You swap places with %s." ), who.get_name() );
             swap_critters( u, who );
@@ -5454,8 +5460,10 @@ bool game::npc_menu( npc &who )
         }
     } else if( choice == attack ) {
         if( who.is_enemy() || query_yn( _( "You may be attacked!  Proceed?" ) ) ) {
-            u.melee_attack( who, true );
-            who.on_attacked( u );
+            // Called off in the technique menu: no attack, nothing to answer
+            if( u.melee_attack( who, true ) || !melee::attack_called_off() ) {
+                who.on_attacked( u );
+            }
         }
     } else if( choice == disarm ) {
         if( who.is_enemy() || query_yn( _( "You may be attacked!  Proceed?" ) ) ) {
@@ -7475,7 +7483,9 @@ bool game::prompt_dangerous_tile( const tripoint_bub_ms &dest_loc,
 {
     map &here = get_map();
 
-    if( u.has_effect( effect_stunned ) || u.has_effect( effect_psi_stunned ) ) {
+    // Nobody asks while you're stunned, or flying through the air.
+    if( u.has_effect( effect_stunned ) || u.has_effect( effect_psi_stunned ) ||
+        u.has_effect( effect_airborne ) ) {
         return true;
     }
 
@@ -7765,6 +7775,28 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
         add_msg( m_warning, _( "You cannot board a vehicle whilst riding." ) );
         return false;
     }
+
+    // Holding a creature (grappling): it is dragged into the tile we leave, or we stay put.
+    // Holding an object instead is handled by grabbed_move; the two never go together.
+    Creature *held = furniture_move || grabbed ? nullptr : u.grabbed_creature();
+    std::optional<tripoint_abs_ms> held_at;
+    if( held != nullptr ) {
+        creature_tracker &creatures = get_creature_tracker();
+        if( creatures.creature_at<monster>( pos, true ) != nullptr ||
+            creatures.creature_at<npc>( pos ) != nullptr ) {
+            // A forced swap (trampled) already put someone where we stand.
+            u.add_msg_if_player( m_bad, _( "You lose your hold on %s." ), held->disp_name() );
+            grapple::end_hold( u, held );
+        } else if( const std::optional<std::string> refusal =
+                       grapple::drag_refusal( u, *held, pos, dest_loc ) ) {
+            // Refused before anything is spent; walking off would only drop the hold.
+            add_msg( m_info, *refusal );
+            return true;
+        } else if( held->pos_abs() != dest_loc_abs ) {
+            // (Walking into a held pet swaps places with it, which needs no drag.)
+            held_at = held->pos_abs();
+        }
+    }
     u.set_underwater( false );
 
     std::vector<std::string> harmful_stuff = get_dangerous_tile( dest_loc );
@@ -7853,6 +7885,11 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
             u.burn_move_stamina( 0.50 * ( previous_moves - u.get_moves() ) );
         }
     }
+    // Try to drag the held creature along. A failed drag still costs the step (TLG).
+    if( held_at && !x_in_y( grapple::drag_chance( u, *held ), 1.0 ) ) {
+        add_msg( m_bad, _( "You strain to drag %s." ), held->disp_name() );
+        return true;
+    }
     // Max out recoil & reset aim point
     u.recoil = MAX_RECOIL;
     u.last_target_pos = std::nullopt;
@@ -7933,6 +7970,12 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
     point_rel_sm submap_shift = place_player( dest_loc );
     point_rel_ms ms_shift = coords::project_to<coords::ms>( submap_shift );
     oldpos = oldpos - ms_shift.raw();
+
+    // The held creature takes the tile we left. Absolute coordinates: the step may have shifted
+    // the map.
+    if( held_at ) {
+        grapple::drag_after_step( u, *held_at, old_abs_pos );
+    }
 
     if( moving ) {
         cata_event_dispatch::avatar_moves( old_abs_pos, u, here );
@@ -9140,7 +9183,7 @@ void game::water_affect_items( Character &ch ) const
 }
 
 bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bool controlled,
-                           bool intentional )
+                           bool intentional, const fling_options &options )
 {
     if( c == nullptr ) {
         debugmsg( "game::fling_creature invoked on null target" );
@@ -9166,15 +9209,20 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     }
 
     // Target creature shouldn't be grabbed if thrown
-    // It should also not be thrown if the throw is weaker than the grab
+    // It should also not be thrown if the throw is weaker than the grab.
+    // A broken hold ends on both sides, so work from a copy of the list.
+    std::vector<std::tuple<efftype_id, bodypart_id, int>> holds;
     for( const effect &eff : c->get_effects_with_flag( json_flag_GRAB ) ) {
-        if( !x_in_y( flvel / 2, eff.get_intensity() ) ) {
+        holds.emplace_back( eff.get_id(), eff.get_bp(), eff.get_intensity() );
+    }
+    for( const std::tuple<efftype_id, bodypart_id, int> &hold : holds ) {
+        if( !x_in_y( flvel / 2, std::get<2>( hold ) ) ) {
             c->add_msg_player_or_npc( m_warning,
                                       _( "You're almost sent flying, but something holds you in place!" ),
                                       _( "<npcname> is almost sent flying, but something holds them in place!" ) );
             return false;
         } else {
-            c->remove_effect( eff.get_id(), eff.get_bp() );
+            grapple::break_hold( *c, std::get<0>( hold ), std::get<1>( hold ) );
         }
     }
 
@@ -9200,6 +9248,19 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         // 1.0 knockback resist is immune, 0 is normal
         flvel *= 1 - knockback_resist;
     }
+
+    // Nobody keeps hold of a creature while flying.
+    if( you != nullptr && you->has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
+        you->release_grapple();
+    } else if( monster *const mon = c->as_monster() ) {
+        grapple::release_grabs_by( *mon );
+    }
+
+    // In flight it doesn't fall, step on traps or get asked about them, until it lands.
+    c->add_effect( effect_airborne, 1_turns );
+    on_out_of_scope land( [c]() {
+        c->remove_effect( effect_airborne );
+    } );
 
     tileray tdir( dir );
     int range = flvel / 10;
@@ -9232,13 +9293,30 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             if( !critter.is_dead() ) {
                 thru = false;
             }
-        } else if( const Character *const blocker = creatures.creature_at<Character>( pt );
+        } else if( Character *const blocker = creatures.creature_at<Character>( pt );
                    blocker != nullptr && blocker != c ) {
             // Another character stops the flight like a wall would, so the flung
             // creature never ends up sharing a tile with them.
-            force = flvel;
-            const int damage = rng( force, force * 2.0f ) / 9;
-            c->impact( damage, pt );
+            if( !options.hit_characters ) {
+                force = flvel;
+                const int damage = rng( force, force * 2.0f ) / 9;
+                c->impact( damage, pt );
+            } else if( flvel >= 30.0f ) {
+                // TLG: the character's size decides how much it stops the flight, and the speed
+                // of the flight how much the character is hurt.
+                force = std::min<float>( static_cast<int>( blocker->get_size() ) * 30.0f, flvel );
+                const int damage = rng( force, force * 2.0f ) / 6;
+                //~ %1$s: the flung creature, %2$s: the character it hits
+                add_msg_if_player_sees( pt, _( "%1$s collides with %2$s!" ), c->disp_name( true ),
+                                        blocker->disp_name() );
+                c->impact( damage, pt );
+                const bodypart_id torso( "torso" );
+                const int blocker_armor = blocker->get_armor_type( damage_bash, torso );
+                const int blocker_damage = std::max( 0, rng( flvel, flvel * 2.0f ) / 6 -
+                                                     blocker_armor );
+                blocker->apply_damage( c, torso, blocker_damage );
+                blocker->check_dead_state( &here );
+            }
             thru = false;
         } else if( here.impassable( pt ) ) {
             if( !here.veh_at( pt ).obstacle_at_part() ) {
@@ -9301,14 +9379,14 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     }
 
     // Fall down to the ground - always on the last reached tile
+    c->remove_effect( effect_airborne );
     if( !here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, pos ) ) {
-        // Didn't smash into a wall or a floor so only take the fall damage
-        if( thru && here.is_open_air( pos ) ) {
-            here.creature_on_trap( *c, false );
-        } else {
+        const bool over_air = here.is_open_air( pos );
+        // Flying off a ledge, it only takes the fall damage.
+        if( !thru || !over_air ) {
             // Fall on ground
             int force = rng( flvel, flvel * 2 ) / 9;
-            if( controlled ) {
+            if( controlled || ( options.soft_low_speed_landing && flvel < 30 ) ) {
                 force = std::max( force / 2 - 5, 0 );
             }
             if( force > 0 ) {
@@ -9316,6 +9394,19 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                 // TODO: Make landing damage the floor
                 here.bash( pos, dmg / 4, false, false, false );
             }
+        }
+        if( c->is_dead_state() ) {
+            return true;
+        }
+        if( over_air ) {
+            // Nothing underneath: drop to what's below, and land there. The avatar's fall
+            // (vertical_move) already applies the traps where it lands.
+            const tripoint_abs_ms before_fall = c->pos_abs();
+            c->gravity_check();
+            if( !c->is_avatar() && !c->is_dead_state() && c->pos_abs() != before_fall ) {
+                here.creature_on_trap( *c, false );
+            }
+        } else {
             // Always apply traps to creature i.e. bear traps, tele traps etc.
             here.creature_on_trap( *c, false );
         }
@@ -9395,6 +9486,14 @@ void game::vertical_move( int movez, bool force, bool peeking )
 {
     if( u.has_flag( json_flag_CANNOT_MOVE ) ) {
         return;
+    }
+
+    // A held creature can't be dragged up or down: refuse rather than drop it on the way.
+    if( !force && !peeking ) {
+        if( const Creature *const held = u.grabbed_creature() ) {
+            add_msg( m_info, _( "You can't take %s up or down with you." ), held->disp_name() );
+            return;
+        }
     }
 
     if( u.is_mounted() ) {
@@ -9898,6 +9997,9 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 
     // Reset the overmap first before loading the dimension data
     overmap_buffer.clear();
+    // EOC weather overrides belong to the dimension being left (they were saved with it);
+    // the destination's own come back with its data
+    get_weather().clear_eoc_overrides();
     // Load in data specific to the dimension (like weather)
     load_dimension_data();
 

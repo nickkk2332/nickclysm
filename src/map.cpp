@@ -40,8 +40,10 @@
 #include "current_map.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "do_turn.h"
 #include "drawing_primitives.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "explosion.h"
 #include "field.h"
@@ -99,6 +101,7 @@
 #include "sounds.h"
 #include "string_formatter.h"
 #include "submap.h"
+#include "talker.h"
 #include "tileray.h"
 #include "translations.h"
 #include "trap.h"
@@ -131,6 +134,7 @@ static const bionic_id bio_shock_absorber( "bio_shock_absorber" );
 
 static const damage_type_id damage_bash( "bash" );
 
+static const efftype_id effect_airborne( "airborne" );
 static const efftype_id effect_boomered( "boomered" );
 static const efftype_id effect_crushed( "crushed" );
 static const efftype_id effect_fake_common_cold( "fake_common_cold" );
@@ -2113,6 +2117,26 @@ furn_id map::furn( const tripoint_bub_ms p ) const
     return current_submap->get_furn( l );
 }
 
+// The avatar forgets the remembered decoration of a changed tile they can see. Only the
+// reality bubble has the avatar's view, so a temporary map overlapping it checks the tile
+// there; asking the temporary map itself would build its sunlight caches for nothing.
+static void forget_decoration_if_seen( map &changed, const tripoint_bub_ms &p,
+                                       const std::string &prefix )
+{
+    avatar &u = get_avatar();
+    map &bubble = reality_bubble();
+    const tripoint_abs_ms abs_p = changed.get_abs( p );
+    if( &changed == &bubble ) {
+        if( u.sees( bubble, p ) ) {
+            u.memorize_clear_decoration( abs_p, prefix );
+        }
+        return;
+    }
+    if( bubble.inbounds( abs_p ) && u.sees( bubble, bubble.get_bub( abs_p ) ) ) {
+        u.memorize_clear_decoration( abs_p, prefix );
+    }
+}
+
 bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, const bool furn_reset,
                     bool avoid_creatures, bool allow_on_open_air )
 {
@@ -2223,11 +2247,7 @@ bool map::furn_set( const tripoint_bub_ms &p, const furn_id &new_furniture, cons
     invalidate_max_populated_zlev( p.z() );
 
     memory_cache_dec_set_dirty( p, true );
-    // only the reality bubble has the avatar's view; asking a temporary map would build
-    // its sunlight for nothing
-    if( this == &reality_bubble() && player_character.sees( *this, p ) ) {
-        player_character.memorize_clear_decoration( get_abs( p ), "f_" );
-    }
+    forget_decoration_if_seen( *this, p, "f_" );
 
     if( ( old_f.movecost < 0 ) != ( new_f.movecost < 0 ) ) {
         get_creature_tracker().invalidate_reachability_cache();
@@ -2723,12 +2743,7 @@ bool map::ter_set( const tripoint_bub_ms &p, const ter_id &new_terrain, bool avo
 
     memory_cache_dec_set_dirty( p, true );
     memory_cache_ter_set_dirty( p, true );
-    avatar &player_character = get_avatar();
-    // only the reality bubble has the avatar's view; asking a temporary map would build
-    // its sunlight for nothing
-    if( this == &reality_bubble() && player_character.sees( *this, p ) ) {
-        player_character.memorize_clear_decoration( get_abs( p ), "t_" );
-    }
+    forget_decoration_if_seen( *this, p, "t_" );
 
     if( ( old_t.movecost == 0 ) != ( new_t.movecost == 0 ) ) {
         get_creature_tracker().invalidate_reachability_cache();
@@ -4001,69 +4016,79 @@ bool map::is_flammable( const tripoint_bub_ms &p )
 
 void map::decay_fields_and_scent( const time_duration &amount )
 {
-    // TODO: Make this happen on all z-levels
-
     // Decay scent separately, so that later we can use field count to skip empty submaps
     get_scent().decay();
 
-    // Coordinate code copied from lightmap calculations
-    // TODO: Z
-    const int smz = abs_sub.z();
-    const auto &outside_cache = get_cache_ref( smz ).outside_cache;
-    for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
-        for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
-            submap *cur_submap = get_submap_at_grid( tripoint_rel_sm{ smx, smy, smz } );
-            if( cur_submap == nullptr ) {
-                debugmsg( "Tried to process field at (%d,%d,%d) but the submap is not loaded", smx, smy, smz );
-                continue;
-            }
-            int to_proc = cur_submap->field_count;
-            if( to_proc < 1 ) {
-                if( to_proc < 0 ) {
-                    cur_submap->field_count = 0;
-                    dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
-                                   << ( abs_sub + point( smx, smy ) ).to_string()
-                                   << "has " << to_proc << " field_count";
+    // Rain falls on every level the map holds, but never underground
+    const int minz = std::max( 0, zlevels ? -OVERMAP_DEPTH : abs_sub.z() );
+    const int maxz = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
+    for( int smz = minz; smz <= maxz; ++smz ) {
+        level_cache *const ch = get_cache_lazy( smz );
+        if( ch == nullptr ) {
+            // A level without a cache never had a submap marked as holding fields
+            continue;
+        }
+        const auto &outside_cache = ch->outside_cache;
+        for( int smx = 0; smx < my_MAPSIZE; ++smx ) {
+            for( int smy = 0; smy < my_MAPSIZE; ++smy ) {
+                if( !ch->field_cache[smx + smy * MAPSIZE] ) {
+                    // This submap has no fields
+                    continue;
                 }
-                get_cache( smz ).field_cache.reset( smx + ( smy * MAPSIZE ) );
-                // This submap has no fields
-                continue;
-            }
-
-            for( int sx = 0; sx < SEEX; ++sx ) {
+                submap *cur_submap = get_submap_at_grid( tripoint_rel_sm{ smx, smy, smz } );
+                if( cur_submap == nullptr ) {
+                    debugmsg( "Tried to process field at (%d,%d,%d) but the submap is not loaded",
+                              smx, smy, smz );
+                    continue;
+                }
+                int to_proc = cur_submap->field_count;
                 if( to_proc < 1 ) {
-                    // This submap had some fields, but all got proc'd already
-                    break;
+                    if( to_proc < 0 ) {
+                        cur_submap->field_count = 0;
+                        dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
+                                       << ( abs_sub + point( smx, smy ) ).to_string()
+                                       << "has " << to_proc << " field_count";
+                    }
+                    ch->field_cache.reset( smx + ( smy * MAPSIZE ) );
+                    // This submap has no fields
+                    continue;
                 }
 
-                for( int sy = 0; sy < SEEY; ++sy ) {
-                    const point p( sx + smx * SEEX, sy + smy * SEEY );
-
-                    const field &fields = cur_submap->get_field( { sx, sy} );
-                    if( !outside_cache[p.x][p.y] ) {
-                        to_proc -= fields.field_count();
-                        continue;
+                for( int sx = 0; sx < SEEX; ++sx ) {
+                    if( to_proc < 1 ) {
+                        // This submap had some fields, but all got proc'd already
+                        break;
                     }
 
-                    for( const auto &fp : fields ) {
-                        to_proc--;
-                        field_entry cur = fp.second;
-                        const field_type_id type = cur.get_field_type();
-                        const int decay_amount_factor =  type.obj().decay_amount_factor;
-                        if( decay_amount_factor != 0 ) {
-                            const time_duration decay_amount = amount / decay_amount_factor;
-                            cur.set_field_age( cur.get_field_age() + decay_amount );
+                    for( int sy = 0; sy < SEEY; ++sy ) {
+                        const point p( sx + smx * SEEX, sy + smy * SEEY );
+
+                        field &fields = cur_submap->get_field( { sx, sy} );
+                        if( !outside_cache[p.x][p.y] ) {
+                            to_proc -= fields.field_count();
+                            continue;
+                        }
+
+                        for( auto &fp : fields ) {
+                            to_proc--;
+                            // Age the entry on the map, not a copy of it
+                            field_entry &cur = fp.second;
+                            const int decay_amount_factor =
+                                cur.get_field_type().obj().decay_amount_factor;
+                            if( decay_amount_factor != 0 ) {
+                                cur.mod_field_age( amount / decay_amount_factor );
+                            }
                         }
                     }
                 }
-            }
 
-            if( to_proc > 0 ) {
-                cur_submap->field_count = cur_submap->field_count - to_proc;
-                dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
-                               << abs_sub.to_string()
-                               << "has " << cur_submap->field_count - to_proc << "fields, but "
-                               << cur_submap->field_count << " field_count";
+                if( to_proc > 0 ) {
+                    cur_submap->field_count = cur_submap->field_count - to_proc;
+                    dbg( D_ERROR ) << "map::decay_fields_and_scent: submap at "
+                                   << abs_sub.to_string()
+                                   << "has " << cur_submap->field_count - to_proc << "fields, but "
+                                   << cur_submap->field_count << " field_count";
+                }
             }
         }
     }
@@ -4352,7 +4377,8 @@ void map::smash_items( const tripoint_bub_ms &p, int power, const std::string &c
         }
 
         if( vp_wheel != nullptr && vehicle::hit_probability( *i, vp_wheel ) < rng_float( 0.0, 1.0 ) ) {
-            // The wheel missed the item.
+            // The wheel missed the item, move on to the next one
+            i++;
             continue;
         }
 
@@ -4419,9 +4445,13 @@ void map::smash_items( const tripoint_bub_ms &p, int power, const std::string &c
             } else {
                 // Small chance: Eject item away from wheel
                 if( one_in( 5 ) ) {
-                    point_rel_ms move_to( rng( 0, 1 ), rng( 0, 1 ) );
-                    if( move_to != point_rel_ms() ) {  // Don't "move" to the same tile, always an adjacent one
-                        add_item( p + move_to, *i );
+                    const point_rel_ms move_to( rng( -1, 1 ), rng( -1, 1 ) );
+                    const tripoint_bub_ms dest = p + move_to;
+                    // Don't "move" to the same tile, always an adjacent one that takes items;
+                    // if it can't, the item stays where it is
+                    if( move_to != point_rel_ms() && inbounds( dest ) &&
+                        can_put_items_ter_furn( dest ) &&
+                        !add_item_or_charges( dest, *i, false ).is_null() ) {
                         i = i_rem( p, i );
                         continue;
                     }
@@ -4590,6 +4620,34 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
     return false;
 }
 
+// Runs a bash's eoc_on_hit or eoc_on_destroy for the tile at p, with the basher (if any) as alpha.
+// With no known basher, alpha is an empty talker (as for ammo_effect EOCs): an EOC needs at least
+// one talker. Only on the main map: mapgen bashes temporary maps, where nothing happens in the
+// game world.
+static void run_bash_eoc( const map &m, const effect_on_condition_id &eoc,
+                          const tripoint_bub_ms &p, Creature *basher,
+                          const std::vector<std::pair<std::string, std::string>> &context )
+{
+    if( eoc.is_null() || &m != &get_map() ) {
+        return;
+    }
+    dialogue d( basher ? get_talker_for( basher ) : std::make_unique<talker>(), nullptr );
+    d.set_value( "loc", m.get_abs( p ) );
+    for( const std::pair<std::string, std::string> &var : context ) {
+        d.set_value( var.first, var.second );
+    }
+    eoc->activate( d );
+}
+
+// Context of a terrain/furniture bash EOC: what was there before and what is there now
+static std::vector<std::pair<std::string, std::string>> ter_furn_bash_context(
+            const map &m, const tripoint_bub_ms &p, const ter_str_id &old_ter,
+            const furn_str_id &old_furn )
+{
+    return { { "old_ter", old_ter.str() }, { "old_furn", old_furn.str() },
+        { "new_ter", m.ter( p ).id().str() }, { "new_furn", m.furn( p ).id().str() } };
+}
+
 void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool repair_missing_ground )
 {
     int sound_volume = 0;
@@ -4720,6 +4778,10 @@ void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool rep
             add_field( p, bash->hit_field.first, bash->hit_field.second );
         }
 
+        if( !bash->eoc_on_hit.is_null() ) {
+            run_bash_eoc( *this, bash->eoc_on_hit, p, params.basher,
+                          ter_furn_bash_context( *this, p, terid.id, furnid.id ) );
+        }
         return;
     }
 
@@ -4896,24 +4958,32 @@ void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool rep
         sounds::sound( p, sound_volume, sounds::sound_t::combat, sound, false,
                        soundfxid, soundfxvariant );
     }
+    // Last, so the EOC sees the result (and anything it changes stays changed)
+    if( !bash->eoc_on_destroy.is_null() ) {
+        run_bash_eoc( *this, bash->eoc_on_destroy, p, params.basher,
+                      ter_furn_bash_context( *this, p, terid.id, furnid.id ) );
+    }
 }
 
 bash_params map::bash( const tripoint_bub_ms &p, const int str,
                        bool silent, bool destroy, bool bash_floor,
-                       const vehicle *bashing_vehicle, bool repair_missing_ground )
+                       const vehicle *bashing_vehicle, bool repair_missing_ground,
+                       Creature *basher )
 {
     // Temporary map is bound to a const reference for the call duration; bash returns by value.
     // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
     return bash( p, {{{damage_bash, str}}}, silent, destroy, bash_floor, bashing_vehicle,
-    repair_missing_ground );
+    repair_missing_ground, basher );
 }
 bash_params map::bash( const tripoint_bub_ms &p, const std::map<damage_type_id, int> &str,
                        bool silent, bool destroy, bool bash_floor,
-                       const vehicle *bashing_vehicle, bool repair_missing_ground )
+                       const vehicle *bashing_vehicle, bool repair_missing_ground,
+                       Creature *basher )
 {
     bash_params bsh{
         str, silent, destroy, bash_floor, static_cast<float>( rng_float( 0, 1.0f ) ), false, false, false, false
     };
+    bsh.basher = basher;
     if( !inbounds( p ) ) {
         return bsh;
     }
@@ -5007,7 +5077,8 @@ void map::bash_field( const tripoint_bub_ms &p, bash_params &params )
 {
     std::vector<field_type_id> to_remove;
     for( const std::pair<const field_type_id, field_entry> &fd : field_at( p ) ) {
-        if( fd.first->bash_info && !fd.first->indestructible ) {
+        // A field removed earlier (removal is lazy) stays listed until fields are processed
+        if( fd.first->bash_info && !fd.first->indestructible && fd.second.is_field_alive() ) {
             params.did_bash = true;
             params.bashed_solid = true; // To prevent bashing furniture/vehicles
             to_remove.push_back( fd.first );
@@ -5015,6 +5086,10 @@ void map::bash_field( const tripoint_bub_ms &p, bash_params &params )
     }
     for( field_type_id fd : to_remove ) {
         remove_field( p, fd );
+        if( !fd->bash_info->eoc_on_destroy.is_null() ) {
+            run_bash_eoc( *this, fd->bash_info->eoc_on_destroy, p, params.basher,
+            { { "field", fd.id().str() } } );
+        }
     }
 }
 
@@ -6179,17 +6254,21 @@ item &map::add_item( const tripoint_bub_ms &p, item new_item, int copies )
     current_submap->ensure_nonuniform();
     invalidate_max_populated_zlev( p.z() );
 
-    current_submap->update_lum_add( l, new_item );
     if( new_item.is_emissive() ) {
         set_lightmap_cache_dirty( p.z() );
     }
 
+    // Every copy is a separate item on the map: each one lights the tile and is processed
+    current_submap->update_lum_add( l, new_item );
     const map_stack::iterator new_pos = current_submap->get_items( l ).insert( new_item );
+    bool added_active = current_submap->active_items.add( *new_pos, l );
     while( --copies > 0 ) {
-        current_submap->get_items( l ).insert( new_item );
+        current_submap->update_lum_add( l, new_item );
+        const map_stack::iterator copy_pos = current_submap->get_items( l ).insert( new_item );
+        added_active |= current_submap->active_items.add( *copy_pos, l );
     }
 
-    if( current_submap->active_items.add( *new_pos, l ) ) {
+    if( added_active ) {
         // TODO: fix point types
         tripoint_abs_sm const loc( abs_sub.x() + p.x() / SEEX, abs_sub.y() + p.y() / SEEY, p.z() );
         submaps_with_active_items_dirty.insert( loc );
@@ -9512,6 +9591,12 @@ void map::loadn( const point_bub_sm &grid, bool update_vehicles )
         set_floor_cache_dirty( z );
         set_pathfinding_cache_dirty( z );
         tmpsub = MAPBUFFER.lookup_submap( pos );
+        if( tmpsub == nullptr ) {
+            // submap_exists vouched for it above, so the save is damaged beyond regenerating
+            dbg( D_ERROR ) << "failed to load a submap at " << pos;
+            debugmsg( "failed to load a submap at %s", pos.to_string() );
+            return;
+        }
         setsubmap( get_nonant( tripoint_rel_sm{ grid.x(), grid.y(), z} ), tmpsub );
         if( !tmpsub->active_items.empty() ) {
             submaps_with_active_items_dirty.emplace( pos );
@@ -11586,6 +11671,10 @@ void map::creature_on_trap( Creature &c, const bool may_avoid ) const
     // like a flying monster and can never trigger the trap.
     const Character *const you = c.as_character();
     if( you != nullptr && ( you->in_vehicle || you->has_effect( effect_gliding ) ) ) {
+        return;
+    }
+    // Neither does a creature in flight (flung or thrown), until it lands.
+    if( c.has_effect( effect_airborne ) ) {
         return;
     }
 

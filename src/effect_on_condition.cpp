@@ -76,6 +76,12 @@ bool string_id<effect_on_condition>::is_valid() const
 }
 
 static std::vector<std::pair<std::string, std::string>> pending_eoc_refs;
+static std::vector<std::function<void()>> pending_load_checks;
+
+void effect_on_conditions::add_load_check( std::function<void()> check )
+{
+    pending_load_checks.emplace_back( std::move( check ) );
+}
 
 void effect_on_conditions::check_consistency()
 {
@@ -86,6 +92,10 @@ void effect_on_conditions::check_consistency()
         }
     }
     pending_eoc_refs.clear();
+    for( const std::function<void()> &check : pending_load_checks ) {
+        check();
+    }
+    pending_load_checks.clear();
 }
 
 void effect_on_condition::load( const JsonObject &jo, std::string_view src )
@@ -348,7 +358,8 @@ void effect_on_conditions::process_reactivate()
                           g->queued_global_effect_on_conditions, d );
 }
 
-bool effect_on_condition::activate( dialogue &d, bool require_callstack_check ) const
+bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
+                                    const std::function<void( const dialogue & )> &on_done ) const
 {
     const bool tracing = debug_menu::debug_capture::is_eoc_tracing();
     std::chrono::steady_clock::time_point trace_start;
@@ -372,6 +383,9 @@ bool effect_on_condition::activate( dialogue &d, bool require_callstack_check ) 
         retval = true;
     } else if( has_false_effect ) {
         false_effect.apply( d_eoc );
+    }
+    if( on_done ) {
+        on_done( d_eoc );
     }
     // This works because if global is true then this is recurring and thus should only ever be passed containing the player
     // Thus we just need to run the npcs.
@@ -559,6 +573,7 @@ void effect_on_conditions::reset()
 {
     effect_on_condition_factory.reset();
     pending_eoc_refs.clear();
+    pending_load_checks.clear();
 }
 
 void effect_on_conditions::load( const JsonObject &jo, const std::string &src )

@@ -349,6 +349,12 @@ bool item::can_have_fault( const fault_id &f_id )
         return false;
     }
 
+    // already has it: setting it again would only repeat its message and instant damage,
+    // and a fault whose instant damage rolls itself again would recurse forever
+    if( has_fault( f_id ) ) {
+        return false;
+    }
+
     // f_id is blocked by some another fault
     for( const fault_id &faults_of_item : faults ) {
         for( const fault_id &blocked_fault : faults_of_item.obj().get_block_faults() ) {
@@ -871,8 +877,9 @@ bool item::mod_damage( int qty, const Character *holder )
         }
 
         // TODO: think about better way to telling the game what faults should be applied when
+        // one roll per started damage level: a single inc_damage() rolls once, not twice
         if( qty > 0 ) {
-            for( int i = 0; i <= qty; i += itype::damage_scale ) {
+            for( int i = 0; i < qty; i += itype::damage_scale ) {
                 set_random_fault_of_type( "mechanical_damage", false, holder );
             }
         }

@@ -829,6 +829,13 @@ static std::optional<item_location> wield_craft( Character &p, item &craft )
 static item_location set_item_inventory( Character &p, item &newit )
 {
     item_location ret_val = item_location::nowhere;
+    // where the item landed when it had to be dropped
+    const auto drop = [&p, &newit]( item_drop_reason reason ) {
+        map &here = get_map();
+        const std::vector<item_location> dropped = put_into_vehicle_or_drop( p, reason, { newit },
+                &here, p.pos_bub( here ) );
+        return dropped.empty() ? item_location::nowhere : dropped.front();
+    };
     if( newit.made_of( phase_id::LIQUID ) ) {
         liquid_handler::handle_all_or_npc_liquid( p, newit, PICKUP_RANGE );
     } else {
@@ -837,9 +844,9 @@ static item_location set_item_inventory( Character &p, item &newit )
         }
         // We might not have space for the item
         if( !p.can_pickVolume( newit ) ) { //Accounts for result_mult
-            put_into_vehicle_or_drop( p, item_drop_reason::too_large, { newit } );
+            ret_val = drop( item_drop_reason::too_large );
         } else if( !p.can_pickWeight( newit, false ) ) {
-            put_into_vehicle_or_drop( p, item_drop_reason::too_heavy, { newit } );
+            ret_val = drop( item_drop_reason::too_heavy );
         } else {
             ret_val = p.i_add( newit );
             add_msg( m_info, "%c - %s", ret_val->invlet == 0 ? ' ' : ret_val->invlet,
@@ -3656,10 +3663,19 @@ static void set_temp_rot( item &newit, const double relative_rot, const bool sho
     }
 }
 
+/**
+ * Places the results of a craft. When @p placed is given, it gets where each result that can
+ * still be found landed (liquids poured into containers can't).
+ */
 static void spawn_items( Character &guy, std::vector<item> &results,
                          const std::optional<tripoint_bub_ms> &loc, const double relative_rot, const bool should_heat,
-                         bool allow_wield = false )
+                         bool allow_wield = false, std::vector<item_location> *placed = nullptr )
 {
+    const auto record = [placed]( const item_location & where ) {
+        if( placed != nullptr && where.get_item() != nullptr ) {
+            placed->push_back( where );
+        }
+    };
     auto prepare = [&]( item & it ) {
         // todo: set this up recursively, who knows what kinda crafts will need it
         if( !it.empty() ) {
@@ -3683,12 +3699,14 @@ static void spawn_items( Character &guy, std::vector<item> &results,
         }
         if( !loc && allow_wield && !guy.has_wield_conflicts( newit ) &&
             guy.can_wield( newit ).success() ) {
-            wield_craft( guy, newit );
+            if( std::optional<item_location> wielded = wield_craft( guy, newit ) ) {
+                record( *wielded );
+            }
             ++i;
             continue;
         }
         if( !loc ) {
-            set_item_inventory( guy, newit );
+            record( set_item_inventory( guy, newit ) );
             ++i;
             continue;
         }
@@ -3700,7 +3718,8 @@ static void spawn_items( Character &guy, std::vector<item> &results,
         // because veh add_item lacks a multi-copy entry point.
         const tripoint_bub_ms target = loc.value_or( guy.pos_bub() );
         const bool target_is_vehicle = here.veh_at( target ).cargo().has_value();
-        if( !target_is_vehicle && !newit.count_by_charges() ) {
+        // grouped copies have no locations to record
+        if( !target_is_vehicle && !newit.count_by_charges() && placed == nullptr ) {
             size_t group_end = i + 1;
             while( group_end < results.size() &&
                    !results[group_end].made_of( phase_id::LIQUID ) &&
@@ -3730,7 +3749,7 @@ static void spawn_items( Character &guy, std::vector<item> &results,
             }
         }
 
-        set_item_map_or_vehicle( guy, target, newit );
+        record( set_item_map_or_vehicle( guy, target, newit ) );
         ++i;
     }
 }
@@ -3749,6 +3768,8 @@ void Character::complete_craft( item &craft, const std::optional<tripoint_bub_ms
     const bool should_heat = making.hot_result();
     const bool add_faults_to_results = craft.has_flag( flag_FAULT_ON_COMPLETION );
     std::vector<item> newits;
+    // where the results landed, for result_item_eocs
+    std::vector<item_location> result_locs;
 
     if( making.is_practice() ) {
         add_msg( _( "You finish practicing %s." ), making.result_name() );
@@ -3762,7 +3783,8 @@ void Character::complete_craft( item &craft, const std::optional<tripoint_bub_ms
         }
         // only wield crafted items if there's only one
         bool allow_wield = newits.size() == 1;
-        spawn_items( *this, newits, loc, relative_rot, should_heat, allow_wield );
+        spawn_items( *this, newits, loc, relative_rot, should_heat, allow_wield,
+                     making.result_item_eocs.empty() ? nullptr : &result_locs );
     }
 
     // messages, learning of recipe
@@ -3819,7 +3841,22 @@ void Character::complete_craft( item &craft, const std::optional<tripoint_bub_ms
 
     for( const effect_on_condition_id &eoc : making.result_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
+        d.set_value( "recipe_id", making.ident().str() );
+        d.set_value( "batch_size", batch_size );
         for( int i = 0; i < batch_size; i++ ) {
+            d.set_value( "batch_index", i );
+            eoc->activate_activation_only( d, "a recipe", "crafting", "recipe" );
+        }
+    }
+    for( item_location &result : result_locs ) {
+        // an earlier EOC may have used the item up
+        if( !result.get_item() ) {
+            continue;
+        }
+        dialogue d( get_talker_for( *this ), get_talker_for( result ) );
+        d.set_value( "recipe_id", making.ident().str() );
+        d.set_value( "batch_size", batch_size );
+        for( const effect_on_condition_id &eoc : making.result_item_eocs ) {
             eoc->activate_activation_only( d, "a recipe", "crafting", "recipe" );
         }
     }
@@ -5741,6 +5778,16 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
             }
         } else {
             add_msg_if_player( m_info, _( "If you had better skills, you might learn a recipe next time." ) );
+        }
+    }
+
+    if( !dis.disassembly_eocs.empty() ) {
+        dialogue d( get_talker_for( *this ), nullptr );
+        d.set_value( "recipe_id", dis.ident().str() );
+        d.set_value( "item_id", dis_item.typeId().str() );
+        d.set_value( "count", dis_item.count_by_charges() ? activity.position : 1 );
+        for( const effect_on_condition_id &eoc : dis.disassembly_eocs ) {
+            eoc->activate_activation_only( d, "a recipe", "disassembly", "recipe" );
         }
     }
 }

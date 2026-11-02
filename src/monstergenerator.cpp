@@ -24,6 +24,7 @@
 #include "item.h"
 #include "item_group.h"
 #include "magic.h"
+#include "math_parser_jmath.h"
 #include "mattack_actors.h"
 #include "monattack.h"
 #include "mondefense.h"
@@ -1295,6 +1296,16 @@ class mattack_hardcoded_wrapper : public mattack_actor
 mtype_special_attack::mtype_special_attack( const mattack_id &id, const mon_action_attack f )
     : mtype_special_attack( std::make_unique<mattack_hardcoded_wrapper>( id, f ) ) {}
 
+const mtype_special_attack *MonsterGenerator::find_json_attack( const std::string &id ) const
+{
+    const auto iter = attack_map.find( id );
+    if( iter == attack_map.end() ||
+        dynamic_cast<const mattack_hardcoded_wrapper *>( iter->second.get() ) != nullptr ) {
+        return nullptr;
+    }
+    return &iter->second;
+}
+
 void MonsterGenerator::add_hardcoded_attack( const std::string &type, const mon_action_attack f )
 {
     add_attack( mtype_special_attack( type, f ) );
@@ -1592,6 +1603,16 @@ void MonsterGenerator::check_monster_definitions() const
                 if( !dt.type.is_valid() ) {
                     debugmsg( "Invalid monster attack damage type \"%s\" for monster %s", dt.type.c_str(),
                               mon.id.c_str() );
+                }
+            }
+            const grab &grab_data = atk->grab_data;
+            if( atk->is_grab && grab_data.pull_from_vehicle ) {
+                if( !grab_data.vehicle_pull_formula.is_valid() ) {
+                    debugmsg( "Monster %s attack %s has unknown vehicle_pull_formula \"%s\"",
+                              mon.id.c_str(), spatk.first, grab_data.vehicle_pull_formula.str() );
+                } else if( grab_data.vehicle_pull_formula->num_params != 4 ) {
+                    debugmsg( "Monster %s attack %s: vehicle_pull_formula \"%s\" needs 4 arguments",
+                              mon.id.c_str(), spatk.first, grab_data.vehicle_pull_formula.str() );
                 }
             }
         }

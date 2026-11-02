@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -10,8 +11,10 @@
 #include "effect.h"
 #include "map.h"
 #include "math_parser_diag_value.h"
+#include "mattack_common.h"
 #include "messages.h"
 #include "monster.h"
+#include "monstergenerator.h"
 #include "mtype.h"
 #include "units.h"
 
@@ -238,6 +241,54 @@ void talker_monster::die( map *here )
 void talker_monster::set_all_parts_hp_cur( int set )
 {
     me_mon->set_hp( set );
+}
+
+// u_attack for a monster: with allow_special, the "technique" names a special attack, which is
+// used on the target whatever its cooldown: one of the monster's own (whose cooldown restarts),
+// or else any monster attack defined in JSON. Otherwise (or for any other name) a basic melee
+// attack, if the target is adjacent and seen.
+void talker_monster::attack_target( Creature &t, bool allow_special,
+                                    const matec_id &force_technique, bool, int forced_movecost )
+{
+    if( me_mon->is_dead() || &t == me_mon ) {
+        return;
+    }
+    const int moves_before = me_mon->get_moves();
+    const std::string &special_name = force_technique.str();
+    const auto own_special = me_mon->type->special_attacks.find( special_name );
+    const bool is_own = own_special != me_mon->type->special_attacks.end();
+    // Hardcoded attacks are left out: some expect the monster to have them
+    const mtype_special_attack *json_attack = allow_special && !is_own ?
+            MonsterGenerator::generator().find_json_attack( special_name ) : nullptr;
+    if( allow_special && ( is_own || json_attack != nullptr ) ) {
+        // An eoc special attack can run u_attack again: stop such a loop
+        static int nesting = 0;
+        if( nesting >= 10 ) {
+            debugmsg( "u_attack: special attack %s of %s keeps running u_attack; stopped",
+                      special_name, me_mon->get_name() );
+            return;
+        }
+        nesting++;
+        on_out_of_scope end_nesting( []() {
+            nesting--;
+        } );
+        // Special attack actors aim at the creature at the monster's destination
+        me_mon->set_dest( t.pos_abs() );
+        if( !is_own ) {
+            ( *json_attack )->call( *me_mon );
+        } else if( own_special->second->call( *me_mon ) &&
+                   me_mon->special_cooldown( special_name ) ) {
+            me_mon->reset_special( special_name );
+        }
+    } else {
+        if( !me_mon->is_adjacent( &t, true ) || !me_mon->sees( get_map(), t ) ) {
+            return;
+        }
+        me_mon->melee_attack( t );
+    }
+    if( forced_movecost >= 0 ) {
+        me_mon->set_moves( moves_before - forced_movecost );
+    }
 }
 
 dealt_damage_instance talker_monster::deal_damage( Creature *source, bodypart_id bp,

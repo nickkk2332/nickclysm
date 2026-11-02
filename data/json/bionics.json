@@ -5,6 +5,8 @@
     "name": { "str": "Adrenaline Pump" },
     "description": "A stimulator system has been surgically implanted alongside your adrenal glands, allowing you to trigger your body's adrenaline response at the cost of some bionic power.",
     "occupied_bodyparts": [ [ "torso", 4 ] ],
+    "activation_condition": { "not": { "u_has_effect": "adrenaline" } },
+    "activation_fail_message": "Safeguards kicks in, and the bionic refuses to activate!",
     "activated_eocs": [ "EOC_bio_adrenaline" ],
     "act_cost": "5 J"
   },
@@ -14,6 +16,7 @@
     "name": { "str": "Active Defense System" },
     "description": "A thin forcefield surrounds your body, continually draining power.  Everything loses velocity when penetrating this field, which results in reduced amount of dealt damage at the cost of your bionic energy.  Bullets and stabbing attacks will lose more velocity than cutting attacks and those in turn more than bashing attacks.",
     "occupied_bodyparts": [ [ "torso", 10 ], [ "head", 1 ], [ "arm_l", 1 ], [ "arm_r", 1 ], [ "leg_l", 2 ], [ "leg_r", 2 ] ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "act_cost": "1 kJ",
     "react_cost": "1 kJ",
@@ -648,6 +651,7 @@
       [ "foot_l", 1 ],
       [ "foot_r", 1 ]
     ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE", "BIONIC_SHOCKPROOF" ],
     "active_flags": [ "ELECTRIC_IMMUNE", "EMP_ENERGYDRAIN_IMMUNE" ],
     "act_cost": "5 J",
@@ -789,6 +793,7 @@
       [ "foot_l", 2 ],
       [ "foot_r", 2 ]
     ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "trigger_cost": "3 kJ"
   },
@@ -809,6 +814,7 @@
       [ "foot_l", 1 ],
       [ "foot_r", 1 ]
     ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "active_flags": [ "HEATSINK" ],
     "act_cost": "1 kJ",
@@ -821,6 +827,7 @@
     "name": { "str": "Hydraulic Muscles" },
     "description": "While activated, your muscles will be greatly enhanced, setting your strength to 20.",
     "occupied_bodyparts": [ [ "torso", 10 ], [ "arm_l", 8 ], [ "arm_r", 8 ], [ "leg_l", 10 ], [ "leg_r", 10 ] ],
+    "npc_use": "melee",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [ { "condition": "ACTIVE", "ench_effects": [ { "effect": "bio_hydraulics_eff", "intensity": 1 } ] } ],
     "act_cost": "10 kJ",
@@ -889,6 +896,7 @@
     "description": "You are equipped with bionic stimulators which augment your haematopoiesis system, allowing you to accelerate white blood cell production using bionic power.  It is supposed to run continuously and may cause unpleasant side effects when turned off.",
     "occupied_bodyparts": [ [ "torso", 10 ] ],
     "cant_remove_reason": "The CBM has completely replaced %1$s immune system now.  Removing them would kill %2$s slowly.",
+    "npc_use": "upkeep",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_SLEEP_FRIENDLY", "BIONIC_NPC_USABLE" ],
     "act_cost": "5 J",
     "react_cost": "5 J",
@@ -989,6 +997,7 @@
     "name": { "str": "Repair Nanobots" },
     "description": "Inside your body is a fleet of tiny dormant robots.  While activated they will flit about your body, repairing damage at 1 HP per minute and stopping bleeding at the cost of extra power and stored calories.  No power is consumed if there is nothing to heal.",
     "occupied_bodyparts": [ [ "torso", 12 ] ],
+    "npc_use": "wounds",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE", "BIONIC_SLEEP_FRIENDLY" ],
     "act_cost": "80 J",
     "react_cost": "40 J",
@@ -1041,6 +1050,7 @@
     "name": { "str": "Offensive Defense System" },
     "description": "A thin forcefield surrounds your body, continually draining power.  This field does not deflect attacks, but rather delivers a strong shock, damaging unarmed attackers and those with a conductive weapon.",
     "occupied_bodyparts": [ [ "torso", 10 ], [ "head", 1 ], [ "arm_l", 1 ], [ "arm_r", 1 ], [ "leg_l", 2 ], [ "leg_r", 2 ] ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "act_cost": "10 J",
     "react_cost": "10 J",
@@ -1053,6 +1063,7 @@
     "name": { "str": "Sensory Dulling" },
     "description": "Your nervous system is wired to allow you to inhibit the signals of pain, allowing you to dull your senses at will.  However, the use of this system may cause delayed reaction time and drowsiness.",
     "occupied_bodyparts": [ [ "head", 2 ] ],
+    "npc_use": "pain",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "trigger_cost": "2 kJ"
   },
@@ -1137,6 +1148,7 @@
     "name": { "str": "Radiation Scrubber System" },
     "description": "A system of advanced piezomechanical blood filters have been surgically implanted throughout your body, allowing you to purge yourself of absorbed radiation at the cost of some bionic power.",
     "occupied_bodyparts": [ [ "torso", 5 ], [ "arm_l", 1 ], [ "arm_r", 1 ], [ "leg_l", 2 ], [ "leg_r", 2 ] ],
+    "npc_use": "radiation",
     "flags": [ "BIONIC_NPC_USABLE" ],
     "act_cost": "4500 J"
   },
@@ -1224,6 +1236,7 @@
     "name": { "str": "Electroshock Unit" },
     "description": "While fighting unarmed, or with a weapon that conducts electricity, there is a chance that a successful hit will shock your opponent, inflicting extra damage and disabling them temporarily at the cost of some energy.",
     "occupied_bodyparts": [ [ "torso", 8 ], [ "arm_l", 3 ], [ "arm_r", 3 ], [ "hand_l", 1 ], [ "hand_r", 1 ] ],
+    "npc_use": "combat",
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "trigger_cost": "2 kJ"
   },
@@ -1395,6 +1408,8 @@
     "type": "bionic",
     "name": { "str": "Time Dilation" },
     "description": "At the cost of all stored bionic power, you may increase your body speed and reactions dramatically, essentially freezing time.  You are still delicate, however, and violent or rapid movements may damage you due to friction.",
+    "activation_condition": { "not": { "u_has_effect": "riding" } },
+    "activation_fail_message": "You cannot activate Time Dilation while mounted.",
     "activated_eocs": [ "EOC_time_freeze" ],
     "occupied_bodyparts": [
       [ "torso", 12 ],
@@ -1619,7 +1634,8 @@
     "name": { "str": "Soporific Induction" },
     "description": "An electrode has been implanted into your brain's ventrolateral preoptic nucleus.  It turns on whenever you're trying to fall asleep, creating an artificial but effective sensation of sleepiness.",
     "occupied_bodyparts": [ [ "head", 1 ] ],
-    "flags": [ "BIONIC_TOGGLED" ],
+    "npc_use": "sleep",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
     "enchantments": [ { "condition": "ACTIVE", "values": [ { "value": "SLEEPY", "add": 30 } ] } ]
   },
   {

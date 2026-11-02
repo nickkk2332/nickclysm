@@ -1,6 +1,7 @@
 #include <algorithm>
 
 #include "coordinates.h"
+#include "map.h"
 #include "scent_block.h"
 #include "scent_map.h"
 
@@ -12,7 +13,7 @@ scent_block::scent_block( const tripoint_bub_sm &sub, scent_map &scents )
 {
     for( int x = 0; x < SEEX + 2; ++x ) {
         for( int y = 0; y < SEEY + 2; ++y ) {
-            assignment[x][y] = { data_mode::NONE, 0 };
+            assignment[x][y] = { data_mode::NONE, 0, 0 };
         }
     }
 }
@@ -22,25 +23,21 @@ void scent_block::commit_modifications()
     if( modification_count == 0 ) {
         return;
     }
+    // The scent map is the player's level only; fields on other levels must not
+    // write over it.
+    if( origin.z() != get_map().get_abs_sub().z() ) {
+        return;
+    }
     for( int x = 0; x < SEEX + 2; ++x ) {
         for( int y = 0; y < SEEY + 2; ++y ) {
-            switch( assignment[x][y].mode ) {
-                case data_mode::NONE:
-                    break;
-                case data_mode::SET: {
-                    tripoint_bub_ms p{ origin + tripoint( x, y, 0 ) };
-                    if( scents.inbounds( p ) ) {
-                        scents.set_unsafe( p, assignment[x][y].intensity );
-                    }
-                    break;
-                }
-                case data_mode::MAX: {
-                    tripoint_bub_ms p{ origin + tripoint( x, y, 0 ) };
-                    if( scents.inbounds( p ) ) {
-                        scents.set_unsafe( p, std::max( assignment[x][y].intensity, scents.get_unsafe( p ) ) );
-                    }
-                    break;
-                }
+            const datum &dat = assignment[x][y];
+            if( dat.mode == data_mode::NONE ) {
+                continue;
+            }
+            tripoint_bub_ms p{ origin + tripoint( x, y, 0 ) };
+            if( scents.inbounds( p ) ) {
+                const int lowered = scents.get_unsafe( p ) - dat.subtract;
+                scents.set_unsafe( p, std::max( dat.intensity, lowered ) );
             }
         }
     }
@@ -50,9 +47,12 @@ void scent_block::commit_modifications()
 void scent_block::apply_gas( const tripoint_bub_ms &p, const int nintensity )
 {
     const point_rel_ms ndx = index( p );
-    assignment[ndx.x()][ndx.y()].mode = data_mode::SET;
-    assignment[ndx.x()][ndx.y()].intensity = std::max( 0,
-            assignment[ndx.x()][ndx.y()].intensity - nintensity );
+    datum &dat = assignment[ndx.x()][ndx.y()];
+    // The scent isn't known until the commit, so this composes with what is pending:
+    // max( max( a, s - b ) - n, 0 ) == max( max( a - n, 0 ), s - ( b + n ) )
+    dat.mode = data_mode::MODIFY;
+    dat.intensity = std::max( 0, dat.intensity - nintensity );
+    dat.subtract += nintensity;
     ++modification_count;
 }
 
@@ -60,22 +60,8 @@ void scent_block::apply_slime( const tripoint_bub_ms &p, int intensity )
 {
     const point_rel_ms ndx = index( p );
     datum &dat = assignment[ndx.x()][ndx.y()];
-    switch( dat.mode ) {
-        case data_mode::NONE: {
-            // we don't know what the current intensity is, so we must do a max operation
-            dat.mode = data_mode::MAX;
-            dat.intensity = intensity;
-            break;
-        }
-        case data_mode::MAX:
-        // Already max for some reason, shouldn't occur.
-        // If it does we want to grow if possible
-        case data_mode::SET: {
-            // new intensity is going to be dat.intensity, so we just need to make it larger
-            // but cannot change
-            dat.intensity = std::max( dat.intensity, intensity );
-            break;
-        }
-    }
+    // max( i, max( a, s - b ) ) == max( max( i, a ), s - b )
+    dat.mode = data_mode::MODIFY;
+    dat.intensity = std::max( dat.intensity, intensity );
     ++modification_count;
 }

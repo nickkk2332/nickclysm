@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <list>
 #include <map>
 #include <optional>
 #include <unordered_set>
+#include <utility>
 
 #include "bodypart.h"
 #include "cata_assert.h"
@@ -58,6 +61,29 @@ static std::map<efftype_id, effect_migration> effect_migrations;
 namespace
 {
 std::map<efftype_id, effect_type> effect_types;
+
+// Abstract effect types: "copy-from" can name them, but nothing can apply them.
+std::map<std::string, effect_type> effect_type_abstracts;
+
+// An effect type whose "copy-from" parent has not loaded yet.  It loads as soon as the
+// parent does, keeping the load number it was first read with.
+struct deferred_effect_type {
+    JsonObject jo;
+    std::string src;
+    std::string id;
+    std::string copy_from;
+    uint64_t load_number;
+};
+std::list<deferred_effect_type> deferred_effect_types;
+// The load number of the definition each id holds now, so that a deferred definition that a
+// later one replaced while it waited does not undo that replacement.
+std::map<efftype_id, uint64_t> effect_type_load_numbers;
+uint64_t next_effect_type_load_number = 0;
+// Set while a deferred definition is replayed: the load number it was first read with.
+std::optional<uint64_t> replayed_load_number;
+// How many inline enchantments each effect id has named so far, across all its definitions, so
+// that an "extend" after a "delete" cannot reuse the name of one the effect still has.
+std::map<std::string, int> inline_enchantment_counts;
 } // namespace
 
 void vitamin_rate_effect::load( const JsonObject &jo )
@@ -493,6 +519,7 @@ void effect_type::load_mod_data( const JsonObject &j )
         {"stamina_amount",      mod_action::AMOUNT},
         {"stamina_min",         mod_action::MIN},
         {"stamina_max",         mod_action::MAX},
+        {"stamina_min_val",     mod_action::MIN_VAL},
         {"stamina_max_val",     mod_action::MAX_VAL},
         {"stamina_chance",      mod_action::CHANCE_TOP},
         {"stamina_chance_bot",  mod_action::CHANCE_BOT},
@@ -585,6 +612,12 @@ double effect_type::get_mod_value( const std::string &type, mod_action action,
 
 void effect_type::check_consistency()
 {
+    for( deferred_effect_type &waiting : deferred_effect_types ) {
+        debugmsg( "effect_type %s (%s) copies from \"%s\", which is not an effect_type",
+                  waiting.id, waiting.src, waiting.copy_from );
+        waiting.jo.allow_omitted_members();
+    }
+    deferred_effect_types.clear();
     for( auto const &check : effect_types ) {
         check.second.verify();
     }
@@ -597,9 +630,30 @@ void effect_type::verify() const
                     *death_event );
         // Only allow events inheriting from event_spec_character at the moment.
         if( fields.size() != 1 || fields.count( "character" ) != 1 ) {
-            debugmsg( "Invalid death event type %s in effect_type %s", "lol",
+            debugmsg( "Invalid death event type %s in effect_type %s",
                       io::enum_to_string( *death_event ),
                       id.str() );
+        }
+    }
+    for( const vitamin_rate_effect &vit : vitamin_data ) {
+        if( !vit.vitamin.is_valid() ) {
+            debugmsg( "effect_type %s has unknown vitamin %s", id.str(), vit.vitamin.str() );
+        }
+    }
+    for( const limb_score_effect &score : limb_score_data ) {
+        if( !score.score_id.is_valid() ) {
+            debugmsg( "effect_type %s has unknown limb score %s", id.str(), score.score_id.str() );
+        }
+    }
+    for( const effect_dur_mod &scaling : effect_dur_scaling ) {
+        if( !scaling.effect_id.is_valid() ) {
+            debugmsg( "effect_type %s scales by unknown effect %s", id.str(),
+                      scaling.effect_id.str() );
+        }
+    }
+    for( const enchantment_id &ench : enchantments ) {
+        if( !ench.is_valid() ) {
+            debugmsg( "effect_type %s has unknown enchantment %s", id.str(), ench.str() );
         }
     }
 }
@@ -716,6 +770,21 @@ static std::optional<game_message_type> process_rating( const std::string &r )
     }
 }
 
+// Reads the top-level "rating" of an effect type; m_neutral when it has none.
+static game_message_type read_effect_rating( const JsonObject &jo )
+{
+    if( !jo.has_member( "rating" ) ) {
+        return m_neutral;
+    }
+    const std::string r = jo.get_string( "rating" );
+    const std::optional<game_message_type> rate = process_rating( r );
+    if( !rate ) {
+        jo.throw_error_at( "rating", string_format( "Unexpected rating \"%s\"; expected \"good\", "
+                           "\"neutral\", \"bad\", or \"mixed\"", r ) );
+    }
+    return *rate;
+}
+
 // helps load the internal message arrays for decay and apply into the msgs vector
 static void load_msg_help( const JsonArray &ja,
                            std::vector<std::pair<translation, game_message_type>> &apply_msgs )
@@ -755,12 +824,7 @@ bool effect_type::load_apply_msgs( const JsonObject &jo, std::string_view member
     } else {
         translation msg;
         optional( jo, false, member, msg );
-        if( jo.has_string( "rating" ) ) {
-            std::optional<game_message_type> rate = process_rating( jo.get_string( "rating" ) );
-            apply_msgs.emplace_back( msg, rate.value() );
-        } else {
-            apply_msgs.emplace_back( msg, game_message_type::m_neutral );
-        }
+        apply_msgs.emplace_back( msg, read_effect_rating( jo ) );
     }
     return false;
 }
@@ -1327,12 +1391,14 @@ int effect::get_amount( const std::string &arg, bool reduced ) const
 
 int effect::get_min_val( const std::string &arg, bool reduced ) const
 {
-    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MIN_VAL, reduced, intensity ) );
+    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MIN_VAL, reduced,
+                             get_effective_intensity() ) );
 }
 
 int effect::get_max_val( const std::string &arg, bool reduced ) const
 {
-    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MAX_VAL, reduced, intensity ) );
+    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MAX_VAL, reduced,
+                             get_effective_intensity() ) );
 }
 
 bool effect::get_sizing( const std::string &arg ) const
@@ -1347,7 +1413,9 @@ bool effect::get_sizing( const std::string &arg ) const
 
 double effect::get_percentage( const std::string &arg, int val, bool reduced ) const
 {
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, intensity );
+    // Like every other scaling mod, chances stop scaling at max_effective_intensity.
+    const int eff_intensity = get_effective_intensity();
+    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1355,8 +1423,8 @@ double effect::get_percentage( const std::string &arg, int val, bool reduced ) c
         return 0;
     }
 
-    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, intensity );
-    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, intensity );
+    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, eff_intensity );
+    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, eff_intensity );
 
     // Tick is the exception where tick = 0 means tick = 1
     if( tick == 0 ) {
@@ -1384,7 +1452,9 @@ double effect::get_percentage( const std::string &arg, int val, bool reduced ) c
 bool effect::activated( const time_point &when, const std::string &arg, int val, bool reduced,
                         double mod ) const
 {
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, intensity );
+    // Like every other scaling mod, chances stop scaling at max_effective_intensity.
+    const int eff_intensity = get_effective_intensity();
+    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1392,7 +1462,7 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
         return false;
     }
 
-    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, intensity );
+    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, eff_intensity );
 
     // Tick is the exception where tick = 0 means tick = 1
     if( tick == 0 ) {
@@ -1401,7 +1471,7 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
         return false;
     }
 
-    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, intensity );
+    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, eff_intensity );
 
     // Check if tick allows for triggering.
     if( ( when - calendar::turn_zero ) % time_duration::from_turns( tick ) != 0_turns ) {
@@ -1532,112 +1602,243 @@ static const std::unordered_set<efftype_id> hardcoded_movement_impairing = {{
     }
 };
 
+// Loads the deferred effect types whose "copy-from" parent `parent` has just loaded.
+static void load_effect_types_waiting_for( const std::string &parent )
+{
+    std::list<deferred_effect_type> ready;
+    for( auto it = deferred_effect_types.begin(); it != deferred_effect_types.end(); ) {
+        const auto next = std::next( it );
+        if( it->copy_from == parent ) {
+            ready.splice( ready.end(), deferred_effect_types, it );
+        }
+        it = next;
+    }
+    for( deferred_effect_type &waiting : ready ) {
+        // The stored copy forgot that DynamicDataLoader read "type"; load_effect_type doesn't.
+        if( waiting.jo.has_member( "type" ) ) {
+            waiting.jo.get_member( "type" );
+        }
+        replayed_load_number = waiting.load_number;
+        // An error belongs to the waiting definition, not to the parent that just loaded.
+        try {
+            load_effect_type( waiting.jo, waiting.src );
+        } catch( const JsonError &err ) {
+            debugmsg( "(json-error)\n%s", err.what() );
+        } catch( const mod_error &err ) {
+            debugmsg( "%s", err.what() );
+        }
+    }
+}
+
+// Fields are read with copy-from semantics (HLTH-J02): with a parent, a member that is
+// absent keeps the parent's value, and the id lists support "extend" and "delete".
 void load_effect_type( const JsonObject &jo, std::string_view src )
 {
+    const std::optional<uint64_t> replayed = std::exchange( replayed_load_number, std::nullopt );
+    const uint64_t load_number = replayed ? *replayed : next_effect_type_load_number++;
+
     effect_type new_etype;
-    new_etype.id = efftype_id( jo.get_string( "id" ) );
-
-    if( jo.has_member( "name" ) ) {
-        for( const JsonValue entry : jo.get_array( "name" ) ) {
-            translation name;
-            if( !entry.read( name ) ) {
-                entry.throw_error( "Error reading effect names" );
-            }
-            new_etype.name.emplace_back( name );
+    bool was_loaded = false;
+    if( jo.has_string( "copy-from" ) ) {
+        const std::string parent = jo.get_string( "copy-from" );
+        const auto real = effect_types.find( efftype_id( parent ) );
+        const auto abstract = effect_type_abstracts.find( parent );
+        if( real != effect_types.end() ) {
+            new_etype = real->second;
+        } else if( abstract != effect_type_abstracts.end() ) {
+            new_etype = abstract->second;
+        } else {
+            const std::string id = jo.has_string( "id" ) ? jo.get_string( "id" ) :
+                                   jo.get_string( "abstract", "" );
+            deferred_effect_types.push_back( { jo, std::string( src ), id, parent, load_number } );
+            jo.allow_omitted_members();
+            return;
         }
-    } else {
-        new_etype.name.emplace_back();
+        was_loaded = true;
     }
-    jo.read( "speed_name", new_etype.speed_mod_name );
 
-    if( jo.has_member( "desc" ) ) {
-        jo.read( "desc", new_etype.desc );
-    } else {
-        new_etype.desc.emplace_back();
+    const bool is_abstract = jo.has_string( "abstract" );
+    if( is_abstract && jo.has_member( "id" ) ) {
+        jo.throw_error( "cannot specify both 'abstract' and 'id'" );
     }
-    if( jo.has_member( "reduced_desc" ) ) {
-        jo.read( "reduced_desc", new_etype.reduced_desc );
-    } else {
+    const std::string id = is_abstract ? jo.get_string( "abstract" ) : jo.get_string( "id" );
+    new_etype.id = efftype_id( id );
+    if( replayed && !is_abstract ) {
+        const auto current = effect_type_load_numbers.find( new_etype.id );
+        if( current != effect_type_load_numbers.end() && current->second > load_number ) {
+            // A later definition replaced this one while it waited for its parent.
+            jo.allow_omitted_members();
+            return;
+        }
+    }
+
+    // Members read by hand below support none of these.
+    const auto no_inheritance_ops = [&jo]( const std::string_view member ) {
+        for( const std::string_view feature : {
+                 "relative", "proportional", "extend", "delete"
+             } ) {
+            warn_disabled_feature( jo, feature, member, "not supported for effect_type" );
+        }
+    };
+
+    optional( jo, was_loaded, "name", new_etype.name, std::vector<translation> { translation() } );
+    optional( jo, was_loaded, "speed_name", new_etype.speed_mod_name );
+
+    // reduced_desc defaults to desc, and keeps following it in a child that changes desc.
+    const bool reduced_follows_desc = !was_loaded || new_etype.reduced_desc == new_etype.desc;
+    optional( jo, was_loaded, "desc", new_etype.desc, std::vector<translation> { translation() } );
+    no_inheritance_ops( "reduced_desc" );
+    if( !jo.read( "reduced_desc", new_etype.reduced_desc ) && reduced_follows_desc ) {
         new_etype.reduced_desc = new_etype.desc;
     }
 
-    new_etype.part_descs = jo.get_bool( "part_descs", false );
+    optional( jo, was_loaded, "part_descs", new_etype.part_descs, false );
 
-    jo.read( "remove_message", new_etype.remove_message );
-    optional( jo, false, "apply_memorial_log", new_etype.apply_memorial_log,
+    optional( jo, was_loaded, "remove_message", new_etype.remove_message );
+    optional( jo, was_loaded, "apply_memorial_log", new_etype.apply_memorial_log,
               text_style_check_reader() );
-    optional( jo, false, "remove_memorial_log", new_etype.remove_memorial_log,
+    optional( jo, was_loaded, "remove_memorial_log", new_etype.remove_memorial_log,
               text_style_check_reader() );
 
-    jo.read( "blood_analysis_description", new_etype.blood_analysis_description );
+    optional( jo, was_loaded, "blood_analysis_description",
+              new_etype.blood_analysis_description );
 
-    for( auto &&f : jo.get_string_array( "resist_traits" ) ) { // *NOPAD*
-        new_etype.resist_traits.emplace_back( f );
-    }
-    for( auto &&f : jo.get_string_array( "resist_effects" ) ) { // *NOPAD*
-        new_etype.resist_effects.emplace_back( f );
-    }
-    optional( jo, false, "immune_flags", new_etype.immune_flags );
-    optional( jo, false, "immune_bp_flags", new_etype.immune_bp_flags );
-    for( auto &&f : jo.get_string_array( "removes_effects" ) ) { // *NOPAD*
-        new_etype.removes_effects.emplace_back( f );
-    }
-    for( auto &&f : jo.get_string_array( "blocks_effects" ) ) { // *NOPAD*
-        new_etype.blocks_effects.emplace_back( f );
-    }
-    optional( jo, false, "max_duration", new_etype.max_duration, 365_days );
+    optional( jo, was_loaded, "resist_traits", new_etype.resist_traits,
+              string_id_reader<mutation_branch> {} );
+    optional( jo, was_loaded, "resist_effects", new_etype.resist_effects,
+              string_id_reader<effect_type> {} );
+    optional( jo, was_loaded, "immune_flags", new_etype.immune_flags,
+              string_id_reader<json_flag> {} );
+    optional( jo, was_loaded, "immune_bp_flags", new_etype.immune_bp_flags,
+              string_id_reader<json_flag> {} );
+    optional( jo, was_loaded, "removes_effects", new_etype.removes_effects,
+              string_id_reader<effect_type> {} );
+    optional( jo, was_loaded, "blocks_effects", new_etype.blocks_effects,
+              string_id_reader<effect_type> {} );
+    optional( jo, was_loaded, "max_duration", new_etype.max_duration, 365_days );
 
+    no_inheritance_ops( "int_dur_factor" );
     if( jo.has_string( "int_dur_factor" ) ) {
-        new_etype.int_dur_factor = read_from_json_string<time_duration>( jo.get_member( "int_dur_factor" ),
-                                   time_duration::units );
-    } else {
-        new_etype.int_dur_factor = time_duration::from_turns( jo.get_int( "int_dur_factor", 0 ) );
+        new_etype.int_dur_factor = read_from_json_string<time_duration>(
+                                       jo.get_member( "int_dur_factor" ), time_duration::units );
+    } else if( jo.has_member( "int_dur_factor" ) ) {
+        new_etype.int_dur_factor = time_duration::from_turns( jo.get_int( "int_dur_factor" ) );
+    } else if( !was_loaded ) {
+        new_etype.int_dur_factor = 0_turns;
     }
 
-    optional( jo, false, "vitamins", new_etype.vitamin_data );
-    optional( jo, false, "limb_score_mods", new_etype.limb_score_data );
-    optional( jo, false, "effect_dur_scaling", new_etype.effect_dur_scaling );
-    optional( jo, false, "chance_kill", new_etype.kill_chance );
-    optional( jo, false, "chance_kill_resist", new_etype.red_kill_chance );
-    optional( jo, false, "death_msg", new_etype.death_msg, to_translation( "You died." ) );
-    optional( jo, false, "death_event", new_etype.death_event,
+    optional( jo, was_loaded, "vitamins", new_etype.vitamin_data );
+    optional( jo, was_loaded, "limb_score_mods", new_etype.limb_score_data );
+    optional( jo, was_loaded, "effect_dur_scaling", new_etype.effect_dur_scaling );
+    optional( jo, was_loaded, "chance_kill", new_etype.kill_chance );
+    optional( jo, was_loaded, "chance_kill_resist", new_etype.red_kill_chance );
+    optional( jo, was_loaded, "death_msg", new_etype.death_msg, to_translation( "You died." ) );
+    optional( jo, was_loaded, "death_event", new_etype.death_event,
               enum_flags_reader<event_type>( "event_type" ), std::nullopt );
 
-    new_etype.max_intensity = jo.get_int( "max_intensity", 1 );
-    new_etype.dur_add_perc = jo.get_int( "dur_add_perc", 100 );
-    new_etype.int_add_val = jo.get_int( "int_add_val", 0 );
-    new_etype.int_decay_step = jo.get_int( "int_decay_step", -1 );
-    new_etype.int_decay_tick = jo.get_int( "int_decay_tick", 0 );
-    optional( jo, false, "int_decay_remove", new_etype.int_decay_remove, false );
+    optional( jo, was_loaded, "max_intensity", new_etype.max_intensity, 1 );
+    optional( jo, was_loaded, "dur_add_perc", new_etype.dur_add_perc, 100 );
+    optional( jo, was_loaded, "int_add_val", new_etype.int_add_val, 0 );
+    optional( jo, was_loaded, "int_decay_step", new_etype.int_decay_step, -1 );
+    optional( jo, was_loaded, "int_decay_tick", new_etype.int_decay_tick, 0 );
+    optional( jo, was_loaded, "int_decay_remove", new_etype.int_decay_remove, false );
 
+    no_inheritance_ops( "miss_messages" );
     new_etype.load_miss_msgs( jo, "miss_messages" );
-    new_etype.load_decay_msgs( jo, "decay_messages" );
-    new_etype.load_apply_msgs( jo, "apply_message" );
+    no_inheritance_ops( "decay_messages" );
+    if( jo.has_member( "decay_messages" ) ) {
+        new_etype.decay_msgs.clear();
+        new_etype.load_decay_msgs( jo, "decay_messages" );
+    }
+    // "apply_message" (with "rating") replaces the parent's messages; a "rating" alone re-rates
+    // them.
+    no_inheritance_ops( "apply_message" );
+    no_inheritance_ops( "rating" );
+    if( !was_loaded || jo.has_member( "apply_message" ) ) {
+        new_etype.apply_msgs.clear();
+        new_etype.load_apply_msgs( jo, "apply_message" );
+    } else if( jo.has_member( "rating" ) ) {
+        const game_message_type rate = read_effect_rating( jo );
+        for( std::pair<translation, game_message_type> &msg : new_etype.apply_msgs ) {
+            msg.second = rate;
+        }
+    }
 
-    new_etype.main_parts_only = jo.get_bool( "main_parts_only", false );
-    new_etype.show_in_info = jo.get_bool( "show_in_info", false );
-    new_etype.show_intensity = jo.get_bool( "show_intensity", true );
-    new_etype.pkill_addict_reduces = jo.get_bool( "pkill_addict_reduces", false );
+    optional( jo, was_loaded, "main_parts_only", new_etype.main_parts_only, false );
+    optional( jo, was_loaded, "show_in_info", new_etype.show_in_info, false );
+    optional( jo, was_loaded, "show_intensity", new_etype.show_intensity, true );
+    optional( jo, was_loaded, "pkill_addict_reduces", new_etype.pkill_addict_reduces, false );
 
-    new_etype.pain_sizing = jo.get_bool( "pain_sizing", false );
-    new_etype.hurt_sizing = jo.get_bool( "hurt_sizing", false );
-    new_etype.harmful_cough = jo.get_bool( "harmful_cough", false );
+    optional( jo, was_loaded, "pain_sizing", new_etype.pain_sizing, false );
+    optional( jo, was_loaded, "hurt_sizing", new_etype.hurt_sizing, false );
+    optional( jo, was_loaded, "harmful_cough", new_etype.harmful_cough, false );
 
-    new_etype.max_effective_intensity = jo.get_int( "max_effective_intensity", 0 );
+    optional( jo, was_loaded, "max_effective_intensity", new_etype.max_effective_intensity, 0 );
 
+    // Naming any key of a stat (pain_min, pain_chance, ...) in base_mods or scaling_mods
+    // replaces all of the parent's values for that stat.
+    no_inheritance_ops( "base_mods" );
+    no_inheritance_ops( "scaling_mods" );
     new_etype.load_mod_data( jo );
 
     new_etype.impairs_movement = hardcoded_movement_impairing.count( new_etype.id ) > 0;
 
-    new_etype.flags = jo.get_tags<flag_id>( "flags" );
-    int enchant_num = 0;
-    for( JsonValue jv : jo.get_array( "enchantments" ) ) {
-        std::string enchant_name = "INLINE_ENCH_" + new_etype.id.str() + "_" + std::to_string(
-                                       enchant_num++ );
-        new_etype.enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
+    optional( jo, was_loaded, "flags", new_etype.flags, string_id_reader<json_flag> {} );
+
+    // Inline enchantments are named after the effect and numbered in load order.
+    const auto load_enchantments = [&]( const JsonArray & ja ) {
+        for( const JsonValue jv : ja ) {
+            std::string enchant_name = "INLINE_ENCH_" + id + "_" +
+                                       std::to_string( inline_enchantment_counts[id]++ );
+            new_etype.enchantments.push_back(
+                enchantment::load_inline_enchantment( jv, src, enchant_name ) );
+        }
+    };
+    warn_disabled_feature( jo, "relative", "enchantments", "not supported for effect_type" );
+    warn_disabled_feature( jo, "proportional", "enchantments", "not supported for effect_type" );
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", "enchantments", "no copy-from" );
+        warn_disabled_feature( jo, "delete", "enchantments", "no copy-from" );
     }
-    mod_tracker::assign_src( new_etype, src );
-    effect_types[new_etype.id] = new_etype;
+    if( jo.has_member( "enchantments" ) ) {
+        new_etype.enchantments.clear();
+        load_enchantments( jo.get_array( "enchantments" ) );
+    } else if( was_loaded ) {
+        if( jo.has_object( "extend" ) ) {
+            JsonObject extend = jo.get_object( "extend" );
+            extend.allow_omitted_members();
+            if( extend.has_member( "enchantments" ) ) {
+                load_enchantments( extend.get_array( "enchantments" ) );
+            }
+        }
+        if( jo.has_object( "delete" ) ) {
+            JsonObject del = jo.get_object( "delete" );
+            del.allow_omitted_members();
+            for( const JsonValue jv : del.get_array( "enchantments" ) ) {
+                const enchantment_id doomed( jv.get_string() );
+                const auto iter = std::find( new_etype.enchantments.begin(),
+                                             new_etype.enchantments.end(), doomed );
+                if( iter == new_etype.enchantments.end() ) {
+                    jv.throw_error( "the effect type has no such enchantment" );
+                }
+                new_etype.enchantments.erase( iter );
+            }
+        }
+    }
+
+    if( is_abstract ) {
+        effect_type_abstracts[id] = new_etype;
+    } else {
+        mod_tracker::assign_src( new_etype, src );
+        const auto old = effect_types.find( new_etype.id );
+        if( old != effect_types.end() && !old->second.src.empty() ) {
+            // throws on two definitions from the same mod
+            mod_tracker::check_duplicate_entries( new_etype, old->second );
+        }
+        effect_types[new_etype.id] = new_etype;
+        effect_type_load_numbers[new_etype.id] = load_number;
+    }
+    load_effect_types_waiting_for( id );
 }
 
 bool effect::has_flag( const flag_id &flag ) const
@@ -1686,6 +1887,15 @@ event_type effect::death_event() const
 void reset_effect_types()
 {
     effect_types.clear();
+    effect_type_abstracts.clear();
+    for( deferred_effect_type &waiting : deferred_effect_types ) {
+        waiting.jo.allow_omitted_members();
+    }
+    deferred_effect_types.clear();
+    effect_type_load_numbers.clear();
+    next_effect_type_load_number = 0;
+    replayed_load_number.reset();
+    inline_enchantment_counts.clear();
 }
 
 const std::map<efftype_id, effect_type> &get_effect_types()

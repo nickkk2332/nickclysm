@@ -24,6 +24,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "faction.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
@@ -32,6 +33,7 @@
 #include "map.h"
 #include "martialarts.h"
 #include "math_parser_diag_value.h"
+#include "melee.h"
 #include "messages.h"
 #include "npc.h"
 #include "npctalk.h"
@@ -829,6 +831,17 @@ int talker_character_const::get_size() const
     return me_chr_const->get_size() - 0;
 }
 
+int talker_character_const::get_grab_strength() const
+{
+    // The strength of the hold this character has now, or else of the grab it would make.
+    if( const Creature *const victim = me_chr_const->grabbed_creature() ) {
+        if( const effect *const hold = grapple::hold_effect( *me_chr_const, *victim ) ) {
+            return hold->get_intensity();
+        }
+    }
+    return grapple::grab_strength( *me_chr_const, *me_chr_const );
+}
+
 void talker_character::set_stored_kcal( int value )
 {
     me_chr->set_stored_kcal( value );
@@ -1476,11 +1489,15 @@ void talker_character::die( map *here )
 }
 
 matec_id talker_character_const::get_random_technique( Creature const &t, bool crit,
-        bool dodge_counter, bool block_counter, const std::vector<matec_id> &blacklist ) const
+        bool dodge_counter, bool block_counter, bool grab_counter,
+        const std::vector<matec_id> &blacklist ) const
 {
-    return std::get<0>( me_chr_const->pick_technique( t, me_chr_const->used_weapon(), crit,
-                        dodge_counter,
-                        block_counter,
+    technique_query query;
+    query.crit = crit;
+    query.dodge_counter = dodge_counter;
+    query.block_counter = block_counter;
+    query.grab_counter = grab_counter;
+    return std::get<0>( me_chr_const->pick_technique( t, me_chr_const->used_weapon(), query,
                         blacklist ) );
 }
 
@@ -1492,6 +1509,8 @@ bool talker_character_const::is_in_vehicle() const
 void talker_character::attack_target( Creature &t, bool allow_special,
                                       const matec_id &force_technique, bool allow_unarmed, int forced_movecost )
 {
+    // An EOC's attack (u_attack) never opens the manual technique menu
+    const melee::technique_menu_suppressor no_technique_menu;
     me_chr->melee_attack( t, allow_special, force_technique, allow_unarmed, forced_movecost );
 }
 

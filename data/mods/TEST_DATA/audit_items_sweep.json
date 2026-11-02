@@ -1,0 +1,129 @@
+[
+  {
+    "type": "fault",
+    "id": "test_fault_mech_dent",
+    "fault_type": "mechanical_damage",
+    "name": { "str": "test dent" },
+    "description": "Test fault: the %s is dented."
+  },
+  {
+    "type": "fault",
+    "id": "test_fault_mech_scratch",
+    "fault_type": "mechanical_damage",
+    "name": { "str": "test scratch" },
+    "description": "Test fault: the %s is scratched."
+  },
+  {
+    "type": "fault",
+    "id": "test_fault_mech_self_damaging",
+    "//": "Its instant damage rolls another mechanical fault, which could pick it again (ITEM-B04).",
+    "fault_type": "mechanical_damage",
+    "instant_damage": 1,
+    "name": { "str": "test spreading crack" },
+    "description": "Test fault: a crack in the %s that damages it when it appears."
+  },
+  {
+    "id": "test_fault_two_mech_rod",
+    "type": "ITEM",
+    "name": { "str": "TEST two-fault rod" },
+    "description": "A steel rod that can get one of two mechanical faults.",
+    "weight": "500 g",
+    "volume": "250 ml",
+    "material": [ "steel" ],
+    "symbol": "/",
+    "color": "light_gray",
+    "faults": [ { "fault": "test_fault_mech_dent" }, { "fault": "test_fault_mech_scratch" } ]
+  },
+  {
+    "id": "test_fault_self_damaging_rod",
+    "type": "ITEM",
+    "name": { "str": "TEST self-damaging rod" },
+    "description": "A steel rod whose only mechanical fault damages it when it appears.",
+    "weight": "500 g",
+    "volume": "250 ml",
+    "material": [ "steel" ],
+    "symbol": "/",
+    "color": "light_gray",
+    "faults": [ { "fault": "test_fault_mech_self_damaging" } ]
+  },
+  {
+    "type": "relic_procgen_data",
+    "id": "test_relic_negative_cap",
+    "//": "One -250 and one +250 attribute, for checking max_negative_power (ITEM-B07).",
+    "passive_add_procgen_values": [
+      {
+        "weight": 100,
+        "min_value": -1,
+        "max_value": -1,
+        "type": "STRENGTH",
+        "increment": 1,
+        "power_per_increment": 250,
+        "ench_has": "HELD"
+      },
+      {
+        "weight": 100,
+        "min_value": 1,
+        "max_value": 1,
+        "type": "DEXTERITY",
+        "increment": 1,
+        "power_per_increment": 250,
+        "ench_has": "HELD"
+      }
+    ],
+    "type_weights": [ { "weight": 100, "value": "passive_enchantment_add" } ],
+    "items": [ { "weight": 100, "item": "rock" } ]
+  },
+  {
+    "type": "relic_procgen_data",
+    "id": "test_relic_negative_only",
+    "//": "Only a -250 attribute: nothing can be added under a max_negative_power of 0 (ITEM-B07).",
+    "passive_add_procgen_values": [
+      {
+        "weight": 100,
+        "min_value": -1,
+        "max_value": -1,
+        "type": "STRENGTH",
+        "increment": 1,
+        "power_per_increment": 250,
+        "ench_has": "HELD"
+      }
+    ],
+    "type_weights": [ { "weight": 100, "value": "passive_enchantment_add" } ],
+    "items": [ { "weight": 100, "item": "rock" } ]
+  },
+  {
+    "type": "relic_procgen_data",
+    "id": "test_relic_hit_me",
+    "//": "Mostly hit_me attributes, with a rare +250 add so generation without them still ends (ITEM-B07).",
+    "passive_hit_me_procgen_values": [ { "weight": 100, "spell_id": "test_spell_pew", "base_power": 300, "ench_has": "HELD" } ],
+    "passive_add_procgen_values": [
+      {
+        "weight": 100,
+        "min_value": 1,
+        "max_value": 1,
+        "type": "DEXTERITY",
+        "increment": 1,
+        "power_per_increment": 250,
+        "ench_has": "HELD"
+      }
+    ],
+    "type_weights": [ { "weight": 100, "value": "hit_me" }, { "weight": 1, "value": "passive_enchantment_add" } ],
+    "items": [ { "weight": 100, "item": "rock" } ]
+  },
+  {
+    "id": "test_spawn_rate_category",
+    "type": "ITEM_CATEGORY",
+    "name_header": { "str": "TEST spawn rate" },
+    "name_noun": { "ctxt": "item_category", "str": "TEST spawn rate thing" },
+    "sort_rank": 1000,
+    "spawn_rate": 0.25
+  },
+  {
+    "id": "test_spawn_rate_category_copy",
+    "copy-from": "test_spawn_rate_category",
+    "//": "Inherits the 0.25 spawn rate, as a same-id override from another mod does (ITEM-B09).",
+    "type": "ITEM_CATEGORY",
+    "name_header": { "str": "TEST copied spawn rate" },
+    "sort_rank": 1001
+  }
+]

@@ -322,6 +322,8 @@ class avatar : public Character
         std::string dialogue_remote_name;
         // Preferred aim mode - ranged.cpp aim mode defaults to this if possible
         std::string preferred_aiming_mode;
+        // Manual combat mode: each melee attack opens the technique menu (melee.h)
+        bool manual_combat_mode = false;
 
         // checks if the point is blocked based on characters current aiming state
         bool cant_see( const tripoint_bub_ms &p ) const;

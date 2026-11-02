@@ -60,6 +60,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "game_inventory.h"
+#include "grapple.h"
 #include "handle_liquid.h"
 #include "iexamine.h"
 #include "input_context.h"
@@ -7908,7 +7909,7 @@ std::optional<int> iuse::capture_monster_act( Character *p, item *it, const trip
         const tripoint_bub_ms target = *target_;
 
         // Capture the thing, if it's on the target square.
-        if( const monster *const mon_ptr = get_creature_tracker().creature_at<monster>( target ) ) {
+        if( monster *const mon_ptr = get_creature_tracker().creature_at<monster>( target ) ) {
             const monster &f = *mon_ptr;
 
             if( f.get_size() > Creature::size_map.find( capacity )->second ) {
@@ -7922,6 +7923,8 @@ std::optional<int> iuse::capture_monster_act( Character *p, item *it, const trip
             // If the monster is friendly, then put it in the item
             // without checking if it rolled a success.
             if( f.friendly != 0 || one_in( chance ) ) {
+                // Nobody keeps holding it once it's in the carrier.
+                grapple::release_holds_on( *mon_ptr );
                 p->add_msg_if_player( _( "You capture the %1$s in your %2$s." ),
                                       f.type->nname(), it->tname() );
                 p->invalidate_weight_carried_cache();

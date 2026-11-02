@@ -2970,6 +2970,22 @@ void options_manager::add_options_world_default()
 
     add_empty_line();
 
+    add_option_group( "world_default", Group( "combat_worlddef_opts",
+                      to_translation( "Combat options" ),
+                      to_translation( "Options for grabs, crowds and the strain of fighting." ) ),
+    [&]( const std::string & page_id ) {
+        add( "CROWD_CRUSH", page_id, to_translation( "Crowd crush" ),
+             to_translation( "If true, being held while enough monsters press in around you squeezes the breath out of you, and eventually crushes you.  The thresholds are external options (CROWD_CRUSH_*)." ),
+             true
+           );
+        add( "EXPLOSIVE_COMBAT_EXERTION", page_id, to_translation( "Explosive combat exertion" ),
+             to_translation( "If true, melee attacks, dodges, grabs and throws count as explosive exercise, above extreme: fighting burns more calories, and a weary character slows down more while fighting.  A rested character can then exert themselves up to explosive." ),
+             false
+           );
+    } );
+
+    add_empty_line();
+
     add( "META_PROGRESS", "world_default", to_translation( "Meta Progression" ), to_translation(
              "Will you need to complete certain achievements to enable certain scenarios "
              "and professions?  Achievements of saved characters from any world will be "

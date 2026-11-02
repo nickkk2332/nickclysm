@@ -19,5 +19,21 @@
       }
     ],
     "ench_effects": [ { "effect": "invisibility", "intensity": 1 } ]
+  },
+  {
+    "//": "MAGIC-J02 fixture: spell_values with every filter, and some without one.",
+    "type": "enchantment",
+    "id": "test_ench_spell_power",
+    "condition": "ALWAYS",
+    "spell_values": [
+      { "value": "DAMAGE", "damage_type": "cold", "multiply": 1 },
+      { "value": "DAMAGE", "flag": "SOMATIC", "add": 5 },
+      { "value": "RANGE", "spell": "test_spell_enchant_power", "add": 3 },
+      { "value": "AOE", "magic_type": "test_magic_available", "add": 1 },
+      { "value": "AOE", "spell_class": "TEST_SPELL_POWER", "add": 100 },
+      { "value": "DURATION", "multiply": -0.5 },
+      { "value": "COST", "multiply": -0.5 },
+      { "value": "CAST_TIME", "add": -50 }
+    ]
   }
 ]

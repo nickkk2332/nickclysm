@@ -1713,6 +1713,28 @@ void weather_manager::serialize_all( JsonOut &json )
     if( weather.forced_temperature ) {
         json.member( "forced_temperature", units::to_fahrenheit( *weather.forced_temperature ) );
     }
+    // EOC overrides; temperatures in Kelvin
+    if( weather.eoc_weather.value ) {
+        json.member( "eoc_weather", *weather.eoc_weather.value );
+        json.member( "eoc_weather_end", weather.eoc_weather.end );
+    }
+    if( weather.eoc_temperature.value ) {
+        json.member( "eoc_temperature", units::to_kelvin( *weather.eoc_temperature.value ) );
+        json.member( "eoc_temperature_end", weather.eoc_temperature.end );
+    }
+    if( weather.eoc_temperature_offset.value ) {
+        json.member( "eoc_temperature_offset",
+                     units::to_kelvin_delta( *weather.eoc_temperature_offset.value ) );
+        json.member( "eoc_temperature_offset_end", weather.eoc_temperature_offset.end );
+    }
+    if( weather.eoc_windspeed.value ) {
+        json.member( "eoc_windspeed", *weather.eoc_windspeed.value );
+        json.member( "eoc_windspeed_end", weather.eoc_windspeed.end );
+    }
+    if( weather.eoc_wind_direction.value ) {
+        json.member( "eoc_wind_direction", *weather.eoc_wind_direction.value );
+        json.member( "eoc_wind_direction_end", weather.eoc_wind_direction.end );
+    }
     if( !weather.snow_depth_map.empty() ) {
         json.member( "snow_depth" );
         json.start_array();
@@ -1747,6 +1769,39 @@ void weather_manager::unserialize_all( const JsonObject &w )
         get_weather().forced_temperature = units::from_fahrenheit( read_forced_temp );
     } else {
         get_weather().forced_temperature.reset();
+    }
+    weather_manager &weather = get_weather();
+    weather.clear_eoc_overrides();
+    if( w.has_member( "eoc_weather" ) ) {
+        const weather_type_id saved_weather( w.get_string( "eoc_weather" ) );
+        time_point saved_end = calendar::turn_max;
+        w.read( "eoc_weather_end", saved_end );
+        // The mod that defined it may be gone: nothing could ever end such an override
+        if( saved_weather.is_valid() && saved_weather != WEATHER_NULL ) {
+            weather.eoc_weather.set( saved_weather, saved_end );
+        } else {
+            debugmsg( "Dropping the saved set_weather override: unknown weather type \"%s\".",
+                      saved_weather.str() );
+        }
+    }
+    if( w.has_member( "eoc_temperature" ) ) {
+        weather.eoc_temperature.set( units::from_kelvin( w.get_float( "eoc_temperature" ) ),
+                                     calendar::turn_max );
+        w.read( "eoc_temperature_end", weather.eoc_temperature.end );
+    }
+    if( w.has_member( "eoc_temperature_offset" ) ) {
+        const double offset = w.get_float( "eoc_temperature_offset" );
+        weather.eoc_temperature_offset.set( units::from_kelvin_delta( offset ),
+                                            calendar::turn_max );
+        w.read( "eoc_temperature_offset_end", weather.eoc_temperature_offset.end );
+    }
+    if( w.has_member( "eoc_windspeed" ) ) {
+        weather.eoc_windspeed.set( w.get_float( "eoc_windspeed" ), calendar::turn_max );
+        w.read( "eoc_windspeed_end", weather.eoc_windspeed.end );
+    }
+    if( w.has_member( "eoc_wind_direction" ) ) {
+        weather.eoc_wind_direction.set( w.get_int( "eoc_wind_direction" ), calendar::turn_max );
+        w.read( "eoc_wind_direction_end", weather.eoc_wind_direction.end );
     }
     get_weather().snow_depth_map.clear();
     if( w.has_array( "snow_depth" ) ) {

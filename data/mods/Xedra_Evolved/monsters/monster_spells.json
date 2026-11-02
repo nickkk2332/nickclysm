@@ -180,7 +180,6 @@
     "flags": [ "SILENT", "NO_PROJECTILE", "NO_EXPLOSION_SFX" ],
     "shape": "blast",
     "effect": "guilt",
-    "effect_str": "NULL",
     "min_damage": 100,
     "max_damage": 100,
     "min_duration": 180000,

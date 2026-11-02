@@ -21,3 +21,8 @@ def parse_json_flag(json, origin):
                comment="Custom prefix added to item name")
     write_text(json.get("item_suffix"), origin,
                comment="Custom suffix added to item name")
+
+    if "vehicle_toggle" in json:
+        write_text(json["vehicle_toggle"].get("name"), origin,
+                   comment="Vehicle electronics menu option for parts with "
+                   f"JSON flag '{ident}'")

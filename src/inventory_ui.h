@@ -33,6 +33,7 @@
 #include "pimpl.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "translations.h"
 #include "units.h"
 
@@ -1304,6 +1305,17 @@ class inventory_examiner : public inventory_selector
 };
 
 bool is_worn_ablative( item_location const &container, item_location const &child );
+
+/**
+ * Whether the containers around @p dest have room for @p src once it is dragged into one of
+ * dest's pockets. Like item_location::parents_can_contain_recursive, except for containers that
+ * already hold @p src: the nearest one, and those above it, keep src through the move, so only
+ * its pocket that dest is in can grow, and only when src comes from another of its pockets (or
+ * leaves less than it adds, say from a rigid box into a soft pouch). The pocket of dest that
+ * takes src is not checked here; the move checks it.
+ */
+ret_val<void> drag_drop_parents_can_contain( const item_location &src,
+        const item_location &dest );
 
 struct inventory_selector_save_state {
     public:

@@ -1,0 +1,93 @@
+[
+  {
+    "type": "monster_attack",
+    "id": "test_eoc_mark_target",
+    "//": "MONAI-J01: a special attack that only records who it was used on.",
+    "attack_type": "eoc",
+    "cooldown": 10,
+    "eoc": [ "EOC_TEST_MON_SPECIAL_HIT" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_SPECIAL_HIT",
+    "effect": [ { "if": "npc_is_avatar", "then": [ { "math": [ "test_mon_special_hit_avatar = 1" ] } ] } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_eoc_attacker",
+    "copy-from": "mon_test_zombie",
+    "name": { "str": "EOC attack test monster" },
+    "description": "MONAI-J01: a zombie whose only special attack is test_eoc_mark_target.",
+    "special_attacks": [ { "id": "test_eoc_mark_target" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_USE_SPECIAL",
+    "//": "MONAI-J01: the monster (alpha) uses its special attack on beta.",
+    "effect": [ { "u_attack": "test_eoc_mark_target" } ]
+  },
+  {
+    "type": "monster_attack",
+    "id": "test_eoc_unowned_attack",
+    "//": "MONAI-J01: a special attack no monster has, which u_attack can still use.",
+    "attack_type": "eoc",
+    "cooldown": 10,
+    "eoc": [ "EOC_TEST_MON_UNOWNED_HIT" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_UNOWNED_HIT",
+    "effect": [ { "if": "npc_is_avatar", "then": [ { "math": [ "test_mon_unowned_hit_avatar = 1" ] } ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_USE_UNOWNED",
+    "//": "MONAI-J01: the monster (alpha) uses a JSON monster attack it doesn't have on beta.",
+    "effect": [ { "u_attack": "test_eoc_unowned_attack" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_MELEE",
+    "//": "MONAI-J01: the monster (alpha) hits beta with a basic melee attack costing 30 moves.",
+    "effect": [ { "u_attack": "tec_none", "forced_movecost": 30 } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_CHECKS",
+    "//": "MONAI-J01: record what the new conditions and math function say about the monster (alpha).",
+    "effect": [
+      {
+        "if": { "u_is_mtype": "mon_test_eoc_attacker" },
+        "then": [ { "math": [ "test_mon_is_mtype = 1" ] } ],
+        "else": [ { "math": [ "test_mon_is_mtype = 0" ] } ]
+      },
+      {
+        "if": { "u_is_mtype": { "context_val": "other_mtype" } },
+        "then": [ { "math": [ "test_mon_is_other_mtype = 1" ] } ],
+        "else": [ { "math": [ "test_mon_is_other_mtype = 0" ] } ]
+      },
+      {
+        "if": { "u_has_special_attack": "test_eoc_mark_target" },
+        "then": [ { "math": [ "test_mon_has_special = 1" ] } ],
+        "else": [ { "math": [ "test_mon_has_special = 0" ] } ]
+      },
+      { "math": [ "test_mon_cooldown = u_special_cooldown('test_eoc_mark_target')" ] },
+      { "math": [ "test_mon_missing_cooldown = u_special_cooldown('no_such_special_attack')" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_PHASE_TWO",
+    "//": "MONAI-J01: disable the special, set its cooldown and move the monster to another faction.",
+    "effect": [
+      { "u_set_special_enabled": "test_eoc_mark_target", "value": false },
+      { "math": [ "u_special_cooldown('test_eoc_mark_target') = 3" ] },
+      { "u_set_monster_faction": "bee" }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MON_REENABLE",
+    "effect": [ { "u_set_special_enabled": "test_eoc_mark_target" } ]
+  }
+]

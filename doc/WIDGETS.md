@@ -1065,7 +1065,7 @@ Some vars refer to text descriptors. These must use style "text". Examples:
 
 | var                      | description
 |--                        |--
-| `activity_text`          | Activity level - "None", "Light". "Moderate", "Brisk", "Active", "Extreme"
+| `activity_text`          | Activity level - "None", "Light". "Moderate", "Brisk", "Active", "Extreme", "Explosive"
 | `bp_outer_armor_text`    | Item name and damage bars of armor/clothing worn on the given "bodypart"
 | `compass_legend_text`    | (_multiline_) A list of creatures visible by the player, corresponding to compass symbols
 | `compass_text`           | A compass direction (ex: NE), displaying visible creatures in that direction

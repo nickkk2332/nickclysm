@@ -1600,7 +1600,9 @@ void Character::hardcoded_effects( effect &it )
                     if( limb == "arm" ) {
                         mod_dex_bonus( -8 );
                         recoil = MAX_RECOIL;
+                        release_grapple();
                     } else if( limb == "hand" ) {
+                        release_grapple();
                         if( is_armed() && can_drop( *get_wielded_item() ).success() ) {
                             if( dice( 4, 4 ) > get_dex() ) {
                                 cancel_activity();  //Prevent segfaults from activities trying to access missing item

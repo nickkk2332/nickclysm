@@ -383,6 +383,44 @@
   },
   {
     "type": "effect_type",
+    "id": "choking",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl); applied by the Brawling strangle.  The damage ignores armor.",
+    "name": [ "Choking" ],
+    "desc": [ "You can't breathe!" ],
+    "apply_message": "You can't breathe!",
+    "rating": "bad",
+    "max_duration": "2 s",
+    "show_in_info": true,
+    "base_mods": {
+      "hurt_amount": [ 10 ],
+      "hurt_min": [ 1 ],
+      "hurt_chance": [ 1 ],
+      "stamina_min": [ -1500 ],
+      "stamina_max": [ -2000 ],
+      "stamina_chance": [ 1 ]
+    }
+  },
+  {
+    "type": "effect_type",
+    "id": "strangulation",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl); applied by the Brawling strangle.  The damage ignores armor.",
+    "name": [ "Strangulation" ],
+    "desc": [ "Compressive force is cutting off blood flow to the brain." ],
+    "apply_message": "You see stars!",
+    "rating": "bad",
+    "max_duration": "2 s",
+    "base_mods": {
+      "hurt_amount": [ 15 ],
+      "hurt_min": [ 1 ],
+      "hurt_chance": [ 1 ],
+      "speed_mod": [ -50 ],
+      "stamina_min": [ -1500 ],
+      "stamina_max": [ -2000 ],
+      "stamina_chance": [ 1 ]
+    }
+  },
+  {
+    "type": "effect_type",
     "id": "sneezing",
     "name": [ "Sneezing" ],
     "rating": "bad",
@@ -696,7 +734,9 @@
       { "limb_score": "balance", "modifier": 0.1, "resist_modifier": 0.8 },
       { "limb_score": "reaction", "modifier": 0.5 },
       { "limb_score": "block", "modifier": 0.5 }
-    ]
+    ],
+    "//2": "Lying on the floor makes it harder to resist a crushing crowd (Cataclysm-TLG).",
+    "enchantments": [ { "condition": "ALWAYS", "values": [ { "value": "CROWD_CRUSH_RESIST", "add": -4 } ] } ]
   },
   {
     "type": "effect_type",
@@ -707,7 +747,9 @@
     "//COMMENT2": "You're carrying too much and are overburdened!",
     "rating": "bad",
     "show_in_info": true,
-    "flags": [ "DISABLE_FLIGHT" ]
+    "flags": [ "DISABLE_FLIGHT" ],
+    "//": "A heavy load makes it harder to resist a crushing crowd (Cataclysm-TLG).",
+    "enchantments": [ { "condition": "ALWAYS", "values": [ { "value": "CROWD_CRUSH_RESIST", "add": -4 } ] } ]
   },
   {
     "type": "effect_type",
@@ -5228,7 +5270,7 @@
   },
   {
     "id": "effect_portal_storm_dungeon_time_tracker",
-    "//": "Hidden effect, tracks how long you've been in the portal storm dungeon.  Increments by 1 every minute",
+    "//": "Hidden effect, tracks how long you've been in the portal storm dungeon.  Increments by 1 every two minutes, the cadence at which EOC_PORTAL_STORM_DUNGEON_CRAWLING_TRACKER checks it, so the check sees every value.",
     "type": "effect_type",
     "name": [ "" ],
     "desc": [ "" ],
@@ -5236,7 +5278,7 @@
     "max_intensity": 250000,
     "int_add_val": 1,
     "int_decay_step": 1,
-    "int_decay_tick": 60
+    "int_decay_tick": 120
   },
   {
     "type": "effect_type",
@@ -5389,6 +5431,14 @@
     "desc": [ "You are gliding through the air." ],
     "flags": [ "GLIDING" ],
     "rating": "good"
+  },
+  {
+    "type": "effect_type",
+    "id": "airborne",
+    "max_intensity": 1,
+    "max_duration": "1 s",
+    "flags": [ "LEVITATION" ],
+    "//": "Hardcoded: a creature in flight after game::fling_creature (a throw, a hulk smash, a crash, a fling EOC or spell), from Cataclysm: The Last Generation.  While it lasts the creature doesn't fall, trigger traps or get trap prompts, and a monster is moved by force; it is removed on landing, where traps and ledges then apply.  Only apply it for the length of such an event."
   },
   {
     "type": "effect_type",
@@ -5953,15 +6003,6 @@
     "//": "Hidden effect, prevents infinite trap teleporting in the portal dungeon",
     "name": [ "" ],
     "desc": [ "" ]
-  },
-  {
-    "id": "effect_portal_storm_dungeon_time_tracker",
-    "type": "effect_type",
-    "//": "Hidden effect, tracks how long you've been in the portal storm dungeon",
-    "name": [ "" ],
-    "desc": [ "" ],
-    "int_decay_step": 1,
-    "int_decay_tick": 120
   },
   {
     "type": "effect_type",

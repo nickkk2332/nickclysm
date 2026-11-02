@@ -187,6 +187,9 @@ weather_type_id current_weather( const tripoint_abs_ms &location, const time_poi
     if( weather.weather_override != WEATHER_NULL ) {
         return weather.weather_override;
     }
+    if( weather.eoc_weather.value && t < weather.eoc_weather.end ) {
+        return *weather.eoc_weather.value;
+    }
     return weather.get_cur_weather_gen().get_weather_conditions( location, t, g->get_seed() );
 }
 
@@ -1093,23 +1096,64 @@ void weather_manager::on_game_start()
     }
 }
 
+bool weather_manager::expire_eoc_overrides()
+{
+    const time_point now = calendar::turn;
+    bool expired = eoc_weather.expire( now );
+    expired |= eoc_temperature.expire( now );
+    expired |= eoc_temperature_offset.expire( now );
+    expired |= eoc_windspeed.expire( now );
+    expired |= eoc_wind_direction.expire( now );
+    return expired;
+}
+
+void weather_manager::clear_eoc_overrides()
+{
+    eoc_weather.reset();
+    eoc_temperature.reset();
+    eoc_temperature_offset.reset();
+    eoc_windspeed.reset();
+    eoc_wind_direction.reset();
+}
+
+void weather_manager::apply_eoc_overrides( w_point &w ) const
+{
+    if( eoc_temperature.value ) {
+        w.temperature = *eoc_temperature.value;
+    } else if( eoc_temperature_offset.value ) {
+        w.temperature += *eoc_temperature_offset.value;
+    }
+    if( eoc_windspeed.value ) {
+        w.windpower = *eoc_windspeed.value;
+    }
+    if( eoc_wind_direction.value ) {
+        w.winddirection = *eoc_wind_direction.value;
+    }
+}
+
 void weather_manager::update_weather()
 {
     Character &player_character = get_player_character();
     weather_changed = false;
-    if( weather_id == WEATHER_NULL || calendar::turn >= nextweather ) {
+    // An EOC override running out changes the weather right away
+    const bool eoc_override_ended = expire_eoc_overrides();
+    if( weather_id == WEATHER_NULL || calendar::turn >= nextweather || eoc_override_ended ) {
         w_point &w = *weather_precise;
         const weather_generator &weather_gen = get_cur_weather_gen();
         w = weather_gen.get_weather( player_character.pos_abs(), calendar::turn,
                                      g->get_seed() );
+        // Before picking the weather type, so a forced cold or wind shows in it
+        apply_eoc_overrides( w );
         weather_type_id old_weather = weather_id;
         std::string eternal_weather_option = get_option<std::string>( "ETERNAL_WEATHER" );
         if( eternal_weather_option != "normal" ) {
             weather_id = static_cast<weather_type_id>( eternal_weather_option );
-        } else if( weather_override == WEATHER_NULL ) {
-            weather_id = weather_gen.get_weather_conditions( w );
-        } else {
+        } else if( weather_override != WEATHER_NULL ) {
             weather_id = weather_override;
+        } else if( eoc_weather.value ) {
+            weather_id = *eoc_weather.value;
+        } else {
+            weather_id = weather_gen.get_weather_conditions( w );
         }
         weather_changed = weather_id != old_weather;
 
@@ -1119,6 +1163,11 @@ void weather_manager::update_weather()
         windspeed = windspeed_override ? *windspeed_override : w.windpower;
         lightning_active = false;
         nextweather = calendar::turn + rng( weather_id->duration_min, weather_id->duration_max );
+        // Regenerate when an EOC override ends (inactive ones end at turn_max)
+        nextweather = std::min( { nextweather, eoc_weather.end, eoc_temperature.end,
+                                  eoc_temperature_offset.end, eoc_windspeed.end,
+                                  eoc_wind_direction.end
+                                } );
         map &here = get_map();
         if( uistate.distraction_weather_change &&
             weather_changed && weather_id->dangerous &&

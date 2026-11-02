@@ -149,5 +149,57 @@
     "name": [ "Test Bird Body" ],
     "desc": [ "Swaps hands, feet and mouth for bird parts through an enchantment while it lasts." ],
     "enchantments": [ "ENCH_TEST_BIRD_PARTS" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_vitals",
+    "name": [ "Test Vitals" ],
+    "desc": [ "Lowers vitals and stamina once when applied, down to their min_val." ],
+    "base_mods": {
+      "blood_pressure_amount": [ -50 ],
+      "blood_pressure_min_val": [ -20 ],
+      "heart_rate_amount": [ -50 ],
+      "heart_rate_min_val": [ -20 ],
+      "respiratory_rate_amount": [ -50 ],
+      "respiratory_rate_min_val": [ -20 ],
+      "stamina_amount": [ -500 ],
+      "stamina_min_val": [ 800 ]
+    }
+  },
+  {
+    "type": "effect_type",
+    "id": "test_vitals_pkill",
+    "name": [ "Test Vitals Painkiller" ],
+    "desc": [ "An addiction-reduced painkiller that also lowers blood pressure on every turn." ],
+    "pkill_addict_reduces": true,
+    "base_mods": { "pkill_min": [ 1 ], "blood_pressure_min": [ -1 ], "blood_pressure_chance": [ 1 ] }
+  },
+  {
+    "type": "effect_type",
+    "id": "test_grapple_focus",
+    "name": [ "Test Grapple Focus" ],
+    "desc": [ "Set on the attacker by test_tech_self_effects." ],
+    "max_intensity": 5
+  },
+  {
+    "type": "effect_type",
+    "id": "test_basic_fallback",
+    "name": [ "Test Basic Fallback" ],
+    "desc": [ "Grants MA_BASIC_FALLBACK without a martial art." ],
+    "flags": [ "MA_BASIC_FALLBACK" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_grapple_mark",
+    "name": [ "Test Grapple Mark" ],
+    "desc": [ "Set on both sides by test_tech_self_effects." ],
+    "max_intensity": 5
+  },
+  {
+    "type": "effect_type",
+    "id": "test_no_grab",
+    "name": [ "Test No Grab" ],
+    "desc": [ "Keeps its bearer from starting a grab, for grappling tests." ],
+    "flags": [ "NO_GRAB" ]
   }
 ]

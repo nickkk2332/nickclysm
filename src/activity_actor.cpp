@@ -24,6 +24,7 @@
 
 #include "action.h"
 #include "activity_actor_definitions.h"
+#include "activity_actor_eoc.h"
 #include "activity_handlers.h"
 #include "activity_item_handling.h"
 #include "advanced_inv.h"
@@ -455,6 +456,11 @@ std::string activity_actor::get_progress_message( const player_activity &act ) c
     } else {
         return std::string();
     }
+}
+
+item_location activity_actor::hook_target( const player_activity &act ) const
+{
+    return act.targets.empty() ? item_location() : act.targets.front();
 }
 
 aim_activity_actor::aim_activity_actor()
@@ -5393,7 +5399,13 @@ std::optional<requirement_id> multi_zone_activity_actor::multi_activity_requirem
 void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
 {
     activity_id prior_act = get_type();
-    bool activity_continues = simulate_turn( act, you, false );
+    // Read now: an NPC whose job has nothing left is reverted inside simulate_turn.
+    activity_end_hooks ended = act.peek_end_hooks();
+    // Only a scan that found no work left anywhere completes the job. A job that stops for another
+    // reason (too dark, a fetch that gave up, a site that lacks the items it needs) is reported
+    // as a cancel, so whatever its start hooks set up is undone.
+    bool job_done = false;
+    bool activity_continues = simulate_turn( act, you, false, &job_done );
     // If this activity still exists and was not successful or resulted in a new travel route, end it
     if( ( you.has_destination() || !activity_continues ) &&
         !act.is_null() && ( prior_act == you.activity.id() ) ) {
@@ -5401,11 +5413,20 @@ void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
         // No multi_zone_activity_actor functions will be called from this point, so `this` can be nullptr
         you.activity = player_activity();
     }
+    if( job_done ) {
+        ended.run( you, false );
+    } else if( !activity_continues && !you.has_destination() ) {
+        // Stopped without finishing (a trip to another work spot is not a stop)
+        ended.run( you, true );
+    }
 }
 
 bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &you,
-        bool check_only )
+        bool check_only, bool *scan_exhausted )
 {
+    if( scan_exhausted ) {
+        *scan_exhausted = false;
+    }
     map &here = get_map();
     const tripoint_abs_ms abspos = here.get_abs( you.pos_bub() );
     // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
@@ -5430,6 +5451,8 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
         unsigned int zone_count = 0;
         // one report per scan, not per site lacking the same items
         bool missing_items_reported = false;
+        // a site this scan skipped still has work: it needs items or tools that aren't here
+        bool work_left = false;
     };
     static source_cache cache;
 
@@ -5456,6 +5479,7 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
             cache.who = you.getID();
             cache.zone_count = cur_zone_count;
             cache.missing_items_reported = false;
+            cache.work_left = false;
         }
     }
 
@@ -5489,6 +5513,8 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     bool uncached_missing_items_reported = false;
     bool &missing_items_reported = use_cache ? cache.missing_items_reported :
                                    uncached_missing_items_reported;
+    bool uncached_work_left = false;
+    bool &work_left = use_cache ? cache.work_left : uncached_work_left;
 
     // a farm scan asks every tile whether it is warm enough to plant; the answer is the
     // same across an overmap tile within this turn
@@ -5532,6 +5558,12 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
         if( req_fail_reason.check_skip_location() ) {
             if( use_cache ) {
                 cache.sources.erase( src );
+            }
+            // The site has work, but the items or tools for it aren't in reach, so running out
+            // of sites doesn't finish the job.
+            if( req_res == requirement_check_result::SKIP_LOCATION &&
+                multi_activity_actor::activity_reason_continue( act_info.reason ) ) {
+                work_left = true;
             }
             // Charge 1 move for expensive skips (zone/inventory scan).
             if( !check_only &&
@@ -5606,6 +5638,10 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     }
     // scanned every location, tried every route, we're out of eligible zone tiles and the activity is over.
     if( !check_only ) {
+        // The job is done only if no site was skipped for want of items: those still have work.
+        if( scan_exhausted ) {
+            *scan_exhausted = !work_left;
+        }
         if( you.is_npc() ) {
             multi_activity_actor::activity_failure_message( you, current_activity, req_fail_reason,
                     src_sorted.empty() );
@@ -6971,8 +7007,11 @@ void craft_activity_actor::do_turn( player_activity &act, Character &crafter )
         craft_item.remove_item();
         // We need to cache this before we cancel the activity else we risk Use After Free
         const bool will_continue = is_long;
+        // The craft is done, not canceled: its completion hooks run once the result exists.
+        activity_end_hooks ended = act.take_end_hooks();
         crafter.cancel_activity();
         crafter.complete_craft( craft_copy, location );
+        ended.run( crafter, false );
         if( will_continue ) {
             if( crafter.making_would_work( crafter.lastrecipe, craft_copy.get_making_batch_size() ) ) {
                 crafter.last_craft->execute( location );
@@ -7575,7 +7614,7 @@ void drop_or_stash_item_info::deserialize( const JsonObject &jsobj )
     jsobj.read( "count", _count );
 }
 
-void drop_activity_actor::do_turn( player_activity &, Character &who )
+void drop_activity_actor::do_turn( player_activity &act, Character &who )
 {
     map &here = get_map();
     const tripoint_bub_ms pos = placement + who.pos_bub();
@@ -7586,7 +7625,10 @@ void drop_activity_actor::do_turn( player_activity &, Character &who )
     // to resolve the drop next turn. This is different from the pickup logic which creates
     // a brand new activity every turn and cancels the old activity
     if( items.empty() ) {
+        // Everything is dropped: that is a completion, not a cancel.
+        activity_end_hooks ended = act.take_end_hooks();
         who.cancel_activity();
+        ended.run( who, false );
     }
 }
 
@@ -9172,7 +9214,11 @@ void disassemble_activity_actor::do_turn( player_activity &act, Character &who )
     }
 
     if( craft.item_counter >= 10000000 ) {
+        // Each item disassembled completes an activity. complete_disassemble may start the next
+        // item's activity, which ends this actor, so the hooks are taken first.
+        activity_end_hooks ended = act.take_end_hooks();
         who.complete_disassemble( target );
+        ended.run( who, false );
     }
 }
 
@@ -9538,6 +9584,17 @@ void build_construction_activity_actor::do_turn( player_activity &act, Character
                                     delta_progress;
     you.set_moves( 0 );
     pc->id->do_turn_special( construction_bub, you );
+    if( !built.do_turn_eocs.empty() ) {
+        built.run_eocs( built.do_turn_eocs, you, construction_location );
+        // An EOC that cancels or replaces the activity destroys this actor
+        if( !act || act.actor.get() != this ) {
+            return;
+        }
+        pc = here.partial_con_at( construction_bub );
+        if( !pc ) {
+            return;
+        }
+    }
     // Current progress as a percent of base_total_moves to 2 decimal places
     pc->counter = std::round( current_progress / base_total_moves * 10000000.0 );
     pc->counter = std::min( pc->counter, 10000000 );
@@ -9978,7 +10035,7 @@ void prying_activity_actor::handle_prying( Character &who )
 
             if( dice( 4, difficulty ) > dice_mech + dice_str ) {
                 // bash will always succeed
-                here.bash( target, 0, false, true );
+                here.bash( target, 0, false, true, false, nullptr, true, &who );
             }
         }
 
@@ -14268,12 +14325,14 @@ void zone_activity_actor::do_turn( player_activity &act, Character &you )
         return;
     }
     // If we got here without restarting the activity, it means we're done
+    activity_end_hooks ended = act.take_end_hooks();
     add_msg( m_info, _( "%s sorted out every item possible." ), you.disp_name( true ) );
     if( you.is_npc() ) {
         npc *guy = dynamic_cast<npc *>( &you );
         guy->revert_after_activity();
     }
     act.set_to_null();
+    ended.run( you, false );
 }
 
 void zone_activity_actor::finish( player_activity &, Character & )
@@ -15759,6 +15818,121 @@ deserialize_functions = {
     { ACT_WORKOUT_LIGHT, &workout_activity_actor::deserialize },
     { ACT_WORKOUT_MODERATE, &workout_activity_actor::deserialize },
 };
+
+bool has_actor( const activity_id &type )
+{
+    return deserialize_functions.find( type ) != deserialize_functions.end();
+}
+
+namespace
+{
+struct eoc_start_args {
+    const Character &who;
+    const std::string &other_name;
+    const std::optional<time_duration> &duration;
+};
+
+struct eoc_starter {
+    std::unique_ptr<activity_actor>( *build )( const eoc_start_args & );
+    bool takes_duration;
+};
+
+template<typename Actor>
+std::unique_ptr<activity_actor> build_plain( const eoc_start_args & )
+{
+    return std::make_unique<Actor>();
+}
+
+std::unique_ptr<activity_actor> build_wait( const eoc_start_args &args )
+{
+    if( args.duration ) {
+        return std::make_unique<wait_activity_actor>( *args.duration );
+    }
+    return std::make_unique<wait_activity_actor>();
+}
+
+std::unique_ptr<activity_actor> build_wait_npc( const eoc_start_args &args )
+{
+    if( args.other_name.empty() ) {
+        // Nobody to name in "%s finishes with you…": a plain wait.
+        return build_wait( args );
+    }
+    return std::make_unique<wait_npc_activity_actor>( args.duration.value_or(
+                time_duration::from_turns( calendar::INDEFINITELY_LONG ) ), args.other_name );
+}
+
+template<typename Game>
+std::unique_ptr<activity_actor> build_game( const eoc_start_args &args )
+{
+    // No game item: nothing runs out of batteries.
+    return std::make_unique<Game>( args.duration.value_or( 15_minutes ), item_location(),
+                                   std::vector<character_id> { args.who.getID() } );
+}
+
+// Activities with an actor that u_assign_activity can start. Please keep this sorted.
+const std::unordered_map<activity_id, eoc_starter> eoc_starters = {
+    { ACT_GAME, { &build_game<portable_game_activity_actor>, true } },
+    { ACT_GENERIC_GAME, { &build_game<tabletop_game_activity_actor>, true } },
+    { ACT_MEDITATE, { &build_plain<meditate_activity_actor>, false } },
+    { ACT_MOVE_LOOT, { &build_plain<zone_sort_activity_actor>, false } },
+    { ACT_MULTIPLE_BUTCHER, { &build_plain<multi_butchery_activity_actor>, false } },
+    { ACT_MULTIPLE_CHOP_PLANKS, { &build_plain<multi_chop_planks_activity_actor>, false } },
+    { ACT_MULTIPLE_CHOP_TREES, { &build_plain<multi_chop_trees_activity_actor>, false } },
+    { ACT_MULTIPLE_CONSTRUCTION, { &build_plain<multi_build_construction_activity_actor>, false } },
+    { ACT_MULTIPLE_CRAFT, { &build_plain<multi_craft_activity_actor>, false } },
+    { ACT_MULTIPLE_DIS, { &build_plain<multi_disassemble_activity_actor>, false } },
+    { ACT_MULTIPLE_FARM, { &build_plain<multi_farm_activity_actor>, false } },
+    { ACT_MULTIPLE_FISH, { &build_plain<multi_fish_activity_actor>, false } },
+    { ACT_MULTIPLE_MINE, { &build_plain<multi_mine_activity_actor>, false } },
+    { ACT_MULTIPLE_MOP, { &build_plain<multi_mop_activity_actor>, false } },
+    { ACT_MULTIPLE_READ, { &build_plain<multi_read_activity_actor>, false } },
+    { ACT_MULTIPLE_STUDY, { &build_plain<multi_study_activity_actor>, false } },
+    { ACT_TARGET_PRACTICE, { &build_plain<target_practice_activity_actor>, false } },
+    { ACT_UNLOAD_LOOT, { &build_plain<unload_loot_activity_actor>, false } },
+    {
+        ACT_VEHICLE_DECONSTRUCTION,
+        { &build_plain<multi_vehicle_deconstruct_activity_actor>, false }
+    },
+    { ACT_VEHICLE_REPAIR, { &build_plain<multi_vehicle_repair_activity_actor>, false } },
+    { ACT_WAIT, { &build_wait, true } },
+    { ACT_WAIT_FOLLOWERS, { &build_plain<wait_followers_activity_actor>, false } },
+    { ACT_WAIT_NPC, { &build_wait_npc, true } },
+    { ACT_WAIT_STAMINA, { &build_plain<wait_stamina_activity_actor>, false } },
+    { ACT_WAIT_WEATHER, { &build_plain<wait_weather_activity_actor>, false } },
+};
+
+// Of those, the ones whose actor asks the player through menus, so only the avatar can do them.
+// ACT_TARGET_PRACTICE asks for a gun, a round count and a target, and aims as the avatar.
+const std::unordered_set<activity_id> eoc_avatar_only = {
+    ACT_TARGET_PRACTICE,
+};
+} // namespace
+
+bool can_start_from_eoc( const activity_id &type )
+{
+    return eoc_starters.find( type ) != eoc_starters.end();
+}
+
+bool eoc_start_takes_duration( const activity_id &type )
+{
+    const auto it = eoc_starters.find( type );
+    return it != eoc_starters.end() && it->second.takes_duration;
+}
+
+bool eoc_start_needs_avatar( const activity_id &type )
+{
+    return eoc_avatar_only.count( type ) != 0;
+}
+
+std::unique_ptr<activity_actor> make_for_eoc( const activity_id &type, const Character &who,
+        const std::string &other_name, const std::optional<time_duration> &duration )
+{
+    const auto it = eoc_starters.find( type );
+    if( it == eoc_starters.end() || ( eoc_start_needs_avatar( type ) && !who.is_avatar() ) ) {
+        return nullptr;
+    }
+    return it->second.build( { who, other_name, duration } );
+}
 } // namespace activity_actors
 
 void serialize( const cata::clone_ptr<activity_actor> &actor, JsonOut &jsout )

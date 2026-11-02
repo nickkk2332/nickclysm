@@ -112,6 +112,11 @@ struct grab {
     bool exclusive_grab = false;
     // If true drags/pulls fail when targeting a character in a seat with seatbelts
     bool respect_seatbelts = true;
+    // If true a successful grab can pull a seated character without a seatbelt out of a vehicle
+    bool pull_from_vehicle = false;
+    // jmath function (grab strength, speed in mph, muscle-powered, athlete bonus) giving the
+    // chance (0-1) of that pull, with the grabber as u and the grabbed character as n
+    jmath_func_id vehicle_pull_formula;
     // Distance the enemy drags you on successful drag attempt (also enable dragging in the first place)
     int drag_distance;
     // Deviation of each dragging step from a straight line away from the opponent

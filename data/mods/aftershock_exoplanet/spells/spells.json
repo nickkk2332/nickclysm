@@ -363,23 +363,6 @@
     "max_duration": 720000
   },
   {
-    "id": "protection_from_cold",
-    "type": "SPELL",
-    "name": { "str": "Emergency Insulation", "//~": "NO_I18N" },
-    "//": "Used for CBM not castable",
-    "description": { "str": "You feel a jolt through your body as energy pulses through the wires in your flesh.", "//~": "NO_I18N" },
-    "valid_targets": [ "self" ],
-    "flags": [ "SILENT", "NO_LEGS", "NO_HANDS", "NO_PROJECTILE" ],
-    "effect": "attack",
-    "effect_str": "afs_cold_protect",
-    "shape": "blast",
-    "max_level": 0,
-    "spell_class": "NONE",
-    "base_casting_time": 1,
-    "min_duration": 1000,
-    "max_duration": 1000
-  },
-  {
     "id": "cryo_blast",
     "type": "SPELL",
     "name": { "str": "Cryokinetic Blast", "//~": "NO_I18N" },

@@ -20,6 +20,7 @@
 
 #include "avatar.h"
 #include "basecamp.h"
+#include "bionics.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "character.h"
@@ -41,6 +42,7 @@
 #include "game_constants.h"
 #include "generic_factory.h"
 #include "global_vars.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_category.h"
 #include "item_location.h"
@@ -55,6 +57,8 @@
 #include "messages.h"
 #include "math_parser_diag_value.h"
 #include "mission.h"
+#include "monster.h"
+#include "monstergenerator.h"
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
@@ -404,6 +408,33 @@ void read_condition( const JsonObject &jo, const std::string &member_name,
     }
 }
 
+void check_mtype_id_at_load( const str_or_var &id, const std::string &context )
+{
+    if( !id.is_constant() ) {
+        return;
+    }
+    effect_on_conditions::add_load_check( [name = id.constant(), context]() {
+        if( !mtype_id( name ).is_valid() ) {
+            debugmsg( "Monster type \"%s\" (used by %s) does not exist", name, context );
+        }
+    } );
+}
+
+void check_special_attack_name_at_load( const str_or_var &name, const std::string &context )
+{
+    if( !name.is_constant() ) {
+        return;
+    }
+    effect_on_conditions::add_load_check( [special = name.constant(), context]() {
+        for( const mtype &type : MonsterGenerator::generator().get_all_mtypes() ) {
+            if( type.special_attacks.count( special ) != 0 ) {
+                return;
+            }
+        }
+        debugmsg( "No monster type has a special attack \"%s\" (used by %s)", special, context );
+    } );
+}
+
 void finalize_conditions()
 {
     std::queue<deferred_math> &dfr = get_deferred_math();
@@ -555,6 +586,29 @@ conditional_t::func f_has_species( const JsonObject &jo, std::string_view member
     };
 }
 
+conditional_t::func f_is_mtype( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    str_or_var mtype_to_check = get_str_or_var( jo.get_member( member ), member, true );
+    check_mtype_id_at_load( mtype_to_check, string_format( "%s (%s)", member,
+                            jo.get_member( member ).get_root_source_path() ) );
+    return [mtype_to_check, is_npc]( const_dialogue const & d ) {
+        const monster *mon = d.const_actor( is_npc )->get_const_monster();
+        return mon != nullptr && mon->type->id == mtype_id( mtype_to_check.evaluate( d ) );
+    };
+}
+
+conditional_t::func f_has_special_attack( const JsonObject &jo, std::string_view member,
+        bool is_npc )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    check_special_attack_name_at_load( special, string_format( "%s (%s)", member,
+                                       jo.get_member( member ).get_root_source_path() ) );
+    return [special, is_npc]( const_dialogue const & d ) {
+        const monster *mon = d.const_actor( is_npc )->get_const_monster();
+        return mon != nullptr && mon->has_special( special.evaluate( d ) );
+    };
+}
+
 conditional_t::func f_bodytype( const JsonObject &jo, std::string_view member,
                                 bool is_npc )
 {
@@ -597,6 +651,57 @@ conditional_t::func f_is_riding( bool is_npc )
 conditional_t::func f_is_riding( const JsonObject &, std::string_view, bool is_npc )
 {
     return f_is_riding( is_npc );
+}
+
+// u_is_grabbing / npc_is_grabbing and u_is_grabbed / npc_is_grabbed take "any", or the other
+// talker: "npc" for u_, "u" for npc_. Returns whether the other talker is meant.
+bool grab_condition_names_other( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const std::string value = jo.get_string( member );
+    const std::string other = is_npc ? "u" : "npc";
+    if( value == other ) {
+        return true;
+    }
+    if( value != "any" ) {
+        jo.throw_error_at( member, string_format(
+                               "%s must be \"any\" or \"%s\" (the other talker), not \"%s\"",
+                               std::string( member ), other, value ) );
+    }
+    return false;
+}
+
+// Who holds whom, by the hold itself (grapple::holds): unlike the GRAB and GRAB_FILTER flags, a
+// third creature's hold doesn't count.
+conditional_t::func f_is_grabbing( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const bool other = grab_condition_names_other( jo, member, is_npc );
+    return [other, is_npc]( const_dialogue const & d ) {
+        const Creature *const self = d.const_actor( is_npc )->get_const_creature();
+        if( self == nullptr ) {
+            return false;
+        }
+        if( !other ) {
+            return grapple::holds_anyone( *self );
+        }
+        const Creature *const them = d.const_actor( !is_npc )->get_const_creature();
+        return them != nullptr && grapple::holds( *self, *them );
+    };
+}
+
+conditional_t::func f_is_grabbed( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const bool other = grab_condition_names_other( jo, member, is_npc );
+    return [other, is_npc]( const_dialogue const & d ) {
+        const Creature *const self = d.const_actor( is_npc )->get_const_creature();
+        if( self == nullptr ) {
+            return false;
+        }
+        if( !other ) {
+            return grapple::held_by_anyone( *self );
+        }
+        const Creature *const them = d.const_actor( !is_npc )->get_const_creature();
+        return them != nullptr && grapple::holds( *them, *self );
+    };
 }
 
 conditional_t::func f_npc_has_class( const JsonObject &jo, std::string_view member,
@@ -887,6 +992,31 @@ conditional_t::func f_has_bionics( const JsonObject &jo, std::string_view member
             return actor->num_bionics() > 0 || actor->has_max_power();
         }
         return actor->has_bionic( bionic_id( bionics_id.evaluate( d ) ) );
+    };
+}
+
+conditional_t::func f_has_active_bionic( const JsonObject &jo, std::string_view member,
+        bool is_npc )
+{
+    str_or_var bionic_name = get_str_or_var( jo.get_member( member ), member, true );
+    return [bionic_name, is_npc]( const_dialogue const & d ) {
+        const Character *guy = d.const_actor( is_npc )->get_const_character();
+        if( guy == nullptr ) {
+            return false;
+        }
+        const std::string name = bionic_name.evaluate( d );
+        if( name == "ANY" ) {
+            return std::any_of( guy->my_bionics->begin(), guy->my_bionics->end(),
+            []( const bionic & bio ) {
+                return bio.powered;
+            } );
+        }
+        const bionic_id bio_id( name );
+        if( !bio_id.is_valid() ) {
+            debugmsg( "has_active_bionic: unknown bionic id \"%s\"", name );
+            return false;
+        }
+        return guy->has_active_bionic( bio_id );
     };
 }
 
@@ -2024,16 +2154,97 @@ conditional_t::func f_test_eoc( const JsonObject &jo, std::string_view member )
     };
 }
 
-conditional_t::func f_has_ammo()
+conditional_t::func f_has_ammo( bool is_npc )
 {
-    return []( const_dialogue const & d ) {
-        item_location const *it = d.const_actor( true )->get_const_item();
+    return [is_npc]( const_dialogue const & d ) {
+        item_location const *it = d.const_actor( is_npc )->get_const_item();
         if( it ) {
-            return ( *it )->ammo_sufficient( d.const_actor( false )->get_const_character() );
+            // The other talker, when it is a character, is the one using the item.
+            Character const *user = d.has_actor( !is_npc ) ?
+                                    d.const_actor( !is_npc )->get_const_character() : nullptr;
+            return ( *it )->ammo_sufficient( user );
         } else {
-            debugmsg( "beta talker must be Item" );
+            debugmsg( "%s talker must be Item", is_npc ? "beta" : "alpha" );
             return false;
         }
+    };
+}
+
+// The item a talker wraps, or nullptr when the talker is not an item.
+item const *talker_item_or_null( const_dialogue const &d, bool is_npc )
+{
+    item_location const *it = d.const_actor( is_npc )->get_const_item();
+    return it != nullptr && *it ? it->get_item() : nullptr;
+}
+
+conditional_t::func f_is_container( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        return it != nullptr && it->is_container();
+    };
+}
+
+conditional_t::func f_is_sealed( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        return it != nullptr && it->any_pockets_sealed();
+    };
+}
+
+conditional_t::func f_is_container_empty( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        // only container pockets count: a loaded battery or an installed mod is not contents
+        return it != nullptr && it->is_container() &&
+               it->all_items_top( pocket_type::CONTAINER ).empty();
+    };
+}
+
+conditional_t::func f_contains_item( const JsonObject &jo, std::string_view member,
+                                     bool is_npc )
+{
+    str_or_var item_id = get_str_or_var( jo.get_member( member ), member, true );
+    return [item_id, is_npc]( const_dialogue const & d ) {
+        item const *container = talker_item_or_null( d, is_npc );
+        if( container == nullptr ) {
+            return false;
+        }
+        const itype_id id( item_id.evaluate( d ) );
+        if( !id.is_valid() ) {
+            debugmsg( "Unknown item id \"%s\" in contains_item.  %s", id.str(), d.get_callstack() );
+            return false;
+        }
+        return container->has_item_with( [container, &id]( const item & content ) {
+            return &content != container && content.typeId() == id;
+        } );
+    };
+}
+
+conditional_t::func f_is_contained_in( const JsonObject &jo, std::string_view member,
+                                       bool is_npc )
+{
+    str_or_var item_id = get_str_or_var( jo.get_member( member ), member, true );
+    return [item_id, is_npc]( const_dialogue const & d ) {
+        item_location const *it = d.const_actor( is_npc )->get_const_item();
+        if( it == nullptr || !*it ) {
+            return false;
+        }
+        const itype_id id( item_id.evaluate( d ) );
+        if( !id.is_valid() ) {
+            debugmsg( "Unknown item id \"%s\" in is_contained_in.  %s", id.str(),
+                      d.get_callstack() );
+            return false;
+        }
+        for( item_location parent = *it; parent.has_parent(); ) {
+            parent = parent.parent_item();
+            if( parent->typeId() == id ) {
+                return true;
+            }
+        }
+        return false;
     };
 }
 
@@ -2283,14 +2494,14 @@ conditional_t::func f_using_martial_art( const JsonObject &jo, std::string_view 
     };
 }
 
-conditional_t::func f_is_rotten()
+conditional_t::func f_is_rotten( bool is_npc )
 {
-    return []( const_dialogue const & d ) {
-        item_location const *it = d.const_actor( true )->get_const_item();
+    return [is_npc]( const_dialogue const & d ) {
+        item_location const *it = d.const_actor( is_npc )->get_const_item();
         if( it ) {
             return ( *it )->get_relative_rot() > 1;
         } else {
-            debugmsg( "beta talker must be Item" );
+            debugmsg( "%s talker must be Item", is_npc ? "beta" : "alpha" );
             return false;
         }
     };
@@ -2328,8 +2539,10 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
         bool crit = jo.get_bool( "crit", false );
         bool dodge_counter = jo.get_bool( "dodge_counter", false );
         bool block_counter = jo.get_bool( "block_counter", false );
+        bool grab_counter = jo.get_bool( "grab_counter", false );
 
-        return [blacklist, crit, dodge_counter, block_counter, ret_func]( const_dialogue const & d ) {
+        return [blacklist, crit, dodge_counter, block_counter, grab_counter,
+                   ret_func]( const_dialogue const & d ) {
             std::vector<matec_id> bl;
             bl.reserve( blacklist.size() );
             for( const str_or_var &sv : blacklist ) {
@@ -2337,7 +2550,7 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
             }
             return ret_func( d.const_actor( false )->get_random_technique( *d.const_actor(
                                  true )->get_const_creature(),
-                             crit, dodge_counter, block_counter, bl ).str() );
+                             crit, dodge_counter, block_counter, grab_counter, bl ).str() );
         };
     } else if( mutator == "topic_item" ) {
         return [ret_func]( const_dialogue const & d ) {
@@ -2661,10 +2874,17 @@ parsers = {
     {"u_has_proficiency", "npc_has_proficiency", jarg::member, &conditional_fun::f_has_proficiency },
     {"u_has_flag", "npc_has_flag", jarg::member, &conditional_fun::f_has_flag },
     {"u_has_species", "npc_has_species", jarg::member, &conditional_fun::f_has_species },
+    {"u_is_mtype", "npc_is_mtype", jarg::member, &conditional_fun::f_is_mtype },
+    {
+        "u_has_special_attack", "npc_has_special_attack", jarg::member,
+        &conditional_fun::f_has_special_attack
+    },
     {"u_bodytype", "npc_bodytype", jarg::member, &conditional_fun::f_bodytype },
     {"u_has_class", "npc_has_class", jarg::member, &conditional_fun::f_npc_has_class },
     {"u_has_activity", "npc_has_activity", jarg::string, &conditional_fun::f_has_activity },
     {"u_is_riding", "npc_is_riding", jarg::string, &conditional_fun::f_is_riding },
+    {"u_is_grabbing", "npc_is_grabbing", jarg::member, &conditional_fun::f_is_grabbing },
+    {"u_is_grabbed", "npc_is_grabbed", jarg::member, &conditional_fun::f_is_grabbed },
     {"u_has_mission", jarg::string, &conditional_fun::f_u_has_mission },
     {"u_monsters_in_direction", jarg::string, &conditional_fun::f_u_monsters_in_direction },
     {"u_safe_mode_trigger", jarg::member, &conditional_fun::f_u_safe_mode_trigger },
@@ -2684,6 +2904,7 @@ parsers = {
     {"u_has_item_category", "npc_has_item_category", jarg::member, &conditional_fun::f_has_item_category },
     {"u_has_software", "npc_has_software", jarg::member, &conditional_fun::f_has_software },
     {"u_has_bionics", "npc_has_bionics", jarg::member, &conditional_fun::f_has_bionics },
+    {"u_has_active_bionic", "npc_has_active_bionic", jarg::member, &conditional_fun::f_has_active_bionic },
     {"u_has_any_effect", "npc_has_any_effect", jarg::array, &conditional_fun::f_has_any_effect },
     {"u_has_effect", "npc_has_effect", jarg::member, &conditional_fun::f_has_effect },
     {"u_has_any_wound", "npc_has_any_wound", jarg::array, &conditional_fun::f_has_any_wound },
@@ -2746,6 +2967,8 @@ parsers = {
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },
     {"test_eoc", jarg::member, &conditional_fun::f_test_eoc },
     {"u_has_part_flag", "npc_has_part_flag", jarg::string, &conditional_fun::f_has_part_flag },
+    {"u_contains_item", "npc_contains_item", jarg::member, &conditional_fun::f_contains_item },
+    {"u_is_contained_in", "npc_is_contained_in", jarg::member, &conditional_fun::f_is_contained_in },
 };
 
 // When updating this, please also update `dynamic_line_string_keys` in
@@ -2813,7 +3036,9 @@ parsers_simple = {
     {"u_is_item", "npc_is_item", &conditional_fun::f_is_item },
     {"u_is_furniture", "npc_is_furniture", &conditional_fun::f_is_furniture },
     {"u_is_vehicle", "npc_is_vehicle", &conditional_fun::f_is_vehicle },
-    {"has_ammo", &conditional_fun::f_has_ammo },
+    {"u_has_ammo", "npc_has_ammo", &conditional_fun::f_has_ammo },
+    // legacy spelling of npc_has_ammo
+    {"u_has_ammo", "has_ammo", &conditional_fun::f_has_ammo },
     {"player_see_u", "player_see_npc", &conditional_fun::f_player_see },
     {"u_see_npc", "npc_see_u", &conditional_fun::f_see_opposite },
     {"u_see_npc_loc", "npc_see_u_loc", &conditional_fun::f_see_opposite_coordinates },
@@ -2831,7 +3056,12 @@ parsers_simple = {
     {"u_is_on_rails", "npc_is_on_rails", &conditional_fun::f_is_on_rails },
     {"u_is_avatar_passenger", "npc_is_avatar_passenger", &conditional_fun::f_is_avatar_passenger },
     {"u_is_in_vehicle", "npc_is_in_vehicle", &conditional_fun::f_is_in_vehicle },
-    {"is_rotten", &conditional_fun::f_is_rotten },
+    {"u_is_rotten", "npc_is_rotten", &conditional_fun::f_is_rotten },
+    // legacy spelling of npc_is_rotten
+    {"u_is_rotten", "is_rotten", &conditional_fun::f_is_rotten },
+    {"u_is_container", "npc_is_container", &conditional_fun::f_is_container },
+    {"u_is_sealed", "npc_is_sealed", &conditional_fun::f_is_sealed },
+    {"u_is_container_empty", "npc_is_container_empty", &conditional_fun::f_is_container_empty },
 };
 
 conditional_t::conditional_t( const JsonObject &jo )

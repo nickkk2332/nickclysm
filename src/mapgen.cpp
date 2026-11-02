@@ -68,6 +68,7 @@
 #include "mission.h"
 #include "mongroup.h"
 #include "npc.h"
+#include "npctalk.h"
 #include "omdata.h"
 #include "options.h"
 #include "output.h"
@@ -486,6 +487,9 @@ class mapgen_basic_container
         //mapgens that need to be recalculated with a function when spawned
         std::vector<std::shared_ptr<mapgen_function>> mapgens_to_recalc_;
         weighted_int_list<std::shared_ptr<mapgen_function>> weights_;
+        // Every mapgen setup() kept, whether its weight is constant (weights_) or not
+        // (mapgens_to_recalc_); finalized, checked and asked for parameters
+        std::vector<std::shared_ptr<mapgen_function>> active_mapgens_;
 
     public:
         int add( const std::shared_ptr<mapgen_function> &ptr ) {
@@ -544,6 +548,7 @@ class mapgen_basic_container
                 } else {
                     mapgens_to_recalc_.push_back( ptr );
                 }
+                active_mapgens_.push_back( ptr );
 
                 ptr->setup();
             }
@@ -551,16 +556,20 @@ class mapgen_basic_container
             mapgens_.clear();
         }
         void finalize_parameters() {
-            for( auto &mapgen_function_ptr : weights_ ) {
-                mapgen_function_ptr.first->finalize_parameters();
+            for( const std::shared_ptr<mapgen_function> &ptr : active_mapgens_ ) {
+                ptr->finalize_parameters();
             }
         }
         void check_consistency() const {
-            for( const auto &mapgen_function_ptr : weights_ ) {
-                mapgen_function_ptr.first->check();
+            for( const std::shared_ptr<mapgen_function> &ptr : active_mapgens_ ) {
+                ptr->check();
             }
         }
         void check_consistency_with( const oter_t &ter ) const {
+            // TODO: check active_mapgens_ here too. The variable-weight road four-way mapgen
+            // has a fallback_predecessor_mapgen but road_nesw_manhole, which shares it, lacks
+            // REQUIRES_PREDECESSOR: it relies on the predecessor the road it replaces pushed
+            // (overmap_city.cpp), and adding the flag would push that road and generate it twice.
             for( const auto &mapgen_function_ptr : weights_ ) {
                 mapgen_function_ptr.first->check_consistent_with( ter );
             }
@@ -569,8 +578,8 @@ class mapgen_basic_container
         mapgen_parameters get_mapgen_params( mapgen_parameter_scope scope,
                                              const std::string &context ) const {
             mapgen_parameters result;
-            for( const std::pair<std::shared_ptr<mapgen_function>, int> &p : weights_ ) {
-                result.check_and_merge( p.first->get_mapgen_params( scope ), context );
+            for( const std::shared_ptr<mapgen_function> &ptr : active_mapgens_ ) {
+                result.check_and_merge( ptr->get_mapgen_params( scope ), context );
             }
             return result;
         }
@@ -787,13 +796,8 @@ static void set_mapgen_defer( const JsonObject &jsi, const std::string &member,
     mapgen_defer::message = message;
 }
 
-/*
- * load a single mapgen json structure; this can be inside an overmap_terrain, or on it's own.
- */
-std::shared_ptr<mapgen_function>
-load_mapgen_function( const JsonObject &jio, const std::string &id_base,
-                      const point_rel_omt &offset,
-                      const point_rel_omt &total )
+// Reads the "weight" of a mapgen definition (default 1000): a number, variable or math
+static dbl_or_var load_mapgen_weight( const JsonObject &jio )
 {
     dbl_or_var weight = get_dbl_or_var( jio, "weight", false,  1000 );
     if( weight.min.is_constant() && ( weight.min.constant() < 0 ||
@@ -804,6 +808,18 @@ load_mapgen_function( const JsonObject &jio, const std::string &id_base,
             weight.max->constant() >= INT_MAX ) ) {
         jio.throw_error_at( "weight", "max value out of bounds (0 - max int)" );
     }
+    return weight;
+}
+
+/*
+ * load a single mapgen json structure; this can be inside an overmap_terrain, or on it's own.
+ */
+std::shared_ptr<mapgen_function>
+load_mapgen_function( const JsonObject &jio, const std::string &id_base,
+                      const point_rel_omt &offset,
+                      const point_rel_omt &total )
+{
+    dbl_or_var weight = load_mapgen_weight( jio );
     if( jio.has_string( "builtin" ) ) {
         if( const building_gen_pointer ptr = get_mapgen_cfunction( jio.get_string( "builtin" ) ) ) {
             return std::make_shared<mapgen_function_builtin>( ptr, std::move( weight ) );
@@ -831,7 +847,7 @@ void load_and_add_mapgen_function( const JsonObject &jio, const std::string &id_
 static void load_nested_mapgen( JsonObject &&jio, const nested_mapgen_id &id_base )
 {
     if( jio.has_object( "object" ) ) {
-        int weight = jio.get_int( "weight", 1000 );
+        const dbl_or_var weight = load_mapgen_weight( jio );
         JsonObject jo = jio.get_object( "object" );
         nested_mapgens[id_base].add(
             std::make_shared<mapgen_function_json_nested>(
@@ -845,10 +861,11 @@ static void load_nested_mapgen( JsonObject &&jio, const nested_mapgen_id &id_bas
 static void load_update_mapgen( JsonObject &&jio, const update_mapgen_id &id_base )
 {
     if( jio.has_object( "object" ) ) {
+        const dbl_or_var weight = load_mapgen_weight( jio );
         JsonObject jo = jio.get_object( "object" );
         update_mapgens[id_base].add(
             std::make_unique<update_mapgen_function_json>(
-                std::move( jo ), "update mapgen " + id_base.str() ) );
+                std::move( jo ), "update mapgen " + id_base.str() ), weight );
     } else {
         debugmsg( "Update mapgen: Invalid mapgen function (missing \"object\" object)",
                   id_base.c_str() );
@@ -1126,6 +1143,13 @@ void mapgen_function_json_base::setup_setmap( const JsonArray &parray )
         }
 
         tmpop = sm_it->second;
+        // These ops have no line or square variant, apply() would silently do nothing
+        if( setmap_optype != JMAPGEN_SETMAP_OPTYPE_POINT && ( tmpop == JMAPGEN_SETMAP_BASH ||
+                tmpop == JMAPGEN_SETMAP_BURN || tmpop == JMAPGEN_SETMAP_VARIABLE ) ) {
+            const bool is_line = setmap_optype == JMAPGEN_SETMAP_OPTYPE_LINE;
+            pjo.throw_error_at( is_line ? "line" : "square",
+                                string_format( "\"%s\" only works with \"point\"", tmpval ) );
+        }
         jmapgen_int tmp_x2( 0, 0 );
         jmapgen_int tmp_y2( 0, 0 );
         jmapgen_int tmp_i( 0, 0 );
@@ -2376,8 +2400,12 @@ class jmapgen_liquid_item : public jmapgen_piece
                     }
                 }
                 if( newliquid.charges > 0 ) {
-                    dat.m.add_item_or_charges(
-                        tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ), newliquid );
+                    // The item category's spawn rate drops or copies the liquid
+                    for( int copies = item_group::category_spawn_count( newliquid ); copies > 0;
+                         copies-- ) {
+                        const tripoint_bub_ms pos( x.get(), y.get(), dat.zlevel() + z.get() );
+                        dat.m.add_item_or_charges( pos, newliquid );
+                    }
                 }
             }
         }
@@ -2388,6 +2416,14 @@ class jmapgen_liquid_item : public jmapgen_piece
             liquid.check( oter_name, parameters );
         }
 };
+
+// The "faction" owning spawned items or vehicles must exist; empty means none
+static void check_faction( const std::string &faction, const std::string &context )
+{
+    if( !faction.empty() && !faction_id( faction ).is_valid() ) {
+        debugmsg( "Invalid faction \"%s\" in %s", faction, context );
+    }
+}
 
 /**
  * Place a corpse of a random monster from a monster group into the map.
@@ -2404,6 +2440,15 @@ class jmapgen_corpse : public jmapgen_piece
             , age( time_duration::from_days( jsi.get_int( "age", 0 ) ) ) {
         }
 
+        void check( const std::string &context, const mapgen_parameters &,
+                    const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
+                  ) const override {
+            if( !group.is_valid() ) {
+                debugmsg( "Invalid monster group \"%s\" for a corpse in %s", group.str(),
+                          context );
+            }
+        }
+
         void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
                     const std::string &/*context*/ ) const override {
             const std::vector<mtype_id> monster_group =
@@ -2414,8 +2459,11 @@ class jmapgen_corpse : public jmapgen_piece
             const mtype_id &corpse_type = random_entry_ref( monster_group );
             item corpse = item::make_corpse( corpse_type,
                                              std::max( calendar::turn - age, calendar::start_of_cataclysm ) );
-            dat.m.add_item_or_charges( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ),
-                                       corpse );
+            // The item category's spawn rate drops or copies the corpse
+            for( int copies = item_group::category_spawn_count( corpse ); copies > 0; copies-- ) {
+                const tripoint_bub_ms pos( x.get(), y.get(), dat.zlevel() + z.get() );
+                dat.m.add_item_or_charges( pos, corpse );
+            }
         }
 };
 
@@ -2450,6 +2498,7 @@ class jmapgen_item_group : public jmapgen_piece
             if( !group_id.is_valid() ) {
                 debugmsg( "Invalid item_group_id \"%s\" in %s", group_id.str(), context );
             }
+            check_faction( faction, context );
         }
         void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
                     const std::string &/*context*/ ) const override {
@@ -2506,6 +2555,7 @@ class jmapgen_loot : public jmapgen_piece
                 spawn.reserve( 20 );
                 isd->create( spawn, calendar::start_of_cataclysm,
                              spawn_flags::use_spawn_rate );
+                item_group::apply_category_spawn_rates( spawn );
                 dat.m.spawn_items( tripoint_bub_ms( rng( x.val, x.valmax ), rng( y.val, y.valmax ),
                                                     dat.zlevel() + z.get() ), spawn );
             }
@@ -2761,6 +2811,7 @@ class jmapgen_vehicle : public jmapgen_piece_with_has_vehicle_collision
                     const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &/*z*/
                   ) const override {
             type.check( context, parameters );
+            check_faction( faction, context );
 
             if( x.val == -1 ) {
                 // We are in a palette, so no need to verify that the positions
@@ -2870,9 +2921,13 @@ class jmapgen_spawn_item : public jmapgen_piece
             const float spawn_rate = get_option<float>( "ITEM_SPAWNRATE" );
             int spawn_count = ( c == 100 ) ? 1 : roll_remainder( c * spawn_rate / 100.0f );
             for( int i = 0; i < spawn_count; i++ ) {
-                dat.m.spawn_item( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ), chosen_id,
-                                  amount.get(),
-                                  0, calendar::start_of_cataclysm, 0, flags, variant, faction );
+                // The item category's spawn rate drops or copies each item
+                for( int copies = item_group::category_spawn_count( *chosen_id ); copies > 0;
+                     copies-- ) {
+                    const tripoint_bub_ms pos( x.get(), y.get(), dat.zlevel() + z.get() );
+                    dat.m.spawn_item( pos, chosen_id, amount.get(), 0,
+                                      calendar::start_of_cataclysm, 0, flags, variant, faction );
+                }
             }
         }
 
@@ -2880,6 +2935,7 @@ class jmapgen_spawn_item : public jmapgen_piece
                     const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
                   ) const override {
             type.check( oter_name, parameters );
+            check_faction( faction, oter_name );
         }
 };
 /**
@@ -3260,6 +3316,22 @@ class jmapgen_computer : public jmapgen_piece_with_has_vehicle_collision
             // The default access denied message is defined in computer's constructor
             if( !access_denied.empty() ) {
                 cpu->set_access_denied_msg( access_denied.translated() );
+            }
+        }
+
+        void check( const std::string &context, const mapgen_parameters &,
+                    const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
+                  ) const override {
+            for( const effect_on_condition_id &eoc : eocs ) {
+                if( !eoc.is_valid() ) {
+                    debugmsg( "Invalid effect_on_condition \"%s\" for a computer in %s", eoc.str(),
+                              context );
+                }
+            }
+            for( const std::string &topic : chat_topics ) {
+                if( !talk_topic_exists( topic ) ) {
+                    debugmsg( "Invalid chat topic \"%s\" for a computer in %s", topic, context );
+                }
             }
         }
 };
@@ -3860,7 +3932,7 @@ class jmapgen_nested : public jmapgen_piece
             }
 
             // A second roll? Let's allow it for now
-            const auto &ptr = iter->second.funcs().pick();
+            const auto &ptr = iter->second.pick();
             if( ptr == nullptr ) {
                 return;
             }
@@ -3873,7 +3945,7 @@ class jmapgen_nested : public jmapgen_piece
             for( const std::pair<mapgen_value<nested_mapgen_id>, dbl_or_var> &p : entries ) {
                 p.first.check( oter_name, parameters );
             }
-            for( const std::pair<mapgen_value<nested_mapgen_id>, dbl_or_var> &p : entries ) {
+            for( const std::pair<mapgen_value<nested_mapgen_id>, dbl_or_var> &p : else_entries ) {
                 p.first.check( oter_name, parameters );
             }
             neighbor_joins.check( oter_name, parameters );
@@ -4911,8 +4983,9 @@ void mapgen_function_json_base::check_common() const
             continue;
         }
         furn_id id( setmap.val.get() );
+        // Report a PLANT once per mapgen, but still run the checks below
         if( check_furn( id, context_ ) ) {
-            return;
+            break;
         }
     }
 
@@ -4953,14 +5026,58 @@ std::unordered_set<point_rel_ms> nested_mapgen::all_placement_coords() const
     return result;
 }
 
-void nested_mapgen::add( const std::shared_ptr<mapgen_function_json_nested> &p, int weight )
+void nested_mapgen::add( const std::shared_ptr<mapgen_function_json_nested> &p,
+                         const dbl_or_var &weight )
 {
-    funcs_.add( p, weight );
+    if( weight.is_constant() ) {
+        funcs_.add( p, static_cast<int>( weight.constant() ) );
+    } else if( funcs_.add( p, 1 ) ) {
+        variable_weights_.emplace_back( p, weight );
+    }
 }
 
-void update_mapgen::add( std::unique_ptr<update_mapgen_function_json> &&p )
+const std::shared_ptr<mapgen_function_json_nested> *nested_mapgen::pick() const
+{
+    if( variable_weights_.empty() ) {
+        return funcs_.pick();
+    }
+    dialogue d( get_talker_for( get_avatar() ), std::make_unique<talker>() );
+    weighted_int_list<const std::shared_ptr<mapgen_function_json_nested> *> current;
+    for( const std::pair<std::shared_ptr<mapgen_function_json_nested>, int> &entry : funcs_ ) {
+        int weight = entry.second;
+        for( const std::pair<std::shared_ptr<mapgen_function_json_nested>, dbl_or_var> &var :
+             variable_weights_ ) {
+            if( var.first == entry.first ) {
+                weight = static_cast<int>( var.second.evaluate( d ) );
+                break;
+            }
+        }
+        current.add( &entry.first, weight );
+    }
+    const std::shared_ptr<mapgen_function_json_nested> *const *picked = current.pick();
+    return picked == nullptr ? nullptr : *picked;
+}
+
+void update_mapgen::add( std::unique_ptr<update_mapgen_function_json> &&p,
+                         const dbl_or_var &weight )
 {
     funcs_.push_back( std::move( p ) );
+    weights_.push_back( weight );
+}
+
+const update_mapgen_function_json *update_mapgen::pick() const
+{
+    if( funcs_.size() <= 1 ) {
+        // A lone definition always runs, whatever its weight
+        return funcs_.empty() ? nullptr : funcs_.front().get();
+    }
+    dialogue d( get_talker_for( get_avatar() ), std::make_unique<talker>() );
+    weighted_int_list<const update_mapgen_function_json *> current;
+    for( size_t i = 0; i < funcs_.size(); ++i ) {
+        current.add( funcs_[i].get(), static_cast<int>( weights_[i].evaluate( d ) ) );
+    }
+    const update_mapgen_function_json *const *picked = current.pick();
+    return picked == nullptr ? nullptr : *picked;
 }
 
 void jmapgen_objects::finalize()
@@ -6756,35 +6873,9 @@ std::vector<item *> map::place_items(
             };
 
             for( const item &itm : item_group::items_from( group_id, turn, spawn_flags::use_spawn_rate ) ) {
-                const float item_cat_spawn_rate = std::max( 0.0f, item_category_spawn_rate( itm ) );
-                if( item_cat_spawn_rate == 0.0f ) {
-                    continue;
-                } else if( item_cat_spawn_rate < 1.0f ) {
-                    // for items with category spawn rate less than 1, roll a dice to see if they should spawn
-                    if( rng_float( 0.0f, 1.0f ) <= item_cat_spawn_rate ) {
-                        add_res_itm( itm );
-                    }
-                } else {
-                    // for items with category spawn rate more or equal to 1, spawn item at least one time...
+                // The item category's spawn rate drops or copies each item, once
+                for( int copies = item_group::category_spawn_count( itm ); copies > 0; copies-- ) {
                     add_res_itm( itm );
-
-                    if( item_cat_spawn_rate > 1.0f ) {
-                        // ...then create a list with items from the same item group and remove all items with differing category from that list
-                        // so if the original item was e.g. from 'guns' category, the list will contain only items from the 'guns' category...
-                        Item_list extra_spawn = item_group::items_from( group_id, turn, spawn_flags::use_spawn_rate );
-                        extra_spawn.erase( std::remove_if( extra_spawn.begin(), extra_spawn.end(), [&itm]( item & it ) {
-                            return it.get_category_of_contents() != itm.get_category_of_contents();
-                        } ), extra_spawn.end() );
-
-                        // ...then add a chance to spawn additional items from the list, amount is based on the item category spawn rate
-                        for( int i = 0; i < item_cat_spawn_rate; i++ ) {
-                            for( const item &it : extra_spawn ) {
-                                if( rng( 1, 100 ) <= chance ) {
-                                    add_res_itm( it );
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -7206,31 +7297,24 @@ void map::rotate( int turns )
             }
         }
         rebuild_vehicle_level_caches();
+    }
 
-        std::unordered_map<std::string, tripoint_abs_ms> temp_points = queued_points;
-        queued_points.clear();
-        for( std::pair<const std::string, tripoint_abs_ms> &queued_point : temp_points ) {
-            //This is all just a copy of the section rotating NPCs above
-            const point_abs_omt queued_point_omt( project_to<coords::omt>( queued_point.second.xy() ) );
-
-            // Note: We are rotating the entire overmap square (2x2 of submaps)
-            if( queued_point_omt != abs_omt.xy() || ( queued_point.second.z() != abs_sub.z() && !zlevels ) ) {
-                continue;
-            }
-            const point_abs_sm queued_point_sm( project_to<coords::sm>( queued_point.second.xy() ) );
-            const point_bub_ms queued_point_bub( reality_bubble().get_bub( queued_point.second.xy() ) );
-            point_bub_ms old( queued_point_bub.x() % SEEX, queued_point_bub.y() % SEEY );
-
-            if( queued_point_sm.x() % 2 != 0 ) {
-                old.x() += SEEX;
-            }
-            if( queued_point_sm.y() % 2 != 0 ) {
-                old.y() += SEEY;
-            }
-            const point_bub_ms new_pos( old.rotate( turns, {SEEX * 2, SEEY * 2} ) );
-            queued_points[queued_point.first] = get_abs( tripoint_bub_ms( new_pos,
-                                                queued_point.second.z() ) );
+    // Rotate the queued mapgen variable points (place_variables, "variable" set points) in
+    // this overmap tile, once: the whole tile turns, whatever the number of z-levels.
+    // Points elsewhere are left as they are.
+    for( std::pair<const std::string, tripoint_abs_ms> &queued_point : queued_points ) {
+        const tripoint_abs_ms &pos = queued_point.second;
+        if( pos.z() != abs_sub.z() && !zlevels ) {
+            continue;
         }
+        point_abs_omt pos_omt;
+        point_omt_ms pos_in_omt;
+        std::tie( pos_omt, pos_in_omt ) = project_remain<coords::omt>( pos.xy() );
+        if( pos_omt != abs_omt.xy() ) {
+            continue;
+        }
+        const point_omt_ms rotated = pos_in_omt.rotate( turns, { SEEX * 2, SEEY * 2 } );
+        queued_point.second = tripoint_abs_ms( project_combine( pos_omt, rotated ), pos.z() );
     }
 }
 
@@ -7712,24 +7796,25 @@ ret_val<void> run_mapgen_update_func(
     bool mirror_vertical, int rotation )
 {
     const auto update_function = update_mapgens.find( update_mapgen_id );
-
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return ret_val<void>::make_failure( _( missing_update_operation ) );
     }
-    return update_function->second.funcs()[0]->update_map(
-               omt_pos, args, tripoint_rel_ms::zero, miss, cancel_on_collision, mirror_horizontal,
-               mirror_vertical, rotation );
+    return func->update_map( omt_pos, args, tripoint_rel_ms::zero, miss, cancel_on_collision,
+                             mirror_horizontal, mirror_vertical, rotation );
 }
 
 ret_val<void> run_mapgen_update_func( const update_mapgen_id &update_mapgen_id, mapgendata &dat,
                                       const bool cancel_on_collision )
 {
     const auto update_function = update_mapgens.find( update_mapgen_id );
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return ret_val<void>::make_failure( _( missing_update_operation ) );
     }
-    return update_function->second.funcs()[0]->update_map( dat, tripoint_rel_ms::zero,
-            cancel_on_collision );
+    return func->update_map( dat, tripoint_rel_ms::zero, cancel_on_collision );
 }
 
 void set_queued_points()
@@ -7748,8 +7833,9 @@ bool apply_construction_marker( const update_mapgen_id &update_mapgen_id,
 {
 
     const auto update_function = update_mapgens.find( update_mapgen_id );
-
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return false;
     }
 
@@ -7777,7 +7863,7 @@ bool apply_construction_marker( const update_mapgen_id &update_mapgen_id,
 
         rotation_guard rot( md );
 
-        if( update_function->second.funcs()[0]->update_map( fake_md ).success() ) {
+        if( func->update_map( fake_md ).success() ) {
             for( const tripoint_omt_ms &pos : tmp_map.points_on_zlevel( omt_pos.z() ) ) {
                 if( tmp_map.ter( pos ) != ter_t_grass || tmp_map.has_furn( pos ) ) {
                     if( apply ) {
@@ -7804,8 +7890,9 @@ std::pair<std::map<ter_id, int>, std::map<furn_id, int>> get_changed_ids_from_up
     std::map<furn_id, int> furnitures;
 
     const auto update_function = update_mapgens.find( update_mapgen_id );
-
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return std::make_pair( terrains, furnitures );
     }
 
@@ -7815,7 +7902,7 @@ std::pair<std::map<ter_id, int>, std::map<furn_id, int>> get_changed_ids_from_up
     mapgendata fake_md( base_fake_md, mapgen_args );
     fake_md.skip = { mapgen_phase::zones };
 
-    if( update_function->second.funcs()[0]->update_map( fake_md ).success() ) {
+    if( func->update_map( fake_md ).success() ) {
         for( int z = -OVERMAP_DEPTH; z <= OVERMAP_DEPTH; z++ ) {
             for( const tripoint_omt_ms &pos : tmp_map.points_on_zlevel( z ) ) {
                 const ter_id &ter_at_pos = tmp_map.ter( pos );

@@ -99,7 +99,7 @@ TEST_CASE( "spell_type_handles_all_members", "[json]" )
         CHECK( test_spell.effect_name == "attack" );
         CHECK( test_spell.spell_area == spell_shape::blast );
         CHECK( test_spell.valid_targets.test( spell_target::none ) );
-        CHECK( test_spell.effect_str == "string" );
+        CHECK( test_spell.effect_str == "onfire" );
         CHECK( test_spell.skill == skill_not_spellcraft );
         CHECK( test_spell.spell_components == requirement_data_test_components );
         CHECK( test_spell.message == to_translation( "test message" ) );

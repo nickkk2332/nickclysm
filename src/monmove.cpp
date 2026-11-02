@@ -62,6 +62,7 @@ static const damage_type_id damage_cut( "cut" );
 
 static const efftype_id effect_absorbed_acidic( "absorbed_acidic" );
 static const efftype_id effect_absorbed_electric( "absorbed_electric" );
+static const efftype_id effect_airborne( "airborne" );
 static const efftype_id effect_bouldering( "bouldering" );
 static const efftype_id effect_countdown( "countdown" );
 static const efftype_id effect_cramped_space( "cramped_space" );
@@ -2052,7 +2053,7 @@ bool monster::bash_at( const tripoint_bub_ms &p )
     }
 
     std::map<damage_type_id, int> bashskill = group_bash_skill( p );
-    here.bash( p, bashskill );
+    here.bash( p, bashskill, false, false, false, nullptr, true, this );
     mod_moves( -get_speed() );
     return true;
 }
@@ -2238,6 +2239,10 @@ static tripoint_bub_ms find_closest_stair( const tripoint_bub_ms &near_this,
 bool monster::move_to( const tripoint_bub_ms &p, bool force,
                        bool step_on_critter, const float stagger_adjustment )
 {
+    // In flight, it goes where it is carried.
+    if( has_effect( effect_airborne ) ) {
+        force = true;
+    }
     map &here = get_map();
     const tripoint_bub_ms pos = pos_bub( here );
 
@@ -2388,8 +2393,8 @@ bool monster::move_to( const tripoint_bub_ms &p, bool force,
             if( here.has_flag( ter_furn_flag::TFLAG_SHARP, pos ) && !one_in( 4 ) &&
                 get_armor_type( damage_cut, bodypart_id( "torso" ) ) < sharp_damage &&
                 get_hp() > sharp_damage ) {
-                here.bash( pos, sharp_damage ); // Moving through a sharp terrain also
-                // smashes the terrain, weakly.
+                // Moving through a sharp terrain also smashes the terrain, weakly.
+                here.bash( pos, sharp_damage, false, false, false, nullptr, true, this );
                 apply_damage( nullptr, bodypart_id( "torso" ), sharp_damage );
             }
             if( here.has_flag( ter_furn_flag::TFLAG_ROUGH, pos ) && one_in( 6 ) &&

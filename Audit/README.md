@@ -300,9 +300,142 @@ Four fixes have no regression test, because the code is only reachable through i
 
 Every mod in `data/mods` was loaded with these changes. All load without errors, except Limb_WIP (marked obsolete), which still reports armor and mutation-category warnings that predate this branch.
 
+**Third round: modding round 1 and bug sweep 1.** 70 findings, made the same way as the second round (agent batches in worktrees, a separate reviewer, central build and test):
+
+- **Bug sweep:** the 46 medium-severity bugs in the map, spatial, mapgen, overmap, item and health chapters. 39 fixed, 7 partial. Reviewers asked for changes to 5 of them.
+- **Modding round:** the 24 medium-effort modding features. 5 complete, 19 partial; for most partial ones the core is in and the table says what is left. Each agent wrote a design first (JSON syntax with an example, semantics, edge cases), kept existing JSON working, documented the feature and tested it through TEST_DATA JSON. Reviewers also checked that shipped mods behave the same and asked for changes to 11 of the 24. Among other things, that review caught a reordering of activity hooks that would have broken Xedra Evolved's spirit quest and a Mind Over Matter power, and a monster-AI change that would have given the void spider a free extra hit every turn.
+
+Merging the batches needed only documentation conflicts resolved by hand (the EOC talker and event tables in `EFFECT_ON_CONDITION.md`, and two new sections in `MUTATIONS.md`). The agents compile-checked their work but did not run it. Running the new tests found five mistakes in the tests themselves: TEST_DATA that failed to load (a same-mod redefinition and a missing mandatory `cooldown`), a venom effect whose intensity comes from its duration, a wall light whose placement asks the player for a direction, and wind checks that compared two different random rolls. It also found one real bug, fixed in `f4d64d6b`: with no known basher, MAP-J01 ran bash EOCs with no talker at all, which would have shown an error in game for every explosion or fire that hit such a tile. The SPAT-B05 test was re-run against a build with its fix reverted and fails there.
+
+Bug sweep:
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| MAP-B03 | fixed | `48892eff` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B04 | fixed | `04dee5de` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B05 | fixed | `f6c96eeb` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B06 | fixed | `4119cc83` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B07 | fixed | `fdf96a44` | `tests/audit_map_fields_items_test.cpp` |
+| MAP-B08 | fixed | `db007203`, `3b60f73a` | `tests/audit_map_fields_items_test.cpp` |
+| SPAT-B03 | fixed | `6e3fc6d5` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B04 | fixed | `b2ad29a7` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B05 | fixed | `a078bbf4`, `87629287` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B06 | fixed | `89c56b9a` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B07 | fixed | `042a6fc0`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B08 | fixed | `cdaa9b92`, `0dacc71e` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B09 | fixed | `9012c702` | `tests/audit_spatial_sweep_test.cpp` |
+| SPAT-B10 | partial | `0d52b78c` | `tests/audit_spatial_sweep_test.cpp`. Still open: an optional `scent_neutralization_radius`, and a load warning for scent-neutralizing fields that do not spread |
+| MGEN-B02 | fixed | `efa28db1`, `f99a8cbf` | `tests/audit_mapgen_test.cpp` |
+| MGEN-B03 | partial | `2bfdf130`, `f24378f3` | `tests/audit_mapgen_test.cpp`. Still open: validating `remove_npcs` classes (the robofac intercom map removes NPC classes that no longer exist on purpose, as a save migration) |
+| MGEN-B04 | fixed | `30fae9f2` | `tests/audit_mapgen_test.cpp` |
+| MGEN-B05 | fixed | `9ff01839`, `359d63d0`, `737dcfd6` | `tests/audit_mapgen_test.cpp` |
+| MGEN-B06 | partial | `d34e62ee` | `tests/audit_mapgen_test.cpp`. Still open: the consistency check between variable-weight mapgens and their predecessors (`road_nesw_manhole` needs its own data fix first) |
+| MGEN-B07 | fixed | `38d80875`, `6755a3ea` | `tests/audit_mapgen_test.cpp` |
+| OMAP-B01 | partial | `5322035b` | `tests/audit_overmap_worldgen_test.cpp`. Still open: the non-root pieces of mutable specials still ignore "must be unexplored" |
+| OMAP-B02 | partial | `e1f926a7` | `tests/audit_overmap_worldgen_test.cpp`. Still open: generating overmaps to find a mission target that does not exist yet (too costly) |
+| OMAP-B03 | fixed | `ab91d69d` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B04 | fixed | `1d3f3350`, `3d7bce37` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B05 | fixed | `75c6455b` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B06 | fixed | `6b985104` | `tests/audit_overmap_worldgen_test.cpp` |
+| OMAP-B07 | fixed | `c8f641b1` | `tests/audit_overmap_worldgen_test.cpp` |
+| ITEM-B03 | fixed | `c85b1c60` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B04 | fixed | `64984162` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B05 | fixed | `2bc5d36f` | none: an iteration fix with no observable symptom in tests |
+| ITEM-B06 | fixed | `6ece818f` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B07 | fixed | `1e27a025`, `9f118c7f` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B08 | fixed | `00a37ff1` | `tests/audit_items_sweep_test.cpp` |
+| ITEM-B09 | fixed | `755dc3f8`, `3aba34c5` | `tests/audit_items_sweep_test.cpp` |
+| IINF-B03 | fixed | `032ba713` | `tests/audit_items_sweep_test.cpp` |
+| IINF-B04 | fixed | `fc6dbacb` | `tests/audit_items_sweep_test.cpp` |
+| IINF-B05 | partial | `459fe6a2` | `tests/audit_items_sweep_test.cpp`. Still open: filtering the summed `ammo_remaining()` by ammo type |
+| HLTH-B02 | fixed | `dd7947b4` | `tests/audit_health_test.cpp` |
+| HLTH-B03 | fixed | `69cc6806` | `tests/audit_health_test.cpp` |
+| HLTH-B04 | fixed | `56649dbb` | `tests/audit_health_test.cpp` |
+| HLTH-B05 | partial | `7dbca179`, `87629287` | `tests/audit_health_test.cpp`. Still open: clamping a defined chance to at least 1 (vanilla effects use negative chances to mean "never") |
+| HLTH-B06 | fixed | `a6bbbcaa` | `tests/audit_health_test.cpp` |
+| HLTH-B07 | fixed | `f83a3649` | `tests/audit_health_test.cpp` |
+| HLTH-B08 | fixed | `99a20b73`, `f8b2a332`, `cd38b39a` | `tests/audit_health_test.cpp` |
+| HLTH-B09 | fixed | `867d4cb1`, `f8b2a332` | `tests/audit_health_test.cpp` |
+| HLTH-B10 | fixed | `474baa01`, `37f22ce8` | `tests/audit_health_test.cpp` |
+
+Modding features:
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| ACT-J02 | partial | `06f6c4a4` | `tests/audit_activities_crafting_test.cpp`. Still open: activities that need an item or a target (reading a specific book, for example) |
+| ACT-J03 | partial | `2d596bc0`, `b53594ec` | `tests/audit_activities_crafting_test.cpp`. Still open: an "outcome" field on the event, and a context object on `u_assign_activity` |
+| CRAFT-J02 | partial | `e7222c8a` | `tests/audit_activities_crafting_test.cpp`. Still open: recipe start and fail hooks, and events for crafting, disassembly and recipe learning |
+| TERR-J01 | partial | `33e6f99a`, `f93e4745` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: moving the hardcoded vanilla `post_special` functions to JSON |
+| CRAFT-J01 | partial | `b33ebcb7` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: inheriting inline requirements and extending or deleting component, tool and quality groups |
+| CAMP-J01 | fixed | `bda202de` | `tests/audit_construction_recipe_camp_test.cpp` |
+| MUT-J02 | partial | `baea3c27` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: a refund channel for cancelled activations, and a menu pre-check before the activation message |
+| MUT-J03 | partial | `eceb79dd`, `e3212448` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: bionic math functions, an ignore-cost option, and access to per-bionic state |
+| NPC-J01 | partial | `90eb6d45` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: giving other toggled bionics an `npc_use` (a content decision), priorities, and NPC use of spell bionics |
+| CMBT-J01 | partial | `7dfdc8e4` | `tests/audit_martial_art_events_test.cpp`. Still open: get-hit hooks for projectile and explosion hits, and context values for pre-hit technique EOCs |
+| HLTH-J03 | partial | `79ed5939` | `tests/audit_diet_rules_test.cpp`. Still open: moving vanilla diet traits (vegan, gourmand, picky eater, ruminant and others) to these fields |
+| MAGIC-J02 | partial | `5c4fb57a` | `tests/audit_spell_enchant_test.cpp`. Still open: fail chance, difficulty, spell XP and sound values |
+| INV-J03 | fixed | `35ca98d9` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
+| VEH-J01 | partial | `ae836b32`, `398d4f09`, `673b3770` | `tests/audit_eoc_inventory_vehicle_test.cpp`. Still open: damaging vehicle parts from an EOC (it can split or delete the vehicle mid-EOC), owner, and weight (VINT-J04) |
+| VINT-J02 | fixed | `f28f99e1`, `743f2e40` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
+| LOOP-J01 | fixed | `a17a8639`, `ccfba742`, `374ce76a` | `tests/audit_weather_eoc_test.cpp` |
+| MAP-J01 | partial | `210feefe`, `85598110`, `f4d64d6b` | `tests/audit_bash_eoc_test.cpp`. Still open: a general "tile destroyed" event and a cause value for bashes with no creature (explosions, fire, vehicles) |
+| MONAI-J01 | partial | `e08fb87c`, `54d15f8c`, `530d442b` | `tests/audit_monster_eoc_test.cpp`. Still open: forcing a monster's target or destination (the monster AI replaces both every turn) |
+| INV-J02 | fixed | `ca101f02`, `0dcb820a` | `tests/audit_mod_overrides_test.cpp` |
+| HLTH-J02 | partial | `c47dbf59`, `58e3fada` | `tests/audit_mod_overrides_test.cpp`. Still open: validating resist, remove and block lists in effects, because shipped data still has stale ids there |
+| NPC-J02 | partial | `92f0de07` | `tests/audit_mod_overrides_test.cpp`. Still open: moving NPC templates and factions onto `generic_factory`, and `extend`/`delete` on their lists |
+| MONDT-J01 | partial | `eb828cdb` | `tests/audit_mod_validation_test.cpp`. Still open: a location context value, and spawn data such as effects, variables and factions on group entries |
+| MAGIC-J03 | partial | `9c38b68a`, `e15db0f0`, `12c7974f` | `tests/audit_mod_validation_test.cpp`. Still open: enchantment and terrain-transform consistency checks (MAGIC-J06) |
+| USE-J01 | partial | `9ee18e2d`, `4cbf0b89` | `tests/audit_mod_validation_test.cpp`. Still open: `_method` and `_item_pos` context values (they need USE-J02, several use actions per item) |
+
+**Gameplay changes from the third round:**
+
+- Rain washes fields away as documented: fires go out faster, and smoke and blood clear, also on roofs and upper floors (MAP-B03).
+- Driving over a pile of items no longer shreds all of it, and thrown-off items can land in any direction (MAP-B06).
+- Every copy of a batch craft placed at a workbench now rots, cools and gives off light (MAP-B07).
+- A save that is missing a submap regenerates it instead of crashing (MAP-B08).
+- Smoke and tear gas weaken scent by their strength instead of erasing it (SPAT-B10). Bashing monsters path through obstacles they can break (SPAT-B09). Teleports keep their minimum distance and telefrag the creature in the way (SPAT-B07, SPAT-B08).
+- The second and third prison bus layouts can appear (MGEN-B02).
+- No Hope's spawn-rate settings now thin out every kind of spawned item, not just some, and survive a save and load (MGEN-B05, ITEM-B09).
+- City size follows the urbanity setting (OMAP-B04). Mission and EOC specials no longer overwrite explored map (OMAP-B01), and missions pick the nearest target (OMAP-B02).
+- Sided armor goes on the side you choose (IINF-B04), recoil no longer doubles at an arm-strength threshold (IINF-B03), and multi-magazine guns with a battery can be reloaded (IINF-B05). Countdown items count down (ITEM-B08).
+- Broken limbs mend at their own rate, heavier addictions slow fracture healing more, calorie burn scales smoothly with activity, morale stacks the way it is documented, and incorporeal characters keep items they cannot take off (HLTH-B02, B03, B04, B06, B07). Speed serum now changes breathing as written (HLTH-B10).
+- Companions killed on camp missions die properly: their death EOCs run and they leave the camp and faction (CAMP-J01).
+- NPCs use any weapon bionic flagged for them, such as Aftershock's monowhip (NPC-J01).
+- Martial-art get-hit buffs work while asleep, winded or driving, and on-hit buffs trigger right after the hit (CMBT-J01).
+- A few vanilla recipes now require the proficiencies their JSON adds (CRAFT-J01). Electronics menu toggles are sorted by name (VINT-J02).
+- The Scarlet storm's wind gusts now actually raise the wind (LOOP-J01).
+- Mod content that never worked now does: Godco's waiting and game dialogue (ACT-J02); about a dozen spells in Magiclysm, Xedra Evolved, Aftershock and TropiCataclysm that showed an error when cast (MAGIC-J03); Xedra Evolved's Snow-Fox's Stride and Footsteps in the Snow (HLTH-J02); Deadly Bites' antivirals and BombasticPerks' salt toss (USE-J01); No Hope's thug and bandit names, and mod factions that were reverting to vanilla values (NPC-J02).
+
+**For modders**, each new field, effect, condition and math function is documented with an example in `doc/JSON/` (mainly `EFFECT_ON_CONDITION.md`, `JSON_INFO.md`, `MUTATIONS.md`, `MAGIC.md`, `MARTIALART_JSON.md`, `EFFECTS_JSON.md`, `NPCs.md`, `ITEM_CRAFT_AND_DISASSEMBLY.md`) and in `doc/PLAYER_ACTIVITY.md`. Several mistakes that used to load silently are now load errors: unknown activity ids in `u_assign_activity`, crafting EOCs that can never run, unknown monster group condition tags, wrong effect or EOC ids in spells, bad ids in mapgen `else_chunks`, computers, corpses and factions, and misused recipe `extend`/`delete`. Every mod in `data/mods` still loads with no errors or warnings.
+
+**Grappling and martial arts: a port from Cataclysm: The Last Generation.** Not an audit finding: a feature the owner asked for, planned in [plans/tlg-grappling-port.md](plans/tlg-grappling-port.md) (with the source inventory in [plans/tlg-grappling-research.md](plans/tlg-grappling-research.md)) and built in five tracks, each in its own worktree, then merged and reviewed as a whole. The grab, drag, throw, crowd-crush and grapple-technique rules come from Cataclysm: The Last Generation (TLG, by worm-girl); the manual technique menu and aimed knockback follow Cataclysm: Bright Nights (PR #9108 and its `controlled_knockback`). Both are CC BY-SA 3.0, as is this project; each commit credits its source.
+
+What players get:
+
+- **Grabbing.** The grab action (`G`) on a creature grabs it, with a hit roll it can dodge (unless it goes along with it: an ally, a pet, a helpless NPC). A neutral NPC asks "Really attack?", a peaceful monster warns about its faction. Grab strength, the stamina floor and costs are JSON (`grapple_grab_strength`, `GRAPPLE_STAMINA_FLOOR`, `GRAPPLE_ARM_STAMINA_COST`). Unarmed by default; a style's `grapple_weapons` lists what may be held while grappling.
+- **Holding.** A held creature can't walk away and struggles every turn; each struggle costs the holder stamina (`grapple_escape_stamina_cost`), and a fresh hold can't be broken at once (`grapple_min_hold_turns`). A hold ends on both sides however it ends: release, death, teleport, sleep, mounting, a style or weapon that no longer allows it, distance, or a knockback.
+- **Dragging.** Walking while holding drags the creature into the tile you left (`grapple_drag_odds`); it moves the way it moves itself, so traps, fields and vehicles apply. A step it can't follow is refused and the hold kept.
+- **Throwing.** The throw action throws what you hold, with its own aiming screen (force, word, moves, stamina, and what it will hit). A shorter throw is a gentler one; you need the stamina for the distance you pick. A thrown NPC may turn hostile (`GRAPPLE_THROW_ANGERS_*`). TLG's flat 50-stamina throw cost (a sign error) is replaced by the weight-scaled cost it meant.
+- **Manual combat mode.** Shift+Tab toggles it (saved; the sidebar shows "(manual)"). Each melee attack then opens a menu of Basic attack, Automatic and every technique, with unusable ones greyed out and the reason given. It opens before the hit roll, so cancelling costs nothing and reveals nothing. A technique with `controlled_knockback` is aimed with the throw screen.
+- **Grapple martial arts.** Judo's three throws, Pankration's grab knee and arm lock, Zui Quan's drunken fall and Brawling's strangle need a grapple with the target (Judo, Pankration and Zui Quan whichever side holds the other). Judo, Aikido and Krav Maga each get a grab counter that fires when something grabs you. Ferals can't swing long weapons while grappling.
+- **Monster grabs.** A grab attack with `pull_from_vehicle` can yank a rider without a seatbelt out of a vehicle (the vanilla grab attacks have it). Crowd crush follows TLG's rules, as `CROWD_CRUSH_*` external options, with a `CROWD_CRUSH` world option (on by default) and a `CROWD_CRUSH_RESIST` enchantment value.
+- **Explosive exertion.** A new EXPLOSIVE activity level and calorie-diary column. The `EXPLOSIVE_COMBAT_EXERTION` world option (off by default) makes melee, dodging, grappling and throwing use it as TLG does.
+
+For modders, documented in `doc/JSON/` (`MARTIALART_JSON.md`, `EFFECT_ON_CONDITION.md`, `MONSTER_SPECIAL_ATTACKS.md`, `MAGIC.md`, `JSON_FLAGS.md`):
+
+- **Techniques:** `grab_counter`, `controlled_knockback`, `menu_visibility` ("always", "grappling", "grappled", "grapple" or a condition), `fallback` (opt-in through the `MA_BASIC_FALLBACK` flag), and tech effects with `intensity` and `"target": "self"`. Styles: `grapple_weapons`, `ongrab_buffs`/`ongrab_eocs` and `ongrabbed_buffs`/`ongrabbed_eocs` (with `grab_strength` and `grab_part` in context).
+- **EOC conditions:** `u_is_grabbing` and `u_is_grabbed` (`"any"` or the other talker: who holds whom, which the GRAB / GRAB_FILTER flags can't tell).
+- **EOC effects:** `u_grab` (a direct hold, or an attempt with its cost and roll), `u_release_grab`, `u_throw_grabbed`, `u_fling` (the throw engine without a hold, also a `fling` spell effect) and `u_choose_technique` (the technique menu from an EOC; an NPC picks automatically).
+- **Events:** `character_grabs_creature`, `character_releases_grab` and `character_throws_creature`, with the grabber as alpha and the victim as beta.
+- **Data:** the formulas are `jmath_function`s in `data/json/grappling.json` and `grappling_world.json`; flags `NO_GRAB` (character) and `GRAB_IMMUNE` (monster); monster grab `pull_from_vehicle`.
+
+Gameplay changes players will notice besides the new actions: Judo's throws need a grapple; Judo, Aikido and Krav Maga answer grabs; Zui Quan's spin and wild swing aren't available in a grapple; riders without a seatbelt can be pulled out of vehicles; crowd crush needs a bigger crowd (a standing medium character: 5 crushers, 4 once down) and drains breath more slowly; forced techniques (counters, `u_attack`) hit with a real fist, foot or weapon, so their damage changes; Wing Chun's knockback punches now step in after the target (`knockback_follow` never worked); the 15 knockbacks that "may fail on enemies grabbing you" only fail against the creature actually holding you; a held monster can't dodge; pressing `G` on a tile with a creature grabs the creature rather than the furniture under it.
+
+Bugs fixed along the way: a monster that let go of a grab still counted as grabbing (`remove_grab` re-added the effect); monster grabs worked on incorporeal targets; `knockback_follow` never moved the attacker, and would have moved the avatar when an NPC used it; a technique that was two kinds of counter (Xedra Evolved's three devil tail counters, dodge and block) never fired, and now answers either. TLG bugs that were not copied: the flat throw cost, the landing tile's trap not going off, matching grabs by intensity instead of by grabber, a monster counting its own grab, a forbidden-effects list that was never cleared and a "pulled" effect that was never applied, and enemy NPCs that could be grabbed with no hit roll.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
-After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
+After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. After the third round (modding round 1 and bug sweep 1), all 228 `[audit]` test cases pass and the full suite passes: 2506 of 2506 with seed 4242, with no errors logged. Every mod set still loads with no errors. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
 
 Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five tests failed in full-suite runs but passed alone, because earlier tests left state behind. The main culprit: `clear_character()` did not reset the stat bonuses that hardcoded effects add, so after a frostbite test the avatar kept -2 INT, which slowed learning by 10% in later crafting tests. Three other tests (`memorials`, `available_reloadables`, `monster_speed_description`) now clear the map or the avatar themselves.
 

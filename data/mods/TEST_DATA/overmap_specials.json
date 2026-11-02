@@ -305,6 +305,34 @@
     ]
   },
   {
+    "type": "overmap_special",
+    "id": "test_audit_road_shack",
+    "//": "OMAP-B01 test: a one-tile special with a road; occurrences [ 0, 0 ] keep it out of worldgen.",
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "cabin_north", "locations": [ "field" ] } ],
+    "connections": [ { "point": [ 0, -1, 0 ], "terrain": "road", "connection": "local_road" } ],
+    "occurrences": [ 0, 0 ],
+    "rotate": false,
+    "flags": [ "OVERMAP_UNIQUE" ]
+  },
+  {
+    "type": "overmap_special",
+    "id": "test_audit_mansion",
+    "//": "OMAP-B05 test: a city building no town is big enough for; occurrences [ 0, 0 ] keep it out of worldgen.",
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "cabin_north", "locations": [ "land" ] } ],
+    "city_sizes": [ 99, -1 ],
+    "occurrences": [ 0, 0 ]
+  },
+  {
+    "type": "overmap_connection",
+    "id": "test_audit_rail",
+    "//": "OMAP-B06 test: stands in for the railroads mod's local_railroad.",
+    "subtypes": [
+      { "terrain": "road", "locations": [ "road" ], "basic_cost": 0 },
+      { "terrain": "road", "locations": [ "field" ], "basic_cost": 5 },
+      { "terrain": "road", "locations": [ "forest" ], "basic_cost": 20 }
+    ]
+  },
+  {
     "type": "overmap_terrain",
     "id": "s_restaurant_deserted_test",
     "name": "abandoned drive-through",

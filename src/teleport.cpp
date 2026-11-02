@@ -25,6 +25,7 @@
 #include "event_bus.h"
 #include "explosion.h"
 #include "game.h"
+#include "grapple.h"
 #include "map.h"
 #include "map_scale_constants.h"
 #include "messages.h"
@@ -170,11 +171,16 @@ bool teleport::teleport_creature( Creature &critter, int min_distance, int max_d
     tripoint_bub_ms new_pos = origin;
     map &here = get_map();
     do {
-        int rangle = rng( 0, 360 );
-        int rdistance = rng( min_distance, max_distance );
-        new_pos = { origin.x() + int( rdistance * std::cos( rangle ) ), origin.y() + int( rdistance * std::sin( rangle ) ), new_pos.z() };
+        const units::angle rangle = units::from_degrees( rng( 0, 359 ) );
+        const int rdistance = rng( min_distance, max_distance );
+        // Rounded, not truncated, or a 1 tile shift would land on the origin.
+        const int dx = static_cast<int>( std::lround( rdistance * units::cos( rangle ) ) );
+        const int dy = static_cast<int>( std::lround( rdistance * units::sin( rangle ) ) );
+        new_pos = { origin.x() + dx, origin.y() + dy, new_pos.z() };
         tries++;
-    } while( here.impassable( new_pos ) && tries < 20 );
+        // Diagonals round inwards; retry those that end up closer than min_distance.
+    } while( ( new_pos == origin || square_dist( origin, new_pos ) < min_distance ||
+               here.impassable( new_pos ) ) && tries < 20 );
     return teleport_to_point( critter, new_pos, safe, add_teleglow );
 }
 
@@ -202,6 +208,9 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
         }
         return false;
     }
+    // Teleporting slips out of any hold, on either side. This must happen before the map can
+    // shift under the avatar, while both sides of the hold are still next to each other.
+    grapple::release_all( critter );
     if( p && p->in_vehicle ) {
         here.unboard_vehicle( p->pos_bub() );
     }
@@ -339,42 +348,42 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
                 if( poor_soul_is_u && display_message ) {
                     add_msg( m_bad, _( "You're blasted with strange energy!" ) );
                 }
-                if( p ) {
-                    if( display_message ) {
+                if( display_message ) {
+                    if( p ) {
                         p->add_msg_player_or_npc( m_warning,
                                                   _( "You collide with %s mid teleport, and you are both knocked away by a violent explosion of energy." ),
                                                   _( "<npcname> collides with %s mid teleport, and they are both knocked away by a violent explosion of energy." ),
                                                   poor_soul->disp_name() );
+                    } else if( get_player_view().sees( here, *poor_soul ) ) {
+                        add_msg( m_warning,
+                                 _( "%1$s collides with %2$s mid teleport, and they are both knocked away by a violent explosion of energy!" ),
+                                 critter.disp_name(), poor_soul->disp_name() );
                     }
-                } else {
-                    if( get_player_view().sees( here, *poor_soul ) ) {
-                        if( display_message ) {
-                            add_msg( m_warning,
-                                     _( "%1$s collides with %2$s mid teleport, and they are both knocked away by a violent explosion of energy!" ),
-                                     critter.disp_name(), poor_soul->disp_name() );
-                        }
-                    }
-                    //once collision this if block shouldn't run so everything here should only happen once
-                    collision = true;
-                    //determine a random angle to throw the thing it teleported into, then fling it.
-                    collision_angle = rng( 0, 360 );
-                    g->fling_creature( poor_soul, units::from_degrees( collision_angle - 180 ), 40, false, true );
-                    //spawn a mostly cosmetic explosion for flair.
-                    explosion_handler::explosion( &critter, target, 10 );
-                    //if it was grabbed, it isn't anymore.
-                    for( const effect &grab : poor_soul->get_effects_with_flag( json_flag_GRAB ) ) {
-                        poor_soul->remove_effect( grab.get_id() );
-                    }
-                    //apply a bunch of damage to it
-                    std::vector<bodypart_id> target_bdpts = poor_soul->get_all_body_parts(
-                            get_body_part_flags::only_main );
-                    for( const bodypart_id &bp_id : target_bdpts ) {
-                        const float damage_to_deal =
-                            static_cast<float>( poor_soul->get_part_hp_max( bp_id ) ) / static_cast<float>( rng( 6, 12 ) );
-                        poor_soul->apply_damage( nullptr, bp_id, damage_to_deal );
-                    }
-                    poor_soul->check_dead_state( &here );
                 }
+                // The collision itself happens whoever teleports, the player and NPCs included.
+                //once collision this if block shouldn't run so everything here should only
+                //happen once
+                collision = true;
+                //determine a random angle to throw the thing it teleported into, then fling it.
+                collision_angle = rng( 0, 360 );
+                g->fling_creature( poor_soul, units::from_degrees( collision_angle - 180 ), 40, false,
+                                   true );
+                //spawn a mostly cosmetic explosion for flair.
+                explosion_handler::explosion( &critter, target, 10 );
+                //if it was grabbed, it isn't anymore.
+                for( const effect &grab : poor_soul->get_effects_with_flag( json_flag_GRAB ) ) {
+                    poor_soul->remove_effect( grab.get_id() );
+                }
+                //apply a bunch of damage to it
+                std::vector<bodypart_id> target_bdpts = poor_soul->get_all_body_parts(
+                        get_body_part_flags::only_main );
+                for( const bodypart_id &bp_id : target_bdpts ) {
+                    const float damage_to_deal =
+                        static_cast<float>( poor_soul->get_part_hp_max( bp_id ) ) /
+                        static_cast<float>( rng( 6, 12 ) );
+                    poor_soul->apply_damage( nullptr, bp_id, damage_to_deal );
+                }
+                poor_soul->check_dead_state( &here );
             }
         }
     }

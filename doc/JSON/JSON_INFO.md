@@ -173,6 +173,7 @@ Use the `Home` key to return to the top.
         - [`bash_below`](#bash_below)
         - [`tent_centers`, `collapse_radius`](#tent_centers-collapse_radius)
         - [`items`](#items-1)
+        - [`eoc_on_hit`, `eoc_on_destroy`](#eoc_on_hit-eoc_on_destroy)
       - [`map_deconstruct_info`](#map_deconstruct_info)
         - [`furn_set`, `ter_set`](#furn_set-ter_set-1)
         - [`skill`](#skill)
@@ -1342,9 +1343,11 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `coverage_power_gen_penalty` | (_optional_) Fraction of coverage diminishing fuel_efficiency. Float between 0.0 and 1.0. (default: `nullopt`)
 | `power_gen_emission`         | (_optional_) `emit_id` of the field emitted by this bionic when it produces energy. Emit_ids are defined in `emit.json`.
 | `stat_bonus`                 | (_optional_) List of passive stat bonus. Stat are designated as follow: "DEX", "INT", "STR", "PER".
-| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.
-| `processed_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate each turn this CBM is active.
-| `deactivated_eocs`           | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully deactivated.
+| `activation_condition`       | (_optional_) Dialogue condition (see EFFECT_ON_CONDITION.md) that must be true for the CBM to activate, with the character as `u` and the context variable `this` (the bionic id).  Checked before any power is spent: when false, nothing happens except `activation_fail_message`.  Example: `"activation_condition": { "not": { "u_has_effect": "riding" } }`.
+| `activation_fail_message`    | (_optional_) Message shown when `activation_condition` is false, e.g. `"You cannot activate Time Dilation while mounted."` (default: none).
+| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.  They run after the activation has succeeded, so an activation that fails or is cancelled (no target picked, not enough power to fire, ...) runs none of them.
+| `processed_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate each turn this CBM is active.  A passive CBM (one that can't be activated from the bionics menu) runs them every turn while it is installed, like a passive mutation.
+| `deactivated_eocs`           | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully deactivated.  All three lists get the context variable `this` (the bionic id), so one EOC can serve several CBMs; EOCs can read and switch a CBM's state with `u_has_active_bionic`, `u_activate_bionic` and `u_deactivate_bionic` (see EFFECT_ON_CONDITION.md).
 | `enchantments`               | (_optional_) List of enchantments applied by this CBM (see MAGIC.md for instructions on enchantment. NB: enchantments are not necessarily magic.) Values can either be the enchantment's id or an inline definition of the enchantment.
 | `learned_spells`             | (_optional_) Map of {spell:level} you gain when installing this CBM, and lose when you uninstall this CBM. Spell classes are automatically gained.
 | `learned_proficiencies`      | (_optional_) Array of proficiency ids you gain when installing this CBM, and lose when uninstalling
@@ -1363,6 +1366,7 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `toggled_pseudo_items`       | (_optional_) Activation of this bionic spawn an irremovable tool in your hands.  Require `BIONIC_TOGGLED` flag
 | `spell_on_activation`        | (_optional_) Activation of this bionic allow you to cast a spell
 | `activated_close_ui`         | (_optional_) Activation of this bionic closes the bionic menu
+| `npc_use`                    | (_optional_) When NPCs switch this bionic on and off; needs the `BIONIC_NPC_USABLE` flag.  One of `"combat"` (on when preparing for a fight, off once the danger is gone), `"melee"` (on right before a melee or reach attack while the follower's CBM reserve allows it, off once the danger is gone), `"wounds"` (on while the NPC needs healing; it then doesn't use healing items), `"pain"` (on while in pain; it then doesn't take painkillers), `"radiation"` (on while badly irradiated, off once clean), `"upkeep"` (on during the NPC's hourly idle upkeep) or `"sleep"` (on when lying down to sleep, off during the hourly upkeep).  Default `"none"`: NPCs never switch it themselves.  Weapon CBMs don't use this: NPCs extend or fire every `BIONIC_NPC_USABLE` bionic with `BIONIC_WEAPON` or `BIONIC_GUN` when it beats their wielded weapon, guns first.  Example: `"npc_use": "combat"`.
 
 ```jsonc
 {
@@ -1404,6 +1408,7 @@ mod = min( max, ( limb_score / denominator ) - subtract );
     "description": "While activated, your muscles will be greatly enhanced, increasing your strength by 20.",
     "occupied_bodyparts": [ [ "torso", 10 ], [ "arm_l", 8 ], [ "arm_r", 8 ], [ "leg_l", 10 ], [ "leg_r", 10 ] ],
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
+    "npc_use": "melee",
     "act_cost": "10 kJ",
     "react_cost": "10 kJ",
     "time": "1 s",
@@ -1647,7 +1652,7 @@ When you sort your inventory by category, these are the categories that are disp
 | `zone`           | The corresponding loot_zone (see loot_zones.json)
 | `sort_rank`      | Used to sort categories when displaying.  Lower values are shown first
 | `priority_zones` | When set, items in this category will be sorted to the priority zone if the conditions are met. If the user does not have the priority zone in the zone manager, the items get sorted into zone set in the 'zone' property. It is a list of objects. Each object has 3 properties: ID: The id of a LOOT_ZONE (see LOOT_ZONES.json), filthy: boolean. setting this means filthy items of this category will be sorted to the priority zone, flags: array of flags
-| `spawn_rate`      | Sets amount of items from item category that might spawn.  Checks for `spawn_rate` value for item category.  If `spawn_chance` is 0.0, the item will not spawn. If `spawn_chance` is greater than 0.0 and less than 1.0, it will make a random roll (0.0-1.0) to check if the item will have a chance to spawn.  If `spawn_chance` is more than or equal to 1.0, it will add a chance to spawn additional items from the same category.  Items will be taken from item group which original item was located in.  Therefore this parameter won't affect chance to spawn additional items for items set to spawn solitary in mapgen (e.g. through use of `item` or `place_item`).
+| `spawn_rate`      | Multiplies how many items of this category spawn (default 1.0, can be changed at runtime with the `set_item_category_spawn_rates` effect).  Each spawned item is rolled once: at 0.0 it never spawns, below 1.0 it spawns with that probability, above 1.0 it spawns `spawn_rate` times on average (2.5 gives 2 or 3 copies).  Applies to items placed by mapgen (`items`, `item`, `loot`, `sealed_item`, `liquids`, `corpses`) and to vehicle cargo.  Mission items are not affected.
 
 ```jsonc
 {
@@ -1846,9 +1851,12 @@ Note that burn_data is defined per material, but items may be made of multiple m
 
 | Identifier              | Description
 |---                      |---
-| `name`                  | Unique ID. Must be one continuous word, use underscores if necessary.
-| `default`               | (_optional_) Default monster, used to represent the monster group. (default: The monster with the highest `weight` in the group)
+| `id`                    | Unique ID. Must be one continuous word, use underscores if necessary. Defining a group with an `id` that already exists adds its `monsters` to the existing group, unless `override` is true.
+| `override`              | (_optional_) (bool) Replace an existing group with the same `id` instead of adding to it. (default: false)
+| `default`               | (_optional_) Default monster, used to represent the monster group and spawned when the roll picks no entry. (default: The monster with the highest `weight` in the group)
 | `monsters`              | To choose a monster for spawning, the game creates entries equal to the sum of all `weight` and picks one. Each monster will have a number of entries equal to its `weight`. See the table below for how to build the single monster definitions.
+| `freq_total`            | (_optional_) (int) The number the spawn roll is made against. When it is larger than the sum of all `weight`s, the rest of the roll goes to the `default` monster. (default: the sum of all `weight`s of entries without an `event`)
+| `auto_total`            | (_optional_) (bool) Set `freq_total` to the sum of all `weight`s, including entries added by other definitions of the same group. (default: false)
 | `is_safe`               | (_optional_) (bool) Check to not trigger safe-mode warning, currently inconsequential.
 | `is_animal`             | (_optional_) (bool) Check if that group has only normal animals, currently inconsequential.
 | `replace_monster_group` | (_optional_) (bool) Check if the group should be replaced completely by another monster group as game time progresses - doesn't affect already spawned monsters, as such mostly superseded by monster evolution.
@@ -1867,7 +1875,8 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 | `freq`            | (_optional_) Not used anymore, works exactly like weight
 | `cost_multiplier` | (_optional_) How many monsters each monster in this definition should count as, if spawning a limited number of monsters.  (default: 1)
 | `pack_size`       | (_optional_) The minimum and maximum number of monsters in this group that should spawn together.  (default: `[1,1]`)
-| `conditions`      | (_optional_) Conditions limit when monsters spawn. Valid options: `SUMMER`, `WINTER`, `AUTUMN`, `SPRING`, `DAY`, `NIGHT`, `DUSK`, `DAWN`. Multiple Time-of-day conditions (`DAY`, `NIGHT`, `DUSK`, `DAWN`) will be combined together so that any of those conditions makes the spawn valid. Multiple Season conditions (`SUMMER`, `WINTER`, `AUTUMN`, `SPRING`) will be combined together so that any of those conditions makes the spawn valid.
+| `conditions`      | (_optional_) Conditions limit when monsters spawn. Valid options: `SUMMER`, `WINTER`, `AUTUMN`, `SPRING`, `DAY`, `NIGHT`, `DUSK`, `DAWN`. Multiple Time-of-day conditions (`DAY`, `NIGHT`, `DUSK`, `DAWN`) will be combined together so that any of those conditions makes the spawn valid. Multiple Season conditions (`SUMMER`, `WINTER`, `AUTUMN`, `SPRING`) will be combined together so that any of those conditions makes the spawn valid. Any other value (including a different spelling such as `"Night"`) is a load error.
+| `condition`       | (_optional_) A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions) that must be true for this entry to spawn. It is checked together with `conditions`, `starts`, `ends` and `event`. `u` is the avatar and there is no `npc`, so the condition can check the player (`u_has_trait`), global variables, weather or the time (`math` functions such as `weather('temperature')`), but not the spawn location. While it is false the entry is skipped and its share of the roll goes to the other entries or the `default` monster, exactly like an entry outside its `conditions`.
 | `starts`          | (_optional_) This entry becomes active after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
 | `ends`            | (_optional_) This entry becomes inactive after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
 | `spawn_data`      | (_optional_) Any properties that the monster only has when spawned in this group. `ammo` defines how much of which ammo types the monster spawns with. Only applies to "monster" type entries.
@@ -1876,7 +1885,8 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 ```jsonc
 // Example of a monstergroup containing only "monster" entries:
 {
-  "name" : "GROUP_ANT",
+  "type" : "monstergroup",
+  "id" : "GROUP_ANT",
   "default" : "mon_ant",
   "monsters" : [
     { "monster" : "mon_ant", "weight" : 870, "cost_multiplier" : 0 },
@@ -1884,13 +1894,15 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
     { "monster" : "mon_ant_soldier", "weight" : 90, "cost_multiplier" : 5 },
     { "monster" : "mon_ant_queen", "weight" : 0, "cost_multiplier" : 0 },
     { "monster" : "mon_thing", "weight" : 100, "cost_multiplier" : 0, "pack_size" : [3,5], "conditions" : ["DUSK","DAWN","SUMMER"] },
-    { "monster" : "mon_santa", "weight" : 500, "event" : "christmas" }
+    { "monster" : "mon_santa", "weight" : 500, "event" : "christmas" },
+    // Only spawns once the player has angered the hive (a global variable set by an EOC).
+    { "monster" : "mon_ant_acid_soldier", "weight" : 50, "condition" : { "math" : [ "hive_angered == 1" ] } }
   ]
 },
 // Example of a monstergroup containing subgroups:
 {
   "type": "monstergroup",
-  "name": "GROUP_MIGO_RAID",
+  "id": "GROUP_MIGO_RAID",
   "//": "Meta-group for mi-gos on-the-go.",
   "monsters": [
     { "group": "GROUP_MI-GO_BASE_CAPTORS", "weight": 150, "cost_multiplier": 6, "pack_size": [ 1, 2 ] },
@@ -2144,7 +2156,7 @@ The array of hobbies (listed as professions) is whitelisted to all characters.  
 "qualities": [ [ { "id": "SCREW", "level": 1 } ] ],                 // Tool qualities, required to construct
 "tools": [ [ [ "oxy_torch", 10 ], [ "welder", 50 ] ] ],             // Tools and amount of charges, that would be used in construction
 "using": [ [ "welding_standard", 64 ] ],                            // Requirements that would be used in construction
-"activity_level": "EXTRA_EXERCISE",                                 // Activity level of the activity, harder activities consume more calories over time. Valid values are, from easiest to most demanding of the body: `NO_EXERCISE`, `LIGHT_EXERCISE`, `MODERATE_EXERCISE`, `BRISK_EXERCISE`, `ACTIVE_EXERCISE`, `EXTRA_EXERCISE`.
+"activity_level": "EXTRA_EXERCISE",                                 // Activity level of the activity, harder activities consume more calories over time. Valid values are, from easiest to most demanding of the body: `NO_EXERCISE`, `LIGHT_EXERCISE`, `MODERATE_EXERCISE`, `BRISK_EXERCISE`, `ACTIVE_EXERCISE`, `EXTRA_EXERCISE`, `EXPLOSIVE_EXERCISE`.
 "do_turn_special": "do_turn_shovel",                                // Special effect, that occur, when you perform a construction. Can be either `do_turn_shovel` (cause "hsh!" message every minute, may trigger a buried trap, if there is one) or `do_turn_exhume` (applied mood effect for gravedigging related to your traits)
 "vehicle_start": true,                                              // Hardcoded check for construction recipe, that result into vehicle frame; Can be used only with `done_vehicle`
 "time": "30 m",                                                     // Time required to complete construction. Integers will be read as minutes or a time string can be used.
@@ -2158,7 +2170,47 @@ The array of hobbies (listed as professions) is whitelisted to all characters.  
 "dark_craftable": true,                                             // If true, you can construct it with lack of light
 "byproducts": [ { "item": "material_soil", "count": [ 2, 5 ] } ],   // Items, that would be left after construction
 "strict": false,                                                    // If true, the build activity for this construction will only look for prerequisites in the same group
-"on_display": false                                                 // This is a hidden construction item, used by faction camps to calculate construction times but not available to the player
+"on_display": false,                                                // This is a hidden construction item, used by faction camps to calculate construction times but not available to the player
+"condition": { "math": [ "u_val('mana') >= 50" ] },                 // Dialogue condition the builder must meet to start this construction, see below
+"do_turn_eocs": [ "EOC_WARD_CHANT" ],                               // Effect on conditions run on every turn of work, see below
+"post_eocs": [ "EOC_WARD_DONE" ]                                    // Effect on conditions run once the construction is finished, see below
+```
+
+#### Construction conditions and EOCs
+
+`condition`, `do_turn_eocs` and `post_eocs` let a construction do things the hardcoded `pre_special`, `do_turn_special` and `post_special` can't.
+
+- `condition` is a [dialogue condition](EFFECT_ON_CONDITION.md#condition). The builder is alpha (`u_`), and there is no beta. It is checked with the other pre-checks whenever a construction and a tile are chosen: in the construction menu (with the avatar as builder) and when a character works a construction blueprint zone. A construction whose condition fails can't be started, like one whose `pre_terrain` is missing. It is not checked again while the work goes on, and resuming a construction that was already started doesn't check it. The game doesn't say why the condition failed, so describe it in `pre_note`.
+- `do_turn_eocs` is an array of effect on conditions (ids or inline objects), run on every turn the builder works on the construction, after `do_turn_special`. An EOC that cancels the builder's activity stops the work.
+- `post_eocs` is an array of effect on conditions run once the construction is finished: after the terrain is set, the byproducts are spawned and `post_special` has run.
+
+All three get the builder as alpha, no beta, and two context values: `construction` (string, the construction id) and `pos` (location of the tile being built on, `_pos` in math). When `copy-from` is used, each of these fields replaces the inherited one when present.
+
+When a construction is finished, the `character_finishes_construction` event is also sent, so an `EVENT` EOC can react to every construction, see [EVENT EOCs](EFFECT_ON_CONDITION.md#event-eocs).
+
+```jsonc
+{
+  "type": "construction",
+  "id": "constr_ward_circle",
+  "group": "ward_circle",
+  "category": "OTHER",
+  "required_skills": [ [ "spellcraft", 2 ] ],
+  "time": "30 m",
+  "pre_special": "check_empty",
+  "post_terrain": "f_ward_circle",
+  "pre_note": "Needs at least 50 mana.",
+  "condition": { "math": [ "u_val('mana') >= 50" ] },
+  "do_turn_eocs": [ { "id": "EOC_WARD_CHANT", "effect": [ { "math": [ "u_val('mana') -= 1" ] } ] } ],
+  "post_eocs": [
+    {
+      "id": "EOC_WARD_DONE",
+      "effect": [
+        { "u_cast_spell": { "id": "ward" }, "targeted": false },
+        { "copy_var": { "context_val": "pos" }, "target_var": { "global_val": "ward_pos" } }
+      ]
+    }
+  ]
+}
 ```
 
 | pre_special            | Description
@@ -3401,7 +3453,7 @@ For examples: An overhead light is 120, a utility light, 240, and a console, 10.
 ```
 
 #### `oxytorch`
-(Optional) Data for using with an oxytorch.
+(Optional) Data for using with an oxytorch.  A `copy-from` keeps the parent's `oxytorch`, `boltcut`, `hacksaw` and `prying` blocks; a block in the child overrides only the keys it names, and `"delete": { "prying": true }` removes an inherited block.
 ```jsonc
 oxytorch: {
     "result": "furniture_id", // (optional) furniture it will become when done, defaults to f_null
@@ -3894,7 +3946,9 @@ Defines the various things that happen when the player or something else bashes 
     "destroy_only": true,
     "bash_below": true,
     "tent_centers": ["f_groundsheet", "f_fema_groundsheet", "f_skin_groundsheet"],
-    "items": "bashed_item_result_group" // if terrain or furniture uses `item`, you can omit this field, the game would pick the bash from item uncraft recipe, with some items bashed down to it's components. Alternatively, the game would pick it from the item deconstruction, with, again, some items bashed down to it's components.
+    "items": "bashed_item_result_group", // if terrain or furniture uses `item`, you can omit this field, the game would pick the bash from item uncraft recipe, with some items bashed down to it's components. Alternatively, the game would pick it from the item deconstruction, with, again, some items bashed down to it's components.
+    "eoc_on_hit": "EOC_ALTAR_STRUCK",
+    "eoc_on_destroy": { "id": "EOC_ALTAR_DESTROYED", "effect": [ { "math": [ "cult_anger += 10" ] } ] }
 }
 ```
 
@@ -3936,6 +3990,29 @@ This terrain is the roof of the tile below it, try to destroy that too. Further 
 ##### `items`
 
 (Optional) An item group (inline) or an id of an item group, see [ITEM_SPAWN.md](ITEM_SPAWN.md). The default subtype is "collection". Upon successful bashing, items from that group will be spawned.
+
+##### `eoc_on_hit`, `eoc_on_destroy`
+
+(Optional) An effect_on_condition id or an inline EOC. `eoc_on_hit` runs when a bash hits the terrain or furniture without breaking it; `eoc_on_destroy` runs once it breaks, after the new terrain or furniture, items and fields are in place. They run for every kind of bash (smashing, monsters, vehicles, explosions, fire, projectiles, collapses), but only in the game world, not while a map is being generated.
+
+The alpha talker is the creature doing the bashing when the game knows it: the player's or an NPC's smash, a monster bashing its way through or walking over sharp terrain, a melee attack through an obstacle, a spell (its caster), a bionic (its user), crushing frozen liquid, a failed prying attempt, a monster's shriek. Other bashes (explosions, fire, vehicles, projectiles, collapses, creatures thrown into things) get an empty alpha talker with no creature in it, so check `u_is_character` or `u_is_monster` before using `u_` effects or conditions. There is no beta talker. Context variables: `loc` (location of the tile), `old_ter` and `old_furn` (ids before the bash), `new_ter` and `new_furn` (ids now; the same as before for `eoc_on_hit`).
+
+Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc` and `field` (the field type id).
+
+```jsonc
+"bash": {
+  "str_min": 40,
+  "str_max": 120,
+  "furn_set": "f_rubble",
+  "eoc_on_destroy": {
+    "id": "EOC_CULT_ALTAR_DESTROYED",
+    "effect": [
+      { "math": [ "cult_anger += 10" ] },
+      { "if": "has_alpha", "then": { "u_message": "The cultists will not forgive this.", "type": "bad" } }
+    ]
+  }
+}
+```
 
 #### `map_deconstruct_info`
 
@@ -4033,9 +4110,37 @@ Flags, that can be used in different entries, can also be made in json, allowing
   "inherit": true, // is this flag inherited to another thing if it's attached/equipped, like if you put ESAPI plate into plate carrier, their `CANT_WEAR` flag won't be applied to plate carrier, and you could wear it as usually
   "craft_inherit": true, // if true, if you craft something with this flag, this flag would be applied to result also
   "item_prefix": "[...",
-  "item_suffix": "...]" // `item_prefix` and `item_suffix` will be added to the prefix and suffix of the item name
+  "item_suffix": "...]", // `item_prefix` and `item_suffix` will be added to the prefix and suffix of the item name
+  "vehicle_toggle": { "name": "force field" } // vehicle parts with this flag can be switched on and off together, see below
 },
 
+```
+
+#### Vehicle toggles
+
+A flag with a `vehicle_toggle` object turns every vehicle part that has the flag into one switch group:
+
+- When `name` is set, the vehicle's electronics menu offers "Turn on <name>" / "Turn off <name>" while the vehicle has a working part with the flag, and switches all of them together. Entries are sorted by name.
+- `hotkey` is optional: an action id from the `VEHICLE` keybindings (`data/raw/keybindings/vehicle.json`), like `TOGGLE_HEADLIGHT`. Without it the menu picks a free key. Several toggles may share one action. The action must already exist in `data/raw/keybindings/vehicle.json`, and mods cannot add new ones; an unknown action is not reported and leaves the menu entry with no key at all, it does not fall back to a free key.
+- A newly installed part with the flag starts switched on when another part of its group is already on.
+- `"vehicle_toggle": { }`, without a name, only does the last point; it has no menu entry.
+
+A switched-on part draws its `epower` when it has `ENABLED_DRAINS_EPOWER`, and enchantments with an `ACTIVE` condition on the part apply only while it is on. The vanilla toggles (headlights, fridges, stereos, plows and so on) are defined this way in `data/json/vehicleparts/vp_flags.json`. A modded part only needs a new flag:
+
+```jsonc
+{
+  "type": "json_flag",
+  "id": "FORCE_FIELD",
+  "info": "Projects a <color_light_blue>force field</color> around the vehicle when turned on.",
+  "vehicle_toggle": { "name": "force field" }
+},
+{
+  "type": "vehicle_part",
+  "id": "force_field_emitter",
+  "epower": "-500 W",
+  "flags": [ "FORCE_FIELD", "ENABLED_DRAINS_EPOWER" ]
+  // plus the usual vehicle part fields
+}
 ```
 
 # Scenarios
@@ -4461,7 +4566,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "concentration": 1, // How concentrated this intensity of gas is. Generally the thin/hazy cloud intensity will be 1, the standard gas will be 2, and thick gas will be 4. The amount of time a gas mask filter will last will be divided by this value.
         "convection_temperature_mod": 12, // Heat given off by this level of intensity
         "effects": [  ] // List of effects applied to any creatures within the field as long as they aren't immune to the effect or the field itself. See field_effect below for syntax
-        "scent_neutralization": 3, // Reduce scents at the field's position by this value        
+        "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on its tile and the 8 around it by this value
     ],
     "npc_complain": { "chance": 20, "issue": "weed_smoke", "duration": "10 minutes", "speech": "<weed_smoke>" }, // NPCs in this field will complain about being in it once per <duration> if a 1-in-<chance> roll succeeds, giving off a <speech> bark that supports snippets
     "immunity_data": {...} // See Immunity Data below
@@ -4474,7 +4579,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
     "accelerated_decay": true, // If the field should use a more simple decay calculation, used for cosmetic fields like gibs
     "percent_spread": 90, // The field must succeed on a `rng( 1, 100 - local windpower ) > percent_spread` roll to spread. The field must have a non-zero spread percent and the GAS phase to be eligible to spread in the first place
     "phase": "gas", // Phase of the field. Gases can spread after spawning and can be spawned out of emitters through impassable terrain with the PERMEABLE flag
-    "apply_slime_factor": 10, // Intensity of slime to apply to creatures standing in this field (Why not use an effect? No idea.)
+    "apply_slime_factor": 10, // Each turn the field raises the scent on its tile to at least its intensity times this value (of the scent map's single scent type, normally the player's)
     "gas_absorption_factor": "80m", // Length a full 100 charge gas mask filter will last in this gas. Will be divided by the concentration of the gas, and should be 80m for concentration 1 toxic gas or similar. The worst gas should still be kept out for 20 minutes in a concentration 4 thick gas.
     "is_splattering": true, // If splatters of this field should bloody vehicle parts
     "dirty_transparency_cache": true, // Should the transparency cache be recalculated when the field is modified (used for nontransparent, spreading fields)
@@ -4501,6 +4606,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
       "move_cost": 120, // how many moves it costs to successfully bash that field (default: 100)
       "hit_field": [ "fd_fire", 1 ] // field to create when hit and intensity. Also created on destruction
       "destroyed_field": [ "fd_fire", 2 ] // field to create when destroyed and intensity
+      "eoc_on_destroy": "EOC_WEB_TORN", // EOC run when bashing clears the field; "eoc_on_hit" when a smash fails to. See map_bash_info
       "items": [                                   // item dropped upon successful bashing
         { "item": "2x4", "count": [ 5, 8 ] },
         { "item": "nail", "charges": [ 6, 8 ] },

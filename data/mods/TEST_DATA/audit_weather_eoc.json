@@ -1,0 +1,53 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_SET_WEATHER",
+    "//": "LOOP-J01: force a weather type for two hours and read how long it lasts.",
+    "effect": [
+      { "set_weather": "portal_storm", "duration": "2 h" },
+      { "math": [ "test_weather_minutes_left = weather('duration_left', 'unit': 'minutes')" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_SET_WEATHER_FROM_VAR",
+    "//": "LOOP-J01: force the weather type named by a context var until cleared.",
+    "effect": [ { "set_weather": { "context_val": "weather_type" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CLEAR_WEATHER",
+    "//": "LOOP-J01: drop every EOC weather override.",
+    "effect": [ { "clear_weather_override": "all" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_HOLD_WIND",
+    "//": "LOOP-J01: hold the wind speed for an hour and its direction (450 is 90) until cleared.",
+    "effect": [
+      { "math": [ "weather('windpower', 'duration': '1 h') = 40" ] },
+      { "math": [ "weather('wind_direction', 'duration': 'PERMANENT') = 450" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_WIND_GUST",
+    "//": "LOOP-J01: a wind change that lasts only until the weather next changes.",
+    "effect": [ { "math": [ "weather('windpower') = 25" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_COLD_SNAP",
+    "//": "LOOP-J01: 15 C colder than generated for a day.",
+    "effect": [
+      { "math": [ "weather('temperature_offset', 'duration': '1 d') = -15" ] },
+      { "math": [ "test_weather_offset = weather('temperature_offset')" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FREEZE",
+    "//": "LOOP-J01: hold the outdoor temperature at -30 C for three hours.",
+    "effect": [ { "math": [ "weather('temperature', 'duration': '3 h') = from_celsius( -30 )" ] } ]
+  }
+]

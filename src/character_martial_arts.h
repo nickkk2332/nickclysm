@@ -67,25 +67,30 @@ class character_martial_arts
         /** Fires all pause-triggered martial arts events */
         void ma_onpause_effects( Character &owner );
         /** Fires all hit-triggered martial arts events */
-        void ma_onhit_effects( Character &owner );
+        void ma_onhit_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all attack-triggered martial arts events */
-        void ma_onattack_effects( Character &owner );
+        void ma_onattack_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all dodge-triggered martial arts events */
-        void ma_ondodge_effects( Character &owner );
+        void ma_ondodge_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all block-triggered martial arts events */
-        void ma_onblock_effects( Character &owner );
+        void ma_onblock_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all get hit-triggered martial arts events */
-        void ma_ongethit_effects( Character &owner );
+        void ma_ongethit_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all miss-triggered martial arts events */
-        void ma_onmiss_effects( Character &owner );
+        void ma_onmiss_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all crit-triggered martial arts events */
-        void ma_oncrit_effects( Character &owner );
+        void ma_oncrit_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all kill-triggered martial arts events */
-        void ma_onkill_effects( Character &owner );
+        void ma_onkill_effects( Character &owner, const ma_event_context &ctx = {} );
+        /** Fires all ongrab buffs and eocs: owner established a hold on ctx.opponent */
+        void ma_ongrab_effects( Character &owner, const ma_event_context &ctx = {} );
+        /** Fires all ongrabbed buffs and eocs: ctx.opponent established a hold on owner */
+        void ma_ongrabbed_effects( Character &owner, const ma_event_context &ctx = {} );
 
-        // Selects a valid attack vector
+        // Selects a valid attack vector, at random by weight. Without `random` nothing random
+        // happens: the first valid vector is returned, to check that there is one.
         std::optional<std::pair<attack_vector_id, sub_bodypart_str_id>> choose_attack_vector(
-                    const Character &user, const matec_id &tech ) const;
+                    const Character &user, const matec_id &tech, bool random = true ) const;
         // Calculate and return the damage of the given contact area for a given vector
         damage_instance calculate_vector_damage( const Character &user, const attack_vector_id &vec,
                 const sub_bodypart_str_id &contact_area ) const;
@@ -100,7 +105,9 @@ class character_martial_arts
         /** Returns true if the current style allows blocking with weapons */
         bool can_weapon_block() const;
 
-        std::vector<matec_id> get_all_techniques( const item_location &weap, const Character &u ) const;
+        // With `sources`, where each technique comes from (in step with the returned list)
+        std::vector<matec_id> get_all_techniques( const item_location &weap, const Character &u,
+                std::vector<technique_source> *sources = nullptr ) const;
         std::vector<matype_id> get_unknown_styles( const character_martial_arts &from,
                 bool teachable_only ) const;
         std::vector<matype_id> get_known_styles( bool teachable_only ) const;

@@ -301,7 +301,7 @@
     "message": "You eat a feather!",
     "valid_targets": [ "self" ],
     "effect": "attack",
-    "effect_str": "debug_feather_fall",
+    "effect_str": "feather_fall",
     "shape": "blast",
     "min_range": 1,
     "max_range": 1,

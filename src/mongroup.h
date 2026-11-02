@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_MONGROUP_H
 #define CATA_SRC_MONGROUP_H
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -18,6 +19,7 @@
 
 class JsonObject;
 class JsonOut;
+struct const_dialogue;
 // from overmap.h
 class overmap;
 struct MonsterGroupEntry;
@@ -34,7 +36,10 @@ struct MonsterGroupEntry {
     int pack_minimum;
     int pack_maximum;
     spawn_data data;
+    // Time-of-day and season tags (DAY, NIGHT, DUSK, DAWN, SUMMER, ...), validated at load.
     std::vector<std::string> conditions;
+    // Optional dialogue "condition"; u is the avatar, there is no npc. Empty when unset.
+    std::function<bool( const_dialogue const & )> condition;
     time_duration starts;
     time_duration ends;
     holiday event;

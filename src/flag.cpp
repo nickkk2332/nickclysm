@@ -439,6 +439,14 @@ void json_flag::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "name", name_ );
     optional( jo, was_loaded, "item_prefix", item_prefix_ );
     optional( jo, was_loaded, "item_suffix", item_suffix_ );
+    if( jo.has_member( "vehicle_toggle" ) ) {
+        JsonObject toggle = jo.get_object( "vehicle_toggle" );
+        vehicle_toggle_ = true;
+        vehicle_toggle_name_ = translation();
+        vehicle_toggle_hotkey_.clear();
+        optional( toggle, false, "name", vehicle_toggle_name_ );
+        optional( toggle, false, "hotkey", vehicle_toggle_hotkey_ );
+    }
 }
 
 void json_flag::check_consistency()
@@ -463,6 +471,10 @@ void json_flag::check() const
             debugmsg( "flag definition %s specifies unknown conflicting field %s", id.str(),
                       conflicting );
         }
+    }
+    if( vehicle_toggle_ && vehicle_toggle_name_.empty() && !vehicle_toggle_hotkey_.empty() ) {
+        debugmsg( "flag definition %s has a vehicle_toggle hotkey but no name to show it with",
+                  id.str() );
     }
 }
 

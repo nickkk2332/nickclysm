@@ -18,6 +18,7 @@
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item.h"
+#include "item_category.h"
 #include "item_components.h"
 #include "item_contents.h"
 #include "item_factory.h"
@@ -448,6 +449,12 @@ std::map<const itype *, std::pair<int, int>> Single_item_creator::every_item_min
     switch( type ) {
         case S_ITEM: {
             const itype *i = item::find_type( itype_id( id ) );
+            if( i->count_by_charges() && !modifier ) {
+                // a plain entry spawns one default stack, or none if its probability is under 100
+                const int charges = i->charges_default();
+                const int min_charges = probability < 100 ? 0 : charges;
+                return { std::make_pair( i, std::make_pair( min_charges, charges ) ) };
+            }
             if( i->count_by_charges() ) {
                 // TODO: Not technically perfect for only charge_min/charge max and for ammo/liquids but Item_modifier::modify()'s logic is gross and I'd rather not try to replicate it perfectly as is
                 const int min_charges = modifier->charges.first == -1 ?
@@ -1094,6 +1101,51 @@ item_group::ItemList item_group::items_from( const item_group_id &group_id,
 item_group::ItemList item_group::items_from( const item_group_id &group_id )
 {
     return items_from( group_id, calendar::turn_zero );
+}
+
+// How many copies of an item to spawn at a category spawn rate of @p rate
+static int spawn_count_at_rate( float rate )
+{
+    rate = std::max( 0.0f, rate );
+    if( rate == 1.0f ) {
+        return 1;
+    }
+    if( rate < 1.0f ) {
+        return rng_float( 0.0f, 1.0f ) < rate ? 1 : 0;
+    }
+    return roll_remainder( rate );
+}
+
+int item_group::category_spawn_count( const item &it )
+{
+    if( it.has_flag( json_flag_MISSION_ITEM ) ) {
+        return 1;
+    }
+    return spawn_count_at_rate( it.get_category_of_contents().get_spawn_rate() );
+}
+
+int item_group::category_spawn_count( const itype &type )
+{
+    if( type.has_flag( json_flag_MISSION_ITEM ) || !type.category_force.is_valid() ) {
+        return 1;
+    }
+    return spawn_count_at_rate( type.category_force->get_spawn_rate() );
+}
+
+void item_group::apply_category_spawn_rates( ItemList &items )
+{
+    ItemList result;
+    result.reserve( items.size() );
+    for( item &it : items ) {
+        const int count = category_spawn_count( it );
+        for( int i = 1; i < count; ++i ) {
+            result.push_back( it );
+        }
+        if( count > 0 ) {
+            result.push_back( std::move( it ) );
+        }
+    }
+    items = std::move( result );
 }
 
 item item_group::item_from( const item_group_id &group_id, const time_point &birthday )

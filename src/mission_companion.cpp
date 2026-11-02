@@ -32,6 +32,8 @@
 #include "debug.h"
 #include "enum_conversions.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "faction_camp.h"
 #include "flexbuffer_json.h"
@@ -1199,6 +1201,8 @@ npc_ptr talk_function::individual_mission( const tripoint_abs_omt &omt_pos,
     }
     popup( "%s %s", comp->get_name(), desc );
     comp->set_companion_mission( omt_pos, role_id, miss_id );
+    get_event_bus().send<event_type::companion_mission_started>( comp->getID(),
+            io::enum_to_string( miss_id.id ), project_to<coords::ms>( omt_pos ).raw() );
     if( group ) {
         comp->companion_mission_time = calendar::before_time_starts;
     } else {
@@ -1300,10 +1304,13 @@ void talk_function::caravan_return( npc &p, const std::string &dest, const missi
     int merch_amount = 0;
     for( const auto &elem : caravan_party ) {
         //Scrub temporary party members and the dead
-        if( elem->get_part_hp_cur( bodypart_id( "torso" ) ) == 0 && elem->has_companion_mission() ) {
-            overmap_buffer.remove_npc( elem->getID() );
+        if( !elem->has_companion_mission() ) {
+            continue;
+        }
+        if( elem->get_part_hp_cur( bodypart_id( "torso" ) ) == 0 &&
+            companion_mission_death( *elem ) ) {
             merch_amount += ( time / 600 ) * 4;
-        } else if( elem->has_companion_mission() ) {
+        } else {
             merch_amount += ( time / 600 ) * 7;
             companion_skill_trainer( *elem, "combat", experience * 10_minutes, 10 );
             companion_return( *elem );
@@ -1692,8 +1699,9 @@ bool talk_function::scavenging_patrol_return( npc &p )
                 experience += rng( 2, 10 );
             } else {
                 popup( _( "Unfortunately they were overpowered by the undead…  I'm sorry." ) );
-                overmap_buffer.remove_npc( comp->getID() );
-                return false;
+                if( companion_mission_death( *comp ) ) {
+                    return false;
+                }
             }
         }
     }
@@ -1743,8 +1751,9 @@ bool talk_function::scavenging_raid_return( npc &p )
                 experience += rng( 2, 10 );
             } else {
                 popup( _( "Unfortunately they were overpowered by the undead…  I'm sorry." ) );
-                overmap_buffer.remove_npc( comp->getID() );
-                return false;
+                if( companion_mission_death( *comp ) ) {
+                    return false;
+                }
             }
         }
     }
@@ -1848,11 +1857,11 @@ bool talk_function::hospital_raid_return( npc &p )
                 experience += rng( 2, 10 );
             } else {
                 popup( _( "Unfortunately they were overpowered by the undead…  I'm sorry." ) );
-                overmap_buffer.remove_npc( comp->getID() );
-
-                // Let the player retry if everybody dies
-                get_player_character().set_value( var_SCAVENGER_HOSPITAL_RAID_STARTED, "no" );
-                return false;
+                if( companion_mission_death( *comp ) ) {
+                    // Let the player retry if everybody dies
+                    get_player_character().set_value( var_SCAVENGER_HOSPITAL_RAID_STARTED, "no" );
+                    return false;
+                }
             }
         }
     }
@@ -1988,8 +1997,9 @@ bool talk_function::carpenter_return( npc &p )
             popup( _( "%s didn't make it out in time…" ), comp->get_name() );
             popup( _( "Everyone who was trapped under the collapsing roof died…" ) );
             popup( _( "I'm sorry, there is nothing we could do." ) );
-            overmap_buffer.remove_npc( comp->getID() );
-            return false;
+            if( companion_mission_death( *comp ) ) {
+                return false;
+            }
         }
     }
 
@@ -2053,8 +2063,9 @@ bool talk_function::forage_return( npc &p )
                               "ripped and bloody…" ), comp->get_name() );
                     popup( _( "I fear your companion won't be returning." ) );
                 }
-                overmap_buffer.remove_npc( comp->getID() );
-                return false;
+                if( companion_mission_death( *comp ) ) {
+                    return false;
+                }
             }
         }
     }
@@ -2347,9 +2358,40 @@ void talk_function::companion_skill_trainer( npc &comp, const skill_id &skill_te
     comp.practice( skill_tested, difficulty * to_minutes<int>( time_worked ) / 10 );
 }
 
+void talk_function::send_companion_mission_finished( const npc &comp,
+        const std::string &outcome )
+{
+    const npc_companion_mission mission = comp.get_companion_mission();
+    get_event_bus().send<event_type::companion_mission_finished>( comp.getID(),
+            io::enum_to_string( mission.miss_id.id ),
+            project_to<coords::ms>( mission.position ).raw(), outcome );
+}
+
+bool talk_function::companion_mission_death( npc &comp )
+{
+    // The caller says what happened, and any corpse belongs where the companion was, not at
+    // its stale position in the reality bubble.
+    const bool spawn_corpse = comp.spawn_corpse;
+    const bool quiet_death = comp.quiet_death;
+    comp.spawn_corpse = false;
+    comp.quiet_death = true;
+    comp.die( &get_map(), nullptr );
+    comp.spawn_corpse = spawn_corpse;
+    comp.quiet_death = quiet_death;
+    if( !comp.is_dead() ) {
+        return false;
+    }
+    send_companion_mission_finished( comp, "died" );
+    // as game::cleanup_dead does for NPCs that die in the reality bubble
+    g->remove_npc_follower( comp.getID() );
+    overmap_buffer.remove_npc( comp.getID() );
+    return true;
+}
+
 void talk_function::companion_return( npc &comp )
 {
     cata_assert( !comp.is_active() );
+    send_companion_mission_finished( comp, "returned" );
     comp.reset_companion_mission();
     comp.companion_mission_time = calendar::before_time_starts;
     comp.companion_mission_time_ret = calendar::before_time_starts;

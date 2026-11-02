@@ -12,15 +12,29 @@
     "name": "Headbutt",
     "crit_ok": true,
     "unarmed_allowed": true,
+    "fallback": true,
     "messages": [ "You headbutt %s", "<npcname> headbutts %s" ],
     "description": "A basic headbutt",
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "//": "Without MA_BASIC_FALLBACK: only while an arm or hand of yours is grabbed.  With it (TLG's rule): only in a grapple with the target, whoever holds whom.",
     "condition": {
       "or": [
-        { "u_has_effect": "grabbed", "bodypart": "arm_r" },
-        { "u_has_effect": "grabbed", "bodypart": "arm_l" },
-        { "u_has_effect": "grabbed", "bodypart": "hand_r" },
-        { "u_has_effect": "grabbed", "bodypart": "hand_l" }
+        {
+          "and": [
+            { "not": { "u_has_flag": "MA_BASIC_FALLBACK" } },
+            {
+              "or": [
+                { "u_has_effect": "grabbed", "bodypart": "arm_r" },
+                { "u_has_effect": "grabbed", "bodypart": "arm_l" },
+                { "u_has_effect": "grabbed", "bodypart": "hand_r" },
+                { "u_has_effect": "grabbed", "bodypart": "hand_l" }
+              ]
+            }
+          ]
+        },
+        {
+          "and": [ { "u_has_flag": "MA_BASIC_FALLBACK" }, { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] } ]
+        }
       ]
     },
     "attack_vectors": [ "vector_headbutt" ]
@@ -31,6 +45,7 @@
     "name": "Punch",
     "crit_ok": true,
     "unarmed_allowed": true,
+    "fallback": true,
     "messages": [ "You punch %s", "<npcname> punches %s" ],
     "description": "A basic punch",
     "attack_vectors": [ "vector_punch" ]
@@ -41,6 +56,9 @@
     "name": "Kick",
     "crit_ok": true,
     "unarmed_allowed": true,
+    "fallback": true,
+    "//": "With MA_BASIC_FALLBACK (TLG's rule), no kicks while you hold someone.",
+    "condition": { "or": [ { "not": { "u_has_flag": "MA_BASIC_FALLBACK" } }, { "not": { "u_has_flag": "GRAB_FILTER" } } ] },
     "messages": [ "You kick %s", "<npcname> kicks %s" ],
     "description": "A basic kick",
     "attack_vectors": [ "vector_foot_toes", "vector_knee", "vector_shin" ]
@@ -186,8 +204,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -195,7 +212,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -421,8 +438,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -430,7 +446,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -438,6 +454,7 @@
     "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>similar or smaller</info> size incapable of flight, may fail on targets <info>grabbing you</info>",
     "down_dur": 1,
     "knockback_dist": 1,
+    "controlled_knockback": true,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.7 } ],
     "attack_vectors": [ "vector_grasp" ]
   },
@@ -462,8 +479,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -471,7 +487,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -479,6 +495,7 @@
     "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>similar or smaller</info> size incapable of flight, may fail on targets <info>grabbing you</info>",
     "down_dur": 1,
     "knockback_dist": 1,
+    "controlled_knockback": true,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.7 } ],
     "attack_vectors": [ "vector_grasp" ]
   },
@@ -514,8 +531,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -523,7 +539,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -531,6 +547,7 @@
     "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>similar or smaller</info> size incapable of flight, may fail on targets <info>grabbing you</info>",
     "down_dur": 1,
     "knockback_dist": 1,
+    "controlled_knockback": true,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.7 } ],
     "attack_vectors": [ "vector_grasp" ]
   },
@@ -566,8 +583,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -575,7 +591,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -583,6 +599,7 @@
     "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>similar or smaller</info> size incapable of flight, may fail on targets <info>grabbing you</info>",
     "down_dur": 1,
     "knockback_dist": 1,
+    "controlled_knockback": true,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.7 } ],
     "attack_vectors": [ "vector_grasp" ]
   },
@@ -599,6 +616,37 @@
     "melee_allowed": true,
     "defensive": true,
     "grab_break": true
+  },
+  {
+    "type": "technique",
+    "id": "tec_aikido_grab_counter",
+    "name": "Wrist Turn (grab)",
+    "messages": [ "You turn the grabbing wrist and send %s tumbling", "<npcname> turns the grabbing wrist and sends %s tumbling" ],
+    "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "grab_counter": true,
+    "//": "Kote gaeshi: the grabber's own force throws it off, ending the hold (the knockback breaks it), with little harm done.",
+    "//condition": "Humanoids of similar size and no flying",
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "math": [ "n_val('size') != 1" ] },
+        { "not": { "npc_has_effect": "downed" } },
+        { "or": [ { "npc_bodytype": "human" }, { "npc_bodytype": "angel" } ] },
+        { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>similar or smaller</info> size incapable of flight",
+    "down_dur": 1,
+    "knockback_dist": 1,
+    "mult_bonuses": [
+      { "stat": "movecost", "scale": 0.7 },
+      { "stat": "damage", "type": "bash", "scale": 0.5 },
+      { "stat": "damage", "type": "cut", "scale": 0.5 },
+      { "stat": "damage", "type": "stab", "scale": 0.5 }
+    ],
+    "attack_vectors": [ "vector_grasp" ]
   },
   {
     "type": "technique",
@@ -949,6 +997,50 @@
     "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>similar</info> size incapable of flight",
     "down_dur": 1,
     "attack_vectors": [ "vector_shin" ]
+  },
+  {
+    "type": "technique",
+    "id": "tec_brawl_strangle",
+    "name": "Strangle",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl).  The choke works through armor: its damage comes from the choking and strangulation effects.",
+    "messages": [ "You strangle %s", "<npcname> strangles %s" ],
+    "description": "Choke a breathing opponent you hold.  The hit itself is weak, but choking hurts through any armor, and half the time the hold also cuts off blood to the brain",
+    "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "unarmed_allowed": true,
+    "crit_ok": true,
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "u_is_grabbing": "npc" },
+        { "not": { "npc_has_species": "ZOMBIE" } },
+        { "not": { "npc_has_species": "NETHER" } },
+        { "not": { "npc_has_species": "NETHER_EMANATION" } },
+        { "not": { "npc_has_species": "MIGO" } },
+        { "not": { "npc_has_species": "SLIME" } },
+        { "not": { "npc_has_species": "FUNGUS" } },
+        { "not": { "npc_has_species": "PLANT" } },
+        { "not": { "npc_has_species": "ROBOT" } },
+        { "not": { "npc_has_species": "HALLUCINATION" } },
+        { "not": { "npc_has_species": "HORROR" } },
+        { "not": { "npc_has_species": "ABERRATION" } },
+        { "not": { "npc_has_species": "KRAKEN" } },
+        { "not": { "npc_has_flag": "AQUATIC" } },
+        { "not": { "npc_has_flag": "NO_BREATHE" } },
+        { "not": { "and": [ { "npc_has_flag": "GILLS" }, "npc_is_underwater" ] } }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>breathing, mundane</info> target <info>you are grabbing</info>, no more than <info>one size larger</info> than you",
+    "menu_visibility": "grappling",
+    "tech_effects": [
+      { "id": "choking", "chance": 100, "duration": 200, "on_damage": false, "message": "%s struggles to breathe!" },
+      { "id": "strangulation", "chance": 50, "duration": 200, "on_damage": false }
+    ],
+    "mult_bonuses": [
+      { "stat": "damage", "type": "bash", "scale": 0.2 },
+      { "stat": "damage", "type": "cut", "scale": 0.2 },
+      { "stat": "damage", "type": "stab", "scale": 0.0 }
+    ],
+    "attack_vectors": [ "vector_arm_grapple" ]
   },
   {
     "type": "technique",
@@ -1506,16 +1598,21 @@
     "unarmed_allowed": true,
     "melee_allowed": true,
     "crit_ok": true,
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  u_is_grabbing and u_is_grabbed tell it apart from a hold by or on a third creature.",
+    "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
         { "not": { "npc_has_effect": "downed" } },
-        { "npc_bodytype": "human" },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>identical</info> size incapable of flight",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.25 } ],
     "attack_vectors": [ "vector_grasp" ]
@@ -1538,16 +1635,21 @@
         "message": "The weapon of %s has been forced out of their hands!"
       }
     ],
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  u_is_grabbing and u_is_grabbed tell it apart from a hold by or on a third creature.",
+    "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
         { "not": { "npc_has_effect": "downed" } },
-        { "npc_bodytype": "human" },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>identical</info> size incapable of flight",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.25 } ],
     "attack_vectors": [ "vector_grasp" ]
@@ -1562,16 +1664,21 @@
     "melee_allowed": true,
     "crit_tec": true,
     "side_switch": true,
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  u_is_grabbing and u_is_grabbed tell it apart from a hold by or on a third creature.",
+    "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
         { "not": { "npc_has_effect": "downed" } },
-        { "npc_bodytype": "human" },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>identical</info> size incapable of flight",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "stun_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.5 } ],
@@ -1590,6 +1697,32 @@
     "melee_allowed": true,
     "defensive": true,
     "grab_break": true
+  },
+  {
+    "type": "technique",
+    "id": "tec_judo_grab_counter",
+    "name": "Counter Throw (grab)",
+    "messages": [ "You turn the grab against %s and throw them", "<npcname> turns the grab against %s and throws them" ],
+    "skill_requirements": [ { "name": "unarmed", "level": 1 } ],
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "grab_counter": true,
+    "//": "Answers a grab with a throw that ends the hold (the knockback breaks it).  Same targets as the other Judo throws.",
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') <= n_val('size')" ] },
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "not": { "npc_has_effect": "downed" } },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
+        { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>non-downed</info> target of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
+    "down_dur": 1,
+    "knockback_dist": 1,
+    "attack_vectors": [ "vector_grasp" ]
   },
   {
     "type": "technique",
@@ -1742,8 +1875,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -1751,7 +1883,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -1961,6 +2093,22 @@
     "unarmed_allowed": true,
     "defensive": true,
     "grab_break": true
+  },
+  {
+    "type": "technique",
+    "id": "tec_krav_maga_grab_counter",
+    "name": "Break-Away Strike (grab)",
+    "messages": [ "You strike %s and tear free of the grab", "<npcname> strikes %s and tears free of the grab" ],
+    "skill_requirements": [ { "name": "melee", "level": 3 } ],
+    "melee_allowed": true,
+    "unarmed_allowed": true,
+    "grab_counter": true,
+    "//": "A short strike that drives the grabber off, ending the hold (the knockback breaks it).",
+    "condition": { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+    "condition_desc": "* Only works on a target of <info>similar or smaller</info> size",
+    "stun_dur": 1,
+    "knockback_dist": 1,
+    "attack_vectors": [ "vector_null", "vector_elbow", "vector_knee", "vector_headbutt" ]
   },
   {
     "type": "technique",
@@ -2179,8 +2327,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -2188,7 +2335,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -2588,8 +2735,10 @@
     "messages": [ "You grab and knee %s", "<npcname> grabs and knees %s" ],
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
     "unarmed_allowed": true,
-    "condition": { "npc_has_effect": "downed" },
-    "condition_desc": "* Only works on a <info>downed</info> target",
+    "//": "Knees a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) one in the clinch, whoever holds whom.",
+    "condition": { "or": [ { "npc_has_effect": "downed" }, { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
+    "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
+    "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] },
     "weighting": 3,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.5 } ],
     "attack_vectors": [ "vector_knee" ]
@@ -2601,8 +2750,10 @@
     "messages": [ "You disarm %s with an arm lock", "<npcname> disarms %s with an arm lock" ],
     "skill_requirements": [ { "name": "unarmed", "level": 4 } ],
     "unarmed_allowed": true,
-    "condition": { "npc_has_effect": "downed" },
-    "condition_desc": "* Only works on a <info>downed</info> target",
+    "//": "Locks the arm of a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) of one in the clinch, whoever holds whom: the arm that grabs you is the arm to lock.",
+    "condition": { "or": [ { "npc_has_effect": "downed" }, { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
+    "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
+    "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] },
     "crit_ok": true,
     "weighting": 3,
     "disarms": true,
@@ -2623,6 +2774,7 @@
     "down_dur": 2,
     "knockback_dist": 2,
     "knockback_spread": 2,
+    "controlled_knockback": true,
     "//condition": "Humanoids of similar size and no flying",
     "condition": {
       "and": [
@@ -2635,8 +2787,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -2644,7 +2795,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -2838,8 +2989,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -2847,7 +2997,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -2947,8 +3097,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -2956,7 +3105,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -2985,8 +3134,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -2994,7 +3142,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3083,8 +3231,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3092,7 +3239,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3168,8 +3315,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3177,7 +3323,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3331,8 +3477,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3340,7 +3485,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3397,8 +3542,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3406,7 +3550,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         },
         { "not": { "npc_has_effect": "downed" } },
@@ -3452,6 +3596,9 @@
     "messages": [ "You lurch, and your wild swing hits %s", "<npcname> lurches, and hits %s" ],
     "unarmed_allowed": true,
     "crit_ok": true,
+    "//": "From Cataclysm-TLG (PR #281 by worm-girl): no wild swings while you hold someone.",
+    "condition": { "not": { "u_has_flag": "GRAB_FILTER" } },
+    "condition_desc": "* Can't be used while <info>you are grabbing</info> someone",
     "mult_bonuses": [
       { "stat": "damage", "type": "bash", "scale": 1.2 },
       { "stat": "damage", "type": "cut", "scale": 1.2 },
@@ -3479,6 +3626,9 @@
     "unarmed_allowed": true,
     "crit_tec": true,
     "aoe": "spin",
+    "//": "From Cataclysm-TLG (PR #281 by worm-girl): no spinning while you hold someone or are held.",
+    "condition": { "and": [ { "not": { "u_has_flag": "GRAB_FILTER" } }, { "not": { "u_has_flag": "GRAB" } } ] },
+    "condition_desc": "* Can't be used while <info>grabbing</info> or <info>grabbed</info>",
     "mult_bonuses": [
       { "stat": "movecost", "scale": 1.5 },
       { "stat": "damage", "type": "bash", "scale": 1.3 },
@@ -3486,6 +3636,38 @@
       { "stat": "damage", "type": "stab", "scale": 1.3 }
     ],
     "attack_vectors": [ "vector_punch", "vector_foot_toes", "vector_avian_talons", "vector_hoof_kick", "vector_digitigrade_paws" ]
+  },
+  {
+    "type": "technique",
+    "id": "tec_zuiquan_throw",
+    "name": "Drunken Fall",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl).  TLG needs your hold; here a target holding you is dragged down too.",
+    "messages": [ "You throw yourself down, dragging %s with you", "<npcname> falls, dragging %s down as well" ],
+    "description": "Fall with the opponent you hold, or who holds you: both of you go down, and they are left staggered",
+    "menu_visibility": "grapple",
+    "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "unarmed_allowed": true,
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "math": [ "n_val('size') != 1" ] },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
+        { "not": { "npc_has_effect": "downed" } },
+        { "not": { "npc_has_flag": "IMMOBILE" } },
+        { "not": { "u_has_effect": "downed" } },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
+        { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>non-downed, mobile</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, no more than <info>one size larger</info> than you and not tiny, incapable of flight, and not a blob, fish or snake, while <info>you are standing</info>",
+    "down_dur": 3,
+    "tech_effects": [
+      { "id": "downed", "chance": 100, "duration": 100, "target": "self" },
+      { "id": "staggered", "chance": 100, "duration": 300 }
+    ],
+    "attack_vectors": [ "vector_arm_grapple" ]
   },
   {
     "type": "technique",

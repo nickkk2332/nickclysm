@@ -77,8 +77,12 @@ struct map_common_bash_info { //TODO: Half of this shouldn't be common
         std::vector<furn_str_id> tent_centers;
         std::pair<field_type_str_id, int> hit_field; // field spawned on any hit
         std::pair<field_type_str_id, int> destroyed_field; // field spawned on successful bash
+        // Run on the main map when a bash hits it without breaking it / when a bash breaks it
+        effect_on_condition_id eoc_on_hit;
+        effect_on_condition_id eoc_on_destroy;
 
-        void load( const JsonObject &jo, bool was_loaded, const std::string &context );
+        void load( const JsonObject &jo, bool was_loaded, const std::string &context,
+                   std::string_view src );
         void check( const std::string &id ) const;
         // todo: move it to map_data_common_t
         std::string potential_bash_items( const map_data_common_t &ter_furn ) const;
@@ -94,21 +98,24 @@ struct map_ter_bash_info : map_common_bash_info {
     // terrain to set if bashed from above (defaults to ter_set)
     ter_str_id ter_set_bashed_from_above = ter_str_id::NULL_ID();
     map_ter_bash_info() = default;
-    void load( const JsonObject &jo, bool was_loaded, const std::string &context );
+    void load( const JsonObject &jo, bool was_loaded, const std::string &context,
+               std::string_view src );
     void check( const std::string &id ) const;
 };
 struct map_furn_bash_info : map_common_bash_info {
     // furniture to set (only used by furniture, not terrain)
     furn_str_id furn_set = furn_str_id::NULL_ID();
     map_furn_bash_info() = default;
-    void load( const JsonObject &jo, bool was_loaded, const std::string &context );
+    void load( const JsonObject &jo, bool was_loaded, const std::string &context,
+               std::string_view src );
     void check( const std::string &id ) const;
 };
 struct map_fd_bash_info : map_common_bash_info {
     int fd_bash_move_cost = 100; // cost to bash a field
     translation field_bash_msg_success; // message upon successfully bashing a field
     map_fd_bash_info() = default;
-    void load( const JsonObject &jo, bool was_loaded, const std::string &context );
+    void load( const JsonObject &jo, bool was_loaded, const std::string &context,
+               std::string_view src );
     void check( const std::string &id ) const;
 };
 struct map_deconstruct_skill {

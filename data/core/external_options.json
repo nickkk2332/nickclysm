@@ -29,6 +29,34 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_STAMINA_FLOOR",
+    "//": "Stamina a character needs to start grabbing a creature, and to keep holding it.",
+    "stype": "int",
+    "value": 400
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_ARM_STAMINA_COST",
+    "//": "Arm stamina a character spends on each attempt to grab a creature.",
+    "stype": "int",
+    "value": 120
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_THROW_ANGERS_NEUTRAL",
+    "//": "A held NPC that is neither the thrower's ally nor its enemy is angered by a throw stronger than this (the avatar is asked first).",
+    "stype": "int",
+    "value": 24
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_THROW_ANGERS_ANY",
+    "//": "Any held NPC, allies included, is angered by a throw stronger than this (the avatar is asked first).",
+    "stype": "int",
+    "value": 60
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "PLAYER_MAX_STR_VALUE",
     "//": "Sets a cap on maximum effective strength for characters.",
     "stype": "int",
@@ -527,5 +555,68 @@
     "//": "The maximum number of overmaps that an intersection can deviate from its gridded position. Cannot be greater than or equal to row / 2 or column / 2, may cause bugs for > row / 4, column / 4.",
     "stype": "int",
     "value": 2
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_UNDERWATER",
+    "//": "Crowd crush (being held while monsters press in on you) also applies underwater, where drowning already drains your breath.  Cataclysm-TLG skips it there.",
+    "stype": "bool",
+    "value": false
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_MIN_CROWD",
+    "//": "Crowd crush: the fewest crushers that can crush anyone, whatever their size.",
+    "stype": "int",
+    "value": 2
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_SIZE_OFFSET",
+    "//": "Crowd crush: crushers needed are your size class (tiny 1, small 2, medium 3, large 4, huge 5) plus this, but at least CROWD_CRUSH_MIN_CROWD.  So 4 for a medium character.",
+    "stype": "int",
+    "value": 1
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_MIN_CRUSHER_SIZE",
+    "//": "Crowd crush: only adjacent GROUP_BASH monsters of at least this size class count as crushers (2 means tiny monsters never crush anyone).",
+    "stype": "int",
+    "value": 2
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_MAX_SIZE_GAP",
+    "//": "Crowd crush: a monster more than this many size classes smaller than you doesn't count as a crusher.",
+    "stype": "int",
+    "value": 2
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_UPRIGHT_DISCOUNT",
+    "//": "Crowd crush: while you're standing (not downed, prone or legless), the crowd counts this many fewer crushers, so it takes more to crush someone on their feet.",
+    "stype": "int",
+    "value": 1
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_WALL_THRESHOLD",
+    "//": "Crowd crush: once the crowd is big enough to crush you, adjacent walls add to it only when crushers plus walls exceed this.  0 makes walls always count.",
+    "stype": "int",
+    "value": 6
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_RESIST_BASE",
+    "//": "Crowd crush: base percent chance to resist losing breath when the crowd is only just big enough to crush you.  The CROWD_CRUSH_RESIST enchantment value modifies it, and a poor breathing limb score lowers it.",
+    "stype": "float",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "CROWD_CRUSH_PRONE_RESIST",
+    "//": "Crowd crush: added to the resist chance while you're prone (and not downed, since the downed effect carries its own CROWD_CRUSH_RESIST penalty).",
+    "stype": "float",
+    "value": -4
   }
 ]

@@ -126,6 +126,7 @@ static const efftype_id effect_cough_suppress( "cough_suppress" );
 static const efftype_id effect_deaf( "deaf" );
 static const efftype_id effect_disinfected( "disinfected" );
 static const efftype_id effect_disrupted_sleep( "disrupted_sleep" );
+static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_drunk( "drunk" );
 static const efftype_id effect_flu( "flu" );
 static const efftype_id effect_foodpoison( "foodpoison" );
@@ -262,6 +263,26 @@ bool Character::can_recover_oxygen() const
            !has_effect_with_flag( json_flag_GRAB ) && !( has_bionic( bio_synlungs ) &&
                    !has_active_bionic( bio_synlungs ) ) && !( has_bionic( bio_creeyncaggii ) &&
                            !has_active_bionic( bio_creeyncaggii ) );
+}
+
+float Character::crowd_crush_resist_chance() const
+{
+    // A base chance to resist losing breath at the minimum crowd (Cataclysm-TLG's 5%), worse when
+    // lying on the floor.  Downed, overburdened and trait modifiers come from the effects' and
+    // mutations' CROWD_CRUSH_RESIST enchantment values.
+    double resist = get_option<float>( "CROWD_CRUSH_RESIST_BASE" );
+    if( is_prone() && !has_effect( effect_downed ) ) {
+        resist += get_option<float>( "CROWD_CRUSH_PRONE_RESIST" );
+    }
+    resist = enchantment_cache->modify_value( enchant_vals::mod::CROWD_CRUSH_RESIST, resist );
+    // Full resistance makes you immune, however hard you breathe.
+    if( resist >= 100.0 ) {
+        return 1.0f;
+    }
+    // Labored breathing makes it harder: at a breathing score of 0 the chance is halved.
+    const double breathing = std::clamp( get_limb_score( limb_score_breathing ), 0.0f, 1.0f );
+    return static_cast<float>( std::clamp( resist / ( 100.0 + 100.0 * ( 1.0 - breathing ) ), 0.0,
+                                           1.0 ) );
 }
 
 bool Character::is_warm() const
@@ -843,7 +864,7 @@ std::string Character::debug_weary_info() const
 {
     int amt = activity_history.weariness();
     std::string max_act = activity_level_str( maximum_exertion_level() );
-    float move_mult = exertion_adjusted_move_multiplier( EXTRA_EXERCISE );
+    float move_mult = exertion_adjusted_move_multiplier( melee_exertion_level() );
 
     int bmr = base_bmr();
     std::string weary_internals = activity_history.debug_weary_info();
@@ -1116,25 +1137,56 @@ void Character::on_damage_of_type( const effect_source &source, int adjusted_dam
                                scaled_int,
                                eff_scale );
 
-                // Handle intensity/duration clamping
+                // Handle intensity/duration clamping against the effect this hit adds to: the
+                // character-wide one for global effects, the main part for main-parts-only
+                // effects. A missing effect counts as intensity 0 and duration 0.
+                bodypart_id target_bp = bp;
+                if( eff.global ) {
+                    target_bp = bodypart_str_id::NULL_ID();
+                } else if( eff.id->get_main_parts() ) {
+                    target_bp = bp->main_part;
+                }
+                const effect &prev_eff = get_effect( eff.id, target_bp );
+                const int prev_int = prev_eff.is_null() ? 0 : prev_eff.get_intensity();
+                const int prev_dur = prev_eff.is_null() ? 0 :
+                                     to_turns<int>( prev_eff.get_duration() );
+                bool int_capped = false;
+                bool dur_capped = false;
                 if( eff.max_intensity != INT_MAX ) {
-                    int prev_int = get_effect( eff.id, bp ).get_intensity();
                     add_msg_debug( debugmode::DF_CHARACTER,
                                    "Max intensity %d, current intensity %d", eff.max_intensity, prev_int );
                     if( ( prev_int + scaled_int ) > eff.max_intensity ) {
-                        scaled_int = eff.max_intensity - prev_int;
+                        // add_effect sets the intensity of an existing effect: raise it to
+                        // the cap instead of setting it to the leftover increment.
+                        scaled_int = std::max( prev_int, eff.max_intensity );
+                        int_capped = prev_int >= eff.max_intensity;
                         add_msg_debug( debugmode::DF_CHARACTER,
-                                       "Limiting added intensity to %d", scaled_int );
+                                       "Limiting intensity to %d", scaled_int );
                     }
                 }
                 if( eff.max_duration != INT_MAX ) {
-                    int prev_dur = to_turns<int>( get_effect( eff.id, bp ).get_duration() );
                     add_msg_debug( debugmode::DF_CHARACTER,
                                    "Max duration %d, current duration %d", eff.max_duration, prev_dur );
                     if( ( prev_dur + scaled_dur ) > eff.max_duration ) {
                         scaled_dur = eff.max_duration - prev_dur;
+                        dur_capped = scaled_dur <= 0;
                         add_msg_debug( debugmode::DF_CHARACTER,
                                        "Limiting added duration to %d seconds", scaled_dur );
+                    }
+                }
+                if( int_capped || dur_capped ) {
+                    if( prev_eff.is_null() || ( int_capped && dur_capped ) ) {
+                        // Nothing is left to add under the caps.
+                        continue;
+                    }
+                    // add_effect sets the intensity of an existing effect and adds to its
+                    // duration: keep the intensity instead of lowering it, and add no time
+                    // instead of taking some away.
+                    if( int_capped ) {
+                        scaled_int = prev_int;
+                    }
+                    if( dur_capped ) {
+                        scaled_dur = 0;
                     }
                 }
                 // Add the effect globally if defined
@@ -1372,11 +1424,18 @@ int Character::weariness_transition_level() const
     return std::abs( amount );
 }
 
+float Character::melee_exertion_level() const
+{
+    static const std::string explosive_combat_exertion( "EXPLOSIVE_COMBAT_EXERTION" );
+    return get_option<bool>( explosive_combat_exertion ) ? EXPLOSIVE_EXERCISE : EXTRA_EXERCISE;
+}
+
 float Character::maximum_exertion_level() const
 {
     switch( weariness_level() ) {
         case 0:
-            return EXTRA_EXERCISE;
+            // Fresh, you can go all out (Cataclysm-TLG); combat only does with the option on.
+            return melee_exertion_level();
         case 1:
             return ACTIVE_EXERCISE;
         case 2:
@@ -2116,8 +2175,10 @@ int Character::ugliness() const
 
 int Character::get_bmr() const
 {
-    return base_bmr() * std::ceil( clamp( activity_history.average_activity(), NO_EXERCISE,
-                                          maximum_exertion_level() ) );
+    // Scale continuously with the average exertion: rounding the multiplier up made a
+    // single step in an idle window cost a whole extra BMR.
+    return static_cast<int>( std::round( base_bmr() * clamp( activity_history.average_activity(),
+                                         NO_EXERCISE, maximum_exertion_level() ) ) );
 }
 
 int Character::get_stim() const
@@ -2565,6 +2626,23 @@ void Character::apply_wound( bodypart_id bp, wound_type_id wd )
     morale->on_stat_change( "perceived_pain", get_perceived_pain() );
 }
 
+// The part of `amount` that can be applied to `current` without taking it below `cap_min`
+// (for a decrease) or above `cap_max` (for an increase). A value already at or past the cap
+// in the direction of the change is left alone.
+static int wound_mod_within_caps( int current, int amount, int cap_min, int cap_max )
+{
+    const int64_t target = static_cast<int64_t>( current ) + amount;
+    if( amount < 0 ) {
+        return current <= cap_min ? 0 :
+               static_cast<int>( std::max<int64_t>( target, cap_min ) - current );
+    }
+    if( amount > 0 ) {
+        return current >= cap_max ? 0 :
+               static_cast<int>( std::min<int64_t>( target, cap_max ) - current );
+    }
+    return 0;
+}
+
 void Character::update_wounds( time_duration time_passed )
 {
     for( auto& [bp_id, bp] : body ) {
@@ -2574,12 +2652,16 @@ void Character::update_wounds( time_duration time_passed )
             for( const wound_mod_values &mod_val : wd.type->get_modify_values() ) {
                 if( calendar::once_every( mod_val.rate ) ) {
                     switch( mod_val.type ) {
-                        case wound_mod_value_type::PAIN:
-                            if( get_pain() > mod_val.cap_min &&
-                                get_pain() < mod_val.cap_max ) {
-                                wd.mod_pain( mod_val.amount );
+                        case wound_mod_value_type::PAIN: {
+                            // The caps bound this wound's own pain, as documented.
+                            const int pain_mod = wound_mod_within_caps( wd.get_pain(),
+                                                 mod_val.amount, mod_val.cap_min,
+                                                 mod_val.cap_max );
+                            if( pain_mod != 0 ) {
+                                wd.mod_pain( pain_mod );
                             }
                             break;
+                        }
                         case wound_mod_value_type::BLEED:
                             bleed( get_map() );
                             break;
@@ -2587,18 +2669,18 @@ void Character::update_wounds( time_duration time_passed )
                             if( mod_val.vitamin.has_value() ) {
                                 const vitamin_id vit = *mod_val.vitamin;
 
-                                if( vitamin_get( vit ) <= mod_val.cap_min &&
-                                    vitamin_get( vit ) >= mod_val.cap_max ) {
-                                    break;
-                                }
-
                                 int final_amt = mod_val.amount;
                                 if( wd.type->is_bleeding_wound() ) {
                                     final_amt = roll_remainder( enchantment_cache->modify_value( enchant_vals::mod::BLEEDING_RATE,
                                                                 mod_val.amount ) );
                                 }
-
-                                vitamin_mod( vit, final_amt );
+                                // cap_min stops decreases and cap_max stops increases.
+                                final_amt = wound_mod_within_caps( vitamin_get( vit ),
+                                                                   final_amt, mod_val.cap_min,
+                                                                   mod_val.cap_max );
+                                if( final_amt != 0 ) {
+                                    vitamin_mod( vit, final_amt );
+                                }
                             }
                             break;
                         default:
@@ -2625,7 +2707,7 @@ bool Character::is_bleeding( const bodypart_id bp ) const
         }
     }
 
-    return true;
+    return false;
 }
 
 /*

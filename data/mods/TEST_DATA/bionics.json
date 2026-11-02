@@ -343,6 +343,181 @@
     "//2": "not actually included, this is a trick to not have to add an item version."
   },
   {
+    "//": "MUT-J02 fixture: a toggled bionic that only activates while u_mutj02_gate is 1.",
+    "id": "test_bio_mutj02_gated",
+    "type": "bionic",
+    "name": { "str": "Gated Test Bionic" },
+    "description": "Test bionic gated by an activation condition.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "act_cost": "1 kJ",
+    "activation_condition": {
+      "and": [ { "math": [ "u_mutj02_gate == 1" ] }, { "compare_string": [ "test_bio_mutj02_gated", { "context_val": "this" } ] } ]
+    },
+    "activation_fail_message": "The test gate is closed.",
+    "activated_eocs": [ { "id": "EOC_TEST_MUTJ02_BIO_GATED_ON", "effect": [ { "math": [ "u_mutj02_bio_ran += 1" ] } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J02 fixture: a weapon bionic with an activation EOC, to see that a failed activation runs no EOC.",
+    "id": "test_bio_mutj02_blade",
+    "type": "bionic",
+    "name": { "str": "Test EOC Blade" },
+    "description": "Test weapon bionic counting its activation EOC runs.",
+    "occupied_bodyparts": [ [ "arm_r", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON" ],
+    "activated_eocs": [ { "id": "EOC_TEST_MUTJ02_BLADE_ON", "effect": [ { "math": [ "u_mutj02_blade_ran += 1" ] } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a toggled bionic whose EOCs record the `this` they get.",
+    "id": "test_bio_mutj03_toggle",
+    "type": "bionic",
+    "name": { "str": "Toggle Test Bionic" },
+    "description": "Test bionic recording its EOC context.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "act_cost": "1 kJ",
+    "activated_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_TOGGLE_ON",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_activated_this" } } ]
+      }
+    ],
+    "processed_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_TOGGLE_TICK",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_processed_this" } } ]
+      }
+    ],
+    "deactivated_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_TOGGLE_OFF",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_deactivated_this" } } ]
+      }
+    ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a passive bionic (it can't be switched on) with processed_eocs.",
+    "id": "test_bio_mutj03_passive",
+    "type": "bionic",
+    "name": { "str": "Passive Test Bionic" },
+    "description": "Test passive bionic counting its processing.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "processed_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_PASSIVE_TICK",
+        "effect": [
+          { "math": [ "u_mutj03_passive_ticks += 1" ] },
+          { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_passive_this" } }
+        ]
+      }
+    ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a passive bionic whose processed EOC uninstalls it.",
+    "id": "test_bio_mutj03_passive_self_remove",
+    "type": "bionic",
+    "name": { "str": "Self-Removing Passive Test Bionic" },
+    "description": "Test passive bionic that uninstalls itself when processed.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "processed_eocs": [ { "id": "EOC_TEST_MUTJ03_PASSIVE_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a toggled bionic whose processed EOC uninstalls it.",
+    "id": "test_bio_mutj03_toggle_self_remove",
+    "type": "bionic",
+    "name": { "str": "Self-Removing Toggle Test Bionic" },
+    "description": "Test toggled bionic that uninstalls itself when processed.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "processed_eocs": [ { "id": "EOC_TEST_MUTJ03_TOGGLE_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a toggled bionic whose first deactivation EOC uninstalls it; the second records `this`.",
+    "id": "test_bio_mutj03_off_self_remove",
+    "type": "bionic",
+    "name": { "str": "Self-Removing Deactivation Test Bionic" },
+    "description": "Test toggled bionic that uninstalls itself when switched off.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "deactivated_eocs": [
+      { "id": "EOC_TEST_MUTJ03_OFF_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] },
+      {
+        "id": "EOC_TEST_MUTJ03_OFF_RECORD",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_removed_off_this" } } ]
+      }
+    ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a weapon bionic whose deactivation EOC installs another bionic, moving this one.",
+    "id": "test_bio_mutj03_blade_off_adds",
+    "type": "bionic",
+    "name": { "str": "Test Blade Installing On Withdraw" },
+    "description": "Test weapon bionic that installs another bionic when switched off.",
+    "occupied_bodyparts": [ [ "arm_r", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON" ],
+    "deactivated_eocs": [ { "id": "EOC_TEST_MUTJ03_BLADE_OFF_ADD", "effect": [ { "u_add_bionic": "test_bio_mutj03_passive" } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a weapon bionic whose deactivation EOC uninstalls it.",
+    "id": "test_bio_mutj03_blade_off_self_remove",
+    "type": "bionic",
+    "name": { "str": "Test Blade Uninstalling On Withdraw" },
+    "description": "Test weapon bionic that uninstalls itself when switched off.",
+    "occupied_bodyparts": [ [ "arm_l", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON" ],
+    "deactivated_eocs": [ { "id": "EOC_TEST_MUTJ03_BLADE_OFF_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "NPC-J01 fixture: a mod-style weapon CBM that NPCs may use, in no hardcoded list.",
+    "id": "test_bio_npcj01_blade",
+    "type": "bionic",
+    "name": { "str": "NPC Test Blade" },
+    "description": "Test weapon bionic flagged usable by NPCs.",
+    "occupied_bodyparts": [ [ "arm_r", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON", "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "NPC-J01 fixture: a defensive CBM NPCs switch on for a fight.",
+    "id": "test_bio_npcj01_shield",
+    "type": "bionic",
+    "name": { "str": "NPC Test Shield" },
+    "description": "Test toggled bionic NPCs switch on in combat.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "act_cost": "1 kJ",
+    "npc_use": "combat",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
     "//": "Craft reservation fixture: a weapon reachable directly and, once powered, as an exposed pseudo item.  One occurrence either way.",
     "id": "test_bio_reserve_weapon",
     "type": "bionic",

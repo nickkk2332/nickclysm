@@ -117,11 +117,15 @@ struct mutation_variant;
 struct pathfinding_settings;
 struct projectile;
 struct requirement_data;
+struct technique_choice;
+struct technique_pools;
+struct technique_query;
 struct tool_comp;
 struct trait_and_var;
 struct trap;
 struct w_point;
 template <typename E> struct enum_traits;
+enum class technique_rejection : int;
 
 using bionic_uid = unsigned int;
 
@@ -873,6 +877,14 @@ class Character : public Creature, public visitable
         void on_dodge( Creature *source, float difficulty, float training_level = 0.0f ) override;
         /** Called after the player has tryed to dodge an attack */
         void on_try_dodge() override;
+        /**
+         * Called after `grabber` established a hold on this character's `bp` (a monster's grab
+         * attack, or a character's grab through grapple::start_hold) with that strength: fires
+         * the martial art's ongrabbed buffs and EOCs, then answers with a grab_counter technique
+         * if one is usable, the grabber is in melee reach and the grab isn't one this character
+         * tolerates (grapple::grab_tolerated).
+         */
+        void on_grabbed( Creature &grabber, const bodypart_id &bp, int strength );
 
         /** Combat getters */
         float get_dodge_base() const override;
@@ -1079,6 +1091,19 @@ class Character : public Creature, public visitable
 
         /** Series of checks to remove effects for waiting or moving */
         bool try_remove_grab( bool attacking = false );
+
+        /**
+         * Grappling: holding another creature (see grapple.h). The held creature's GRAB effect
+         * carries this character as its source; there is no stored pointer.
+         */
+        /** Whether this character holds a creature. */
+        bool is_grabbing_creature() const;
+        /** The creature this character holds, or nullptr. */
+        Creature *grabbed_creature() const;
+        /** Let go of the held creature, if any, and drop the GRAB_FILTER effects. */
+        void release_grapple();
+        /** Whether the wielded item, if any, allows grabbing and holding a creature. */
+        bool can_grapple_while_wielding() const;
         void try_remove_downed();
         void try_remove_bear_trap();
         void try_remove_lightsnare();
@@ -1190,12 +1215,40 @@ class Character : public Creature, public visitable
             Creature const &t, const item_location &weap,
             bool crit, bool dodge_counter, bool block_counter, const std::vector<matec_id> &blacklist = {} )
         const;
+        /** As above, for the kind of attack in `query` (its `roll` is ignored: the pick rolls) */
+        std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> pick_technique(
+            Creature const &t, const item_location &weap, const technique_query &query,
+            const std::vector<matec_id> &blacklist = {} ) const;
+        /** The usable techniques for an attack, sorted into the pools pick_technique draws from */
+        technique_pools get_technique_pools( Creature const &t, const item_location &weap,
+                                             bool crit, bool dodge_counter, bool block_counter,
+                                             const std::vector<matec_id> &blacklist = {} ) const;
+        technique_pools get_technique_pools( Creature const &t, const item_location &weap,
+                                             const technique_query &query,
+                                             const std::vector<matec_id> &blacklist = {} ) const;
         // Filter techniques per tech, return a tech/vector/sublimb set
         std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
                 evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
                                     bool crit = false, bool dodge_counter = false, bool block_counter = false ) const;
+        std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
+                evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
+                                    const technique_query &query ) const;
+        /**
+         * Can the technique be used in this kind of attack on t? Returns why not, or
+         * technique_rejection::none. When it can and query.roll is set, the chosen attack vector
+         * and contact area go to `chosen`. Automatic choices (evaluate_technique) and the manual
+         * technique menu both use this.
+         */
+        technique_rejection check_technique(
+            const matec_id &tec_id, Creature const &t, const item_location &weap,
+            const technique_query &query,
+            std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> *chosen = nullptr ) const;
+        /**
+         * Applies the technique's effects to t. `chosen`: the technique was chosen in the manual
+         * technique menu, so the avatar in manual combat mode aims a controlled_knockback.
+         */
         void perform_technique( const ma_technique &technique, Creature &t, damage_instance &di,
-                                int &move_cost, item_location &cur_weapon );
+                                int &move_cost, item_location &cur_weapon, bool chosen = false );
 
         /**
          * Sets up a melee attack and handles melee attack function calls
@@ -1207,8 +1260,22 @@ class Character : public Creature, public visitable
          */
         bool melee_attack( Creature &t, bool allow_special, const matec_id &force_technique,
                            bool allow_unarmed = true, int forced_movecost = -1 );
+        /** As above, with the technique picked as `choice` says (see technique_choice) */
+        bool melee_attack( Creature &t, bool allow_special, const technique_choice &choice,
+                           bool allow_unarmed = true, int forced_movecost = -1 );
         bool melee_attack_abstract( Creature &t, bool allow_special, const matec_id &force_technique,
                                     bool allow_unarmed = true, int forced_movecost = -1 );
+        /**
+         * The attack itself. In manual combat mode (melee::wants_technique_menu) an automatic
+         * choice opens the technique menu first, before anything is rolled or spent; cancelling
+         * it calls the attack off and returns false.
+         */
+        bool melee_attack_abstract( Creature &t, bool allow_special,
+                                    const technique_choice &choice, bool allow_unarmed = true,
+                                    int forced_movecost = -1 );
+        /** A forced or chosen technique with an attack vector picked for it as usual */
+        std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> forced_technique_attack(
+            const matec_id &tec ) const;
         void reduce_moves_from_attack( int forced_movecost, int move_cost );
         /** Handles reach melee attacks */
         bool can_reach_attack( const Creature &target ) const;
@@ -1689,6 +1756,8 @@ class Character : public Creature, public visitable
         bool has_mabuff_flag( const json_character_flag &flag ) const;
         /* Returns the number of MA buffs with the flag*/
         int count_mabuff_flag( const json_character_flag &flag ) const;
+        /** Does the selected martial art allow grabbing a creature while wielding this weapon? */
+        bool style_allows_grapple_weapon( const item &weapon ) const;
 
         /** Handles things like destruction of armor, etc. */
         void mutation_effect( const trait_id &mut, bool worn_destroyed_override );
@@ -2922,6 +2991,9 @@ class Character : public Creature, public visitable
         int get_oxygen_max() const;
         // Whether the character can recover their oxygen level
         bool can_recover_oxygen() const;
+        /** Chance (0-1) to resist losing breath to the smallest crowd that can crush you;
+         * 1 means immune to crowd crush */
+        float crowd_crush_resist_chance() const;
         int oxygen = 0;
         int slow_rad = 0;
         blood_type my_blood_type;
@@ -4042,12 +4114,15 @@ class Character : public Creature, public visitable
         int weary_threshold() const;
         int weariness() const;
         float activity_level() const;
-        /** Returns instantaneous activity level as a float from 0-10 (from game_constants) */
+        /** Returns instantaneous activity level as a float from 0-12 (from game_constants) */
         float instantaneous_activity_level() const;
-        /** Returns instantaneous activity level as an int from 0-5 (half of instantaneous_activity_level) */
+        /** Returns instantaneous activity level as an int from 0-6 (half of the float) */
         int activity_level_index() const;
         float exertion_adjusted_move_multiplier( float level = -1.0f ) const;
         float maximum_exertion_level() const;
+        /** Activity level of melee attacks, dodges, grabs and throws: EXPLOSIVE_EXERCISE with
+         * the EXPLOSIVE_COMBAT_EXERTION world option on (as in Cataclysm-TLG), else EXTRA */
+        float melee_exertion_level() const;
         std::string activity_level_str( float level ) const;
         std::string debug_weary_info() const;
         // returns empty because this is avatar specific

@@ -169,6 +169,20 @@ struct pulp_data {
     std::string pry_tool;
 };
 
+/**
+ * Optional behaviors of game::fling_creature, from Cataclysm: The Last Generation's throws.
+ * All are off by default, so hulk smashes, vehicle crashes and the like are unchanged.
+ */
+struct fling_options {
+    /** A landing below speed 30 is as gentle as a controlled one. */
+    bool soft_low_speed_landing = false;
+    /**
+     * A character in the way is hit like a monster, by the flung creature's speed, and the flung
+     * creature by the character's size, instead of only being stopped as if by a wall.
+     */
+    bool hit_characters = false;
+};
+
 bool is_valid_in_w_terrain( const point_rel_ms &p );
 // returns lists of all items affected by water.
 wet_items visit_water_affect_items( Character &you );
@@ -694,10 +708,13 @@ class game
         void water_affect_items( Character &ch ) const;
 
         /** Flings the input creature in the given direction.
-         *  intentional is true for activities you wouldn't consider immunity for
+         *  intentional is true for activities you wouldn't consider immunity for.
+         *  The creature lets go of what it holds, and is let go of, unless a hold is stronger
+         *  than the fling; it is `airborne` until it lands, where traps and ledges apply.
          */
         bool fling_creature( Creature *c, const units::angle &dir, float flvel,
-                             bool controlled = false, bool intentional = false );
+                             bool controlled = false, bool intentional = false,
+                             const fling_options &options = fling_options() );
         float natural_light_level( int zlev ) const;
         /** Returns coarse number-of-squares of visibility at the current light level.
          * Used by monster and NPC AI.

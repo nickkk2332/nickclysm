@@ -56,6 +56,8 @@ static void butcher_mon( const mtype_id &monid, butcher_type butchery_type, int 
         u.wield( scalpel );
         monster cow( monid, mon_pos );
         const tripoint_bub_ms cow_loc = cow.pos_bub();
+        // The corpse must be the only item on its tile.
+        here.i_clear( cow_loc );
         cow.die( &here, nullptr );
         u.move_to( cow.pos_abs() );
 

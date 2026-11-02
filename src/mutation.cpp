@@ -897,6 +897,18 @@ void Character::activate_cached_mutation( const trait_id &mut )
         return;
     }
 
+    // JSON veto, checked before any cost is paid.
+    if( mdata.activation_condition ) {
+        dialogue d( get_talker_for( *this ), nullptr );
+        d.set_value( "this", mut.str() );
+        if( !mdata.activation_condition( d ) ) {
+            if( !mdata.activation_fail_message.empty() ) {
+                add_msg_if_player( m_info, mdata.activation_fail_message );
+            }
+            return;
+        }
+    }
+
     trait_flag_cache.clear();
     if( tdata.powered && tdata.charge > 0_turns ) {
         // Already-on units just lose a bit of charge
@@ -931,10 +943,20 @@ void Character::activate_cached_mutation( const trait_id &mut )
     }
 
     if( !mut->activated_eocs.empty() ) {
+        const auto powered_now = [this, &mut]() {
+            const auto it = cached_mutations.find( mut );
+            return it != cached_mutations.end() && it->second.powered;
+        };
+        const bool powered_before_eocs = powered_now();
         for( const effect_on_condition_id &eoc : mut->activated_eocs ) {
             dialogue d( get_talker_for( *this ), nullptr );
             d.set_value( "this", mut.str() );
             eoc->activate_activation_only( d, "a mutation activation", "mutation being activated", "mutation" );
+        }
+        if( powered_before_eocs && !powered_now() ) {
+            // An activation EOC turned the mutation off (u_deactivate_trait): respect that
+            // and cancel the rest of the activation.
+            return;
         }
         // if the activation EOCs are not just setup for processing then turn the mutation off
         set_powered( mut->activated_is_setup );

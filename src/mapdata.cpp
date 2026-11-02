@@ -1,10 +1,12 @@
 #include "mapdata.h"
 
 #include <algorithm>
+#include <array>
 #include <exception>
 #include <iterator>
 #include <map>
 #include <memory>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -13,6 +15,7 @@
 #include "character.h"
 #include "color.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
@@ -384,7 +387,7 @@ static void load_map_bash_tent_centers( const JsonArray &ja, std::vector<furn_st
 }
 
 void map_common_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                                 const std::string &context )
+                                 const std::string &context, std::string_view src )
 {
     optional( jo, was_loaded, "str_min", str_min, -1 );
     optional( jo, was_loaded, "str_max", str_max, -1 );
@@ -426,24 +429,36 @@ void map_common_bash_info::load( const JsonObject &jo, const bool was_loaded,
     if( jo.has_array( "tent_centers" ) ) {
         load_map_bash_tent_centers( jo.get_array( "tent_centers" ), tent_centers );
     }
+
+    if( jo.has_member( "eoc_on_hit" ) ) {
+        eoc_on_hit = effect_on_conditions::load_inline_eoc( jo.get_member( "eoc_on_hit" ), src );
+    }
+    if( jo.has_member( "eoc_on_destroy" ) ) {
+        eoc_on_destroy = effect_on_conditions::load_inline_eoc( jo.get_member( "eoc_on_destroy" ),
+                         src );
+    }
 }
 void map_ter_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                              const std::string &context )
+                              const std::string &context, std::string_view src )
 {
-    map_common_bash_info::load( jo, was_loaded, context );
+    map_common_bash_info::load( jo, was_loaded, context, src );
     mandatory( jo, was_loaded, "ter_set", ter_set );
-    optional( jo, was_loaded, "ter_set_bashed_from_above", ter_set_bashed_from_above, ter_set );
+    // Unless this block names it, the from-above result follows ter_set, so a copy-from that
+    // overrides ter_set doesn't keep the parent's from-above result
+    const bool from_above_inherited = was_loaded && !jo.has_member( "ter_set" );
+    optional( jo, from_above_inherited, "ter_set_bashed_from_above", ter_set_bashed_from_above,
+              ter_set );
 }
 void map_furn_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                               const std::string &context )
+                               const std::string &context, std::string_view src )
 {
-    map_common_bash_info::load( jo, was_loaded, context );
+    map_common_bash_info::load( jo, was_loaded, context, src );
     optional( jo, was_loaded, "furn_set", furn_set, furn_f_null );
 }
 void map_fd_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                             const std::string &context )
+                             const std::string &context, std::string_view src )
 {
-    map_common_bash_info::load( jo, was_loaded, context );
+    map_common_bash_info::load( jo, was_loaded, context, src );
     optional( jo, was_loaded, "move_cost", fd_bash_move_cost, 100 );
     optional( jo, was_loaded, "msg_success", field_bash_msg_success );
 }
@@ -536,11 +551,12 @@ bool map_shoot_info::load( const JsonObject &jsobj, std::string_view member, boo
 {
     JsonObject j = jsobj.get_object( member );
 
-    optional( j, false, "chance_to_hit", chance_to_hit, 100 );
+    optional( j, was_loaded, "chance_to_hit", chance_to_hit, 100 );
 
-    std::pair<int, int> reduce_damage;
-    std::pair<int, int> reduce_damage_laser;
-    std::pair<int, int> destroy_damage;
+    // Start from the current values, so a copy-from that names only some keys keeps the rest
+    std::pair<int, int> reduce_damage( reduce_dmg_min, reduce_dmg_max );
+    std::pair<int, int> reduce_damage_laser( reduce_dmg_min_laser, reduce_dmg_max_laser );
+    std::pair<int, int> destroy_damage( destroy_dmg_min, destroy_dmg_max );
 
     mandatory( j, was_loaded, "reduce_damage", reduce_damage );
     mandatory( j, was_loaded, "reduce_damage_laser", reduce_damage_laser );
@@ -553,7 +569,7 @@ bool map_shoot_info::load( const JsonObject &jsobj, std::string_view member, boo
     destroy_dmg_min = destroy_damage.first;
     destroy_dmg_max = destroy_damage.second;
 
-    optional( j, false, "no_laser_destroy", no_laser_destroy, false );
+    optional( j, was_loaded, "no_laser_destroy", no_laser_destroy, false );
 
     return true;
 }
@@ -1197,6 +1213,11 @@ void init_mapdata()
     add_actor( std::make_unique<mortar_examine_actor>() );
 }
 
+// The tool activity blocks of terrain and furniture, see load_tool_activity
+static constexpr std::array<std::string_view, 4> tool_activities = {
+    "oxytorch", "boltcut", "hacksaw", "prying"
+};
+
 void map_data_common_t::load( const JsonObject &jo, const std::string &src )
 {
     mandatory( jo, was_loaded, "name", name_ );
@@ -1307,6 +1328,10 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
         if( jod.has_member( "rotates_to" ) ) {
             unset_connect_groups( jod.get_as_string_array( "rotates_to" ) );
         }
+        // ter_t and furn_t remove these themselves, see load_tool_activity
+        for( const std::string_view activity : tool_activities ) {
+            static_cast<void>( jod.get_member_opt( activity ) );
+        }
     }
 
     if( jo.has_object( "liquid_source" ) ) {
@@ -1338,11 +1363,39 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     }
 
     if( jo.has_object( "shoot" ) ) {
-        shoot = cata::make_value<map_shoot_info>();
-        shoot->load( jo, "shoot", was_loaded );
+        // A copy-from keeps the parent's values for the keys it leaves out
+        const bool shoot_loaded = !!shoot;
+        if( !shoot_loaded ) {
+            shoot = cata::make_value<map_shoot_info>();
+        }
+        shoot->load( jo, "shoot", shoot_loaded );
     }
 
     optional( jo, was_loaded, "item", base_item, itype_id::NULL_ID() );
+}
+
+// Tool activity blocks (oxytorch, boltcut, hacksaw, prying) are always allocated, and invalid
+// when the terrain or furniture has none. A copy-from keeps the parent's block, a block in the
+// JSON overrides only the keys it names, and "delete": { "<activity>": true } removes it.
+template<typename ActivityData>
+static void load_tool_activity( const JsonObject &jo, const std::string_view member,
+                                const bool was_loaded, cata::value_ptr<ActivityData> &data )
+{
+    if( !was_loaded || !data ) {
+        data = cata::make_value<ActivityData>();
+    }
+    if( was_loaded && jo.has_object( "delete" ) ) {
+        JsonObject jod = jo.get_object( "delete" );
+        // map_data_common_t::load checks the rest of "delete"
+        jod.allow_omitted_members();
+        if( jod.get_bool( member, false ) ) {
+            data = cata::make_value<ActivityData>();
+        }
+    }
+    if( jo.has_object( member ) ) {
+        data->was_loaded = data->valid();
+        data->load( jo.get_object( member ) );
+    }
 }
 
 bool map_data_common_t::is_terrain() const
@@ -1424,25 +1477,10 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
             jo.throw_error( "phase_temps must contain exactly one less entry than phase_targets" );
         }
     }
-    oxytorch = cata::make_value<activity_data_ter>();
-    if( jo.has_object( "oxytorch" ) ) { //TODO: Make overwriting these with eg "oxytorch": { } work while still allowing overwriting single values
-        oxytorch->load( jo.get_object( "oxytorch" ) );
-    }
-
-    boltcut = cata::make_value<activity_data_ter>();
-    if( jo.has_object( "boltcut" ) ) {
-        boltcut->load( jo.get_object( "boltcut" ) );
-    }
-
-    hacksaw = cata::make_value<activity_data_ter>();
-    if( jo.has_object( "hacksaw" ) ) {
-        hacksaw->load( jo.get_object( "hacksaw" ) );
-    }
-
-    prying = cata::make_value<activity_data_ter>();
-    if( jo.has_object( "prying" ) ) {
-        prying->load( jo.get_object( "prying" ) );
-    }
+    load_tool_activity( jo, "oxytorch", was_loaded, oxytorch );
+    load_tool_activity( jo, "boltcut", was_loaded, boltcut );
+    load_tool_activity( jo, "hacksaw", was_loaded, hacksaw );
+    load_tool_activity( jo, "prying", was_loaded, prying );
 
     if( jo.has_object( "bash" ) ) {
         bool bash_loaded = !!bash;
@@ -1450,7 +1488,7 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
             bash.emplace();
         }
         //TODO: Make overwriting these with "bash": { } works while still allowing overwriting single values ie for "ter_set"
-        bash->load( jo.get_object( "bash" ), bash_loaded, "terrain " + id.str() );
+        bash->load( jo.get_object( "bash" ), bash_loaded, "terrain " + id.str(), src );
     }
     if( jo.has_object( "deconstruct" ) ) {
         bool deconstruct_loaded = !!deconstruct;
@@ -1634,32 +1672,17 @@ void furn_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "lockpick_result", lockpick_result, string_id_reader<furn_t> {},
               furn_str_id::NULL_ID() );
 
-    oxytorch = cata::make_value<activity_data_furn>();
-    if( jo.has_object( "oxytorch" ) ) {
-        oxytorch->load( jo.get_object( "oxytorch" ) );
-    }
-
-    boltcut = cata::make_value<activity_data_furn>();
-    if( jo.has_object( "boltcut" ) ) {
-        boltcut->load( jo.get_object( "boltcut" ) );
-    }
-
-    hacksaw = cata::make_value<activity_data_furn>();
-    if( jo.has_object( "hacksaw" ) ) {
-        hacksaw->load( jo.get_object( "hacksaw" ) );
-    }
-
-    prying = cata::make_value<activity_data_furn>();
-    if( jo.has_object( "prying" ) ) {
-        prying->load( jo.get_object( "prying" ) );
-    }
+    load_tool_activity( jo, "oxytorch", was_loaded, oxytorch );
+    load_tool_activity( jo, "boltcut", was_loaded, boltcut );
+    load_tool_activity( jo, "hacksaw", was_loaded, hacksaw );
+    load_tool_activity( jo, "prying", was_loaded, prying );
 
     if( jo.has_object( "bash" ) ) {
         bool bash_loaded = !!bash;
         if( !bash_loaded ) {
             bash.emplace();
         }
-        bash->load( jo.get_object( "bash" ), bash_loaded, "furniture " + id.str() );
+        bash->load( jo.get_object( "bash" ), bash_loaded, "furniture " + id.str(), src );
     }
     if( jo.has_object( "deconstruct" ) ) {
         bool deconstruct_loaded = !!deconstruct;

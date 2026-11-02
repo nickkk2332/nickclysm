@@ -34,5 +34,51 @@
     "type": "activity_type",
     "copy-from": "ACT_MEDITATE",
     "do_turn_eoc": { "id": "EOC_TEST_ACT_MEDITATE_TICK", "effect": [ { "math": [ "act_meditate_ticks++" ] } ] }
+  },
+  {
+    "id": "ACT_TEST_HOOKS",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "testing activity hooks",
+    "based_on": "time",
+    "start_eoc": {
+      "id": "EOC_TEST_ACT_HOOKS_START",
+      "effect": [
+        { "math": [ "act_hooks_start++" ] },
+        { "math": [ "act_hooks_start_resume = _resume" ] },
+        { "copy_var": { "context_val": "activity" }, "target_var": { "global_val": "act_hooks_start_id" } }
+      ]
+    },
+    "completion_eoc": {
+      "id": "EOC_TEST_ACT_HOOKS_DONE",
+      "effect": [
+        { "math": [ "act_hooks_done++" ] },
+        { "math": [ "act_hooks_done_total = _moves_total" ] },
+        { "if": "u_has_activity", "then": [ { "math": [ "act_hooks_done_while_active = 1" ] } ] }
+      ]
+    },
+    "cancel_eoc": {
+      "id": "EOC_TEST_ACT_HOOKS_CANCEL",
+      "effect": [ { "math": [ "act_hooks_cancel++" ] }, { "math": [ "act_hooks_cancel_left = _moves_left" ] } ]
+    }
+  },
+  {
+    "//": "Records whether ACT_TEST_HOOKS's completion or cancel EOC had run when the event came.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ACT_HOOKS_FINISHED",
+    "eoc_type": "EVENT",
+    "required_event": "character_finished_activity",
+    "condition": { "compare_string": [ "ACT_TEST_HOOKS", { "context_val": "activity" } ] },
+    "effect": [
+      { "math": [ "act_hooks_event_saw_done = act_hooks_done" ] },
+      { "math": [ "act_hooks_event_saw_cancel = act_hooks_cancel" ] }
+    ]
+  },
+  {
+    "//": "Marks the beta item of an activity hook; a test attaches it to ACT_DISASSEMBLE.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ACT_HOOK_TARGET",
+    "condition": "has_beta",
+    "effect": [ { "npc_add_var": "act_hook_target", "value": "yes" } ]
   }
 ]

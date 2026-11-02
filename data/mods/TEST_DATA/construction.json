@@ -134,5 +134,51 @@
     "byproducts": [ { "group": "digging_soil_loam_50L", "count": 35 } ],
     "activity_level": "EXTRA_EXERCISE",
     "do_turn_special": "do_turn_shovel"
+  },
+  {
+    "type": "construction",
+    "id": "test_constr_eoc_hooks",
+    "group": "test_eoc_hooks",
+    "//": "TERR-J01: only a builder with u_test_constr_allowed == 1 may start it; do_turn_eocs and post_eocs see the construction and pos context values.",
+    "category": "OTHER",
+    "required_skills": [  ],
+    "time": "1 m",
+    "pre_special": "check_empty",
+    "post_terrain": "t_dirt",
+    "activity_level": "NO_EXERCISE",
+    "condition": {
+      "and": [
+        { "math": [ "u_test_constr_allowed == 1" ] },
+        { "compare_string": [ "test_constr_eoc_hooks", { "context_val": "construction" } ] },
+        { "math": [ "has_var(_pos)" ] }
+      ]
+    },
+    "do_turn_eocs": [
+      {
+        "id": "EOC_TEST_CONSTR_DO_TURN",
+        "condition": { "compare_string": [ "test_constr_eoc_hooks", { "context_val": "construction" } ] },
+        "effect": [ { "math": [ "u_test_constr_turns++" ] } ]
+      }
+    ],
+    "post_eocs": [
+      {
+        "id": "EOC_TEST_CONSTR_POST",
+        "effect": [
+          { "copy_var": { "context_val": "construction" }, "target_var": { "u_val": "test_constr_done" } },
+          { "copy_var": { "context_val": "pos" }, "target_var": { "u_val": "test_constr_done_pos" } }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CONSTRUCTION_FINISHED_EVENT",
+    "//": "TERR-J01: records the last character_finishes_construction event.",
+    "eoc_type": "EVENT",
+    "required_event": "character_finishes_construction",
+    "effect": [
+      { "copy_var": { "context_val": "construction" }, "target_var": { "global_val": "test_constr_event_id" } },
+      { "copy_var": { "context_val": "pos" }, "target_var": { "global_val": "test_constr_event_pos" } }
+    ]
   }
 ]

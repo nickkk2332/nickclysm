@@ -49,7 +49,7 @@
     "valid_targets": [ "hostile", "ground" ],
     "flags": [ "SILENT", "NO_EXPLOSION_SFX", "IGNORE_WALLS" ],
     "effect": "ter_transform",
-    "effect_str": "quake_transform",
+    "effect_str": "XE_quake_transform",
     "shape": "blast",
     "min_damage": 150,
     "max_damage": 150,

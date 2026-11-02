@@ -44,6 +44,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "game_inventory.h"
+#include "grapple.h"
 #include "gates.h"
 #include "item.h"
 #include "item_group.h"
@@ -351,10 +352,49 @@ std::map<npc_template_id, npc_template> &npc_template::get_npc_templates()
     return npc_templates;
 }
 
+// An npc_template holds an npc, which can't be copied, so "copy-from" copies what load() reads
+// (NPC-J02).  Keep it in step with load().
+static void copy_npc_template( const npc_template &from, npc_template &to )
+{
+    const npc &from_guy = from.guy;
+    npc &to_guy = to.guy;
+    to_guy.set_fac_id( from_guy.get_fac_id().str() );
+    to_guy.myclass = from_guy.myclass;
+    to_guy.set_attitude( from_guy.get_attitude() );
+    to_guy.mission = from_guy.mission;
+    to_guy.chatbin = from_guy.chatbin;
+    to_guy.miss_ids = from_guy.miss_ids;
+    to_guy.death_eocs = from_guy.death_eocs;
+    to.unique_portrait_filename = from.unique_portrait_filename;
+    to.snippets = from.snippets;
+    to.name_unique = from.name_unique;
+    to.name_suffix = from.name_suffix;
+    to.temp_suffix = from.temp_suffix;
+    to.gender_override = from.gender_override;
+    to.age = from.age;
+    to.height = from.height;
+    to.str = from.str;
+    to.dex = from.dex;
+    to.intl = from.intl;
+    to.per = from.per;
+    to.personality = from.personality;
+}
+
 void npc_template::load( const JsonObject &jsobj, std::string_view src )
 {
     npc_template tem;
     npc &guy = tem.guy;
+    // With "copy-from", start from that template (defined earlier) and change what is given.
+    const bool was_loaded = jsobj.has_string( "copy-from" );
+    if( was_loaded ) {
+        const npc_template_id parent( jsobj.get_string( "copy-from" ) );
+        const auto found = npc_templates.find( parent );
+        if( found == npc_templates.end() ) {
+            jsobj.throw_error_at( "copy-from", string_format(
+                                      "no npc %s is defined before this one", parent.str() ) );
+        }
+        copy_npc_template( found->second, tem );
+    }
     jsobj.get_member( "id" ).read( guy.idz );
     guy.name.clear();
     jsobj.read( "name_unique", tem.name_unique );
@@ -390,19 +430,26 @@ void npc_template::load( const JsonObject &jsobj, std::string_view src )
         NPCATT_FLEE,
         NPCATT_HEAL
     };
-    const npc_attitude to_set = static_cast<npc_attitude>( jsobj.get_int( "attitude" ) );
-    if( allowed_attitudes.count( to_set ) > 0 ) {
-        guy.set_attitude( to_set );
-    } else {
-        debugmsg( "NPC class %s has invalid attitude enum %d", guy.idz.c_str(),
-                  static_cast<int>( to_set ) );
-        guy.set_attitude( NPCATT_NULL );
+    if( !was_loaded || jsobj.has_member( "attitude" ) ) {
+        const npc_attitude to_set = static_cast<npc_attitude>( jsobj.get_int( "attitude" ) );
+        if( allowed_attitudes.count( to_set ) > 0 ) {
+            guy.set_attitude( to_set );
+        } else {
+            debugmsg( "NPC class %s has invalid attitude enum %d", guy.idz.c_str(),
+                      static_cast<int>( to_set ) );
+            guy.set_attitude( NPCATT_NULL );
+        }
     }
-    guy.set_attitude( static_cast<npc_attitude>( jsobj.get_int( "attitude" ) ) );
     if( jsobj.has_string( "mission" ) ) {
         guy.mission = io::string_to_enum<npc_mission>( jsobj.get_string( "mission" ) );
     }
-    guy.chatbin.first_topic = jsobj.get_string( "chat" );
+    if( !was_loaded || jsobj.has_member( "chat" ) ) {
+        guy.chatbin.first_topic = jsobj.get_string( "chat" );
+    }
+    // a copy's mission_offered and death_eocs replace the parent's
+    if( jsobj.has_member( "mission_offered" ) ) {
+        guy.miss_ids.clear();
+    }
     if( jsobj.has_string( "mission_offered" ) ) {
         guy.miss_ids.emplace_back( jsobj.get_string( "mission_offered" ) );
     } else if( jsobj.has_array( "mission_offered" ) ) {
@@ -537,10 +584,16 @@ void npc_template::load( const JsonObject &jsobj, std::string_view src )
         tem.personality->collector = personality.get_int( "collector" );
         tem.personality->altruism = personality.get_int( "altruism" );
     }
+    if( jsobj.has_member( "death_eocs" ) ) {
+        guy.death_eocs.clear();
+    }
     for( JsonValue jv : jsobj.get_array( "death_eocs" ) ) {
         guy.death_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
 
+    // A later definition (another mod's) replaces the earlier one (NPC-J02); emplace used to
+    // keep the first and silently drop the rest.
+    npc_templates.erase( guy.idz );
     npc_templates.emplace( guy.idz, std::move( tem ) );
 }
 
@@ -3339,6 +3392,9 @@ void npc::die( map *here, Creature *nkiller )
             ( *bcp )->remove_assignee( getID() );
         }
     }
+
+    // Break any hold on us, as well as any we have.
+    grapple::release_all( *this );
     assigned_camp = std::nullopt;
     // Need to unboard from vehicle before dying, otherwise
     // the vehicle code cannot find us

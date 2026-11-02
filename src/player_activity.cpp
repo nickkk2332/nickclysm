@@ -57,6 +57,34 @@ static const activity_id ACT_WORKOUT_MODERATE( "ACT_WORKOUT_MODERATE" );
 
 static const efftype_id effect_nausea( "nausea" );
 
+/**
+ * Runs one of an activity type's EOCs for @p who. The activity's hook target (see
+ * activity_actor::hook_target), if it still exists, is the beta talker; the activity's id and
+ * moves are context values, and so is whether it resumed, for the start EOC.
+ */
+static void run_activity_eoc( const effect_on_condition_id &eoc, Character &who,
+                              const activity_id &type, int moves_total, int moves_left,
+                              item_location target, std::optional<bool> resume = std::nullopt )
+{
+    dialogue d( get_talker_for( who ), target.get_item() ? get_talker_for( target ) : nullptr );
+    d.set_value( "activity", type.str() );
+    d.set_value( "moves_total", moves_total );
+    d.set_value( "moves_left", moves_left );
+    if( resume ) {
+        d.set_value( "resume", *resume ? 1 : 0 );
+    }
+    eoc->activate_activation_only( d, "player activities" );
+}
+
+// The beta talker of the activity type's EOCs.
+static item_location hook_target( const player_activity &act )
+{
+    if( act.actor ) {
+        return act.actor->hook_target( act );
+    }
+    return act.targets.empty() ? item_location() : act.targets.front();
+}
+
 player_activity::player_activity() : type( activity_id::NULL_ID() ) { }
 
 player_activity::player_activity( activity_id t, int turns, int Index, int pos,
@@ -196,6 +224,12 @@ void player_activity::start_or_resume( Character &who, bool resuming )
     // last, as start function may have changed the type
     synchronize_type_with_actor();
     get_event_bus().send<event_type::character_starts_activity>( who.getID(), type, resuming );
+    if( *this && !type->start_EOC.is_null() ) {
+        // copies: the EOC may replace this activity
+        const activity_id act_type = type;
+        run_activity_eoc( act_type->start_EOC, who, act_type, moves_total, moves_left,
+                          hook_target( *this ), resuming );
+    }
 }
 
 void player_activity::do_turn( Character &you )
@@ -272,8 +306,9 @@ void player_activity::do_turn( Character &you )
 
     if( !type->do_turn_EOC.is_null() ) {
         // if we have an EOC defined in json do that
-        dialogue d( get_talker_for( you ), nullptr );
-        type->do_turn_EOC->activate_activation_only( d, "player activities" );
+        const activity_id act_type = type;
+        run_activity_eoc( act_type->do_turn_EOC, you, act_type, moves_total, moves_left,
+                          hook_target( *this ) );
         // We may have canceled this via a message interrupt.
         if( type.is_null() ) {
             activity_handlers::clean_may_activity_occupancy_items_var_if_is_avatar_and_no_activity_now( you );
@@ -350,15 +385,12 @@ void player_activity::do_turn( Character &you )
     if( *this && moves_left <= 0 ) {
         // Note: For some activities "finish" is a misnomer; that's why we explicitly check if the
         // type is ACT_NULL below.
-        if( !type->completion_EOC.is_null() ) {
-            // if we have an EOC defined in json do that
-            dialogue d( get_talker_for( you ), nullptr );
-            type->completion_EOC->activate_activation_only( d, "player activities" );
-        }
         add_msg_debug( debugmode::DF_ACTIVITY, "Setting activity %s to null for %s, no moves left.",
                        type.c_str(), you.name );
-        get_event_bus().send<event_type::character_finished_activity>( you.getID(), type, false );
         g->wait_popup_reset();
+        // The completion hooks run after finish, so they see its result. finish may end or
+        // replace this activity, so they are taken first.
+        activity_end_hooks ended = take_end_hooks();
         if( actor ) {
             actor->finish( *this, you );
         } else {
@@ -367,6 +399,9 @@ void player_activity::do_turn( Character &you )
                 set_to_null();
             }
         }
+        // An activity that goes on after finish runs its hooks again when it ends.
+        end_hooks.taken = false;
+        ended.run( you, false );
     }
     if( !*this ) {
         // Make sure data of previous activity is cleared
@@ -391,12 +426,49 @@ void player_activity::do_turn( Character &you )
 
 void player_activity::canceled( Character &who )
 {
+    // taken first: the actor's cleanup may set the activity to null
+    activity_end_hooks ended = take_end_hooks();
     if( *this && actor ) {
         actor->canceled( *this, who );
     }
     activity_handlers::clean_may_activity_occupancy_items_var( who );
-    get_event_bus().send<event_type::character_finished_activity>( who.getID(), type, true );
+    ended.run( who, true );
     g->wait_popup_reset();
+}
+
+activity_end_hooks player_activity::take_end_hooks()
+{
+    activity_end_hooks hooks = peek_end_hooks();
+    end_hooks.taken = true;
+    return hooks;
+}
+
+activity_end_hooks player_activity::peek_end_hooks() const
+{
+    activity_end_hooks hooks;
+    hooks.pending = !end_hooks.taken;
+    hooks.type = type;
+    hooks.moves_total = moves_total;
+    hooks.moves_left = moves_left;
+    hooks.target = hook_target( *this );
+    return hooks;
+}
+
+void activity_end_hooks::run( Character &who, bool canceled )
+{
+    if( !pending ) {
+        return;
+    }
+    pending = false;
+    // The EOC runs before the event: shipped mods end the activity's state in completion_eoc
+    // and treat state an event EOC still finds as a cancel.
+    if( !type.is_null() ) {
+        const effect_on_condition_id &eoc = canceled ? type->cancel_EOC : type->completion_EOC;
+        if( !eoc.is_null() ) {
+            run_activity_eoc( eoc, who, type, moves_total, moves_left, target );
+        }
+    }
+    get_event_bus().send<event_type::character_finished_activity>( who.getID(), type, canceled );
 }
 
 float player_activity::exertion_level() const
