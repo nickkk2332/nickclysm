@@ -433,6 +433,41 @@ Gameplay changes players will notice besides the new actions: Judo's throws need
 
 Bugs fixed along the way: a monster that let go of a grab still counted as grabbing (`remove_grab` re-added the effect); monster grabs worked on incorporeal targets; `knockback_follow` never moved the attacker, and would have moved the avatar when an NPC used it; a technique that was two kinds of counter (Xedra Evolved's three devil tail counters, dodge and block) never fired, and now answers either. TLG bugs that were not copied: the flat throw cost, the landing tile's trap not going off, matching grabs by intensity instead of by grabber, a monster counting its own grab, a forbidden-effects list that was never cleared and a "pulled" effect that was never applied, and enemy NPCs that could be grabbed with no hit roll.
 
+**NPC errands and EOC UI: modding queue sections A–G.** These were asked for by the owner after the grappling port and are planned in [plans/modding-queue.md](plans/modding-queue.md). That file records what was settled for each section. They were built in two worktrees, one for walking and items and one for activities, examine and UI. A separate agent reviewed each worktree, and the two were then merged. Section H, NPC behavior-tree goals from JSON ([plans/npc-behavior-design.md](plans/npc-behavior-design.md)), comes next and uses these effects.
+
+For modders, everything is documented in `doc/JSON/EFFECT_ON_CONDITION.md` and `doc/PLAYER_ACTIVITY.md`:
+
+- **Walking.** `u_walk_to` / `npc_walk_to` send a character to a location variable. Options:
+  - `range`, `run`, `give_up_after`, `interruptible`
+  - `true_eocs`/`false_eocs`, which run when the walk ends
+
+  The walk is saved with the character. An NPC walks it through the existing "player order" node of its decision tree, so a fight or an urgent need still comes first. `u_cancel_walk` ends a walk. `u_is_walking_to` reads one.
+- **Items.** `u_pickup_item`, `u_wield_item`, `u_wear_item` and `u_drop_item` act on the item talker, optionally walking to it first (`"walk": true`). The item talker follows the item, so "pick up, then wield" works in one EOC. Taking someone else's item counts as theft unless `allow_theft` is false.
+- **Activities with a target** (ACT-J02). `u_assign_activity` takes `target_item`, `target_loc`, `recipe` and `butcher_type` for reading, butchery, disassembly, crafting (new or in progress), wearing, unloading and reloading. `true_eocs`/`false_eocs` now work with every activity.
+- **Examine.** `u_examine` / `npc_examine` operate an adjacent tile on the same level:
+  - Doors, gates and hatches open or close.
+  - The avatar otherwise gets the normal examine.
+  - An NPC may use EOC examine actions and a short list of built-in ones that ask nothing, such as gate controls and harvesting.
+- **UI.** `u_show_text` is a scrollable text window with buttons that run EOCs. `run_eoc_checklist` is a menu to tick several options.
+- **Conditions.** `u_has_item_in_hand`, `u_can_reach` and `u_is_doing_activity`.
+- **Results.** Every effect reports how it went: `true_eocs` or `false_eocs` run with a `reason` context value, such as `arrived`, `blocked`, `owned` or `no_room`. None of them opens a menu for an NPC. A targeted activity asks the player nothing either: a choice it would need, such as butchering human remains or unloading a gun with several things in it, is refused with a reason.
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| NPC-B17 | fixed | `4bfe5f91`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
+| NPC-B14 | fixed | `b537b04e`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
+| ACT-J02 | partial | see the third-round table above | `tests/eoc_errands_activity_test.cpp` |
+
+Gameplay changes players will notice:
+- **"Move there!" orders** (NPC-B14):
+  - A follower keeps the order across a save and load.
+  - With no way there, it says "I can't get there." and gives up.
+  - It stops next to the spot if someone is standing on it.
+  - "Follow me" cancels the order.
+- **No more teleporting NPCs** (NPC-B17). An NPC whose path went stale no longer hops over the tiles in between; it re-routes or waits.
+- **Resuming a craft.** A craft in progress that was missing components used them up and then stopped a turn later with "don't have the required components". It now keeps going.
+- **NPC reloading and unloading.** Messages name the NPC instead of saying "You", and an NPC's reload no longer opens a menu.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. After the third round (modding round 1 and bug sweep 1), all 228 `[audit]` test cases pass and the full suite passes: 2506 of 2506 with seed 4242, with no errors logged. Every mod set still loads with no errors. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.

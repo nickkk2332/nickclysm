@@ -4,16 +4,16 @@ The owner asked for these on 2026-11-02, after the grappling port. They are queu
 
 ## Order
 
-1. **PR #3 review comments.** Not part of this queue, but they come first.
-2. **NPC errands:** `u_walk_to`, `u_pickup_item`, `u_wield_item` / `u_wear_item` / `u_drop_item`, targeted `u_assign_activity` and `u_examine` (sections A–E). Together they let a mod script an errand from start to end: walk to the shed, pick up the crowbar, wield it, pry the door, come back.
-3. **EOC UI:** a text window and a checklist menu (sections F–G).
-4. **NPC behavior tree goals from JSON (NPC-J03).** Decided; see section H and [npc-behavior-design.md](npc-behavior-design.md).
+1. **PR #3 review comments.** Not part of this queue, but they come first. Done; PR #3 is merged.
+2. **Built (2026-11-02). NPC errands:** `u_walk_to`, `u_pickup_item`, `u_wield_item` / `u_wear_item` / `u_drop_item`, targeted `u_assign_activity` and `u_examine` (sections A–E). Together they let a mod script an errand from start to end: walk to the shed, pick up the crowbar, wield it, pry the door, come back.
+3. **Built (2026-11-02). EOC UI:** a text window and a checklist menu (sections F–G).
+4. **Next. NPC behavior tree goals from JSON (NPC-J03).** Decided; see section H and [npc-behavior-design.md](npc-behavior-design.md).
 
 Related findings that fit these batches (fold them in if they touch the same code):
 
 | Finding | What it is |
 |---|---|
-| NPC-B17 | `npc::move_to` teleports when the next path step is not adjacent. `u_walk_to` needs this fixed. |
+| NPC-B17 | `npc::move_to` teleports when the next path step is not adjacent. `u_walk_to` needs this fixed. Fixed with section A, as was NPC-B14 (the "Move there!" order lost on load). |
 | EOC-J15 | `u_var_changed` does not fire on math changes. Widgets and EOCs watching a variable miss updates. |
 | EOC-J06 | Mods can't define their own events. |
 | EOC-J08, EOC-J13 | Monster, furniture and vehicle talkers silently ignore most effects. |
