@@ -179,7 +179,9 @@ void player_morale::morale_point::add( const int new_bonus, const int new_max_bo
     new_duration = std::max( 0_turns, new_duration );
     new_decay_start = std::max( 0_turns, new_decay_start );
 
-    const bool same_sign = ( bonus > 0 ) == ( new_max_bonus > 0 );
+    // Compare with the bonus being added, not with its cap: a max_bonus of 0 means "no cap"
+    // and says nothing about whether the new bonus helps or opposes the current one.
+    const bool same_sign = ( bonus > 0 ) == ( new_bonus > 0 );
 
     if( new_cap || new_duration == 0_turns ) {
         duration = new_duration;

@@ -4528,7 +4528,7 @@ Your character or the NPC will gain a morale bonus
 | --- | --- | --- | --- |
 | "u_add_morale" / "npc_add_morale" | **mandatory** | string or [variable object](#variable-object) | `morale_type`, that would be given by effect |
 | "bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default 1; mood bonus or penalty, that would be given by effect; can be stacked up to `max_bonus` cap, but each bonus is lower than previous (e.g. `bonus` of 100 gives mood bonus as 100, 141, 172, 198, 221 and so on) |
-| "max_bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default false; cap, beyond which mood won't increase or decrease |
+| "max_bonus" | **mandatory** | int, [variable object](#variable-object) or array of both | default false; cap, beyond which mood won't increase or decrease; 0 means no cap unless `capped` is true (a bonus stacks onto a morale of the same sign with the diminishing formula above, and is added in full to one of the opposite sign) |
 | "duration" | optional | int, duration or [variable object](#variable-object) | default 1 hour; how long the morale effect would last |
 | "decay_start" | optional | int, duration or [variable object](#variable-object) | default 30 min; when the morale effect would start to decay |
 | "capped" | optional | boolean | default false; if true, `bonus` is not decreased when stacked (e.g. `bonus` of 100 gives mood bonus as 100, 200, 300 and so on) |

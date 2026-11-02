@@ -10,6 +10,7 @@
 #include "effect.h"
 #include "game_constants.h"
 #include "map_helpers.h"
+#include "morale.h"
 #include "player_helpers.h"
 #include "type_id.h"
 
@@ -20,6 +21,8 @@ static const bodypart_str_id body_part_wing_insect_l( "wing_insect_l" );
 
 static const efftype_id effect_mending( "mending" );
 static const efftype_id effect_venom_dmg( "venom_dmg" );
+
+static const morale_type morale_food_good( "morale_food_good" );
 
 static const trait_id trait_INSECT_ARMS( "INSECT_ARMS" );
 static const trait_id trait_REGEN_LIZ( "REGEN_LIZ" );
@@ -167,4 +170,34 @@ TEST_CASE( "hlth-b05_effect_chances_stop_scaling_at_max_effective_intensity",
     // A coin flip per tick, not a hit on every tick.
     CHECK( fired > 0 );
     CHECK( fired < rolls );
+}
+
+// HLTH-B06: morale_point::add decided "same sign" by comparing the current bonus with the
+// new max_bonus. With max_bonus 0 (uncapped), positive adds stacked linearly without limit,
+// and a positive add to a negative point took the square-root branch and made it worse.
+TEST_CASE( "hlth-b06_morale_stacking_uses_sign_of_new_bonus", "[audit][health]" )
+{
+    player_morale m;
+
+    SECTION( "uncapped positive adds stack with the square-root nerf" ) {
+        m.add( morale_food_good, 10, 0, 1_hours, 30_minutes );
+        REQUIRE( m.has( morale_food_good ) == 10 );
+        m.add( morale_food_good, 10, 0, 1_hours, 30_minutes );
+        // sqrt( 10^2 + 10^2 ) = 14; the old code added them up to 20.
+        CHECK( m.has( morale_food_good ) == 14 );
+    }
+
+    SECTION( "a positive add to a negative point lessens it" ) {
+        m.add( morale_food_good, -10, -20, 1_hours, 30_minutes );
+        REQUIRE( m.has( morale_food_good ) == -10 );
+        m.add( morale_food_good, 5, 0, 1_hours, 30_minutes );
+        // The old code gave -sqrt( 10^2 + 5^2 ) = -11.
+        CHECK( m.has( morale_food_good ) == -5 );
+    }
+
+    SECTION( "capped positive adds are unchanged" ) {
+        m.add( morale_food_good, 10, 40, 1_hours, 30_minutes );
+        m.add( morale_food_good, 10, 40, 1_hours, 30_minutes );
+        CHECK( m.has( morale_food_good ) == 14 );
+    }
 }
