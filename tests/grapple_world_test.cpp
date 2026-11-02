@@ -300,5 +300,6 @@ TEST_CASE( "explosive_combat_exertion_option", "[grapple][activity]" )
         CHECK( get_avatar().total_daily_calories_string().find( "Explosive" ) !=
                std::string::npos );
     }
-    clear_creatures();
+    // The thrown items stay on the map; later tests expect it empty.
+    clear_map_without_vision();
 }
