@@ -179,7 +179,9 @@ item::item( const itype *type, time_point turn, int qty ) : type( type ), bday( 
 {
     contents = item_contents( type->pockets );
     if( type->countdown_interval > 0_seconds ) {
-        countdown_point = calendar::turn + type->countdown_interval;
+        // the countdown starts at the item's birth, and is only checked while it's active
+        countdown_point = turn + type->countdown_interval;
+        activate();
     }
     item_vars = type->item_variables;
 

@@ -5,11 +5,13 @@
 #include <vector>
 
 #include "bodypart.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "flag.h"
 #include "item.h"
 #include "item_group.h"
 #include "item_pocket.h"
+#include "item_transformation.h"
 #include "itype.h"
 #include "magic.h"
 #include "magic_enchantment.h"
@@ -24,6 +26,7 @@ static const itype_id itype_colt_army( "colt_army" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_test_fault_self_damaging_rod( "test_fault_self_damaging_rod" );
 static const itype_id itype_test_fault_two_mech_rod( "test_fault_two_mech_rod" );
+static const itype_id itype_test_transform_timed_baton( "test_transform_timed_baton" );
 
 static const relic_procgen_id relic_procgen_data_test_relic_hit_me( "test_relic_hit_me" );
 static const relic_procgen_id
@@ -177,4 +180,33 @@ TEST_CASE( "item-b07_relic_hit_me_values_are_loaded", "[audit][item][relic]" )
     // each hit_me attribute is worth its 300 base power, so two attributes reach 500
     CHECK( art.get_proc_enchantments().size() <= 2 );
     CHECK( art.power_level( relic_procgen_data_test_relic_hit_me ) >= 500 );
+}
+
+// ITEM-B08: the countdown of a countdown_interval item is only checked while the item is
+// active, but the item constructor never activated it (only SPAWN_ACTIVE did), and
+// item_transformation::transform() overwrote the active state convert() had set.  Such
+// items never counted down.  The constructor also started the countdown from the current
+// turn instead of the item's birth.
+TEST_CASE( "item-b08_countdown_items_are_active", "[audit][item]" )
+{
+    REQUIRE( itype_test_transform_timed_baton->countdown_interval == 1_seconds );
+    REQUIRE( !itype_test_transform_timed_baton->has_flag( flag_SPAWN_ACTIVE ) );
+
+    SECTION( "spawned countdown item" ) {
+        const time_point birth = calendar::turn - 1_hours;
+        const item baton( itype_test_transform_timed_baton, birth );
+        CHECK( baton.active );
+        CHECK( baton.countdown_point == birth + 1_seconds );
+    }
+
+    SECTION( "item transformed into a countdown item" ) {
+        item rock( itype_rock );
+        REQUIRE( !rock.active );
+        item_transformation to_baton;
+        to_baton.target = itype_test_transform_timed_baton;
+        to_baton.transform( nullptr, rock );
+        REQUIRE( rock.typeId() == itype_test_transform_timed_baton );
+        CHECK( rock.active );
+        CHECK( rock.countdown_point == calendar::turn + 1_seconds );
+    }
 }
