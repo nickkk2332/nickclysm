@@ -5278,9 +5278,20 @@ that can't be started, is reported and nothing starts.
 
 These activities work on something, given by the fields above. They take no `duration`: they
 last as long as the work does. Nothing asks the player anything, for the avatar or for an NPC.
-When the activity can't start, nothing is done, `false_eocs` run, and the context value `reason`
-says why. The item has to be within reach: carried by the talker, or on (or in a container or a
-vehicle on) the talker's tile or a tile next to it.
+When the activity can't start, `false_eocs` run and the context value `reason` says why. The item
+has to be within reach: carried by the talker, or on (or in a container or a vehicle on) the
+talker's tile or a tile next to it, on the same level.
+
+Usually a refused activity leaves everything as it was. A craft or a disassembly, though, uses
+up its components or its item as it starts; if it then stops at once (rare: the craft had to be
+dropped, for example), the components stay used up and the craft or disassembly in progress is
+left where it is, as the crafting menu leaves it, and `false_eocs` run.
+
+When starting uses up the item that was the other talker (a disassembly takes it apart, a craft
+uses it as a component), `npc` in `true_eocs` and `false_eocs` is the craft or disassembly in
+progress, or there is no `npc` when there is none. Later effects of the EOC that ran
+`u_assign_activity` still have the used-up item as `npc`: it has no name or values, and changing
+it does nothing.
 
 | Activity | Fields | What happens, and what is refused |
 | --- | --- | --- |

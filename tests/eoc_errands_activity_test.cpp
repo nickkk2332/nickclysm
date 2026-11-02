@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 
+#include "activity_actor.h"
 #include "activity_actor_eoc.h"
 #include "avatar.h"
 #include "calendar.h"
@@ -338,6 +339,25 @@ TEST_CASE( "act-j02_eoc_disassembles_an_item", "[audit][activity][errands_ui]" )
         run_activity_to_the_end( guy, ACT_DISASSEMBLE );
         CHECK( globvars.get_global_value( "disassembled" ) == 1 );
         CHECK( count_on_map_and_person( guy, itype_splinter ) == 2 );
+    }
+    SECTION( "the item is used up: the result EOCs get the disassembly, later effects no item" ) {
+        item_location widget = on_ground( guy.pos_bub(), item( itype_test_audit_hook_widget ) );
+        dialogue d( get_talker_for( guy ), get_talker_for( widget ) );
+        // EOC_TEST_ERRAND_STARTED names npc in a message and in test_errand_npc.
+        load_effect( R"([ { "u_assign_activity": "ACT_DISASSEMBLE", "target_item": "npc", )"
+                     R"("true_eocs": [ "EOC_TEST_ERRAND_STARTED" ] }, )"
+                     R"({ "set_string_var": "<npc_name>|", "target_var": { "global_val": "test_errand_after" }, )"
+                     R"("parse_tags": true } ])" ).apply( d );
+        CHECK( result() == "started" );
+        REQUIRE( guy.activity.id() == ACT_DISASSEMBLE );
+        const item_location work = guy.activity.actor->hook_target( guy.activity );
+        REQUIRE( work );
+        CHECK( global_string( "test_errand_npc" ) == work->type_name() );
+        // The EOC that started it still holds the widget, which is gone: no name, no crash.
+        CHECK_FALSE( widget );
+        CHECK( global_string( "test_errand_after" ) == "|" );
+        run_activity_to_the_end( guy, ACT_DISASSEMBLE );
+        CHECK( globvars.get_global_value( "disassembled" ) == 1 );
     }
     SECTION( "the avatar takes apart an item it carries" ) {
         item_location widget = u.i_add( item( itype_test_audit_hook_widget ) );

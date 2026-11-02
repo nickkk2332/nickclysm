@@ -3,7 +3,11 @@
     "type": "effect_on_condition",
     "id": "EOC_TEST_ERRAND_STARTED",
     "//": "EOC errand and UI tests: true_eocs of u_assign_activity and u_examine.",
-    "effect": [ { "set_string_var": "started", "target_var": { "global_val": "test_errand_result" } } ]
+    "effect": [
+      { "set_string_var": "started", "target_var": { "global_val": "test_errand_result" } },
+      { "u_message": "Working on <npc_name>." },
+      { "set_string_var": "<npc_name>", "target_var": { "global_val": "test_errand_npc" }, "parse_tags": true }
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -11,7 +15,8 @@
     "//": "EOC errand and UI tests: false_eocs of u_assign_activity and u_examine, with the reason.",
     "effect": [
       { "set_string_var": "refused", "target_var": { "global_val": "test_errand_result" } },
-      { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_errand_reason" } }
+      { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_errand_reason" } },
+      { "set_string_var": "<npc_name>", "target_var": { "global_val": "test_errand_npc" }, "parse_tags": true }
     ]
   },
   {

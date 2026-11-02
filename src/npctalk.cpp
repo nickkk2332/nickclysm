@@ -5920,10 +5920,13 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
     return [is_npc, has_duration, dov, act, fields, target_loc, recipe, butcher_type, true_eocs,
             false_eocs, member = std::string( member )]( dialogue & d ) {
         // false_eocs get the reason in the context value "reason".
-        const auto refuse = [&]( const std::string & reason ) {
-            dialogue refused( d );
+        const auto refuse_in = [&]( const dialogue & from, const std::string & reason ) {
+            dialogue refused( from );
             refused.set_value( "reason", reason );
             run_eoc_vector( false_eocs, refused );
+        };
+        const auto refuse = [&]( const std::string & reason ) {
+            refuse_in( d, reason );
         };
         Character *target = d.actor( is_npc )->get_character();
         if( !target ) {
@@ -5970,12 +5973,34 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
                     return;
                 }
             }
-            if( const std::optional<std::string> no = activity_actors::start_with_target( a, *target,
-                    what ) ) {
-                refuse( *no );
+            const std::optional<std::string> no = activity_actors::start_with_target( a, *target,
+                                                  what );
+            // Starting can use up the item that was the other talker: a disassembly takes it
+            // apart, a craft uses it as a component. The result EOCs then get the work in
+            // progress (the disassembly or the craft) as that talker, or no other talker.
+            item_location work;
+            std::optional<dialogue> replaced;
+            item_location *const other = d.has_actor( !is_npc ) ? d.actor( !is_npc )->get_item() :
+                                         nullptr;
+            if( other != nullptr && other->get_item() == nullptr ) {
+                if( target->activity && target->activity.actor ) {
+                    work = target->activity.actor->hook_target( target->activity );
+                }
+                std::unique_ptr<talker> in_progress = work.get_item() != nullptr ?
+                                                      get_talker_for( work ) : nullptr;
+                std::unique_ptr<talker> alpha = is_npc ? std::move( in_progress ) :
+                                                d.actor( false )->clone();
+                std::unique_ptr<talker> beta = is_npc ? d.actor( true )->clone() :
+                                               std::move( in_progress );
+                replaced.emplace( std::move( alpha ), std::move( beta ), d.get_conditionals(),
+                                  d.get_context() );
+            }
+            dialogue &result = replaced ? *replaced : d;
+            if( no ) {
+                refuse_in( result, *no );
                 return;
             }
-            run_eoc_vector( true_eocs, d );
+            run_eoc_vector( true_eocs, result );
             return;
         }
         if( !activity_actors::has_actor( a ) ) {
