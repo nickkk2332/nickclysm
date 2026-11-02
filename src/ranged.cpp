@@ -4426,7 +4426,7 @@ void target_ui::panel_throw_creature( int &text_y )
         return;
     }
     if( const std::optional<std::string> refusal =
-            grapple::throw_target_refusal( *you, thrown, dst ) ) {
+            grapple::throw_direction_refusal( *you, thrown, dst ) ) {
         trim_and_print( w_target, point( 1, text_y++ ), width, c_red, *refusal );
         return;
     }
@@ -4438,10 +4438,17 @@ void target_ui::panel_throw_creature( int &text_y )
     trim_and_print( w_target, point( 1, text_y++ ), width, force_color,
                     string_format( _( "Force: %1$d (%2$s)" ), static_cast<int>( force ),
                                    grapple::throw_verb( *you, thrown, force, 0 ) ) );
-    trim_and_print( w_target, point( 1, text_y++ ), width, c_light_gray,
+    // The cost of a throw this far, and whether you have it in you.
+    const int stamina_cost = grapple::throw_stamina_cost_at( *you, thrown, distance );
+    const bool affordable = you->get_stamina() >= stamina_cost;
+    trim_and_print( w_target, point( 1, text_y++ ), width, affordable ? c_light_gray : c_red,
                     string_format( _( "Moves: %1$d  Stamina: %2$d" ),
-                                   grapple::throw_move_cost( *you ),
-                                   grapple::throw_stamina_cost( *you, thrown, force ) ) );
+                                   grapple::throw_move_cost( *you ), stamina_cost ) );
+    if( const std::optional<std::string> refusal =
+            grapple::throw_target_refusal( *you, thrown, dst ) ) {
+        trim_and_print( w_target, point( 1, text_y++ ), width, c_red, *refusal );
+        return;
+    }
     panel_flight_path( text_y, distance );
 }
 

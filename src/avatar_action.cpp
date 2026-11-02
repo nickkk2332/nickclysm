@@ -1052,13 +1052,13 @@ static void throw_grabbed_creature( avatar &you, Creature &victim )
         add_msg( m_info, *refusal );
         return;
     }
-    const float force = grapple::throw_force_at( full_force,
-                        square_dist( victim.pos_bub().xy(), target.xy() ) );
+    const int distance = square_dist( victim.pos_bub().xy(), target.xy() );
+    const float force = grapple::throw_force_at( full_force, distance );
     if( grapple::throw_angers( you, victim, force ) &&
         !query_yn( _( "This will probably make %s angry.  Continue?" ), victim.disp_name() ) ) {
         return;
     }
-    if( grapple::throw_stamina_cost( you, victim, force ) > you.get_stamina() / 2 &&
+    if( grapple::throw_stamina_cost_at( you, victim, distance ) > you.get_stamina() / 2 &&
         !query_yn( _( "Throwing %s will really tire you out.  Continue?" ), victim.disp_name() ) ) {
         return;
     }

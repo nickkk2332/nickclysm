@@ -200,6 +200,13 @@ float throw_force_at( float full_force, int distance );
 /** Stamina @p thrower spends to throw @p victim with @p force (grapple_throw_stamina_cost). */
 int throw_stamina_cost( const Character &thrower, const Creature &victim, float force );
 
+/**
+ * Stamina @p thrower spends to throw @p victim @p distance tiles (clamped to the throw's range):
+ * the cost of the force for that distance, less the share a bio_railgun takes against machines.
+ * What a throw actually costs.
+ */
+int throw_stamina_cost_at( const Character &thrower, const Creature &victim, int distance );
+
 /** Moves a throw costs @p thrower. */
 int throw_move_cost( const Character &thrower );
 
@@ -219,11 +226,24 @@ std::vector<tripoint_bub_ms> throw_path( const tripoint_bub_ms &from,
 
 /**
  * Why @p thrower can't throw @p victim, the creature it holds, at all; nullopt if it can.
- * Checked before targeting, so a refusal changes nothing.
+ * Checked before targeting, so a refusal changes nothing. The throw must be able to carry past
+ * the next tile, and @p thrower needs the stamina for the shortest throw, one tile; whether it
+ * can afford a longer one is up to throw_target_refusal.
  */
 std::optional<std::string> throw_refusal( const Character &thrower, const Creature &victim );
 
-/** Why @p victim can't be thrown toward @p target; nullopt if it can. */
+/**
+ * Why @p victim can't be thrown toward @p target, whatever it costs; nullopt if it can: it goes
+ * across (not up or down), and never through @p thrower.
+ */
+std::optional<std::string> throw_direction_refusal( const Character &thrower,
+        const Creature &victim, const tripoint_bub_ms &target );
+
+/**
+ * Why @p victim can't be thrown toward @p target; nullopt if it can. Besides where it may go
+ * (throw_direction_refusal), @p thrower must have the stamina for a throw that far
+ * (throw_stamina_cost_at).
+ */
 std::optional<std::string> throw_target_refusal( const Character &thrower,
         const Creature &victim, const tripoint_bub_ms &target );
 

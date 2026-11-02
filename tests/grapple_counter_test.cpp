@@ -28,13 +28,14 @@
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "options_helpers.h"
 #include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
 
-// Grab counters and the ongrab / ongrabbed martial-art hooks, and aimed knockbacks
-// (Cataclysm-BN's controlled_knockback).
+// Grab counters and the ongrab / ongrabbed martial-art hooks, aimed knockbacks (Cataclysm-BN's
+// controlled_knockback), and the stamina a grapple throw needs for its distance.
 
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
@@ -63,6 +64,7 @@ static const matype_id test_style_grab_counter( "test_style_grab_counter" );
 static const matype_id test_style_grab_hooks( "test_style_grab_hooks" );
 
 static const skill_id skill_melee( "melee" );
+static const skill_id skill_throw( "throw" );
 static const skill_id skill_unarmed( "unarmed" );
 
 static constexpr tripoint_bub_ms you_pos{ 60, 60, 0 };
@@ -458,5 +460,55 @@ TEST_CASE( "controlled_knockback_is_aimed_in_manual_combat_mode", "[martial_arts
         } );
         CHECK( aims == 0 );
         CHECK( mon.pos_bub().x() > start.x() );
+    }
+}
+
+TEST_CASE( "grapple_throw_needs_stamina_for_its_distance", "[grapple]" )
+{
+    clear_map_without_vision();
+    clear_creatures();
+    clear_avatar();
+    avatar &you = get_avatar();
+    you.setpos( get_map(), you_pos );
+    override_option no_animations( "ANIMATIONS", "false" );
+    you.set_str_base( 10 );
+    you.set_skill_level( skill_unarmed, 2 );
+    you.set_skill_level( skill_throw, 2 );
+    monster &mon = spawn_test_monster( "mon_test_speed_desc_base", you_pos + tripoint::east );
+    REQUIRE( grapple::start_hold( you, mon, 20, bodypart_str_id::NULL_ID().id() ) );
+    REQUIRE( grapple::throw_range( grapple::throw_force( you, mon ) ) == 3 );
+    const int shove_cost = grapple::throw_stamina_cost_at( you, mon, 1 );
+    const int full_cost = grapple::throw_stamina_cost_at( you, mon, 3 );
+    REQUIRE( shove_cost < full_cost );
+    // The cost of a full throw is that of its full force; a shorter one costs less
+    CHECK( full_cost == grapple::throw_stamina_cost( you, mon, grapple::throw_force( you, mon ) ) );
+    CHECK( grapple::throw_stamina_cost_at( you, mon, 2 ) < full_cost );
+    const tripoint_bub_ms near = mon.pos_bub() + tripoint::east;
+    const tripoint_bub_ms far = mon.pos_bub() + tripoint( 3, 0, 0 );
+
+    SECTION( "enough for a shove, not for a full throw" ) {
+        you.set_stamina( full_cost - 1 );
+        REQUIRE( you.get_stamina() >= shove_cost );
+        // Targeting opens...
+        CHECK_FALSE( grapple::throw_refusal( you, mon ) );
+        // ...but the far tile is refused, with the reason
+        const std::optional<std::string> refusal = grapple::throw_target_refusal( you, mon, far );
+        REQUIRE( refusal );
+        CHECK( *refusal == "You're too exhausted to throw the speed 100 monster that far." );
+        CHECK_FALSE( grapple::throw_direction_refusal( you, mon, far ) );
+        CHECK_FALSE( grapple::throw_held_creature( you, mon, far ) );
+        CHECK( you.grabbed_creature() == &mon );
+        // The shove goes, and costs what a shove costs
+        CHECK_FALSE( grapple::throw_target_refusal( you, mon, near ) );
+        const int stamina = you.get_stamina();
+        REQUIRE( grapple::throw_held_creature( you, mon, near ) );
+        CHECK( mon.pos_bub() == near );
+        CHECK( you.get_stamina() == stamina - shove_cost );
+    }
+    SECTION( "not even enough for a shove" ) {
+        you.set_stamina( shove_cost - 1 );
+        const std::optional<std::string> refusal = grapple::throw_refusal( you, mon );
+        REQUIRE( refusal );
+        CHECK( *refusal == "You're too exhausted to throw the speed 100 monster." );
     }
 }

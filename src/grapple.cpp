@@ -877,6 +877,16 @@ int grapple::throw_stamina_cost( const Character &thrower, const Creature &victi
     return std::max( 0, static_cast<int>( std::round( cost ) ) );
 }
 
+int grapple::throw_stamina_cost_at( const Character &thrower, const Creature &victim,
+                                    int distance )
+{
+    const float force = throw_force_at( throw_force( thrower, victim ), distance );
+    const int cost = throw_stamina_cost( thrower, victim, force );
+    // TLG: against machines the repulsor takes some of the work.
+    return railgun_bonus( thrower, victim ) > 0 ? static_cast<int>( std::round( cost * 0.9 ) ) :
+           cost;
+}
+
 int grapple::throw_move_cost( const Character &thrower )
 {
     const float weary_mult = thrower.exertion_adjusted_move_multiplier( exertion_level( thrower ) );
@@ -924,12 +934,17 @@ std::optional<std::string> grapple::throw_refusal( const Character &thrower,
         const Creature &victim )
 {
     const float force = throw_force( thrower, victim );
-    const int cost = throw_stamina_cost( thrower, victim, force );
     const int size_gap = static_cast<int>( victim.get_size() ) -
                          static_cast<int>( thrower.get_size() );
-    // TLG: a throw must carry past the next tile, and a creature only a little larger.
-    if( throw_range( force ) <= 1 || size_gap > thrower.get_arm_str() / 10 ||
-        thrower.get_stamina_max() < cost ) {
+    // TLG: a throw must be able to carry past the next tile, and a creature only a little larger.
+    if( throw_range( force ) <= 1 || size_gap > thrower.get_arm_str() / 10 ) {
+        return string_format( _( "You can't muster the strength to throw %s." ),
+                              victim.disp_name() );
+    }
+    // The shortest throw, one tile, is the least you can do. How far you can afford to throw is
+    // up to the target you pick.
+    const int cost = throw_stamina_cost_at( thrower, victim, 1 );
+    if( thrower.get_stamina_max() < cost ) {
         return string_format( _( "You can't muster the strength to throw %s." ),
                               victim.disp_name() );
     }
@@ -939,7 +954,7 @@ std::optional<std::string> grapple::throw_refusal( const Character &thrower,
     return std::nullopt;
 }
 
-std::optional<std::string> grapple::throw_target_refusal( const Character &thrower,
+std::optional<std::string> grapple::throw_direction_refusal( const Character &thrower,
         const Creature &victim, const tripoint_bub_ms &target )
 {
     map &here = get_map();
@@ -953,6 +968,22 @@ std::optional<std::string> grapple::throw_target_refusal( const Character &throw
     const std::vector<tripoint_bub_ms> path = throw_path( from, target, 1 );
     if( !path.empty() && path.front() == thrower.pos_bub( here ) ) {
         return string_format( _( "You can't throw %s through yourself." ), victim.disp_name() );
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> grapple::throw_target_refusal( const Character &thrower,
+        const Creature &victim, const tripoint_bub_ms &target )
+{
+    if( std::optional<std::string> refusal = throw_direction_refusal( thrower, victim, target ) ) {
+        return refusal;
+    }
+    // A fling takes one tile per step, diagonals included: count them the same way.
+    const tripoint_bub_ms from = victim.pos_bub( get_map() );
+    const int distance = square_dist( from.xy(), target.xy() );
+    if( thrower.get_stamina() < throw_stamina_cost_at( thrower, victim, distance ) ) {
+        return string_format( _( "You're too exhausted to throw %s that far." ),
+                              victim.disp_name() );
     }
     return std::nullopt;
 }
