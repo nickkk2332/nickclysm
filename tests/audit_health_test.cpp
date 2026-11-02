@@ -19,6 +19,7 @@
 #include "morale.h"
 #include "player_helpers.h"
 #include "type_id.h"
+#include "wound.h"
 
 static const addiction_id addiction_nicotine( "nicotine" );
 
@@ -40,6 +41,11 @@ static const morale_type morale_food_good( "morale_food_good" );
 static const trait_id trait_INSECT_ARMS( "INSECT_ARMS" );
 static const trait_id trait_REGEN_LIZ( "REGEN_LIZ" );
 static const trait_id trait_WINGS_INSECT( "WINGS_INSECT" );
+
+static const vitamin_id vitamin_iron( "iron" );
+
+static const wound_type_id wound_test_wound_capped_pain( "test_wound_capped_pain" );
+static const wound_type_id wound_test_wound_capped_vitamin( "test_wound_capped_vitamin" );
 
 // How many turns of mending the part has accumulated.
 static int audit_mend_turns( Character &who, const bodypart_id &bp )
@@ -331,5 +337,63 @@ TEST_CASE( "hlth-b08_onhit_effect_caps_use_the_effect_they_add_to", "[audit][hea
         CHECK( u.get_effect( effect_debugged, body_part_torso ).get_intensity() == 4 );
         CHECK( u.get_effect_dur( effect_debugged, body_part_torso ) == 15_turns );
     }
+    clear_avatar();
+}
+
+static int audit_wound_pain( const Character &who, const bodypart_id &bp,
+                             const wound_type_id &type )
+{
+    for( const wound &wd : who.get_part( bp )->get_wounds() ) {
+        if( wd.type == type ) {
+            return wd.get_pain();
+        }
+    }
+    return -1;
+}
+
+// HLTH-B09: VITAMIN mod_values skipped only when the vitamin was both <= cap_min and
+// >= cap_max, which never happens, so their caps did nothing. PAIN mod_values grew the
+// wound only while the character's total pain was strictly between the caps, so a wound
+// with cap_min above its own pain never grew. Character::is_bleeding returned true for
+// every part.
+TEST_CASE( "hlth-b09_wound_mod_values_respect_caps", "[audit][health]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    bodypart *arm = u.get_part( body_part_arm_l );
+    arm->get_wounds().clear();
+
+    SECTION( "pain grows up to cap_max and stops there" ) {
+        arm->add_wound( wound_test_wound_capped_pain );
+        REQUIRE( audit_wound_pain( u, body_part_arm_l, wound_test_wound_capped_pain ) == 2 );
+        // +3 per second, cap_min 5 and cap_max 6.
+        u.update_wounds( 1_turns );
+        CHECK( audit_wound_pain( u, body_part_arm_l, wound_test_wound_capped_pain ) == 5 );
+        u.update_wounds( 1_turns );
+        CHECK( audit_wound_pain( u, body_part_arm_l, wound_test_wound_capped_pain ) == 6 );
+        u.update_wounds( 1_turns );
+        CHECK( audit_wound_pain( u, body_part_arm_l, wound_test_wound_capped_pain ) == 6 );
+    }
+
+    SECTION( "vitamin drain stops at cap_min" ) {
+        arm->add_wound( wound_test_wound_capped_vitamin );
+        u.vitamin_set( vitamin_iron, 15 );
+        REQUIRE( u.vitamin_get( vitamin_iron ) == 15 );
+        // -3 per second, cap_min 10.
+        u.update_wounds( 1_turns );
+        CHECK( u.vitamin_get( vitamin_iron ) == 12 );
+        u.update_wounds( 1_turns );
+        CHECK( u.vitamin_get( vitamin_iron ) == 10 );
+        u.update_wounds( 1_turns );
+        CHECK( u.vitamin_get( vitamin_iron ) == 10 );
+    }
+
+    SECTION( "a part without a bleeding wound is not bleeding" ) {
+        arm->add_wound( wound_test_wound_capped_pain );
+        CHECK_FALSE( u.is_bleeding( body_part_arm_l ) );
+        CHECK_FALSE( u.is_bleeding( body_part_arm_r ) );
+    }
+
+    arm->get_wounds().clear();
     clear_avatar();
 }

@@ -2595,6 +2595,23 @@ void Character::apply_wound( bodypart_id bp, wound_type_id wd )
     morale->on_stat_change( "perceived_pain", get_perceived_pain() );
 }
 
+// The part of `amount` that can be applied to `current` without taking it below `cap_min`
+// (for a decrease) or above `cap_max` (for an increase). A value already at or past the cap
+// in the direction of the change is left alone.
+static int wound_mod_within_caps( int current, int amount, int cap_min, int cap_max )
+{
+    const int64_t target = static_cast<int64_t>( current ) + amount;
+    if( amount < 0 ) {
+        return current <= cap_min ? 0 :
+               static_cast<int>( std::max<int64_t>( target, cap_min ) - current );
+    }
+    if( amount > 0 ) {
+        return current >= cap_max ? 0 :
+               static_cast<int>( std::min<int64_t>( target, cap_max ) - current );
+    }
+    return 0;
+}
+
 void Character::update_wounds( time_duration time_passed )
 {
     for( auto& [bp_id, bp] : body ) {
@@ -2604,12 +2621,15 @@ void Character::update_wounds( time_duration time_passed )
             for( const wound_mod_values &mod_val : wd.type->get_modify_values() ) {
                 if( calendar::once_every( mod_val.rate ) ) {
                     switch( mod_val.type ) {
-                        case wound_mod_value_type::PAIN:
-                            if( get_pain() > mod_val.cap_min &&
-                                get_pain() < mod_val.cap_max ) {
-                                wd.mod_pain( mod_val.amount );
+                        case wound_mod_value_type::PAIN: {
+                            // The caps bound this wound's own pain, as documented.
+                            const int pain_mod = wound_mod_within_caps( wd.get_pain(), mod_val.amount,
+                                                 mod_val.cap_min, mod_val.cap_max );
+                            if( pain_mod != 0 ) {
+                                wd.mod_pain( pain_mod );
                             }
                             break;
+                        }
                         case wound_mod_value_type::BLEED:
                             bleed( get_map() );
                             break;
@@ -2617,18 +2637,17 @@ void Character::update_wounds( time_duration time_passed )
                             if( mod_val.vitamin.has_value() ) {
                                 const vitamin_id vit = *mod_val.vitamin;
 
-                                if( vitamin_get( vit ) <= mod_val.cap_min &&
-                                    vitamin_get( vit ) >= mod_val.cap_max ) {
-                                    break;
-                                }
-
                                 int final_amt = mod_val.amount;
                                 if( wd.type->is_bleeding_wound() ) {
                                     final_amt = roll_remainder( enchantment_cache->modify_value( enchant_vals::mod::BLEEDING_RATE,
                                                                 mod_val.amount ) );
                                 }
-
-                                vitamin_mod( vit, final_amt );
+                                // cap_min stops decreases and cap_max stops increases.
+                                final_amt = wound_mod_within_caps( vitamin_get( vit ), final_amt,
+                                                                   mod_val.cap_min, mod_val.cap_max );
+                                if( final_amt != 0 ) {
+                                    vitamin_mod( vit, final_amt );
+                                }
                             }
                             break;
                         default:
@@ -2655,7 +2674,7 @@ bool Character::is_bleeding( const bodypart_id bp ) const
         }
     }
 
-    return true;
+    return false;
 }
 
 /*

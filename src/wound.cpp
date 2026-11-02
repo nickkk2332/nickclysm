@@ -53,6 +53,8 @@ void wound_type::load( const JsonObject &jo, const std::string_view & )
 wound::wound( wound_type_id wd ) :
     type( wd ),
     healing_time( wd->evaluate_healing_time() ),
+    // get_pain() scales by healing progress, so a new wound must start with none.
+    healing_progress( 0.0f ),
     pain( wd->evaluate_pain() ),
     wound_progress_timer( wd->evaluate_progress_timer() )
 {}
