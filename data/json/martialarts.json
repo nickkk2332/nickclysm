@@ -310,6 +310,7 @@
       "tec_brawl_break_unarmed",
       "tec_brawl_power",
       "tec_brawl_trip",
+      "tec_brawl_strangle",
       "tec_brawl_disarm_melee",
       "tec_brawl_feint_melee",
       "tec_brawl_break_melee"
@@ -1529,7 +1530,7 @@
         ]
       }
     ],
-    "techniques": [ "tec_zuiquan_feint", "tec_zuiquan_break", "tec_zuiquan_fist", "tec_zuiquan_spin" ]
+    "techniques": [ "tec_zuiquan_feint", "tec_zuiquan_break", "tec_zuiquan_fist", "tec_zuiquan_spin", "tec_zuiquan_throw" ]
   },
   {
     "type": "martial_art",

@@ -978,6 +978,50 @@
   },
   {
     "type": "technique",
+    "id": "tec_brawl_strangle",
+    "name": "Strangle",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl).  The choke works through armor: its damage comes from the choking and strangulation effects.",
+    "messages": [ "You strangle %s", "<npcname> strangles %s" ],
+    "description": "Choke a breathing opponent you hold.  The hit itself is weak, but choking hurts through any armor, and half the time the hold also cuts off blood to the brain",
+    "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "unarmed_allowed": true,
+    "crit_ok": true,
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "npc_has_flag": "GRAB" },
+        { "u_has_flag": "GRAB_FILTER" },
+        { "not": { "npc_has_species": "ZOMBIE" } },
+        { "not": { "npc_has_species": "NETHER" } },
+        { "not": { "npc_has_species": "NETHER_EMANATION" } },
+        { "not": { "npc_has_species": "MIGO" } },
+        { "not": { "npc_has_species": "SLIME" } },
+        { "not": { "npc_has_species": "FUNGUS" } },
+        { "not": { "npc_has_species": "PLANT" } },
+        { "not": { "npc_has_species": "ROBOT" } },
+        { "not": { "npc_has_species": "HALLUCINATION" } },
+        { "not": { "npc_has_species": "HORROR" } },
+        { "not": { "npc_has_species": "ABERRATION" } },
+        { "not": { "npc_has_species": "KRAKEN" } },
+        { "not": { "npc_has_flag": "AQUATIC" } },
+        { "not": { "npc_has_flag": "NO_BREATHE" } },
+        { "not": { "and": [ { "npc_has_flag": "GILLS" }, "npc_is_underwater" ] } }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>breathing, mundane</info> target <info>you are grabbing</info>, no more than <info>one size larger</info> than you",
+    "tech_effects": [
+      { "id": "choking", "chance": 100, "duration": 200, "on_damage": false, "message": "%s struggles to breathe!" },
+      { "id": "strangulation", "chance": 50, "duration": 200, "on_damage": false }
+    ],
+    "mult_bonuses": [
+      { "stat": "damage", "type": "bash", "scale": 0.2 },
+      { "stat": "damage", "type": "cut", "scale": 0.2 },
+      { "stat": "damage", "type": "stab", "scale": 0.0 }
+    ],
+    "attack_vectors": [ "vector_arm_grapple" ]
+  },
+  {
+    "type": "technique",
     "id": "tec_capoeira_feint",
     "name": "Feint",
     "messages": [ "You fake a kick at %s", "<npcname> fakes a kick at %s" ],
@@ -1532,16 +1576,21 @@
     "unarmed_allowed": true,
     "melee_allowed": true,
     "crit_ok": true,
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a hold on the target.",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "npc_has_flag": "GRAB" },
+        { "u_has_flag": "GRAB_FILTER" },
         { "not": { "npc_has_effect": "downed" } },
-        { "npc_bodytype": "human" },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>identical</info> size incapable of flight",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.25 } ],
     "attack_vectors": [ "vector_grasp" ]
@@ -1564,16 +1613,21 @@
         "message": "The weapon of %s has been forced out of their hands!"
       }
     ],
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a hold on the target.",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "npc_has_flag": "GRAB" },
+        { "u_has_flag": "GRAB_FILTER" },
         { "not": { "npc_has_effect": "downed" } },
-        { "npc_bodytype": "human" },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>identical</info> size incapable of flight",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.25 } ],
     "attack_vectors": [ "vector_grasp" ]
@@ -1588,16 +1642,21 @@
     "melee_allowed": true,
     "crit_tec": true,
     "side_switch": true,
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a hold on the target.",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "npc_has_flag": "GRAB" },
+        { "u_has_flag": "GRAB_FILTER" },
         { "not": { "npc_has_effect": "downed" } },
-        { "npc_bodytype": "human" },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>identical</info> size incapable of flight",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "stun_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.5 } ],
@@ -2614,8 +2673,9 @@
     "messages": [ "You grab and knee %s", "<npcname> grabs and knees %s" ],
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
     "unarmed_allowed": true,
-    "condition": { "npc_has_effect": "downed" },
-    "condition_desc": "* Only works on a <info>downed</info> target",
+    "//": "Knees a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) one held in the clinch.",
+    "condition": { "or": [ { "npc_has_effect": "downed" }, { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] } ] },
+    "condition_desc": "* Only works on a <info>downed</info> target or one <info>you are grabbing</info>",
     "weighting": 3,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.5 } ],
     "attack_vectors": [ "vector_knee" ]
@@ -2627,8 +2687,9 @@
     "messages": [ "You disarm %s with an arm lock", "<npcname> disarms %s with an arm lock" ],
     "skill_requirements": [ { "name": "unarmed", "level": 4 } ],
     "unarmed_allowed": true,
-    "condition": { "npc_has_effect": "downed" },
-    "condition_desc": "* Only works on a <info>downed</info> target",
+    "//": "Locks the arm of a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) of one held standing.",
+    "condition": { "or": [ { "npc_has_effect": "downed" }, { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] } ] },
+    "condition_desc": "* Only works on a <info>downed</info> target or one <info>you are grabbing</info>",
     "crit_ok": true,
     "weighting": 3,
     "disarms": true,
@@ -3478,6 +3539,9 @@
     "messages": [ "You lurch, and your wild swing hits %s", "<npcname> lurches, and hits %s" ],
     "unarmed_allowed": true,
     "crit_ok": true,
+    "//": "From Cataclysm-TLG (PR #281 by worm-girl): no wild swings while you hold someone.",
+    "condition": { "not": { "u_has_flag": "GRAB_FILTER" } },
+    "condition_desc": "* Can't be used while <info>you are grabbing</info> someone",
     "mult_bonuses": [
       { "stat": "damage", "type": "bash", "scale": 1.2 },
       { "stat": "damage", "type": "cut", "scale": 1.2 },
@@ -3505,6 +3569,9 @@
     "unarmed_allowed": true,
     "crit_tec": true,
     "aoe": "spin",
+    "//": "From Cataclysm-TLG (PR #281 by worm-girl): no spinning while you hold someone or are held.",
+    "condition": { "and": [ { "not": { "u_has_flag": "GRAB_FILTER" } }, { "not": { "u_has_flag": "GRAB" } } ] },
+    "condition_desc": "* Can't be used while <info>grabbing</info> or <info>grabbed</info>",
     "mult_bonuses": [
       { "stat": "movecost", "scale": 1.5 },
       { "stat": "damage", "type": "bash", "scale": 1.3 },
@@ -3512,6 +3579,38 @@
       { "stat": "damage", "type": "stab", "scale": 1.3 }
     ],
     "attack_vectors": [ "vector_punch", "vector_foot_toes", "vector_avian_talons", "vector_hoof_kick", "vector_digitigrade_paws" ]
+  },
+  {
+    "type": "technique",
+    "id": "tec_zuiquan_throw",
+    "name": "Drunken Fall",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl).",
+    "messages": [ "You throw yourself down, dragging %s with you", "<npcname> falls, dragging %s down as well" ],
+    "description": "Fall with the opponent you hold: both of you go down, and they are left staggered",
+    "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "unarmed_allowed": true,
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "math": [ "n_val('size') != 1" ] },
+        { "npc_has_flag": "GRAB" },
+        { "u_has_flag": "GRAB_FILTER" },
+        { "not": { "npc_has_effect": "downed" } },
+        { "not": { "npc_has_flag": "IMMOBILE" } },
+        { "not": { "u_has_effect": "downed" } },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
+        { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>non-downed, mobile</info> target <info>you are grabbing</info>, no more than <info>one size larger</info> than you and not tiny, incapable of flight, and not a blob, fish or snake, while <info>you are standing</info>",
+    "down_dur": 3,
+    "tech_effects": [
+      { "id": "downed", "chance": 100, "duration": 100, "target": "self" },
+      { "id": "staggered", "chance": 100, "duration": 300 }
+    ],
+    "attack_vectors": [ "vector_arm_grapple" ]
   },
   {
     "type": "technique",

@@ -38,9 +38,13 @@
 // the per-style grapple_weapons list.  A "hold" is set up directly with the grab effects: GRAB
 // (`grabbed`) on the held creature and GRAB_FILTER (`grabbing`) on the one holding it.
 
+static const damage_type_id damage_bash( "bash" );
+
+static const efftype_id effect_choking( "choking" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
+static const efftype_id effect_staggered( "staggered" );
 static const efftype_id effect_stunned( "stunned" );
 static const efftype_id effect_test_basic_fallback( "test_basic_fallback" );
 static const efftype_id effect_test_grapple_focus( "test_grapple_focus" );
@@ -52,6 +56,15 @@ static const itype_id itype_knife_combat( "knife_combat" );
 
 static const json_character_flag json_flag_MA_BASIC_FALLBACK( "MA_BASIC_FALLBACK" );
 
+static const matec_id tec_brawl_strangle( "tec_brawl_strangle" );
+static const matec_id tec_judo_backthrow( "tec_judo_backthrow" );
+static const matec_id tec_judo_disarm( "tec_judo_disarm" );
+static const matec_id tec_judo_throw( "tec_judo_throw" );
+static const matec_id tec_pankration_grabdisarm( "tec_pankration_grabdisarm" );
+static const matec_id tec_pankration_grabknee( "tec_pankration_grabknee" );
+static const matec_id tec_zuiquan_fist( "tec_zuiquan_fist" );
+static const matec_id tec_zuiquan_spin( "tec_zuiquan_spin" );
+static const matec_id tec_zuiquan_throw( "tec_zuiquan_throw" );
 static const matec_id tech_base_headbutt( "tech_base_headbutt" );
 static const matec_id tech_base_kick( "tech_base_kick" );
 static const matec_id tech_base_punch( "tech_base_punch" );
@@ -60,9 +73,12 @@ static const matec_id test_tech_grapple_knife( "test_tech_grapple_knife" );
 static const matec_id test_tech_grapple_strike( "test_tech_grapple_strike" );
 static const matec_id test_tech_self_effects( "test_tech_self_effects" );
 
+static const matype_id style_brawling( "style_brawling" );
 static const matype_id style_fencing( "style_fencing" );
 static const matype_id style_judo( "style_judo" );
 static const matype_id style_none( "style_none" );
+static const matype_id style_pankration( "style_pankration" );
+static const matype_id style_zui_quan( "style_zui_quan" );
 static const matype_id test_style_grapple( "test_style_grapple" );
 
 static const skill_id skill_unarmed( "unarmed" );
@@ -337,6 +353,100 @@ TEST_CASE( "grapple_ma_tech_effect_target_load_errors", "[grapple][martial_arts]
     const tech_effect_data ted = load_tech_effect_data( jo );
     CHECK( ted.on_self );
     CHECK( ted.intensity == 2 );
+}
+
+TEST_CASE( "grapple_ma_tlg_techniques_need_a_hold", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
+    clear_character( dude, true );
+    dude.set_skill_level( skill_unarmed, 5 );
+    // A breathing, armed humanoid of the same size
+    monster &target = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::east );
+    REQUIRE( target.get_size() == dude.get_size() );
+    REQUIRE( target.has_weapon() );
+
+    SECTION( "Judo throws" ) {
+        use_style( dude, style_judo );
+        CHECK_FALSE( usable( dude, tec_judo_throw, target ) );
+        CHECK_FALSE( usable( dude, tec_judo_disarm, target ) );
+        CHECK_FALSE( usable( dude, tec_judo_backthrow, target, true ) );
+        // Held by the target is not holding it
+        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        target.add_effect( effect_grabbing, 1_days );
+        CHECK_FALSE( usable( dude, tec_judo_throw, target ) );
+        dude.remove_effect( effect_grabbed );
+        target.remove_effect( effect_grabbing );
+
+        hold( dude, target );
+        CHECK( usable( dude, tec_judo_throw, target ) );
+        CHECK( usable( dude, tec_judo_disarm, target ) );
+        CHECK( usable( dude, tec_judo_backthrow, target, true ) );
+        // Not against a downed target
+        target.add_effect( effect_downed, 1_days );
+        CHECK_FALSE( usable( dude, tec_judo_throw, target ) );
+    }
+    SECTION( "Pankration knee and arm lock: a downed target, or one held" ) {
+        use_style( dude, style_pankration );
+        CHECK_FALSE( usable( dude, tec_pankration_grabknee, target ) );
+        CHECK_FALSE( usable( dude, tec_pankration_grabdisarm, target ) );
+        hold( dude, target );
+        CHECK( usable( dude, tec_pankration_grabknee, target ) );
+        CHECK( usable( dude, tec_pankration_grabdisarm, target ) );
+        dude.remove_effect( effect_grabbing );
+        target.remove_effect( effect_grabbed );
+        // The vanilla follow-up on a downed target stays
+        target.add_effect( effect_downed, 1_days );
+        CHECK( usable( dude, tec_pankration_grabknee, target ) );
+        CHECK( usable( dude, tec_pankration_grabdisarm, target ) );
+    }
+    SECTION( "Zui Quan: Drunken Fall downs both, and no wild swings while holding" ) {
+        use_style( dude, style_zui_quan );
+        CHECK_FALSE( usable( dude, tec_zuiquan_throw, target ) );
+        CHECK( usable( dude, tec_zuiquan_fist, target ) );
+        const auto spin_allowed = [&]() {
+            const const_dialogue d( get_const_talker_for( dude ), get_const_talker_for( target ) );
+            return tec_zuiquan_spin->condition( d );
+        };
+        REQUIRE( tec_zuiquan_spin->has_condition );
+        CHECK( spin_allowed() );
+        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        CHECK_FALSE( spin_allowed() );
+        dude.remove_effect( effect_grabbed );
+
+        hold( dude, target );
+        CHECK_FALSE( spin_allowed() );
+        CHECK_FALSE( usable( dude, tec_zuiquan_fist, target ) );
+        REQUIRE( usable( dude, tec_zuiquan_throw, target ) );
+
+        damage_instance di( damage_bash, 10.0f );
+        int move_cost = 100;
+        item_location weapon = dude.get_wielded_item();
+        dude.perform_technique( tec_zuiquan_throw.obj(), target, di, move_cost, weapon );
+        CHECK( dude.has_effect( effect_downed ) );
+        CHECK( target.has_effect( effect_staggered ) );
+        CHECK( target.has_effect( effect_downed ) );
+        // Down already: no second fall
+        CHECK_FALSE( usable( dude, tec_zuiquan_throw, target ) );
+    }
+    SECTION( "Brawling strangle chokes a breathing target held" ) {
+        use_style( dude, style_brawling );
+        CHECK_FALSE( usable( dude, tec_brawl_strangle, target ) );
+        hold( dude, target );
+        REQUIRE( usable( dude, tec_brawl_strangle, target ) );
+
+        damage_instance di( damage_bash, 10.0f );
+        int move_cost = 100;
+        item_location weapon = dude.get_wielded_item();
+        dude.perform_technique( tec_brawl_strangle.obj(), target, di, move_cost, weapon );
+        CHECK( target.has_effect( effect_choking ) );
+        // The choke itself barely hurts
+        CHECK( di.type_damage( damage_bash ) == Approx( 2.0f ) );
+
+        monster &zed = spawn_test_monster( "mon_zombie", dude_pos + tripoint::west );
+        zed.add_effect( effect_grabbed, 1_days );
+        CHECK_FALSE( usable( dude, tec_brawl_strangle, zed ) );
+    }
 }
 
 TEST_CASE( "grapple_ma_knife_technique_needs_a_hold_and_a_knife", "[grapple][martial_arts]" )

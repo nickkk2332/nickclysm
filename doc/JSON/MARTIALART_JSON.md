@@ -218,6 +218,7 @@ Grapple techniques combine a hold with the usual weapon requirements, so a knife
 }
 ```
 
+The vanilla grapple techniques show more patterns: Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a hold; Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one you hold; Zui Quan's `tec_zuiquan_throw` (Drunken Fall) downs you as well as the target, and its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling; Brawling's `tec_brawl_strangle` puts `choking` and `strangulation` on a breathing target, and their damage ignores armor.
 
 
 ## Techniques
