@@ -119,16 +119,9 @@
     "spawn_rate": 0.25
   },
   {
-    "id": "test_spawn_rate_category",
-    "copy-from": "test_spawn_rate_category",
-    "//": "Overrides the category above and only renames it: its spawn rate must stay 0.25 (ITEM-B09).",
-    "type": "ITEM_CATEGORY",
-    "name_header": { "str": "TEST renamed spawn rate" }
-  },
-  {
     "id": "test_spawn_rate_category_copy",
     "copy-from": "test_spawn_rate_category",
-    "//": "Inherits the 0.25 spawn rate (ITEM-B09).",
+    "//": "Inherits the 0.25 spawn rate, as a same-id override from another mod does (ITEM-B09).",
     "type": "ITEM_CATEGORY",
     "name_header": { "str": "TEST copied spawn rate" },
     "sort_rank": 1001

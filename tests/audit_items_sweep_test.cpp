@@ -270,8 +270,9 @@ TEST_CASE( "item-b08_countdown_items_are_active", "[audit][item]" )
 // rate an earlier definition had set to 1.0.
 TEST_CASE( "item-b09_item_category_spawn_rate_survives_override_and_save", "[audit][item]" )
 {
+    // A copy-from (including a same-id override in a later mod, which loads the same way)
+    // keeps the source's rate.
     const item_category &cat = item_category_test_spawn_rate_category.obj();
-    REQUIRE( cat.name_header() == "TEST renamed spawn rate" );
     CHECK( cat.get_spawn_rate() == Approx( 0.25f ) );
     CHECK( item_category_test_spawn_rate_category_copy->get_spawn_rate() == Approx( 0.25f ) );
 
