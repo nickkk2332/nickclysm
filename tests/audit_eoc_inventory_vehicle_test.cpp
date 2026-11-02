@@ -34,7 +34,9 @@ static const itype_id itype_apple( "apple" );
 static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_bag_canvas( "bag_canvas" );
 static const itype_id itype_battery( "battery" );
+static const itype_id itype_biodiesel( "biodiesel" );
 static const itype_id itype_bottle_plastic( "bottle_plastic" );
+static const itype_id itype_diesel( "diesel" );
 static const itype_id itype_duffelbag( "duffelbag" );
 static const itype_id itype_gasoline( "gasoline" );
 static const itype_id itype_lighter( "lighter" );
@@ -42,8 +44,10 @@ static const itype_id itype_remotevehcontrol( "remotevehcontrol" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_water_clean( "water_clean" );
 
+static const vpart_id vpart_diesel_engine_inline4( "diesel_engine_inline4" );
 static const vpart_id vpart_frame( "frame" );
 static const vpart_id vpart_headlight( "headlight" );
+static const vpart_id vpart_tank( "tank" );
 static const vpart_id vpart_test_force_field( "test_force_field" );
 static const vpart_id vpart_wide_headlight( "wide_headlight" );
 
@@ -51,6 +55,8 @@ static const vproto_id vehicle_prototype_car( "car" );
 static const vproto_id vehicle_prototype_none( "none" );
 
 static constexpr tripoint_bub_ms car_pos( 60, 60, 0 );
+// clear of the car placed at car_pos
+static constexpr tripoint_bub_ms second_veh_pos( 60, 66, 0 );
 
 static conditional_t::func load_condition( const std::string &json )
 {
@@ -308,6 +314,16 @@ static vehicle &place_empty_car( map &here )
     return *veh;
 }
 
+static vehicle &place_two_frames( map &here, const tripoint_bub_ms &pos = car_pos )
+{
+    vehicle *veh = here.add_vehicle( vehicle_prototype_none, pos, 0_degrees, 0,
+                                     veh_spawn_status::UNDAMAGED );
+    REQUIRE( veh != nullptr );
+    REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) != -1 );
+    REQUIRE( veh->install_part( here, point_rel_ms( 1, 0 ), vpart_frame ) != -1 );
+    return *veh;
+}
+
 // VEH-J01: no math function took a vehicle talker, so an EOC could not read or change fuel,
 // battery charge, engine state, speed, lock or part condition.
 TEST_CASE( "veh-j01_math_reads_and_writes_vehicle_state", "[audit][eoc][vehicle]" )
@@ -380,6 +396,23 @@ TEST_CASE( "veh-j01_math_reads_and_writes_vehicle_state", "[audit][eoc][vehicle]
         CHECK_FALSE( veh.engine_on );
     }
 
+    SECTION( "engine_switches_to_another_fuel" ) {
+        // a diesel engine also burns biodiesel; with only biodiesel aboard it starts on that
+        vehicle &diesel = place_two_frames( here, second_veh_pos );
+        const int engine = diesel.install_part( here, point_rel_ms::zero,
+                                                vpart_diesel_engine_inline4 );
+        REQUIRE( engine != -1 );
+        REQUIRE( diesel.install_part( here, point_rel_ms( 1, 0 ), vpart_tank ) != -1 );
+        REQUIRE( diesel.part( engine ).fuel_current() == itype_diesel );
+        dialogue dd( get_talker_for( diesel ), nullptr );
+        eval_math( dd, "u_vehicle_fuel('biodiesel') = 2000" );
+        REQUIRE( diesel.fuel_left( here, itype_biodiesel ) == 2000 );
+        eval_math( dd, "u_vehicle_engine_on() = 1" );
+        CHECK( diesel.engine_on );
+        CHECK( diesel.part( engine ).fuel_current() == itype_biodiesel );
+        here.destroy_vehicle( &diesel );
+    }
+
     SECTION( "lock" ) {
         veh.is_locked = false;
         eval_math( d, "u_vehicle_locked() = 1" );
@@ -448,16 +481,6 @@ TEST_CASE( "veh-j01_vehicle_conditions_have_no_side_effects", "[audit][eoc][vehi
 
     g->setremoteveh( nullptr );
     here.destroy_vehicle( &veh );
-}
-
-static vehicle &place_two_frames( map &here )
-{
-    vehicle *veh = here.add_vehicle( vehicle_prototype_none, car_pos, 0_degrees, 0,
-                                     veh_spawn_status::UNDAMAGED );
-    REQUIRE( veh != nullptr );
-    REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) != -1 );
-    REQUIRE( veh->install_part( here, point_rel_ms( 1, 0 ), vpart_frame ) != -1 );
-    return *veh;
 }
 
 // The electronics menu entries of a vehicle.

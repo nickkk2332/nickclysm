@@ -2115,6 +2115,12 @@ void vehicle_engine_on_ass( double val, dialogue &d, char scope,
             veh->part( idx ).enabled = !veh->part( idx ).is_broken();
         }
     }
+    // like vehicle::start_engine(), switch an engine to another fuel it burns when its own is out
+    for( const int idx : veh->engines ) {
+        if( veh->part( idx ).enabled ) {
+            veh->auto_select_fuel( here, veh->part( idx ) );
+        }
+    }
     // engines without fuel would stall on the next turn anyway (vehicle::idle)
     veh->engine_on = veh->total_power( here ) > 0_W;
 }
