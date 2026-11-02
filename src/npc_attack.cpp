@@ -5,10 +5,15 @@
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <tuple>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "avatar.h"
 #include "cata_utility.h"
 #include "character.h"
 #include "creature.h"
@@ -18,6 +23,7 @@
 #include "dialogue.h"
 #include "dialogue_helpers.h"
 #include "flag.h"
+#include "game.h"
 #include "gun_mode.h"
 #include "item.h"
 #include "item_location.h"
@@ -27,7 +33,9 @@
 #include "map.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
+#include "memory_fast.h"
 #include "messages.h"
+#include "monster.h"
 #include "npc.h"
 #include "pimpl.h"
 #include "point.h"
@@ -128,6 +136,202 @@ static void set_gun_mode( item &gun, const gun_mode &mode )
     }
 }
 
+// Every tile of a points_in_radius() range where creature_tracker::creature_at() could find a
+// creature, in the order the range visits its tiles. Looping over these instead of the whole
+// range finds the same creatures in the same order, without asking about every empty tile.
+static std::vector<tripoint_bub_ms> creature_tiles_in( const tripoint_range<tripoint_bub_ms>
+        &range )
+{
+    const tripoint_bub_ms &lo = range.min();
+    const tripoint_bub_ms &hi = range.max();
+    std::vector<tripoint_bub_ms> tiles;
+    const auto add = [&]( const tripoint_bub_ms & p ) {
+        if( p.x() >= lo.x() && p.x() <= hi.x() && p.y() >= lo.y() && p.y() <= hi.y() &&
+            p.z() >= lo.z() && p.z() <= hi.z() ) {
+            tiles.push_back( p );
+        }
+    };
+    // creature_at() finds monsters, the avatar and the active NPCs
+    for( const shared_ptr_fast<monster> &mon : get_creature_tracker().get_monsters_list() ) {
+        add( mon->pos_bub() );
+    }
+    for( const npc &guy : g->all_npcs() ) {
+        add( guy.pos_bub() );
+    }
+    add( get_avatar().pos_bub() );
+    // a range visits x fastest, then y, then z
+    std::sort( tiles.begin(), tiles.end(), []( const tripoint_bub_ms & a, const tripoint_bub_ms & b ) {
+        return std::make_tuple( a.z(), a.y(), a.x() ) < std::make_tuple( b.z(), b.y(), b.x() );
+    } );
+    tiles.erase( std::unique( tiles.begin(), tiles.end() ), tiles.end() );
+    return tiles;
+}
+
+// npc_attack_spell::evaluate() over the same tiles in the same order, with the same ratings
+// and the same random numbers drawn, but each map and creature question asked once, and a
+// tile whose area can't hold a creature rated without working out its area. Returns nothing
+// when only the full scan gives the same answer: the spell's area, range or field value draw
+// random numbers, or its targets have a condition.
+static std::optional<npc_attack_rating> rate_spell_quickly( const spell &attack_spell,
+        const npc &source, const Creature *target, const int time_penalty )
+{
+    spell_area_calculator areas( attack_spell, source );
+    if( !areas.usable() ) {
+        return std::nullopt;
+    }
+    const spell_type &type = attack_spell.id().obj();
+    cata_default_random_engine &engine = rng_get_engine();
+
+    // what each empty tile of the area is worth when the spell leaves a field
+    const bool has_field = type.field.has_value();
+    double field_value = 0.0;
+    if( has_field ) {
+        const cata_default_random_engine before = engine;
+        const_dialogue d( get_const_talker_for( source ), nullptr );
+        field_value = static_cast<double>( attack_spell.field_intensity( source ) ) /
+                      static_cast<double>( type.field_chance.evaluate( d ) ) / 2.0;
+        if( engine != before ) {
+            engine = before;
+            return std::nullopt;
+        }
+    }
+    // spell::dps() ignores its target: unless it draws random numbers (random damage), it is
+    // the same for every creature
+    std::optional<float> fixed_dps;
+    {
+        const cata_default_random_engine before = engine;
+        const float dps = attack_spell.dps( source, source );
+        if( engine == before ) {
+            fixed_dps = dps;
+        } else {
+            engine = before;
+        }
+    }
+
+    const map &here = get_map();
+    const tripoint_bub_ms char_pos = source.pos_bub();
+    const tripoint_range<tripoint_bub_ms> in_range = here.points_in_radius( char_pos,
+            areas.range() );
+    // spell::targetable_locations(). Its checks have no side effects, so the cheapest goes first.
+    const bool select_ground = attack_spell.is_valid_target( spell_target::ground );
+    const bool ignore_walls = attack_spell.has_flag( spell_flag::NO_PROJECTILE );
+    const auto targetable = [&]( const tripoint_bub_ms & query ) {
+        return areas.valid_target( query ) &&
+               ( ignore_walls || areas.passable_line( char_pos, query ) ) &&
+               ( select_ground || source.sees( here, query ) );
+    };
+
+    struct critter_view {
+        Creature::Attitude att;
+        bool seen;
+    };
+    std::unordered_map<const Creature *, critter_view> critters;
+    // npc_attack_spell::evaluate_tripoint()
+    const auto rate_tile = [&]( const tripoint_bub_ms & location ) {
+        double total_potential = 0;
+        for( const tripoint_bub_ms &potential_target : areas.area( location ) ) {
+            Creature *critter = areas.creature_at( potential_target );
+            if( !critter ) {
+                // no critter? no damage! however, we assume fields are worth something
+                if( has_field ) {
+                    total_potential += field_value;
+                }
+                continue;
+            }
+            auto known = critters.find( critter );
+            if( known == critters.end() ) {
+                known = critters.emplace( critter, critter_view{
+                    source.attitude_to( *critter ), source.sees( here, *critter ) } ).first;
+            }
+            const Creature::Attitude att = known->second.att;
+            int damage = 0;
+            if( known->second.seen ) {
+                damage = fixed_dps ? *fixed_dps : attack_spell.dps( source, *critter );
+            }
+            const int distance_to_me = rl_dist( char_pos, potential_target );
+            const bool friendly_fire = att == Creature::Attitude::FRIENDLY &&
+                                       !source.rules.has_flag( ally_rule::avoid_friendly_fire );
+            int attitude_mult = 3;
+            if( att == Creature::Attitude::FRIENDLY ) {
+                attitude_mult = -10;
+            } else if( att == Creature::Attitude::NEUTRAL || friendly_fire ) {
+                attitude_mult = -1;
+            }
+            int potential = damage * attitude_mult - distance_to_me + 1;
+            if( target && critter == target ) {
+                potential *= npc_attack_constants::target_modifier;
+            }
+            if( damage >= critter->get_hp() ) {
+                potential *= npc_attack_constants::kill_modifier;
+                if( att == Creature::Attitude::NEUTRAL ) {
+                    potential = std::abs( potential );
+                }
+                const Creature *source_ptr = &source;
+                if( att == Creature::Attitude::FRIENDLY || critter == source_ptr ) {
+                    return npc_attack_rating( std::nullopt, location );
+                }
+            }
+            total_potential += potential;
+        }
+        return npc_attack_rating( static_cast<int>( std::round( total_potential ) ), location );
+    };
+
+    // Without a field, a tile whose area holds no creature rates 0 and draws no random
+    // numbers. A blast's area (or a one-tile area) only reaches aoe tiles from where it
+    // lands, which is the targeted tile itself for any tile the caster can target.
+    const bool one_tile = areas.aoe() < 1 && attack_spell.shape() != spell_shape::line;
+    const bool skip_empty = field_value == 0.0 &&
+                            ( one_tile || attack_spell.shape() == spell_shape::blast );
+    const int reach = one_tile ? 0 : std::max( areas.aoe(), 0 );
+    const tripoint_bub_ms &lo = in_range.min();
+    const int width = in_range.max().x() - lo.x() + 1;
+    const int height = in_range.max().y() - lo.y() + 1;
+    std::vector<uint8_t> near_creature;
+    if( skip_empty && width > 0 && height > 0 ) {
+        near_creature.assign( static_cast<size_t>( width ) * height, 0 );
+        const tripoint_range<tripoint_bub_ms> wider( in_range.min() - tripoint_rel_ms( reach, reach, 0 ),
+                in_range.max() + tripoint_rel_ms( reach, reach, 0 ) );
+        for( const tripoint_bub_ms &c : creature_tiles_in( wider ) ) {
+            for( int x = std::max( c.x() - reach, lo.x() ); x <= std::min( c.x() + reach, lo.x() + width - 1 );
+                 ++x ) {
+                for( int y = std::max( c.y() - reach, lo.y() );
+                     y <= std::min( c.y() + reach, lo.y() + height - 1 ); ++y ) {
+                    near_creature[static_cast<size_t>( y - lo.y() ) * width + ( x - lo.x() )] = 1;
+                }
+            }
+        }
+    }
+
+    npc_attack_rating effectiveness;
+    bool rated_empty_area = false;
+    for( const tripoint_bub_ms &query : in_range ) {
+        if( skip_empty &&
+            !near_creature[static_cast<size_t>( query.y() - lo.y() ) * width + ( query.x() - lo.x() )] ) {
+            // Every such tile rates 0 less the time penalty, so after the first one the
+            // others can't be strictly better.
+            if( rated_empty_area || !targetable( query ) ) {
+                continue;
+            }
+            rated_empty_area = true;
+            npc_attack_rating effectiveness_at_point( 0, query );
+            effectiveness_at_point -= time_penalty;
+            if( effectiveness_at_point > effectiveness ) {
+                effectiveness = effectiveness_at_point;
+            }
+            continue;
+        }
+        if( !targetable( query ) ) {
+            continue;
+        }
+        npc_attack_rating effectiveness_at_point = rate_tile( query );
+        effectiveness_at_point -= time_penalty;
+        if( effectiveness_at_point > effectiveness ) {
+            effectiveness = effectiveness_at_point;
+        }
+    }
+    return effectiveness;
+}
+
 bool npc_attack_rating::operator>( const npc_attack_rating &rhs ) const
 {
     if( !rhs._value ) {
@@ -183,6 +387,10 @@ npc_attack_rating npc_attack_spell::evaluate( const npc &source,
         return effectiveness;
     }
     const int time_penalty = base_time_penalty( source );
+    if( std::optional<npc_attack_rating> quick = rate_spell_quickly( attack_spell, source, target,
+            time_penalty ) ) {
+        return *quick;
+    }
     const std::vector<tripoint_bub_ms> targetable_points = attack_spell.targetable_locations( source );
     for( const tripoint_bub_ms &targetable_point : targetable_points ) {
         npc_attack_rating effectiveness_at_point = evaluate_tripoint( source, target, targetable_point );

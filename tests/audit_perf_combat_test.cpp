@@ -10,12 +10,15 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
@@ -28,7 +31,9 @@
 #include "item_location.h"
 #include "itype.h"
 #include "iuse_actor.h"
+#include "line.h"
 #include "magic.h"
+#include "magic_spell_effect_helpers.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
@@ -64,6 +69,9 @@ static const itype_id itype_shotgun_s( "shotgun_s" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
+static const spell_id spell_test_area_blast_ignore_walls( "test_area_blast_ignore_walls" );
+static const spell_id spell_test_area_cone_ignore_walls( "test_area_cone_ignore_walls" );
+static const spell_id spell_test_area_wide_line( "test_area_wide_line" );
 static const spell_id spell_test_npc_cone_cold( "test_npc_cone_cold" );
 static const spell_id spell_test_npc_fireball( "test_npc_fireball" );
 static const spell_id spell_test_npc_lightning_bolt( "test_npc_lightning_bolt" );
@@ -457,6 +465,74 @@ TEST_CASE( "npc-p01_spell_rating_matches_full_tile_scan", "[audit][npc_attack]" 
             clean_up_fight();
         }
     }
+}
+
+// MAGIC-P02 (with MAGIC-P04 and MAGIC-P05 where NPCs rate spells): the cached area calculator
+// NPCs rate their spells with finds the same tiles, in the same order, as
+// calculate_spell_effect_area(), for blasts, cones and lines, with walls in the way or
+// ignored, near the map's edge, with either distance metric.
+TEST_CASE( "magic-p02_spell_area_calculator_matches_spell_areas", "[audit][magic]" )
+{
+    restore_on_out_of_scope restore_trigdist( trigdist );
+    map &here = get_map();
+    for( const bool trig : {
+             false, true
+         } ) {
+        trigdist = trig;
+        for( unsigned int layout = 1; layout <= 2; ++layout ) {
+            CAPTURE( trig );
+            CAPTURE( layout );
+            clear_map_and_put_player_underground();
+            rng_set_engine_seed( layout );
+            const tripoint_bub_ms center = layout == 1 ? tripoint_bub_ms( 50, 50, 0 ) :
+                                           tripoint_bub_ms( 3, 40, 0 );
+            for( int i = 0; i < 60; ++i ) {
+                const tripoint_bub_ms p = center + tripoint_rel_ms( rng( -15, 15 ), rng( -15, 15 ), 0 );
+                if( p != center && here.inbounds( p ) ) {
+                    here.ter_set( p, ter_t_wall );
+                }
+            }
+            for( int i = 0; i < 6; ++i ) {
+                const tripoint_bub_ms p = center + tripoint_rel_ms( rng( -12, 12 ), rng( -12, 12 ), 0 );
+                if( p != center && here.inbounds( p ) && here.passable( p ) &&
+                    get_creature_tracker().creature_at<Creature>( p ) == nullptr ) {
+                    g->place_critter_at( mon_zombie, p );
+                }
+            }
+            get_avatar().setpos( here, center + tripoint_rel_ms( 2, 1, 0 ) );
+            standard_npc caster( "Caster", center );
+            for( const spell_id &id : {
+                     spell_test_npc_fireball, spell_test_npc_cone_cold, spell_test_npc_lightning_bolt,
+                     spell_test_npc_magic_missile, spell_test_spell_pew, spell_test_area_blast_ignore_walls,
+                     spell_test_area_cone_ignore_walls, spell_test_area_wide_line
+                 } ) {
+                CAPTURE( id.str() );
+                spell sp( id );
+                sp.set_level( caster, 10 );
+                spell_area_calculator areas( sp, caster );
+                REQUIRE( areas.usable() );
+                int mismatches = 0;
+                std::string first_mismatch;
+                for( const tripoint_bub_ms &target : here.points_in_radius( center, sp.range( caster ) + 2 ) ) {
+                    const std::set<tripoint_bub_ms> expected = calculate_spell_effect_area( sp, target, caster );
+                    const std::vector<tripoint_bub_ms> &got = areas.area( target );
+                    if( !std::equal( got.begin(), got.end(), expected.begin(), expected.end() ) ) {
+                        if( mismatches++ == 0 ) {
+                            std::ostringstream os;
+                            os << "target " << target << ": " << got.size() << " tiles, expected " <<
+                               expected.size();
+                            first_mismatch = os.str();
+                        }
+                    }
+                }
+                CAPTURE( first_mismatch );
+                CHECK( mismatches == 0 );
+            }
+        }
+    }
+    clear_creatures();
+    clear_avatar();
+    clear_map_and_put_player_underground();
 }
 
 // NPC-P02: rating a gun mode, a melee weapon or a throw picks the same rating and target as
