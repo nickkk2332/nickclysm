@@ -739,6 +739,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                                  !t.has_flag( json_flag_CANNOT_TAKE_DAMAGE ) &&
                                  t.times_combatted_player <= 100;
     Character &player_character = get_player_character();
+    // What the martial art's event EOCs see: the target as npc_ and the attack as context values
+    ma_event_context ma_ctx;
+    ma_ctx.opponent = &t;
+    ma_ctx.weapon = cur_weap.typeId();
+    ma_ctx.hit = hits;
     if( !hits ) {
         int stumble_pen = stumble( *this, cur_weapon );
         sfx::generate_melee_sound( cur_weap, pos_bub(), t.pos_bub(), false, false );
@@ -787,7 +792,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         }
 
         // trigger martial arts on-miss effects
-        martial_arts_data->ma_onmiss_effects( *this );
+        martial_arts_data->ma_onmiss_effects( *this, ma_ctx );
     } else {
         melee::melee_stats.hit_count += 1;
         // Remember if we see the monster at start - it may change
@@ -863,6 +868,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         }
 
         const ma_technique &technique = attack_id.obj();
+        ma_ctx.weapon = cur_weap.typeId();
+        ma_ctx.technique = technique.id;
+        ma_ctx.bp = target_bp.id();
+        ma_ctx.crit = critical_hit;
+        ma_ctx.damage = 0.0;
 
         // Handles effects as well; not done in melee_affect_*
         if( technique.id != tec_none ) {
@@ -897,6 +907,12 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
             weakpoint_attack attack;
             attack.weapon = &cur_weap;
             t.deal_melee_hit( this, hit_spread, critical_hit, d, dealt_dam, attack, &target_bp );
+            ma_ctx.damage = dealt_dam.total_damage();
+            ma_ctx.bp = dealt_dam.bp_hit.id();
+            if( !t.is_hallucination() ) {
+                // on-hit effects for martial arts, after the hit so they see the damage dealt
+                martial_arts_data->ma_onhit_effects( *this, ma_ctx );
+            }
 
             // Make a rather quiet sound, to alert any nearby monsters
             if( !is_quiet() ) { // check martial arts silence
@@ -936,16 +952,21 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
             if( critical_hit ) {
                 // trigger martial arts on-crit effects
-                martial_arts_data->ma_oncrit_effects( *this );
+                martial_arts_data->ma_oncrit_effects( *this, ma_ctx );
             }
 
         }
 
         t.check_dead_state( &here );
+        ma_ctx.killed = t.is_dead_state();
 
         if( t.is_dead_state() ) {
             // trigger martial arts on-kill effects
-            martial_arts_data->ma_onkill_effects( *this );
+            martial_arts_data->ma_onkill_effects( *this, ma_ctx );
+        }
+        // The technique's post-hit EOCs see the damage dealt and whether the target died
+        if( technique.id != tec_none ) {
+            ma_ctx.activate( *this, technique.post_hit_eocs );
         }
     }
 
@@ -971,7 +992,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                    total_stam + deft_bonus );
     reduce_moves_from_attack( forced_movecost, move_cost );
     // trigger martial arts on-attack effects
-    martial_arts_data->ma_onattack_effects( *this );
+    martial_arts_data->ma_onattack_effects( *this, ma_ctx );
     // some things (shattering weapons) can harm the attacking creature.
     check_dead_state( &here );
     did_hit( t );
@@ -2015,16 +2036,19 @@ item_location Character::best_shield()
 
 bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instance &dam )
 {
+    // fire martial arts on-getting-hit-triggered effects
+    // these fire even if the attack is blocked (you still got hit) or can't be blocked
+    ma_event_context gethit_ctx;
+    gethit_ctx.opponent = source;
+    gethit_ctx.bp = bp_hit.id();
+    gethit_ctx.damage = dam.total_damage();
+    martial_arts_data->ma_ongethit_effects( *this, gethit_ctx );
 
     // Shouldn't block if player is asleep or winded
     if( in_sleep_state() || has_effect( effect_narcosis ) ||
         has_effect( effect_winded ) || has_effect( effect_fearparalyze ) || is_driving() ) {
         return false;
     }
-
-    // fire martial arts on-getting-hit-triggered effects
-    // these fire even if the attack is blocked (you still got hit)
-    martial_arts_data->ma_ongethit_effects( *this );
 
     magic->break_channeling( *this );
 
@@ -2247,7 +2271,11 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     add_msg_debug( debugmode::DF_MELEE, "Blocking stamina cost %.1f", block_stamina_cost );
 
     // fire martial arts block-triggered effects
-    martial_arts_data->ma_onblock_effects( *this );
+    ma_event_context block_ctx;
+    block_ctx.opponent = source;
+    block_ctx.bp = bp_hit.id();
+    block_ctx.damage = dam.total_damage();
+    martial_arts_data->ma_onblock_effects( *this, block_ctx );
 
     // Check if we have any block counters
     matec_id tec = std::get<0>( pick_technique( *source, shield, false, false, true ) );
@@ -2381,9 +2409,6 @@ std::string Character::melee_special_effects( Creature &t, damage_instance &d, i
         d.add_damage( damage_cut, rng( 0, 5 + static_cast<int>( vol * 1.5 ) ) ); // Hurt the monster extra
         remove_weapon();
     }
-
-    // on-hit effects for martial arts
-    martial_arts_data->ma_onhit_effects( *this );
 
     return dump;
 }

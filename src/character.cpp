@@ -1884,7 +1884,9 @@ void Character::on_dodge( Creature *source, float difficulty, float training_lev
         source->times_combatted_player++;
         practice( skill_dodge, difficulty * 2, difficulty );
     }
-    martial_arts_data->ma_ondodge_effects( *this );
+    ma_event_context dodge_ctx;
+    dodge_ctx.opponent = source;
+    martial_arts_data->ma_ondodge_effects( *this, dodge_ctx );
 
     magic->break_channeling( *this );
 

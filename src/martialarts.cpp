@@ -345,6 +345,9 @@ void ma_technique::load( const JsonObject &jo, std::string_view src )
     for( JsonValue jv : jo.get_array( "eocs" ) ) {
         eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
+    for( JsonValue jv : jo.get_array( "post_hit_eocs" ) ) {
+        post_hit_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
 
     if( jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", condition, false );
@@ -366,6 +369,12 @@ void ma_technique::check() const
 {
     if( attack_vectors.empty() && !dummy && !defensive && !grab_break && !miss_recovery ) {
         debugmsg( "MA technique %s is missing an attack vector", id.c_str() );
+    }
+    for( const effect_on_condition_id &eoc : post_hit_eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "MA technique %s has unknown post_hit_eocs entry %s", id.c_str(),
+                      eoc.c_str() );
+        }
     }
 }
 
@@ -1335,14 +1344,42 @@ void martialart::apply_onkill_buffs( Character &u ) const
     simultaneous_add( u, onkill_buffs );
 }
 
-void martialart::activate_eocs( Character &u,
-                                const std::vector<effect_on_condition_id> &eocs ) const
+void ma_event_context::activate( Character &u,
+                                 const std::vector<effect_on_condition_id> &eocs ) const
 {
     for( const effect_on_condition_id &eoc : eocs ) {
-        dialogue d( get_talker_for( u ), nullptr );
+        dialogue d( get_talker_for( u ), opponent ? get_talker_for( opponent ) : nullptr );
+        if( !weapon.is_empty() ) {
+            d.set_value( "weapon", weapon.str() );
+        }
+        if( !technique.is_empty() ) {
+            d.set_value( "technique", technique.str() );
+        }
+        if( !bp.is_empty() ) {
+            d.set_value( "bp", bp.str() );
+        }
+        if( damage ) {
+            d.set_value( "damage", *damage );
+        }
+        if( hit ) {
+            d.set_value( "hit", *hit ? 1.0 : 0.0 );
+        }
+        if( crit ) {
+            d.set_value( "crit", *crit ? 1.0 : 0.0 );
+        }
+        if( killed ) {
+            d.set_value( "killed", *killed ? 1.0 : 0.0 );
+        }
         eoc->activate_activation_only( d, "a martial art activation", "martial art being activated",
                                        "martial art" );
     }
+}
+
+void martialart::activate_eocs( Character &u,
+                                const std::vector<effect_on_condition_id> &eocs,
+                                const ma_event_context &ctx ) const
+{
+    ctx.activate( u, eocs );
 }
 
 void martialart::apply_static_eocs( Character &u ) const
@@ -1360,44 +1397,44 @@ void martialart::apply_onpause_eocs( Character &u ) const
     activate_eocs( u, onpause_eocs );
 }
 
-void martialart::apply_onhit_eocs( Character &u ) const
+void martialart::apply_onhit_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, onhit_eocs );
+    activate_eocs( u, onhit_eocs, ctx );
 }
 
-void martialart::apply_onattack_eocs( Character &u ) const
+void martialart::apply_onattack_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, onattack_eocs );
+    activate_eocs( u, onattack_eocs, ctx );
 }
 
-void martialart::apply_ondodge_eocs( Character &u ) const
+void martialart::apply_ondodge_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, ondodge_eocs );
+    activate_eocs( u, ondodge_eocs, ctx );
 }
 
-void martialart::apply_onblock_eocs( Character &u ) const
+void martialart::apply_onblock_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, onblock_eocs );
+    activate_eocs( u, onblock_eocs, ctx );
 }
 
-void martialart::apply_ongethit_eocs( Character &u ) const
+void martialart::apply_ongethit_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, ongethit_eocs );
+    activate_eocs( u, ongethit_eocs, ctx );
 }
 
-void martialart::apply_onmiss_eocs( Character &u ) const
+void martialart::apply_onmiss_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, onmiss_eocs );
+    activate_eocs( u, onmiss_eocs, ctx );
 }
 
-void martialart::apply_oncrit_eocs( Character &u ) const
+void martialart::apply_oncrit_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, oncrit_eocs );
+    activate_eocs( u, oncrit_eocs, ctx );
 }
 
-void martialart::apply_onkill_eocs( Character &u ) const
+void martialart::apply_onkill_eocs( Character &u, const ma_event_context &ctx ) const
 {
-    activate_eocs( u, onkill_eocs );
+    activate_eocs( u, onkill_eocs, ctx );
 }
 
 bool martialart::has_technique( const Character &u, const matec_id &tec_id ) const
@@ -1817,45 +1854,45 @@ void character_martial_arts::ma_onpause_effects( Character &owner )
     style_selected->apply_onpause_buffs( owner );
     style_selected->apply_onpause_eocs( owner );
 }
-void character_martial_arts::ma_onhit_effects( Character &owner )
+void character_martial_arts::ma_onhit_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_onhit_buffs( owner );
-    style_selected->apply_onhit_eocs( owner );
+    style_selected->apply_onhit_eocs( owner, ctx );
 }
-void character_martial_arts::ma_onattack_effects( Character &owner )
+void character_martial_arts::ma_onattack_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_onattack_buffs( owner );
-    style_selected->apply_onattack_eocs( owner );
+    style_selected->apply_onattack_eocs( owner, ctx );
 }
-void character_martial_arts::ma_ondodge_effects( Character &owner )
+void character_martial_arts::ma_ondodge_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_ondodge_buffs( owner );
-    style_selected->apply_ondodge_eocs( owner );
+    style_selected->apply_ondodge_eocs( owner, ctx );
 }
-void character_martial_arts::ma_onblock_effects( Character &owner )
+void character_martial_arts::ma_onblock_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_onblock_buffs( owner );
-    style_selected->apply_onblock_eocs( owner );
+    style_selected->apply_onblock_eocs( owner, ctx );
 }
-void character_martial_arts::ma_ongethit_effects( Character &owner )
+void character_martial_arts::ma_ongethit_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_ongethit_buffs( owner );
-    style_selected->apply_ongethit_eocs( owner );
+    style_selected->apply_ongethit_eocs( owner, ctx );
 }
-void character_martial_arts::ma_onmiss_effects( Character &owner )
+void character_martial_arts::ma_onmiss_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_onmiss_buffs( owner );
-    style_selected->apply_onmiss_eocs( owner );
+    style_selected->apply_onmiss_eocs( owner, ctx );
 }
-void character_martial_arts::ma_oncrit_effects( Character &owner )
+void character_martial_arts::ma_oncrit_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_oncrit_buffs( owner );
-    style_selected->apply_oncrit_eocs( owner );
+    style_selected->apply_oncrit_eocs( owner, ctx );
 }
-void character_martial_arts::ma_onkill_effects( Character &owner )
+void character_martial_arts::ma_onkill_effects( Character &owner, const ma_event_context &ctx )
 {
     style_selected->apply_onkill_buffs( owner );
-    style_selected->apply_onkill_eocs( owner );
+    style_selected->apply_onkill_eocs( owner, ctx );
 }
 
 template<typename C, typename F>

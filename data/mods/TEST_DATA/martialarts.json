@@ -163,5 +163,60 @@
       "test_vector_tech_2"
     ],
     "weapon_category": [ "TEST_CAT1" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_cmbt_j01_post_hit",
+    "name": "Test Post-Hit Technique",
+    "melee_allowed": true,
+    "attack_vectors": [ "vector_null" ],
+    "post_hit_eocs": [
+      {
+        "id": "EOC_TEST_CMBT_J01_POST_HIT",
+        "condition": "has_beta",
+        "effect": [
+          { "copy_var": { "context_val": "damage" }, "target_var": { "npc_val": "cmbt_j01_post_hit_damage" } },
+          { "copy_var": { "context_val": "killed" }, "target_var": { "u_val": "cmbt_j01_post_hit_killed" } }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_cmbt_j01",
+    "name": { "str": "Test Event Style" },
+    "description": "Test martial art whose event EOCs record what they see.",
+    "initiate": [ "You use a test event style.", "%s enters a test event stance." ],
+    "allow_all_weapons": true,
+    "onhit_eocs": [
+      {
+        "id": "EOC_TEST_CMBT_J01_ONHIT",
+        "condition": "has_beta",
+        "effect": [
+          { "copy_var": { "context_val": "damage" }, "target_var": { "u_val": "cmbt_j01_onhit_damage" } },
+          { "copy_var": { "context_val": "technique" }, "target_var": { "u_val": "cmbt_j01_onhit_technique" } },
+          { "math": [ "n_cmbt_j01_was_hit = 1" ] }
+        ]
+      }
+    ],
+    "onkill_eocs": [
+      {
+        "id": "EOC_TEST_CMBT_J01_ONKILL",
+        "condition": "has_beta",
+        "effect": [ { "copy_var": { "context_val": "killed" }, "target_var": { "npc_val": "cmbt_j01_killed_by_style" } } ]
+      }
+    ],
+    "ongethit_eocs": [
+      {
+        "id": "EOC_TEST_CMBT_J01_GETHIT",
+        "condition": "has_beta",
+        "effect": [
+          { "copy_var": { "context_val": "damage" }, "target_var": { "u_val": "cmbt_j01_gethit_damage" } },
+          { "copy_var": { "context_val": "bp" }, "target_var": { "u_val": "cmbt_j01_gethit_bp" } },
+          { "math": [ "n_cmbt_j01_hit_them = 1" ] }
+        ]
+      }
+    ],
+    "ondodge_eocs": [ { "id": "EOC_TEST_CMBT_J01_DODGE", "condition": "has_beta", "effect": [ { "math": [ "n_cmbt_j01_dodged = 1" ] } ] } ]
   }
 ]

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -18,16 +19,43 @@
 #include "uilist.h"
 
 class Character;
+class Creature;
 class JsonObject;
 class effect;
 class item;
 class item_location;
 struct const_dialogue;
+struct dialogue;
 struct itype;
 template <typename T> class generic_factory;
 enum class bp_type;
 
 const matec_id tec_none( "tec_none" );
+
+/**
+ * What a martial art's event EOCs (onhit_eocs, ongethit_eocs, ...) and a technique's
+ * post_hit_eocs receive besides their user: the other creature in the exchange, which runs as
+ * the npc_ talker, and context values that describe the attack. Unset values are not sent.
+ */
+struct ma_event_context {
+    // The target of an attack event or the attacker of a defensive event; may be null
+    Creature *opponent = nullptr;
+    // `weapon`: id of the weapon used for the attack ("null" when unarmed)
+    itype_id weapon;
+    // `technique`: id of the technique used for the attack ("tec_none" when none)
+    matec_id technique;
+    // `bp`: body part hit; the target's for attack events, the user's own for defensive events
+    bodypart_str_id bp;
+    // `damage`: damage the hit dealt, or the damage coming in for ongethit and onblock
+    std::optional<double> damage;
+    // `hit`, `crit` and `killed`: 1 or 0
+    std::optional<bool> hit;
+    std::optional<bool> crit;
+    std::optional<bool> killed;
+
+    // Runs the EOCs with the user as alpha, the opponent as beta and the values above
+    void activate( Character &u, const std::vector<effect_on_condition_id> &eocs ) const;
+};
 
 class weapon_category
 {
@@ -244,6 +272,8 @@ class ma_technique
         float armor_penetration( const Character &u, const damage_type_id &type ) const;
 
         std::vector<effect_on_condition_id> eocs;
+        // Run once after the hit is dealt, with the target as beta and an ma_event_context
+        std::vector<effect_on_condition_id> post_hit_eocs;
 };
 
 class ma_buff
@@ -360,7 +390,8 @@ class martialart
 
         void apply_onkill_buffs( Character &u ) const;
 
-        void activate_eocs( Character &u, const std::vector<effect_on_condition_id> &eocs ) const;
+        void activate_eocs( Character &u, const std::vector<effect_on_condition_id> &eocs,
+                            const ma_event_context &ctx = {} ) const;
 
         // activates eocs when conditions are met
         void apply_static_eocs( Character &u ) const;
@@ -369,21 +400,21 @@ class martialart
 
         void apply_onpause_eocs( Character &u ) const;
 
-        void apply_onhit_eocs( Character &u ) const;
+        void apply_onhit_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onattack_eocs( Character &u ) const;
+        void apply_onattack_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_ondodge_eocs( Character &u ) const;
+        void apply_ondodge_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onblock_eocs( Character &u ) const;
+        void apply_onblock_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_ongethit_eocs( Character &u ) const;
+        void apply_ongethit_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onmiss_eocs( Character &u ) const;
+        void apply_onmiss_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_oncrit_eocs( Character &u ) const;
+        void apply_oncrit_eocs( Character &u, const ma_event_context &ctx ) const;
 
-        void apply_onkill_eocs( Character &u ) const;
+        void apply_onkill_eocs( Character &u, const ma_event_context &ctx ) const;
 
         // determines if a technique is valid or not for this style
         bool has_technique( const Character &u, const matec_id &tec_id ) const;

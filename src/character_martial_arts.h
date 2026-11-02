@@ -67,21 +67,21 @@ class character_martial_arts
         /** Fires all pause-triggered martial arts events */
         void ma_onpause_effects( Character &owner );
         /** Fires all hit-triggered martial arts events */
-        void ma_onhit_effects( Character &owner );
+        void ma_onhit_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all attack-triggered martial arts events */
-        void ma_onattack_effects( Character &owner );
+        void ma_onattack_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all dodge-triggered martial arts events */
-        void ma_ondodge_effects( Character &owner );
+        void ma_ondodge_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all block-triggered martial arts events */
-        void ma_onblock_effects( Character &owner );
+        void ma_onblock_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all get hit-triggered martial arts events */
-        void ma_ongethit_effects( Character &owner );
+        void ma_ongethit_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all miss-triggered martial arts events */
-        void ma_onmiss_effects( Character &owner );
+        void ma_onmiss_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all crit-triggered martial arts events */
-        void ma_oncrit_effects( Character &owner );
+        void ma_oncrit_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all kill-triggered martial arts events */
-        void ma_onkill_effects( Character &owner );
+        void ma_onkill_effects( Character &owner, const ma_event_context &ctx = {} );
 
         // Selects a valid attack vector
         std::optional<std::pair<attack_vector_id, sub_bodypart_str_id>> choose_attack_vector(

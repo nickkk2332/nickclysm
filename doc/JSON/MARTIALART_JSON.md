@@ -4,6 +4,7 @@
 
 - [Martial arts and Techniques](#martial-arts-and-techniques)
   - [Martial arts](#martial-arts)
+    - [Martial art event EOCs](#martial-art-event-eocs)
     - [Martial art buffs](#martial-art-buffs)
   - [Techniques](#techniques)
     - [Technique effects](#technique-effects)
@@ -59,7 +60,7 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
     "EOC_ID",                            // Syntax allows either eoc IDs or as inline blocks
     { "id": "INLINE_EOC_ID" }
   ],
-  "onmove_eocs": [  ],                   // List of eocs that are automatically triggered on movement
+  "onmove_eocs": [  ],                   // List of eocs that are automatically triggered on movement. The event EOCs below also get the opponent and context values, see Martial art event EOCs
   "onpause_eocs": [  ],                  // List of eocs that are automatically triggered when passing a turn
   "onattack_eocs": [  ],                 // List of eocs that are automatically triggered after any attack, hit or miss
   "onhit_eocs": [  ],                    // List of eocs that are automatically triggered on successful hit
@@ -76,6 +77,43 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
   "weapons": [ "tonfa" ],                // List of weapons usable with this art
   "weapon_category": [ "MEDIUM_SWORDS" ] // List of weapons categories usable with this MA
 }
+```
+
+
+### Martial art event EOCs
+
+The event EOCs run with the martial artist as the alpha (`u_`) talker and the other creature in the exchange as the beta (`npc_`) talker: the target for attack events, the attacker for defensive events. They also get context values that describe the attack (read them with `{ "context_val": "damage" }` or `_damage` in math). `static_eocs`, `onmove_eocs` and `onpause_eocs` have no beta talker and no context values.
+
+| Field | Beta (`npc_`) talker | Context values |
+| --- | --- | --- |
+| `onattack_eocs` | target | `weapon`, `hit`; after a hit also `technique`, `bp`, `crit`, `damage` and `killed` |
+| `onhit_eocs` | target | `weapon`, `hit`, `technique`, `bp`, `crit`, `damage` |
+| `oncrit_eocs` | target | same as `onhit_eocs` |
+| `onkill_eocs` | target (now dead) | same as `onhit_eocs`, plus `killed` |
+| `onmiss_eocs` | target | `weapon`, `hit` |
+| `ongethit_eocs` | attacker, if there is one | `bp`, `damage` |
+| `onblock_eocs` | attacker | `bp`, `damage` |
+| `ondodge_eocs` | attacker, if there is one | none |
+
+- `weapon`: string, id of the weapon used for the attack, `null` when unarmed.
+- `technique`: string, id of the technique used for the attack, `tec_none` when none.
+- `bp`: string, body part hit. For attack events it is the target's; for `ongethit_eocs` it is your own body part about to be hit, and for `onblock_eocs` the body part that takes the blocked hit.
+- `damage`: number. For attack events, the damage the hit dealt after armor. For `ongethit_eocs`, the incoming damage before blocking and armor; for `onblock_eocs`, the damage left after the block, before armor.
+- `hit`, `crit`, `killed`: 1 or 0.
+
+`onhit_eocs` run after the hit is dealt, so they see the damage; they still run when the hit deals no damage (check `_damage`). `ongethit_eocs` run for every melee hit you take, also while you are asleep, winded or driving and can't block. The beta talker can be missing (for example a hit with no attacker), so check `has_beta` before using `npc_` effects.
+
+```jsonc
+"onkill_eocs": [
+  {
+    "id": "EOC_MY_STYLE_FEAST",
+    "condition": { "and": [ "has_beta", { "math": [ "_damage >= 10" ] } ] },
+    "effect": [ { "u_add_effect": "my_style_feast", "duration": "30 s", "intensity": { "math": [ "_damage / 10" ] } } ]
+  }
+],
+"ondodge_eocs": [
+  { "id": "EOC_MY_STYLE_RIPOSTE", "condition": "has_beta", "effect": [ { "npc_add_effect": "dazed", "duration": "2 s" } ] }
+]
 ```
 
 
@@ -172,7 +210,8 @@ Techniques are special attacks performed while using a given MA style.  These ar
     "You phase-strike %s",
     "<npcname> phase-strikes %s"
   ],
-  "eocs": [ "EOC_ID", { "id": "INLINE_EOC_ID" } ],    // EOCs that trigger each time this technique does, with the attacker as the speaker and the target as the listener. Syntax allows either eoc IDs or as inline blocks
+  "eocs": [ "EOC_ID", { "id": "INLINE_EOC_ID" } ],    // EOCs that trigger each time this technique does, with the attacker as the speaker and the target as the listener. Syntax allows either eoc IDs or as inline blocks. They run before the hit is dealt, once per repeat
+  "post_hit_eocs": [ "EOC_ID" ],          // EOCs that run once after the hit is dealt, with the attacker as alpha and the target as beta. They get the same context values as a martial art's onkill_eocs (see Martial art event EOCs): `weapon`, `hit`, `technique`, `bp`, `crit`, `damage` (damage dealt after armor; 0 if the target died before the hit landed) and `killed` (1 if the target is dead)
   "flat_bonuses": <array>,               // Any bonuses, see Bonuses below
   "mult_bonuses": <array>,
   "tech_effects": <array>                // List of effects applied by this technique, see Bonuses below
@@ -180,6 +219,18 @@ Techniques are special attacks performed while using a given MA style.  These ar
 ```
 
 All fields, except for the ID, type and name are optional.
+
+For example, a cut that makes the target bleed longer the harder it hit:
+
+```jsonc
+"post_hit_eocs": [
+  {
+    "id": "EOC_DEEP_CUT_BLEED",
+    "condition": { "and": [ "has_beta", { "math": [ "_damage > 0 && _killed == 0" ] } ] },
+    "effect": [ { "npc_add_effect": "bleed", "duration": { "math": [ "_damage * 10" ] }, "target_part": { "context_val": "bp" } } ]
+  }
+]
+```
 
 
 ### Technique effects
