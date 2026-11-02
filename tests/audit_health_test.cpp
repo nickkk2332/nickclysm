@@ -19,6 +19,7 @@ static const bodypart_str_id body_part_arm_insect_l( "arm_insect_l" );
 static const bodypart_str_id body_part_wing_insect_l( "wing_insect_l" );
 
 static const efftype_id effect_mending( "mending" );
+static const efftype_id effect_venom_dmg( "venom_dmg" );
 
 static const trait_id trait_INSECT_ARMS( "INSECT_ARMS" );
 static const trait_id trait_REGEN_LIZ( "REGEN_LIZ" );
@@ -128,4 +129,42 @@ TEST_CASE( "hlth-b04_bmr_scales_continuously_with_activity", "[audit][health]" )
     CHECK( audit_bmr_at( u, MODERATE_EXERCISE ) == rest * 4 );
     CHECK( audit_bmr_at( u, SLEEP_EXERCISE ) == rest );
     clear_avatar();
+}
+
+// HLTH-B05: get_mod and friends stop scaling at max_effective_intensity, but activated()
+// and get_percentage() used the raw intensity. venom_dmg (max_effective_intensity 100,
+// max_intensity 125) has hurt_chance one_in( 13 - 0.11 * ( intensity - 1 ) ), which
+// truncates to 0 from intensity 111, and a chance of 0 fires on every tick.
+TEST_CASE( "hlth-b05_effect_chances_stop_scaling_at_max_effective_intensity",
+           "[audit][health]" )
+{
+    const effect_type *venom = &effect_venom_dmg.obj();
+    const effect capped( effect_source::empty(), venom, 1_hours, body_part_arm_l, false, 100,
+                         calendar::turn );
+    const effect over( effect_source::empty(), venom, 1_hours, body_part_arm_l, false, 120,
+                       calendar::turn );
+    REQUIRE( over.get_intensity() == 120 );
+    REQUIRE( over.get_max_effective_intensity() == 100 );
+    REQUIRE( over.get_effective_intensity() == 100 );
+
+    // At the cap: one_in( 2 ) every 36 turns.
+    const double capped_hurt = capped.get_percentage( "HURT", 1, false );
+    REQUIRE( capped_hurt == Approx( 50.0 / 36.0 ) );
+    CHECK( over.get_percentage( "HURT", 1, false ) == Approx( capped_hurt ) );
+    // pain_chance one_in( 20 - 0.15 * ( intensity - 1 ) ): 5 at the cap, 2 at 120.
+    CHECK( over.get_percentage( "PAIN", 1, false ) ==
+           Approx( capped.get_percentage( "PAIN", 1, false ) ) );
+    CHECK( over.get_percentage( "PAIN", 1, false ) == Approx( 20.0 ) );
+
+    int fired = 0;
+    const int rolls = 200;
+    for( int i = 1; i <= rolls; ++i ) {
+        if( over.activated( calendar::turn_zero + time_duration::from_turns( 36 * i ), "HURT", 1,
+                            false, 1.0 ) ) {
+            fired++;
+        }
+    }
+    // A coin flip per tick, not a hit on every tick.
+    CHECK( fired > 0 );
+    CHECK( fired < rolls );
 }

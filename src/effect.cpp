@@ -1327,12 +1327,14 @@ int effect::get_amount( const std::string &arg, bool reduced ) const
 
 int effect::get_min_val( const std::string &arg, bool reduced ) const
 {
-    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MIN_VAL, reduced, intensity ) );
+    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MIN_VAL, reduced,
+                             get_effective_intensity() ) );
 }
 
 int effect::get_max_val( const std::string &arg, bool reduced ) const
 {
-    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MAX_VAL, reduced, intensity ) );
+    return static_cast<int>( eff_type->get_mod_value( arg, mod_action::MAX_VAL, reduced,
+                             get_effective_intensity() ) );
 }
 
 bool effect::get_sizing( const std::string &arg ) const
@@ -1347,7 +1349,9 @@ bool effect::get_sizing( const std::string &arg ) const
 
 double effect::get_percentage( const std::string &arg, int val, bool reduced ) const
 {
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, intensity );
+    // Like every other scaling mod, chances stop scaling at max_effective_intensity.
+    const int eff_intensity = get_effective_intensity();
+    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1355,8 +1359,8 @@ double effect::get_percentage( const std::string &arg, int val, bool reduced ) c
         return 0;
     }
 
-    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, intensity );
-    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, intensity );
+    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, eff_intensity );
+    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, eff_intensity );
 
     // Tick is the exception where tick = 0 means tick = 1
     if( tick == 0 ) {
@@ -1384,7 +1388,9 @@ double effect::get_percentage( const std::string &arg, int val, bool reduced ) c
 bool effect::activated( const time_point &when, const std::string &arg, int val, bool reduced,
                         double mod ) const
 {
-    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, intensity );
+    // Like every other scaling mod, chances stop scaling at max_effective_intensity.
+    const int eff_intensity = get_effective_intensity();
+    int top = eff_type->get_mod_value( arg, mod_action::CHANCE_TOP, reduced, eff_intensity );
 
     // Check chances if value is 0 (so we can check valueless effects like vomiting)
     // Else a nonzero value overrides a 0 chance for default purposes
@@ -1392,7 +1398,7 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
         return false;
     }
 
-    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, intensity );
+    int tick = eff_type->get_mod_value( arg, mod_action::TICK, reduced, eff_intensity );
 
     // Tick is the exception where tick = 0 means tick = 1
     if( tick == 0 ) {
@@ -1401,7 +1407,7 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
         return false;
     }
 
-    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, intensity );
+    int bot = eff_type->get_mod_value( arg, mod_action::CHANCE_BOT, reduced, eff_intensity );
 
     // Check if tick allows for triggering.
     if( ( when - calendar::turn_zero ) % time_duration::from_turns( tick ) != 0_turns ) {
