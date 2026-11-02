@@ -600,7 +600,8 @@ class nested_mapgen
         const weighted_int_list<std::shared_ptr<mapgen_function_json_nested>> &funcs() const {
             return funcs_;
         }
-        void add( const std::shared_ptr<mapgen_function_json_nested> &p, const dbl_or_var &weight );
+        void add( const std::shared_ptr<mapgen_function_json_nested> &p,
+                  const dbl_or_var &weight );
         // Picks one definition by weight, evaluating non-constant weights now; nullptr if none
         const std::shared_ptr<mapgen_function_json_nested> *pick() const;
         // Returns a set containing every relative coordinate of a point that
