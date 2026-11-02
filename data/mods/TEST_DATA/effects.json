@@ -149,5 +149,29 @@
     "name": [ "Test Bird Body" ],
     "desc": [ "Swaps hands, feet and mouth for bird parts through an enchantment while it lasts." ],
     "enchantments": [ "ENCH_TEST_BIRD_PARTS" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_vitals",
+    "name": [ "Test Vitals" ],
+    "desc": [ "Lowers vitals and stamina once when applied, down to their min_val." ],
+    "base_mods": {
+      "blood_pressure_amount": [ -50 ],
+      "blood_pressure_min_val": [ -20 ],
+      "heart_rate_amount": [ -50 ],
+      "heart_rate_min_val": [ -20 ],
+      "respiratory_rate_amount": [ -50 ],
+      "respiratory_rate_min_val": [ -20 ],
+      "stamina_amount": [ -500 ],
+      "stamina_min_val": [ 800 ]
+    }
+  },
+  {
+    "type": "effect_type",
+    "id": "test_vitals_pkill",
+    "name": [ "Test Vitals Painkiller" ],
+    "desc": [ "An addiction-reduced painkiller that also lowers blood pressure on every turn." ],
+    "pkill_addict_reduces": true,
+    "base_mods": { "pkill_min": [ 1 ], "blood_pressure_min": [ -1 ], "blood_pressure_chance": [ 1 ] }
   }
 ]

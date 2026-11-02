@@ -493,6 +493,7 @@ void effect_type::load_mod_data( const JsonObject &j )
         {"stamina_amount",      mod_action::AMOUNT},
         {"stamina_min",         mod_action::MIN},
         {"stamina_max",         mod_action::MAX},
+        {"stamina_min_val",     mod_action::MIN_VAL},
         {"stamina_max_val",     mod_action::MAX_VAL},
         {"stamina_chance",      mod_action::CHANCE_TOP},
         {"stamina_chance_bot",  mod_action::CHANCE_BOT},

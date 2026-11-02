@@ -22,6 +22,7 @@
 #include "wound.h"
 
 static const addiction_id addiction_nicotine( "nicotine" );
+static const addiction_id addiction_opiate( "opiate" );
 
 static const bodypart_str_id body_part_arm_insect_l( "arm_insect_l" );
 static const bodypart_str_id body_part_wing_insect_l( "wing_insect_l" );
@@ -31,6 +32,8 @@ static const damage_type_id damage_bash( "bash" );
 static const efftype_id effect_debugged( "debugged" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_mending( "mending" );
+static const efftype_id effect_test_vitals( "test_vitals" );
+static const efftype_id effect_test_vitals_pkill( "test_vitals_pkill" );
 static const efftype_id effect_venom_dmg( "venom_dmg" );
 
 static const itype_id itype_test_longshirt( "test_longshirt" );
@@ -395,5 +398,54 @@ TEST_CASE( "hlth-b09_wound_mod_values_respect_caps", "[audit][health]" )
     }
 
     arm->get_wounds().clear();
+    clear_avatar();
+}
+
+// HLTH-B10: the loader stored respiratory_rate_* under "RESPIRATORY_RATE" but
+// process_one_effect read "RESPIRATION_RATE", so they did nothing; the blood pressure,
+// heart rate and respiratory blocks passed a hardcoded 0 as their lower bound, so their
+// min_val did nothing; stamina_min_val was not loaded at all (the data failed to load);
+// and the vital blocks kept the roll multiplier of the block before them.
+TEST_CASE( "hlth-b10_effect_vital_mods_load_and_respect_min_val", "[audit][health]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    u.set_bp_effect_mod( 0 );
+    u.set_heartrate_effect_mod( 0 );
+    u.set_respiration_effect_mod( 0 );
+
+    SECTION( "amounts stop at min_val and respiratory rate applies" ) {
+        u.set_stamina( 1000 );
+        REQUIRE( u.get_stamina_max() > 1000 );
+        // Applied once on add: -50 each, bounded at -20; stamina -500, bounded at 800.
+        u.add_effect( effect_test_vitals, 1_hours );
+        REQUIRE( u.has_effect( effect_test_vitals ) );
+        CHECK( u.get_bp_effect_mod() == -20 );
+        CHECK( u.get_heartrate_effect_mod() == -20 );
+        CHECK( u.get_respiration_effect_mod() == -20 );
+        CHECK( u.get_stamina() == 800 );
+    }
+
+    SECTION( "the painkiller roll multiplier does not leak into blood pressure" ) {
+        u.addictions.clear();
+        // The painkiller block rolls with 1 / ( 2 * 4 ) for this addiction level.
+        u.addictions.emplace_back( addiction_opiate, 4 );
+        u.add_effect( effect_test_vitals_pkill, 1_hours );
+        REQUIRE( u.has_effect( effect_test_vitals_pkill ) );
+        u.set_bp_effect_mod( 0 );
+        effect &eff = u.get_effect( effect_test_vitals_pkill );
+        const int turns = 40;
+        for( int i = 0; i < turns; ++i ) {
+            u.process_one_effect( eff, false );
+        }
+        // blood_pressure_chance one_in( 1 ) lowers it on every turn; with the leaked
+        // multiplier it was one in eight.
+        CHECK( u.get_bp_effect_mod() == -turns );
+        u.addictions.clear();
+    }
+
+    u.set_bp_effect_mod( 0 );
+    u.set_heartrate_effect_mod( 0 );
+    u.set_respiration_effect_mod( 0 );
     clear_avatar();
 }

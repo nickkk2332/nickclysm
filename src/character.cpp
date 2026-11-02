@@ -7049,26 +7049,32 @@ void Character::process_one_effect( effect &it, bool is_new )
     // Handle Blood Pressure
     val = get_effect( "BLOOD_PRESSURE", reduced );
     if( val != 0 ) {
+        mod = 1;
         if( is_new || it.activated( calendar::turn, "BLOOD_PRESSURE", val, reduced, mod ) ) {
-            modify_bp_effect_mod( bound_mod_to_vals( get_bp_effect_mod(), val, it.get_max_val( "BLOOD_PRESSURE",
-                                  reduced ), 0 ) );
+            modify_bp_effect_mod( bound_mod_to_vals( get_bp_effect_mod(), val,
+                                  it.get_max_val( "BLOOD_PRESSURE", reduced ),
+                                  it.get_min_val( "BLOOD_PRESSURE", reduced ) ) );
         }
     }
 
     // handle heart rate
     val = get_effect( "HEART_RATE", reduced );
     if( val != 0 ) {
+        mod = 1;
         if( is_new || it.activated( calendar::turn, "HEART_RATE", val, reduced, mod ) ) {
             modify_heartrate_effect_mod( bound_mod_to_vals( get_heartrate_effect_mod(), val,
-                                         it.get_max_val( "HEART_RATE", reduced ), 0 ) );
+                                         it.get_max_val( "HEART_RATE", reduced ),
+                                         it.get_min_val( "HEART_RATE", reduced ) ) );
         }
     }
-    // handle perspiration rate
-    val = get_effect( "RESPIRATION_RATE", reduced );
+    // handle respiratory rate (the key effect_type::load_mod_data stores it under)
+    val = get_effect( "RESPIRATORY_RATE", reduced );
     if( val != 0 ) {
-        if( is_new || it.activated( calendar::turn, "RESPIRATION_RATE", val, reduced, mod ) ) {
+        mod = 1;
+        if( is_new || it.activated( calendar::turn, "RESPIRATORY_RATE", val, reduced, mod ) ) {
             modify_respiration_effect_mod( bound_mod_to_vals( get_respiration_effect_mod(), val,
-                                           it.get_max_val( "RESPIRATION_RATE", reduced ), 0 ) );
+                                           it.get_max_val( "RESPIRATORY_RATE", reduced ),
+                                           it.get_min_val( "RESPIRATORY_RATE", reduced ) ) );
         }
     }
 
