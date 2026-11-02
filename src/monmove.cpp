@@ -62,6 +62,7 @@ static const damage_type_id damage_cut( "cut" );
 
 static const efftype_id effect_absorbed_acidic( "absorbed_acidic" );
 static const efftype_id effect_absorbed_electric( "absorbed_electric" );
+static const efftype_id effect_airborne( "airborne" );
 static const efftype_id effect_bouldering( "bouldering" );
 static const efftype_id effect_countdown( "countdown" );
 static const efftype_id effect_cramped_space( "cramped_space" );
@@ -2238,6 +2239,10 @@ static tripoint_bub_ms find_closest_stair( const tripoint_bub_ms &near_this,
 bool monster::move_to( const tripoint_bub_ms &p, bool force,
                        bool step_on_critter, const float stagger_adjustment )
 {
+    // In flight, it goes where it is carried.
+    if( has_effect( effect_airborne ) ) {
+        force = true;
+    }
     map &here = get_map();
     const tripoint_bub_ms pos = pos_bub( here );
 

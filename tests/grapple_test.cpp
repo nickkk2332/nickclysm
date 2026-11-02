@@ -36,6 +36,7 @@
 #include "point.h"
 #include "talker.h"
 #include "teleport.h"
+#include "trap.h"
 #include "type_id.h"
 #include "units.h"
 #include "vehicle.h"
@@ -803,4 +804,119 @@ TEST_CASE( "grapple_holding_a_creature_and_an_object_are_exclusive", "[grapple]"
     CHECK( *refusal == "You're already holding on to something." );
     you.grab( object_type::NONE );
     CHECK( !grapple::grab_refusal( you, zed ).has_value() );
+}
+
+// Phase 5: throwing, and what game::fling_creature does for it
+
+static const efftype_id effect_airborne( "airborne" );
+static const efftype_id effect_beartrap( "beartrap" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
+
+static const trap_str_id tr_beartrap( "tr_beartrap" );
+
+TEST_CASE( "grapple_a_fling_breaks_holds_both_ways", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    override_option no_animations( "ANIMATIONS", "false" );
+
+    SECTION( "a creature held by a character is flung out of the hold" ) {
+        // flvel / 2 beats the hold's strength every time.
+        monster &zed = spawn_held( you, "mon_zombie", 10 );
+        REQUIRE( g->fling_creature( &zed, 0_degrees, 50.0f, true, true ) );
+        CHECK( released( you, zed ) );
+        CHECK( !zed.has_effect( effect_grabbed ) );
+    }
+    SECTION( "a flung monster lets go of what it holds" ) {
+        monster &grabber = spawn_test_monster( "mon_debug_grabber",
+                                               you.pos_bub() + tripoint::east );
+        grabber.add_grab( body_part_arm_l );
+        you.add_effect( effect_grabbed, 1_days, body_part_arm_l, true, 10 );
+        REQUIRE( grapple::monster_grabber( you, body_part_arm_l ) == &grabber );
+        REQUIRE( g->fling_creature( &grabber, 0_degrees, 50.0f, true, true ) );
+        CHECK( !you.has_effect( effect_grabbed, body_part_arm_l ) );
+        CHECK( !grabber.has_effect( effect_grabbing ) );
+        CHECK( !grabber.is_grabbing( body_part_arm_l ) );
+    }
+}
+
+TEST_CASE( "grapple_flung_creatures_are_airborne_until_they_land", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    override_option no_animations( "ANIMATIONS", "false" );
+    map &here = get_map();
+    // Keep the avatar out of the way.
+    you.setpos( here, tripoint_bub_ms( 60, 70, 0 ) );
+    const tripoint_bub_ms start( 50, 60, 0 );
+    monster &zed = spawn_test_monster( "mon_zombie", start );
+
+    SECTION( "it flies over a gap instead of dropping into it" ) {
+        here.ter_set( start + tripoint( 2, 0, 0 ), ter_t_open_air.id() );
+        here.ter_set( start + tripoint( 2, 0, -1 ), ter_t_floor.id() );
+        here.invalidate_map_cache( 0 );
+        here.build_map_cache( 0, true );
+        REQUIRE( g->fling_creature( &zed, 0_degrees, 40.0f, true, true ) );
+        CHECK( zed.pos_bub() == start + tripoint( 4, 0, 0 ) );
+    }
+    SECTION( "it drops off a ledge where it lands" ) {
+        for( int x = 3; x <= 5; ++x ) {
+            here.ter_set( start + tripoint( x, 0, 0 ), ter_t_open_air.id() );
+            here.ter_set( start + tripoint( x, 0, -1 ), ter_t_floor.id() );
+        }
+        here.invalidate_map_cache( 0 );
+        here.build_map_cache( 0, true );
+        here.build_map_cache( -1, true );
+        REQUIRE( g->fling_creature( &zed, 0_degrees, 40.0f, true, true ) );
+        CHECK( zed.pos_bub() == start + tripoint( 4, 0, -1 ) );
+    }
+    SECTION( "only the landing tile's trap goes off" ) {
+        here.trap_set( start + tripoint( 2, 0, 0 ), tr_beartrap.id() );
+        here.trap_set( start + tripoint( 4, 0, 0 ), tr_beartrap.id() );
+        REQUIRE( g->fling_creature( &zed, 0_degrees, 40.0f, true, true ) );
+        CHECK( zed.pos_bub() == start + tripoint( 4, 0, 0 ) );
+        CHECK( here.tr_at( start + tripoint( 2, 0, 0 ) ).id == tr_beartrap );
+        CHECK( here.tr_at( start + tripoint( 4, 0, 0 ) ).is_null() );
+        CHECK( zed.has_effect( effect_beartrap ) );
+    }
+    CHECK( !zed.has_effect( effect_airborne ) );
+}
+
+TEST_CASE( "grapple_fling_options_are_off_by_default", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    override_option no_animations( "ANIMATIONS", "false" );
+    map &here = get_map();
+    you.setpos( here, tripoint_bub_ms( 60, 70, 0 ) );
+    const tripoint_bub_ms start( 50, 60, 0 );
+
+    SECTION( "a slow uncontrolled landing is soft only when asked" ) {
+        npc &guy = spawn_npc( start.xy(), "test_talker" );
+        guy.clear_worn();
+        const int hp = guy.get_hp();
+        fling_options soft;
+        soft.soft_low_speed_landing = true;
+        // Speed 20: the landing does rng( 20, 40 ) / 9, halved less 5: nothing.
+        REQUIRE( g->fling_creature( &guy, 0_degrees, 20.0f, false, true, soft ) );
+        CHECK( guy.pos_bub() == start + tripoint( 2, 0, 0 ) );
+        CHECK( guy.get_hp() == hp );
+    }
+    SECTION( "a character in the way is hurt only when asked" ) {
+        monster &zed = spawn_test_monster( "mon_zombie", start );
+        npc &guy = spawn_npc( ( start + tripoint( 3, 0, 0 ) ).xy(), "test_talker" );
+        guy.clear_worn();
+        const int hp = guy.get_hp();
+        REQUIRE( g->fling_creature( &zed, 0_degrees, 50.0f, true, true ) );
+        // Stopped as if by a wall, and nobody else hurt.
+        CHECK( zed.pos_bub() == start + tripoint( 2, 0, 0 ) );
+        CHECK( guy.get_hp() == hp );
+
+        zed.setpos( here, start );
+        fling_options hit;
+        hit.hit_characters = true;
+        REQUIRE( g->fling_creature( &zed, 0_degrees, 50.0f, true, true, hit ) );
+        CHECK( zed.pos_bub() == start + tripoint( 2, 0, 0 ) );
+        // rng( 50, 100 ) / 6 to an unarmoured torso
+        CHECK( guy.get_hp() < hp );
+    }
 }

@@ -261,6 +261,7 @@ static const damage_type_id damage_stab( "stab" );
 static const dimension_id dimension_world_default( "default" );
 
 static const efftype_id effect_adrenaline_mycus( "adrenaline_mycus" );
+static const efftype_id effect_airborne( "airborne" );
 static const efftype_id effect_bouldering( "bouldering" );
 static const efftype_id effect_contacts( "contacts" );
 static const efftype_id effect_cramped_space( "cramped_space" );
@@ -7479,7 +7480,9 @@ bool game::prompt_dangerous_tile( const tripoint_bub_ms &dest_loc,
 {
     map &here = get_map();
 
-    if( u.has_effect( effect_stunned ) || u.has_effect( effect_psi_stunned ) ) {
+    // Nobody asks while you're stunned, or flying through the air.
+    if( u.has_effect( effect_stunned ) || u.has_effect( effect_psi_stunned ) ||
+        u.has_effect( effect_airborne ) ) {
         return true;
     }
 
@@ -9177,7 +9180,7 @@ void game::water_affect_items( Character &ch ) const
 }
 
 bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bool controlled,
-                           bool intentional )
+                           bool intentional, const fling_options &options )
 {
     if( c == nullptr ) {
         debugmsg( "game::fling_creature invoked on null target" );
@@ -9203,15 +9206,20 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     }
 
     // Target creature shouldn't be grabbed if thrown
-    // It should also not be thrown if the throw is weaker than the grab
+    // It should also not be thrown if the throw is weaker than the grab.
+    // A broken hold ends on both sides, so work from a copy of the list.
+    std::vector<std::tuple<efftype_id, bodypart_id, int>> holds;
     for( const effect &eff : c->get_effects_with_flag( json_flag_GRAB ) ) {
-        if( !x_in_y( flvel / 2, eff.get_intensity() ) ) {
+        holds.emplace_back( eff.get_id(), eff.get_bp(), eff.get_intensity() );
+    }
+    for( const std::tuple<efftype_id, bodypart_id, int> &hold : holds ) {
+        if( !x_in_y( flvel / 2, std::get<2>( hold ) ) ) {
             c->add_msg_player_or_npc( m_warning,
                                       _( "You're almost sent flying, but something holds you in place!" ),
                                       _( "<npcname> is almost sent flying, but something holds them in place!" ) );
             return false;
         } else {
-            c->remove_effect( eff.get_id(), eff.get_bp() );
+            grapple::break_hold( *c, std::get<0>( hold ), std::get<1>( hold ) );
         }
     }
 
@@ -9241,7 +9249,15 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     // Nobody keeps hold of a creature while flying.
     if( you != nullptr && you->has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
         you->release_grapple();
+    } else if( monster *const mon = c->as_monster() ) {
+        grapple::release_grabs_by( *mon );
     }
+
+    // In flight it doesn't fall, step on traps or get asked about them, until it lands.
+    c->add_effect( effect_airborne, 1_turns );
+    on_out_of_scope land( [c]() {
+        c->remove_effect( effect_airborne );
+    } );
 
     tileray tdir( dir );
     int range = flvel / 10;
@@ -9274,13 +9290,30 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             if( !critter.is_dead() ) {
                 thru = false;
             }
-        } else if( const Character *const blocker = creatures.creature_at<Character>( pt );
+        } else if( Character *const blocker = creatures.creature_at<Character>( pt );
                    blocker != nullptr && blocker != c ) {
             // Another character stops the flight like a wall would, so the flung
             // creature never ends up sharing a tile with them.
-            force = flvel;
-            const int damage = rng( force, force * 2.0f ) / 9;
-            c->impact( damage, pt );
+            if( !options.hit_characters ) {
+                force = flvel;
+                const int damage = rng( force, force * 2.0f ) / 9;
+                c->impact( damage, pt );
+            } else if( flvel >= 30.0f ) {
+                // TLG: the character's size decides how much it stops the flight, and the speed
+                // of the flight how much the character is hurt.
+                force = std::min<float>( static_cast<int>( blocker->get_size() ) * 30.0f, flvel );
+                const int damage = rng( force, force * 2.0f ) / 6;
+                //~ %1$s: the flung creature, %2$s: the character it hits
+                add_msg_if_player_sees( pt, _( "%1$s collides with %2$s!" ), c->disp_name( true ),
+                                        blocker->disp_name() );
+                c->impact( damage, pt );
+                const bodypart_id torso( "torso" );
+                const int blocker_armor = blocker->get_armor_type( damage_bash, torso );
+                const int blocker_damage = std::max( 0, rng( flvel, flvel * 2.0f ) / 6 -
+                                                     blocker_armor );
+                blocker->apply_damage( c, torso, blocker_damage );
+                blocker->check_dead_state( &here );
+            }
             thru = false;
         } else if( here.impassable( pt ) ) {
             if( !here.veh_at( pt ).obstacle_at_part() ) {
@@ -9343,14 +9376,14 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     }
 
     // Fall down to the ground - always on the last reached tile
+    c->remove_effect( effect_airborne );
     if( !here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, pos ) ) {
-        // Didn't smash into a wall or a floor so only take the fall damage
-        if( thru && here.is_open_air( pos ) ) {
-            here.creature_on_trap( *c, false );
-        } else {
+        const bool over_air = here.is_open_air( pos );
+        // Flying off a ledge, it only takes the fall damage.
+        if( !thru || !over_air ) {
             // Fall on ground
             int force = rng( flvel, flvel * 2 ) / 9;
-            if( controlled ) {
+            if( controlled || ( options.soft_low_speed_landing && flvel < 30 ) ) {
                 force = std::max( force / 2 - 5, 0 );
             }
             if( force > 0 ) {
@@ -9358,6 +9391,19 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                 // TODO: Make landing damage the floor
                 here.bash( pos, dmg / 4, false, false, false );
             }
+        }
+        if( c->is_dead_state() ) {
+            return true;
+        }
+        if( over_air ) {
+            // Nothing underneath: drop to what's below, and land there. The avatar's fall
+            // (vertical_move) already applies the traps where it lands.
+            const tripoint_abs_ms before_fall = c->pos_abs();
+            c->gravity_check();
+            if( !c->is_avatar() && !c->is_dead_state() && c->pos_abs() != before_fall ) {
+                here.creature_on_trap( *c, false );
+            }
+        } else {
             // Always apply traps to creature i.e. bear traps, tele traps etc.
             here.creature_on_trap( *c, false );
         }

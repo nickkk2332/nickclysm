@@ -5434,6 +5434,14 @@
   },
   {
     "type": "effect_type",
+    "id": "airborne",
+    "max_intensity": 1,
+    "max_duration": "1 s",
+    "flags": [ "LEVITATION" ],
+    "//": "Hardcoded: a creature in flight after game::fling_creature (a throw, a hulk smash, a crash, a fling EOC or spell), from Cataclysm: The Last Generation.  While it lasts the creature doesn't fall, trigger traps or get trap prompts, and a monster is moved by force; it is removed on landing, where traps and ledges then apply.  Only apply it for the length of such an event."
+  },
+  {
+    "type": "effect_type",
     "id": "slow_descent",
     "show_in_info": false,
     "name": [ "Slow Descent" ],

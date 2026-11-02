@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -298,6 +299,62 @@ void grapple::release_all( Creature &c )
         }
     }
     release_holds_on( c );
+}
+
+void grapple::break_hold( Creature &victim, const efftype_id &id, const bodypart_id &bp )
+{
+    if( !victim.has_effect( id, bp ) ) {
+        return;
+    }
+    if( Character *const guy = character_grabber( victim, victim.get_effect( id, bp ) ) ) {
+        end_hold( *guy, &victim );
+        return;
+    }
+    // A monster's grab on a character is per limb; on a monster, its persistence check
+    // notices that the grab is gone.
+    if( !victim.is_monster() ) {
+        if( monster *const mon = monster_grabber( victim, bp ) ) {
+            mon->remove_grab( bp.id() );
+        }
+    }
+    victim.remove_effect( id, bp );
+}
+
+void grapple::release_grabs_by( monster &mon )
+{
+    if( !mon.has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
+        return;
+    }
+    map &here = get_map();
+    creature_tracker &creatures = get_creature_tracker();
+    const int reach = std::max( 1, monster_grab_reach( mon ) );
+    for( const tripoint_bub_ms &p : here.points_in_radius( mon.pos_bub( here ), reach, 1 ) ) {
+        Creature *const victim = creatures.creature_at( p );
+        if( victim == nullptr || victim == &mon ) {
+            continue;
+        }
+        std::vector<std::pair<efftype_id, bodypart_id>> held;
+        for( const effect &eff : victim->get_effects_with_flag( json_flag_GRAB ) ) {
+            if( character_grabber( *victim, eff ) == nullptr &&
+                monster_grabber( *victim, eff.get_bp() ) == &mon ) {
+                held.emplace_back( eff.get_id(), eff.get_bp() );
+            }
+        }
+        for( const std::pair<efftype_id, bodypart_id> &grab : held ) {
+            victim->remove_effect( grab.first, grab.second );
+        }
+    }
+    const std::unordered_set<bodypart_str_id> limbs = mon.grabbed_limbs;
+    for( const bodypart_str_id &bp : limbs ) {
+        mon.remove_grab( bp );
+    }
+    std::vector<efftype_id> filters;
+    for( const effect &eff : mon.get_effects_with_flag( json_flag_GRAB_FILTER ) ) {
+        filters.push_back( eff.get_id() );
+    }
+    for( const efftype_id &id : filters ) {
+        mon.remove_effect( id );
+    }
 }
 
 int grapple::stamina_floor()

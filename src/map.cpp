@@ -134,6 +134,7 @@ static const bionic_id bio_shock_absorber( "bio_shock_absorber" );
 
 static const damage_type_id damage_bash( "bash" );
 
+static const efftype_id effect_airborne( "airborne" );
 static const efftype_id effect_boomered( "boomered" );
 static const efftype_id effect_crushed( "crushed" );
 static const efftype_id effect_fake_common_cold( "fake_common_cold" );
@@ -11670,6 +11671,10 @@ void map::creature_on_trap( Creature &c, const bool may_avoid ) const
     // like a flying monster and can never trigger the trap.
     const Character *const you = c.as_character();
     if( you != nullptr && ( you->in_vehicle || you->has_effect( effect_gliding ) ) ) {
+        return;
+    }
+    // Neither does a creature in flight (flung or thrown), until it lands.
+    if( c.has_effect( effect_airborne ) ) {
         return;
     }
 

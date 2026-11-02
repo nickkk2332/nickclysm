@@ -77,6 +77,15 @@ void release_holds_on( Creature &victim );
 /** End every character hold that involves @p c, as grabber or as victim. Prints nothing. */
 void release_all( Creature &c );
 
+/**
+ * Break the hold that the GRAB effect @p id on @p bp of @p victim stands for, on both sides: a
+ * character grabber's hold ends, a monster grabber lets go of that limb. Prints nothing.
+ */
+void break_hold( Creature &victim, const efftype_id &id, const bodypart_id &bp );
+
+/** End every grab the monster @p mon holds on others, on both sides. Prints nothing. */
+void release_grabs_by( monster &mon );
+
 /** Stamina needed to start a grab or to keep holding one. */
 int stamina_floor();
 
