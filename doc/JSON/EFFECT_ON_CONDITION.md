@@ -2253,6 +2253,7 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
 | furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
 | `u_walk_to`: "true_eocs", "false_eocs" | { "reason", `string` why the walk ended }, and the context variables of the EoC that started the walk |
+| `u_pickup_item`, `u_wield_item`, `u_wear_item`, `u_drop_item`: "true_eocs", "false_eocs" | { "reason", `string` why it was refused, or `done` }, and the context variables of the EoC |
 
 
 # Effects
@@ -4986,6 +4987,139 @@ Variables are also supported
       }
     ]
   },
+```
+
+#### `u_pickup_item`, `npc_pickup_item`
+The character takes one item from the ground (or a vehicle's cargo) into its inventory: the very item the other talker is, with its charges, damage, contents and variables. No menu opens, and NPCs can do it too. The other talker is usually the `npc` that `u_map_run_item_eocs` or `u_run_inv_eocs` gives their EoCs, or the item an item's own EoC runs on.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_pickup_item" / "npc_pickup_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_pickup_item`, `"u"` for `npc_pickup_item`. Anything else is a load error |
+| "walk" | optional | boolean | default false; if the item is out of reach, walk next to it first (as [`u_walk_to`](#u_walk_to-npc_walk_to) with `range` 1) and take it on arrival |
+| "give_up_after", "run", "interruptible" | optional | | with `"walk": true` only, as in [`u_walk_to`](#u_walk_to-npc_walk_to) |
+| "allow_theft" | optional | boolean | default true; taking an item that belongs to someone else is theft, with the usual reaction: for the avatar, a witness of the owning faction tells it off and goes after the item, and the item becomes the avatar's. False refuses instead (`owned`) |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once the item is taken |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run when it isn't |
+
+The pickup costs the moves the avatar's pickup costs. An item the character carries already counts as taken.
+
+**Refusals.** When it can't take the item, nothing happens and `false_eocs` run with the context variable `reason`:
+
+| `reason` | Why |
+| --- | --- |
+| `gone` | the item no longer exists |
+| `held` | someone else carries it |
+| `owned` | it's someone else's and `allow_theft` is false |
+| `liquid` | it's a spilt liquid or a gas |
+| `would_spill` | an open container with liquid in it |
+| `too_heavy` | too heavy: more than the avatar can lift, or more than an NPC can carry |
+| `no_room` | no pocket holds it |
+| `out_of_reach` | not on the character's tile or next to it, on its z level, or sealed in furniture; with `"walk": true` the character walks there instead |
+| a walk's reason | with `"walk": true`, the walk ended without getting there (`unreachable`, `blocked`, `timeout`, `interrupted`, `cancelled`) |
+
+**Talkers.** `true_eocs` and `false_eocs` run with the character as `u` and the item as `npc` (also for `npc_pickup_item`), whose `reason` is `done` when the item was taken. Once the item is taken, the item talker points at it in the inventory, so later effects of the same EoC find it there: `{ "u_pickup_item": "npc" }, { "u_wield_item": "npc" }` picks up and wields. With `"walk": true` the item is taken later, so put what follows into `true_eocs`.
+
+Unlike [`u_pickup_items`](#u_pickup_items-npc_pickup_items), which opens the pickup menu on a tile, this takes one given item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+The NPC goes for a crowbar within 10 tiles, picks it up and wields it, and says so if it can't
+```jsonc
+{
+  "npc_map_run_item_eocs": "random",
+  "search_data": [ { "id": "crowbar" } ],
+  "max_radius": 10,
+  "true_eocs": [
+    {
+      "id": "EOC_FETCH_CROWBAR",
+      "effect": [
+        {
+          "u_pickup_item": "npc",
+          "walk": true,
+          "true_eocs": [ { "id": "EOC_WIELD_CROWBAR", "effect": [ { "u_wield_item": "npc" } ] } ],
+          "false_eocs": [ { "id": "EOC_NO_CROWBAR", "effect": [ { "message": "<u_name> can't get the crowbar: <context_val:reason>." } ] } ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### `u_wield_item`, `npc_wield_item`
+The character wields one item: one it carries, or one on the ground next to it. What it wielded before goes into its pockets, or at its feet when they're full; no menu opens. It costs the moves wielding costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_wield_item" / "npc_wield_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_wield_item`, `"u"` for `npc_wield_item` |
+| "allow_theft" | optional | boolean | default true; as in `u_pickup_item`, for an item on the ground |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wield` (the character can't wield it, or can't let go of what it wields, or the item is inside what it wields; the avatar is told why). An item it wields already counts as done. Afterwards the item talker points at the wielded item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+Wield the item this EoC runs on
+```jsonc
+{ "u_wield_item": "npc", "false_eocs": [ "EOC_CANT_WIELD" ] }
+```
+
+#### `u_wear_item`, `npc_wear_item`
+The character puts on one item: one it carries or wields, or one on the ground next to it. It costs the moves putting it on costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_wear_item" / "npc_wear_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_wear_item`, `"u"` for `npc_wear_item` |
+| "allow_theft" | optional | boolean | default true; as in `u_pickup_item`, for an item on the ground |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wear` (it isn't something to wear, or doesn't fit with what's worn; the avatar is told why). An item it wears already counts as done. Afterwards the item talker points at the worn item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+The NPC puts on every jacket it carries
+```jsonc
+{ "npc_run_inv_eocs": "all", "search_data": [ { "category": "clothing" } ], "true_eocs": [ { "id": "EOC_PUT_IT_ON", "effect": [ { "u_wear_item": "npc" } ] } ] }
+```
+
+#### `u_drop_item`, `npc_drop_item`
+The character drops one item it carries, wields or wears, on its own tile (into a vehicle's cargo if there is one). It costs the moves dropping costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_drop_item" / "npc_drop_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_drop_item`, `"u"` for `npc_drop_item` |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `not_carried` (the character doesn't have it), or `cannot_drop` (an integrated item, or one it can't take off). Afterwards the item talker points at the item where it landed.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+Drop every rock you carry
+```jsonc
+{ "u_run_inv_eocs": "all", "search_data": [ { "id": "rock" } ], "true_eocs": [ { "id": "EOC_DROP_ROCK", "effect": [ { "u_drop_item": "npc" } ] } ] }
 ```
 
 #### `u_set_fac_relation`, `npc_set_fac_relation`

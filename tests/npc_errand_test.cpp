@@ -657,3 +657,363 @@ TEST_CASE( "walk_effects_are_checked_at_load", "[eoc][errand]" )
     CHECK_THROWS_AS( load_condition( R"({ "u_is_walking_to": "anywhere" })" ), JsonError );
     CHECK_THROWS_AS( load_condition( R"({ "u_is_walking_to": 3 })" ), JsonError );
 }
+
+// an item on the ground at p
+static item_location place_item( const tripoint_bub_ms &p, const itype_id &type )
+{
+    item &placed = get_map().add_item( p, item( type ) );
+    return item_location( map_cursor( p ), &placed );
+}
+
+// runs effect with who as u and the item at loc as npc; loc follows the item
+static void apply_to_item( const std::string &effect, Character &who, item_location &loc )
+{
+    dialogue d( get_talker_for( who ), get_talker_for( loc ) );
+    load_effect( effect ).apply( d );
+}
+
+static std::string item_effect( const std::string &name, const std::string &fields = "" )
+{
+    return R"({ ")" + name + R"(": "npc", "true_eocs": [ "EOC_TEST_ERRAND_TRUE" ],
+        "false_eocs": [ "EOC_TEST_ERRAND_FALSE" ])" + ( fields.empty() ? "" : ", " + fields ) +
+           " }";
+}
+
+static void give_backpack( Character &who )
+{
+    who.wear_item( item( itype_backpack ), false );
+}
+
+TEST_CASE( "u_pickup_item_takes_that_item", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    avatar &you = get_avatar();
+    const bool by_npc = GENERATE( true, false );
+    CAPTURE( by_npc );
+    Character &who = by_npc ? static_cast<Character &>( guy ) : you;
+    if( !by_npc ) {
+        you.setpos( get_map(), errand_origin + tripoint( 0, 5, 0 ) );
+    }
+    give_backpack( who );
+    const tripoint_bub_ms spot = who.pos_bub() + tripoint( 1, 0, 0 );
+    item_location loc = place_item( spot, itype_crowbar );
+    loc->set_damage( 2000 );
+    loc->set_var( "errand_mark", "kept" );
+    // a second crowbar it must leave
+    place_item( spot, itype_crowbar );
+    who.set_moves( 100 );
+    apply_to_item( item_effect( "u_pickup_item" ), who, loc );
+    CHECK( result() == "true" );
+    CHECK( reason() == "done" );
+    CHECK( global_string( "test_errand_u" ) == who.get_name() );
+    // it costs moves, as the avatar's pickup does
+    CHECK( who.get_moves() < 100 );
+    // the item talker now points at the item in the pack
+    REQUIRE( loc );
+    CHECK( loc.carrier() == &who );
+    CHECK( loc->typeId() == itype_crowbar );
+    CHECK( loc->damage() == 2000 );
+    CHECK( loc->get_var( "errand_mark", "" ) == "kept" );
+    CHECK( get_map().i_at( spot ).size() == 1 );
+    CHECK( who.amount_of( itype_crowbar ) == 1 );
+}
+
+TEST_CASE( "u_pickup_item_keeps_contents", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    give_backpack( guy );
+    item_location loc = place_item( errand_origin + tripoint( 0, 1, 0 ), itype_bottle_plastic );
+    loc->fill_with( item( itype_water_clean ), 2 );
+    REQUIRE( loc->charges_of( itype_water_clean ) == 2 );
+    apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+    CHECK( result() == "true" );
+    REQUIRE( loc );
+    CHECK( loc.carrier() == &guy );
+    CHECK( loc->charges_of( itype_water_clean ) == 2 );
+}
+
+TEST_CASE( "u_pickup_item_refusals", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    map &here = get_map();
+    const tripoint_bub_ms next_to = errand_origin + tripoint( 1, 0, 0 );
+    SECTION( "no room" ) {
+        // nothing to carry it in
+        item_location loc = place_item( next_to, itype_crowbar );
+        apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+        CHECK( reason() == "no_room" );
+        CHECK( loc.where() == item_location::type::map );
+    }
+    SECTION( "too heavy" ) {
+        give_backpack( guy );
+        item_location loc = place_item( next_to, itype_fridge_test );
+        apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+        CHECK( reason() == "too_heavy" );
+    }
+    SECTION( "out of reach" ) {
+        give_backpack( guy );
+        item_location loc = place_item( errand_origin + tripoint( 4, 0, 0 ), itype_crowbar );
+        apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+        CHECK( reason() == "out_of_reach" );
+        CHECK_FALSE( guy.walk );
+    }
+    SECTION( "someone else carries it" ) {
+        give_backpack( guy );
+        item_location loc = get_avatar().i_add( item( itype_rock ) );
+        apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+        CHECK( reason() == "held" );
+    }
+    SECTION( "spilt liquid" ) {
+        give_backpack( guy );
+        item water( itype_water_clean );
+        water.charges = 5;
+        item_location loc( map_cursor( next_to ), &here.add_item( next_to, water ) );
+        apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+        CHECK( reason() == "liquid" );
+    }
+    SECTION( "someone else's, theft not allowed" ) {
+        give_backpack( guy );
+        item_location loc = place_item( next_to, itype_crowbar );
+        loc->set_owner( faction_your_followers );
+        apply_to_item( item_effect( "u_pickup_item", R"("allow_theft": false)" ), guy, loc );
+        CHECK( reason() == "owned" );
+    }
+    SECTION( "gone" ) {
+        item_location loc = place_item( next_to, itype_crowbar );
+        loc.remove_item();
+        apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+        CHECK( reason() == "gone" );
+    }
+    CHECK( result() == "false" );
+    CHECK( global_string( "test_errand_u" ) == guy.get_name() );
+}
+
+TEST_CASE( "u_pickup_item_theft", "[npc][eoc][errand]" )
+{
+    // the avatar takes the NPC's faction's crowbar while it looks on
+    npc &guy = errand_npc();
+    avatar &you = get_avatar();
+    map &here = get_map();
+    you.setpos( here, errand_origin + tripoint( 2, 0, 0 ) );
+    give_backpack( you );
+    here.build_map_cache( 0 );
+    REQUIRE( guy.sees( here, you ) );
+    item_location loc = place_item( you.pos_bub() + tripoint( 1, 0, 0 ), itype_crowbar );
+    loc->set_owner( faction_tacoma_commune );
+    REQUIRE( guy.get_faction_id() == faction_tacoma_commune );
+    apply_to_item( item_effect( "u_pickup_item" ), you, loc );
+    CHECK( result() == "true" );
+    REQUIRE( loc );
+    CHECK( loc->is_owned_by( you ) );
+    CHECK( guy.get_attitude() == NPCATT_RECOVER_GOODS );
+}
+
+TEST_CASE( "u_pickup_item_walks_there", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    give_backpack( guy );
+    const tripoint_bub_ms spot = errand_origin + tripoint( 8, 3, 0 );
+    item_location loc = place_item( spot, itype_crowbar );
+    loc->set_var( "errand_mark", "walked" );
+    const std::string walk_and_take = item_effect( "u_pickup_item", R"("walk": true)" );
+    apply_to_item( walk_and_take, guy, loc );
+    REQUIRE( guy.walk );
+    CHECK( guy.walk->kind == walk_kind::pickup );
+    CHECK( result().empty() );
+    SECTION( "takes it on arrival" ) {
+        run_until_walk_ends( guy, 20 );
+        CHECK( square_dist( guy.pos_bub(), spot ) <= 1 );
+        CHECK( result() == "true" );
+        CHECK( reason() == "done" );
+        // npc is the item, in the pack
+        CHECK( global_string( "test_errand_npc" ) == item( itype_crowbar ).type_name() );
+        CHECK( guy.has_item_with( []( const item & it ) {
+            return it.get_var( "errand_mark", "" ) == "walked";
+        } ) );
+    }
+    SECTION( "gone before it gets there" ) {
+        run_npc_turns( guy, 2 );
+        loc.remove_item();
+        run_until_walk_ends( guy, 20 );
+        CHECK( result() == "false" );
+        CHECK( reason() == "gone" );
+        CHECK( global_string( "test_errand_npc" ) == "none" );
+    }
+    SECTION( "saved and loaded on the way" ) {
+        run_npc_turns( guy, 2 );
+        save_and_load( guy );
+        REQUIRE( guy.walk );
+        CHECK( guy.walk->kind == walk_kind::pickup );
+        CHECK( guy.walk->item_type == itype_crowbar );
+        run_until_walk_ends( guy, 20 );
+        CHECK( result() == "true" );
+        CHECK( guy.amount_of( itype_crowbar ) == 1 );
+    }
+    SECTION( "sent again for the same item, the walk goes on" ) {
+        run_npc_turns( guy, 2 );
+        const int serial = guy.walk->serial;
+        apply_to_item( walk_and_take, guy, loc );
+        REQUIRE( guy.walk );
+        CHECK( guy.walk->serial == serial );
+    }
+    SECTION( "within reach, it takes it at once" ) {
+        guy.walk.reset();
+        guy.setpos( get_map(), spot + tripoint( -1, 0, 0 ) );
+        apply_to_item( walk_and_take, guy, loc );
+        CHECK_FALSE( guy.walk );
+        CHECK( result() == "true" );
+    }
+}
+
+TEST_CASE( "u_wield_item", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    avatar &you = get_avatar();
+    const bool by_npc = GENERATE( true, false );
+    CAPTURE( by_npc );
+    Character &who = by_npc ? static_cast<Character &>( guy ) : you;
+    give_backpack( who );
+    // the old weapon goes into the pack, with no menu for the avatar
+    who.set_wielded_item( item( itype_hammer ) );
+    item_location loc = who.i_add( item( itype_crowbar ) );
+    loc->set_var( "errand_mark", "kept" );
+    who.set_moves( 100 );
+    apply_to_item( item_effect( "u_wield_item" ), who, loc );
+    CHECK( result() == "true" );
+    CHECK( who.get_moves() < 100 );
+    REQUIRE( who.get_wielded_item() );
+    CHECK( who.get_wielded_item()->typeId() == itype_crowbar );
+    CHECK( who.get_wielded_item()->get_var( "errand_mark", "" ) == "kept" );
+    CHECK( loc == who.get_wielded_item() );
+    CHECK( who.amount_of( itype_hammer ) == 1 );
+    SECTION( "wielded already" ) {
+        forget_errand_globals();
+        apply_to_item( item_effect( "u_wield_item" ), who, loc );
+        CHECK( result() == "true" );
+    }
+    SECTION( "can't wield it" ) {
+        item_location stuck = who.i_add( item( itype_rock ) );
+        stuck->set_flag( json_flag_NO_UNWIELD );
+        apply_to_item( item_effect( "u_wield_item" ), who, stuck );
+        CHECK( result() == "false" );
+        CHECK( reason() == "cannot_wield" );
+        CHECK( who.get_wielded_item()->typeId() == itype_crowbar );
+    }
+}
+
+TEST_CASE( "u_wield_item_from_the_ground", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    item_location loc = place_item( errand_origin + tripoint( 0, 1, 0 ), itype_crowbar );
+    apply_to_item( item_effect( "u_wield_item" ), guy, loc );
+    CHECK( result() == "true" );
+    REQUIRE( guy.get_wielded_item() );
+    CHECK( guy.get_wielded_item()->typeId() == itype_crowbar );
+    CHECK( get_map().i_at( errand_origin + tripoint( 0, 1, 0 ) ).empty() );
+}
+
+TEST_CASE( "u_wear_item", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    give_backpack( guy );
+    SECTION( "a shirt from the pack" ) {
+        item_location loc = guy.i_add( item( itype_tshirt ) );
+        guy.set_moves( 100 );
+        apply_to_item( item_effect( "u_wear_item" ), guy, loc );
+        CHECK( result() == "true" );
+        CHECK( guy.get_moves() < 100 );
+        REQUIRE( loc );
+        CHECK( guy.is_worn( *loc ) );
+        CHECK( loc->typeId() == itype_tshirt );
+    }
+    SECTION( "a rock can't be worn" ) {
+        item_location loc = guy.i_add( item( itype_rock ) );
+        apply_to_item( item_effect( "u_wear_item" ), guy, loc );
+        CHECK( result() == "false" );
+        CHECK( reason() == "cannot_wear" );
+        CHECK_FALSE( guy.is_worn( *loc ) );
+    }
+}
+
+TEST_CASE( "u_drop_item", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    give_backpack( guy );
+    map &here = get_map();
+    SECTION( "from the pack" ) {
+        item_location loc = guy.i_add( item( itype_crowbar ) );
+        loc->set_var( "errand_mark", "kept" );
+        guy.set_moves( 100 );
+        apply_to_item( item_effect( "u_drop_item" ), guy, loc );
+        CHECK( result() == "true" );
+        CHECK( guy.get_moves() < 100 );
+        CHECK( guy.amount_of( itype_crowbar ) == 0 );
+        REQUIRE( loc );
+        CHECK( loc.where() == item_location::type::map );
+        CHECK( loc.pos_bub( here ) == guy.pos_bub() );
+        CHECK( loc->get_var( "errand_mark", "" ) == "kept" );
+    }
+    SECTION( "what it wields" ) {
+        guy.set_wielded_item( item( itype_crowbar ) );
+        item_location loc = guy.get_wielded_item();
+        apply_to_item( item_effect( "u_drop_item" ), guy, loc );
+        CHECK( result() == "true" );
+        CHECK_FALSE( guy.get_wielded_item() );
+    }
+    SECTION( "what it wears" ) {
+        item_location loc;
+        for( const item_location &worn : guy.top_items_loc() ) {
+            if( worn->typeId() == itype_backpack ) {
+                loc = worn;
+            }
+        }
+        REQUIRE( loc );
+        apply_to_item( item_effect( "u_drop_item" ), guy, loc );
+        CHECK( result() == "true" );
+        CHECK_FALSE( guy.is_wearing( itype_backpack ) );
+    }
+    SECTION( "not its own" ) {
+        item_location loc = place_item( errand_origin + tripoint( 1, 0, 0 ), itype_crowbar );
+        apply_to_item( item_effect( "u_drop_item" ), guy, loc );
+        CHECK( result() == "false" );
+        CHECK( reason() == "not_carried" );
+    }
+}
+
+TEST_CASE( "u_pickup_item_then_wield_it", "[npc][eoc][errand]" )
+{
+    // the npc talker follows the item into the pack, so the next effect finds it there
+    npc &guy = errand_npc();
+    give_backpack( guy );
+    item_location loc = place_item( errand_origin + tripoint( 1, 1, 0 ), itype_crowbar );
+    apply_to_item( R"([ { "u_pickup_item": "npc" }, { "u_wield_item": "npc",
+        "true_eocs": [ "EOC_TEST_ERRAND_TRUE" ], "false_eocs": [ "EOC_TEST_ERRAND_FALSE" ] } ])",
+                   guy,
+                   loc );
+    CHECK( result() == "true" );
+    REQUIRE( guy.get_wielded_item() );
+    CHECK( guy.get_wielded_item()->typeId() == itype_crowbar );
+    SECTION( "after a walk, from true_eocs" ) {
+        guy.set_wielded_item( item() );
+        forget_errand_globals();
+        item_location far = place_item( errand_origin + tripoint( 7, 0, 0 ), itype_hammer );
+        apply_to_item( R"({ "u_pickup_item": "npc", "walk": true,
+            "true_eocs": [ "EOC_TEST_ERRAND_WIELD_IT" ] })", guy, far );
+        run_until_walk_ends( guy, 20 );
+        CHECK( result() == "true" );
+        REQUIRE( guy.get_wielded_item() );
+        CHECK( guy.get_wielded_item()->typeId() == itype_hammer );
+    }
+}
+
+TEST_CASE( "item_effects_are_checked_at_load", "[eoc][errand]" )
+{
+    CHECK_THROWS_AS( load_effect( R"({ "u_pickup_item": "u" })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "npc_pickup_item": "npc" })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_wield_item": { "context_val": "x" } })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_wear_item": "item" })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_drop_item": "u" })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_pickup_item": "npc", "run": true })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_pickup_item": "npc", "walk": true, "give_up_after": -5 })" ),
+                     JsonError );
+}

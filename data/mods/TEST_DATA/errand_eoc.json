@@ -36,5 +36,11 @@
     "id": "EOC_TEST_ERRAND_TAG",
     "//": "Errand tests: the true_eocs of a walk started with the context value errand_tag, which it copies to a global.",
     "effect": [ { "copy_var": { "context_val": "errand_tag" }, "target_var": { "global_val": "test_errand_tag" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ERRAND_WIELD_IT",
+    "//": "Errand tests: the true_eocs of a pickup, which wields the item just taken (the npc talker).",
+    "effect": [ { "u_wield_item": "npc", "true_eocs": [ "EOC_TEST_ERRAND_TRUE" ], "false_eocs": [ "EOC_TEST_ERRAND_FALSE" ] } ]
   }
 ]
