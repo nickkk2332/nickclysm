@@ -96,8 +96,14 @@ void activity_type::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "auto_needs", auto_needs, false );
     optional( jo, was_loaded, "mute_npc_completion", mute_npc_completion, false );
     // An EOC id or an inline EOC object.
+    if( jo.has_member( "start_eoc" ) ) {
+        start_EOC = effect_on_conditions::load_inline_eoc( jo.get_member( "start_eoc" ), src );
+    }
     if( jo.has_member( "completion_eoc" ) ) {
         completion_EOC = effect_on_conditions::load_inline_eoc( jo.get_member( "completion_eoc" ), src );
+    }
+    if( jo.has_member( "cancel_eoc" ) ) {
+        cancel_EOC = effect_on_conditions::load_inline_eoc( jo.get_member( "cancel_eoc" ), src );
     }
     if( jo.has_member( "do_turn_eoc" ) ) {
         do_turn_EOC = effect_on_conditions::load_inline_eoc( jo.get_member( "do_turn_eoc" ), src );
@@ -129,7 +135,7 @@ void activity_type::check_consistency()
             debugmsg( "%s doesn't have a verb", act.id.c_str() );
         }
         for( const effect_on_condition_id &eoc : {
-                 act.completion_EOC, act.do_turn_EOC
+                 act.start_EOC, act.completion_EOC, act.cancel_EOC, act.do_turn_EOC
              } ) {
             if( !eoc.is_null() && !eoc.is_valid() ) {
                 debugmsg( "%s uses unknown effect_on_condition %s", act.id.c_str(), eoc.c_str() );

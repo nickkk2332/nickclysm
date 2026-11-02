@@ -74,8 +74,10 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 |
 | countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 |
 | COMESTIBLE: "consumption_effect_on_conditions"   | user (Character)            | item (item)                 |
-| activity_type: "completion_eoc"                  | character (Character)       | NONE                        |
-| activity_type: "do_turn_eoc"                     | character (Character)       | NONE                        |
+| activity_type: "start_eoc"                       | character (Character)       | first target (item), if any | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; `resume`, number, 1 when resuming
+| activity_type: "completion_eoc"                  | character (Character)       | first target (item), if any | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
+| activity_type: "cancel_eoc"                      | character (Character)       | first target (item), if any | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
+| activity_type: "do_turn_eoc"                     | character (Character)       | first target (item), if any | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
 | addiction_type: "effect_on_condition"            | character (Character)       | NONE                        |
 | bionics: "activated_eocs"                        | character (Character)       | NONE                        | `act_cost`, int, cost of activation of item
 | bionics: "deactivated_eocs"                      | character (Character)       | NONE                        |
@@ -1889,7 +1891,7 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | character_consumes_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
 | character_dies |  | { "character", `character_id` }, | character / NONE |
 | character_eats_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
-| character_finished_activity | Triggered when character finished or canceled activity | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` } | character / NONE |
+| character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a drop dropped everything, or a zone job ran out of work | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` } | character / NONE |
 | character_forgets_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_gains_effect |  | { "character", `character_id` },<br/> { "effect", `efftype_id` },<br/> { "bodypart", `bodypart_id` }, { "intensity", `int` }</br> | character / NONE |
 | character_gets_headshot |  | { "character", `character_id` } | character / NONE |

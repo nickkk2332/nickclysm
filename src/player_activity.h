@@ -26,6 +26,7 @@
 class Character;
 class JsonObject;
 class JsonOut;
+class activity_end_hooks;
 class avatar;
 class monster;
 class translation;
@@ -160,9 +161,21 @@ class player_activity
         void do_turn( Character &you );
 
         /**
-         * Performs activity-specific cleanup when Character::cancel_activity() is called
+         * Performs activity-specific cleanup when Character::cancel_activity() is called,
+         * and runs the cancel hooks unless they were taken (see take_end_hooks).
          */
         void canceled( Character &who );
+
+        /**
+         * Takes this activity's end hooks so they can run once it is gone: after
+         * Character::cancel_activity(), or once its result exists. The activity then doesn't
+         * run them itself, so an actor that finishes its work some other way than running out
+         * of moves takes them, clears the activity and runs them as a completion.
+         * Each activity object hands its hooks out once; later calls get hooks that do nothing.
+         */
+        activity_end_hooks take_end_hooks();
+        /** The end hooks take_end_hooks() would hand out, leaving them with the activity. */
+        activity_end_hooks peek_end_hooks() const;
 
         /**
          * Returns true if activities are similar enough that this activity
@@ -190,6 +203,42 @@ class player_activity
         }
 
         std::map<distraction_type, std::string> get_distractions() const;
+
+    private:
+        /**
+         * Whether this activity object handed out its end hooks. A copy (one pushed to the
+         * backlog, say) starts without it, so it runs its own hooks when it ends.
+         */
+        struct end_hooks_state {
+            bool taken = false;
+            end_hooks_state() = default;
+            end_hooks_state( const end_hooks_state & ) noexcept {}
+            end_hooks_state &operator=( const end_hooks_state & ) noexcept {
+                taken = false;
+                return *this;
+            }
+            ~end_hooks_state() = default;
+        };
+        end_hooks_state end_hooks; // NOLINT(cata-serialize)
+};
+
+/**
+ * The end hooks of an activity (see player_activity::take_end_hooks): sending
+ * character_finished_activity and running the type's completion_eoc or cancel_eoc.
+ */
+class activity_end_hooks
+{
+    public:
+        /** Runs the hooks for @p who as a completion, or a cancel. Only the first call does. */
+        void run( Character &who, bool canceled );
+    private:
+        friend class player_activity;
+        bool pending = false;
+        activity_id type;
+        int moves_total = 0;
+        int moves_left = 0;
+        // the activity's first target, the EOCs' beta talker
+        item_location target;
 };
 
 #endif // CATA_SRC_PLAYER_ACTIVITY_H

@@ -1,5 +1,6 @@
 #include <string>
 
+#include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
@@ -8,19 +9,32 @@
 #include "coordinates.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
+#include "global_vars.h"
+#include "item.h"
 #include "json_error.h"
 #include "json_loader.h"
+#include "map.h"
 #include "map_helpers.h"
+#include "map_helpers_tests.h"
 #include "npc.h"
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "recipe.h"
 #include "type_id.h"
 
+static const activity_id ACT_CRAFT( "ACT_CRAFT" );
 static const activity_id ACT_GAME( "ACT_GAME" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
 static const activity_id ACT_MULTIPLE_FARM( "ACT_MULTIPLE_FARM" );
+static const activity_id ACT_TEST_HOOKS( "ACT_TEST_HOOKS" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
+
+static const itype_id itype_2x4( "2x4" );
+
+static const recipe_id recipe_cudgel_test_activity_hooks( "cudgel_test_activity_hooks" );
+
+static const trait_id trait_DEBUG_CNF( "DEBUG_CNF" );
 
 static talk_effect_t load_effect( const std::string &json )
 {
@@ -92,4 +106,90 @@ TEST_CASE( "act-j02_assign_activity_rejects_actors_it_cannot_start", "[audit][ac
     CHECK_NOTHROW( load_effect( R"({ "effect": { "u_assign_activity": "ACT_GENERIC_EOC", )"
                                 R"("duration": "10 minutes" } })" ) );
     CHECK_NOTHROW( load_effect( R"({ "effect": { "u_assign_activity": "ACT_WAIT" } })" ) );
+}
+
+static void run_activity_to_the_end( Character &who, const activity_id &type )
+{
+    int guard = 0;
+    while( who.activity.id() == type ) {
+        REQUIRE( ++guard < 100000 );
+        who.set_moves( 100 );
+        who.activity.do_turn( who );
+    }
+}
+
+// Crafts the recipe in the avatar's hands, with light and no failures.
+static void craft_to_the_end( avatar &u, const recipe_id &rid )
+{
+    set_time( calendar::turn_zero + 12_hours );
+    if( !u.has_trait( trait_DEBUG_CNF ) ) {
+        u.toggle_trait( trait_DEBUG_CNF );
+    }
+    u.learn_recipe( &rid.obj() );
+    u.make_craft( rid, 1 );
+    REQUIRE( u.activity.id() == ACT_CRAFT );
+    run_activity_to_the_end( u, ACT_CRAFT );
+}
+
+// ACT-J03: activity types had only completion_eoc and do_turn_eoc, run with no context, and
+// the completion EOC ran before the activity ended, so it couldn't see the result. There
+// were no start or cancel hooks.
+TEST_CASE( "act-j03_activity_start_completion_and_cancel_hooks", "[audit][activity]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    avatar &u = get_avatar();
+
+    u.assign_activity( ACT_TEST_HOOKS, 1000 );
+    CHECK( globvars.get_global_value( "act_hooks_start" ) == 1 );
+    CHECK( globvars.get_global_value( "act_hooks_start_resume" ) == 0 );
+    CHECK( globvars.get_global_value( "act_hooks_start_id" ) == "ACT_TEST_HOOKS" );
+
+    SECTION( "completion runs once the activity has ended" ) {
+        run_activity_to_the_end( u, ACT_TEST_HOOKS );
+        CHECK( globvars.get_global_value( "act_hooks_done" ) == 1 );
+        CHECK( globvars.get_global_value( "act_hooks_done_total" ) == 1000 );
+        CHECK( !globvars.maybe_get_global_value( "act_hooks_done_while_active" ) );
+        CHECK( !globvars.maybe_get_global_value( "act_hooks_cancel" ) );
+    }
+    SECTION( "canceling runs the cancel hook, not the completion one" ) {
+        u.cancel_activity();
+        CHECK( globvars.get_global_value( "act_hooks_cancel" ) == 1 );
+        CHECK( globvars.get_global_value( "act_hooks_cancel_left" ) == 1000 );
+        CHECK( !globvars.maybe_get_global_value( "act_hooks_done" ) );
+    }
+    clear_avatar();
+}
+
+// ACT-J03: a finished craft cleared its activity with cancel_activity(), so it was reported
+// as canceled, and a zone job that ran out of work reported nothing at all.
+// EOC_character_finished_activity_event_test copies the event into key1 to key3.
+TEST_CASE( "act-j03_crafts_and_zone_jobs_report_completion", "[audit][activity]" )
+{
+    clear_avatar();
+    clear_map();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    avatar &u = get_avatar();
+
+    SECTION( "a finished craft" ) {
+        get_map().add_item( u.pos_bub(), item( itype_2x4 ) );
+        craft_to_the_end( u, recipe_cudgel_test_activity_hooks );
+        CHECK( globvars.get_global_value( "key1" ) == "ACT_CRAFT" );
+        CHECK( globvars.get_global_value( "key2" ) == 0 );
+        CHECK( globvars.get_global_value( "key3" ) == "activity finished" );
+    }
+    SECTION( "a zone job with nothing to do" ) {
+        u.assign_activity( multi_farm_activity_actor() );
+        REQUIRE( u.activity.id() == ACT_MULTIPLE_FARM );
+        u.set_moves( 100 );
+        u.activity.do_turn( u );
+        CHECK( u.activity.is_null() );
+        CHECK( globvars.get_global_value( "key1" ) == "ACT_MULTIPLE_FARM" );
+        CHECK( globvars.get_global_value( "key2" ) == 0 );
+        CHECK( globvars.get_global_value( "key3" ) == "activity finished" );
+    }
+    clear_avatar();
 }

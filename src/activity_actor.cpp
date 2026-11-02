@@ -5394,13 +5394,22 @@ std::optional<requirement_id> multi_zone_activity_actor::multi_activity_requirem
 void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
 {
     activity_id prior_act = get_type();
+    // Read now: an NPC whose job has nothing left is reverted inside simulate_turn.
+    activity_end_hooks ended = act.peek_end_hooks();
     bool activity_continues = simulate_turn( act, you, false );
+    // Without a route to more work, and not handed over to another activity, the job is done:
+    // its zones have nothing left to do.
+    const bool job_done = !activity_continues && !you.has_destination() &&
+                          ( you.activity.is_null() || you.activity.id() == prior_act );
     // If this activity still exists and was not successful or resulted in a new travel route, end it
     if( ( you.has_destination() || !activity_continues ) &&
         !act.is_null() && ( prior_act == you.activity.id() ) ) {
         // Nuke the current activity, leaving the backlog alone
         // No multi_zone_activity_actor functions will be called from this point, so `this` can be nullptr
         you.activity = player_activity();
+    }
+    if( job_done ) {
+        ended.run( you, false );
     }
 }
 
@@ -6972,8 +6981,11 @@ void craft_activity_actor::do_turn( player_activity &act, Character &crafter )
         craft_item.remove_item();
         // We need to cache this before we cancel the activity else we risk Use After Free
         const bool will_continue = is_long;
+        // The craft is done, not canceled: its completion hooks run once the result exists.
+        activity_end_hooks ended = act.take_end_hooks();
         crafter.cancel_activity();
         crafter.complete_craft( craft_copy, location );
+        ended.run( crafter, false );
         if( will_continue ) {
             if( crafter.making_would_work( crafter.lastrecipe, craft_copy.get_making_batch_size() ) ) {
                 crafter.last_craft->execute( location );
@@ -7576,7 +7588,7 @@ void drop_or_stash_item_info::deserialize( const JsonObject &jsobj )
     jsobj.read( "count", _count );
 }
 
-void drop_activity_actor::do_turn( player_activity &, Character &who )
+void drop_activity_actor::do_turn( player_activity &act, Character &who )
 {
     map &here = get_map();
     const tripoint_bub_ms pos = placement + who.pos_bub();
@@ -7587,7 +7599,10 @@ void drop_activity_actor::do_turn( player_activity &, Character &who )
     // to resolve the drop next turn. This is different from the pickup logic which creates
     // a brand new activity every turn and cancels the old activity
     if( items.empty() ) {
+        // Everything is dropped: that is a completion, not a cancel.
+        activity_end_hooks ended = act.take_end_hooks();
         who.cancel_activity();
+        ended.run( who, false );
     }
 }
 
@@ -9173,7 +9188,11 @@ void disassemble_activity_actor::do_turn( player_activity &act, Character &who )
     }
 
     if( craft.item_counter >= 10000000 ) {
+        // Each item disassembled completes an activity. complete_disassemble may start the next
+        // item's activity, which ends this actor, so the hooks are taken first.
+        activity_end_hooks ended = act.take_end_hooks();
         who.complete_disassemble( target );
+        ended.run( who, false );
     }
 }
 
@@ -14269,12 +14288,14 @@ void zone_activity_actor::do_turn( player_activity &act, Character &you )
         return;
     }
     // If we got here without restarting the activity, it means we're done
+    activity_end_hooks ended = act.take_end_hooks();
     add_msg( m_info, _( "%s sorted out every item possible." ), you.disp_name( true ) );
     if( you.is_npc() ) {
         npc *guy = dynamic_cast<npc *>( &you );
         guy->revert_after_activity();
     }
     act.set_to_null();
+    ended.run( you, false );
 }
 
 void zone_activity_actor::finish( player_activity &, Character & )

@@ -1,0 +1,16 @@
+[
+  {
+    "//": "A quick craft with no tools, for the activity and crafting hook tests.",
+    "type": "recipe",
+    "activity_level": "NO_EXERCISE",
+    "result": "cudgel",
+    "id_suffix": "test_activity_hooks",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "fabrication",
+    "difficulty": 0,
+    "time": "1 m",
+    "autolearn": true,
+    "components": [ [ [ "2x4", 1 ] ] ]
+  }
+]

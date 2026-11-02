@@ -34,5 +34,32 @@
     "type": "activity_type",
     "copy-from": "ACT_MEDITATE",
     "do_turn_eoc": { "id": "EOC_TEST_ACT_MEDITATE_TICK", "effect": [ { "math": [ "act_meditate_ticks++" ] } ] }
+  },
+  {
+    "id": "ACT_TEST_HOOKS",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "testing activity hooks",
+    "based_on": "time",
+    "start_eoc": {
+      "id": "EOC_TEST_ACT_HOOKS_START",
+      "effect": [
+        { "math": [ "act_hooks_start++" ] },
+        { "math": [ "act_hooks_start_resume = _resume" ] },
+        { "copy_var": { "context_val": "activity" }, "target_var": { "global_val": "act_hooks_start_id" } }
+      ]
+    },
+    "completion_eoc": {
+      "id": "EOC_TEST_ACT_HOOKS_DONE",
+      "effect": [
+        { "math": [ "act_hooks_done++" ] },
+        { "math": [ "act_hooks_done_total = _moves_total" ] },
+        { "if": "u_has_activity", "then": [ { "math": [ "act_hooks_done_while_active = 1" ] } ] }
+      ]
+    },
+    "cancel_eoc": {
+      "id": "EOC_TEST_ACT_HOOKS_CANCEL",
+      "effect": [ { "math": [ "act_hooks_cancel++" ] }, { "math": [ "act_hooks_cancel_left = _moves_left" ] } ]
+    }
   }
 ]

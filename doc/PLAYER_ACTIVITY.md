@@ -102,11 +102,53 @@ activity, for example `[ "hunger", "thirst" ]`. Valid values: `noise`, `pain`,
 `dangerous_field`, `hunger`, `thirst`, `temperature`, `mutation`, `oxygen`,
 `withdrawal`, `craft_step_complete`.
 
-* completion_eoc: an EOC that is run when this activity completes. Either an
-EOC id or an inline EOC object.
+* start_eoc: an EOC that is run when this activity starts or resumes.
 
-* do_turn_eoc: an EOC that is run when this activity performs a turn. Either
-an EOC id or an inline EOC object.
+* completion_eoc: an EOC that is run when this activity completes, after it
+has ended, so it sees the result.
+
+* cancel_eoc: an EOC that is run when this activity is canceled or
+interrupted, after it has ended.
+
+* do_turn_eoc: an EOC that is run when this activity performs a turn.
+
+Each of the four is an EOC id or an inline EOC object. They run with the
+character doing the activity as the alpha talker (`u_`), and with the
+activity's first target item, if it has one and it still exists, as the beta
+talker (`npc_`): for example the in-progress craft for `ACT_CRAFT`, or the
+book for `ACT_READ`. Context values:
+
+| Context value | Value |
+| --- | --- |
+| `_activity` | the activity id |
+| `_moves_total` | the moves the activity takes in all |
+| `_moves_left` | the moves still left; for completion_eoc and cancel_eoc, what was left when it ended |
+| `_resume` | start_eoc only: 1 when the activity resumes, 0 when it starts |
+
+An activity completes when it runs out of moves, and also when its actor ends
+it after finishing its work: a craft that is done, each item disassembled, a
+drop that dropped everything, and a zone job (`ACT_MULTIPLE_*`, `ACT_MOVE_LOOT`,
+`ACT_UNLOAD_LOOT`, ...) that ran out of work. completion_eoc runs once per
+completion and cancel_eoc once per cancel, never both. The
+`character_finished_activity` event is sent at the same point, with
+`canceled` false for a completion.
+
+```json
+{
+  "type": "activity_type",
+  "id": "ACT_CRAFT",
+  "copy-from": "ACT_CRAFT",
+  "start_eoc": {
+    "id": "EOC_MY_MOD_CRAFT_START",
+    "condition": { "math": [ "_resume == 0" ] },
+    "effect": [ { "math": [ "u_crafts_started++" ] } ]
+  },
+  "cancel_eoc": {
+    "id": "EOC_MY_MOD_CRAFT_ABANDONED",
+    "effect": [ { "math": [ "u_crafts_abandoned++" ] } ]
+  }
+}
+```
 
 Activity types support `copy-from`, `abstract`, `extend` and `delete`, so a
 mod can change a vanilla activity without redefining it. For example, to run
@@ -144,6 +186,13 @@ There are several ways an activity can be ended:
     function from running, and the activity does therefore not yield a
     result. Instead, `activity_actor::canceled` is called. If the activity is
     resumable, a copy of it is written to `Character::backlog`.
+
+An actor that finishes its work some other way than running out of moves
+(and then calls `set_to_null()` or `Character::cancel_activity()`) reports
+the completion: it takes the hooks with `player_activity::take_end_hooks()`
+before ending the activity, then calls `run( who, false )` on them once the
+result exists. Otherwise the end looks like a cancel (with
+`cancel_activity()`) or isn't reported at all (with `set_to_null()`).
 
 ## Notes
 

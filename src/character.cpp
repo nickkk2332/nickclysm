@@ -5549,6 +5549,8 @@ bool Character::has_activity( const std::vector<activity_id> &types ) const
 
 void Character::cancel_activity()
 {
+    // The cancel hooks run once the activity is gone, so an EOC there can start another one.
+    activity_end_hooks ended = activity.take_end_hooks();
     activity.canceled( *this );
     if( has_activity( ACT_MOVE_ITEMS ) && is_hauling() ) {
         stop_hauling();
@@ -5590,6 +5592,7 @@ void Character::cancel_activity()
         // nothing reads stale task mission or attitude
         guy->end_cancelled_task();
     }
+    ended.run( *this, true );
 }
 
 void Character::resume_backlog_activity()

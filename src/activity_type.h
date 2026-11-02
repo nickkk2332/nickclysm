@@ -58,7 +58,11 @@ class activity_type
         float activity_level = NO_EXERCISE;
         std::set<distraction_type> default_ignored_distractions_;
     public:
+        // Run when an activity of this type starts or resumes, completes or is canceled, and
+        // on each of its turns. See doc/PLAYER_ACTIVITY.md.
+        effect_on_condition_id start_EOC;
         effect_on_condition_id completion_EOC;
+        effect_on_condition_id cancel_EOC;
         effect_on_condition_id do_turn_EOC;
 
         const std::set<distraction_type> &default_ignored_distractions() const {
