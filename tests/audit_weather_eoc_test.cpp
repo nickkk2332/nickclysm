@@ -18,6 +18,7 @@
 #include "json_loader.h"
 #include "pimpl.h"
 #include "player_helpers.h"
+#include "rng.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
@@ -44,11 +45,21 @@ static void run_weather_eoc( const effect_on_condition_id &eoc )
     eoc->activate( d );
 }
 
+// The generator rolls wind with rng, so seed it the same way before the game's own weather
+// update and before asking for the expected values.
+static constexpr unsigned int wind_seed = 4242;
+
 // What the generator gives for now, before any override
 static w_point generated_weather()
 {
     return get_weather().get_cur_weather_gen().get_weather( get_avatar().pos_abs(), calendar::turn,
             g->get_seed() );
+}
+
+static w_point generated_weather_seeded()
+{
+    rng_set_engine_seed( wind_seed );
+    return generated_weather();
 }
 
 static double global_number( const std::string &name )
@@ -117,13 +128,15 @@ TEST_CASE( "loop-j01_eoc_weather_overrides_hold_until_they_run_out", "[audit][we
         CHECK( weather.winddirection == 90 );
 
         calendar::turn += 1_hours;
+        rng_set_engine_seed( wind_seed );
         weather.update_weather();
         CHECK( !weather.eoc_windspeed.value );
-        CHECK( weather.windspeed == static_cast<int>( generated_weather().windpower ) );
+        CHECK( weather.windspeed == static_cast<int>( generated_weather_seeded().windpower ) );
         CHECK( weather.winddirection == 90 );
 
+        rng_set_engine_seed( wind_seed );
         run_weather_eoc( effect_on_condition_EOC_TEST_CLEAR_WEATHER );
-        CHECK( weather.winddirection == generated_weather().winddirection );
+        CHECK( weather.winddirection == generated_weather_seeded().winddirection );
     }
 
     SECTION( "wind assigned without a duration lasts until the weather changes" ) {
@@ -131,8 +144,9 @@ TEST_CASE( "loop-j01_eoc_weather_overrides_hold_until_they_run_out", "[audit][we
         CHECK( weather.windspeed == 25 );
         CHECK( !weather.eoc_windspeed.value );
 
+        rng_set_engine_seed( wind_seed );
         weather.set_nextweather( calendar::turn );
-        CHECK( weather.windspeed == static_cast<int>( generated_weather().windpower ) );
+        CHECK( weather.windspeed == static_cast<int>( generated_weather_seeded().windpower ) );
     }
 
     SECTION( "a temperature offset shifts the generated temperature; a held temperature wins" ) {
