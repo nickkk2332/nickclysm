@@ -456,6 +456,13 @@ class item_contents
         void read_mods( const item_contents &read_input );
         void combine( const item_contents &read_input, bool convert = false, bool into_bottom = false,
                       bool restack_charges = true, bool ignore_contents = false );
+        /**
+         * The same, taking the items over instead of copying them, as for contents just read
+         * from a save: they keep their uids, and their own contents are not copied again.
+         * Items end up where the copying version puts them.
+         */
+        void combine( item_contents &&read_input, bool convert = false, bool into_bottom = false,
+                      bool restack_charges = true, bool ignore_contents = false );
 
         void serialize( JsonOut &json ) const;
         void deserialize( const JsonObject &data );

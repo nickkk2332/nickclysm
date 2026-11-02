@@ -12,6 +12,8 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "cata_imgui.h"
@@ -722,98 +724,6 @@ void item_contents::read_mods( const item_contents &read_input )
     }
 }
 
-void item_contents::combine( const item_contents &read_input, const bool convert,
-                             const bool into_bottom, bool restack_charges, bool ignore_contents )
-{
-    std::list<item_pocket> mismatched_pockets;
-    std::vector<item> uninserted_items;
-    size_t pocket_index = 0;
-
-    for( const item &pocket : read_input.additional_pockets ) {
-        add_pocket( pocket );
-    }
-
-    for( const item_pocket &pocket : read_input.contents ) {
-        if( pocket_index < contents.size() ) {
-            if( convert ) {
-                if( pocket.is_type( pocket_type::MIGRATION ) ||
-                    pocket.is_type( pocket_type::CORPSE ) ||
-                    pocket.is_type( pocket_type::MAGAZINE ) ||
-                    pocket.is_type( pocket_type::MAGAZINE_WELL ) ||
-                    pocket.is_type( pocket_type::E_FILE_STORAGE ) ) {
-                    ++pocket_index;
-                    for( const item *it : pocket.all_items_top() ) {
-                        insert_item( *it, pocket.get_pocket_data()->type, ignore_contents );
-                    }
-                    continue;
-                } else if( pocket.is_type( pocket_type::MOD ) ) {
-                    // skipping mod type pocket because using combine this way requires mods to come first
-                    // and to call update_mod_pockets
-                    ++pocket_index;
-                    continue;
-                }
-            } else {
-                if( pocket.saved_type() == pocket_type::MOD ) {
-                    // this is already handled in item_contents::read_mods
-                    ++pocket_index;
-                    continue;
-                } else if( pocket.saved_type() == pocket_type::MIGRATION ||
-                           pocket.saved_type() == pocket_type::CORPSE ) {
-                    for( const item *it : pocket.all_items_top() ) {
-                        insert_item( *it, pocket.saved_type(), ignore_contents );
-                    }
-                    ++pocket_index;
-                    continue;
-                }
-            }
-            auto current_pocket_iter = contents.begin();
-            std::advance( current_pocket_iter, pocket_index );
-
-            if( !current_pocket_iter->is_type( convert ? pocket.get_pocket_data()->type :
-                                               pocket.saved_type() ) ) {
-                mismatched_pockets.push_back( pocket );
-                continue;
-            }
-
-            for( const item *it : pocket.all_items_top() ) {
-                const ret_val<item *> inserted = current_pocket_iter->insert_item( *it,
-                                                 into_bottom, restack_charges, ignore_contents );
-                if( !inserted.success() ) {
-                    uninserted_items.push_back( *it );
-                    DebugLog( DebugLevel::D_WARNING, DebugClass::D_GAME ) <<
-                            "error: item " << it->typeId().str() << "cannot fit into pocket while loading: " << inserted.str();
-                }
-            }
-
-            if( pocket.saved_sealed() ) {
-                current_pocket_iter->seal();
-            }
-            current_pocket_iter->settings = pocket.settings;
-        } else {
-            for( const item *it : pocket.all_items_top() ) {
-                uninserted_items.push_back( *it );
-            }
-        }
-        ++pocket_index;
-    }
-
-    for( const item_pocket &pocket : mismatched_pockets ) {
-        const pocket_type mismatched_type = convert ? pocket.get_pocket_data()->type : pocket.saved_type();
-        for( const item *it : pocket.all_items_top() ) {
-            const ret_val<item *> inserted = insert_item( *it, mismatched_type, ignore_contents );
-            if( !inserted.success() ) {
-                uninserted_items.push_back( *it );
-                debugmsg( "error: item %s cannot fit into any pocket while loading: %s",
-                          it->typeId().str(), inserted.str() );
-            }
-        }
-    }
-
-    for( const item &uninserted_item : uninserted_items ) {
-        insert_item( uninserted_item, pocket_type::MIGRATION, ignore_contents );
-    }
-}
-
 struct item_contents::item_contents_helper {
     // Static helper function to implement the const and non-const versions of
     // find_pocket_for with less code duplication
@@ -867,6 +777,141 @@ struct item_contents::item_contents_helper {
                               num_pockets_of_type ),
                    enumerate_as_string( failure_messages, enumeration_conjunction::or_ ) );
     }
+
+    // item_contents::insert_item, for an item to copy (const) or to move in (rvalue)
+    template<typename Item>
+    static ret_val<item *> insert( item_contents &contents, Item &&it, pocket_type pk_type,
+                                   bool ignore_contents, bool unseal_pockets ) {
+        if( pk_type == pocket_type::LAST ) {
+            // LAST is invalid, so we assume it will be a regular container
+            pk_type = pocket_type::CONTAINER;
+        }
+
+        ret_val<item_pocket *> pocket = contents.find_pocket_for( it, pk_type );
+        if( !pocket.success() ) {
+            return ret_val<item *>::make_failure( nullptr, pocket.str() );
+        }
+
+        ret_val<item *> inserted = pocket.value()->insert_item( std::forward<Item>( it ), false, true,
+                                   ignore_contents );
+        if( inserted.success() ) {
+            if( unseal_pockets ) {
+                pocket.value()->unseal();
+            }
+            return inserted;
+        }
+        return ret_val<item *>::make_failure( nullptr, inserted.str() );
+    }
+
+    // An item of the input to combine: copied from a const input, moved out of one taken over
+    template<typename Input>
+    using passed_item = std::conditional_t < std::is_const_v<Input>, const item &, item && >;
+
+    template<typename Input>
+    static passed_item<Input> pass_on( std::remove_reference_t<passed_item<Input>> &it ) {
+        return static_cast<passed_item<Input>>( it );
+    }
+
+    // item_contents::combine for both kinds of input. Items that don't fit where they were
+    // saved go to a pocket of their saved type, then to the migration pocket.
+    template<typename Input>
+    static void combine( item_contents &dest, Input &read_input, const bool convert,
+                         const bool into_bottom, bool restack_charges, bool ignore_contents ) {
+        using input_pocket = item_pocket_type<Input>;
+        // These stay in read_input until the end
+        std::vector<input_pocket *> mismatched_pockets;
+        std::vector<item> uninserted_items;
+        size_t pocket_index = 0;
+
+        for( const item &pocket : read_input.additional_pockets ) {
+            dest.add_pocket( pocket );
+        }
+
+        for( input_pocket &pocket : read_input.contents ) {
+            if( pocket_index < dest.contents.size() ) {
+                if( convert ) {
+                    if( pocket.is_type( pocket_type::MIGRATION ) ||
+                        pocket.is_type( pocket_type::CORPSE ) ||
+                        pocket.is_type( pocket_type::MAGAZINE ) ||
+                        pocket.is_type( pocket_type::MAGAZINE_WELL ) ||
+                        pocket.is_type( pocket_type::E_FILE_STORAGE ) ) {
+                        ++pocket_index;
+                        for( auto *it : pocket.all_items_top() ) {
+                            insert( dest, pass_on<Input>( *it ), pocket.get_pocket_data()->type, ignore_contents,
+                                    false );
+                        }
+                        continue;
+                    } else if( pocket.is_type( pocket_type::MOD ) ) {
+                        // skipping mod type pocket because using combine this way requires mods to come first
+                        // and to call update_mod_pockets
+                        ++pocket_index;
+                        continue;
+                    }
+                } else {
+                    if( pocket.saved_type() == pocket_type::MOD ) {
+                        // this is already handled in item_contents::read_mods
+                        ++pocket_index;
+                        continue;
+                    } else if( pocket.saved_type() == pocket_type::MIGRATION ||
+                               pocket.saved_type() == pocket_type::CORPSE ) {
+                        for( auto *it : pocket.all_items_top() ) {
+                            insert( dest, pass_on<Input>( *it ), pocket.saved_type(), ignore_contents, false );
+                        }
+                        ++pocket_index;
+                        continue;
+                    }
+                }
+                auto current_pocket_iter = dest.contents.begin();
+                std::advance( current_pocket_iter, pocket_index );
+
+                if( !current_pocket_iter->is_type( convert ? pocket.get_pocket_data()->type :
+                                                   pocket.saved_type() ) ) {
+                    // Note: the next saved pocket is matched against this same pocket
+                    mismatched_pockets.push_back( &pocket );
+                    continue;
+                }
+
+                for( auto *it : pocket.all_items_top() ) {
+                    // On failure the item is left as it was
+                    const ret_val<item *> inserted = current_pocket_iter->insert_item( pass_on<Input>( *it ),
+                                                     into_bottom, restack_charges, ignore_contents );
+                    if( !inserted.success() ) {
+                        DebugLog( DebugLevel::D_WARNING, DebugClass::D_GAME ) <<
+                                "error: item " << it->typeId().str() << "cannot fit into pocket while loading: " << inserted.str();
+                        uninserted_items.push_back( pass_on<Input>( *it ) );
+                    }
+                }
+
+                if( pocket.saved_sealed() ) {
+                    current_pocket_iter->seal();
+                }
+                current_pocket_iter->settings = pocket.settings;
+            } else {
+                for( auto *it : pocket.all_items_top() ) {
+                    uninserted_items.push_back( pass_on<Input>( *it ) );
+                }
+            }
+            ++pocket_index;
+        }
+
+        for( input_pocket *pocket : mismatched_pockets ) {
+            const pocket_type mismatched_type = convert ? pocket->get_pocket_data()->type :
+                                                pocket->saved_type();
+            for( auto *it : pocket->all_items_top() ) {
+                const ret_val<item *> inserted = insert( dest, pass_on<Input>( *it ), mismatched_type,
+                                                 ignore_contents, false );
+                if( !inserted.success() ) {
+                    debugmsg( "error: item %s cannot fit into any pocket while loading: %s",
+                              it->typeId().str(), inserted.str() );
+                    uninserted_items.push_back( pass_on<Input>( *it ) );
+                }
+            }
+        }
+
+        for( item &uninserted_item : uninserted_items ) {
+            insert( dest, std::move( uninserted_item ), pocket_type::MIGRATION, ignore_contents, false );
+        }
+    }
 };
 
 ret_val<item_pocket *> item_contents::find_pocket_for( const item &it,
@@ -879,6 +924,20 @@ ret_val<const item_pocket *> item_contents::find_pocket_for( const item &it,
         pocket_type pk_type ) const
 {
     return item_contents_helper::find_pocket_for( *this, it, pk_type );
+}
+
+void item_contents::combine( const item_contents &read_input, const bool convert,
+                             const bool into_bottom, bool restack_charges, bool ignore_contents )
+{
+    item_contents_helper::combine( *this, read_input, convert, into_bottom, restack_charges,
+                                   ignore_contents );
+}
+
+void item_contents::combine( item_contents &&read_input, const bool convert,
+                             const bool into_bottom, bool restack_charges, bool ignore_contents )
+{
+    item_contents_helper::combine( *this, read_input, convert, into_bottom, restack_charges,
+                                   ignore_contents );
 }
 
 int item_contents::obtain_cost( const item &it ) const
@@ -905,24 +964,7 @@ int item_contents::insert_cost( const item &it ) const
 ret_val<item *> item_contents::insert_item( const item &it,
         pocket_type pk_type, bool ignore_contents, const bool unseal_pockets )
 {
-    if( pk_type == pocket_type::LAST ) {
-        // LAST is invalid, so we assume it will be a regular container
-        pk_type = pocket_type::CONTAINER;
-    }
-
-    ret_val<item_pocket *> pocket = find_pocket_for( it, pk_type );
-    if( !pocket.success() ) {
-        return ret_val<item *>::make_failure( nullptr, pocket.str() );
-    }
-
-    ret_val<item *> inserted = pocket.value()->insert_item( it, false, true, ignore_contents );
-    if( inserted.success() ) {
-        if( unseal_pockets ) {
-            pocket.value()->unseal();
-        }
-        return inserted;
-    }
-    return ret_val<item *>::make_failure( nullptr, inserted.str() );
+    return item_contents_helper::insert( *this, it, pk_type, ignore_contents, unseal_pockets );
 }
 
 void item_contents::force_insert_item( const item &it, pocket_type pk_type )

@@ -3571,7 +3571,9 @@ void item::deserialize( const JsonObject &data )
         data.read( "contents", read_contents );
         contents.read_mods( read_contents );
         update_modified_pockets();
-        contents.combine( read_contents, false, true, false, true );
+        // Moved in, not copied: contained items keep their uids, so saved item_locations into
+        // containers still find them, and nested contents are not copied once per level
+        contents.combine( std::move( read_contents ), false, true, false, true );
 
         //migrate SOFTWARE pocket
         auto pockets_e_legacy = []( item_pocket const & pocket ) {

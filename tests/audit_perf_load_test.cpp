@@ -1,11 +1,14 @@
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <list>
 #include <memory>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "achievement.h"
@@ -15,20 +18,32 @@
 #include "cata_scope_helpers.h"
 #include "cata_variant.h"
 #include "character.h"
+#include "colony.h"
 #include "coordinates.h"
+#include "debug.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_statistics.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
+#include "item.h"
+#include "item_location.h"
+#include "item_pocket.h"
+#include "item_uid.h"
 #include "json.h"
 #include "json_loader.h"
+#include "map.h"
+#include "map_helpers.h"
+#include "map_helpers_tests.h"
+#include "map_selector.h"
 #include "mapbuffer.h"
 #include "options_helpers.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
+#include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "submap.h"
@@ -46,6 +61,18 @@ event_statistic_last_overmap_special_avatar_entered( "last_overmap_special_avata
 static const event_statistic_id
 event_statistic_last_oter_type_avatar_entered( "last_oter_type_avatar_entered" );
 
+static const itype_id itype_jeans( "jeans" );
+static const itype_id itype_lighter( "lighter" );
+static const itype_id itype_scrap( "scrap" );
+static const itype_id itype_test_backpack( "test_backpack" );
+static const itype_id itype_test_duffelbag( "test_duffelbag" );
+static const itype_id itype_test_mini_backpack( "test_mini_backpack" );
+static const itype_id
+itype_test_watertight_open_sealed_container_250ml( "test_watertight_open_sealed_container_250ml" );
+static const itype_id itype_test_watertight_open_sealed_multipocket_container_2x250ml(
+    "test_watertight_open_sealed_multipocket_container_2x250ml" );
+static const itype_id itype_tshirt( "tshirt" );
+
 static const oter_type_str_id oter_type_field( "field" );
 
 static const overmap_special_id overmap_special_evac_center( "evac_center" );
@@ -54,6 +81,58 @@ static const ter_str_id ter_t_dirt( "t_dirt" );
 
 namespace
 {
+
+std::string to_json( const item &it )
+{
+    std::ostringstream os;
+    JsonOut jsout( os );
+    it.serialize( jsout );
+    return os.str();
+}
+
+item from_json( const std::string &json )
+{
+    item loaded;
+    JsonValue jv = json_loader::from_string( json );
+    loaded.deserialize( jv.get_object() );
+    return loaded;
+}
+
+std::string to_json( const item_location &loc )
+{
+    std::ostringstream os;
+    JsonOut jsout( os );
+    loc.serialize( jsout );
+    return os.str();
+}
+
+item_location location_from_json( const std::string &json )
+{
+    item_location loc;
+    JsonValue jv = json_loader::from_string( json );
+    JsonObject jo = jv;
+    loc.deserialize( jo );
+    return loc;
+}
+
+std::vector<itype_id> types_in( const item &it, pocket_type pk )
+{
+    std::vector<itype_id> result;
+    for( const item *contained : it.all_items_top( pk ) ) {
+        result.push_back( contained->typeId() );
+    }
+    return result;
+}
+
+const item *find_contained( const item &container, const itype_id &type )
+{
+    for( const item *it : container.all_items_ptr() ) {
+        if( it->typeId() == type ) {
+            return it;
+        }
+    }
+    return nullptr;
+}
 
 void send_game_start( event_bus &b )
 {
@@ -209,6 +288,178 @@ TEST_CASE( "evt-p01_loading_a_save_keeps_achievements_and_grants_none",
     CHECK( s.value_of( event_statistic_last_overmap_special_avatar_entered ) ==
            cata_variant( overmap_special_evac_center ) );
     CHECK( overmap_buffer.global_state.overmap_count == overmaps_before );
+}
+
+// INV-P01: item::deserialize copied each container's contents into place, so every contained
+// item got a fresh uid on every load (and each was deep-copied once per nesting level).
+TEST_CASE( "inv-p01_contained_items_keep_their_uids_through_save_and_load",
+           "[audit][item][item_uid]" )
+{
+    item outer( itype_test_backpack );
+    item inner( itype_test_mini_backpack );
+    REQUIRE( inner.put_in( item( itype_tshirt ), pocket_type::CONTAINER ).success() );
+    REQUIRE( outer.put_in( inner, pocket_type::CONTAINER ).success() );
+    REQUIRE( outer.put_in( item( itype_jeans ), pocket_type::CONTAINER ).success() );
+
+    const std::list<const item *> before = std::as_const( outer ).all_items_ptr();
+    REQUIRE( before.size() == 3 );
+    const item loaded = from_json( to_json( outer ) );
+    const std::list<const item *> after = loaded.all_items_ptr();
+    REQUIRE( after.size() == before.size() );
+
+    CHECK( loaded.uid() == outer.uid() );
+    auto b = before.begin();
+    for( auto a = after.begin(); a != after.end(); ++a, ++b ) {
+        CAPTURE( ( *a )->typeId().str() );
+        CHECK( ( *a )->typeId() == ( *b )->typeId() );
+        CHECK( ( *a )->uid() == ( *b )->uid() );
+    }
+}
+
+// INV-P01: an item_location into a container inside a container is saved as a chain of
+// parents ending with the contained item's uid. With fresh uids after loading, the uid was
+// not found ("item_location UID not found in container contents") and the location was lost.
+TEST_CASE( "inv-p01_item_location_into_a_nested_container_survives_save_and_load",
+           "[audit][item][item_location]" )
+{
+    clear_map_without_vision();
+    map &here = get_map();
+    const tripoint_bub_ms pos( 60, 60, 0 );
+    here.i_clear( pos );
+    on_out_of_scope cleanup( [&]() {
+        here.i_clear( pos );
+    } );
+
+    item outer( itype_test_backpack );
+    item inner( itype_test_mini_backpack );
+    REQUIRE( inner.put_in( item( itype_jeans ), pocket_type::CONTAINER ).success() );
+    REQUIRE( inner.put_in( item( itype_tshirt ), pocket_type::CONTAINER ).success() );
+    REQUIRE( outer.put_in( inner, pocket_type::CONTAINER ).success() );
+    item &placed = here.add_item( pos, outer );
+
+    item *inner_ptr = placed.all_items_top( pocket_type::CONTAINER ).front();
+    REQUIRE( inner_ptr->typeId() == itype_test_mini_backpack );
+    item *tshirt_ptr = nullptr;
+    for( item *it : inner_ptr->all_items_top( pocket_type::CONTAINER ) ) {
+        if( it->typeId() == itype_tshirt ) {
+            tshirt_ptr = it;
+        }
+    }
+    REQUIRE( tshirt_ptr != nullptr );
+    // (copying an item_uid makes a new one)
+    const int64_t tshirt_uid = tshirt_ptr->uid().get_value();
+    const item_location outer_loc( map_cursor( pos ), &placed );
+    const item_location inner_loc( outer_loc, inner_ptr );
+    const item_location tshirt_loc( inner_loc, tshirt_ptr );
+    const std::string saved_location = to_json( tshirt_loc );
+
+    // Save and load the tile's items as a map save and load do: written as the submap writes
+    // them, then read straight back into the map
+    tripoint_bub_ms where = pos;
+    point_sm_ms l;
+    cata::colony<item> &tile_items = map_meddler::unsafe_get_submap_at( where, l )->get_items( l );
+    REQUIRE( tile_items.size() == 1 );
+    std::ostringstream os;
+    JsonOut jsout( os );
+    jsout.write( tile_items );
+    tile_items.clear();
+    JsonValue jv = json_loader::from_string( os.str() );
+    REQUIRE( jv.read( tile_items ) );
+    REQUIRE( tile_items.size() == 1 );
+
+    const item_location restored = location_from_json( saved_location );
+    REQUIRE( restored );
+    CHECK( restored->typeId() == itype_tshirt );
+    CHECK( restored->uid().get_value() == tshirt_uid );
+    CHECK( restored.parent_item()->typeId() == itype_test_mini_backpack );
+}
+
+// INV-P01 fallbacks, kept as they were: an item that no longer fits its saved pocket (here
+// one put there by force, as after a JSON change shrank the pocket) moves to the migration
+// pocket, to spill later.
+TEST_CASE( "inv-p01_item_too_big_for_its_saved_pocket_moves_to_migration",
+           "[audit][item][pocket]" )
+{
+    item pack( itype_test_mini_backpack );
+    REQUIRE( pack.put_in( item( itype_scrap ), pocket_type::CONTAINER ).success() );
+    REQUIRE( pack.put_in( item( itype_lighter ), pocket_type::CONTAINER ).success() );
+    item too_big( itype_test_duffelbag );
+    REQUIRE_FALSE( pack.can_contain( too_big ).success() );
+    pack.force_insert_item( too_big, pocket_type::CONTAINER );
+    // put_in adds at the front
+    REQUIRE( types_in( pack, pocket_type::CONTAINER ) ==
+             std::vector<itype_id> { itype_lighter, itype_scrap, itype_test_duffelbag } );
+
+    const item loaded = from_json( to_json( pack ) );
+    CHECK( types_in( loaded, pocket_type::CONTAINER ) ==
+           std::vector<itype_id> { itype_lighter, itype_scrap } );
+    CHECK( types_in( loaded, pocket_type::MIGRATION ) ==
+           std::vector<itype_id> { itype_test_duffelbag } );
+    const item *moved = find_contained( loaded, itype_test_duffelbag );
+    REQUIRE( moved != nullptr );
+    CHECK( moved->uid() == find_contained( pack, itype_test_duffelbag )->uid() );
+}
+
+// A saved pocket whose type no longer matches the definition is set aside without
+// advancing to the next pocket of the definition: the following saved pocket is matched
+// against the same one. The set-aside items go into a pocket of their saved type if the item
+// has one; here it has none, so they move to the migration pocket, with an error.
+TEST_CASE( "inv-p01_saved_pocket_of_another_type_falls_back_as_before",
+           "[audit][item][pocket]" )
+{
+    item can( itype_test_watertight_open_sealed_multipocket_container_2x250ml );
+    std::vector<item_pocket *> pockets = can.get_container_pockets();
+    REQUIRE( pockets.size() == 2 );
+    REQUIRE( pockets[0]->insert_item( item( itype_scrap ) ).success() );
+    REQUIRE( pockets[1]->insert_item( item( itype_lighter ) ).success() );
+    std::string json = to_json( can );
+    const std::string container_type = string_format( "\"pocket_type\":%d",
+                                       static_cast<int>( pocket_type::CONTAINER ) );
+    const size_t first_pocket = json.find( container_type );
+    REQUIRE( first_pocket != std::string::npos );
+    json.replace( first_pocket, container_type.size(),
+                  string_format( "\"pocket_type\":%d", static_cast<int>( pocket_type::MAGAZINE ) ) );
+
+    item loaded;
+    const std::string error = capture_debugmsg_during( [&]() {
+        loaded = from_json( json );
+    } );
+    CHECK_THAT( error, Catch::Matchers::Contains( "cannot fit into any pocket while loading" ) );
+    const std::vector<item_pocket *> loaded_pockets = loaded.get_container_pockets();
+    REQUIRE( loaded_pockets.size() == 2 );
+    CHECK( loaded_pockets[0]->all_items_top().size() == 1 );
+    CHECK( loaded_pockets[0]->all_items_top().front()->typeId() == itype_lighter );
+    CHECK( loaded_pockets[1]->empty() );
+    CHECK( types_in( loaded, pocket_type::MIGRATION ) == std::vector<itype_id> { itype_scrap } );
+    CHECK( find_contained( loaded, itype_scrap )->uid() == find_contained( can, itype_scrap )->uid() );
+}
+
+// Saved pockets beyond the ones the definition now has: here the item lost its second pocket.
+// That pocket's contents are set aside and go into a pocket of their type, ahead of what is
+// there.
+TEST_CASE( "inv-p01_saved_pockets_beyond_the_definition_are_reinserted",
+           "[audit][item][pocket]" )
+{
+    item can( itype_test_watertight_open_sealed_multipocket_container_2x250ml );
+    std::vector<item_pocket *> pockets = can.get_container_pockets();
+    REQUIRE( pockets.size() == 2 );
+    REQUIRE( pockets[0]->insert_item( item( itype_scrap ) ).success() );
+    REQUIRE( pockets[1]->insert_item( item( itype_lighter ) ).success() );
+    std::string json = to_json( can );
+    const std::string two_pockets = string_format( "\"%s\"",
+                                    itype_test_watertight_open_sealed_multipocket_container_2x250ml.str() );
+    const size_t type_at = json.find( two_pockets );
+    REQUIRE( type_at != std::string::npos );
+    json.replace( type_at, two_pockets.size(), string_format( "\"%s\"",
+                  itype_test_watertight_open_sealed_container_250ml.str() ) );
+
+    const item loaded = from_json( json );
+    REQUIRE( loaded.typeId() == itype_test_watertight_open_sealed_container_250ml );
+    CHECK( types_in( loaded, pocket_type::CONTAINER ) ==
+           std::vector<itype_id> { itype_lighter, itype_scrap } );
+    CHECK( types_in( loaded, pocket_type::MIGRATION ).empty() );
+    CHECK( find_contained( loaded, itype_lighter )->uid() == find_contained( can,
+            itype_lighter )->uid() );
 }
 
 namespace
