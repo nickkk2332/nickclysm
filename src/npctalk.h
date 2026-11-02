@@ -150,6 +150,11 @@ int calc_spell_training_cost( const Character &teacher, const Character &student
                               const spell_id &id );
 
 const json_talk_topic *get_talk_topic( const std::string &id );
+/**
+ * Whether @p id names a talk topic: one loaded from JSON, or one dialogue answers in C++
+ * (TALK_DONE, TALK_TRAIN, the mission topics, ...), which get_talk_topic doesn't know.
+ */
+bool talk_topic_exists( const std::string &id );
 
 std::vector<std::string> get_all_talk_topic_ids();
 

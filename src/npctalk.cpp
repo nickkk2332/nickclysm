@@ -1717,6 +1717,30 @@ std::string dialogue::speaker_name( const dialogue_imgui_impl &d_img ) const
     return actor( true )->disp_name();
 }
 
+// Topics the mission system answers in dialogue::dynamic_line.
+static const std::unordered_set<std::string> mission_talk_topics = {
+    "TALK_MISSION_DESCRIBE", "TALK_MISSION_DESCRIBE_URGENT",
+    "TALK_MISSION_OFFER", "TALK_MISSION_ACCEPTED",
+    "TALK_MISSION_REJECTED", "TALK_MISSION_ADVICE", "TALK_MISSION_INQUIRE",
+    "TALK_MISSION_SUCCESS", "TALK_MISSION_SUCCESS_LIE", "TALK_MISSION_FAILURE"
+};
+
+// The other topics dialogue::dynamic_line answers in C++ when no JSON topic has the id.
+// Keep this in step with it.
+static const std::unordered_set<std::string> built_in_talk_topics = {
+    "TALK_NONE", "TALK_DONE",
+    "TALK_NPC_NOFACE", "TALK_NOFACE", "TALK_DEAF", "TALK_DEAF_ANGRY", "TALK_MUTE",
+    "TALK_MUTE_ANGRY", "TALK_CHURL", "TALK_CHURL_ANGRY", "TALK_CHURL_TRADE", "TALK_SEDATED",
+    "TALK_TRAIN", "TALK_TRAIN_NPC", "TALK_TRAIN_SEMINAR", "TALK_HOW_MUCH_FURTHER",
+    "TALK_DESCRIBE_MISSION", "TALK_SHOUT", "TALK_MIND_CONTROL"
+};
+
+bool talk_topic_exists( const std::string &id )
+{
+    return json_talk_topics.count( id ) > 0 || mission_talk_topics.count( id ) > 0 ||
+           built_in_talk_topics.count( id ) > 0;
+}
+
 std::string dialogue::dynamic_line( const talk_topic &the_topic )
 {
     if( !the_topic.item_type.is_null() ) {
@@ -1779,14 +1803,7 @@ std::string dialogue::dynamic_line( const talk_topic &the_topic )
     }
 
     // Those topics are handled by the mission system, see there.
-    static const std::unordered_set<std::string> mission_topics = { {
-            "TALK_MISSION_DESCRIBE", "TALK_MISSION_DESCRIBE_URGENT",
-            "TALK_MISSION_OFFER", "TALK_MISSION_ACCEPTED",
-            "TALK_MISSION_REJECTED", "TALK_MISSION_ADVICE", "TALK_MISSION_INQUIRE",
-            "TALK_MISSION_SUCCESS", "TALK_MISSION_SUCCESS_LIE", "TALK_MISSION_FAILURE"
-        }
-    };
-    if( mission_topics.count( topic ) > 0 ) {
+    if( mission_talk_topics.count( topic ) > 0 ) {
         mission *miss = actor( true )->selected_mission();
         if( miss == nullptr ) {
             return "mission_selected == nullptr; BUG!  (npctalk.cpp:dynamic_line)";

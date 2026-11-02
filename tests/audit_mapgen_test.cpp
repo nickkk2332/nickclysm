@@ -140,7 +140,8 @@ TEST_CASE( "mgen-b03_plant_furniture_does_not_skip_the_other_checks", "[audit][m
 }
 
 // Computer eocs and chat topics, corpse groups and the factions owning items and vehicles
-// were never validated.
+// were never validated. (Review: the chat topic check knew only JSON topics, so it reported
+// the ones dialogue answers in C++, such as TALK_DONE, as unknown.)
 TEST_CASE( "mgen-b03_check_validates_computer_corpse_and_faction_ids", "[audit][mapgen]" )
 {
     SECTION( "unknown ids are reported" ) {
@@ -165,7 +166,9 @@ TEST_CASE( "mgen-b03_check_validates_computer_corpse_and_faction_ids", "[audit][
     SECTION( "known ids pass" ) {
         const std::string messages = check_messages_for( R"(
             "place_computers": [ { "name": "audit", "x": 1, "y": 1,
-                "eocs": [ "EOC_CAFFEINE_ADDICTION" ] } ],
+                "eocs": [ "EOC_CAFFEINE_ADDICTION" ],
+                "chat_topics": [ "TALK_CIVILIAN_PANIC", "TALK_DONE", "TALK_TRAIN",
+                    "TALK_MISSION_OFFER" ] } ],
             "place_corpses": [ { "group": "GROUP_ZOMBIE", "x": 2, "y": 2 } ],
             "place_items": [ { "item": "trash_junkyard", "x": 3, "y": 3, "chance": 100,
                 "faction": "no_faction" } ],
