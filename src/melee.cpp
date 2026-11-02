@@ -1729,20 +1729,26 @@ technique_rejection Character::check_technique( const matec_id &tec_id, Creature
         return reject( technique_rejection::reach_only );
     }
 
-    // skip dodge counter techniques if it's not a dodge count, and vice versa
-    if( query.dodge_counter != tec_id->dodge_counter ) {
-        return reject( query.dodge_counter ? technique_rejection::not_dodge_counter :
-                       technique_rejection::dodge_counter_only );
-    }
-    // likewise for block counters
-    if( query.block_counter != tec_id->block_counter ) {
-        return reject( query.block_counter ? technique_rejection::not_block_counter :
-                       technique_rejection::block_counter_only );
-    }
-    // and grab counters
-    if( query.grab_counter != tec_id->grab_counter ) {
-        return reject( query.grab_counter ? technique_rejection::not_grab_counter :
-                       technique_rejection::grab_counter_only );
+    // A counter answers a dodge, a block or a grab, and fires only as a counter of a kind it is
+    // (a technique may be more than one kind). Other attacks can't use counters.
+    if( query.dodge_counter ) {
+        if( !tec_id->dodge_counter ) {
+            return reject( technique_rejection::not_dodge_counter );
+        }
+    } else if( query.block_counter ) {
+        if( !tec_id->block_counter ) {
+            return reject( technique_rejection::not_block_counter );
+        }
+    } else if( query.grab_counter ) {
+        if( !tec_id->grab_counter ) {
+            return reject( technique_rejection::not_grab_counter );
+        }
+    } else if( tec_id->dodge_counter ) {
+        return reject( technique_rejection::dodge_counter_only );
+    } else if( tec_id->block_counter ) {
+        return reject( technique_rejection::block_counter_only );
+    } else if( tec_id->grab_counter ) {
+        return reject( technique_rejection::grab_counter_only );
     }
 
     // Don't counter if it would exhaust moves.

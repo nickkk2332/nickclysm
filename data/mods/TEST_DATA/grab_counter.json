@@ -22,6 +22,17 @@
   },
   {
     "type": "technique",
+    "id": "test_tech_dodge_or_grab_counter",
+    "name": "Test Dodge or Grab Counter",
+    "//": "Two kinds of counter: it answers a dodge or a grab.",
+    "unarmed_allowed": true,
+    "dodge_counter": true,
+    "grab_counter": true,
+    "messages": [ "You test-answer %s", "<npcname> test-answers %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
     "id": "test_tech_aimed_knockback",
     "name": "Test Aimed Knockback",
     "//": "A knockback the avatar aims in manual combat mode.",

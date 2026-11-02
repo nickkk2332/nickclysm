@@ -53,6 +53,7 @@ static const matec_id tec_aikido_grab_counter( "tec_aikido_grab_counter" );
 static const matec_id tec_judo_grab_counter( "tec_judo_grab_counter" );
 static const matec_id tec_krav_maga_grab_counter( "tec_krav_maga_grab_counter" );
 static const matec_id test_tech_aimed_knockback( "test_tech_aimed_knockback" );
+static const matec_id test_tech_dodge_or_grab_counter( "test_tech_dodge_or_grab_counter" );
 static const matec_id test_tech_grab_counter( "test_tech_grab_counter" );
 static const matec_id test_tech_knockback_follow( "test_tech_knockback_follow" );
 static const matec_id test_tm_strike( "test_tm_strike" );
@@ -266,6 +267,20 @@ TEST_CASE( "grab_counter_is_its_own_kind_of_attack", "[grapple][martial_arts]" )
     CHECK( why_not( test_tech_grab_counter, false ) == "grab_counter_only" );
     CHECK( why_not( test_tech_grab_counter, true ) == "none" );
     CHECK( why_not( test_tm_strike, true ) == "not_grab_counter" );
+    // A technique that is two kinds of counter fires as either, and only as a counter (Xedra
+    // Evolved's devil tail techniques are dodge and block counters)
+    CHECK( why_not( test_tech_dodge_or_grab_counter, true ) == "none" );
+    CHECK( why_not( test_tech_dodge_or_grab_counter, false ) == "dodge_counter_only" );
+    technique_query dodge;
+    dodge.dodge_counter = true;
+    dodge.roll = false;
+    CHECK( io::enum_to_string( you.check_technique( test_tech_dodge_or_grab_counter, target,
+                               you.used_weapon(), dodge ) ) == "none" );
+    technique_query block;
+    block.block_counter = true;
+    block.roll = false;
+    CHECK( io::enum_to_string( you.check_technique( test_tech_dodge_or_grab_counter, target,
+                               you.used_weapon(), block ) ) == "not_block_counter" );
     CHECK( test_tech_grab_counter->rejection_text( technique_rejection::grab_counter_only ) ==
            "grab counter, automatic" );
     // The automatic choice for a grab counter
@@ -318,14 +333,10 @@ TEST_CASE( "grab_counter_load_checks", "[grapple][martial_arts]" )
             test_tech_grab_counter->check();
         } ).empty() );
     }
-    SECTION( "two kinds of counter at once can never be used" ) {
-        ma_technique tech;
-        tech.id = matec_id( "test_tech_two_counters" );
-        tech.dodge_counter = true;
-        tech.grab_counter = true;
-        CHECK_THAT( capture_debugmsg_during( [&tech]() {
-            tech.check();
-        } ), Catch::Matchers::Contains( "can never be used" ) );
+    SECTION( "two kinds of counter at once is fine" ) {
+        CHECK( capture_debugmsg_during( []() {
+            test_tech_dodge_or_grab_counter->check();
+        } ).empty() );
     }
     SECTION( "a defensive grab counter does nothing" ) {
         ma_technique tech;

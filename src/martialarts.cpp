@@ -436,13 +436,6 @@ void ma_technique::check() const
         debugmsg( "MA technique %s is %s, so \"%s\" has no effect", id.c_str(),
                   dummy ? "dummy" : "defensive", fallback ? "fallback" : "basic" );
     }
-    // A counter answers one kind of event: a technique that is two kinds of counter never fires
-    const int counter_kinds = ( dodge_counter ? 1 : 0 ) + ( block_counter ? 1 : 0 ) +
-                              ( grab_counter ? 1 : 0 );
-    if( counter_kinds > 1 ) {
-        debugmsg( "MA technique %s sets more than one of \"dodge_counter\", \"block_counter\" and "
-                  "\"grab_counter\", so it can never be used", id.c_str() );
-    }
     if( grab_counter && ( dummy || defensive ) ) {
         debugmsg( "MA technique %s is %s, so \"grab_counter\" has no effect", id.c_str(),
                   dummy ? "dummy" : "defensive" );

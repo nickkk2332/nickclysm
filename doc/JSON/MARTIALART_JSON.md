@@ -246,6 +246,8 @@ A technique with `"grab_counter": true` answers a grab the way a `dodge_counter`
 
 Below a third of your stamina you only get "You try to counterattack, but you are too exhausted!".  The counter is an ordinary attack: it can miss, and its `condition` sees the grabber as `npc`.  A counter with a knockback (`knockback_dist`) breaks the hold, since a knockback makes its target let go; other effects leave the hold in place.  The passive `grab_break` of a defensive technique is separate: it still helps you struggle free later.
 
+A technique can be more than one kind of counter (for example `"dodge_counter": true` and `"block_counter": true`): it answers any of those events, and no ordinary attack.
+
 Judo's `tec_judo_grab_counter` (a throw, unarmed 1), Aikido's `tec_aikido_grab_counter` (a wrist turn that throws the grabber off with little harm, unarmed 3) and Krav Maga's `tec_krav_maga_grab_counter` (a strike that drives the grabber off, melee 3) are the vanilla grab counters.
 
 
@@ -316,7 +318,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
 
 All fields, except for the ID, type and name are optional.
 
-Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those), a technique that is more than one kind of counter (it could never be used), `grab_counter` on a `dummy`, `defensive` or `crit_tec` technique, and `controlled_knockback` without a `knockback_dist`.
+Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those), `grab_counter` on a `dummy`, `defensive` or `crit_tec` technique, and `controlled_knockback` without a `knockback_dist`.
 
 A technique's knockback breaks the target's holds on both sides: a monster lets go of every grab it had, and every character hold the target is part of, holding or held, ends.
 
