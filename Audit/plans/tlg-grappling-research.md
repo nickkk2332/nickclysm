@@ -855,7 +855,7 @@ Infrastructure:
   history, so this describes BN master.
 - TLG's PR-by-PR attribution for each line. TLG's history is shallow too; the attributions in this
   document follow the PR list in the plan, matched on behavior.
-- Whether BACKTAB is free in our DEFAULTMODE keybindings. Not checked.
-- In-repo mods (data/mods) that override `tech_base_*`, Judo or Pankration in our tree. Not inspected.
+- BACKTAB is free in our DEFAULTMODE keybindings: it is bound only in other contexts (mod manager, targeting, vehicle interaction, inventory).
+- In-repo mods: Aftershock and Isolation Protocol grant `tech_base_*` through their own body parts (`data/mods/aftershock_exoplanet/body_parts.json`, `data/mods/Isolation-Protocol/body_parts.json`), so the fallback change reaches them too. Mods overriding Judo or Pankration were not checked.
 - How `airborne`'s LEVITATION flag interacts with our trap and gravity code. TLG relies on it; our
   equivalents were not traced.
