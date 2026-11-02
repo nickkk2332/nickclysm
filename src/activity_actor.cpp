@@ -8607,13 +8607,18 @@ void reload_activity_actor::reload_msg( Character &who, bool finished )
         if( reloadable.has_flag( flag_RELOAD_ONE ) && !ammo_uses_speedloader &&
             !ammo_uses_speedloader_clip ) {
 
-            add_msg( m_neutral, _( "You insert %dx %s into the %s." ), qty, ammo_name, reloadable_name );
+            who.add_msg_player_or_npc( m_neutral, _( "You insert %dx %s into the %s." ),
+                                       _( "<npcname> inserts %dx %s into the %s." ), qty, ammo_name,
+                                       reloadable_name );
         }
         make_reload_sound( who, reloadable );
     } else if( reloadable.is_watertight_container() ) {
-        add_msg( m_neutral, _( "You refill the %s." ), reloadable_name );
+        who.add_msg_player_or_npc( m_neutral, _( "You refill the %s." ),
+                                   _( "<npcname> refills the %s." ), reloadable_name );
     } else {
-        add_msg( m_neutral, _( "You reload the %1$s with %2$s." ), reloadable_name, ammo_name );
+        who.add_msg_player_or_npc( m_neutral, _( "You reload the %1$s with %2$s." ),
+                                   _( "<npcname> reloads the %1$s with %2$s." ), reloadable_name,
+                                   ammo_name );
     }
 }
 
@@ -8667,6 +8672,13 @@ void reload_activity_actor::reload( player_activity &act, Character &who, int lo
         // try_add copied the old item, so remove it now.
         loc.remove_item();
         target_loc = new_loc;
+        return;
+    }
+
+    if( !who.is_avatar() ) {
+        // Nobody to ask: an NPC drops it, as the prompt does by default.
+        target_loc = here.add_item_or_charges_ret_loc( loc.pos_bub( here ), reloadable );
+        loc.remove_item();
         return;
     }
 
