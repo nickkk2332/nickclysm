@@ -331,7 +331,9 @@ class untilled_farm_spot_actor : public multi_farm_activity_actor
 
 // ACT-J03 (review): a zone job guessed that it was done whenever the scan ended without a new
 // route, so a job that stopped early (too dark here, a fetch that gave up) was reported as
-// completed. Only a scan that ran out of work completes it now.
+// completed. Only a scan that ran out of work completes it now; an early stop is a cancel, so
+// mods that undo a start hook on the end event (MindOverMatter's and Aftershock's crafting
+// blindness, Xedra Evolved's mining) still do.
 TEST_CASE( "act-j03_zone_job_too_dark_to_work_does_not_complete", "[audit][activity]" )
 {
     clear_avatar();
@@ -359,9 +361,11 @@ TEST_CASE( "act-j03_zone_job_too_dark_to_work_does_not_complete", "[audit][activ
 
     u.set_moves( 100 );
     u.activity.do_turn( u );
-    // "It is too dark to work here." ends the job, but the job isn't done
+    // "It is too dark to work here." ends the job, but the job isn't done: a cancel
     CHECK( u.activity.is_null() );
-    CHECK( !globvars.maybe_get_global_value( "key3" ) );
+    CHECK( globvars.get_global_value( "key1" ) == "ACT_MULTIPLE_FARM" );
+    CHECK( globvars.get_global_value( "key2" ) == 1 );
+    CHECK( globvars.get_global_value( "key3" ) == "activity finished" );
     clear_avatar();
 }
 
@@ -394,9 +398,11 @@ TEST_CASE( "act-j03_zone_job_missing_its_tools_does_not_complete", "[audit][acti
 
     u.set_moves( 100 );
     u.activity.do_turn( u );
-    // the job stops, but the plot still needs tilling
+    // the job stops, but the plot still needs tilling: a cancel, not a completion
     CHECK( u.activity.is_null() );
-    CHECK( !globvars.maybe_get_global_value( "key3" ) );
+    CHECK( globvars.get_global_value( "key1" ) == "ACT_MULTIPLE_FARM" );
+    CHECK( globvars.get_global_value( "key2" ) == 1 );
+    CHECK( globvars.get_global_value( "key3" ) == "activity finished" );
     clear_avatar();
 }
 

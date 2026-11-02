@@ -5401,8 +5401,9 @@ void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
     activity_id prior_act = get_type();
     // Read now: an NPC whose job has nothing left is reverted inside simulate_turn.
     activity_end_hooks ended = act.peek_end_hooks();
-    // Only a scan that found no work left anywhere completes the job. The other ends (too dark,
-    // a fetch that gave up, a site that lacks the items it needs, a cancel) are not completions.
+    // Only a scan that found no work left anywhere completes the job. A job that stops for another
+    // reason (too dark, a fetch that gave up, a site that lacks the items it needs) is reported
+    // as a cancel, so whatever its start hooks set up is undone.
     bool job_done = false;
     bool activity_continues = simulate_turn( act, you, false, &job_done );
     // If this activity still exists and was not successful or resulted in a new travel route, end it
@@ -5414,6 +5415,9 @@ void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
     }
     if( job_done ) {
         ended.run( you, false );
+    } else if( !activity_continues && !you.has_destination() ) {
+        // Stopped without finishing (a trip to another work spot is not a stop)
+        ended.run( you, true );
     }
 }
 
