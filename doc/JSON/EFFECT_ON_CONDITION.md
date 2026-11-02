@@ -5285,6 +5285,55 @@ You cancel activity `ACT_GAME` for 45 minutes
 { "u_cancel_activity" }
 ```
 
+#### `u_examine`, `npc_examine`
+
+The character operates a tile as if it examined it (the examine key). The tile must be the
+character's own tile or one next to it.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_examine" / "npc_examine" | **mandatory** | [variable object](#variable-object), or `"npc"` for `u_examine` and `"u"` for `npc_examine` | the location to examine, or the other talker's tile |
+| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the tile was examined |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it wasn't; the context value `reason` says why, as a sentence |
+
+What happens:
+
+- A door, gate, hatch or anything else with an `open` or `close` transform opens if it is closed
+  and closes if it is open, for the avatar and NPCs alike. Closing takes the close action's
+  activity, which nudges small items aside and fails on a creature in the way. A door that only
+  opens from the inside fails from outside; a vehicle's door isn't toggled this way.
+- For the avatar, anything else runs the normal examine: a vehicle, a construction, a trap, a
+  computer, then the furniture (or the terrain when there is no furniture), with its menus and
+  the warning about a faction's property. Items there aren't picked up, and a creature standing
+  there is ignored.
+- An NPC never gets a menu. It may use the furniture (or else the terrain) when its examine
+  action is an EOC (`"examine_action": { "type": "effect_on_condition" }`; the EOC runs with the
+  NPC as `u`), or one of these built-in actions, which need no menu for an NPC:
+
+  | Examine action | What the NPC does |
+  | --- | --- |
+  | `controls_gate` | uses the gate control, without the confirmation the avatar gets |
+  | `harvest_furn`, `harvest_furn_nectar`, `harvest_ter`, `harvest_ter_nectar` | harvests the plant |
+  | `harvest_plant_ex`, `harvested_plant`, `clear_overgrown` | harvests a crop, or clears an overgrown one |
+  | `open_safe` | opens an unlocked safe |
+
+  Anything else is refused, with the reason: other built-in actions open menus or ask questions,
+  and an NPC doesn't operate vehicles this way.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC opens the shed door whose position is in the context value `shed_door`
+```jsonc
+{ "npc_examine": { "context_val": "shed_door" }, "true_eocs": [ "EOC_OPENED" ], "false_eocs": [ "EOC_COULD_NOT_OPEN" ] }
+```
+
+
 #### `u_teleport`, `npc_teleport`
 You or NPC is teleported to `target_var` coordinates
 

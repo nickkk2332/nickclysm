@@ -77,6 +77,7 @@
 #include "global_vars.h"
 #include "grapple.h"
 #include "gun_mode.h"
+#include "iexamine_eoc.h"
 #include "input.h"
 #include "input_context.h"
 #include "input_enums.h"
@@ -6006,6 +6007,51 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
     };
 }
 
+// u_examine / npc_examine: the talker examines a tile next to it, as the examine action does.
+// An NPC only gets what needs no menu (iexamine::examine_from_eoc). See
+// doc/JSON/EFFECT_ON_CONDITION.md.
+talk_effect_fun_t::func f_examine( const JsonObject &jo, std::string_view member,
+                                   std::string_view src, bool is_npc )
+{
+    // A location variable, or the other talker's tile.
+    std::optional<var_info> where;
+    if( jo.has_string( member ) ) {
+        check_other_talker( jo, member, is_npc );
+    } else {
+        where = read_var_info( jo.get_object( member ) );
+    }
+    const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+    return [is_npc, where, true_eocs, false_eocs]( dialogue & d ) {
+        const auto refuse = [&]( const std::string & reason ) {
+            dialogue refused( d );
+            refused.set_value( "reason", reason );
+            run_eoc_vector( false_eocs, refused );
+        };
+        Character *who = d.actor( is_npc )->get_character();
+        if( who == nullptr ) {
+            refuse( _( "Only a character can examine something." ) );
+            return;
+        }
+        tripoint_abs_ms pos;
+        if( where ) {
+            pos = read_var_value( *where, d ).tripoint();
+        } else if( d.has_actor( !is_npc ) ) {
+            pos = d.actor( !is_npc )->pos_abs();
+        } else {
+            refuse( _( "There is nothing to examine." ) );
+            return;
+        }
+        if( const std::optional<std::string> no = iexamine::examine_from_eoc( *who,
+                get_map().get_bub( pos ) ) ) {
+            refuse( *no );
+            return;
+        }
+        run_eoc_vector( true_eocs, d );
+    };
+}
+
 talk_effect_fun_t::func f_add_wet( const JsonObject &jo, std::string_view member,
                                    std::string_view, bool is_npc )
 {
@@ -9554,6 +9600,7 @@ parsers = {
     { "u_message", "npc_message", jarg::member, &talk_effect_fun::f_message },
     { "u_add_wet", "npc_add_wet", jarg::member | jarg::array, &talk_effect_fun::f_add_wet },
     { "u_assign_activity", "npc_assign_activity", jarg::member, &talk_effect_fun::f_assign_activity },
+    { "u_examine", "npc_examine", jarg::member, &talk_effect_fun::f_examine },
     { "u_make_sound", "npc_make_sound", jarg::member, &talk_effect_fun::f_make_sound },
     { "u_run_npc_eocs", "npc_run_npc_eocs", jarg::array, &talk_effect_fun::f_run_npc_eocs },
     { "u_run_monster_eocs", "npc_run_monster_eocs", jarg::array, &talk_effect_fun::f_run_monster_eocs },
