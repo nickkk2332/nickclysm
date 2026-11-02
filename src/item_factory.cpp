@@ -8,6 +8,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <unordered_set>
@@ -125,6 +126,255 @@ class item_quality_reader : public generic_typed_reader<item_quality_reader>
                 return;
             }
             iter->second.level += parsed.second.level;
+        }
+};
+
+// The inherited pockets a "relative"/"proportional"/"delete" selector names: "*" is every
+// pocket, otherwise the pocket whose "id" is the selector, or failing that the pocket at that
+// index of the inherited array.
+std::vector<size_t> select_pockets( const std::vector<pocket_data> &pockets,
+                                    const std::string &selector, const JsonValue &where )
+{
+    std::vector<size_t> selected;
+    for( size_t i = 0; i < pockets.size(); ++i ) {
+        if( selector == "*" || pockets[i].pocket_id == selector ) {
+            selected.push_back( i );
+        }
+    }
+    const bool is_index = !selector.empty() && selector.size() < 6 &&
+    std::all_of( selector.begin(), selector.end(), []( char c ) {
+        return c >= '0' && c <= '9';
+    } );
+    if( selected.empty() && is_index && std::stoul( selector ) < pockets.size() ) {
+        selected.push_back( std::stoul( selector ) );
+    }
+    if( selected.empty() ) {
+        where.throw_error( string_format( "no inherited pocket has id or index \"%s\"",
+                                          selector ) );
+    }
+    return selected;
+}
+
+// Applies one "relative" (adds) or "proportional" (multiplies) entry to one pocket.  Under the
+// "*" selector, members that don't apply to this pocket (size members of an ammo pocket,
+// ammo_restriction of a plain pocket, an unset max_item_volume) are skipped, not reported.
+void patch_pocket( pocket_data &pocket, const JsonObject &changes, const bool relative,
+                   const bool wildcard )
+{
+    const std::string feature = relative ? "relative" : "proportional";
+    const bool ammo_pocket = !pocket.ammo_restriction.empty();
+    const auto default_length = []( const units::volume & v ) {
+        const units::length len = units::default_length_from_volume( v ) * M_SQRT2;
+        return len;
+    };
+    // max_item_length defaults to the diagonal of max_contains_volume; keep that link when
+    // only the volume changes.
+    const bool length_was_default =
+        pocket.max_item_length == default_length( pocket.raw_volume_capacity );
+    bool length_changed = false;
+    for( const JsonMember jm : changes ) {
+        if( jm.is_comment() ) {
+            continue;
+        }
+        const std::string name = jm.name();
+        const auto factor = [&]( const JsonValue & jv ) {
+            const double f = jv.get_float();
+            if( f < 0 || f == 1 ) {
+                jv.throw_error( "proportional multiplier must be positive and not 1.0" );
+            }
+            return f;
+        };
+        const auto check_not_negative = [&]( const bool negative ) {
+            if( negative ) {
+                jm.throw_error( string_format( "%s makes pocket %s negative", feature, name ) );
+            }
+        };
+        const auto patch_units = [&]( auto & member, const auto & unit_table ) {
+            using T = std::decay_t<decltype( member )>;
+            if( relative ) {
+                member += read_from_json_string<T>( jm, unit_table );
+            } else {
+                member *= factor( jm );
+            }
+            check_not_negative( member < T() );
+        };
+        const auto patch_int = [&]( int &member ) {
+            member = relative ? member + jm.get_int() :
+                     static_cast<int>( std::lround( member * factor( jm ) ) );
+            check_not_negative( member < 0 );
+        };
+        const auto patch_float = [&]( float & member ) {
+            member = relative ? member + static_cast<float>( jm.get_float() ) :
+                     static_cast<float>( member * factor( jm ) );
+            check_not_negative( member < 0.0f );
+        };
+        // Size members are derived from the ammo in a pocket with an ammo_restriction.
+        const bool size_member = name == "max_contains_volume" || name == "min_item_volume" ||
+                                 name == "max_item_volume" || name == "max_item_length" ||
+                                 name == "min_item_length";
+        if( size_member && ammo_pocket ) {
+            if( !wildcard ) {
+                jm.throw_error( string_format( "%s: the size of a pocket with an ammo_restriction "
+                                               "comes from its ammo", name ) );
+            }
+        } else if( name == "max_contains_volume" ) {
+            patch_units( pocket.raw_volume_capacity, units::volume_units );
+        } else if( name == "min_item_volume" ) {
+            patch_units( pocket.min_item_volume, units::volume_units );
+        } else if( name == "max_item_volume" ) {
+            if( pocket.max_item_volume ) {
+                patch_units( *pocket.max_item_volume, units::volume_units );
+            } else if( !wildcard ) {
+                jm.throw_error( "the pocket has no max_item_volume to change" );
+            }
+        } else if( name == "max_item_length" ) {
+            patch_units( pocket.max_item_length, units::length_units );
+            length_changed = true;
+        } else if( name == "min_item_length" ) {
+            patch_units( pocket.min_item_length, units::length_units );
+        } else if( name == "magazine_well" ) {
+            patch_units( pocket.magazine_well, units::volume_units );
+        } else if( name == "max_contains_weight" ) {
+            patch_units( pocket.max_contains_weight, units::mass_units );
+        } else if( name == "extra_encumbrance" ) {
+            patch_int( pocket.extra_encumbrance );
+        } else if( name == "ripoff" ) {
+            patch_int( pocket.ripoff );
+        } else if( name == "moves" ) {
+            patch_int( pocket.moves );
+        } else if( name == "volume_encumber_modifier" ) {
+            patch_float( pocket.volume_encumber_modifier );
+        } else if( name == "spoil_multiplier" ) {
+            patch_float( pocket.spoil_multiplier );
+        } else if( name == "insulation" ) {
+            patch_float( pocket.insulation );
+        } else if( name == "weight_multiplier" ) {
+            patch_float( pocket.weight_multiplier );
+        } else if( name == "volume_multiplier" ) {
+            patch_float( pocket.volume_multiplier );
+        } else if( name == "ammo_restriction" ) {
+            if( !ammo_pocket ) {
+                if( !wildcard ) {
+                    jm.throw_error( "the pocket has no ammo_restriction to change" );
+                }
+                continue;
+            }
+            for( const JsonMember ammo : jm.get_object() ) {
+                const auto iter = pocket.ammo_restriction.find( ammotype( ammo.name() ) );
+                if( iter == pocket.ammo_restriction.end() ) {
+                    ammo.throw_error( string_format( "the pocket holds no ammo type %s",
+                                                     ammo.name() ) );
+                }
+                iter->second = relative ? iter->second + ammo.get_int() :
+                               static_cast<int>( std::lround( iter->second * factor( ammo ) ) );
+                if( iter->second < 1 ) {
+                    ammo.throw_error( string_format( "%s leaves the pocket no room for %s", feature,
+                                                     ammo.name() ) );
+                }
+            }
+        } else {
+            jm.throw_error( string_format( "pocket member %s cannot be changed with %s; delete "
+                                           "the pocket and extend a new one instead",
+                                           name, feature ) );
+        }
+    }
+    if( !ammo_pocket && length_was_default && !length_changed ) {
+        pocket.max_item_length = default_length( pocket.raw_volume_capacity );
+    }
+}
+
+// Reads an itype's "pocket_data" (INV-J02).  The array itself replaces every pocket.  An item
+// with copy-from may instead patch the inherited pockets, selected by pocket "id" or by index:
+// "relative" and "proportional" change numbers, "delete" removes pockets and "extend" appends
+// new ones, in that order.  Every selector refers to the inherited array.
+class pocket_data_reader
+{
+    public:
+        bool operator()( const JsonObject &jo, const std::string_view name,
+                         std::vector<pocket_data> &pockets, const bool was_loaded ) const {
+            static constexpr std::array<std::string_view, 4> features = {
+                "relative", "proportional", "delete", "extend"
+            };
+            if( !was_loaded || jo.has_member( name ) ) {
+                for( const std::string_view feature : features ) {
+                    warn_disabled_feature( jo, feature, name, was_loaded ?
+                                           "the object defines the whole pocket_data array" :
+                                           "no copy-from" );
+                }
+                return jo.read( name, pockets );
+            }
+            patch_numbers( jo, name, pockets, true );
+            patch_numbers( jo, name, pockets, false );
+            if( jo.has_object( "delete" ) ) {
+                JsonObject del = jo.get_object( "delete" );
+                del.allow_omitted_members();
+                if( del.has_member( name ) ) {
+                    std::set<size_t> doomed;
+                    for( const JsonValue entry : del.get_array( name ) ) {
+                        const std::string selector = entry.test_int() ?
+                                                     std::to_string( entry.get_int() ) :
+                                                     entry.get_string();
+                        if( selector == "*" ) {
+                            entry.throw_error( "use \"pocket_data\": [] to remove every pocket" );
+                        }
+                        for( const size_t i : select_pockets( pockets, selector, entry ) ) {
+                            doomed.insert( i );
+                        }
+                    }
+                    for( auto it = doomed.rbegin(); it != doomed.rend(); ++it ) {
+                        pockets.erase( pockets.begin() + *it );
+                    }
+                }
+            }
+            if( jo.has_object( "extend" ) ) {
+                JsonObject ext = jo.get_object( "extend" );
+                ext.allow_omitted_members();
+                if( ext.has_member( name ) ) {
+                    for( const JsonObject pocket_jo : ext.get_array( name ) ) {
+                        pocket_data added;
+                        added.deserialize( pocket_jo );
+                        const bool clash = !added.pocket_id.empty() &&
+                        std::any_of( pockets.begin(), pockets.end(), [&]( const pocket_data & p ) {
+                            return p.pocket_id == added.pocket_id;
+                        } );
+                        if( clash ) {
+                            pocket_jo.throw_error_at( "id", "the item already has this pocket id" );
+                        }
+                        pockets.push_back( added );
+                    }
+                }
+            }
+            return true;
+        }
+    private:
+        // Applies "relative" (adds) or "proportional" (multiplies) to the selected pockets.
+        static void patch_numbers( const JsonObject &jo, const std::string_view name,
+                                   std::vector<pocket_data> &pockets, const bool relative ) {
+            const std::string_view feature = relative ? "relative" : "proportional";
+            if( !jo.has_object( feature ) ) {
+                return;
+            }
+            JsonObject patches = jo.get_object( feature );
+            patches.allow_omitted_members();
+            if( !patches.has_member( name ) ) {
+                return;
+            }
+            const JsonObject entries = patches.get_object( name );
+            const auto apply = [&]( const bool wildcard_pass ) {
+                for( const JsonMember entry : entries ) {
+                    const bool wildcard = entry.name() == "*";
+                    if( entry.is_comment() || wildcard != wildcard_pass ) {
+                        continue;
+                    }
+                    const JsonObject changes = entry.get_object();
+                    for( const size_t i : select_pockets( pockets, entry.name(), entry ) ) {
+                        patch_pocket( pockets[i], changes, relative, wildcard );
+                    }
+                }
+            };
+            // "*" first, so a named entry always adjusts the result of the "*" one.
+            apply( true );
+            apply( false );
         }
 };
 } // namespace
@@ -4635,7 +4885,7 @@ void itype::load( const JsonObject &jo, std::string_view src )
     // snippet_category should be loaded after def.id is determined
     optional( jo, was_loaded, "snippet_category", snippet_category, snippet_reader{ *this, src } );
 
-    optional( jo, was_loaded, "pocket_data", pockets );
+    optional( jo, was_loaded, "pocket_data", pockets, pocket_data_reader{} );
 
     if( jo.has_member( "firing_requirements" ) ) {
         firing_requirements.deserialize_firing_requirements( jo, "firing_requirements" );

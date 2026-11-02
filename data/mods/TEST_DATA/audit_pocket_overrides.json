@@ -1,0 +1,63 @@
+[
+  {
+    "//": "INV-J02: the parent whose pockets the copy-from items below patch by id or index.",
+    "id": "audit_pocket_parent",
+    "type": "ITEM",
+    "name": { "str": "audit pocket bag" },
+    "description": "A bag with several pockets for the pocket_data override tests.",
+    "weight": "100 g",
+    "volume": "1 L",
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "color": "brown",
+    "pocket_data": [
+      {
+        "id": "main",
+        "pocket_type": "CONTAINER",
+        "max_contains_volume": "2 L",
+        "max_contains_weight": "4 kg",
+        "max_item_length": "40 cm",
+        "moves": 100
+      },
+      { "pocket_type": "CONTAINER", "max_contains_volume": "500 ml", "max_contains_weight": "1 kg", "moves": 80 },
+      { "id": "side", "pocket_type": "CONTAINER", "max_contains_volume": "1 L", "max_contains_weight": "2 kg" },
+      { "id": "rocks", "pocket_type": "CONTAINER", "ammo_restriction": { "rock": 10 }, "max_contains_weight": "5 kg" }
+    ]
+  },
+  {
+    "id": "audit_pocket_relative",
+    "type": "ITEM",
+    "copy-from": "audit_pocket_parent",
+    "name": { "str": "audit relative pocket bag" },
+    "relative": {
+      "pocket_data": {
+        "main": { "max_contains_volume": "1 L", "moves": -20 },
+        "1": { "max_contains_weight": "500 g" },
+        "rocks": { "ammo_restriction": { "rock": 5 } }
+      }
+    }
+  },
+  {
+    "id": "audit_pocket_proportional",
+    "type": "ITEM",
+    "copy-from": "audit_pocket_parent",
+    "name": { "str": "audit proportional pocket bag" },
+    "proportional": { "pocket_data": { "*": { "max_contains_volume": 2, "max_contains_weight": 1.5 }, "side": { "insulation": 2 } } }
+  },
+  {
+    "id": "audit_pocket_delete_extend",
+    "type": "ITEM",
+    "copy-from": "audit_pocket_parent",
+    "name": { "str": "audit patched pocket bag" },
+    "delete": { "pocket_data": [ "side", 1 ] },
+    "extend": {
+      "pocket_data": [ { "id": "hidden", "pocket_type": "CONTAINER", "max_contains_volume": "250 ml", "max_contains_weight": "500 g" } ]
+    }
+  },
+  {
+    "id": "audit_pocket_inherit",
+    "type": "ITEM",
+    "copy-from": "audit_pocket_parent",
+    "name": { "str": "audit inherited pocket bag" }
+  }
+]

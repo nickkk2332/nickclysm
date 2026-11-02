@@ -763,6 +763,32 @@ Any Item can be a container. To add the ability to contain things to an item, yo
 ]
 ```
 
+#### Changing inherited pockets
+
+A `pocket_data` array replaces every pocket of the item.  An item with `copy-from` can instead change the pockets it inherits, without restating them, through `relative`, `proportional`, `delete` and `extend`.  A pocket is selected by its `id`, or failing that by its index in the inherited array (`"0"` is the first pocket); `relative` and `proportional` also accept `"*"`, every inherited pocket.
+
+```jsonc
+{
+  "id": "big_backpack",
+  "copy-from": "backpack",
+  "type": "ITEM",
+  "subtypes": [ "ARMOR" ],
+  "name": { "str": "big backpack" },
+  "relative": { "pocket_data": { "main": { "max_contains_volume": "1 L", "moves": -20 } } }, // adds to the "main" pocket
+  "proportional": { "pocket_data": { "*": { "max_contains_weight": 1.25 } } },             // multiplies every pocket
+  "delete": { "pocket_data": [ "side", 2 ] },                                               // removes the "side" pocket and the third pocket
+  "extend": { "pocket_data": [ { "id": "hidden", "max_contains_volume": "250 ml", "max_contains_weight": "500 g" } ] } // appends a pocket
+}
+```
+
+* `relative` adds and `proportional` multiplies.  Each key of the object is a selector and its value lists the members to change.  The numeric members can be changed: `max_contains_volume`, `max_contains_weight`, `min_item_volume`, `max_item_volume`, `max_item_length`, `min_item_length`, `magazine_well`, `moves`, `extra_encumbrance`, `ripoff`, `spoil_multiplier`, `insulation`, `weight_multiplier`, `volume_multiplier`, `volume_encumber_modifier`, and the counts of `ammo_restriction` (`{ "ammo_restriction": { "9mm": 5 } }`, for ammo types the pocket already holds).  Any other member is a load error: delete the pocket and extend a new one instead.
+* A pocket's size comes from its ammo when it has an `ammo_restriction`, so naming such a pocket together with a size member (`max_contains_volume`, `min_item_volume`, `max_item_volume`, `max_item_length`, `min_item_length`) is an error, as is changing `ammo_restriction` or `max_item_volume` on a pocket that has none.  Under `"*"`, pockets a member doesn't apply to are skipped instead.
+* A `max_item_length` that was left at its default (the diagonal of `max_contains_volume`) is recomputed when the volume changes; an explicit one is kept.
+* A value that would become negative, or an ammo count below 1, is a load error.  A `proportional` multiplier must be positive and not 1.0.
+* Order: `relative`, then `proportional`, then `delete`, then `extend`.  Within one block, `"*"` applies before named pockets.  Every selector refers to the inherited array, so indices do not shift while a block is applied.  A selector that matches no pocket is a load error.
+* `extend` appends new pockets at the end; a new pocket must not reuse an id the item still has (delete the old one first to replace it).
+* An object that also defines `pocket_data` itself cannot use these, and an object without `copy-from` has nothing to change.
+
 ### Melee
 
 ```jsonc

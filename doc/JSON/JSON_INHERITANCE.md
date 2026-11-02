@@ -201,6 +201,7 @@ In summary, there is no "default" JSON inheritance, only shared degrees of suppo
 * `monstergroup` extends by default.  This prevents mods copying monstergroup definitions from replacing vanilla monstergroup lists.  To replace the *entire* list, add `"override": true` to the monstergroup object.
 * `SPELL` has limited support, given their behavior is governed by its spell `effect`.  Flags are not always inherited.  Testing is required to guarantee an inherited spell will behave as intended, use at your own risk.
 * The `vitamins` field from `material` extends by default.
+* An `ITEM`'s `pocket_data` is patched pocket by pocket: `relative`, `proportional`, `delete` and `extend` select pockets by `id` or index (see [Changing inherited pockets](ITEM.md#changing-inherited-pockets)).
 
 
 ## Guidelines
