@@ -487,6 +487,9 @@ class mapgen_basic_container
         //mapgens that need to be recalculated with a function when spawned
         std::vector<std::shared_ptr<mapgen_function>> mapgens_to_recalc_;
         weighted_int_list<std::shared_ptr<mapgen_function>> weights_;
+        // Every mapgen setup() kept, whether its weight is constant (weights_) or not
+        // (mapgens_to_recalc_); finalized, checked and asked for parameters
+        std::vector<std::shared_ptr<mapgen_function>> active_mapgens_;
 
     public:
         int add( const std::shared_ptr<mapgen_function> &ptr ) {
@@ -545,6 +548,7 @@ class mapgen_basic_container
                 } else {
                     mapgens_to_recalc_.push_back( ptr );
                 }
+                active_mapgens_.push_back( ptr );
 
                 ptr->setup();
             }
@@ -552,16 +556,20 @@ class mapgen_basic_container
             mapgens_.clear();
         }
         void finalize_parameters() {
-            for( auto &mapgen_function_ptr : weights_ ) {
-                mapgen_function_ptr.first->finalize_parameters();
+            for( const std::shared_ptr<mapgen_function> &ptr : active_mapgens_ ) {
+                ptr->finalize_parameters();
             }
         }
         void check_consistency() const {
-            for( const auto &mapgen_function_ptr : weights_ ) {
-                mapgen_function_ptr.first->check();
+            for( const std::shared_ptr<mapgen_function> &ptr : active_mapgens_ ) {
+                ptr->check();
             }
         }
         void check_consistency_with( const oter_t &ter ) const {
+            // TODO: check active_mapgens_ here too. The variable-weight road four-way mapgen
+            // has a fallback_predecessor_mapgen but road_nesw_manhole, which shares it, lacks
+            // REQUIRES_PREDECESSOR: it relies on the predecessor the road it replaces pushed
+            // (overmap_city.cpp), and adding the flag would push that road and generate it twice.
             for( const auto &mapgen_function_ptr : weights_ ) {
                 mapgen_function_ptr.first->check_consistent_with( ter );
             }
@@ -570,8 +578,8 @@ class mapgen_basic_container
         mapgen_parameters get_mapgen_params( mapgen_parameter_scope scope,
                                              const std::string &context ) const {
             mapgen_parameters result;
-            for( const std::pair<std::shared_ptr<mapgen_function>, int> &p : weights_ ) {
-                result.check_and_merge( p.first->get_mapgen_params( scope ), context );
+            for( const std::shared_ptr<mapgen_function> &ptr : active_mapgens_ ) {
+                result.check_and_merge( ptr->get_mapgen_params( scope ), context );
             }
             return result;
         }

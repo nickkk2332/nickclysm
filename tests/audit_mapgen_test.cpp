@@ -20,6 +20,7 @@
 #include "mapdata.h"
 #include "mapgen.h"
 #include "mapgen_functions.h"
+#include "mapgen_parameter.h"
 #include "mapgendata.h"
 #include "options_helpers.h"
 #include "overmapbuffer.h"
@@ -285,4 +286,13 @@ TEST_CASE( "mgen-b05_item_category_spawn_rate_scales_each_item_once", "[audit][m
         place_hammer();
         CHECK( hammers_at( item_spot ) == 1 );
     }
+}
+
+// setup() moved mapgens with a variable or math weight out of the weighted list that
+// finalize_parameters, check and get_mapgen_params iterate, so they were never finalized or
+// checked and their overmap_special parameters never reached the specials using them.
+TEST_CASE( "mgen-b06_variable_weight_mapgen_reports_its_special_parameters", "[audit][mapgen]" )
+{
+    const mapgen_parameters params = get_map_special_params( "test_audit_variable_weight_omt" );
+    CHECK( params.map.count( "audit_special_param" ) == 1 );
 }
