@@ -68,12 +68,16 @@ event_statistic_last_overmap_special_avatar_entered( "last_overmap_special_avata
 static const event_statistic_id
 event_statistic_last_oter_type_avatar_entered( "last_oter_type_avatar_entered" );
 
+static const itype_id itype_9mm( "9mm" );
+static const itype_id itype_glockmag( "glockmag" );
 static const itype_id itype_jeans( "jeans" );
 static const itype_id itype_lighter( "lighter" );
 static const itype_id itype_scrap( "scrap" );
 static const itype_id itype_test_backpack( "test_backpack" );
 static const itype_id itype_test_duffelbag( "test_duffelbag" );
 static const itype_id itype_test_mini_backpack( "test_mini_backpack" );
+static const itype_id itype_test_multimag_aux_gun( "test_multimag_aux_gun" );
+static const itype_id itype_test_multimag_gun_consume( "test_multimag_gun_consume" );
 static const itype_id
 itype_test_watertight_open_sealed_container_250ml( "test_watertight_open_sealed_container_250ml" );
 static const itype_id itype_test_watertight_open_sealed_multipocket_container_2x250ml(
@@ -503,6 +507,62 @@ TEST_CASE( "inv-p01_saved_pockets_beyond_the_definition_are_reinserted",
     CHECK( types_in( loaded, pocket_type::MIGRATION ).empty() );
     CHECK( find_contained( loaded, itype_lighter )->uid() == find_contained( can,
             itype_lighter )->uid() );
+}
+
+// INV-P01 follow-up: gun and tool mods were still copied by read_mods, so they and everything
+// in them got new uids on every load, and a location into a mod was saved as nowhere. A location
+// into the magazine of an underbarrel gun now survives a save and load.
+TEST_CASE( "inv-p01_item_location_into_an_underbarrel_magazine_survives_save_and_load",
+           "[audit][item][item_location]" )
+{
+    clear_map_without_vision();
+    map &here = get_map();
+    const tripoint_bub_ms pos( 60, 60, 0 );
+    here.i_clear( pos );
+    on_out_of_scope cleanup( [&]() {
+        here.i_clear( pos );
+    } );
+
+    item mag( itype_glockmag );
+    REQUIRE( mag.put_in( item( itype_9mm, calendar::turn, 5 ), pocket_type::MAGAZINE ).success() );
+    item underbarrel( itype_test_multimag_aux_gun );
+    REQUIRE( underbarrel.put_in( mag, pocket_type::MAGAZINE_WELL ).success() );
+    item gun( itype_test_multimag_gun_consume );
+    gun.force_insert_item( underbarrel, pocket_type::MOD );
+    item &placed = here.add_item( pos, gun );
+
+    item *mod = placed.all_items_top( pocket_type::MOD ).front();
+    REQUIRE( mod->typeId() == itype_test_multimag_aux_gun );
+    item *mag_ptr = mod->all_items_top( pocket_type::MAGAZINE_WELL ).front();
+    REQUIRE( mag_ptr->typeId() == itype_glockmag );
+    const int64_t mod_uid = mod->uid().get_value();
+    const int64_t mag_uid = mag_ptr->uid().get_value();
+    const item_location gun_loc( map_cursor( pos ), &placed );
+    const item_location mod_loc( gun_loc, mod );
+    const item_location mag_loc( mod_loc, mag_ptr );
+    const std::string saved_location = to_json( mag_loc );
+
+    // Save and load the tile's items as a map save and load do
+    tripoint_bub_ms where = pos;
+    point_sm_ms l;
+    cata::colony<item> &tile_items = map_meddler::unsafe_get_submap_at( where, l )->get_items( l );
+    REQUIRE( tile_items.size() == 1 );
+    std::ostringstream os;
+    JsonOut jsout( os );
+    jsout.write( tile_items );
+    tile_items.clear();
+    JsonValue jv = json_loader::from_string( os.str() );
+    REQUIRE( jv.read( tile_items ) );
+    REQUIRE( tile_items.size() == 1 );
+
+    const item_location restored = location_from_json( saved_location );
+    REQUIRE( restored );
+    CHECK( restored->typeId() == itype_glockmag );
+    CHECK( restored->uid().get_value() == mag_uid );
+    CHECK( restored->ammo_remaining() == 5 );
+    REQUIRE( restored.parent_item() );
+    CHECK( restored.parent_item()->typeId() == itype_test_multimag_aux_gun );
+    CHECK( restored.parent_item()->uid().get_value() == mod_uid );
 }
 
 // INV-P01 follow-up, uid collisions: now that contained items keep their uids, a character made

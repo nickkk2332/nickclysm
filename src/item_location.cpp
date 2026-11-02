@@ -760,19 +760,35 @@ class item_location::impl::item_in_container : public item_location::impl
         item_in_container( const item_location &container, item *which ) :
             impl( which ), container( container ) {}
 
+        // A gun or tool mod, which is not among the contents calc_index counts
+        bool is_mod_of_container() const {
+            if( !container ) {
+                return false;
+            }
+            for( const item *it : container->all_items_top( pocket_type::MOD ) ) {
+                if( target() == it ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         void serialize( JsonOut &js ) const override {
             if( !target() ) {
                 item_location::nowhere.serialize( js );
                 return;
             }
             int idx = calc_index();
-            if( idx < 0 ) {
+            // A mod is found by uid alone. Its own type keeps older builds, which can't find
+            // it, from reporting an error: they read it as nowhere, as they wrote it.
+            const bool in_mod_pocket = idx < 0 && target()->uid().is_valid() && is_mod_of_container();
+            if( idx < 0 && !in_mod_pocket ) {
                 item_location::nowhere.serialize( js );
                 return;
             }
             js.start_object();
             js.member( "idx", idx );
-            js.member( "type", "in_container" );
+            js.member( "type", in_mod_pocket ? "in_mod_pocket" : "in_container" );
             js.member( "parent", container );
             if( target()->uid().is_valid() ) {
                 js.member( "uid", target()->uid().get_value() );
@@ -1105,7 +1121,9 @@ void item_location::deserialize( const JsonObject &obj )
         if( veh && part >= 0 && part < veh->part_count() ) {
             ptr = std::make_shared<impl::item_on_vehicle>( vehicle_cursor( *veh, part ), idx, uid );
         }
-    } else if( type == "in_container" ) {
+    } else if( type == "in_container" || type == "in_mod_pocket" ) {
+        // in_mod_pocket: a gun or tool mod of the parent, found by uid
+        const bool in_mod_pocket = type == "in_mod_pocket";
         item_location parent;
         obj.read( "parent", parent );
         if( !parent.ptr->valid() ) {
@@ -1118,7 +1136,8 @@ void item_location::deserialize( const JsonObject &obj )
             ptr = std::make_shared<impl::item_on_map>( map_cursor( parent.pos_abs() ), idx ); // drop on ground
             return;
         }
-        const std::list<item *> parent_contents = parent->all_items_container_top();
+        const std::list<item *> parent_contents = in_mod_pocket ?
+                parent->all_items_top( pocket_type::MOD ) : parent->all_items_container_top();
 
         item *found = nullptr;
         if( uid > 0 ) {

@@ -708,22 +708,6 @@ size_t item_contents::size() const
     return contents.size();
 }
 
-void item_contents::read_mods( const item_contents &read_input )
-{
-    for( const item_pocket &pocket : read_input.contents ) {
-        if( pocket.saved_type() == pocket_type::MOD ) {
-            for( const item *it : pocket.all_items_top() ) {
-                if( it->is_gunmod() || it->is_toolmod() ) {
-                    insert_item( *it, pocket_type::MOD );
-                } else {
-                    debugmsg( "Non-mod %s in MOD pocket!", it->tname() );
-                    insert_item( *it, pocket_type::MIGRATION );
-                }
-            }
-        }
-    }
-}
-
 struct item_contents::item_contents_helper {
     // Static helper function to implement the const and non-const versions of
     // find_pocket_for with less code duplication
@@ -810,6 +794,23 @@ struct item_contents::item_contents_helper {
     template<typename Input>
     static passed_item<Input> pass_on( std::remove_reference_t<passed_item<Input>> &it ) {
         return static_cast<passed_item<Input>>( it );
+    }
+
+    // item_contents::read_mods for both kinds of input
+    template<typename Input>
+    static void read_mods( item_contents &dest, Input &read_input ) {
+        for( item_pocket_type<Input> &pocket : read_input.contents ) {
+            if( pocket.saved_type() == pocket_type::MOD ) {
+                for( auto *it : pocket.all_items_top() ) {
+                    if( it->is_gunmod() || it->is_toolmod() ) {
+                        insert( dest, pass_on<Input>( *it ), pocket_type::MOD, false, false );
+                    } else {
+                        debugmsg( "Non-mod %s in MOD pocket!", it->tname() );
+                        insert( dest, pass_on<Input>( *it ), pocket_type::MIGRATION, false, false );
+                    }
+                }
+            }
+        }
     }
 
     // item_contents::combine for both kinds of input. Items that don't fit where they were
@@ -924,6 +925,16 @@ ret_val<const item_pocket *> item_contents::find_pocket_for( const item &it,
         pocket_type pk_type ) const
 {
     return item_contents_helper::find_pocket_for( *this, it, pk_type );
+}
+
+void item_contents::read_mods( const item_contents &read_input )
+{
+    item_contents_helper::read_mods( *this, read_input );
+}
+
+void item_contents::read_mods( item_contents &&read_input )
+{
+    item_contents_helper::read_mods( *this, read_input );
 }
 
 void item_contents::combine( const item_contents &read_input, const bool convert,

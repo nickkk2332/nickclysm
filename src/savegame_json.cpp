@@ -3571,10 +3571,12 @@ void item::deserialize( const JsonObject &data )
     if( data.has_object( "contents" ) ) {
         item_contents read_contents;
         data.read( "contents", read_contents );
-        contents.read_mods( read_contents );
-        update_modified_pockets();
         // Moved in, not copied: contained items keep their uids, so saved item_locations into
-        // containers still find them, and nested contents are not copied once per level
+        // containers still find them, and nested contents are not copied once per level.
+        // read_mods takes only the MOD pocket's items and leaves the rest for combine.
+        contents.read_mods( std::move( read_contents ) );
+        update_modified_pockets();
+        // NOLINTNEXTLINE(bugprone-use-after-move)
         contents.combine( std::move( read_contents ), false, true, false, true );
 
         //migrate SOFTWARE pocket

@@ -454,6 +454,11 @@ class item_contents
 
         /** Read the items in the MOD pocket only. */
         void read_mods( const item_contents &read_input );
+        /**
+         * The same, moving the mods in rather than copying them, so they and what they hold keep
+         * their uids. Only the MOD pocket's items are taken: the rest is left for combine().
+         */
+        void read_mods( item_contents &&read_input );
         void combine( const item_contents &read_input, bool convert = false, bool into_bottom = false,
                       bool restack_charges = true, bool ignore_contents = false );
         /**
