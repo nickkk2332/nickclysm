@@ -3606,6 +3606,48 @@ you can pick one of four options from `Choose your destiny` list;
 }
 ```
 
+#### `run_eoc_checklist`
+Open a menu where the player ticks several options, then confirms. Confirming runs the EoCs of
+the ticked options, in their order; cancelling runs nothing. It takes the options of
+[`run_eoc_selector`](#run_eoc_selector).
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "run_eoc_checklist" | **mandatory** | array of strings or [variable objects](#variable-object) or inline EOCs | list of EoCs that can be ticked; an EoC whose condition fails is grayed out and can't be ticked |
+| "names" | optional | array of strings or [variable objects](#variable-object) | name of each option; one per EoC |
+| "descriptions" | optional | array of strings or [variable objects](#variable-object) | description of each option; one per EoC |
+| "keys" | optional | array of single characters | a shortcut for each option; one per EoC |
+| "checked" | optional | array of booleans | whether each option is ticked when the menu opens; one per EoC. A grayed-out option is never ticked |
+| "min" | optional | int | how many options must be ticked to confirm; default 0 |
+| "max" | optional | int | how many options may be ticked at most; default all of them. At least 1 and at least `min` |
+| "title" | optional | string | the menu's title; default `Tick the options you want.` |
+| "hide_failing" | optional | boolean | if true, an option whose EoC fails its condition is left out instead of grayed out |
+| "variables" | optional | array of objects of `"variable_name": "variable"` | context variables passed to the EoCs: one object for all of them, or one per EoC; as in `run_eoc_selector` |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run instead of showing the menu when `u` is not the avatar |
+
+Names, descriptions and the title take the dialogue tags `u_message` takes. Giving `names`,
+`descriptions`, `keys`, `checked` or several `variables` a size other than the number of EoCs, or
+`min` and `max` out of range, is a load error.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+The player picks one or two things to bring:
+```jsonc
+{
+  "run_eoc_checklist": [ "EOC_PACK_FOOD", "EOC_PACK_WATER", "EOC_PACK_TOOLS" ],
+  "names": [ "Food", "Water", "Tools" ],
+  "checked": [ true, true, false ],
+  "min": 1,
+  "max": 2,
+  "title": "What do you bring?"
+}
+```
+
 #### `u_show_text`, `npc_show_text`
 Show the player a scrollable window with a title, a text and a row of buttons that each run
 EoCs; for journals, notes, quest logs, tutorials and terminal-like screens. The window closes when

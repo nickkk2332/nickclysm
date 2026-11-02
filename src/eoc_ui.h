@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-// The windows EOCs show the player: u_show_text.
+// The windows EOCs show the player: u_show_text and run_eoc_checklist.
 namespace eoc_ui
 {
 
@@ -31,6 +31,31 @@ std::optional<size_t> show_text( const std::string &title, const std::string &te
  */
 extern std::function<std::optional<size_t>( const std::string &title, const std::string &text,
         const std::vector<text_button> &buttons )> show_text_test_answer;
+
+struct checklist_option {
+    std::string name;
+    std::string description;
+    std::optional<char> key;
+    // false: greyed out, it can't be ticked
+    bool enabled = true;
+    // ticked when the menu opens
+    bool checked = false;
+};
+
+/**
+ * A menu where the player ticks between @p min and @p max of @p options, then confirms.
+ * @returns the indices of the ticked options, or nullopt when the menu was cancelled
+ */
+std::optional<std::vector<size_t>> checklist( const std::string &title,
+                                const std::vector<checklist_option> &options, int min, int max );
+
+/**
+ * In test mode checklist returns this function's answer to its arguments, or cancels when it is
+ * unset. An answer that ticks a greyed-out option, or too few or too many, counts as cancelling,
+ * as the menu would not let the player confirm it.
+ */
+extern std::function<std::optional<std::vector<size_t>>( const std::string &title,
+        const std::vector<checklist_option> &options, int min, int max )> checklist_test_answer;
 
 } // namespace eoc_ui
 

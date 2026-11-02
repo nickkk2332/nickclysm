@@ -28,7 +28,7 @@
 #include "talker.h"
 #include "type_id.h"
 
-// u_examine and u_show_text.
+// u_examine, u_show_text and run_eoc_checklist.
 
 static const activity_id ACT_CLOSE_TILE( "ACT_CLOSE_TILE" );
 
@@ -58,6 +58,12 @@ std::string global_string( const std::string &name )
     return value == nullptr ? std::string() : value->str();
 }
 
+double global_number( const std::string &name )
+{
+    const diag_value *const value = get_globals().maybe_get_global_value( name );
+    return value == nullptr ? 0.0 : value->dbl();
+}
+
 npc &setup()
 {
     clear_map();
@@ -74,6 +80,7 @@ void teardown()
 {
     get_globals().clear_global_values();
     eoc_ui::show_text_test_answer = nullptr;
+    eoc_ui::checklist_test_answer = nullptr;
     clear_map();
     clear_avatar();
 }
@@ -271,6 +278,115 @@ TEST_CASE( "eoc_show_text", "[eoc][ui][errands_ui]" )
         run( effect, guy );
         CHECK_FALSE( asked );
         CHECK( global_string( "test_ui_result" ) == "not shown" );
+    }
+    teardown();
+}
+
+TEST_CASE( "eoc_run_eoc_checklist", "[eoc][ui][errands_ui]" )
+{
+    npc &guy = setup();
+    avatar &u = get_avatar();
+    const std::string effect =
+        R"({ "run_eoc_checklist": [ "EOC_TEST_UI_PACK_FOOD", "EOC_TEST_UI_PACK_WATER", "EOC_TEST_UI_PACK_TOOLS" ], )"
+        R"("names": [ "Food", "Water", "Tools" ], "descriptions": [ "Two days", "Two liters", "A crowbar" ], )"
+        R"("checked": [ true, true, false ], "min": 1, "max": 2, "title": "What does <u_name> bring?", )"
+        R"("false_eocs": [ "EOC_TEST_UI_NOT_SHOWN" ] })";
+    std::string shown_title;
+    std::vector<eoc_ui::checklist_option> shown;
+    int shown_min = -1;
+    int shown_max = -1;
+    std::optional<std::vector<size_t>> answer;
+    bool asked = false;
+    eoc_ui::checklist_test_answer = [&]( const std::string & title,
+    const std::vector<eoc_ui::checklist_option> &options, int min, int max ) {
+        asked = true;
+        shown_title = title;
+        shown = options;
+        shown_min = min;
+        shown_max = max;
+        return answer;
+    };
+    const auto run = [&]( const std::string & json, Character & alpha ) {
+        dialogue d( get_talker_for( alpha ), get_talker_for( guy ) );
+        load_effect( json ).apply( d );
+    };
+
+    SECTION( "the ticked options run their EOCs" ) {
+        answer = std::vector<size_t> { 0, 1 };
+        run( effect, u );
+        REQUIRE( asked );
+        CHECK( shown_title == "What does " + u.get_name() + " bring?" );
+        REQUIRE( shown.size() == 3 );
+        CHECK( shown[0].name == "Food" );
+        CHECK( shown[1].description == "Two liters" );
+        CHECK( shown[0].checked );
+        CHECK( shown[1].checked );
+        CHECK_FALSE( shown[2].checked );
+        // EOC_TEST_UI_PACK_TOOLS's condition fails: greyed out.
+        CHECK_FALSE( shown[2].enabled );
+        CHECK( shown_min == 1 );
+        CHECK( shown_max == 2 );
+        CHECK( global_number( "test_ui_food" ) == 1 );
+        CHECK( global_number( "test_ui_water" ) == 1 );
+        CHECK( global_number( "test_ui_tools" ) == 0 );
+    }
+    SECTION( "cancelling runs nothing" ) {
+        answer = std::nullopt;
+        run( effect, u );
+        CHECK( asked );
+        CHECK( global_number( "test_ui_food" ) == 0 );
+        CHECK( global_number( "test_ui_water" ) == 0 );
+    }
+    SECTION( "a greyed-out option can't be ticked" ) {
+        answer = std::vector<size_t> { 2 };
+        run( effect, u );
+        CHECK( global_number( "test_ui_tools" ) == 0 );
+    }
+    SECTION( "too many or too few can't be confirmed" ) {
+        get_globals().set_global_value( "test_ui_allow_tools", std::string( "yes" ) );
+        answer = std::vector<size_t> { 0, 1, 2 };
+        run( effect, u );
+        CHECK( shown[2].enabled );
+        answer = std::vector<size_t> {};
+        run( effect, u );
+        CHECK( global_number( "test_ui_food" ) == 0 );
+        CHECK( global_number( "test_ui_water" ) == 0 );
+        CHECK( global_number( "test_ui_tools" ) == 0 );
+        answer = std::vector<size_t> { 2 };
+        run( effect, u );
+        CHECK( global_number( "test_ui_tools" ) == 1 );
+    }
+    SECTION( "hide_failing hides the option, and variables reach the EOC" ) {
+        answer = std::vector<size_t> { 1 };
+        run( R"({ "run_eoc_checklist": [ "EOC_TEST_UI_PACK_TOOLS", "EOC_TEST_UI_PACK_VARIABLE", )"
+             R"("EOC_TEST_UI_PACK_VARIABLE" ], "names": [ "Tools", "Food", "Water" ], )"
+             R"("variables": [ { "what": "tools" }, { "what": "food" }, { "what": "water" } ], )"
+             R"("hide_failing": true })", u );
+        REQUIRE( shown.size() == 2 );
+        CHECK( shown[0].name == "Food" );
+        CHECK( shown[1].name == "Water" );
+        CHECK( global_string( "test_ui_packed" ) == "water" );
+        CHECK( global_number( "test_ui_packed_count" ) == 1 );
+    }
+    SECTION( "with an NPC as u, nothing is shown and false_eocs run" ) {
+        answer = std::vector<size_t> { 0 };
+        run( effect, guy );
+        CHECK_FALSE( asked );
+        CHECK( global_string( "test_ui_result" ) == "not shown" );
+        CHECK( global_number( "test_ui_food" ) == 0 );
+    }
+    SECTION( "options are checked at load" ) {
+        CHECK_THROWS_AS( load_effect( R"({ "run_eoc_checklist": [ "EOC_TEST_UI_PACK_FOOD" ], )"
+                                      R"("names": [ "Food", "Water" ] })" ), JsonError );
+        CHECK_THROWS_AS( load_effect( R"({ "run_eoc_checklist": [ "EOC_TEST_UI_PACK_FOOD" ], )"
+                                      R"("checked": [ true, false ] })" ), JsonError );
+        CHECK_THROWS_AS( load_effect( R"({ "run_eoc_checklist": [ "EOC_TEST_UI_PACK_FOOD" ], )"
+                                      R"("max": 2 })" ), JsonError );
+        CHECK_THROWS_AS( load_effect( R"({ "run_eoc_checklist": [ "EOC_TEST_UI_PACK_FOOD", )"
+                                      R"("EOC_TEST_UI_PACK_WATER" ], "min": 2, "max": 1 })" ), JsonError );
+        CHECK_THROWS_AS( load_effect( R"({ "run_eoc_checklist": [ "EOC_TEST_UI_PACK_FOOD" ], )"
+                                      R"("keys": [ "ab" ] })" ), JsonError );
+        CHECK_NOTHROW( load_effect( effect ) );
     }
     teardown();
 }

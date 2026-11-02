@@ -31,6 +31,31 @@
     "effect": [ { "set_string_var": "tear", "target_var": { "global_val": "test_ui_result" } } ]
   },
   {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_UI_PACK_FOOD",
+    "effect": [ { "math": [ "test_ui_food++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_UI_PACK_WATER",
+    "effect": [ { "math": [ "test_ui_water++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_UI_PACK_TOOLS",
+    "//": "Can only be ticked while test_ui_allow_tools is \"yes\".",
+    "condition": { "compare_string": [ "yes", { "global_val": "test_ui_allow_tools" } ] },
+    "effect": [ { "math": [ "test_ui_tools++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_UI_PACK_VARIABLE",
+    "effect": [
+      { "copy_var": { "context_val": "what" }, "target_var": { "global_val": "test_ui_packed" } },
+      { "math": [ "test_ui_packed_count++" ] }
+    ]
+  },
+  {
     "type": "snippet",
     "category": "test_eoc_show_text",
     "//": "u_show_text tests: the only snippet in its category, so the text is known.",

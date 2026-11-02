@@ -18,6 +18,10 @@ std::function<std::optional<size_t>( const std::string &, const std::string &,
                                      const std::vector<eoc_ui::text_button> & )>
 eoc_ui::show_text_test_answer;
 
+std::function<std::optional<std::vector<size_t>>( const std::string &,
+        const std::vector<eoc_ui::checklist_option> &, int, int )>
+        eoc_ui::checklist_test_answer;
+
 namespace
 {
 
@@ -166,5 +170,88 @@ std::optional<size_t> eoc_ui::show_text( const std::string &title, const std::st
         } else if( action == "QUIT" ) {
             return std::nullopt;
         }
+    }
+}
+
+std::optional<std::vector<size_t>> eoc_ui::checklist( const std::string &title,
+                                const std::vector<checklist_option> &options, int min, int max )
+{
+    if( test_mode ) {
+        if( !checklist_test_answer ) {
+            return std::nullopt;
+        }
+        std::optional<std::vector<size_t>> answer = checklist_test_answer( title, options, min, max );
+        if( !answer ) {
+            return std::nullopt;
+        }
+        std::sort( answer->begin(), answer->end() );
+        answer->erase( std::unique( answer->begin(), answer->end() ), answer->end() );
+        // The menu can't confirm what this would.
+        const int count = static_cast<int>( answer->size() );
+        if( count < min || count > max ||
+        std::any_of( answer->begin(), answer->end(), [&options]( size_t i ) {
+        return i >= options.size() || !options[i].enabled;
+        } ) ) {
+            return std::nullopt;
+        }
+        return answer;
+    }
+
+    std::vector<bool> ticked;
+    ticked.reserve( options.size() );
+    for( const checklist_option &option : options ) {
+        ticked.push_back( option.enabled && option.checked );
+    }
+    const bool has_descriptions = std::any_of( options.begin(), options.end(),
+    []( const checklist_option & option ) {
+        return !option.description.empty();
+    } );
+    std::string how_many;
+    if( min == max ) {
+        how_many = string_format( n_gettext( "Tick %d option.", "Tick %d options.", min ), min );
+    } else if( min == 0 ) {
+        how_many = string_format( n_gettext( "Tick up to %d option.", "Tick up to %d options.", max ),
+                                  max );
+    } else {
+        how_many = string_format( _( "Tick %1$d to %2$d options." ), min, max );
+    }
+    const int confirm = static_cast<int>( options.size() );
+    int selected = 0;
+    while( true ) {
+        const int count = static_cast<int>( std::count( ticked.begin(), ticked.end(), true ) );
+        uilist menu;
+        menu.title = title;
+        menu.text = string_format( _( "%1$s  Ticked: %2$d." ), how_many, count );
+        menu.desc_enabled = has_descriptions;
+        // Greyed-out options can still be highlighted, to read their description.
+        menu.hilight_disabled = true;
+        menu.allow_cancel = true;
+        for( size_t i = 0; i < options.size(); i++ ) {
+            // Once enough are ticked, the others can't be.
+            const bool can_toggle = options[i].enabled && ( ticked[i] || count < max );
+            const std::string line = string_format( "[%s] %s", ticked[i] ? "x" : " ",
+                                                    options[i].name );
+            menu.addentry_desc( static_cast<int>( i ), can_toggle,
+                                options[i].key ? static_cast<int>( *options[i].key ) : MENU_AUTOASSIGN, line,
+                                options[i].description );
+        }
+        menu.addentry_desc( confirm, count >= min && count <= max, MENU_AUTOASSIGN, _( "Confirm" ),
+                            std::string() );
+        menu.selected = selected;
+        menu.query();
+        if( menu.ret == confirm ) {
+            std::vector<size_t> chosen;
+            for( size_t i = 0; i < ticked.size(); i++ ) {
+                if( ticked[i] ) {
+                    chosen.push_back( i );
+                }
+            }
+            return chosen;
+        }
+        if( menu.ret < 0 || menu.ret > confirm ) {
+            return std::nullopt;
+        }
+        ticked[menu.ret] = !ticked[menu.ret];
+        selected = menu.selected;
     }
 }

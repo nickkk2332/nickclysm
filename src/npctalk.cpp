@@ -7488,6 +7488,146 @@ talk_effect_fun_t::func f_show_text( const JsonObject &jo, std::string_view memb
     };
 }
 
+// run_eoc_checklist: a menu where the player ticks options, then runs the EOCs of the ticked
+// ones. It takes run_eoc_selector's options. See doc/JSON/EFFECT_ON_CONDITION.md.
+talk_effect_fun_t::func f_run_eoc_checklist( const JsonObject &jo, std::string_view member,
+        std::string_view src )
+{
+    const std::vector<eoc_entry> eocs = load_eoc_vector_id_and_var( jo, member, src );
+    if( eocs.empty() ) {
+        jo.throw_error_at( member, "run_eoc_checklist needs at least one EOC" );
+    }
+    const auto same_size = [&]( std::string_view what, size_t size ) {
+        if( size != 0 && size != eocs.size() ) {
+            const std::string error = string_format( "run_eoc_checklist: \"%s\" needs one entry per "
+                                      "EOC (%d), or none", std::string( what ), eocs.size() );
+            jo.throw_error_at( what, error );
+        }
+    };
+    // An optional array: empty when it is missing.
+    const auto array_of = [&jo]( std::string_view what ) {
+        return jo.has_array( what ) ? jo.get_array( what ) : JsonArray();
+    };
+    std::vector<translation_or_var> names;
+    for( const JsonValue &jv : array_of( "names" ) ) {
+        names.emplace_back( get_translation_or_var( jv, "names", true ) );
+    }
+    same_size( "names", names.size() );
+    std::vector<translation_or_var> descriptions;
+    for( const JsonValue &jv : array_of( "descriptions" ) ) {
+        descriptions.emplace_back( get_translation_or_var( jv, "descriptions", true ) );
+    }
+    same_size( "descriptions", descriptions.size() );
+    std::vector<char> keys;
+    for( const JsonValue &jv : array_of( "keys" ) ) {
+        const std::string key = jv.get_string();
+        if( key.size() != 1 ) {
+            jv.throw_error( "run_eoc_checklist: a key must be exactly 1 character" );
+        }
+        keys.push_back( key[0] );
+    }
+    same_size( "keys", keys.size() );
+    std::vector<bool> checked;
+    for( const JsonValue &jv : array_of( "checked" ) ) {
+        checked.push_back( jv.get_bool() );
+    }
+    same_size( "checked", checked.size() );
+    std::vector<std::unordered_map<std::string, diag_value_or_var>> context;
+    for( const JsonValue &jv : array_of( "variables" ) ) {
+        const JsonObject variables = jv.get_object();
+        std::unordered_map<std::string, diag_value_or_var> vars;
+        for( const JsonMember &var : variables ) {
+            diag_value_or_var value;
+            mandatory( variables, false, var.name(), value );
+            vars[var.name()] = value;
+        }
+        context.emplace_back( vars );
+    }
+    if( context.size() > 1 ) {
+        same_size( "variables", context.size() );
+    }
+    const int min = jo.get_int( "min", 0 );
+    const int max = jo.get_int( "max", static_cast<int>( eocs.size() ) );
+    if( min < 0 || min > static_cast<int>( eocs.size() ) ) {
+        jo.throw_error_at( "min", "run_eoc_checklist: \"min\" must be between 0 and the number of "
+                           "EOCs" );
+    }
+    if( max < std::max( min, 1 ) || max > static_cast<int>( eocs.size() ) ) {
+        jo.throw_error_at( "max", "run_eoc_checklist: \"max\" must be at least \"min\" and 1, and at "
+                           "most the number of EOCs" );
+    }
+    const bool hide_failing = jo.get_bool( "hide_failing", false );
+    translation title = to_translation( "Tick the options you want." );
+    jo.read( "title", title );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+
+    return [eocs, names, descriptions, keys, checked, context, min, max, hide_failing, title,
+          false_eocs]( dialogue & d ) {
+        // The player's menu: shown when the avatar is u (or there is no u).
+        const Character *u = d.has_alpha ? d.actor( false )->get_character() :
+                             &get_player_character();
+        if( u == nullptr || !u->is_avatar() ) {
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        std::unique_ptr<talker> default_talker = get_talker_for( get_player_character() );
+        talker &alpha = d.has_alpha ? *d.actor( false ) : *default_talker;
+        talker &beta = d.has_beta ? *d.actor( true ) : *default_talker;
+
+        std::string title_text = title.translated();
+        parse_tags( title_text, alpha, beta, d );
+        std::vector<eoc_ui::checklist_option> options;
+        // the index in `eocs` of each option shown
+        std::vector<size_t> shown_index;
+        for( size_t i = 0; i < eocs.size(); i++ ) {
+            const effect_on_condition_id eoc_id = eocs[i].var ?
+                                                  effect_on_condition_id( eocs[i].var->evaluate( d ) ) : eocs[i].id;
+            const bool enabled = !eoc_id->has_condition || eoc_id->test_condition( d );
+            if( !enabled && hide_failing ) {
+                continue;
+            }
+            eoc_ui::checklist_option option;
+            if( names.empty() ) {
+                option.name = eoc_id.str();
+            } else {
+                option.name = names[i].evaluate( d ).translated();
+                parse_tags( option.name, alpha, beta, d );
+            }
+            if( !descriptions.empty() ) {
+                option.description = descriptions[i].evaluate( d ).translated();
+                parse_tags( option.description, alpha, beta, d );
+            }
+            if( !keys.empty() ) {
+                option.key = keys[i];
+            }
+            option.enabled = enabled;
+            option.checked = enabled && !checked.empty() && checked[i];
+            options.push_back( option );
+            shown_index.push_back( i );
+        }
+        if( options.empty() ) {
+            return;
+        }
+        const std::optional<std::vector<size_t>> ticked = eoc_ui::checklist( title_text, options,
+                                              min, max );
+        if( !ticked ) {
+            return;
+        }
+        for( const size_t shown : *ticked ) {
+            const size_t i = shown_index[shown];
+            dialogue chosen( d );
+            if( !context.empty() ) {
+                for( const auto &val : context[context.size() > 1 ? i : 0] ) {
+                    chosen.set_value( val.first, val.second.evaluate( d ) );
+                }
+            }
+            const effect_on_condition_id eoc_id = eocs[i].var ?
+                                                  effect_on_condition_id( eocs[i].var->evaluate( d ) ) : eocs[i].id;
+            eoc_id->activate( chosen );
+        }
+    };
+}
 
 struct span_param {
     bool has_min;
@@ -9790,6 +9930,7 @@ parsers = {
     { "offer_mission", jarg::array | jarg::string, &talk_effect_fun::f_offer_mission },
     { "run_eocs", jarg::member | jarg::array, &talk_effect_fun::f_run_eocs },
     { "run_eoc_selector", jarg::member, &talk_effect_fun::f_run_eoc_selector },
+    { "run_eoc_checklist", jarg::member, &talk_effect_fun::f_run_eoc_checklist },
     { "u_show_text", "npc_show_text", jarg::member, &talk_effect_fun::f_show_text },
     { "weighted_list_eocs", jarg::array, &talk_effect_fun::f_weighted_list_eocs },
     { "if", jarg::member, &talk_effect_fun::f_if },
