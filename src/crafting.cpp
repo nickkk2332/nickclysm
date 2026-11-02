@@ -32,6 +32,7 @@
 #include "color.h"
 #include "coordinates.h"
 #include "craft_command.h"
+#include "craft_prompts.h"
 #include "craft_reservation.h"
 #include "craft_reservation_search.h"
 #include "crafting_enums.h"
@@ -942,6 +943,27 @@ static item_location set_item_map_or_vehicle( const Character &p, const tripoint
     }
 }
 
+namespace
+{
+// How many craft_prompt_suppressor objects exist.
+int craft_prompt_suppression = 0;
+} // namespace
+
+craft_prompt_suppressor::craft_prompt_suppressor()
+{
+    ++craft_prompt_suppression;
+}
+
+craft_prompt_suppressor::~craft_prompt_suppressor()
+{
+    --craft_prompt_suppression;
+}
+
+bool craft_prompts_suppressed()
+{
+    return craft_prompt_suppression > 0;
+}
+
 static item_location place_craft_or_disassembly(
     Character &ch, item &craft, std::optional<tripoint_bub_ms> target,
     bool always_start_on_ground = false )
@@ -994,6 +1016,9 @@ static item_location place_craft_or_disassembly(
             craft_in_world = set_item_map_or_vehicle( ch, ch.pos_bub(), craft );
         } else if( !ch.has_wield_conflicts( craft ) || ch.is_npc() ) {
             craft_wield();
+        } else if( craft_prompts_suppressed() ) {
+            // Nobody to ask: put it down and start working, as the menu's second choice does.
+            craft_in_world = set_item_map_or_vehicle( ch, ch.pos_bub(), craft );
         } else {
             enum option : int {
                 WIELD_CRAFT = 0,
@@ -3131,7 +3156,7 @@ void Character::start_craft( craft_command &command, const std::optional<tripoin
         return;
     }
 
-    if( is_avatar() ) {
+    if( is_avatar() || craft_prompts_suppressed() ) {
         assign_activity( craft_activity_actor( craft_in_world, command.is_long() ) );
     } else {
         // set flag to craft
@@ -4109,7 +4134,7 @@ const requirement_data *Character::select_requirements(
     const std::function<bool( const item & )> &filter ) const
 {
     cata_assert( !alternatives.empty() );
-    if( alternatives.size() == 1 || !is_avatar() ) {
+    if( alternatives.size() == 1 || !is_avatar() || craft_prompts_suppressed() ) {
         return alternatives.front();
     }
 
@@ -4253,7 +4278,7 @@ comp_selection<item_comp> Character::select_item_component( const std::vector<it
             selected.use_from = usage_from::both;
             selected.comp = mixed[0].first;
         }
-    } else if( !npc_query && is_npc() ) {
+    } else if( ( !npc_query && is_npc() ) || craft_prompts_suppressed() ) {
         if( !player_has.empty() ) {
             selected.use_from = usage_from::player;
             selected.comp = player_has[0].first;
@@ -4628,7 +4653,8 @@ Character::select_tool_component( const std::vector<tool_comp> &tools, int batch
         return selected;    // Default to using a tool that doesn't require charges
     }
 
-    if( ( both_has.size() + player_has.size() + map_has.size() == 1 ) || ( !npc_query && is_npc() ) ) {
+    if( ( both_has.size() + player_has.size() + map_has.size() == 1 ) || ( !npc_query && is_npc() ) ||
+        craft_prompts_suppressed() ) {
         if( !both_has.empty() ) {
             selected.use_from = usage_from::both;
             selected.comp = both_has[0];
