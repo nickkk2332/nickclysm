@@ -51,8 +51,13 @@
 static const faction_id faction_your_followers( "your_followers" );
 
 static const itype_id itype_273x110flock( "273x110flock" );
+static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_brogyaga( "brogyaga" );
 static const itype_id itype_grenade_act( "grenade_act" );
+static const itype_id itype_knife_large( "knife_large" );
+static const itype_id itype_machete( "machete" );
+static const itype_id itype_modular_m16a4( "modular_m16a4" );
+static const itype_id itype_rock( "rock" );
 static const itype_id itype_shot_bird( "shot_bird" );
 static const itype_id itype_shotgun_s( "shotgun_s" );
 
@@ -262,4 +267,48 @@ TEST_CASE( "bench_npc_spell_eval", "[.][benchmark_scenario]" )
     clear_creatures();
     clear_npcs();
     clear_avatar();
+}
+
+// NPC-P02: an NPC rates every weapon it carries on every combat move: a rifle with several
+// fire modes, a shotgun, two melee weapons and rocks, with six zombies at 3 to 30 tiles.
+TEST_CASE( "bench_npc_weapon_eval", "[.][benchmark_scenario]" )
+{
+    fixed_weather weather;
+    npc *fighter = nullptr;
+    monster *target = nullptr;
+    run_scenario( "npc_weapon_eval",
+                  "50 attack choices of an NPC with a rifle, a shotgun, 2 melee weapons and rocks, 6 zombies in range",
+    [&fighter, &target]() {
+        npc &guy = spawn_scenario_npc( npc_center );
+        guy.set_attitude( NPCATT_KILL );
+        guy.rules.set_flag( ally_rule::use_guns );
+        guy.wear_item( item( itype_backpack ), false );
+        item shotgun( itype_shotgun_s );
+        shotgun.ammo_set( itype_shot_bird );
+        guy.i_add( shotgun );
+        guy.i_add( item( itype_knife_large ) );
+        guy.i_add( item( itype_machete ) );
+        guy.i_add( item( itype_rock, calendar::turn, 5 ) );
+        arm_shooter( guy, itype_modular_m16a4 );
+        const std::vector<tripoint_rel_ms> offsets = { { 3, 0, 0 }, { 5, 4, 0 }, { -8, 2, 0 },
+            { 12, -9, 0 }, { -20, -15, 0 }, { 30, 8, 0 }
+        };
+        target = nullptr;
+        for( const tripoint_rel_ms &off : offsets ) {
+            monster *zombie = g->place_critter_at( mon_zombie, npc_center + off );
+            REQUIRE( zombie != nullptr );
+            if( target == nullptr ) {
+                target = zombie;
+            }
+        }
+        get_map().build_map_cache( 0 );
+        fighter = &guy;
+    }, [&fighter, &target]() {
+        for( int i = 0; i < 50; ++i ) {
+            fighter->evaluate_best_attack( target );
+        }
+        CHECK( fighter->get_current_attack() );
+    } );
+    clear_creatures();
+    clear_npcs();
 }

@@ -54,6 +54,7 @@ without timing it, then times a fixed amount of work.
 | `shot_birdshot` | 30 rounds of 12 gauge birdshot (100 pellets) at a target 5 tiles away, the common case | CMBT-P01 |
 | `shrapnel_armored` | 1 grenade on an armored zombie, with 8 more 1 tile away and 16 more 2 tiles away, all surviving it | CMBT-P02 |
 | `npc_spell_eval` | 20 attack choices of an NPC knowing 4 attack spells (blast, cone, line, single target), 6 zombies and the player in range | NPC-P01, MAGIC-P02 |
+| `npc_weapon_eval` | 50 attack choices of an NPC with a rifle (2 fire modes), a shotgun, 2 melee weapons and rocks, 6 zombies at 3 to 30 tiles | NPC-P02 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then
