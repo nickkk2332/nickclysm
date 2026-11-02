@@ -9371,6 +9371,24 @@ talk_effect_fun_t::func f_walk_to( const JsonObject &jo, std::string_view member
     };
 }
 
+// u_cancel_walk: false_eocs run with reason "cancelled", or none if silent
+talk_effect_fun_t::func f_cancel_walk( bool is_npc, bool silent )
+{
+    return [is_npc, silent]( dialogue const & d ) {
+        Character *who = d.actor( is_npc )->get_character();
+        if( who != nullptr ) {
+            errand::cancel_walk( *who, silent );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_cancel_walk_with( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const JsonObject options = jo.get_object( member );
+    return f_cancel_walk( is_npc, options.get_bool( "silent", false ) );
+}
+
 talk_effect_fun_t::func f_travel_to_dimension( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -9685,6 +9703,7 @@ parsers = {
     { "u_emit", "npc_emit", jarg::member, &talk_effect_fun::f_emit },
     { "u_teleport", "npc_teleport", jarg::object, &talk_effect_fun::f_teleport },
     { "u_walk_to", "npc_walk_to", jarg::member, &talk_effect_fun::f_walk_to },
+    { "u_cancel_walk", "npc_cancel_walk", jarg::object, &talk_effect_fun::f_cancel_walk_with },
     { "u_travel_to_dimension", jarg::member, &talk_effect_fun::f_travel_to_dimension},
     { "u_set_flag", "npc_set_flag", jarg::member, &talk_effect_fun::f_set_flag },
     { "u_unset_flag", "npc_unset_flag", jarg::member, &talk_effect_fun::f_unset_flag },
@@ -9946,6 +9965,12 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
 
     if( effect_id == "npc_cancel_activity" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_cancel_activity( true ) ) );
+        return;
+    }
+
+    if( effect_id == "u_cancel_walk" || effect_id == "npc_cancel_walk" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_cancel_walk( effect_id == "npc_cancel_walk",
+                                       false ) ) );
         return;
     }
 

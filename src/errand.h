@@ -135,6 +135,8 @@ void set_walk( Character &who, const walk_order &w );
 void end_walk( Character &who, const std::string &why );
 // ends who's walk without its EOCs, undoing what it set up (auto-move, running)
 void drop_walk( Character &who );
+// u_cancel_walk: ends who's walk as cancelled, with its false_eocs unless silent; false if none
+bool cancel_walk( Character &who, bool silent );
 // the item a pickup walk is for, or an empty location once it's gone
 item_location pickup_target( const walk_order &w );
 // at the start of an NPC's move: ends a walk that arrived or ran out of time

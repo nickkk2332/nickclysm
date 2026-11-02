@@ -5503,7 +5503,7 @@ The character walks to a location over the following turns, the way it walks any
 | `blocked` | 10 turns went by without the walker getting anywhere (without `give_up_after`) |
 | `timeout` | `give_up_after` passed |
 | `interrupted` | an NPC's walk with `"interruptible": false` was set aside; the avatar's auto-move stopped |
-| `cancelled` | the player told the follower "Follow me", or the walker travelled to another dimension |
+| `cancelled` | the player told the follower "Follow me", [`u_cancel_walk`](#u_cancel_walk-npc_cancel_walk) ended it, or the walker travelled to another dimension |
 
 **Interruptions (NPCs).** A walk is an order: it comes after combat, after investigating a noise and after urgent needs (thirst, hunger, sleep, temperature), and before following the player, guard duty and camp work. When a fight, a flight, a noise or such a need takes the NPC's turn, the walk waits and goes on once that's done. With `"interruptible": false` it doesn't wait: it ends with `false_eocs` and `reason` `interrupted` the first time the NPC spends its turn on something else.
 
@@ -5542,6 +5542,32 @@ The NPC you talk to walks to the shed door, says so when it's there, and tells y
 The NPC runs to the spot stored in its `camp_fire` variable; if anything else takes its turn on the way (a fight, a need), the walk ends instead of waiting
 ```jsonc
 { "npc_walk_to": { "npc_val": "camp_fire" }, "run": true, "interruptible": false, "false_eocs": [ "EOC_RAN_INTO_TROUBLE" ] }
+```
+
+#### `u_cancel_walk`, `npc_cancel_walk`
+Ends the walk the character is on ([`u_walk_to`](#u_walk_to-npc_walk_to), `u_pickup_item` with `"walk": true`, or a follower's "Move there!" order). Its `false_eocs` run with `reason` `cancelled`, unless `silent` is true. A character on no walk is left alone.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_cancel_walk" / "npc_cancel_walk" | **mandatory** | simple string, or an object | the object takes the fields below |
+| "silent" | optional | boolean | default false; true ends the walk without running its EoCs |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC stops where it is going, and its `false_eocs` learn why
+```jsonc
+"npc_cancel_walk"
+```
+
+You stop walking, and nothing else happens
+```jsonc
+{ "u_cancel_walk": { "silent": true } }
 ```
 
 #### `u_travel_to_dimension`

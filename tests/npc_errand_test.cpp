@@ -665,6 +665,8 @@ TEST_CASE( "walk_effects_are_checked_at_load", "[eoc][errand]" )
                      JsonError );
     CHECK_THROWS_AS( load_effect( R"({ "u_walk_to": { "global_val": "x" }, "run": "yes" })" ),
                      JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_cancel_walk": true })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_cancel_walk": { "silent": "yes" } })" ), JsonError );
     CHECK_THROWS_AS( load_condition( R"({ "u_is_walking_to": "anywhere" })" ), JsonError );
     CHECK_THROWS_AS( load_condition( R"({ "u_is_walking_to": 3 })" ), JsonError );
 }
@@ -1209,4 +1211,36 @@ TEST_CASE( "npc_reboot_drops_the_walk", "[npc][errand]" )
     CHECK_FALSE( guy.walk );
     CHECK_FALSE( guy.is_running() );
     CHECK( result().empty() );
+}
+
+TEST_CASE( "u_cancel_walk", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    set_spot( errand_origin + tripoint( 9, 0, 0 ) );
+    walk_npc( guy, walk_to_spot_with( R"("run": true)" ) );
+    run_npc_turn( guy );
+    REQUIRE( guy.walk );
+    SECTION( "with its false_eocs" ) {
+        walk_npc( guy, R"("u_cancel_walk")" );
+        CHECK_FALSE( guy.walk );
+        CHECK( result() == "false" );
+        CHECK( reason() == "cancelled" );
+        CHECK_FALSE( guy.is_running() );
+    }
+    SECTION( "silently" ) {
+        walk_npc( guy, R"({ "u_cancel_walk": { "silent": true } })" );
+        CHECK_FALSE( guy.walk );
+        CHECK( result().empty() );
+    }
+    SECTION( "the npc talker's" ) {
+        dialogue d( get_talker_for( get_avatar() ), get_talker_for( guy ) );
+        load_effect( R"({ "npc_cancel_walk": {} })" ).apply( d );
+        CHECK_FALSE( guy.walk );
+        CHECK( reason() == "cancelled" );
+    }
+    SECTION( "no walk, nothing to do" ) {
+        guy.walk.reset();
+        walk_npc( guy, R"("u_cancel_walk")" );
+        CHECK( result().empty() );
+    }
 }

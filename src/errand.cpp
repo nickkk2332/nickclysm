@@ -500,6 +500,19 @@ void drop_walk( Character &who )
     take_walk( who );
 }
 
+bool cancel_walk( Character &who, const bool silent )
+{
+    if( !who.walk ) {
+        return false;
+    }
+    if( silent ) {
+        drop_walk( who );
+    } else {
+        end_walk( who, reason::cancelled );
+    }
+    return true;
+}
+
 item_location pickup_target( const walk_order &w )
 {
     if( w.item.where() != item_location::type::invalid ) {
