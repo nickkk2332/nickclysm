@@ -19,11 +19,18 @@
 
 static const bionic_id bio_adrenaline( "bio_adrenaline" );
 static const bionic_id bio_ads( "bio_ads" );
+static const bionic_id bio_laser( "bio_laser" );
+static const bionic_id bio_painkiller( "bio_painkiller" );
 static const bionic_id bio_power_storage( "bio_power_storage" );
 static const bionic_id test_bio_mutj02_blade( "test_bio_mutj02_blade" );
 static const bionic_id test_bio_mutj02_gated( "test_bio_mutj02_gated" );
+static const bionic_id test_bio_mutj03_off_self_remove( "test_bio_mutj03_off_self_remove" );
 static const bionic_id test_bio_mutj03_passive( "test_bio_mutj03_passive" );
+static const bionic_id
+test_bio_mutj03_passive_self_remove( "test_bio_mutj03_passive_self_remove" );
 static const bionic_id test_bio_mutj03_toggle( "test_bio_mutj03_toggle" );
+static const bionic_id
+test_bio_mutj03_toggle_self_remove( "test_bio_mutj03_toggle_self_remove" );
 static const bionic_id test_bio_npcj01_blade( "test_bio_npcj01_blade" );
 static const bionic_id test_bio_npcj01_shield( "test_bio_npcj01_shield" );
 
@@ -35,6 +42,8 @@ static const effect_on_condition_id
 effect_on_condition_EOC_TEST_MUTJ03_CHECK( "EOC_TEST_MUTJ03_CHECK" );
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_MUTJ03_DEACTIVATE( "EOC_TEST_MUTJ03_DEACTIVATE" );
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_MUTJ03_NPC_GUN( "EOC_TEST_MUTJ03_NPC_GUN" );
 
 static const itype_id itype_bio_blade_weapon( "bio_blade_weapon" );
 
@@ -273,6 +282,93 @@ TEST_CASE( "mut-j03_npc_weapon_cbm_runs_activation_eocs", "[audit][bionics][npc]
     CHECK( guy.is_using_bionic_weapon() );
     CHECK( bio.powered );
     CHECK( char_var( guy, "mutj02_blade_ran" ) == 1 );
+}
+
+// MUT-J03 review: activate_bionic() fired a gun CBM through the avatar whoever activated it,
+// so npc_activate_bionic on an NPC's gun CBM put the player into aim mode with the NPC's gun.
+// Interactive CBMs now refuse non-avatars, and the effect runs its false_eocs.
+TEST_CASE( "mut-j03_npc_activate_bionic_refuses_an_npc_gun_cbm", "[audit][bionics][eoc][npc]" )
+{
+    clear_avatar();
+    avatar &me = get_avatar();
+    standard_npc guy( "Gunner" );
+    bionic &bio = give_powered_bionic( guy, bio_laser );
+    REQUIRE( bio.has_weapon() );
+    // Enough power to fire it, so nothing but the avatar check stops the activation.
+    REQUIRE( guy.get_power_level() >= bio.get_weapon().get_gun_bionic_drain() );
+    REQUIRE_FALSE( me.activity );
+    const units::energy power_before = guy.get_power_level();
+
+    dialogue d( get_talker_for( me ), get_talker_for( guy ) );
+    effect_on_condition_EOC_TEST_MUTJ03_NPC_GUN->activate( d );
+    CHECK_FALSE( me.activity );
+    CHECK( char_var( me, "mutj03_gun_true" ) == 0 );
+    CHECK( char_var( me, "mutj03_gun_false" ) == 1 );
+    CHECK( guy.get_power_level() == power_before );
+    clear_avatar();
+}
+
+// MUT-J03 review: Character::suffer() walked my_bionics with a range-for while bionic EOCs
+// ran, so a passive bionic that uninstalled itself shifted the next bionic into the slot
+// already processed, and that one was skipped (and the loop read past the new end).
+TEST_CASE( "mut-j03_bionic_removing_itself_does_not_skip_the_next_one", "[audit][bionics]" )
+{
+    clear_avatar();
+    avatar &me = get_avatar();
+    me.add_bionic( test_bio_mutj03_passive_self_remove );
+    me.add_bionic( test_bio_mutj03_passive );
+    me.add_bionic( bio_power_storage );
+    REQUIRE( me.my_bionics->size() == 3 );
+    REQUIRE( ( *me.my_bionics )[0].id == test_bio_mutj03_passive_self_remove );
+    REQUIRE( ( *me.my_bionics )[1].id == test_bio_mutj03_passive );
+
+    me.suffer();
+    CHECK_FALSE( me.has_bionic( test_bio_mutj03_passive_self_remove ) );
+    CHECK( me.has_bionic( test_bio_mutj03_passive ) );
+    CHECK( char_var( me, "mutj03_passive_ticks" ) == 1 );
+    clear_avatar();
+}
+
+// MUT-J03 review: process_bionic() kept using `bio` after its processed_eocs, which may have
+// uninstalled it; the next bionic slid into its slot and got the per-turn effects instead.
+TEST_CASE( "mut-j03_processed_eoc_removing_its_bionic_ends_its_turn", "[audit][bionics]" )
+{
+    clear_avatar();
+    avatar &me = get_avatar();
+    me.add_bionic( test_bio_mutj03_toggle_self_remove );
+    me.add_bionic( bio_painkiller );
+    REQUIRE( ( *me.my_bionics )[0].id == test_bio_mutj03_toggle_self_remove );
+    REQUIRE( ( *me.my_bionics )[1].id == bio_painkiller );
+    bionic &bio = ( *me.my_bionics )[0];
+    bio.powered = true;
+    me.set_pain( 20 );
+    REQUIRE( me.get_pain() == 20 );
+    REQUIRE( me.get_painkiller() == 0 );
+
+    me.process_bionic( bio );
+    CHECK_FALSE( me.has_bionic( test_bio_mutj03_toggle_self_remove ) );
+    // The painkiller CBM is off, so its per-turn effect must not have run.
+    CHECK_FALSE( me.has_active_bionic( bio_painkiller ) );
+    CHECK( me.get_painkiller() == 0 );
+    clear_avatar();
+}
+
+// MUT-J03 review: deactivate_bionic() read `this` from `bio` for each deactivated EOC, so an
+// EOC after one that uninstalled the bionic got the id of the bionic that slid into its slot.
+TEST_CASE( "mut-j03_deactivation_eocs_keep_this_after_removal", "[audit][bionics][eoc]" )
+{
+    clear_avatar();
+    avatar &me = get_avatar();
+    me.add_bionic( test_bio_mutj03_off_self_remove );
+    me.add_bionic( bio_power_storage );
+    REQUIRE( ( *me.my_bionics )[0].id == test_bio_mutj03_off_self_remove );
+    bionic &bio = ( *me.my_bionics )[0];
+    bio.powered = true;
+
+    CHECK( me.deactivate_bionic( bio ) );
+    CHECK_FALSE( me.has_bionic( test_bio_mutj03_off_self_remove ) );
+    CHECK( char_str( me, "mutj03_removed_off_this" ) == test_bio_mutj03_off_self_remove.str() );
+    clear_avatar();
 }
 
 // NPC-J01: NPCs only used weapon CBMs from a fixed list of four ids, so a mod's

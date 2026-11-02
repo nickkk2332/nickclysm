@@ -1728,8 +1728,17 @@ void Character::suffer()
         mod_power_level( trickle );
     }
 
-    for( bionic &bio : *my_bionics ) {
-        process_bionic( bio );
+    // A bionic's EOCs may add or remove bionics, which invalidates iterators into
+    // my_bionics: go by uid, and find each bionic again when its turn comes.
+    std::vector<bionic_uid> bionic_uids;
+    bionic_uids.reserve( my_bionics->size() );
+    for( const bionic &bio : *my_bionics ) {
+        bionic_uids.push_back( bio.get_uid() );
+    }
+    for( const bionic_uid uid : bionic_uids ) {
+        if( const std::optional<bionic *> bio = find_bionic_by_uid( uid ) ) {
+            process_bionic( **bio );
+        }
     }
 
     for( const trait_id &mut_id : get_functioning_mutations() ) {

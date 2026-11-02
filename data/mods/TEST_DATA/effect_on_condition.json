@@ -275,5 +275,17 @@
         "else": { "math": [ "u_mutj03_seen_any = 0" ] }
       }
     ]
+  },
+  {
+    "//": "MUT-J03: try to fire the NPC's gun CBM from an EOC.  Aiming needs the avatar, so it must fail.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTJ03_NPC_GUN",
+    "effect": [
+      {
+        "npc_activate_bionic": "bio_laser",
+        "true_eocs": [ { "id": "EOC_TEST_MUTJ03_NPC_GUN_TRUE", "effect": [ { "math": [ "u_mutj03_gun_true += 1" ] } ] } ],
+        "false_eocs": [ { "id": "EOC_TEST_MUTJ03_NPC_GUN_FALSE", "effect": [ { "math": [ "u_mutj03_gun_false += 1" ] } ] } ]
+      }
+    ]
   }
 ]

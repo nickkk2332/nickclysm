@@ -801,6 +801,17 @@ static bool bionic_activation_allowed( Character &you, const bionic &bio, bool s
     return false;
 }
 
+// Activations that ask the player for a target or a choice (aiming, choose_adjacent,
+// query_yn, uilist, an avatar activity) and then act through the avatar.  Only the avatar
+// can use them: for an NPC, e.g. from an EOC's npc_activate_bionic, they would prompt the
+// player and act on the player.  NPCs fire gun CBMs through npc::check_or_use_weapon_cbm.
+static bool activation_needs_avatar( const bionic &bio )
+{
+    return bio.info().has_flag( json_flag_BIONIC_GUN ) || bio.id == bio_lighter ||
+           bio.id == bio_emp || bio.id == bio_lockpick || bio.id == bio_water_extractor ||
+           bio.id == bio_remote;
+}
+
 bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics_ui )
 {
     const bool mounted = is_mounted();
@@ -843,6 +854,10 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         return false;
     }
     if( !bionic_activation_allowed( *this, bio, !eff_only ) ) {
+        return false;
+    }
+    if( !is_avatar() && activation_needs_avatar( bio ) ) {
+        // Refused before anything is paid or changed.
         return false;
     }
 
@@ -1136,9 +1151,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
 
         mod_moves( -100 );
     } else if( bio.id == bio_lockpick ) {
-        if( !is_avatar() ) {
-            return false;
-        }
+        // Avatar only, see activation_needs_avatar().
         std::optional<tripoint_bub_ms> target = lockpick_activity_actor::select_location(
                 player_character );
         if( target.has_value() ) {
@@ -1354,9 +1367,11 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only )
 
     // Deactivation effects go here
 
-    for( const effect_on_condition_id &eoc : bio.id->deactivated_eocs ) {
+    // An EOC may add or remove bionics, which moves or destroys `bio`: read its id once.
+    const bionic_id deactivated_id = bio.id;
+    for( const effect_on_condition_id &eoc : deactivated_id->deactivated_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
-        d.set_value( "this", bio.id.str() );
+        d.set_value( "this", deactivated_id.str() );
         eoc->activate_activation_only( d, "a bionic deactivation", "bionic being activated", "bionic" );
     }
 
@@ -1750,20 +1765,34 @@ void Character::process_bionic( bionic &bio )
         }
     }
 
-    for( const effect_on_condition_id &eoc : bio.id->processed_eocs ) {
+    // An EOC may add or remove bionics, which moves or destroys `bio`: keep its id and
+    // uid, find it again afterwards, and use `active` from there on.
+    const bionic_id processed_id = bio.id;
+    const bionic_uid processed_uid = bio.get_uid();
+    for( const effect_on_condition_id &eoc : processed_id->processed_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
-        d.set_value( "this", bio.id.str() );
+        d.set_value( "this", processed_id.str() );
         eoc->activate_activation_only( d, "a bionic process", "bionic being activated", "bionic" );
     }
+    bionic *still_installed = &bio;
+    if( !processed_id->processed_eocs.empty() ) {
+        const std::optional<bionic *> found = find_bionic_by_uid( processed_uid );
+        if( !found || !( *found )->powered ) {
+            // Removed or switched off by its own EOC: no effects this turn.
+            return;
+        }
+        still_installed = *found;
+    }
+    bionic &active = *still_installed;
 
     // Bionic effects on every turn they are active go here.
-    if( bio.id == bio_remote ) {
+    if( active.id == bio_remote ) {
         if( g->remoteveh() == nullptr && !maybe_get_value( "remote_controlling" ) ) {
-            bio.powered = false;
+            active.powered = false;
             add_msg_if_player( m_warning, _( "Your %s has lost connection and is turning off." ),
-                               bio.info().name );
+                               active.info().name );
         }
-    } else if( bio.id == bio_nanobots ) {
+    } else if( active.id == bio_nanobots ) {
         std::forward_list<bodypart_id> bleeding_bp_parts;
         for( const bodypart_id &bp : get_all_body_parts() ) {
             if( has_effect( effect_bleed, bp.id() ) ) {
@@ -1799,10 +1828,10 @@ void Character::process_bionic( bionic &bio )
                 mod_stored_kcal( -5 );
             }
         }
-    } else if( bio.id == bio_painkiller ) {
+    } else if( active.id == bio_painkiller ) {
         const int pkill = get_painkiller();
         const int pain = get_pain();
-        const units::energy trigger_cost = bio.info().power_trigger;
+        const units::energy trigger_cost = active.info().power_trigger;
         int max_pkill = std::min( 150, pain );
         if( pkill < max_pkill ) {
             mod_painkiller( 1 );
@@ -1816,20 +1845,21 @@ void Character::process_bionic( bionic &bio )
             mod_stim( -1 );
             mod_power_level( -trigger_cost );
         }
-    } else if( bio.id == bio_gills ) {
-        const units::energy trigger_cost = bio.info().power_trigger / 8;
+    } else if( active.id == bio_gills ) {
+        const units::energy trigger_cost = active.info().power_trigger / 8;
         if( has_effect( effect_asthma ) && get_power_level() >= trigger_cost ) {
             add_msg_if_player( m_good,
                                _( "Your %s activates and you feel your throat open up and air filling your lungs!" ),
-                               bio.info().name );
+                               active.info().name );
             remove_effect( effect_asthma );
             mod_power_level( -trigger_cost );
         }
-    } else if( bio.id == bio_evap ) {
+    } else if( active.id == bio_evap ) {
         if( is_underwater() ) {
             add_msg_if_player( m_info,
-                               _( "Your %s deactivates after it finds itself completely submerged in water." ), bio.info().name );
-            deactivate_bionic( bio );
+                               _( "Your %s deactivates after it finds itself completely submerged in water." ),
+                               active.info().name );
+            deactivate_bionic( active );
         }
 
         // Aero-Evaporator provides water at 60 watts with 2 L / kWh efficiency
@@ -1845,12 +1875,12 @@ void Character::process_bionic( bionic &bio )
             if( water_available == 0 ) {
                 add_msg_if_player( m_bad,
                                    _( "There is not enough humidity in the air for your %s to function." ),
-                                   bio.info().name );
-                deactivate_bionic( bio );
+                                   active.info().name );
+                deactivate_bionic( active );
             } else if( water_available == 1 ) {
                 add_msg_if_player( m_mixed,
                                    _( "Your %s issues a low humidity warning.  Efficiency is reduced." ),
-                                   bio.info().name );
+                                   active.info().name );
             }
 
             mod_thirst( -water_available );
@@ -1859,10 +1889,10 @@ void Character::process_bionic( bionic &bio )
         if( get_thirst() < -40 ) {
             add_msg_if_player( m_good,
                                _( "You are properly hydrated.  Your %s chirps happily." ),
-                               bio.info().name );
-            deactivate_bionic( bio );
+                               active.info().name );
+            deactivate_bionic( active );
         }
-    } else if( bio.id == afs_bio_dopamine_stimulators ) {
+    } else if( active.id == afs_bio_dopamine_stimulators ) {
         // Aftershock
         add_morale( morale_feeling_good, 20, 20, 30_minutes, 20_minutes, true );
     }

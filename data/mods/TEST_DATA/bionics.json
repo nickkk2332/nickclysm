@@ -423,6 +423,47 @@
     "//2": "not actually included, this is a trick to not have to add an item version."
   },
   {
+    "//": "MUT-J03 fixture: a passive bionic whose processed EOC uninstalls it.",
+    "id": "test_bio_mutj03_passive_self_remove",
+    "type": "bionic",
+    "name": { "str": "Self-Removing Passive Test Bionic" },
+    "description": "Test passive bionic that uninstalls itself when processed.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "processed_eocs": [ { "id": "EOC_TEST_MUTJ03_PASSIVE_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a toggled bionic whose processed EOC uninstalls it.",
+    "id": "test_bio_mutj03_toggle_self_remove",
+    "type": "bionic",
+    "name": { "str": "Self-Removing Toggle Test Bionic" },
+    "description": "Test toggled bionic that uninstalls itself when processed.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "processed_eocs": [ { "id": "EOC_TEST_MUTJ03_TOGGLE_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a toggled bionic whose first deactivation EOC uninstalls it; the second records `this`.",
+    "id": "test_bio_mutj03_off_self_remove",
+    "type": "bionic",
+    "name": { "str": "Self-Removing Deactivation Test Bionic" },
+    "description": "Test toggled bionic that uninstalls itself when switched off.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "deactivated_eocs": [
+      { "id": "EOC_TEST_MUTJ03_OFF_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] },
+      {
+        "id": "EOC_TEST_MUTJ03_OFF_RECORD",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_removed_off_this" } } ]
+      }
+    ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
     "//": "NPC-J01 fixture: a mod-style weapon CBM that NPCs may use, in no hardcoded list.",
     "id": "test_bio_npcj01_blade",
     "type": "bionic",

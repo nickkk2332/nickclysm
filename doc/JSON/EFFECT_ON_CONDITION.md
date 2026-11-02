@@ -3704,7 +3704,7 @@ Uninstall 1 bionic, delivered from `bionic_id` context value, onto your characte
 ```
 
 #### `u_activate_bionic`, `npc_activate_bionic`, `u_deactivate_bionic`, `npc_deactivate_bionic`
-Switch an installed bionic on or off.  This goes through the same code as the bionics menu: activating pays `act_cost`, checks power, fuel and the bionic's `activation_condition`, and runs its `activated_eocs`; deactivating pays `deact_cost`, refuses bionics that can't be switched off manually, and runs its `deactivated_eocs`.  Bionics with an interactive activation (lighter, EMP, lockpick, gun CBMs) still ask the player for a target.  If several copies are installed, the first one in the other state is switched.
+Switch an installed bionic on or off.  This goes through the same code as the bionics menu: activating pays `act_cost`, checks power, fuel and the bionic's `activation_condition`, and runs its `activated_eocs`; deactivating pays `deact_cost`, refuses bionics that can't be switched off manually, and runs its `deactivated_eocs`.  Interactive CBMs (gun CBMs, lighter, EMP, lockpick, water extractor, remote control) ask the player for a target or a choice, so they only work when the character is the avatar: for an NPC the activation fails and `false_eocs` run.  If several copies are installed, the first one in the other state is switched.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
