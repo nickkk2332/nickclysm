@@ -20,6 +20,7 @@
 #include "character_oracle.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "errand.h"
 #include "npc_decision_category.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -1688,24 +1689,24 @@ TEST_CASE( "npc_player_order_predicate_and_goal", "[npc][behavior]" )
     behavior::character_oracle_t oracle( &guy );
 
     SECTION( "no order: failure" ) {
-        guy.goto_to_this_pos = std::nullopt;
+        guy.walk.reset();
         CHECK( oracle.npc_has_goto_order( "" ) == behavior::status_t::failure );
     }
     SECTION( "pending order: running" ) {
-        guy.goto_to_this_pos = guy.pos_abs() + tripoint( 10, 0, 0 );
+        errand::set_walk( guy, errand::move_order( guy.pos_abs() + tripoint( 10, 0, 0 ) ) );
         CHECK( oracle.npc_has_goto_order( "" ) == behavior::status_t::running );
     }
     SECTION( "at target: success" ) {
-        guy.goto_to_this_pos = guy.pos_abs();
+        errand::set_walk( guy, errand::move_order( guy.pos_abs() ) );
         CHECK( oracle.npc_has_goto_order( "" ) == behavior::status_t::success );
     }
     SECTION( "order beats follow in BT" ) {
         get_player_character().setpos( here, tripoint_bub_ms( 70, 50, 0 ) );
-        guy.goto_to_this_pos = guy.pos_abs() + tripoint( 10, 0, 0 );
+        errand::set_walk( guy, errand::move_order( guy.pos_abs() + tripoint( 10, 0, 0 ) ) );
         CHECK( bt_goal( guy ) == "goto_ordered_position" );
     }
     SECTION( "severe thirst beats order" ) {
-        guy.goto_to_this_pos = guy.pos_abs() + tripoint( 10, 0, 0 );
+        errand::set_walk( guy, errand::move_order( guy.pos_abs() + tripoint( 10, 0, 0 ) ) );
         guy.set_thirst( 900 );
         guy.i_add( item( itype_orange ) );
         REQUIRE( oracle.has_water( "" ) == behavior::status_t::running );
@@ -1793,7 +1794,7 @@ TEST_CASE( "bt_priority_matrix", "[npc][behavior]" )
         guy.set_attitude( NPCATT_FOLLOW );
         guy.rules.set_flag( ally_rule::follow_close );
         get_player_character().setpos( here, tripoint_bub_ms( 70, 50, 0 ) );
-        guy.goto_to_this_pos = guy.pos_abs() + tripoint( 10, 0, 0 );
+        errand::set_walk( guy, errand::move_order( guy.pos_abs() + tripoint( 10, 0, 0 ) ) );
         CHECK( bt_goal( guy ) == "goto_ordered_position" );
     }
     SECTION( "follow_close cleared: still follows at loose radius" ) {

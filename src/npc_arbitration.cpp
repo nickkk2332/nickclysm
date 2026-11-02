@@ -13,6 +13,7 @@
 #include "behavior.h"
 #include "calendar.h"
 #include "character.h"
+#include "errand.h"
 #include "character_oracle.h"
 #include "debug.h"
 #include "coordinates.h"
@@ -281,7 +282,7 @@ npc_permission_verdict npc::judge_option( const npc_option_cost &cost ) const
         }
         consider( { p, npc_obligation::post, 0.0f } );
     }
-    if( goto_to_this_pos && pos_abs() != *goto_to_this_pos && ( !cost.responsive || holds_up ) ) {
+    if( walk && !errand::walk_arrived( *this, *walk ) && ( !cost.responsive || holds_up ) ) {
         consider( { npc_permission::emergency_only, npc_obligation::goto_order, 0.0f } );
     }
     if( !cost.responsive && is_player_ally() && !rules.has_flag( ally_rule::allow_sleep ) ) {
@@ -313,6 +314,12 @@ npc_need_view npc::need_view( const need_goal_id id,
         return none;
     }
     return need_view( id, *cost );
+}
+
+// where the NPC's walk takes it; the rest cooldown ends when that changes
+static std::optional<tripoint_abs_ms> walk_target_of( const npc &guy )
+{
+    return guy.walk ? std::optional<tripoint_abs_ms>( guy.walk->target ) : std::nullopt;
 }
 
 bool calories_short( const Character &who )
@@ -465,7 +472,7 @@ void npc::arm_rest_cooldown()
     cd.leader_asleep = leader.in_sleep_state();
     cd.leader_resting = leader_is_resting( leader );
     cd.reach = npc_reach_snapshot::of( obligation_reach() );
-    cd.goto_target = goto_to_this_pos;
+    cd.goto_target = walk_target_of( *this );
     cd.pos = pos_abs();
     // next level where a stricter verdict gives way; none above emergency
     cd.next_floor = raw < levels.insist ? levels.insist : raw < levels.emergency ?
@@ -482,7 +489,7 @@ bool npc::rest_cooldown_active() const
     return leader.in_sleep_state() == cd.leader_asleep &&
            leader_is_resting( leader ) == cd.leader_resting &&
            cd.reach.matches( obligation_reach() ) &&
-           goto_to_this_pos == cd.goto_target &&
+           walk_target_of( *this ) == cd.goto_target &&
            rl_dist( pos_abs(), cd.pos ) <= rest_cooldown_drift &&
            current_need_urgency( need_goal_id::go_to_sleep ) < cd.next_floor;
 }

@@ -65,6 +65,7 @@
 #include "effect.h"
 #include "effect_source.h"
 #include "enum_conversions.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -1215,6 +1216,12 @@ void Character::load( const JsonObject &data )
         queued_effect_on_conditions.push( temp );
     }
     data.read( "inactive_eocs", inactive_effect_on_condition_vector );
+
+    walk.reset();
+    if( data.has_object( "walk" ) ) {
+        walk = std::make_unique<walk_order>();
+        walk->deserialize( data.get_object( "walk" ) );
+    }
 }
 
 /**
@@ -1450,6 +1457,10 @@ void Character::store( JsonOut &json ) const
 
     json.end_array();
     json.member( "inactive_eocs", inactive_effect_on_condition_vector );
+
+    if( walk ) {
+        json.member( "walk", *walk );
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

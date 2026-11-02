@@ -40,6 +40,7 @@
 #include "distraction_manager.h"
 #include "do_turn.h"
 #include "effect_on_condition.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -3230,6 +3231,9 @@ bool game::handle_action()
     action_id act = ACTION_NULL;
     user_turn current_turn;
     avatar &player_character = get_avatar();
+    // a walk the avatar was sent on (u_walk_to) ends once it arrived, ran out of time or its
+    // auto-move stopped; true_eocs or false_eocs run before it acts
+    errand::avatar_turn( player_character );
     // Check if we have an auto-move destination
     if( player_character.has_destination() ) {
         act = player_character.get_next_auto_move_direction();

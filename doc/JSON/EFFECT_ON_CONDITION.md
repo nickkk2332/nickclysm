@@ -1183,6 +1183,27 @@ true if you do not drive
 { "not": "u_driving" }
 ```
 
+### `u_is_doing_activity`, `npc_is_doing_activity`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is doing this activity, by id, or any activity for `"any"`. `u_has_activity` is the same as `"any"`. An unknown activity id is reported as an error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC is reading
+```jsonc
+{ "npc_is_doing_activity": "ACT_READ" }
+```
+
+You are busy with something
+```jsonc
+{ "u_is_doing_activity": "any" }
+```
+
 ### `u_know_recipe`
 - type: string or [variable object](#variable-object)
 - return true if character know specific recipe;
@@ -1299,6 +1320,32 @@ check do you wield a gun with `pistol` skill
 check do you wield a gun with `22` ammo type (.22 LR)
 ```jsonc
 { "u_has_wielded_with_ammotype": "22" }
+```
+
+### `u_has_item_in_hand`, `npc_has_item_in_hand`
+- type: string, [variable object](#variable-object), or an object with `id` and/or `flag`
+- return true if alpha or beta talker wields an item of this id; with `{ "flag": ... }`, an item with this flag; with both, an item of this id with this flag. An unknown item id is reported as an error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC holds a crowbar
+```jsonc
+{ "npc_has_item_in_hand": "crowbar" }
+```
+
+You hold something that clips onto a belt
+```jsonc
+{ "u_has_item_in_hand": { "flag": "BELT_CLIP" } }
+```
+
+You hold the item whose id is in the context variable `tool`
+```jsonc
+{ "u_has_item_in_hand": { "context_val": "tool" } }
 ```
 
 ### `u_can_see`, `npc_can_see`
@@ -1690,6 +1737,49 @@ You can see selected location.
     }
   }
 ]
+```
+
+### `u_is_walking_to`, `npc_is_walking_to`
+- type: `"any"` or [variable object](#variable-object)
+- return true if alpha or beta talker is on a walk: one from [`u_walk_to`](#u_walk_to-npc_walk_to), from `u_pickup_item` with `"walk": true`, or a follower's "Move there!" order. With a location, only if the walk goes there
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC isn't walking anywhere
+```jsonc
+{ "not": { "npc_is_walking_to": "any" } }
+```
+
+You are on your way to the spot in `camp_fire`
+```jsonc
+{ "u_is_walking_to": { "u_val": "camp_fire" } }
+```
+
+### `u_can_reach`, `npc_can_reach`
+- type: [variable object](#variable-object)
+- return true if alpha or beta talker has a way to the location: the walk `u_walk_to` would take, with the same `range`, so walls, locked doors and an unloaded spot make it false. Creatures in the way don't count, since they may move. This runs a path search, so don't check it every turn for many characters
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_can_reach" / "npc_can_reach" | **mandatory** | [variable object](#variable-object) | the location |
+| "range" | optional | int or [variable object](#variable-object) | default 0; as in `u_walk_to`: a tile this close to the location will do |
+| "max_distance" | optional | int or [variable object](#variable-object) | the way may be at most this many steps long; without it, any length the path search finds |
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC can get next to the shed door within 30 steps
+```jsonc
+{ "npc_can_reach": { "global_val": "shed_door" }, "range": 1, "max_distance": 30 }
 ```
 
 ### `u_see_npc`, `npc_see_u`
@@ -2231,6 +2321,8 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | bionics: "deactivated_eocs" | { "this", `bionic_id` } |
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
 | furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
+| `u_walk_to`: "true_eocs", "false_eocs" | { "reason", `string` why the walk ended }, and the context variables of the EoC that started the walk |
+| `u_pickup_item`, `u_wield_item`, `u_wear_item`, `u_drop_item`: "true_eocs", "false_eocs" | { "reason", `string` why it was refused, or `done` }, and the context variables of the EoC |
 
 
 # Effects
@@ -5056,6 +5148,139 @@ Variables are also supported
   },
 ```
 
+#### `u_pickup_item`, `npc_pickup_item`
+The character takes one item from the ground (or a vehicle's cargo) into its inventory: the very item the other talker is, with its charges, damage, contents and variables. No menu opens, and NPCs can do it too. The other talker is usually the `npc` that `u_map_run_item_eocs` or `u_run_inv_eocs` gives their EoCs, or the item an item's own EoC runs on.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_pickup_item" / "npc_pickup_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_pickup_item`, `"u"` for `npc_pickup_item`. Anything else is a load error |
+| "walk" | optional | boolean | default false; if the item is out of reach, walk next to it first (as [`u_walk_to`](#u_walk_to-npc_walk_to) with `range` 1) and take it on arrival |
+| "give_up_after", "run", "interruptible" | optional | | with `"walk": true` only, as in [`u_walk_to`](#u_walk_to-npc_walk_to) |
+| "allow_theft" | optional | boolean | default true; taking an item that belongs to someone else is theft, with the usual reaction: for the avatar, a witness of the owning faction tells it off and goes after the item, and the item becomes the avatar's. False refuses instead (`owned`) |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once the item is taken |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run when it isn't |
+
+The pickup costs the moves the avatar's pickup costs. An item the character carries already counts as taken.
+
+**Refusals.** When it can't take the item, nothing happens and `false_eocs` run with the context variable `reason`:
+
+| `reason` | Why |
+| --- | --- |
+| `gone` | the item no longer exists |
+| `held` | someone else carries it |
+| `owned` | it's someone else's and `allow_theft` is false |
+| `liquid` | it's a spilt liquid or a gas |
+| `would_spill` | an open container with liquid in it |
+| `too_heavy` | too heavy: more than the avatar can lift, or more than an NPC can carry |
+| `no_room` | no pocket holds it |
+| `out_of_reach` | not on the character's tile or next to it, on its z level, or sealed in furniture; with `"walk": true` the character walks there instead |
+| a walk's reason | with `"walk": true`, the walk ended without getting there (`unreachable`, `blocked`, `timeout`, `interrupted`, `cancelled`) |
+
+**Talkers.** `true_eocs` and `false_eocs` run with the character as `u` and the item as `npc` (also for `npc_pickup_item`), whose `reason` is `done` when the item was taken. Once the item is taken, the item talker points at it in the inventory, so later effects of the same EoC find it there: `{ "u_pickup_item": "npc" }, { "u_wield_item": "npc" }` picks up and wields. With `"walk": true` the item is taken later, so put what follows into `true_eocs`.
+
+Unlike [`u_pickup_items`](#u_pickup_items-npc_pickup_items), which opens the pickup menu on a tile, this takes one given item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+The NPC goes for a crowbar within 10 tiles, picks it up and wields it, and says so if it can't
+```jsonc
+{
+  "npc_map_run_item_eocs": "random",
+  "search_data": [ { "id": "crowbar" } ],
+  "max_radius": 10,
+  "true_eocs": [
+    {
+      "id": "EOC_FETCH_CROWBAR",
+      "effect": [
+        {
+          "u_pickup_item": "npc",
+          "walk": true,
+          "true_eocs": [ { "id": "EOC_WIELD_CROWBAR", "effect": [ { "u_wield_item": "npc" } ] } ],
+          "false_eocs": [ { "id": "EOC_NO_CROWBAR", "effect": [ { "message": "<u_name> can't get the crowbar: <context_val:reason>." } ] } ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### `u_wield_item`, `npc_wield_item`
+The character wields one item: one it carries, or one on the ground next to it. What it wielded before goes into its pockets, or at its feet when they're full; no menu opens. It costs the moves wielding costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_wield_item" / "npc_wield_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_wield_item`, `"u"` for `npc_wield_item` |
+| "allow_theft" | optional | boolean | default true; as in `u_pickup_item`, for an item on the ground |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wield` (the character can't wield it, or can't let go of what it wields, or the item is inside what it wields; the avatar is told why). An item it wields already counts as done. Afterwards the item talker points at the wielded item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+Wield the item this EoC runs on
+```jsonc
+{ "u_wield_item": "npc", "false_eocs": [ "EOC_CANT_WIELD" ] }
+```
+
+#### `u_wear_item`, `npc_wear_item`
+The character puts on one item: one it carries or wields, or one on the ground next to it. It costs the moves putting it on costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_wear_item" / "npc_wear_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_wear_item`, `"u"` for `npc_wear_item` |
+| "allow_theft" | optional | boolean | default true; as in `u_pickup_item`, for an item on the ground |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wear` (it isn't something to wear, or doesn't fit with what's worn; the avatar is told why). An item it wears already counts as done. Afterwards the item talker points at the worn item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+The NPC puts on every piece of clothing it carries
+```jsonc
+{ "npc_run_inv_eocs": "all", "search_data": [ { "category": "clothing" } ], "true_eocs": [ { "id": "EOC_PUT_IT_ON", "effect": [ { "u_wear_item": "npc" } ] } ] }
+```
+
+#### `u_drop_item`, `npc_drop_item`
+The character drops one item it carries, wields or wears, on its own tile (into a vehicle's cargo if there is one). It costs the moves dropping costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_drop_item" / "npc_drop_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_drop_item`, `"u"` for `npc_drop_item` |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `not_carried` (the character doesn't have it), or `cannot_drop` (an integrated item, or one it can't take off). Afterwards the item talker points at the item where it landed.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+Drop every rock you carry
+```jsonc
+{ "u_run_inv_eocs": "all", "search_data": [ { "id": "rock" } ], "true_eocs": [ { "id": "EOC_DROP_ROCK", "effect": [ { "u_drop_item": "npc" } ] } ] }
+```
+
 #### `u_set_fac_relation`, `npc_set_fac_relation`
 Can be used only in `talk_topic`, as the code relies on the NPC you talk with to obtain info about it's faction.
 
@@ -5474,6 +5699,67 @@ You teleport to `grass_place` with message `Yay!`; as `force` boolean is `true`,
   "fail_message": "Something is very wrong!",
   "force": true
 }
+```
+
+#### `u_walk_to`, `npc_walk_to`
+The character walks to a location over the following turns, the way it walks anywhere: NPCs open doors, push past friendly NPCs and avoid traps and fires; the avatar uses auto-move. When it gets there `true_eocs` run; when it gives up, `false_eocs` run. The walk is saved with the character.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_walk_to" / "npc_walk_to" | **mandatory** | [variable object](#variable-object) | the location to walk to, like one set by `u_location_variable` |
+| "range" | optional | int or [variable object](#variable-object) | default 0; the walk ends this close to the location: within this many tiles (square distance), on the location's z level. 0 is the tile itself, which must be one to stand on (a closed door will do), or, while another creature stands on it, a tile next to it. Use 1 to walk up to furniture or an item on a counter |
+| "give_up_after" | optional | int, duration or [variable object](#variable-object) | how long to keep trying (an int is turns). Without it the walk gives up as soon as there's no way there, or after 10 turns without getting anywhere (someone blocking a corridor); with it, the walk waits for a way to open and gives up only when the time is up. A value of 0 or less from a variable counts as not given |
+| "run" | optional | boolean | default false; run while the stamina lasts, then walk. Running stops when the walk ends |
+| "interruptible" | optional | boolean | default true; see below |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run on arrival |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run when the walk ends without arriving |
+
+**When the EOCs run.** `true_eocs` and `false_eocs` run later, when the walk ends, with the walker as `u` and no `npc` (like a queued EoC), even when the walk ends at once. They get the context variables of the EoC that started the walk, and `reason`:
+
+| `reason` | When |
+| --- | --- |
+| `arrived` | the walker is there (`true_eocs`) |
+| `unreachable` | there is no way there: walls, a locked door, a spot out of the loaded map, or a walker that can't move. Without `give_up_after` this is found when the walk starts, so `false_eocs` run at once |
+| `blocked` | 10 turns went by without the walker getting anywhere (without `give_up_after`) |
+| `timeout` | `give_up_after` passed |
+| `interrupted` | an NPC's walk with `"interruptible": false` was set aside; the avatar's auto-move stopped |
+| `cancelled` | the player told the follower "Follow me" |
+
+**Interruptions (NPCs).** A walk is an order: it comes after combat, after investigating a noise and after urgent needs (thirst, hunger, sleep, temperature), and before following the player, guard duty and camp work. When a fight, a flight, a noise or such a need takes the NPC's turn, the walk waits and goes on once that's done. With `"interruptible": false` it doesn't wait: it ends with `false_eocs` and `reason` `interrupted` the first time the NPC spends its turn on something else.
+
+**The avatar.** For the avatar the walk is auto-move. It stops the way auto-move stops (a creature in the way, safe mode, the player stopping it) and then ends with `reason` `interrupted`; it doesn't start again on its own. `interruptible` doesn't apply.
+
+**One walk at a time.** A new walk replaces the one in progress, whose EoCs don't run. Sending the character again to where it's already going doesn't start over: the time limit and progress carry on, and the new `range`, options and EoCs replace the old ones. So an EoC that runs every turn can call `u_walk_to` each time. A follower's "Move there!" order is the same kind of walk, and replaces it or is replaced by it.
+
+Use `u_is_walking_to` to check for a walk in progress and `u_can_reach` to check for a way there before sending anyone.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC you talk to walks to the shed door, says so when it's there, and tells you if it can't get there in five minutes
+```jsonc
+{
+  "npc_walk_to": { "global_val": "shed_door" },
+  "range": 1,
+  "give_up_after": "5 minutes",
+  "true_eocs": [ { "id": "EOC_AT_THE_SHED", "effect": [ { "u_message": "<u_name> reaches the shed.", "type": "info" } ] } ],
+  "false_eocs": [
+    {
+      "id": "EOC_NOT_AT_THE_SHED",
+      "effect": [ { "u_message": "<u_name> can't get to the shed: <context_val:reason>.", "type": "bad" } ]
+    }
+  ]
+}
+```
+
+The NPC runs to the spot stored in its `camp_fire` variable; if anything else takes its turn on the way (a fight, a need), the walk ends instead of waiting
+```jsonc
+{ "npc_walk_to": { "npc_val": "camp_fire" }, "run": true, "interruptible": false, "false_eocs": [ "EOC_RAN_INTO_TROUBLE" ] }
 ```
 
 #### `u_travel_to_dimension`

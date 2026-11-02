@@ -24,6 +24,7 @@
 #include "coordinates.h"
 #include "dialogue.h"
 #include "enums.h"
+#include "errand.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "input_enums.h"
@@ -449,7 +450,7 @@ TEST_CASE( "accompany_floor_slides_while_the_leader_stays_in_one_place",
             CHECK( w.floor == Approx( 0.575f ) );
         }
         WHEN( "it has an order to move" ) {
-            guy.goto_to_this_pos = here.get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+            errand::set_walk( guy, errand::move_order( here.get_abs( leader_pos + tripoint( -3, 0, 0 ) ) ) );
             const npc_need_view w = rest_view( here_rest );
             CHECK( w.verdict.by == npc_obligation::goto_order );
             CHECK( w.floor == Approx( 0.575f ) );
@@ -1173,7 +1174,8 @@ TEST_CASE( "loaded_settler_rechecks_obligations_on_its_first_turn",
         CHECK_FALSE( guy.in_sleep_state() );
     }
     SECTION( "an order to move" ) {
-        guy.goto_to_this_pos = get_map().get_abs( leader_pos + tripoint( 0, 3, 0 ) );
+        const tripoint_abs_ms order_at = get_map().get_abs( leader_pos + tripoint( 0, 3, 0 ) );
+        errand::set_walk( guy, errand::move_order( order_at ) );
         run_npc_turn( guy );
         CHECK_FALSE( guy.in_sleep_state() );
     }

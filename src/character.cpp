@@ -43,6 +43,7 @@
 #include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"

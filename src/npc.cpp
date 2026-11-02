@@ -35,6 +35,7 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -3357,6 +3358,8 @@ void npc::reboot()
     ai_cache.searched_tiles.clear();
     activity = player_activity();
     clear_destination();
+    // dropped without its EOCs: the walk may be what spun
+    walk.reset();
     activity_handlers::clean_may_activity_occupancy_items_var( *this );
     add_effect( effect_npc_suspend, 24_hours, true, 1 );
 }

@@ -61,6 +61,7 @@
 #include "eoc_ui.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "explosion.h"
@@ -1359,13 +1360,14 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                 return;
             }
 
+            // a follower that can't get there says so (NPC-B14)
             if( npcselect == follower_count ) {
                 for( npc *them : followers ) {
-                    them->goto_to_this_pos = here.get_abs( *p );
+                    errand::start_walk( *them, errand::move_order( here.get_abs( *p ) ) );
                 }
                 yell_msg = _( "Everyone move there!" );
             } else {
-                followers[npcselect]->goto_to_this_pos = here.get_abs( *p );
+                errand::start_walk( *followers[npcselect], errand::move_order( here.get_abs( *p ) ) );
                 yell_msg = string_format( _( "Move there, %s!" ), followers[npcselect]->get_name() );
             }
             break;
@@ -3449,6 +3451,41 @@ namespace talk_effect_fun
 {
 namespace
 {
+// what u_walk_to and u_pickup_item's walk take besides where to go
+struct walk_options {
+    std::optional<duration_or_var> give_up_after;
+    bool run = false;
+    bool interruptible = true;
+
+    explicit walk_options( const JsonObject &jo ) {
+        if( jo.has_member( "give_up_after" ) ) {
+            give_up_after = get_duration_or_var( jo, "give_up_after", true );
+            if( give_up_after->is_constant() && give_up_after->constant() <= 0_turns ) {
+                jo.throw_error_at( "give_up_after", "give_up_after must be more than 0 turns" );
+            }
+        }
+        run = jo.get_bool( "run", false );
+        interruptible = jo.get_bool( "interruptible", true );
+    }
+
+    static bool given( const JsonObject &jo ) {
+        return jo.has_member( "give_up_after" ) || jo.has_member( "run" ) ||
+               jo.has_member( "interruptible" );
+    }
+
+    void apply( walk_order &w, const_dialogue const &d ) const {
+        w.run = run;
+        w.interruptible = interruptible;
+        if( give_up_after ) {
+            // 0 or less from a variable: no time limit
+            const time_duration limit = give_up_after->evaluate( d );
+            if( limit > 0_turns ) {
+                w.give_up_at = calendar::turn + limit;
+            }
+        }
+    }
+};
+
 talk_effect_fun_t::func f_companion_mission( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -4330,6 +4367,134 @@ talk_effect_fun_t::func f_consume_item( const JsonObject &jo, std::string_view m
                 }
             }
             consume_item( *d.actor( false ), current_item_name, current_count, current_charges );
+        }
+    };
+}
+
+// u_pickup_item and the other item effects name the other talker, which is the item
+void check_item_talker( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const std::string other = is_npc ? "u" : "npc";
+    if( !jo.has_string( member ) || jo.get_string( member ) != other ) {
+        jo.throw_error_at( member, string_format(
+                               "%s takes \"%s\": the other talker, which must be an item", std::string( member ), other ) );
+    }
+}
+
+// the character and the item an item effect acts on, or nullopt (reported) if they're missing
+std::optional<std::pair<Character *, item_location *>> item_effect_talkers( dialogue &d,
+        bool is_npc, std::string_view name )
+{
+    Character *who = d.actor( is_npc )->get_character();
+    item_location *loc = d.actor( !is_npc )->get_item();
+    if( who == nullptr || loc == nullptr ) {
+        debugmsg( "%s needs a character as %s and an item as %s.  %s", name, is_npc ? "npc" : "u",
+                  is_npc ? "u" : "npc", d.get_callstack() );
+        return std::nullopt;
+    }
+    return std::make_pair( who, loc );
+}
+
+// Done: the item talker follows the item to its new place, and true_eocs run.  Refused:
+// false_eocs run with the reason.  Either way the character is u and the item npc.
+void finish_item_effect( dialogue &d, Character &who, item_location &talker_item,
+                         const errand::item_result &result,
+                         const std::vector<effect_on_condition_id> &true_eocs,
+                         const std::vector<effect_on_condition_id> &false_eocs )
+{
+    if( result.ok() ) {
+        talker_item = result.loc;
+        errand::run_eocs( who, result.loc, true_eocs, d.get_context(), errand::reason::done );
+    } else {
+        errand::run_eocs( who, talker_item, false_eocs, d.get_context(), result.refusal );
+    }
+}
+
+talk_effect_fun_t::func f_pickup_item( const JsonObject &jo, std::string_view member,
+                                       std::string_view src, bool is_npc )
+{
+    check_item_talker( jo, member, is_npc );
+    const bool walk = jo.get_bool( "walk", false );
+    if( !walk && walk_options::given( jo ) ) {
+        jo.throw_error( string_format(
+                            "%s: give_up_after, run and interruptible go with \"walk\": true", std::string( member ) ) );
+    }
+    const walk_options options( jo );
+    const bool allow_theft = jo.get_bool( "allow_theft", true );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, walk, options, allow_theft, true_eocs, false_eocs]( dialogue & d ) {
+        const auto talkers = item_effect_talkers( d, is_npc,
+                             is_npc ? "npc_pickup_item" : "u_pickup_item" );
+        if( !talkers ) {
+            return;
+        }
+        Character &who = *talkers->first;
+        item_location &loc = *talkers->second;
+        const errand::item_result result = errand::pickup( who, loc, allow_theft );
+        if( walk && result.refusal == errand::reason::out_of_reach ) {
+            // walks next to it first, and takes it on arrival
+            walk_order w;
+            w.kind = walk_kind::pickup;
+            w.target = loc.pos_abs();
+            w.range = 1;
+            options.apply( w, d );
+            w.item = loc;
+            w.item_type = loc->typeId();
+            w.allow_theft = allow_theft;
+            w.true_eocs = true_eocs;
+            w.false_eocs = false_eocs;
+            w.context = d.get_context();
+            errand::start_walk( who, std::move( w ) );
+            return;
+        }
+        finish_item_effect( d, who, loc, result, true_eocs, false_eocs );
+    };
+}
+
+talk_effect_fun_t::func f_wield_item( const JsonObject &jo, std::string_view member,
+                                      std::string_view src, bool is_npc )
+{
+    check_item_talker( jo, member, is_npc );
+    const bool allow_theft = jo.get_bool( "allow_theft", true );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, allow_theft, true_eocs, false_eocs]( dialogue & d ) {
+        const auto talkers = item_effect_talkers( d, is_npc, is_npc ? "npc_wield_item" : "u_wield_item" );
+        if( talkers ) {
+            finish_item_effect( d, *talkers->first, *talkers->second,
+                                errand::wield( *talkers->first, *talkers->second, allow_theft ), true_eocs, false_eocs );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_wear_item( const JsonObject &jo, std::string_view member,
+                                     std::string_view src, bool is_npc )
+{
+    check_item_talker( jo, member, is_npc );
+    const bool allow_theft = jo.get_bool( "allow_theft", true );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, allow_theft, true_eocs, false_eocs]( dialogue & d ) {
+        const auto talkers = item_effect_talkers( d, is_npc, is_npc ? "npc_wear_item" : "u_wear_item" );
+        if( talkers ) {
+            finish_item_effect( d, *talkers->first, *talkers->second,
+                                errand::wear( *talkers->first, *talkers->second, allow_theft ), true_eocs, false_eocs );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_drop_item( const JsonObject &jo, std::string_view member,
+                                     std::string_view src, bool is_npc )
+{
+    check_item_talker( jo, member, is_npc );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, true_eocs, false_eocs]( dialogue & d ) {
+        const auto talkers = item_effect_talkers( d, is_npc, is_npc ? "npc_drop_item" : "u_drop_item" );
+        if( talkers ) {
+            finish_item_effect( d, *talkers->first, *talkers->second,
+                                errand::drop( *talkers->first, *talkers->second ), true_eocs, false_eocs );
         }
     };
 }
@@ -9575,6 +9740,39 @@ talk_effect_fun_t::func f_teleport( const JsonObject &jo, std::string_view membe
     };
 }
 
+talk_effect_fun_t::func f_walk_to( const JsonObject &jo, std::string_view member,
+                                   std::string_view src, bool is_npc )
+{
+    if( !jo.has_object( member ) ) {
+        jo.throw_error_at( member, string_format(
+                               "%s takes a location variable, like { \"context_val\": \"spot\" }", std::string( member ) ) );
+    }
+    const var_info target_var = read_var_info( jo.get_object( member ) );
+    const dbl_or_var range = get_dbl_or_var( jo, "range", false, 0 );
+    if( range.is_constant() && range.constant() < 0 ) {
+        jo.throw_error_at( "range", "range can't be negative" );
+    }
+    const walk_options options( jo );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, target_var, range, options, true_eocs, false_eocs]( dialogue & d ) {
+        Character *who = d.actor( is_npc )->get_character();
+        if( who == nullptr ) {
+            debugmsg( "%s: only the avatar and NPCs can walk.  %s", is_npc ? "npc_walk_to" : "u_walk_to",
+                      d.get_callstack() );
+            return;
+        }
+        walk_order w;
+        w.target = read_var_value( target_var, d ).tripoint();
+        w.range = std::max( 0, static_cast<int>( range.evaluate( d ) ) );
+        options.apply( w, d );
+        w.true_eocs = true_eocs;
+        w.false_eocs = false_eocs;
+        w.context = d.get_context();
+        errand::start_walk( *who, std::move( w ) );
+    };
+}
+
 talk_effect_fun_t::func f_travel_to_dimension( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -9889,6 +10087,7 @@ parsers = {
     { "u_set_field", "npc_set_field", jarg::member, &talk_effect_fun::f_field },
     { "u_emit", "npc_emit", jarg::member, &talk_effect_fun::f_emit },
     { "u_teleport", "npc_teleport", jarg::object, &talk_effect_fun::f_teleport },
+    { "u_walk_to", "npc_walk_to", jarg::member, &talk_effect_fun::f_walk_to },
     { "u_travel_to_dimension", jarg::member, &talk_effect_fun::f_travel_to_dimension},
     { "u_set_flag", "npc_set_flag", jarg::member, &talk_effect_fun::f_set_flag },
     { "u_unset_flag", "npc_unset_flag", jarg::member, &talk_effect_fun::f_unset_flag },
@@ -9896,6 +10095,10 @@ parsers = {
     { "u_set_random_fault_of_type", "npc_set_random_fault_of_type", jarg::member, &talk_effect_fun::f_set_random_fault_of_type },
     { "u_activate", "npc_activate", jarg::member, &talk_effect_fun::f_activate },
     { "u_consume_item", "npc_consume_item", jarg::member, &talk_effect_fun::f_consume_item },
+    { "u_pickup_item", "npc_pickup_item", jarg::member, &talk_effect_fun::f_pickup_item },
+    { "u_wield_item", "npc_wield_item", jarg::member, &talk_effect_fun::f_wield_item },
+    { "u_wear_item", "npc_wear_item", jarg::member, &talk_effect_fun::f_wear_item },
+    { "u_drop_item", "npc_drop_item", jarg::member, &talk_effect_fun::f_drop_item },
     { "u_consume_item_sum", "npc_consume_item_sum", jarg::array, &talk_effect_fun::f_consume_item_sum },
     { "u_remove_item_with", "npc_remove_item_with", jarg::member, &talk_effect_fun::f_remove_item_with },
     { "u_bulk_trade_accept", "npc_bulk_trade_accept", jarg::member, &talk_effect_fun::f_bulk_trade_accept },

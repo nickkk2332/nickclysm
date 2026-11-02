@@ -34,6 +34,7 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_algo.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_attire.h"
 #include "character_id.h"
@@ -49,6 +50,7 @@
 #include "dispersion.h"
 #include "effect.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "explosion.h"
@@ -197,6 +199,9 @@ static const json_character_flag json_flag_BIONIC_WEAPON( "BIONIC_WEAPON" );
 static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
+
+static const move_mode_id move_mode_run( "run" );
+static const move_mode_id move_mode_walk( "walk" );
 
 static const npc_class_id NC_EVAC_SHOPKEEP( "NC_EVAC_SHOPKEEP" );
 
@@ -1638,6 +1643,23 @@ void npc::move()
     // sleep effects decide what the session says, before anything reads it
     reconcile_sleep_session();
     regen_ai_cache();
+    // a walk (u_walk_to, "Move there!") that arrived or ran out of time ends here, its EOCs
+    // run before the NPC decides anything
+    errand::review_walk( *this );
+    if( is_dead() ) {
+        return;
+    }
+    // a walk the NPC spends this move on something else waits, or ends when it isn't
+    // interruptible: a fight, a flight or a need comes first either way
+    const int walk_serial = walk ? walk->serial : 0;
+    if( walk ) {
+        walk->stepped = false;
+    }
+    on_out_of_scope walk_check( [this, walk_serial, moves_at_decision]() {
+        if( walk && walk->serial == walk_serial && !walk->stepped && get_moves() < moves_at_decision ) {
+            errand::walk_passed_over( *this );
+        }
+    } );
     // Surgery and spellcasting must complete without re-evaluation
     // (they have their own internal state machines).
     if( activity.id() == ACT_OPERATION || activity.id() == ACT_SPELLCASTING ) {
@@ -1873,7 +1895,7 @@ void npc::move()
                 } else if( committed == "follow_embarked" ) {
                     completed_goal = ( new_goal != "follow_embarked" );
                 } else if( committed == "goto_ordered_position" ) {
-                    completed_goal = !goto_to_this_pos || pos_abs() == *goto_to_this_pos;
+                    completed_goal = !walk || errand::walk_arrived( *this, *walk );
                     if( !completed_goal ) {
                         completed_goal = ( new_goal != "goto_ordered_position" );
                     }
@@ -2513,15 +2535,9 @@ void npc::execute_action( npc_action action )
             mug_player( player_character );
             break;
 
-        case npc_goto_to_this_pos: {
-            update_path( here.get_bub( *goto_to_this_pos ) );
-            move_to_next();
-
-            if( pos_abs() == *goto_to_this_pos ) {
-                goto_to_this_pos = std::nullopt;
-            }
+        case npc_goto_to_this_pos:
+            step_walk();
             break;
-        }
 
         case npc_goto_destination:
             go_to_omt_destination();
@@ -3756,9 +3772,11 @@ void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint
     // "Long steps" are allowed when crossing z-levels
     // Stairs teleport the player too
     if( rl_dist( pos, p ) > 1 && p.z() == pos.z() ) {
-        // On the same level? Not so much. Something weird happened
+        // On the same level? Not so much. Something weird happened; without this return the
+        // NPC hopped over the tiles in between (NPC-B17)
         path.clear();
         move_pause();
+        return;
     }
     creature_tracker &creatures = get_creature_tracker();
     bool attacking = false;
@@ -3994,9 +4012,90 @@ void npc::move_to_next()
         return;
     }
 
+    // a path made before the NPC was shoved aside, or by a caller that didn't update it, no
+    // longer starts next to it: route to the same end again rather than step off it (NPC-B17)
+    if( path[0].z() == posz() && rl_dist( path[0], pos_bub() ) > 1 ) {
+        const tripoint_bub_ms dest = path.back();
+        path.clear();
+        update_path( dest, true );
+        if( path.empty() || ( path[0].z() == posz() && rl_dist( path[0], pos_bub() ) > 1 ) ) {
+            path.clear();
+            move_pause();
+            return;
+        }
+    }
+
     move_to( path[0] );
     if( !path.empty() && pos_bub() == path[0] ) { // Move was successful
         path.erase( path.begin() );
+    }
+}
+
+void npc::step_walk()
+{
+    if( !walk ) {
+        move_pause();
+        return;
+    }
+    walk->stepped = true;
+    if( errand::walk_arrived( *this, *walk ) ) {
+        errand::end_walk( *this, errand::reason::arrived );
+        return;
+    }
+    // back from a pause (a fight, a need, a save): patience starts over.  A slow NPC steps
+    // every few turns, which isn't a pause.
+    if( walk->last_step + 5_turns < calendar::turn ) {
+        walk->last_progress = calendar::turn;
+    }
+    walk->last_step = calendar::turn;
+    if( walk->run ) {
+        if( !is_running() && can_run() ) {
+            set_movement_mode( move_mode_run );
+            walk->switched_to_run = true;
+        } else if( is_running() && !can_run() ) {
+            set_movement_mode( move_mode_walk );
+        }
+    }
+    map &here = get_map();
+    const tripoint_bub_ms before = pos_bub( here );
+    // the path is kept while it still leads to where the walk ends
+    const bool keep_path = !path.empty() && errand::walk_end_tile( *this, *walk, path.back() ) &&
+                           ( path.front().z() != before.z() || rl_dist( path.front(), before ) <= 1 );
+    if( !keep_path ) {
+        std::optional<std::vector<tripoint_bub_ms>> route = errand::walk_route( *this, *walk, false );
+        if( !route ) {
+            // through creatures: move_to() asks them to make way, or waits
+            route = errand::walk_route( *this, *walk, true );
+        }
+        if( !route ) {
+            if( !walk->give_up_at ) {
+                errand::end_walk( *this, errand::reason::unreachable );
+                return;
+            }
+            // told to keep trying: waits for a way to open
+            move_pause();
+            return;
+        }
+        path = std::move( *route );
+        ai_cache.retained_trip = {};
+    }
+    const int moves_before = get_moves();
+    move_to_next();
+    if( !walk ) {
+        // something on the way ended it
+        return;
+    }
+    if( pos_bub( here ) != before ) {
+        walk->last_progress = calendar::turn;
+    }
+    if( walk->run && is_running() ) {
+        burn_move_stamina( moves_before - get_moves() );
+    }
+    if( errand::walk_arrived( *this, *walk ) ) {
+        errand::end_walk( *this, errand::reason::arrived );
+    } else if( !walk->give_up_at &&
+               calendar::turn - walk->last_progress >= time_duration::from_turns( errand::walk_patience ) ) {
+        errand::end_walk( *this, errand::reason::blocked );
     }
 }
 

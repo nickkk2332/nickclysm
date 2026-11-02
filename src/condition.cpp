@@ -34,6 +34,7 @@
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enum_traits.h"
+#include "errand.h"
 #include "faction.h"
 #include "field.h"
 #include "flag.h"
@@ -67,6 +68,7 @@
 #include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
+#include "player_activity.h"
 #include "point.h"
 #include "profession.h"
 #include "recipe_groups.h"
@@ -629,6 +631,29 @@ conditional_t::func f_has_activity( bool is_npc )
 conditional_t::func f_has_activity( const JsonObject &, std::string_view, bool is_npc )
 {
     return f_has_activity( is_npc );
+}
+
+// "any" or an activity id
+conditional_t::func f_is_doing_activity( const JsonObject &jo, std::string_view member,
+        bool is_npc )
+{
+    str_or_var activity = get_str_or_var( jo.get_member( member ), member, true );
+    return [activity, is_npc]( const_dialogue const & d ) {
+        const Character *who = d.const_actor( is_npc )->get_const_character();
+        if( who == nullptr || !who->activity ) {
+            return false;
+        }
+        const std::string wanted = activity.evaluate( d );
+        if( wanted == "any" ) {
+            return true;
+        }
+        const activity_id id( wanted );
+        if( !id.is_valid() ) {
+            debugmsg( "Unknown activity id \"%s\" in is_doing_activity.  %s", wanted, d.get_callstack() );
+            return false;
+        }
+        return who->activity.id() == id;
+    };
 }
 
 conditional_t::func f_has_proficiency( const JsonObject &jo, std::string_view member,
@@ -2485,6 +2510,113 @@ conditional_t::func f_can_see_location( const JsonObject &jo, std::string_view m
     };
 }
 
+// a way there for a walk with this range, at most max_distance steps long; through creatures,
+// which may yet move
+conditional_t::func f_can_reach( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    if( !jo.has_object( member ) ) {
+        jo.throw_error_at( member, string_format(
+                               "%s takes a location variable, like { \"context_val\": \"spot\" }", std::string( member ) ) );
+    }
+    const var_info target = read_var_info( jo.get_object( member ) );
+    const dbl_or_var range = get_dbl_or_var( jo, "range", false, 0 );
+    if( range.is_constant() && range.constant() < 0 ) {
+        jo.throw_error_at( "range", "range can't be negative" );
+    }
+    std::optional<dbl_or_var> max_distance;
+    if( jo.has_member( "max_distance" ) ) {
+        max_distance = get_dbl_or_var( jo, "max_distance", true );
+        if( max_distance->is_constant() && max_distance->constant() < 0 ) {
+            jo.throw_error_at( "max_distance", "max_distance can't be negative" );
+        }
+    }
+    return [is_npc, target, range, max_distance]( const_dialogue const & d ) {
+        const Character *who = d.const_actor( is_npc )->get_const_character();
+        if( who == nullptr ) {
+            return false;
+        }
+        walk_order w;
+        w.target = read_var_value( target, d ).tripoint();
+        w.range = std::max( 0, static_cast<int>( range.evaluate( d ) ) );
+        const std::optional<std::vector<tripoint_bub_ms>> route = errand::walk_route( *who, w, true );
+        return route && ( !max_distance ||
+                          static_cast<double>( route->size() ) <= max_distance->evaluate( d ) );
+    };
+}
+
+// an item id, or { "id": ..., "flag": ... }: the item the talker wields
+conditional_t::func f_has_item_in_hand( const JsonObject &jo, std::string_view member,
+                                        bool is_npc )
+{
+    std::optional<str_or_var> id;
+    std::optional<str_or_var> flag;
+    bool spec = false;
+    if( jo.has_object( member ) ) {
+        // a look only: a variable object is read below
+        JsonObject probe = jo.get_object( member );
+        probe.allow_omitted_members();
+        spec = probe.has_member( "id" ) || probe.has_member( "flag" );
+    }
+    if( spec ) {
+        const JsonObject what = jo.get_object( member );
+        if( what.has_member( "id" ) ) {
+            id = get_str_or_var( what.get_member( "id" ), "id", true );
+        }
+        if( what.has_member( "flag" ) ) {
+            flag = get_str_or_var( what.get_member( "flag" ), "flag", true );
+        }
+    } else {
+        id = get_str_or_var( jo.get_member( member ), member, true );
+    }
+    return [is_npc, id, flag]( const_dialogue const & d ) {
+        const Character *who = d.const_actor( is_npc )->get_const_character();
+        if( who == nullptr ) {
+            return false;
+        }
+        const item_location wielded = who->get_wielded_item();
+        if( !wielded ) {
+            return false;
+        }
+        if( id ) {
+            const itype_id wanted( id->evaluate( d ) );
+            if( !wanted.is_valid() ) {
+                debugmsg( "Unknown item id \"%s\" in has_item_in_hand.  %s", wanted.str(), d.get_callstack() );
+                return false;
+            }
+            if( wielded->typeId() != wanted ) {
+                return false;
+            }
+        }
+        return !flag || wielded->has_flag( flag_id( flag->evaluate( d ) ) );
+    };
+}
+
+// "any", or the place a walk in progress goes to
+conditional_t::func f_is_walking_to( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    std::optional<var_info> target;
+    if( jo.has_string( member ) ) {
+        if( jo.get_string( member ) != "any" ) {
+            jo.throw_error_at( member, string_format(
+                                   "%s takes \"any\" or a location variable, like { \"context_val\": \"spot\" }",
+                                   std::string( member ) ) );
+        }
+    } else if( jo.has_object( member ) ) {
+        target = read_var_info( jo.get_object( member ) );
+    } else {
+        jo.throw_error_at( member, string_format( "%s takes \"any\" or a location variable",
+                           std::string( member ) ) );
+    }
+    return [is_npc, target]( const_dialogue const & d ) {
+        const Character *who = d.const_actor( is_npc )->get_const_character();
+        if( who == nullptr || !who->walk ) {
+            return false;
+        }
+        return !target || who->walk->target == read_var_value( *target, d ).tripoint();
+    };
+}
+
+
 conditional_t::func f_using_martial_art( const JsonObject &jo, std::string_view member,
         bool is_npc )
 {
@@ -2882,6 +3014,7 @@ parsers = {
     {"u_bodytype", "npc_bodytype", jarg::member, &conditional_fun::f_bodytype },
     {"u_has_class", "npc_has_class", jarg::member, &conditional_fun::f_npc_has_class },
     {"u_has_activity", "npc_has_activity", jarg::string, &conditional_fun::f_has_activity },
+    {"u_is_doing_activity", "npc_is_doing_activity", jarg::member, &conditional_fun::f_is_doing_activity },
     {"u_is_riding", "npc_is_riding", jarg::string, &conditional_fun::f_is_riding },
     {"u_is_grabbing", "npc_is_grabbing", jarg::member, &conditional_fun::f_is_grabbing },
     {"u_is_grabbed", "npc_is_grabbed", jarg::member, &conditional_fun::f_is_grabbed },
@@ -2940,6 +3073,7 @@ parsers = {
     {"u_has_wielded_with_weapon_category", "npc_has_wielded_with_weapon_category", jarg::member, &conditional_fun::f_has_wielded_with_weapon_category },
     {"u_has_wielded_with_skill", "npc_has_wielded_with_skill", jarg::member, &conditional_fun::f_has_wielded_with_skill },
     {"u_has_wielded_with_ammotype", "npc_has_wielded_with_ammotype", jarg::member, &conditional_fun::f_has_wielded_with_ammotype },
+    {"u_has_item_in_hand", "npc_has_item_in_hand", jarg::member, &conditional_fun::f_has_item_in_hand },
     {"u_is_on_terrain", "npc_is_on_terrain", jarg::member, &conditional_fun::f_is_on_terrain },
     {"u_is_on_terrain_with_flag", "npc_is_on_terrain_with_flag", jarg::member, &conditional_fun::f_is_on_terrain_with_flag },
     {"u_is_on_furniture", "npc_is_on_furniture", jarg::member, &conditional_fun::f_is_on_furniture },
@@ -2947,6 +3081,8 @@ parsers = {
     {"u_is_in_field", "npc_is_in_field", jarg::member, &conditional_fun::f_is_in_field },
     {"u_has_move_mode", "npc_has_move_mode", jarg::member, &conditional_fun::f_has_move_mode },
     {"u_can_see_location", "npc_can_see_location", jarg::member, &conditional_fun::f_can_see_location },
+    {"u_can_reach", "npc_can_reach", jarg::member, &conditional_fun::f_can_reach },
+    {"u_is_walking_to", "npc_is_walking_to", jarg::member, &conditional_fun::f_is_walking_to },
     {"is_weather", jarg::member, &conditional_fun::f_is_weather },
     {"map_terrain_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
     {"map_furniture_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
