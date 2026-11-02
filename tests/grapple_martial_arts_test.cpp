@@ -40,6 +40,10 @@
 
 static const damage_type_id damage_bash( "bash" );
 
+static const effect_on_condition_id effect_on_condition_feral_can_swing_long_weapon(
+    "feral_can_swing_long_weapon" );
+static const effect_on_condition_id effect_on_condition_is_disarmed( "is_disarmed" );
+
 static const efftype_id effect_choking( "choking" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
@@ -546,3 +550,25 @@ TEST_CASE( "grapple_ma_load_checks", "[grapple][martial_arts]" )
     }
 }
 
+TEST_CASE( "grapple_ma_grappled_ferals_cant_swing_long_weapons", "[grapple][monster]" )
+{
+    clear_map_without_vision();
+    standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
+    monster &feral = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::east );
+    const auto check = [&]( const effect_on_condition_id & eoc ) {
+        const const_dialogue d( get_const_talker_for( feral ), get_const_talker_for( dude ) );
+        return eoc->test_condition( d );
+    };
+    CHECK( check( effect_on_condition_feral_can_swing_long_weapon ) );
+    SECTION( "held" ) {
+        feral.add_effect( effect_grabbed, 1_days );
+        CHECK_FALSE( check( effect_on_condition_feral_can_swing_long_weapon ) );
+        // Knives and other short weapons still work
+        CHECK( check( effect_on_condition_is_disarmed ) );
+    }
+    SECTION( "holding someone" ) {
+        feral.add_effect( effect_grabbing, 1_days );
+        CHECK_FALSE( check( effect_on_condition_feral_can_swing_long_weapon ) );
+        CHECK( check( effect_on_condition_is_disarmed ) );
+    }
+}
