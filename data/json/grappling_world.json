@@ -1,0 +1,9 @@
+[
+  {
+    "type": "jmath_function",
+    "id": "grab_vehicle_pull_chance",
+    "//": "Chance (0 to 1) that a grab with pull_from_vehicle pulls its target out of a vehicle seat.  u is the grabbing monster, n the grabbed character.  _0: grab strength, _1: vehicle speed in mph, _2: 1 if the vehicle is muscle-powered, _3: the rider's athlete proficiency strength bonus.  The default is the opposed roll from Cataclysm-TLG PR #1175 by worm-girl: the grab wins when a roll up to its strength beats a roll up to the speed plus the rider's driving skill and better of strength and dexterity (plus swimming skill and athlete bonus when pedalling).  It returns 1 or 0.",
+    "num_args": 4,
+    "return": "rand(_0) > rand(_1) + n_skill('driving') + max(n_val('strength'), n_val('dexterity')) + _2 * (n_skill('swimming') + _3)"
+  }
+]

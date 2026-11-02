@@ -1,0 +1,44 @@
+[
+  {
+    "type": "jmath_function",
+    "id": "test_grab_vehicle_pull_always",
+    "num_args": 4,
+    "return": "1"
+  },
+  {
+    "type": "jmath_function",
+    "id": "test_grab_vehicle_pull_never",
+    "num_args": 4,
+    "return": "0"
+  },
+  {
+    "id": "mon_test_vehicle_yanker",
+    "type": "MONSTER",
+    "copy-from": "mon_debug_grabber",
+    "name": { "str": "vehicle yanker", "//~": "NO_I18N" },
+    "description": { "str": "Its grab always pulls a rider without a seatbelt out of their seat.", "//~": "NO_I18N" },
+    "special_attacks": [
+      {
+        "id": "grab",
+        "cooldown": 0,
+        "move_cost": 0,
+        "grab_data": { "pull_from_vehicle": true, "vehicle_pull_formula": "test_grab_vehicle_pull_always" }
+      }
+    ]
+  },
+  {
+    "id": "mon_test_vehicle_yanker_weak",
+    "type": "MONSTER",
+    "copy-from": "mon_test_vehicle_yanker",
+    "name": { "str": "weak vehicle yanker", "//~": "NO_I18N" },
+    "description": { "str": "Its grab never pulls anyone out of a vehicle.", "//~": "NO_I18N" },
+    "special_attacks": [
+      {
+        "id": "grab",
+        "cooldown": 0,
+        "move_cost": 0,
+        "grab_data": { "pull_from_vehicle": true, "vehicle_pull_formula": "test_grab_vehicle_pull_never" }
+      }
+    ]
+  }
+]

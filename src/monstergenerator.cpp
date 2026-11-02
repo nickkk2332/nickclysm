@@ -24,6 +24,7 @@
 #include "item.h"
 #include "item_group.h"
 #include "magic.h"
+#include "math_parser_jmath.h"
 #include "mattack_actors.h"
 #include "monattack.h"
 #include "mondefense.h"
@@ -1602,6 +1603,16 @@ void MonsterGenerator::check_monster_definitions() const
                 if( !dt.type.is_valid() ) {
                     debugmsg( "Invalid monster attack damage type \"%s\" for monster %s", dt.type.c_str(),
                               mon.id.c_str() );
+                }
+            }
+            const grab &grab_data = atk->grab_data;
+            if( atk->is_grab && grab_data.pull_from_vehicle ) {
+                if( !grab_data.vehicle_pull_formula.is_valid() ) {
+                    debugmsg( "Monster %s attack %s has unknown vehicle_pull_formula \"%s\"",
+                              mon.id.c_str(), spatk.first, grab_data.vehicle_pull_formula.str() );
+                } else if( grab_data.vehicle_pull_formula->num_params != 4 ) {
+                    debugmsg( "Monster %s attack %s: vehicle_pull_formula \"%s\" needs 4 arguments",
+                              mon.id.c_str(), spatk.first, grab_data.vehicle_pull_formula.str() );
                 }
             }
         }
