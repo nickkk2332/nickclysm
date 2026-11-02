@@ -239,7 +239,7 @@
     "effect": "attack",
     "shape": "blast",
     "valid_targets": [ "none" ],
-    "effect_str": "string",
+    "effect_str": "onfire",
     "skill": "not_spellcraft",
     "components": "test_components",
     "message": "test message",

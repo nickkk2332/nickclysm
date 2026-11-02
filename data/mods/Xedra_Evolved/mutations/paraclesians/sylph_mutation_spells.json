@@ -464,7 +464,7 @@
     "teachable": false,
     "spell_class": "SYLPH",
     "effect": "attack",
-    "effect_str": "morale",
+    "effect_str": "run",
     "shape": "cone",
     "affected_body_parts": [ "torso" ],
     "max_level": 20,

@@ -6,6 +6,7 @@
 #include "generic_factory.h"
 #include "json.h"
 #include "math_parser_jmath.h"
+#include "vitamin.h"
 
 // LOADING
 // magic_type
@@ -103,22 +104,39 @@ void magic_type::serialize( JsonOut &json ) const
     json.end_object();
 }
 
+// Checks that a formula exists and takes the number of arguments the engine passes it.
+static void check_magic_type_formula( const magic_type &m_t, const char *member,
+                                      const std::optional<jmath_func_id> &formula, int params )
+{
+    if( !formula.has_value() ) {
+        return;
+    }
+    if( !formula->is_valid() ) {
+        debugmsg( R"(magic_type %s has unknown jmath_function "%s" as %s)", m_t.id.c_str(),
+                  formula->c_str(), member );
+    } else if( formula.value()->num_params != params ) {
+        debugmsg( "ERROR: %s %s has params that != %d!", m_t.id.c_str(), member, params );
+    }
+}
+
 void magic_type::check_consistency()
 {
     for( const magic_type &m_t : get_all() ) {
-        if( m_t.exp_for_level_formula_id.has_value() &&
-            m_t.exp_for_level_formula_id.value()->num_params != 1 ) {
-            debugmsg( "ERROR: %s exp_for_level_formula_id has params that != 1!", m_t.id.c_str() );
+        check_magic_type_formula( m_t, "exp_for_level_formula_id",
+                                  m_t.exp_for_level_formula_id, 1 );
+        check_magic_type_formula( m_t, "get_level_formula_id", m_t.get_level_formula_id, 1 );
+        check_magic_type_formula( m_t, "casting_xp_formula_id", m_t.casting_xp_formula_id, 0 );
+        check_magic_type_formula( m_t, "failure_chance_formula_id",
+                                  m_t.failure_chance_formula_id, 0 );
+        if( m_t.vitamin_energy_source_.has_value() && !m_t.vitamin_energy_source_->is_valid() ) {
+            debugmsg( R"(magic_type %s has unknown energy_source vitamin "%s")", m_t.id.c_str(),
+                      m_t.vitamin_energy_source_->c_str() );
         }
-        if( m_t.get_level_formula_id.has_value() && m_t.get_level_formula_id.value()->num_params != 1 ) {
-            debugmsg( "ERROR: %s get_level_formula_id has params that != 1!", m_t.id.c_str() );
-        }
-        if( m_t.casting_xp_formula_id.has_value() && m_t.casting_xp_formula_id.value()->num_params != 0 ) {
-            debugmsg( "ERROR: %s casting_xp_formula_id has params that != 0!", m_t.id.c_str() );
-        }
-        if( m_t.failure_chance_formula_id.has_value() &&
-            m_t.failure_chance_formula_id.value()->num_params != 0 ) {
-            debugmsg( "ERROR: %s failure_chance_formula_id has params that != 0!", m_t.id.c_str() );
+        for( const effect_on_condition_id &eoc : m_t.failure_eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( R"(magic_type %s has unknown failure_eocs entry "%s")", m_t.id.c_str(),
+                          eoc.c_str() );
+            }
         }
     }
 }

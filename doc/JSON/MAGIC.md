@@ -224,6 +224,31 @@ Effect                 | Description
 `upgrade`              | Immediately upgrades a target `MONSTER`.
 `vomit`                | Any creature within its aoe will instantly vomit, if it's able to do so.
 
+#### `effect_str` checks
+
+When the game loads, `effect_str` is checked against the type of id the spell's `effect` reads it as, and an unknown id is a load error instead of a debug message when the spell is cast:
+
+Effect                                  | `effect_str` must be
+---                                     |---
+`attack`                                | an `effect_type` id, or empty for no effect
+`remove_effect`                         | an `effect_type` id
+`summon`                                | a `MONSTER` id, or a `monstergroup` id with the `SPAWN_GROUP` flag
+`targeted_polymorph`                    | a `MONSTER` id, a `monstergroup` id with the `POLYMORPH_GROUP` flag, or empty for a random monster
+`spawn_item`                            | an item id, or an `item_group` id with the `SPAWN_GROUP` flag
+`effect_on_condition`                   | an `effect_on_condition` id
+`ter_transform`                         | a `ter_furn_transform` id
+`emit`                                  | an `emit` id
+`add_trap`                              | a `trap` id
+`remove_field`                          | a `field_type` id
+`recover_energy`                        | one of `MANA`, `STAMINA`, `SLEEPINESS`, `BIONIC`, `PAIN` or `HEALTH`
+`mutate`                                | a `mutation_category` id, a mutation id with the `MUTATE_TRAIT` flag, or empty for a random mutation
+`morale`                                | a `morale_type` id
+`revive`, `revive_dormant`              | a `SPECIES` id
+`guilt`                                 | a `SPECIES` id, or empty
+`summon_vehicle`                        | a `vehicle` id, or empty
+
+The spell ids in `learn_spells` and in `channel_data` (`channel_spell`, `channel_end_spell`, `channel_interrupt_spell`) and the `magic_type` id are checked the same way.  A spell that is only a base for `copy-from` should be an `abstract` instead of a spell with an empty or placeholder `effect_str`.
+
 
 ### Spell shape
 
@@ -738,6 +763,8 @@ Magic Type Example:
     "magic_type": "magic_type_test"
   }
 ```
+
+At load, every formula id must name an existing `jmath_function` with the right number of arguments (`get_level_formula_id` and `exp_for_level_formula_id` take 1, `casting_xp_formula_id` and `failure_chance_formula_id` take none), and the energy `vitamin` and `failure_eocs` ids must exist; anything else is a load error.
 
 
 ## Enchantments

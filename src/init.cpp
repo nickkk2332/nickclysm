@@ -1177,6 +1177,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Body parts" ), &body_part_type::check_consistency },
             { _( "Body graphs" ), &bodygraph::check_all },
             { _( "Anatomies" ), &anatomy::check_consistency },
+            { _( "Magic types" ), &magic_type::check_consistency },
             { _( "Spells" ), &spell_type::check_consistency },
             { _( "Spell migration" ), &spell_migration::check },
             { _( "Transformations" ), &event_transformation::check_consistency },

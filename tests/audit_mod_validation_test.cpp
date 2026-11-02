@@ -4,9 +4,12 @@
 
 #include "avatar.h"
 #include "cata_catch.h"
+#include "debug.h"
 #include "flexbuffer_json.h"
 #include "json_error.h"
 #include "json_loader.h"
+#include "magic.h"
+#include "magic_type.h"
 #include "mongroup.h"
 #include "player_helpers.h"
 #include "type_id.h"
@@ -91,4 +94,78 @@ TEST_CASE( "mondt-j01_dialogue_condition_gates_spawn_entry", "[audit][monster]" 
         CHECK( id == mon_zombie );
     }
     remove_audit_group();
+}
+
+static bool contains( const std::string &haystack, const std::string &needle )
+{
+    return haystack.find( needle ) != std::string::npos;
+}
+
+// Loads a throwaway spell once per test run (a second load from the same source throws).
+static void load_audit_spell( const std::string &id, const std::string &body )
+{
+    if( spell_id( id ).is_valid() ) {
+        return;
+    }
+    JsonObject jo = json_loader::from_string( R"({ "id": ")" + id + R"(",
+        "name": "audit spell", "description": "audit spell", "valid_targets": [ "self" ],
+        "shape": "blast", )" + body + " }" );
+    spell_type::load_spell( jo, "" );
+}
+
+// MAGIC-J03: spell_type::check_consistency only checked effect_str for summon_vehicle, so a
+// wrong id (an EOC id given to "attack", a missing monster or EOC) only surfaced as a
+// debugmsg when the spell was cast, and learn_spells / channel_data ids were never checked.
+TEST_CASE( "magic-j03_spell_check_rejects_unknown_references", "[audit][magic]" )
+{
+    load_audit_spell( "audit_magic_j03_attack",
+                      R"("effect": "attack", "effect_str": "EOC_audit_magic_j03_not_an_effect")" );
+    load_audit_spell( "audit_magic_j03_summon",
+                      R"("effect": "summon", "effect_str": "mon_audit_magic_j03_missing",
+                         "flags": [ "PERMANENT" ])" );
+    load_audit_spell( "audit_magic_j03_eoc",
+                      R"("effect": "effect_on_condition", "effect_str": "EOC_audit_j03_gone")" );
+    load_audit_spell( "audit_magic_j03_energy",
+                      R"("effect": "recover_energy", "effect_str": "MANNA")" );
+    load_audit_spell( "audit_magic_j03_learn",
+                      R"("effect": "attack", "learn_spells": { "audit_magic_j03_no_spell": 1 })" );
+    load_audit_spell( "audit_magic_j03_channel",
+                      R"("effect": "attack", "channel_data": { "max_channel_turns": 2,
+                         "channel_spell": "audit_magic_j03_no_channel",
+                         "channel_end_spell": "audit_magic_j03_attack" })" );
+    load_audit_spell( "audit_magic_j03_good",
+                      R"("effect": "attack", "effect_str": "onfire",
+                         "learn_spells": { "audit_magic_j03_attack": 2 })" );
+
+    const std::string errors = capture_debugmsg_during( []() {
+        spell_type::check_consistency();
+    } );
+    CAPTURE( errors );
+    CHECK( contains( errors, "EOC_audit_magic_j03_not_an_effect" ) );
+    CHECK( contains( errors, "mon_audit_magic_j03_missing" ) );
+    CHECK( contains( errors, "EOC_audit_j03_gone" ) );
+    CHECK( contains( errors, "MANNA" ) );
+    CHECK( contains( errors, "audit_magic_j03_no_spell" ) );
+    CHECK( contains( errors, "audit_magic_j03_no_channel" ) );
+    // Valid references, and the shipped core and test spells, raise nothing.
+    CHECK_FALSE( contains( errors, "audit_magic_j03_good" ) );
+    CHECK_FALSE( contains( errors, "channel_end_spell" ) );
+}
+
+// MAGIC-J03: magic_type::check_consistency was never registered, and it dereferenced its
+// formula ids without checking them; the energy vitamin and failure_eocs were never checked.
+TEST_CASE( "magic-j03_magic_type_check_rejects_unknown_references", "[audit][magic]" )
+{
+    if( !magic_type_id( "audit_magic_j03_type" ).is_valid() ) {
+        JsonObject jo = json_loader::from_string( R"({ "id": "audit_magic_j03_type",
+            "energy_source": { "type": "VITAMIN", "vitamin": "audit_magic_j03_no_vitamin" },
+            "casting_xp_formula_id": "audit_magic_j03_no_formula" })" );
+        magic_type::load_magic_type( jo, "" );
+    }
+    const std::string errors = capture_debugmsg_during( []() {
+        magic_type::check_consistency();
+    } );
+    CAPTURE( errors );
+    CHECK( contains( errors, "audit_magic_j03_no_vitamin" ) );
+    CHECK( contains( errors, R"(unknown jmath_function "audit_magic_j03_no_formula")" ) );
 }

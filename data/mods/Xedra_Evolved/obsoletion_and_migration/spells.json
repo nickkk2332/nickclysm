@@ -452,8 +452,7 @@
     "message": "",
     "teachable": false,
     "valid_targets": [ "self" ],
-    "effect": "effect_on_condition",
-    "effect_str": "EOC_VAMPIRE_BAT_FORM_ASCEND",
+    "effect": "none",
     "shape": "blast",
     "flags": [ "NO_HANDS", "SILENT", "NO_FAIL" ],
     "spell_class": "VAMPIRE",
@@ -636,8 +635,7 @@
     "skill": "deduction",
     "flags": [ "SILENT", "NO_EXPLOSION_SFX" ],
     "valid_targets": [ "self" ],
-    "effect": "effect_on_condition",
-    "effect_str": "EOC_SUN_FOODS_ON_KCAL",
+    "effect": "none",
     "shape": "blast"
   },
   {
@@ -654,8 +652,7 @@
     "valid_targets": [ "self" ],
     "skill": "deduction",
     "flags": [ "SILENT" ],
-    "effect": "effect_on_condition",
-    "effect_str": "EOC_ARVORE_TREE_REDUCE_THIRST_DEP",
+    "effect": "none",
     "shape": "blast"
   },
   {

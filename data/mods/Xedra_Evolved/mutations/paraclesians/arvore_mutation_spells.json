@@ -862,7 +862,7 @@
     "max_level": 20,
     "difficulty": 6,
     "effect": "ter_transform",
-    "effect_str": "ter_arvore_wood_branches",
+    "effect_str": "ter_arvore_wood_branch",
     "shape": "blast",
     "min_range": 1,
     "max_range": 4,

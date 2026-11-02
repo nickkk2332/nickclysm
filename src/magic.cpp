@@ -561,15 +561,124 @@ static bool spell_infinite_loop_check( std::set<spell_id> spell_effects, const s
     return false;
 }
 
+// Checks that effect_str names an existing id of the type the spell effect reads it as.
+// Effects that ignore effect_str, and timed_event (a fixed keyword list), are not checked.
+static void check_spell_effect_str( const spell_type &sp_t )
+{
+    const std::string &str = sp_t.effect_str;
+    const std::string &eff = sp_t.effect_name;
+    const auto invalid = [&sp_t]( const std::string & what ) {
+        debugmsg( R"(spell %s uses effect "%s", but its effect_str "%s" is not a valid %s)",
+                  sp_t.id.c_str(), sp_t.effect_name, sp_t.effect_str, what );
+    };
+    const bool group = sp_t.spell_tags[spell_flag::SPAWN_GROUP];
+    if( eff == "attack" ) {
+        // An empty effect_str means the attack applies no effect.
+        if( !str.empty() && !efftype_id( str ).is_valid() ) {
+            invalid( "effect id" );
+        }
+    } else if( eff == "remove_effect" ) {
+        if( !efftype_id( str ).is_valid() ) {
+            invalid( "effect id" );
+        }
+    } else if( eff == "summon" ) {
+        if( group ? !mongroup_id( str ).is_valid() : !mtype_id( str ).is_valid() ) {
+            invalid( group ? "monster group id (SPAWN_GROUP)" : "monster id" );
+        }
+    } else if( eff == "targeted_polymorph" ) {
+        // An empty effect_str polymorphs into a random monster of similar difficulty.
+        const bool poly_group = sp_t.spell_tags[spell_flag::POLYMORPH_GROUP];
+        if( !str.empty() &&
+            ( poly_group ? !mongroup_id( str ).is_valid() : !mtype_id( str ).is_valid() ) ) {
+            invalid( poly_group ? "monster group id (POLYMORPH_GROUP)" : "monster id" );
+        }
+    } else if( eff == "spawn_item" ) {
+        if( group ? !item_group_id( str ).is_valid() : !itype_id( str ).is_valid() ) {
+            invalid( group ? "item group id (SPAWN_GROUP)" : "item id" );
+        }
+    } else if( eff == "effect_on_condition" ) {
+        if( !effect_on_condition_id( str ).is_valid() ) {
+            invalid( "effect_on_condition id" );
+        }
+    } else if( eff == "ter_transform" ) {
+        if( !ter_furn_transform_id( str ).is_valid() ) {
+            invalid( "ter_furn_transform id" );
+        }
+    } else if( eff == "emit" ) {
+        if( !emit_id( str ).is_valid() ) {
+            invalid( "emit id" );
+        }
+    } else if( eff == "add_trap" ) {
+        if( !trap_str_id( str ).is_valid() ) {
+            invalid( "trap id" );
+        }
+    } else if( eff == "remove_field" ) {
+        if( !field_type_str_id( str ).is_valid() ) {
+            invalid( "field type id" );
+        }
+    } else if( eff == "recover_energy" ) {
+        static const std::set<std::string> energy_types = {
+            "MANA", "STAMINA", "SLEEPINESS", "BIONIC", "PAIN", "HEALTH"
+        };
+        if( energy_types.count( str ) == 0 ) {
+            invalid( "energy type (MANA, STAMINA, SLEEPINESS, BIONIC, PAIN or HEALTH)" );
+        }
+    } else if( eff == "mutate" ) {
+        // An empty effect_str gives a random mutation.
+        const bool trait = sp_t.spell_tags[spell_flag::MUTATE_TRAIT];
+        if( !str.empty() &&
+            ( trait ? !trait_id( str ).is_valid() : !mutation_category_id( str ).is_valid() ) ) {
+            invalid( trait ? "mutation id (MUTATE_TRAIT)" : "mutation category id" );
+        }
+    } else if( eff == "morale" ) {
+        if( !morale_type( str ).is_valid() ) {
+            invalid( "morale type id" );
+        }
+    } else if( eff == "revive" || eff == "revive_dormant" ) {
+        if( !species_id( str ).is_valid() ) {
+            invalid( "species id" );
+        }
+    } else if( eff == "guilt" ) {
+        // An empty effect_str means no extra species counts as the killer's own kind.
+        if( !str.empty() && !species_id( str ).is_valid() ) {
+            invalid( "species id" );
+        }
+    } else if( eff == "summon_vehicle" ) {
+        if( !str.empty() && !vproto_id( str ).is_valid() ) {
+            invalid( "vehicle prototype id" );
+        }
+    }
+}
+
+// Checks the spell and magic_type ids a spell refers to outside extra_effects.
+static void check_spell_references( const spell_type &sp_t )
+{
+    for( const std::pair<const std::string, int> &learn : sp_t.learn_spells ) {
+        if( !spell_id( learn.first ).is_valid() ) {
+            debugmsg( R"(spell %s has unknown spell "%s" in learn_spells)", sp_t.id.c_str(),
+                      learn.first );
+        }
+    }
+    const auto check_channel = [&sp_t]( const std::string & member, const std::string & sp ) {
+        if( !sp.empty() && !spell_id( sp ).is_valid() ) {
+            debugmsg( R"(spell %s has unknown spell "%s" as channel_data %s)", sp_t.id.c_str(), sp,
+                      member );
+        }
+    };
+    check_channel( "channel_spell", sp_t.channel_spell );
+    check_channel( "channel_end_spell", sp_t.channel_end_spell );
+    check_channel( "channel_interrupt_spell", sp_t.channel_interrupt_spell );
+    if( sp_t.magic_type.has_value() && !sp_t.magic_type->is_valid() ) {
+        debugmsg( R"(spell %s has unknown magic_type "%s")", sp_t.id.c_str(),
+                  sp_t.magic_type->c_str() );
+    }
+}
+
 void spell_type::check_consistency()
 {
     for( const spell_type &sp_t : get_all() ) {
-        if( sp_t.effect_name == "summon_vehicle" ) {
-            if( !sp_t.effect_str.empty() && !vproto_id( sp_t.effect_str ).is_valid() ) {
-                debugmsg( "ERROR %s specifies a vehicle to summon, but vehicle %s is not valid", sp_t.id.c_str(),
-                          sp_t.effect_str );
-            }
-        }
+        check_spell_effect_str( sp_t );
+        check_spell_references( sp_t );
         std::set<spell_id> spell_effect_list;
         if( spell_infinite_loop_check( spell_effect_list, sp_t.id ) ) {
             debugmsg( "ERROR: %s has infinite loop in extra_effects", sp_t.id.c_str() );

@@ -50,7 +50,7 @@
     "flags": [ "VERBAL", "SOMATIC", "RANDOM_DURATION" ],
     "max_level": 15,
     "effect": "spawn_item",
-    "effect_str": "bramble_spear_item",
+    "effect_str": "druid_bramble_spear_item",
     "components": "spell_components_bramble_spear",
     "shape": "blast",
     "difficulty": 2,
