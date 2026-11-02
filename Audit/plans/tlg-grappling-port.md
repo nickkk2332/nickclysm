@@ -258,3 +258,16 @@ Common to all phases:
 - Grab ownership uses the effect-source model (decision 1 of "Decisions to make first").
 - Tuning formulas are `jmath_function`s in `data/json/grappling.json`, with defaults that reproduce TLG's numbers.
 - Every phase ships with deterministic Catch2 tests and docs.
+
+## Status (2026-11-02): built
+
+All phases, 0-11, are built, merged and tested; [the audit README](../README.md) ("Grappling and martial arts") lists what players and modders get. Where the build differs from the phases above:
+
+- **Grab counters and style hooks (added on request).** Techniques can set `grab_counter`, which fires when something grabs the character, like `dodge_counter` and `block_counter`. Styles have `ongrab_*` and `ongrabbed_*` buffs and EOCs. Judo, Aikido and Krav Maga each have one grab counter.
+- **`menu_visibility` (added on request).** It limits a technique's menu entry to grappling, being grappled, either, or a condition. Judo's throws, Pankration's grab knee and arm lock, and Zui Quan's drunken fall work whichever side holds the other.
+- **Who holds whom.** The `u_is_grabbing` / `u_is_grabbed` conditions replace TLG's GRAB / GRAB_FILTER flag pairs wherever a technique means "this pair". That includes the 15 vanilla knockbacks that "may fail on enemies grabbing you".
+- **Enemy NPCs.** They are not asked about before a grab (they are hostile already), but they don't tolerate it: the grab rolls to hit. TLG skipped the roll.
+- **Throw stamina.** Opening the throw screen needs the stamina for a one-tile throw; the screen refuses distances you can't afford. TLG's rule that a throw must carry past one tile is kept.
+- **Aimed knockback.** Only a technique chosen in the menu is aimed, never an automatic pick or a counter. That is stricter than BN.
+- **Being held by a character.** It doesn't count as a hit on the held monster each turn (TLG called `on_hit`, which cast its hit_me spells and trained the grabber's weakpoint proficiencies every turn). Only its special defense may answer.
+- **Not done.** Monster-on-monster grabs still have no source, so a monster victim's grabber is found by search, as before. NPC AI doesn't start grabs on its own; JSON can, with `u_grab`.
