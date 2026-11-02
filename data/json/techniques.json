@@ -1009,6 +1009,7 @@
       ]
     },
     "condition_desc": "* Only works on a <info>breathing, mundane</info> target <info>you are grabbing</info>, no more than <info>one size larger</info> than you",
+    "menu_visibility": "grappling",
     "tech_effects": [
       { "id": "choking", "chance": 100, "duration": 200, "on_damage": false, "message": "%s struggles to breathe!" },
       { "id": "strangulation", "chance": 50, "duration": 200, "on_damage": false }
@@ -1577,6 +1578,7 @@
     "melee_allowed": true,
     "crit_ok": true,
     "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
+    "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
@@ -1618,6 +1620,7 @@
       }
     ],
     "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
+    "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
@@ -1651,6 +1654,7 @@
     "crit_tec": true,
     "side_switch": true,
     "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
+    "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
@@ -2694,6 +2698,7 @@
       ]
     },
     "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
+    "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] },
     "weighting": 3,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.5 } ],
     "attack_vectors": [ "vector_knee" ]
@@ -2714,6 +2719,7 @@
       ]
     },
     "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
+    "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] },
     "crit_ok": true,
     "weighting": 3,
     "disarms": true,
@@ -3611,6 +3617,7 @@
     "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl).  TLG needs your hold; here a target holding you is dragged down too.",
     "messages": [ "You throw yourself down, dragging %s with you", "<npcname> falls, dragging %s down as well" ],
     "description": "Fall with the opponent you hold, or who holds you: both of you go down, and they are left staggered",
+    "menu_visibility": "grapple",
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
     "unarmed_allowed": true,
     "condition": {

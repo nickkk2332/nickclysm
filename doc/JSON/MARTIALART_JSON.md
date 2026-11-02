@@ -219,7 +219,7 @@ Grapple techniques combine a hold with the usual weapon requirements, so a knife
 }
 ```
 
-The vanilla grapple techniques show more patterns.  Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a grapple with the target, whoever holds whom, so a judoka also answers a grab.  Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one in the clinch either way round.  Zui Quan's `tec_zuiquan_throw` (Drunken Fall) works held or holding and downs you as well as the target; its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling.  Brawling's `tec_brawl_strangle` needs your own hold (being held is not enough) and puts `choking` and `strangulation` on a breathing target, whose damage ignores armor.
+The vanilla grapple techniques show more patterns.  Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a grapple with the target, whoever holds whom, so a judoka also answers a grab.  Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one in the clinch either way round.  Zui Quan's `tec_zuiquan_throw` (Drunken Fall) works held or holding and downs you as well as the target; its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling.  Brawling's `tec_brawl_strangle` needs your own hold (being held is not enough) and puts `choking` and `strangulation` on a breathing target, whose damage ignores armor.  All of them set `menu_visibility` so the manual technique menu lists them only when they could matter (see [The manual technique menu](#the-manual-technique-menu)).
 
 
 ## Techniques
@@ -253,6 +253,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "reach_ok": true,                      // This technique works on both normal and reach attack hits
   "condition": "u_is_outside",           // Array of dialog conditions the attack requires to trigger. Failing these will disqualify the tech from being selected. Same syntax as the eoc "condition" field
   "condition_desc": "Needs X",           // Description string describing the conditions of this attack (since dialog conditions can't be automatically evaluated). The manual technique menu shows it as the reason a technique can't be used when its condition fails, without a leading "* " and colors
+  "menu_visibility": "grappling",        // When the manual technique menu lists this technique: "always" (default), "grappling", "grappled", "grapple" or a condition. See The manual technique menu
   "repeat_min": 1,                       // Technique's damage and any added effects are repeated rng(repeat_min, repeat_max) times. The target's armor and the effect's chances are applied for each repeat
   "repeat_max": 1,
   "knockback_dist": 1,                   // Distance target is knocked back
@@ -326,6 +327,30 @@ In manual combat mode (`toggle_manual_combat`, Shift+Tab by default) each melee 
 The menu applies the same rules as the automatic choice, only nothing random: a negative `weighting` is not rolled, and an attack vector only has to exist.  A technique that can't be used now is greyed out with the reason in the second column, and its description, with that reason, in the panel below.  When the reason is the technique's `condition`, the menu shows its `condition_desc`, so write it as a short phrase after the bullet: `"* Only works on a <info>downed</info> target"` shows as "Only works on a downed target".  Without a `condition_desc` the menu says "conditions not met".  Technique conditions are evaluated on their own random numbers, so a condition that rolls (`roll_contested`, say) gives the same answer until the next turn.
 
 A `crit_tec` technique can be chosen: it comes off if the hit is a critical hit, and otherwise the attack is a basic attack.  Counters (`dodge_counter`, `block_counter`) and `defensive` techniques are listed but can't be chosen; they still trigger on their own.  A chosen technique otherwise is used as if forced, whatever the hit (a technique that is not `crit_ok` is still used on a crit).
+
+`menu_visibility` keeps a technique that only matters in a grapple out of the menu the rest of the time.  It only decides whether the menu lists the technique: the automatic choice, and whether the technique can be used, are unchanged (that is still the technique's `condition`).
+
+| Value | Listed |
+| --- | --- |
+| `"always"` (default) | always; greyed out with the reason when it can't be used |
+| `"grappling"` | while the attacker holds a creature (`GRAB_FILTER` on `u`) |
+| `"grappled"` | while the attacker is held (`GRAB` on `u`) |
+| `"grapple"` | while either is true |
+| a condition object | while the condition is true (`u` is the attacker, `npc` the target, as in `condition`) |
+
+Any other string is a load error.  For example, Pankration's arm lock is listed against a downed target or in a grapple:
+
+```jsonc
+"condition": {
+  "or": [
+    { "npc_has_effect": "downed" },
+    { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+    { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+  ]
+},
+"condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
+"menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+```
 
 
 ### Technique effects

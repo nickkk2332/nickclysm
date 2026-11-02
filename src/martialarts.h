@@ -83,6 +83,15 @@ enum class technique_source : int {
     body,       // a body part (basic punches and kicks, natural weapons)
 };
 
+/** When the manual technique menu lists a technique ("menu_visibility") */
+enum class technique_menu_visibility : int {
+    always,     // always listed, greyed out with the reason when it can't be used
+    grappling,  // only while the attacker holds a creature (GRAB_FILTER)
+    grappled,   // only while the attacker is held (GRAB)
+    grapple,    // only while either is true
+    condition,  // only while the technique's menu_condition is true
+};
+
 /** The kind of attack a technique is checked for (Character::check_technique) */
 struct technique_query {
     bool crit = false;
@@ -286,6 +295,13 @@ class ma_technique
 
         // Short, translated reason for the technique menu (the condition_desc for `condition`)
         std::string rejection_text( technique_rejection why ) const;
+
+        // When the manual technique menu lists it; usability is unaffected
+        technique_menu_visibility menu_visibility = technique_menu_visibility::always;
+        // For technique_menu_visibility::condition (u = attacker, npc = target)
+        std::function<bool( const_dialogue const & )> menu_condition;
+        // Does the manual technique menu list it in an attack of u on target?
+        bool listed_in_menu( const Character &u, const Creature &target ) const;
 
         std::set<std::string> flags;
 

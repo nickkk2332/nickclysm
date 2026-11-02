@@ -261,6 +261,66 @@
     "techniques": [ "test_tm_strike", "test_tm_crit", "test_tm_rare", "test_tm_often", "test_tm_downed_only", "test_tm_take" ]
   },
   {
+    "type": "technique",
+    "id": "test_tm_vis_always",
+    "name": "TM Vis Always",
+    "unarmed_allowed": true,
+    "menu_visibility": "always",
+    "messages": [ "You vis-always %s", "<npcname> vis-alwayses %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_vis_grappling",
+    "name": "TM Vis Grappling",
+    "unarmed_allowed": true,
+    "menu_visibility": "grappling",
+    "messages": [ "You vis-grappling %s", "<npcname> vis-grapplings %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_vis_grappled",
+    "name": "TM Vis Grappled",
+    "unarmed_allowed": true,
+    "menu_visibility": "grappled",
+    "messages": [ "You vis-grappled %s", "<npcname> vis-grappleds %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_vis_grapple",
+    "name": "TM Vis Grapple",
+    "unarmed_allowed": true,
+    "menu_visibility": "grapple",
+    "messages": [ "You vis-grapple %s", "<npcname> vis-grapples %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_vis_condition",
+    "name": "TM Vis Stunned",
+    "//": "Listed only against a stunned target, though it can be used against any.",
+    "unarmed_allowed": true,
+    "menu_visibility": { "npc_has_effect": "stunned" },
+    "messages": [ "You vis-stun %s", "<npcname> vis-stuns %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_technique_visibility",
+    "name": { "str": "Test Technique Visibility" },
+    "description": "Test style with one technique for each menu_visibility.",
+    "initiate": [ "You get ready to see.", "%s gets ready to see." ],
+    "techniques": [
+      "test_tm_vis_always",
+      "test_tm_vis_grappling",
+      "test_tm_vis_grappled",
+      "test_tm_vis_grapple",
+      "test_tm_vis_condition"
+    ]
+  },
+  {
     "type": "effect_on_condition",
     "id": "EOC_TEST_TM_CANCELLED",
     "effect": [ { "math": [ "u_tm_cancelled = 1" ] } ]

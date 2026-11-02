@@ -66,11 +66,18 @@ static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_hit_by_player( "hit_by_player" );
+static const efftype_id effect_stunned( "stunned" );
 
 static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_knife_combat( "knife_combat" );
 static const itype_id itype_spear_wood( "spear_wood" );
 
+static const matec_id tec_brawl_strangle( "tec_brawl_strangle" );
+static const matec_id tec_judo_disarm( "tec_judo_disarm" );
+static const matec_id tec_judo_throw( "tec_judo_throw" );
+static const matec_id tec_pankration_grabdisarm( "tec_pankration_grabdisarm" );
+static const matec_id tec_pankration_grabknee( "tec_pankration_grabknee" );
+static const matec_id tec_zuiquan_throw( "tec_zuiquan_throw" );
 static const matec_id tech_base_punch( "tech_base_punch" );
 static const matec_id test_tech_grapple_knife( "test_tech_grapple_knife" );
 static const matec_id test_tm_ammo( "test_tm_ammo" );
@@ -92,12 +99,18 @@ static const matec_id test_tm_strike( "test_tm_strike" );
 static const matec_id test_tm_tail( "test_tm_tail" );
 static const matec_id test_tm_take( "test_tm_take" );
 static const matec_id test_tm_unlikely( "test_tm_unlikely" );
+static const matec_id test_tm_vis_always( "test_tm_vis_always" );
+static const matec_id test_tm_vis_condition( "test_tm_vis_condition" );
+static const matec_id test_tm_vis_grapple( "test_tm_vis_grapple" );
+static const matec_id test_tm_vis_grappled( "test_tm_vis_grappled" );
+static const matec_id test_tm_vis_grappling( "test_tm_vis_grappling" );
 static const matec_id test_tm_wall( "test_tm_wall" );
 static const matec_id test_tm_weapon( "test_tm_weapon" );
 
 static const matype_id test_style_grapple( "test_style_grapple" );
 static const matype_id test_style_technique_menu( "test_style_technique_menu" );
 static const matype_id test_style_technique_pick( "test_style_technique_pick" );
+static const matype_id test_style_technique_visibility( "test_style_technique_visibility" );
 
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_unarmed( "unarmed" );
@@ -947,6 +960,111 @@ TEST_CASE( "grapple_tm_forced_technique_gets_attack_vector", "[grapple][martial_
     CHECK( !std::get<2>( strike ).is_null() );
     // No technique: no vector
     CHECK( std::get<1>( dude.forced_technique_attack( tec_none ) ).is_null() );
+}
+
+TEST_CASE( "grapple_tm_menu_visibility", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
+    clear_character( dude, true );
+    dude.set_skill_level( skill_unarmed, 5 );
+    use_style( dude, test_style_technique_visibility );
+    monster &target = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::east );
+    const auto listed = [&]() {
+        std::set<matec_id> ret;
+        for( const melee::technique_menu_entry &entry : melee::technique_menu_entries( dude,
+                target, dude.used_weapon() ) ) {
+            if( entry.group == melee::technique_menu_group::style ) {
+                ret.insert( entry.tec );
+            }
+        }
+        return ret;
+    };
+
+    CHECK( listed() == std::set<matec_id> { test_tm_vis_always } );
+    // Hidden from the menu, but as usable as ever
+    CHECK( why_not( dude, test_tm_vis_grappling, target ) == technique_rejection::none );
+    bool in_pool = false;
+    for( const technique_pools::entry &e : dude.get_technique_pools( target, dude.used_weapon(),
+            false, false, false ).winning_pool() ) {
+        in_pool = in_pool || std::get<0>( e ) == test_tm_vis_grappling;
+    }
+    CHECK( in_pool );
+
+    SECTION( "grappling: holding a creature" ) {
+        dude.add_effect( effect_grabbing, 1_days );
+        CHECK( listed() == std::set<matec_id> {
+            test_tm_vis_always, test_tm_vis_grappling, test_tm_vis_grapple
+        } );
+    }
+    SECTION( "grappled: held" ) {
+        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        CHECK( listed() == std::set<matec_id> {
+            test_tm_vis_always, test_tm_vis_grappled, test_tm_vis_grapple
+        } );
+    }
+    SECTION( "a condition: here, a stunned target" ) {
+        target.add_effect( effect_stunned, 1_days );
+        CHECK( listed() == std::set<matec_id> { test_tm_vis_always, test_tm_vis_condition } );
+    }
+}
+
+TEST_CASE( "grapple_tm_menu_visibility_load_errors", "[grapple][martial_arts]" )
+{
+    const auto load = []( const std::string & json ) {
+        const JsonObject jo = json_loader::from_string( json );
+        ma_technique tec;
+        bool threw = false;
+        try {
+            tec.load( jo, "test" );
+        } catch( const JsonError & ) {
+            threw = true;
+        }
+        jo.allow_omitted_members();
+        return std::make_pair( threw, tec.menu_visibility );
+    };
+    CHECK( load( R"({ "name": "T", "menu_visibility": "sometimes" })" ).first );
+    CHECK( load( R"({ "name": "T", "menu_visibility": 3 })" ).first );
+    CHECK( load( R"({ "name": "T", "menu_visibility": "grappled" })" ).second ==
+           technique_menu_visibility::grappled );
+    CHECK( load( R"({ "name": "T", "menu_visibility": { "u_has_flag": "GRAB" } })" ).second ==
+           technique_menu_visibility::condition );
+    CHECK( load( R"({ "name": "T" })" ).second == technique_menu_visibility::always );
+}
+
+TEST_CASE( "grapple_tm_grapple_techniques_listed_in_a_grapple", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
+    clear_character( dude, true );
+    dude.set_skill_level( skill_unarmed, 5 );
+    monster &target = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::east );
+    const auto shown = [&]( const matec_id & tec ) {
+        return tec->listed_in_menu( dude, target );
+    };
+
+    CHECK_FALSE( shown( tec_brawl_strangle ) );
+    CHECK_FALSE( shown( tec_judo_throw ) );
+    CHECK_FALSE( shown( tec_zuiquan_throw ) );
+    CHECK_FALSE( shown( tec_pankration_grabknee ) );
+    target.add_effect( effect_downed, 1_days );
+    CHECK( shown( tec_pankration_grabknee ) );
+    target.remove_effect( effect_downed );
+
+    SECTION( "held by the target" ) {
+        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        target.add_effect( effect_grabbing, 1_days );
+        CHECK_FALSE( shown( tec_brawl_strangle ) );
+        CHECK( shown( tec_judo_throw ) );
+        CHECK( shown( tec_zuiquan_throw ) );
+        CHECK( shown( tec_pankration_grabdisarm ) );
+    }
+    SECTION( "holding the target" ) {
+        dude.add_effect( effect_grabbing, 1_days );
+        target.add_effect( effect_grabbed, 1_days );
+        CHECK( shown( tec_brawl_strangle ) );
+        CHECK( shown( tec_judo_disarm ) );
+    }
 }
 
 // ---- u_choose_technique ----

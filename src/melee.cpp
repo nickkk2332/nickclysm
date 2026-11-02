@@ -3363,7 +3363,7 @@ std::vector<melee::technique_menu_entry> melee::technique_menu_entries( const Ch
         if( only != nullptr && std::find( only->begin(), only->end(), tec ) == only->end() ) {
             continue;
         }
-        if( tec == tec_none || tec->name.empty() ) {
+        if( tec == tec_none || tec->name.empty() || !tec->listed_in_menu( you, target ) ) {
             continue;
         }
         const std::set<technique_source> &from = tec_sources.second;

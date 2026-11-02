@@ -57,6 +57,8 @@ static const bionic_id bio_cqb( "bio_cqb" );
 static const flag_id json_flag_PROVIDES_TECHNIQUES( "PROVIDES_TECHNIQUES" );
 
 static const json_character_flag json_flag_ALWAYS_BLOCK( "ALWAYS_BLOCK" );
+static const json_character_flag json_flag_GRAB( "GRAB" );
+static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_MA_BASIC_FALLBACK( "MA_BASIC_FALLBACK" );
 static const json_character_flag json_flag_NONSTANDARD_BLOCK( "NONSTANDARD_BLOCK" );
 
@@ -377,6 +379,30 @@ void ma_technique::load( const JsonObject &jo, std::string_view src )
         read_condition( jo, "condition", condition, false );
         optional( jo, was_loaded, "condition_desc", condition_desc );
         has_condition = true;
+    }
+
+    if( jo.has_string( "menu_visibility" ) ) {
+        const std::string visibility = jo.get_string( "menu_visibility" );
+        if( visibility == "always" ) {
+            menu_visibility = technique_menu_visibility::always;
+        } else if( visibility == "grappling" ) {
+            menu_visibility = technique_menu_visibility::grappling;
+        } else if( visibility == "grappled" ) {
+            menu_visibility = technique_menu_visibility::grappled;
+        } else if( visibility == "grapple" ) {
+            menu_visibility = technique_menu_visibility::grapple;
+        } else {
+            jo.throw_error_at( "menu_visibility", string_format(
+                                   "unknown menu_visibility \"%s\": use \"always\", "
+                                   "\"grappling\", \"grappled\", \"grapple\" or a condition",
+                                   visibility ) );
+        }
+    } else if( jo.has_object( "menu_visibility" ) ) {
+        read_condition( jo, "menu_visibility", menu_condition, false );
+        menu_visibility = technique_menu_visibility::condition;
+    } else if( jo.has_member( "menu_visibility" ) ) {
+        jo.throw_error_at( "menu_visibility",
+                           "menu_visibility must be a string or a condition object" );
     }
 
     optional( jo, was_loaded, "attack_vectors", attack_vectors );
@@ -1092,6 +1118,25 @@ std::string enum_to_string<technique_rejection>( technique_rejection data )
     cata_fatal( "Invalid technique_rejection" );
 }
 } // namespace io
+
+bool ma_technique::listed_in_menu( const Character &u, const Creature &target ) const
+{
+    switch( menu_visibility ) {
+        case technique_menu_visibility::always:
+            return true;
+        case technique_menu_visibility::grappling:
+            return u.has_flag( json_flag_GRAB_FILTER );
+        case technique_menu_visibility::grappled:
+            return u.has_flag( json_flag_GRAB );
+        case technique_menu_visibility::grapple:
+            return u.has_flag( json_flag_GRAB_FILTER ) || u.has_flag( json_flag_GRAB );
+        case technique_menu_visibility::condition: {
+            const_dialogue d( get_const_talker_for( u ), get_const_talker_for( target ) );
+            return menu_condition( d );
+        }
+    }
+    return true;
+}
 
 std::string ma_technique::rejection_text( technique_rejection why ) const
 {
