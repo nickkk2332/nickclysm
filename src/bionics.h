@@ -29,6 +29,24 @@ class JsonObject;
 class JsonOut;
 struct const_dialogue;
 
+/** When the NPC AI switches a toggled bionic on and off (JSON "npc_use"). */
+enum class bionic_npc_use : int {
+    none,
+    combat,    // on when preparing for a fight, off once the danger is gone
+    melee,     // on right before a melee or reach attack, off once the danger is gone
+    wounds,    // on while the NPC needs healing, off otherwise
+    pain,      // on while the NPC is in pain, off otherwise
+    radiation, // on while badly irradiated, off once clean
+    upkeep,    // on during the NPC's hourly idle upkeep
+    sleep,     // on when lying down to sleep, off during the hourly idle upkeep
+    last
+};
+
+template<>
+struct enum_traits<bionic_npc_use> {
+    static constexpr bionic_npc_use last = bionic_npc_use::last;
+};
+
 struct bionic_data {
     bionic_data();
 
@@ -75,6 +93,8 @@ struct bionic_data {
     std::function<bool( const_dialogue const & )> activation_condition;
     /** Shown when activation_condition prevents an activation */
     translation activation_fail_message;
+    /** When NPCs switch this bionic on (weapon CBMs are picked by their flags instead) */
+    bionic_npc_use npc_use = bionic_npc_use::none;
     /** bionic enchantments */
     std::vector<enchantment_id> enchantments;
     /** kown martial arts styles */

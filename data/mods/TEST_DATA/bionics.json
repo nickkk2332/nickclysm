@@ -423,6 +423,32 @@
     "//2": "not actually included, this is a trick to not have to add an item version."
   },
   {
+    "//": "NPC-J01 fixture: a mod-style weapon CBM that NPCs may use, in no hardcoded list.",
+    "id": "test_bio_npcj01_blade",
+    "type": "bionic",
+    "name": { "str": "NPC Test Blade" },
+    "description": "Test weapon bionic flagged usable by NPCs.",
+    "occupied_bodyparts": [ [ "arm_r", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON", "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "NPC-J01 fixture: a defensive CBM NPCs switch on for a fight.",
+    "id": "test_bio_npcj01_shield",
+    "type": "bionic",
+    "name": { "str": "NPC Test Shield" },
+    "description": "Test toggled bionic NPCs switch on in combat.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "act_cost": "1 kJ",
+    "npc_use": "combat",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
     "//": "Craft reservation fixture: a weapon reachable directly and, once powered, as an exposed pseudo item.  One occurrence either way.",
     "id": "test_bio_reserve_weapon",
     "type": "bionic",

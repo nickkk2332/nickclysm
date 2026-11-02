@@ -39,6 +39,7 @@
 #include "effect.h"
 #include "effect_on_condition.h"
 #include "effect_source.h"
+#include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
@@ -139,6 +140,7 @@ static const json_character_flag json_flag_BIONIC_ARMOR_INTERFACE( "BIONIC_ARMOR
 static const json_character_flag json_flag_BIONIC_FAULTY( "BIONIC_FAULTY" );
 static const json_character_flag json_flag_BIONIC_GUN( "BIONIC_GUN" );
 static const json_character_flag json_flag_BIONIC_LIMB( "BIONIC_LIMB" );
+static const json_character_flag json_flag_BIONIC_NPC_USABLE( "BIONIC_NPC_USABLE" );
 static const json_character_flag json_flag_BIONIC_POWER_SOURCE( "BIONIC_POWER_SOURCE" );
 static const json_character_flag json_flag_BIONIC_REMOVABLE( "BIONIC_REMOVABLE" );
 static const json_character_flag json_flag_BIONIC_TOGGLED( "BIONIC_TOGGLED" );
@@ -190,6 +192,35 @@ namespace
 generic_factory<bionic_data> bionic_factory( "bionic" );
 std::vector<bionic_id> faulty_bionics;
 } //namespace
+
+namespace io
+{
+template<>
+std::string enum_to_string<bionic_npc_use>( bionic_npc_use data )
+{
+    switch( data ) {
+        case bionic_npc_use::none:
+            return "none";
+        case bionic_npc_use::combat:
+            return "combat";
+        case bionic_npc_use::melee:
+            return "melee";
+        case bionic_npc_use::wounds:
+            return "wounds";
+        case bionic_npc_use::pain:
+            return "pain";
+        case bionic_npc_use::radiation:
+            return "radiation";
+        case bionic_npc_use::upkeep:
+            return "upkeep";
+        case bionic_npc_use::sleep:
+            return "sleep";
+        case bionic_npc_use::last:
+            break;
+    }
+    cata_fatal( "Invalid bionic_npc_use" );
+}
+} // namespace io
 
 void bionic::initialize_pseudo_items( bool create_weapon )
 {
@@ -387,6 +418,7 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
         read_condition( jsobj, "activation_condition", activation_condition, false );
     }
     optional( jsobj, was_loaded, "activation_fail_message", activation_fail_message );
+    optional( jsobj, was_loaded, "npc_use", npc_use, bionic_npc_use::none );
 
     int enchant_num = 0;
     for( JsonValue jv : jsobj.get_array( "enchantments" ) ) {
@@ -503,6 +535,16 @@ void bionic_data::check_bionic_consistency()
         if( bio.has_flag( json_flag_BIONIC_WEAPON ) && !bio.has_flag( flag_BIONIC_TOGGLED ) ) {
             debugmsg( "Bionic \"%s\" specified as weapon bionic is not flagged as \"BIONIC_TOGGLED\"",
                       bio.id.c_str() );
+        }
+        if( bio.npc_use != bionic_npc_use::none ) {
+            if( !bio.has_flag( json_flag_BIONIC_NPC_USABLE ) ) {
+                debugmsg( "Bionic \"%s\" has an \"npc_use\" but isn't flagged \"BIONIC_NPC_USABLE\"",
+                          bio.id.c_str() );
+            }
+            if( bio.has_flag( json_flag_BIONIC_GUN ) || bio.has_flag( json_flag_BIONIC_WEAPON ) ) {
+                debugmsg( "Bionic \"%s\" has an \"npc_use\", but NPCs pick gun and weapon bionics "
+                          "by their flags alone", bio.id.c_str() );
+            }
         }
 
         for( const itype_id &pseudo : bio.passive_pseudo_items ) {

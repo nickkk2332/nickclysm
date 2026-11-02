@@ -1365,6 +1365,7 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `toggled_pseudo_items`       | (_optional_) Activation of this bionic spawn an irremovable tool in your hands.  Require `BIONIC_TOGGLED` flag
 | `spell_on_activation`        | (_optional_) Activation of this bionic allow you to cast a spell
 | `activated_close_ui`         | (_optional_) Activation of this bionic closes the bionic menu
+| `npc_use`                    | (_optional_) When NPCs switch this bionic on and off; needs the `BIONIC_NPC_USABLE` flag.  One of `"combat"` (on when preparing for a fight, off once the danger is gone), `"melee"` (on right before a melee or reach attack while the follower's CBM reserve allows it, off once the danger is gone), `"wounds"` (on while the NPC needs healing; it then doesn't use healing items), `"pain"` (on while in pain; it then doesn't take painkillers), `"radiation"` (on while badly irradiated, off once clean), `"upkeep"` (on during the NPC's hourly idle upkeep) or `"sleep"` (on when lying down to sleep, off during the hourly upkeep).  Default `"none"`: NPCs never switch it themselves.  Weapon CBMs don't use this: NPCs extend or fire every `BIONIC_NPC_USABLE` bionic with `BIONIC_WEAPON` or `BIONIC_GUN` when it beats their wielded weapon, guns first.  Example: `"npc_use": "combat"`.
 
 ```jsonc
 {
@@ -1406,6 +1407,7 @@ mod = min( max, ( limb_score / denominator ) - subtract );
     "description": "While activated, your muscles will be greatly enhanced, increasing your strength by 20.",
     "occupied_bodyparts": [ [ "torso", 10 ], [ "arm_l", 8 ], [ "arm_r", 8 ], [ "leg_l", 10 ], [ "leg_r", 10 ] ],
     "flags": [ "BIONIC_TOGGLED", "BIONIC_NPC_USABLE" ],
+    "npc_use": "melee",
     "act_cost": "10 kJ",
     "react_cost": "10 kJ",
     "time": "1 s",

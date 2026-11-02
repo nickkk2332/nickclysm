@@ -18,11 +18,14 @@
 #include "units.h"
 
 static const bionic_id bio_adrenaline( "bio_adrenaline" );
+static const bionic_id bio_ads( "bio_ads" );
 static const bionic_id bio_power_storage( "bio_power_storage" );
 static const bionic_id test_bio_mutj02_blade( "test_bio_mutj02_blade" );
 static const bionic_id test_bio_mutj02_gated( "test_bio_mutj02_gated" );
 static const bionic_id test_bio_mutj03_passive( "test_bio_mutj03_passive" );
 static const bionic_id test_bio_mutj03_toggle( "test_bio_mutj03_toggle" );
+static const bionic_id test_bio_npcj01_blade( "test_bio_npcj01_blade" );
+static const bionic_id test_bio_npcj01_shield( "test_bio_npcj01_shield" );
 
 static const efftype_id effect_adrenaline( "adrenaline" );
 
@@ -270,4 +273,41 @@ TEST_CASE( "mut-j03_npc_weapon_cbm_runs_activation_eocs", "[audit][bionics][npc]
     CHECK( guy.is_using_bionic_weapon() );
     CHECK( bio.powered );
     CHECK( char_var( guy, "mutj02_blade_ran" ) == 1 );
+}
+
+// NPC-J01: NPCs only used weapon CBMs from a fixed list of four ids, so a mod's
+// BIONIC_NPC_USABLE weapon CBM was never extended.
+TEST_CASE( "npc-j01_npc_extends_any_npc_usable_weapon_cbm", "[audit][bionics][npc]" )
+{
+    standard_npc guy( "Blade" );
+    bionic &bio = give_powered_bionic( guy, test_bio_npcj01_blade );
+    REQUIRE_FALSE( guy.get_wielded_item() );
+    REQUIRE( guy.can_use_offensive_cbm() );
+
+    guy.activate_combat_cbms();
+    CHECK( guy.is_using_bionic_weapon() );
+    CHECK( bio.powered );
+
+    guy.deactivate_combat_cbms();
+    CHECK_FALSE( guy.is_using_bionic_weapon() );
+    CHECK_FALSE( bio.powered );
+}
+
+// NPC-J01: the CBMs NPCs switch on for a fight came from a hardcoded list; they now come
+// from the bionic's "npc_use".  bio_ads checks that the vanilla data was migrated.
+TEST_CASE( "npc-j01_npc_switches_cbms_by_their_npc_use", "[audit][bionics][npc]" )
+{
+    standard_npc guy( "Shield" );
+    give_powered_bionic( guy, test_bio_npcj01_shield );
+    guy.add_bionic( bio_ads );
+    REQUIRE( test_bio_npcj01_shield->npc_use == bionic_npc_use::combat );
+    REQUIRE( bio_ads->npc_use == bionic_npc_use::combat );
+
+    guy.activate_combat_cbms();
+    CHECK( guy.has_active_bionic( test_bio_npcj01_shield ) );
+    CHECK( guy.has_active_bionic( bio_ads ) );
+
+    guy.deactivate_combat_cbms();
+    CHECK_FALSE( guy.has_active_bionic( test_bio_npcj01_shield ) );
+    CHECK_FALSE( guy.has_active_bionic( bio_ads ) );
 }

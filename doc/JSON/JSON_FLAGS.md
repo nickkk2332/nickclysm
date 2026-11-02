@@ -314,7 +314,7 @@ Some armor flags, such as `WATCH` and `ALARMCLOCK` are compatible with other ite
 - ```BIONIC_ARMOR_INTERFACE``` This bionic can provide power to powered armor.
 - ```BIONIC_FAULTY``` This bionic is a "faulty" bionic.
 - ```BIONIC_GUN``` This bionic is a gun bionic and activating it will fire it.  Prevents all other activation effects including power draw by bionic.
-- ```BIONIC_NPC_USABLE``` The NPC AI knows how to use this CBM, and it can be installed on an NPC.
+- ```BIONIC_NPC_USABLE``` The NPC AI knows how to use this CBM.  NPCs extend or fire `BIONIC_WEAPON` and `BIONIC_GUN` CBMs with this flag in combat; other CBMs need an `npc_use` (see JSON_INFO.md) for NPCs to switch them on.  Passive CBMs with this flag simply work for the NPC.
 - ```BIONIC_POWER_SOURCE``` This bionic is a power source bionic.
 - ```BIONIC_SLEEP_FRIENDLY``` This bionic won't prompt the user to turn it off if they try to sleep while it's active.
 - ```BIONIC_TOGGLED``` This bionic only has a function when activated, else it causes its effect every turn.
@@ -815,7 +815,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```BATTERY_ULTRA_LIGHT``` This item is an ultra light battery, and can be put in pockets that have ultra light battery restriction.
 - ```BIONIC_ARMOR_INTERFACE``` This bionic can provide power to powered armor.
 - ```BIONIC_FUEL_SOURCE``` Contents of this item is used for fueling bionics.
-- ```BIONIC_NPC_USABLE``` Safe CBMs that NPCs can use without extensive NPC rewrites to utilize toggle CBMs.
+- ```BIONIC_NPC_USABLE``` On a CBM item: shows that a follower could make use of the CBM.  Keep it in step with the flag on the bionic itself (see the Bionics section).
 - ```BIONIC_POWER_SOURCE``` This bionic is a source of bionic power.
 - ```BIONIC_SLEEP_FRIENDLY``` This bionic won't provide a warning if the player tries to sleep while it's active.
 - ```BIONIC_TOGGLED``` This bionic only has a function when activated, instead of causing its effect every turn.
