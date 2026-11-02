@@ -1,8 +1,10 @@
 #include "ballistics.h"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -10,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "ammo_effect.h"
 #include "character.h"
 #include "coordinates.h"
 #include "crafting.h"
@@ -20,6 +23,7 @@
 #include "dispersion.h"
 #include "enums.h"
 #include "explosion.h"
+#include "field.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
@@ -207,6 +211,485 @@ static size_t blood_trail_len( int damage )
     return 0;
 }
 
+// Whether the pellets of a shot after the first can fly together (see fly_pellets_together()):
+// nothing happens where a pellet stops (no item to drop, no explosion, no ammo effect that
+// does anything there or along its path), and pellets stop where they hit (no bouncing or
+// over-penetration).
+static bool pellets_can_fly_together( const projectile &proj )
+{
+    if( !proj.get_drop().is_null() || proj.get_custom_explosion().power > 0.0f ) {
+        return false;
+    }
+    for( const ammo_effect_str_id &id : proj.proj_effects ) {
+        if( id == ammo_effect_BOUNCE || id == ammo_effect_EXCESS_PEN || id == ammo_effect_STREAM ||
+            id == ammo_effect_STREAM_TINY || id == ammo_effect_STREAM_BIG || id == ammo_effect_JET ) {
+            return false;
+        }
+        const ammo_effect &ae = id.obj();
+        if( ae.do_flashbang || ae.do_emp_blast || ae.foamcrete_build ||
+            ae.aoe_explosion_data.power > 0.0f || !ae.aoe_field_types.empty() ||
+            !ae.trail_field_types.empty() || !ae.aoe_effects.empty() || !ae.spell_data.empty() ||
+            !ae.eoc.empty() ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether map::shoot() reduces nothing for this projectile on an empty tile: every damage
+// unit counts for something and none for less than nothing.
+static bool keeps_full_damage_through_air( const projectile &proj )
+{
+    const damage_instance &impact = proj.multishot ? proj.shot_impact : proj.impact;
+    float total = 0.0f;
+    for( const damage_unit &dam : impact ) {
+        const float amount = dam.amount * dam.damage_multiplier * dam.unconditional_damage_mult +
+                             dam.res_pen * dam.res_mult * dam.unconditional_res_mult;
+        if( amount < 0.0f ) {
+            return false;
+        }
+        total += amount;
+    }
+    return total > 0.0f;
+}
+
+namespace
+{
+
+// What projectile_attack() knows about a shot when its first pellet has flown.
+struct pellet_shot {
+    map *here;
+    dealt_projectile_attack &attack;
+    const projectile &proj_arg;
+    const tripoint_bub_ms &source;
+    const tripoint_bub_ms &target_arg;
+    // where the shot goes after a wild miss
+    const tripoint_bub_ms &target;
+    // the first pellet's trajectory, from the source
+    const std::vector<tripoint_bub_ms> &trajectory;
+    const tripoint_bub_ms &first_p;
+    double range;
+    double extend_to_range;
+    bool no_overshoot;
+    double aim_missed_by;
+    Creature *origin;
+    const vehicle *in_veh;
+    const weakpoint_attack &wp_attack;
+    bool null_source;
+    bool no_item_damage;
+    bool is_bullet;
+    bool print_messages;
+    bool multishot;
+    double point_blank_rescale;
+};
+
+} // namespace
+
+// Whether a pellet with full damage that flies through tp does nothing there, draws no
+// random numbers and isn't changed: no creature to hit, nothing to shoot through or smash.
+static bool quiet_tile( const pellet_shot &shot, const tripoint_bub_ms &tp, const int distance,
+                        const bool hit_items )
+{
+    map &here = *shot.here;
+    Creature *critter = get_creature_tracker().creature_at( tp );
+    if( critter == shot.origin ) {
+        critter = nullptr;
+    }
+    const monster *mon = dynamic_cast<const monster *>( critter );
+    if( mon != nullptr && mon->digging() && distance > 1 ) {
+        critter = nullptr;
+    }
+    if( critter != nullptr || !here.passable( tp ) ) {
+        return false;
+    }
+    const optional_vpart_position vp = here.veh_at( tp );
+    if( shot.in_veh != nullptr && veh_pointer_or_null( vp ) == shot.in_veh ) {
+        // a turret doesn't shoot its own vehicle
+        return true;
+    }
+    return !vp && !here.furn( tp )->shoot && !here.ter( tp )->shoot &&
+           here.field_at( tp ).field_count() == 0 && !( hit_items && here.has_items( tp ) );
+}
+
+// The pellets of a shot after the first (CMBT-P01). Each pellet draws its spread as
+// projectile_attack() draws it, then pellets with the same trajectory fly together, all
+// pellets a tile at a time. Where a tile is quiet for a group (see quiet_tile()), nothing
+// happens to any of its pellets, so the group passes it at once. Anywhere else (a creature,
+// an obstacle, a field, items to smash) each pellet is resolved on its own, as before, in the
+// order the pellets were fired: each hit still rolls to hit and goes through armor on its
+// own. Pellets that come out of a tile changed (slowed by an obstacle) carry their own
+// projectile from then on.
+//
+// What differs from flying the pellets one after the other: the random numbers come in a
+// different order; each trajectory is traced when the second pellet flies, not when its own
+// pellet does (it differs only if an earlier pellet of the same shot has changed what blocks
+// sight on the way); and of a run of out-of-bounds pellets only the first reports it.
+static void fly_pellets_together( const pellet_shot &shot, const int count )
+{
+    map *here = shot.here;
+    dealt_projectile_attack &attack = shot.attack;
+    const projectile &proj_arg = shot.proj_arg;
+    const tripoint_bub_ms &source = shot.source;
+    creature_tracker &creatures = get_creature_tracker();
+
+    struct pellet_path {
+        std::vector<tripoint_bub_ms> points;
+        size_t length = 0;
+        tripoint_bub_ms target_c;
+        // the projectile its pellets carry until they come out of a tile changed
+        projectile state;
+        std::vector<int> pellets;
+        int flying = 0;
+        // some of its pellets carry their own projectile, so they fly one by one
+        bool one_by_one = false;
+        tripoint_bub_ms prev;
+    };
+    struct pellet {
+        double spread = 0.0;
+        int path = 0;
+        int own_state = -1;
+        bool flying = true;
+    };
+    std::vector<pellet_path> paths;
+    std::map<tripoint_bub_ms, int> path_to;
+    int unspread_path = -1;
+    std::vector<pellet> pellets( count );
+    std::vector<projectile> own_states;
+
+    const auto add_path = [&]( std::vector<tripoint_bub_ms> &&points,
+    const tripoint_bub_ms & target_c ) {
+        pellet_path path;
+        path.points = std::move( points );
+        // Range can be 0
+        path.length = path.points.size();
+        while( path.length > 0 && rl_dist( source, path.points[path.length - 1] ) > proj_arg.range ) {
+            --path.length;
+        }
+        path.target_c = target_c;
+        path.state = proj_arg;
+        path.state.multishot = shot.multishot;
+        path.one_by_one = !keeps_full_damage_through_air( path.state );
+        path.prev = source;
+        paths.push_back( std::move( path ) );
+        return static_cast<int>( paths.size() ) - 1;
+    };
+
+    for( int k = 0; k < count; ++k ) {
+        pellet &pl = pellets[k];
+        tripoint_bub_ms target_c = shot.target;
+        bool spread_out = false;
+        // calculate dispersion from shot_spread
+        if( proj_arg.shot_spread > 0 ) {
+            double sample = rng_normal( -proj_arg.shot_spread, proj_arg.shot_spread );
+            sample = sample >= 0 ? sample : -sample;
+            units::angle arc = std::min( units::from_arcmin( sample ), 30_degrees );
+            pl.spread = tan( arc / 2 ) * 2.0;
+            double max_spread = pl.spread * ( shot.trajectory.size() - 1 );
+            if( max_spread >= 1.0 ) {
+                double dx = target_c.x() - source.x();
+                double dy = target_c.y() - source.y();
+                units::angle d = units::atan2( dy, dx );
+                d += ( one_in( 2 ) ? 1 : -1 ) * arc;
+                target_c.x() = std::clamp( source.x() + roll_remainder( shot.range * cos( d ) ),
+                                           0, MAPSIZE_X - 1 );
+                target_c.y() = std::clamp( source.y() + roll_remainder( shot.range * sin( d ) ),
+                                           0, MAPSIZE_Y - 1 );
+                if( target_c == source ) {
+                    target_c.x() = source.x() + sgn( dx );
+                    target_c.y() = source.y() + sgn( dy );
+                }
+                spread_out = true;
+            }
+        }
+        if( !spread_out ) {
+            if( unspread_path < 0 ) {
+                std::vector<tripoint_bub_ms> points = shot.trajectory;
+                unspread_path = add_path( std::move( points ), target_c );
+            }
+            pl.path = unspread_path;
+        } else if( const auto known = path_to.find( target_c ); known != path_to.end() ) {
+            pl.path = known->second;
+        } else {
+            std::vector<tripoint_bub_ms> points = here->find_clear_path( shot.first_p, target_c );
+            // point-blank tile should be the same
+            points.insert( points.begin(), shot.first_p );
+            points.insert( points.begin(), source );
+            if( !shot.no_overshoot && shot.range < shot.extend_to_range ) {
+                std::vector<tripoint_bub_ms> extension = continue_line( points,
+                        shot.extend_to_range - shot.range );
+                points.reserve( points.size() + extension.size() );
+                points.insert( points.end(), extension.begin(), extension.end() );
+            }
+            pl.path = add_path( std::move( points ), target_c );
+            path_to.emplace( target_c, pl.path );
+        }
+        paths[pl.path].pellets.push_back( k );
+        paths[pl.path].flying++;
+    }
+
+    // What projectile_attack() leaves in the attack comes from the last pellet (where it
+    // stopped, what it hit) and from the last pellet to hit anything.
+    const int last = count - 1;
+    tripoint_bub_ms last_end = attack.end_point;
+    Creature *last_hit = attack.last_hit_critter;
+    int last_hitter = -1;
+    bool hit_headshot = attack.headshot;
+    double hit_missed_by = attack.missed_by;
+    dealt_damage_instance hit_dealt = attack.dealt_dam;
+
+    // attack.proj is the projectile of the pellet in flight; this says whose it holds
+    int held_state = INT_MIN;
+    const auto state_key = [&]( const pellet & pl ) {
+        return pl.own_state >= 0 ? pl.own_state : -1 - pl.path;
+    };
+    const auto hold = [&]( const pellet & pl ) {
+        const int key = state_key( pl );
+        if( key != held_state ) {
+            attack.proj = pl.own_state >= 0 ? own_states[pl.own_state] : paths[pl.path].state;
+            held_state = key;
+        }
+    };
+    const auto stop = [&]( const int k, pellet & pl, const tripoint_bub_ms & end, Creature * hit ) {
+        pl.flying = false;
+        paths[pl.path].flying--;
+        if( k == last ) {
+            last_end = end;
+            last_hit = hit;
+        }
+    };
+    // where a pellet that flew all of its trajectory stops
+    const auto path_end = [&]( const pellet_path & path ) {
+        if( path.length < 2 ) {
+            return attack.end_point;
+        }
+        const tripoint_bub_ms &end = path.points[path.length - 1];
+        return here->impassable( end ) ? path.prev : end;
+    };
+
+    // One pellet through a tile that isn't quiet, as projectile_attack() flies each pellet.
+    const auto fly_through = [&]( const int k, const size_t i ) {
+        pellet &pl = pellets[k];
+        pellet_path &path = paths[pl.path];
+        const tripoint_bub_ms &tp = path.points[i];
+        const int distance = rl_dist( source, tp );
+        hold( pl );
+        projectile &proj = attack.proj;
+        bool has_momentum = true;
+        bool changed = false;
+        const bool hit_items = !shot.no_item_damage && tp == path.target_c;
+
+        Creature *critter = creatures.creature_at( tp );
+        if( shot.origin == critter ) {
+            // No hitting self with "weird" attacks.
+            critter = nullptr;
+        }
+        monster *mon = dynamic_cast<monster *>( critter );
+        // ignore non-point-blank digging targets (since they are underground)
+        if( mon != nullptr && mon->digging() && distance > 1 ) {
+            critter = nullptr;
+        }
+        // Reset hit critter from the last iteration
+        attack.last_hit_critter = nullptr;
+        double cur_missed_by = std::min( 1.0, shot.aim_missed_by + pl.spread * std::max( distance - 1,
+                                         0 ) );
+        // unintentional hit on something other than our actual target
+        if( critter != nullptr && tp != shot.target_arg ) {
+            cur_missed_by = std::max( rng_float( 0.1, 1.5 - shot.aim_missed_by ) /
+                                      critter->ranged_target_size(), 0.4 );
+        }
+
+        const auto keep_state = [&]() {
+            if( !changed ) {
+                return;
+            }
+            if( pl.own_state < 0 ) {
+                pl.own_state = static_cast<int>( own_states.size() );
+                own_states.push_back( attack.proj );
+            } else {
+                own_states[pl.own_state] = attack.proj;
+            }
+            held_state = pl.own_state;
+            path.one_by_one = true;
+        };
+        const auto shoot = [&]() {
+            const double it = here->shoot( tp, proj, hit_items );
+            if( it != 1.0 ) {
+                changed = true;
+                held_state = INT_MIN;
+            }
+            if( it > 0 ) {
+                if( proj.count > 1 ) {
+                    proj.shot_impact.mult_damage( it );
+                } else {
+                    proj.impact.mult_damage( it );
+                }
+            }
+            return it;
+        };
+
+        if( critter != nullptr && cur_missed_by < 1.0 ) {
+            // Prevent shots from hitting underwater creatures that are beneath surface (except thin ice);
+            // treat the shot as hitting the terrain instead.
+            if( critter->is_underwater() &&
+                here->has_flag( ter_furn_flag::TFLAG_SWIM_UNDER, critter->pos_bub() ) &&
+                !here->has_flag( ter_furn_flag::TFLAG_THIN_ICE, critter->pos_bub() ) ) {
+                shoot();
+                if( shot.origin != nullptr && shot.origin->is_avatar() ) {
+                    add_msg( m_info, _( "Your shot is blocked by the surface." ) );
+                }
+                keep_state();
+                return;
+            }
+            if( shot.in_veh != nullptr && veh_pointer_or_null( here->veh_at( tp ) ) == shot.in_veh &&
+                critter->is_avatar() ) {
+                return;
+            }
+            // avoid friendly fire
+            if( critter->attitude_to( *shot.origin ) == Creature::Attitude::FRIENDLY &&
+                shot.origin->check_avoid_friendly_fire() ) {
+                return;
+            }
+            critter->deal_projectile_attack( here, shot.null_source ? nullptr : shot.origin, attack,
+                                             cur_missed_by, shot.print_messages, shot.wp_attack );
+
+            if( critter->is_npc() ) {
+                critter->as_npc()->on_attacked( *shot.origin );
+            }
+
+            // Critter can still dodge the projectile
+            // In this case hit_critter won't be set
+            if( attack.last_hit_critter != nullptr ) {
+                const field_type_id blood_type = critter->bloodType();
+                if( blood_type ) {
+                    const size_t bt_len = blood_trail_len( attack.dealt_dam.total_damage() );
+                    if( bt_len > 0 ) {
+                        const tripoint_bub_ms &dest = move_along_line( tp, path.points, bt_len );
+                        here->add_splatter_trail( blood_type, tp, dest );
+                    }
+                }
+                if( here == &reality_bubble() ) {
+                    sfx::do_projectile_hit( *attack.last_hit_critter );
+                }
+                has_momentum = false;
+                // on-hit effects for inflicted damage types
+                for( const std::pair<const damage_type_id, int> &dt : attack.dealt_dam.dealt_dams ) {
+                    dt.first->onhit_effects( shot.origin, attack.last_hit_critter );
+                }
+                if( k > last_hitter ) {
+                    last_hitter = k;
+                    hit_headshot = attack.headshot;
+                    hit_missed_by = attack.missed_by;
+                    hit_dealt = attack.dealt_dam;
+                }
+            }
+        } else if( shot.in_veh != nullptr && veh_pointer_or_null( here->veh_at( tp ) ) == shot.in_veh ) {
+            // Don't do anything, especially don't call map::shoot as this would damage the vehicle
+        } else if( shoot() <= 0 ) {
+            has_momentum = false;
+        }
+
+        if( ( !has_momentum || !shot.is_bullet ) && here->impassable( tp ) ) {
+            stop( k, pl, path.prev, attack.last_hit_critter );
+            return;
+        }
+        if( !has_momentum ) {
+            stop( k, pl, tp, attack.last_hit_critter );
+            return;
+        }
+        keep_state();
+    };
+
+    size_t longest = 0;
+    for( const pellet_path &path : paths ) {
+        longest = std::max( longest, path.length );
+    }
+    std::vector<int> pending;
+    std::vector<int> visited;
+    for( size_t i = 1; i < longest; ++i ) {
+        pending.clear();
+        visited.clear();
+        for( size_t p = 0; p < paths.size(); ++p ) {
+            pellet_path &path = paths[p];
+            if( path.flying == 0 ) {
+                continue;
+            }
+            if( i >= path.length ) {
+                // the end of the trajectory
+                for( const int k : path.pellets ) {
+                    if( pellets[k].flying ) {
+                        stop( k, pellets[k], path_end( path ), nullptr );
+                    }
+                }
+                continue;
+            }
+            const tripoint_bub_ms &tp = path.points[i];
+            if( !here->inbounds( tp ) ) {
+                debugmsg( "Shot along %s out-of-bounds", tp.to_string() );
+                for( const int k : path.pellets ) {
+                    if( pellets[k].flying ) {
+                        stop( k, pellets[k], path.prev, nullptr );
+                    }
+                }
+                continue;
+            }
+            const int distance = rl_dist( source, tp );
+            // no spread at point-blank, skip point-blank calculate
+            if( distance <= 1 ) {
+                path.state.shot_impact.mult_damage( shot.point_blank_rescale );
+                for( const int k : path.pellets ) {
+                    if( pellets[k].flying && pellets[k].own_state >= 0 ) {
+                        own_states[pellets[k].own_state].shot_impact.mult_damage( shot.point_blank_rescale );
+                    }
+                }
+                held_state = INT_MIN;
+                path.prev = tp;
+                continue;
+            }
+            if( shot.in_veh != nullptr ) {
+                const optional_vpart_position other = here->veh_at( tp );
+                if( shot.in_veh == veh_pointer_or_null( other ) && other->is_inside() ) {
+                    // Turret is on the roof and can't hit anything inside
+                    continue;
+                }
+            }
+            if( !path.one_by_one &&
+                quiet_tile( shot, tp, distance, !shot.no_item_damage && tp == path.target_c ) ) {
+                path.prev = tp;
+                continue;
+            }
+            visited.push_back( static_cast<int>( p ) );
+            for( const int k : path.pellets ) {
+                if( pellets[k].flying ) {
+                    pending.push_back( k );
+                }
+            }
+        }
+        // in the order the pellets were fired, as projectile_attack() flies them
+        std::sort( pending.begin(), pending.end() );
+        for( const int k : pending ) {
+            fly_through( k, i );
+        }
+        for( const int p : visited ) {
+            paths[p].prev = paths[p].points[i];
+        }
+    }
+    for( pellet_path &path : paths ) {
+        for( const int k : path.pellets ) {
+            if( pellets[k].flying ) {
+                stop( k, pellets[k], path_end( path ), nullptr );
+            }
+        }
+    }
+
+    attack.proj = pellets[last].own_state >= 0 ? own_states[pellets[last].own_state] :
+                  paths[pellets[last].path].state;
+    attack.end_point = last_end;
+    attack.last_hit_critter = last_hit;
+    attack.headshot = hit_headshot;
+    attack.missed_by = hit_missed_by;
+    attack.dealt_dam = hit_dealt;
+}
+
 projectile_attack_aim projectile_attack_roll( const dispersion_sources &dispersion, double range,
         double target_size )
 {
@@ -391,7 +874,19 @@ void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_
     // If the proj hits a ter/furn at point-blank and is not stopped, rescale shot_impact for all projs.
     double point_blank_rescale = 1.0;
     tripoint_bub_ms first_p = trajectory[1];
+    // After the first pellet, the pellets of a shot that stays on its z-level fly together
+    // when nothing happens where they stop (see fly_pellets_together()).
+    const bool pellets_together = proj_arg.count > 1 && source.z() == target.z() &&
+                                  pellets_can_fly_together( proj_arg );
     for( int j = 0; j < proj.count; ++j ) {
+        if( !first && pellets_together ) {
+            const pellet_shot shot{ here, attack, proj_arg, source, target_arg, target, trajectory,
+                                    first_p, range, extend_to_range, no_overshoot, aim.missed_by, origin, in_veh,
+                                    wp_attack, null_source, no_item_damage, is_bullet, print_messages, multishot,
+                                    point_blank_rescale };
+            fly_pellets_together( shot, proj.count - j );
+            break;
+        }
         tripoint_bub_ms prev_point = source;
         proj = proj_arg;
         proj.multishot = multishot;
