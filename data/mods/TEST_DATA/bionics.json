@@ -464,6 +464,34 @@
     "//2": "not actually included, this is a trick to not have to add an item version."
   },
   {
+    "//": "MUT-J03 fixture: a weapon bionic whose deactivation EOC installs another bionic, moving this one.",
+    "id": "test_bio_mutj03_blade_off_adds",
+    "type": "bionic",
+    "name": { "str": "Test Blade Installing On Withdraw" },
+    "description": "Test weapon bionic that installs another bionic when switched off.",
+    "occupied_bodyparts": [ [ "arm_r", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON" ],
+    "deactivated_eocs": [ { "id": "EOC_TEST_MUTJ03_BLADE_OFF_ADD", "effect": [ { "u_add_bionic": "test_bio_mutj03_passive" } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a weapon bionic whose deactivation EOC uninstalls it.",
+    "id": "test_bio_mutj03_blade_off_self_remove",
+    "type": "bionic",
+    "name": { "str": "Test Blade Uninstalling On Withdraw" },
+    "description": "Test weapon bionic that uninstalls itself when switched off.",
+    "occupied_bodyparts": [ [ "arm_l", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON" ],
+    "deactivated_eocs": [ { "id": "EOC_TEST_MUTJ03_BLADE_OFF_SELF_REMOVE", "effect": [ { "u_lose_bionic": { "context_val": "this" } } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
     "//": "NPC-J01 fixture: a mod-style weapon CBM that NPCs may use, in no hardcoded list.",
     "id": "test_bio_npcj01_blade",
     "type": "bionic",

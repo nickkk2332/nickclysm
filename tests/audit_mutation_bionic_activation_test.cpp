@@ -24,6 +24,9 @@ static const bionic_id bio_painkiller( "bio_painkiller" );
 static const bionic_id bio_power_storage( "bio_power_storage" );
 static const bionic_id test_bio_mutj02_blade( "test_bio_mutj02_blade" );
 static const bionic_id test_bio_mutj02_gated( "test_bio_mutj02_gated" );
+static const bionic_id test_bio_mutj03_blade_off_adds( "test_bio_mutj03_blade_off_adds" );
+static const bionic_id
+test_bio_mutj03_blade_off_self_remove( "test_bio_mutj03_blade_off_self_remove" );
 static const bionic_id test_bio_mutj03_off_self_remove( "test_bio_mutj03_off_self_remove" );
 static const bionic_id test_bio_mutj03_passive( "test_bio_mutj03_passive" );
 static const bionic_id
@@ -368,6 +371,51 @@ TEST_CASE( "mut-j03_deactivation_eocs_keep_this_after_removal", "[audit][bionics
     CHECK( me.deactivate_bionic( bio ) );
     CHECK_FALSE( me.has_bionic( test_bio_mutj03_off_self_remove ) );
     CHECK( char_str( me, "mutj03_removed_off_this" ) == test_bio_mutj03_off_self_remove.str() );
+    clear_avatar();
+}
+
+// MUT-J03 (review): deactivate_bionic went on using `bio` after the deactivation EOCs, which
+// may install a bionic (moving the others) or uninstall this one. It now finds the bionic again.
+TEST_CASE( "mut-j03_deactivation_eocs_that_move_or_remove_their_bionic",
+           "[audit][bionics][eoc]" )
+{
+    clear_avatar();
+    avatar &me = get_avatar();
+
+    SECTION( "an EOC that installs another bionic" ) {
+        bionic &bio = give_powered_bionic( me, test_bio_mutj03_blade_off_adds );
+        REQUIRE( me.activate_bionic( bio ) );
+        REQUIRE( me.is_using_bionic_weapon() );
+        const bionic_uid uid = bio.get_uid();
+        // the weapon changed while it was out; withdrawing it stores it back in the bionic
+        me.get_wielded_item()->set_var( "mutj03_marked", "yes" );
+        // full, so installing one more moves every bionic
+        me.my_bionics->shrink_to_fit();
+        REQUIRE( me.my_bionics->size() == me.my_bionics->capacity() );
+        // shrink_to_fit may have moved them already
+        const std::optional<bionic *> blade = me.find_bionic_by_uid( uid );
+        REQUIRE( blade );
+
+        CHECK( me.deactivate_bionic( **blade ) );
+        CHECK( me.has_bionic( test_bio_mutj03_passive ) );
+        CHECK_FALSE( me.is_using_bionic_weapon() );
+        CHECK_FALSE( me.get_wielded_item() );
+        const std::optional<bionic *> moved = me.find_bionic_by_uid( uid );
+        REQUIRE( moved );
+        CHECK_FALSE( ( *moved )->powered );
+        CHECK( ( *moved )->get_weapon().get_var( "mutj03_marked" ) == "yes" );
+    }
+    SECTION( "an EOC that uninstalls it" ) {
+        bionic &bio = give_powered_bionic( me, test_bio_mutj03_blade_off_self_remove );
+        REQUIRE( me.activate_bionic( bio ) );
+        REQUIRE( me.is_using_bionic_weapon() );
+
+        CHECK( me.deactivate_bionic( bio ) );
+        CHECK_FALSE( me.has_bionic( test_bio_mutj03_blade_off_self_remove ) );
+        CHECK_FALSE( me.is_using_bionic_weapon() );
+        CHECK( me.get_weapon_bionic_uid() == 0 );
+        CHECK_FALSE( me.get_wielded_item() );
+    }
     clear_avatar();
 }
 

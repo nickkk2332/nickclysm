@@ -1367,17 +1367,26 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only )
 
     // Deactivation effects go here
 
-    // An EOC may add or remove bionics, which moves or destroys `bio`: read its id once.
+    // An EOC may add or remove bionics, which moves or destroys `bio`: keep its id and uid,
+    // find it again afterwards, and use `still_installed` from there on.
     const bionic_id deactivated_id = bio.id;
+    const bionic_uid deactivated_uid = bio.get_uid();
     for( const effect_on_condition_id &eoc : deactivated_id->deactivated_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
         d.set_value( "this", deactivated_id.str() );
         eoc->activate_activation_only( d, "a bionic deactivation", "bionic being activated", "bionic" );
     }
+    bionic *still_installed = &bio;
+    if( !deactivated_id->deactivated_eocs.empty() ) {
+        const std::optional<bionic *> found = find_bionic_by_uid( deactivated_uid );
+        // Gone means removed by its own EOC: remove_bionic withdrew its weapon already, and
+        // only the character's caches below are left to update.
+        still_installed = found ? *found : nullptr;
+    }
 
-    if( bio.info().has_flag( json_flag_BIONIC_WEAPON ) ) {
-        if( bio.get_uid() == get_weapon_bionic_uid() ) {
-            bio.set_weapon( *get_wielded_item() );
+    if( deactivated_id->has_flag( json_flag_BIONIC_WEAPON ) ) {
+        if( still_installed && deactivated_uid == get_weapon_bionic_uid() ) {
+            still_installed->set_weapon( *get_wielded_item() );
             add_msg_if_player( _( "You withdraw your %s." ), weapon.tname() );
             if( get_player_view().sees( here, pos_bub( here ) ) ) {
                 if( male ) {
@@ -1390,9 +1399,9 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only )
             weapon_bionic_uid = 0;
             cached_info.erase( "weapon_value" );
         }
-    } else if( bio.id == bio_cqb ) {
+    } else if( deactivated_id == bio_cqb ) {
         martial_arts_data->selected_style_check();
-    } else if( bio.id == bio_remote ) {
+    } else if( deactivated_id == bio_remote ) {
         if( g->remoteveh() != nullptr && !has_active_item( itype_remotevehcontrol ) ) {
             g->setremoteveh( nullptr );
         } else if( maybe_get_value( "remote_controlling" ) &&
@@ -1402,13 +1411,14 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only )
     }
 
     calc_encumbrance();
-    if( !bio.id->enchantments.empty() ) {
+    if( !deactivated_id->enchantments.empty() ) {
         recalculate_enchantment_cache();
     }
 
-    // Also reset crafting inventory cache if this bionic spawned a fake item
-    if( bio.has_weapon() || !bio.info().passive_pseudo_items.empty() ||
-        !bio.info().toggled_pseudo_items.empty() ) {
+    // Also reset crafting inventory cache if this bionic spawned a fake item, or is gone
+    if( !still_installed || still_installed->has_weapon() ||
+        !deactivated_id->passive_pseudo_items.empty() ||
+        !deactivated_id->toggled_pseudo_items.empty() ) {
         invalidate_pseudo_items();
         invalidate_crafting_inventory();
     }
