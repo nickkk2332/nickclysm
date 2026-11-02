@@ -14,6 +14,7 @@
 #include "character_id.h"
 #include "construction.h"
 #include "coordinates.h"
+#include "debug.h"
 #include "faction.h"
 #include "faction_camp.h"
 #include "flexbuffer_json.h"
@@ -117,6 +118,24 @@ TEST_CASE( "terr-j01_construction_condition_and_eoc_hooks", "[audit][constructio
     REQUIRE( event_pos != nullptr );
     REQUIRE( event_pos->is_tripoint() );
     CHECK( event_pos->tripoint() == site_abs );
+}
+
+// TERR-J01 (review): construction::check() didn't look at do_turn_eocs and post_eocs, so a
+// misspelled EOC id only showed up when the construction was built.
+TEST_CASE( "terr-j01_construction_eoc_ids_are_checked", "[audit][construction]" )
+{
+    construction con = construction_test_constr_eoc_hooks.obj();
+    CHECK( capture_debugmsg_during( [&con]() {
+        con.check();
+    } ).empty() );
+
+    con.do_turn_eocs.emplace_back( "audit_no_such_turn_eoc" );
+    con.post_eocs.emplace_back( "audit_no_such_post_eoc" );
+    const std::string msg = capture_debugmsg_during( [&con]() {
+        con.check();
+    } );
+    CHECK_THAT( msg, Catch::Matchers::Contains( "audit_no_such_turn_eoc in do_turn_eocs" ) );
+    CHECK_THAT( msg, Catch::Matchers::Contains( "audit_no_such_post_eoc in post_eocs" ) );
 }
 
 static int prof_count( const recipe &r, const proficiency_id &prof )

@@ -8,6 +8,8 @@
 #include <numeric>
 #include <optional>
 #include <queue>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -2612,6 +2614,17 @@ void construction::check() const
             debugmsg( "Unknown post_terrain (terrain) %s in %s", post_terrain, display_name );
         }
     }
+    const auto check_eocs = [&display_name]( std::string_view member,
+    const std::vector<effect_on_condition_id> &eocs ) {
+        for( const effect_on_condition_id &eoc : eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "Unknown effect_on_condition %s in %s of %s", eoc.str(), member,
+                          display_name );
+            }
+        }
+    };
+    check_eocs( "do_turn_eocs", do_turn_eocs );
+    check_eocs( "post_eocs", post_eocs );
 }
 
 int construction::print_time( const catacurses::window &w, const point &p, int width,
