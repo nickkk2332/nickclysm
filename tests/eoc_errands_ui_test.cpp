@@ -13,6 +13,7 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "eoc_ui.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "json_error.h"
@@ -27,7 +28,7 @@
 #include "talker.h"
 #include "type_id.h"
 
-// u_examine.
+// u_examine and u_show_text.
 
 static const activity_id ACT_CLOSE_TILE( "ACT_CLOSE_TILE" );
 
@@ -72,6 +73,7 @@ npc &setup()
 void teardown()
 {
     get_globals().clear_global_values();
+    eoc_ui::show_text_test_answer = nullptr;
     clear_map();
     clear_avatar();
 }
@@ -186,5 +188,89 @@ TEST_CASE( "eoc_examine_by_the_avatar", "[eoc][iexamine][errands_ui]" )
         CHECK( global_string( "this" ) == "test_f_eoc" );
     }
     CHECK_THROWS_AS( load_effect( R"({ "u_examine": "u" })" ), JsonError );
+    teardown();
+}
+
+TEST_CASE( "eoc_show_text", "[eoc][ui][errands_ui]" )
+{
+    npc &guy = setup();
+    avatar &u = get_avatar();
+    get_globals().set_global_value( "test_ui_text", std::string( "Day 3: <u_name> found a pencil." ) );
+    const std::string effect =
+        R"({ "u_show_text": { "title": "Journal of <u_name>", "text": { "global_val": "test_ui_text" }, )"
+        R"("buttons": [ { "name": "Keep", "eocs": [ "EOC_TEST_UI_BUTTON_KEEP" ] }, )"
+        R"({ "name": "Tear out the page", "eocs": [ "EOC_TEST_UI_BUTTON_TEAR" ], )"
+        R"("condition": { "compare_string": [ "yes", { "global_val": "test_ui_allow_tools" } ] } } ] }, )"
+        R"("false_eocs": [ "EOC_TEST_UI_NOT_SHOWN" ] })";
+    std::string shown_title;
+    std::string shown_text;
+    std::vector<eoc_ui::text_button> shown_buttons;
+    std::optional<size_t> answer;
+    bool asked = false;
+    eoc_ui::show_text_test_answer = [&]( const std::string & title, const std::string & text,
+    const std::vector<eoc_ui::text_button> &buttons ) {
+        asked = true;
+        shown_title = title;
+        shown_text = text;
+        shown_buttons = buttons;
+        return answer;
+    };
+    const auto run = [&]( const std::string & json, Character & alpha ) {
+        dialogue d( get_talker_for( alpha ), get_talker_for( guy ) );
+        load_effect( json ).apply( d );
+    };
+
+    SECTION( "the avatar sees the window, tags filled in, and a button runs its EOCs" ) {
+        answer = 0;
+        run( effect, u );
+        REQUIRE( asked );
+        CHECK( shown_title == "Journal of " + u.get_name() );
+        CHECK( shown_text == "Day 3: " + u.get_name() + " found a pencil." );
+        REQUIRE( shown_buttons.size() == 2 );
+        CHECK( shown_buttons[0].name == "Keep" );
+        CHECK( shown_buttons[0].enabled );
+        // Its condition fails: greyed out.
+        CHECK_FALSE( shown_buttons[1].enabled );
+        CHECK( global_string( "test_ui_result" ) == "keep" );
+    }
+    SECTION( "a greyed-out button can't be pressed" ) {
+        answer = 1;
+        run( effect, u );
+        CHECK( global_string( "test_ui_result" ).empty() );
+    }
+    SECTION( "once its condition holds, it can" ) {
+        get_globals().set_global_value( "test_ui_allow_tools", std::string( "yes" ) );
+        answer = 1;
+        run( effect, u );
+        CHECK( shown_buttons[1].enabled );
+        CHECK( global_string( "test_ui_result" ) == "tear" );
+    }
+    SECTION( "closing the window runs nothing" ) {
+        answer = std::nullopt;
+        run( effect, u );
+        CHECK( asked );
+        CHECK( global_string( "test_ui_result" ).empty() );
+    }
+    SECTION( "hide_failing hides the button instead" ) {
+        answer = 0;
+        run( R"({ "u_show_text": { "text": "A note.", "hide_failing": true, )"
+             R"("buttons": [ { "name": "Tear", "eocs": [ "EOC_TEST_UI_BUTTON_TEAR" ], )"
+             R"("condition": { "compare_string": [ "yes", { "global_val": "test_ui_allow_tools" } ] } }, )"
+             R"({ "name": "Keep", "eocs": [ "EOC_TEST_UI_BUTTON_KEEP" ] } ] } })", u );
+        REQUIRE( shown_buttons.size() == 1 );
+        CHECK( shown_buttons[0].name == "Keep" );
+        CHECK( global_string( "test_ui_result" ) == "keep" );
+    }
+    SECTION( "text from a snippet" ) {
+        run( R"({ "u_show_text": { "text": "test_eoc_show_text", "snippet": true } })", u );
+        CHECK( shown_text == "A page about " + u.get_name() + "." );
+        CHECK( shown_buttons.empty() );
+    }
+    SECTION( "an NPC sees nothing, and false_eocs run" ) {
+        answer = 0;
+        run( effect, guy );
+        CHECK_FALSE( asked );
+        CHECK( global_string( "test_ui_result" ) == "not shown" );
+    }
     teardown();
 }

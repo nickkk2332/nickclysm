@@ -3606,6 +3606,54 @@ you can pick one of four options from `Choose your destiny` list;
 }
 ```
 
+#### `u_show_text`, `npc_show_text`
+Show the player a scrollable window with a title, a text and a row of buttons that each run
+EoCs; for journals, notes, quest logs, tutorials and terminal-like screens. The window closes when
+a button is pressed or when the player closes it (closing runs nothing).
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_show_text" / "npc_show_text" | **mandatory** | object | the window, with the fields below |
+| "title" | optional | string or [variable object](#variable-object) | the window's title |
+| "text" | **mandatory** | string or [variable object](#variable-object) | the text; with `"snippet": true`, a snippet category, and a random snippet from it is shown |
+| "snippet" | optional | boolean | default false; see `text` |
+| "buttons" | optional | array of objects | the buttons, from left to right; see below. Without buttons the window only shows the text |
+| "hide_failing" | optional | boolean | if true, a button whose condition fails is left out instead of grayed out |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | next to `u_show_text`: run instead of showing the window when the talker is not the avatar |
+
+Each button has:
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "name" | **mandatory** | string or [variable object](#variable-object) | the button's label |
+| "eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the button is pressed, with the same talkers and context |
+| "condition" | optional | [condition](#condition) | while it is false, the button is grayed out and can't be pressed |
+
+The title, text and button names take the dialogue tags `u_message` takes (`<u_name>`,
+`<context_val:...>` and the others). The player scrolls with the arrow keys and page keys, picks a
+button with left and right (or tab), presses it with confirm, and closes the window with quit.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+A journal whose text is in a global variable, with a button that needs a pencil:
+```jsonc
+{
+  "u_show_text": {
+    "title": "Field journal",
+    "text": { "global_val": "journal_text" },
+    "buttons": [
+      { "name": "Close" },
+      { "name": "Tear out the page", "eocs": [ "EOC_TEAR_PAGE" ], "condition": { "u_has_item": "pencil" } }
+    ]
+  }
+}
+```
+
 ## Character effects
 
 #### `u_pick_bodypart`, `npc_pick_bodypart`

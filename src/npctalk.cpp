@@ -58,6 +58,7 @@
 #include "dialogue_imgui.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "eoc_ui.h"
 #include "enum_traits.h"
 #include "enums.h"
 #include "event.h"
@@ -7409,6 +7410,84 @@ talk_effect_fun_t::func f_run_eoc_selector( const JsonObject &jo, std::string_vi
     };
 }
 
+// u_show_text / npc_show_text: a scrollable text window with buttons that run EOCs, for the
+// avatar. See doc/JSON/EFFECT_ON_CONDITION.md.
+talk_effect_fun_t::func f_show_text( const JsonObject &jo, std::string_view member,
+                                     std::string_view src, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    translation_or_var title;
+    optional( params, false, "title", title );
+    const bool snippet = params.get_bool( "snippet", false );
+    str_or_var snippet_category;
+    translation_or_var text;
+    if( snippet ) {
+        mandatory( params, false, "text", snippet_category );
+    } else {
+        mandatory( params, false, "text", text );
+    }
+    struct button {
+        translation_or_var name;
+        std::vector<effect_on_condition_id> eocs;
+        std::function<bool( const_dialogue const & )> condition;
+    };
+    std::vector<button> buttons;
+    for( const JsonObject btn : params.has_array( "buttons" ) ? params.get_array( "buttons" ) :
+         JsonArray() ) {
+        button b;
+        mandatory( btn, false, "name", b.name );
+        b.eocs = load_eoc_vector( btn, "eocs", src );
+        if( btn.has_member( "condition" ) ) {
+            read_condition( btn, "condition", b.condition, true );
+        }
+        buttons.push_back( std::move( b ) );
+    }
+    const bool hide_failing = params.get_bool( "hide_failing", false );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+
+    return [is_npc, title, snippet, snippet_category, text, buttons, hide_failing,
+            false_eocs]( dialogue & d ) {
+        const Character *who = d.actor( is_npc )->get_character();
+        if( who == nullptr || !who->is_avatar() ) {
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        std::unique_ptr<talker> default_talker = get_talker_for( get_player_character() );
+        talker &alpha = d.has_alpha ? *d.actor( false ) : *default_talker;
+        talker &beta = d.has_beta ? *d.actor( true ) : *default_talker;
+
+        std::string title_text = title.evaluate( d ).translated();
+        parse_tags( title_text, alpha, beta, d );
+        std::string body;
+        if( snippet ) {
+            body = SNIPPET.expand( SNIPPET.random_from_category( snippet_category.evaluate(
+                                       d ) ).value_or( translation() ).translated() );
+        } else {
+            body = text.evaluate( d ).translated();
+        }
+        parse_tags( body, alpha, beta, d );
+
+        std::vector<eoc_ui::text_button> shown;
+        // the index in `buttons` of each shown button
+        std::vector<size_t> shown_index;
+        for( size_t i = 0; i < buttons.size(); i++ ) {
+            const bool enabled = !buttons[i].condition || buttons[i].condition( d );
+            if( !enabled && hide_failing ) {
+                continue;
+            }
+            std::string name = buttons[i].name.evaluate( d ).translated();
+            parse_tags( name, alpha, beta, d );
+            shown.push_back( { name, enabled } );
+            shown_index.push_back( i );
+        }
+        const std::optional<size_t> pressed = eoc_ui::show_text( title_text, body, shown );
+        if( pressed ) {
+            run_eoc_vector( buttons[shown_index[*pressed]].eocs, d );
+        }
+    };
+}
+
 
 struct span_param {
     bool has_min;
@@ -9711,6 +9790,7 @@ parsers = {
     { "offer_mission", jarg::array | jarg::string, &talk_effect_fun::f_offer_mission },
     { "run_eocs", jarg::member | jarg::array, &talk_effect_fun::f_run_eocs },
     { "run_eoc_selector", jarg::member, &talk_effect_fun::f_run_eoc_selector },
+    { "u_show_text", "npc_show_text", jarg::member, &talk_effect_fun::f_show_text },
     { "weighted_list_eocs", jarg::array, &talk_effect_fun::f_weighted_list_eocs },
     { "if", jarg::member, &talk_effect_fun::f_if },
     { "switch", jarg::member, &talk_effect_fun::f_switch },

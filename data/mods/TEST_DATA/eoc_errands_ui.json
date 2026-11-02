@@ -13,5 +13,27 @@
       { "set_string_var": "refused", "target_var": { "global_val": "test_errand_result" } },
       { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_errand_reason" } }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_UI_NOT_SHOWN",
+    "//": "EOC UI tests: false_eocs of u_show_text and run_eoc_checklist.",
+    "effect": [ { "set_string_var": "not shown", "target_var": { "global_val": "test_ui_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_UI_BUTTON_KEEP",
+    "effect": [ { "set_string_var": "keep", "target_var": { "global_val": "test_ui_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_UI_BUTTON_TEAR",
+    "effect": [ { "set_string_var": "tear", "target_var": { "global_val": "test_ui_result" } } ]
+  },
+  {
+    "type": "snippet",
+    "category": "test_eoc_show_text",
+    "//": "u_show_text tests: the only snippet in its category, so the text is known.",
+    "text": "A page about <u_name>."
   }
 ]
