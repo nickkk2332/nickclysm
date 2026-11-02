@@ -40,6 +40,7 @@
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "game_constants.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_location.h"
 #include "level_cache.h"
@@ -3581,6 +3582,8 @@ void Creature::knock_back_from( const tripoint_bub_ms &p )
     if( hallucination_die( &here, nullptr ) ) {
         return;
     }
+    // A creature knocked back leaves any hold it was part of.
+    grapple::release_all( *this );
     tripoint_bub_ms to = pos;
     if( p.x() < pos.x() ) {
         to.x()++;

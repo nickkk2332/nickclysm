@@ -44,6 +44,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "game_inventory.h"
+#include "grapple.h"
 #include "gates.h"
 #include "item.h"
 #include "item_group.h"
@@ -3392,6 +3393,9 @@ void npc::die( map *here, Creature *nkiller )
             ( *bcp )->remove_assignee( getID() );
         }
     }
+
+    // Break any hold on us, as well as any we have.
+    grapple::release_all( *this );
     assigned_camp = std::nullopt;
     // Need to unboard from vehicle before dying, otherwise
     // the vehicle code cannot find us

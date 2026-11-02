@@ -833,7 +833,12 @@ int talker_character_const::get_size() const
 
 int talker_character_const::get_grab_strength() const
 {
-    // The strength of the grab this character would make.
+    // The strength of the hold this character has now, or else of the grab it would make.
+    if( const Creature *const victim = me_chr_const->grabbed_creature() ) {
+        if( const effect *const hold = grapple::hold_effect( *me_chr_const, *victim ) ) {
+            return hold->get_intensity();
+        }
+    }
     return grapple::grab_strength( *me_chr_const, *me_chr_const );
 }
 

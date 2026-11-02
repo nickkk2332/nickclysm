@@ -41,8 +41,14 @@
 
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
+static const efftype_id effect_incorporeal( "incorporeal" );
+static const efftype_id effect_pet( "pet" );
+static const efftype_id effect_winded( "winded" );
 
+static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
+
+static const itype_id itype_rock( "rock" );
 
 static const limb_score_id limb_score_grip( "grip" );
 
@@ -59,6 +65,43 @@ static avatar &setup_grapple_scene()
     avatar &you = get_avatar();
     you.setpos( get_map(), grabber_pos );
     return you;
+}
+
+static const bodypart_id &no_part()
+{
+    static const bodypart_id null_part = bodypart_str_id::NULL_ID().id();
+    return null_part;
+}
+
+// Whether grabber holds victim, as both sides see it.
+static bool holds( const Character &grabber, const Creature &victim )
+{
+    return grabber.grabbed_creature() == &victim && grabber.is_grabbing_creature() &&
+           grapple::hold_effect( grabber, victim ) != nullptr &&
+           grabber.has_effect_with_flag( json_flag_GRAB_FILTER );
+}
+
+// Whether nothing is left of grabber's hold on victim, on either side.
+static bool released( const Character &grabber, const Creature &victim )
+{
+    return grabber.grabbed_creature() == nullptr && !grabber.is_grabbing_creature() &&
+           grapple::hold_effect( grabber, victim ) == nullptr &&
+           !grabber.has_effect_with_flag( json_flag_GRAB_FILTER );
+}
+
+static monster &spawn_held( Character &you, const std::string &type, int strength = 20 )
+{
+    monster &mon = spawn_test_monster( type, you.pos_bub() + tripoint::east );
+    REQUIRE( grapple::start_hold( you, mon, strength, no_part() ) );
+    REQUIRE( holds( you, mon ) );
+    return mon;
+}
+
+static void make_pet( monster &mon )
+{
+    mon.friendly = -1;
+    mon.add_effect( effect_pet, 1_turns, true );
+    REQUIRE( mon.is_pet() );
 }
 
 // Phase 0: groundwork
@@ -152,5 +195,116 @@ TEST_CASE( "grapple_character_grab_strength", "[grapple]" )
         REQUIRE( arm_strength.parse( "u_arm_strength()" ) );
         CHECK( arm_strength.eval( d ) == Approx( 10 ) );
 
+        // While holding something, it reads the strength of that hold.
+        spawn_held( you, "mon_zombie", 33 );
+        CHECK( strength.eval( d ) == Approx( 33 ) );
     }
+}
+
+// Phase 1: holding, and every way a hold ends
+
+TEST_CASE( "grapple_hold_ends_on_every_release_path", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    restore_on_out_of_scope restore_calendar_turn( calendar::turn );
+    monster &mon = spawn_held( you, "mon_zombie" );
+
+    SECTION( "letting go" ) {
+        you.release_grapple();
+    }
+    SECTION( "wielding an item" ) {
+        REQUIRE( you.can_grapple_while_wielding() );
+        item rock( itype_rock );
+        REQUIRE( you.wield( rock ) );
+        REQUIRE( !you.can_grapple_while_wielding() );
+    }
+    SECTION( "mounting a creature" ) {
+        monster &horse = spawn_test_monster( "mon_horse", you.pos_bub() + tripoint::west );
+        make_pet( horse );
+        you.mount_creature( horse );
+        REQUIRE( you.is_mounted() );
+    }
+    SECTION( "falling asleep" ) {
+        you.fall_asleep( 1_hours );
+        you.process_turn();
+    }
+    SECTION( "getting winded" ) {
+        you.add_effect( effect_winded, 10_turns );
+        grapple::process_turn( you );
+    }
+    SECTION( "stamina below the floor" ) {
+        you.set_stamina( grapple::stamina_floor() / 2 );
+        you.process_turn();
+    }
+    SECTION( "the grabber turns incorporeal" ) {
+        you.add_effect( effect_incorporeal, 1_hours );
+        grapple::process_turn( you );
+    }
+    SECTION( "the grabber is flung" ) {
+        override_option no_animations( "ANIMATIONS", "false" );
+        g->fling_creature( &you, units::from_degrees( 180 ), 20, false, true );
+    }
+    SECTION( "the victim is knocked back" ) {
+        mon.knock_back_from( you.pos_bub() );
+        REQUIRE( mon.pos_bub() != you.pos_bub() + tripoint::east );
+    }
+    SECTION( "the victim teleports" ) {
+        const tripoint_bub_ms away = you.pos_bub() + tripoint{ 0, 5, 0 };
+        REQUIRE( teleport::teleport_to_point( mon, away, true, false, false ) );
+    }
+    SECTION( "the victim is no longer adjacent" ) {
+        mon.setpos( here, you.pos_bub() + tripoint{ 3, 0, 0 } );
+        you.process_turn();
+        // The victim drops its side as an orphan when it next tries to move.
+        mon.move_effects( false );
+        CHECK( !mon.has_effect_with_flag( json_flag_GRAB ) );
+    }
+    SECTION( "the victim dies" ) {
+        mon.die( &here, nullptr );
+    }
+    CHECK( released( you, mon ) );
+    CHECK( !mon.has_effect( effect_grabbed ) );
+}
+
+TEST_CASE( "grapple_hold_ends_when_an_npc_victim_dies", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    REQUIRE( grapple::start_hold( you, guy, 20, body_part_torso.id() ) );
+    REQUIRE( holds( you, guy ) );
+    guy.die( &here, nullptr );
+    CHECK( released( you, guy ) );
+}
+
+TEST_CASE( "grapple_victim_removed_from_the_map_leaves_no_hold", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    monster &mon = spawn_held( you, "mon_zombie" );
+    g->remove_zombie( mon );
+    // Nothing dangles: the hold is simply gone, and the next turn drops our side of it.
+    CHECK( you.grabbed_creature() == nullptr );
+    CHECK( !you.is_grabbing_creature() );
+    you.process_turn();
+    CHECK( !you.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+}
+
+TEST_CASE( "grapple_hold_survives_save_and_load", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    monster &mon = spawn_held( you, "mon_zombie", 27 );
+
+    std::ostringstream saved;
+    JsonOut jsout( saved );
+    mon.serialize( jsout );
+    mon.clear_effects();
+    REQUIRE( you.grabbed_creature() == nullptr );
+
+    const JsonValue jv = json_loader::from_string( saved.str() );
+    mon.deserialize( jv.get_object() );
+    CHECK( holds( you, mon ) );
+    const effect *const hold = grapple::hold_effect( you, mon );
+    REQUIRE( hold != nullptr );
+    CHECK( hold->get_intensity() == 27 );
 }

@@ -25,6 +25,7 @@
 #include "event_bus.h"
 #include "explosion.h"
 #include "game.h"
+#include "grapple.h"
 #include "map.h"
 #include "map_scale_constants.h"
 #include "messages.h"
@@ -207,6 +208,9 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
         }
         return false;
     }
+    // Teleporting slips out of any hold, on either side. This must happen before the map can
+    // shift under the avatar, while both sides of the hold are still next to each other.
+    grapple::release_all( critter );
     if( p && p->in_vehicle ) {
         here.unboard_vehicle( p->pos_bub() );
     }

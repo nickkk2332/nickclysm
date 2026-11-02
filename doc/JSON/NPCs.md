@@ -1548,7 +1548,7 @@ These can be read or written to with `val()`.
 | `focus` | ✅ | Current focus level. |
 | `focus_effective` | ❌ | Effective focus level, modified by focus enchants. |
 | `friendly` | ✅ | Current friendly level. Only works for monsters. |
-| `grab_strength` | ❌ | Grab strength: for a monster, as defined in its monster definition; for a character, the strength of the grab it would make (the `grapple_grab_strength` math function from `data/json/grappling.json`, with the character as both `u` and `n`). |
+| `grab_strength` | ❌ | Grab strength: for a monster, as defined in its monster definition; for a character, the strength of the hold it has on a creature, or else of the grab it would make (the `grapple_grab_strength` math function from `data/json/grappling.json`, with the character as both `u` and `n`). |
 | `height` | ✅ | Current height in cm. When setting there is a range for your character size category. Setting it too high or low will use the limit instead. For tiny its 58, and 87. For small its 88 and 144. For medium its 145 and 200. For large its 201 and 250. For huge its 251 and 320. |
 | `hunger` | ❌ | Current perceived hunger. |
 | `instant_thirst` | ❌ | Current thirst minus water in the stomach that hasn't been absorbed by the body yet. |

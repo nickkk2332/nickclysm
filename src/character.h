@@ -1083,6 +1083,19 @@ class Character : public Creature, public visitable
 
         /** Series of checks to remove effects for waiting or moving */
         bool try_remove_grab( bool attacking = false );
+
+        /**
+         * Grappling: holding another creature (see grapple.h). The held creature's GRAB effect
+         * carries this character as its source; there is no stored pointer.
+         */
+        /** Whether this character holds a creature. */
+        bool is_grabbing_creature() const;
+        /** The creature this character holds, or nullptr. */
+        Creature *grabbed_creature() const;
+        /** Let go of the held creature, if any, and drop the GRAB_FILTER effects. */
+        void release_grapple();
+        /** Whether the wielded item, if any, allows grabbing and holding a creature. */
+        bool can_grapple_while_wielding() const;
         void try_remove_downed();
         void try_remove_bear_trap();
         void try_remove_lightsnare();

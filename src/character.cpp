@@ -52,6 +52,7 @@
 #include "flag.h"
 #include "game.h"
 #include "game_constants.h"
+#include "grapple.h"
 #include "input_context.h"
 #include "input_enums.h"
 #include "item_location.h"
@@ -250,6 +251,7 @@ static const json_character_flag json_flag_FREEZE_EFFECTS( "FREEZE_EFFECTS" );
 static const json_character_flag json_flag_GLIDE( "GLIDE" );
 static const json_character_flag json_flag_GLIDING( "GLIDING" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
+static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HEATSINK( "HEATSINK" );
 static const json_character_flag json_flag_IMMUNE_HEARING_DAMAGE( "IMMUNE_HEARING_DAMAGE" );
 static const json_character_flag json_flag_INFECTION_IMMUNE( "INFECTION_IMMUNE" );
@@ -617,6 +619,9 @@ character_id Character::getID() const
 
 void Character::swap_character( Character &other )
 {
+    // Holds are tied to who and where each character is, so neither survives the swap.
+    grapple::release_all( *this );
+    grapple::release_all( other );
     npc tmp_npc;
     Character &tmp = tmp_npc;
     tmp = std::move( other );
@@ -1527,6 +1532,10 @@ void Character::mount_creature( monster &z )
         return;
     }
 
+    // You need your hands for the reins.
+    if( has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
+        release_grapple();
+    }
     add_effect( effect_riding, 1_turns, true );
     z.add_effect( effect_ridden, 1_turns, true );
     if( z.has_effect( effect_tied ) ) {
@@ -2428,6 +2437,8 @@ void Character::process_turn()
             ++it;
         }
     }
+    // Keep holding a creature only while the hold can last.
+    grapple::process_turn( *this );
     effect_on_conditions::process_effect_on_conditions( *this );
 }
 

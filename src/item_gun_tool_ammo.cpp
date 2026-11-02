@@ -655,6 +655,11 @@ void item::on_wield( Character &you, bool combat )
         you.martial_arts_data->martialart_use_message( you );
     }
 
+    // A creature can't be held with this in hand.
+    if( !you.can_grapple_while_wielding() && you.is_grabbing_creature() ) {
+        you.release_grapple();
+    }
+
     // Update encumbrance and discomfort in case we were wearing it
     you.flag_encumbrance();
     you.calc_discomfort();

@@ -29,6 +29,13 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_STAMINA_FLOOR",
+    "//": "Stamina a character needs to start grabbing a creature, and to keep holding it.",
+    "stype": "int",
+    "value": 400
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "PLAYER_MAX_STR_VALUE",
     "//": "Sets a cap on maximum effective strength for characters.",
     "stype": "int",

@@ -3149,6 +3149,8 @@ void monster::die( map *here, Creature *nkiller )
         }
     }
     creature_tracker &creatures = get_creature_tracker();
+    // Whoever held us lets go.
+    grapple::release_holds_on( *this );
     if( has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
         // Need to filter out which limb we were grabbing before death
         for( const tripoint_bub_ms &player_pos : here->points_in_radius( pos_bub( *here ), 1,

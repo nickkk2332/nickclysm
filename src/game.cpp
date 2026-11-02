@@ -317,6 +317,7 @@ static const json_character_flag json_flag_CLIMB_FLYING( "CLIMB_FLYING" );
 static const json_character_flag json_flag_CLIMB_NO_LADDER( "CLIMB_NO_LADDER" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
+static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_INFECTION_IMMUNE( "INFECTION_IMMUNE" );
 static const json_character_flag json_flag_ITEM_WATERPROOFING( "ITEM_WATERPROOFING" );
@@ -9201,6 +9202,11 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
 
         // 1.0 knockback resist is immune, 0 is normal
         flvel *= 1 - knockback_resist;
+    }
+
+    // Nobody keeps hold of a creature while flying.
+    if( you != nullptr && you->has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
+        you->release_grapple();
     }
 
     tileray tdir( dir );
