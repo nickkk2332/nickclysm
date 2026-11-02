@@ -262,6 +262,49 @@
   },
   {
     "type": "effect_on_condition",
+    "id": "EOC_TEST_TM_CANCELLED",
+    "effect": [ { "math": [ "u_tm_cancelled = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TM_CHOOSE_LIMITED",
+    "//": "No attack: only the choice, among two techniques.",
+    "effect": [
+      {
+        "u_choose_technique": { "techniques": [ "test_tm_strike", "test_tm_crit" ], "attack": false, "store": { "u_val": "tm_choice" } },
+        "false_eocs": [ "EOC_TEST_TM_CANCELLED" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TM_CHOOSE_CRIT_ONLY",
+    "//": "An NPC's automatic choice can't land a crit-only technique before the hit, and a basic attack isn't offered: cancelled.",
+    "effect": [
+      {
+        "u_choose_technique": { "techniques": [ "test_tm_crit" ], "attack": false, "include_basic": false, "store": { "u_val": "tm_choice" } },
+        "false_eocs": [ "EOC_TEST_TM_CANCELLED" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TM_CHOOSE_FROM_VAR",
+    "//": "The technique comes from a variable, and the choice attacks the other talker.",
+    "effect": [
+      {
+        "u_choose_technique": { "techniques": [ { "u_val": "tm_allowed" } ], "store": { "u_val": "tm_choice" } },
+        "false_eocs": [ "EOC_TEST_TM_CANCELLED" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TM_CHOOSE_ALL",
+    "effect": [ { "u_choose_technique": { "store": { "u_val": "tm_choice" } }, "false_eocs": [ "EOC_TEST_TM_CANCELLED" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
     "id": "EOC_TEST_TM_U_ATTACK",
     "//": "An empty technique: the attack's own automatic choice.  It never opens the technique menu.",
     "effect": [ { "u_attack": "" } ]

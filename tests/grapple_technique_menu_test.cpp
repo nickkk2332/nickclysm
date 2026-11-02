@@ -51,6 +51,14 @@ static const attack_vector_id vector_punch( "vector_punch" );
 
 static const bionic_id bio_cqb( "bio_cqb" );
 
+static const effect_on_condition_id effect_on_condition_EOC_TEST_TM_CHOOSE_ALL(
+    "EOC_TEST_TM_CHOOSE_ALL" );
+static const effect_on_condition_id effect_on_condition_EOC_TEST_TM_CHOOSE_CRIT_ONLY(
+    "EOC_TEST_TM_CHOOSE_CRIT_ONLY" );
+static const effect_on_condition_id effect_on_condition_EOC_TEST_TM_CHOOSE_FROM_VAR(
+    "EOC_TEST_TM_CHOOSE_FROM_VAR" );
+static const effect_on_condition_id effect_on_condition_EOC_TEST_TM_CHOOSE_LIMITED(
+    "EOC_TEST_TM_CHOOSE_LIMITED" );
 static const effect_on_condition_id effect_on_condition_EOC_TEST_TM_U_ATTACK(
     "EOC_TEST_TM_U_ATTACK" );
 
@@ -939,4 +947,87 @@ TEST_CASE( "grapple_tm_forced_technique_gets_attack_vector", "[grapple][martial_
     CHECK( !std::get<2>( strike ).is_null() );
     // No technique: no vector
     CHECK( std::get<1>( dude.forced_technique_attack( tec_none ) ).is_null() );
+}
+
+// ---- u_choose_technique ----
+
+TEST_CASE( "grapple_tm_u_choose_technique_npc", "[grapple][martial_arts][eoc]" )
+{
+    clear_map_without_vision();
+    standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
+    clear_character( dude, true );
+    dude.set_skill_level( skill_unarmed, 4 );
+    use_style( dude, test_style_technique_menu );
+    monster &target = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::east );
+    dude.set_moves( 100 );
+    menu_answer answer( answer_cancel );
+
+    SECTION( "picks automatically among the techniques given" ) {
+        for( unsigned int seed = 1; seed <= 20; seed++ ) {
+            rng_set_engine_seed( seed );
+            dude.remove_value( "tm_choice" );
+            dialogue d( get_talker_for( dude ), get_talker_for( target ) );
+            effect_on_condition_EOC_TEST_TM_CHOOSE_LIMITED->activate( d );
+            // The crit-only one can't be picked before the hit
+            CHECK( dude.get_value( "tm_choice" ).str() == "test_tm_strike" );
+        }
+        // "attack": false
+        CHECK( dude.get_moves() == 100 );
+        CHECK_FALSE( dude.maybe_get_value( "tm_cancelled" ) );
+    }
+    SECTION( "nothing to pick and no basic attack: cancelled" ) {
+        dialogue d( get_talker_for( dude ), get_talker_for( target ) );
+        effect_on_condition_EOC_TEST_TM_CHOOSE_CRIT_ONLY->activate( d );
+        CHECK( dude.get_value( "tm_choice" ).str().empty() );
+        CHECK( dude.get_value( "tm_cancelled" ) == 1 );
+    }
+    SECTION( "a technique from a variable, then the attack" ) {
+        dude.set_value( "tm_allowed", "test_tm_strike" );
+        dialogue d( get_talker_for( dude ), get_talker_for( target ) );
+        effect_on_condition_EOC_TEST_TM_CHOOSE_FROM_VAR->activate( d );
+        CHECK( dude.get_value( "tm_choice" ).str() == "test_tm_strike" );
+        CHECK( dude.get_moves() < 100 );
+    }
+    // NPCs never get the menu
+    CHECK( answer.calls == 0 );
+}
+
+TEST_CASE( "grapple_tm_u_choose_technique_avatar", "[grapple][martial_arts][eoc]" )
+{
+    clear_map_without_vision();
+    avatar &you = manual_fighter();
+    const on_out_of_scope manual_off( []() {
+        get_avatar().manual_combat_mode = false;
+    } );
+    monster &zed = spawn_test_monster( "mon_zombie", dude_pos + tripoint::east );
+    const int moves = you.get_moves();
+    you.remove_value( "tm_choice" );
+    you.remove_value( "tm_cancelled" );
+
+    SECTION( "cancelled: store is empty and false_eocs run" ) {
+        // No answer: the menu cancels itself in tests
+        dialogue d( get_talker_for( you ), get_talker_for( zed ) );
+        effect_on_condition_EOC_TEST_TM_CHOOSE_ALL->activate( d );
+        CHECK( you.get_value( "tm_choice" ).str().empty() );
+        CHECK( you.get_value( "tm_cancelled" ) == 1 );
+        CHECK( you.get_moves() == moves );
+    }
+    SECTION( "chosen: stored, and the attack doesn't ask again" ) {
+        menu_answer answer( answer_technique( test_tm_strike ) );
+        dialogue d( get_talker_for( you ), get_talker_for( zed ) );
+        effect_on_condition_EOC_TEST_TM_CHOOSE_ALL->activate( d );
+        CHECK( answer.calls == 1 );
+        CHECK( you.get_value( "tm_choice" ).str() == "test_tm_strike" );
+        CHECK_FALSE( you.maybe_get_value( "tm_cancelled" ) );
+        CHECK( you.get_moves() < moves );
+    }
+    SECTION( "a limited menu, without attacking" ) {
+        menu_answer answer( answer_basic );
+        dialogue d( get_talker_for( you ), get_talker_for( zed ) );
+        effect_on_condition_EOC_TEST_TM_CHOOSE_LIMITED->activate( d );
+        REQUIRE( answer.calls == 1 );
+        CHECK( answer.last_entries.size() == 2 );
+        CHECK( you.get_value( "tm_choice" ).str() == "tec_none" );
+        CHECK( you.get_moves() == moves );
+    }
 }

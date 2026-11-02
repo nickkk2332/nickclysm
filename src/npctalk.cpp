@@ -39,6 +39,7 @@
 #include "catacharset.h"
 #include "character.h"
 #include "character_id.h"
+#include "character_martial_arts.h"
 #include "city.h"
 #include "clzones.h"
 #include "color.h"
@@ -102,6 +103,7 @@
 #include "math_parser_type.h"
 #include "memory_fast.h"
 #include "memorial_logger.h"
+#include "melee.h"
 #include "messages.h"
 #include "mission.h"
 #include "monfaction.h"
@@ -6107,6 +6109,111 @@ talk_effect_fun_t::func f_attack( const JsonObject &jo, std::string_view member,
 }
 
 
+// Opens the manual technique menu for u (the avatar), or picks for an NPC, and attacks the other
+// talker with the choice. See u_choose_technique in doc/JSON/EFFECT_ON_CONDITION.md.
+talk_effect_fun_t::func f_choose_technique( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    std::optional<std::vector<str_or_var>> techniques;
+    if( params.has_array( "techniques" ) ) {
+        techniques.emplace();
+        for( const JsonValue &jv : params.get_array( "techniques" ) ) {
+            techniques->emplace_back( get_str_or_var( jv, "techniques" ) );
+        }
+    } else if( params.has_member( "techniques" ) ) {
+        params.throw_error_at( "techniques", "techniques must be an array of techniques" );
+    }
+    const bool attack = params.get_bool( "attack", true );
+    const bool include_basic = params.get_bool( "include_basic", true );
+    std::optional<var_info> store;
+    if( params.has_member( "store" ) ) {
+        store = read_var_info( params.get_object( "store" ) );
+    }
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+    if( techniques ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        for( const str_or_var &tec : *techniques ) {
+            if( tec.is_constant() ) {
+                effect_on_conditions::add_load_check( [name = tec.constant(), context]() {
+                    if( !matec_id( name ).is_valid() ) {
+                        debugmsg( "Technique \"%s\" (in u_choose_technique in %s) does not exist",
+                                  name, context );
+                    }
+                } );
+            }
+        }
+    }
+
+    return [is_npc, techniques, attack, include_basic, store, false_eocs]( dialogue & d ) {
+        const auto write = [&store, &d]( const std::string & value ) {
+            if( store ) {
+                write_var_value( store->type, store->name, &d, value );
+            }
+        };
+        Character *you = d.actor( is_npc )->get_character();
+        Creature *target = d.actor( !is_npc )->get_creature();
+        if( you == nullptr || target == nullptr ) {
+            write( std::string() );
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        std::vector<matec_id> only;
+        if( techniques ) {
+            for( const str_or_var &tec : *techniques ) {
+                const matec_id id( tec.evaluate( d ) );
+                if( id.is_valid() ) {
+                    only.push_back( id );
+                } else {
+                    debugmsg( "u_choose_technique: unknown technique \"%s\".  %s", id.str(),
+                              d.get_callstack() );
+                }
+            }
+        }
+        const item_location weapon = you->used_weapon();
+
+        technique_choice choice( technique_choice::mode::cancel );
+        if( you->is_avatar() ) {
+            melee::technique_menu_options options;
+            options.only = techniques ? &only : nullptr;
+            options.include_basic = include_basic;
+            options.include_automatic = false;
+            choice = melee::choose_technique( *you, *target, weapon, options );
+        } else {
+            // An NPC makes its usual automatic choice, among the techniques given
+            std::vector<matec_id> others;
+            if( techniques ) {
+                for( const matec_id &tec :
+                     you->martial_arts_data->get_all_techniques( weapon, *you ) ) {
+                    if( std::find( only.begin(), only.end(), tec ) == only.end() ) {
+                        others.push_back( tec );
+                    }
+                }
+            }
+            const matec_id picked = std::get<0>( you->pick_technique( *target, weapon, false,
+                                                 false, false, others ) );
+            if( picked != tec_none ) {
+                choice = technique_choice( technique_choice::mode::chosen, picked );
+            } else if( include_basic ) {
+                choice = technique_choice( technique_choice::mode::basic );
+            }
+        }
+
+        if( choice.how == technique_choice::mode::cancel ) {
+            write( std::string() );
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        write( choice.how == technique_choice::mode::basic ? tec_none.str() : choice.tec.str() );
+        if( attack ) {
+            // Chosen already: the attack doesn't ask again
+            const melee::technique_menu_suppressor no_technique_menu;
+            you->melee_attack( *target, true, choice );
+        }
+    };
+}
+
 talk_effect_fun_t::func f_set_special_enabled( const JsonObject &jo, std::string_view member,
         std::string_view, bool is_npc )
 {
@@ -9137,6 +9244,10 @@ parsers = {
     { "u_activate_bionic", "npc_activate_bionic", jarg::member, &talk_effect_fun::f_activate_bionic },
     { "u_deactivate_bionic", "npc_deactivate_bionic", jarg::member, &talk_effect_fun::f_deactivate_bionic },
     { "u_attack", "npc_attack", jarg::member, &talk_effect_fun::f_attack },
+    {
+        "u_choose_technique", "npc_choose_technique", jarg::member,
+        &talk_effect_fun::f_choose_technique
+    },
     {
         "u_set_special_enabled", "npc_set_special_enabled", jarg::member,
         &talk_effect_fun::f_set_special_enabled

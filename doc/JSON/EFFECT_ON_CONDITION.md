@@ -5716,6 +5716,72 @@ The void spider (alpha) bites its target (beta) with the `void_spider_bite` mons
 { "u_attack": "void_spider_bite" }
 ```
 
+#### `u_choose_technique`, `npc_choose_technique`
+Lets the alpha (or beta) talker choose a martial-art technique, and by default attack the other talker with it.  For the avatar this opens the manual technique menu (the one of manual combat mode, see [MARTIALART_JSON.md](MARTIALART_JSON.md#the-manual-technique-menu)): the player's techniques with the current weapon and style, greyed out with the reason when they can't be used now, and "Basic attack".  There is no "Automatic" entry: for that, use `u_attack`.  An NPC doesn't get a menu: it makes its usual automatic choice among the listed techniques (a technique that needs a critical hit can't be picked this way), or a basic attack when none can be used.
+
+The choice is made before anything is rolled, as in manual combat: a chosen technique that needs a critical hit becomes a basic attack when the hit isn't one, and any other chosen technique is used whatever the hit.  The attack never opens the menu a second time.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_choose_technique" / "npc_choose_technique" | **mandatory** | object | the options below |
+| "techniques" | optional | array of strings or [variable objects](#variable-object) | only these of the talker's techniques are offered (the ones it doesn't have are left out).  Default: all of them, and the mutation attacks are listed too (they can't be chosen).  An unknown literal id is a load error |
+| "attack" | optional | boolean | default true: attack the other talker with the choice right away (if it is in reach) |
+| "store" | optional | [variable object](#variable-object) | where to write the chosen technique id: `"tec_none"` for "Basic attack", `""` when the menu is cancelled |
+| "include_basic" | optional | boolean | default true: offer "Basic attack".  For an NPC, false means it has nothing to do when no listed technique can be used |
+| "false_eocs" | optional | array of effect_on_conditions | next to `u_choose_technique`, not inside it: run when nothing is chosen (the menu is cancelled, or an NPC has nothing it can use), or the talker isn't a character |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+A monster as the chooser runs the `false_eocs`.  The other talker must be a creature, adjacent if `attack` is true.
+
+##### Examples
+A martial-arts manual's "drill" lets you pick one Judo technique against the beta talker, and remembers what you picked; cancelling prints a message
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_JUDO_DRILL",
+  "effect": [
+    {
+      "u_choose_technique": {
+        "techniques": [ "tec_judo_throw", "tec_judo_disarm", "tec_judo_backthrow" ],
+        "store": { "u_val": "judo_drill_choice" },
+        "include_basic": false
+      },
+      "false_eocs": [ "EOC_JUDO_DRILL_CANCELLED" ]
+    }
+  ]
+},
+{
+  "type": "effect_on_condition",
+  "id": "EOC_JUDO_DRILL_CANCELLED",
+  "effect": [ { "u_message": "You step back from the drill." } ]
+}
+```
+
+Choose without attacking, and attack later with `u_attack` (which uses the technique whatever the hit)
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_PREPARE_TECHNIQUE",
+  "effect": [
+    { "u_choose_technique": { "attack": false, "store": { "context_val": "prepared" } } },
+    {
+      "if": { "not": { "compare_string": [ "", { "context_val": "prepared" } ] } },
+      "then": [ { "u_attack": { "context_val": "prepared" } } ]
+    }
+  ]
+}
+```
+
+The technique to offer can come from a variable; an NPC alpha picks it if it can use it
+```jsonc
+{ "u_choose_technique": { "techniques": [ { "u_val": "signature_move" } ] } }
+```
+
 #### `u_set_special_enabled`, `npc_set_special_enabled`
 Enables or disables one of a monster's special attacks, for example for boss phases. A disabled attack is never used by the monster on its own (`u_attack` can still force it). Nothing happens if the talker isn't a monster or doesn't have that attack. The cooldown can be read and changed with the `special_cooldown` math function.
 
