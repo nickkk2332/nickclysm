@@ -5163,7 +5163,7 @@ The character puts on one item: one it carries or wields, or one on the ground n
 
 ##### Examples
 
-The NPC puts on every jacket it carries
+The NPC puts on every piece of clothing it carries
 ```jsonc
 { "npc_run_inv_eocs": "all", "search_data": [ { "category": "clothing" } ], "true_eocs": [ { "id": "EOC_PUT_IT_ON", "effect": [ { "u_wear_item": "npc" } ] } ] }
 ```

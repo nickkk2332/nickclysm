@@ -35,6 +35,15 @@ The NPC walks to a tile on the local map over the following turns, using its own
 - **Saves.** The goal is saved with the NPC, unlike the follower "go to" order (NPC-B14).
 - **Condition.** `u_is_walking_to` reports whether a walk is in progress.
 
+**Built (2026-11-02), as proposed, with these settled points** (doc/JSON/EFFECT_ON_CONDITION.md has the full syntax):
+
+- **One mechanism.** The walk is `Character::walk` (`src/errand.h`). The follower "Move there!" order is the same walk with no EOCs, so NPC-B14 is fixed with it: the order is saved, gives up when there's no way there or after 10 turns without progress (the NPC says "I can't get there."), ends next to a target another creature stands on, and "Follow me" ends it. NPC-B17 (the teleport in `npc::move_to`) is fixed first.
+- **In the decision tree** an NPC walks it as the existing `npc_player_order` node (goal `goto_ordered_position`, category `order`, score 0.65). The JSON tree is unchanged.
+- **`give_up_after`.** Without it the walk gives up at once when there's no way there (`unreachable`), or after 10 turns without progress (`blocked`). With it, the walk waits for a way to open and gives up only when the time is up (`timeout`).
+- **`interruptible`.** A fight, a flight, a noise to investigate or an urgent need always comes first. `true` (default): the walk waits and goes on afterwards. `false`: the walk ends with `false_eocs` (`interrupted`) the first time the NPC spends its turn on something else. For the avatar, auto-move stops the usual way (creature in the way, safe mode, the player) and the walk ends as `interrupted`; it never restarts on its own.
+- **EOCs and talkers.** `true_eocs` and `false_eocs` run when the walk ends, with the walker as `u` and no `npc`, the context variables of the EOC that started it, and `reason` (`arrived`, `unreachable`, `blocked`, `timeout`, `interrupted`, `cancelled`).
+- **For goals that run EOCs each turn.** Sending a character again to where it's already going keeps the walk (time limit and progress); a different spot replaces it without running the old EOCs. There is no effect to cancel a walk yet; the JSON goals (section H) will need one when a goal ends.
+
 ## B. `u_pickup_item` and inventory moves
 
 | Effect | What it does |
@@ -52,6 +61,14 @@ The NPC walks to a tile on the local map over the following turns, using its own
 
 - **Item handles.** The item comes from an item talker (`u_map_run_item_eocs`, `u_run_inv_eocs`) or from `search_data` plus a location. EOC-J01 (no handle to an item in a variable) limits how far one EOC can pass the item to another; this batch may need a minimal item handle.
 - **Costs and refusals.** Pickups cost moves as a normal pickup does. Refusals give a reason: too heavy, no room, owned by a faction (it counts as theft, with the usual reaction), out of reach.
+
+**Built (2026-11-02):**
+
+- **The item** is the other talker only: `"u_pickup_item": "npc"`, `"npc_pickup_item": "u"`; anything else is a load error. No `search_data` form and no item handle: on success the item talker follows the item (into the pack, the hand, onto the ground), so the next effect of the same EOC acts on it. `true_eocs` and `false_eocs` run with the character as `u` and the item as `npc`, and `reason`.
+- **Refusal reasons:** `gone`, `held` (someone else carries it), `owned`, `liquid`, `would_spill`, `too_heavy`, `no_room`, `out_of_reach`; `cannot_wield`, `cannot_wear`; `not_carried`, `cannot_drop`.
+- **Theft.** `allow_theft` (default true) takes someone else's item as theft, through the same `on_pickup()` ownership code as any pickup: for the avatar a witness of the owning faction speaks up and goes after the goods, and the item becomes the avatar's. `false` refuses with `owned`. The avatar's `THIEF_MODE` setting isn't consulted, since no menu may open.
+- **`u_wield_item` and `u_wear_item`** also take an item on the ground next to the character. What it wielded goes into its pockets, or at its feet; no menu. `u_drop_item` drops on the character's own tile.
+- **`"walk": true`** walks next to the item (a pickup walk, saved with the character, the item remembered by its `item_location`) and takes it on arrival; an item gone by then ends it with `gone`. Other refusals are checked before the walk starts.
 
 ## C. Targeted activities (the rest of ACT-J02)
 
@@ -84,6 +101,8 @@ The character operates a tile as if it examined it.
 | `u_has_item_in_hand` | The talker is holding a given item. |
 | `u_can_reach` | A location is reachable by path. |
 | `u_is_doing_activity` | Gives the activity id, not only whether any activity is running. |
+
+**Built (2026-11-02):** `u_has_item_in_hand` takes an item id, or `{ "id": ..., "flag": ... }` (either or both). `u_can_reach` takes a location, `range` (as `u_walk_to`) and `max_distance` (steps); creatures in the way don't count. `u_is_doing_activity` takes an activity id or `"any"`. Each has an `npc_` form.
 
 ## F. Text window: `u_show_text`
 
