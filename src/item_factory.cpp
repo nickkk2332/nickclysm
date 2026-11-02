@@ -1673,11 +1673,10 @@ void Item_factory::finalize_item_blacklist()
     bool whitelist_exists = !whitelist.empty();
     // Remove all blacklisted items on the whitelist
     std::set<itype_id> &blacklist = item_blacklist.blacklist;
-    for( const itype_id &it : whitelist ) {
-        if( blacklist.count( it ) ) {
-            whitelist.erase( it );
-        }
-    }
+    // erase through the returned iterator: erasing the element a range-for stands on is UB
+    erase_if( whitelist, [&blacklist]( const itype_id & it ) {
+        return blacklist.count( it ) > 0;
+    } );
 
     // Now, populate the blacklist with all the items that aren't whitelists, but only if a whitelist exists.
     if( whitelist_exists ) {
