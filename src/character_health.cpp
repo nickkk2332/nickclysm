@@ -2116,8 +2116,10 @@ int Character::ugliness() const
 
 int Character::get_bmr() const
 {
-    return base_bmr() * std::ceil( clamp( activity_history.average_activity(), NO_EXERCISE,
-                                          maximum_exertion_level() ) );
+    // Scale continuously with the average exertion: rounding the multiplier up made a
+    // single step in an idle window cost a whole extra BMR.
+    return static_cast<int>( std::round( base_bmr() * clamp( activity_history.average_activity(),
+                                         NO_EXERCISE, maximum_exertion_level() ) ) );
 }
 
 int Character::get_stim() const

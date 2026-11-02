@@ -1,3 +1,6 @@
+#include <algorithm>
+
+#include "activity_tracker.h"
 #include "addiction.h"
 #include "avatar.h"
 #include "bodypart.h"
@@ -5,6 +8,7 @@
 #include "cata_catch.h"
 #include "character.h"
 #include "effect.h"
+#include "game_constants.h"
 #include "map_helpers.h"
 #include "player_helpers.h"
 #include "type_id.h"
@@ -93,5 +97,35 @@ TEST_CASE( "hlth-b03_addiction_slows_fracture_healing_more_when_heavier", "[audi
     CHECK( static_cast<double>( heavy ) / clean == Approx( 0.25 ).epsilon( 0.02 ) );
     CHECK( heavy < light );
     u.addictions.clear();
+    clear_avatar();
+}
+
+// Basal metabolic rate with the activity tracker averaging exactly `level` this period.
+static int audit_bmr_at( Character &who, float level )
+{
+    who.activity_history.reset_activity_level();
+    // A new turn after a reset starts a fresh averaging period at rest.
+    who.activity_history.new_turn( false );
+    who.set_activity_level( level );
+    REQUIRE( who.activity_history.average_activity() == Approx( std::max( level, NO_EXERCISE ) ) );
+    return who.get_bmr();
+}
+
+// HLTH-B04: get_bmr rounded the activity multiplier up, so one step of walking in an
+// otherwise idle five-minute window (average about 1.01) burned twice the resting rate.
+TEST_CASE( "hlth-b04_bmr_scales_continuously_with_activity", "[audit][health]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    const int rest = audit_bmr_at( u, NO_EXERCISE );
+    REQUIRE( rest == u.base_bmr() );
+    REQUIRE( rest > 1000 );
+
+    CHECK( audit_bmr_at( u, 1.01f ) == Approx( rest * 1.01 ).margin( 1 ) );
+    CHECK( audit_bmr_at( u, 1.5f ) == Approx( rest * 1.5 ).margin( 1 ) );
+    CHECK( audit_bmr_at( u, 2.5f ) == Approx( rest * 2.5 ).margin( 1 ) );
+    // Whole exertion levels are unchanged.
+    CHECK( audit_bmr_at( u, MODERATE_EXERCISE ) == rest * 4 );
+    CHECK( audit_bmr_at( u, SLEEP_EXERCISE ) == rest );
     clear_avatar();
 }
