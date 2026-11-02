@@ -3197,10 +3197,13 @@ bool overmap::place_special_attempt(
                 continue;
             }
 
-            place_special( special, p, rotation, nearest_city, false, must_be_unexplored );
+            place_special( special, p, rotation, nearest_city, must_be_unexplored, false );
 
-            // Only this call site participates in deck accounting.
-            if( special.has_flag( "OVERMAP_UNIQUE" ) || special.has_flag( "GLOBALLY_UNIQUE" ) ) {
+            // Only worldgen placements participate in deck accounting. The must_be_unexplored
+            // pass is overmapbuffer::place_special (missions, EOCs), which must not use up a
+            // slot the deck drew for worldgen (OMAP-B01).
+            if( !must_be_unexplored &&
+                ( special.has_flag( "OVERMAP_UNIQUE" ) || special.has_flag( "GLOBALLY_UNIQUE" ) ) ) {
                 overmap_buffer.consume_deck_placement( special.id );
             }
 
