@@ -504,6 +504,18 @@ npc_attack_rating npc_attack_spell::evaluate_tripoint(
     return npc_attack_rating( static_cast<int>( std::round( total_potential ) ), location );
 }
 
+// TODO: Give bashing weapons a better
+// rating against armored targets
+static double melee_damage_per_second( const item &weapon, const npc &source )
+{
+    double damage{ weapon.base_damage_melee().total_damage() };
+    damage *= 100.0 / weapon.attack_time( source );
+    return damage;
+}
+
+static npc_attack_rating rate_melee_critter( const npc &source, const Creature *target,
+        Creature *critter, double damage, int reach_range );
+
 void npc_attack_melee::use( npc &source, const tripoint_bub_ms &location ) const
 {
     if( !source.is_wielding( weapon ) ) {
@@ -614,14 +626,17 @@ npc_attack_rating npc_attack_melee::evaluate( const npc &source,
         return effectiveness;
     }
     const int time_penalty = base_time_penalty( source );
+    const double damage = melee_damage_per_second( weapon, source );
+    const int reach_range = weapon.reach_range( source ).first;
     creature_tracker &creatures = get_creature_tracker();
-    for( const tripoint_bub_ms &targetable_point : targetable_points( source ) ) {
+    for( const tripoint_bub_ms &targetable_point : creature_tiles_in( targetable_points( source ) ) ) {
         if( Creature *critter = creatures.creature_at( targetable_point ) ) {
             if( source.attitude_to( *critter ) != Creature::Attitude::HOSTILE ) {
                 // no point in swinging a sword at a friendly!
                 continue;
             }
-            npc_attack_rating effectiveness_at_point = evaluate_critter( source, target, critter );
+            npc_attack_rating effectiveness_at_point = rate_melee_critter( source, target, critter, damage,
+                    reach_range );
             effectiveness_at_point -= time_penalty;
             if( effectiveness_at_point > effectiveness ) {
                 effectiveness = effectiveness_at_point;
@@ -668,6 +683,15 @@ int npc_attack_melee::base_time_penalty( const npc &source ) const
 npc_attack_rating npc_attack_melee::evaluate_critter( const npc &source,
         const Creature *target, Creature *critter ) const
 {
+    return rate_melee_critter( source, target, critter, melee_damage_per_second( weapon, source ),
+                               weapon.reach_range( source ).first );
+}
+
+// npc_attack_melee::evaluate_critter(), with what only depends on the weapon worked out
+// beforehand.
+static npc_attack_rating rate_melee_critter( const npc &source, const Creature *target,
+        Creature *critter, const double damage, const int reach_range )
+{
     if( !critter ) {
         return npc_attack_rating{};
     }
@@ -680,11 +704,6 @@ npc_attack_rating npc_attack_melee::evaluate_critter( const npc &source,
         }
     }
 
-    // TODO: Give bashing weapons a better
-    // rating against armored targets
-    double damage{ weapon.base_damage_melee().total_damage() };
-    damage *= 100.0 / weapon.attack_time( source );
-    const int reach_range{ weapon.reach_range( source ).first };
     const int distance_to_me = clamp( rl_dist( source.pos_bub(), critter->pos_bub() ) - reach_range, 0,
                                       10 );
     // Multiplier of 0.5f to 1.5f based on distance
@@ -804,6 +823,21 @@ int npc_attack_gun::base_time_penalty( const npc &source ) const
     return time_penalty;
 }
 
+// The damage of a gun mode's burst. use() only reloads the base gun, not an underbarrel gunmod,
+// so only the base gun is rated with its default ammo when empty.
+static int gun_attack_damage( const gun_mode &gunmode, const item &base_gun )
+{
+    const item &gun = *gunmode.target;
+    const itype_id reload_ammo = &gun == &base_gun ? unloaded_gun_ammo_estimate( gun ) :
+                                 itype_id::NULL_ID();
+    const damage_instance gun_damage = reload_ammo.is_null() ? gun.gun_damage() :
+                                       gun.gun_damage( reload_ammo );
+    return gun_damage.total_damage() * gunmode.qty;
+}
+
+static npc_attack_rating rate_gun_tile( const npc &source, const Creature *target,
+                                        const tripoint_bub_ms &location, const item &gun, int damage );
+
 tripoint_range<tripoint_bub_ms> npc_attack_gun::targetable_points( const npc &source ) const
 {
     const item &weapon = *gunmode;
@@ -820,11 +854,12 @@ npc_attack_rating npc_attack_gun::evaluate(
         return effectiveness;
     }
     const int time_penalty = base_time_penalty( source );
+    const int damage = gun_attack_damage( gunmode, gun );
     creature_tracker &creatures = get_creature_tracker();
-    for( const tripoint_bub_ms &targetable_point : targetable_points( source ) ) {
+    for( const tripoint_bub_ms &targetable_point : creature_tiles_in( targetable_points( source ) ) ) {
         if( creatures.creature_at( targetable_point ) ) {
-            npc_attack_rating effectiveness_at_point = evaluate_tripoint( source, target,
-                    targetable_point );
+            npc_attack_rating effectiveness_at_point = rate_gun_tile( source, target, targetable_point,
+                    *gunmode.target, damage );
             effectiveness_at_point -= time_penalty;
             if( effectiveness_at_point > effectiveness ) {
                 effectiveness = effectiveness_at_point;
@@ -857,14 +892,14 @@ std::vector<npc_attack_rating> npc_attack_gun::all_evaluations( const npc &sourc
 npc_attack_rating npc_attack_gun::evaluate_tripoint(
     const npc &source, const Creature *target, const tripoint_bub_ms &location ) const
 {
-    const item &gun = *gunmode.target;
-    // use() only reloads the base gun, not an underbarrel gunmod, so only the base gun
-    // is rated with its default ammo when empty.
-    const itype_id reload_ammo = &gun == &this->gun ? unloaded_gun_ammo_estimate( gun ) :
-                                 itype_id::NULL_ID();
-    const damage_instance gun_damage = reload_ammo.is_null() ? gun.gun_damage() :
-                                       gun.gun_damage( reload_ammo );
-    const int damage = gun_damage.total_damage() * gunmode.qty;
+    return rate_gun_tile( source, target, location, *gunmode.target,
+                          gun_attack_damage( gunmode, gun ) );
+}
+
+// npc_attack_gun::evaluate_tripoint(), with the damage of the gun mode worked out beforehand.
+static npc_attack_rating rate_gun_tile( const npc &source, const Creature *target,
+                                        const tripoint_bub_ms &location, const item &gun, const int damage )
+{
     double potential = damage;
 
     const Creature *critter = get_creature_tracker().creature_at( location );
@@ -947,6 +982,20 @@ std::vector<npc_attack_rating> npc_attack_activate_item::all_evaluations( const 
     effectiveness.emplace_back( emergency, source.pos_bub() );
     return effectiveness;
 }
+
+// One of the thrown item, as it's thrown.
+static item single_throw( const item &thrown_item )
+{
+    item single_item( thrown_item );
+    if( single_item.count_by_charges() ) {
+        single_item.charges = 1;
+    }
+    return single_item;
+}
+
+static npc_attack_rating rate_throw_tile( const npc &source, const Creature *target,
+        const tripoint_bub_ms &location, const item &thrown_item, const item &single_item,
+        float throw_mult );
 
 void npc_attack_throw::use( npc &source, const tripoint_bub_ms &location ) const
 {
@@ -1063,12 +1112,10 @@ npc_attack_rating npc_attack_throw::evaluate(
     const bool throw_now = thrown_item.has_flag( flag_NPC_THROW_NOW );
     // TODO: Should this be a field to cache the result?
     const bool avoids_friendly_fire = source.rules.has_flag( ally_rule::avoid_friendly_fire );
-    creature_tracker &creatures = get_creature_tracker();
-    for( const tripoint_bub_ms &potential : targetable_points( source ) ) {
-
+    if( throw_now ) {
         // hot potato! HOT POTATO!
-        // Calculated for all targetable points, not just those with targets
-        if( throw_now ) {
+        // The first targetable point, with or without a target
+        for( const tripoint_bub_ms &potential : targetable_points( source ) ) {
             // TODO: Take into account distance to allies too
             const int distance_to_me = rl_dist( potential, source.pos_bub() );
             int result = npc_attack_constants::base_throw_now + distance_to_me;
@@ -1078,14 +1125,20 @@ npc_attack_rating npc_attack_throw::evaluate(
             }
             return npc_attack_rating( result, potential );
         }
+        return effectiveness;
+    }
 
+    const item single_item = single_throw( thrown_item );
+    const float throw_mult = throw_cost( source, single_item ) * source_speed_rating / 100.0f;
+    creature_tracker &creatures = get_creature_tracker();
+    for( const tripoint_bub_ms &potential : creature_tiles_in( targetable_points( source ) ) ) {
         if( Creature *critter = creatures.creature_at( potential ) ) {
             if( source.attitude_to( *critter ) != Creature::Attitude::HOSTILE ) {
                 // no point in friendly fire!
                 continue;
             }
-            npc_attack_rating effectiveness_at_point = evaluate_tripoint( source, target,
-                    potential );
+            npc_attack_rating effectiveness_at_point = rate_throw_tile( source, target, potential,
+                    thrown_item, single_item, throw_mult );
             effectiveness_at_point -= penalty;
             if( effectiveness_at_point > effectiveness ) {
                 effectiveness = effectiveness_at_point;
@@ -1123,12 +1176,18 @@ std::vector<npc_attack_rating> npc_attack_throw::all_evaluations( const npc &sou
 npc_attack_rating npc_attack_throw::evaluate_tripoint(
     const npc &source, const Creature *target, const tripoint_bub_ms &location ) const
 {
+    const item single_item = single_throw( thrown_item );
+    return rate_throw_tile( source, target, location, thrown_item, single_item,
+                            throw_cost( source, single_item ) * source_speed_rating / 100.0f );
+}
+
+// npc_attack_throw::evaluate_tripoint(), with the throw's speed worked out beforehand.
+static npc_attack_rating rate_throw_tile( const npc &source, const Creature *target,
+        const tripoint_bub_ms &location, const item &thrown_item, const item &single_item,
+        const float throw_mult )
+{
     if( has_obstruction( source.pos_bub(), location ) ) {
         return npc_attack_rating( std::nullopt, location );
-    }
-    item single_item( thrown_item );
-    if( single_item.count_by_charges() ) {
-        single_item.charges = 1;
     }
 
     Creature::Attitude att = Creature::Attitude::NEUTRAL;
@@ -1148,7 +1207,6 @@ npc_attack_rating npc_attack_throw::evaluate_tripoint(
         return npc_attack_rating( std::nullopt, location );
     }
 
-    const float throw_mult = throw_cost( source, single_item ) * source_speed_rating / 100.0f;
     const int damage = source.thrown_item_total_damage_raw( single_item );
     float dps = damage / throw_mult;
     const int distance_to_me = rl_dist( location, source.pos_bub() );
