@@ -308,9 +308,23 @@ Build these with this work, or note them as done when it lands:
 | VINT-J01, MATH-J09 | Vehicle talker gaps | A5, B3 |
 | VINT-J05 | Planter and reaper hardcode ids | Needed for the growth flower example |
 
-## Open questions
+## Decisions (2026-11-02)
 
-1. **Items on other grids.** Should tools plugged in with `link_up` be able to run on a non-electric resource, for example a wand charged from a mana grid? The proposal is yes, through `link_up`'s resource field, in phase 2 or later.
-2. **Pools as furniture.** Should storage also exist as furniture with a tile variable, without being a vehicle at all? It is cheaper, but it can't join a grid. The proposal is to allow it through C1, with grids staying vehicle-based.
-3. **Visible transfer.** Should spreaders show a projectile or beam between pools? The proposal is a cosmetic field or spell effect from the content, not engine work.
-4. **Per-tick hook budget.** Should there be a limit on how many hooks may run per turn, with a warning in debug mode? Mods with thousands of ticking tiles are the risk.
+The owner answered the open questions:
+
+1. **Tools on other grids depend on the tool.**
+   - Each item says which resource it runs on and charges from, in its `link_up` data (and the ammo of its battery-like pocket); the default is electricity.
+   - A flashlight stays electric; a wand can say `mana` and charge from a mana grid.
+   - Cable items carry what their `carries` lists.
+   - Phase 2.
+2. **Storage can also be furniture.**
+   - A furniture "pool" keeps its amount in a furniture variable (C1). EOCs read and write it with `tile_val`, and the tile talker can show it on examine.
+   - Furniture storage is not part of a vehicle grid; connecting the two is left to content (an EOC or a connector part that moves amounts across).
+   - Phase 4.
+3. **Visible transfer is optional.**
+   - A connector or a transfer effect may declare a cosmetic visual: a short animation along the line between source and target, like a thrown item's path, or a brief field on the tiles it crosses.
+   - With none declared, nothing is drawn.
+   - Phases 2 and 3.
+4. **No per-turn hook budget.**
+   - This fork has one user for now, so a limit isn't needed.
+   - Debug mode can still log how long hooks take, if that ever helps.
