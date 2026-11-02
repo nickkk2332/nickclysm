@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <map>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -8,17 +9,26 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "flag.h"
+#include "global_vars.h"
 #include "item.h"
+#include "item_category.h"
 #include "item_group.h"
 #include "item_pocket.h"
 #include "item_transformation.h"
 #include "itype.h"
+#include "json.h"
+#include "json_loader.h"
 #include "magic.h"
 #include "magic_enchantment.h"
 #include "relic.h"
 #include "type_id.h"
 
 static const fault_id fault_test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
+
+static const item_category_id
+item_category_test_spawn_rate_category( "test_spawn_rate_category" );
+static const item_category_id
+item_category_test_spawn_rate_category_copy( "test_spawn_rate_category_copy" );
 
 static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_briefcase_smg( "briefcase_smg" );
@@ -209,4 +219,41 @@ TEST_CASE( "item-b08_countdown_items_are_active", "[audit][item]" )
         CHECK( rock.active );
         CHECK( rock.countdown_point == calendar::turn + 1_seconds );
     }
+}
+
+// ITEM-B09: item category spawn rates lived only in a static map.  Rates set by the
+// set_item_category_spawn_rates EOC were never saved, so they reverted on load (and leaked
+// into the next game), and a copy-from override that didn't repeat spawn_rate reset the
+// rate an earlier definition had set to 1.0.
+TEST_CASE( "item-b09_item_category_spawn_rate_survives_override_and_save", "[audit][item]" )
+{
+    const item_category &cat = item_category_test_spawn_rate_category.obj();
+    REQUIRE( cat.name_header() == "TEST renamed spawn rate" );
+    CHECK( cat.get_spawn_rate() == Approx( 0.25f ) );
+    CHECK( item_category_test_spawn_rate_category_copy->get_spawn_rate() == Approx( 0.25f ) );
+
+    global_variables &globals = get_globals();
+    const global_variables::impl_t old_globals = globals.get_global_values();
+
+    // the EOC sets the rate in game
+    cat.set_spawn_rate( 2.0f );
+    CHECK( cat.get_spawn_rate() == Approx( 2.0f ) );
+
+    // it's saved with the game...
+    std::ostringstream os;
+    JsonOut jsout( os );
+    jsout.start_object();
+    globals.serialize( jsout );
+    jsout.end_object();
+
+    // ...a new game starts from the JSON rate...
+    globals.clear_global_values();
+    CHECK( cat.get_spawn_rate() == Approx( 0.25f ) );
+
+    // ...and loading the save brings the EOC rate back
+    globals.unserialize( json_loader::from_string( os.str() ).get_object() );
+    CHECK( cat.get_spawn_rate() == Approx( 2.0f ) );
+
+    globals.set_global_values( old_globals );
+    CHECK( cat.get_spawn_rate() == Approx( 0.25f ) );
 }

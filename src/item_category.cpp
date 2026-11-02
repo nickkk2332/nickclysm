@@ -1,7 +1,11 @@
 #include "item_category.h"
 
+#include <string>
+
 #include "generic_factory.h"
+#include "global_vars.h"
 #include "item.h"
+#include "math_parser_diag_value.h"
 
 namespace
 {
@@ -61,9 +65,15 @@ void item_category::load( const JsonObject &jo, std::string_view )
     mandatory( jo, was_loaded, "sort_rank", sort_rank_ );
     optional( jo, was_loaded, "priority_zones", zone_priority_ );
     optional( jo, was_loaded, "zone", zone_, std::nullopt );
+    item_category_spawn_rates &rates = item_category_spawn_rates::get_item_category_spawn_rates();
+    // a copy-from (including one that overrides the same id) keeps the source's rate unless it
+    // sets its own
     float spawn_rate = 1.0f;
+    if( was_loaded && jo.has_string( "copy-from" ) ) {
+        spawn_rate = rates.get_spawn_rate( item_category_id( jo.get_string( "copy-from" ) ) );
+    }
     optional( jo, was_loaded, "spawn_rate", spawn_rate, 1.0f );
-    set_spawn_rate( spawn_rate );
+    rates.set_spawn_rate( id, spawn_rate );
 }
 
 bool item_category::operator<( const item_category &rhs ) const
@@ -131,13 +141,24 @@ int item_category::sort_rank() const
     return sort_rank_;
 }
 
+// Rates set in game (set_item_category_spawn_rates) override the JSON ones.  They live in the
+// global variables, so they are saved with the game and dropped when another game starts.
+static std::string spawn_rate_override_key( const item_category_id &id )
+{
+    return "item_category_spawn_rate_" + id.str();
+}
+
 void item_category::set_spawn_rate( const float &rate ) const
 {
-    item_category_spawn_rates::get_item_category_spawn_rates().set_spawn_rate( id, rate );
+    get_globals().set_global_value( spawn_rate_override_key( id ), rate );
 }
 
 float item_category::get_spawn_rate() const
 {
+    const diag_value *rate = get_globals().maybe_get_global_value( spawn_rate_override_key( id ) );
+    if( rate != nullptr && rate->is_dbl() ) {
+        return static_cast<float>( rate->dbl() );
+    }
     return item_category_spawn_rates::get_item_category_spawn_rates().get_spawn_rate( id );
 }
 

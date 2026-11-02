@@ -5667,6 +5667,21 @@ Allows supercharging monster in electrical fields, legacy command for lightning 
 #### `next_weather`
 Forces a check for what weather it should be. Doesn't force the weather change itself, so if conditions is not met, or custom weather has lower priority, the weather won't change
 
+#### `set_item_category_spawn_rates`
+Overrides the `spawn_rate` of one or more item categories (see the item category `spawn_rate` in JSON_INFO.md) for the current game.  The new rates are saved with the game; a new game starts from the JSON rates again.  Each rate is stored in the global variable `item_category_spawn_rate_<category id>`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_item_category_spawn_rates" | **mandatory** | object or array of objects | each object has an `id` (the item category id) and a `spawn_rate` (number) |
+
+##### Examples
+Halve the spawn rate of guns, and stop food from spawning
+```jsonc
+{
+  "set_item_category_spawn_rates": [ { "id": "guns", "spawn_rate": 0.5 }, { "id": "food", "spawn_rate": 0.0 } ]
+}
+```
+
 #### `custom_light_level`
 Sets the ambient light of the world for some amount of time, ignoring time or sun/moon light
 

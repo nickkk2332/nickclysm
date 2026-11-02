@@ -109,5 +109,28 @@
     ],
     "type_weights": [ { "weight": 100, "value": "hit_me" }, { "weight": 1, "value": "passive_enchantment_add" } ],
     "items": [ { "weight": 100, "item": "rock" } ]
+  },
+  {
+    "id": "test_spawn_rate_category",
+    "type": "ITEM_CATEGORY",
+    "name_header": { "str": "TEST spawn rate" },
+    "name_noun": { "ctxt": "item_category", "str": "TEST spawn rate thing" },
+    "sort_rank": 1000,
+    "spawn_rate": 0.25
+  },
+  {
+    "id": "test_spawn_rate_category",
+    "copy-from": "test_spawn_rate_category",
+    "//": "Overrides the category above and only renames it: its spawn rate must stay 0.25 (ITEM-B09).",
+    "type": "ITEM_CATEGORY",
+    "name_header": { "str": "TEST renamed spawn rate" }
+  },
+  {
+    "id": "test_spawn_rate_category_copy",
+    "copy-from": "test_spawn_rate_category",
+    "//": "Inherits the 0.25 spawn rate (ITEM-B09).",
+    "type": "ITEM_CATEGORY",
+    "name_header": { "str": "TEST copied spawn rate" },
+    "sort_rank": 1001
   }
 ]
