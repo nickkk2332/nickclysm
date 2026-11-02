@@ -314,6 +314,13 @@ std::optional<std::vector<tripoint_bub_ms>> walk_route( const Character &who,
         while( !route.empty() && route.front() == pos ) {
             route.erase( route.begin() );
         }
+        // a straight line runs on to the target itself: the walk ends at its first tile in range
+        for( size_t i = 0; i + 1 < route.size(); ++i ) {
+            if( walk_end_tile( who, w, route[i] ) ) {
+                route.resize( i + 1 );
+                break;
+            }
+        }
         return route;
     };
     const int range = effective_range( who, w );

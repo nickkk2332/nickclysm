@@ -1017,3 +1017,75 @@ TEST_CASE( "item_effects_are_checked_at_load", "[eoc][errand]" )
     CHECK_THROWS_AS( load_effect( R"({ "u_pickup_item": "npc", "walk": true, "give_up_after": -5 })" ),
                      JsonError );
 }
+
+TEST_CASE( "u_has_item_in_hand", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const const_dialogue d( get_const_talker_for( guy ), get_const_talker_for( get_avatar() ) );
+    CHECK_FALSE( test_condition( R"({ "u_has_item_in_hand": "crowbar" })", d ) );
+    guy.set_wielded_item( item( itype_crowbar ) );
+    CHECK( test_condition( R"({ "u_has_item_in_hand": "crowbar" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "u_has_item_in_hand": "hammer" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "npc_has_item_in_hand": "crowbar" })", d ) );
+    get_globals().set_global_value( "test_errand_tag", std::string( "crowbar" ) );
+    CHECK( test_condition( R"({ "u_has_item_in_hand": { "global_val": "test_errand_tag" } })", d ) );
+    // by flag, or by id and flag
+    REQUIRE( guy.get_wielded_item()->has_flag( flag_id( "BELT_CLIP" ) ) );
+    CHECK( test_condition( R"({ "u_has_item_in_hand": { "flag": "BELT_CLIP" } })", d ) );
+    CHECK_FALSE( test_condition( R"({ "u_has_item_in_hand": { "flag": "SPEAR" } })", d ) );
+    CHECK( test_condition( R"({ "u_has_item_in_hand": { "id": "crowbar", "flag": "BELT_CLIP" } })",
+                           d ) );
+    CHECK_FALSE( test_condition( R"({ "u_has_item_in_hand": { "id": "hammer", "flag": "BELT_CLIP" } })",
+                                 d ) );
+}
+
+TEST_CASE( "u_can_reach", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    avatar &you = get_avatar();
+    const const_dialogue d( get_const_talker_for( guy ), get_const_talker_for( you ) );
+    const tripoint_bub_ms there = errand_origin + tripoint( 6, 0, 0 );
+    set_spot( there );
+    const std::string reach_spot = R"({ "u_can_reach": { "global_val": "test_errand_spot" } )";
+    CHECK( test_condition( reach_spot + " }", d ) );
+    CHECK( test_condition( R"({ "npc_can_reach": { "global_val": "test_errand_spot" } })", d ) );
+    SECTION( "within a distance" ) {
+        CHECK( test_condition( reach_spot + R"(, "max_distance": 6 })", d ) );
+        CHECK_FALSE( test_condition( reach_spot + R"(, "max_distance": 5 })", d ) );
+        CHECK( test_condition( reach_spot + R"(, "range": 1, "max_distance": 5 })", d ) );
+    }
+    SECTION( "walled off" ) {
+        wall_off( there );
+        CHECK_FALSE( test_condition( reach_spot + " }", d ) );
+        // next to the walls will do
+        CHECK( test_condition( reach_spot + R"(, "range": 2 })", d ) );
+    }
+    SECTION( "a creature in the way doesn't count" ) {
+        get_avatar().setpos( get_map(), there );
+        CHECK( test_condition( reach_spot + " }", d ) );
+    }
+}
+
+TEST_CASE( "u_is_doing_activity", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const const_dialogue d( get_const_talker_for( guy ), get_const_talker_for( get_avatar() ) );
+    CHECK_FALSE( test_condition( R"({ "u_is_doing_activity": "any" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "u_is_doing_activity": "ACT_ADD_VARIABLE_COMPLETE" })", d ) );
+    guy.assign_activity( ACT_ADD_VARIABLE_COMPLETE, 1000 );
+    REQUIRE( guy.activity.id() == ACT_ADD_VARIABLE_COMPLETE );
+    CHECK( test_condition( R"({ "u_is_doing_activity": "any" })", d ) );
+    CHECK( test_condition( R"({ "u_is_doing_activity": "ACT_ADD_VARIABLE_COMPLETE" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "u_is_doing_activity": "ACT_READ" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "npc_is_doing_activity": "any" })", d ) );
+    guy.cancel_activity();
+}
+
+TEST_CASE( "errand_conditions_are_checked_at_load", "[eoc][errand]" )
+{
+    CHECK_THROWS_AS( load_condition( R"({ "u_can_reach": "shed" })" ), JsonError );
+    CHECK_THROWS_AS( load_condition( R"({ "u_can_reach": { "global_val": "x" }, "range": -2 })" ),
+                     JsonError );
+    CHECK_THROWS_AS( load_condition(
+                         R"({ "u_can_reach": { "global_val": "x" }, "max_distance": -1 })" ), JsonError );
+}

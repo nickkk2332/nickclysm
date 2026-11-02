@@ -1183,6 +1183,27 @@ true if you do not drive
 { "not": "u_driving" }
 ```
 
+### `u_is_doing_activity`, `npc_is_doing_activity`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is doing this activity, by id, or any activity for `"any"`. `u_has_activity` is the same as `"any"`. An unknown activity id is reported as an error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC is reading
+```jsonc
+{ "npc_is_doing_activity": "ACT_READ" }
+```
+
+You are busy with something
+```jsonc
+{ "u_is_doing_activity": "any" }
+```
+
 ### `u_know_recipe`
 - type: string or [variable object](#variable-object)
 - return true if character know specific recipe;
@@ -1299,6 +1320,32 @@ check do you wield a gun with `pistol` skill
 check do you wield a gun with `22` ammo type (.22 LR)
 ```jsonc
 { "u_has_wielded_with_ammotype": "22" }
+```
+
+### `u_has_item_in_hand`, `npc_has_item_in_hand`
+- type: string, [variable object](#variable-object), or an object with `id` and/or `flag`
+- return true if alpha or beta talker wields an item of this id; with `{ "flag": ... }`, an item with this flag; with both, an item of this id with this flag. An unknown item id is reported as an error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC holds a crowbar
+```jsonc
+{ "npc_has_item_in_hand": "crowbar" }
+```
+
+You hold something that clips onto a belt
+```jsonc
+{ "u_has_item_in_hand": { "flag": "BELT_CLIP" } }
+```
+
+You hold the item whose id is in the context variable `tool`
+```jsonc
+{ "u_has_item_in_hand": { "context_val": "tool" } }
 ```
 
 ### `u_can_see`, `npc_can_see`
@@ -1711,6 +1758,28 @@ The NPC isn't walking anywhere
 You are on your way to the spot in `camp_fire`
 ```jsonc
 { "u_is_walking_to": { "u_val": "camp_fire" } }
+```
+
+### `u_can_reach`, `npc_can_reach`
+- type: [variable object](#variable-object)
+- return true if alpha or beta talker has a way to the location: the walk `u_walk_to` would take, with the same `range`, so walls, locked doors and an unloaded spot make it false. Creatures in the way don't count, since they may move. This runs a path search, so don't check it every turn for many characters
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_can_reach" / "npc_can_reach" | **mandatory** | [variable object](#variable-object) | the location |
+| "range" | optional | int or [variable object](#variable-object) | default 0; as in `u_walk_to`: a tile this close to the location will do |
+| "max_distance" | optional | int or [variable object](#variable-object) | the way may be at most this many steps long; without it, any length the path search finds |
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC can get next to the shed door within 30 steps
+```jsonc
+{ "npc_can_reach": { "global_val": "shed_door" }, "range": 1, "max_distance": 30 }
 ```
 
 ### `u_see_npc`, `npc_see_u`
