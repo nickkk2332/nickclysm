@@ -123,3 +123,7 @@ The audit's proposed fix:
 - leaves that declare a priority category and run EOCs while the NPC is committed to them, until a condition is met.
 
 With A–D in place, a JSON goal could be "fetch water when thirsty and the jug is empty". It changes how NPCs decide what to do, so it gets its own design talk before any code.
+
+## Not queued: designs waiting in the backlog
+
+- [Grid resources, machine EOC hooks, tile variables and catch-up](grids-and-stateful-machines-design.md): custom resources besides electricity, EOC hooks and variables on appliance parts and furniture, and one catch-up rule for unloaded time. The owner filed it as a strong modding addition, to be built when the related findings (EOC-J13, MAP-J06, VINT-J06 and others) come up.
