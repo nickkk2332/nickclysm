@@ -17,6 +17,7 @@
 #include "dialogue.h"
 #include "effect.h"
 #include "enums.h"
+#include "faction.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "grapple.h"
@@ -1133,6 +1134,17 @@ TEST_CASE( "grapple_a_thrown_stranger_gets_angry", "[grapple]" )
     guy.set_attitude( NPCATT_NULL );
     REQUIRE( !guy.is_enemy() );
     REQUIRE( !guy.guaranteed_hostile() );
+    // Angering the NPC sours its whole faction on the avatar, which outlives this test.
+    faction *const fac = guy.get_faction();
+    REQUIRE( fac != nullptr );
+    const int likes_u = fac->likes_u;
+    const int respects_u = fac->respects_u;
+    const int trusts_u = fac->trusts_u;
+    const on_out_of_scope restore_faction( [fac, likes_u, respects_u, trusts_u]() {
+        fac->likes_u = likes_u;
+        fac->respects_u = respects_u;
+        fac->trusts_u = trusts_u;
+    } );
     REQUIRE( grapple::start_hold( you, guy, 20, body_part_torso.id() ) );
     const tripoint_bub_ms target = guy.pos_bub() + tripoint( 3, 0, 0 );
     const float force = grapple::throw_force_at( grapple::throw_force( you, guy ), 3 );
