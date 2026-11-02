@@ -22,10 +22,12 @@
 #include <string>
 #include <vector>
 
+#include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "clzones.h"
 #include "coordinates.h"
 #include "item.h"
 #include "item_location.h"
@@ -34,6 +36,7 @@
 #include "omdata.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "pocket_type.h"
@@ -41,11 +44,15 @@
 #include "type_id.h"
 #include "visitable.h"
 
+static const faction_id faction_your_followers( "your_followers" );
+
+static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_apple( "apple" );
 static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_bag_plastic( "bag_plastic" );
 static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const itype_id itype_can_beans( "can_beans" );
+static const itype_id itype_flashlight( "flashlight" );
 static const itype_id itype_hammer( "hammer" );
 static const itype_id itype_jacket_light( "jacket_light" );
 static const itype_id itype_rock( "rock" );
@@ -54,7 +61,11 @@ static const itype_id itype_scrap( "scrap" );
 static const quality_id qual_CUT( "CUT" );
 static const quality_id qual_HAMMER( "HAMMER" );
 
+static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_water_dp( "t_water_dp" );
+
+static const zone_type_id zone_type_FARM_PLOT( "FARM_PLOT" );
+static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
 
 namespace
 {
@@ -202,6 +213,29 @@ tripoint_abs_omt overmap_middle()
     return project_combine( om, tripoint_om_omt( OMAPX / 2, OMAPY / 2, 0 ) );
 }
 
+// A dense base: a 30x30 area around the avatar with three items on every tile, as in
+// benchmark_scenarios_test.cpp.
+void build_dense_base( const tripoint_bub_ms &center )
+{
+    map &here = get_map();
+    const std::vector<itype_id> kinds = { itype_apple, itype_2x4, itype_rock, itype_scrap,
+                                          itype_bottle_plastic, itype_jacket_light, itype_can_beans,
+                                          itype_hammer, itype_flashlight
+                                        };
+    size_t next = 0;
+    for( int dy = -15; dy < 15; ++dy ) {
+        for( int dx = -15; dx < 15; ++dx ) {
+            const tripoint_bub_ms p = center + tripoint_rel_ms( dx, dy, 0 );
+            if( p == center ) {
+                continue;
+            }
+            for( int i = 0; i < 3; ++i ) {
+                here.add_item_or_charges( p, item( kinds[next++ % kinds.size()] ) );
+            }
+        }
+    }
+}
+
 } // namespace
 
 // INV-P02: every inventory query walks the carried items through item_location, building a
@@ -343,4 +377,52 @@ TEST_CASE( "bench_omt_find_npc_goals", "[.][benchmark_scenario]" )
         CHECK( found >= 0 );
         CHECK( fields > 0 );
     } );
+}
+
+// ACT-P03: a farm job whose plot needs tilling, with no digging tool carried or in the loot
+// zones. Every plot tile asks whether the tool is anywhere nearby, rebuilding the whole
+// loot-zone inventory to find out, and is then skipped for a move.
+TEST_CASE( "bench_zone_job_missing_tool", "[.][benchmark_scenario]" )
+{
+    restore_turn turn_guard;
+    const tripoint_bub_ms center( MAPSIZE_X / 2, MAPSIZE_Y / 2, 0 );
+    run_scenario( "zone_job_missing_tool",
+                  "3 farm scans of a 10x10 plot to till, no digging tool, 900 loot tiles of 3 items",
+    [&center]() {
+        clear_avatar();
+        clear_map();
+        zone_manager &zm = zone_manager::get_manager();
+        zm.clear();
+        calendar::turn = day_in_season( SPRING, 10 );
+        avatar &u = get_avatar();
+        map &here = get_map();
+        u.setpos( here, center );
+        fill_nested_inventory( u );
+        build_dense_base( center );
+        zm.add( "loot", zone_type_LOOT_UNSORTED, faction_your_followers, false, true,
+                here.get_abs( center + tripoint_rel_ms( -15, -15, 0 ) ),
+                here.get_abs( center + tripoint_rel_ms( 14, 14, 0 ) ) );
+        const tripoint_bub_ms corner = center + tripoint_rel_ms( 18, -5, 0 );
+        for( int dy = 0; dy < 10; ++dy ) {
+            for( int dx = 0; dx < 10; ++dx ) {
+                here.ter_set( corner + tripoint_rel_ms( dx, dy, 0 ), ter_t_dirt );
+            }
+        }
+        zm.add( "plot", zone_type_FARM_PLOT, faction_your_followers, false, true,
+                here.get_abs( corner ), here.get_abs( corner + tripoint_rel_ms( 9, 9, 0 ) ) );
+        here.build_map_cache( 0 );
+    }, []() {
+        avatar &u = get_avatar();
+        int moves_used = 0;
+        for( int scan = 0; scan < 3; ++scan ) {
+            u.assign_activity( multi_farm_activity_actor() );
+            u.set_moves( 1000 );
+            u.activity.do_turn( u );
+            moves_used += 1000 - u.get_moves();
+        }
+        // the scan ends with nothing done, a move spent on each tile
+        CHECK_FALSE( u.activity );
+        CHECK( moves_used >= 3 * 100 );
+    } );
+    zone_manager::get_manager().clear();
 }
