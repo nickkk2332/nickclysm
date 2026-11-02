@@ -12,5 +12,69 @@
     "time": "1 m",
     "autolearn": true,
     "components": [ [ [ "2x4", 1 ] ] ]
+  },
+  {
+    "//": "result_eocs and result_item_eocs with their context, for CRAFT-J02.",
+    "type": "recipe",
+    "activity_level": "NO_EXERCISE",
+    "result": "cudgel",
+    "id_suffix": "test_crafting_eocs",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "fabrication",
+    "difficulty": 0,
+    "time": "1 m",
+    "autolearn": true,
+    "components": [ [ [ "2x4", 1 ] ] ],
+    "result_eocs": [
+      {
+        "id": "EOC_TEST_CRAFT_RESULT",
+        "effect": [
+          { "math": [ "craft_result_runs++" ] },
+          { "math": [ "craft_result_index_sum += _batch_index" ] },
+          { "math": [ "craft_result_batch = _batch_size" ] },
+          { "copy_var": { "context_val": "recipe_id" }, "target_var": { "global_val": "craft_result_recipe" } }
+        ]
+      }
+    ],
+    "result_item_eocs": [
+      {
+        "id": "EOC_TEST_CRAFT_RESULT_ITEM",
+        "effect": [ { "math": [ "craft_result_items++" ] }, { "npc_add_var": "made_by_eoc", "value": "yes" } ]
+      }
+    ]
+  },
+  {
+    "id": "test_audit_hook_widget",
+    "type": "ITEM",
+    "category": "spare_parts",
+    "name": "TEST hook widget",
+    "description": "A wooden widget that runs an EOC when it is taken apart.",
+    "weight": "100 g",
+    "volume": "250 ml",
+    "price": "0 cent",
+    "material": [ "wood" ],
+    "symbol": "#",
+    "color": "brown"
+  },
+  {
+    "//": "disassembly_eocs with their context, for CRAFT-J02.",
+    "result": "test_audit_hook_widget",
+    "type": "uncraft",
+    "activity_level": "NO_EXERCISE",
+    "difficulty": 0,
+    "time": "1 s",
+    "components": [ [ [ "splinter", 2 ] ] ],
+    "disassembly_eocs": [
+      {
+        "id": "EOC_TEST_DISASSEMBLY",
+        "effect": [
+          { "math": [ "disassembled++" ] },
+          { "math": [ "disassembled_count = _count" ] },
+          { "copy_var": { "context_val": "item_id" }, "target_var": { "global_val": "disassembled_item" } },
+          { "copy_var": { "context_val": "recipe_id" }, "target_var": { "global_val": "disassembled_recipe" } }
+        ]
+      }
+    ]
   }
 ]

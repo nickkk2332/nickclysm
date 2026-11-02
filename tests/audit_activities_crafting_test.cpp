@@ -21,6 +21,7 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "recipe.h"
+#include "recipe_dictionary.h"
 #include "type_id.h"
 
 static const activity_id ACT_CRAFT( "ACT_CRAFT" );
@@ -31,8 +32,12 @@ static const activity_id ACT_TEST_HOOKS( "ACT_TEST_HOOKS" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
 static const itype_id itype_2x4( "2x4" );
+static const itype_id itype_cudgel( "cudgel" );
+static const itype_id itype_debug_backpack( "debug_backpack" );
+static const itype_id itype_test_audit_hook_widget( "test_audit_hook_widget" );
 
 static const recipe_id recipe_cudgel_test_activity_hooks( "cudgel_test_activity_hooks" );
+static const recipe_id recipe_cudgel_test_crafting_eocs( "cudgel_test_crafting_eocs" );
 
 static const trait_id trait_DEBUG_CNF( "DEBUG_CNF" );
 
@@ -119,14 +124,14 @@ static void run_activity_to_the_end( Character &who, const activity_id &type )
 }
 
 // Crafts the recipe in the avatar's hands, with light and no failures.
-static void craft_to_the_end( avatar &u, const recipe_id &rid )
+static void craft_to_the_end( avatar &u, const recipe_id &rid, int batch_size = 1 )
 {
     set_time( calendar::turn_zero + 12_hours );
     if( !u.has_trait( trait_DEBUG_CNF ) ) {
         u.toggle_trait( trait_DEBUG_CNF );
     }
     u.learn_recipe( &rid.obj() );
-    u.make_craft( rid, 1 );
+    u.make_craft( rid, batch_size );
     REQUIRE( u.activity.id() == ACT_CRAFT );
     run_activity_to_the_end( u, ACT_CRAFT );
 }
@@ -192,4 +197,99 @@ TEST_CASE( "act-j03_crafts_and_zone_jobs_report_completion", "[audit][activity]"
         CHECK( globvars.get_global_value( "key3" ) == "activity finished" );
     }
     clear_avatar();
+}
+
+static void load_recipe( const std::string &json )
+{
+    JsonObject jo = json_loader::from_string( json );
+    jo.allow_omitted_members();
+    recipe r;
+    r.load( jo, "audit_activities_crafting_test" );
+}
+
+// CRAFT-J02: result_eocs ran batch_size times in one bare dialogue, with no recipe or batch
+// context and no way to reach the item that was made.
+TEST_CASE( "craft-j02_result_eocs_get_context_and_result_items", "[audit][crafting]" )
+{
+    clear_avatar();
+    clear_map();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    here.add_item( u.pos_bub(), item( itype_2x4 ) );
+    here.add_item( u.pos_bub(), item( itype_2x4 ) );
+
+    craft_to_the_end( u, recipe_cudgel_test_crafting_eocs, 2 );
+
+    // result_eocs: once per batch unit, as before, now with context
+    CHECK( globvars.get_global_value( "craft_result_runs" ) == 2 );
+    CHECK( globvars.get_global_value( "craft_result_index_sum" ) == 1 );
+    CHECK( globvars.get_global_value( "craft_result_batch" ) == 2 );
+    CHECK( globvars.get_global_value( "craft_result_recipe" ) == "cudgel_test_crafting_eocs" );
+    // result_item_eocs: once per cudgel made, with the cudgel as beta
+    CHECK( globvars.get_global_value( "craft_result_items" ) == 2 );
+    int cudgels = 0;
+    int marked = 0;
+    const auto tally = [&cudgels, &marked]( const item & it ) {
+        if( it.typeId() == itype_cudgel ) {
+            ++cudgels;
+            if( it.get_var( "made_by_eoc" ) == "yes" ) {
+                ++marked;
+            }
+        }
+    };
+    for( const item &it : here.i_at( u.pos_bub() ) ) {
+        tally( it );
+    }
+    for( const item *it : u.items_with( []( const item & it ) {
+    return it.typeId() == itype_cudgel;
+    } ) ) {
+        tally( *it );
+    }
+    CHECK( cudgels == 2 );
+    CHECK( marked == 2 );
+    clear_avatar();
+}
+
+// CRAFT-J02: disassembly ran no EOC at all; result_eocs loaded on uncraft recipes and never ran.
+TEST_CASE( "craft-j02_disassembly_runs_disassembly_eocs", "[audit][crafting]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    set_time( calendar::turn_zero + 12_hours );
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    avatar &u = get_avatar();
+    u.worn.wear_item( u, item( itype_debug_backpack ), false, false );
+    item_location widget = u.i_add( item( itype_test_audit_hook_widget ) );
+    REQUIRE( widget );
+    item_location in_progress = u.create_in_progress_disassembly( widget );
+    REQUIRE( in_progress );
+
+    u.complete_disassemble( in_progress,
+                            recipe_dictionary::get_uncraft( itype_test_audit_hook_widget ) );
+
+    CHECK( globvars.get_global_value( "disassembled" ) == 1 );
+    CHECK( globvars.get_global_value( "disassembled_count" ) == 1 );
+    CHECK( globvars.get_global_value( "disassembled_item" ) == "test_audit_hook_widget" );
+    CHECK( globvars.get_global_value( "disassembled_recipe" ) == "test_audit_hook_widget" );
+    clear_avatar();
+}
+
+// CRAFT-J02: EOC lists that can never run are load errors.
+TEST_CASE( "craft-j02_crafting_eocs_that_never_run_fail_to_load", "[audit][crafting]" )
+{
+    CHECK_THROWS_AS( load_recipe( R"({ "type": "uncraft", "result": "2x4", "time": "1 s", )"
+                                  R"("result_eocs": [ "EOC_TEST_CRAFT_RESULT" ] })" ), JsonError );
+    CHECK_THROWS_AS( load_recipe( R"({ "type": "uncraft", "result": "2x4", "time": "1 s", )"
+                                  R"("result_item_eocs": [ "EOC_TEST_CRAFT_RESULT_ITEM" ] })" ),
+                     JsonError );
+    CHECK_THROWS_AS( load_recipe( R"({ "type": "practice", "id": "audit_practice", )"
+                                  R"("result_item_eocs": [ "EOC_TEST_CRAFT_RESULT_ITEM" ] })" ),
+                     JsonError );
+    CHECK_THROWS_AS( load_recipe( R"({ "type": "recipe", "id": "audit_no_result", )"
+                                  R"("name": "nothing", "result_eocs": [ "EOC_TEST_CRAFT_RESULT" ], )"
+                                  R"("result_item_eocs": [ "EOC_TEST_CRAFT_RESULT_ITEM" ] })" ),
+                     JsonError );
 }

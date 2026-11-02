@@ -91,8 +91,10 @@ Crafting recipes are defined as a JSON object with the following fields:
   "BLIND_EASY",
   "ANOTHERFLAG"
 ],
-"result_eocs": [ {"id": "TEST", "effect": { "u_message": "You feel Test" } } // List of inline effect_on_conditions or effect_on_condition ids that attempt to activate when this recipe is successfully finished.  If a value is provided a result becomes optional, though a name and id will be needed if it is missing.  If no result is provided and a description is present, "description" will be displayed as the result on the crafting gui.
+"result_eocs": [ {"id": "TEST", "effect": { "u_message": "You feel Test" } } // List of inline effect_on_conditions or effect_on_condition ids that attempt to activate when this recipe is successfully finished, once per batch unit (a batch of 3 runs them 3 times).  The crafter is the alpha talker; there is no beta talker.  Context values: `_recipe_id`, `_batch_size`, and `_batch_index` (0 for the first unit).  If a value is provided a result becomes optional, though a name and id will be needed if it is missing.  If no result is provided and a description is present, "description" will be displayed as the result on the crafting gui.  Not allowed on uncraft recipes (use `disassembly_eocs`).
 ], 
+"result_item_eocs": [ "EOC_MARK_MY_BLADE" ], // List of inline effect_on_conditions or effect_on_condition ids run once for each result item, after the results are placed and after `result_eocs`.  The crafter is the alpha talker and the item is the beta talker (`npc_`), so the EOC can tag, rename or change it.  Context values: `_recipe_id`, `_batch_size`.  A result counted by charges that merged into a stack passes the whole stack; liquids poured into containers are not passed.  Needs a `result`; not allowed on practice or uncraft recipes.
+"disassembly_eocs": [ "EOC_COUNT_TAKEN_APART" ], // List of inline effect_on_conditions or effect_on_condition ids run when an item is disassembled with this recipe (an uncraft recipe, or the disassembly a reversible recipe creates), after its components are placed.  The character is the alpha talker; there is no beta talker, as the item is gone.  Context values: `_recipe_id`, `_item_id` (the disassembled item's id), `_count` (how many were disassembled, for items counted by charges; otherwise 1).
 "name" : "%s with quern", // optional string to further describe recipe where %s is the recipe result name. Example if the result name is "flour", the final name will be "flour with quern". Especially useful for recipes with "id_suffix" that produce the same result as other recipes.
 "description": "foobar.  your name is <u_name>" // if crafting result is not an item, this text will be shown. Support color and NPC tags
 "construction_blueprint": "camp", // an optional string containing an update_mapgen_id.  Used by faction camps to upgrade their buildings
@@ -737,6 +739,20 @@ They are the most common and well known way of defining an item disassembly. Wit
 | `tools`                       | Specific tools needed to perform the disassembly
 | `components`                  | (Mandatory) Items produced from completing the disassembly recipe; Items cannot have ``UNRECOVERABLE`` flag
 | `flags`                       | A set of strings describing boolean features of the recipe; Supports ``BLIND_EASY`` and ``BLIND_HARD``
+| `disassembly_eocs`            | EOCs run after each disassembly, see `disassembly_eocs` under the recipe fields above
+
+For example, to count the electronics a character has taken apart:
+
+```jsonc
+  {
+    "result": "my_mod_gadget",
+    "type": "uncraft",
+    "activity_level": "LIGHT_EXERCISE",
+    "time": "1 m",
+    "components": [ [ [ "e_scrap", 2 ] ] ],
+    "disassembly_eocs": [ { "id": "EOC_COUNT_TAKEN_APART", "effect": [ { "math": [ "u_taken_apart += _count" ] } ] } ]
+  },
+```
 
 Things to note:
 - Simple disassemblies, such as smashing a skull or simply cutting apart metal with a hacksaw, should likely not use any skills

@@ -297,7 +297,13 @@ class recipe
         /// @returns The name (@ref item::nname) of the resulting item (@ref result).
         /// @param decorated whether the result includes decoration (favorite mark, etc).
         std::string result_name( bool decorated = false ) const;
+        // Run once per batch unit when the craft completes; context recipe_id, batch_size and
+        // batch_index.
         std::vector<effect_on_condition_id> result_eocs;
+        // Run once for each result item the craft placed, with the item as beta talker.
+        std::vector<effect_on_condition_id> result_item_eocs;
+        // Run when an item is disassembled with this recipe, after its components are placed.
+        std::vector<effect_on_condition_id> disassembly_eocs;
         std::pair<int, time_duration> morale_modifier;
         skill_id skill_used;
         std::map<skill_id, int> required_skills;

@@ -256,10 +256,33 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
     abstract = jo.has_string( "abstract" );
 
     const std::string type = jo.get_string( "type" );
+    if( type == "uncraft" ) {
+        // Nothing is crafted from an uncraft recipe.
+        for( const char *member : {
+                 "result_eocs", "result_item_eocs"
+             } ) {
+            if( jo.has_member( member ) ) {
+                jo.throw_error_at( member, string_format( "%s never run on disassembly; "
+                                   "use disassembly_eocs", member ) );
+            }
+        }
+    }
     if( jo.has_member( "result_eocs" ) ) {
         result_eocs.clear();
         for( JsonValue jv : jo.get_array( "result_eocs" ) ) {
             result_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_member( "result_item_eocs" ) ) {
+        result_item_eocs.clear();
+        for( JsonValue jv : jo.get_array( "result_item_eocs" ) ) {
+            result_item_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_member( "disassembly_eocs" ) ) {
+        disassembly_eocs.clear();
+        for( JsonValue jv : jo.get_array( "disassembly_eocs" ) ) {
+            disassembly_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
         }
     }
     if( abstract ) {
@@ -296,6 +319,9 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
             optional( jo, false, "name", name_ );
             id = recipe_id( result_.str() );
         }
+    }
+    if( jo.has_member( "result_item_eocs" ) && !abstract && !result_ ) {
+        jo.throw_error_at( "result_item_eocs", "result_item_eocs need a result item" );
     }
 
     if( type == "recipe" ) {
