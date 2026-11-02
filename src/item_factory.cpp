@@ -900,40 +900,41 @@ void Item_factory::finalize_post( itype &obj )
         }
     }
 
-    // handle complex firearms as a special case
-    if( obj.gun && !obj.has_flag( flag_PRIMITIVE_RANGED_WEAPON ) ) {
-        std::copy( gun_tools.begin(), gun_tools.end(), std::inserter( obj.repair, obj.repair.begin() ) );
-        return;
-    }
-
     if( obj.armor ) {
         finalize_post_armor( obj );
     }
 
-    // if we haven't set what the item can be repaired with calculate it now
-    if( obj.repairs_with.empty() ) {
-        for( const auto &mats : obj.materials ) {
-            obj.repairs_with.insert( mats.first );
-        }
-    }
-
-    // for each item iterate through potential repair tools
-    for( const auto &tool : repair_tools ) {
-
-        // check if item can be repaired with any of the actions?
-        for( const auto &act : repair_actions ) {
-            const use_function *func = find_template_list_const( tool )->get().get_use( act );
-            if( func == nullptr ) {
-                continue;
+    // handle complex firearms as a special case: they are repaired with gun repair tools only,
+    // but the rest of the finalization (pocket flags, fault groups...) still applies to them
+    if( obj.gun && !obj.has_flag( flag_PRIMITIVE_RANGED_WEAPON ) ) {
+        std::copy( gun_tools.begin(), gun_tools.end(), std::inserter( obj.repair, obj.repair.begin() ) );
+    } else {
+        // if we haven't set what the item can be repaired with calculate it now
+        if( obj.repairs_with.empty() ) {
+            for( const auto &mats : obj.materials ) {
+                obj.repairs_with.insert( mats.first );
             }
+        }
 
-            // tool has a possible repair action, check if the materials are compatible
-            const auto &opts = dynamic_cast<const repair_item_actor *>( func->get_actor_ptr() )->materials;
-            if( std::any_of( obj.repairs_with.begin(),
-            obj.repairs_with.end(), [&opts]( const material_id & m ) {
-            return opts.count( m ) > 0;
-            } ) ) {
-                obj.repair.insert( tool );
+        // for each item iterate through potential repair tools
+        for( const auto &tool : repair_tools ) {
+
+            // check if item can be repaired with any of the actions?
+            for( const auto &act : repair_actions ) {
+                const use_function *func = find_template_list_const( tool )->get().get_use( act );
+                if( func == nullptr ) {
+                    continue;
+                }
+
+                // tool has a possible repair action, check if the materials are compatible
+                const auto &opts = dynamic_cast<const repair_item_actor *>
+                                   ( func->get_actor_ptr() )->materials;
+                if( std::any_of( obj.repairs_with.begin(),
+                obj.repairs_with.end(), [&opts]( const material_id & m ) {
+                return opts.count( m ) > 0;
+                } ) ) {
+                    obj.repair.insert( tool );
+                }
             }
         }
     }
@@ -983,6 +984,11 @@ void Item_factory::finalize_post( itype &obj )
                 obj.faults.add( id_and_weight.first, std::get<0>( fault_groups ) );
             }
         }
+    }
+
+    // finalize_pre already cleared the direct faults; drop the ones fault groups just added
+    if( get_option<bool>( "NO_FAULTS" ) ) {
+        obj.faults.clear();
     }
 }
 
