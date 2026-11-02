@@ -108,15 +108,21 @@ activity, for example `[ "hunger", "thirst" ]`. Valid values: `noise`, `pain`,
 has ended, so it sees the result.
 
 * cancel_eoc: an EOC that is run when this activity is canceled or
-interrupted, after it has ended.
+interrupted. A cancel through `Character::cancel_activity()` runs it after
+the activity has been cleared, but code that calls
+`player_activity::canceled()` directly (an NPC putting its task aside, a
+stamina break, unfolding a vehicle) runs it while the activity is still the
+character's current one, so don't rely on either.
 
 * do_turn_eoc: an EOC that is run when this activity performs a turn.
 
 Each of the four is an EOC id or an inline EOC object. They run with the
-character doing the activity as the alpha talker (`u_`), and with the
-activity's first target item, if it has one and it still exists, as the beta
-talker (`npc_`): for example the in-progress craft for `ACT_CRAFT`, or the
-book for `ACT_READ`. Context values:
+character doing the activity as the alpha talker (`u_`), and with the item
+the activity works on, if it has one and it still exists, as the beta talker
+(`npc_`). That is the activity's first target, for example the in-progress
+craft for `ACT_CRAFT` or the book for `ACT_READ`; for `ACT_DISASSEMBLE` it is
+the in-progress disassembly, not the items still queued. An actor chooses it
+with `activity_actor::hook_target()`. Context values:
 
 | Context value | Value |
 | --- | --- |
@@ -129,9 +135,11 @@ An activity completes when it runs out of moves, and also when its actor ends
 it after finishing its work: a craft that is done, each item disassembled, a
 drop that dropped everything, and a zone job (`ACT_MULTIPLE_*`, `ACT_MOVE_LOOT`,
 `ACT_UNLOAD_LOOT`, ...) that ran out of work. completion_eoc runs once per
-completion and cancel_eoc once per cancel, never both. The
-`character_finished_activity` event is sent at the same point, with
-`canceled` false for a completion.
+completion and cancel_eoc once per cancel, never both. A zone job that gives
+up for another reason (it is too dark, a fetch failed) runs neither. The
+`character_finished_activity` event is sent right after completion_eoc or
+cancel_eoc, with `canceled` false for a completion, so an event EOC sees what
+they did.
 
 ```json
 {

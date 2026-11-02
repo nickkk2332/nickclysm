@@ -13,6 +13,7 @@
 class Character;
 class JsonOut;
 class JsonValue;
+class item_location;
 class player_activity;
 
 class activity_actor
@@ -106,6 +107,13 @@ class activity_actor
          * See player_activity::get_progress_message()
          */
         virtual std::string get_progress_message( const player_activity &act ) const;
+
+        /**
+         * The item the activity type's EOCs (start_eoc, do_turn_eoc, completion_eoc and
+         * cancel_eoc) get as their beta talker: the item the activity works on.
+         * By default the activity's first target, if it has one.
+         */
+        virtual item_location hook_target( const player_activity &act ) const;
 
         /**
          * Called every turn, in player_activity::do_turn

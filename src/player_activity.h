@@ -223,8 +223,8 @@ class player_activity
 };
 
 /**
- * The end hooks of an activity (see player_activity::take_end_hooks): sending
- * character_finished_activity and running the type's completion_eoc or cancel_eoc.
+ * The end hooks of an activity (see player_activity::take_end_hooks): running the type's
+ * completion_eoc or cancel_eoc, then sending character_finished_activity.
  */
 class activity_end_hooks
 {
@@ -237,7 +237,7 @@ class activity_end_hooks
         activity_id type;
         int moves_total = 0;
         int moves_left = 0;
-        // the activity's first target, the EOCs' beta talker
+        // the EOCs' beta talker, see activity_actor::hook_target
         item_location target;
 };
 

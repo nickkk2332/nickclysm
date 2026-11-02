@@ -458,6 +458,11 @@ std::string activity_actor::get_progress_message( const player_activity &act ) c
     }
 }
 
+item_location activity_actor::hook_target( const player_activity &act ) const
+{
+    return act.targets.empty() ? item_location() : act.targets.front();
+}
+
 aim_activity_actor::aim_activity_actor()
 {
     initial_view_offset = get_avatar().view_offset;
@@ -5396,11 +5401,10 @@ void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
     activity_id prior_act = get_type();
     // Read now: an NPC whose job has nothing left is reverted inside simulate_turn.
     activity_end_hooks ended = act.peek_end_hooks();
-    bool activity_continues = simulate_turn( act, you, false );
-    // Without a route to more work, and not handed over to another activity, the job is done:
-    // its zones have nothing left to do.
-    const bool job_done = !activity_continues && !you.has_destination() &&
-                          ( you.activity.is_null() || you.activity.id() == prior_act );
+    // Only a scan that found no work left anywhere completes the job. The other ends (too dark,
+    // a fetch that gave up, a cancel) are not completions.
+    bool job_done = false;
+    bool activity_continues = simulate_turn( act, you, false, &job_done );
     // If this activity still exists and was not successful or resulted in a new travel route, end it
     if( ( you.has_destination() || !activity_continues ) &&
         !act.is_null() && ( prior_act == you.activity.id() ) ) {
@@ -5414,8 +5418,11 @@ void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
 }
 
 bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &you,
-        bool check_only )
+        bool check_only, bool *scan_exhausted )
 {
+    if( scan_exhausted ) {
+        *scan_exhausted = false;
+    }
     map &here = get_map();
     const tripoint_abs_ms abspos = here.get_abs( you.pos_bub() );
     // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
@@ -5616,6 +5623,9 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     }
     // scanned every location, tried every route, we're out of eligible zone tiles and the activity is over.
     if( !check_only ) {
+        if( scan_exhausted ) {
+            *scan_exhausted = true;
+        }
         if( you.is_npc() ) {
             multi_activity_actor::activity_failure_message( you, current_activity, req_fail_reason,
                     src_sorted.empty() );
