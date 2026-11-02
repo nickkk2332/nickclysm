@@ -5542,6 +5542,49 @@ Allow to selects one tile with DIGGABLE flag around the u
   },
 ```
 
+#### `u_fling`, `npc_fling`
+Throws the creature through the air, like a hulk's smash or a grappler's throw (`game::fling_creature`, from Cataclysm: The Last Generation).  It flies `force / 10` tiles in a straight line.  Walls, furniture and vehicles it hits are bashed and hurt it; a monster in the way is hit and stops it unless it dies; a character in the way stops it.  Any hold on it breaks if half the force beats the hold's strength, otherwise it isn't thrown at all, and it lets go of whatever it held.  On the way it is `airborne`: it doesn't fall, step on traps or get trap prompts.  Where it lands it takes landing damage (less with `controlled`), sets off the traps there, and drops to the level below if there is no floor; in deep water it lands with a splash instead.  Compare `u_knockback`, which pushes along a line with its own rules.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_fling" / "npc_fling" | **mandatory** | object | the talker to throw, and how |
+| "force" | **mandatory** | number or [variable object](#variable-object) | the speed of the throw: `force / 10` tiles.  Spent on whatever it hits, and the rest on landing |
+| "direction" | optional | number or [variable object](#variable-object) | the direction in degrees: 0 east, 90 south, 180 west, 270 north |
+| "target_var" | optional | [variable object](#variable-object) | a location: throw the talker toward it.  Nothing happens if it is the talker's own tile.  Only one of `direction` and `target_var` can be given; with neither the direction is random |
+| "controlled" | optional | boolean | default false.  A controlled landing (a dive, a leap) takes half the landing damage, less 5 |
+| "intentional" | optional | boolean | default false.  When false, a character's `KNOCKBACK_RESIST` enchantment lowers the force (and at 1 or more prevents the throw); set it for something the talker does on purpose |
+
+##### Valid talkers:
+
+| Avatar | Character | NPC | Monster |  Furniture | Item |
+| ------ | --------- | ---- | ------- | --- | --- |
+| ✔️ | ✔️ | ✔️ | ✔️ | ❌ | ❌ |
+
+##### Examples
+
+The beta talker is thrown 3 tiles east, and lands on its feet
+```jsonc
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_HURL_EAST",
+    "effect": [ { "npc_fling": { "force": 30, "direction": 0, "controlled": true } } ]
+  }
+```
+
+A leap: the avatar picks a tile, and jumps toward it as far as their strength allows
+```jsonc
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_GREAT_LEAP",
+    "effect": [
+      { "u_query_tile": "anywhere", "target_var": { "context_val": "leap_to" }, "message": "Leap where?" },
+      {
+        "u_fling": { "force": { "math": [ "u_val('strength') * 4" ] }, "target_var": { "context_val": "leap_to" }, "controlled": true, "intentional": true }
+      }
+    ]
+  }
+```
+
 #### `mirror_coordinates`
 Picks two coordinates, and create a third one in opposite direction
 

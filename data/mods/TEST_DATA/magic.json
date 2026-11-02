@@ -359,5 +359,21 @@
     "base_casting_time": 100,
     "base_energy_cost": 50,
     "energy_source": "MANA"
+  },
+  {
+    "id": "test_spell_fling",
+    "type": "SPELL",
+    "name": "Test Fling",
+    "description": "Throws the target 3 tiles away from you.",
+    "effect": "fling",
+    "shape": "blast",
+    "valid_targets": [ "hostile", "ally" ],
+    "flags": [ "NO_EXPLOSION_SFX", "NO_PROJECTILE" ],
+    "min_damage": 30,
+    "max_damage": 30,
+    "min_range": 10,
+    "max_range": 10,
+    "spell_class": "NONE",
+    "base_casting_time": 100
   }
 ]

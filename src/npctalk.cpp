@@ -8097,6 +8097,46 @@ talk_effect_fun_t::func f_knockback( const JsonObject &jo, std::string_view memb
     };
 }
 
+talk_effect_fun_t::func f_fling( const JsonObject &jo, std::string_view member,
+                                 std::string_view, bool is_npc )
+{
+    JsonObject jobj = jo.get_object( member );
+    dbl_or_var force = get_dbl_or_var( jobj, "force", true );
+    std::optional<dbl_or_var> direction;
+    if( jobj.has_member( "direction" ) ) {
+        direction = get_dbl_or_var( jobj, "direction" );
+    }
+    std::optional<var_info> target_var;
+    optional( jobj, false, "target_var", target_var );
+    if( direction && target_var ) {
+        jobj.throw_error( "only one of \"direction\" and \"target_var\" can be given" );
+    }
+    const bool controlled = jobj.get_bool( "controlled", false );
+    const bool intentional = jobj.get_bool( "intentional", false );
+
+    return [force, direction, target_var, controlled, intentional, is_npc]( dialogue & d ) {
+        Creature *const flung = d.actor( is_npc )->get_creature();
+        if( flung == nullptr ) {
+            return;
+        }
+        units::angle dir;
+        if( target_var ) {
+            const tripoint_abs_ms toward = read_var_value( *target_var, d ).tripoint();
+            if( toward.xy() == flung->pos_abs().xy() ) {
+                // No way to tell which way is away.
+                return;
+            }
+            dir = coord_to_angle( flung->pos_abs(), toward );
+        } else if( direction ) {
+            dir = units::from_degrees( direction->evaluate( d ) );
+        } else {
+            dir = units::from_degrees( rng_float( 0.0, 360.0 ) );
+        }
+        g->fling_creature( flung, dir, static_cast<float>( force.evaluate( d ) ), controlled,
+                           intentional );
+    };
+}
+
 talk_effect_fun_t::func f_give_equipment( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -9339,6 +9379,7 @@ parsers = {
     { "custom_light_level", jarg::member | jarg::array, &talk_effect_fun::f_custom_light_level },
     { "mirror_coordinates", jarg::member, &talk_effect_fun::f_mirror_coordinates },
     { "u_knockback", "npc_knockback", jarg::member, &talk_effect_fun::f_knockback },
+    { "u_fling", "npc_fling", jarg::object, &talk_effect_fun::f_fling },
     { "give_equipment", jarg::object, &talk_effect_fun::f_give_equipment },
     { "set_string_var", jarg::member | jarg::array, &talk_effect_fun::f_set_string_var },
     { "set_condition", jarg::member, &talk_effect_fun::f_set_condition },

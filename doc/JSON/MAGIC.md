@@ -196,6 +196,7 @@ Effect                 | Description
 `explosion`            | Causes an explosion centered on the target.  Uses damage() for power and factor aoe()/10.
 `fertilize_plant`      | Works the same as fertilizer, making plants grow faster. The growth time reduction is equal to damage() (50 is a 50% of a season length in growth time reduction).
 `flashbang`            | Causes a flashbang effect, centered on the target.  AoE affects the flashbang radius.
+`fling`                | Throws every creature among `valid_targets` in its aoe away from the caster, with damage() as the force: it flies damage() / 10 tiles and takes impact damage from what it hits and where it lands, as in `u_fling` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).  A creature on the caster's own tile isn't thrown.  Damage must be positive.  TLG calls it `fling_away`.
 `fungalize`            | Fungalizes the target.
 `guilt`                | Target gets the guilt morale as if it killed the caster.
 `map`                  | Maps out the overmap centered on the player, to a radius of aoe().

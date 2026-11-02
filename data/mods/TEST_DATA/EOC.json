@@ -965,5 +965,21 @@
       { "math": [ "_charges = test_use_rune_charges" ] },
       { "math": [ "_cancel = test_use_rune_cancel" ] }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FLING_EAST",
+    "//": "u_fling / npc_fling test: throws the beta talker 3 tiles east, landing softly.",
+    "effect": [ { "npc_fling": { "force": 30, "direction": 0, "controlled": true, "intentional": true } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FLING_TOWARD",
+    "//": "u_fling / npc_fling test: throws the alpha talker toward the location in the global test_fling_to, as hard as the global test_fling_force says.",
+    "effect": [
+      {
+        "u_fling": { "force": { "global_val": "test_fling_force" }, "target_var": { "global_val": "test_fling_to" }, "intentional": true }
+      }
+    ]
   }
 ]
