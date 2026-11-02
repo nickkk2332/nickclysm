@@ -6676,13 +6676,11 @@ static ter_str_id phase_target( const ter_t &tt, const ter_str_id &base_id,
     return ter_t_pseudo_phase;
 }
 
-// Terrain whose ter_set leaves more behind than the terrain: a trap or emission entry, or a
-// spawned liquid.
-static bool ter_set_leaves_more( const ter_t &tt )
+// Terrain that ter_set fills with a finite liquid: setting it spawns an item.
+static bool ter_set_spawns_liquid( const ter_t &tt )
 {
-    return tt.trap != tr_null || !tt.emissions.empty() ||
-           ( !tt.liquid_source_item_id.is_null() &&
-             tt.liquid_source_count != std::make_pair( 0, 0 ) );
+    return !tt.liquid_source_item_id.is_null() &&
+           tt.liquid_source_count != std::make_pair( 0, 0 );
 }
 
 void map::temp_based_phase_change_at( const tripoint_bub_ms &p, const weather_generator &wgen )
@@ -6714,14 +6712,28 @@ void map::temp_based_phase_change_at( const tripoint_bub_ms &p, const weather_ge
                                             phase_standard_temperature( get_abs( p ), wgen ) );
     const ter_id target = chosen != ter_t_pseudo_phase && chosen != base.id() ? chosen.id() : base;
     if( target == cur ) {
-        if( has_original && cur != base && !ter_set_leaves_more( base_ter ) &&
-            !ter_set_leaves_more( cur.obj() ) ) {
+        const ter_t &cur_ter = cur.obj();
+        if( has_original && cur != base && !ter_set_spawns_liquid( base_ter ) &&
+            !ter_set_spawns_liquid( cur_ter ) ) {
             // Still frozen as it was. This used to thaw the tile and freeze it again through two
-            // full ter_set calls; what that left behind besides the same terrain was a reset of
-            // the tile's map damage and the submap marked as changed, so keep just those.
+            // full ter_set calls. Of what those left behind besides the same terrain, keep the
+            // reset of the tile's map damage, the submap marked as changed, and the trap and
+            // emission entries each call added for its terrain (ice has a trap): until the map
+            // is actualized, or if it isn't (map::load during explosions), those entries are
+            // what registers them.
             sm->set_map_damage( l, 0 );
             if( !mapgen_in_progress ) {
                 sm->player_adjusted_map = true;
+            }
+            for( const ter_t *set_to : {
+                     &base_ter, &cur_ter
+                 } ) {
+                if( set_to->trap != tr_null ) {
+                    traplocs[set_to->trap.to_i()].push_back( p );
+                }
+                if( !set_to->emissions.empty() ) {
+                    field_ter_locs.push_back( p );
+                }
             }
             return;
         }
