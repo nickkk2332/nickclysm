@@ -1944,7 +1944,7 @@ static void spawn_nested_mapgen()
         target_map.load( abs_sub, true );
         const tripoint_bub_ms local_ms = target_map.get_bub( abs_ms );
         mapgendata md( abs_omt, target_map, 0.0f, calendar::turn, nullptr );
-        const auto &ptr = nested_mapgens[nest_ids[nest_choice]].funcs().pick();
+        const auto &ptr = nested_mapgens[nest_ids[nest_choice]].pick();
         if( ptr == nullptr ) {
             return;
         }

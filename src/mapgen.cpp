@@ -787,13 +787,8 @@ static void set_mapgen_defer( const JsonObject &jsi, const std::string &member,
     mapgen_defer::message = message;
 }
 
-/*
- * load a single mapgen json structure; this can be inside an overmap_terrain, or on it's own.
- */
-std::shared_ptr<mapgen_function>
-load_mapgen_function( const JsonObject &jio, const std::string &id_base,
-                      const point_rel_omt &offset,
-                      const point_rel_omt &total )
+// Reads the "weight" of a mapgen definition (default 1000): a number, variable or math
+static dbl_or_var load_mapgen_weight( const JsonObject &jio )
 {
     dbl_or_var weight = get_dbl_or_var( jio, "weight", false,  1000 );
     if( weight.min.is_constant() && ( weight.min.constant() < 0 ||
@@ -804,6 +799,18 @@ load_mapgen_function( const JsonObject &jio, const std::string &id_base,
             weight.max->constant() >= INT_MAX ) ) {
         jio.throw_error_at( "weight", "max value out of bounds (0 - max int)" );
     }
+    return weight;
+}
+
+/*
+ * load a single mapgen json structure; this can be inside an overmap_terrain, or on it's own.
+ */
+std::shared_ptr<mapgen_function>
+load_mapgen_function( const JsonObject &jio, const std::string &id_base,
+                      const point_rel_omt &offset,
+                      const point_rel_omt &total )
+{
+    dbl_or_var weight = load_mapgen_weight( jio );
     if( jio.has_string( "builtin" ) ) {
         if( const building_gen_pointer ptr = get_mapgen_cfunction( jio.get_string( "builtin" ) ) ) {
             return std::make_shared<mapgen_function_builtin>( ptr, std::move( weight ) );
@@ -831,7 +838,7 @@ void load_and_add_mapgen_function( const JsonObject &jio, const std::string &id_
 static void load_nested_mapgen( JsonObject &&jio, const nested_mapgen_id &id_base )
 {
     if( jio.has_object( "object" ) ) {
-        int weight = jio.get_int( "weight", 1000 );
+        const dbl_or_var weight = load_mapgen_weight( jio );
         JsonObject jo = jio.get_object( "object" );
         nested_mapgens[id_base].add(
             std::make_shared<mapgen_function_json_nested>(
@@ -845,10 +852,11 @@ static void load_nested_mapgen( JsonObject &&jio, const nested_mapgen_id &id_bas
 static void load_update_mapgen( JsonObject &&jio, const update_mapgen_id &id_base )
 {
     if( jio.has_object( "object" ) ) {
+        const dbl_or_var weight = load_mapgen_weight( jio );
         JsonObject jo = jio.get_object( "object" );
         update_mapgens[id_base].add(
             std::make_unique<update_mapgen_function_json>(
-                std::move( jo ), "update mapgen " + id_base.str() ) );
+                std::move( jo ), "update mapgen " + id_base.str() ), weight );
     } else {
         debugmsg( "Update mapgen: Invalid mapgen function (missing \"object\" object)",
                   id_base.c_str() );
@@ -3860,7 +3868,7 @@ class jmapgen_nested : public jmapgen_piece
             }
 
             // A second roll? Let's allow it for now
-            const auto &ptr = iter->second.funcs().pick();
+            const auto &ptr = iter->second.pick();
             if( ptr == nullptr ) {
                 return;
             }
@@ -4953,14 +4961,58 @@ std::unordered_set<point_rel_ms> nested_mapgen::all_placement_coords() const
     return result;
 }
 
-void nested_mapgen::add( const std::shared_ptr<mapgen_function_json_nested> &p, int weight )
+void nested_mapgen::add( const std::shared_ptr<mapgen_function_json_nested> &p,
+                         const dbl_or_var &weight )
 {
-    funcs_.add( p, weight );
+    if( weight.is_constant() ) {
+        funcs_.add( p, static_cast<int>( weight.constant() ) );
+    } else if( funcs_.add( p, 1 ) ) {
+        variable_weights_.emplace_back( p, weight );
+    }
 }
 
-void update_mapgen::add( std::unique_ptr<update_mapgen_function_json> &&p )
+const std::shared_ptr<mapgen_function_json_nested> *nested_mapgen::pick() const
+{
+    if( variable_weights_.empty() ) {
+        return funcs_.pick();
+    }
+    dialogue d( get_talker_for( get_avatar() ), std::make_unique<talker>() );
+    weighted_int_list<const std::shared_ptr<mapgen_function_json_nested> *> current;
+    for( const std::pair<std::shared_ptr<mapgen_function_json_nested>, int> &entry : funcs_ ) {
+        int weight = entry.second;
+        for( const std::pair<std::shared_ptr<mapgen_function_json_nested>, dbl_or_var> &var :
+             variable_weights_ ) {
+            if( var.first == entry.first ) {
+                weight = static_cast<int>( var.second.evaluate( d ) );
+                break;
+            }
+        }
+        current.add( &entry.first, weight );
+    }
+    const std::shared_ptr<mapgen_function_json_nested> *const *picked = current.pick();
+    return picked == nullptr ? nullptr : *picked;
+}
+
+void update_mapgen::add( std::unique_ptr<update_mapgen_function_json> &&p,
+                         const dbl_or_var &weight )
 {
     funcs_.push_back( std::move( p ) );
+    weights_.push_back( weight );
+}
+
+const update_mapgen_function_json *update_mapgen::pick() const
+{
+    if( funcs_.size() <= 1 ) {
+        // A lone definition always runs, whatever its weight
+        return funcs_.empty() ? nullptr : funcs_.front().get();
+    }
+    dialogue d( get_talker_for( get_avatar() ), std::make_unique<talker>() );
+    weighted_int_list<const update_mapgen_function_json *> current;
+    for( size_t i = 0; i < funcs_.size(); ++i ) {
+        current.add( funcs_[i].get(), static_cast<int>( weights_[i].evaluate( d ) ) );
+    }
+    const update_mapgen_function_json *const *picked = current.pick();
+    return picked == nullptr ? nullptr : *picked;
 }
 
 void jmapgen_objects::finalize()
@@ -7712,24 +7764,25 @@ ret_val<void> run_mapgen_update_func(
     bool mirror_vertical, int rotation )
 {
     const auto update_function = update_mapgens.find( update_mapgen_id );
-
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return ret_val<void>::make_failure( _( missing_update_operation ) );
     }
-    return update_function->second.funcs()[0]->update_map(
-               omt_pos, args, tripoint_rel_ms::zero, miss, cancel_on_collision, mirror_horizontal,
-               mirror_vertical, rotation );
+    return func->update_map( omt_pos, args, tripoint_rel_ms::zero, miss, cancel_on_collision,
+                             mirror_horizontal, mirror_vertical, rotation );
 }
 
 ret_val<void> run_mapgen_update_func( const update_mapgen_id &update_mapgen_id, mapgendata &dat,
                                       const bool cancel_on_collision )
 {
     const auto update_function = update_mapgens.find( update_mapgen_id );
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return ret_val<void>::make_failure( _( missing_update_operation ) );
     }
-    return update_function->second.funcs()[0]->update_map( dat, tripoint_rel_ms::zero,
-            cancel_on_collision );
+    return func->update_map( dat, tripoint_rel_ms::zero, cancel_on_collision );
 }
 
 void set_queued_points()
@@ -7748,8 +7801,9 @@ bool apply_construction_marker( const update_mapgen_id &update_mapgen_id,
 {
 
     const auto update_function = update_mapgens.find( update_mapgen_id );
-
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return false;
     }
 
@@ -7777,7 +7831,7 @@ bool apply_construction_marker( const update_mapgen_id &update_mapgen_id,
 
         rotation_guard rot( md );
 
-        if( update_function->second.funcs()[0]->update_map( fake_md ).success() ) {
+        if( func->update_map( fake_md ).success() ) {
             for( const tripoint_omt_ms &pos : tmp_map.points_on_zlevel( omt_pos.z() ) ) {
                 if( tmp_map.ter( pos ) != ter_t_grass || tmp_map.has_furn( pos ) ) {
                     if( apply ) {
@@ -7804,8 +7858,9 @@ std::pair<std::map<ter_id, int>, std::map<furn_id, int>> get_changed_ids_from_up
     std::map<furn_id, int> furnitures;
 
     const auto update_function = update_mapgens.find( update_mapgen_id );
-
-    if( update_function == update_mapgens.end() || update_function->second.funcs().empty() ) {
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
         return std::make_pair( terrains, furnitures );
     }
 
@@ -7815,7 +7870,7 @@ std::pair<std::map<ter_id, int>, std::map<furn_id, int>> get_changed_ids_from_up
     mapgendata fake_md( base_fake_md, mapgen_args );
     fake_md.skip = { mapgen_phase::zones };
 
-    if( update_function->second.funcs()[0]->update_map( fake_md ).success() ) {
+    if( func->update_map( fake_md ).success() ) {
         for( int z = -OVERMAP_DEPTH; z <= OVERMAP_DEPTH; z++ ) {
             for( const tripoint_omt_ms &pos : tmp_map.points_on_zlevel( z ) ) {
                 const ter_id &ter_at_pos = tmp_map.ter( pos );

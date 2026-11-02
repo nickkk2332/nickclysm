@@ -1,0 +1,37 @@
+[
+  {
+    "//": "Two update_mapgen definitions share an id; each run must pick one of them by weight (MGEN-B02).",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_update_variants",
+    "object": { "set": [ { "point": "terrain", "id": "t_floor", "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_update_variants",
+    "object": { "set": [ { "point": "terrain", "id": "t_linoleum_white", "x": 0, "y": 0 } ] }
+  },
+  {
+    "//": "Weight 0 disables this definition.",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_update_variants",
+    "weight": 0,
+    "object": { "set": [ { "point": "terrain", "id": "t_linoleum_gray", "x": 0, "y": 0 } ] }
+  },
+  {
+    "//": "A nested chunk's own weight can be a math expression (MGEN-B02).",
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_nested_variable_weight",
+    "weight": { "math": [ "value_or( audit_nest_weight, 0 )" ] },
+    "object": { "mapgensize": [ 1, 1 ], "set": [ { "point": "terrain", "id": "t_linoleum_white", "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "nested_mapgen_id": "test_audit_nested_variable_weight",
+    "object": { "mapgensize": [ 1, 1 ], "set": [ { "point": "terrain", "id": "t_linoleum_gray", "x": 0, "y": 0 } ] }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_place_variable_weight_nest",
+    "object": { "place_nested": [ { "chunks": [ "test_audit_nested_variable_weight" ], "x": 0, "y": 0 } ] }
+  }
+]

@@ -126,6 +126,8 @@
   {
     "type": "mapgen",
     "update_mapgen_id": "portal_dungeon",
+    "//": "Unfinished nether room, has no exit.  Weight 0 keeps it from replacing the maze above, as only one portal_dungeon definition is picked per update.",
+    "weight": 0,
     "object": {
       "rows": [
         "aaaaaaaaaaaaaaaaaaaaaaaa",

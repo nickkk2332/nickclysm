@@ -277,6 +277,10 @@ Examples:
     "weight": { "math": [ "my_weight * time_since('cataclysm', 'unit': 'days')" ] }
 ```
 
+The same applies to several definitions sharing a `"nested_mapgen_id"` or an `"update_mapgen_id"`: each time the
+chunk is placed or the update runs, one of them is picked by weight. A lone `update_mapgen_id` definition always runs,
+whatever its weight. Camp blueprints must have exactly one definition.
+
 
 ## How "overmap_terrain" variables affect mapgen
 
