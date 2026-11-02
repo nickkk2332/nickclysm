@@ -69,6 +69,13 @@ static const itype_id itype_shotgun_s( "shotgun_s" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
+// Magiclysm's attack spells that NPCs are given or cast, checked when the mod is loaded
+// (--mods=magiclysm)
+static const spell_id spell_cone_cold( "cone_cold" );
+static const spell_id spell_fireball( "fireball" );
+static const spell_id spell_gravity_well( "gravity_well" );
+static const spell_id spell_lightning_bolt( "lightning_bolt" );
+static const spell_id spell_magic_missile( "magic_missile" );
 static const spell_id spell_test_area_blast_ignore_walls( "test_area_blast_ignore_walls" );
 static const spell_id spell_test_area_cone_ignore_walls( "test_area_cone_ignore_walls" );
 static const spell_id spell_test_area_wide_line( "test_area_wide_line" );
@@ -352,6 +359,20 @@ void learn_attack_spells( npc &guy, int level )
     guy.magic->set_mana( 100000 );
 }
 
+// The spells to check, with Magiclysm's attack spells when that mod is loaded.
+std::vector<spell_id> with_mod_spells( std::vector<spell_id> spells )
+{
+    for( const spell_id &sp : {
+             spell_fireball, spell_cone_cold, spell_lightning_bolt, spell_magic_missile,
+             spell_gravity_well
+         } ) {
+        if( sp.is_valid() ) {
+            spells.push_back( sp );
+        }
+    }
+    return spells;
+}
+
 void clean_up_fight()
 {
     clear_creatures();
@@ -452,12 +473,19 @@ TEST_CASE( "npc-p01_spell_rating_matches_full_tile_scan", "[audit][npc_attack]" 
                 guy.rules.set_flag( ally_rule::avoid_friendly_fire );
             }
             learn_attack_spells( guy, level );
+            const std::vector<spell_id> spells = with_mod_spells( {
+                spell_test_npc_fireball, spell_test_npc_cone_cold, spell_test_npc_lightning_bolt,
+                spell_test_npc_magic_missile, spell_test_spell_pew
+            } );
+            for( const spell_id &sp : spells ) {
+                if( !guy.magic->knows_spell( sp ) ) {
+                    guy.magic->learn_spell( sp, guy, true );
+                    guy.magic->get_spell( sp ).set_level( guy, level );
+                }
+            }
             const random_fight fight = build_random_fight( guy, layout, 6, layout * 4 );
             const Creature *target = fight.zombies.empty() ? nullptr : fight.zombies.front();
-            for( const spell_id &sp : {
-                     spell_test_npc_fireball, spell_test_npc_cone_cold, spell_test_npc_lightning_bolt,
-                     spell_test_npc_magic_missile, spell_test_spell_pew
-                 } ) {
+            for( const spell_id &sp : spells ) {
                 CAPTURE( sp.str() );
                 check_matches_full_scan( npc_attack_spell( sp ), guy, target, npc_attack_rating(),
                                          1000 + layout );
@@ -501,11 +529,12 @@ TEST_CASE( "magic-p02_spell_area_calculator_matches_spell_areas", "[audit][magic
             }
             get_avatar().setpos( here, center + tripoint_rel_ms( 2, 1, 0 ) );
             standard_npc caster( "Caster", center );
-            for( const spell_id &id : {
-                     spell_test_npc_fireball, spell_test_npc_cone_cold, spell_test_npc_lightning_bolt,
-                     spell_test_npc_magic_missile, spell_test_spell_pew, spell_test_area_blast_ignore_walls,
-                     spell_test_area_cone_ignore_walls, spell_test_area_wide_line
-                 } ) {
+            const std::vector<spell_id> spells = with_mod_spells( {
+                spell_test_npc_fireball, spell_test_npc_cone_cold, spell_test_npc_lightning_bolt,
+                spell_test_npc_magic_missile, spell_test_spell_pew, spell_test_area_blast_ignore_walls,
+                spell_test_area_cone_ignore_walls, spell_test_area_wide_line
+            } );
+            for( const spell_id &id : spells ) {
                 CAPTURE( id.str() );
                 spell sp( id );
                 sp.set_level( caster, 10 );
