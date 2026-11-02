@@ -83,9 +83,10 @@ class character_martial_arts
         /** Fires all kill-triggered martial arts events */
         void ma_onkill_effects( Character &owner, const ma_event_context &ctx = {} );
 
-        // Selects a valid attack vector
+        // Selects a valid attack vector, at random by weight. Without `random` nothing random
+        // happens: the first valid vector is returned, to check that there is one.
         std::optional<std::pair<attack_vector_id, sub_bodypart_str_id>> choose_attack_vector(
-                    const Character &user, const matec_id &tech ) const;
+                    const Character &user, const matec_id &tech, bool random = true ) const;
         // Calculate and return the damage of the given contact area for a given vector
         damage_instance calculate_vector_damage( const Character &user, const attack_vector_id &vec,
                 const sub_bodypart_str_id &contact_area ) const;

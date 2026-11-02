@@ -24,6 +24,7 @@
 #include "dialogue.h"
 #include "effect.h"
 #include "effect_on_condition.h"
+#include "enum_conversions.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
@@ -794,9 +795,14 @@ bool ma_requirements::buff_requirements_satisfied( const Character &u ) const
 bool ma_requirements::is_valid_character( const Character &u,
         bool ignore_style_weapon_rule ) const
 {
+    return check_character( u, ignore_style_weapon_rule ) == technique_rejection::none;
+}
+
+technique_rejection ma_requirements::check_character( const Character &u,
+        bool ignore_style_weapon_rule ) const
+{
     if( !buff_requirements_satisfied( u ) ) {
-        add_msg_debug( debugmode::DF_MELEE, "Buff requirements not satisfied, attack discarded" );
-        return false;
+        return technique_rejection::buffs;
     }
 
     //A technique is valid if it applies to unarmed strikes, if it applies generally
@@ -820,15 +826,17 @@ bool ma_requirements::is_valid_character( const Character &u,
     bool valid_melee = !strictly_unarmed && ( forced_unarmed || melee_ok );
 
     if( !valid_unarmed && !valid_melee ) {
-        add_msg_debug( debugmode::DF_MELEE, "Weapon/technique conflict, attack discarded" );
-        return false;
+        // Which of the weapon rules failed, for the reason shown to the player
+        if( !is_armed ) {
+            return technique_rejection::needs_weapon;
+        }
+        return unarmed_allowed && !melee_allowed ? technique_rejection::unarmed_only :
+               technique_rejection::wrong_weapon;
     }
 
     for( const auto &pr : min_skill ) {
         if( ( cqb ? 5 : static_cast<int>( u.get_skill_level( pr.first ) ) ) < pr.second ) {
-            add_msg_debug( debugmode::DF_MELEE, "Skill level requirement %d not satisfied, attack discarded",
-                           pr.second );
-            return false;
+            return technique_rejection::skill;
         }
     }
 
@@ -840,15 +848,13 @@ bool ma_requirements::is_valid_character( const Character &u,
             }
         }
         if( !has_flag ) {
-            add_msg_debug( debugmode::DF_MELEE, "Required flag(any) not found, attack discarded" );
-            return false;
+            return technique_rejection::character_flags;
         }
     }
 
     for( const json_character_flag &flag : req_char_flags_all ) {
         if( !u.has_flag( flag ) ) {
-            add_msg_debug( debugmode::DF_MELEE, "Required flags(all) not found, attack discarded" );
-            return false;
+            return technique_rejection::character_flags;
         }
     }
 
@@ -860,8 +866,7 @@ bool ma_requirements::is_valid_character( const Character &u,
             }
         }
         if( has_flag ) {
-            add_msg_debug( debugmode::DF_MELEE, "Forbidden flag found, attack discarded" );
-            return false;
+            return technique_rejection::character_flags;
         }
     }
 
@@ -873,12 +878,11 @@ bool ma_requirements::is_valid_character( const Character &u,
             }
         }
         if( !valid_weap_cat ) {
-            add_msg_debug( debugmode::DF_MELEE, "Not using weapon from a valid category, attack discarded" );
-            return false;
+            return technique_rejection::weapon_category;
         }
     }
 
-    return true;
+    return technique_rejection::none;
 }
 
 bool ma_requirements::is_valid_weapon( const item &i ) const
@@ -1045,6 +1049,118 @@ ma_technique::ma_technique()
 bool ma_technique::is_valid_character( const Character &u ) const
 {
     return reqs.is_valid_character( u );
+}
+
+namespace io
+{
+template<>
+std::string enum_to_string<technique_rejection>( technique_rejection data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case technique_rejection::none: return "none";
+        case technique_rejection::dummy: return "dummy";
+        case technique_rejection::defensive: return "defensive";
+        case technique_rejection::condition: return "condition";
+        case technique_rejection::needs_wall: return "needs_wall";
+        case technique_rejection::not_in_reach: return "not_in_reach";
+        case technique_rejection::reach_only: return "reach_only";
+        case technique_rejection::dodge_counter_only: return "dodge_counter_only";
+        case technique_rejection::not_dodge_counter: return "not_dodge_counter";
+        case technique_rejection::block_counter_only: return "block_counter_only";
+        case technique_rejection::not_block_counter: return "not_block_counter";
+        case technique_rejection::too_slow: return "too_slow";
+        case technique_rejection::crit_only: return "crit_only";
+        case technique_rejection::not_on_crit: return "not_on_crit";
+        case technique_rejection::needs_ammo: return "needs_ammo";
+        case technique_rejection::target_unarmed: return "target_unarmed";
+        case technique_rejection::hands_full: return "hands_full";
+        case technique_rejection::no_aoe_targets: return "no_aoe_targets";
+        case technique_rejection::weighting_roll: return "weighting_roll";
+        case technique_rejection::buffs: return "buffs";
+        case technique_rejection::unarmed_only: return "unarmed_only";
+        case technique_rejection::needs_weapon: return "needs_weapon";
+        case technique_rejection::wrong_weapon: return "wrong_weapon";
+        case technique_rejection::skill: return "skill";
+        case technique_rejection::character_flags: return "character_flags";
+        case technique_rejection::weapon_category: return "weapon_category";
+        case technique_rejection::no_attack_vector: return "no_attack_vector";
+        // *INDENT-ON*
+        case technique_rejection::last:
+            break;
+    }
+    cata_fatal( "Invalid technique_rejection" );
+}
+} // namespace io
+
+std::string ma_technique::rejection_text( technique_rejection why ) const
+{
+    switch( why ) {
+        case technique_rejection::none:
+            return std::string();
+        case technique_rejection::dummy:
+            return _( "passive" );
+        case technique_rejection::defensive:
+            return _( "defensive, automatic" );
+        case technique_rejection::condition: {
+            // The condition_desc is written for the description ("* Only works on ..."):
+            // drop the bullet and the colors, which would not show greyed out
+            std::string desc = remove_color_tags( replace_colors( _( condition_desc ) ) );
+            if( string_starts_with( desc, "* " ) ) {
+                desc.erase( 0, 2 );
+            }
+            return desc.empty() ? _( "conditions not met" ) : desc;
+        }
+        case technique_rejection::needs_wall:
+            return _( "needs a wall next to you" );
+        case technique_rejection::not_in_reach:
+            return _( "not in a reach attack" );
+        case technique_rejection::reach_only:
+            return _( "reach attacks only" );
+        case technique_rejection::dodge_counter_only:
+            return _( "dodge counter, automatic" );
+        case technique_rejection::not_dodge_counter:
+            return _( "not a dodge counter" );
+        case technique_rejection::block_counter_only:
+            return _( "block counter, automatic" );
+        case technique_rejection::not_block_counter:
+            return _( "not a block counter" );
+        case technique_rejection::too_slow:
+            return _( "too slow to counter now" );
+        case technique_rejection::crit_only:
+            return _( "critical hits only" );
+        case technique_rejection::not_on_crit:
+            return _( "not on a critical hit" );
+        case technique_rejection::needs_ammo:
+            return _( "needs a loaded weapon" );
+        case technique_rejection::target_unarmed:
+            return _( "target has no weapon" );
+        case technique_rejection::hands_full:
+            return _( "needs empty hands" );
+        case technique_rejection::no_aoe_targets:
+            return _( "no other targets around" );
+        case technique_rejection::weighting_roll:
+            return _( "not this time" );
+        case technique_rejection::buffs:
+            return _( "wrong stance or buffs" );
+        case technique_rejection::unarmed_only:
+            return _( "unarmed only" );
+        case technique_rejection::needs_weapon:
+            return _( "needs a weapon" );
+        case technique_rejection::wrong_weapon:
+            return _( "not with this weapon" );
+        case technique_rejection::skill:
+            return _( "skill too low" );
+        case technique_rejection::character_flags:
+            return _( "requirements not met" );
+        case technique_rejection::weapon_category:
+            return _( "wrong kind of weapon" );
+        case technique_rejection::no_attack_vector:
+            return _( "no limb can deliver it" );
+        case technique_rejection::last:
+            break;
+    }
+    return _( "requirements not met" );
 }
 
 bool ma_technique::is_fallback_for( const Character &u ) const
@@ -1640,7 +1756,7 @@ ma_technique character_martial_arts::get_miss_recovery( const Character &owner )
 
 std::optional<std::pair<attack_vector_id, sub_bodypart_str_id>>
         character_martial_arts::choose_attack_vector( const Character &user,
-                const matec_id &tech ) const
+                const matec_id &tech, bool random ) const
 {
     // Use the simple weighted list to handle picking semi-randomly
     attack_vector_id ret;
@@ -1766,7 +1882,8 @@ std::optional<std::pair<attack_vector_id, sub_bodypart_str_id>>
                        calc_vector.rbegin()->first->name, vec.c_str(), calc_vector.rbegin()->second, storage.size() );
     }
     if( !list.empty() ) {
-        ret = *list.pick();
+        // Without randomness the first vector in the list stands in for the pick
+        ret = random ? *list.pick() : list.begin()->first;
         add_msg_debug( debugmode::DF_MELEE, "Picked vector %s for technique %s", ret.c_str(),
                        tech.c_str() );
         // Now find the contact data matching the winning vector

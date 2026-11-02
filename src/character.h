@@ -118,11 +118,13 @@ struct pathfinding_settings;
 struct projectile;
 struct requirement_data;
 struct technique_pools;
+struct technique_query;
 struct tool_comp;
 struct trait_and_var;
 struct trap;
 struct w_point;
 template <typename E> struct enum_traits;
+enum class technique_rejection : int;
 
 using bionic_uid = unsigned int;
 
@@ -1199,6 +1201,16 @@ class Character : public Creature, public visitable
         std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
                 evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
                                     bool crit = false, bool dodge_counter = false, bool block_counter = false ) const;
+        /**
+         * Can the technique be used in this kind of attack on t? Returns why not, or
+         * technique_rejection::none. When it can and query.roll is set, the chosen attack vector
+         * and contact area go to `chosen`. Automatic choices (evaluate_technique) and the manual
+         * technique menu both use this.
+         */
+        technique_rejection check_technique(
+            const matec_id &tec_id, Creature const &t, const item_location &weap,
+            const technique_query &query,
+            std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> *chosen = nullptr ) const;
         void perform_technique( const ma_technique &technique, Creature &t, damage_instance &di,
                                 int &move_cost, item_location &cur_weapon );
 

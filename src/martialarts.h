@@ -14,6 +14,7 @@
 
 #include "bonuses.h"
 #include "calendar.h"
+#include "enum_traits.h"
 #include "flat_set.h"
 #include "translation.h"
 #include "type_id.h"
@@ -32,6 +33,57 @@ template <typename T> class generic_factory;
 enum class bp_type;
 
 const matec_id tec_none( "tec_none" );
+
+/**
+ * Why a technique can't be used in an attack, as Character::check_technique reports it; `none`
+ * when it can. The order is the order of the checks.
+ */
+enum class technique_rejection : int {
+    none = 0,
+    dummy,              // a passive technique (like weapon blocking ability)
+    defensive,          // a defensive technique, used on its own when defending
+    condition,          // the technique's condition (shown with its condition_desc)
+    needs_wall,         // wall_adjacent, and no wall is next to the attacker
+    not_in_reach,       // the attack is a reach attack, the technique isn't reach_ok
+    reach_only,         // reach_tec, and the attack isn't a reach attack
+    dodge_counter_only, // a dodge counter, and the attack isn't one
+    not_dodge_counter,  // the attack is a dodge counter, the technique isn't one
+    block_counter_only, // a block counter, and the attack isn't one
+    not_block_counter,  // the attack is a block counter, the technique isn't one
+    too_slow,           // a counter that would use up more moves than the attacker has
+    crit_only,          // crit_tec, and the hit isn't a critical hit
+    not_on_crit,        // the hit is a critical hit, the technique is neither crit_tec nor crit_ok
+    needs_ammo,         // needs_ammo, and the weapon isn't loaded
+    target_unarmed,     // disarms or take_weapon, and the target has no weapon
+    hands_full,         // take_weapon, and the attacker holds a weapon
+    no_aoe_targets,     // an area technique with no other target
+    weighting_roll,     // a negative weighting, and the roll for it failed this time
+    // ma_requirements
+    buffs,              // required or forbidden martial-art buffs
+    unarmed_only,       // unarmed only, and the attacker is armed
+    needs_weapon,       // needs a weapon (or the style needs one), and the attacker is unarmed
+    wrong_weapon,       // the weapon doesn't suit the technique or the style
+    skill,              // a skill requirement isn't met
+    character_flags,    // required or forbidden character flags
+    weapon_category,    // the weapon isn't in an allowed weapon category
+    no_attack_vector,   // no attack vector (limb or weapon) can deliver it
+    last
+};
+
+template<>
+struct enum_traits<technique_rejection> {
+    static constexpr technique_rejection last = technique_rejection::last;
+};
+
+/** The kind of attack a technique is checked for (Character::check_technique) */
+struct technique_query {
+    bool crit = false;
+    bool dodge_counter = false;
+    bool block_counter = false;
+    // Roll negative weightings and pick an attack vector, as an attack does. Without it nothing
+    // random happens: the weighting is ignored and an attack vector only has to exist.
+    bool roll = true;
+};
 
 /**
  * What a martial art's event EOCs (onhit_eocs, ongethit_eocs, ...) and a technique's
@@ -171,6 +223,9 @@ struct ma_requirements {
     // With ignore_style_weapon_rule, an unarmed user is not turned away because the selected style
     // is strictly_melee (used for fallback attacks; every other requirement still applies)
     bool is_valid_character( const Character &u, bool ignore_style_weapon_rule = false ) const;
+    // The first requirement the user fails, or technique_rejection::none
+    technique_rejection check_character( const Character &u,
+                                         bool ignore_style_weapon_rule = false ) const;
     bool is_valid_weapon( const item &i ) const;
 
     void load( const JsonObject &jo, std::string_view src );
@@ -220,6 +275,9 @@ class ma_technique
 
         // given a Character's state, does this bonus apply to him?
         bool is_valid_character( const Character &u ) const;
+
+        // Short, translated reason for the technique menu (the condition_desc for `condition`)
+        std::string rejection_text( technique_rejection why ) const;
 
         std::set<std::string> flags;
 

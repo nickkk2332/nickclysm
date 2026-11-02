@@ -1,0 +1,263 @@
+[
+  {
+    "type": "technique",
+    "id": "test_tm_strike",
+    "name": "TM Strike",
+    "//": "Usable in an ordinary unarmed attack.  Also used for the not-on-crit, not-a-counter and reach rejections.",
+    "unarmed_allowed": true,
+    "messages": [ "You tm-strike %s", "<npcname> tm-strikes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_crit",
+    "name": "TM Crit Strike",
+    "unarmed_allowed": true,
+    "crit_tec": true,
+    "messages": [ "You tm-crit %s", "<npcname> tm-crits %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_downed_only",
+    "name": "TM Ground Strike",
+    "unarmed_allowed": true,
+    "condition": { "npc_has_effect": "downed" },
+    "condition_desc": "* Only works on a <info>downed</info> target",
+    "messages": [ "You tm-ground-strike %s", "<npcname> tm-ground-strikes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_no_desc",
+    "name": "TM Undescribed",
+    "//": "A condition without a condition_desc.",
+    "unarmed_allowed": true,
+    "condition": { "npc_has_effect": "downed" },
+    "messages": [ "You tm-undescribe %s", "<npcname> tm-undescribes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_wall",
+    "name": "TM Wall Slam",
+    "unarmed_allowed": true,
+    "wall_adjacent": true,
+    "messages": [ "You tm-slam %s", "<npcname> tm-slams %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_reach",
+    "name": "TM Reach Strike",
+    "unarmed_allowed": true,
+    "reach_tec": true,
+    "messages": [ "You tm-reach %s", "<npcname> tm-reaches %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_dodge_counter",
+    "name": "TM Dodge Counter",
+    "unarmed_allowed": true,
+    "dodge_counter": true,
+    "messages": [ "You tm-dodge-counter %s", "<npcname> tm-dodge-counters %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_block_counter",
+    "name": "TM Block Counter",
+    "unarmed_allowed": true,
+    "block_counter": true,
+    "messages": [ "You tm-block-counter %s", "<npcname> tm-block-counters %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_defensive",
+    "name": "TM Guard",
+    "unarmed_allowed": true,
+    "defensive": true,
+    "messages": [ "You tm-guard against %s", "<npcname> tm-guards against %s" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_dummy",
+    "name": "TM Passive",
+    "unarmed_allowed": true,
+    "dummy": true
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_ammo",
+    "name": "TM Loaded Strike",
+    "unarmed_allowed": true,
+    "needs_ammo": true,
+    "messages": [ "You tm-load-strike %s", "<npcname> tm-load-strikes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_disarm",
+    "name": "TM Disarm",
+    "unarmed_allowed": true,
+    "disarms": true,
+    "messages": [ "You tm-disarm %s", "<npcname> tm-disarms %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_take",
+    "name": "TM Snatch",
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "take_weapon": true,
+    "messages": [ "You tm-snatch from %s", "<npcname> tm-snatches from %s" ],
+    "attack_vectors": [ "vector_punch", "vector_null" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_spin",
+    "name": "TM Spin",
+    "unarmed_allowed": true,
+    "aoe": "spin",
+    "messages": [ "You tm-spin at %s", "<npcname> tm-spins at %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_unlikely",
+    "name": "TM Long Shot",
+    "//": "Fails its negative weighting roll practically always in an automatic choice.",
+    "unarmed_allowed": true,
+    "weighting": -1000000,
+    "messages": [ "You tm-long-shot %s", "<npcname> tm-long-shots %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_rare",
+    "name": "TM Rare Strike",
+    "//": "Passes its negative weighting roll one time in three.",
+    "unarmed_allowed": true,
+    "weighting": -3,
+    "messages": [ "You tm-rare-strike %s", "<npcname> tm-rare-strikes %s" ],
+    "attack_vectors": [ "vector_punch", "vector_knee" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_often",
+    "name": "TM Favorite",
+    "unarmed_allowed": true,
+    "crit_ok": true,
+    "weighting": 3,
+    "messages": [ "You tm-favor %s", "<npcname> tm-favors %s" ],
+    "attack_vectors": [ "vector_punch", "vector_knee" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_skill",
+    "name": "TM Master Strike",
+    "unarmed_allowed": true,
+    "skill_requirements": [ { "name": "unarmed", "level": 10 } ],
+    "messages": [ "You tm-master %s", "<npcname> tm-masters %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_buff",
+    "name": "TM Stance Strike",
+    "unarmed_allowed": true,
+    "required_buffs_all": [ "test_buff_tm_ready" ],
+    "messages": [ "You tm-stance-strike %s", "<npcname> tm-stance-strikes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_weapon",
+    "name": "TM Weapon Strike",
+    "melee_allowed": true,
+    "messages": [ "You tm-weapon-strike %s", "<npcname> tm-weapon-strikes %s" ],
+    "attack_vectors": [ "vector_null" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_flag",
+    "name": "TM Flagged Strike",
+    "unarmed_allowed": true,
+    "required_char_flags": [ "MA_BASIC_FALLBACK" ],
+    "messages": [ "You tm-flag-strike %s", "<npcname> tm-flag-strikes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_knife",
+    "name": "TM Knife Strike",
+    "melee_allowed": true,
+    "weapon_categories_allowed": [ "KNIVES" ],
+    "messages": [ "You tm-knife %s", "<npcname> tm-knifes %s" ],
+    "attack_vectors": [ "vector_null" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tm_tail",
+    "name": "TM Tail Whip",
+    "//": "No human has the tail its attack vector needs.",
+    "unarmed_allowed": true,
+    "messages": [ "You tm-tail-whip %s", "<npcname> tm-tail-whips %s" ],
+    "attack_vectors": [ "test_tail_req" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_technique_menu",
+    "name": { "str": "Test Technique Menu" },
+    "description": "Test style with one technique for each reason the technique menu can give.",
+    "initiate": [ "You get ready to choose.", "%s gets ready to choose." ],
+    "allow_all_weapons": true,
+    "onpause_buffs": [
+      {
+        "id": "test_buff_tm_ready",
+        "name": "Test Ready Stance",
+        "description": "Needed by TM Stance Strike.  Nothing in the tests pauses, so it stays off.",
+        "unarmed_allowed": true,
+        "melee_allowed": true,
+        "buff_duration": 2
+      }
+    ],
+    "techniques": [
+      "test_tm_strike",
+      "test_tm_crit",
+      "test_tm_downed_only",
+      "test_tm_no_desc",
+      "test_tm_wall",
+      "test_tm_reach",
+      "test_tm_dodge_counter",
+      "test_tm_block_counter",
+      "test_tm_defensive",
+      "test_tm_dummy",
+      "test_tm_ammo",
+      "test_tm_disarm",
+      "test_tm_take",
+      "test_tm_spin",
+      "test_tm_unlikely",
+      "test_tm_rare",
+      "test_tm_often",
+      "test_tm_skill",
+      "test_tm_buff",
+      "test_tm_weapon",
+      "test_tm_flag",
+      "test_tm_knife",
+      "test_tm_tail"
+    ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_technique_pick",
+    "name": { "str": "Test Technique Pick" },
+    "description": "Test style with a few usable techniques, for comparing automatic choices.",
+    "initiate": [ "You get ready to pick.", "%s gets ready to pick." ],
+    "allow_all_weapons": true,
+    "techniques": [ "test_tm_strike", "test_tm_crit", "test_tm_rare", "test_tm_often", "test_tm_downed_only", "test_tm_take" ]
+  }
+]
