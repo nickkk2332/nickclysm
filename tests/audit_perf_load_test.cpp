@@ -772,8 +772,8 @@ TEST_CASE( "map-p03_saving_only_uniform_quads_creates_no_files", "[audit][map]" 
 }
 
 // MAP-P03: lookups of quads that are not on disk are answered from a listing of each map
-// segment. The listing has to follow every save, delete and revert, and a cleared mapbuffer
-// (game load, dimension travel) must not keep it.
+// segment. The listing has to follow every save, delete and revert, through any mapbuffer, and
+// a cleared mapbuffer (game load, dimension travel) must not keep it.
 TEST_CASE( "map-p03_quads_load_after_saves_reverts_and_clears", "[audit][map]" )
 {
     const bool compressed = GENERATE( true, false );
@@ -820,17 +820,19 @@ TEST_CASE( "map-p03_quads_load_after_saves_reverts_and_clears", "[audit][map]" )
         CHECK( quad_loads( mb, c ) );
         mb.save( true );
 
-        // another mapbuffer writes d after this one saw it missing; once this one is
-        // cleared, as on a game load or dimension travel, d loads
+        // another mapbuffer writes d after this one saw it missing: the listings are shared,
+        // so this one loads it
         CHECK_FALSE( quad_loads( mb, d ) );
         {
             mapbuffer other;
             add_quad( other, d, false );
             other.save( true );
         }
-        mb.clear();
         CHECK( quad_loads( mb, d ) );
+        // a cleared mapbuffer (game load, dimension travel) lists the segments again
+        mb.clear();
         CHECK( quad_loads( mb, a ) );
+        CHECK( quad_loads( mb, d ) );
     } );
 }
 

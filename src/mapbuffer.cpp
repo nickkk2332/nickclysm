@@ -5,6 +5,7 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -55,6 +56,81 @@ static cata_path find_dirname( const tripoint_abs_omt &om_addr )
     return PATH_INFO::current_dimension_save_path() / "maps" / segment;
 }
 
+// The quad files each map segment has on disk, so that a lookup of a quad that was never saved,
+// the common case, needs no file access. A segment is listed (one zzip or directory read) the
+// first time it is asked for. The listings are kept per maps directory and compression mode and
+// shared by every mapbuffer, so a write through any of them keeps them current;
+// mapbuffer::clear() drops them all.
+using segment_listings_t = std::map<tripoint_abs_seg, std::unordered_set<std::string>>;
+static std::map<std::pair<std::string, bool>, segment_listings_t> all_segment_listings;
+
+// The listings for the current dimension's maps directory and the world's compression mode
+static segment_listings_t &current_segment_listings()
+{
+    std::string maps_dir = ( PATH_INFO::current_dimension_save_path() / "maps" ).generic_u8string();
+    const bool compressed = world_generator->active_world->has_compression_enabled();
+    return all_segment_listings[std::make_pair( std::move( maps_dir ), compressed )];
+}
+
+// The quad files the segment holding om_addr has on disk; nullptr if it could not be listed
+static const std::unordered_set<std::string> *segment_listing( const tripoint_abs_omt &om_addr )
+{
+    segment_listings_t &listings = current_segment_listings();
+    const tripoint_abs_seg segment = project_to<coords::seg>( om_addr );
+    const auto known = listings.find( segment );
+    if( known != listings.end() ) {
+        return &known->second;
+    }
+
+    std::unordered_set<std::string> listing;
+    const cata_path dirname = find_dirname( om_addr );
+    if( world_generator->active_world->has_compression_enabled() ) {
+        cata_path zzip_name = dirname;
+        zzip_name += zzip_suffix;
+        // An absent zzip lists nothing; don't create it by opening it
+        if( file_exist( zzip_name ) ) {
+            std::optional<zzip> z = zzip::load( zzip_name.get_unrelative_path(),
+                                                ( PATH_INFO::world_base_save_path() / "maps.dict" ).get_unrelative_path() );
+            if( !z ) {
+                // Leave it to the lookup, which reports it
+                return nullptr;
+            }
+            for( const std::filesystem::path &entry : z->get_entries() ) {
+                listing.insert( entry.generic_u8string() );
+            }
+        }
+    } else {
+        const std::filesystem::path dir = dirname.get_unrelative_path();
+        try {
+            if( std::filesystem::is_directory( dir ) ) {
+                for( const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator( dir ) ) {
+                    listing.insert( entry.path().filename().generic_u8string() );
+                }
+            }
+        } catch( const std::filesystem::filesystem_error & ) {
+            return nullptr;
+        }
+    }
+    return &listings.emplace( segment, std::move( listing ) ).first->second;
+}
+
+// Records a quad file written (or deleted) in its segment's listing, if it has one
+static void note_quad_file( const tripoint_abs_omt &om_addr, const std::string &file_name,
+                            bool on_disk )
+{
+    segment_listings_t &listings = current_segment_listings();
+    const auto known = listings.find( project_to<coords::seg>( om_addr ) );
+    if( known == listings.end() ) {
+        // Not listed yet; listing it later reads the save
+        return;
+    }
+    if( on_disk ) {
+        known->second.insert( file_name );
+    } else {
+        known->second.erase( file_name );
+    }
+}
+
 mapbuffer MAPBUFFER;
 
 mapbuffer::mapbuffer() = default;
@@ -64,7 +140,7 @@ void mapbuffer::clear()
 {
     submaps.clear();
     // A cleared buffer is about to load another save or dimension
-    segment_listings.clear();
+    all_segment_listings.clear();
 }
 
 void mapbuffer::clear_outside_reality_bubble()
@@ -383,75 +459,6 @@ void mapbuffer::save_quad(
             z.reset();
             rename_file( tmp_path, zzip_name );
         }
-    }
-}
-
-void mapbuffer::check_listings_current()
-{
-    const std::string maps_dir = ( PATH_INFO::current_dimension_save_path() / "maps"
-                                 ).generic_u8string();
-    const bool compressed = world_generator->active_world->has_compression_enabled();
-    if( maps_dir != listed_maps_dir || compressed != listed_compressed ) {
-        segment_listings.clear();
-        listed_maps_dir = maps_dir;
-        listed_compressed = compressed;
-    }
-}
-
-const std::unordered_set<std::string> *mapbuffer::segment_listing( const tripoint_abs_omt &om_addr )
-{
-    check_listings_current();
-    const tripoint_abs_seg segment = project_to<coords::seg>( om_addr );
-    const auto known = segment_listings.find( segment );
-    if( known != segment_listings.end() ) {
-        return &known->second;
-    }
-
-    std::unordered_set<std::string> listing;
-    const cata_path dirname = find_dirname( om_addr );
-    if( listed_compressed ) {
-        cata_path zzip_name = dirname;
-        zzip_name += zzip_suffix;
-        // An absent zzip lists nothing; don't create it by opening it
-        if( file_exist( zzip_name ) ) {
-            std::optional<zzip> z = zzip::load( zzip_name.get_unrelative_path(),
-                                                ( PATH_INFO::world_base_save_path() / "maps.dict" ).get_unrelative_path() );
-            if( !z ) {
-                // Leave it to the lookup, which reports it
-                return nullptr;
-            }
-            for( const std::filesystem::path &entry : z->get_entries() ) {
-                listing.insert( entry.generic_u8string() );
-            }
-        }
-    } else {
-        const std::filesystem::path dir = dirname.get_unrelative_path();
-        try {
-            if( std::filesystem::is_directory( dir ) ) {
-                for( const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator( dir ) ) {
-                    listing.insert( entry.path().filename().generic_u8string() );
-                }
-            }
-        } catch( const std::filesystem::filesystem_error & ) {
-            return nullptr;
-        }
-    }
-    return &segment_listings.emplace( segment, std::move( listing ) ).first->second;
-}
-
-void mapbuffer::note_quad_file( const tripoint_abs_omt &om_addr, const std::string &file_name,
-                                bool on_disk )
-{
-    check_listings_current();
-    const auto known = segment_listings.find( project_to<coords::seg>( om_addr ) );
-    if( known == segment_listings.end() ) {
-        // Not listed yet; listing it later reads the save
-        return;
-    }
-    if( on_disk ) {
-        known->second.insert( file_name );
-    } else {
-        known->second.erase( file_name );
     }
 }
 
