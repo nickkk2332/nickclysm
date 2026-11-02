@@ -119,6 +119,7 @@
 #include "proficiency.h"
 #include "ranged.h"
 #include "recipe.h"
+#include "requirement_scan_memo.h"
 #include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
@@ -5519,7 +5520,15 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     // a farm scan asks every tile whether it is warm enough to plant; the answer is the
     // same across an overmap tile within this turn
     const scoped_planting_memo planting_memo;
+    // the requirement checks of the work spots the scan skips share their answers, as nothing
+    // changes between them; anything else the scan does at a spot may change things
+    scoped_requirement_scan_memo requirement_memo;
+    bool previous_skipped = true;
     for( const tripoint_abs_ms &src : src_sorted ) {
+        if( !previous_skipped ) {
+            requirement_memo.forget();
+        }
+        previous_skipped = false;
         const tripoint_bub_ms &src_bub = here.get_bub( src );
         if( !check_only ) {
             if( !here.inbounds( src_bub ) ) {
@@ -5556,6 +5565,7 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
         }
         req_fail_reason.convert_requirement_check_result( req_res );
         if( req_fail_reason.check_skip_location() ) {
+            previous_skipped = true;
             if( use_cache ) {
                 cache.sources.erase( src );
             }

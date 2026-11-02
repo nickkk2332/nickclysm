@@ -71,6 +71,7 @@
 #include "proficiency.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
+#include "requirement_scan_memo.h"
 #include "requirements.h"
 #include "ret_val.h"
 #include "stomach.h"
@@ -1906,6 +1907,87 @@ static activity_reason_info find_base_construction(
     return activity_reason_info::build( do_activity_reason::CAN_DO_CONSTRUCTION, true, build.id );
 }
 
+namespace
+{
+// what a scoped_requirement_scan_memo keeps
+struct requirement_scan_memo_state {
+    int depth = 0;
+    // remove_met_requirements answers
+    std::map<std::pair<character_id, requirement_id>, requirement_id> still_needed;
+    // are_requirements_nearby answers for loot zone spots, by character, spots, requirement,
+    // activity, and the charges of the welding rigs counted at the work spot
+    std::map<std::tuple<character_id, std::vector<tripoint_bub_ms>, requirement_id, activity_id,
+        std::vector<int>>, bool> nearby;
+    // whether the character carries an unreserved welding tool (so rigs aren't looked for)
+    std::map<character_id, bool> carries_welder;
+
+    void clear() {
+        still_needed.clear();
+        nearby.clear();
+        carries_welder.clear();
+    }
+};
+
+requirement_scan_memo_state &requirement_scan_memo()
+{
+    static requirement_scan_memo_state state;
+    return state;
+}
+
+bool is_unreserved_welder( const item &it )
+{
+    return !craft_reservation::contains_reserved( it ) && it.has_quality( qual_WELD );
+}
+
+// Whether fill_requirement_inventory finds a welding tool among what the character carries,
+// so that it looks for no welding rig.
+bool carries_unreserved_welder( Character &you )
+{
+    for( item *elem : you.inv_dump() ) {
+        if( is_unreserved_welder( *elem ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The battery charge of each vehicle welding rig fill_requirement_inventory counts for a work
+// spot, in the order it counts them.
+std::vector<int> welding_rigs_near( const tripoint_bub_ms &src_loc )
+{
+    std::vector<int> rigs;
+    map &here = get_map();
+    for( const tripoint_bub_ms &elem : here.points_in_radius( src_loc, PICKUP_RANGE - 1,
+            PICKUP_RANGE - 1 ) ) {
+        const std::optional<vpart_reference> &vp =
+            here.veh_at( elem ).part_with_unreserved_tool( here, itype_welder );
+
+        if( vp ) {
+            rigs.push_back( vp->vehicle().fuel_left( here, itype_battery ) );
+        }
+    }
+    return rigs;
+}
+} // namespace
+
+scoped_requirement_scan_memo::scoped_requirement_scan_memo()
+{
+    ++requirement_scan_memo().depth;
+}
+
+scoped_requirement_scan_memo::~scoped_requirement_scan_memo()
+{
+    requirement_scan_memo_state &state = requirement_scan_memo();
+    if( --state.depth == 0 ) {
+        state.clear();
+    }
+}
+
+void scoped_requirement_scan_memo::forget()
+{
+    requirement_scan_memo().clear();
+}
+
 namespace multi_activity_actor
 {
 
@@ -1943,7 +2025,7 @@ void fill_requirement_inventory( temp_crafting_inventory &temp_inv,
         if( craft_reservation::contains_reserved( *elem ) ) {
             continue;
         }
-        if( elem->has_quality( qual_WELD ) ) {
+        if( is_unreserved_welder( *elem ) ) {
             found_welder = true;
         }
         temp_inv.add_item_loc( item_location( you, &*elem ) );
@@ -1995,23 +2077,15 @@ void fill_requirement_inventory( temp_crafting_inventory &temp_inv,
     }
     // use nearby welding rig without needing to drag it or position yourself on the right side of the vehicle.
     if( !found_welder ) {
-        for( const tripoint_bub_ms &elem : here.points_in_radius( src_loc, PICKUP_RANGE - 1,
-                PICKUP_RANGE - 1 ) ) {
-            const std::optional<vpart_reference> &vp =
-                here.veh_at( elem ).part_with_unreserved_tool( here, itype_welder );
-
-            if( vp ) {
-                const int veh_battery = vp->vehicle().fuel_left( here, itype_battery );
-
-                item welder( itype_welder, calendar::turn_zero );
-                welder.charges = veh_battery;
-                welder.set_flag( flag_PSEUDO );
-                temp_inv.add_item_copy( welder );
-                item soldering_iron( itype_soldering_iron, calendar::turn_zero );
-                soldering_iron.charges = veh_battery;
-                soldering_iron.set_flag( flag_PSEUDO );
-                temp_inv.add_item_copy( soldering_iron );
-            }
+        for( const int veh_battery : welding_rigs_near( src_loc ) ) {
+            item welder( itype_welder, calendar::turn_zero );
+            welder.charges = veh_battery;
+            welder.set_flag( flag_PSEUDO );
+            temp_inv.add_item_copy( welder );
+            item soldering_iron( itype_soldering_iron, calendar::turn_zero );
+            soldering_iron.charges = veh_battery;
+            soldering_iron.set_flag( flag_PSEUDO );
+            temp_inv.add_item_copy( soldering_iron );
         }
     }
 }
@@ -2021,11 +2095,33 @@ bool are_requirements_nearby(
     Character &you, const activity_id &activity_to_restore, const bool in_loot_zones,
     const tripoint_bub_ms &src_loc )
 {
-    temp_crafting_inventory temp_inv;
-    fill_requirement_inventory( temp_inv, loot_spots, you, activity_to_restore, in_loot_zones,
-                                src_loc );
-    return needed_things.obj().can_make_with_inventory( &you, temp_inv, is_crafting_component, 1,
-            craft_flags::ignore_hammerspace );
+    const auto check = [&]() {
+        temp_crafting_inventory temp_inv;
+        fill_requirement_inventory( temp_inv, loot_spots, you, activity_to_restore, in_loot_zones,
+                                    src_loc );
+        return needed_things.obj().can_make_with_inventory( &you, temp_inv, is_crafting_component, 1,
+                craft_flags::ignore_hammerspace );
+    };
+    requirement_scan_memo_state &memo = requirement_scan_memo();
+    // Spots in loot zones are the same for every work spot of a scan; only the welding rigs
+    // counted come from around the work spot.
+    if( memo.depth == 0 || !in_loot_zones ) {
+        return check();
+    }
+    auto welder = memo.carries_welder.find( you.getID() );
+    if( welder == memo.carries_welder.end() ) {
+        welder = memo.carries_welder.emplace( you.getID(), carries_unreserved_welder( you ) ).first;
+    }
+    const bool carries_welder = welder->second;
+    auto key = std::make_tuple( you.getID(), loot_spots, needed_things, activity_to_restore,
+                                carries_welder ? std::vector<int>() : welding_rigs_near( src_loc ) );
+    const auto known = memo.nearby.find( key );
+    if( known != memo.nearby.end() ) {
+        return known->second;
+    }
+    const bool nearby = check();
+    memo.nearby.emplace( std::move( key ), nearby );
+    return nearby;
 }
 
 } //namespace multi_activity_actor
@@ -2785,7 +2881,8 @@ requirement_id synthesize_requirements(
     return hash_and_cache_requirement_data( reqs_data );
 }
 
-requirement_id remove_met_requirements( requirement_id base_req_id, Character &you )
+static requirement_id remove_met_requirements_now( const requirement_id &base_req_id,
+        Character &you )
 {
 
     const requirement_data &reqs = base_req_id.obj();
@@ -2829,6 +2926,22 @@ requirement_id remove_met_requirements( requirement_id base_req_id, Character &y
                                     reduced_quality_reqs_vector,
                                     component_reqs_vector );
     return hash_and_cache_requirement_data( reduced_reqs );
+}
+
+requirement_id remove_met_requirements( requirement_id base_req_id, Character &you )
+{
+    requirement_scan_memo_state &memo = requirement_scan_memo();
+    if( memo.depth == 0 ) {
+        return remove_met_requirements_now( base_req_id, you );
+    }
+    const std::pair<character_id, requirement_id> key( you.getID(), base_req_id );
+    const auto known = memo.still_needed.find( key );
+    if( known != memo.still_needed.end() ) {
+        return known->second;
+    }
+    const requirement_id still_needed = remove_met_requirements_now( base_req_id, you );
+    memo.still_needed.emplace( key, still_needed );
+    return still_needed;
 }
 
 } //namespace multi_activity_actor
@@ -3094,6 +3207,9 @@ std::vector<std::tuple<tripoint_bub_ms, itype_id, int>>
         already_there_spots.push_back( elem );
         combined_spots.push_back( elem );
     }
+    // for lookups: the loops below ask about every loot spot and every item there
+    const std::unordered_set<tripoint_bub_ms> already_there( already_there_spots.begin(),
+            already_there_spots.end() );
     temp_crafting_inventory have;
     multi_activity_actor::fill_requirement_inventory( have, pickup_task ?
             std::vector<tripoint_bub_ms>() : already_there_spots, you, activity_to_restore, false,
@@ -3115,8 +3231,7 @@ std::vector<std::tuple<tripoint_bub_ms, itype_id, int>>
     for( const tripoint_bub_ms &elem : mgr.get_point_set_loot(
              you.pos_abs(), distance, you.is_npc(), _fac_id( you ) ) ) {
         // if there is a loot zone that's already near the work spot, we don't want it to be added twice.
-        if( std::find( already_there_spots.begin(), already_there_spots.end(),
-                       elem ) != already_there_spots.end() ) {
+        if( already_there.count( elem ) != 0 ) {
             // construction tasks don't need the loot spot *and* the already_there/combined spots both added.
             // but a farming task will need to go and fetch the tool no matter if its near the work spot.
             // whereas the construction will automatically use what's nearby anyway.
@@ -3175,8 +3290,7 @@ std::vector<std::tuple<tripoint_bub_ms, itype_id, int>>
                     const int qual_level = comp_elem.level;
                     if( stack_elem.has_quality( tool_qual, qual_level ) ) {
                         if( !pickup_task &&
-                            std::find( already_there_spots.begin(), already_there_spots.end(),
-                                       point_elem ) != already_there_spots.end() ) {
+                            already_there.count( point_elem ) != 0 ) {
                             comp_elem.count -= stack_elem.count();
                         }
                         temp_map[stack_elem.typeId()] += stack_elem.count();
@@ -3190,8 +3304,7 @@ std::vector<std::tuple<tripoint_bub_ms, itype_id, int>>
             // we don't need to fetch those, they will be used automatically in the construction.
             // a shovel for tilling, for example, however, needs to be picked up, no matter if its near the spot or not.
             if( !pickup_task ) {
-                if( std::find( already_there_spots.begin(), already_there_spots.end(),
-                               point_elem ) != already_there_spots.end() ) {
+                if( already_there.count( point_elem ) != 0 ) {
                     continue;
                 }
             }
