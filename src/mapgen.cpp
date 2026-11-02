@@ -2403,8 +2403,8 @@ class jmapgen_liquid_item : public jmapgen_piece
                     // The item category's spawn rate drops or copies the liquid
                     for( int copies = item_group::category_spawn_count( newliquid ); copies > 0;
                          copies-- ) {
-                        dat.m.add_item_or_charges(
-                            tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ), newliquid );
+                        const tripoint_bub_ms pos( x.get(), y.get(), dat.zlevel() + z.get() );
+                        dat.m.add_item_or_charges( pos, newliquid );
                     }
                 }
             }
@@ -2461,8 +2461,8 @@ class jmapgen_corpse : public jmapgen_piece
                                              std::max( calendar::turn - age, calendar::start_of_cataclysm ) );
             // The item category's spawn rate drops or copies the corpse
             for( int copies = item_group::category_spawn_count( corpse ); copies > 0; copies-- ) {
-                dat.m.add_item_or_charges( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ),
-                                           corpse );
+                const tripoint_bub_ms pos( x.get(), y.get(), dat.zlevel() + z.get() );
+                dat.m.add_item_or_charges( pos, corpse );
             }
         }
 };
@@ -2928,9 +2928,9 @@ class jmapgen_spawn_item : public jmapgen_piece
                 // The item category's spawn rate drops or copies each item
                 for( int copies = item_group::category_spawn_count( category_sample ); copies > 0;
                      copies-- ) {
-                    dat.m.spawn_item( tripoint_bub_ms( x.get(), y.get(), dat.zlevel() + z.get() ),
-                                      chosen_id, amount.get(), 0, calendar::start_of_cataclysm, 0, flags,
-                                      variant, faction );
+                    const tripoint_bub_ms pos( x.get(), y.get(), dat.zlevel() + z.get() );
+                    dat.m.spawn_item( pos, chosen_id, amount.get(), 0,
+                                      calendar::start_of_cataclysm, 0, flags, variant, faction );
                 }
             }
         }
