@@ -290,6 +290,10 @@ struct mutation_branch {
         std::vector<effect_on_condition_id> activated_eocs;
         // if the above activated eocs should be run without turning on the mutation
         bool activated_is_setup = false;
+        /** If set, the mutation can only be activated while this is true; checked before any cost */
+        std::function<bool( const_dialogue const & )> activation_condition;
+        /** Shown when activation_condition prevents an activation */
+        translation activation_fail_message;
         /** effect_on_conditions triggered while this mutation is active */
         std::vector<effect_on_condition_id> processed_eocs;
         /** effect_on_conditions triggered when this mutation deactivates */

@@ -383,6 +383,11 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
         deactivated_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
 
+    if( jsobj.has_member( "activation_condition" ) ) {
+        read_condition( jsobj, "activation_condition", activation_condition, false );
+    }
+    optional( jsobj, was_loaded, "activation_fail_message", activation_fail_message );
+
     int enchant_num = 0;
     for( JsonValue jv : jsobj.get_array( "enchantments" ) ) {
         std::string enchant_name = "INLINE_ENCH_" + name + "_" + std::to_string( enchant_num++ );
@@ -730,6 +735,24 @@ void npc::check_or_use_weapon_cbm( const bionic_id &cbm_id )
 // Well, because like diseases, which are also in a Big Switch, bionics don't
 // share functions....
 
+// The bionic's JSON "activation_condition" veto, checked before any cost is paid.
+static bool bionic_activation_allowed( Character &you, const bionic &bio, bool show_msg )
+{
+    const bionic_data &data = bio.info();
+    if( !data.activation_condition ) {
+        return true;
+    }
+    dialogue d( get_talker_for( you ), nullptr );
+    d.set_value( "this", bio.id.str() );
+    if( data.activation_condition( d ) ) {
+        return true;
+    }
+    if( show_msg && !data.activation_fail_message.empty() ) {
+        you.add_msg_if_player( m_info, data.activation_fail_message );
+    }
+    return false;
+}
+
 bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics_ui )
 {
     const bool mounted = is_mounted();
@@ -740,6 +763,9 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
     }
 
     if( !eff_only && bio.info().activate_remove_cbm ) {
+        if( !bionic_activation_allowed( *this, bio, true ) ) {
+            return false;
+        }
         // Close bionics UI if caller requested it
         if( close_bionics_ui ) {
             *close_bionics_ui = true;
@@ -764,12 +790,16 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         return true;
     }
 
+    if( !eff_only && bio.powered ) {
+        // It's already on!
+        return false;
+    }
+    if( !bionic_activation_allowed( *this, bio, !eff_only ) ) {
+        return false;
+    }
+
     // eff_only means only do the effect without messing with stats or displaying messages
     if( !eff_only ) {
-        if( bio.powered ) {
-            // It's already on!
-            return false;
-        }
         if( !enough_power_for( bio.id ) ) {
             add_msg_if_player( m_info, _( "You don't have the power to activate your %s." ),
                                bio.info().name );
@@ -809,13 +839,6 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             mod_power_level( bio.info().power_activate );
         }
     };
-
-    for( const effect_on_condition_id &eoc : bio.id->activated_eocs ) {
-        dialogue d( get_talker_for( *this ), nullptr );
-        write_var_value( var_type::context, "act_cost", &d,
-                         units::to_millijoule( bio.info().power_activate ) );
-        eoc->activate_activation_only( d, "a bionic activation", "bionic being activated", "bionic" );
-    }
 
     item tmp_item;
     avatar &player_character = get_avatar();
@@ -1214,6 +1237,17 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         !bio.info().toggled_pseudo_items.empty() ) {
         invalidate_pseudo_items();
         invalidate_crafting_inventory();
+    }
+
+    // The activation succeeded: only now run the activation EOCs, so that a failed or
+    // cancelled activation above has no side effects.  An EOC may add or remove bionics,
+    // which invalidates `bio`, so don't touch it from here on.
+    const bionic_id activated_id = bio.id;
+    for( const effect_on_condition_id &eoc : activated_id->activated_eocs ) {
+        dialogue d( get_talker_for( *this ), nullptr );
+        write_var_value( var_type::context, "act_cost", &d,
+                         units::to_millijoule( activated_id->power_activate ) );
+        eoc->activate_activation_only( d, "a bionic activation", "bionic being activated", "bionic" );
     }
 
     return true;

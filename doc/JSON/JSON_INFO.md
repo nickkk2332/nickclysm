@@ -1342,7 +1342,9 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `coverage_power_gen_penalty` | (_optional_) Fraction of coverage diminishing fuel_efficiency. Float between 0.0 and 1.0. (default: `nullopt`)
 | `power_gen_emission`         | (_optional_) `emit_id` of the field emitted by this bionic when it produces energy. Emit_ids are defined in `emit.json`.
 | `stat_bonus`                 | (_optional_) List of passive stat bonus. Stat are designated as follow: "DEX", "INT", "STR", "PER".
-| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.
+| `activation_condition`       | (_optional_) Dialogue condition (see EFFECT_ON_CONDITION.md) that must be true for the CBM to activate, with the character as `u` and the context variable `this` (the bionic id).  Checked before any power is spent: when false, nothing happens except `activation_fail_message`.  Example: `"activation_condition": { "not": { "u_has_effect": "riding" } }`.
+| `activation_fail_message`    | (_optional_) Message shown when `activation_condition` is false, e.g. `"You cannot activate Time Dilation while mounted."` (default: none).
+| `activated_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully activated.  They run after the activation has succeeded, so an activation that fails or is cancelled (no target picked, not enough power to fire, ...) runs none of them.
 | `processed_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate each turn this CBM is active.
 | `deactivated_eocs`           | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully deactivated.
 | `enchantments`               | (_optional_) List of enchantments applied by this CBM (see MAGIC.md for instructions on enchantment. NB: enchantments are not necessarily magic.) Values can either be the enchantment's id or an inline definition of the enchantment.

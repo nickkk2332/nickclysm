@@ -533,5 +533,40 @@
     "points": 0,
     "description": "Test mutation that strengthens melee attacks.",
     "enchantments": [ { "values": [ { "value": "MELEE_DAMAGE", "add": 10, "multiply": 1 } ] } ]
+  },
+  {
+    "//": "MUT-J02 fixture: a setup mutation whose activation EOC turns it off again while u_mutj02_refuse is 1.",
+    "type": "mutation",
+    "id": "TEST_MUTJ02_SELF_OFF",
+    "name": { "str": "Test Self Off" },
+    "points": 0,
+    "description": "Test mutation whose activation EOC can refuse to stay on.",
+    "active": true,
+    "activated_is_setup": true,
+    "activated_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ02_SELF_OFF",
+        "condition": { "math": [ "u_mutj02_refuse == 1" ] },
+        "effect": [ { "u_deactivate_trait": { "context_val": "this" } } ]
+      }
+    ],
+    "deactivated_eocs": [ { "id": "EOC_TEST_MUTJ02_SELF_OFF_DEACT", "effect": [ { "math": [ "u_mutj02_deactivated += 1" ] } ] } ]
+  },
+  {
+    "//": "MUT-J02 fixture: a costly setup mutation that only activates while u_mutj02_gate is 1.",
+    "type": "mutation",
+    "id": "TEST_MUTJ02_GATED",
+    "name": { "str": "Test Gated" },
+    "points": 0,
+    "description": "Test mutation that can only be activated while a variable allows it.",
+    "active": true,
+    "activated_is_setup": true,
+    "cost": 100,
+    "kcal": true,
+    "activation_condition": {
+      "and": [ { "math": [ "u_mutj02_gate == 1" ] }, { "compare_string": [ "TEST_MUTJ02_GATED", { "context_val": "this" } ] } ]
+    },
+    "activation_fail_message": "The test gate is closed.",
+    "activated_eocs": [ { "id": "EOC_TEST_MUTJ02_GATED_ON", "effect": [ { "math": [ "u_mutj02_gated_ran += 1" ] } ] } ]
   }
 ]

@@ -5,6 +5,8 @@
     "name": { "str": "Adrenaline Pump" },
     "description": "A stimulator system has been surgically implanted alongside your adrenal glands, allowing you to trigger your body's adrenaline response at the cost of some bionic power.",
     "occupied_bodyparts": [ [ "torso", 4 ] ],
+    "activation_condition": { "not": { "u_has_effect": "adrenaline" } },
+    "activation_fail_message": "Safeguards kicks in, and the bionic refuses to activate!",
     "activated_eocs": [ "EOC_bio_adrenaline" ],
     "act_cost": "5 J"
   },
@@ -1395,6 +1397,8 @@
     "type": "bionic",
     "name": { "str": "Time Dilation" },
     "description": "At the cost of all stored bionic power, you may increase your body speed and reactions dramatically, essentially freezing time.  You are still delicate, however, and violent or rapid movements may damage you due to friction.",
+    "activation_condition": { "not": { "u_has_effect": "riding" } },
+    "activation_fail_message": "You cannot activate Time Dilation while mounted.",
     "activated_eocs": [ "EOC_time_freeze" ],
     "occupied_bodyparts": [
       [ "torso", 12 ],

@@ -3,6 +3,7 @@
 #define CATA_SRC_BIONICS_H
 
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -26,6 +27,7 @@
 class Character;
 class JsonObject;
 class JsonOut;
+struct const_dialogue;
 
 struct bionic_data {
     bionic_data();
@@ -69,6 +71,10 @@ struct bionic_data {
     std::vector<effect_on_condition_id> processed_eocs;
     /** effect_on_conditions triggered when this bionic is deactivated */
     std::vector<effect_on_condition_id> deactivated_eocs;
+    /** If set, the bionic can only be activated while this is true; checked before any cost */
+    std::function<bool( const_dialogue const & )> activation_condition;
+    /** Shown when activation_condition prevents an activation */
+    translation activation_fail_message;
     /** bionic enchantments */
     std::vector<enchantment_id> enchantments;
     /** kown martial arts styles */

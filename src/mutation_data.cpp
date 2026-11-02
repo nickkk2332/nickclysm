@@ -454,6 +454,10 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     }
 
     optional( jo, was_loaded, "activated_is_setup", activated_is_setup, false );
+    if( jo.has_member( "activation_condition" ) ) {
+        read_condition( jo, "activation_condition", activation_condition, false );
+    }
+    optional( jo, was_loaded, "activation_fail_message", activation_fail_message );
 
     int enchant_num = 0;
     for( JsonValue jv : jo.get_array( "enchantments" ) ) {

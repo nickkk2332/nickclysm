@@ -343,6 +343,37 @@
     "//2": "not actually included, this is a trick to not have to add an item version."
   },
   {
+    "//": "MUT-J02 fixture: a toggled bionic that only activates while u_mutj02_gate is 1.",
+    "id": "test_bio_mutj02_gated",
+    "type": "bionic",
+    "name": { "str": "Gated Test Bionic" },
+    "description": "Test bionic gated by an activation condition.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "act_cost": "1 kJ",
+    "activation_condition": {
+      "and": [ { "math": [ "u_mutj02_gate == 1" ] }, { "compare_string": [ "test_bio_mutj02_gated", { "context_val": "this" } ] } ]
+    },
+    "activation_fail_message": "The test gate is closed.",
+    "activated_eocs": [ { "id": "EOC_TEST_MUTJ02_BIO_GATED_ON", "effect": [ { "math": [ "u_mutj02_bio_ran += 1" ] } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J02 fixture: a weapon bionic with an activation EOC, to see that a failed activation runs no EOC.",
+    "id": "test_bio_mutj02_blade",
+    "type": "bionic",
+    "name": { "str": "Test EOC Blade" },
+    "description": "Test weapon bionic counting its activation EOC runs.",
+    "occupied_bodyparts": [ [ "arm_r", 1 ] ],
+    "act_cost": "1 kJ",
+    "fake_weapon": "bio_blade_weapon",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_WEAPON" ],
+    "activated_eocs": [ { "id": "EOC_TEST_MUTJ02_BLADE_ON", "effect": [ { "math": [ "u_mutj02_blade_ran += 1" ] } ] } ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
     "//": "Craft reservation fixture: a weapon reachable directly and, once powered, as an exposed pseudo item.  One occurrence either way.",
     "id": "test_bio_reserve_weapon",
     "type": "bionic",

@@ -7,19 +7,14 @@
   {
     "type": "effect_on_condition",
     "id": "EOC_bio_adrenaline",
-    "condition": { "u_has_effect": "adrenaline" },
-    "effect": [
-      { "u_message": "Safeguards kicks in, and the bionic refuses to activate!", "type": "bad" },
-      { "run_eocs": "refund_power" }
-    ],
-    "false_effect": [ { "u_add_effect": "adrenaline", "duration": "20 minutes" } ]
+    "//": "bio_adrenaline's activation_condition refuses a second dose before any power is spent.",
+    "effect": [ { "u_add_effect": "adrenaline", "duration": "20 minutes" } ]
   },
   {
     "type": "effect_on_condition",
     "id": "EOC_time_freeze",
-    "condition": { "u_has_effect": "riding" },
-    "effect": [ { "u_message": "You cannot activate Time Dilation while mounted.", "type": "info" }, { "run_eocs": "refund_power" } ],
-    "false_effect": [
+    "//": "bio_time_freeze's activation_condition refuses to activate while mounted.",
+    "effect": [
       { "u_message": "You activate your Time Dilation.", "type": "info" },
       { "turn_cost": { "math": [ "u_val('power') / -energy('100 kJ')" ] } },
       { "math": [ "u_val('power') = 0" ] },

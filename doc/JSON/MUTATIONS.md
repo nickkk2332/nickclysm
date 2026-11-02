@@ -285,6 +285,8 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
       "msg_sleep": { "text": "You fall asleep.", "rating": "good" }                 // Message displayed when falling asleep.
     }
   ],
+  "activation_condition": { "not": { "u_has_wielded_with_flag": "CONDUCTIVE" } }, // Dialogue condition (see EFFECT_ON_CONDITION.md) that must be true for the mutation to activate.  Checked before any cost is paid; if false, nothing happens except the message below.  See "Activation control" below.
+  "activation_fail_message": "Your shield fizzles around the metal in your hand.", // Message shown when "activation_condition" is false (default: none).
   "activated_is_setup": true,                 // If this is true the below activated EOC runs then the mutation turns on for processing every turn. If this is false the below "activated_eocs" will run and then the mod will turn itself off.
   "activated_eocs": [ "eoc_id_1" ],           // List of effect_on_conditions that attempt to activate when this mutation is successfully activated.
   "processed_eocs": [ "eoc_id_1" ],           // List of effect_on_conditions that attempt to activate every time (defined above) units of time. Time of 0 means every turn it processes. Processed when the mutation is active for activatable mutations and always for non-activatable ones.
@@ -382,6 +384,36 @@ A condition's `type` determines what it checks for in a location. A condition pa
 ### EOC details
 
 Mutations support EOC on activate, deactivate and for processing. As well for each of those the EOC has access to the context variable `this` which is the ID of the mutation itself.
+
+#### Activation control
+
+There are two ways for JSON to stop an activation:
+
+- `activation_condition` is a veto checked **before** anything happens: when it is false the mutation is not turned on, no cost (kcal, thirst, sleepiness, mana, stamina) is paid, the cooldown does not start, no `activated_eocs` run, and `activation_fail_message` (if any) is shown.  The condition sees the character as `u` and the context variable `this` (the mutation id), so one condition can be shared between traits.  It applies to every way of activating the mutation: the mutation menu, `u_activate_trait` and reflex `triggers`.  Keep it free of randomness: it is meant to answer "can this be used right now?".
+- An `activated_eocs` EOC may turn the mutation off itself with `u_deactivate_trait` (usually on `{ "context_val": "this" }`).  The engine respects that: the mutation stays off (its `deactivated_eocs` run), the rest of the activation (`transform`, `spawn_item`, `ranged_mutation`, hardcoded effects) is skipped, and `activated_is_setup` is not applied.  The cost already paid is kept, so use `activation_condition` for checks that should be free.
+
+```jsonc
+  {
+    "type": "mutation",
+    "id": "STATIC_SHIELD",
+    "name": { "str": "Static Shield" },
+    "points": 2,
+    "description": "You can wrap yourself in a crackling field, as long as you don't hold anything metal.",
+    "active": true,
+    "activated_is_setup": true,
+    "cost": 50,
+    "kcal": true,
+    "activation_condition": { "not": { "u_has_wielded_with_flag": "CONDUCTIVE" } },
+    "activation_fail_message": "Your shield fizzles around the metal in your hand.",
+    "activated_eocs": [
+      {
+        "id": "EOC_STATIC_SHIELD_ON",
+        "condition": { "u_has_effect": "wet" },
+        "effect": [ { "u_message": "The water shorts out your shield." }, { "u_deactivate_trait": { "context_val": "this" } } ]
+      }
+    ]
+  }
+```
 
 ### Sample trait: Example Sleep
 
