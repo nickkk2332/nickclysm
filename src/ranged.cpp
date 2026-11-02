@@ -1634,6 +1634,13 @@ dealt_projectile_attack Character::throw_item( const tripoint_bub_ms &target, co
     if( !throw_assist ) {
         const int stamina_cost = get_standard_stamina_cost( &thrown );
         mod_stamina( stamina_cost + throwing_skill );
+        // With explosive combat exertion, a throw is a burst of effort scaled by the item's weight
+        // against your strength (Cataclysm-TLG: MLB pitchers can throw around 100 times a day).
+        if( melee_exertion_level() > EXTRA_EXERCISE ) {
+            const float str_ratio = static_cast<float>( weight / 100.0_gram ) /
+                                    std::max( 1, get_str() );
+            set_activity_level( melee_exertion_level() * std::clamp( str_ratio, 0.5f, 1.0f ) );
+        }
     }
 
     const float skill_level = throwing_skill_adjusted( *this );

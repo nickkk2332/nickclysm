@@ -1795,7 +1795,8 @@ bool Creature::attack_air( const tripoint_bub_ms &p )
         item_location cur_weapon = as_character()->used_weapon();
         item cur_weap = cur_weapon ? *cur_weapon : null_item_reference();
         move_cost = as_character()->attack_speed( cur_weap ) * ( 1 /
-                    as_character()->exertion_adjusted_move_multiplier( EXTRA_EXERCISE ) );
+                    as_character()->exertion_adjusted_move_multiplier(
+                        as_character()->melee_exertion_level() ) );
     }
     mod_moves( -move_cost );
 

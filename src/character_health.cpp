@@ -864,7 +864,7 @@ std::string Character::debug_weary_info() const
 {
     int amt = activity_history.weariness();
     std::string max_act = activity_level_str( maximum_exertion_level() );
-    float move_mult = exertion_adjusted_move_multiplier( EXTRA_EXERCISE );
+    float move_mult = exertion_adjusted_move_multiplier( melee_exertion_level() );
 
     int bmr = base_bmr();
     std::string weary_internals = activity_history.debug_weary_info();
@@ -1424,11 +1424,18 @@ int Character::weariness_transition_level() const
     return std::abs( amount );
 }
 
+float Character::melee_exertion_level() const
+{
+    static const std::string explosive_combat_exertion( "EXPLOSIVE_COMBAT_EXERTION" );
+    return get_option<bool>( explosive_combat_exertion ) ? EXPLOSIVE_EXERCISE : EXTRA_EXERCISE;
+}
+
 float Character::maximum_exertion_level() const
 {
     switch( weariness_level() ) {
         case 0:
-            return EXTRA_EXERCISE;
+            // Fresh, you can go all out (Cataclysm-TLG); combat only does with the option on.
+            return melee_exertion_level();
         case 1:
             return ACTIVE_EXERCISE;
         case 2:

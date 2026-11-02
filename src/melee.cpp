@@ -620,10 +620,10 @@ void Character::reduce_moves_from_attack( int forced_movecost, int move_cost )
 {
     // Weariness handling - 1 / the value, because it returns what % of the normal speed
     // Set the % move speed to the smaller of the modified speed or 100%, to avoid
-    // accelerating baseline attack speed if using a non-1 value for EXTRA_EXERCISE
+    // accelerating baseline attack speed if using a non-1 value for melee_exertion_level()
     const float weary_mult = std::min( combat_speed_modifier *
                                        exertion_adjusted_move_multiplier(
-                                           EXTRA_EXERCISE ),
+                                           melee_exertion_level() ),
                                        1.0f );
     mod_moves( forced_movecost >= 0 ? -forced_movecost : -move_cost * ( 1 / weary_mult ) );
 }
@@ -683,7 +683,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     }
 
     // Fighting is hard work
-    set_activity_level( EXTRA_EXERCISE );
+    set_activity_level( melee_exertion_level() );
 
     item_location cur_weapon = allow_unarmed ? used_weapon() : get_wielded_item();
     item cur_weap = cur_weapon ? *cur_weapon : null_item_reference();
@@ -1069,7 +1069,7 @@ void Character::reach_attack( const tripoint_bub_ms &p, int forced_movecost )
     }
 
     // Fighting is hard work
-    set_activity_level( EXTRA_EXERCISE );
+    set_activity_level( melee_exertion_level() );
 
     creature_tracker &creatures = get_creature_tracker();
     Creature *critter = creatures.creature_at( p );
@@ -1560,7 +1560,7 @@ std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
         float move_cost = attack_speed( used_weap );
         move_cost *= tec_id->move_cost_multiplier( *this );
         move_cost += tec_id->move_cost_penalty( *this );
-        float move_mult = exertion_adjusted_move_multiplier( EXTRA_EXERCISE );
+        float move_mult = exertion_adjusted_move_multiplier( melee_exertion_level() );
         move_cost *= ( 1.0f / move_mult );
         if( get_moves() + get_speed() - move_cost < 0 ) {
             add_msg_debug( debugmode::DF_MELEE,

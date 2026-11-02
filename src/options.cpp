@@ -2978,6 +2978,10 @@ void options_manager::add_options_world_default()
              to_translation( "If true, being held while enough monsters press in around you squeezes the breath out of you, and eventually crushes you.  The thresholds are external options (CROWD_CRUSH_*)." ),
              true
            );
+        add( "EXPLOSIVE_COMBAT_EXERTION", page_id, to_translation( "Explosive combat exertion" ),
+             to_translation( "If true, melee attacks, dodges, grabs and throws count as explosive exercise, above extreme: fighting burns more calories, and a weary character slows down more while fighting.  A rested character can then exert themselves up to explosive." ),
+             false
+           );
     } );
 
     add_empty_line();

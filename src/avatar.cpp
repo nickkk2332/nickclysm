@@ -1531,6 +1531,7 @@ avatar::daily_calories::daily_calories()
     activity_levels.emplace( BRISK_EXERCISE, 0 );
     activity_levels.emplace( ACTIVE_EXERCISE, 0 );
     activity_levels.emplace( EXTRA_EXERCISE, 0 );
+    activity_levels.emplace( EXPLOSIVE_EXERCISE, 0 );
 }
 
 void avatar::daily_calories::serialize( JsonOut &json ) const
@@ -1593,20 +1594,30 @@ void avatar::daily_calories::read_activity( const JsonObject &data )
 
 std::string avatar::total_daily_calories_string() const
 {
-    const std::string header_string =
-        colorize( "       Minutes at each exercise level                  Calories per day",
-                  c_white ) + "\n" +
-        colorize( "  Day  Sleep None Light Moderate Brisk Active Extra    Gained  Spent  Total",
-                  c_yellow ) + "\n";
-    const std::string format_string =
-        " %4d  %4d   %4d  %4d     %4d  %4d   %4d  %4d    %6d %6d";
-
     const float no_ex_thresh = ( SLEEP_EXERCISE + NO_EXERCISE ) / 2.0f;
     const float light_ex_thresh = ( NO_EXERCISE + LIGHT_EXERCISE ) / 2.0f;
     const float mod_ex_thresh = ( LIGHT_EXERCISE + MODERATE_EXERCISE ) / 2.0f;
     const float brisk_ex_thresh = ( MODERATE_EXERCISE + BRISK_EXERCISE ) / 2.0f;
     const float active_ex_thresh = ( BRISK_EXERCISE + ACTIVE_EXERCISE ) / 2.0f;
     const float extra_ex_thresh = ( ACTIVE_EXERCISE + EXTRA_EXERCISE ) / 2.0f;
+    const float explosive_ex_thresh = ( EXTRA_EXERCISE + EXPLOSIVE_EXERCISE ) / 2.0f;
+
+    // The explosive column shows when combat can reach that level, or when anything did.
+    bool show_explosive = melee_exertion_level() >= EXPLOSIVE_EXERCISE;
+    for( const daily_calories &day : calorie_diary ) {
+        for( const std::pair<const float, int> &level : day.activity_levels ) {
+            show_explosive |= level.second > 0 && level.first >= explosive_ex_thresh;
+        }
+    }
+
+    std::string columns = "  Day  Sleep None Light Moderate Brisk Active Extra";
+    if( show_explosive ) {
+        columns += " Explosive";
+    }
+    columns += "    Gained  Spent  Total";
+    const std::string header_string =
+        colorize( "       Minutes at each exercise level                  Calories per day",
+                  c_white ) + "\n" + colorize( columns, c_yellow ) + "\n";
 
     std::string ret = header_string;
 
@@ -1623,6 +1634,7 @@ std::string avatar::total_daily_calories_string() const
         int brisk_exercise = 0;
         int active_exercise = 0;
         int extra_exercise = 0;
+        int explosive_exercise = 0;
         for( const std::pair<const float, int> &level : day.activity_levels ) {
             if( level.second > 0 ) {
                 if( level.first < no_ex_thresh ) {
@@ -1637,20 +1649,26 @@ std::string avatar::total_daily_calories_string() const
                     brisk_exercise += level.second;
                 } else if( level.first < extra_ex_thresh ) {
                     active_exercise += level.second;
-                } else {
+                } else if( level.first < explosive_ex_thresh ) {
                     extra_exercise += level.second;
+                } else {
+                    explosive_exercise += level.second;
                 }
             }
         }
-        std::string row_data = string_format( format_string, today + day_offset--,
+        std::string row_data = string_format( " %4d  %4d   %4d  %4d     %4d  %4d   %4d  %4d",
+                                              today + day_offset--,
                                               5 * sleep_exercise,
                                               5 * no_exercise,
                                               5 * light_exercise,
                                               5 * moderate_exercise,
                                               5 * brisk_exercise,
                                               5 * active_exercise,
-                                              5 * extra_exercise,
-                                              day.gained, day.spent );
+                                              5 * extra_exercise );
+        if( show_explosive ) {
+            row_data += string_format( "      %4d", 5 * explosive_exercise );
+        }
+        row_data += string_format( "    %6d %6d", day.gained, day.spent );
         // Alternate gray and white text for row data
         if( day_offset % 2 == 0 ) {
             ret += colorize( row_data, c_white );

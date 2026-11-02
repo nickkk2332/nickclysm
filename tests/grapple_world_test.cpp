@@ -1,10 +1,14 @@
+#include <functional>
 #include <string>
 
+#include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "coordinates.h"
+#include "game_constants.h"
+#include "item.h"
 #include "magic_enchantment.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -13,9 +17,11 @@
 #include "mattack_common.h"
 #include "monster.h"
 #include "mtype.h"
+#include "options.h"
 #include "options_helpers.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "projectile.h"
 #include "type_id.h"
 #include "units.h"
 #include "veh_type.h"
@@ -23,13 +29,16 @@
 #include "vpart_position.h"
 
 // World-side grappling ported from Cataclysm: The Last Generation (TLG): monster grabs pulling
-// riders out of vehicles, and resisting crowd crush.
+// riders out of vehicles, resisting crowd crush, and explosive combat exertion.
 
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_overburdened( "overburdened" );
 static const efftype_id effect_test_crowd_crush_immune( "test_crowd_crush_immune" );
 static const efftype_id effect_test_no_breathing( "test_no_breathing" );
+
+static const itype_id itype_test_boltcutter( "test_boltcutter" );
+static const itype_id itype_test_rag( "test_rag" );
 
 static const json_character_flag json_flag_SUFFOCATION_IMMUNE( "SUFFOCATION_IMMUNE" );
 
@@ -228,6 +237,68 @@ TEST_CASE( "crowd_crush_can_be_turned_off_or_resisted", "[grapple][suffer][oxyge
         you.add_effect( effect_test_no_breathing, 1_hours );
         REQUIRE( you.has_flag( json_flag_SUFFOCATION_IMMUNE ) );
         CHECK( oxygen_after_crowding( you ) == full );
+    }
+    clear_creatures();
+}
+
+// The activity level the action logs this turn, starting from rest.
+static float exertion_of( Character &you, const std::function<void()> &act )
+{
+    you.activity_history.reset_activity_level();
+    you.activity_history.new_turn( false );
+    you.set_activity_level( NO_EXERCISE );
+    act();
+    return you.instantaneous_activity_level();
+}
+
+// EXPLOSIVE_EXERCISE (Cataclysm-TLG) is always defined; the EXPLOSIVE_COMBAT_EXERTION world
+// option decides whether combat uses it, and with it off nothing changes.
+TEST_CASE( "explosive_combat_exertion_option", "[grapple][activity]" )
+{
+    clear_map_without_vision();
+    clear_avatar();
+    Character &you = get_player_character();
+    REQUIRE( you.weariness_level() == 0 );
+    monster &target = spawn_test_monster( "mon_debug_memory", you.pos_bub() + tripoint::east );
+    const auto attack = [&]() {
+        you.set_moves( 1000 );
+        you.melee_attack( target, false );
+    };
+    const auto dodge = [&]() {
+        you.set_dodges_left( 1 );
+        you.set_free_dodges_left( 0 );
+        you.on_try_dodge();
+    };
+    const auto throwing = [&]( const itype_id & thrown ) {
+        return [&you, thrown]() {
+            you.throw_item( you.pos_bub() + tripoint( -3, 0, 0 ), item( thrown ) );
+        };
+    };
+    REQUIRE( you.get_str() == 8 );
+
+    SECTION( "off (the default): combat stays at extra exercise" ) {
+        REQUIRE_FALSE( get_option<bool>( "EXPLOSIVE_COMBAT_EXERTION" ) );
+        CHECK( you.melee_exertion_level() == EXTRA_EXERCISE );
+        CHECK( you.maximum_exertion_level() == EXTRA_EXERCISE );
+        CHECK( exertion_of( you, attack ) == EXTRA_EXERCISE );
+        CHECK( exertion_of( you, dodge ) == EXTRA_EXERCISE );
+        CHECK( exertion_of( you, throwing( itype_test_boltcutter ) ) == NO_EXERCISE );
+        CHECK( get_avatar().total_daily_calories_string().find( "Explosive" ) ==
+               std::string::npos );
+    }
+    SECTION( "on: melee, dodges and throws are explosive" ) {
+        override_option explosive( "EXPLOSIVE_COMBAT_EXERTION", "true" );
+        CHECK( you.melee_exertion_level() == EXPLOSIVE_EXERCISE );
+        CHECK( you.maximum_exertion_level() == EXPLOSIVE_EXERCISE );
+        CHECK( exertion_of( you, attack ) == EXPLOSIVE_EXERCISE );
+        CHECK( exertion_of( you, dodge ) == EXPLOSIVE_EXERCISE );
+        // A throw strains you by the item's weight against your strength: 1 kg at strength 8
+        // is all you've got, a rag is the least a throw takes, half that.
+        CHECK( exertion_of( you, throwing( itype_test_boltcutter ) ) == EXPLOSIVE_EXERCISE );
+        CHECK( exertion_of( you, throwing( itype_test_rag ) ) == EXPLOSIVE_EXERCISE / 2 );
+        // The calorie diary grows a column for it.
+        CHECK( get_avatar().total_daily_calories_string().find( "Explosive" ) !=
+               std::string::npos );
     }
     clear_creatures();
 }
