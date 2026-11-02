@@ -178,7 +178,7 @@ Grappling techniques (ported from Cataclysm: The Last Generation) are ordinary t
 | the target holds you | `{ "and": [ { "u_has_flag": "GRAB" }, { "npc_has_flag": "GRAB_FILTER" } ] }` |
 | not while you hold anyone | `{ "not": { "u_has_flag": "GRAB_FILTER" } }` |
 
-These flags say that *someone* holds or is held, not who: if a third creature holds the target, the first row is true as long as you hold anyone.
+These flags say that *someone* holds or is held, not who: if a third creature holds the target, the first row is true as long as you hold anyone.  That is why "the target holds you" checks the target's own `GRAB_FILTER`: your `GRAB` alone could come from someone else.  A technique that works either way round ("held or holding") puts the two rows in an `or`.
 
 Grappling is unarmed.  A style can let some weapons stay in hand with `grapple_weapons`: while the style is selected, a listed weapon neither stops you from grabbing nor makes you let go.  Weapons match by weapon category or by item type, or `"any": true` allows all of them.  Unknown categories and items are load errors.  `grapple_weapons` is read as a whole: a `copy-from` style either keeps its parent's list or replaces it.  The vanilla styles have none.
 
@@ -219,7 +219,7 @@ Grapple techniques combine a hold with the usual weapon requirements, so a knife
 }
 ```
 
-The vanilla grapple techniques show more patterns: Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a hold; Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one you hold; Zui Quan's `tec_zuiquan_throw` (Drunken Fall) downs you as well as the target, and its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling; Brawling's `tec_brawl_strangle` puts `choking` and `strangulation` on a breathing target, and their damage ignores armor.
+The vanilla grapple techniques show more patterns.  Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a grapple with the target, whoever holds whom, so a judoka also answers a grab.  Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one in the clinch either way round.  Zui Quan's `tec_zuiquan_throw` (Drunken Fall) works held or holding and downs you as well as the target; its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling.  Brawling's `tec_brawl_strangle` needs your own hold (being held is not enough) and puts `choking` and `strangulation` on a breathing target, whose damage ignores armor.
 
 
 ## Techniques

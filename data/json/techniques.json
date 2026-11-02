@@ -1576,13 +1576,17 @@
     "unarmed_allowed": true,
     "melee_allowed": true,
     "crit_ok": true,
-    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a hold on the target.",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
-        { "npc_has_flag": "GRAB" },
-        { "u_has_flag": "GRAB_FILTER" },
+        {
+          "or": [
+            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+          ]
+        },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_bodytype": "blob" } },
         { "not": { "npc_bodytype": "fish" } },
@@ -1590,7 +1594,7 @@
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.25 } ],
     "attack_vectors": [ "vector_grasp" ]
@@ -1613,13 +1617,17 @@
         "message": "The weapon of %s has been forced out of their hands!"
       }
     ],
-    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a hold on the target.",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
-        { "npc_has_flag": "GRAB" },
-        { "u_has_flag": "GRAB_FILTER" },
+        {
+          "or": [
+            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+          ]
+        },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_bodytype": "blob" } },
         { "not": { "npc_bodytype": "fish" } },
@@ -1627,7 +1635,7 @@
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.25 } ],
     "attack_vectors": [ "vector_grasp" ]
@@ -1642,13 +1650,17 @@
     "melee_allowed": true,
     "crit_tec": true,
     "side_switch": true,
-    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a hold on the target.",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
-        { "npc_has_flag": "GRAB" },
-        { "u_has_flag": "GRAB_FILTER" },
+        {
+          "or": [
+            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+          ]
+        },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_bodytype": "blob" } },
         { "not": { "npc_bodytype": "fish" } },
@@ -1656,7 +1668,7 @@
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
+    "condition_desc": "* Only works on a <info>non-downed</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
     "down_dur": 1,
     "stun_dur": 1,
     "mult_bonuses": [ { "stat": "damage", "type": "bash", "scale": 1.5 } ],
@@ -2673,9 +2685,15 @@
     "messages": [ "You grab and knee %s", "<npcname> grabs and knees %s" ],
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
     "unarmed_allowed": true,
-    "//": "Knees a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) one held in the clinch.",
-    "condition": { "or": [ { "npc_has_effect": "downed" }, { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] } ] },
-    "condition_desc": "* Only works on a <info>downed</info> target or one <info>you are grabbing</info>",
+    "//": "Knees a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) one in the clinch, whoever holds whom.",
+    "condition": {
+      "or": [
+        { "npc_has_effect": "downed" },
+        { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+        { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
     "weighting": 3,
     "mult_bonuses": [ { "stat": "movecost", "scale": 0.5 } ],
     "attack_vectors": [ "vector_knee" ]
@@ -2687,9 +2705,15 @@
     "messages": [ "You disarm %s with an arm lock", "<npcname> disarms %s with an arm lock" ],
     "skill_requirements": [ { "name": "unarmed", "level": 4 } ],
     "unarmed_allowed": true,
-    "//": "Locks the arm of a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) of one held standing.",
-    "condition": { "or": [ { "npc_has_effect": "downed" }, { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] } ] },
-    "condition_desc": "* Only works on a <info>downed</info> target or one <info>you are grabbing</info>",
+    "//": "Locks the arm of a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) of one in the clinch, whoever holds whom: the arm that grabs you is the arm to lock.",
+    "condition": {
+      "or": [
+        { "npc_has_effect": "downed" },
+        { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+        { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
     "crit_ok": true,
     "weighting": 3,
     "disarms": true,
@@ -3584,17 +3608,21 @@
     "type": "technique",
     "id": "tec_zuiquan_throw",
     "name": "Drunken Fall",
-    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl).",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl).  TLG needs your hold; here a target holding you is dragged down too.",
     "messages": [ "You throw yourself down, dragging %s with you", "<npcname> falls, dragging %s down as well" ],
-    "description": "Fall with the opponent you hold: both of you go down, and they are left staggered",
+    "description": "Fall with the opponent you hold, or who holds you: both of you go down, and they are left staggered",
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
     "unarmed_allowed": true,
     "condition": {
       "and": [
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
         { "math": [ "n_val('size') != 1" ] },
-        { "npc_has_flag": "GRAB" },
-        { "u_has_flag": "GRAB_FILTER" },
+        {
+          "or": [
+            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
+          ]
+        },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_has_flag": "IMMOBILE" } },
         { "not": { "u_has_effect": "downed" } },
@@ -3604,7 +3632,7 @@
         { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
       ]
     },
-    "condition_desc": "* Only works on a <info>non-downed, mobile</info> target <info>you are grabbing</info>, no more than <info>one size larger</info> than you and not tiny, incapable of flight, and not a blob, fish or snake, while <info>you are standing</info>",
+    "condition_desc": "* Only works on a <info>non-downed, mobile</info> target <info>you are grabbing</info> or <info>that is grabbing you</info>, no more than <info>one size larger</info> than you and not tiny, incapable of flight, and not a blob, fish or snake, while <info>you are standing</info>",
     "down_dur": 3,
     "tech_effects": [
       { "id": "downed", "chance": 100, "duration": 100, "target": "self" },

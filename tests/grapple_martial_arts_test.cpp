@@ -359,7 +359,7 @@ TEST_CASE( "grapple_ma_tech_effect_target_load_errors", "[grapple][martial_arts]
     CHECK( ted.intensity == 2 );
 }
 
-TEST_CASE( "grapple_ma_tlg_techniques_need_a_hold", "[grapple][martial_arts]" )
+TEST_CASE( "grapple_ma_tlg_techniques_need_a_grapple", "[grapple][martial_arts]" )
 {
     clear_map_without_vision();
     standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
@@ -375,10 +375,14 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_hold", "[grapple][martial_arts]" )
         CHECK_FALSE( usable( dude, tec_judo_throw, target ) );
         CHECK_FALSE( usable( dude, tec_judo_disarm, target ) );
         CHECK_FALSE( usable( dude, tec_judo_backthrow, target, true ) );
-        // Held by the target is not holding it
+        // Held by someone else: the target isn't the one holding
         dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
-        target.add_effect( effect_grabbing, 1_days );
         CHECK_FALSE( usable( dude, tec_judo_throw, target ) );
+        // Held by the target: Judo answers a grab too
+        target.add_effect( effect_grabbing, 1_days );
+        CHECK( usable( dude, tec_judo_throw, target ) );
+        CHECK( usable( dude, tec_judo_disarm, target ) );
+        CHECK( usable( dude, tec_judo_backthrow, target, true ) );
         dude.remove_effect( effect_grabbed );
         target.remove_effect( effect_grabbing );
 
@@ -390,10 +394,17 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_hold", "[grapple][martial_arts]" )
         target.add_effect( effect_downed, 1_days );
         CHECK_FALSE( usable( dude, tec_judo_throw, target ) );
     }
-    SECTION( "Pankration knee and arm lock: a downed target, or one held" ) {
+    SECTION( "Pankration knee and arm lock: a downed target, or one in the clinch" ) {
         use_style( dude, style_pankration );
         CHECK_FALSE( usable( dude, tec_pankration_grabknee, target ) );
         CHECK_FALSE( usable( dude, tec_pankration_grabdisarm, target ) );
+        // Held by the target
+        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        target.add_effect( effect_grabbing, 1_days );
+        CHECK( usable( dude, tec_pankration_grabknee, target ) );
+        CHECK( usable( dude, tec_pankration_grabdisarm, target ) );
+        dude.remove_effect( effect_grabbed );
+        target.remove_effect( effect_grabbing );
         hold( dude, target );
         CHECK( usable( dude, tec_pankration_grabknee, target ) );
         CHECK( usable( dude, tec_pankration_grabdisarm, target ) );
@@ -408,6 +419,12 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_hold", "[grapple][martial_arts]" )
         use_style( dude, style_zui_quan );
         CHECK_FALSE( usable( dude, tec_zuiquan_throw, target ) );
         CHECK( usable( dude, tec_zuiquan_fist, target ) );
+        // Held by the target: the fall drags it down too
+        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        target.add_effect( effect_grabbing, 1_days );
+        CHECK( usable( dude, tec_zuiquan_throw, target ) );
+        dude.remove_effect( effect_grabbed );
+        target.remove_effect( effect_grabbing );
         const auto spin_allowed = [&]() {
             const const_dialogue d( get_const_talker_for( dude ), get_const_talker_for( target ) );
             return tec_zuiquan_spin->condition( d );
@@ -436,6 +453,12 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_hold", "[grapple][martial_arts]" )
     SECTION( "Brawling strangle chokes a breathing target held" ) {
         use_style( dude, style_brawling );
         CHECK_FALSE( usable( dude, tec_brawl_strangle, target ) );
+        // Held by the target is not enough: you need the hold
+        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        target.add_effect( effect_grabbing, 1_days );
+        CHECK_FALSE( usable( dude, tec_brawl_strangle, target ) );
+        dude.remove_effect( effect_grabbed );
+        target.remove_effect( effect_grabbing );
         hold( dude, target );
         REQUIRE( usable( dude, tec_brawl_strangle, target ) );
 
