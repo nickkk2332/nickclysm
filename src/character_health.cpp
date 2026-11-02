@@ -1127,7 +1127,8 @@ void Character::on_damage_of_type( const effect_source &source, int adjusted_dam
                 }
                 const effect &prev_eff = get_effect( eff.id, target_bp );
                 const int prev_int = prev_eff.is_null() ? 0 : prev_eff.get_intensity();
-                const int prev_dur = prev_eff.is_null() ? 0 : to_turns<int>( prev_eff.get_duration() );
+                const int prev_dur = prev_eff.is_null() ? 0 :
+                                     to_turns<int>( prev_eff.get_duration() );
                 bool int_capped = false;
                 bool dur_capped = false;
                 if( eff.max_intensity != INT_MAX ) {
@@ -2623,8 +2624,9 @@ void Character::update_wounds( time_duration time_passed )
                     switch( mod_val.type ) {
                         case wound_mod_value_type::PAIN: {
                             // The caps bound this wound's own pain, as documented.
-                            const int pain_mod = wound_mod_within_caps( wd.get_pain(), mod_val.amount,
-                                                 mod_val.cap_min, mod_val.cap_max );
+                            const int pain_mod = wound_mod_within_caps( wd.get_pain(),
+                                                 mod_val.amount, mod_val.cap_min,
+                                                 mod_val.cap_max );
                             if( pain_mod != 0 ) {
                                 wd.mod_pain( pain_mod );
                             }
@@ -2643,8 +2645,9 @@ void Character::update_wounds( time_duration time_passed )
                                                                 mod_val.amount ) );
                                 }
                                 // cap_min stops decreases and cap_max stops increases.
-                                final_amt = wound_mod_within_caps( vitamin_get( vit ), final_amt,
-                                                                   mod_val.cap_min, mod_val.cap_max );
+                                final_amt = wound_mod_within_caps( vitamin_get( vit ),
+                                                                   final_amt, mod_val.cap_min,
+                                                                   mod_val.cap_max );
                                 if( final_amt != 0 ) {
                                     vitamin_mod( vit, final_amt );
                                 }
