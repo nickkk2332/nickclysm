@@ -1697,6 +1697,8 @@ These flags apply to the `use_action` field, instead of the `flags` field.
 
 Note: Vehicle parts requiring other parts is defined by setting a `requires_flag` field with the flag requirement (i.e. the `ON_ROOF` flag contains the field `"requires_flag": "ROOF"`).
 
+Note: Parts that can be switched on and off from the vehicle's electronics menu get that switch from their flag: a flag whose definition has a `vehicle_toggle` field (i.e. the `CONE_LIGHT` flag contains `"vehicle_toggle": { "name": "headlights", "hotkey": "TOGGLE_HEADLIGHT" }`). All parts with the flag switch together. See [Vehicle toggles](JSON_INFO.md#vehicle-toggles) for adding one in a mod.
+
 - ```ADVANCED_PLANTER``` This planter doesn't spill seeds and avoids damaging itself on non-diggable surfaces.
 - ```AIRCRAFT_REPAIRABLE_NOPROF``` Allows the player to safely remove part from an aircraft without any proficiency.
 - ```AISLE_LIGHT``` This part lightens up surroundings.

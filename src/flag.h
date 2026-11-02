@@ -510,6 +510,21 @@ class json_flag
             return taste_mod_;
         }
 
+        /** Vehicle parts with this flag are switched on and off together */
+        bool is_vehicle_toggle() const {
+            return vehicle_toggle_;
+        }
+
+        /** Electronics menu label of the vehicle toggle; empty when it has no menu entry */
+        const translation &vehicle_toggle_name() const {
+            return vehicle_toggle_name_;
+        }
+
+        /** VEHICLE keybinding action of the vehicle toggle; empty picks a free key */
+        const std::string &vehicle_toggle_hotkey() const {
+            return vehicle_toggle_hotkey_;
+        }
+
         /** Is this a valid (non-null) flag */
         explicit operator bool() const;
 
@@ -531,6 +546,9 @@ class json_flag
         bool craft_inherit_ = false;
         std::string requires_flag_;
         int taste_mod_ = 0;
+        bool vehicle_toggle_ = false;
+        translation vehicle_toggle_name_;
+        std::string vehicle_toggle_hotkey_;
 
         /** Load flag definition from JSON */
         void load( const JsonObject &jo, std::string_view src );

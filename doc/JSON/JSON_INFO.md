@@ -4077,9 +4077,37 @@ Flags, that can be used in different entries, can also be made in json, allowing
   "inherit": true, // is this flag inherited to another thing if it's attached/equipped, like if you put ESAPI plate into plate carrier, their `CANT_WEAR` flag won't be applied to plate carrier, and you could wear it as usually
   "craft_inherit": true, // if true, if you craft something with this flag, this flag would be applied to result also
   "item_prefix": "[...",
-  "item_suffix": "...]" // `item_prefix` and `item_suffix` will be added to the prefix and suffix of the item name
+  "item_suffix": "...]", // `item_prefix` and `item_suffix` will be added to the prefix and suffix of the item name
+  "vehicle_toggle": { "name": "force field", "hotkey": "TOGGLE_FORCE_FIELD" } // vehicle parts with this flag can be switched on and off together, see below
 },
 
+```
+
+#### Vehicle toggles
+
+A flag with a `vehicle_toggle` object turns every vehicle part that has the flag into one switch group:
+
+- When `name` is set, the vehicle's electronics menu offers "Turn on <name>" / "Turn off <name>" while the vehicle has a working part with the flag, and switches all of them together. Entries are sorted by name.
+- `hotkey` is optional: an action id from the `VEHICLE` keybindings (`data/raw/keybindings/vehicle.json`), like `TOGGLE_HEADLIGHT`. Without it the menu picks a free key. Several toggles may share one action.
+- A newly installed part with the flag starts switched on when another part of its group is already on.
+- `"vehicle_toggle": { }`, without a name, only does the last point; it has no menu entry.
+
+A switched-on part draws its `epower` when it has `ENABLED_DRAINS_EPOWER`, and enchantments with an `ACTIVE` condition on the part apply only while it is on. The vanilla toggles (headlights, fridges, stereos, plows and so on) are defined this way in `data/json/vehicleparts/vp_flags.json`. A modded part only needs a new flag:
+
+```jsonc
+{
+  "type": "json_flag",
+  "id": "FORCE_FIELD",
+  "info": "Projects a <color_light_blue>force field</color> around the vehicle when turned on.",
+  "vehicle_toggle": { "name": "force field" }
+},
+{
+  "type": "vehicle_part",
+  "id": "force_field_emitter",
+  "epower": "-500 W",
+  "flags": [ "FORCE_FIELD", "ENABLED_DRAINS_EPOWER" ]
+  // plus the usual vehicle part fields
+}
 ```
 
 # Scenarios

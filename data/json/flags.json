@@ -1996,7 +1996,8 @@
   },
   {
     "id": "RECHARGE",
-    "type": "json_flag"
+    "type": "json_flag",
+    "vehicle_toggle": { "name": { "ctxt": "electronics menu option", "str": "recharger" }, "hotkey": "TOGGLE_RECHARGER" }
   },
   {
     "id": "REDUCED_BASHING",

@@ -154,5 +154,40 @@
     "copy-from": "headlight",
     "name": { "str": "test red headlight" },
     "light_color": [ 255, 0, 0 ]
+  },
+  {
+    "//": "VINT-J02 fixture: a modded powered part switched from the electronics menu through its flag.",
+    "type": "json_flag",
+    "id": "TEST_FORCE_FIELD",
+    "info": "Test flag for a modded vehicle toggle.",
+    "vehicle_toggle": { "name": "test force field" }
+  },
+  {
+    "type": "vehicle_part",
+    "id": "test_force_field",
+    "name": { "str": "test force field emitter" },
+    "item": "test_force_field",
+    "description": "TestPart",
+    "durability": 100,
+    "categories": [ "other" ],
+    "broken_color": "dark_gray",
+    "flags": [ "NO_REPAIR", "TEST_FORCE_FIELD" ],
+    "requirements": { "install": { "skills": [ [ "mechanics", 0 ] ] }, "removal": { "skills": [ [ "mechanics", 0 ] ] } },
+    "breaks_into": [  ],
+    "variants": [ { "symbols": "%", "symbols_broken": "*" } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_force_field",
+    "category": "other",
+    "name": { "str": "test force field emitter" },
+    "description": "Item for the VINT-J02 vehicle toggle fixture.",
+    "weight": "1 kg",
+    "volume": "1 L",
+    "price": "0 cent",
+    "price_postapoc": "0 cent",
+    "material": [ "steel" ],
+    "symbol": "%",
+    "color": "light_gray"
   }
 ]

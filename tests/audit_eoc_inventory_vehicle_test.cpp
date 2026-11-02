@@ -2,6 +2,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
@@ -23,6 +24,7 @@
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
+#include "veh_utils.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
@@ -40,7 +42,13 @@ static const itype_id itype_remotevehcontrol( "remotevehcontrol" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_water_clean( "water_clean" );
 
+static const vpart_id vpart_frame( "frame" );
+static const vpart_id vpart_headlight( "headlight" );
+static const vpart_id vpart_test_force_field( "test_force_field" );
+static const vpart_id vpart_wide_headlight( "wide_headlight" );
+
 static const vproto_id vehicle_prototype_car( "car" );
+static const vproto_id vehicle_prototype_none( "none" );
 
 static constexpr tripoint_bub_ms car_pos( 60, 60, 0 );
 
@@ -439,5 +447,99 @@ TEST_CASE( "veh-j01_vehicle_conditions_have_no_side_effects", "[audit][eoc][vehi
     veh.is_following = false;
 
     g->setremoteveh( nullptr );
+    here.destroy_vehicle( &veh );
+}
+
+static vehicle &place_two_frames( map &here )
+{
+    vehicle *veh = here.add_vehicle( vehicle_prototype_none, car_pos, 0_degrees, 0,
+                                     veh_spawn_status::UNDAMAGED );
+    REQUIRE( veh != nullptr );
+    REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) != -1 );
+    REQUIRE( veh->install_part( here, point_rel_ms( 1, 0 ), vpart_frame ) != -1 );
+    return *veh;
+}
+
+// The electronics menu entries of a vehicle.
+static std::vector<veh_menu_item> electronics_menu( map &here, vehicle &veh )
+{
+    veh_menu menu( veh, "TEST" );
+    veh.build_electronics_menu( here, menu );
+    return menu.get_items();
+}
+
+static std::optional<veh_menu_item> menu_entry( const std::vector<veh_menu_item> &items,
+        const std::string &text )
+{
+    for( const veh_menu_item &it : items ) {
+        if( it._text.find( text ) != std::string::npos ) {
+            return it;
+        }
+    }
+    return std::nullopt;
+}
+
+// VINT-J02: the electronics menu only offered toggles for 25 hardcoded flags, so a modded
+// powered part could never be switched on. A json_flag with "vehicle_toggle" now adds one.
+TEST_CASE( "vint-j02_json_flag_toggle_switches_modded_parts", "[audit][vehicle]" )
+{
+    clear_avatar();
+    clear_map();
+    clear_vehicles();
+    map &here = get_map();
+    vehicle &veh = place_two_frames( here );
+    const int first = veh.install_part( here, point_rel_ms::zero, vpart_test_force_field );
+    REQUIRE( first != -1 );
+    // nothing of its group is on, so it starts off
+    CHECK_FALSE( veh.part( first ).enabled );
+
+    const std::optional<veh_menu_item> turn_on =
+        menu_entry( electronics_menu( here, veh ), "Turn on test force field" );
+    REQUIRE( turn_on.has_value() );
+    CHECK( turn_on->_enabled );
+    // without a hotkey in JSON the menu picks a free key
+    CHECK_FALSE( turn_on->_hotkey_action.has_value() );
+    turn_on->_on_submit();
+    CHECK( veh.part( first ).enabled );
+
+    // a part installed while its group is on starts on too
+    const int second = veh.install_part( here, point_rel_ms( 1, 0 ), vpart_test_force_field );
+    REQUIRE( second != -1 );
+    CHECK( veh.part( second ).enabled );
+
+    const std::optional<veh_menu_item> turn_off =
+        menu_entry( electronics_menu( here, veh ), "Turn off test force field" );
+    REQUIRE( turn_off.has_value() );
+    turn_off->_on_submit();
+    CHECK_FALSE( veh.part( first ).enabled );
+    CHECK_FALSE( veh.part( second ).enabled );
+    here.destroy_vehicle( &veh );
+}
+
+// VINT-J02: the vanilla toggles moved from C++ into vp_flags.json keep their names and
+// hotkeys, and the install-time list now covers every toggle (wide angle headlights were
+// left out of it, so a new one stayed off while the others were on).
+TEST_CASE( "vint-j02_vanilla_toggles_come_from_json", "[audit][vehicle]" )
+{
+    clear_avatar();
+    clear_map();
+    clear_vehicles();
+    map &here = get_map();
+    vehicle &veh = place_two_frames( here );
+    REQUIRE( veh.install_part( here, point_rel_ms::zero, vpart_headlight ) != -1 );
+
+    const std::optional<veh_menu_item> headlights =
+        menu_entry( electronics_menu( here, veh ), "Turn on headlights" );
+    REQUIRE( headlights.has_value() );
+    CHECK( headlights->_text == "Turn on headlights" );
+    CHECK( headlights->_hotkey_action == std::optional<std::string>( "TOGGLE_HEADLIGHT" ) );
+
+    const int wide = veh.install_part( here, point_rel_ms::zero, vpart_wide_headlight );
+    REQUIRE( wide != -1 );
+    CHECK_FALSE( veh.part( wide ).enabled );
+    veh.part( wide ).enabled = true;
+    const int wide_2 = veh.install_part( here, point_rel_ms( 1, 0 ), vpart_wide_headlight );
+    REQUIRE( wide_2 != -1 );
+    CHECK( veh.part( wide_2 ).enabled );
     here.destroy_vehicle( &veh );
 }

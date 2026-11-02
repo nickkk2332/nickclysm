@@ -1698,34 +1698,10 @@ int vehicle::install_part( map &here, const point_rel_ms &dp, vehicle_part &&vp 
             sfx::do_vehicle_engine_sfx();
         }
     } else {
-        // TODO: read toggle groups from JSON
-        static const std::vector<std::string> enable_like = {{
-                "CONE_LIGHT",
-                "CIRCLE_LIGHT",
-                "AISLE_LIGHT",
-                "AUTOPILOT",
-                "DOME_LIGHT",
-                "ATOMIC_LIGHT",
-                "STEREO",
-                "CHIMES",
-                "FRIDGE",
-                "FREEZER",
-                "RECHARGE",
-                "PLOW",
-                "REAPER",
-                "PLANTER",
-                "SCOOP",
-                "SPACE_HEATER",
-                "COOLER",
-                "WATER_PURIFIER",
-                "ROCKWHEEL",
-                "ROADHEAD"
-            }
-        };
-
-        for( const std::string &flag : enable_like ) {
-            if( vpi.has_flag( flag ) ) {
-                enable = has_part( flag, true );
+        // a part that switches with others (json_flag vehicle_toggle) starts on when they are
+        for( const std::string &flag : vpi.get_flags() ) {
+            if( json_flag::get( flag ).is_vehicle_toggle() && has_part( flag, true ) ) {
+                enable = true;
                 break;
             }
         }
