@@ -136,7 +136,8 @@ it after finishing its work: a craft that is done, each item disassembled, a
 drop that dropped everything, and a zone job (`ACT_MULTIPLE_*`, `ACT_MOVE_LOOT`,
 `ACT_UNLOAD_LOOT`, ...) that ran out of work. completion_eoc runs once per
 completion and cancel_eoc once per cancel, never both. A zone job that gives
-up for another reason (it is too dark, a fetch failed) runs neither. The
+up for another reason (it is too dark, a fetch failed, a work spot needs items
+or tools that can't be found) runs neither. The
 `character_finished_activity` event is sent right after completion_eoc or
 cancel_eoc, with `canceled` false for a completion, so an event EOC sees what
 they did.

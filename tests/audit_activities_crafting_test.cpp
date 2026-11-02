@@ -54,6 +54,8 @@ static const itype_id itype_test_audit_hook_widget( "test_audit_hook_widget" );
 static const recipe_id recipe_cudgel_test_activity_hooks( "cudgel_test_activity_hooks" );
 static const recipe_id recipe_cudgel_test_crafting_eocs( "cudgel_test_crafting_eocs" );
 
+static const quality_id qual_DIG( "DIG" );
+
 static const trait_id trait_DEBUG_CNF( "DEBUG_CNF" );
 
 static const zone_type_id zone_type_FARM_PLOT( "FARM_PLOT" );
@@ -263,6 +265,25 @@ class ready_farm_spot_actor : public multi_farm_activity_actor
     private:
         tripoint_abs_ms spot;
 };
+
+// A farm job whose one work spot needs tilling, a job that takes a digging tool.
+class untilled_farm_spot_actor : public multi_farm_activity_actor
+{
+    public:
+        explicit untilled_farm_spot_actor( const tripoint_abs_ms &spot ) : spot( spot ) {}
+        std::unordered_set<tripoint_abs_ms> multi_activity_locations( Character & ) override {
+            return { spot };
+        }
+        activity_reason_info multi_activity_can_do( Character &,
+                const tripoint_bub_ms & ) override {
+            return activity_reason_info::fail( do_activity_reason::NEEDS_TILLING );
+        }
+        std::unique_ptr<activity_actor> clone() const override {
+            return std::make_unique<untilled_farm_spot_actor>( *this );
+        }
+    private:
+        tripoint_abs_ms spot;
+};
 } // namespace
 
 // ACT-J03 (review): a zone job guessed that it was done whenever the scan ended without a new
@@ -296,6 +317,41 @@ TEST_CASE( "act-j03_zone_job_too_dark_to_work_does_not_complete", "[audit][activ
     u.set_moves( 100 );
     u.activity.do_turn( u );
     // "It is too dark to work here." ends the job, but the job isn't done
+    CHECK( u.activity.is_null() );
+    CHECK( !globvars.maybe_get_global_value( "key3" ) );
+    clear_avatar();
+}
+
+// ACT-J03 (review): a work spot skipped because the items or tools it needs aren't in reach
+// still has work, but the scan then ran out of spots and the job was reported as completed.
+TEST_CASE( "act-j03_zone_job_missing_its_tools_does_not_complete", "[audit][activity]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    set_time( calendar::turn_zero + 12_hours );
+    zone_manager &mgr = zone_manager::get_manager();
+    on_out_of_scope clear_zones( [&mgr]() {
+        mgr.clear();
+        mgr.cache_data();
+    } );
+    mgr.clear();
+    global_variables &globvars = get_globals();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    // off the usual test spots, so the zone scan's cache of sources can't match
+    u.setpos( here, tripoint_bub_ms( 41, 45, 0 ) );
+    const tripoint_abs_ms spot = here.get_abs( tripoint_bub_ms( 42, 45, 0 ) );
+    mgr.add( "plot", zone_type_FARM_PLOT, u.get_faction_id(), false, true, spot, spot );
+
+    // no digging tool on the avatar or anywhere near
+    REQUIRE( u.max_quality( qual_DIG ) < 1 );
+    u.assign_activity( untilled_farm_spot_actor( spot ) );
+    REQUIRE( u.activity.id() == ACT_MULTIPLE_FARM );
+    globvars.clear_global_values();
+
+    u.set_moves( 100 );
+    u.activity.do_turn( u );
+    // the job stops, but the plot still needs tilling
     CHECK( u.activity.is_null() );
     CHECK( !globvars.maybe_get_global_value( "key3" ) );
     clear_avatar();

@@ -5402,7 +5402,7 @@ void multi_zone_activity_actor::do_turn( player_activity &act, Character &you )
     // Read now: an NPC whose job has nothing left is reverted inside simulate_turn.
     activity_end_hooks ended = act.peek_end_hooks();
     // Only a scan that found no work left anywhere completes the job. The other ends (too dark,
-    // a fetch that gave up, a cancel) are not completions.
+    // a fetch that gave up, a site that lacks the items it needs, a cancel) are not completions.
     bool job_done = false;
     bool activity_continues = simulate_turn( act, you, false, &job_done );
     // If this activity still exists and was not successful or resulted in a new travel route, end it
@@ -5447,6 +5447,8 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
         unsigned int zone_count = 0;
         // one report per scan, not per site lacking the same items
         bool missing_items_reported = false;
+        // a site this scan skipped still has work: it needs items or tools that aren't here
+        bool work_left = false;
     };
     static source_cache cache;
 
@@ -5473,6 +5475,7 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
             cache.who = you.getID();
             cache.zone_count = cur_zone_count;
             cache.missing_items_reported = false;
+            cache.work_left = false;
         }
     }
 
@@ -5506,6 +5509,8 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     bool uncached_missing_items_reported = false;
     bool &missing_items_reported = use_cache ? cache.missing_items_reported :
                                    uncached_missing_items_reported;
+    bool uncached_work_left = false;
+    bool &work_left = use_cache ? cache.work_left : uncached_work_left;
 
     // a farm scan asks every tile whether it is warm enough to plant; the answer is the
     // same across an overmap tile within this turn
@@ -5549,6 +5554,12 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
         if( req_fail_reason.check_skip_location() ) {
             if( use_cache ) {
                 cache.sources.erase( src );
+            }
+            // The site has work, but the items or tools for it aren't in reach, so running out
+            // of sites doesn't finish the job.
+            if( req_res == requirement_check_result::SKIP_LOCATION &&
+                multi_activity_actor::activity_reason_continue( act_info.reason ) ) {
+                work_left = true;
             }
             // Charge 1 move for expensive skips (zone/inventory scan).
             if( !check_only &&
@@ -5623,8 +5634,9 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     }
     // scanned every location, tried every route, we're out of eligible zone tiles and the activity is over.
     if( !check_only ) {
+        // The job is done only if no site was skipped for want of items: those still have work.
         if( scan_exhausted ) {
-            *scan_exhausted = true;
+            *scan_exhausted = !work_left;
         }
         if( you.is_npc() ) {
             multi_activity_actor::activity_failure_message( you, current_activity, req_fail_reason,
