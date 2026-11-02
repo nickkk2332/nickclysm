@@ -160,7 +160,30 @@ enum class mod : int {
     TURNING_DIFFICULTY,
     NUM_MOD
 };
+
+// the spell values an enchantment's "spell_values" can change
+enum class spell_mod : int {
+    DAMAGE,
+    RANGE,
+    AOE,
+    DURATION,
+    COST,
+    CAST_TIME,
+    NUM_SPELL_MOD
+};
 } // namespace enchant_vals
+
+// Which spells a "spell_values" entry applies to; every filter that is set must match
+struct enchant_spell_filter {
+    std::optional<spell_id> id;
+    std::optional<trait_id> spell_class;
+    std::optional<magic_type_id> magic_type;
+    std::optional<damage_type_id> damage_type;
+    std::optional<std::string> flag;
+
+    void load( const JsonObject &jo );
+    bool matches( const spell &sp ) const;
+};
 
 // an "enchantment" is what passive artifact effects used to be:
 // under certain conditions, the effect persists upon the appropriate Character
@@ -270,6 +293,17 @@ class enchantment
         std::map<damage_type_id, dbl_or_var> extra_damage_add; // NOLINT(cata-serialize)
         std::map<damage_type_id, dbl_or_var> extra_damage_multiply; // NOLINT(cata-serialize)
 
+        // "spell_values": changes to the values of the spells that pass the filter
+        struct spell_value {
+            enchant_vals::spell_mod value = enchant_vals::spell_mod::DAMAGE;
+            enchant_spell_filter filter;
+            dbl_or_var add;
+            dbl_or_var multiply;
+        };
+        std::vector<spell_value> spell_values; // NOLINT(cata-serialize)
+        // reports spell_values filters naming unknown ids
+        void check_spell_values() const;
+
         std::vector<fake_spell> hit_me_effect;
         std::vector<fake_spell> hit_you_effect;
 
@@ -327,6 +361,9 @@ class enchant_cache : public enchantment
         double modify_melee_damage( const damage_type_id &mod_val, double value ) const;
         double modify_damage_units_by_armor_protection( const damage_type_id &mod_val, double value ) const;
         double modify_damage_units_by_extra_damage( const damage_type_id &mod_val, double value ) const;
+        // value after the "spell_values" of this kind whose filter matches the spell
+        double modify_spell_value( enchant_vals::spell_mod mod_val, const spell &sp,
+                                   double value ) const;
         // adds two enchantments together and ignores their conditions
         void force_add( const enchantment &rhs, const Character &guy );
         void force_add( const enchantment &rhs, const monster &mon );
@@ -436,6 +473,14 @@ class enchant_cache : public enchantment
         std::map<damage_type_id, double> extra_damage_add; // NOLINT(cata-serialize)
         std::map<damage_type_id, double> extra_damage_multiply; // NOLINT(cata-serialize)
 
+        // the evaluated "spell_values" of the enchantments added to this cache
+        struct spell_value_mod {
+            enchant_vals::spell_mod value = enchant_vals::spell_mod::DAMAGE;
+            enchant_spell_filter filter;
+            double add = 0.0;
+            double multiply = 0.0;
+        };
+        std::vector<spell_value_mod> spell_value_mods; // NOLINT(cata-serialize)
 };
 
 template <typename E> struct enum_traits;
@@ -453,6 +498,11 @@ struct enum_traits<enchantment::condition> {
 template<>
 struct enum_traits<enchant_vals::mod> {
     static constexpr enchant_vals::mod last = enchant_vals::mod::NUM_MOD;
+};
+
+template<>
+struct enum_traits<enchant_vals::spell_mod> {
+    static constexpr enchant_vals::spell_mod last = enchant_vals::spell_mod::NUM_SPELL_MOD;
 };
 
 #endif // CATA_SRC_MAGIC_ENCHANTMENT_H

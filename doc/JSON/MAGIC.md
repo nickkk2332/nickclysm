@@ -30,6 +30,7 @@
   - [The `relic_data` field](#the-relic_data-field)
   - [Variables](#variables)
   - [ID values](#id-values)
+  - [Spell values](#spell-values)
   - [Enchantments on monsters](#enchantments-on-monsters)
   - [Enchantments on vehicles](#enchantments-on-vehicles)
   - [Enchantment value examples](#enchantment-value-examples)
@@ -753,6 +754,7 @@ Identifier                  | Description
 `intermittent_activation`   | Spells that activate centered on you depending on the duration.  The spells follow the `fake_spell` template.
 `values`                    | Numbers that can be modified (see [list](#id-values)).  `add` is added to the base value, `multiply` is **also added** and treated as percentage: 2.5 is +250% and -1 is -100%.  `add` is always applied before `multiply`.  Either `add` or `multiply` can be a variable_object/math expression (see [below](#variables) for syntax and application, and [NPCs](NPCs.md) for the in depth explanation).
 `skills`                    | A bonus or penalty to skills. Syntax is the same as for values, using the id of the skill name.
+`spell_values`              | Changes the damage, range, area, duration, cost or casting time of the spells you cast, optionally only for some spells.  See [Spell values](#spell-values).
 `emitter`                   | Grants the emit_id.
 `modified_bodyparts`        | Modifies the body plan (standard is human).  `gain` adds body_part_id, `lose` removes body_part_id.
 `mutations`                 | Grants the mutation/trait ID.  Note: enchantments effects added this way won't stack, due how mutations work.
@@ -1114,6 +1116,48 @@ Enchanted item value | Description
 ---                  |---
 `ITEM_ATTACK_SPEED`  | 
 
+### Spell values
+
+`spell_values` changes the values of the spells the enchantment's owner casts.  Each entry names one `value`, an `add` and/or a `multiply` (numbers or [variable objects](#variables), evaluated when the enchantment is applied, like `values`), and optional filters.  An entry applies only to spells that match every filter it has; an entry without filters applies to every spell.  Like `values`, the matching `add`s are summed and applied first, then the summed `multiply`s: `( base + add ) * ( 1 + multiply )`.  The result is never negative.
+
+Value       | Changes
+---         |---
+`DAMAGE`    | The spell's damage.  It is applied to the size of the damage, so a healing spell (negative damage) heals more with a positive bonus.  A spell with 0 damage stays at 0.  Some effects use damage as their strength (healing, energy recovered and so on), and those change too.
+`RANGE`     | The spell's range, in tiles.
+`AOE`       | The spell's area of effect.
+`DURATION`  | The spell's duration, in moves (100 per second).
+`COST`      | The spell's energy cost, after encumbrance.  Spells that cost nothing stay free.
+`CAST_TIME` | The spell's casting time, in moves, after encumbrance and `CASTING_TIME_MULTIPLIER`.
+
+Filter        | The spell must
+---           |---
+`spell`       | be this spell id.
+`spell_class` | have this `spell_class` (a trait id).
+`magic_type`  | have this `magic_type`.
+`damage_type` | have this `damage_type`.
+`flag`        | have this flag in its `flags`.
+
+They apply on every cast path, since they are read from the caster's enchantments whenever the spell's value is computed: spells cast from the spellbook, item and enchantment spells (`fake_spell`s), EOC `u_cast_spell`, `extra_effects`, NPC and monster spells (monsters get them from enchantments on their effects).  The spellbook shows the changed values.  Unknown `spell`, `spell_class`, `magic_type` and `damage_type` ids are reported at load.
+
+```jsonc
+  {
+    "type": "enchantment",
+    "id": "ench_ring_of_fire_mastery",
+    "has": "WORN",
+    "condition": "ALWAYS",
+    "spell_values": [
+      { "value": "DAMAGE", "damage_type": "heat", "multiply": 0.2 },   // +20% damage for fire spells
+      { "value": "RANGE", "spell_class": "KELVINIST", "add": 2 },      // +2 tiles for Kelvinist spells
+      { "value": "COST", "flag": "SOMATIC", "multiply": -0.1 },        // somatic spells cost 10% less
+      { "value": "CAST_TIME", "add": { "math": [ "u_val('intelligence') * -5" ] } } // every spell is faster for smart casters
+    ]
+  }
+```
+
+An item's `relic_data` must reference such an enchantment by id, `"passive_effects": [ { "id": "ench_ring_of_fire_mastery" } ]`: inline `passive_effects` don't support `spell_values` (it is a load error).
+
+`u_spellcasting_adjustment` still works, and stacks with these: it is applied first.
+
 ### Enchantments on monsters
 A small subset of enchantments can be applied to monsters via effects. These are listed below:
 
@@ -1125,6 +1169,8 @@ Character status value  | Description
 `RANGE_DODGE`           | Gives the monster a percentage chance to dodge ranged attacks, including firearms
 `LUMINATION`            | Affects monster luminance
 `TOTAL_WEIGHT`          | Affects monsters weight
+
+`spell_values` also apply to monsters: they change the spells the monster casts.
 
 
 ### Enchantments on vehicles

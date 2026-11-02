@@ -595,5 +595,14 @@
     "points": 0,
     "description": "Test mutation that won't eat raw food.",
     "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "Test: you won't eat raw food." }
+  },
+  {
+    "//": "MAGIC-J02 fixture: carries the spell_values enchantment.",
+    "type": "mutation",
+    "id": "TEST_SPELL_POWER",
+    "name": { "str": "Test Spell Power" },
+    "points": 0,
+    "description": "Test mutation whose enchantment changes spell values.",
+    "enchantments": [ "test_ench_spell_power" ]
   }
 ]
