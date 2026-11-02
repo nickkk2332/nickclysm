@@ -113,6 +113,11 @@ static void make_follower( npc &guy )
     REQUIRE( guy.is_player_ally() );
 }
 
+static void wait_past_min_hold( const Character &grabber, const Creature &victim )
+{
+    calendar::turn += time_duration::from_turns( grapple::min_hold_turns( grabber, victim ) + 1 );
+}
+
 // Phase 0: groundwork
 
 TEST_CASE( "grapple_remove_grab_clears_the_grabbing_effect", "[grapple][grab]" )
@@ -484,4 +489,125 @@ TEST_CASE( "grapple_who_tolerates_a_grab_and_who_must_be_confirmed", "[grapple]"
         CHECK( grapple::grab_tolerated( you, cow ) );
         CHECK( grapple::needs_confirmation( you, cow ) == grab_confirmation::none );
     }
+}
+
+TEST_CASE( "grapple_formulas", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    REQUIRE( you.get_size() == creature_size::medium );
+
+    SECTION( "stamina the grabber spends per escape attempt" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+        REQUIRE( guy.get_size() == creature_size::medium );
+        // max( 1, 100 - hold ) * ( max( 1, size difference ) + skill ), within 100 to 400
+        CHECK( grapple::escape_stamina_cost( you, guy, 20, 3 ) == 320 );
+        CHECK( grapple::escape_stamina_cost( you, guy, 90, 0 ) == 100 );
+        CHECK( grapple::escape_stamina_cost( you, guy, 1, 10 ) == 400 );
+        monster &hulk = spawn_test_monster( "mon_zombie_hulk", you.pos_bub() + tripoint::south );
+        REQUIRE( hulk.get_size() == creature_size::huge );
+        CHECK( grapple::escape_stamina_cost( you, hulk, 40, 1 ) == 60 * ( 2 + 1 ) );
+    }
+    SECTION( "minimum hold time" ) {
+        // 1 + 100 / speed, rounded down
+        REQUIRE( you.get_speed() == 100 );
+        CHECK( grapple::min_hold_turns( you, you ) == 2 );
+        monster &slow = spawn_test_monster( "mon_test_non_shearable",
+                                            you.pos_bub() + tripoint::east );
+        REQUIRE( slow.get_speed() == 50 );
+        CHECK( grapple::min_hold_turns( you, slow ) == 3 );
+        monster &cow = spawn_test_monster( "mon_cow", you.pos_bub() + tripoint::south );
+        REQUIRE( cow.get_speed() == 130 );
+        CHECK( grapple::min_hold_turns( you, cow ) == 1 );
+    }
+}
+
+// Phase 3: how the held creature reacts
+
+TEST_CASE( "grapple_held_monster_reactions", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    restore_on_out_of_scope restore_calendar_turn( calendar::turn );
+    monster &cow = spawn_test_monster( "mon_cow", you.pos_bub() + tripoint::east );
+    REQUIRE( cow.get_dodge() > 0.0f );
+    REQUIRE( cow.type->has_anger_trigger( mon_trigger::HURT ) );
+    // A hold of strength 1: every escape roll succeeds once the monster may roll at all.
+    REQUIRE( grapple::start_hold( you, cow, 1, no_part() ) );
+    const int stamina = you.get_stamina();
+    const int anger = cow.anger;
+
+    SECTION( "it can't dodge while held" ) {
+        CHECK( cow.get_dodge() == 0.0f );
+    }
+    SECTION( "it can't break free inside the minimum hold time" ) {
+        CHECK( !cow.move_effects( false ) );
+        CHECK( holds( you, cow ) );
+        CHECK( you.get_stamina() == stamina );
+        CHECK( cow.anger > anger );
+    }
+    SECTION( "after that it breaks free, and the grabber pays for the struggle" ) {
+        wait_past_min_hold( you, cow );
+        const int cost = grapple::escape_stamina_cost( you, cow, 1,
+                         static_cast<int>( std::max( cow.get_melee(), 0.0f ) ) );
+        CHECK( cow.move_effects( false ) );
+        CHECK( released( you, cow ) );
+        CHECK( !cow.has_effect( effect_grabbed ) );
+        CHECK( you.get_stamina() == stamina - cost );
+        CHECK( cow.anger > anger );
+    }
+}
+
+TEST_CASE( "grapple_followers_do_not_resist_the_avatar", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    restore_on_out_of_scope restore_calendar_turn( calendar::turn );
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    make_follower( guy );
+    REQUIRE( grapple::start_hold( you, guy, 1, body_part_torso.id() ) );
+    wait_past_min_hold( you, guy );
+    const int stamina = you.get_stamina();
+    CHECK( !guy.try_remove_grab() );
+    CHECK( holds( you, guy ) );
+    CHECK( you.get_stamina() == stamina );
+}
+
+TEST_CASE( "grapple_a_struggling_npc_tires_the_grabber", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    restore_on_out_of_scope restore_calendar_turn( calendar::turn );
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    guy.set_attitude( NPCATT_NULL );
+    REQUIRE( !guy.is_player_ally() );
+    REQUIRE( grapple::start_hold( you, guy, 1, body_part_torso.id() ) );
+
+    // Inside the minimum hold time there is no struggle at all.
+    int stamina = you.get_stamina();
+    CHECK( !guy.try_remove_grab() );
+    CHECK( holds( you, guy ) );
+    CHECK( you.get_stamina() == stamina );
+
+    wait_past_min_hold( you, guy );
+    stamina = you.get_stamina();
+    guy.try_remove_grab();
+    CHECK( you.get_stamina() < stamina );
+}
+
+TEST_CASE( "grapple_player_held_by_an_npc_is_not_an_orphan", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    REQUIRE( grapple::start_hold( guy, you, 20, body_part_arm_l.id() ) );
+    REQUIRE( holds( guy, you ) );
+
+    // An attack only removes orphan grabs, and this one has a grabber.
+    you.try_remove_grab( true );
+    CHECK( you.has_effect( effect_grabbed, body_part_arm_l ) );
+    // Inside the minimum hold time a struggle can't break it either.
+    CHECK( !you.try_remove_grab() );
+    CHECK( holds( guy, you ) );
+
+    // With the NPC gone, it is an orphan.
+    guy.setpos( here, you.pos_bub() + tripoint{ 4, 0, 0 } );
+    you.try_remove_grab( true );
+    CHECK( !you.has_effect( effect_grabbed, body_part_arm_l ) );
 }

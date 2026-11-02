@@ -55,7 +55,9 @@ static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const flag_id json_flag_NO_GRAB( "NO_GRAB" );
 
+static const jmath_func_id jmath_func_grapple_escape_stamina_cost( "grapple_escape_stamina_cost" );
 static const jmath_func_id jmath_func_grapple_grab_strength( "grapple_grab_strength" );
+static const jmath_func_id jmath_func_grapple_min_hold_turns( "grapple_min_hold_turns" );
 
 static const trait_id trait_CLAWS_TENTACLE( "CLAWS_TENTACLE" );
 static const trait_id trait_PAWS_LARGE( "PAWS_LARGE" );
@@ -529,4 +531,29 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
         guy->on_attacked( grabber );
     }
     return true;
+}
+
+// Struggling free
+
+int grapple::escape_stamina_cost( const Character &grabber, const Creature &target,
+                                  int hold_strength, int escape_skill )
+{
+    const double cost = eval_formula( jmath_func_grapple_escape_stamina_cost, grabber, target, {
+        static_cast<double>( hold_strength ), static_cast<double>( escape_skill )
+    } );
+    return std::max( 0, static_cast<int>( std::round( cost ) ) );
+}
+
+int grapple::min_hold_turns( const Character &grabber, const Creature &target )
+{
+    const double turns = eval_formula( jmath_func_grapple_min_hold_turns, grabber, target );
+    return std::max( 1, static_cast<int>( std::round( turns ) ) );
+}
+
+bool grapple::within_min_hold( const Character &grabber, const Creature &target,
+                               const effect &eff )
+{
+    // Turn order would otherwise let a creature break a character's grab on the turn it lands.
+    const int held_turns = to_turns<int>( calendar::turn - eff.get_start_time() );
+    return held_turns <= min_hold_turns( grabber, target );
 }

@@ -7,6 +7,20 @@
     "return": "min( 100, 1 + round( max( 0.5, u_limb_score('grip') ) * ( u_arm_strength() + u_skill('unarmed') + u_skill('melee') + u_val('size') ) ) )"
   },
   {
+    "type": "jmath_function",
+    "id": "grapple_escape_stamina_cost",
+    "//": "Stamina the grabber spends each time the target tries to break free.  u = grabber, n = target, _0 = strength of the hold, _1 = the target's escape skill (a monster's melee or dodge skill, a character's escape chance / 10).",
+    "num_args": 2,
+    "return": "clamp( max( 1, 100 - _0 ) * ( max( 1, n_val('size') - u_val('size') ) + _1 ), 100, 400 )"
+  },
+  {
+    "type": "jmath_function",
+    "id": "grapple_min_hold_turns",
+    "//": "Turns a creature held by a character must wait before it may try to break free, so that turn order can't break a grab on the turn it lands.  u = grabber, n = target.",
+    "num_args": 0,
+    "return": "1 + trunc( 100 / max( 1, n_speed() ) )"
+  },
+  {
     "type": "effect_on_condition",
     "id": "grab_condition",
     "//": "Tested, not run, before a character tries to grab a creature, with u = grabber and npc = target.  If the condition is false the grab is refused before any cost is paid.  Mods can extend it, e.g. to forbid grabbing blobs.",

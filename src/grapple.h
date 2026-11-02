@@ -113,6 +113,21 @@ grab_confirmation needs_confirmation( const Character &grabber, const Creature &
  */
 bool attempt_grab( Character &grabber, Creature &target );
 
+// Struggling free
+
+/**
+ * The stamina @p grabber spends when @p target tries to break a hold of strength
+ * @p hold_strength. @p escape_skill is the target's skill at escaping.
+ */
+int escape_stamina_cost( const Character &grabber, const Creature &target, int hold_strength,
+                         int escape_skill );
+
+/** Turns @p target must stay in @p grabber's hold before it may try to break free. */
+int min_hold_turns( const Character &grabber, const Creature &target );
+
+/** Whether the hold @p eff by @p grabber on @p target is still inside its minimum hold time. */
+bool within_min_hold( const Character &grabber, const Creature &target, const effect &eff );
+
 } // namespace grapple
 
 #endif // CATA_SRC_GRAPPLE_H

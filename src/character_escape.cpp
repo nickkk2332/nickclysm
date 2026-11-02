@@ -16,6 +16,7 @@
 #include "effect.h"
 #include "enums.h"
 #include "flag.h"
+#include "game_constants.h"
 #include "grapple.h"
 #include "item.h"
 #include "item_pocket.h"
@@ -25,6 +26,7 @@
 #include "messages.h"
 #include "monster.h"
 #include "mtype.h"
+#include "npc.h"
 #include "output.h"
 #include "pimpl.h"
 #include "point.h"
@@ -41,6 +43,7 @@ static const efftype_id effect_crushed( "crushed" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_heavysnare( "heavysnare" );
 static const efftype_id effect_in_pit( "in_pit" );
+static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_lightsnare( "lightsnare" );
 static const efftype_id effect_webbed( "webbed" );
 
@@ -237,17 +240,39 @@ bool Character::try_remove_grab( bool attacking )
             const int grab_str = eff.get_intensity();
             float escape_chance = 1.0f;
             float grabber_roll = static_cast<float>( grab_str );
-            // We need to figure out which monster is responsible for this grab early for good
-            // messaging. It is searched within the reach of the monsters' grab attacks, which can
-            // be past the adjacent tiles.
+            // We need to figure out who is responsible for this grab early for good messaging.
+            // A character's grab names it as the effect's source. A monster's grab is found by
+            // searching the monsters in grab reach, which can be past the adjacent tiles.
             // For now, one grabber per limb TODO: handle multiple grabbers and decrement intensity
-            monster *const grabber = grapple::monster_grabber( *this, eff_bp );
+            Character *const char_grabber = grapple::character_grabber( *this, eff );
+            monster *const mon_grabber = char_grabber != nullptr ? nullptr :
+                                         grapple::monster_grabber( *this, eff_bp );
+            Creature *const grabber = char_grabber != nullptr ?
+                                      static_cast<Creature *>( char_grabber ) : mon_grabber;
 
             // Something went wrong, remove grab to be sure and throw an error
             if( grabber == nullptr ) {
                 remove_effect( eff_id, eff_bp );
                 add_msg_debug( debugmode::DF_MATTACK, "Orphan grab found and removed" );
                 continue;
+            }
+
+            if( char_grabber != nullptr ) {
+                // Nothing can hold what isn't quite here.
+                if( has_effect( effect_incorporeal ) ||
+                    char_grabber->has_effect( effect_incorporeal ) ) {
+                    grapple::end_hold( *char_grabber, this );
+                    continue;
+                }
+                // Followers assume the player has a good reason; being held doesn't hurt them.
+                if( char_grabber->is_avatar() && is_npc() && as_npc()->is_player_ally() ) {
+                    continue;
+                }
+                // A fresh grab can't be broken at once, or turn order would break every
+                // character's grab on the turn it lands.
+                if( grapple::within_min_hold( *char_grabber, *this, eff ) ) {
+                    continue;
+                }
             }
 
             // Short out the check when attacking after removing any orphan grabs
@@ -309,13 +334,17 @@ bool Character::try_remove_grab( bool attacking )
                                escape_chance * 100 / grab_str );
             }
 
+            // Holding on against the struggle tires a character grabber.
+            if( char_grabber != nullptr ) {
+                char_grabber->set_activity_level( EXTRA_EXERCISE );
+                const int escape_skill = static_cast<int>( escape_chance / 10.0f );
+                const int cost = grapple::escape_stamina_cost( *char_grabber, *this, grab_str,
+                                 escape_skill );
+                char_grabber->burn_energy_arms( -cost );
+            }
             // Every attempt burns some stamina - maybe some moves?
             burn_energy_arms( -5 * grab_str );
             if( x_in_y( escape_chance, grabber_roll ) ) {
-                grabber->remove_grab( eff_bp.id() );
-                add_msg_debug( debugmode::DF_MATTACK, "Removed grab effect %s from monster %s",
-                               eff_bp->name, grabber->name() );
-
                 if( grab_break_factor > 0 ) {
                     add_msg_if_player( m_info, martial_arts_data->get_grab_break( *this ).avatar_message.translated(),
                                        grabber->disp_name() );
@@ -324,8 +353,18 @@ bool Character::try_remove_grab( bool attacking )
                                            _( "<npcname> breaks the grab %s had on their %s!" ), grabber->disp_name(),
                                            eff_bp->name );
                 }
-                // Remove only this one grab
-                remove_effect( eff_id, eff_bp );
+                if( char_grabber != nullptr ) {
+                    // Removes this grab and the grabber's side of it.
+                    grapple::end_hold( *char_grabber, this );
+                    add_msg_debug( debugmode::DF_CHARACTER, "Removed grab effect %s held by %s",
+                                   eff_bp->name, char_grabber->disp_name() );
+                } else {
+                    mon_grabber->remove_grab( eff_bp.id() );
+                    add_msg_debug( debugmode::DF_MATTACK, "Removed grab effect %s from monster %s",
+                                   eff_bp->name, mon_grabber->name() );
+                    // Remove only this one grab
+                    remove_effect( eff_id, eff_bp );
+                }
             } else {
                 add_msg_player_or_npc( m_bad, _( "You try to break the grab %s has on your %s, but fail!" ),
                                        _( "<npcname> tries to break the grab %s has on their %s, but fails!" ), grabber->disp_name(),
