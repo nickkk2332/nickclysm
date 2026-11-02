@@ -109,6 +109,12 @@ bool holds_anyone( const Creature &grabber );
 /** Whether any character or monster holds @p victim now (see holds()). */
 bool held_by_anyone( const Creature &victim );
 
+/**
+ * End the holds the monster @p mon has on @p victim, on both sides; its holds on others stay.
+ * Prints nothing.
+ */
+void end_monster_hold( monster &mon, Creature &victim );
+
 // The grab action
 
 /** Arm stamina spent on a grab attempt. */
@@ -137,8 +143,19 @@ grab_confirmation needs_confirmation( const Character &grabber, const Creature &
 /**
  * Pay the cost and roll the grab (a hit roll the target can dodge, unless it tolerates the
  * grab). Returns true when the hold is established. Call grab_refusal() first.
+ * @p strength replaces grab_strength(), and @p part the free part picked on a character target
+ * (a monster is held as a whole).
  */
-bool attempt_grab( Character &grabber, Creature &target );
+bool attempt_grab( Character &grabber, Creature &target,
+                   std::optional<int> strength = std::nullopt,
+                   const std::optional<bodypart_id> &part = std::nullopt );
+
+/**
+ * Why a hold by @p grabber on @p target can't be set up directly, with start_hold() and no roll
+ * (EOC u_grab); nullopt if it can. Only what a hold needs: another living creature in reach, and
+ * a grabber that holds nothing yet.
+ */
+std::optional<std::string> hold_refusal( const Character &grabber, const Creature &target );
 
 // Struggling free
 
@@ -274,9 +291,20 @@ bool break_free_to_throw( Character &thrower, const Creature &victim );
  * Throw @p victim, which @p thrower holds, toward @p target (bubble coordinates; clamped to the
  * throw's range): the hold ends, @p thrower pays moves and stamina, the victim reacts, and it is
  * flung from its tile toward @p target with the force for that distance. No prompts: the caller
- * asks first. Returns whether the throw was made.
+ * asks first. @p full_force replaces throw_force(). Returns whether the throw was made.
  */
-bool throw_held_creature( Character &thrower, Creature &victim, const tripoint_bub_ms &target );
+bool throw_held_creature( Character &thrower, Creature &victim, const tripoint_bub_ms &target,
+                          std::optional<float> full_force = std::nullopt );
+
+/**
+ * The throw without targeting or prompts (EOC u_throw_grabbed): @p thrower throws the creature
+ * it holds toward @p target, or straight away from itself as far as the throw carries.
+ * @p full_force replaces throw_force(). First come the checks of the throw action: throw_refusal,
+ * the avatar's relax gas, breaking free of a victim that holds @p thrower too (a failure costs
+ * moves) and throw_target_refusal. Prints no refusal. Returns whether the throw was made.
+ */
+bool throw_grabbed_creature( Character &thrower, const std::optional<tripoint_bub_ms> &target,
+                             std::optional<float> full_force = std::nullopt );
 
 } // namespace grapple
 

@@ -1,0 +1,45 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_SAY_TRUE",
+    "//": "Grappling EOC tests: the true_eocs of u_grab and u_throw_grabbed.",
+    "effect": [ { "set_string_var": "true", "target_var": { "global_val": "test_grapple_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_SAY_FALSE",
+    "//": "Grappling EOC tests: the false_eocs of u_grab and u_throw_grabbed.",
+    "effect": [ { "set_string_var": "false", "target_var": { "global_val": "test_grapple_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_GRAB_ARM",
+    "//": "u_grab test: the alpha talker takes hold of the beta talker's left arm, as hard as the global test_grapple_strength says.",
+    "effect": [
+      {
+        "u_grab": { "strength": { "global_val": "test_grapple_strength" }, "body_part": "arm_l" },
+        "true_eocs": [ "EOC_TEST_GRAPPLE_SAY_TRUE" ],
+        "false_eocs": [ "EOC_TEST_GRAPPLE_SAY_FALSE" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_NPC_RELEASES_U",
+    "//": "npc_release_grab test: the beta talker lets go of the alpha talker only.",
+    "condition": { "npc_is_grabbing": "u" },
+    "effect": [ { "npc_release_grab": { "target": "u" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GRAPPLE_THROW_TOWARD",
+    "//": "u_throw_grabbed test: the alpha talker throws what it holds toward the location in the global test_grapple_throw_to.",
+    "effect": [
+      {
+        "u_throw_grabbed": { "target_var": { "global_val": "test_grapple_throw_to" } },
+        "true_eocs": [ "EOC_TEST_GRAPPLE_SAY_TRUE" ],
+        "false_eocs": [ "EOC_TEST_GRAPPLE_SAY_FALSE" ]
+      }
+    ]
+  }
+]

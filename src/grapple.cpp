@@ -525,6 +525,32 @@ bool grapple::held_by_anyone( const Creature &victim )
     return false;
 }
 
+void grapple::end_monster_hold( monster &mon, Creature &victim )
+{
+    std::vector<std::pair<efftype_id, bodypart_id>> held;
+    for( const effect &eff : victim.get_effects_with_flag( json_flag_GRAB ) ) {
+        if( !has_character_source( eff ) && monster_grabber( victim, eff.get_bp() ) == &mon ) {
+            held.emplace_back( eff.get_id(), eff.get_bp() );
+        }
+    }
+    for( const std::pair<efftype_id, bodypart_id> &grab : held ) {
+        victim.remove_effect( grab.first, grab.second );
+        // A character is held by the limb, a monster as a whole.
+        if( !victim.is_monster() ) {
+            mon.remove_grab( grab.second.id() );
+        }
+    }
+    if( !held.empty() && !holds_anyone( mon ) ) {
+        std::vector<efftype_id> filters;
+        for( const effect &eff : mon.get_effects_with_flag( json_flag_GRAB_FILTER ) ) {
+            filters.push_back( eff.get_id() );
+        }
+        for( const efftype_id &id : filters ) {
+            mon.remove_effect( id );
+        }
+    }
+}
+
 // The grab action
 
 namespace
@@ -644,11 +670,13 @@ grapple::grab_confirmation grapple::needs_confirmation( const Character &grabber
     return grab_confirmation::none;
 }
 
-bool grapple::attempt_grab( Character &grabber, Creature &target )
+bool grapple::attempt_grab( Character &grabber, Creature &target, std::optional<int> strength_in,
+                            const std::optional<bodypart_id> &part )
 {
     map &here = get_map();
     const bool tolerate = grab_tolerated( grabber, target );
-    const int strength = grab_strength( grabber, target );
+    const int strength = strength_in ? std::clamp( *strength_in, 1, 100 ) :
+                         grab_strength( grabber, target );
 
     // Grabbing on is lighter work than striking: weariness is taken at the grappling level.
     const float weary_mult = grabber.exertion_adjusted_move_multiplier( exertion_level( grabber ) );
@@ -732,7 +760,7 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
         }
     }
     // Characters are held by a limb. Skip the limbs somebody already holds.
-    const std::optional<bodypart_id> bp = free_grab_part( target );
+    const std::optional<bodypart_id> bp = part ? part : free_grab_part( target );
     if( !bp || !establish_hold( grabber, target, strength, *bp ) ) {
         grabber.add_msg_if_player( m_bad, _( "You can't get a grip on %s." ), target.disp_name() );
         return false;
@@ -746,6 +774,28 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
     }
     react_to_hold( grabber, target, *bp );
     return true;
+}
+
+std::optional<std::string> grapple::hold_refusal( const Character &grabber,
+        const Creature &target )
+{
+    if( &target == &grabber ) {
+        return std::string( _( "You get a hold of yourself." ) );
+    }
+    if( grabber.is_dead_state() || target.is_dead_state() ) {
+        return string_format( _( "You can't grab %s." ), target.disp_name() );
+    }
+    if( !in_reach( grabber, target ) ) {
+        return string_format( _( "You can't reach %s." ), target.disp_name() );
+    }
+    if( const Creature *const held = grabber.grabbed_creature() ) {
+        return string_format( _( "You're already holding %s." ), held->disp_name() );
+    }
+    const avatar *const you = grabber.as_avatar();
+    if( you != nullptr && you->get_grab_type() != object_type::NONE ) {
+        return std::string( _( "You're already holding on to something." ) );
+    }
+    return std::nullopt;
 }
 
 // Struggling free
@@ -1090,7 +1140,8 @@ bool grapple::break_free_to_throw( Character &thrower, const Creature &victim )
 }
 
 bool grapple::throw_held_creature( Character &thrower, Creature &victim,
-                                   const tripoint_bub_ms &target )
+                                   const tripoint_bub_ms &target,
+                                   std::optional<float> full_force_in )
 {
     map &here = get_map();
     if( hold_effect( thrower, victim ) == nullptr ||
@@ -1098,7 +1149,8 @@ bool grapple::throw_held_creature( Character &thrower, Creature &victim,
         return false;
     }
     const tripoint_bub_ms from = victim.pos_bub( here );
-    const float full_force = throw_force( thrower, victim );
+    const float full_force = full_force_in ? std::max( 0.0f, *full_force_in ) :
+                             throw_force( thrower, victim );
     // A fling takes one tile per step, diagonals included: count them the same way.
     const int distance = std::min( square_dist( from.xy(), target.xy() ),
                                    throw_range( full_force ) );
@@ -1157,4 +1209,41 @@ bool grapple::throw_held_creature( Character &thrower, Creature &victim,
     thrower.mod_moves( -throw_move_cost( thrower ) );
     thrower.burn_energy_arms( -stamina_cost );
     return true;
+}
+
+bool grapple::throw_grabbed_creature( Character &thrower,
+                                      const std::optional<tripoint_bub_ms> &target,
+                                      std::optional<float> full_force )
+{
+    Creature *const victim = thrower.grabbed_creature();
+    if( victim == nullptr || throw_refusal( thrower, *victim ) ) {
+        return false;
+    }
+    if( avatar *const you = thrower.as_avatar() ) {
+        if( !you->try_break_relax_gas( _( "You concentrate mightily, and your body obeys!" ),
+                                       _( "You can't muster up the effort to throw anything…" ) ) ) {
+            return false;
+        }
+    }
+    // Held by it as well? Get free first.
+    if( !break_free_to_throw( thrower, *victim ) ) {
+        return false;
+    }
+    map &here = get_map();
+    tripoint_bub_ms aim;
+    if( target ) {
+        aim = *target;
+    } else {
+        // Straight on, away from the thrower, as far as the throw carries.
+        const tripoint_bub_ms from = victim->pos_bub( here );
+        const tripoint_bub_ms at = thrower.pos_bub( here );
+        const int range = std::max( 1, throw_range( full_force ? *full_force :
+                                    throw_force( thrower, *victim ) ) );
+        aim = tripoint_bub_ms( from.x() + ( from.x() - at.x() ) * range,
+                               from.y() + ( from.y() - at.y() ) * range, from.z() );
+    }
+    if( throw_target_refusal( thrower, *victim, aim ) ) {
+        return false;
+    }
+    return throw_held_creature( thrower, *victim, aim, full_force );
 }

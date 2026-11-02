@@ -5613,6 +5613,116 @@ A leap: the avatar picks a tile, and jumps toward it as far as their strength al
   }
 ```
 
+#### `u_grab`, `npc_grab`
+The alpha (or beta) talker takes hold of the other talker, as the grab action does (grappling, from Cataclysm: The Last Generation).  The held creature gets the `grabbed` effect (flag `GRAB`) from the one holding it, which gets `grabbing` (flag `GRAB_FILTER`).  A character is held by a body part, a monster as a whole.  From then on the hold is like any other: the held creature struggles, the holder drags it along and can throw it, and the hold ends as a grab's does (see `u_release_grab`).
+
+By default the hold is set up directly: no hit roll, no cost, and none of the grab action's refusals but what a hold needs (the other talker is another living creature in reach, and the talker holds nothing yet).  With `attempt`, it is the grab action itself, without its prompts: its refusals (a weapon in hand the style doesn't allow, no working arm, too little stamina, a creature that can't be grabbed...), its cost in moves and arm stamina, and the hit roll the other talker can dodge unless it puts up with the grab (an ally, a pet).  It prints what the grab action prints.
+
+Only a character can grab this way: a monster talker runs the `false_eocs`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_grab" / "npc_grab" | **mandatory** | object | the options below |
+| "attempt" | optional | boolean | default false: set the hold up directly.  True: roll it as the grab action does |
+| "strength" | optional | number or [variable object](#variable-object) | the hold's strength, 1 to 100 (how hard it is to break free).  Default: the talker's grab strength (`grapple_grab_strength`) |
+| "body_part" | optional | string or [variable object](#variable-object) | the part of a character to hold, by its main part (`"hand_l"` means the left arm).  Default: a part nobody holds, picked by size.  Nothing happens if the character doesn't have it or someone holds it already.  Ignored for a monster.  A literal id that doesn't exist is a load error |
+| "true_eocs" | optional | array of effect_on_conditions | next to `u_grab`, not inside it: run when the hold is made |
+| "false_eocs" | optional | array of effect_on_conditions | next to `u_grab`, not inside it: run when it isn't (a refusal, a missed roll, a talker that can't grab or be grabbed) |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+The other talker can be a character or a monster.
+
+##### Examples
+An NPC (alpha) seizes the avatar's right arm, firmly
+```jsonc
+{ "u_grab": { "body_part": "arm_r", "strength": 60 } }
+```
+
+A technique's EOC tries to grab the target, as the grab action does, and throws it if that works
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_GRAB_AND_THROW",
+  "effect": [ { "u_grab": { "attempt": true }, "true_eocs": [ "EOC_THROW_IT" ] } ]
+},
+{
+  "type": "effect_on_condition",
+  "id": "EOC_THROW_IT",
+  "effect": [ { "u_throw_grabbed": { } } ]
+}
+```
+
+#### `u_release_grab`, `npc_release_grab`
+The alpha (or beta) talker lets go of what it holds: a character of the creature it holds, a monster of everything it holds with its grab attacks.  With `target`, only of the other talker, and only if it holds it.  Prints nothing.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_release_grab" / "npc_release_grab" | **mandatory** | object | the options below; `{ }` for none |
+| "target" | optional | string | `"npc"` for `u_release_grab`, `"u"` for `npc_release_grab`: let go of the other talker only.  Any other value is a load error |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
+
+##### Examples
+The alpha talker lets go of everything
+```jsonc
+{ "u_release_grab": { } }
+```
+
+The beta talker lets go of the alpha talker, if it holds it
+```jsonc
+{ "npc_release_grab": { "target": "u" } }
+```
+
+#### `u_throw_grabbed`, `npc_throw_grabbed`
+The alpha (or beta) talker throws the creature it holds, as the throw of the grab action does but with no targeting screen and no questions: the hold ends, it pays the moves and the stamina of the throw, a held NPC may get angry, and the creature is thrown with the throw engine of `u_fling` (a short throw is a gentle one, and lands where it was aimed).
+
+It checks what the throw action checks first, and a refusal changes nothing: the talker must hold a creature, be strong enough to throw it at all (`grapple_throw_force` gives a range over one tile, and it isn't too large) and have the stamina for it; the avatar must shake off relax gas; a creature that holds the talker too must be broken free of first (failing costs moves); and it can't be thrown through the talker or up or down.  Only a character throws this way: a monster talker runs the `false_eocs`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_throw_grabbed" / "npc_throw_grabbed" | **mandatory** | object | the options below; `{ }` for none |
+| "target_var" | optional | [variable object](#variable-object) | a location: throw the creature toward it, as far as the throw carries.  Default: straight on, away from the talker, as far as it carries |
+| "force" | optional | number or [variable object](#variable-object) | the full force of the throw, instead of the talker's own (`grapple_throw_force`).  It flies `force / 10` tiles; a throw toward `target_var` uses what carries it that far |
+| "true_eocs" | optional | array of effect_on_conditions | next to `u_throw_grabbed`, not inside it: run when the creature is thrown |
+| "false_eocs" | optional | array of effect_on_conditions | next to `u_throw_grabbed`, not inside it: run when it isn't |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Throw what you hold as far as you can, straight on
+```jsonc
+{ "u_throw_grabbed": { } }
+```
+
+An NPC (beta) throws what it holds toward the avatar, with extra force
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_THROW_AT_PLAYER",
+  "condition": { "npc_is_grabbing": "any" },
+  "effect": [
+    { "u_location_variable": { "context_val": "here" } },
+    {
+      "npc_throw_grabbed": { "target_var": { "context_val": "here" }, "force": 50 },
+      "false_eocs": [ "EOC_THROW_FAILED" ]
+    }
+  ]
+}
+```
+
 #### `mirror_coordinates`
 Picks two coordinates, and create a third one in opposite direction
 

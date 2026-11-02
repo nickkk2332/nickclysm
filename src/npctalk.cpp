@@ -75,6 +75,7 @@
 #include "game_inventory.h"
 #include "generic_factory.h"
 #include "global_vars.h"
+#include "grapple.h"
 #include "gun_mode.h"
 #include "input.h"
 #include "input_context.h"
@@ -178,6 +179,7 @@ static const efftype_id effect_riding( "riding" );
 static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_under_operation( "under_operation" );
 
+static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_NO_UNLOAD( "NO_UNLOAD" );
 
 static const itype_id fuel_type_animal( "animal" );
@@ -8137,6 +8139,162 @@ talk_effect_fun_t::func f_fling( const JsonObject &jo, std::string_view member,
     };
 }
 
+// The other talker named by "target" in u_release_grab: "npc" for u_, "u" for npc_.
+void check_other_talker( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const std::string value = jo.get_string( member );
+    const std::string other = is_npc ? "u" : "npc";
+    if( value != other ) {
+        jo.throw_error_at( member, string_format(
+                               "%s must be \"%s\" (the other talker), not \"%s\"",
+                               std::string( member ), other, value ) );
+    }
+}
+
+// u_grab / npc_grab: the talker (a character) takes hold of the other talker, directly or by the
+// grab action's roll. See doc/JSON/EFFECT_ON_CONDITION.md.
+talk_effect_fun_t::func f_grab( const JsonObject &jo, std::string_view member,
+                                std::string_view src, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    const bool attempt = params.get_bool( "attempt", false );
+    std::optional<dbl_or_var> strength;
+    if( params.has_member( "strength" ) ) {
+        strength = get_dbl_or_var( params, "strength" );
+    }
+    std::optional<str_or_var> part;
+    if( params.has_member( "body_part" ) ) {
+        part = get_str_or_var( params.get_member( "body_part" ), "body_part" );
+        if( part->is_constant() ) {
+            const std::string context = params.get_member( "body_part" ).get_root_source_path();
+            effect_on_conditions::add_load_check( [name = part->constant(), context]() {
+                if( !bodypart_str_id( name ).is_valid() ) {
+                    debugmsg( "Body part \"%s\" (in u_grab in %s) does not exist", name, context );
+                }
+            } );
+        }
+    }
+    const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+
+    return [is_npc, attempt, strength, part, true_eocs, false_eocs]( dialogue & d ) {
+        const auto grab = [&]() {
+            Character *const grabber = d.actor( is_npc )->get_character();
+            Creature *const target = d.actor( !is_npc )->get_creature();
+            if( grabber == nullptr || target == nullptr ) {
+                return false;
+            }
+            // A character is held by a main part; a monster as a whole, whatever part is named.
+            std::optional<bodypart_id> bp;
+            if( part && !target->is_monster() ) {
+                const bodypart_str_id named( part->evaluate( d ) );
+                if( !named.is_valid() ) {
+                    debugmsg( "u_grab: unknown body part \"%s\".  %s", named.str(),
+                              d.get_callstack() );
+                    return false;
+                }
+                bp = named->main_part.id();
+                if( !target->has_part( *bp ) ||
+                    target->has_effect_with_flag( json_flag_GRAB, *bp ) ) {
+                    return false;
+                }
+            }
+            std::optional<int> hold_strength;
+            if( strength ) {
+                const double wanted = std::round( strength->evaluate( d ) );
+                hold_strength = std::clamp( static_cast<int>( wanted ), 1, 100 );
+            }
+            if( attempt ) {
+                return !grapple::grab_refusal( *grabber, *target ) &&
+                       grapple::attempt_grab( *grabber, *target, hold_strength, bp );
+            }
+            if( grapple::hold_refusal( *grabber, *target ) ) {
+                return false;
+            }
+            if( !bp && !target->is_monster() ) {
+                bp = grapple::free_grab_part( *target );
+                if( !bp ) {
+                    return false;
+                }
+            }
+            if( !hold_strength ) {
+                hold_strength = grapple::grab_strength( *grabber, *target );
+            }
+            return grapple::start_hold( *grabber, *target, *hold_strength,
+                                        bp ? *bp : bodypart_str_id::NULL_ID().id() );
+        };
+        run_eoc_vector( grab() ? true_eocs : false_eocs, d );
+    };
+}
+
+// u_release_grab / npc_release_grab: the talker lets go of what it holds, or only of the other
+// talker.
+talk_effect_fun_t::func f_release_grab( const JsonObject &jo, std::string_view member,
+                                        std::string_view, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    const bool only_other = params.has_member( "target" );
+    if( only_other ) {
+        check_other_talker( params, "target", is_npc );
+    }
+    return [is_npc, only_other]( dialogue & d ) {
+        Creature *const self = d.actor( is_npc )->get_creature();
+        if( self == nullptr ) {
+            return;
+        }
+        Creature *other = nullptr;
+        if( only_other ) {
+            other = d.actor( !is_npc )->get_creature();
+            if( other == nullptr || !grapple::holds( *self, *other ) ) {
+                return;
+            }
+        }
+        if( Character *const guy = self->as_character() ) {
+            grapple::end_hold( *guy, other != nullptr ? other : guy->grabbed_creature() );
+        } else if( monster *const mon = self->as_monster() ) {
+            if( other != nullptr ) {
+                grapple::end_monster_hold( *mon, *other );
+            } else {
+                grapple::release_grabs_by( *mon );
+            }
+        }
+    };
+}
+
+// u_throw_grabbed / npc_throw_grabbed: the talker throws the creature it holds, with the throw
+// action's engine and checks but no targeting.
+talk_effect_fun_t::func f_throw_grabbed( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    const JsonObject params = jo.get_object( member );
+    std::optional<var_info> target_var;
+    optional( params, false, "target_var", target_var );
+    std::optional<dbl_or_var> force;
+    if( params.has_member( "force" ) ) {
+        force = get_dbl_or_var( params, "force" );
+    }
+    const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+
+    return [is_npc, target_var, force, true_eocs, false_eocs]( dialogue & d ) {
+        bool thrown = false;
+        if( Character *const thrower = d.actor( is_npc )->get_character() ) {
+            std::optional<tripoint_bub_ms> aim;
+            if( target_var ) {
+                aim = get_map().get_bub( read_var_value( *target_var, d ).tripoint() );
+            }
+            std::optional<float> full_force;
+            if( force ) {
+                full_force = static_cast<float>( force->evaluate( d ) );
+            }
+            thrown = grapple::throw_grabbed_creature( *thrower, aim, full_force );
+        }
+        run_eoc_vector( thrown ? true_eocs : false_eocs, d );
+    };
+}
+
 talk_effect_fun_t::func f_give_equipment( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -9380,6 +9538,9 @@ parsers = {
     { "mirror_coordinates", jarg::member, &talk_effect_fun::f_mirror_coordinates },
     { "u_knockback", "npc_knockback", jarg::member, &talk_effect_fun::f_knockback },
     { "u_fling", "npc_fling", jarg::object, &talk_effect_fun::f_fling },
+    { "u_grab", "npc_grab", jarg::member, &talk_effect_fun::f_grab },
+    { "u_release_grab", "npc_release_grab", jarg::member, &talk_effect_fun::f_release_grab },
+    { "u_throw_grabbed", "npc_throw_grabbed", jarg::member, &talk_effect_fun::f_throw_grabbed },
     { "give_equipment", jarg::object, &talk_effect_fun::f_give_equipment },
     { "set_string_var", jarg::member | jarg::array, &talk_effect_fun::f_set_string_var },
     { "set_condition", jarg::member, &talk_effect_fun::f_set_condition },
