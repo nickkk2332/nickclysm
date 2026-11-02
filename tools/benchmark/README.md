@@ -51,6 +51,7 @@ without timing it, then times a fixed amount of work.
 | `farm_scan` | 5 check-only scans of a 10x10 planted farm plot (a check-only scan stops at the first tile, so it does not show ACT-P02's saving) | ACT-P02 |
 | `blueprint_build_reqs` | build requirements for every constructible terrain and furniture, 10 per call, 5 passes | TERR-P01 |
 | `shot_flockshot` | 2 rounds of 27.3x110 flockshot (24155 pellets): at an unarmored target 6 tiles away, at an armored one 2 tiles away | CMBT-P01 |
+| `shot_birdshot` | 30 rounds of 12 gauge birdshot (100 pellets) at a target 5 tiles away, the common case | CMBT-P01 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then

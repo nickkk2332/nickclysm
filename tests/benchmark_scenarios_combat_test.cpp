@@ -50,6 +50,8 @@
 
 static const itype_id itype_273x110flock( "273x110flock" );
 static const itype_id itype_brogyaga( "brogyaga" );
+static const itype_id itype_shot_bird( "shot_bird" );
+static const itype_id itype_shotgun_s( "shotgun_s" );
 
 namespace
 {
@@ -131,6 +133,27 @@ TEST_CASE( "bench_shot_flockshot", "[.][benchmark_scenario]" )
                    scenario_center + tripoint_rel_ms( 6, 0, 0 ) );
         fire_once( *shooter, itype_brogyaga, itype_273x110flock,
                    scenario_center + tripoint_rel_ms( -2, 0, 0 ) );
+    } );
+    clear_creatures();
+}
+
+// CMBT-P01: the common case, 12 gauge birdshot (100 pellets) at a target 5 tiles away.
+TEST_CASE( "bench_shot_birdshot", "[.][benchmark_scenario]" )
+{
+    fixed_weather weather;
+    std::unique_ptr<standard_npc> shooter;
+    run_scenario( "shot_birdshot", "30 rounds of 12 gauge birdshot at a target 5 tiles away",
+    [&shooter]() {
+        clear_avatar();
+        clear_map_and_put_player_underground();
+        shooter = std::make_unique<standard_npc>( "Shooter", scenario_center,
+                  std::vector<itype_id>(), 5, 10, 10, 10, 10 );
+        spawn_test_monster( "mon_test_shotgun_5_bullet", scenario_center + tripoint_rel_ms( 5, 0, 0 ) );
+    }, [&shooter]() {
+        for( int shot = 0; shot < 30; ++shot ) {
+            fire_once( *shooter, itype_shotgun_s, itype_shot_bird,
+                       scenario_center + tripoint_rel_ms( 5, 0, 0 ) );
+        }
     } );
     clear_creatures();
 }
