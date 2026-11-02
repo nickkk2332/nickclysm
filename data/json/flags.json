@@ -2955,6 +2955,11 @@
     "//": "Creatures and players with this flag cannot naturally move."
   },
   {
+    "id": "MA_BASIC_FALLBACK",
+    "type": "json_flag",
+    "//": "Character flag, usually granted by a martial art's static buff.  Techniques with \"fallback\" (the base punch, kick and headbutt) are used only when no other technique is possible, and the base techniques follow the grappling rules: headbutt only in a grapple, no kicks while holding someone."
+  },
+  {
     "id": "CANNOT_TAKE_DAMAGE",
     "type": "json_flag"
   },

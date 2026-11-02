@@ -8,6 +8,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -167,7 +168,9 @@ struct ma_requirements {
     std::string get_description( bool buff = false ) const;
 
     bool buff_requirements_satisfied( const Character &u ) const;
-    bool is_valid_character( const Character &u ) const;
+    // With ignore_style_weapon_rule, an unarmed user is not turned away because the selected style
+    // is strictly_melee (used for fallback attacks; every other requirement still applies)
+    bool is_valid_character( const Character &u, bool ignore_style_weapon_rule = false ) const;
     bool is_valid_weapon( const item &i ) const;
 
     void load( const JsonObject &jo, std::string_view src );
@@ -179,6 +182,10 @@ struct tech_effect_data {
     bool permanent;
     bool on_damage;
     int chance;
+    // Intensity to set; 0 keeps the effect's normal starting (or current) intensity
+    int intensity = 0;
+    // The effect lands on the attacker instead of the target (`"target": "self"`)
+    bool on_self = false;
     std::string message;
     // Dialogue conditions of the effect
     std::function<bool( const_dialogue const & )> condition;
@@ -196,7 +203,10 @@ class ma_technique
         void load( const JsonObject &jo, std::string_view src );
         static void verify_ma_techniques();
         static void finalize_all();
+        // Run at load by check_martialarts
         void check() const;
+        // Not run at load yet (audit DATA-J03): core, TEST_DATA and mod techniques still trip it
+        void check_attack_vectors() const;
 
         matec_id id;
         std::vector<std::pair<matec_id, mod_id>> src;
@@ -248,6 +258,14 @@ class ma_technique
         bool miss_recovery = false; // reduces the total move cost of a miss by 50%, post stumble modifier
         bool grab_break = false;    // allows grab_breaks, like tec_break
 
+        // Used only when no ordinary technique is possible, for attackers with the
+        // MA_BASIC_FALLBACK character flag; for everyone else an ordinary technique
+        bool fallback = false;
+        // Joins whichever pool pick_technique draws from without keeping fallbacks out
+        bool basic = false;
+        // Is this a fallback for this attacker (fallback and the attacker has MA_BASIC_FALLBACK)?
+        bool is_fallback_for( const Character &u ) const;
+
         int weighting = 0; //how often this technique is used
 
         // conditional
@@ -274,6 +292,41 @@ class ma_technique
         std::vector<effect_on_condition_id> eocs;
         // Run once after the hit is dealt, with the target as beta and an ma_event_context
         std::vector<effect_on_condition_id> post_hit_eocs;
+};
+
+/**
+ * The techniques an attack can use, sorted the way Character::pick_technique chooses among them.
+ * Each technique appears once per point of positive weighting.
+ */
+struct technique_pools {
+    using entry = std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>;
+    // Ordinary techniques
+    std::vector<entry> possible;
+    // Fallback techniques of an attacker with MA_BASIC_FALLBACK
+    std::vector<entry> fallbacks;
+    // `basic` techniques
+    std::vector<entry> basics;
+
+    // The pool pick_technique draws from: the fallbacks when nothing ordinary is possible,
+    // otherwise the ordinary techniques; the basics join either
+    std::vector<entry> winning_pool() const;
+};
+
+/**
+ * What a martial art lets its user hold in hand while grabbing a creature. Grappling is
+ * unarmed unless the selected style lists the weapon here.
+ */
+struct ma_grapple_weapons {
+    // Weapons in any of these categories are allowed
+    std::set<weapon_category_id> categories;
+    // These item types are allowed
+    std::set<itype_id> items;
+    // Every weapon is allowed
+    bool any = false;
+
+    // Does this list allow grabbing while wielding the weapon? A null item is always allowed.
+    bool allows( const item &weapon ) const;
+    void deserialize( const JsonObject &jo );
 };
 
 class ma_buff
@@ -422,6 +475,10 @@ class martialart
         bool has_weapon( const itype_id & ) const;
         // Is this weapon OK with this art?
         bool weapon_valid( const item_location &it ) const;
+        // Can the user of this style grab a creature while wielding the weapon (grapple_weapons)?
+        bool grapple_allows_weapon( const item &weapon ) const;
+        // Load-time checks, run by check_martialarts
+        void check() const;
         // Getter for Character style change message
         std::string get_initiate_avatar_message() const;
         // Getter for NPC style change message
@@ -446,6 +503,7 @@ class martialart
         std::set<matec_id> techniques; // all available techniques
         std::set<itype_id> weapons; // all style weapons
         std::set<weapon_category_id> weapon_category; // all style weapon categories
+        ma_grapple_weapons grapple_weapons; // what may be wielded while grabbing a creature
         bool strictly_unarmed = false; // Punch daggers etc.
         bool strictly_melee = false; // Must have a weapon.
         bool allow_all_weapons = false; // Can use unarmed or with ANY weapon

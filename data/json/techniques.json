@@ -12,15 +12,37 @@
     "name": "Headbutt",
     "crit_ok": true,
     "unarmed_allowed": true,
+    "fallback": true,
     "messages": [ "You headbutt %s", "<npcname> headbutts %s" ],
     "description": "A basic headbutt",
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "//": "Without MA_BASIC_FALLBACK: only while an arm or hand of yours is grabbed.  With it (TLG's rule): only in a grapple with the target, whoever holds whom.",
     "condition": {
       "or": [
-        { "u_has_effect": "grabbed", "bodypart": "arm_r" },
-        { "u_has_effect": "grabbed", "bodypart": "arm_l" },
-        { "u_has_effect": "grabbed", "bodypart": "hand_r" },
-        { "u_has_effect": "grabbed", "bodypart": "hand_l" }
+        {
+          "and": [
+            { "not": { "u_has_flag": "MA_BASIC_FALLBACK" } },
+            {
+              "or": [
+                { "u_has_effect": "grabbed", "bodypart": "arm_r" },
+                { "u_has_effect": "grabbed", "bodypart": "arm_l" },
+                { "u_has_effect": "grabbed", "bodypart": "hand_r" },
+                { "u_has_effect": "grabbed", "bodypart": "hand_l" }
+              ]
+            }
+          ]
+        },
+        {
+          "and": [
+            { "u_has_flag": "MA_BASIC_FALLBACK" },
+            {
+              "or": [
+                { "and": [ { "u_has_flag": "GRAB_FILTER" }, { "npc_has_flag": "GRAB" } ] },
+                { "and": [ { "u_has_flag": "GRAB" }, { "npc_has_flag": "GRAB_FILTER" } ] }
+              ]
+            }
+          ]
+        }
       ]
     },
     "attack_vectors": [ "vector_headbutt" ]
@@ -31,6 +53,7 @@
     "name": "Punch",
     "crit_ok": true,
     "unarmed_allowed": true,
+    "fallback": true,
     "messages": [ "You punch %s", "<npcname> punches %s" ],
     "description": "A basic punch",
     "attack_vectors": [ "vector_punch" ]
@@ -41,6 +64,9 @@
     "name": "Kick",
     "crit_ok": true,
     "unarmed_allowed": true,
+    "fallback": true,
+    "//": "With MA_BASIC_FALLBACK (TLG's rule), no kicks while you hold someone.",
+    "condition": { "or": [ { "not": { "u_has_flag": "MA_BASIC_FALLBACK" } }, { "not": { "u_has_flag": "GRAB_FILTER" } } ] },
     "messages": [ "You kick %s", "<npcname> kicks %s" ],
     "description": "A basic kick",
     "attack_vectors": [ "vector_foot_toes", "vector_knee", "vector_shin" ]

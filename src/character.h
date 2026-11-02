@@ -117,6 +117,7 @@ struct mutation_variant;
 struct pathfinding_settings;
 struct projectile;
 struct requirement_data;
+struct technique_pools;
 struct tool_comp;
 struct trait_and_var;
 struct trap;
@@ -1190,6 +1191,10 @@ class Character : public Creature, public visitable
             Creature const &t, const item_location &weap,
             bool crit, bool dodge_counter, bool block_counter, const std::vector<matec_id> &blacklist = {} )
         const;
+        /** The usable techniques for an attack, sorted into the pools pick_technique draws from */
+        technique_pools get_technique_pools( Creature const &t, const item_location &weap,
+                                             bool crit, bool dodge_counter, bool block_counter,
+                                             const std::vector<matec_id> &blacklist = {} ) const;
         // Filter techniques per tech, return a tech/vector/sublimb set
         std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
                 evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
@@ -1689,6 +1694,8 @@ class Character : public Creature, public visitable
         bool has_mabuff_flag( const json_character_flag &flag ) const;
         /* Returns the number of MA buffs with the flag*/
         int count_mabuff_flag( const json_character_flag &flag ) const;
+        /** Does the selected martial art allow grabbing a creature while wielding this weapon? */
+        bool style_allows_grapple_weapon( const item &weapon ) const;
 
         /** Handles things like destruction of armor, etc. */
         void mutation_effect( const trait_id &mut, bool worn_destroyed_override );

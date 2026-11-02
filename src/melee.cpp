@@ -1466,11 +1466,24 @@ std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> Character::pick_tech
     Creature const &t, const item_location &weap, bool crit,
     bool dodge_counter, bool block_counter, const std::vector<matec_id> &blacklist ) const
 {
-    const std::vector<matec_id> all = martial_arts_data->get_all_techniques( weap, *this );
+    const technique_pools pools = get_technique_pools( t, weap, crit, dodge_counter, block_counter,
+                                  blacklist );
+    if( pools.possible.empty() && !pools.fallbacks.empty() ) {
+        add_msg_debug( debugmode::DF_MELEE, "No ordinary technique possible, using fallbacks" );
+    }
+    return random_entry( pools.winning_pool(), std::make_tuple( tec_none,
+                         attack_vector_id::NULL_ID(), sub_bodypart_str_id::NULL_ID() ) );
+}
 
-    std::vector<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>> possible;
-
-    for( const matec_id &tec_id : all ) {
+// Ported from Cataclysm-TLG (PR #428 by worm-girl): fallback techniques are kept apart and used
+// only when nothing ordinary is possible, and basic techniques join whichever pool wins. Here a
+// technique is a fallback only for an attacker with the MA_BASIC_FALLBACK flag.
+technique_pools Character::get_technique_pools( Creature const &t, const item_location &weap,
+        bool crit, bool dodge_counter, bool block_counter,
+        const std::vector<matec_id> &blacklist ) const
+{
+    technique_pools pools;
+    for( const matec_id &tec_id : martial_arts_data->get_all_techniques( weap, *this ) ) {
         add_msg_debug( debugmode::DF_MELEE, "Evaluating technique %s", tec_id->name );
 
         if( find( blacklist.begin(), blacklist.end(), tec_id ) != blacklist.end() ) {
@@ -1478,21 +1491,26 @@ std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> Character::pick_tech
             continue;
         }
 
-        auto tec = evaluate_technique( tec_id, t, weap, crit,
-                                       dodge_counter, block_counter );
-        if( tec ) {
-            possible.push_back( tec.value() );
-            if( tec_id->weighting > 1 ) {
-                for( int i = 1; i < tec_id->weighting; i++ ) {
-                    possible.push_back( tec.value() );
-                    add_msg_debug( debugmode::DF_MELEE, "Adding technique %s to the tech list (%d)", tec_id->name, i );
-                }
-            }
+        const std::optional<technique_pools::entry> tec = evaluate_technique( tec_id, t, weap,
+                crit, dodge_counter, block_counter );
+        if( !tec ) {
+            continue;
         }
+        bool as_fallback = tec_id->is_fallback_for( *this );
+        // As in TLG, a fallback's negative weighting is its chance to compete with the ordinary
+        // techniques this time instead of a chance to be discarded
+        if( as_fallback && tec_id->weighting < 0 && one_in( std::abs( tec_id->weighting ) ) ) {
+            as_fallback = false;
+        }
+        std::vector<technique_pools::entry> &pool = as_fallback ? pools.fallbacks :
+                tec_id->basic ? pools.basics : pools.possible;
+        const int copies = std::max( 1, tec_id->weighting );
+        pool.insert( pool.end(), copies, *tec );
+        add_msg_debug( debugmode::DF_MELEE, "Adding technique %s to the %s list (%d)",
+                       tec_id->name, as_fallback ? "fallback" : tec_id->basic ? "basic" : "tech",
+                       copies );
     }
-
-    return random_entry( possible, std::make_tuple( tec_none, attack_vector_id::NULL_ID(),
-                         sub_bodypart_str_id::NULL_ID() ) );
+    return pools;
 }
 std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
         Character::evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
@@ -1604,8 +1622,11 @@ std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
         return std::nullopt;
     }
 
-    // If we have negative weighting then roll to see if it's valid this time
-    if( tec_id->weighting < 0 && !one_in( std::abs( tec_id->weighting ) ) ) {
+    const bool as_fallback = tec_id->is_fallback_for( *this );
+
+    // If we have negative weighting then roll to see if it's valid this time.
+    // A fallback rolls in get_technique_pools instead, where the roll picks its pool.
+    if( !as_fallback && tec_id->weighting < 0 && !one_in( std::abs( tec_id->weighting ) ) ) {
         add_msg_debug( debugmode::DF_MELEE,
                        "Negative technique weighting failed weight roll, attack discarded" );
         return std::nullopt;
@@ -1613,7 +1634,10 @@ std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
 
     std::optional<std::pair<attack_vector_id, sub_bodypart_str_id>> vector;
 
-    if( tec_id->is_valid_character( *this ) ) {
+    // As in TLG, a fallback attack stays available while unarmed even if the selected style
+    // needs a weapon; it never overrides a wielded weapon the style can't use
+    if( tec_id->is_valid_character( *this ) ||
+        ( as_fallback && !is_armed() && tec_id->reqs.is_valid_character( *this, true ) ) ) {
         // We made it this far, choose an actual vector if possible
         vector = martial_arts_data->choose_attack_vector( *this, tec_id );
         if( vector ) {
@@ -1822,8 +1846,11 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
             if( x_in_y( eff.chance, 100 ) && ( di.total_damage() != 0 || !eff.on_damage ) ) {
                 // An effect without a condition always applies
                 if( !eff.has_condition || eff.condition( d ) ) {
-                    t.add_effect( eff.id, time_duration::from_turns( eff.duration ), eff.permanent );
-                    add_msg_if_player( m_good, _( eff.message ), t.disp_name() );
+                    // "target": "self" (TLG's hit_self) puts the effect on the attacker
+                    Creature &recipient = eff.on_self ? static_cast<Creature &>( *this ) : t;
+                    recipient.add_effect( eff.id, time_duration::from_turns( eff.duration ),
+                                          eff.permanent, eff.intensity );
+                    add_msg_if_player( m_good, _( eff.message ), recipient.disp_name() );
                 }
             }
         }

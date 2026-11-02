@@ -56,6 +56,7 @@ static const bionic_id bio_cqb( "bio_cqb" );
 static const flag_id json_flag_PROVIDES_TECHNIQUES( "PROVIDES_TECHNIQUES" );
 
 static const json_character_flag json_flag_ALWAYS_BLOCK( "ALWAYS_BLOCK" );
+static const json_character_flag json_flag_MA_BASIC_FALLBACK( "MA_BASIC_FALLBACK" );
 static const json_character_flag json_flag_NONSTANDARD_BLOCK( "NONSTANDARD_BLOCK" );
 
 static const limb_score_id limb_score_block( "block" );
@@ -245,6 +246,26 @@ tech_effect_data load_tech_effect_data( const JsonObject &e )
     ted.on_damage = e.get_bool( "on_damage", true );
     ted.chance = e.get_int( "chance", 100 );
     ted.message = e.get_string( "message", "" );
+    ted.intensity = e.get_int( "intensity", 0 );
+    if( ted.intensity < 0 ) {
+        e.throw_error_at( "intensity", "tech effect intensity can't be negative" );
+    }
+    // "target": "self" puts the effect on the attacker; TLG's "hit_self": true says the same
+    if( e.has_member( "target" ) ) {
+        const std::string target = e.get_string( "target" );
+        if( target == "self" ) {
+            ted.on_self = true;
+        } else if( target != "target" ) {
+            e.throw_error_at( "target", R"(tech effect target must be "self" or "target")" );
+        }
+    }
+    if( e.has_member( "hit_self" ) ) {
+        const bool hit_self = e.get_bool( "hit_self" );
+        if( e.has_member( "target" ) && hit_self != ted.on_self ) {
+            e.throw_error_at( "hit_self", R"("hit_self" contradicts "target")" );
+        }
+        ted.on_self = hit_self;
+    }
     if( e.has_member( "condition" ) ) {
         read_condition( e, "condition", ted.condition, false );
         ted.has_condition = true;
@@ -327,6 +348,8 @@ void ma_technique::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "block_counter", block_counter, false );
     optional( jo, was_loaded, "miss_recovery", miss_recovery, false );
     optional( jo, was_loaded, "grab_break", grab_break, false );
+    optional( jo, was_loaded, "fallback", fallback, false );
+    optional( jo, was_loaded, "basic", basic, false );
 
     optional( jo, was_loaded, "weighting", weighting, 1 );
 
@@ -367,14 +390,29 @@ void ma_technique::verify_ma_techniques()
 
 void ma_technique::check() const
 {
-    if( attack_vectors.empty() && !dummy && !defensive && !grab_break && !miss_recovery ) {
-        debugmsg( "MA technique %s is missing an attack vector", id.c_str() );
-    }
     for( const effect_on_condition_id &eoc : post_hit_eocs ) {
         if( !eoc.is_valid() ) {
             debugmsg( "MA technique %s has unknown post_hit_eocs entry %s", id.c_str(),
                       eoc.c_str() );
         }
+    }
+    for( const tech_effect_data &eff : tech_effects ) {
+        if( !eff.id.is_valid() ) {
+            debugmsg( "MA technique %s has unknown tech_effects entry %s", id.c_str(),
+                      eff.id.c_str() );
+        }
+    }
+    // Attacks never pick dummy or defensive techniques, so these fields would do nothing
+    if( ( fallback || basic ) && ( dummy || defensive ) ) {
+        debugmsg( "MA technique %s is %s, so \"%s\" has no effect", id.c_str(),
+                  dummy ? "dummy" : "defensive", fallback ? "fallback" : "basic" );
+    }
+}
+
+void ma_technique::check_attack_vectors() const
+{
+    if( attack_vectors.empty() && !dummy && !defensive && !grab_break && !miss_recovery ) {
+        debugmsg( "MA technique %s is missing an attack vector", id.c_str() );
     }
 }
 
@@ -525,6 +563,7 @@ void martialart::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "techniques", techniques, string_id_reader<::ma_technique> {} );
     optional( jo, was_loaded, "weapons", weapons, string_id_reader<::itype> {} );
     optional( jo, was_loaded, "weapon_category", weapon_category, auto_flags_reader<weapon_category_id> {} );
+    optional( jo, was_loaded, "grapple_weapons", grapple_weapons );
 
     optional( jo, was_loaded, "strictly_melee", strictly_melee, false );
     optional( jo, was_loaded, "strictly_unarmed", strictly_unarmed, false );
@@ -610,6 +649,7 @@ static void check( const ma_requirements &req, const std::string &display_text )
 void check_martialarts()
 {
     for( const martialart &ma : martialarts.get_all() ) {
+        ma.check();
         for( auto technique = ma.techniques.cbegin();
              technique != ma.techniques.cend(); ++technique ) {
             if( !technique->is_valid() ) {
@@ -627,6 +667,7 @@ void check_martialarts()
     }
     for( const ma_technique &t : ma_techniques.get_all() ) {
         ::check( t.reqs, string_format( "technique %s", t.id.c_str() ) );
+        t.check();
     }
     for( const ma_buff &b : ma_buffs.get_all() ) {
         ::check( b.reqs, string_format( "buff %s", b.id.c_str() ) );
@@ -750,7 +791,8 @@ bool ma_requirements::buff_requirements_satisfied( const Character &u ) const
            ( req_buffs_any.empty() || std::any_of( req_buffs_any.begin(), req_buffs_any.end(), having_buff ) );
 }
 
-bool ma_requirements::is_valid_character( const Character &u ) const
+bool ma_requirements::is_valid_character( const Character &u,
+        bool ignore_style_weapon_rule ) const
 {
     if( !buff_requirements_satisfied( u ) ) {
         add_msg_debug( debugmode::DF_MELEE, "Buff requirements not satisfied, attack discarded" );
@@ -765,7 +807,7 @@ bool ma_requirements::is_valid_character( const Character &u ) const
     // There are 4 different cases of "armedness":
     // Truly unarmed, unarmed weapon, style-allowed weapon, generic weapon
     const item_location weapon = u.get_wielded_item();
-    bool melee_style = u.martial_arts_data->selected_strictly_melee();
+    bool melee_style = !ignore_style_weapon_rule && u.martial_arts_data->selected_strictly_melee();
     bool is_armed = u.is_armed();
     bool forced_unarmed = u.martial_arts_data->selected_force_unarmed();
     bool weapon_ok = melee_allowed && weapon && is_valid_weapon( *weapon );
@@ -1003,6 +1045,18 @@ ma_technique::ma_technique()
 bool ma_technique::is_valid_character( const Character &u ) const
 {
     return reqs.is_valid_character( u );
+}
+
+bool ma_technique::is_fallback_for( const Character &u ) const
+{
+    return fallback && u.has_flag( json_flag_MA_BASIC_FALLBACK );
+}
+
+std::vector<technique_pools::entry> technique_pools::winning_pool() const
+{
+    std::vector<entry> ret = possible.empty() && !fallbacks.empty() ? fallbacks : possible;
+    ret.insert( ret.end(), basics.begin(), basics.end() );
+    return ret;
 }
 
 ma_buff::ma_buff()
@@ -1472,6 +1526,49 @@ bool martialart::weapon_valid( const item_location &it ) const
     }
 
     return false;
+}
+
+void ma_grapple_weapons::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "categories", categories, auto_flags_reader<weapon_category_id> {} );
+    optional( jo, false, "items", items, string_id_reader<::itype> {} );
+    optional( jo, false, "any", any, false );
+}
+
+bool ma_grapple_weapons::allows( const item &weapon ) const
+{
+    if( weapon.is_null() || any || items.count( weapon.typeId() ) > 0 ) {
+        return true;
+    }
+    const std::set<weapon_category_id> &weapon_cats = weapon.typeId()->weapon_category;
+    return std::any_of( weapon_cats.begin(), weapon_cats.end(),
+    [this]( const weapon_category_id & cat ) {
+        return categories.count( cat ) > 0;
+    } );
+}
+
+bool martialart::grapple_allows_weapon( const item &weapon ) const
+{
+    return grapple_weapons.allows( weapon );
+}
+
+void martialart::check() const
+{
+    for( const weapon_category_id &cat : grapple_weapons.categories ) {
+        if( !cat.is_valid() ) {
+            debugmsg( "Unknown weapon category %s in grapple_weapons of style %s", cat.str(),
+                      id.str() );
+        }
+    }
+    for( const itype_id &it : grapple_weapons.items ) {
+        if( !item::type_is_defined( it ) ) {
+            debugmsg( "Unknown item %s in grapple_weapons of style %s", it.str(), id.str() );
+        }
+    }
+    if( grapple_weapons.any && ( !grapple_weapons.categories.empty() ||
+                                 !grapple_weapons.items.empty() ) ) {
+        debugmsg( "grapple_weapons of style %s sets \"any\", so its lists do nothing", id.str() );
+    }
 }
 
 std::string martialart::get_initiate_avatar_message() const
@@ -2039,6 +2136,11 @@ int Character::count_mabuff_flag( const json_character_flag &flag ) const
         ret += b.has_flag( flag );
     } );
     return ret;
+}
+
+bool Character::style_allows_grapple_weapon( const item &weapon ) const
+{
+    return martial_arts_data->selected_style()->grapple_allows_weapon( weapon );
 }
 
 bool Character::is_melee_bash_damage_cap_bonus() const

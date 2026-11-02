@@ -173,5 +173,26 @@
     "desc": [ "An addiction-reduced painkiller that also lowers blood pressure on every turn." ],
     "pkill_addict_reduces": true,
     "base_mods": { "pkill_min": [ 1 ], "blood_pressure_min": [ -1 ], "blood_pressure_chance": [ 1 ] }
+  },
+  {
+    "type": "effect_type",
+    "id": "test_grapple_focus",
+    "name": [ "Test Grapple Focus" ],
+    "desc": [ "Set on the attacker by test_tech_self_effects." ],
+    "max_intensity": 5
+  },
+  {
+    "type": "effect_type",
+    "id": "test_basic_fallback",
+    "name": [ "Test Basic Fallback" ],
+    "desc": [ "Grants MA_BASIC_FALLBACK without a martial art." ],
+    "flags": [ "MA_BASIC_FALLBACK" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_grapple_mark",
+    "name": [ "Test Grapple Mark" ],
+    "desc": [ "Set on both sides by test_tech_self_effects." ],
+    "max_intensity": 5
   }
 ]

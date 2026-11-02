@@ -218,5 +218,73 @@
       }
     ],
     "ondodge_eocs": [ { "id": "EOC_TEST_CMBT_J01_DODGE", "condition": "has_beta", "effect": [ { "math": [ "n_cmbt_j01_dodged = 1" ] } ] } ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_grapple_strike",
+    "name": "Test Grapple Strike",
+    "//": "An ordinary technique of test_style_grapple.  A downed target turns it off, so only fallbacks are left.",
+    "unarmed_allowed": true,
+    "condition": { "not": { "npc_has_effect": "downed" } },
+    "messages": [ "You test-strike %s", "<npcname> test-strikes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_grapple_basic",
+    "name": "Test Basic Strike",
+    "//": "A basic technique: it joins whichever pool wins.  Only usable against a stunned target.",
+    "unarmed_allowed": true,
+    "basic": true,
+    "condition": { "npc_has_effect": "stunned" },
+    "messages": [ "You basic-strike %s", "<npcname> basic-strikes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_grapple_knife",
+    "name": "Knife in the Clinch",
+    "//": "Needs both a hold on the target and a knife in hand.  The example in doc/JSON/MARTIALART_JSON.md.",
+    "melee_allowed": true,
+    "weapon_categories_allowed": [ "KNIVES" ],
+    "condition": { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+    "condition_desc": "* Only works with a <info>knife</info> on a target <info>you are grabbing</info>",
+    "messages": [ "You hold %s close and drive your knife in", "<npcname> holds %s close and drives a knife in" ],
+    "mult_bonuses": [ { "stat": "damage", "type": "stab", "scale": 1.5 }, { "stat": "damage", "type": "cut", "scale": 1.5 } ],
+    "attack_vectors": [ "vector_null" ]
+  },
+  {
+    "type": "technique",
+    "id": "test_tech_self_effects",
+    "name": "Test Self Effects",
+    "//": "Tech effects on the attacker (\"target\": \"self\" and TLG's \"hit_self\") and on the target, with intensities.",
+    "unarmed_allowed": true,
+    "messages": [ "You test-focus on %s", "<npcname> test-focuses on %s" ],
+    "tech_effects": [
+      { "id": "test_grapple_focus", "duration": 10, "on_damage": false, "target": "self", "intensity": 3 },
+      { "id": "test_grapple_mark", "duration": 10, "on_damage": false, "hit_self": true, "intensity": 2 },
+      { "id": "test_grapple_mark", "duration": 10, "on_damage": false, "target": "target", "intensity": 4 }
+    ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_grapple",
+    "name": { "str": "Test Grappling" },
+    "description": "Test grappling style: basic attacks are only fallbacks, and a knife or a chain may stay in hand while grabbing.",
+    "initiate": [ "You get ready to grapple.", "%s gets ready to grapple." ],
+    "static_buffs": [
+      {
+        "id": "test_buff_grapple_fallback",
+        "name": "Test Grappler's Stance",
+        "description": "Your basic punches, kicks and headbutts are only fallbacks.",
+        "unarmed_allowed": true,
+        "melee_allowed": true,
+        "flags": [ "MA_BASIC_FALLBACK" ]
+      }
+    ],
+    "weapon_category": [ "KNIVES" ],
+    "grapple_weapons": { "categories": [ "KNIVES" ], "items": [ "chain" ] },
+    "techniques": [ "test_tech_grapple_strike", "test_tech_grapple_basic", "test_tech_grapple_knife" ]
   }
 ]

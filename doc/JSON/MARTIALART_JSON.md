@@ -6,7 +6,9 @@
   - [Martial arts](#martial-arts)
     - [Martial art event EOCs](#martial-art-event-eocs)
     - [Martial art buffs](#martial-art-buffs)
+    - [Grappling](#grappling)
   - [Techniques](#techniques)
+    - [Fallback and basic techniques](#fallback-and-basic-techniques)
     - [Technique effects](#technique-effects)
   - [Bonuses](#bonuses)
     - [Examples](#examples)
@@ -75,7 +77,12 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
     "tec_debug_arpen"
   ],
   "weapons": [ "tonfa" ],                // List of weapons usable with this art
-  "weapon_category": [ "MEDIUM_SWORDS" ] // List of weapons categories usable with this MA
+  "weapon_category": [ "MEDIUM_SWORDS" ], // List of weapons categories usable with this MA
+  "grapple_weapons": {                   // What may stay in hand while grabbing a creature. Default: nothing, grappling is unarmed. See Grappling
+    "categories": [ "KNIVES" ],          // Weapons in these weapon categories
+    "items": [ "chain" ],                // These item types
+    "any": false                         // true allows every weapon (then leave the lists out)
+  }
 }
 ```
 
@@ -157,6 +164,61 @@ Additionally, when read externally (such as, by EOCs), their syntax is `mabuff:I
   "condition": { "u_has_effect": "mabuff:buff_aikido_static1" },
 ```
 
+A buff can also carry character flags in `"flags"`, which the martial artist has while the buff is active.  A static buff is the usual way for a style to grant `MA_BASIC_FALLBACK` (see [Fallback and basic techniques](#fallback-and-basic-techniques)).
+
+
+### Grappling
+
+Grappling techniques (ported from Cataclysm: The Last Generation) are ordinary techniques whose `condition` asks for a hold.  A creature that is held has an effect with the `GRAB` flag (`grabbed`), and the one holding it has an effect with the `GRAB_FILTER` flag (`grabbing`).  Monster grabs and a character's grab set the same effects, so in a technique condition (`u` is the martial artist, `npc` the target):
+
+| You want | Condition |
+| --- | --- |
+| you hold the target | `{ "and": [ { "u_has_flag": "GRAB_FILTER" }, { "npc_has_flag": "GRAB" } ] }` |
+| the target holds you | `{ "and": [ { "u_has_flag": "GRAB" }, { "npc_has_flag": "GRAB_FILTER" } ] }` |
+| not while you hold anyone | `{ "not": { "u_has_flag": "GRAB_FILTER" } }` |
+
+These flags say that *someone* holds or is held, not who: if a third creature holds the target, the first row is true as long as you hold anyone.
+
+Grappling is unarmed.  A style can let some weapons stay in hand with `grapple_weapons`: while the style is selected, a listed weapon neither stops you from grabbing nor makes you let go.  Weapons match by weapon category or by item type, or `"any": true` allows all of them.  Unknown categories and items are load errors.  `grapple_weapons` is read as a whole: a `copy-from` style either keeps its parent's list or replaces it.  The vanilla styles have none.
+
+Grapple techniques combine a hold with the usual weapon requirements, so a knife-in-the-clinch style is pure JSON.  The TEST_DATA mod carries this example (`test_style_grapple`):
+
+```jsonc
+{
+  "type": "technique",
+  "id": "test_tech_grapple_knife",
+  "name": "Knife in the Clinch",
+  "melee_allowed": true,
+  "weapon_categories_allowed": [ "KNIVES" ],                            // needs a knife in hand...
+  "condition": { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },    // ...and a hold on the target
+  "condition_desc": "* Only works with a <info>knife</info> on a target <info>you are grabbing</info>",
+  "messages": [ "You hold %s close and drive your knife in", "<npcname> holds %s close and drives a knife in" ],
+  "mult_bonuses": [ { "stat": "damage", "type": "stab", "scale": 1.5 }, { "stat": "damage", "type": "cut", "scale": 1.5 } ],
+  "attack_vectors": [ "vector_null" ]
+},
+{
+  "type": "martial_art",
+  "id": "test_style_grapple",
+  "name": { "str": "Test Grappling" },
+  "description": "Test grappling style: basic attacks are only fallbacks, and a knife or a chain may stay in hand while grabbing.",
+  "initiate": [ "You get ready to grapple.", "%s gets ready to grapple." ],
+  "static_buffs": [
+    {
+      "id": "test_buff_grapple_fallback",
+      "name": "Test Grappler's Stance",
+      "description": "Your basic punches, kicks and headbutts are only fallbacks.",
+      "unarmed_allowed": true,
+      "melee_allowed": true,
+      "flags": [ "MA_BASIC_FALLBACK" ]                                  // basic attacks become fallbacks
+    }
+  ],
+  "weapon_category": [ "KNIVES" ],                                      // knives are style weapons...
+  "grapple_weapons": { "categories": [ "KNIVES" ], "items": [ "chain" ] },    // ...and may be held while grabbing
+  "techniques": [ "test_tech_grapple_strike", "test_tech_grapple_basic", "test_tech_grapple_knife" ]
+}
+```
+
+
 
 ## Techniques
 
@@ -203,7 +265,9 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "aoe": "spin",                         // This technique has an area-of-effect. Doesn't proc against solo targets. Options are `aoe` (attacks adjacent nearby enemies), `impale` (hits target and one enemy behind it), and `wide` (hits enemies in an arc near the target)
   "block_counter": true,                 // This technique may automatically counterattack on a successful block
   "dodge_counter": true,                 // This technique may automatically counterattack on a successful dodge
-  "weighting": 2,                        // Affects likelihood this technique will be selected when many are available. Negative weighting means the technique is only included in the list of possible techs once out of every `weighting` times ( 1/3 for a weighting of -3)
+  "weighting": 2,                        // Affects likelihood this technique will be selected when many are available. Negative weighting means the technique is only included in the list of possible techs once out of every `weighting` times ( 1/3 for a weighting of -3). For a fallback, see Fallback and basic techniques
+  "fallback": true,                      // For an attacker with the MA_BASIC_FALLBACK flag, used only when no other technique is possible. Otherwise an ordinary technique. See Fallback and basic techniques
+  "basic": true,                         // Joins whichever techniques get picked from, without keeping fallbacks out. See Fallback and basic techniques
   "defensive": true,                     // Game won't try to select this technique when attacking
   "miss_recovery": true,                 // Misses while attacking will use half as many moves
   "messages": [                          // What is printed when this technique is used by the player and by an npc. Should NOT end with punctuation mark, for it is then extended with ` but deal no damage` or ` and deal X damage`
@@ -220,6 +284,8 @@ Techniques are special attacks performed while using a given MA style.  These ar
 
 All fields, except for the ID, type and name are optional.
 
+Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, and `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those).
+
 For example, a cut that makes the target bleed longer the harder it hit:
 
 ```jsonc
@@ -233,6 +299,24 @@ For example, a cut that makes the target bleed longer the harder it hit:
 ```
 
 
+### Fallback and basic techniques
+
+When you attack, every usable technique goes into one of three pools, and one entry is picked at random (a technique is entered once per point of positive `weighting`):
+
+- **ordinary**: every technique that is neither of the below;
+- **fallbacks**: techniques with `"fallback": true`, but only when the attacker has the `MA_BASIC_FALLBACK` character flag;
+- **basics**: techniques with `"basic": true`.
+
+If no ordinary technique is usable and some fallback is, the pick is from the fallbacks plus the basics.  Otherwise it is from the ordinary techniques plus the basics.  So a fallback is used only when the style has nothing better, and a basic technique (a natural attack, say) neither crowds out the style's techniques nor keeps the fallbacks out on its own.  With no usable technique at all, the attack is a plain hit.
+
+The base punch, kick and headbutt (`tech_base_punch`, `tech_base_kick` and `tech_base_headbutt`, granted by hands, feet and the head) are fallbacks.  `MA_BASIC_FALLBACK` also switches on the grappling rules of the base techniques, written as conditions on that flag: a headbutt only in a grapple with the target, whoever holds whom, and no kicks while you hold someone.  Without the flag they behave as before: they compete with the style's techniques, and a headbutt needs an arm or hand of yours to be grabbed.  No vanilla style grants the flag; a style grants it with a static buff (see the [Grappling](#grappling) example), and a mutation, bionic or effect can grant it too.
+
+For an attacker with the flag, a fallback also:
+
+- stays usable while unarmed even if the selected style is `strictly_melee` (its other requirements still apply, and it never overrides a wielded weapon the style can't use);
+- treats a negative `weighting` as a chance to compete as an ordinary technique this time (one in `-weighting`), instead of a chance to be discarded.  Cataclysm: The Last Generation gives its base attacks weightings of -10 (headbutt, kick) and -8 (punch).
+
+
 ### Technique effects
 
 ```jsonc
@@ -243,13 +327,27 @@ For example, a cut that makes the target bleed longer the harder it hit:
       "chance": 100,                     // Percent chance to apply the effect on this attack
       "permanent": false,                // If true the effect won't decay (default: false)
       "duration": 15,                    // Duration of the effect in turns
+      "intensity": 2,                    // Intensity to set the effect to, capped at its max_intensity (default: 0, the effect's normal starting intensity)
+      "target": "target",                // Who gets the effect: "target" (default) or "self", the martial artist. "hit_self": true is accepted as "target": "self"
       "on_damage": true,                 // If true the effect will only be applied if the attack succeeded in doing damage (default: true)
-      "condition": "ANY",                // conditions necessary for the technique to apply the effect. `u` is the martial artist, `npc` is the target
-      "message": "Example"               // The message to print if you successfully apply the effect, %s can be substituted for the target's name
+      "condition": "ANY",                // conditions necessary for the technique to apply the effect. `u` is the martial artist, `npc` is the target, whoever gets the effect
+      "message": "Example"               // The message to print if you successfully apply the effect, %s is replaced by the name of whoever gets it
     }
   ]
 ...
 ```
+
+A self effect is how a technique costs the user something.  Zui Quan's Drunken Fall throws yourself down with the target you hold:
+
+```jsonc
+"down_dur": 3,
+"tech_effects": [
+  { "id": "downed", "chance": 100, "duration": 100, "target": "self" },
+  { "id": "staggered", "chance": 100, "duration": 300 }
+]
+```
+
+An unknown `target` value, a `hit_self` that contradicts `target`, or a negative `intensity` is a load error.
 
 `tech_effects` are inlined in their parent `technique` as seen in the [previous example](MARTIALART_JSON.md#techniques), and thus lack their own `type`.
 
