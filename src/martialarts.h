@@ -75,6 +75,14 @@ struct enum_traits<technique_rejection> {
     static constexpr technique_rejection last = technique_rejection::last;
 };
 
+/** Where an attacker's technique comes from (character_martial_arts::get_all_techniques) */
+enum class technique_source : int {
+    weapon,     // the wielded weapon
+    equipment,  // a worn or carried item with PROVIDES_TECHNIQUES
+    style,      // the selected martial art
+    body,       // a body part (basic punches and kicks, natural weapons)
+};
+
 /** The kind of attack a technique is checked for (Character::check_technique) */
 struct technique_query {
     bool crit = false;

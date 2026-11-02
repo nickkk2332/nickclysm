@@ -117,6 +117,7 @@ struct mutation_variant;
 struct pathfinding_settings;
 struct projectile;
 struct requirement_data;
+struct technique_choice;
 struct technique_pools;
 struct technique_query;
 struct tool_comp;
@@ -1224,8 +1225,22 @@ class Character : public Creature, public visitable
          */
         bool melee_attack( Creature &t, bool allow_special, const matec_id &force_technique,
                            bool allow_unarmed = true, int forced_movecost = -1 );
+        /** As above, with the technique picked as `choice` says (see technique_choice) */
+        bool melee_attack( Creature &t, bool allow_special, const technique_choice &choice,
+                           bool allow_unarmed = true, int forced_movecost = -1 );
         bool melee_attack_abstract( Creature &t, bool allow_special, const matec_id &force_technique,
                                     bool allow_unarmed = true, int forced_movecost = -1 );
+        /**
+         * The attack itself. In manual combat mode (melee::wants_technique_menu) an automatic
+         * choice opens the technique menu first, before anything is rolled or spent; cancelling
+         * it calls the attack off and returns false.
+         */
+        bool melee_attack_abstract( Creature &t, bool allow_special,
+                                    const technique_choice &choice, bool allow_unarmed = true,
+                                    int forced_movecost = -1 );
+        /** A forced or chosen technique with an attack vector picked for it as usual */
+        std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> forced_technique_attack(
+            const matec_id &tec ) const;
         void reduce_moves_from_attack( int forced_movecost, int move_cost );
         /** Handles reach melee attacks */
         bool can_reach_attack( const Creature &target ) const;

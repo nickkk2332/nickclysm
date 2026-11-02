@@ -5651,7 +5651,7 @@ NPC is prevented from death.
 ```
 
 #### `u_attack`, `npc_attack`
-Alpha or beta talker forced to use a technique or special attack on the other talker.
+Alpha or beta talker forced to use a technique or special attack on the other talker.  It never opens the manual technique menu, even for the avatar in manual combat mode; a forced technique gets an attack vector (the limb or weapon it lands with) chosen as for an automatic choice.
 
 For a monster, the value names a special attack: one of its own (as in its `special_attacks`), or else any `monster_attack` defined in JSON, which the monster doesn't need to have. With `allow_special` it uses that attack on the other talker right away, ignoring its cooldown and whether it is enabled; for one of its own the cooldown starts again afterwards. The attack still checks its own range and `condition`, so it may do nothing. Any other value (such as `"tec_none"`, or a hardcoded attack the monster doesn't have), or `allow_special: false`, makes it do a basic melee attack, if the other talker is adjacent and seen. `allow_unarmed` doesn't apply to monsters.
 

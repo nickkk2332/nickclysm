@@ -1579,6 +1579,7 @@ void avatar::store( JsonOut &json ) const
     json.member( "calorie_diary", calorie_diary );
 
     json.member( "preferred_aiming_mode", preferred_aiming_mode );
+    json.member( "manual_combat_mode", manual_combat_mode );
 
     json.member( "power_prev_turn", power_prev_turn );
     json.member( "may_activity_occupancy_after_end_items_loc",
@@ -1724,6 +1725,10 @@ void avatar::load( const JsonObject &data )
     data.read( "calorie_diary", calorie_diary );
 
     data.read( "preferred_aiming_mode", preferred_aiming_mode );
+
+    // Saves from before manual combat mode existed leave it off
+    manual_combat_mode = false;
+    data.read( "manual_combat_mode", manual_combat_mode );
 
     if( data.has_member( "power_prev_turn" ) ) {
         data.read( "power_prev_turn", power_prev_turn );

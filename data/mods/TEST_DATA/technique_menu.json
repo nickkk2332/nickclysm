@@ -259,5 +259,11 @@
     "initiate": [ "You get ready to pick.", "%s gets ready to pick." ],
     "allow_all_weapons": true,
     "techniques": [ "test_tm_strike", "test_tm_crit", "test_tm_rare", "test_tm_often", "test_tm_downed_only", "test_tm_take" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TM_U_ATTACK",
+    "//": "An empty technique: the attack's own automatic choice.  It never opens the technique menu.",
+    "effect": [ { "u_attack": "" } ]
   }
 ]

@@ -1700,15 +1700,21 @@ std::string martialart::get_initiate_npc_message() const
 
 // technique
 std::vector<matec_id> character_martial_arts::get_all_techniques( const item_location &weap,
-        const Character &u ) const
+        const Character &u, std::vector<technique_source> *sources ) const
 {
     std::vector<matec_id> tecs;
     const martialart &style = style_selected.obj();
+    const auto from = [&tecs, sources]( technique_source source ) {
+        if( sources != nullptr ) {
+            sources->resize( tecs.size(), source );
+        }
+    };
 
     // Grab individual item techniques if the style allows them
     if( weap && !style.force_unarmed ) {
         const auto &weapon_techs = weap->get_techniques();
         tecs.insert( tecs.end(), weapon_techs.begin(), weapon_techs.end() );
+        from( technique_source::weapon );
     }
     // If we have any items that also provide techniques
     const std::vector<item_location> tech_providing_items = u.cache_get_items_with(
@@ -1717,11 +1723,14 @@ std::vector<matec_id> character_martial_arts::get_all_techniques( const item_loc
         const std::set<matec_id> &item_techs = it->get_techniques();
         tecs.insert( tecs.end(), item_techs.begin(), item_techs.end() );
     }
+    from( technique_source::equipment );
     // and martial art techniques
     tecs.insert( tecs.end(), style.techniques.begin(), style.techniques.end() );
+    from( technique_source::style );
     // And limb techniques
     const auto &limb_techs = u.get_limb_techs();
     tecs.insert( tecs.end(), limb_techs.begin(), limb_techs.end() );
+    from( technique_source::body );
 
     return tecs;
 }

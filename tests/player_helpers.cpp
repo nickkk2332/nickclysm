@@ -241,6 +241,7 @@ void clear_avatar()
     avatar.clear_identified();
     avatar.clear_nutrition();
     avatar.reset_all_missions();
+    avatar.manual_combat_mode = false;
     // Records outlive the items they claim.
     clear_reservations();
 }

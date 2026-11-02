@@ -9,6 +9,7 @@
     - [Grappling](#grappling)
   - [Techniques](#techniques)
     - [Fallback and basic techniques](#fallback-and-basic-techniques)
+    - [The manual technique menu](#the-manual-technique-menu)
     - [Technique effects](#technique-effects)
   - [Bonuses](#bonuses)
     - [Examples](#examples)
@@ -251,7 +252,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "reach_tec": true,                     // This technique only works on a reach attack hit
   "reach_ok": true,                      // This technique works on both normal and reach attack hits
   "condition": "u_is_outside",           // Array of dialog conditions the attack requires to trigger. Failing these will disqualify the tech from being selected. Same syntax as the eoc "condition" field
-  "condition_desc": "Needs X",           // Description string describing the conditions of this attack (since dialog conditions can't be automatically evaluated)       
+  "condition_desc": "Needs X",           // Description string describing the conditions of this attack (since dialog conditions can't be automatically evaluated). The manual technique menu shows it as the reason a technique can't be used when its condition fails, without a leading "* " and colors
   "repeat_min": 1,                       // Technique's damage and any added effects are repeated rng(repeat_min, repeat_max) times. The target's armor and the effect's chances are applied for each repeat
   "repeat_max": 1,
   "knockback_dist": 1,                   // Distance target is knocked back
@@ -316,6 +317,15 @@ For an attacker with the flag, a fallback also:
 
 - stays usable while unarmed even if the selected style is `strictly_melee` (its other requirements still apply, and it never overrides a wielded weapon the style can't use);
 - treats a negative `weighting` as a chance to compete as an ordinary technique this time (one in `-weighting`), instead of a chance to be discarded.  Cataclysm: The Last Generation gives its base attacks weightings of -10 (headbutt, kick) and -8 (punch).
+
+
+### The manual technique menu
+
+In manual combat mode (`toggle_manual_combat`, Shift+Tab by default) each melee attack of the player opens a menu of their techniques before anything is rolled or spent.  Besides "Automatic" (the usual random choice) and "Basic attack" (no technique; unarmed, a basic punch, kick or headbutt), it lists every technique of the weapon, the style, worn equipment and the body, grouped by where they come from, with the mutation attacks at the end (they happen on their own and can't be chosen).  An EOC can open the same menu with `u_choose_technique` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md#u_choose_technique-npc_choose_technique)).
+
+The menu applies the same rules as the automatic choice, only nothing random: a negative `weighting` is not rolled, and an attack vector only has to exist.  A technique that can't be used now is greyed out with the reason in the second column, and its description, with that reason, in the panel below.  When the reason is the technique's `condition`, the menu shows its `condition_desc`, so write it as a short phrase after the bullet: `"* Only works on a <info>downed</info> target"` shows as "Only works on a downed target".  Without a `condition_desc` the menu says "conditions not met".  Technique conditions are evaluated on their own random numbers, so a condition that rolls (`roll_contested`, say) gives the same answer until the next turn.
+
+A `crit_tec` technique can be chosen: it comes off if the hit is a critical hit, and otherwise the attack is a basic attack.  Counters (`dodge_counter`, `block_counter`) and `defensive` techniques are listed but can't be chosen; they still trigger on their own.  A chosen technique otherwise is used as if forced, whatever the hit (a technique that is not `crit_ok` is still used on a crit).
 
 
 ### Technique effects

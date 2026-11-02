@@ -383,6 +383,8 @@ std::string action_ident( action_id act )
             return "CLICK_AND_DRAG";
         case ACTION_AUTOATTACK:
             return "autoattack";
+        case ACTION_TOGGLE_MANUAL_COMBAT:
+            return "toggle_manual_combat";
         case ACTION_MAIN_MENU:
             return "main_menu";
         case ACTION_DIARY:
@@ -470,6 +472,7 @@ bool can_action_change_worldstate( const action_id act )
         case ACTION_TOGGLE_AUTO_PULP_BUTCHER:
         case ACTION_TOGGLE_AUTO_MINING:
         case ACTION_TOGGLE_AUTO_FORAGING:
+        case ACTION_TOGGLE_MANUAL_COMBAT:
             return false;
         default:
             return true;
@@ -1014,6 +1017,7 @@ action_id handle_action_menu( map &here )
             REGISTER_ACTION( ACTION_FIRE_BURST );
             REGISTER_ACTION( ACTION_PICK_STYLE );
             REGISTER_ACTION( ACTION_TOGGLE_AUTO_TRAVEL_MODE );
+            REGISTER_ACTION( ACTION_TOGGLE_MANUAL_COMBAT );
             REGISTER_ACTION( ACTION_TOGGLE_SAFEMODE );
             REGISTER_ACTION( ACTION_TOGGLE_AUTOSAFE );
             REGISTER_ACTION( ACTION_IGNORE_ENEMY );

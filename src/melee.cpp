@@ -50,6 +50,7 @@
 #include "item_location.h"
 #include "itype.h"
 #include "line.h"
+#include "localized_comparator.h"
 #include "magic.h"
 #include "magic_enchantment.h"
 #include "map.h"
@@ -78,6 +79,7 @@
 #include "translation.h"
 #include "translations.h"
 #include "type_id.h"
+#include "uilist.h"
 #include "units.h"
 #include "value_ptr.h"
 #include "vehicle.h"
@@ -583,9 +585,24 @@ damage_instance Creature::modify_damage_dealt_with_enchantments( const damage_in
     return modified;
 }
 
+technique_choice technique_choice::from_forced( const matec_id &force_technique )
+{
+    if( force_technique.str().empty() ) {
+        return technique_choice();
+    }
+    return technique_choice( mode::forced, force_technique );
+}
+
+bool Character::melee_attack( Creature &t, bool allow_special, const matec_id &force_technique,
+                              bool allow_unarmed, int forced_movecost )
+{
+    return melee_attack( t, allow_special, technique_choice::from_forced( force_technique ),
+                         allow_unarmed, forced_movecost );
+}
+
 // Melee calculation is in parts. This sets up the attack, then in deal_melee_attack,
 // we calculate if we would hit. In Creature::deal_melee_hit, we calculate if the target dodges.
-bool Character::melee_attack( Creature &t, bool allow_special, const matec_id &force_technique,
+bool Character::melee_attack( Creature &t, bool allow_special, const technique_choice &choice,
                               bool allow_unarmed, int forced_movecost )
 {
     if( has_flag( json_flag_CANNOT_ATTACK ) ) {
@@ -601,11 +618,8 @@ bool Character::melee_attack( Creature &t, bool allow_special, const matec_id &f
         return false;
     }
 
-    // Max out recoil & reset aim point
-    recoil = MAX_RECOIL;
-    last_target_pos = std::nullopt;
-
-    return melee_attack_abstract( t, allow_special, force_technique, allow_unarmed, forced_movecost );
+    // melee_attack_abstract maxes out recoil and resets the aim point, after the technique menu
+    return melee_attack_abstract( t, allow_special, choice, allow_unarmed, forced_movecost );
 }
 
 static const std::set<weapon_category_id> &wielded_weapon_categories( const Character &c )
@@ -633,6 +647,84 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                                        const matec_id &force_technique,
                                        bool allow_unarmed, int forced_movecost )
 {
+    return melee_attack_abstract( t, allow_special,
+                                  technique_choice::from_forced( force_technique ), allow_unarmed,
+                                  forced_movecost );
+}
+
+// The technique, attack vector and contact area of an attack with no technique
+static std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> no_technique_attack()
+{
+    return std::make_tuple( tec_none, attack_vector_id::NULL_ID(),
+                            sub_bodypart_str_id::NULL_ID() );
+}
+
+std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> Character::forced_technique_attack(
+    const matec_id &tec ) const
+{
+    if( tec.str().empty() || tec == tec_none ) {
+        return no_technique_attack();
+    }
+    // A vector picked as for an automatic choice; a technique without a usable one hits like a
+    // plain weapon blow (the null vector), as every forced technique used to
+    const std::optional<std::pair<attack_vector_id, sub_bodypart_str_id>> vector =
+                martial_arts_data->choose_attack_vector( *this, tec );
+    if( !vector ) {
+        return std::make_tuple( tec, attack_vector_id::NULL_ID(), sub_bodypart_str_id::NULL_ID() );
+    }
+    return std::make_tuple( tec, vector->first, vector->second );
+}
+
+// A basic attack: no martial-art technique. Armed, a plain hit with the weapon. Unarmed, one of
+// the basic punches, kicks and headbutts (the "fallback" techniques) the body allows, chosen as
+// usual, so the blow still lands with a fist, a foot or the head.
+static std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> basic_attack(
+    const Character &you, const Creature &t, const item_location &weapon, bool crit )
+{
+    if( weapon ) {
+        return no_technique_attack();
+    }
+    std::vector<matec_id> not_basic;
+    for( const matec_id &tec : you.martial_arts_data->get_all_techniques( weapon, you ) ) {
+        if( !tec->fallback ) {
+            not_basic.push_back( tec );
+        }
+    }
+    return you.pick_technique( t, weapon, crit, false, false, not_basic );
+}
+
+// The technique of an attack that hit, by the choice made for it
+static std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> attack_technique(
+    const Character &you, const Creature &t, const item_location &weapon, bool crit,
+    bool allow_special, const technique_choice &choice )
+{
+    switch( choice.how ) {
+        case technique_choice::mode::chosen:
+            // Attempted: a technique that needs a crit doesn't come off without one
+            if( !crit && choice.tec->crit_tec && !choice.tec->crit_ok ) {
+                you.add_msg_if_player( m_info, _( "Not a critical hit: no %s this time." ),
+                                       choice.tec->name );
+                return basic_attack( you, t, weapon, crit );
+            }
+            return you.forced_technique_attack( choice.tec );
+        case technique_choice::mode::forced:
+            return you.forced_technique_attack( choice.tec );
+        case technique_choice::mode::basic:
+            return basic_attack( you, t, weapon, crit );
+        case technique_choice::mode::automatic:
+        case technique_choice::mode::cancel:
+            break;
+    }
+    if( allow_special ) {
+        return you.pick_technique( t, weapon, crit, false, false );
+    }
+    return no_technique_attack();
+}
+
+bool Character::melee_attack_abstract( Creature &t, bool allow_special,
+                                       const technique_choice &preset,
+                                       bool allow_unarmed, int forced_movecost )
+{
     map &here = get_map();
 
     // Prevent player from melee-attacking creatures that are swimming under terrain.
@@ -653,6 +745,22 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
             return false;
         }
     }
+
+    // Manual combat: the player picks the technique before anything is rolled or spent, so
+    // calling the attack off in the menu costs nothing and tells nothing
+    technique_choice choice = preset;
+    if( choice.how == technique_choice::mode::automatic &&
+        melee::wants_technique_menu( *this, allow_special ) ) {
+        choice = melee::choose_technique( *this, t,
+                                          allow_unarmed ? used_weapon() : get_wielded_item() );
+        if( choice.how == technique_choice::mode::cancel ) {
+            return false;
+        }
+    }
+
+    // Max out recoil & reset aim point
+    recoil = MAX_RECOIL;
+    last_target_pos = std::nullopt;
 
     recalculate_enchantment_cache();
 
@@ -807,23 +915,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         const bodypart_id &target_bp = t.select_body_part( -1, -1, can_attack_high(),
                                        hit_spread );
 
-        const bool has_force_technique = !force_technique.str().empty();
-
         // Pick an attack + vector + contact area set
-        // tuple matec_id, attack_vector, std::vector<sub_bodypart_str_id> ?
         // We need the tech for tech data, chosen vector to decide on the weapon <-> just use sbp_dummy for weapon techs?
-        std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> attack;
-
-        // Pick our attack
         // Unarmed needs a defined technique
-        if( has_force_technique ) {
-            attack = std::make_tuple( force_technique, attack_vector_id::NULL_ID(),
-                                      sub_bodypart_str_id::NULL_ID() );
-        } else if( allow_special ) {
-            attack = pick_technique( t, cur_weapon, critical_hit, false, false );
-        } else {
-            attack = std::make_tuple( tec_none, attack_vector_id::NULL_ID(), sub_bodypart_str_id::NULL_ID() );
-        }
+        const std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> attack =
+            attack_technique( *this, t, cur_weapon, critical_hit, allow_special, choice );
         // Unpack our data
         matec_id attack_id;
         attack_vector_id vector_id;
@@ -1062,18 +1158,31 @@ bool Character::can_reach_attack( const Creature &target ) const
 
 void Character::reach_attack( const tripoint_bub_ms &p, int forced_movecost )
 {
-    static const matec_id no_technique_id( "" );
-    matec_id force_technique = no_technique_id;
+    creature_tracker &creatures = get_creature_tracker();
+    Creature *critter = creatures.creature_at( p );
+
+    // Manual combat: the technique is picked for the creature aimed at, before anything is rolled
+    // (the whip disarm, or a creature in the way) or spent
+    technique_choice choice;
+    const Creature *const aimed = critter;
+    if( aimed != nullptr && melee::wants_technique_menu( *this, true ) ) {
+        reach_attacking = true;
+        choice = melee::choose_technique( *this, *aimed, get_wielded_item() );
+        reach_attacking = false;
+        if( choice.how == technique_choice::mode::cancel ) {
+            return;
+        }
+    }
+
     /** @EFFECT_MELEE >5 allows WHIP_DISARM technique */
-    if( weapon.has_flag( flag_WHIP ) && ( get_skill_level( skill_melee ) > 5 ) && one_in( 3 ) ) {
-        force_technique = WHIP_DISARM;
+    if( choice.how == technique_choice::mode::automatic && weapon.has_flag( flag_WHIP ) &&
+        ( get_skill_level( skill_melee ) > 5 ) && one_in( 3 ) ) {
+        choice = technique_choice( technique_choice::mode::forced, WHIP_DISARM );
     }
 
     // Fighting is hard work
     set_activity_level( melee_exertion_level() );
 
-    creature_tracker &creatures = get_creature_tracker();
-    Creature *critter = creatures.creature_at( p );
     // Original target size, used when there are monsters in front of our target
     const int target_size = critter != nullptr ? static_cast<int>( critter->get_size() ) : 2;
     // Reset last target pos
@@ -1137,8 +1246,14 @@ void Character::reach_attack( const tripoint_bub_ms &p, int forced_movecost )
         return;
     }
 
+    // A technique picked for the creature aimed at doesn't carry over to one in the way
+    if( critter != aimed && choice.how == technique_choice::mode::chosen ) {
+        choice = technique_choice();
+    }
+    // Asked already, or never to be asked
+    const melee::technique_menu_suppressor no_technique_menu;
     reach_attacking = true;
-    melee_attack_abstract( *critter, true, force_technique, false, forced_movecost );
+    melee_attack_abstract( *critter, true, choice, false, forced_movecost );
     reach_attacking = false;
 }
 
@@ -1929,6 +2044,9 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         }
     }
 
+    // TODO: in manual combat mode, let the player aim the knockback of a technique chosen in
+    // the technique menu (Cataclysm-BN's controlled_knockback), with the throw targeting of the
+    // grappling port's Phase 5 once it exists
     if( technique.knockback_dist && !( t.has_flag( mon_flag_IMMOBILE ) ||
                                        t.has_flag( json_flag_CANNOT_MOVE ) ) ) {
         const tripoint_bub_ms prev_pos = t_pos; // track target startpoint for knockback_follow
@@ -2488,6 +2606,51 @@ static damage_instance hardcoded_mutation_attack( const Character &u, const trai
     return damage_instance();
 }
 
+namespace
+{
+// Why a mutation attack can't happen now, apart from its chance
+enum class mutation_attack_block : int {
+    none,
+    covered,        // the body part it uses is covered
+    blocked,        // a blocker mutation
+    missing_trait,  // a required mutation is missing
+};
+} // namespace
+
+static mutation_attack_block mutation_attack_blocked( const Character &you,
+        const mut_attack &mut_atk, const body_part_set &usable_body_parts )
+{
+    if( !mut_atk.bp.is_empty() && !usable_body_parts.test( mut_atk.bp ) ) {
+        return mutation_attack_block::covered;
+    }
+    if( std::any_of( mut_atk.blocker_mutations.begin(), mut_atk.blocker_mutations.end(),
+    [&you]( const trait_id & blocker ) {
+    return you.has_trait( blocker );
+    } ) ) {
+        return mutation_attack_block::blocked;
+    }
+    if( !std::all_of( mut_atk.required_mutations.begin(), mut_atk.required_mutations.end(),
+    [&you]( const trait_id & need ) {
+    return you.has_trait( need );
+    } ) ) {
+        return mutation_attack_block::missing_trait;
+    }
+    return mutation_attack_block::none;
+}
+
+static damage_instance mutation_attack_damage( const Character &you, const trait_id &pr,
+        const mut_attack &mut_atk )
+{
+    if( mut_atk.hardcoded_effect ) {
+        return hardcoded_mutation_attack( you, pr );
+    }
+    damage_instance dam = mut_atk.base_damage;
+    damage_instance scaled = mut_atk.strength_damage;
+    scaled.mult_damage( std::min<float>( 15.0f, you.get_str() ), true );
+    dam.add( scaled );
+    return dam;
+}
+
 std::vector<special_attack> Character::mutation_attacks( Creature &t ) const
 {
     std::vector<special_attack> ret;
@@ -2500,8 +2663,10 @@ std::vector<special_attack> Character::mutation_attacks( Creature &t ) const
     for( const trait_id &pr : get_functioning_mutations() ) {
         const mutation_branch &branch = pr.obj();
         for( const mut_attack &mut_atk : branch.attacks_granted ) {
+            const mutation_attack_block blocked = mutation_attack_blocked( *this, mut_atk,
+                                                  usable_body_parts );
             // Covered body part
-            if( !mut_atk.bp.is_empty() && !usable_body_parts.test( mut_atk.bp ) ) {
+            if( blocked == mutation_attack_block::covered ) {
                 continue;
             }
 
@@ -2517,21 +2682,11 @@ std::vector<special_attack> Character::mutation_attacks( Creature &t ) const
                 continue;
             }
 
-            // If player has any blocker, bail out
-            if( std::any_of( mut_atk.blocker_mutations.begin(), mut_atk.blocker_mutations.end(),
-            [this]( const trait_id & blocker ) {
-            return has_trait( blocker );
-            } ) ) {
-                add_msg_debug( debugmode::DF_MELEE, "%s not procing: blocked", pr.c_str() );
-                continue;
-            }
-
-            // Player must have all needed traits
-            if( !std::all_of( mut_atk.required_mutations.begin(), mut_atk.required_mutations.end(),
-            [this]( const trait_id & need ) {
-            return has_trait( need );
-            } ) ) {
-                add_msg_debug( debugmode::DF_MELEE, "%s not procing: unmet req", pr.c_str() );
+            // If player has any blocker, or lacks a needed trait, bail out
+            if( blocked != mutation_attack_block::none ) {
+                add_msg_debug( debugmode::DF_MELEE, "%s not procing: %s", pr.c_str(),
+                               blocked == mutation_attack_block::blocked ? "blocked" :
+                               "unmet req" );
                 continue;
             }
 
@@ -2546,16 +2701,7 @@ std::vector<special_attack> Character::mutation_attacks( Creature &t ) const
             }
 
             // Attack starts here
-            if( mut_atk.hardcoded_effect ) {
-                tmp.damage = hardcoded_mutation_attack( *this, pr );
-            } else {
-                damage_instance dam = mut_atk.base_damage;
-                damage_instance scaled = mut_atk.strength_damage;
-                scaled.mult_damage( std::min<float>( 15.0f, get_str() ), true );
-                dam.add( scaled );
-
-                tmp.damage = dam;
-            }
+            tmp.damage = mutation_attack_damage( *this, pr, mut_atk );
 
             if( tmp.damage.total_damage() > 0.0f ) {
                 ret.emplace_back( tmp );
@@ -3068,3 +3214,306 @@ namespace melee
 {
 melee_statistic_data melee_stats;
 } // namespace melee
+
+// Manual technique menu. The idea is Cataclysm-BN's (PR #9108); here the menu opens before the
+// hit and crit rolls, and its rules are Character::check_technique's.
+
+namespace
+{
+thread_local int technique_menu_suppression = 0;
+
+// The menu checks technique conditions, and some roll dice. It rolls them on its own numbers,
+// seeded from the turn and the target: the game's sequence is left alone, so cancelling tells
+// nothing about the hit to come, and the menu gives the same answers until the next turn.
+class menu_random_numbers
+{
+    public:
+        explicit menu_random_numbers( const Creature &target ) : saved( rng_get_engine() ) {
+            const tripoint_abs_ms pos = target.pos_abs();
+            const unsigned int seed = static_cast<unsigned int>( to_turn<int>( calendar::turn ) ) ^
+                                      static_cast<unsigned int>( pos.x() * 73856093 ) ^
+                                      static_cast<unsigned int>( pos.y() * 19349663 ) ^
+                                      static_cast<unsigned int>( pos.z() * 83492791 );
+            rng_get_engine().seed( seed );
+        }
+        ~menu_random_numbers() {
+            rng_get_engine() = saved;
+        }
+        menu_random_numbers( const menu_random_numbers & ) = delete;
+        menu_random_numbers &operator=( const menu_random_numbers & ) = delete;
+    private:
+        cata_default_random_engine saved;
+};
+
+// The last choice made in the menu, to start on next time
+technique_choice last_menu_choice;
+
+constexpr int menu_ret_basic = 10000;
+constexpr int menu_ret_automatic = 10001;
+} // namespace
+
+std::function<technique_choice( const std::vector<melee::technique_menu_entry> & )>
+melee::technique_menu_test_answer;
+
+melee::technique_menu_suppressor::technique_menu_suppressor()
+{
+    ++technique_menu_suppression;
+}
+
+melee::technique_menu_suppressor::~technique_menu_suppressor()
+{
+    --technique_menu_suppression;
+}
+
+bool melee::technique_menu_suppressed()
+{
+    return technique_menu_suppression > 0;
+}
+
+bool melee::wants_technique_menu( const Character &you, bool allow_special )
+{
+    if( !allow_special || technique_menu_suppressed() ) {
+        return false;
+    }
+    const avatar *u = you.as_avatar();
+    if( u == nullptr || !u->manual_combat_mode || u->is_auto_moving() ) {
+        return false;
+    }
+    // A mech's arm hits without techniques
+    return !( u->is_mounted() && u->mounted_creature->has_flag( mon_flag_RIDEABLE_MECH ) );
+}
+
+static melee::technique_menu_group menu_group( bool weapon, bool equipment, bool style )
+{
+    if( weapon && style ) {
+        return melee::technique_menu_group::weapon_and_style;
+    }
+    if( weapon ) {
+        return melee::technique_menu_group::weapon;
+    }
+    if( style ) {
+        return melee::technique_menu_group::style;
+    }
+    if( equipment ) {
+        return melee::technique_menu_group::equipment;
+    }
+    return melee::technique_menu_group::unarmed;
+}
+
+static void add_mutation_attack_entries( const Character &you,
+        std::vector<melee::technique_menu_entry> &entries )
+{
+    const body_part_set usable_body_parts = you.exclusive_flag_coverage(
+            flag_ALLOWS_NATURAL_ATTACKS );
+    const int proc_value = you.get_dex() + you.get_skill_level( skill_unarmed );
+    for( const trait_id &pr : you.get_functioning_mutations() ) {
+        const mutation_branch &branch = pr.obj();
+        for( const mut_attack &mut_atk : branch.attacks_granted ) {
+            melee::technique_menu_entry entry;
+            entry.tec = tec_none;
+            entry.name = branch.name();
+            entry.group = melee::technique_menu_group::mutation;
+            switch( mutation_attack_blocked( you, mut_atk, usable_body_parts ) ) {
+                case mutation_attack_block::covered:
+                    entry.reason = _( "covered" );
+                    break;
+                case mutation_attack_block::blocked:
+                    entry.reason = _( "blocked by a mutation" );
+                    break;
+                case mutation_attack_block::missing_trait:
+                    entry.reason = _( "needs another mutation" );
+                    break;
+                case mutation_attack_block::none:
+                    if( mutation_attack_damage( you, pr, mut_atk ).total_damage() <= 0.0f ) {
+                        entry.reason = _( "no damage now" );
+                    } else {
+                        const int chance = std::clamp( 100 * proc_value /
+                                                       std::max( 1, mut_atk.chance ), 0, 100 );
+                        //~ A mutation attack in the technique menu: it happens on its own, at
+                        //~ this chance
+                        entry.reason = string_format( _( "automatic, %d%%" ), chance );
+                    }
+                    break;
+            }
+            entry.description = string_format( "%s\n\n%s", branch.desc(),
+                                               _( "Mutation attacks can't be chosen: when they "
+                                                  "happen, they come on top of your attack." ) );
+            entries.push_back( entry );
+        }
+    }
+}
+
+std::vector<melee::technique_menu_entry> melee::technique_menu_entries( const Character &you,
+        const Creature &target, const item_location &weapon, const std::vector<matec_id> *only )
+{
+    const menu_random_numbers own_numbers( target );
+
+    // Where each technique comes from; a technique can come from several places
+    std::vector<technique_source> sources;
+    const std::vector<matec_id> all = you.martial_arts_data->get_all_techniques( weapon, you,
+                                      &sources );
+    std::map<matec_id, std::set<technique_source>> found;
+    for( size_t i = 0; i < all.size(); i++ ) {
+        found[all[i]].insert( sources[i] );
+    }
+
+    std::vector<technique_menu_entry> entries;
+    for( const std::pair<const matec_id, std::set<technique_source>> &tec_sources : found ) {
+        const matec_id &tec = tec_sources.first;
+        if( only != nullptr && std::find( only->begin(), only->end(), tec ) == only->end() ) {
+            continue;
+        }
+        if( tec == tec_none || tec->name.empty() ) {
+            continue;
+        }
+        const std::set<technique_source> &from = tec_sources.second;
+        technique_menu_entry entry;
+        entry.tec = tec;
+        entry.name = tec->name.translated();
+        entry.group = menu_group( from.count( technique_source::weapon ) > 0,
+                                  from.count( technique_source::equipment ) > 0,
+                                  from.count( technique_source::style ) > 0 );
+        // As the attack would check it, before the dice: nothing random, and not a crit yet
+        technique_query query;
+        query.roll = false;
+        entry.why_not = you.check_technique( tec, target, weapon, query );
+        if( entry.why_not == technique_rejection::crit_only ) {
+            // It can be attempted: it comes off if the hit is a crit
+            query.crit = true;
+            entry.why_not = you.check_technique( tec, target, weapon, query );
+            entry.crit_only = entry.why_not == technique_rejection::none;
+        }
+        entry.selectable = entry.why_not == technique_rejection::none;
+        std::string description;
+        if( !tec->description.empty() ) {
+            description = tec->description.translated() + "\n\n";
+        }
+        description += tec->get_description();
+        if( entry.crit_only ) {
+            entry.reason = colorize( _( "needs a crit" ), c_yellow );
+            description += _( "<info>Needs a critical hit:</info> without one, the attack is "
+                              "a basic attack." );
+        } else if( !entry.selectable ) {
+            entry.reason = tec->rejection_text( entry.why_not );
+            description += string_format( _( "<bad>Not now:</bad> %s" ), entry.reason );
+        }
+        entry.description = replace_colors( description );
+        entries.push_back( entry );
+    }
+    if( only == nullptr ) {
+        add_mutation_attack_entries( you, entries );
+    }
+
+    // By group, then what can be chosen, then what can be attempted, then by name
+    const auto rank = []( const technique_menu_entry & e ) {
+        return e.selectable ? ( e.crit_only ? 1 : 0 ) : 2;
+    };
+    std::stable_sort( entries.begin(), entries.end(), [&rank]( const technique_menu_entry & a,
+    const technique_menu_entry & b ) {
+        if( a.group != b.group ) {
+            return a.group < b.group;
+        }
+        if( rank( a ) != rank( b ) ) {
+            return rank( a ) < rank( b );
+        }
+        return localized_compare( a.name, b.name );
+    } );
+    return entries;
+}
+
+static std::string menu_group_header( melee::technique_menu_group group, const Character &you,
+                                      const item_location &weapon )
+{
+    switch( group ) {
+        case melee::technique_menu_group::style:
+            return you.martial_arts_data->selected_style_name( you );
+        case melee::technique_menu_group::weapon_and_style:
+            return _( "Weapon and style" );
+        case melee::technique_menu_group::weapon:
+            return weapon ? weapon->tname() : _( "Weapon" );
+        case melee::technique_menu_group::equipment:
+            return _( "Equipment" );
+        case melee::technique_menu_group::unarmed:
+            return _( "Unarmed basics" );
+        case melee::technique_menu_group::mutation:
+            return _( "Mutation attacks (automatic)" );
+    }
+    return std::string();
+}
+
+technique_choice melee::choose_technique( const Character &you, const Creature &target,
+        const item_location &weapon, const technique_menu_options &options )
+{
+    const std::vector<technique_menu_entry> entries = technique_menu_entries( you, target, weapon,
+            options.only );
+    if( test_mode ) {
+        return technique_menu_test_answer ? technique_menu_test_answer( entries ) :
+               technique_choice( technique_choice::mode::cancel );
+    }
+
+    uilist menu;
+    //~ Title of the technique menu of manual combat mode; %s is the target
+    menu.title = string_format( _( "Attack %s" ), target.disp_name() );
+    //~ Technique menu: %1$s is the weapon (or "unarmed"), %2$s the martial art
+    menu.text = string_format( _( "%1$s, %2$s" ), weapon ? weapon->tname() : _( "unarmed" ),
+                               you.martial_arts_data->selected_style_name( you ) );
+    menu.desc_enabled = true;
+    // Greyed-out lines can be highlighted to read why they can't be used
+    menu.hilight_disabled = true;
+
+    if( options.include_automatic ) {
+        menu.addentry_desc( menu_ret_automatic, true, 'a', _( "Automatic" ),
+                            _( "Let your training choose once the blow lands, as without manual "
+                               "combat: a technique that suits the hit, or none." ) );
+    }
+    if( options.include_basic ) {
+        menu.addentry_desc( menu_ret_basic, true, 'b', _( "Basic attack" ),
+                            _( "No martial-art technique: a plain hit with your weapon or, "
+                               "unarmed, a basic punch, kick or headbutt.  Mutation attacks "
+                               "still happen." ) );
+    }
+    std::optional<technique_menu_group> group;
+    int selected = -1;
+    for( size_t i = 0; i < entries.size(); i++ ) {
+        const technique_menu_entry &entry = entries[i];
+        if( !group || *group != entry.group ) {
+            group = entry.group;
+            uilist_entry header( -1, false, -1, menu_group_header( entry.group, you, weapon ),
+                                 c_yellow, c_yellow );
+            header.force_color = true;
+            menu.entries.push_back( header );
+        }
+        menu.addentry_col( static_cast<int>( i ), entry.selectable,
+                           entry.selectable ? MENU_AUTOASSIGN : -1, entry.name, entry.reason,
+                           entry.description );
+        if( entry.selectable && last_menu_choice.how == technique_choice::mode::chosen &&
+            last_menu_choice.tec == entry.tec ) {
+            selected = static_cast<int>( menu.entries.size() ) - 1;
+        }
+    }
+    // Start on the last choice, so repeating it is a single key
+    for( size_t i = 0; selected < 0 && i < menu.entries.size(); i++ ) {
+        const int ret = menu.entries[i].retval;
+        if( ( last_menu_choice.how == technique_choice::mode::basic && ret == menu_ret_basic ) ||
+            ( last_menu_choice.how != technique_choice::mode::basic &&
+              ret == menu_ret_automatic ) ) {
+            selected = static_cast<int>( i );
+        }
+    }
+    menu.selected = std::max( selected, 0 );
+    menu.query();
+
+    technique_choice choice( technique_choice::mode::cancel );
+    if( menu.ret == menu_ret_automatic ) {
+        choice = technique_choice( technique_choice::mode::automatic );
+    } else if( menu.ret == menu_ret_basic ) {
+        choice = technique_choice( technique_choice::mode::basic );
+    } else if( menu.ret >= 0 && static_cast<size_t>( menu.ret ) < entries.size() &&
+               entries[menu.ret].selectable ) {
+        choice = technique_choice( technique_choice::mode::chosen, entries[menu.ret].tec );
+    }
+    if( choice.how != technique_choice::mode::cancel ) {
+        last_menu_choice = choice;
+    }
+    return choice;
+}

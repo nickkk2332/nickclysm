@@ -1307,6 +1307,10 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             break;
         case widget_var::style_text:
             desc.first = ava.martial_arts_data->selected_style_name( ava );
+            if( ava.manual_combat_mode ) {
+                //~ After the martial art's name in the sidebar while manual combat mode is on
+                desc.first += _( " (manual)" );
+            }
             break;
         case widget_var::sundial_text:
             desc.first = display::sundial_text_color( ava, _width == 0 ? max_width : _width );

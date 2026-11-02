@@ -3794,6 +3794,13 @@
   },
   {
     "type": "keybinding",
+    "name": "Toggle manual combat (choose techniques)",
+    "category": "DEFAULTMODE",
+    "id": "toggle_manual_combat",
+    "bindings": [ { "input_method": "keyboard_char", "key": "BACKTAB" } ]
+  },
+  {
+    "type": "keybinding",
     "name": "Main menu",
     "category": "DEFAULTMODE",
     "id": "main_menu",

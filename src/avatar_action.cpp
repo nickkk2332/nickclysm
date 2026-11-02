@@ -40,6 +40,7 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "math_defines.h"
+#include "melee.h"
 #include "messages.h"
 #include "monster.h"
 #include "move_mode.h"
@@ -748,6 +749,8 @@ static float rate_critter( const Creature &c )
 
 void avatar_action::autoattack( avatar &you, map &m )
 {
+    // Autoattack picks the target itself: never the manual technique menu
+    const melee::technique_menu_suppressor no_technique_menu;
     if( you.has_flag( json_flag_CANNOT_ATTACK ) ) {
         add_msg( m_info, _( "You are incapable of attacking!" ) );
         return;

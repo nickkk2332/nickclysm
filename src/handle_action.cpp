@@ -3172,6 +3172,16 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
             avatar_action::autoattack( player_character, here );
             break;
 
+        case ACTION_TOGGLE_MANUAL_COMBAT:
+            player_character.manual_combat_mode = !player_character.manual_combat_mode;
+            if( player_character.manual_combat_mode ) {
+                add_msg( m_info,
+                         _( "Manual combat mode ON!  You choose each attack's technique." ) );
+            } else {
+                add_msg( m_info, _( "Manual combat mode OFF!  Techniques are chosen for you." ) );
+            }
+            break;
+
         default:
             break;
     }

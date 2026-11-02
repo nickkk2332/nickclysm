@@ -1,27 +1,39 @@
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "avatar.h"
+#include "avatar_action.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_martial_arts.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "dialogue.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
+#include "json.h"
+#include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "map_scale_constants.h"
 #include "martialarts.h"
+#include "math_parser_diag_value.h"
+#include "melee.h"
+#include "messages.h"
 #include "monster.h"
 #include "npc.h"
 #include "pimpl.h"
@@ -35,15 +47,23 @@
 // Cataclysm-BN PR #9108). Character::check_technique gives the reason a technique can't be used,
 // for both the automatic choice and the menu.
 
+static const attack_vector_id vector_punch( "vector_punch" );
+
 static const bionic_id bio_cqb( "bio_cqb" );
+
+static const effect_on_condition_id effect_on_condition_EOC_TEST_TM_U_ATTACK(
+    "EOC_TEST_TM_U_ATTACK" );
 
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
+static const efftype_id effect_hit_by_player( "hit_by_player" );
 
 static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_knife_combat( "knife_combat" );
+static const itype_id itype_spear_wood( "spear_wood" );
 
+static const matec_id tech_base_punch( "tech_base_punch" );
 static const matec_id test_tech_grapple_knife( "test_tech_grapple_knife" );
 static const matec_id test_tm_ammo( "test_tm_ammo" );
 static const matec_id test_tm_block_counter( "test_tm_block_counter" );
@@ -71,7 +91,10 @@ static const matype_id test_style_grapple( "test_style_grapple" );
 static const matype_id test_style_technique_menu( "test_style_technique_menu" );
 static const matype_id test_style_technique_pick( "test_style_technique_pick" );
 
+static const skill_id skill_melee( "melee" );
 static const skill_id skill_unarmed( "unarmed" );
+
+static const trait_id trait_BOMBADIER_BLAST( "BOMBADIER_BLAST" );
 
 static constexpr tripoint_bub_ms dude_pos( HALF_MAPSIZE_X, HALF_MAPSIZE_Y, 0 );
 
@@ -510,4 +533,410 @@ TEST_CASE( "grapple_tm_automatic_choice_unchanged", "[grapple][martial_arts]" )
         CAPTURE( expected.first );
         CHECK( got[expected.first] == expected.second );
     }
+}
+
+// ---- Manual combat mode and the technique menu ----
+
+namespace
+{
+// Answers the technique menu, which can't be shown in tests, and counts how often it opened
+class menu_answer
+{
+    public:
+        using answer_fn =
+            std::function<technique_choice( const std::vector<melee::technique_menu_entry> & )>;
+        explicit menu_answer( answer_fn answer ) {
+            melee::technique_menu_test_answer = [this, answer](
+            const std::vector<melee::technique_menu_entry> &entries ) {
+                calls++;
+                last_entries = entries;
+                return answer( entries );
+            };
+        }
+        ~menu_answer() {
+            melee::technique_menu_test_answer = nullptr;
+        }
+        menu_answer( const menu_answer & ) = delete;
+        menu_answer &operator=( const menu_answer & ) = delete;
+        int calls = 0;
+        std::vector<melee::technique_menu_entry> last_entries;
+};
+
+technique_choice answer_cancel( const std::vector<melee::technique_menu_entry> & )
+{
+    return technique_choice( technique_choice::mode::cancel );
+}
+
+technique_choice answer_basic( const std::vector<melee::technique_menu_entry> & )
+{
+    return technique_choice( technique_choice::mode::basic );
+}
+
+menu_answer::answer_fn answer_technique( const matec_id &tec )
+{
+    return [tec]( const std::vector<melee::technique_menu_entry> & ) {
+        return technique_choice( technique_choice::mode::chosen, tec );
+    };
+}
+} // namespace
+
+// The avatar unarmed in the test style with every rejection, in manual combat mode
+static avatar &manual_fighter()
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    you.setpos( get_map(), dude_pos );
+    you.set_skill_level( skill_unarmed, 4 );
+    use_style( you, test_style_technique_menu );
+    you.manual_combat_mode = true;
+    you.set_moves( 100 );
+    return you;
+}
+
+static const melee::technique_menu_entry *menu_line( const
+        std::vector<melee::technique_menu_entry> &entries, const matec_id &tec )
+{
+    for( const melee::technique_menu_entry &entry : entries ) {
+        if( entry.tec == tec ) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+static bool messages_have( const std::string &text )
+{
+    for( const std::pair<std::string, std::string> &msg : Messages::recent_messages( 0 ) ) {
+        if( msg.second.find( text ) != std::string::npos ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+TEST_CASE( "grapple_tm_manual_combat_mode_is_saved", "[grapple][martial_arts]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    you.manual_combat_mode = true;
+    const on_out_of_scope manual_off( []() {
+        get_avatar().manual_combat_mode = false;
+    } );
+    std::ostringstream os;
+    JsonOut jsout( os );
+    you.serialize( jsout );
+    const std::string saved = os.str();
+    REQUIRE( saved.find( "\"manual_combat_mode\":true" ) != std::string::npos );
+
+    avatar loaded;
+    loaded.deserialize( json_loader::from_string( saved ).get_object() );
+    CHECK( loaded.manual_combat_mode );
+
+    // A save from before the mode existed loads with it off
+    std::string old_save = saved;
+    const std::string member = "\"manual_combat_mode\":true,";
+    old_save.erase( old_save.find( member ), member.size() );
+    avatar old;
+    old.manual_combat_mode = true;
+    old.deserialize( json_loader::from_string( old_save ).get_object() );
+    CHECK_FALSE( old.manual_combat_mode );
+}
+
+TEST_CASE( "grapple_tm_menu_lines", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    avatar &you = manual_fighter();
+    const on_out_of_scope manual_off( []() {
+        get_avatar().manual_combat_mode = false;
+    } );
+    monster &target = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::east );
+    const std::vector<melee::technique_menu_entry> entries = melee::technique_menu_entries( you,
+            target, you.used_weapon() );
+
+    const melee::technique_menu_entry *strike = menu_line( entries, test_tm_strike );
+    REQUIRE( strike != nullptr );
+    CHECK( strike->selectable );
+    CHECK_FALSE( strike->crit_only );
+    CHECK( strike->reason.empty() );
+    CHECK( strike->group == melee::technique_menu_group::style );
+    CHECK_FALSE( strike->description.empty() );
+
+    // A crit-only technique can be attempted
+    const melee::technique_menu_entry *crit = menu_line( entries, test_tm_crit );
+    REQUIRE( crit != nullptr );
+    CHECK( crit->selectable );
+    CHECK( crit->crit_only );
+    CHECK( crit->reason.find( "needs a crit" ) != std::string::npos );
+
+    // Greyed out with the reason; a condition shows its condition_desc
+    const melee::technique_menu_entry *downed = menu_line( entries, test_tm_downed_only );
+    REQUIRE( downed != nullptr );
+    CHECK_FALSE( downed->selectable );
+    CHECK( io::enum_to_string( downed->why_not ) == "condition" );
+    CHECK( downed->reason == "Only works on a downed target" );
+    CHECK( downed->description.find( "Not now:" ) != std::string::npos );
+    // Counters and defensive techniques are listed but can't be chosen
+    for( const matec_id &tec : {
+             test_tm_dodge_counter, test_tm_block_counter, test_tm_defensive, test_tm_dummy
+         } ) {
+        const melee::technique_menu_entry *entry = menu_line( entries, tec );
+        CAPTURE( tec.str() );
+        REQUIRE( entry != nullptr );
+        CHECK_FALSE( entry->selectable );
+        CHECK_FALSE( entry->reason.empty() );
+    }
+    CHECK( menu_line( entries, test_tm_dodge_counter )->reason == "dodge counter, automatic" );
+    // The weighting isn't rolled: a technique that rarely comes up can be chosen
+    CHECK( menu_line( entries, test_tm_unlikely )->selectable );
+
+    // Body techniques are the unarmed basics
+    const melee::technique_menu_entry *punch = menu_line( entries, tech_base_punch );
+    REQUIRE( punch != nullptr );
+    CHECK( punch->group == melee::technique_menu_group::unarmed );
+
+    // By group, and in a group what can be chosen first, then what can be attempted
+    for( size_t i = 1; i < entries.size(); i++ ) {
+        const melee::technique_menu_entry &a = entries[i - 1];
+        const melee::technique_menu_entry &b = entries[i];
+        CAPTURE( a.name, b.name );
+        CHECK( a.group <= b.group );
+        if( a.group == b.group ) {
+            const int rank_a = a.selectable ? ( a.crit_only ? 1 : 0 ) : 2;
+            const int rank_b = b.selectable ? ( b.crit_only ? 1 : 0 ) : 2;
+            CHECK( rank_a <= rank_b );
+        }
+    }
+
+    SECTION( "mutation attacks are listed, never selectable" ) {
+        you.set_mutation( trait_BOMBADIER_BLAST );
+        const std::vector<melee::technique_menu_entry> with_mutation =
+            melee::technique_menu_entries( you, target, you.used_weapon() );
+        const melee::technique_menu_entry &last = with_mutation.back();
+        CHECK( last.group == melee::technique_menu_group::mutation );
+        CHECK_FALSE( last.selectable );
+        CHECK( last.reason.find( "automatic" ) != std::string::npos );
+    }
+    SECTION( "a limited menu lists only those techniques" ) {
+        const std::vector<matec_id> only = { test_tm_strike, test_tm_downed_only };
+        const std::vector<melee::technique_menu_entry> limited =
+            melee::technique_menu_entries( you, target, you.used_weapon(), &only );
+        REQUIRE( limited.size() == 2 );
+        CHECK( limited[0].tec == test_tm_strike );
+        CHECK( limited[1].tec == test_tm_downed_only );
+    }
+}
+
+// The harness reseeds the random numbers as each SECTION starts: the state to compare with is
+// taken inside the section.
+TEST_CASE( "grapple_tm_cancelling_the_menu_costs_nothing", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    avatar &you = manual_fighter();
+    const on_out_of_scope manual_off( []() {
+        get_avatar().manual_combat_mode = false;
+    } );
+    monster &zed = spawn_test_monster( "mon_zombie", dude_pos + tripoint::east );
+    const int hp = zed.get_hp();
+    const int moves = you.get_moves();
+    melee::clear_stats();
+    // Attacks, then checks that nothing happened. "Rolls nothing": the random number engine is
+    // exactly where it was, so no hit, crit or anything else was rolled.
+    const auto cancelled = [&]( const std::function<void()> &attack ) {
+        const cata_default_random_engine before = rng_get_engine();
+        attack();
+        CHECK( rng_get_engine() == before );
+        CHECK( you.get_moves() == moves );
+        CHECK( melee::get_stats().attack_count == 0 );
+        CHECK( zed.get_hp() == hp );
+        CHECK_FALSE( zed.has_effect( effect_hit_by_player ) );
+        CHECK( you.pos_bub() == dude_pos );
+    };
+
+    SECTION( "an attack, the menu answered by cancelling" ) {
+        menu_answer answer( answer_cancel );
+        cancelled( [&]() {
+            CHECK_FALSE( you.melee_attack( zed, true ) );
+        } );
+        CHECK( answer.calls == 1 );
+    }
+    SECTION( "moving into the monster, the menu answered by cancelling" ) {
+        menu_answer answer( answer_cancel );
+        cancelled( [&]() {
+            avatar_action::move( you, get_map(), tripoint_rel_ms::east );
+        } );
+        CHECK( answer.calls == 1 );
+    }
+    SECTION( "with no answer: the menu cancels itself in tests" ) {
+        cancelled( [&]() {
+            CHECK_FALSE( you.melee_attack( zed, true ) );
+        } );
+    }
+}
+
+TEST_CASE( "grapple_tm_reach_attack_asks_before_rolling", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    avatar &you = manual_fighter();
+    const on_out_of_scope manual_off( []() {
+        get_avatar().manual_combat_mode = false;
+    } );
+    item spear( itype_spear_wood );
+    you.wield( spear );
+    const tripoint_bub_ms there = dude_pos + tripoint( 2, 0, 0 );
+    spawn_test_monster( "mon_zombie", there );
+    const int moves = you.get_moves();
+
+    SECTION( "cancelled: nothing rolled or spent" ) {
+        menu_answer answer( answer_cancel );
+        const cata_default_random_engine before = rng_get_engine();
+        you.reach_attack( there );
+        CHECK( answer.calls == 1 );
+        CHECK( rng_get_engine() == before );
+        CHECK( you.get_moves() == moves );
+    }
+    SECTION( "answered: one menu, then the attack" ) {
+        menu_answer answer( answer_basic );
+        you.reach_attack( there );
+        CHECK( answer.calls == 1 );
+        CHECK( you.get_moves() < moves );
+        // The menu checked the techniques as for a reach attack
+        CHECK( menu_line( answer.last_entries, test_tm_strike )->reason ==
+               "not in a reach attack" );
+        CHECK( menu_line( answer.last_entries, test_tm_reach )->reason != "reach attacks only" );
+    }
+    CHECK_FALSE( you.reach_attacking );
+}
+
+TEST_CASE( "grapple_tm_menu_only_for_the_players_own_attacks", "[grapple][martial_arts]" )
+{
+    clear_map();
+    set_time_to_day();
+    avatar &you = manual_fighter();
+    const on_out_of_scope manual_off( []() {
+        get_avatar().manual_combat_mode = false;
+    } );
+    monster &zed = spawn_test_monster( "mon_zombie", dude_pos + tripoint::east );
+    map &here = get_map();
+    here.invalidate_visibility_cache();
+    here.build_map_cache( dude_pos.z() );
+    const int moves = you.get_moves();
+    menu_answer answer( answer_basic );
+
+    SECTION( "the avatar's attack asks" ) {
+        CHECK( you.melee_attack( zed, true ) );
+        CHECK( answer.calls == 1 );
+    }
+    SECTION( "moving into a monster asks" ) {
+        avatar_action::move( you, here, tripoint_rel_ms::east );
+        CHECK( answer.calls == 1 );
+    }
+    SECTION( "not out of manual combat mode" ) {
+        you.manual_combat_mode = false;
+        CHECK( you.melee_attack( zed, true ) );
+        CHECK( answer.calls == 0 );
+    }
+    SECTION( "not for autoattack" ) {
+        REQUIRE( you.sees( here, zed ) );
+        avatar_action::autoattack( you, here );
+        CHECK( answer.calls == 0 );
+        CHECK( you.get_moves() < moves );
+    }
+    SECTION( "not for an EOC's u_attack" ) {
+        dialogue d( get_talker_for( you ), get_talker_for( zed ) );
+        effect_on_condition_EOC_TEST_TM_U_ATTACK->activate( d );
+        CHECK( answer.calls == 0 );
+        CHECK( you.get_moves() < moves );
+    }
+    SECTION( "not for an NPC" ) {
+        standard_npc dude( "TestCharacter", dude_pos + tripoint( 2, 0, 0 ), {}, 0, 8, 8, 8, 8 );
+        dude.set_moves( 100 );
+        CHECK( dude.melee_attack( zed, true ) );
+        CHECK( answer.calls == 0 );
+    }
+    SECTION( "not while auto-moving" ) {
+        you.set_destination( { dude_pos + tripoint::north, dude_pos + tripoint( 0, -2, 0 ) } );
+        REQUIRE( you.is_auto_moving() );
+        CHECK( you.melee_attack( zed, true ) );
+        CHECK( answer.calls == 0 );
+        you.clear_destination();
+    }
+    SECTION( "not inside a suppressor, and not for an attack without techniques" ) {
+        {
+            const melee::technique_menu_suppressor no_menu;
+            CHECK( you.melee_attack( zed, true ) );
+        }
+        you.set_moves( 100 );
+        CHECK( you.melee_attack( zed, false ) );
+        CHECK( answer.calls == 0 );
+    }
+}
+
+// Attacks again and again (full health, moves and stamina each time) until a test passes on a
+// hit, or gives up; returns whether a hit came
+static bool attack_until( avatar &you, monster &zed, int tries,
+                          const std::function<bool( bool crit )> &on_hit )
+{
+    for( int i = 0; i < tries; i++ ) {
+        zed.set_hp( zed.get_hp_max() );
+        zed.clear_effects();
+        you.set_moves( 100 );
+        you.set_stamina( you.get_stamina_max() );
+        Messages::clear_messages();
+        const melee_statistic_data before = melee::get_stats();
+        you.melee_attack( zed, true );
+        const melee_statistic_data after = melee::get_stats();
+        if( after.hit_count > before.hit_count &&
+            on_hit( after.actual_crit_count > before.actual_crit_count ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+TEST_CASE( "grapple_tm_chosen_technique_is_used", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    avatar &you = manual_fighter();
+    const on_out_of_scope manual_off( []() {
+        get_avatar().manual_combat_mode = false;
+    } );
+    you.set_skill_level( skill_melee, 10 );
+    monster &zed = spawn_test_monster( "mon_zombie", dude_pos + tripoint::east );
+    melee::clear_stats();
+
+    SECTION( "a technique" ) {
+        menu_answer answer( answer_technique( test_tm_strike ) );
+        CHECK( attack_until( you, zed, 50, []( bool ) {
+            return messages_have( "You tm-strike" );
+        } ) );
+    }
+    SECTION( "a crit-only technique without a crit is a basic attack" ) {
+        menu_answer answer( answer_technique( test_tm_crit ) );
+        CHECK( attack_until( you, zed, 50, []( bool crit ) {
+            return !crit && messages_have( "Not a critical hit: no TM Crit Strike this time." ) &&
+                   !messages_have( "You tm-crit" );
+        } ) );
+    }
+    SECTION( "a basic attack, unarmed, is a punch or a kick" ) {
+        menu_answer answer( answer_basic );
+        CHECK( attack_until( you, zed, 50, []( bool ) {
+            return messages_have( "You punch" ) || messages_have( "You kick" );
+        } ) );
+    }
+}
+
+TEST_CASE( "grapple_tm_forced_technique_gets_attack_vector", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
+    clear_character( dude, true );
+    use_style( dude, test_style_technique_menu );
+
+    const std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> strike =
+        dude.forced_technique_attack( test_tm_strike );
+    CHECK( std::get<0>( strike ) == test_tm_strike );
+    CHECK( std::get<1>( strike ) == vector_punch );
+    CHECK( !std::get<2>( strike ).is_null() );
+    // No technique: no vector
+    CHECK( std::get<1>( dude.forced_technique_attack( tec_none ) ).is_null() );
 }

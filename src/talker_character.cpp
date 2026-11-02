@@ -32,6 +32,7 @@
 #include "map.h"
 #include "martialarts.h"
 #include "math_parser_diag_value.h"
+#include "melee.h"
 #include "messages.h"
 #include "npc.h"
 #include "npctalk.h"
@@ -1492,6 +1493,8 @@ bool talker_character_const::is_in_vehicle() const
 void talker_character::attack_target( Creature &t, bool allow_special,
                                       const matec_id &force_technique, bool allow_unarmed, int forced_movecost )
 {
+    // An EOC's attack (u_attack) never opens the manual technique menu
+    const melee::technique_menu_suppressor no_technique_menu;
     me_chr->melee_attack( t, allow_special, force_technique, allow_unarmed, forced_movecost );
 }
 
