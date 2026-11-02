@@ -25,7 +25,9 @@
 #include "magic.h"
 #include "magic_enchantment.h"
 #include "player_helpers.h"
+#include "pocket_type.h"
 #include "relic.h"
+#include "ret_val.h"
 #include "type_id.h"
 
 static const fault_id fault_test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
@@ -36,12 +38,15 @@ static const item_category_id
 item_category_test_spawn_rate_category_copy( "test_spawn_rate_category_copy" );
 
 static const itype_id itype_9mm( "9mm" );
+static const itype_id itype_battery( "battery" );
 static const itype_id itype_briefcase_smg( "briefcase_smg" );
 static const itype_id itype_colt_army( "colt_army" );
+static const itype_id itype_heavy_battery_cell( "heavy_battery_cell" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_test_fault_self_damaging_rod( "test_fault_self_damaging_rod" );
 static const itype_id itype_test_fault_two_mech_rod( "test_fault_two_mech_rod" );
 static const itype_id itype_test_glock( "test_glock" );
+static const itype_id itype_test_multimag_gun_integral_ammo( "test_multimag_gun_integral_ammo" );
 static const itype_id itype_test_quiver( "test_quiver" );
 static const itype_id itype_test_transform_timed_baton( "test_transform_timed_baton" );
 
@@ -316,4 +321,25 @@ TEST_CASE( "iinf-b04_second_sided_item_goes_on_the_free_side", "[audit][item][ar
     REQUIRE( second.has_value() );
     CHECK( ( *second )->get_side() != side::BOTH );
     CHECK( ( *second )->get_side() != first_side );
+}
+
+// IINF-B05: for a MAGAZINE pocket, is_reloadable() asked the item-wide
+// remaining_ammo_capacity(), which reports the first loaded magazine well's magazine when
+// there is one.  A gun with an integral projectile magazine and a battery well therefore
+// couldn't be reloaded while its battery was full, however empty the magazine was.
+TEST_CASE( "iinf-b05_integral_magazine_reloadable_next_to_full_battery", "[audit][item][gun]" )
+{
+    item gun( itype_test_multimag_gun_integral_ammo );
+    item battery( itype_heavy_battery_cell );
+    battery.ammo_set( itype_battery );
+    REQUIRE( battery.is_magazine_full() );
+    REQUIRE( gun.put_in( battery, pocket_type::MAGAZINE_WELL ).success() );
+
+    // the integral 9mm magazine is empty
+    CHECK( gun.is_reloadable() );
+
+    // with the magazine loaded too there's nothing left to reload
+    REQUIRE( gun.put_in( item( itype_9mm, calendar::turn, 1 ),
+                         pocket_type::MAGAZINE ).success() );
+    CHECK_FALSE( gun.is_reloadable() );
 }

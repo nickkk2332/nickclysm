@@ -4467,9 +4467,14 @@ bool item::is_reloadable() const
                 return true;
             }
         } else if( pocket->is_type( pocket_type::MAGAZINE ) ) {
-            // Parent aggregate stays correct when the integral mag is full
-            // of casings (not counted against ammo_remaining()).
-            if( remaining_ammo_capacity() > 0 ) {
+            // Ask the pocket itself: the item-wide remaining_ammo_capacity() reports the first
+            // loaded magazine well instead (a full battery next to an empty integral magazine).
+            // Casings don't count against the pocket's remaining capacity.
+            const std::set<ammotype> pocket_ammo = pocket->ammo_types();
+            if( std::any_of( pocket_ammo.begin(), pocket_ammo.end(),
+            [pocket]( const ammotype & at ) {
+            return pocket->remaining_ammo_capacity( at ) > 0;
+            } ) ) {
                 return true;
             }
         } else if( pocket->is_type( pocket_type::CONTAINER ) ) {
