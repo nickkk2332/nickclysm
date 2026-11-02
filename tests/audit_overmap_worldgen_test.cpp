@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 #include "avatar.h"
@@ -17,6 +18,7 @@
 #include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "regional_settings.h"
 #include "submap.h"
 #include "type_id.h"
 
@@ -190,4 +192,46 @@ TEST_CASE( "omap-b03_find_camp_returns_the_camp_at_the_point", "[audit][overmap]
 
     overmap_buffer.get_om_global( first ).om->remove_camp( first );
     overmap_buffer.get_om_global( second ).om->remove_camp( second );
+}
+
+// Generates the overmap at `where` without any specials, which is all the city tests need.
+static overmap &generate_bare_overmap( const point_abs_om &where )
+{
+    std::vector<const overmap_special *> no_specials;
+    overmap_special_batch batch( where, no_specials );
+    overmap_buffer.create_custom_overmap( where, batch );
+    overmap *om = overmap_buffer.get_existing( where );
+    REQUIRE( om != nullptr );
+    return *om;
+}
+
+// OMAP-B04: place_cities combined urbanity with std::min instead of std::max and then clamped
+// the result back up to the region's city_size, so urbanity never grew a city: every random
+// city came from a base size of city_size - 1 or city_size. Far to the east, where the default
+// region raises urbanity, other sizes must now show up.
+TEST_CASE( "omap-b04_urbanity_grows_cities", "[audit][overmap]" )
+{
+    overmap &om = generate_bare_overmap( point_abs_om( 20, 0 ) );
+    REQUIRE( om.get_urbanity() >= 10 );
+    const region_settings_city &city_settings = om.get_settings().get_settings_city();
+    REQUIRE( !city_settings.is_megacity );
+    REQUIRE( city::get_all().empty() );
+
+    // Every size the old code could produce: the size rolls of place_cities applied to the
+    // two possible base sizes.
+    std::set<int> old_sizes;
+    for( int base = city_settings.city_size - 1; base <= city_settings.city_size; ++base ) {
+        for( const int size : {
+                 base / 3, base * 2 / 3, base * 3 / 2, base * 2
+             } ) {
+            old_sizes.insert( std::min( std::max( size, 2 ), 55 ) );
+        }
+    }
+    // About 11 cities, each with roughly a 70% chance of a size the old code couldn't roll.
+    REQUIRE( om.cities.size() >= 5 );
+    const bool any_new_size = std::any_of( om.cities.begin(), om.cities.end(),
+    [&old_sizes]( const city & c ) {
+        return old_sizes.count( c.size ) == 0;
+    } );
+    CHECK( any_new_size );
 }

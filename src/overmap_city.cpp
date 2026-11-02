@@ -71,17 +71,17 @@ void overmap::place_cities()
     if( op_city_size <= 0 ) {
         return;
     }
-    // make sure city size adjust is never high enough to drop op_city_size below 2
-    int city_size_adjust = std::min( urbanity - static_cast<int>( forestosity / 2.0f ),
-                                     -1 * op_city_size + 2 );
+    // Urbanity grows cities and forestosity shrinks them, but never below size 2. This used
+    // std::min and then clamped back up to op_city_size, so neither ever changed a city's size
+    // and max_urbanity did nothing (OMAP-B04).
+    const int city_size_adjust = std::max( urbanity - static_cast<int>( forestosity / 2.0f ),
+                                           2 - op_city_size );
     int city_space_adjust = urbanity / 2;
-    int max_city_size = std::min( op_city_size + city_size_adjust, op_city_size * max_urbanity );
-    if( max_city_size < op_city_size ) {
-        // funny things happen if max_city_size is less than op_city_size.
-        max_city_size = op_city_size;
-    }
+    const int max_city_size = std::max( 2, std::min( op_city_size + city_size_adjust,
+                                        op_city_size * max_urbanity ) );
     if( op_city_spacing > 0 ) {
-        city_space_adjust = std::min( city_space_adjust, op_city_spacing - 2 );
+        // Urbanity can bring cities closer together, but never makes the spacing wider.
+        city_space_adjust = std::max( 0, std::min( city_space_adjust, op_city_spacing - 2 ) );
         op_city_spacing = op_city_spacing - city_space_adjust + static_cast<int>( forestosity );
     }
     // make sure not to get too extreme on the spacing if you go way far.
