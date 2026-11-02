@@ -230,10 +230,31 @@ Per phase, briefly:
 | 9 | A reason string for each rejection, no menu for NPCs, autoattack or EOC attacks, and cancelling costs nothing. |
 | 10 | Each EOC effect and condition, through TEST_DATA JSON. |
 
-## Questions for you
+## Decisions (2026-11-02)
 
-1. **Order.** Phases 0-6 make the playable feature (about 1,200 lines of C++). Do you want the manual technique menu (Phase 9) in the same round, or after you've played with grabs?
-2. **Unarmed only** to start, or knives too?
-3. **Fallback punch, kick and headbutt.** Should this change every unarmed fight (TLG's behavior), or only apply when a mod opts in?
-4. **Crowd crush.** Keep it on by default with TLG's retune, keep today's numbers, or off by default as in BN?
-5. **Exertion.** Leave the EXPLOSIVE activity rebalance out, as recommended?
+The owner decided the open questions as follows. Where a decision goes beyond the phases above, the design below is what gets built.
+
+1. **Build everything, Phases 0-11, including the manual technique menu (Phase 9).** In addition, EOCs can open the technique menu:
+   ```jsonc
+   { "u_choose_technique": {
+       "techniques": [ "tec_judo_throw", "tec_judo_disarm" ], // optional: limit the menu (strings or variables); default all of u's techniques
+       "attack": true,                                         // default true: attack the beta talker with the chosen technique
+       "store": { "context_val": "chosen_technique" },         // optional: write the chosen id (or "" when cancelled)
+       "include_basic": true                                   // default true: offer "Basic attack"
+     },
+     "false_eocs": [ "EOC_ON_CANCEL" ] }                       // optional: run when the menu is cancelled
+   ```
+   The menu is shown only when u is the avatar. For an NPC, u's normal automatic choice is used, limited to `techniques` when given. `u_attack` keeps working as before.
+2. **Any weapon, chosen per martial-art style in JSON.** Grappling stays unarmed by default. A style lists what may be held while grabbing:
+   ```jsonc
+   "grapple_weapons": { "categories": [ "KNIVES" ], "items": [ "chain" ], "any": false }
+   ```
+   While that style is active, a listed wielded weapon does not block a grab and does not release one. Grapple techniques can combine grab conditions with the usual weapon requirements, so knife-and-grab techniques are pure JSON. TEST_DATA and the docs carry an example style. Vanilla styles are unchanged unless a style is ported from TLG with its own grapple techniques.
+3. **Fallback punch, kick and headbutt are opt-in.** The base techniques get `"fallback": true`. That only takes effect for an attacker with the character flag `MA_BASIC_FALLBACK`, which a style can grant through a static buff, as can a mutation or an effect. TLG's grapple rules for the base techniques (headbutt only in a grapple, no kick while holding) are written as JSON conditions guarded by the same flag. No vanilla style sets the flag, so vanilla unarmed fighting is unchanged.
+4. **Crowd crush as recommended.** A world option, on by default. TLG's thresholds become JSON values, and resistance becomes an enchantment value (`CROWD_CRUSH_RESIST`). TLG's trait and posture modifiers move into mutation and effect JSON. Our SUFFOCATION_IMMUNE check stays.
+5. **The EXPLOSIVE activity level is optional.** The level is always defined (constants, calorie diary). A world option, off by default, makes melee, dodging, grabbing and throwing use it as TLG does. With the option off, nothing changes.
+
+Common to all phases:
+- Grab ownership uses the effect-source model (decision 1 of "Decisions to make first").
+- Tuning formulas are `jmath_function`s in `data/json/grappling.json`, with defaults that reproduce TLG's numbers.
+- Every phase ships with deterministic Catch2 tests and docs.
