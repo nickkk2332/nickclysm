@@ -5177,6 +5177,10 @@ from an EOC. Naming one, or giving `duration` to an activity that takes none, is
 An activity id that comes from a variable is checked when the effect runs: an unknown id, or one
 that can't be started, is reported and nothing starts.
 
+`ACT_TARGET_PRACTICE` asks the player for a gun, a round count and a target, so only the avatar
+can be given it. Giving it to an NPC (as `u` or as `npc`) is reported when the effect runs, and
+nothing starts.
+
 ##### Valid talkers:
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |

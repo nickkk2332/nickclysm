@@ -4,6 +4,7 @@
 
 #include "activity_actor.h"
 #include "activity_actor_definitions.h"
+#include "activity_actor_eoc.h"
 #include "activity_handlers.h"
 #include "activity_type.h"
 #include "avatar.h"
@@ -14,6 +15,7 @@
 #include "clzones.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "debug.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
@@ -38,6 +40,7 @@ static const activity_id ACT_DISASSEMBLE( "ACT_DISASSEMBLE" );
 static const activity_id ACT_GAME( "ACT_GAME" );
 static const activity_id ACT_MEDITATE( "ACT_MEDITATE" );
 static const activity_id ACT_MULTIPLE_FARM( "ACT_MULTIPLE_FARM" );
+static const activity_id ACT_TARGET_PRACTICE( "ACT_TARGET_PRACTICE" );
 static const activity_id ACT_TEST_HOOKS( "ACT_TEST_HOOKS" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 
@@ -130,6 +133,46 @@ TEST_CASE( "act-j02_assign_activity_rejects_actors_it_cannot_start", "[audit][ac
     CHECK_NOTHROW( load_effect( R"({ "effect": { "u_assign_activity": "ACT_GENERIC_EOC", )"
                                 R"("duration": "10 minutes" } })" ) );
     CHECK_NOTHROW( load_effect( R"({ "effect": { "u_assign_activity": "ACT_WAIT" } })" ) );
+}
+
+// ACT-J02 (review): target practice asks the player for a gun, a round count and a target,
+// and aims through the avatar (who.as_avatar(), null for an NPC). An EOC could give it to an
+// NPC; now that is refused and reported.
+TEST_CASE( "act-j02_assign_activity_refuses_avatar_only_activities_for_npcs",
+           "[audit][activity]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    avatar &u = get_avatar();
+    npc &guy = spawn_npc( u.pos_bub().xy() + point::east, "thug" );
+    REQUIRE( guy.activity.is_null() );
+
+    SECTION( "npc_assign_activity" ) {
+        const talk_effect_t effect = load_effect(
+                                         R"({ "effect": { "npc_assign_activity": )"
+                                         R"("ACT_TARGET_PRACTICE" } })" );
+        dialogue d( get_talker_for( u ), get_talker_for( guy ) );
+        const std::string msg = capture_debugmsg_during( [&]() {
+            effect.apply( d );
+        } );
+        CHECK_THAT( msg, Catch::Matchers::Contains( "only the avatar" ) );
+    }
+    SECTION( "u_assign_activity with an NPC as u" ) {
+        const talk_effect_t effect = load_effect(
+                                         R"({ "effect": { "u_assign_activity": )"
+                                         R"({ "context_val": "act" } } })" );
+        dialogue d( get_talker_for( guy ), get_talker_for( u ) );
+        d.set_value( "act", "ACT_TARGET_PRACTICE" );
+        const std::string msg = capture_debugmsg_during( [&]() {
+            effect.apply( d );
+        } );
+        CHECK_THAT( msg, Catch::Matchers::Contains( "only the avatar" ) );
+    }
+    CHECK( guy.activity.is_null() );
+    CHECK( u.activity.is_null() );
+    CHECK( activity_actors::eoc_start_needs_avatar( ACT_TARGET_PRACTICE ) );
+    CHECK_FALSE( activity_actors::eoc_start_needs_avatar( ACT_MULTIPLE_FARM ) );
+    clear_avatar();
 }
 
 static void run_activity_to_the_end( Character &who, const activity_id &type )

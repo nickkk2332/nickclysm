@@ -26,8 +26,15 @@ bool can_start_from_eoc( const activity_id &type );
 bool eoc_start_takes_duration( const activity_id &type );
 
 /**
+ * Whether the actor of @p type, started from an EOC, works only for the avatar: it asks the
+ * player through menus. An NPC can't be given it.
+ */
+bool eoc_start_needs_avatar( const activity_id &type );
+
+/**
  * Builds the actor of @p type as u_assign_activity starts it, for the activities whose actor
- * needs nothing but an optional duration. Returns nullptr when @p type can't be started that way.
+ * needs nothing but an optional duration. Returns nullptr when @p type can't be started that way,
+ * or can't be started for @p who (see eoc_start_needs_avatar).
  * @param who the character that will do the activity
  * @param other_name the name of the dialogue's other talker, empty if there is none
  * @param duration the effect's "duration", if it has one

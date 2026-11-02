@@ -5854,6 +5854,11 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
             target->assign_activity( a, to_moves<int>( dov.evaluate( d ) ) );
             return;
         }
+        if( activity_actors::eoc_start_needs_avatar( a ) && !target->is_avatar() ) {
+            debugmsg( "%s: %s asks the player for input, so only the avatar can be given it, "
+                      "not %s", member, a.str(), target->get_name() );
+            return;
+        }
         // The other talker is who ACT_WAIT_NPC waits for.
         const bool has_other = is_npc ? d.has_alpha : d.has_beta;
         const std::string other_name = has_other ? d.actor( !is_npc )->get_name() : std::string();

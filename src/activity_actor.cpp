@@ -15896,6 +15896,12 @@ const std::unordered_map<activity_id, eoc_starter> eoc_starters = {
     { ACT_WAIT_STAMINA, { &build_plain<wait_stamina_activity_actor>, false } },
     { ACT_WAIT_WEATHER, { &build_plain<wait_weather_activity_actor>, false } },
 };
+
+// Of those, the ones whose actor asks the player through menus, so only the avatar can do them.
+// ACT_TARGET_PRACTICE asks for a gun, a round count and a target, and aims as the avatar.
+const std::unordered_set<activity_id> eoc_avatar_only = {
+    ACT_TARGET_PRACTICE,
+};
 } // namespace
 
 bool can_start_from_eoc( const activity_id &type )
@@ -15909,11 +15915,16 @@ bool eoc_start_takes_duration( const activity_id &type )
     return it != eoc_starters.end() && it->second.takes_duration;
 }
 
+bool eoc_start_needs_avatar( const activity_id &type )
+{
+    return eoc_avatar_only.count( type ) != 0;
+}
+
 std::unique_ptr<activity_actor> make_for_eoc( const activity_id &type, const Character &who,
         const std::string &other_name, const std::optional<time_duration> &duration )
 {
     const auto it = eoc_starters.find( type );
-    if( it == eoc_starters.end() ) {
+    if( it == eoc_starters.end() || ( eoc_start_needs_avatar( type ) && !who.is_avatar() ) ) {
         return nullptr;
     }
     return it->second.build( { who, other_name, duration } );
