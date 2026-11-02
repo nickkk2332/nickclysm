@@ -50,6 +50,7 @@
 
 static const itype_id itype_273x110flock( "273x110flock" );
 static const itype_id itype_brogyaga( "brogyaga" );
+static const itype_id itype_grenade_act( "grenade_act" );
 static const itype_id itype_shot_bird( "shot_bird" );
 static const itype_id itype_shotgun_s( "shotgun_s" );
 
@@ -154,6 +155,32 @@ TEST_CASE( "bench_shot_birdshot", "[.][benchmark_scenario]" )
             fire_once( *shooter, itype_shotgun_s, itype_shot_bird,
                        scenario_center + tripoint_rel_ms( 5, 0, 0 ) );
         }
+    } );
+    clear_creatures();
+}
+
+// CMBT-P02: a grenade among armored zombies (bullet armor 51) that survive it, so every
+// fragment that hits them is resolved against their armor: about 5400 for the one standing
+// on the grenade, 170 for each of the 8 next to it and 40 for each of the 16 two tiles away.
+TEST_CASE( "bench_shrapnel_armored", "[.][benchmark_scenario]" )
+{
+    fixed_weather weather;
+    const item grenade( itype_grenade_act );
+    const explosion_data &ex = dynamic_cast<const explosion_iuse *>
+                               ( grenade.type->countdown_action.get_actor_ptr() )->explosion;
+    run_scenario( "shrapnel_armored",
+                  "1 grenade on an armored zombie, with 8 more 1 tile away and 16 more 2 tiles away",
+    []() {
+        clear_avatar();
+        clear_map_and_put_player_underground();
+        for( int dy = -2; dy <= 2; ++dy ) {
+            for( int dx = -2; dx <= 2; ++dx ) {
+                spawn_test_monster( "mon_zombie_armored", scenario_center + tripoint_rel_ms( dx, dy, 0 ) );
+            }
+        }
+    }, [&ex]() {
+        explosion_handler::explosion( nullptr, scenario_center, ex );
+        explosion_handler::process_explosions();
     } );
     clear_creatures();
 }
