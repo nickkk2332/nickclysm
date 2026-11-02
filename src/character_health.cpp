@@ -126,6 +126,7 @@ static const efftype_id effect_cough_suppress( "cough_suppress" );
 static const efftype_id effect_deaf( "deaf" );
 static const efftype_id effect_disinfected( "disinfected" );
 static const efftype_id effect_disrupted_sleep( "disrupted_sleep" );
+static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_drunk( "drunk" );
 static const efftype_id effect_flu( "flu" );
 static const efftype_id effect_foodpoison( "foodpoison" );
@@ -262,6 +263,26 @@ bool Character::can_recover_oxygen() const
            !has_effect_with_flag( json_flag_GRAB ) && !( has_bionic( bio_synlungs ) &&
                    !has_active_bionic( bio_synlungs ) ) && !( has_bionic( bio_creeyncaggii ) &&
                            !has_active_bionic( bio_creeyncaggii ) );
+}
+
+float Character::crowd_crush_resist_chance() const
+{
+    // A base chance to resist losing breath at the minimum crowd (Cataclysm-TLG's 5%), worse when
+    // lying on the floor.  Downed, overburdened and trait modifiers come from the effects' and
+    // mutations' CROWD_CRUSH_RESIST enchantment values.
+    double resist = get_option<float>( "CROWD_CRUSH_RESIST_BASE" );
+    if( is_prone() && !has_effect( effect_downed ) ) {
+        resist += get_option<float>( "CROWD_CRUSH_PRONE_RESIST" );
+    }
+    resist = enchantment_cache->modify_value( enchant_vals::mod::CROWD_CRUSH_RESIST, resist );
+    // Full resistance makes you immune, however hard you breathe.
+    if( resist >= 100.0 ) {
+        return 1.0f;
+    }
+    // Labored breathing makes it harder: at a breathing score of 0 the chance is halved.
+    const double breathing = std::clamp( get_limb_score( limb_score_breathing ), 0.0f, 1.0f );
+    return static_cast<float>( std::clamp( resist / ( 100.0 + 100.0 * ( 1.0 - breathing ) ), 0.0,
+                                           1.0 ) );
 }
 
 bool Character::is_warm() const

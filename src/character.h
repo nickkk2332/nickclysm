@@ -2922,6 +2922,9 @@ class Character : public Creature, public visitable
         int get_oxygen_max() const;
         // Whether the character can recover their oxygen level
         bool can_recover_oxygen() const;
+        /** Chance (0-1) to resist losing breath to the smallest crowd that can crush you;
+         * 1 means immune to crowd crush */
+        float crowd_crush_resist_chance() const;
         int oxygen = 0;
         int slow_rad = 0;
         blood_type my_blood_type;

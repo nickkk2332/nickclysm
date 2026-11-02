@@ -5437,7 +5437,11 @@
     ],
     "bodytemp_modifiers": [ 500, 750 ],
     "integrated_armor": [ "integrated_shell2" ],
-    "enchantments": [ { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.4 } ] } ],
+    "//": "Hiding in your shell keeps a crushing crowd off your lungs (Cataclysm-TLG).",
+    "enchantments": [
+      { "values": [ { "value": "BODYTEMP_SLEEP", "add": 0.4 } ] },
+      { "condition": "ACTIVE", "values": [ { "value": "CROWD_CRUSH_RESIST", "add": 20 } ] }
+    ],
     "wet_protection": [ { "part": "torso", "ignored": 26 } ]
   },
   {
@@ -5464,6 +5468,8 @@
       }
     ],
     "integrated_armor": [ "integrated_shell3" ],
+    "//": "Hiding in your shell keeps a crushing crowd off your lungs (Cataclysm-TLG).",
+    "enchantments": [ { "condition": "ACTIVE", "values": [ { "value": "CROWD_CRUSH_RESIST", "add": 20 } ] } ],
     "wet_protection": [ { "part": "torso", "ignored": 45 } ]
   },
   {
@@ -6986,8 +6992,13 @@
     "thirst": true,
     "visibility": 10,
     "ugliness": 10,
+    "//": "A body without lungs to squeeze resists a crushing crowd, and lying down doesn't hurt (Cataclysm-TLG).",
     "enchantments": [
-      { "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 2 } ] },
+      { "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 2 }, { "value": "CROWD_CRUSH_RESIST", "add": 4 } ] },
+      {
+        "condition": { "or": [ { "u_has_effect": "downed" }, { "u_has_move_mode": "prone" } ] },
+        "values": [ { "value": "CROWD_CRUSH_RESIST", "add": 4 } ]
+      },
       {
         "modified_bodyparts": [
           { "lose": "head" },
@@ -7557,7 +7568,9 @@
     "points": -5,
     "vitamin_cost": 210,
     "visibility": 0,
-    "ugliness": 0
+    "ugliness": 0,
+    "//": "Breathing through your skin helps you resist a crushing crowd (Cataclysm-TLG).",
+    "enchantments": [ { "values": [ { "value": "CROWD_CRUSH_RESIST", "add": 4 } ] } ]
   },
   {
     "type": "mutation",

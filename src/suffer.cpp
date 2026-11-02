@@ -352,8 +352,16 @@ void suffer::while_underwater( Character &you )
     }
 }
 
+// Crowd crush: held in place while enough creatures press in, a character loses breath and is
+// eventually crushed.  The rules and numbers are ported from Cataclysm-TLG (worm-girl) and live in
+// data/core/external_options.json as CROWD_CRUSH_*; the CROWD_CRUSH world option and the
+// CROWD_CRUSH_RESIST enchantment value follow Cataclysm-BN's design.
 void suffer::while_grabbed( Character &you )
 {
+    // Drowning already takes your breath underwater.
+    if( you.is_underwater() && !get_option<bool>( "CROWD_CRUSH_UNDERWATER" ) ) {
+        return;
+    }
     // If you're grabbed you can't move around effectively, triggering the check
     // TODO: crowd crush without grabs
     // Count the number of monsters who can shove you
@@ -363,21 +371,33 @@ void suffer::while_grabbed( Character &you )
     int crowd = 0;
     int impassable_ter = 0;
     // This looks scary, but it's really just casting the enum to an integer. So medium size characters == 3.
-    int your_size = static_cast<std::underlying_type_t<creature_size>>( you.get_size() );
-    int crush_grabs_req = your_size - 1;
-    // minimum of 1 grabber required
-    crush_grabs_req = std::max( 1, crush_grabs_req );
+    const int your_size = static_cast<std::underlying_type_t<creature_size>>( you.get_size() );
+    const int crush_grabs_req = std::max( get_option<int>( "CROWD_CRUSH_MIN_CROWD" ), your_size +
+                                          get_option<int>( "CROWD_CRUSH_SIZE_OFFSET" ) );
+    const int min_crusher_size = get_option<int>( "CROWD_CRUSH_MIN_CRUSHER_SIZE" );
+    const int max_size_gap = get_option<int>( "CROWD_CRUSH_MAX_SIZE_GAP" );
 
     for( auto&& dest : here.points_in_radius( you.pos_bub(), 1, 0 ) ) { // *NOPAD*
         const monster *const mon = creatures.creature_at<monster>( dest );
-        if( mon && mon->has_flag( mon_flag_GROUP_BASH ) ) {
-            crowd++;
-            add_msg_debug( debugmode::DF_CHARACTER, "Crowd pressure check: monster %s found, crowd size %d",
-                           mon->name(), crowd );
-        }
-        if( here.impassable( dest ) ) {
+        if( mon ) {
+            // Too small a monster can't crush you, and tiny ones can't crush anyone.
+            const int mon_size =
+                static_cast<std::underlying_type_t<creature_size>>( mon->get_size() );
+            if( mon->has_flag( mon_flag_GROUP_BASH ) && !mon->is_hallucination() &&
+                mon_size >= min_crusher_size && your_size <= mon_size + max_size_gap ) {
+                crowd++;
+                add_msg_debug( debugmode::DF_CHARACTER,
+                               "Crowd pressure check: monster %s found, crowd size %d", mon->name(),
+                               crowd );
+            }
+        } else if( here.impassable( dest ) ) {
             impassable_ter++;
         }
+    }
+
+    // Standing up, you can brace against the crowd.
+    if( !you.is_on_ground() ) {
+        crowd = std::max( 0, crowd - get_option<int>( "CROWD_CRUSH_UPRIGHT_DISCOUNT" ) );
     }
 
     add_msg_debug( debugmode::DF_CHARACTER,
@@ -393,15 +413,23 @@ void suffer::while_grabbed( Character &you )
         return;
     }
 
-    // Getting crushed against the wall counts as a monster
-    if( impassable_ter ) {
+    const float resist_chance = you.crowd_crush_resist_chance();
+    if( resist_chance >= 1.0f ) {
+        return;
+    }
+
+    // Walls only count once you're boxed in.
+    if( impassable_ter &&
+        crowd + impassable_ter > get_option<int>( "CROWD_CRUSH_WALL_THRESHOLD" ) ) {
         you.add_msg_if_player( m_bad, _( "You're crushed against the walls!" ) );
         crowd += impassable_ter;
     }
 
     if( crowd == crush_grabs_req ) {
-        // only a chance to lose breath at minimum grabs
-        you.oxygen -= rng( 0, 1 );
+        // only a chance to lose breath at minimum grabs, and a chance to resist that
+        if( resist_chance <= 0.0f || !x_in_y( resist_chance, 1.0 ) ) {
+            you.oxygen -= rng( 0, 1 );
+        }
     } else if( crowd <= crush_grabs_req * 2 ) {
         you.oxygen -= 1;
     } else if( crowd <= crush_grabs_req * 3 ) {
@@ -1752,7 +1780,7 @@ void Character::suffer()
         }
     }
 
-    if( has_flag( json_flag_GRAB ) ) {
+    if( has_flag( json_flag_GRAB ) && get_option<bool>( "CROWD_CRUSH" ) ) {
         suffer::while_grabbed( *this );
     }
 

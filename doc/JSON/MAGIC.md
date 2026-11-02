@@ -1042,6 +1042,7 @@ Character status value  | Description
 `CLIMATE_CONTROL_HEAT`  | Moves body temperature up towards comfortable by number of warmth units up to value.
 `CLIMATE_CONTROL_CHILL` | Moves body temperature down towards comfortable by number of warmth units up to value.
 `CRAFTING_SPEED_MULTIPLIER` | Changes your crafting speed. Since it's a percent, using `multiply` is recommended.  Positive values decrease crafting time, negative values increase it.
+`CROWD_CRUSH_RESIST`    | Percent chance to resist losing breath to crowd crush when the crowd around you is only just big enough to crush you.  It modifies the external option `CROWD_CRUSH_RESIST_BASE` (5), so use `add`; a poor breathing limb score lowers the chance (down to half at a score of 0).  At 100 or more you can't be crowd-crushed at all.  Vanilla sources: the `downed` and `overburdened` effects (-4), Transpiration (+4), Omnicellular (+4, and +4 more while downed or prone), an active Roomy or Nacreous Shell (+20).
 `DEXTERITY`             | Affects the dexterity stat.
 `DISINFECTANT_BONUS`    | Affects the `disinfectant_power` you have when applying medicine.
 `DODGE_CHANCE`          | Modifies the probability to dodge an attack. Default is 0, so better to use `add`

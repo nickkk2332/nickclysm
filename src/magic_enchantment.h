@@ -158,6 +158,7 @@ enum class mod : int {
     TOTAL_WEIGHT,
     FUEL_USAGE,
     TURNING_DIFFICULTY,
+    CROWD_CRUSH_RESIST,
     NUM_MOD
 };
 

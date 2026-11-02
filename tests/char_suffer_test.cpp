@@ -1,3 +1,4 @@
+#include <array>
 #include <map>
 #include <memory>
 #include <string>
@@ -17,13 +18,16 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "messages.h"
 #include "options_helpers.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
 #include "weather_type.h"
 
+static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
+static const efftype_id effect_test_crowd_crush_immune( "test_crowd_crush_immune" );
 
 static const itype_id itype_test_hazmat_suit( "test_hazmat_suit" );
 static const itype_id itype_test_longshirt( "test_longshirt" );
@@ -35,6 +39,17 @@ static const ter_str_id ter_t_rock_wall( "t_rock_wall" );
 
 static const trait_id trait_ALBINO( "ALBINO" );
 static const trait_id trait_SUNBURN( "SUNBURN" );
+
+static bool has_message_containing( const std::string &text )
+{
+    for( const std::pair<std::string, std::string> &msg :
+         Messages::recent_messages( Messages::size() ) ) {
+        if( msg.second.find( text ) != std::string::npos ) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // Tests for Character suffering
 //
@@ -470,62 +485,131 @@ TEST_CASE( "suffering_from_asphyxiation", "[char][suffer][oxygen][grab]" )
         REQUIRE( dummy.oxygen == 46 );
         REQUIRE( !dummy.is_underwater() );
         REQUIRE( dummy.get_stamina() == dummy.get_stamina_max() );
-        // Always spawn the first two grabbers, no need for intensity checks
-        spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::east );
-        spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::west );
         dummy.add_effect( effect_grabbed, 20_turns, body_part_torso, false, 2, true );
         REQUIRE( dummy.has_effect( effect_grabbed, body_part_torso ) );
-        WHEN( "two grabbers" ) {
+        REQUIRE_FALSE( dummy.is_on_ground() );
+        // Crowd crush defaults (Cataclysm-TLG's rules): a medium character needs a crowd of 4
+        // (size 3 + 1), and one more crusher while standing.  Crushers fill the first tiles
+        // around them, walls the last ones.
+        map &here = get_map();
+        const std::array<tripoint, 8> around = { {
+                tripoint::east, tripoint::west, tripoint::north, tripoint::south,
+                tripoint::north_west, tripoint::south_west, tripoint::north_east,
+                tripoint::south_east
+            }
+        };
+        const auto surround = [&]( int crushers, int walls,
+        const std::string &crusher_type = "mon_debug_memory" ) {
+            REQUIRE( crushers + walls <= 8 );
+            for( int i = 0; i < crushers; ++i ) {
+                spawn_test_monster( crusher_type, dummy.pos_bub() + around[i] );
+            }
+            for( int i = 0; i < walls; ++i ) {
+                here.ter_set( dummy.pos_bub() + around[7 - i], ter_t_rock_wall );
+                REQUIRE( here.impassable( dummy.pos_bub() + around[7 - i] ) );
+            }
+        };
+        Messages::clear_messages();
 
-            THEN( "they lose 0 or 1 oxygen per turn" ) {
+        WHEN( "four crushers surround them while they stand" ) {
+            surround( 4, 0 );
+            THEN( "they brace against the crowd and keep their breath" ) {
                 test_suffer( dummy, 10_turns, true );
-                CHECK( dummy.oxygen == Approx( 41 ).margin( 5 ) );
+                CHECK( dummy.oxygen == 46 );
             }
         }
 
-        WHEN( "four grabbers" ) {
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::north );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::south );
+        WHEN( "five crushers surround them while they stand" ) {
+            surround( 5, 0 );
+            THEN( "they lose 0 or 1 oxygen per turn" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen >= 36 );
+                CHECK( dummy.oxygen <= 46 );
+            }
+        }
+
+        WHEN( "six crushers surround them while they stand" ) {
+            surround( 6, 0 );
             THEN( "they lose 1 oxygen per turn" ) {
                 test_suffer( dummy, 10_turns, true );
                 CHECK( dummy.oxygen == 36 );
             }
         }
 
-        WHEN( "six grabbers" ) {
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::north );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::south );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::north_west );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::south_west );
-            THEN( "they lose 1 or 2 oxygen per turn" ) {
-                test_suffer( dummy, 10_turns, true );
-                CHECK( dummy.oxygen == Approx( 31 ).margin( 5 ) );
-            }
-        }
-
-        WHEN( "eight grabbers" ) {
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::north );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::south );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::north_west );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::south_west );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::north_east );
-            spawn_test_monster( "mon_debug_memory", dummy.pos_bub() + tripoint::south_east );
-            THEN( "they lose 2 oxygen per turn" ) {
-                test_suffer( dummy, 10_turns, true );
-                CHECK( dummy.oxygen == 26 );
-            }
-        }
-
-        map &here = get_map();
-        WHEN( "crushed against two walls by two grabbers" ) {
-            here.ter_set( dummy.pos_bub() + tripoint::south, ter_t_rock_wall );
-            here.ter_set( dummy.pos_bub() + tripoint::north, ter_t_rock_wall );
-            REQUIRE( here.impassable( dummy.pos_bub() + tripoint::south ) );
-            REQUIRE( here.impassable( dummy.pos_bub() + tripoint::north ) );
-
-            THEN( "they lose 1 oxygen per turn, just like four grabbers" ) {
+        WHEN( "eight crushers surround them while they stand" ) {
+            surround( 8, 0 );
+            THEN( "a crowd of 7 is within twice the 4 needed: still 1 oxygen per turn" ) {
                 test_suffer( dummy, 10_turns, true );
                 CHECK( dummy.oxygen == 36 );
+            }
+        }
+
+        WHEN( "five crushers surround them while they're down" ) {
+            dummy.add_effect( effect_downed, 1_hours );
+            REQUIRE( dummy.is_on_ground() );
+            surround( 5, 0 );
+            THEN( "every crusher counts, so they lose 1 oxygen per turn" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen == 36 );
+            }
+        }
+
+        WHEN( "five crushers pin them against three walls" ) {
+            surround( 5, 3 );
+            THEN( "boxed in, the walls count and they lose 1 oxygen per turn" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen == 36 );
+                CHECK( has_message_containing( "crushed against the walls" ) );
+            }
+        }
+
+        WHEN( "five crushers and two walls surround them" ) {
+            surround( 5, 2 );
+            THEN( "crushers plus walls don't exceed 6, so the walls don't count" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen >= 36 );
+                CHECK( dummy.oxygen <= 46 );
+                CHECK_FALSE( has_message_containing( "crushed against the walls" ) );
+            }
+        }
+
+        WHEN( "eight tiny crushers surround them while they're down" ) {
+            dummy.add_effect( effect_downed, 1_hours );
+            surround( 8, 0, "mon_test_crowd_tiny" );
+            THEN( "tiny monsters can't crush anyone" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen == 46 );
+            }
+        }
+
+        WHEN( "six crushers surround them underwater" ) {
+            dummy.set_underwater( true );
+            surround( 6, 0 );
+            THEN( "only drowning takes their breath, 1 oxygen per turn" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen == 36 );
+            }
+        }
+
+        WHEN( "eight crushers surround them while they're down, with crowd crush turned off" ) {
+            override_option crowd_crush_off( "CROWD_CRUSH", "false" );
+            dummy.add_effect( effect_downed, 1_hours );
+            surround( 8, 0 );
+            THEN( "they keep their breath" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen == 46 );
+            }
+        }
+
+        WHEN( "eight crushers surround them while they're down, and they fully resist" ) {
+            dummy.add_effect( effect_downed, 1_hours );
+            dummy.add_effect( effect_test_crowd_crush_immune, 1_hours );
+            dummy.recalculate_enchantment_cache();
+            REQUIRE( dummy.crowd_crush_resist_chance() == 1.0f );
+            surround( 8, 0 );
+            THEN( "they keep their breath" ) {
+                test_suffer( dummy, 10_turns, true );
+                CHECK( dummy.oxygen == 46 );
             }
         }
     }

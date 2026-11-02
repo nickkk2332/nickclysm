@@ -696,7 +696,9 @@
       { "limb_score": "balance", "modifier": 0.1, "resist_modifier": 0.8 },
       { "limb_score": "reaction", "modifier": 0.5 },
       { "limb_score": "block", "modifier": 0.5 }
-    ]
+    ],
+    "//2": "Lying on the floor makes it harder to resist a crushing crowd (Cataclysm-TLG).",
+    "enchantments": [ { "condition": "ALWAYS", "values": [ { "value": "CROWD_CRUSH_RESIST", "add": -4 } ] } ]
   },
   {
     "type": "effect_type",
@@ -707,7 +709,9 @@
     "//COMMENT2": "You're carrying too much and are overburdened!",
     "rating": "bad",
     "show_in_info": true,
-    "flags": [ "DISABLE_FLIGHT" ]
+    "flags": [ "DISABLE_FLIGHT" ],
+    "//": "A heavy load makes it harder to resist a crushing crowd (Cataclysm-TLG).",
+    "enchantments": [ { "condition": "ALWAYS", "values": [ { "value": "CROWD_CRUSH_RESIST", "add": -4 } ] } ]
   },
   {
     "type": "effect_type",

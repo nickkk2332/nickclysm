@@ -1198,7 +1198,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```FLIES``` Can fly over open air without dropping z-level, over water, etc.
 - ```GOODHEARING``` Pursues sounds more than most monsters.
 - ```GRABS``` Its attacks may grab you!
-- ```GROUP_BASH``` Gets help from monsters around it when bashing, adding their strength together.
+- ```GROUP_BASH``` Gets help from monsters around it when bashing, adding their strength together.  Also lets it crowd-crush a grabbed character: with the `CROWD_CRUSH` world option on, a character held by a grab with enough adjacent `GROUP_BASH` monsters (not hallucinations, and of a size set by the `CROWD_CRUSH_*` external options) loses breath and is eventually crushed.  The crowd needed is the character's size class plus 1 (at least 2), one more while they stand; walls count only when crushers plus walls exceed 6; it doesn't happen underwater.  See `CROWD_CRUSH_RESIST` in [MAGIC.md](MAGIC.md).
 - ```GROUP_MORALE``` More courageous when near friends.
 - ```GUILT_ANIMAL``` Killing this monster(i.e. a hatchling or a kitten) causes guilt to the player and is counted for the kill thresholds of animals where player experiences progressively less morale penalty. WARNING: Do not use without 'death_guilt' death function or together with other guilt flags.
 - ```GUILT_CHILD``` Killing this monster(i.e. a zombie child or mutant child) causes guilt to the player and is counted for the kill thresholds of children where player experiences progressively less morale penalty. WARNING: Do not use without 'death_guilt' death function or together with other guilt flags.
