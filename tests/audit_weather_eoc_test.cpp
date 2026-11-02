@@ -7,6 +7,7 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "condition.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
@@ -147,6 +148,29 @@ TEST_CASE( "loop-j01_eoc_weather_overrides_hold_until_they_run_out", "[audit][we
         rng_set_engine_seed( wind_seed );
         weather.set_nextweather( calendar::turn );
         CHECK( weather.windspeed == static_cast<int>( generated_weather_seeded().windpower ) );
+    }
+
+    SECTION( "a temperature offset that ends at once takes its shift with it" ) {
+        const double generated_k = units::to_kelvin( weather.temperature );
+        const double precise_k = units::to_kelvin( weather.weather_precise->temperature );
+        run_weather_eoc( effect_on_condition_EOC_TEST_COLD_SNAP );
+        REQUIRE( units::to_kelvin( weather.temperature ) ==
+                 Approx( generated_k - 15 ).margin( 0.01 ) );
+
+        // review: the change from -15 to -5 was applied, then the override was removed, so
+        // the temperature kept a -5 shift that nothing held or could clear
+        const JsonObject jo = json_loader::from_string(
+                                  R"({ "effect": { "math": )"
+                                  R"([ "weather('temperature_offset', 'duration': 0) = -5" ] } })" );
+        jo.allow_omitted_members();
+        const talk_effect_t effect( jo, "effect", "audit_weather_eoc_test" );
+        finalize_conditions();
+        dialogue d( get_talker_for( get_avatar() ), nullptr );
+        effect.apply( d );
+        CHECK( !weather.eoc_temperature_offset.value );
+        CHECK( units::to_kelvin( weather.temperature ) == Approx( generated_k ).margin( 0.01 ) );
+        CHECK( units::to_kelvin( weather.weather_precise->temperature ) ==
+               Approx( precise_k ).margin( 0.01 ) );
     }
 
     SECTION( "a temperature offset shifts the generated temperature; a held temperature wins" ) {

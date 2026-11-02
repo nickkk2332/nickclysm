@@ -2387,13 +2387,16 @@ void weather_ass( double val, dialogue &d, char /* scope */, std::vector<diag_va
     } else if( aspect == "temperature_offset" ) {
         // Not part of the generated weather, so it stays until it runs out or is cleared
         units::temperature_delta const offset = units::from_kelvin_delta( val );
+        const std::optional<time_point> offset_end = end.value_or( calendar::turn_max );
+        // One that ends at once is removed (see _hold_weather_override): the temperature
+        // loses the old offset and gains none.
+        units::temperature_delta const held = *offset_end <= calendar::turn ? 0_K_delta : offset;
         units::temperature_delta const change =
-            offset - weather.eoc_temperature_offset.value.value_or( 0_K_delta );
+            held - weather.eoc_temperature_offset.value.value_or( 0_K_delta );
         if( !weather.eoc_temperature.value ) {
             weather.weather_precise->temperature += change;
             weather.temperature += change;
         }
-        const std::optional<time_point> offset_end = end.value_or( calendar::turn_max );
         _hold_weather_override( weather.eoc_temperature_offset, offset_end, offset );
     } else if( aspect == "windpower" ) {
         weather.weather_precise->windpower = val;
