@@ -1922,11 +1922,9 @@ void Character::on_grabbed( Creature &grabber, const bodypart_id &bp, int streng
     grabbed_ctx.grab_part = bp.id();
     martial_arts_data->ma_ongrabbed_effects( *this, grabbed_ctx );
 
-    // A grab this character goes along with is no attack to answer. grab_tolerated also lets the
-    // avatar grab an enemy without a roll (it is angry already); an enemy still answers.
+    // A grab this character goes along with is no attack to answer.
     const Character *const grabbing_character = grabber.as_character();
-    if( grabbing_character != nullptr && grapple::grab_tolerated( *grabbing_character, *this ) &&
-        attitude_to( grabber ) != Attitude::HOSTILE ) {
+    if( grabbing_character != nullptr && grapple::grab_tolerated( *grabbing_character, *this ) ) {
         return;
     }
     // Nor can it answer when it can't act, or the grabber is out of reach or gone

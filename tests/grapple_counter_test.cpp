@@ -211,10 +211,10 @@ TEST_CASE( "grab_counter_not_for_a_grab_you_go_along_with", "[grapple][martial_a
         CHECK( grapple::hold_effect( you, guy ) != nullptr );
         CHECK( you.grabbed_creature() == &guy );
     }
-    SECTION( "an enemy goes without a roll, but answers" ) {
+    SECTION( "an enemy answers" ) {
         guy.set_attitude( NPCATT_KILL );
         REQUIRE( guy.is_enemy() );
-        REQUIRE( grapple::grab_tolerated( you, guy ) );
+        REQUIRE_FALSE( grapple::grab_tolerated( you, guy ) );
         REQUIRE( grapple::start_hold( you, guy, 20, body_part_arm_l.id() ) );
         CHECK( guy.get_moves() < 100 );
     }

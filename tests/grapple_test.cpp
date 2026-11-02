@@ -488,6 +488,13 @@ TEST_CASE( "grapple_who_tolerates_a_grab_and_who_must_be_confirmed", "[grapple]"
         CHECK( grapple::grab_tolerated( you, guy ) );
         CHECK( grapple::needs_confirmation( you, guy ) == grab_confirmation::none );
     }
+    SECTION( "an enemy NPC: no question, but it doesn't go along with it" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+        guy.set_attitude( NPCATT_KILL );
+        REQUIRE( guy.is_enemy() );
+        CHECK( !grapple::grab_tolerated( you, guy ) );
+        CHECK( grapple::needs_confirmation( you, guy ) == grab_confirmation::none );
+    }
     SECTION( "a hostile monster" ) {
         monster &zed = spawn_test_monster( "mon_zombie", you.pos_bub() + tripoint::east );
         REQUIRE( zed.attitude_to( you ) == Creature::Attitude::HOSTILE );

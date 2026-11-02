@@ -541,10 +541,11 @@ bool grapple::grab_tolerated( const Character &grabber, const Creature &target )
     if( !grabber.is_avatar() ) {
         return false;
     }
-    // Friends tolerate a grab and enemies are already angry. Neutral NPCs only put up with it
-    // when they're helpless.
+    // Friends tolerate a grab. Neutral NPCs and enemies only put up with it when they're
+    // helpless. (TLG also counted enemies here, because they are angry already; that let the
+    // avatar grab an enemy with no hit roll. Only the confirmation is skipped for them.)
     if( const npc *const guy = target.as_npc() ) {
-        return guy->is_player_ally() || guy->is_enemy() || guy->has_effect( effect_narcosis ) ||
+        return guy->is_player_ally() || guy->has_effect( effect_narcosis ) ||
                !guy->enough_working_legs();
     }
     // You can grab your own pets.
@@ -560,8 +561,9 @@ grapple::grab_confirmation grapple::needs_confirmation( const Character &grabber
     if( !grabber.is_avatar() || grab_tolerated( grabber, target ) ) {
         return grab_confirmation::none;
     }
-    if( target.is_npc() ) {
-        return grab_confirmation::attack_npc;
+    if( const npc *const guy = target.as_npc() ) {
+        // An enemy is angry already.
+        return guy->is_enemy() ? grab_confirmation::none : grab_confirmation::attack_npc;
     }
     const monster *const mon = target.as_monster();
     if( mon != nullptr && mon->attitude_to( grabber ) != Creature::Attitude::HOSTILE ) {
