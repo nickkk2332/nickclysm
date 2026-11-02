@@ -1,4 +1,5 @@
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -22,9 +23,11 @@
 #include "mapgen_functions.h"
 #include "mapgen_parameter.h"
 #include "mapgendata.h"
+#include "omdata.h"
 #include "options_helpers.h"
 #include "overmapbuffer.h"
 #include "point.h"
+#include "start_location.h"
 #include "type_id.h"
 
 static const item_group_id item_group_test_audit_two_hammers( "test_audit_two_hammers" );
@@ -32,6 +35,10 @@ static const item_group_id item_group_test_audit_two_hammers( "test_audit_two_ha
 static const itype_id itype_hammer( "hammer" );
 
 static const oter_str_id oter_field( "field" );
+
+static const overmap_special_id overmap_special_natural_spring( "natural_spring" );
+
+static const start_location_id start_location_sloc_field( "sloc_field" );
 
 static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_linoleum_gray( "t_linoleum_gray" );
@@ -295,4 +302,66 @@ TEST_CASE( "mgen-b06_variable_weight_mapgen_reports_its_special_parameters", "[a
 {
     const mapgen_parameters params = get_map_special_params( "test_audit_variable_weight_omt" );
     CHECK( params.map.count( "audit_special_param" ) == 1 );
+}
+
+// start_location::set_parameters raised overmap_buffer.externally_set_args before validating
+// anything, so a bad parameter left the flag up with no arguments; the next special generated
+// then called value() on its empty arguments and threw bad_optional_access.
+TEST_CASE( "mgen-b07_start_location_parameters_cannot_break_mapgen", "[audit][mapgen]" )
+{
+    clear_map();
+    on_out_of_scope reset_flag( []() {
+        overmap_buffer.externally_set_args = false;
+    } );
+    overmap_buffer.externally_set_args = false;
+    const tripoint_abs_omt spring_omt = project_to<coords::omt>( get_map().get_abs_sub() ) +
+                                        tripoint_rel_omt( 20, 20, 0 );
+    overmap_buffer.place_special( *overmap_special_natural_spring, spring_omt,
+                                  om_direction::type::north, false, true );
+    REQUIRE( overmap_buffer.overmap_special_at( spring_omt ) == overmap_special_natural_spring );
+    std::optional<mapgen_arguments> *args = overmap_buffer.mapgen_args( spring_omt );
+    REQUIRE( args != nullptr );
+    REQUIRE( !args->has_value() );
+
+    SECTION( "a parameter that fails validation sets nothing" ) {
+        const std::string messages = capture_debugmsg_during( [&spring_omt]() {
+            start_location_sloc_field->set_parameters( spring_omt, { { "audit_no_such_param", "x" } } );
+        } );
+        CHECK( mentions( messages, "audit_no_such_param" ) );
+        CHECK_FALSE( overmap_buffer.externally_set_args );
+        CHECK_FALSE( args->has_value() );
+    }
+    SECTION( "another special generated while the flag is up gets its own arguments" ) {
+        // As if a start location had set some arguments of a special not generated yet
+        overmap_buffer.externally_set_args = true;
+        CHECK_NOTHROW( mapgendata( spring_omt, get_map(), 0.0f, calendar::turn, nullptr ) );
+        CHECK( args->has_value() );
+        // The flag stays up for the special whose arguments were set
+        CHECK( overmap_buffer.externally_set_args );
+    }
+}
+
+// start_location::check() didn't look at "parameters", so typos only showed at game start.
+TEST_CASE( "mgen-b07_start_location_check_validates_parameters", "[audit][mapgen]" )
+{
+    const auto check_messages = []( const std::string & parameters ) {
+        const JsonObject jo = json_loader::from_string( R"({ "name": "audit start",
+            "terrain": [ { "om_terrain": "shelter", "parameters": )" + parameters + "} ] }" );
+        jo.allow_omitted_members();
+        start_location sloc;
+        sloc.id = start_location_id( "audit_test_sloc" );
+        sloc.load( jo, "" );
+        return capture_debugmsg_during( [&sloc]() {
+            sloc.check();
+        } );
+    };
+    const std::string unknown = check_messages( R"({ "audit_no_such_param": "x" })" );
+    CAPTURE( unknown );
+    CHECK( mentions( unknown, "\"audit_no_such_param\"" ) );
+    const std::string bad_value = check_messages( R"({ "shelter_palette": "audit_no_palette" })" );
+    CAPTURE( bad_value );
+    CHECK( mentions( bad_value, "\"audit_no_palette\"" ) );
+    const std::string valid = check_messages( R"({ "shelter_palette": "shelter_basic" })" );
+    CAPTURE( valid );
+    CHECK( valid.empty() );
 }
