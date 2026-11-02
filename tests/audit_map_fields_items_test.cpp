@@ -357,16 +357,38 @@ TEST_CASE( "map-b08_mapbuffer_entry_without_a_submap_is_regenerated", "[audit][m
     const tripoint_abs_omt omt = project_to<coords::omt>( get_map().get_abs_sub() ) +
                                  tripoint_rel_omt( 12, 12, 0 );
     const tripoint_abs_sm sm_addr = project_to<coords::sm>( omt );
+    const oter_id original_oter = overmap_buffer.ter( omt );
     // A plain field keeps the generation below cheap and free of NPCs and vehicles
     overmap_buffer.ter_set( omt, oter_field.id() );
 
+    // The buffer refuses to store an entry without a submap
     std::unique_ptr<submap> none;
     CHECK_FALSE( MAPBUFFER.add_submap( sm_addr, none ) );
 
-    tinymap tm;
-    tm.load( omt, false );
-    CHECK( MAPBUFFER.submap_exists( sm_addr ) );
-    CHECK( MAPBUFFER.lookup_submap( sm_addr ) != nullptr );
+    {
+        tinymap first;
+        first.load( omt, false );
+    }
+    REQUIRE( MAPBUFFER.lookup_submap( sm_addr ) != nullptr );
+
+    // What a quad file missing this submap used to leave behind: an entry with no submap
+    bool emptied = false;
+    for( auto it = MAPBUFFER.begin(); it != MAPBUFFER.end(); ++it ) {
+        if( it->first == sm_addr ) {
+            it->second.reset();
+            emptied = true;
+        }
+    }
+    REQUIRE( emptied );
+    CHECK_FALSE( MAPBUFFER.submap_exists( sm_addr ) );
+
+    {
+        tinymap tm;
+        tm.load( omt, false );
+        CHECK( MAPBUFFER.submap_exists( sm_addr ) );
+        CHECK( MAPBUFFER.lookup_submap( sm_addr ) != nullptr );
+    }
 
     MAPBUFFER.clear_outside_reality_bubble();
+    overmap_buffer.ter_set( omt, original_oter );
 }
