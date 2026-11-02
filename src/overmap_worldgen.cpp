@@ -76,8 +76,13 @@ static void generate_cata_voronoi_map( Region_map &placed_regions,
         site_regions.emplace( rv_point.region_point, rv_point.region );
     }
 
-    const jcv_point bounds_min = { static_cast<float>( generated_bounds.p_min.x() ), static_cast<float>( generated_bounds.p_min.y() ) };
-    const jcv_point bounds_max = { static_cast<float>( generated_bounds.p_max.x() ), static_cast<float>( generated_bounds.p_max.y() ) };
+    // The bounds are flipped too, or jcv culls every site outside the mirrored rect (OMAP-B07).
+    const jcv_point bounds_min = { static_cast<float>( generated_bounds.p_min.x() ),
+                                   -static_cast<float>( generated_bounds.p_max.y() )
+                                 };
+    const jcv_point bounds_max = { static_cast<float>( generated_bounds.p_max.x() ),
+                                   -static_cast<float>( generated_bounds.p_min.y() )
+                                 };
     const jcv_rect jcv_bounds = { bounds_min, bounds_max };
 
     jcv_diagram_generate( region_points.size(), &*jcv_points.begin(), &jcv_bounds, nullptr, &diagram );
@@ -103,6 +108,7 @@ static void generate_cata_voronoi_map( Region_map &placed_regions,
             e = e->next;
         }
     }
+    jcv_diagram_free( &diagram );
 }
 
 void dimension_region_layout_generator_uniform::generate_dynamic(
@@ -150,15 +156,41 @@ region_settings_id dimension_region_layout_static::get_overmap_region(
 {
     // in-bounds (static)
     if( overmap_in_bounds( om_point ) ) {
-        if( overmap_buffer.global_state.placed_regions.empty() ) {
-            generate_entire_layout( overmap_buffer.global_state.placed_regions, om_point );
+        Region_map &placed_regions = overmap_buffer.global_state.placed_regions;
+        if( placed_regions.empty() ) {
+            generate_entire_layout( placed_regions, om_point );
         }
-        return overmap_buffer.global_state.placed_regions[om_point];
+        const auto found = placed_regions.find( om_point );
+        if( found != placed_regions.end() ) {
+            return found->second;
+        }
+        // The layout doesn't promise every in-bounds overmap a cell. operator[] used to hand
+        // back an empty id here (OMAP-B07); take the region of the nearest laid-out overmap.
+        const std::pair<const tripoint_abs_om, region_settings_id> *nearest = nullptr;
+        int nearest_dist = 0;
+        for( const std::pair<const tripoint_abs_om, region_settings_id> &placed : placed_regions ) {
+            if( !overmap_in_bounds( placed.first ) ) {
+                continue;
+            }
+            const point_rel_om offset = placed.first.xy() - om_point.xy();
+            const int dist = offset.x() * offset.x() + offset.y() * offset.y();
+            // Break ties on position so the result doesn't depend on hash map order.
+            if( nearest == nullptr || dist < nearest_dist ||
+                ( dist == nearest_dist && placed.first < nearest->first ) ) {
+                nearest = &placed;
+                nearest_dist = dist;
+            }
+        }
+        if( nearest != nullptr ) {
+            const region_settings_id region = nearest->second;
+            placed_regions.emplace( om_point, region );
+            return region;
+        }
+        debugmsg( "Region layout placed no regions; using the out-of-bounds layout for %s",
+                  om_point.to_string() );
     }
     // out-of-bounds (dynamic)
-    else {
-        return layout_out_of_bounds->get_generator()->get_overmap_region( om_point );
-    }
+    return layout_out_of_bounds->get_generator()->get_overmap_region( om_point );
 }
 
 region_settings_id dimension_region_layout_dynamic::get_overmap_region(

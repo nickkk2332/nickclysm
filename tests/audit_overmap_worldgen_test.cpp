@@ -11,11 +11,14 @@
 #include "cata_scope_helpers.h"
 #include "city.h"
 #include "coordinates.h"
+#include "flexbuffer_json.h"
+#include "json_loader.h"
 #include "map_helpers.h"
 #include "map_iterator.h"
 #include "mapbuffer.h"
 #include "omdata.h"
 #include "overmap.h"
+#include "overmap_worldgen.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
@@ -30,6 +33,8 @@ static const oter_str_id oter_test_forest_very_thick( "test_forest_very_thick" )
 
 static const overmap_special_id overmap_special_test_audit_mansion( "test_audit_mansion" );
 static const overmap_special_id overmap_special_test_audit_road_shack( "test_audit_road_shack" );
+
+static const region_settings_id region_settings_default( "default" );
 
 // An overmap a few overmaps away from the avatar, so these tests leave the map the rest of the
 // suite plays on alone.
@@ -307,4 +312,48 @@ TEST_CASE( "omap-b06_railroad_exits_face_ungenerated_overmaps", "[audit][overmap
         CHECK( ( p.x() == OMAPX - 1 || p.y() == OMAPY - 1 || p.x() == 0 ) );
         CHECK( p.y() != 0 );
     }
+}
+
+// OMAP-B07: generate_cata_voronoi_map flipped y for the sites (jc_voronoi's y axis points the
+// other way) but not for the bounds, so with bounds like [0,0]..[20,20] jcv culled every site
+// with y > 0 and laid out nothing. get_overmap_region then used operator[], which inserted and
+// returned an empty region id for an in-bounds overmap without a cell.
+TEST_CASE( "omap-b07_manual_voronoi_layout_with_positive_bounds", "[audit][overmap]" )
+{
+    const JsonObject jo = json_loader::from_string( R"({
+        "generated_bounds_min": [ 0, 0, 0 ],
+        "generated_bounds_max": [ 20, 20, 0 ],
+        "layout_out_of_bounds": "default",
+        "region_point_sets": [
+            { "region_points": [ [ 5, 5, 0 ], [ 15, 15, 0 ] ], "default_region": "default" }
+        ]
+    })" );
+    dimension_region_layout_generator_manual layout;
+    layout.deserialize( jo );
+
+    Region_map placed;
+    layout.generate_entire_layout( placed, tripoint_abs_om::zero );
+    for( const tripoint_abs_om &p : {
+             tripoint_abs_om( 5, 5, 0 ), tripoint_abs_om( 15, 15, 0 ),
+             tripoint_abs_om( 3, 15, 0 ), tripoint_abs_om( 15, 3, 0 )
+         } ) {
+        CAPTURE( p );
+        const auto it = placed.find( p );
+        REQUIRE( it != placed.end() );
+        CHECK( it->second == region_settings_default );
+    }
+
+    // An in-bounds overmap the layout left without a cell takes the nearest cell's region.
+    region_settings_id hole_region;
+    {
+        Region_map &global_placed = overmap_buffer.global_state.placed_regions;
+        Region_map saved;
+        saved.swap( global_placed );
+        on_out_of_scope restore_placed( [&global_placed, &saved]() {
+            global_placed.swap( saved );
+        } );
+        global_placed.emplace( tripoint_abs_om( 5, 5, 0 ), region_settings_default );
+        hole_region = layout.get_overmap_region( tripoint_abs_om( 6, 6, 0 ) );
+    }
+    CHECK( hole_region == region_settings_default );
 }
