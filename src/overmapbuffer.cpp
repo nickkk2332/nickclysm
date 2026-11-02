@@ -1353,7 +1353,9 @@ class omt_terrain_search
     public:
         omt_terrain_search( overmapbuffer &buffer, const omt_find_params &params ) :
             buffer( buffer ), params( params ), matcher( params.types ),
-            overmaps_seen( buffer.get_overmap_count() ) {}
+            overmaps_seen( buffer.get_overmap_count() ),
+            levels_in_range( std::max( 0, std::min( params.max_z, OVERMAP_HEIGHT ) -
+                                       std::max( params.min_z, -OVERMAP_DEPTH ) + 1 ) ) {}
 
         // The tiles tested next are in this column.
         void start_column( const point_abs_omt &p ) {
@@ -1384,10 +1386,12 @@ class omt_terrain_search
             return true;
         }
 
-        // No tile of the current column can be findable: there is nothing to look for, or no
-        // overmap there to look in.
+        // No tile of the current column (in the search's z range) can be findable: there is
+        // nothing to look for, no overmap there to look in, or no level of that overmap in the
+        // range holds a wanted terrain.
         bool column_done() const {
-            return params.types.empty() || ( looked_up && om == nullptr );
+            return params.types.empty() ||
+                   ( looked_up && ( om == nullptr || state->dead_layers >= levels_in_range ) );
         }
 
     private:
@@ -1396,12 +1400,17 @@ class omt_terrain_search
             bool scanned = false;
             bool any_match = false;
         };
+        struct overmap_state {
+            std::array<layer_state, OVERMAP_LAYERS> layers;
+            // levels checked whole and found to hold no wanted terrain
+            int dead_layers = 0;
+        };
         // After this many tests on one level of an overmap, the whole level is checked for a
         // wanted terrain once, so a search that would find nothing there skips the rest.
         static constexpr int scan_after_tests = 1024;
 
         bool layer_may_match( int z ) {
-            layer_state &layer = ( *layers )[z + OVERMAP_DEPTH];
+            layer_state &layer = state->layers[z + OVERMAP_DEPTH];
             if( layer.scanned ) {
                 return layer.any_match;
             }
@@ -1416,6 +1425,9 @@ class omt_terrain_search
                         break;
                     }
                 }
+            }
+            if( !layer.any_match ) {
+                ++state->dead_layers;
             }
             return layer.any_match;
         }
@@ -1433,9 +1445,9 @@ class omt_terrain_search
                 if( buffer.get_overmap_count() != overmaps_seen ) {
                     // a new overmap may have changed its neighbors, so check every level again
                     overmaps_seen = buffer.get_overmap_count();
-                    layer_states.clear();
+                    overmap_states.clear();
                 }
-                layers = om == nullptr ? nullptr : &layer_states[om];
+                state = om == nullptr ? nullptr : &overmap_states[om];
             }
             looked_up = true;
         }
@@ -1444,14 +1456,16 @@ class omt_terrain_search
         const omt_find_params &params;
         omt_type_matcher matcher;
         int overmaps_seen;
+        // levels of the search's z range that an overmap has
+        int levels_in_range;
         point_abs_omt column;
         bool looked_up = false;
         bool om_cached = false;
         overmap *om = nullptr;
         point_abs_om om_pos_cached;
         point_om_omt local;
-        std::unordered_map<const overmap *, std::array<layer_state, OVERMAP_LAYERS>> layer_states;
-        std::array<layer_state, OVERMAP_LAYERS> *layers = nullptr;
+        std::unordered_map<const overmap *, overmap_state> overmap_states;
+        overmap_state *state = nullptr;
 };
 } // namespace
 
