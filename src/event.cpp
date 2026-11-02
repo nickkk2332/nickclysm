@@ -38,6 +38,7 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::character_forgets_spell: return "character_forgets_spell";
         case event_type::character_gains_effect: return "character_gains_effect";
         case event_type::character_gets_headshot: return "character_gets_headshot";
+        case event_type::character_grabs_creature: return "character_grabs_creature";
         case event_type::character_heals_damage: return "character_heals_damage";
         case event_type::character_kills_character: return "character_kills_character";
         case event_type::character_kills_monster: return "character_kills_monster";
@@ -52,10 +53,12 @@ std::string enum_to_string<event_type>( event_type data )
                                                  return "character_ranged_attacks_character";
         case event_type::character_ranged_attacks_monster:
                                                  return "character_ranged_attacks_monster";
+        case event_type::character_releases_grab: return "character_releases_grab";
         case event_type::character_smashes_tile: return "character_smashes_tile";
         case event_type::character_starts_activity: return "character_starts_activity";
         case event_type::character_takes_damage: return "character_takes_damage";
         case event_type::monster_takes_damage: return "monster_takes_damage";
+        case event_type::character_throws_creature: return "character_throws_creature";
         case event_type::character_triggers_trap: return "character_triggers_trap";
         case event_type::character_falls_asleep: return "character_falls_asleep";
         case event_type::character_attempt_to_fall_asleep: return "character_attempt_to_fall_asleep";
@@ -153,7 +156,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 115,
+static_assert( static_cast<int>( event_type::num_event_types ) == 118,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -182,6 +185,7 @@ DEFINE_EVENT_FIELDS( character_casts_spell )
 DEFINE_EVENT_FIELDS( character_dies )
 DEFINE_EVENT_FIELDS( character_effect_intensity_changed )
 DEFINE_EVENT_FIELDS( character_gains_effect )
+DEFINE_EVENT_FIELDS( character_grabs_creature )
 DEFINE_EVENT_FIELDS( character_heals_damage )
 DEFINE_EVENT_FIELDS( character_kills_character )
 DEFINE_EVENT_FIELDS( character_kills_monster )
@@ -191,10 +195,12 @@ DEFINE_EVENT_FIELDS( character_melee_attacks_character )
 DEFINE_EVENT_FIELDS( character_melee_attacks_monster )
 DEFINE_EVENT_FIELDS( character_ranged_attacks_character )
 DEFINE_EVENT_FIELDS( character_ranged_attacks_monster )
+DEFINE_EVENT_FIELDS( character_releases_grab )
 DEFINE_EVENT_FIELDS( character_smashes_tile )
 DEFINE_EVENT_FIELDS( character_starts_activity )
 DEFINE_EVENT_FIELDS( character_takes_damage )
 DEFINE_EVENT_FIELDS( monster_takes_damage )
+DEFINE_EVENT_FIELDS( character_throws_creature )
 DEFINE_EVENT_FIELDS( character_triggers_trap )
 DEFINE_EVENT_FIELDS( character_falls_asleep )
 DEFINE_EVENT_FIELDS( character_attempt_to_fall_asleep )

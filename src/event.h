@@ -50,6 +50,7 @@ enum class event_type : int {
     character_forgets_spell,
     character_gains_effect,
     character_gets_headshot,
+    character_grabs_creature,
     character_heals_damage,
     character_kills_character,
     character_kills_monster,
@@ -60,10 +61,12 @@ enum class event_type : int {
     character_radioactively_mutates,
     character_ranged_attacks_character,
     character_ranged_attacks_monster,
+    character_releases_grab,
     character_smashes_tile,
     character_starts_activity,
     character_takes_damage,
     monster_takes_damage,
+    character_throws_creature,
     character_triggers_trap,
     character_attempt_to_fall_asleep,
     character_falls_asleep,
@@ -206,7 +209,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 115,
+static_assert( static_cast<int>( event_type::num_event_types ) == 118,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -409,6 +412,21 @@ struct event_spec<event_type::character_effect_intensity_changed> {
 template<>
 struct event_spec<event_type::character_gets_headshot> : event_spec_character {};
 
+// The grab events (grappling): "victim" is the creature's character id, or invalid for a
+// monster; "victim_type" its monster type, or the null type for a character.
+template<>
+struct event_spec<event_type::character_grabs_creature> {
+    static constexpr std::array<event_field, 6> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "victim", cata_variant_type::character_id },
+            { "victim_type", cata_variant_type::mtype_id },
+            { "victim_name", cata_variant_type::string },
+            { "bodypart", cata_variant_type::body_part },
+            { "strength", cata_variant_type::int_ },
+        }
+    };
+};
+
 template<>
 struct event_spec<event_type::character_heals_damage> {
     static constexpr std::array<event_field, 2> fields = {{
@@ -510,6 +528,17 @@ struct event_spec<event_type::character_ranged_attacks_monster> {
 };
 
 template<>
+struct event_spec<event_type::character_releases_grab> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "victim", cata_variant_type::character_id },
+            { "victim_type", cata_variant_type::mtype_id },
+            { "victim_name", cata_variant_type::string },
+        }
+    };
+};
+
+template<>
 struct event_spec<event_type::character_smashes_tile> {
     static constexpr std::array<event_field, 3> fields = {{
             { "character", cata_variant_type::character_id },
@@ -545,6 +574,19 @@ struct event_spec<event_type::monster_takes_damage> {
     static constexpr std::array<event_field, 2> fields = { {
             { "damage", cata_variant_type::int_ },
             { "dies", cata_variant_type::bool_ },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::character_throws_creature> {
+    static constexpr std::array<event_field, 6> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "victim", cata_variant_type::character_id },
+            { "victim_type", cata_variant_type::mtype_id },
+            { "victim_name", cata_variant_type::string },
+            { "force", cata_variant_type::int_ },
+            { "distance", cata_variant_type::int_ },
         }
     };
 };

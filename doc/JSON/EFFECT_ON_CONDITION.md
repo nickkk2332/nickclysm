@@ -2124,6 +2124,7 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | character_forgets_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_gains_effect |  | { "character", `character_id` },<br/> { "effect", `efftype_id` },<br/> { "bodypart", `bodypart_id` }, { "intensity", `int` }</br> | character / NONE |
 | character_gets_headshot |  | { "character", `character_id` } | character / NONE |
+| character_grabs_creature | Triggers when a character takes hold of a creature: the grab action, `u_grab`, or anything that sets up a hold (grappling) | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "bodypart", `body_part` } (the part held; `bp_null` for a monster, which is held as a whole),<br/> { "strength", `int` } (of the hold, 1 to 100) | character (grabber) / creature (held: character or monster) |
 | character_heals_damage |  | { "character", `character_id` },<br/> { "damage", `int` }, | character / NONE |
 | character_kills_character |  | { "killer", `character_id` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character / NONE |
 | character_kills_monster |  | { "killer", `character_id` },<br/> { "victim_type", `mtype_id` },<br/> { "exp", `int` }, | character / monster |
@@ -2134,11 +2135,13 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | character_radioactively_mutates | triggered when a character mutates due to being irradiated | { "character", `character_id` }, | character / NONE |
 | character_ranged_attacks_character | |  { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character (attacker) / character (victim) |
 | character_ranged_attacks_monster | | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/>  { "victim_type", `mtype_id` }, | character / monster |
+| character_releases_grab | Triggers when a character's hold on a creature ends, for any reason: letting go (`u_release_grab` too), the creature breaking free, a throw (before `character_throws_creature`), the hold breaking (too tired, flung, out of reach) or either side dying or leaving | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` }, | character (grabber) / creature (held) if it is still there, otherwise NONE | use `has_beta` before interacting with the beta talker; when the hold was lost with the creature gone or out of reach, the victim fields are empty
 | character_smashes_tile | | { "character", `character_id` },<br/> { "terrain", `ter_str_id` },  { "furniture", `furn_str_id` }, | character / NONE |
 | character_starts_activity | Triggered when character starts or resumes activity | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "resume", `bool` } | character / NONE |
 | character_takeoff_item | triggers when character removes a worn item. If using `run_inv_eocs`, remember that the event fires before the items are actually removed | { "character", `character_id` },<br/> { "itype", `itype_id` } |
 | character_takes_damage | triggers when character gets any damage from any creature | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `bodypart_id` },<br/> { "pain", `int` }, | character / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
 | monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding | { "damage", `int` },<br/> { "dies", `bool` }, | monster / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
+| character_throws_creature | Triggers when a character has thrown the creature it held (the throw action or `u_throw_grabbed`), after it lands | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "force", `int` } (the force of the throw: it flew `force / 10` tiles at most),<br/> { "distance", `int` } (the tiles it was thrown) | character (thrower) / creature (thrown; it may be dead) |
 | character_triggers_trap | | { "character", `character_id` },<br/> { "trap", `trap_str_id` }, | character / NONE |
 | character_wakes_up | triggers in the moment player lost it's sleep effect and wakes up | { "character", `character_id` }, | character / NONE |
 | character_attempt_to_fall_asleep | triggers in the moment character tries to fall asleep, after confirming and setting an alarm, but before "you lie down" | { "character", `character_id` }, | character / NONE |
@@ -5614,7 +5617,7 @@ A leap: the avatar picks a tile, and jumps toward it as far as their strength al
 ```
 
 #### `u_grab`, `npc_grab`
-The alpha (or beta) talker takes hold of the other talker, as the grab action does (grappling, from Cataclysm: The Last Generation).  The held creature gets the `grabbed` effect (flag `GRAB`) from the one holding it, which gets `grabbing` (flag `GRAB_FILTER`).  A character is held by a body part, a monster as a whole.  From then on the hold is like any other: the held creature struggles, the holder drags it along and can throw it, and the hold ends as a grab's does (see `u_release_grab`).
+The alpha (or beta) talker takes hold of the other talker, as the grab action does (grappling, from Cataclysm: The Last Generation).  The held creature gets the `grabbed` effect (flag `GRAB`) from the one holding it, which gets `grabbing` (flag `GRAB_FILTER`).  A character is held by a body part, a monster as a whole.  From then on the hold is like any other: the held creature struggles, the holder drags it along and can throw it, and the hold ends as a grab's does (see `u_release_grab`).  Sends the `character_grabs_creature` event.
 
 By default the hold is set up directly: no hit roll, no cost, and none of the grab action's refusals but what a hold needs (the other talker is another living creature in reach, and the talker holds nothing yet).  With `attempt`, it is the grab action itself, without its prompts: its refusals (a weapon in hand the style doesn't allow, no working arm, too little stamina, a creature that can't be grabbed...), its cost in moves and arm stamina, and the hit roll the other talker can dodge unless it puts up with the grab (an ally, a pet).  It prints what the grab action prints.
 
@@ -5658,7 +5661,7 @@ A technique's EOC tries to grab the target, as the grab action does, and throws 
 ```
 
 #### `u_release_grab`, `npc_release_grab`
-The alpha (or beta) talker lets go of what it holds: a character of the creature it holds, a monster of everything it holds with its grab attacks.  With `target`, only of the other talker, and only if it holds it.  Prints nothing.
+The alpha (or beta) talker lets go of what it holds: a character of the creature it holds, a monster of everything it holds with its grab attacks.  With `target`, only of the other talker, and only if it holds it.  Prints nothing.  For a character, sends the `character_releases_grab` event.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -5683,7 +5686,7 @@ The beta talker lets go of the alpha talker, if it holds it
 ```
 
 #### `u_throw_grabbed`, `npc_throw_grabbed`
-The alpha (or beta) talker throws the creature it holds, as the throw of the grab action does but with no targeting screen and no questions: the hold ends, it pays the moves and the stamina of the throw, a held NPC may get angry, and the creature is thrown with the throw engine of `u_fling` (a short throw is a gentle one, and lands where it was aimed).
+The alpha (or beta) talker throws the creature it holds, as the throw of the grab action does but with no targeting screen and no questions: the hold ends, it pays the moves and the stamina of the throw, a held NPC may get angry, and the creature is thrown with the throw engine of `u_fling` (a short throw is a gentle one, and lands where it was aimed).  Sends the `character_releases_grab` and `character_throws_creature` events.
 
 It checks what the throw action checks first, and a refusal changes nothing: the talker must hold a creature, be strong enough to throw it at all (`grapple_throw_force` gives a range over one tile, and it isn't too large) and have the stamina for it; the avatar must shake off relax gas; a creature that holds the talker too must be broken free of first (failing costs moves); and it can't be thrown through the talker or up or down.  Only a character throws this way: a monster talker runs the `false_eocs`.
 

@@ -34,8 +34,9 @@
 #include "type_id.h"
 
 // The EOC surface of grappling (src/grapple.h): the who-holds-whom conditions u_is_grabbing and
-// u_is_grabbed, and the effects u_grab, u_release_grab and u_throw_grabbed.  Rolls are skipped
-// (a hold set up directly, a tolerated grab) or made where their chance is 0 or 1.
+// u_is_grabbed, the effects u_grab, u_release_grab and u_throw_grabbed, and the events
+// character_grabs_creature, character_releases_grab and character_throws_creature.  Rolls are
+// skipped (a hold set up directly, a tolerated grab) or made where their chance is 0 or 1.
 
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_GRAPPLE_GRAB_ARM( "EOC_TEST_GRAPPLE_GRAB_ARM" );
@@ -116,6 +117,18 @@ static std::string result()
 {
     const diag_value *const said = get_globals().maybe_get_global_value( "test_grapple_result" );
     return said == nullptr ? std::string() : said->str();
+}
+
+static double global_number( const std::string &name )
+{
+    const diag_value *const value = get_globals().maybe_get_global_value( name );
+    return value == nullptr ? 0.0 : value->dbl();
+}
+
+static std::string global_string( const std::string &name )
+{
+    const diag_value *const value = get_globals().maybe_get_global_value( name );
+    return value == nullptr ? std::string() : value->str();
 }
 
 static void make_thrower( Character &guy )
@@ -548,5 +561,93 @@ TEST_CASE( "grapple_eoc_u_throw_grabbed", "[grapple][eoc]" )
         apply( R"({ "u_throw_grabbed": { })" + say, you, bystander );
         CHECK( result() == "false" );
         CHECK( mon.pos_bub() == start );
+    }
+}
+
+// Events
+
+TEST_CASE( "grapple_eoc_events", "[grapple][eoc]" )
+{
+    avatar &you = setup_scene();
+    override_option no_animations( "ANIMATIONS", "false" );
+    map &here = get_map();
+    // 50 kg, medium size
+    monster &mon = spawn_test_monster( "mon_test_speed_desc_base", you.pos_bub() + tripoint::east );
+    const std::string no_character = std::to_string( character_id().get_value() );
+
+    SECTION( "the avatar grabs a monster, and throws it" ) {
+        REQUIRE( grapple::start_hold( you, mon, 23, no_part() ) );
+        CHECK( global_number( "test_grapple_grabs" ) == 1 );
+        CHECK( you.get_value( "test_grapple_event" ) == "grabs" );
+        CHECK( mon.get_value( "test_grapple_event" ) == "grabbed" );
+        CHECK( global_string( "test_grapple_victim" ) == no_character );
+        CHECK( global_string( "test_grapple_victim_type" ) == "mon_test_speed_desc_base" );
+        CHECK( global_string( "test_grapple_victim_name" ) == mon.get_name() );
+        CHECK( global_string( "test_grapple_bodypart" ) == "bp_null" );
+        CHECK( global_number( "test_grapple_event_strength" ) == 23 );
+
+        make_thrower( you );
+        REQUIRE( grapple::throw_held_creature( you, mon, mon.pos_bub() + tripoint( 2, 0, 0 ) ) );
+        // The throw ends the hold first
+        CHECK( global_number( "test_grapple_releases" ) == 1 );
+        CHECK( global_number( "test_grapple_throws" ) == 1 );
+        CHECK( you.get_value( "test_grapple_event" ) == "throws" );
+        CHECK( mon.get_value( "test_grapple_event" ) == "thrown" );
+        CHECK( global_string( "test_grapple_victim_type" ) == "mon_test_speed_desc_base" );
+        CHECK( global_number( "test_grapple_throw_distance" ) == 2 );
+        // Two thirds of the full force of 31
+        CHECK( global_number( "test_grapple_throw_force" ) == 21 );
+        CHECK( global_number( "test_grapple_grabs" ) == 1 );
+    }
+    SECTION( "an NPC grabs the avatar with u_grab, and lets go" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::south, "thug" );
+        apply( R"({ "u_grab": { "body_part": "arm_l", "strength": 31 } })", guy, you );
+        REQUIRE( grapple::holds( guy, you ) );
+        CHECK( global_number( "test_grapple_grabs" ) == 1 );
+        CHECK( guy.get_value( "test_grapple_event" ) == "grabs" );
+        CHECK( you.get_value( "test_grapple_event" ) == "grabbed" );
+        CHECK( global_string( "test_grapple_victim" ) == std::to_string( you.getID().get_value() ) );
+        CHECK( global_string( "test_grapple_victim_type" ) == "mon_null" );
+        CHECK( global_string( "test_grapple_victim_name" ) == you.get_name() );
+        CHECK( global_string( "test_grapple_bodypart" ) == "arm_l" );
+        CHECK( global_number( "test_grapple_event_strength" ) == 31 );
+
+        apply( R"({ "u_release_grab": { } })", guy, you );
+        CHECK( global_number( "test_grapple_releases" ) == 1 );
+        CHECK( guy.get_value( "test_grapple_event" ) == "releases" );
+        CHECK( you.get_value( "test_grapple_event" ) == "released" );
+        CHECK( global_string( "test_grapple_victim_name" ) == you.get_name() );
+    }
+    SECTION( "the avatar throws with u_throw_grabbed" ) {
+        REQUIRE( grapple::start_hold( you, mon, 20, no_part() ) );
+        make_thrower( you );
+        apply( R"({ "u_throw_grabbed": { } })", you, mon );
+        CHECK( global_number( "test_grapple_throws" ) == 1 );
+        CHECK( global_number( "test_grapple_throw_distance" ) == 3 );
+        CHECK( global_number( "test_grapple_throw_force" ) == 31 );
+    }
+    SECTION( "a hold lost with the victim out of reach names no victim" ) {
+        REQUIRE( grapple::start_hold( you, mon, 20, no_part() ) );
+        mon.setpos( here, you.pos_bub() + tripoint( 3, 0, 0 ) );
+        mon.set_value( "test_grapple_event", std::string( "none" ) );
+        you.process_turn();
+        REQUIRE_FALSE( you.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+        CHECK( global_number( "test_grapple_releases" ) == 1 );
+        CHECK( you.get_value( "test_grapple_event" ) == "releases" );
+        CHECK( mon.get_value( "test_grapple_event" ) == "none" );
+        CHECK( global_string( "test_grapple_victim_name" ).empty() );
+        CHECK( global_string( "test_grapple_victim_type" ) == "mon_null" );
+    }
+    SECTION( "refusals send nothing" ) {
+        npc &guy = spawn_npc( you.pos_bub().xy() + point::south, "thug" );
+        REQUIRE( grapple::start_hold( you, mon, 20, no_part() ) );
+        REQUIRE( global_number( "test_grapple_grabs" ) == 1 );
+        apply( R"({ "u_grab": { } })", you, guy );
+        apply( R"({ "u_release_grab": { "target": "npc" } })", you, guy );
+        apply( R"({ "u_throw_grabbed": { } })", you, guy );
+        CHECK( global_number( "test_grapple_grabs" ) == 1 );
+        CHECK( global_number( "test_grapple_releases" ) == 0 );
+        CHECK( global_number( "test_grapple_throws" ) == 0 );
+        CHECK( grapple::holds( you, mon ) );
     }
 }

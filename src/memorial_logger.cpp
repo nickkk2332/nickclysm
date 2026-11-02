@@ -1146,14 +1146,17 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::character_finished_activity:
         case event_type::character_finishes_construction:
         case event_type::character_gets_headshot:
+        case event_type::character_grabs_creature:
         case event_type::character_heals_damage:
         case event_type::character_melee_attacks_character:
         case event_type::character_melee_attacks_monster:
         case event_type::character_ranged_attacks_character:
         case event_type::character_ranged_attacks_monster:
+        case event_type::character_releases_grab:
         case event_type::character_smashes_tile:
         case event_type::character_starts_activity:
         case event_type::character_takes_damage:
+        case event_type::character_throws_creature:
         case event_type::monster_takes_damage:
         case event_type::character_wakes_up:
         case event_type::character_attempt_to_fall_asleep:

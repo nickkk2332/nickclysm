@@ -62,15 +62,17 @@ Character *character_grabber( const Creature &victim, const effect &eff );
 /**
  * Establish the hold right away, with no roll and no cost: the victim gets a GRAB effect with
  * source @p grabber on @p bp (the null part for a monster), and the grabber a GRAB_FILTER effect.
- * Returns false (and changes nothing) if the victim can't take the effect. Then the grabber's
- * ongrab martial-art buffs and EOCs fire, and a character victim reacts (Character::on_grabbed):
- * its ongrabbed hooks fire and a grab counter may end the hold at once. The result is still true.
+ * Returns false (and changes nothing) if the victim can't take the effect. Sends the
+ * character_grabs_creature event. Then the grabber's ongrab martial-art buffs and EOCs fire,
+ * and a character victim reacts (Character::on_grabbed): its ongrabbed hooks fire and a grab
+ * counter may end the hold at once. The result is still true.
  */
 bool start_hold( Character &grabber, Creature &victim, int strength, const bodypart_id &bp );
 
 /**
  * End @p grabber's hold: remove the GRAB effects it holds on @p victim (if given) and every
- * GRAB_FILTER effect on @p grabber. Prints nothing.
+ * GRAB_FILTER effect on @p grabber. Prints nothing. If anything was held, sends the
+ * character_releases_grab event (with the victim only if it held @p victim).
  */
 void end_hold( Character &grabber, Creature *victim );
 
@@ -291,7 +293,8 @@ bool break_free_to_throw( Character &thrower, const Creature &victim );
  * Throw @p victim, which @p thrower holds, toward @p target (bubble coordinates; clamped to the
  * throw's range): the hold ends, @p thrower pays moves and stamina, the victim reacts, and it is
  * flung from its tile toward @p target with the force for that distance. No prompts: the caller
- * asks first. @p full_force replaces throw_force(). Returns whether the throw was made.
+ * asks first. @p full_force replaces throw_force(). Returns whether the throw was made, and then
+ * sends the character_throws_creature event.
  */
 bool throw_held_creature( Character &thrower, Creature &victim, const tripoint_bub_ms &target,
                           std::optional<float> full_force = std::nullopt );

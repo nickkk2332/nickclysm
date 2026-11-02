@@ -27,6 +27,8 @@
 #include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "field_type.h"
 #include "game.h"
 #include "game_constants.h"
@@ -176,6 +178,39 @@ bool sourced_from( const effect &eff, const Character &grabber )
     return source && source->is_valid() && *source == grabber.getID();
 }
 
+// What the grab events say about the victim: a character's id, or a monster's type, and its
+// name. Nothing for no victim.
+struct event_victim {
+    character_id id;
+    mtype_id type = mtype_id::NULL_ID();
+    std::string name;
+};
+
+event_victim describe_victim( const Creature *victim )
+{
+    event_victim ret;
+    if( victim == nullptr ) {
+        return ret;
+    }
+    if( const Character *const guy = victim->as_character() ) {
+        ret.id = guy->getID();
+    } else if( const monster *const mon = victim->as_monster() ) {
+        ret.type = mon->type->id;
+    }
+    ret.name = victim->get_name();
+    return ret;
+}
+
+// The grabber is alpha and the victim beta of the event's EOCs; with no victim, there is no beta.
+void send_grab_event( Character &grabber, Creature *victim, const cata::event &e )
+{
+    if( victim != nullptr ) {
+        get_event_bus().send_with_talker( &grabber, victim, e );
+    } else {
+        get_event_bus().send( e );
+    }
+}
+
 } // namespace
 
 bool Character::can_grapple_while_wielding() const
@@ -279,6 +314,10 @@ bool establish_hold( Character &grabber, Creature &victim, int strength, const b
         return false;
     }
     grabber.add_effect( effect_grabbing, 1_days, true, 1 );
+    const event_victim held = describe_victim( &victim );
+    send_grab_event( grabber, &victim,
+                     cata::event::make<event_type::character_grabs_creature>( grabber.getID(),
+                             held.id, held.type, held.name, bp, std::clamp( strength, 1, 100 ) ) );
     return true;
 }
 
@@ -327,6 +366,10 @@ void grapple::end_hold( Character &grabber, Creature *victim )
         for( const std::pair<efftype_id, bodypart_id> &grab : held ) {
             victim->remove_effect( grab.first, grab.second );
         }
+        if( held.empty() ) {
+            // Not ours: the event names no victim.
+            victim = nullptr;
+        }
     }
     std::vector<efftype_id> filters;
     for( const effect &eff : grabber.get_effects_with_flag( json_flag_GRAB_FILTER ) ) {
@@ -334,6 +377,12 @@ void grapple::end_hold( Character &grabber, Creature *victim )
     }
     for( const efftype_id &id : filters ) {
         grabber.remove_effect( id );
+    }
+    if( victim != nullptr || !filters.empty() ) {
+        const event_victim released = describe_victim( victim );
+        send_grab_event( grabber, victim,
+                         cata::event::make<event_type::character_releases_grab>( grabber.getID(),
+                                 released.id, released.type, released.name ) );
     }
 }
 
@@ -1208,6 +1257,11 @@ bool grapple::throw_held_creature( Character &thrower, Creature &victim,
     thrower.set_activity_level( exertion_level( thrower ) );
     thrower.mod_moves( -throw_move_cost( thrower ) );
     thrower.burn_energy_arms( -stamina_cost );
+    const event_victim thrown = describe_victim( &victim );
+    send_grab_event( thrower, &victim,
+                     cata::event::make<event_type::character_throws_creature>( thrower.getID(),
+                             thrown.id, thrown.type, thrown.name,
+                             static_cast<int>( std::round( force ) ), distance ) );
     return true;
 }
 
