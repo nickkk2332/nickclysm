@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "avatar.h"
+#include "bionics.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "character.h"
@@ -29,6 +30,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "item_location.h"
+#include "line.h"
 #include "map.h"
 #include "mapdata.h"
 #include "math_parser_jmath.h"
@@ -43,11 +45,19 @@
 #include "rng.h"
 #include "string_formatter.h"
 #include "talker.h"
+#include "text_snippets.h"
+#include "tileray.h"
+#include "translation.h"
 #include "translations.h"
 #include "units.h"
 #include "veh_type.h"
 #include "vpart_position.h"
 #include "weighted_list.h"
+
+static const bionic_id bio_railgun( "bio_railgun" );
+
+static const character_modifier_id
+character_modifier_melee_stamina_cost_mod( "melee_stamina_cost_mod" );
 
 static const efftype_id effect_cramped_space( "cramped_space" );
 static const efftype_id effect_grabbed( "grabbed" );
@@ -70,6 +80,14 @@ static const jmath_func_id jmath_func_grapple_drag_odds( "grapple_drag_odds" );
 static const jmath_func_id jmath_func_grapple_escape_stamina_cost( "grapple_escape_stamina_cost" );
 static const jmath_func_id jmath_func_grapple_grab_strength( "grapple_grab_strength" );
 static const jmath_func_id jmath_func_grapple_min_hold_turns( "grapple_min_hold_turns" );
+static const jmath_func_id jmath_func_grapple_throw_force( "grapple_throw_force" );
+static const jmath_func_id
+jmath_func_grapple_throw_stamina_cost( "grapple_throw_stamina_cost" );
+static const jmath_func_id jmath_func_grapple_throw_verb( "grapple_throw_verb" );
+
+static const species_id species_CYBORG( "CYBORG" );
+static const species_id species_ROBOT( "ROBOT" );
+static const species_id species_ROBOT_FLYING( "ROBOT_FLYING" );
 
 static const trait_id trait_CLAWS_TENTACLE( "CLAWS_TENTACLE" );
 static const trait_id trait_PAWS_LARGE( "PAWS_LARGE" );
@@ -750,4 +768,239 @@ void grapple::drag_after_step( Character &grabber, const tripoint_abs_ms &victim
         grabber.add_msg_if_player( m_bad, _( "You lose your hold on %s." ), victim->disp_name() );
         end_hold( grabber, victim );
     }
+}
+
+// Throwing a held creature
+
+namespace
+{
+
+// The bio_railgun's magnetic push against machines. jmath can't read bionics or species, so it
+// is worked out here and handed to grapple_throw_force as a bonus.
+int railgun_bonus( const Character &thrower, const Creature &victim )
+{
+    if( !thrower.has_active_bionic( bio_railgun ) ) {
+        return 0;
+    }
+    if( victim.in_species( species_ROBOT ) || victim.in_species( species_ROBOT_FLYING ) ) {
+        return 16;
+    }
+    return victim.in_species( species_CYBORG ) ? 8 : 0;
+}
+
+} // namespace
+
+float grapple::throw_force( const Character &thrower, const Creature &victim )
+{
+    map &here = get_map();
+    const bool in_deep_water = here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER,
+                               victim.pos_bub( here ) );
+    const double force = eval_formula( jmath_func_grapple_throw_force, thrower, victim, {
+        in_deep_water ? 1.0 : 0.0, static_cast<double>( railgun_bonus( thrower, victim ) )
+    } );
+    return std::max( 0.0f, static_cast<float>( force ) );
+}
+
+int grapple::throw_range( float force )
+{
+    // As game::fling_creature counts it.
+    return std::max( 0, static_cast<int>( force / 10 ) );
+}
+
+float grapple::throw_force_at( float full_force, int distance )
+{
+    const int range = throw_range( full_force );
+    if( range < 1 || distance < 1 ) {
+        return 0.0f;
+    }
+    distance = std::min( distance, range );
+    // full_force / range is at least 10, so this flies at least distance tiles; the floor keeps
+    // rounding from making it fall one short.
+    return std::max( full_force * distance / range, 10.0f * distance );
+}
+
+int grapple::throw_stamina_cost( const Character &thrower, const Creature &victim, float force )
+{
+    const double cost = eval_formula( jmath_func_grapple_throw_stamina_cost, thrower, victim, {
+        units::to_kilogram( victim.get_weight() ), static_cast<double>( force ),
+        static_cast<double>( thrower.get_modifier( character_modifier_melee_stamina_cost_mod ) )
+    } );
+    return std::max( 0, static_cast<int>( std::round( cost ) ) );
+}
+
+int grapple::throw_move_cost( const Character &thrower )
+{
+    const float weary_mult = thrower.exertion_adjusted_move_multiplier( exertion_level() );
+    return 100 + static_cast<int>( thrower.attack_speed( null_item_reference() ) / weary_mult );
+}
+
+int grapple::throw_verb_tier( const Character &thrower, const Creature &victim, float force )
+{
+    const double tier = eval_formula( jmath_func_grapple_throw_verb, thrower, victim, {
+        static_cast<double>( force )
+    } );
+    return std::max( 0, static_cast<int>( std::round( tier ) ) );
+}
+
+std::string grapple::throw_verb( const Character &thrower, const Creature &victim, float force,
+                                 std::optional<unsigned int> seed )
+{
+    const std::string category = string_format( "grapple_throw_verb_%d",
+                                 throw_verb_tier( thrower, victim, force ) );
+    const std::optional<translation> word = seed ?
+                                            SNIPPET.random_from_category( category, *seed ) :
+                                            SNIPPET.random_from_category( category );
+    return word ? word->translated() : std::string( _( "throw" ) );
+}
+
+std::vector<tripoint_bub_ms> grapple::throw_path( const tripoint_bub_ms &from,
+        const tripoint_bub_ms &target, int distance )
+{
+    // The steps game::fling_creature takes.
+    std::vector<tripoint_bub_ms> path;
+    if( from.xy() == target.xy() ) {
+        return path;
+    }
+    tileray dir( coord_to_angle( from, target ) );
+    tripoint_bub_ms at = from;
+    for( int i = 0; i < distance; ++i ) {
+        dir.advance();
+        at += tripoint_rel_ms( dir.dx(), dir.dy(), 0 );
+        path.push_back( at );
+    }
+    return path;
+}
+
+std::optional<std::string> grapple::throw_refusal( const Character &thrower,
+        const Creature &victim )
+{
+    const float force = throw_force( thrower, victim );
+    const int cost = throw_stamina_cost( thrower, victim, force );
+    const int size_gap = static_cast<int>( victim.get_size() ) -
+                         static_cast<int>( thrower.get_size() );
+    // TLG: a throw must carry past the next tile, and a creature only a little larger.
+    if( throw_range( force ) <= 1 || size_gap > thrower.get_arm_str() / 10 ||
+        thrower.get_stamina_max() < cost ) {
+        return string_format( _( "You can't muster the strength to throw %s." ),
+                              victim.disp_name() );
+    }
+    if( thrower.get_stamina() < cost ) {
+        return string_format( _( "You're too exhausted to throw %s." ), victim.disp_name() );
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> grapple::throw_target_refusal( const Character &thrower,
+        const Creature &victim, const tripoint_bub_ms &target )
+{
+    map &here = get_map();
+    const tripoint_bub_ms from = victim.pos_bub( here );
+    if( target.xy() == from.xy() ) {
+        return string_format( _( "Throw %s where?" ), victim.disp_name() );
+    }
+    if( target.z() != from.z() ) {
+        return std::string( _( "You can only throw it across, not up or down." ) );
+    }
+    const std::vector<tripoint_bub_ms> path = throw_path( from, target, 1 );
+    if( !path.empty() && path.front() == thrower.pos_bub( here ) ) {
+        return string_format( _( "You can't throw %s through yourself." ), victim.disp_name() );
+    }
+    return std::nullopt;
+}
+
+bool grapple::throw_angers( const Character &thrower, const Creature &victim, float force )
+{
+    const npc *const guy = victim.as_npc();
+    if( guy == nullptr ) {
+        return false;
+    }
+    if( force > get_option<int>( "GRAPPLE_THROW_ANGERS_ANY" ) ) {
+        return true;
+    }
+    // A stranger minds being thrown about even gently; friends and foes put up with more.
+    return thrower.is_avatar() && !guy->is_enemy() && !guy->is_player_ally() &&
+           force > get_option<int>( "GRAPPLE_THROW_ANGERS_NEUTRAL" );
+}
+
+bool grapple::break_free_to_throw( Character &thrower, const Creature &victim )
+{
+    if( !victim.has_effect_with_flag( json_flag_GRAB_FILTER ) ||
+        !thrower.has_effect_with_flag( json_flag_GRAB ) ) {
+        return true;
+    }
+    if( thrower.try_remove_grab() ) {
+        return true;
+    }
+    thrower.mod_moves( -throw_move_cost( thrower ) );
+    return false;
+}
+
+bool grapple::throw_held_creature( Character &thrower, Creature &victim,
+                                   const tripoint_bub_ms &target )
+{
+    map &here = get_map();
+    if( hold_effect( thrower, victim ) == nullptr ||
+        throw_target_refusal( thrower, victim, target ) ) {
+        return false;
+    }
+    const tripoint_bub_ms from = victim.pos_bub( here );
+    const float full_force = throw_force( thrower, victim );
+    // A fling takes one tile per step, diagonals included: count them the same way.
+    const int distance = std::min( square_dist( from.xy(), target.xy() ),
+                                   throw_range( full_force ) );
+    if( distance < 1 ) {
+        return false;
+    }
+    // A shorter throw is a gentler one, and lands where it was aimed.
+    const float force = throw_force_at( full_force, distance );
+    const bool railgun = railgun_bonus( thrower, victim ) > 0;
+    int stamina_cost = throw_stamina_cost( thrower, victim, force );
+    if( railgun ) {
+        // TLG: the repulsor takes some of the work.
+        stamina_cost = static_cast<int>( std::round( stamina_cost * 0.9 ) );
+    }
+    const bool angers = throw_angers( thrower, victim, force );
+
+    // A monster takes it as an attack.
+    if( monster *const mon = victim.as_monster(); mon != nullptr && mon->friendly == 0 ) {
+        if( mon->type->has_anger_trigger( mon_trigger::HURT ) ) {
+            mon->anger += 15;
+            if( !thrower.is_fake() ) {
+                mon->aggro_character = true;
+            }
+        }
+        if( mon->type->has_fear_trigger( mon_trigger::HURT ) ) {
+            mon->morale -= 15;
+        }
+    }
+
+    end_hold( thrower, &victim );
+    const std::string verb = throw_verb( thrower, victim, force );
+    if( railgun ) {
+        thrower.mod_power_level( -bio_railgun->power_trigger );
+        //~ %1$s: shove, toss, throw, hurl or launch, %2$s: the creature thrown
+        thrower.add_msg_if_player( m_good,
+                                   _( "You feel your magnetic repulsor kick in as you %1$s %2$s!" ),
+                                   verb, victim.disp_name() );
+    } else {
+        //~ %1$s: shove, toss, throw, hurl or launch, %2$s: the creature thrown
+        thrower.add_msg_if_player( m_good, _( "You %1$s %2$s!" ), verb, victim.disp_name() );
+    }
+    thrower.add_msg_if_npc( _( "<npcname> throws %s!" ), victim.disp_name() );
+
+    // TLG's throw: a soft landing when slow, and a character in the way is hit.
+    fling_options options;
+    options.soft_low_speed_landing = true;
+    options.hit_characters = true;
+    g->fling_creature( &victim, coord_to_angle( from, target ), force, false, false, options );
+    if( angers && !victim.is_dead_state() ) {
+        if( npc *const guy = victim.as_npc() ) {
+            guy->on_attacked( thrower );
+        }
+    }
+
+    thrower.set_activity_level( exertion_level() );
+    thrower.mod_moves( -throw_move_cost( thrower ) );
+    thrower.burn_energy_arms( -stamina_cost );
+    return true;
 }

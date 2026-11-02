@@ -28,6 +28,53 @@
     "return": "1 / clamp( ( _1 / ( max( 1, _0 ) * u_val('size') ) * ( _2 > 0 ? min( 1, _2 / 200 ) : 1 ) * ( _3 > 0 ? 0.5 : 1 ) + 0.25 ) ^ 2, 1, 1000 )"
   },
   {
+    "type": "jmath_function",
+    "id": "grapple_throw_force",
+    "//": "Force of a character's throw of the creature it holds, at full range: the creature flies force / 10 tiles, and a shorter throw is scaled down by distance / range.  u = thrower, n = thrown creature, _0 = 1 when the creature stands in deep water (a quarter of the force), else 0, _1 = the bio_railgun bonus (16 against robots, 8 against cyborgs, else 0; bionics and species are read in C++).  From Cataclysm: The Last Generation: 2 * ( arm strength * ( 1.1 + arm strength / 100 when it is over 10 ) + 2 * unarmed + throwing / 4 + 2 * size difference - 15 per size above medium ), 31 for strength 10, skills 2, medium against medium.",
+    "num_args": 2,
+    "return": "max( 0, ( 2 * ( u_arm_strength() * ( 1.1 + ( u_arm_strength() > 10 ? u_arm_strength() / 100 : 0 ) ) + 2 * u_skill('unarmed') + u_skill('throw') / 4 + 2 * ( u_val('size') - n_val('size') ) - 15 * max( 0, n_val('size') - 3 ) ) + _1 ) * ( _0 > 0 ? 0.25 : 1 ) )"
+  },
+  {
+    "type": "jmath_function",
+    "id": "grapple_throw_stamina_cost",
+    "//": "Stamina a character spends throwing the creature it holds.  u = thrower, n = thrown creature, _0 = its weight in kg, _1 = the force of the throw, _2 = the thrower's melee stamina cost modifier.  The weight-scaled cost Cataclysm: The Last Generation meant (its code always came to 50, from two sign errors): the weight in units of 20 g, divided by 2 * thrower size / thrown size plus ( throwing + unarmed ) / 20, plus 50, times the modifier, at least 75; then scaled by force / 100, at least 50.  The throw also needs this much stamina at full force.",
+    "num_args": 3,
+    "return": "max( 50, max( 75, ( 50 * _0 / ( 2 * u_val('size') / n_val('size') + ( u_skill('throw') + u_skill('unarmed') ) / 20 ) + 50 ) * _2 ) * _1 / 100 )"
+  },
+  {
+    "type": "jmath_function",
+    "id": "grapple_throw_verb",
+    "//": "How hard a throw is, by its force _0: 0 shove, 1 toss, 2 throw, 3 hurl, 4 launch.  The word comes from the snippet category grapple_throw_verb_<n>, and the throw targeting screen colors the force by it.  u = thrower, n = thrown creature.  Thresholds from Cataclysm: The Last Generation.",
+    "num_args": 1,
+    "return": "_0 < 30 ? 0 : _0 < 40 ? 1 : _0 < 60 ? 2 : _0 < 70 ? 3 : 4"
+  },
+  {
+    "type": "snippet",
+    "category": "grapple_throw_verb_0",
+    "//": "A throw of the creature you hold: \"You shove the zombie!\".",
+    "text": [ "shove" ]
+  },
+  {
+    "type": "snippet",
+    "category": "grapple_throw_verb_1",
+    "text": [ "toss" ]
+  },
+  {
+    "type": "snippet",
+    "category": "grapple_throw_verb_2",
+    "text": [ "throw" ]
+  },
+  {
+    "type": "snippet",
+    "category": "grapple_throw_verb_3",
+    "text": [ "hurl" ]
+  },
+  {
+    "type": "snippet",
+    "category": "grapple_throw_verb_4",
+    "text": [ { "text": "launch", "weight": 99 }, { "text": "yeet", "weight": 1 } ]
+  },
+  {
     "type": "effect_on_condition",
     "id": "grab_condition",
     "//": "Tested, not run, before a character tries to grab a creature, with u = grabber and npc = target.  If the condition is false the grab is refused before any cost is paid.  Mods can extend it, e.g. to forbid grabbing blobs.",

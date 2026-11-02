@@ -41,6 +41,7 @@
 #include "flag.h"
 #include "game.h"
 #include "game_constants.h"
+#include "grapple.h"
 #include "gun_mode.h"
 #include "input.h"
 #include "input_context.h"
@@ -228,7 +229,8 @@ class target_ui
             TurretManual,
             Reach,
             Spell,
-            SelectOnly
+            SelectOnly,
+            ThrowCreature
         };
 
         // Avatar
@@ -249,6 +251,8 @@ class target_ui
         vehicle *veh = nullptr;
         // Spell being cast
         spell *casting = nullptr;
+        // Creature being thrown (grappling)
+        const Creature *thrown_creature = nullptr;
         // Spell cannot fail
         bool no_fail = false;
         // Spell does not require mana
@@ -468,6 +472,7 @@ class target_ui
         void panel_gun_info( int &text_y );
         void panel_recoil( int &text_y );
         void panel_spell_info( int &text_y );
+        void panel_throw_creature( int &text_y );
         void panel_target_info( int &text_y, bool fill_with_blank_if_no_target );
         void panel_turret_list( int &text_y );
 
@@ -510,6 +515,19 @@ target_handler::trajectory target_handler::mode_throw( avatar &you, item &releva
     ui.mode = blind_throwing ? target_ui::TargetMode::ThrowBlind : target_ui::TargetMode::Throw;
     ui.relevant = &relevant;
     ui.range = you.throw_range( relevant );
+
+    restore_on_out_of_scope view_offset_prev( you.view_offset );
+    return ui.run();
+}
+
+target_handler::trajectory target_handler::mode_throw_creature( avatar &you,
+        const Creature &thrown, int range )
+{
+    target_ui ui = target_ui();
+    ui.you = &you;
+    ui.mode = target_ui::TargetMode::ThrowCreature;
+    ui.thrown_creature = &thrown;
+    ui.range = range;
 
     restore_on_out_of_scope view_offset_prev( you.view_offset );
     return ui.run();
@@ -2918,8 +2936,8 @@ target_handler::trajectory target_ui::run()
         resume_critter = activity->aiming_at_critter;
     }
 
-    // Initialize cursor position
-    src = you->pos_bub();
+    // Initialize cursor position. A thrown creature flies from where it is.
+    src = mode == TargetMode::ThrowCreature ? thrown_creature->pos_bub() : you->pos_bub();
     update_target_list();
 
     if( mode == TargetMode::Reach && targets.empty() ) {
@@ -2943,7 +2961,8 @@ target_handler::trajectory target_ui::run()
             action.clear();
             attack_was_confirmed = false;
         }
-    } else {
+    } else if( mode != TargetMode::ThrowCreature ) {
+        // (The cursor starts on a creature being thrown.)
         initial_dst = choose_initial_target();
     }
     set_cursor_pos( initial_dst );
@@ -3291,8 +3310,9 @@ bool target_ui::set_cursor_pos( const tripoint_bub_ms &new_pos )
         valid_pos.z() = clamp( valid_pos.z(), -OVERMAP_DEPTH, OVERMAP_HEIGHT );
         // Or current view range
         valid_pos.z() = clamp( valid_pos.z() - src.z(), -fov_3d_z_range, fov_3d_z_range ) + src.z();
-        // Or across z-levels (in melee)
-        if( mode == TargetMode::Reach && src.z() != new_pos.z() ) {
+        // Or across z-levels (in melee, or throwing a creature)
+        if( ( mode == TargetMode::Reach || mode == TargetMode::ThrowCreature ) &&
+            src.z() != new_pos.z() ) {
             return false;
         }
 
@@ -3561,8 +3581,12 @@ void target_ui::update_status()
         // gun mode to short-ranged. We can, of course, move the cursor into range automatically,
         // but that would be rude. Instead, wait for directional keys/etc. and *then* move the cursor.
         status = Status::OutOfRange;
-    } else if( mode == TargetMode::Reach && src.z() != dst.z() ) {
+    } else if( ( mode == TargetMode::Reach || mode == TargetMode::ThrowCreature ) &&
+               src.z() != dst.z() ) {
         status = Status::OutOfRange;
+    } else if( mode == TargetMode::ThrowCreature &&
+               grapple::throw_target_refusal( *you, *thrown_creature, dst ) ) {
+        status = Status::BadTarget;
     } else {
         status = Status::Good;
     }
@@ -4108,6 +4132,9 @@ void target_ui::draw_ui_window()
     } else if( mode == TargetMode::Spell ) {
         panel_spell_info( text_y );
         text_y += compact ? 0 : 1;
+    } else if( mode == TargetMode::ThrowCreature ) {
+        panel_throw_creature( text_y );
+        text_y += compact ? 0 : 1;
     }
 
     bool fill_with_blank_if_no_target = !tiny;
@@ -4158,6 +4185,8 @@ std::string target_ui::uitext_title() const
             return string_format( _( "Throwing %s" ), relevant->tname() );
         case TargetMode::ThrowBlind:
             return string_format( _( "Blind throwing %s" ), relevant->tname() );
+        case TargetMode::ThrowCreature:
+            return string_format( _( "Throwing %s" ), thrown_creature->disp_name() );
         default:
             return _( "Set target" );
     }
@@ -4165,7 +4194,8 @@ std::string target_ui::uitext_title() const
 
 std::string target_ui::uitext_fire() const
 {
-    if( mode == TargetMode::Throw || mode == TargetMode::ThrowBlind ) {
+    if( mode == TargetMode::Throw || mode == TargetMode::ThrowBlind ||
+        mode == TargetMode::ThrowCreature ) {
         return to_translation( "[Hotkey] to throw", "to throw" ).translated();
     } else if( mode == TargetMode::Reach ) {
         return to_translation( "[Hotkey] to attack", "to attack" ).translated();
@@ -4353,6 +4383,53 @@ void target_ui::panel_cursor_info( int &text_y )
         text_x += len + 1; // 1 for space
     }
     text_y++;
+}
+
+void target_ui::panel_throw_creature( int &text_y )
+{
+    const Creature &thrown = *thrown_creature;
+    const int width = getmaxx( w_target ) - 2;
+    if( src == dst ) {
+        return;
+    }
+    if( const std::optional<std::string> refusal =
+            grapple::throw_target_refusal( *you, thrown, dst ) ) {
+        trim_and_print( w_target, point( 1, text_y++ ), width, c_red, *refusal );
+        return;
+    }
+    map &here = get_map();
+    const int distance = std::min( square_dist( src.xy(), dst.xy() ), range );
+    const float force = grapple::throw_force_at( grapple::throw_force( *you, thrown ), distance );
+    const int tier = grapple::throw_verb_tier( *you, thrown, force );
+    const nc_color force_color = tier <= 1 ? c_light_green : tier == 2 ? c_yellow : c_red;
+    //~ Throwing a creature. %1$d: force of the throw, %2$s: shove, toss, throw, hurl or launch
+    trim_and_print( w_target, point( 1, text_y++ ), width, force_color,
+                    string_format( _( "Force: %1$d (%2$s)" ), static_cast<int>( force ),
+                                   grapple::throw_verb( *you, thrown, force, 0 ) ) );
+    trim_and_print( w_target, point( 1, text_y++ ), width, c_light_gray,
+                    string_format( _( "Moves: %1$d  Stamina: %2$d" ),
+                                   grapple::throw_move_cost( *you ),
+                                   grapple::throw_stamina_cost( *you, thrown, force ) ) );
+    // What it will hit on the way, as far as you can tell.
+    std::string path_text = _( "Path: clear" );
+    nc_color path_color = c_light_green;
+    creature_tracker &creatures = get_creature_tracker();
+    for( const tripoint_bub_ms &p : grapple::throw_path( src, dst, distance ) ) {
+        const Creature *const critter = creatures.creature_at( p, true );
+        if( critter != nullptr && critter != &thrown && you->sees( here, *critter ) ) {
+            //~ Throwing a creature: %s is who it will hit on the way
+            path_text = string_format( _( "Path: hits %s" ), critter->disp_name() );
+            path_color = c_red;
+            break;
+        }
+        if( here.impassable( p ) && you->sees( here, p ) ) {
+            //~ Throwing a creature: %s is the obstacle it will hit on the way
+            path_text = string_format( _( "Path: hits the %s" ), here.obstacle_name( p ) );
+            path_color = c_yellow;
+            break;
+        }
+    }
+    trim_and_print( w_target, point( 1, text_y++ ), width, path_color, path_text );
 }
 
 void target_ui::panel_gun_info( int &text_y )

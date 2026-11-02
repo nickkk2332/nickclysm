@@ -43,6 +43,20 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_THROW_ANGERS_NEUTRAL",
+    "//": "A held NPC that is neither the thrower's ally nor its enemy is angered by a throw stronger than this (the avatar is asked first).",
+    "stype": "int",
+    "value": 24
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "GRAPPLE_THROW_ANGERS_ANY",
+    "//": "Any held NPC, allies included, is angered by a throw stronger than this (the avatar is asked first).",
+    "stype": "int",
+    "value": 60
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "PLAYER_MAX_STR_VALUE",
     "//": "Sets a cap on maximum effective strength for characters.",
     "stype": "int",

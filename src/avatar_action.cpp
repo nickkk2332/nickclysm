@@ -27,6 +27,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "game_inventory.h"
+#include "grapple.h"
 #include "gun_mode.h"
 #include "input_context.h"
 #include "item.h"
@@ -1023,6 +1024,47 @@ void avatar_action::eat_or_use( avatar &you, item_location loc )
     }
 }
 
+// Throw the creature the avatar holds (grappling, from Cataclysm: The Last Generation). This is
+// only the prompts and the targeting screen: grapple::throw_held_creature does the throw.
+static void throw_grabbed_creature( avatar &you, Creature &victim )
+{
+    if( const std::optional<std::string> refusal = grapple::throw_refusal( you, victim ) ) {
+        add_msg( m_info, *refusal );
+        return;
+    }
+    if( !you.try_break_relax_gas( _( "You concentrate mightily, and your body obeys!" ),
+                                  _( "You can't muster up the effort to throw anything…" ) ) ) {
+        return;
+    }
+    // Held by it as well? Get free first.
+    if( !grapple::break_free_to_throw( you, victim ) ) {
+        return;
+    }
+    const float full_force = grapple::throw_force( you, victim );
+    const target_handler::trajectory trajectory = target_handler::mode_throw_creature( you, victim,
+            grapple::throw_range( full_force ) );
+    if( trajectory.empty() ) {
+        return;
+    }
+    const tripoint_bub_ms target = trajectory.back();
+    if( const std::optional<std::string> refusal = grapple::throw_target_refusal( you, victim,
+            target ) ) {
+        add_msg( m_info, *refusal );
+        return;
+    }
+    const float force = grapple::throw_force_at( full_force,
+                        square_dist( victim.pos_bub().xy(), target.xy() ) );
+    if( grapple::throw_angers( you, victim, force ) &&
+        !query_yn( _( "This will probably make %s angry.  Continue?" ), victim.disp_name() ) ) {
+        return;
+    }
+    if( grapple::throw_stamina_cost( you, victim, force ) > you.get_stamina() / 2 &&
+        !query_yn( _( "Throwing %s will really tire you out.  Continue?" ), victim.disp_name() ) ) {
+        return;
+    }
+    grapple::throw_held_creature( you, victim, target );
+}
+
 void avatar_action::plthrow( avatar &you, item_location loc,
                              const std::optional<tripoint_bub_ms> &blind_throw_from_pos )
 {
@@ -1039,6 +1081,15 @@ void avatar_action::plthrow( avatar &you, item_location loc,
     } else if( you.has_flag( json_flag_CANNOT_ATTACK ) ) {
         add_msg( m_info, _( "You are incapable of throwing anything!" ) );
         return;
+    }
+
+    // Holding a creature, the throw action throws it. An item picked in the inventory is still
+    // thrown as an item, which lets go of the creature to take the item in hand.
+    if( !loc && !blind_throw_from_pos ) {
+        if( Creature *const held = you.grabbed_creature() ) {
+            throw_grabbed_creature( you, *held );
+            return;
+        }
     }
 
     bool in_mech = false;

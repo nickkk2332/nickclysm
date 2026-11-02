@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "coords_fwd.h"
 #include "type_id.h"
@@ -177,6 +178,70 @@ bool drag_to( Creature &victim, const tripoint_abs_ms &dest );
  */
 void drag_after_step( Character &grabber, const tripoint_abs_ms &victim_at,
                       const tripoint_abs_ms &from );
+
+// Throwing a held creature
+
+/**
+ * The full force of a throw of @p victim by @p thrower (grapple_throw_force), before it is
+ * scaled to the distance chosen. A creature thrown with force F flies F / 10 tiles.
+ */
+float throw_force( const Character &thrower, const Creature &victim );
+
+/** How many tiles a throw of @p force carries a creature: force / 10, as fling_creature. */
+int throw_range( float force );
+
+/**
+ * The force of a throw @p distance tiles far, with @p full_force at full range: scaled by
+ * distance / range, so a short throw is a gentle shove and lands where it was aimed.
+ */
+float throw_force_at( float full_force, int distance );
+
+/** Stamina @p thrower spends to throw @p victim with @p force (grapple_throw_stamina_cost). */
+int throw_stamina_cost( const Character &thrower, const Creature &victim, float force );
+
+/** Moves a throw costs @p thrower. */
+int throw_move_cost( const Character &thrower );
+
+/** How hard a throw of @p force is, from 0 (a shove) up (grapple_throw_verb). */
+int throw_verb_tier( const Character &thrower, const Creature &victim, float force );
+
+/**
+ * The word for a throw of @p force: shove, toss, throw, hurl or launch, from the snippet
+ * category grapple_throw_verb_<tier>. A @p seed picks the same word every time.
+ */
+std::string throw_verb( const Character &thrower, const Creature &victim, float force,
+                        std::optional<unsigned int> seed = std::nullopt );
+
+/** The tiles a creature thrown @p distance tiles from @p from toward @p target flies over. */
+std::vector<tripoint_bub_ms> throw_path( const tripoint_bub_ms &from,
+        const tripoint_bub_ms &target, int distance );
+
+/**
+ * Why @p thrower can't throw @p victim, the creature it holds, at all; nullopt if it can.
+ * Checked before targeting, so a refusal changes nothing.
+ */
+std::optional<std::string> throw_refusal( const Character &thrower, const Creature &victim );
+
+/** Why @p victim can't be thrown toward @p target; nullopt if it can. */
+std::optional<std::string> throw_target_refusal( const Character &thrower,
+        const Creature &victim, const tripoint_bub_ms &target );
+
+/** Whether a throw of @p force makes the held NPC @p victim angry (so the avatar is asked). */
+bool throw_angers( const Character &thrower, const Creature &victim, float force );
+
+/**
+ * If @p victim holds @p thrower as well, @p thrower must break free before throwing it.
+ * Returns whether @p thrower is free; a failed attempt costs it moves.
+ */
+bool break_free_to_throw( Character &thrower, const Creature &victim );
+
+/**
+ * Throw @p victim, which @p thrower holds, toward @p target (bubble coordinates; clamped to the
+ * throw's range): the hold ends, @p thrower pays moves and stamina, the victim reacts, and it is
+ * flung from its tile toward @p target with the force for that distance. No prompts: the caller
+ * asks first. Returns whether the throw was made.
+ */
+bool throw_held_creature( Character &thrower, Creature &victim, const tripoint_bub_ms &target );
 
 } // namespace grapple
 

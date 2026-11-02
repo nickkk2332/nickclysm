@@ -45,6 +45,9 @@
 // Every roll below is either skipped (a tolerated grab, a hold set up directly) or made at
 // inputs where its chance is 0 or 1.
 
+static const character_modifier_id
+character_modifier_melee_stamina_cost_mod( "melee_stamina_cost_mod" );
+
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_incorporeal( "incorporeal" );
@@ -65,6 +68,7 @@ static const itype_id itype_rock( "rock" );
 static const limb_score_id limb_score_grip( "grip" );
 
 static const skill_id skill_melee( "melee" );
+static const skill_id skill_throw( "throw" );
 static const skill_id skill_unarmed( "unarmed" );
 
 static const ter_str_id ter_t_water_dp( "t_water_dp" );
@@ -919,4 +923,216 @@ TEST_CASE( "grapple_fling_options_are_off_by_default", "[grapple]" )
         // rng( 50, 100 ) / 6 to an unarmoured torso
         CHECK( guy.get_hp() < hp );
     }
+}
+
+// TLG's worked example: strength 10, unarmed and throwing 2. Rested.
+static void make_thrower( avatar &you )
+{
+    you.set_str_base( 10 );
+    you.set_skill_level( skill_unarmed, 2 );
+    you.set_skill_level( skill_throw, 2 );
+    REQUIRE( you.get_arm_str() == 10 );
+    you.set_stamina( you.get_stamina_max() );
+}
+
+TEST_CASE( "grapple_throw_formulas", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    make_thrower( you );
+    // 50 kg, medium size
+    monster &mon = spawn_test_monster( "mon_test_speed_desc_base", you.pos_bub() + tripoint::east );
+    REQUIRE( mon.get_size() == creature_size::medium );
+
+    SECTION( "force" ) {
+        // 2 * ( 10 * 1.1 + 2 * 2 + 2 / 4 )
+        CHECK( grapple::throw_force( you, mon ) == Approx( 31.0f ) );
+        CHECK( grapple::throw_range( 31.0f ) == 3 );
+        // Strength over 10 counts extra: 2 * ( 15 * 1.25 + 4 + 0.5 )
+        you.set_str_base( 15 );
+        CHECK( grapple::throw_force( you, mon ) == Approx( 46.5f ) );
+    }
+    SECTION( "force against other sizes" ) {
+        monster &squirrel = spawn_test_monster( "mon_squirrel", you.pos_bub() + tripoint::west );
+        REQUIRE( squirrel.get_size() == creature_size::tiny );
+        // 2 * ( 15.5 + 2 * ( 3 - 1 ) )
+        CHECK( grapple::throw_force( you, squirrel ) == Approx( 39.0f ) );
+        monster &hulk = spawn_test_monster( "mon_zombie_hulk", you.pos_bub() + tripoint::north );
+        REQUIRE( hulk.get_size() == creature_size::huge );
+        // 2 * ( 15.5 + 2 * ( 3 - 5 ) - 15 * 2 ) is below nothing
+        CHECK( grapple::throw_force( you, hulk ) == Approx( 0.0f ) );
+    }
+    SECTION( "force in deep water is a quarter" ) {
+        here.ter_set( mon.pos_bub(), ter_t_water_dp.id() );
+        CHECK( grapple::throw_force( you, mon ) == Approx( 31.0f / 4 ) );
+    }
+    SECTION( "force scales with the distance chosen, and carries exactly that far" ) {
+        CHECK( grapple::throw_force_at( 31.0f, 3 ) == Approx( 31.0f ) );
+        CHECK( grapple::throw_force_at( 31.0f, 2 ) == Approx( 31.0f * 2 / 3 ) );
+        CHECK( grapple::throw_force_at( 31.0f, 1 ) == Approx( 31.0f / 3 ) );
+        CHECK( grapple::throw_force_at( 31.0f, 5 ) == Approx( 31.0f ) );
+        for( const float full : {
+                 20.0f, 31.0f, 39.9f, 60.0f, 99.0f
+             } ) {
+            for( int d = 1; d <= grapple::throw_range( full ); ++d ) {
+                CAPTURE( full, d );
+                CHECK( grapple::throw_range( grapple::throw_force_at( full, d ) ) == d );
+            }
+        }
+    }
+    SECTION( "stamina is weight-scaled, not a flat 50" ) {
+        REQUIRE( you.get_modifier( character_modifier_melee_stamina_cost_mod ) == Approx( 1.0f ) );
+        // ( 50 * 50 kg / ( 2 * 3 / 3 + ( 2 + 2 ) / 20 ) + 50 ) * 31 / 100
+        CHECK( grapple::throw_stamina_cost( you, mon, 31.0f ) == 368 );
+        // Twice the force, twice the cost.
+        CHECK( grapple::throw_stamina_cost( you, mon, 62.0f ) == 736 );
+        // At least 50, for a feeble shove.
+        CHECK( grapple::throw_stamina_cost( you, mon, 1.0f ) == 50 );
+        monster &zed = spawn_test_monster( "mon_zombie", you.pos_bub() + tripoint::west );
+        REQUIRE( zed.get_weight() > mon.get_weight() );
+        CHECK( grapple::throw_stamina_cost( you, zed, 31.0f ) >
+               grapple::throw_stamina_cost( you, mon, 31.0f ) );
+    }
+    SECTION( "the word for it" ) {
+        CHECK( grapple::throw_verb( you, mon, 25.0f ) == "shove" );
+        CHECK( grapple::throw_verb( you, mon, 35.0f ) == "toss" );
+        CHECK( grapple::throw_verb( you, mon, 50.0f ) == "throw" );
+        CHECK( grapple::throw_verb( you, mon, 65.0f ) == "hurl" );
+        const std::string launch = grapple::throw_verb( you, mon, 80.0f );
+        CHECK( ( launch == "launch" || launch == "yeet" ) );
+        CHECK( grapple::throw_verb_tier( you, mon, 80.0f ) == 4 );
+    }
+}
+
+TEST_CASE( "grapple_who_minds_being_thrown", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    guy.set_attitude( NPCATT_NULL );
+    REQUIRE( !guy.is_player_ally() );
+    REQUIRE( !guy.is_enemy() );
+    // A stranger minds anything over 24, a friend anything over 60.
+    CHECK( !grapple::throw_angers( you, guy, 24.0f ) );
+    CHECK( grapple::throw_angers( you, guy, 25.0f ) );
+    make_follower( guy );
+    CHECK( !grapple::throw_angers( you, guy, 60.0f ) );
+    CHECK( grapple::throw_angers( you, guy, 61.0f ) );
+    monster &zed = spawn_test_monster( "mon_zombie", you.pos_bub() + tripoint::west );
+    CHECK( !grapple::throw_angers( you, zed, 99.0f ) );
+}
+
+TEST_CASE( "grapple_throw_refusals", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    monster &mon = spawn_held( you, "mon_test_speed_desc_base" );
+
+    SECTION( "too weak" ) {
+        // A fresh survivor's throw wouldn't carry past the next tile.
+        REQUIRE( grapple::throw_range( grapple::throw_force( you, mon ) ) <= 1 );
+        const std::optional<std::string> refusal = grapple::throw_refusal( you, mon );
+        REQUIRE( refusal );
+        CHECK( *refusal == "You can't muster the strength to throw the speed 100 monster." );
+    }
+    SECTION( "too tired" ) {
+        make_thrower( you );
+        you.set_stamina( 100 );
+        const std::optional<std::string> refusal = grapple::throw_refusal( you, mon );
+        REQUIRE( refusal );
+        CHECK( *refusal == "You're too exhausted to throw the speed 100 monster." );
+    }
+    SECTION( "not through yourself, nor nowhere" ) {
+        make_thrower( you );
+        CHECK( !grapple::throw_refusal( you, mon ) );
+        CHECK( grapple::throw_target_refusal( you, mon, you.pos_bub() + tripoint::west ) );
+        CHECK( grapple::throw_target_refusal( you, mon, mon.pos_bub() ) );
+        CHECK( !grapple::throw_target_refusal( you, mon, mon.pos_bub() + tripoint::east ) );
+        CHECK( !grapple::throw_held_creature( you, mon, you.pos_bub() + tripoint::west ) );
+        CHECK( holds( you, mon ) );
+    }
+}
+
+TEST_CASE( "grapple_throw_lands_where_it_is_aimed", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    override_option no_animations( "ANIMATIONS", "false" );
+    make_thrower( you );
+    monster &mon = spawn_held( you, "mon_test_speed_desc_base" );
+    const tripoint_bub_ms start = mon.pos_bub();
+    const float full_force = grapple::throw_force( you, mon );
+    REQUIRE( grapple::throw_range( full_force ) == 3 );
+    // East (away from us), south, and diagonally: a fling counts diagonal steps as one tile.
+    const tripoint_rel_ms aim = GENERATE( tripoint_rel_ms( 1, 0, 0 ), tripoint_rel_ms( 2, 0, 0 ),
+                                          tripoint_rel_ms( 3, 0, 0 ), tripoint_rel_ms( 0, 3, 0 ),
+                                          tripoint_rel_ms( 2, 2, 0 ), tripoint_rel_ms( 3, -3, 0 ) );
+    CAPTURE( aim );
+    const int distance = square_dist( aim.xy(), point_rel_ms::zero );
+    const tripoint_bub_ms target = start + aim;
+    const float force = grapple::throw_force_at( full_force, distance );
+    const int stamina_cost = grapple::throw_stamina_cost( you, mon, force );
+    const int move_cost = grapple::throw_move_cost( you );
+    const int moves = you.get_moves();
+    const int stamina = you.get_stamina();
+
+    REQUIRE( grapple::throw_held_creature( you, mon, target ) );
+    CHECK( mon.pos_bub() == target );
+    CHECK( released( you, mon ) );
+    CHECK( !mon.has_effect( effect_grabbed ) );
+    CHECK( you.get_moves() == moves - move_cost );
+    CHECK( you.get_stamina() == stamina - stamina_cost );
+}
+
+TEST_CASE( "grapple_thrown_creature_lands_on_traps_and_off_ledges", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    override_option no_animations( "ANIMATIONS", "false" );
+    map &here = get_map();
+    make_thrower( you );
+    monster &mon = spawn_held( you, "mon_test_speed_desc_base" );
+    const tripoint_bub_ms start = mon.pos_bub();
+    const tripoint_bub_ms landing = start + tripoint( 3, 0, 0 );
+
+    SECTION( "the trap where it lands goes off, not the one it started on" ) {
+        here.trap_set( start, tr_beartrap.id() );
+        here.trap_set( start + tripoint::east, tr_beartrap.id() );
+        here.trap_set( landing, tr_beartrap.id() );
+        REQUIRE( grapple::throw_held_creature( you, mon, landing ) );
+        CHECK( mon.pos_bub() == landing );
+        CHECK( mon.has_effect( effect_beartrap ) );
+        CHECK( here.tr_at( landing ).is_null() );
+        CHECK( here.tr_at( start ).id == tr_beartrap );
+        CHECK( here.tr_at( start + tripoint::east ).id == tr_beartrap );
+    }
+    SECTION( "thrown off a ledge, it drops a level" ) {
+        for( int x = 2; x <= 3; ++x ) {
+            here.ter_set( start + tripoint( x, 0, 0 ), ter_t_open_air.id() );
+            here.ter_set( start + tripoint( x, 0, -1 ), ter_t_floor.id() );
+        }
+        here.invalidate_map_cache( 0 );
+        here.build_map_cache( 0, true );
+        here.build_map_cache( -1, true );
+        REQUIRE( grapple::throw_held_creature( you, mon, landing ) );
+        CHECK( mon.pos_bub() == landing + tripoint::below );
+    }
+    CHECK( released( you, mon ) );
+    CHECK( !mon.has_effect( effect_airborne ) );
+}
+
+TEST_CASE( "grapple_a_thrown_stranger_gets_angry", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    override_option no_animations( "ANIMATIONS", "false" );
+    make_thrower( you );
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "test_talker" );
+    guy.set_attitude( NPCATT_NULL );
+    REQUIRE( !guy.is_enemy() );
+    REQUIRE( !guy.guaranteed_hostile() );
+    REQUIRE( grapple::start_hold( you, guy, 20, body_part_torso.id() ) );
+    const tripoint_bub_ms target = guy.pos_bub() + tripoint( 3, 0, 0 );
+    const float force = grapple::throw_force_at( grapple::throw_force( you, guy ), 3 );
+    REQUIRE( grapple::throw_angers( you, guy, force ) );
+    REQUIRE( grapple::throw_held_creature( you, guy, target ) );
+    CHECK( released( you, guy ) );
+    // npc::on_attacked: angry, or too scared to fight back.
+    CHECK( guy.hit_by_player );
+    CHECK( ( guy.get_attitude() == NPCATT_KILL || guy.get_attitude() == NPCATT_FLEE_TEMP ) );
 }
