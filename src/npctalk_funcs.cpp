@@ -28,6 +28,7 @@
 #include "debug.h"
 #include "dialogue_chatbin.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -519,6 +520,8 @@ void talk_function::stop_guard( npc &p )
     p.set_attitude( NPCATT_FOLLOW );
     add_msg( _( "%s begins to follow you." ), p.get_name() );
     p.set_mission( NPC_MISSION_NULL );
+    // "Follow me" takes over from a walk it was sent on (NPC-B14)
+    errand::end_walk( p, errand::reason::cancelled );
     if( p.has_companion_mission() ) {
         p.reset_companion_mission();
     }
@@ -914,6 +917,7 @@ void talk_function::follow( npc &p )
     p.set_attitude( NPCATT_FOLLOW );
     p.set_fac( faction_your_followers );
     p.set_mission( NPC_MISSION_NULL );
+    errand::end_walk( p, errand::reason::cancelled );
     p.goal = npc::no_goal_point;
     p.guard_pos = std::nullopt;
     p.clear_ai_guard_pos();
@@ -929,6 +933,7 @@ void talk_function::follow_only( npc &p )
 {
     p.set_attitude( NPCATT_FOLLOW );
     p.set_mission( NPC_MISSION_NULL );
+    errand::end_walk( p, errand::reason::cancelled );
     p.goal = npc::no_goal_point;
     p.guard_pos = std::nullopt;
     p.clear_ai_guard_pos();

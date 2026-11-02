@@ -60,6 +60,7 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "explosion.h"
@@ -1357,13 +1358,14 @@ void game::chat( const std::optional<tripoint_bub_ms> &p )
                 return;
             }
 
+            // a follower that can't get there says so (NPC-B14)
             if( npcselect == follower_count ) {
                 for( npc *them : followers ) {
-                    them->goto_to_this_pos = here.get_abs( *p );
+                    errand::start_walk( *them, errand::move_order( here.get_abs( *p ) ) );
                 }
                 yell_msg = _( "Everyone move there!" );
             } else {
-                followers[npcselect]->goto_to_this_pos = here.get_abs( *p );
+                errand::start_walk( *followers[npcselect], errand::move_order( here.get_abs( *p ) ) );
                 yell_msg = string_format( _( "Move there, %s!" ), followers[npcselect]->get_name() );
             }
             break;

@@ -40,6 +40,7 @@
 #include "debug.h"
 #include "dialogue_chatbin.h"
 #include "enums.h"
+#include "errand.h"
 #include "faction.h"
 #include "field.h"
 #include "field_type.h"
@@ -1719,7 +1720,7 @@ TEST_CASE( "camp_meal_eater_answers_at_the_next_decision", "[npc][needs][camp][o
 
     WHEN( "it is told to go somewhere" ) {
         const tripoint_bub_ms order = mid + tripoint( -4, 0, 0 );
-        guy.goto_to_this_pos = here.get_abs( order );
+        errand::set_walk( guy, errand::move_order( here.get_abs( order ) ) );
         const tripoint_bub_ms before = guy.pos_bub();
         run_npc_turn( guy );
         THEN( "meal dropped at next decision, larder keeps it" ) {
@@ -5234,7 +5235,7 @@ TEST_CASE( "bt_idle_falls_through_to_cascade_goto", "[npc][behavior]" )
 
     // Player-ordered goto.
     const tripoint_abs_ms target = guy.pos_abs() + tripoint( 5, 0, 0 );
-    guy.goto_to_this_pos = target;
+    errand::set_walk( guy, errand::move_order( target ) );
 
     guy.set_moves( 100 );
     guy.move();
@@ -5676,11 +5677,11 @@ TEST_CASE( "goto_order_beats_generic_follow", "[npc][behavior]" )
     // Player west, goto target east -- opposite directions.
     get_player_character().setpos( here, tripoint_bub_ms( 40, 50, 0 ) );
     const tripoint_abs_ms goto_target = guy.pos_abs() + tripoint( 10, 0, 0 );
-    guy.goto_to_this_pos = goto_target;
+    errand::set_walk( guy, errand::move_order( goto_target ) );
 
     REQUIRE( rl_dist( guy.pos_abs(), get_player_character().pos_abs() )
              > guy.follow_distance() );
-    REQUIRE( guy.goto_to_this_pos.has_value() );
+    REQUIRE( guy.walk );
 
     const int initial_dist_goto = rl_dist( guy.pos_abs(), goto_target );
 

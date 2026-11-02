@@ -12,6 +12,7 @@
 #include "calendar.h"
 #include "character.h"
 #include "coordinates.h"
+#include "errand.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
@@ -505,11 +506,12 @@ float character_oracle_t::npc_embark_urgency( std::string_view ) const
 
 status_t character_oracle_t::npc_has_goto_order( std::string_view ) const
 {
+    // a walk: the follower "Move there!" order, or u_walk_to
     const npc *n = dynamic_cast<const npc *>( subject );
-    if( !n || !n->goto_to_this_pos || n->has_flag( json_flag_CANNOT_MOVE ) ) {
+    if( !n || !n->walk || n->has_flag( json_flag_CANNOT_MOVE ) ) {
         return status_t::failure;
     }
-    if( n->pos_abs() == *n->goto_to_this_pos ) {
+    if( errand::walk_arrived( *n, *n->walk ) ) {
         return status_t::success;
     }
     return status_t::running;
@@ -518,10 +520,7 @@ status_t character_oracle_t::npc_has_goto_order( std::string_view ) const
 float character_oracle_t::npc_goto_order_urgency( std::string_view ) const
 {
     const npc *n = dynamic_cast<const npc *>( subject );
-    if( !n || !n->goto_to_this_pos ) {
-        return 0.0f;
-    }
-    if( n->pos_abs() == *n->goto_to_this_pos ) {
+    if( !n || !n->walk || errand::walk_arrived( *n, *n->walk ) ) {
         return 0.0f;
     }
     // Player-directed order. Beats generic follow (capped at 0.6)

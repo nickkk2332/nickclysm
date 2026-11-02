@@ -25,6 +25,7 @@
 #include "clzones.h"
 #include "coordinates.h"
 #include "enums.h"
+#include "errand.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "iexamine.h"
@@ -214,7 +215,8 @@ TEST_CASE( "npc_obligations_judge_options", "[npc][needs][obligation]" )
             }
         }
         WHEN( "follower told to move somewhere" ) {
-            guy.goto_to_this_pos = get_map().get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+            const tripoint_abs_ms order_at = get_map().get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+            errand::set_walk( guy, errand::move_order( order_at ) );
             THEN( "any trip waits for an emergency" ) {
                 check_verdict( guy.judge_option( trip_to( leader_pos + tripoint( 3, 0, 0 ) ) ),
                                npc_permission::emergency_only, npc_obligation::goto_order );
@@ -337,7 +339,8 @@ TEST_CASE( "npc_need_view_keeps_raw_need", "[npc][needs][obligation]" )
         const int exhausted = static_cast<int>( sleepiness_levels::EXHAUSTED );
         CHECK( eligible_at( npc::need_goal_id::go_to_sleep, far_rest, exhausted ) );
         CHECK_FALSE( eligible_at( npc::need_goal_id::go_to_sleep, far_rest, exhausted - 1 ) );
-        guy.goto_to_this_pos = get_map().get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+        const tripoint_abs_ms order_at = get_map().get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+        errand::set_walk( guy, errand::move_order( order_at ) );
         const npc_option_cost near_trip = trip_to( leader_pos + tripoint( 3, 0, 0 ) );
         CHECK( eligible_at( npc::need_goal_id::drink_water, near_trip, 900 ) );
         CHECK_FALSE( eligible_at( npc::need_goal_id::drink_water, near_trip, 899 ) );
@@ -717,7 +720,7 @@ TEST_CASE( "committed_need_yields_to_goto_order", "[npc][needs][water][obligatio
     REQUIRE( guy.get_water_plan().active() );
 
     const tripoint_bub_ms order = leader_pos + tripoint( -3, 0, 0 );
-    guy.goto_to_this_pos = get_map().get_abs( order );
+    errand::set_walk( guy, errand::move_order( get_map().get_abs( order ) ) );
     run_npc_turns( guy, 20, [&order]( const npc & n ) {
         return n.pos_bub() == order;
     } );
@@ -809,7 +812,7 @@ TEST_CASE( "fight_ends_when_threat_is_gone", "[npc][needs][obligation]" )
         WHEN( "zombie gone, follower told to go somewhere" ) {
             clear_creatures();
             const tripoint_bub_ms order = leader_pos + tripoint( -3, 0, 0 );
-            guy.goto_to_this_pos = here.get_abs( order );
+            errand::set_walk( guy, errand::move_order( here.get_abs( order ) ) );
             here.build_map_cache( 0 );
             run_npc_turns( guy, 2, fight_over );
             THEN( "fight ends, it goes there" ) {
@@ -1224,7 +1227,7 @@ TEST_CASE( "harvesting_npc_answers_order_and_leader_departure", "[npc][needs][wa
 
     SECTION( "an order to move" ) {
         const tripoint_bub_ms order = leader_pos + tripoint( -3, 0, 0 );
-        guy.goto_to_this_pos = here.get_abs( order );
+        errand::set_walk( guy, errand::move_order( here.get_abs( order ) ) );
         run_npc_turn( guy );
         CHECK_FALSE( guy.activity.id() == ACT_HARVEST );
         CHECK_FALSE( guy.activity.id() == ACT_FORAGE );
@@ -1571,7 +1574,7 @@ TEST_CASE( "eating_or_sipping_npc_answers_at_the_next_decision", "[npc][needs][o
         REQUIRE( drank( guy ) );
         REQUIRE( guy.get_committed_goal() == "drink_water" );
         WHEN( "it is told to go somewhere" ) {
-            guy.goto_to_this_pos = here.get_abs( order );
+            errand::set_walk( guy, errand::move_order( here.get_abs( order ) ) );
             const tripoint_bub_ms before = guy.pos_bub();
             run_npc_turns( guy, 2 );
             THEN( "it leaves the stream within two turns" ) {
@@ -1594,7 +1597,7 @@ TEST_CASE( "eating_or_sipping_npc_answers_at_the_next_decision", "[npc][needs][o
         REQUIRE( guy.activity.id() == ACT_CONSUME );
         REQUIRE( guy.charges_of( itype_water_clean ) == 2 );
         WHEN( "it is told to go somewhere" ) {
-            guy.goto_to_this_pos = here.get_abs( order );
+            errand::set_walk( guy, errand::move_order( here.get_abs( order ) ) );
             const tripoint_bub_ms before = guy.pos_bub();
             run_npc_turn( guy );
             THEN( "drink dropped at next decision" ) {
@@ -1623,7 +1626,7 @@ TEST_CASE( "eating_or_sipping_npc_answers_at_the_next_decision", "[npc][needs][o
             return n.activity.id() == ACT_CONSUME;
         };
         WHEN( "it is told to go somewhere" ) {
-            guy.goto_to_this_pos = here.get_abs( order );
+            errand::set_walk( guy, errand::move_order( here.get_abs( order ) ) );
             const tripoint_bub_ms before = guy.pos_bub();
             run_npc_turn( guy );
             THEN( "meal dropped at next decision" ) {
@@ -1892,7 +1895,7 @@ TEST_CASE( "orders_end_self_care", "[npc][needs][obligation]" )
             }
         }
         WHEN( "it is told to go somewhere" ) {
-            guy.goto_to_this_pos = here.get_abs( leader_pos + tripoint( -4, 0, 0 ) );
+            errand::set_walk( guy, errand::move_order( here.get_abs( leader_pos + tripoint( -4, 0, 0 ) ) ) );
             run_npc_turn( guy );
             THEN( "it stops lighting the fire at next decision" ) {
                 CHECK( guy.activity.id() != ACT_START_FIRE );
@@ -2172,7 +2175,7 @@ TEST_CASE( "follower_eats_within_reach_and_keeps_following", "[npc][needs][food]
     SECTION( "meal from the pack waits while an order stands" ) {
         guy.worn.wear_item( guy, item( itype_backpack ), false, false );
         REQUIRE( guy.i_add( item( itype_orange ) ) );
-        guy.goto_to_this_pos = here.get_abs( leader_pos + tripoint( -4, 0, 0 ) );
+        errand::set_walk( guy, errand::move_order( here.get_abs( leader_pos + tripoint( -4, 0, 0 ) ) ) );
         here.build_map_cache( 0 );
         guy.set_moves( 100 );
         guy.execute_need_goal( "eat_food" );
@@ -2888,7 +2891,7 @@ TEST_CASE( "rest_cooldown_clears_when_its_inputs_change", "[npc][needs][sleep]" 
         CHECK_FALSE( guy.rest_cooldown_active() );
     }
     SECTION( "an order" ) {
-        guy.goto_to_this_pos = here.get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+        errand::set_walk( guy, errand::move_order( here.get_abs( leader_pos + tripoint( -3, 0, 0 ) ) ) );
         CHECK_FALSE( guy.rest_cooldown_active() );
     }
     SECTION( "NPC drifts one tile" ) {
@@ -3009,7 +3012,7 @@ TEST_CASE( "settling_npc_gets_up_for_new_interruptions", "[npc][needs][sleep]" )
         on_out_of_scope wake( wake_leader );
         npc &guy = tired_follower( leader_pos + tripoint( 2, 0, 0 ), 0 );
         make_settling( guy );
-        guy.goto_to_this_pos = here.get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+        errand::set_walk( guy, errand::move_order( here.get_abs( leader_pos + tripoint( -3, 0, 0 ) ) ) );
         run_npc_turn( guy );
         check_got_up( guy );
     }
@@ -3053,7 +3056,7 @@ TEST_CASE( "settling_npc_records_a_new_override", "[npc][needs][sleep][obligatio
     }
     SECTION( "an order to move while it is exhausted" ) {
         guy.set_sleepiness( 600 );
-        guy.goto_to_this_pos = here.get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+        errand::set_walk( guy, errand::move_order( here.get_abs( leader_pos + tripoint( -3, 0, 0 ) ) ) );
         run_npc_turn( guy );
         CHECK( guy.has_effect( effect_lying_down ) );
         CHECK( guy.get_intention().verdict.permission == npc_permission::emergency_only );
@@ -3650,7 +3653,7 @@ TEST_CASE( "follower_fetches_only_items_within_its_follow_reach", "[npc][behavio
         WHEN( "ordered to move while it drinks" ) {
             run_npc_turns( guy, 30, drinking );
             REQUIRE( drinking( guy ) );
-            guy.goto_to_this_pos = here.get_abs( leader_pos + tripoint( -3, 0, 0 ) );
+            errand::set_walk( guy, errand::move_order( here.get_abs( leader_pos + tripoint( -3, 0, 0 ) ) ) );
             run_npc_turn( guy );
             THEN( "stops and drops the fetch, nothing spilled" ) {
                 CHECK_FALSE( drinking( guy ) );

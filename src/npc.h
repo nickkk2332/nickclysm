@@ -1369,6 +1369,8 @@ class npc : public Character
                       std::set<tripoint_bub_ms> *nomove = nullptr );
         // Next in <path>
         void move_to_next();
+        // one step of the walk it's on (Character::walk): the goal goto_ordered_position
+        void step_walk();
         // Maneuver so we won't shoot u
         void avoid_friendly_fire();
         void escape_explosion();
@@ -1781,8 +1783,6 @@ class npc : public Character
 
         // Where we last saw the player
         std::optional<tripoint_abs_ms> last_player_seen_pos;
-        // Player orders a friendly NPC to move to this position
-        std::optional<tripoint_abs_ms> goto_to_this_pos;
         int last_seen_player_turn = 0; // Timeout to forgetting
 
         //Safe reference to an item at a specific location in case it gets deleted before pickup

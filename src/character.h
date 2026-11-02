@@ -9,6 +9,7 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <set>
@@ -124,6 +125,7 @@ struct tool_comp;
 struct trait_and_var;
 struct trap;
 struct w_point;
+struct walk_order;
 template <typename E> struct enum_traits;
 enum class technique_rejection : int;
 
@@ -2969,6 +2971,9 @@ class Character : public Creature, public visitable
         player_activity activity;
         std::list<player_activity> backlog;
         std::optional<tripoint_abs_ms> destination_point;
+        // the walk this character is on, kept across turns and saved: u_walk_to, a follower's
+        // "Move there!" order, u_pickup_item with "walk" (errand.h); null when there's none
+        std::unique_ptr<walk_order> walk;
         itype_id last_item;
     private:
         item weapon;
