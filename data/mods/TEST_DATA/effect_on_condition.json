@@ -234,5 +234,46 @@
         "else": { "math": [ "eoc_compare_string_match_all_test_5++" ] }
       }
     ]
+  },
+  {
+    "//": "MUT-J03: switch a bionic on from an EOC.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTJ03_ACTIVATE",
+    "effect": [
+      {
+        "u_activate_bionic": "test_bio_mutj03_toggle",
+        "true_eocs": [ { "id": "EOC_TEST_MUTJ03_ACTIVATE_TRUE", "effect": [ { "math": [ "u_mutj03_on_true += 1" ] } ] } ],
+        "false_eocs": [ { "id": "EOC_TEST_MUTJ03_ACTIVATE_FALSE", "effect": [ { "math": [ "u_mutj03_on_false += 1" ] } ] } ]
+      }
+    ]
+  },
+  {
+    "//": "MUT-J03: switch the bionic named by u_mutj03_target off from an EOC.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTJ03_DEACTIVATE",
+    "effect": [
+      {
+        "u_deactivate_bionic": { "u_val": "mutj03_target" },
+        "true_eocs": [ { "id": "EOC_TEST_MUTJ03_DEACTIVATE_TRUE", "effect": [ { "math": [ "u_mutj03_off_true += 1" ] } ] } ],
+        "false_eocs": [ { "id": "EOC_TEST_MUTJ03_DEACTIVATE_FALSE", "effect": [ { "math": [ "u_mutj03_off_false += 1" ] } ] } ]
+      }
+    ]
+  },
+  {
+    "//": "MUT-J03: read a bionic's powered state.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTJ03_CHECK",
+    "effect": [
+      {
+        "if": { "u_has_active_bionic": "test_bio_mutj03_toggle" },
+        "then": { "math": [ "u_mutj03_seen_active = 1" ] },
+        "else": { "math": [ "u_mutj03_seen_active = 0" ] }
+      },
+      {
+        "if": { "u_has_active_bionic": "ANY" },
+        "then": { "math": [ "u_mutj03_seen_any = 1" ] },
+        "else": { "math": [ "u_mutj03_seen_any = 0" ] }
+      }
+    ]
   }
 ]

@@ -20,6 +20,7 @@
 
 #include "avatar.h"
 #include "basecamp.h"
+#include "bionics.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "character.h"
@@ -887,6 +888,31 @@ conditional_t::func f_has_bionics( const JsonObject &jo, std::string_view member
             return actor->num_bionics() > 0 || actor->has_max_power();
         }
         return actor->has_bionic( bionic_id( bionics_id.evaluate( d ) ) );
+    };
+}
+
+conditional_t::func f_has_active_bionic( const JsonObject &jo, std::string_view member,
+        bool is_npc )
+{
+    str_or_var bionic_name = get_str_or_var( jo.get_member( member ), member, true );
+    return [bionic_name, is_npc]( const_dialogue const & d ) {
+        const Character *guy = d.const_actor( is_npc )->get_const_character();
+        if( guy == nullptr ) {
+            return false;
+        }
+        const std::string name = bionic_name.evaluate( d );
+        if( name == "ANY" ) {
+            return std::any_of( guy->my_bionics->begin(), guy->my_bionics->end(),
+            []( const bionic & bio ) {
+                return bio.powered;
+            } );
+        }
+        const bionic_id bio_id( name );
+        if( !bio_id.is_valid() ) {
+            debugmsg( "has_active_bionic: unknown bionic id \"%s\"", name );
+            return false;
+        }
+        return guy->has_active_bionic( bio_id );
     };
 }
 
@@ -2684,6 +2710,7 @@ parsers = {
     {"u_has_item_category", "npc_has_item_category", jarg::member, &conditional_fun::f_has_item_category },
     {"u_has_software", "npc_has_software", jarg::member, &conditional_fun::f_has_software },
     {"u_has_bionics", "npc_has_bionics", jarg::member, &conditional_fun::f_has_bionics },
+    {"u_has_active_bionic", "npc_has_active_bionic", jarg::member, &conditional_fun::f_has_active_bionic },
     {"u_has_any_effect", "npc_has_any_effect", jarg::array, &conditional_fun::f_has_any_effect },
     {"u_has_effect", "npc_has_effect", jarg::member, &conditional_fun::f_has_effect },
     {"u_has_any_wound", "npc_has_any_wound", jarg::array, &conditional_fun::f_has_any_wound },

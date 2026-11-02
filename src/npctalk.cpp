@@ -3720,6 +3720,47 @@ talk_effect_fun_t::func f_lose_bionic( const JsonObject &jo, std::string_view me
     };
 }
 
+// u_activate_bionic / u_deactivate_bionic: switch the first installed bionic of that id that
+// is in the other state, through the same code path as the bionics menu.
+static talk_effect_fun_t::func toggle_bionic_effect( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc, bool activate )
+{
+    str_or_var bionic_name = get_str_or_var( jo.get_member( member ), member, true );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, activate, bionic_name, true_eocs, false_eocs]( dialogue & d ) {
+        const std::string name = bionic_name.evaluate( d );
+        const bionic_id bio_id( name );
+        if( !bio_id.is_valid() ) {
+            debugmsg( "%s: unknown bionic id \"%s\"",
+                      activate ? "activate_bionic" : "deactivate_bionic", name );
+            return;
+        }
+        bool success = false;
+        if( Character *guy = d.actor( is_npc )->get_character() ) {
+            for( bionic &bio : *guy->my_bionics ) {
+                if( bio.id == bio_id && bio.powered != activate ) {
+                    success = activate ? guy->activate_bionic( bio ) : guy->deactivate_bionic( bio );
+                    break;
+                }
+            }
+        }
+        run_eoc_vector( success ? true_eocs : false_eocs, d );
+    };
+}
+
+talk_effect_fun_t::func f_activate_bionic( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    return toggle_bionic_effect( jo, member, src, is_npc, true );
+}
+
+talk_effect_fun_t::func f_deactivate_bionic( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    return toggle_bionic_effect( jo, member, src, is_npc, false );
+}
+
 talk_effect_fun_t::func f_pick_bodypart( const JsonObject &jo, std::string_view member,
         std::string_view, bool is_npc )
 {
@@ -8961,6 +9002,8 @@ parsers = {
     { "u_add_memorial", "npc_add_memorial", jarg::member, &talk_effect_fun::f_add_memorial },
     { "u_add_bionic", "npc_add_bionic", jarg::member, &talk_effect_fun::f_add_bionic },
     { "u_lose_bionic", "npc_lose_bionic", jarg::member, &talk_effect_fun::f_lose_bionic },
+    { "u_activate_bionic", "npc_activate_bionic", jarg::member, &talk_effect_fun::f_activate_bionic },
+    { "u_deactivate_bionic", "npc_deactivate_bionic", jarg::member, &talk_effect_fun::f_deactivate_bionic },
     { "u_attack", "npc_attack", jarg::member, &talk_effect_fun::f_attack },
     { "u_die", "npc_die", jarg::object, &talk_effect_fun::f_die_advanced},
     { "u_spawn_monster", "npc_spawn_monster", jarg::member, &talk_effect_fun::f_spawn_monster },

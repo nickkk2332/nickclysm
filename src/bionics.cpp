@@ -718,13 +718,19 @@ void npc::check_or_use_weapon_cbm( const bionic_id &cbm_id )
             if( is_armed() ) {
                 stow_item( *weapon );
             }
-            add_msg_if_player_sees( pos_bub(), m_info, _( "%s activates their %s." ),
-                                    disp_name(), bio.info().name );
-
-            set_wielded_item( cbm_weapon );
-            mod_power_level( -bio.info().power_activate );
-            bio.powered = true;
-            weapon_bionic_uid = bio.get_uid();
+            if( is_armed() ) {
+                // Couldn't free the hands, and activate_bionic() would ask the player what to
+                // do with the NPC's weapon.
+                return;
+            }
+            // The normal activation: power, activation_condition, enchantments and
+            // activated_eocs, like a player's activation.  Those EOCs may add or remove
+            // bionics, so don't use `bio` afterwards.
+            const bionic_id activated = bio.id;
+            if( activate_bionic( bio ) ) {
+                add_msg_if_player_sees( pos_bub(), m_info, _( "%s activates their %s." ),
+                                        disp_name(), activated->name );
+            }
         }
     }
 }
@@ -1245,6 +1251,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
     const bionic_id activated_id = bio.id;
     for( const effect_on_condition_id &eoc : activated_id->activated_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
+        d.set_value( "this", activated_id.str() );
         write_var_value( var_type::context, "act_cost", &d,
                          units::to_millijoule( activated_id->power_activate ) );
         eoc->activate_activation_only( d, "a bionic activation", "bionic being activated", "bionic" );
@@ -1307,6 +1314,7 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only )
 
     for( const effect_on_condition_id &eoc : bio.id->deactivated_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
+        d.set_value( "this", bio.id.str() );
         eoc->activate_activation_only( d, "a bionic deactivation", "bionic being activated", "bionic" );
     }
 
@@ -1639,6 +1647,16 @@ void Character::process_bionic( bionic &bio )
 
     // Only powered bionics should be processed
     if( !bio.powered ) {
+        // ...but a passive bionic, one that can't be switched on, runs its processed_eocs
+        // every turn it is installed, like a passive mutation.
+        if( !bio.info().activated ) {
+            const bionic_id passive_id = bio.id;
+            for( const effect_on_condition_id &eoc : passive_id->processed_eocs ) {
+                dialogue d( get_talker_for( *this ), nullptr );
+                d.set_value( "this", passive_id.str() );
+                eoc->activate_activation_only( d, "a bionic process", "bionic being activated", "bionic" );
+            }
+        }
         return;
     }
 
@@ -1692,6 +1710,7 @@ void Character::process_bionic( bionic &bio )
 
     for( const effect_on_condition_id &eoc : bio.id->processed_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
+        d.set_value( "this", bio.id.str() );
         eoc->activate_activation_only( d, "a bionic process", "bionic being activated", "bionic" );
     }
 

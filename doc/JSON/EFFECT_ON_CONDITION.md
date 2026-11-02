@@ -82,9 +82,9 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | construction: "do_turn_eocs"                     | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile being built on
 | construction: "post_eocs"                        | builder (Character)         | NONE                        | `construction`, string, construction id; `pos`, location variable, the tile that was built on
 | addiction_type: "effect_on_condition"            | character (Character)       | NONE                        |
-| bionics: "activated_eocs"                        | character (Character)       | NONE                        | `act_cost`, int, cost of activation of item
-| bionics: "deactivated_eocs"                      | character (Character)       | NONE                        |
-| bionics: "processed_eocs"                        | character (Character)       | NONE                        |
+| bionics: "activated_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id; `act_cost`, int, cost of activation of item
+| bionics: "deactivated_eocs"                      | character (Character)       | NONE                        | `this`, string, the bionic id
+| bionics: "processed_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id
 | mutation: "activated_eocs"                       | character (Character)       | NONE                        |
 | mutation: "deactivated_eocs"                     | character (Character)       | NONE                        |
 | mutation: "processed_eocs"                       | character (Character)       | NONE                        |
@@ -888,6 +888,27 @@ check do you have `bio_synlungs`
 check do you have any bionic presented
 ```jsonc
 { "u_has_bionics": "ANY" }
+```
+
+### `u_has_active_bionic`, `npc_has_active_bionic`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker has the bionic installed and switched on (powered); `ANY` returns true if any installed bionic is on.  An unknown bionic id is reported as an error.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+check that your Hydraulic Muscles are on
+```jsonc
+{ "u_has_active_bionic": "bio_hydraulics" }
+```
+
+in a shared bionic EOC, check the bionic that runs it
+```jsonc
+{ "u_has_active_bionic": { "context_val": "this" } }
 ```
 
 ### `u_has_effect`, `npc_has_effect`, `u_has_any_effect`, `npc_has_any_effect`
@@ -2002,6 +2023,9 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | mutation: "deactivated_eocs" | { "this", `mutation_id` } |
 | mutation: "activation_condition" | { "this", `mutation_id` } |
 | bionics: "activation_condition" | { "this", `bionic_id` } |
+| bionics: "activated_eocs" | { "this", `bionic_id` }, { "act_cost", `int` activation cost in mJ } |
+| bionics: "processed_eocs" | { "this", `bionic_id` } |
+| bionics: "deactivated_eocs" | { "this", `bionic_id` } |
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
 | furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
 
@@ -3677,6 +3701,35 @@ Uninstall 1 `bio_power_storage` from your character:
 Uninstall 1 bionic, delivered from `bionic_id` context value, onto your character:
 ```jsonc
 { "u_lose_bionic": { "context_val": "bionic_id" } }
+```
+
+#### `u_activate_bionic`, `npc_activate_bionic`, `u_deactivate_bionic`, `npc_deactivate_bionic`
+Switch an installed bionic on or off.  This goes through the same code as the bionics menu: activating pays `act_cost`, checks power, fuel and the bionic's `activation_condition`, and runs its `activated_eocs`; deactivating pays `deact_cost`, refuses bionics that can't be switched off manually, and runs its `deactivated_eocs`.  Bionics with an interactive activation (lighter, EMP, lockpick, gun CBMs) still ask the player for a target.  If several copies are installed, the first one in the other state is switched.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_activate_bionic" / "npc_activate_bionic" / "u_deactivate_bionic" / "npc_deactivate_bionic" | **mandatory** | string or [variable object](#variable-object) | id of the bionic to switch; an unknown id is reported as an error |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when the bionic was switched |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when nothing was switched: the bionic isn't installed, is already in that state, or the (de)activation was refused |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Switch your flashlight CBM on, and tell the player if it could not be:
+```jsonc
+{
+  "u_activate_bionic": "bio_flashlight",
+  "false_eocs": [ { "id": "EOC_FLASHLIGHT_FAILED", "effect": { "u_message": "Your flashlight CBM doesn't respond." } } ]
+}
+```
+
+A shared `deactivated_eocs` entry that also switches off a companion bionic:
+```jsonc
+{ "u_deactivate_bionic": "bio_hydraulics" }
 ```
 
 

@@ -374,6 +374,55 @@
     "//2": "not actually included, this is a trick to not have to add an item version."
   },
   {
+    "//": "MUT-J03 fixture: a toggled bionic whose EOCs record the `this` they get.",
+    "id": "test_bio_mutj03_toggle",
+    "type": "bionic",
+    "name": { "str": "Toggle Test Bionic" },
+    "description": "Test bionic recording its EOC context.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "flags": [ "BIONIC_TOGGLED" ],
+    "act_cost": "1 kJ",
+    "activated_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_TOGGLE_ON",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_activated_this" } } ]
+      }
+    ],
+    "processed_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_TOGGLE_TICK",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_processed_this" } } ]
+      }
+    ],
+    "deactivated_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_TOGGLE_OFF",
+        "effect": [ { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_deactivated_this" } } ]
+      }
+    ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-J03 fixture: a passive bionic (it can't be switched on) with processed_eocs.",
+    "id": "test_bio_mutj03_passive",
+    "type": "bionic",
+    "name": { "str": "Passive Test Bionic" },
+    "description": "Test passive bionic counting its processing.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "processed_eocs": [
+      {
+        "id": "EOC_TEST_MUTJ03_PASSIVE_TICK",
+        "effect": [
+          { "math": [ "u_mutj03_passive_ticks += 1" ] },
+          { "set_string_var": { "context_val": "this" }, "target_var": { "u_val": "mutj03_passive_this" } }
+        ]
+      }
+    ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
     "//": "Craft reservation fixture: a weapon reachable directly and, once powered, as an exposed pseudo item.  One occurrence either way.",
     "id": "test_bio_reserve_weapon",
     "type": "bionic",
