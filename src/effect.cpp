@@ -81,6 +81,9 @@ std::map<efftype_id, uint64_t> effect_type_load_numbers;
 uint64_t next_effect_type_load_number = 0;
 // Set while a deferred definition is replayed: the load number it was first read with.
 std::optional<uint64_t> replayed_load_number;
+// How many inline enchantments each effect id has named so far, across all its definitions, so
+// that an "extend" after a "delete" cannot reuse the name of one the effect still has.
+std::map<std::string, int> inline_enchantment_counts;
 } // namespace
 
 void vitamin_rate_effect::load( const JsonObject &jo )
@@ -1611,11 +1614,18 @@ static void load_effect_types_waiting_for( const std::string &parent )
         it = next;
     }
     for( deferred_effect_type &waiting : ready ) {
+        // The stored copy forgot that DynamicDataLoader read "type"; load_effect_type doesn't.
+        if( waiting.jo.has_member( "type" ) ) {
+            waiting.jo.get_member( "type" );
+        }
         replayed_load_number = waiting.load_number;
+        // An error belongs to the waiting definition, not to the parent that just loaded.
         try {
             load_effect_type( waiting.jo, waiting.src );
         } catch( const JsonError &err ) {
             debugmsg( "(json-error)\n%s", err.what() );
+        } catch( const mod_error &err ) {
+            debugmsg( "%s", err.what() );
         }
     }
 }
@@ -1765,7 +1775,8 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "max_effective_intensity", new_etype.max_effective_intensity, 0 );
 
-    // A stat named in base_mods or scaling_mods replaces the parent's values for that stat.
+    // Naming any key of a stat (pain_min, pain_chance, ...) in base_mods or scaling_mods
+    // replaces all of the parent's values for that stat.
     no_inheritance_ops( "base_mods" );
     no_inheritance_ops( "scaling_mods" );
     new_etype.load_mod_data( jo );
@@ -1774,11 +1785,11 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "flags", new_etype.flags, string_id_reader<json_flag> {} );
 
-    // Inline enchantments are named after the effect and their position in the list.
+    // Inline enchantments are named after the effect and numbered in load order.
     const auto load_enchantments = [&]( const JsonArray & ja ) {
         for( const JsonValue jv : ja ) {
             std::string enchant_name = "INLINE_ENCH_" + id + "_" +
-                                       std::to_string( new_etype.enchantments.size() );
+                                       std::to_string( inline_enchantment_counts[id]++ );
             new_etype.enchantments.push_back(
                 enchantment::load_inline_enchantment( jv, src, enchant_name ) );
         }
@@ -1884,6 +1895,7 @@ void reset_effect_types()
     effect_type_load_numbers.clear();
     next_effect_type_load_number = 0;
     replayed_load_number.reset();
+    inline_enchantment_counts.clear();
 }
 
 const std::map<efftype_id, effect_type> &get_effect_types()

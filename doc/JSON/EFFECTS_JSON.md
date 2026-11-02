@@ -139,9 +139,9 @@ An effect type can copy another one (or an `"abstract"` one, which nothing can a
 ```
 
 * Every field that the child leaves out keeps the parent's value.  A field the child gives replaces the parent's value.
-* `extend` and `delete` work on `flags`, `immune_flags`, `immune_bp_flags`, `resist_traits`, `resist_effects`, `removes_effects`, `blocks_effects` and `enchantments` (`delete` takes enchantment ids; inline enchantments are named `INLINE_ENCH_<effect id>_<index>`).
+* `extend` and `delete` work on `flags`, `immune_flags`, `immune_bp_flags`, `resist_traits`, `resist_effects`, `removes_effects`, `blocks_effects` and `enchantments` (`delete` takes enchantment ids; an inline enchantment is named `INLINE_ENCH_<effect id>_<n>`, where `n` counts that id's inline enchantments in load order across all its definitions, so one definition's are `_0`, `_1`, ...).
 * Numeric fields (`max_intensity`, `int_add_val`, `int_decay_step`, `dur_add_perc`, `max_duration`, ...) support `relative` and `proportional`.
-* `base_mods` and `scaling_mods` replace the parent's values only for the stats they name (`"str_mod"` replaces the parent's `str_mod` and its scaling).
+* `base_mods` and `scaling_mods` replace the parent's values one group at a time.  Each stat's keys form a group (`str_mod` alone; `pain_amount`, `pain_min`, `pain_max`, `pain_max_val`, `pain_chance`, `pain_chance_bot` and `pain_tick`; the `hurt_*` keys; the `sleep_*` keys; and so on).  Naming any key of a group, in either object, replaces the parent's whole group, base and scaling values alike: a child that only sets `pain_chance` loses the parent's `pain_min`, `pain_max` and the rest, so restate the ones to keep.  Groups the child doesn't name keep the parent's values.
 * `apply_message` replaces the parent's apply messages; a `rating` alone re-rates them.  `reduced_desc` keeps following `desc` unless the parent or the child sets it.
 * `int_dur_factor`, `miss_messages`, `decay_messages`, `apply_message`, `rating`, `reduced_desc`, `base_mods` and `scaling_mods` can only be replaced; using `relative`, `proportional`, `extend` or `delete` on them is a load error.
 * The parent may be defined later than the child: the child loads as soon as the parent does.  A parent that is never defined is reported when the game checks its data.

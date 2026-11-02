@@ -29,6 +29,8 @@ static const efftype_id effect_audit_effect_child( "audit_effect_child" );
 static const efftype_id effect_audit_effect_from_abstract( "audit_effect_from_abstract" );
 static const efftype_id effect_audit_effect_late_child( "audit_effect_late_child" );
 static const efftype_id effect_audit_rt_duplicate( "audit_rt_duplicate" );
+static const efftype_id effect_audit_rt_ench( "audit_rt_ench" );
+static const efftype_id effect_audit_rt_late_child( "audit_rt_late_child" );
 static const efftype_id
 effect_effect_portal_storm_dungeon_time_tracker( "effect_portal_storm_dungeon_time_tracker" );
 static const efftype_id effect_took_antihistamine( "took_antihistamine" );
@@ -62,6 +64,16 @@ static units::length default_item_length( const units::volume &volume )
     const units::length length = units::default_length_from_volume( volume ) * M_SQRT2;
     return length;
 }
+
+namespace
+{
+// Exposes the loader every data file goes through.
+class audit_data_loader : public DynamicDataLoader
+{
+    public:
+        using DynamicDataLoader::load_object;
+};
+} // namespace
 
 // Item_factory::finalize_pre appends a MIGRATION pocket to every item after its JSON pockets.
 static bool ends_with_migration_pocket( const std::vector<pocket_data> &pockets )
@@ -171,7 +183,8 @@ TEST_CASE( "hlth-j02_effect_types_support_copy_from", "[audit][effect]" )
                std::vector<efftype_id> { effect_took_flumed, effect_took_antihistamine } );
         CHECK( base.get_removes_effects() ==
                std::vector<efftype_id> { effect_took_flumed, effect_took_antihistamine } );
-        CHECK( child.get_removes_effects() == std::vector<efftype_id> { effect_took_antihistamine } );
+        CHECK( child.get_removes_effects() ==
+               std::vector<efftype_id> { effect_took_antihistamine } );
         CHECK( base_type.immune_flags.size() == 1 );
         CHECK( child_type.immune_flags.count( json_flag_AUDIT_IMMUNE_A ) == 1 );
         CHECK( child_type.immune_flags.count( json_flag_AUDIT_IMMUNE_B ) == 1 );
@@ -196,12 +209,59 @@ TEST_CASE( "hlth-j02_effect_types_support_copy_from", "[audit][effect]" )
 }
 
 // HLTH-J02: effects.json defined the portal storm dungeon tracker twice; the second one, which
-// silently won, had no max_intensity, so the tracker could never pass intensity 1.
+// silently won, had no max_intensity, so the tracker could never pass intensity 1.  It must also
+// rise once per EOC_PORTAL_STORM_DUNGEON_CRAWLING_TRACKER check (every 120 turns), or the
+// check skips values and some of its switch cases never match.
 TEST_CASE( "hlth-j02_portal_storm_tracker_keeps_its_intensity_cap", "[audit][effect]" )
 {
     const effect tracker( &effect_effect_portal_storm_dungeon_time_tracker.obj() );
     CHECK( tracker.get_max_intensity() == 250000 );
-    CHECK( tracker.get_int_decay_tick() == 60 );
+    CHECK( tracker.get_int_decay_tick() == 120 );
+}
+
+// HLTH-J02: a child whose parent loads later was replayed from a copy of its JSON object, which
+// had forgotten that the data loader read "type", so every replay logged "Unread data".
+TEST_CASE( "hlth-j02_waiting_child_loads_without_errors", "[audit][effect]" )
+{
+    audit_data_loader loader;
+    const std::string msg = capture_debugmsg_during( [&]() {
+        loader.load_object( json_loader::from_string( R"({ "type": "effect_type",
+            "id": "audit_rt_late_child", "copy-from": "audit_rt_late_parent",
+            "max_intensity": 2 })" ), "audit_mod_a" );
+        loader.load_object( json_loader::from_string(
+                                R"({ "type": "effect_type", "id": "audit_rt_late_parent" })" ),
+                            "audit_mod_a" );
+    } );
+    CHECK( msg.empty() );
+    REQUIRE( effect_audit_rt_late_child.is_valid() );
+    const effect late_child( &effect_audit_rt_late_child.obj() );
+    CHECK( late_child.get_max_intensity() == 2 );
+}
+
+// HLTH-J02: extended inline enchantments were named after the list's size, so an "extend" after
+// a "delete" reused the name of an enchantment the effect still had and overwrote it.
+TEST_CASE( "hlth-j02_extended_inline_enchantments_get_unused_names", "[audit][effect]" )
+{
+    const std::string ench = R"({ "values": [ { "value": "SPEED", "add": %d } ] })";
+    const JsonObject first = json_loader::from_string( string_format(
+                                 R"({ "id": "audit_rt_ench", "enchantments": [ %s, %s ] })",
+                                 string_format( ench, -1 ), string_format( ench, -2 ) ) );
+    load_effect_type( first, "audit_mod_a" );
+    REQUIRE( effect_audit_rt_ench->enchantments.size() == 2 );
+    const enchantment_id doomed = effect_audit_rt_ench->enchantments[0];
+    const enchantment_id kept = effect_audit_rt_ench->enchantments[1];
+    const JsonObject trimmed = json_loader::from_string( string_format(
+                                   R"({ "id": "audit_rt_ench", "copy-from": "audit_rt_ench",
+            "delete": { "enchantments": [ "%s" ] } })", doomed.str() ) );
+    load_effect_type( trimmed, "audit_mod_b" );
+    const JsonObject extended = json_loader::from_string( string_format(
+                                    R"({ "id": "audit_rt_ench", "copy-from": "audit_rt_ench",
+            "extend": { "enchantments": [ %s ] } })", string_format( ench, -3 ) ) );
+    load_effect_type( extended, "audit_mod_c" );
+    const std::vector<enchantment_id> &enchantments = effect_audit_rt_ench->enchantments;
+    REQUIRE( enchantments.size() == 2 );
+    CHECK( enchantments[0] == kept );
+    CHECK( enchantments[1] != kept );
 }
 
 // HLTH-J02: an unknown top-level "rating" threw std::bad_optional_access instead of a JSON
@@ -254,16 +314,6 @@ TEST_CASE( "npc-j02_npc_and_faction_copy_from", "[audit][npc]" )
         CHECK( child->currency == itype_FMCNote );
     }
 }
-
-namespace
-{
-// Exposes the loader every data file goes through.
-class audit_data_loader : public DynamicDataLoader
-{
-    public:
-        using DynamicDataLoader::load_object;
-};
-} // namespace
 
 // NPC-J02: a mod redefining an npc template was ignored (std::map::emplace kept the first),
 // and a redefined faction was half applied: faction_manager refreshed it from the first
