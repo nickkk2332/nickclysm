@@ -362,7 +362,7 @@ Modding features:
 
 | ID | Status | Commits | Regression test |
 |---|---|---|---|
-| ACT-J02 | partial | `06f6c4a4` | `tests/audit_activities_crafting_test.cpp`. Still open: activities that need an item or a target (reading a specific book, for example) |
+| ACT-J02 | partial | `06f6c4a4`, `13973129` | `tests/audit_activities_crafting_test.cpp`, `tests/eoc_errands_activity_test.cpp`. Activities with a target: reading, butchery, disassembly, crafting, wearing, unloading and reloading. Still open: the other activities that need a target |
 | ACT-J03 | partial | `2d596bc0`, `b53594ec` | `tests/audit_activities_crafting_test.cpp`. Still open: an "outcome" field on the event, and a context object on `u_assign_activity` |
 | CRAFT-J02 | partial | `e7222c8a` | `tests/audit_activities_crafting_test.cpp`. Still open: recipe start and fail hooks, and events for crafting, disassembly and recipe learning |
 | TERR-J01 | partial | `33e6f99a`, `f93e4745` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: moving the hardcoded vanilla `post_special` functions to JSON |

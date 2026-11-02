@@ -65,6 +65,12 @@ The NPC walks to a tile on the local map over the following turns, using its own
 
 - **Which activities first.** Each activity actor takes its targets differently, so they are ported one at a time. Proposed first set: read, butcher and disassemble, craft at a workbench, wear, unload and reload. The rest are refused with a load error that names the activity.
 
+**Built (errands-ui batch).** As proposed, with these settled:
+- `target_item` names the other talker, which must be an item (`"npc"` for `u_assign_activity`, `"u"` for `npc_assign_activity`). The proposal's `npc_assign_activity` with `"target_item": "npc"` is written `u_assign_activity` in an item EOC (`u_run_inv_eocs`, `u_map_run_item_eocs`), where the character is `u`.
+- First set: `ACT_READ` (reads once), `ACT_BUTCHER` with `butcher_type` (and the typed `ACT_BUTCHER_FULL`, `ACT_BLEED`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT`), `ACT_DISASSEMBLE`, `ACT_CRAFT` (`recipe` with an optional `target_loc`, or `target_item` for a craft in progress), `ACT_WEAR`, `ACT_UNLOAD`, `ACT_RELOAD`.
+- `true_eocs` run when the activity starts; `false_eocs` when it can't, with the reason in the context value `reason`. Nothing asks the player, for the avatar either.
+- The item must be carried, or on the talker's tile or next to it. A craft uses the components an NPC would pick; rotten ones may be used, favorited ones aren't.
+
 ## D. `u_examine` / `npc_examine`
 
 The character operates a tile as if it examined it.
@@ -76,6 +82,12 @@ The character operates a tile as if it examined it.
 - **The catch.** Most built-in examine actions are written for the avatar, with menus and prompts; `iexamine.cpp` has about 460 messages, menus and prompts.
 - **Scope.** The proposal allows furniture and terrain whose examine action is an EOC (`"examine_action": { "type": "effect_on_condition" }`), plus a list of built-in actions known to be safe without a menu: doors and gates, switches and controls with no prompt, and sitting or lying down. Anything else is refused with a reason, rather than letting an NPC trigger a player menu.
 - **Open question.** Should examine actions get an NPC-aware variant over time, starting with the most useful ones (crafting stations, vending, terminals)?
+
+**Built (errands-ui batch).** The target is a location variable, or the other talker's tile (`"npc"`); it must be the talker's tile or next to it. `true_eocs`, and `false_eocs` with the context value `reason`.
+- Doors, gates and hatches (anything with an `open` or `close` transform) open or close, for the avatar too.
+- The avatar gets the normal examine, without picking items up and without a creature's menu (`game::examine` is private, so its steps are followed).
+- An NPC may use EOC examine actions and these built-in ones, each read to check that it asks an NPC nothing: `controls_gate` (the NPC skips the confirmation), `harvest_furn`, `harvest_furn_nectar`, `harvest_ter`, `harvest_ter_nectar`, `harvest_plant_ex`, `harvested_plant`, `clear_overgrown`, `open_safe`. Anything else is refused. Switches (`fswitch`) ask a question and were left out; sitting and lying down are not examine actions.
+- The open question stays open.
 
 ## E. Small conditions to go with A–D
 
@@ -98,6 +110,8 @@ A scrollable window with a title, text (with dialogue tags and snippets), and op
 - **Who sees it.** The avatar only. For an NPC it does nothing and runs `false_eocs`.
 - **Tests.** In tests it answers through a test hook, as the technique menu does.
 
+**Built (errands-ui batch).** As proposed, except that a button's EOCs are in `"eocs"`, not `"effect"`, since `effect` elsewhere means inline effects. `"snippet": true` takes the text from a snippet category; `"hide_failing"` hides buttons whose condition fails instead of greying them out. The test hook is `eoc_ui::show_text_test_answer`.
+
 ## G. Checklist menu: `run_eoc_checklist`
 
 A multi-select menu: each option can be ticked, confirming runs the EOCs of the ticked options (or sets one variable per option), and cancelling runs nothing. `run_eoc_selector` already picks one option; this picks several.
@@ -109,6 +123,8 @@ A multi-select menu: each option can be ticked, confirming runs the EOCs of the 
 ```
 
 - **Parity.** It takes the same `hide_failing` and `variables` options as `run_eoc_selector`.
+
+**Built (errands-ui batch).** As proposed, with `descriptions` and `keys` too. `variables` pass context values to the ticked options' EOCs, as in `run_eoc_selector`; setting one variable per option instead of running EOCs was not built. It shows only when `u` is the avatar, and runs `false_eocs` otherwise. A wrong array size or `min`/`max` out of range is a load error. The test hook is `eoc_ui::checklist_test_answer`.
 
 ## H. NPC behavior tree goals from JSON (NPC-J03): decided, after A–G
 
