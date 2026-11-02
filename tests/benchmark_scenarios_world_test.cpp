@@ -31,6 +31,9 @@
 #include "item_location.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "omdata.h"
+#include "overmap.h"
+#include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "pocket_type.h"
@@ -192,6 +195,13 @@ time_point freezing_day()
     return calendar::before_time_starts;
 }
 
+// The middle of the avatar's overmap, so searches up to about 80 tiles away stay on it.
+tripoint_abs_omt overmap_middle()
+{
+    const point_abs_om om = project_to<coords::om>( get_avatar().pos_abs_omt().xy() );
+    return project_combine( om, tripoint_om_omt( OMAPX / 2, OMAPY / 2, 0 ) );
+}
+
 } // namespace
 
 // INV-P02: every inventory query walks the carried items through item_location, building a
@@ -280,5 +290,57 @@ TEST_CASE( "bench_phase_change_lake_frozen", "[.][benchmark_scenario]" )
             load_smallmap( omts[i % omts.size()] );
         }
         CHECK( frozen_tiles( omts.front() ) == 4 * SEEX * SEEY );
+    } );
+}
+
+// OMAP-P02: a find_closest that matches nothing builds the whole spiral of points and
+// string-compares every tile on all 21 z-levels before giving up.
+TEST_CASE( "bench_omt_find_closest_miss", "[.][benchmark_scenario]" )
+{
+    run_scenario( "omt_find_closest_miss",
+                  "2 find_closest misses within one overmap width on all z-levels, existing overmaps only",
+    []() {}, []() {
+        const tripoint_abs_omt middle = overmap_middle();
+        omt_find_params params;
+        params.types = { { "bench_no_such_terrain", ot_match_type::type } };
+        params.search_range = OMAPX;
+        params.existing_only = true;
+        CHECK( overmap_buffer.find_closest( middle, params ).is_invalid() );
+        params.types = { { "bench_no_such_terrain", ot_match_type::prefix } };
+        CHECK( overmap_buffer.find_closest( middle + tripoint_rel_omt( 30, -20, 0 ),
+                                            params ).is_invalid() );
+    } );
+}
+
+// OMAP-P02: an NPC picking a goal looks for any of several terrain types within 75 tiles,
+// generating overmaps as needed; quest and item searches list every match within a radius.
+TEST_CASE( "bench_omt_find_npc_goals", "[.][benchmark_scenario]" )
+{
+    run_scenario( "omt_find_npc_goals",
+                  "10 NPC goal searches for 6 shop types within 75 tiles, 4 find_all of fields within 60",
+    []() {}, []() {
+        const tripoint_abs_omt middle = overmap_middle();
+        omt_find_params params;
+        for( const char *type : {
+                 "s_grocery", "s_hardware", "s_library", "s_pharm", "s_gun", "mil_surplus"
+             } ) {
+            params.types.emplace_back( type, ot_match_type::type );
+        }
+        params.search_range = 75;
+        params.existing_only = false;
+        params.min_z = 0;
+        params.max_z = 0;
+        int found = 0;
+        for( int i = 0; i < 10; ++i ) {
+            const tripoint_abs_omt origin = middle + tripoint_rel_omt( ( i % 5 - 2 ) * 3, i / 5 * 5, 0 );
+            found += overmap_buffer.find_closest( origin, params ).is_invalid() ? 0 : 1;
+        }
+        size_t fields = 0;
+        for( int i = 0; i < 4; ++i ) {
+            fields += overmap_buffer.find_all( middle + tripoint_rel_omt( i * 4, -i * 4, 0 ), "field", 60,
+                                               false, ot_match_type::type, true ).size();
+        }
+        CHECK( found >= 0 );
+        CHECK( fields > 0 );
     } );
 }

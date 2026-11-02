@@ -53,6 +53,8 @@ seeded setup without timing it, then times a fixed amount of work.
 | `inventory_queries` (*world*) | amount, charges, quality, filter and wielded-item queries on a full inventory with nested containers, 300 rounds | INV-P02 |
 | `phase_change_lake_thawed` (*world*) | 40 smallmap loads (all z-levels) over 4 overmap tiles of open lake in summer | MGEN-P01 |
 | `phase_change_lake_frozen` (*world*) | 40 smallmap loads over the same lake, frozen, on the first winter day cold enough to freeze all of it | MGEN-P01 |
+| `omt_find_closest_miss` (*world*) | 2 `find_closest` searches that match nothing, within one overmap width on all z-levels, existing overmaps only | OMAP-P02 |
+| `omt_find_npc_goals` (*world*) | 10 NPC-style goal searches for any of 6 shop types within 75 tiles on the surface, and 4 `find_all` of fields within 60 tiles | OMAP-P02 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then
