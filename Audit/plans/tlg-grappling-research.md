@@ -2,7 +2,9 @@
 
 These are the research notes behind [tlg-grappling-port.md](tlg-grappling-port.md). The code was read without building or editing anything.
 
-| Repo | Commit |
+The notes are a snapshot of the three trees at these revisions, taken before the port was built. Line references point into those revisions; `OURS:` references in particular are to `374ce76a`, so they no longer match the current tree, which has the port in it.
+
+| Repo | Snapshot at |
 | --- | --- |
 | Cataclysm: The Last Generation (TLG), <https://github.com/Cataclysm-TLG/Cataclysm-TLG> | `db141c6` (2026-11-01) |
 | This repository (`OURS`) | `374ce76a` |
@@ -233,7 +235,7 @@ TLG:src/game.cpp:11571-11812. Differences from our version (OURS:src/game.cpp:91
 | Walls | `min(rng(bash_resistance, bash_strength), flvel)`, divided by 6. | `min(bash_strength, flvel)`, divided by 9. |
 | Path stepping | `pt = c->pos_bub() + tdir` (current position). | `pos` refreshed every step (OURS:src/game.cpp:9287-9289, audit fix loop-b01). |
 | Landing tile | Uses `pos`, which is only refreshed for the avatar (11743-11752, 11779-11797). This appears to be a bug: monsters and NPCs land and trigger traps at their start tile. | Correct (audit fix). |
-| Landing damage | Halved minus 5 if `controlled || flvel < 30` (11787). | Only if `controlled`. |
+| Landing damage | Halved minus 5 if `controlled \|\| flvel < 30` (11787). | Only if `controlled`. |
 | Water | SWIMMABLE tile → splash (11780). | DEEP_WATER. |
 | Ledges | `thru && is_open_air(pos)` → `creature_on_trap` (11782-11783), the same as ours. With the stale-`pos` bug above this probably fails for monsters. | Correct. |
 
@@ -733,7 +735,7 @@ Sizes are rough: C++ counts include headers, JSON excludes reformatting, tests a
 
 - Scope:
   - A per-avatar or per-game flag, saved, toggled by a keybind. Pick a key other than BACKTAB if
-    BACKTAB conflicts in DEFAULTMODE in our keybindings; not checked.
+    BACKTAB conflicts in DEFAULTMODE in our keybindings. (Checked later: it doesn't; see section 8.)
   - A technique menu built from `get_all_techniques` plus our `evaluate_technique` refactored to
     *return a reason* instead of logging debug strings (OURS:src/melee.cpp:1497-1620 already has one
     debug message per rejection, so the reasons map directly).
@@ -839,7 +841,7 @@ Infrastructure:
 | --- | --- |
 | 0 | `monster::remove_grab` clears `grabbing` when the last limb is released. `u_val('grab_strength')` on a character grabber returns its strength. A self-held monster does not persist its own GRAB_FILTER. |
 | 1 | Release on wield, mount, asleep, winded, fling, knockback-tech, victim death (monster and NPC), teleport, non-adjacency, stamina below the floor. A save/load round trip keeps or cleanly drops the grab per decision 2. No dangling handle after `g->remove_zombie`. |
-| 2 | Armed, no arms, NO_GRAB effect and GRAB_IMMUNE target are refused with no state change. A guaranteed hit (debug accuracy, or a target that cannot dodge) sets both effects with the expected strength and body part. Strength formula values for fixed stats. A neutral NPC needs confirmation (use a query override, or test the confirmation predicate). |
+| 2 | Armed, no arms, NO_GRAB effect and GRAB_IMMUNE target are refused with no state change: these refusals are checked before the grab pays anything. A grab that is tried pays its moves and arm stamina before the hit roll. A guaranteed grab sets both effects with the expected strength and body part. As built, it uses a target that tolerates the grab (a pet, or a follower), so there is no hit roll; a monster target must also have no special defense (`special_when_hit`), because the grab gives the monster's special defense its chance to answer (a zapback, acid and the like), and the grab fails if that leaves either side dead or out of reach. The tests use a pet cow, which has none. Strength formula values for fixed stats. A neutral NPC needs confirmation (use a query override, or test the confirmation predicate). |
 | 3 | A monster cannot break free inside the minimum hold time. The grabber loses stamina per attempt. A follower never resists. A player held by an NPC is found as an NPC grabber, not an orphan. Monster dodge is 0 while held. |
 | 4 | Dragging a light monster with high strength moves it to the vacated tile, including across a map shift (place near the bubble edge). An immobile victim blocks the move. The ally discount applies. The drag odds function matches known values. |
 | 5 | throwforce for fixed stats and sizes. A throw at distance d lands at d on open ground (extend audit loop-b01). Force scales with d/range. The thrower's hold is released. A held victim survives a weak throw ("held in place"). Landing on open air triggers the ledge (z drop). Landing on a trap triggers it at the landing tile, which also guards against TLG bug 2. Stamina cost is weight-scaled (TLG bug 1). |
@@ -855,7 +857,7 @@ Infrastructure:
   history, so this describes BN master.
 - TLG's PR-by-PR attribution for each line. TLG's history is shallow too; the attributions in this
   document follow the PR list in the plan, matched on behavior.
-- BACKTAB is free in our DEFAULTMODE keybindings: it is bound only in other contexts (mod manager, targeting, vehicle interaction, inventory).
+- BACKTAB is free in our main game context (DEFAULTMODE). It is bound globally to PREV_TAB, and in the mod manager, targeting, vehicle interaction and inventory contexts, but a binding only acts in a context that registers its action, and DEFAULTMODE registers no action on BACKTAB but the manual combat toggle.
 - In-repo mods: Aftershock and Isolation Protocol grant `tech_base_*` through their own body parts (`data/mods/aftershock_exoplanet/body_parts.json`, `data/mods/Isolation-Protocol/body_parts.json`), so the fallback change reaches them too. Mods overriding Judo or Pankration were not checked.
 - How `airborne`'s LEVITATION flag interacts with our trap and gravity code. TLG relies on it; our
   equivalents were not traced.

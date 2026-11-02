@@ -148,7 +148,9 @@ The total is about 2,000 lines of C++, 500 of JSON, 250 of docs and 1,300 of tes
   - targeting through a `ThrowCreature` target mode with a throw-force readout
 - **Stamina.** Fix TLG's cost, which is a flat 50 because of a sign error. Use the intended weight-scaled cost, or BN's `clamp(force*10, 100, 1500)`.
 - **Fling additions.** Release the holder, and add an `airborne` effect that skips trap prompts and forces monster movement. TLG's size-based collision damage to characters and its softer landing at low speed are optional, behind parameters.
-  - `fling_creature` is shared with hulks, vehicles and spells, so every new behavior is opt-in, and the existing LOOP-B01 tests must keep passing.
+  - `fling_creature` is shared with hulks, vehicles, teleport collisions, monster attacks and spells, so TLG's damage changes are opt-in and the existing LOOP-B01 tests must keep passing.
+  - **As built.** `fling_options` holds TLG's two damage changes, `soft_low_speed_landing` and `hit_characters`, both off by default. Only the creature throw (`grapple::throw_held_creature`) turns them on; every other caller, the `u_fling` EOC and the `fling` spell included, passes no options and keeps its damage and landing. Two changes apply to every fling, because they are what being flung means: a hold the fling beats ends on both sides, and the creature is `airborne` until it lands, so it no longer drops through the first gap it crosses or sets off traps on the way. Where it lands, the trap there goes off, and over open air it falls.
+  - **Tests.** LOOP-B01 (`tests/audit_game_loop_test.cpp`) passes with the default options. `tests/grapple_test.cpp` checks that the options are off by default (`grapple_fling_options_are_off_by_default`), and the always-on changes (`grapple_a_fling_breaks_holds_both_ways`, `grapple_flung_creatures_are_airborne_until_they_land`). `tests/grapple_fling_test.cpp` covers the `u_fling` EOC and the `fling` spell. The hulk, vehicle, teleport and monster-attack callers have no tests of their own; they use the default path that these tests cover.
 - **JSON.** Throw force becomes a `jmath` function, and the "shove / toss / throw / hurl / launch" words and thresholds move to JSON.
 - New `u_fling`/`npc_fling` EOC effects and a `fling` spell effect (TLG has `fling_away`) give modders the throw engine without grappling.
 
@@ -184,7 +186,7 @@ The total is about 2,000 lines of C++, 500 of JSON, 250 of docs and 1,300 of tes
 
 ### Phase 9: manual technique menu (our feature, BN's idea)
 
-- **Mode.** A key toggles manual combat mode; BACKTAB is free in our default keymap. The mode is saved.
+- **Mode.** A key toggles manual combat mode: BACKTAB, in the main game context (DEFAULTMODE). BACKTAB is also bound globally to PREV_TAB, and in the mod manager, targeting, vehicle and inventory screens, but a binding only acts where its action is registered, and the main game context registers no other action on BACKTAB. The mode is saved.
 - **Menu.** When the player attacks in manual mode, a menu lists Basic attack, Automatic and every technique.
   - Unusable entries are greyed out with the reason, reusing `evaluate_technique`'s rejection checks, which today only print debug text.
   - Condition failures show the technique's `condition_desc`.
@@ -227,7 +229,7 @@ Per phase, briefly:
 |---|---|
 | 0 | `remove_grab` clears the effect, and a character's `grab_strength` reads correctly. |
 | 1 | Every release path works, and a save/load round trip keeps the grab. |
-| 2 | Each refusal leaves no state change, and a guaranteed hit sets both effects with the formula's strength. |
+| 2 | Each refusal, which is checked before the grab pays anything, leaves no state change. A grab that is tried pays its moves and arm stamina before the hit roll, whatever the roll gives. A grab that can't miss (a pet or a follower, which tolerate it) sets both effects with the formula's strength. |
 | 3 | The minimum hold time holds, and a follower never resists. |
 | 4 | A drag across a map shift lands on the right tile. |
 | 5 | A throw lands at the chosen distance, a trap triggers on the landing tile, and a ledge drop happens. |
@@ -262,7 +264,7 @@ The owner decided the open questions as follows. Where a decision goes beyond th
 5. **The EXPLOSIVE activity level is optional.** The level is always defined (constants, calorie diary). A world option, off by default, makes melee, dodging, grabbing and throwing use it as TLG does. With the option off, nothing changes.
 
 Common to all phases:
-- Grab ownership uses the effect-source model (decision 1 of "Decisions to make first").
+- Grab ownership uses the effect-source model (decision 1 of "Decisions to make first") for character grabbers: a hold's GRAB effect on the victim carries `effect_source( grabber )`. For a monster, an effect source records only its monster faction, not which monster it is, so a monster grabber is still found by searching the monsters within grab reach, as before (see "Not done" under Status).
 - Tuning formulas are `jmath_function`s in `data/json/grappling.json`, with defaults that reproduce TLG's numbers.
 - Every phase ships with deterministic Catch2 tests and docs.
 
