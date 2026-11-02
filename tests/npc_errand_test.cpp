@@ -143,6 +143,61 @@ static void save_and_load( npc &guy )
     guy.deserialize( json_loader::from_string( os.str() ).get_object() );
 }
 
+static std::string global_string( const std::string &name )
+{
+    const diag_value *const value = get_globals().maybe_get_global_value( name );
+    return value == nullptr ? std::string() : value->str();
+}
+
+static double global_number( const std::string &name )
+{
+    const diag_value *const value = get_globals().maybe_get_global_value( name );
+    return value == nullptr ? 0.0 : value->dbl();
+}
+
+// "true" or "false": which of EOC_TEST_ERRAND_TRUE and EOC_TEST_ERRAND_FALSE ran last; "" for none
+static std::string result()
+{
+    return global_string( "test_errand_result" );
+}
+
+static std::string reason()
+{
+    return global_string( "test_errand_reason" );
+}
+
+static void set_spot( const tripoint_bub_ms &p )
+{
+    get_globals().set_global_value( "test_errand_spot", get_map().get_abs( p ) );
+}
+
+static talk_effect_t load_effect( const std::string &effect )
+{
+    const JsonObject jo = json_loader::from_string( R"({ "effect": )" + effect + " }" );
+    jo.allow_omitted_members();
+    talk_effect_t ret( jo, "effect", "npc_errand_test" );
+    finalize_conditions();
+    return ret;
+}
+
+static bool test_condition( const std::string &condition, const_dialogue const &d )
+{
+    const JsonObject jo = json_loader::from_string( R"({ "condition": )" + condition + " }" );
+    jo.allow_omitted_members();
+    conditional_t::func cond;
+    read_condition( jo, "condition", cond, false );
+    return cond( d );
+}
+
+static void load_condition( const std::string &condition )
+{
+    const JsonObject jo = json_loader::from_string( R"({ "condition": )" + condition + " }" );
+    jo.allow_omitted_members();
+    conditional_t::func cond;
+    read_condition( jo, "condition", cond, false );
+}
+
+
 // NPC-B17: a step to a tile that isn't adjacent used to be a teleport
 TEST_CASE( "npc_move_to_does_not_hop_over_tiles", "[npc][errand]" )
 {
@@ -270,4 +325,335 @@ TEST_CASE( "follow_me_ends_the_move_order", "[npc][errand]" )
     CHECK_FALSE( guy.walk );
     run_npc_turn( guy );
     CHECK( guy.get_committed_goal() != "goto_ordered_position" );
+}
+
+static const std::string walk_to_spot = R"({ "u_walk_to": { "global_val": "test_errand_spot" },
+    "true_eocs": [ "EOC_TEST_ERRAND_TRUE" ], "false_eocs": [ "EOC_TEST_ERRAND_FALSE" ] )";
+
+// u_walk_to with these fields added
+static std::string walk_to_spot_with( const std::string &fields )
+{
+    return walk_to_spot + ", " + fields + " }";
+}
+
+static void walk_npc( npc &guy, const std::string &effect )
+{
+    dialogue d( get_talker_for( guy ), nullptr );
+    load_effect( effect ).apply( d );
+}
+
+TEST_CASE( "u_walk_to_npc_arrives", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const tripoint_bub_ms there = errand_origin + tripoint( 7, 3, 0 );
+    set_spot( there );
+    walk_npc( guy, walk_to_spot + " }" );
+    REQUIRE( guy.walk );
+    CHECK( result().empty() );
+    run_npc_turn( guy );
+    CHECK( guy.get_committed_goal() == "goto_ordered_position" );
+    CHECK( rl_dist( guy.pos_bub(), there ) < 7 );
+    run_until_walk_ends( guy, 20 );
+    CHECK_FALSE( guy.walk );
+    CHECK( guy.pos_bub() == there );
+    CHECK( result() == "true" );
+    CHECK( reason() == "arrived" );
+    // the walker is u, and there's no npc
+    CHECK( global_string( "test_errand_u" ) == guy.get_name() );
+    CHECK( global_string( "test_errand_npc" ) == "none" );
+    CHECK( global_number( "test_errand_runs" ) == 1 );
+}
+
+TEST_CASE( "npc_walk_to_sends_the_beta_talker", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const tripoint_bub_ms there = errand_origin + tripoint( 0, 6, 0 );
+    set_spot( there );
+    dialogue d( get_talker_for( get_avatar() ), get_talker_for( guy ) );
+    load_effect( R"({ "npc_walk_to": { "global_val": "test_errand_spot" },
+        "true_eocs": [ "EOC_TEST_ERRAND_TRUE" ] })" ).apply( d );
+    CHECK_FALSE( get_avatar().walk );
+    REQUIRE( guy.walk );
+    run_until_walk_ends( guy, 20 );
+    CHECK( guy.pos_bub() == there );
+    CHECK( result() == "true" );
+    // the EOCs run later, with the walker as u
+    CHECK( global_string( "test_errand_u" ) == guy.get_name() );
+}
+
+TEST_CASE( "u_walk_to_range_and_context", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const tripoint_bub_ms there = errand_origin + tripoint( 9, 0, 0 );
+    set_spot( there );
+    SECTION( "it stops within range" ) {
+        walk_npc( guy, walk_to_spot_with( R"("range": 3)" ) );
+        run_until_walk_ends( guy, 20 );
+        CHECK( square_dist( guy.pos_bub(), there ) == 3 );
+        CHECK( result() == "true" );
+    }
+    SECTION( "the context values of the EOC that sent it reach its EOCs" ) {
+        global_variables::impl_t context;
+        context["errand_tag"] = diag_value( std::string( "shed" ) );
+        dialogue d( get_talker_for( guy ), nullptr, {}, context );
+        load_effect( R"({ "u_walk_to": { "global_val": "test_errand_spot" },
+            "true_eocs": [ "EOC_TEST_ERRAND_TAG" ] })" ).apply( d );
+        run_until_walk_ends( guy, 20 );
+        CHECK( global_string( "test_errand_tag" ) == "shed" );
+    }
+}
+
+TEST_CASE( "u_walk_to_ends_at_once", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    SECTION( "already there" ) {
+        set_spot( errand_origin + tripoint( 1, 1, 0 ) );
+        walk_npc( guy, walk_to_spot_with( R"("range": 1)" ) );
+        CHECK_FALSE( guy.walk );
+        CHECK( result() == "true" );
+        CHECK( reason() == "arrived" );
+    }
+    SECTION( "no way there" ) {
+        const tripoint_bub_ms there = errand_origin + tripoint( 6, 0, 0 );
+        wall_off( there );
+        set_spot( there );
+        walk_npc( guy, walk_to_spot + " }" );
+        CHECK_FALSE( guy.walk );
+        CHECK( result() == "false" );
+        CHECK( reason() == "unreachable" );
+        CHECK( global_string( "test_errand_u" ) == guy.get_name() );
+    }
+    SECTION( "outside the loaded map" ) {
+        get_globals().set_global_value( "test_errand_spot",
+                                        guy.pos_abs() + tripoint( 400, 0, 0 ) );
+        walk_npc( guy, walk_to_spot + " }" );
+        CHECK_FALSE( guy.walk );
+        CHECK( reason() == "unreachable" );
+    }
+}
+
+TEST_CASE( "u_walk_to_give_up_after", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const tripoint_bub_ms there = errand_origin + tripoint( 6, 0, 0 );
+    wall_off( there );
+    set_spot( there );
+    walk_npc( guy, walk_to_spot_with( R"("give_up_after": 5)" ) );
+    // with a time limit it waits for a way to open
+    REQUIRE( guy.walk );
+    run_npc_turns( guy, 4 );
+    CHECK( guy.walk );
+    CHECK( result().empty() );
+    run_until_walk_ends( guy, 5 );
+    CHECK_FALSE( guy.walk );
+    CHECK( result() == "false" );
+    CHECK( reason() == "timeout" );
+}
+
+TEST_CASE( "u_walk_to_sent_again_goes_on", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    set_spot( errand_origin + tripoint( 10, 0, 0 ) );
+    walk_npc( guy, walk_to_spot_with( R"("give_up_after": "1 minutes")" ) );
+    REQUIRE( guy.walk );
+    const int serial = guy.walk->serial;
+    const time_point started = guy.walk->started;
+    const std::optional<time_point> give_up_at = guy.walk->give_up_at;
+    run_npc_turns( guy, 3 );
+    // as a goal whose EOCs run each turn would send it
+    walk_npc( guy, walk_to_spot_with( R"("give_up_after": "1 minutes", "range": 1)" ) );
+    REQUIRE( guy.walk );
+    CHECK( guy.walk->serial == serial );
+    CHECK( guy.walk->started == started );
+    CHECK( guy.walk->give_up_at == give_up_at );
+    CHECK( guy.walk->range == 1 );
+    SECTION( "somewhere else replaces it, without its EOCs" ) {
+        set_spot( errand_origin + tripoint( 0, -5, 0 ) );
+        walk_npc( guy, walk_to_spot + " }" );
+        REQUIRE( guy.walk );
+        CHECK( guy.walk->serial != serial );
+        CHECK( result().empty() );
+    }
+}
+
+TEST_CASE( "u_walk_to_run", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    set_spot( errand_origin + tripoint( 8, 0, 0 ) );
+    walk_npc( guy, walk_to_spot_with( R"("run": true)" ) );
+    run_npc_turn( guy );
+    CHECK( guy.is_running() );
+    run_until_walk_ends( guy, 20 );
+    CHECK( result() == "true" );
+    CHECK_FALSE( guy.is_running() );
+}
+
+TEST_CASE( "u_walk_to_is_saved", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const tripoint_bub_ms there = errand_origin + tripoint( 9, 2, 0 );
+    set_spot( there );
+    global_variables::impl_t context;
+    context["errand_tag"] = diag_value( std::string( "saved" ) );
+    dialogue d( get_talker_for( guy ), nullptr, {}, context );
+    load_effect( R"({ "u_walk_to": { "global_val": "test_errand_spot" }, "range": 1,
+        "give_up_after": "10 minutes", "interruptible": false,
+        "true_eocs": [ "EOC_TEST_ERRAND_TAG", "EOC_TEST_ERRAND_TRUE" ] })" ).apply( d );
+    run_npc_turns( guy, 2 );
+    REQUIRE( guy.walk );
+    const walk_order before = *guy.walk;
+    save_and_load( guy );
+    REQUIRE( guy.walk );
+    const walk_order &after = *guy.walk;
+    CHECK( after.kind == walk_kind::eoc );
+    CHECK( after.target == before.target );
+    CHECK( after.range == 1 );
+    CHECK( after.give_up_at == before.give_up_at );
+    CHECK_FALSE( after.interruptible );
+    CHECK( after.true_eocs == before.true_eocs );
+    CHECK( after.started == before.started );
+    run_until_walk_ends( guy, 20 );
+    CHECK( square_dist( guy.pos_bub(), there ) <= 1 );
+    CHECK( result() == "true" );
+    CHECK( global_string( "test_errand_tag" ) == "saved" );
+}
+
+TEST_CASE( "u_walk_to_and_a_threat", "[npc][eoc][errand]" )
+{
+    // a follower, armed: it fights what comes near (an unarmed NPC rates no attack)
+    npc &guy = errand_follower();
+    map &here = get_map();
+    guy.set_wielded_item( item( itype_crowbar ) );
+    const tripoint_bub_ms there = errand_origin + tripoint( 10, 0, 0 );
+    set_spot( there );
+    const bool interruptible = GENERATE( true, false );
+    CAPTURE( interruptible );
+    walk_npc( guy, walk_to_spot_with( interruptible ? R"("range": 0)" :
+                                      R"("interruptible": false)" ) );
+    run_npc_turns( guy, 2 );
+    REQUIRE( guy.walk );
+    monster *zed = g->place_critter_at( mon_zombie, guy.pos_bub() + tripoint( 0, 3, 0 ) );
+    REQUIRE( zed != nullptr );
+    here.build_map_cache( 0 );
+    REQUIRE( guy.sees( here, *zed ) );
+    // a turn without a step: the fight came first
+    bool set_aside = false;
+    for( int i = 0; i < 3 && !set_aside; ++i ) {
+        run_npc_turn( guy );
+        set_aside = !guy.walk || guy.walk->last_step < calendar::turn - 1_turns;
+    }
+    REQUIRE( set_aside );
+    if( interruptible ) {
+        // the walk waits for the fight
+        REQUIRE( guy.walk );
+        CHECK( result().empty() );
+        clear_creatures();
+        here.build_map_cache( 0 );
+        run_until_walk_ends( guy, 30 );
+        CHECK( guy.pos_bub() == there );
+        CHECK( result() == "true" );
+    } else {
+        CHECK_FALSE( guy.walk );
+        CHECK( result() == "false" );
+        CHECK( reason() == "interrupted" );
+        clear_creatures();
+    }
+}
+
+TEST_CASE( "u_walk_to_avatar_auto_move", "[eoc][errand]" )
+{
+    clear_map_with_vision();
+    clear_avatar();
+    clear_npcs();
+    forget_errand_globals();
+    map &here = get_map();
+    avatar &you = get_avatar();
+    you.setpos( here, errand_origin );
+    here.build_map_cache( 0 );
+    const tripoint_bub_ms there = errand_origin + tripoint( 6, 2, 0 );
+    const tripoint_abs_ms there_abs = here.get_abs( there );
+    set_spot( there );
+    dialogue d( get_talker_for( you ), nullptr );
+    SECTION( "it walks there step by step" ) {
+        load_effect( walk_to_spot_with( R"("run": true)" ) ).apply( d );
+        REQUIRE( you.walk );
+        REQUIRE( you.has_destination() );
+        CHECK( you.destination_point == there_abs );
+        CHECK( you.is_running() );
+        // what the game's turn does with an auto-move
+        for( int i = 0; i < 20 && you.walk; ++i ) {
+            errand::avatar_turn( you );
+            if( !you.walk ) {
+                break;
+            }
+            REQUIRE( you.has_destination() );
+            const action_id act = you.get_next_auto_move_direction();
+            you.set_moves( you.get_speed() );
+            avatar_action::move( you, here,
+                                 tripoint_rel_ms( get_delta_from_movement_action( act, iso_rotate::yes ), 0 ) );
+            calendar::turn += 1_turns;
+        }
+        CHECK_FALSE( you.walk );
+        // the map follows the avatar, so its own coordinates moved
+        CHECK( you.pos_abs() == there_abs );
+        CHECK( result() == "true" );
+        CHECK( global_string( "test_errand_u" ) == you.get_name() );
+        CHECK_FALSE( you.is_running() );
+    }
+    SECTION( "a stopped auto-move ends it" ) {
+        load_effect( walk_to_spot + " }" ).apply( d );
+        REQUIRE( you.walk );
+        you.abort_automove();
+        errand::avatar_turn( you );
+        CHECK_FALSE( you.walk );
+        CHECK( result() == "false" );
+        CHECK( reason() == "interrupted" );
+    }
+    SECTION( "loaded from a save, the auto-move starts again" ) {
+        walk_order w;
+        w.target = there_abs;
+        errand::set_walk( you, w );
+        REQUIRE_FALSE( you.has_destination() );
+        errand::avatar_turn( you );
+        REQUIRE( you.walk );
+        CHECK( you.has_destination() );
+        you.clear_destination();
+        you.walk.reset();
+    }
+    SECTION( "no way there" ) {
+        wall_off( there );
+        load_effect( walk_to_spot + " }" ).apply( d );
+        CHECK_FALSE( you.walk );
+        CHECK_FALSE( you.has_destination() );
+        CHECK( reason() == "unreachable" );
+    }
+}
+
+TEST_CASE( "u_is_walking_to", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    const tripoint_bub_ms there = errand_origin + tripoint( 8, 0, 0 );
+    set_spot( errand_origin + tripoint( 0, 8, 0 ) );
+    const dialogue d( get_talker_for( get_avatar() ), get_talker_for( guy ) );
+    CHECK_FALSE( test_condition( R"({ "npc_is_walking_to": "any" })", d ) );
+    errand::start_walk( guy, errand::move_order( get_map().get_abs( there ) ) );
+    CHECK( test_condition( R"({ "npc_is_walking_to": "any" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "u_is_walking_to": "any" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "npc_is_walking_to": { "global_val": "test_errand_spot" } })",
+                                 d ) );
+    set_spot( there );
+    CHECK( test_condition( R"({ "npc_is_walking_to": { "global_val": "test_errand_spot" } })", d ) );
+}
+
+TEST_CASE( "walk_effects_are_checked_at_load", "[eoc][errand]" )
+{
+    CHECK_THROWS_AS( load_effect( R"({ "u_walk_to": "shed" })" ), JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_walk_to": { "global_val": "x" }, "range": -1 })" ),
+                     JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_walk_to": { "global_val": "x" }, "give_up_after": 0 })" ),
+                     JsonError );
+    CHECK_THROWS_AS( load_effect( R"({ "u_walk_to": { "global_val": "x" }, "run": "yes" })" ),
+                     JsonError );
+    CHECK_THROWS_AS( load_condition( R"({ "u_is_walking_to": "anywhere" })" ), JsonError );
+    CHECK_THROWS_AS( load_condition( R"({ "u_is_walking_to": 3 })" ), JsonError );
 }

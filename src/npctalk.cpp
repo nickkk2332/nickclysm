@@ -9174,6 +9174,74 @@ talk_effect_fun_t::func f_teleport( const JsonObject &jo, std::string_view membe
     };
 }
 
+// what u_walk_to and u_pickup_item's walk take besides where to go
+struct walk_options {
+    std::optional<duration_or_var> give_up_after;
+    bool run = false;
+    bool interruptible = true;
+
+    explicit walk_options( const JsonObject &jo ) {
+        if( jo.has_member( "give_up_after" ) ) {
+            give_up_after = get_duration_or_var( jo, "give_up_after", true );
+            if( give_up_after->is_constant() && give_up_after->constant() <= 0_turns ) {
+                jo.throw_error_at( "give_up_after", "give_up_after must be more than 0 turns" );
+            }
+        }
+        run = jo.get_bool( "run", false );
+        interruptible = jo.get_bool( "interruptible", true );
+    }
+
+    static bool given( const JsonObject &jo ) {
+        return jo.has_member( "give_up_after" ) || jo.has_member( "run" ) ||
+               jo.has_member( "interruptible" );
+    }
+
+    void apply( walk_order &w, const_dialogue const &d ) const {
+        w.run = run;
+        w.interruptible = interruptible;
+        if( give_up_after ) {
+            // 0 or less from a variable: no time limit
+            const time_duration limit = give_up_after->evaluate( d );
+            if( limit > 0_turns ) {
+                w.give_up_at = calendar::turn + limit;
+            }
+        }
+    }
+};
+
+talk_effect_fun_t::func f_walk_to( const JsonObject &jo, std::string_view member,
+                                   std::string_view src, bool is_npc )
+{
+    if( !jo.has_object( member ) ) {
+        jo.throw_error_at( member, string_format(
+                               "%s takes a location variable, like { \"context_val\": \"spot\" }", std::string( member ) ) );
+    }
+    const var_info target_var = read_var_info( jo.get_object( member ) );
+    const dbl_or_var range = get_dbl_or_var( jo, "range", false, 0 );
+    if( range.is_constant() && range.constant() < 0 ) {
+        jo.throw_error_at( "range", "range can't be negative" );
+    }
+    const walk_options options( jo );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    return [is_npc, target_var, range, options, true_eocs, false_eocs]( dialogue & d ) {
+        Character *who = d.actor( is_npc )->get_character();
+        if( who == nullptr ) {
+            debugmsg( "%s: only the avatar and NPCs can walk.  %s", is_npc ? "npc_walk_to" : "u_walk_to",
+                      d.get_callstack() );
+            return;
+        }
+        walk_order w;
+        w.target = read_var_value( target_var, d ).tripoint();
+        w.range = std::max( 0, static_cast<int>( range.evaluate( d ) ) );
+        options.apply( w, d );
+        w.true_eocs = true_eocs;
+        w.false_eocs = false_eocs;
+        w.context = d.get_context();
+        errand::start_walk( *who, std::move( w ) );
+    };
+}
+
 talk_effect_fun_t::func f_travel_to_dimension( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -9487,6 +9555,7 @@ parsers = {
     { "u_set_field", "npc_set_field", jarg::member, &talk_effect_fun::f_field },
     { "u_emit", "npc_emit", jarg::member, &talk_effect_fun::f_emit },
     { "u_teleport", "npc_teleport", jarg::object, &talk_effect_fun::f_teleport },
+    { "u_walk_to", "npc_walk_to", jarg::member, &talk_effect_fun::f_walk_to },
     { "u_travel_to_dimension", jarg::member, &talk_effect_fun::f_travel_to_dimension},
     { "u_set_flag", "npc_set_flag", jarg::member, &talk_effect_fun::f_set_flag },
     { "u_unset_flag", "npc_unset_flag", jarg::member, &talk_effect_fun::f_unset_flag },

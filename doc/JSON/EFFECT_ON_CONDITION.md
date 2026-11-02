@@ -1692,6 +1692,27 @@ You can see selected location.
 ]
 ```
 
+### `u_is_walking_to`, `npc_is_walking_to`
+- type: `"any"` or [variable object](#variable-object)
+- return true if alpha or beta talker is on a walk: one from [`u_walk_to`](#u_walk_to-npc_walk_to), from `u_pickup_item` with `"walk": true`, or a follower's "Move there!" order. With a location, only if the walk goes there
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC isn't walking anywhere
+```jsonc
+{ "not": { "npc_is_walking_to": "any" } }
+```
+
+You are on your way to the spot in `camp_fire`
+```jsonc
+{ "u_is_walking_to": { "u_val": "camp_fire" } }
+```
+
 ### `u_see_npc`, `npc_see_u`
 - type: simple string
 - return true if alpha talker can see beta talker, or vice versa
@@ -2231,6 +2252,7 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | bionics: "deactivated_eocs" | { "this", `bionic_id` } |
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
 | furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
+| `u_walk_to`: "true_eocs", "false_eocs" | { "reason", `string` why the walk ended }, and the context variables of the EoC that started the walk |
 
 
 # Effects
@@ -5254,6 +5276,67 @@ You teleport to `grass_place` with message `Yay!`; as `force` boolean is `true`,
   "fail_message": "Something is very wrong!",
   "force": true
 }
+```
+
+#### `u_walk_to`, `npc_walk_to`
+The character walks to a location over the following turns, the way it walks anywhere: NPCs open doors, push past friendly NPCs and avoid traps and fires; the avatar uses auto-move. When it gets there `true_eocs` run; when it gives up, `false_eocs` run. The walk is saved with the character.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_walk_to" / "npc_walk_to" | **mandatory** | [variable object](#variable-object) | the location to walk to, like one set by `u_location_variable` |
+| "range" | optional | int or [variable object](#variable-object) | default 0; the walk ends this close to the location: within this many tiles (square distance), on the location's z level. 0 is the tile itself, which must be one to stand on (a closed door will do), or, while another creature stands on it, a tile next to it. Use 1 to walk up to furniture or an item on a counter |
+| "give_up_after" | optional | int, duration or [variable object](#variable-object) | how long to keep trying (an int is turns). Without it the walk gives up as soon as there's no way there, or after 10 turns without getting anywhere (someone blocking a corridor); with it, the walk waits for a way to open and gives up only when the time is up. A value of 0 or less from a variable counts as not given |
+| "run" | optional | boolean | default false; run while the stamina lasts, then walk. Running stops when the walk ends |
+| "interruptible" | optional | boolean | default true; see below |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run on arrival |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run when the walk ends without arriving |
+
+**When the EOCs run.** `true_eocs` and `false_eocs` run later, when the walk ends, with the walker as `u` and no `npc` (like a queued EoC), even when the walk ends at once. They get the context variables of the EoC that started the walk, and `reason`:
+
+| `reason` | When |
+| --- | --- |
+| `arrived` | the walker is there (`true_eocs`) |
+| `unreachable` | there is no way there: walls, a locked door, a spot out of the loaded map, or a walker that can't move. Without `give_up_after` this is found when the walk starts, so `false_eocs` run at once |
+| `blocked` | 10 turns went by without the walker getting anywhere (without `give_up_after`) |
+| `timeout` | `give_up_after` passed |
+| `interrupted` | an NPC's walk with `"interruptible": false` was set aside; the avatar's auto-move stopped |
+| `cancelled` | the player told the follower "Follow me" |
+
+**Interruptions (NPCs).** A walk is an order: it comes after combat, after investigating a noise and after urgent needs (thirst, hunger, sleep, temperature), and before following the player, guard duty and camp work. When a fight, a flight, a noise or such a need takes the NPC's turn, the walk waits and goes on once that's done. With `"interruptible": false` it doesn't wait: it ends with `false_eocs` and `reason` `interrupted` the first time the NPC spends its turn on something else.
+
+**The avatar.** For the avatar the walk is auto-move. It stops the way auto-move stops (a creature in the way, safe mode, the player stopping it) and then ends with `reason` `interrupted`; it doesn't start again on its own. `interruptible` doesn't apply.
+
+**One walk at a time.** A new walk replaces the one in progress, whose EoCs don't run. Sending the character again to where it's already going doesn't start over: the time limit and progress carry on, and the new `range`, options and EoCs replace the old ones. So an EoC that runs every turn can call `u_walk_to` each time. A follower's "Move there!" order is the same kind of walk, and replaces it or is replaced by it.
+
+Use `u_is_walking_to` to check for a walk in progress and `u_can_reach` to check for a way there before sending anyone.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC you talk to walks to the shed door, says so when it's there, and tells you if it can't get there in five minutes
+```jsonc
+{
+  "npc_walk_to": { "global_val": "shed_door" },
+  "range": 1,
+  "give_up_after": "5 minutes",
+  "true_eocs": [ { "id": "EOC_AT_THE_SHED", "effect": [ { "u_message": "<u_name> reaches the shed.", "type": "info" } ] } ],
+  "false_eocs": [
+    {
+      "id": "EOC_NOT_AT_THE_SHED",
+      "effect": [ { "u_message": "<u_name> can't get to the shed: <context_val:reason>.", "type": "bad" } ]
+    }
+  ]
+}
+```
+
+The NPC runs to the spot stored in its `camp_fire` variable; if anything else takes its turn on the way (a fight, a need), the walk ends instead of waiting
+```jsonc
+{ "npc_walk_to": { "npc_val": "camp_fire" }, "run": true, "interruptible": false, "false_eocs": [ "EOC_RAN_INTO_TROUBLE" ] }
 ```
 
 #### `u_travel_to_dimension`

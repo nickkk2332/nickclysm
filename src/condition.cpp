@@ -34,6 +34,7 @@
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enum_traits.h"
+#include "errand.h"
 #include "faction.h"
 #include "field.h"
 #include "flag.h"
@@ -2485,6 +2486,32 @@ conditional_t::func f_can_see_location( const JsonObject &jo, std::string_view m
     };
 }
 
+// "any", or the place a walk in progress goes to
+conditional_t::func f_is_walking_to( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    std::optional<var_info> target;
+    if( jo.has_string( member ) ) {
+        if( jo.get_string( member ) != "any" ) {
+            jo.throw_error_at( member, string_format(
+                                   "%s takes \"any\" or a location variable, like { \"context_val\": \"spot\" }",
+                                   std::string( member ) ) );
+        }
+    } else if( jo.has_object( member ) ) {
+        target = read_var_info( jo.get_object( member ) );
+    } else {
+        jo.throw_error_at( member, string_format( "%s takes \"any\" or a location variable",
+                           std::string( member ) ) );
+    }
+    return [is_npc, target]( const_dialogue const & d ) {
+        const Character *who = d.const_actor( is_npc )->get_const_character();
+        if( who == nullptr || !who->walk ) {
+            return false;
+        }
+        return !target || who->walk->target == read_var_value( *target, d ).tripoint();
+    };
+}
+
+
 conditional_t::func f_using_martial_art( const JsonObject &jo, std::string_view member,
         bool is_npc )
 {
@@ -2947,6 +2974,7 @@ parsers = {
     {"u_is_in_field", "npc_is_in_field", jarg::member, &conditional_fun::f_is_in_field },
     {"u_has_move_mode", "npc_has_move_mode", jarg::member, &conditional_fun::f_has_move_mode },
     {"u_can_see_location", "npc_can_see_location", jarg::member, &conditional_fun::f_can_see_location },
+    {"u_is_walking_to", "npc_is_walking_to", jarg::member, &conditional_fun::f_is_walking_to },
     {"is_weather", jarg::member, &conditional_fun::f_is_weather },
     {"map_terrain_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
     {"map_furniture_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
