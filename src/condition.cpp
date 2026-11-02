@@ -56,6 +56,8 @@
 #include "messages.h"
 #include "math_parser_diag_value.h"
 #include "mission.h"
+#include "monster.h"
+#include "monstergenerator.h"
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
@@ -405,6 +407,33 @@ void read_condition( const JsonObject &jo, const std::string &member_name,
     }
 }
 
+void check_mtype_id_at_load( const str_or_var &id, const std::string &context )
+{
+    if( !id.is_constant() ) {
+        return;
+    }
+    effect_on_conditions::add_load_check( [name = id.constant(), context]() {
+        if( !mtype_id( name ).is_valid() ) {
+            debugmsg( "Monster type \"%s\" (used by %s) does not exist", name, context );
+        }
+    } );
+}
+
+void check_special_attack_name_at_load( const str_or_var &name, const std::string &context )
+{
+    if( !name.is_constant() ) {
+        return;
+    }
+    effect_on_conditions::add_load_check( [special = name.constant(), context]() {
+        for( const mtype &type : MonsterGenerator::generator().get_all_mtypes() ) {
+            if( type.special_attacks.count( special ) != 0 ) {
+                return;
+            }
+        }
+        debugmsg( "No monster type has a special attack \"%s\" (used by %s)", special, context );
+    } );
+}
+
 void finalize_conditions()
 {
     std::queue<deferred_math> &dfr = get_deferred_math();
@@ -553,6 +582,29 @@ conditional_t::func f_has_species( const JsonObject &jo, std::string_view member
     return [species_to_check, is_npc]( const_dialogue const & d ) {
         const_talker const *actor = d.const_actor( is_npc );
         return actor->has_species( species_id( species_to_check.evaluate( d ) ) );
+    };
+}
+
+conditional_t::func f_is_mtype( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    str_or_var mtype_to_check = get_str_or_var( jo.get_member( member ), member, true );
+    check_mtype_id_at_load( mtype_to_check, string_format( "%s (%s)", member,
+                            jo.get_member( member ).get_root_source_path() ) );
+    return [mtype_to_check, is_npc]( const_dialogue const & d ) {
+        const monster *mon = d.const_actor( is_npc )->get_const_monster();
+        return mon != nullptr && mon->type->id == mtype_id( mtype_to_check.evaluate( d ) );
+    };
+}
+
+conditional_t::func f_has_special_attack( const JsonObject &jo, std::string_view member,
+        bool is_npc )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    check_special_attack_name_at_load( special, string_format( "%s (%s)", member,
+                                       jo.get_member( member ).get_root_source_path() ) );
+    return [special, is_npc]( const_dialogue const & d ) {
+        const monster *mon = d.const_actor( is_npc )->get_const_monster();
+        return mon != nullptr && mon->has_special( special.evaluate( d ) );
     };
 }
 
@@ -2768,6 +2820,11 @@ parsers = {
     {"u_has_proficiency", "npc_has_proficiency", jarg::member, &conditional_fun::f_has_proficiency },
     {"u_has_flag", "npc_has_flag", jarg::member, &conditional_fun::f_has_flag },
     {"u_has_species", "npc_has_species", jarg::member, &conditional_fun::f_has_species },
+    {"u_is_mtype", "npc_is_mtype", jarg::member, &conditional_fun::f_is_mtype },
+    {
+        "u_has_special_attack", "npc_has_special_attack", jarg::member,
+        &conditional_fun::f_has_special_attack
+    },
     {"u_bodytype", "npc_bodytype", jarg::member, &conditional_fun::f_bodytype },
     {"u_has_class", "npc_has_class", jarg::member, &conditional_fun::f_npc_has_class },
     {"u_has_activity", "npc_has_activity", jarg::string, &conditional_fun::f_has_activity },

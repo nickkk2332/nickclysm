@@ -104,6 +104,7 @@
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
+#include "monfaction.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -6106,6 +6107,49 @@ talk_effect_fun_t::func f_attack( const JsonObject &jo, std::string_view member,
 }
 
 
+talk_effect_fun_t::func f_set_special_enabled( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    str_or_var special = get_str_or_var( jo.get_member( member ), member, true );
+    check_special_attack_name_at_load( special, string_format( "%s (%s)", member,
+                                       jo.get_member( member ).get_root_source_path() ) );
+    const bool enabled = jo.get_bool( "value", true );
+    return [special, enabled, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon != nullptr ) {
+            mon->set_special_enabled( special.evaluate( d ), enabled );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_set_monster_faction( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    str_or_var faction = get_str_or_var( jo.get_member( member ), member, true );
+    if( faction.is_constant() ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name = faction.constant(), context]() {
+            if( !mfaction_str_id( name ).is_valid() ) {
+                debugmsg( "Monster faction \"%s\" (used by set_monster_faction in %s) does not "
+                          "exist", name, context );
+            }
+        } );
+    }
+    return [faction, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon == nullptr ) {
+            return;
+        }
+        const mfaction_str_id new_faction( faction.evaluate( d ) );
+        if( !new_faction.is_valid() ) {
+            debugmsg( "set_monster_faction: unknown monster faction \"%s\".  %s", new_faction.str(),
+                      d.get_callstack() );
+            return;
+        }
+        mon->faction = new_faction.id();
+    };
+}
+
 talk_effect_fun_t::func f_ranged_attack( bool is_npc )
 {
 
@@ -9084,6 +9128,14 @@ parsers = {
     { "u_activate_bionic", "npc_activate_bionic", jarg::member, &talk_effect_fun::f_activate_bionic },
     { "u_deactivate_bionic", "npc_deactivate_bionic", jarg::member, &talk_effect_fun::f_deactivate_bionic },
     { "u_attack", "npc_attack", jarg::member, &talk_effect_fun::f_attack },
+    {
+        "u_set_special_enabled", "npc_set_special_enabled", jarg::member,
+        &talk_effect_fun::f_set_special_enabled
+    },
+    {
+        "u_set_monster_faction", "npc_set_monster_faction", jarg::member,
+        &talk_effect_fun::f_set_monster_faction
+    },
     { "u_die", "npc_die", jarg::object, &talk_effect_fun::f_die_advanced},
     { "u_spawn_monster", "npc_spawn_monster", jarg::member, &talk_effect_fun::f_spawn_monster },
     { "u_spawn_npc", "npc_spawn_npc", jarg::member, &talk_effect_fun::f_spawn_npc },

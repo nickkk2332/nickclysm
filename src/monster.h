@@ -463,6 +463,11 @@ class monster : public Creature
         void set_special( const std::string &special_name, int time );
         /** Sets the enabled flag for the given special to false */
         void disable_special( const std::string &special_name );
+        /** Sets the enabled flag for the given special, if the monster has it */
+        void set_special_enabled( const std::string &special_name, bool enabled );
+        /** Turns left before the given special is ready (0: ready, whether or not it is
+         *  enabled), or nullopt if the monster doesn't have it */
+        std::optional<int> special_cooldown( std::string_view special_name ) const;
         /** Test whether the monster has the specified special regardless of readiness. */
         bool has_special( const std::string &special_name ) const;
         /** Test whether the specified special is ready. */

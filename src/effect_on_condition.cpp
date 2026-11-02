@@ -76,6 +76,12 @@ bool string_id<effect_on_condition>::is_valid() const
 }
 
 static std::vector<std::pair<std::string, std::string>> pending_eoc_refs;
+static std::vector<std::function<void()>> pending_load_checks;
+
+void effect_on_conditions::add_load_check( std::function<void()> check )
+{
+    pending_load_checks.emplace_back( std::move( check ) );
+}
 
 void effect_on_conditions::check_consistency()
 {
@@ -86,6 +92,10 @@ void effect_on_conditions::check_consistency()
         }
     }
     pending_eoc_refs.clear();
+    for( const std::function<void()> &check : pending_load_checks ) {
+        check();
+    }
+    pending_load_checks.clear();
 }
 
 void effect_on_condition::load( const JsonObject &jo, std::string_view src )
@@ -559,6 +569,7 @@ void effect_on_conditions::reset()
 {
     effect_on_condition_factory.reset();
     pending_eoc_refs.clear();
+    pending_load_checks.clear();
 }
 
 void effect_on_conditions::load( const JsonObject &jo, const std::string &src )

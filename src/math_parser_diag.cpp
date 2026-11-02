@@ -2413,6 +2413,30 @@ void weather_ass( double val, dialogue &d, char /* scope */, std::vector<diag_va
     weather.clear_temp_cache();
 }
 
+// Turns until a monster's special attack is ready (0: ready); -1 if the talker isn't a monster
+// or the monster doesn't have that special
+double special_cooldown_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const &params,
+                              diag_kwargs const & /* kwargs */ )
+{
+    monster const *mon = d.const_actor( is_beta( scope ) )->get_const_monster();
+    if( mon == nullptr ) {
+        return -1;
+    }
+    return mon->special_cooldown( params[0].str( d ) ).value_or( -1 );
+}
+
+void special_cooldown_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    monster *mon = d.actor( is_beta( scope ) )->get_monster();
+    std::string const &special = params[0].str( d );
+    if( mon == nullptr || !mon->special_cooldown( special ) ) {
+        return;
+    }
+    mon->set_special( special, std::max( 0, static_cast<int>( std::lround( val ) ) ) );
+}
+
 double climate_control_str_heat_eval( const_dialogue const &d, char scope,
                                       std::vector<diag_value> const & /* params */,
                                       diag_kwargs const & /* kwargs */ )
@@ -2498,6 +2522,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "quality", { "un", 1, quality_eval, {}, { "strict" } } },
     { "skill", { "un", 1, skill_eval, skill_ass } },
     { "skill_exp", { "un", 1, skill_exp_eval, skill_exp_ass, { "format" } } },
+    { "special_cooldown", { "un", 1, special_cooldown_eval, special_cooldown_ass } },
     { "spell_count", { "un", 0, spell_count_eval, {}, { "school" } } },
     { "spell_difficulty", { "un", 1, spell_difficulty_eval, {}, { "baseline" } } },
     { "spell_exp", { "un", 1, spell_exp_eval, spell_exp_ass } },

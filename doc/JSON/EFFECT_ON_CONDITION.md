@@ -553,6 +553,38 @@ alpha talker is `SLIME`
 { "u_has_species": "SLIME" }
 ```
 
+### `u_is_mtype`, `npc_is_mtype`
+- type: string or [variable object](#variable-object)
+- true if alpha or beta talker is a monster of this monster type (not counting `copy-from` parents). A literal id that no monster type has is a load error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+#### Examples
+beta talker is a zombie brute
+```jsonc
+{ "npc_is_mtype": "mon_zombie_brute" }
+```
+
+### `u_has_special_attack`, `npc_has_special_attack`
+- type: string or [variable object](#variable-object)
+- true if alpha or beta talker is a monster that has this special attack (by its name in the monster's `special_attacks`) and it is enabled, whether or not it is ready. A literal name that no monster type has is a load error. See `u_set_special_enabled` and the `special_cooldown` math function
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+#### Examples
+alpha talker can still shriek
+```jsonc
+{ "u_has_special_attack": "SHRIEK" }
+```
+
 ### `u_bodytype`, `npc_bodytype`
 - type: string or [variable object](#variable-object)
 - true if alpha / beta talker monster has the defined bodytype
@@ -5592,7 +5624,9 @@ NPC is prevented from death.
 ```
 
 #### `u_attack`, `npc_attack`
-Alpha or beta talker forced to use a technique or special attack
+Alpha or beta talker forced to use a technique or special attack on the other talker.
+
+For a monster, the value names one of its own special attacks (as in its `special_attacks`): with `allow_special` it uses that attack on the other talker right away, ignoring its cooldown and whether it is enabled, and the cooldown starts again afterwards. Any other value (such as `"tec_none"`), or `allow_special: false`, makes it do a basic melee attack, if the other talker is adjacent and seen. `allow_unarmed` doesn't apply to monsters.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -5605,7 +5639,7 @@ Alpha or beta talker forced to use a technique or special attack
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
 
 ##### Examples
 you use autoattack
@@ -5648,6 +5682,54 @@ Picks random pankration technique, assign it to `pankration_random_attack`, and 
     { "u_attack": { "context_val": "pankration_random_attack" } }
   ]
 }
+```
+
+A monster (alpha) bites its target (beta) with its `void_spider_bite` special attack
+```jsonc
+{ "u_attack": "void_spider_bite" }
+```
+
+#### `u_set_special_enabled`, `npc_set_special_enabled`
+Enables or disables one of a monster's special attacks, for example for boss phases. A disabled attack is never used by the monster on its own (`u_attack` can still force it). Nothing happens if the talker isn't a monster or doesn't have that attack. The cooldown can be read and changed with the `special_cooldown` math function.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_special_enabled" / "npc_set_special_enabled" | **mandatory** | string or [variable object](#variable-object) | name of the special attack, as in the monster's `special_attacks`. A literal name that no monster type has is a load error |
+| "value" | optional | boolean | default true; false disables it |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+##### Examples
+In its second phase the boss stops shrieking and starts its leap, ready at once
+```jsonc
+[
+  { "u_set_special_enabled": "SHRIEK", "value": false },
+  { "u_set_special_enabled": "boss_leap" },
+  { "math": [ "u_special_cooldown('boss_leap') = 0" ] }
+]
+```
+
+#### `u_set_monster_faction`, `npc_set_monster_faction`
+Moves a monster to another monster faction, which changes which monsters it fights and which ones leave it alone (see `"default_faction"` in [MONSTERS.md](MONSTERS.md)). Saved with the monster. Nothing happens if the talker isn't a monster.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_monster_faction" / "npc_set_monster_faction" | **mandatory** | string or [variable object](#variable-object) | id of the monster faction. A literal id that doesn't exist is a load error |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ✔️ | ❌ | ❌ | ❌ |
+
+##### Examples
+The charmed monster (beta) joins the bees
+```jsonc
+{ "npc_set_monster_faction": "bee" }
 ```
 
 #### `u_ranged_attack`, `npc_ranged_attack`

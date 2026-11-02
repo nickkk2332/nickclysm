@@ -95,6 +95,9 @@ void load_new_character( Character &you );
 void load_existing_character( Character &you );
 /** Loads an inline eoc */
 effect_on_condition_id load_inline_eoc( const JsonValue &jv, std::string_view src );
+/** Runs @p check from check_consistency(), once all data is loaded: for ids written in EOC
+ *  JSON whose type may load later. The check reports problems with debugmsg. */
+void add_load_check( std::function<void()> check );
 /** queue an eoc to happen in the future */
 void queue_effect_on_condition( time_duration duration, effect_on_condition_id eoc,
                                 Character &you, global_variables::impl_t const &context );

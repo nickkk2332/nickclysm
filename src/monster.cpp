@@ -2966,6 +2966,23 @@ void monster::disable_special( const std::string &special_name )
     special_attacks.at( special_name ).enabled = false;
 }
 
+void monster::set_special_enabled( const std::string &special_name, bool enabled )
+{
+    const auto iter = special_attacks.find( special_name );
+    if( iter != special_attacks.end() ) {
+        iter->second.enabled = enabled;
+    }
+}
+
+std::optional<int> monster::special_cooldown( std::string_view special_name ) const
+{
+    const auto iter = special_attacks.find( special_name );
+    if( iter == special_attacks.end() ) {
+        return std::nullopt;
+    }
+    return iter->second.cooldown;
+}
+
 bool monster::special_available( std::string_view special_name ) const
 {
     std::map<std::string, mon_special_attack>::const_iterator iter = special_attacks.find(
