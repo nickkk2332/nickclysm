@@ -9542,6 +9542,12 @@ void map::loadn( const point_bub_sm &grid, bool update_vehicles )
         set_floor_cache_dirty( z );
         set_pathfinding_cache_dirty( z );
         tmpsub = MAPBUFFER.lookup_submap( pos );
+        if( tmpsub == nullptr ) {
+            // submap_exists vouched for it above, so the save is damaged beyond regenerating
+            dbg( D_ERROR ) << "failed to load a submap at " << pos;
+            debugmsg( "failed to load a submap at %s", pos.to_string() );
+            return;
+        }
         setsubmap( get_nonant( tripoint_rel_sm{ grid.x(), grid.y(), z} ), tmpsub );
         if( !tmpsub->active_items.empty() ) {
             submaps_with_active_items_dirty.emplace( pos );

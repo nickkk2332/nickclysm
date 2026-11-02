@@ -1,4 +1,5 @@
 #include <functional>
+#include <memory>
 #include <string>
 #include <tuple>
 
@@ -15,7 +16,10 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "mapbuffer.h"
 #include "mapdata.h"
+#include "omdata.h"
+#include "overmapbuffer.h"
 #include "point.h"
 #include "submap.h"
 #include "type_id.h"
@@ -29,6 +33,8 @@ static const field_type_str_id field_fd_weedsmoke( "fd_weedsmoke" );
 static const itype_id itype_flashlight_on( "flashlight_on" );
 static const itype_id itype_jointer( "jointer" );
 static const itype_id itype_tshirt( "tshirt" );
+
+static const oter_str_id oter_field( "field" );
 
 static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_floor( "t_floor" );
@@ -337,4 +343,30 @@ TEST_CASE( "map-b07_add_item_copies_are_all_active_and_lit", "[audit][map][item]
     here.update_submaps_with_active_items();
     CHECK( here.get_active_items_in_radius( pos, 0 ).size() == 3 );
     CHECK( sm->get_lum( l ) == 3 );
+}
+
+// The map buffer must never hold an entry without a submap. Before the fix such an entry
+// (left by a damaged save, here added directly) made submap_exists() say yes while
+// lookup_submap() returned null, so loading that overmap tile dereferenced null and crashed
+// instead of generating the missing submap.
+TEST_CASE( "map-b08_mapbuffer_entry_without_a_submap_is_regenerated", "[audit][map]" )
+{
+    clear_map();
+    // Nothing outside the reality bubble stays buffered, and the tests never save maps
+    MAPBUFFER.clear_outside_reality_bubble();
+    const tripoint_abs_omt omt = project_to<coords::omt>( get_map().get_abs_sub() ) +
+                                 tripoint_rel_omt( 12, 12, 0 );
+    const tripoint_abs_sm sm_addr = project_to<coords::sm>( omt );
+    // A plain field keeps the generation below cheap and free of NPCs and vehicles
+    overmap_buffer.ter_set( omt, oter_field.id() );
+
+    std::unique_ptr<submap> none;
+    CHECK_FALSE( MAPBUFFER.add_submap( sm_addr, none ) );
+
+    tinymap tm;
+    tm.load( omt, false );
+    CHECK( MAPBUFFER.submap_exists( sm_addr ) );
+    CHECK( MAPBUFFER.lookup_submap( sm_addr ) != nullptr );
+
+    MAPBUFFER.clear_outside_reality_bubble();
 }
