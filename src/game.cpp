@@ -154,6 +154,7 @@
 #include "mapdata.h"
 #include "mapsharing.h"
 #include "maptile_fwd.h"
+#include "melee.h"
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
@@ -5459,8 +5460,10 @@ bool game::npc_menu( npc &who )
         }
     } else if( choice == attack ) {
         if( who.is_enemy() || query_yn( _( "You may be attacked!  Proceed?" ) ) ) {
-            u.melee_attack( who, true );
-            who.on_attacked( u );
+            // Called off in the technique menu: no attack, nothing to answer
+            if( u.melee_attack( who, true ) || !melee::attack_called_off() ) {
+                who.on_attacked( u );
+            }
         }
     } else if( choice == disarm ) {
         if( who.is_enemy() || query_yn( _( "You may be attacked!  Proceed?" ) ) ) {

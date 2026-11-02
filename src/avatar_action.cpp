@@ -412,7 +412,9 @@ bool avatar_action::move( avatar &you, map &m, const tripoint_rel_ms &d )
                          msg_safe_mode );
                 return false;
             }
-            you.melee_attack( critter, true );
+            if( !you.melee_attack( critter, true ) && melee::attack_called_off() ) {
+                return false;
+            }
             if( critter.is_hallucination() ) {
                 critter.die( &m, &you );
             }

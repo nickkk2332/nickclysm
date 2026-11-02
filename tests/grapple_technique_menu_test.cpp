@@ -772,6 +772,7 @@ TEST_CASE( "grapple_tm_cancelling_the_menu_costs_nothing", "[grapple][martial_ar
         CHECK( zed.get_hp() == hp );
         CHECK_FALSE( zed.has_effect( effect_hit_by_player ) );
         CHECK( you.pos_bub() == dude_pos );
+        CHECK( melee::attack_called_off() );
     };
 
     SECTION( "an attack, the menu answered by cancelling" ) {
@@ -792,6 +793,19 @@ TEST_CASE( "grapple_tm_cancelling_the_menu_costs_nothing", "[grapple][martial_ar
         cancelled( [&]() {
             CHECK_FALSE( you.melee_attack( zed, true ) );
         } );
+    }
+    SECTION( "moving into a hallucination: called off, it isn't found out" ) {
+        zed.hallucination = true;
+        menu_answer answer( answer_cancel );
+        cancelled( [&]() {
+            avatar_action::move( you, get_map(), tripoint_rel_ms::east );
+        } );
+        CHECK_FALSE( zed.is_dead() );
+    }
+    SECTION( "an attack made is not called off" ) {
+        you.manual_combat_mode = false;
+        you.melee_attack( zed, true );
+        CHECK_FALSE( melee::attack_called_off() );
     }
 }
 

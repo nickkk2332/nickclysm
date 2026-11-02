@@ -84,6 +84,7 @@
 #include "uilist.h"
 #include "units.h"
 #include "value_ptr.h"
+#include "veh_type.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "weakpoint.h"
@@ -529,6 +530,9 @@ static void melee_train( Character &you, int lo, int hi, const item &weap,
     }
 }
 
+// Set when the technique menu calls a melee attack off (melee::attack_called_off)
+static bool last_attack_called_off = false;
+
 bool Character::melee_attack( Creature &t, bool allow_special )
 {
     static const matec_id no_technique_id( "" );
@@ -750,11 +754,13 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     // Manual combat: the player picks the technique before anything is rolled or spent, so
     // calling the attack off in the menu costs nothing and tells nothing
     technique_choice choice = preset;
+    last_attack_called_off = false;
     if( choice.how == technique_choice::mode::automatic &&
         melee::wants_technique_menu( *this, allow_special ) ) {
         choice = melee::choose_technique( *this, t,
                                           allow_unarmed ? used_weapon() : get_wielded_item() );
         if( choice.how == technique_choice::mode::cancel ) {
+            last_attack_called_off = true;
             return false;
         }
     }
@@ -2182,7 +2188,10 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
 
             // Check if it's possible to move to the new tile
             bool move_issue =
-                g->is_dangerous_tile( prev_pos ) || // Tile contains fire, etc
+                // Tile contains fire, etc: the avatar goes by what it knows, anyone else by
+                // what would hurt it
+                ( is_avatar() ? g->is_dangerous_tile( prev_pos ) :
+                  is_dangerous_fields( here.field_at( prev_pos ) ) ) ||
                 ( to_swimmable && to_deepwater ) || // Dive into deep water
                 is_mounted() ||
                 ( veh0 != nullptr && std::abs( veh0->velocity ) > 100 ) || // Diving from moving vehicle
@@ -2198,7 +2207,15 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
                     g->place_player( prev_pos );
                     g->on_move_effects();
                 } else {
+                    // A step in, with what stepping onto the tile brings
                     setpos( here, prev_pos );
+                    if( here.veh_at( prev_pos ).part_with_feature( VPFLAG_BOARDABLE, true ) ) {
+                        here.board_vehicle( prev_pos, this );
+                    }
+                    here.creature_on_trap( *this );
+                    if( !is_dead_state() ) {
+                        here.creature_in_field( *this );
+                    }
                 }
             }
         }
@@ -3370,6 +3387,11 @@ melee::technique_menu_suppressor::~technique_menu_suppressor()
 bool melee::technique_menu_suppressed()
 {
     return technique_menu_suppression > 0;
+}
+
+bool melee::attack_called_off()
+{
+    return last_attack_called_off;
 }
 
 bool melee::wants_technique_menu( const Character &you, bool allow_special )

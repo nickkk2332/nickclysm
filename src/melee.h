@@ -105,6 +105,12 @@ struct technique_menu_options {
  */
 bool wants_technique_menu( const Character &you, bool allow_special );
 
+/**
+ * Whether the last melee attack was called off in the technique menu. Callers that act on an
+ * attack after it (anger, a hallucination's end) check this when the attack returns false.
+ */
+bool attack_called_off();
+
 /** The technique menu's lines for an attack on target, in the order shown. Rolls nothing. */
 std::vector<technique_menu_entry> technique_menu_entries( const Character &you,
         const Creature &target, const item_location &weapon,
