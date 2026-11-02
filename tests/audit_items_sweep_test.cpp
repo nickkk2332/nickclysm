@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -10,6 +11,9 @@
 #include "item_group.h"
 #include "item_pocket.h"
 #include "itype.h"
+#include "magic.h"
+#include "magic_enchantment.h"
+#include "relic.h"
 #include "type_id.h"
 
 static const fault_id fault_test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
@@ -17,8 +21,17 @@ static const fault_id fault_test_fault_mech_self_damaging( "test_fault_mech_self
 static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_briefcase_smg( "briefcase_smg" );
 static const itype_id itype_colt_army( "colt_army" );
+static const itype_id itype_rock( "rock" );
 static const itype_id itype_test_fault_self_damaging_rod( "test_fault_self_damaging_rod" );
 static const itype_id itype_test_fault_two_mech_rod( "test_fault_two_mech_rod" );
+
+static const relic_procgen_id relic_procgen_data_test_relic_hit_me( "test_relic_hit_me" );
+static const relic_procgen_id
+relic_procgen_data_test_relic_negative_cap( "test_relic_negative_cap" );
+static const relic_procgen_id
+relic_procgen_data_test_relic_negative_only( "test_relic_negative_only" );
+
+static const spell_id spell_test_spell_pew( "test_spell_pew" );
 
 // ITEM-B03: Item_factory::finalize_post() returned right after giving complex firearms their
 // gun repair tools, so everything after it never ran for guns: the per-bodypart armor data
@@ -107,4 +120,61 @@ TEST_CASE( "item-b06_min_max_of_charges_item_without_modifier", "[audit][item]" 
         REQUIRE( min_max.size() == 1 );
         CHECK( min_max.begin()->second == std::make_pair( 0, charges ) );
     }
+}
+
+// ITEM-B07: relic generation checked max_negative_power before adding the new attribute's
+// power, so the total could overshoot the cap by one attribute and a cap of 0 still allowed
+// one negative attribute.  A rejected pick changed nothing, so a ruleset whose candidates were
+// all rejected looped forever.  passive_hit_me/hit_you values were never loaded either.
+static int relic_negative_power( const relic &art, const relic_procgen_id &ruleset )
+{
+    int negative = 0;
+    for( const enchant_cache &ench : art.get_proc_enchantments() ) {
+        negative += std::min( 0, ruleset->power_level( ench ) );
+    }
+    return negative;
+}
+
+TEST_CASE( "item-b07_relic_negative_power_stays_within_cap", "[audit][item][relic]" )
+{
+    relic_procgen_data::generation_rules rules;
+    rules.power_level = 500;
+    rules.max_negative_power = -300;
+    // each negative attribute is -250, so only one fits under -300
+    for( int i = 0; i < 50; ++i ) {
+        const relic art = relic_procgen_data_test_relic_negative_cap->generate( rules, itype_rock );
+        CHECK( relic_negative_power( art, relic_procgen_data_test_relic_negative_cap ) >= -300 );
+        CHECK( art.power_level( relic_procgen_data_test_relic_negative_cap ) >= 500 );
+    }
+}
+
+TEST_CASE( "item-b07_relic_with_only_rejected_candidates_ends_empty", "[audit][item][relic]" )
+{
+    relic_procgen_data::generation_rules rules;
+    rules.power_level = 500;
+    rules.max_negative_power = 0;
+    rules.max_attributes = 1;
+    // the only candidate is negative and the cap is 0: nothing may be added, and generation
+    // must give up instead of retrying forever
+    const relic art = relic_procgen_data_test_relic_negative_only->generate( rules, itype_rock );
+    CHECK( art.get_proc_enchantments().empty() );
+    CHECK( relic_negative_power( art, relic_procgen_data_test_relic_negative_only ) == 0 );
+}
+
+TEST_CASE( "item-b07_relic_hit_me_values_are_loaded", "[audit][item][relic]" )
+{
+    relic_procgen_data::generation_rules rules;
+    rules.power_level = 500;
+    const relic art = relic_procgen_data_test_relic_hit_me->generate( rules, itype_rock );
+    bool has_hit_me = false;
+    for( const enchant_cache &ench : art.get_proc_enchantments() ) {
+        for( const fake_spell &sp : ench.hit_me_effect ) {
+            CHECK( sp.id == spell_test_spell_pew );
+            has_hit_me = true;
+        }
+    }
+    CHECK( has_hit_me );
+    // each hit_me attribute is worth its 300 base power, so two attributes reach 500
+    CHECK( art.get_proc_enchantments().size() <= 2 );
+    CHECK( art.power_level( relic_procgen_data_test_relic_hit_me ) >= 500 );
 }

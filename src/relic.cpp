@@ -249,6 +249,24 @@ void relic_procgen_data::load( const JsonObject &jo, std::string_view )
         active_procgen_values.add( val, weight );
     }
 
+    for( const JsonObject jo_inner : jo.get_array( "passive_hit_you_procgen_values" ) ) {
+        int weight = 0;
+        mandatory( jo_inner, was_loaded, "weight", weight );
+        relic_procgen_data::enchantment_active val;
+        val.load( jo_inner );
+
+        passive_hit_you.add( val, weight );
+    }
+
+    for( const JsonObject jo_inner : jo.get_array( "passive_hit_me_procgen_values" ) ) {
+        int weight = 0;
+        mandatory( jo_inner, was_loaded, "weight", weight );
+        relic_procgen_data::enchantment_active val;
+        val.load( jo_inner );
+
+        passive_hit_me.add( val, weight );
+    }
+
     for( const JsonObject jo_inner : jo.get_array( "charge_types" ) ) {
         int weight = 0;
         mandatory( jo_inner, was_loaded, "weight", weight );
@@ -706,6 +724,18 @@ bool relic::has_activation() const
     return !active_effects.empty();
 }
 
+// power of a spell from the first entry of `values` that casts it, or 0 if none does
+static int spell_power_level(
+    const weighted_int_list<relic_procgen_data::enchantment_active> &values, const fake_spell &sp )
+{
+    for( const std::pair<relic_procgen_data::enchantment_active, int> &vals : values ) {
+        if( vals.first.activated_spell == sp.id ) {
+            return vals.first.calc_power( sp.level );
+        }
+    }
+    return 0;
+}
+
 int relic_procgen_data::power_level( const enchant_cache &ench ) const
 {
     int power = 0;
@@ -727,18 +757,19 @@ int relic_procgen_data::power_level( const enchant_cache &ench ) const
         }
     }
 
+    for( const fake_spell &sp : ench.hit_me_effect ) {
+        power += spell_power_level( passive_hit_me, sp );
+    }
+    for( const fake_spell &sp : ench.hit_you_effect ) {
+        power += spell_power_level( passive_hit_you, sp );
+    }
+
     return power;
 }
 
 int relic_procgen_data::power_level( const fake_spell &sp ) const
 {
-    for( const std::pair<relic_procgen_data::enchantment_active, int> &vals :
-         active_procgen_values ) {
-        if( vals.first.activated_spell == sp.id ) {
-            return vals.first.calc_power( sp.level );
-        }
-    }
-    return 0;
+    return spell_power_level( active_procgen_values, sp );
 }
 
 item relic_procgen_data::create_item( const relic_procgen_data::generation_rules &rules ) const
@@ -764,8 +795,31 @@ relic relic_procgen_data::generate( const relic_procgen_data::generation_rules &
     int negative_attribute_power = 0;
     const bool is_armor = item( it_id ).is_armor();
 
-    while( rules.max_attributes > num_attributes && rules.power_level > ret.power_level( id ) ) {
-        switch( *type_weights.pick() ) {
+    // counts a negative attribute's power, unless it would take the artifact's total negative
+    // power past max_negative_power
+    const auto within_negative_cap = [&]( int power ) {
+        if( power >= 0 ) {
+            return true;
+        }
+        if( negative_attribute_power + power < rules.max_negative_power ) {
+            return false;
+        }
+        negative_attribute_power += power;
+        return true;
+    };
+
+    // a pick can be rejected (negative power cap, zero value, empty list) or add nothing to the
+    // power level; stop when that keeps happening instead of looping forever
+    constexpr int max_picks_without_progress = 100;
+    int picks_without_progress = 0;
+    int current_power = ret.power_level( id );
+    while( rules.max_attributes > num_attributes && rules.power_level > current_power ) {
+        const relic_procgen_data::type *picked_type = type_weights.pick();
+        if( picked_type == nullptr ) {
+            debugmsg( "relic procgen data %s has no type_weights", id.c_str() );
+            break;
+        }
+        switch( *picked_type ) {
             case relic_procgen_data::type::active_enchantment: {
                 const relic_procgen_data::enchantment_active *active = active_procgen_values.pick();
                 if( active != nullptr ) {
@@ -773,11 +827,8 @@ relic relic_procgen_data::generate( const relic_procgen_data::generation_rules &
                     active_sp.id = active->activated_spell;
                     active_sp.level = rng( active->min_level, active->max_level );
                     int power = power_level( active_sp );
-                    if( power < 0 ) {
-                        if( rules.max_negative_power > negative_attribute_power ) {
-                            break;
-                        }
-                        negative_attribute_power += power;
+                    if( !within_negative_cap( power ) ) {
+                        break;
                     }
                     num_attributes++;
                     ret.add_active_effect( active_sp, active->ench_has );
@@ -794,11 +845,8 @@ relic relic_procgen_data::generate( const relic_procgen_data::generation_rules &
                     }
                     ench.add_value_add( add->type, value );
                     int negative_ench_attribute = power_level( ench );
-                    if( negative_ench_attribute < 0 ) {
-                        if( rules.max_negative_power > negative_attribute_power ) {
-                            break;
-                        }
-                        negative_attribute_power += negative_ench_attribute;
+                    if( !within_negative_cap( negative_ench_attribute ) ) {
+                        break;
                     }
                     if( add->ench_has ) {
                         ench.set_has( add->ench_has );
@@ -820,11 +868,8 @@ relic relic_procgen_data::generate( const relic_procgen_data::generation_rules &
                     float value = rng_float( mult->min_value, mult->max_value );
                     ench.add_value_mult( mult->type, value );
                     int negative_ench_attribute = power_level( ench );
-                    if( negative_ench_attribute < 0 ) {
-                        if( rules.max_negative_power > negative_attribute_power ) {
-                            break;
-                        }
-                        negative_attribute_power += negative_ench_attribute;
+                    if( !within_negative_cap( negative_ench_attribute ) ) {
+                        break;
                     }
                     if( mult->ench_has ) {
                         ench.set_has( mult->ench_has );
@@ -847,11 +892,8 @@ relic relic_procgen_data::generate( const relic_procgen_data::generation_rules &
                     enchant_cache ench;
                     ench.add_hit_me( active_sp );
                     int power = power_level( ench );
-                    if( power < 0 ) {
-                        if( rules.max_negative_power > negative_attribute_power ) {
-                            break;
-                        }
-                        negative_attribute_power += power;
+                    if( !within_negative_cap( power ) ) {
+                        break;
                     }
                     if( active->ench_has ) {
                         ench.set_has( active->ench_has );
@@ -874,11 +916,8 @@ relic relic_procgen_data::generate( const relic_procgen_data::generation_rules &
                     enchant_cache ench;
                     ench.add_hit_you( active_sp );
                     int power = power_level( ench );
-                    if( power < 0 ) {
-                        if( rules.max_negative_power > negative_attribute_power ) {
-                            break;
-                        }
-                        negative_attribute_power += power;
+                    if( !within_negative_cap( power ) ) {
+                        break;
                     }
                     if( active->ench_has ) {
                         ench.set_has( active->ench_has );
@@ -897,6 +936,14 @@ relic relic_procgen_data::generate( const relic_procgen_data::generation_rules &
                 break;
             }
         }
+
+        const int new_power = ret.power_level( id );
+        if( new_power > current_power ) {
+            picks_without_progress = 0;
+        } else if( ++picks_without_progress >= max_picks_without_progress ) {
+            break;
+        }
+        current_power = new_power;
     }
 
     if( ret.has_activation() ) {
