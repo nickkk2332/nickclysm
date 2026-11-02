@@ -93,6 +93,7 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | mutation: "activated_eocs"                       | character (Character)       | NONE                        |
 | mutation: "deactivated_eocs"                     | character (Character)       | NONE                        |
 | mutation: "processed_eocs"                       | character (Character)       | NONE                        |
+| mutation: "eat_condition" (a condition)          | eater (Character)           | food (item)                 | runs before eating; false refuses the food, see [Diet rules](MUTATIONS.md#diet-rules)
 | recipe: "result_eocs"                            | crafter (Character)         | NONE                        | `recipe_id`, string; `batch_size`, `batch_index`, numbers; run once per batch unit
 | recipe: "result_item_eocs"                       | crafter (Character)         | result (item)               | `recipe_id`, string; `batch_size`, number; run once per result item
 | recipe: "disassembly_eocs"                       | character (Character)       | NONE                        | `recipe_id`, `item_id`, strings; `count`, number

@@ -21,6 +21,7 @@
       - [Fields](#fields)
       - [Types](#types)
     - [EOC details](#eoc-details)
+    - [Diet rules](#diet-rules)
     - [Sample trait: Example Sleep](#sample-trait-example-sleep)
   - [Mutation Categories](#mutation-categories)
   - [Trait Migrations](#trait-migrations)
@@ -230,6 +231,9 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "ignored_by": [ "ZOMBIE" ],                 // List of species ignoring you (default: empty).
   "anger_relations": [ [ "MARSHMALLOW", 20 ], [ "GUMMY", 5 ], [ "CHEWGUM", 20 ] ], // List of species angered by you and how much, negative values calm instead  (default: empty).
   "can_only_eat": [ "junk" ],                 // List of comestible materials (default: empty).
+  "edible_food_flags": [ "CATTLE" ],          // Food with any of these flags is edible even if INEDIBLE, and doesn't taste bad.  See Diet rules (default: empty).
+  "food_allergies": [ { "vitamin": "meat_allergen", "morale": "morale_antimeat" } ], // Food containing the vitamin is an allergen: eating it gives the morale penalty.  See Diet rules (default: empty).
+  "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "You only eat cooked food." }, // Food can only be eaten while the condition is true.  See Diet rules (default: none).
   "can_only_heal_with": [ "bandage" ],        // List of `MED` you are restricted to, includes mutagen, serum, aspirin, bandages etc. (default: empty).
   "can_heal_with": [ "caramel_ointement" ],   // List of `MED` that will work for you but not for anyone else.  See `CANT_HEAL_EVERYONE` flag for items (default: empty).
   "allowed_category": [ "ALPHA" ],            // List of categories you can mutate into (default: empty).
@@ -412,6 +416,32 @@ There are two ways for JSON to stop an activation:
         "effect": [ { "u_message": "The water shorts out your shield." }, { "u_deactivate_trait": { "context_val": "this" } } ]
       }
     ]
+  }
+```
+
+### Diet rules
+
+Three fields let a mutation change what its owner can eat, without C++. They apply while the character has the trait.
+
+- `edible_food_flags`: array of item flag ids. Food that has any of them can be eaten even with the `INEDIBLE` flag, and its taste is adjusted like a threshold animal's: negative fun is turned positive and halved, and zero fun becomes 2. The animal thresholds use it: `THRESH_CATTLE` lists `CATTLE`, `THRESH_LUPINE` lists `LUPINE`, and so on.
+- `food_allergies`: array of `{ "vitamin": <vitamin id>, "morale": <morale type id> }`. Food that contains the vitamin is an allergen: the eat menu warns about it, eating it gives the morale (-75, down to -400). When several allergies match, the first one in load order wins. `VEGETARIAN`, `MEATARIAN`, `LACTOSE`, `ANTIFRUIT`, `ANTIJUNK` and `ANTIWHEAT` use it.
+- `eat_condition`: object with a mandatory `condition` and an optional `fail_message` (default "You can't eat that."). The condition runs with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker, every time the game checks whether the food can be eaten (eat menu, NPC food choice, forced eating), for every comestible including drinks and medicine. When it is false, the food can't be eaten and `fail_message` is shown. Unlike `consumption_effect_on_conditions` on the food, it runs before anything is eaten.
+
+Unknown flag, vitamin and morale ids are reported at load.
+
+```jsonc
+  {
+    "type": "mutation",
+    "id": "CROP_GUT",
+    "name": { "str": "Crop Gut" },
+    "points": -1,
+    "description": "You can eat raw grain like a bird, but cooked food disgusts you and dairy makes you sick.",
+    "edible_food_flags": [ "BIRD" ],
+    "food_allergies": [ { "vitamin": "milk_allergen", "morale": "morale_lactose" } ],
+    "eat_condition": {
+      "condition": { "or": [ { "npc_has_flag": "RAW" }, { "npc_has_flag": "EATEN_COLD" } ] },
+      "fail_message": "Your stomach turns at the smell of cooked food."
+    }
   }
 ```
 

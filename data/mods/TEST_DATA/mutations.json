@@ -568,5 +568,32 @@
     },
     "activation_fail_message": "The test gate is closed.",
     "activated_eocs": [ { "id": "EOC_TEST_MUTJ02_GATED_ON", "effect": [ { "math": [ "u_mutj02_gated_ran += 1" ] } ] } ]
+  },
+  {
+    "//": "HLTH-J03 fixture: eats INEDIBLE LUPINE food like the wolf threshold does.",
+    "type": "mutation",
+    "id": "TEST_EDIBLE_LUPINE_FOOD",
+    "name": { "str": "Test Bone Gnawer" },
+    "points": 0,
+    "description": "Test mutation that can eat bones.",
+    "edible_food_flags": [ "LUPINE" ]
+  },
+  {
+    "//": "HLTH-J03 fixture: an egg allergy, which no hardcoded trait had.",
+    "type": "mutation",
+    "id": "TEST_EGG_ALLERGY",
+    "name": { "str": "Test Egg Allergy" },
+    "points": 0,
+    "description": "Test mutation allergic to eggs.",
+    "food_allergies": [ { "vitamin": "egg_allergen", "morale": "morale_antimeat" } ]
+  },
+  {
+    "//": "HLTH-J03 fixture: refuses raw food through an eat_condition.",
+    "type": "mutation",
+    "id": "TEST_NO_RAW_FOOD",
+    "name": { "str": "Test Raw Food Refuser" },
+    "points": 0,
+    "description": "Test mutation that won't eat raw food.",
+    "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "Test: you won't eat raw food." }
   }
 ]

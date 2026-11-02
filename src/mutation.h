@@ -268,6 +268,17 @@ struct mutation_branch {
         /**List of material required for food to be edible*/
         std::set<material_id> can_only_eat;
 
+        /** Food with any of these flags is edible even if INEDIBLE, and doesn't taste bad */
+        std::set<flag_id> edible_food_flags;
+        /** Food containing the vitamin is an allergen: eating it gives the morale penalty */
+        std::vector<std::pair<vitamin_id, morale_type>> food_allergies;
+        /** Food can only be eaten while this is true, with the eater as u_ and the food as npc_ */
+        std::function<bool( const_dialogue const & )> eat_condition;
+        bool has_eat_condition = false;
+        translation eat_fail_message;
+        /** Mutations with any of the diet rules above, in load order */
+        static const std::vector<trait_id> &get_diet_traits();
+
         /**List of healing items allowed*/
         std::set<itype_id> can_only_heal_with;
         std::set<itype_id> can_heal_with;
