@@ -1,10 +1,12 @@
 #include <algorithm>
+#include <climits>
 #include <map>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
@@ -20,6 +22,7 @@
 #include "json_loader.h"
 #include "magic.h"
 #include "magic_enchantment.h"
+#include "player_helpers.h"
 #include "relic.h"
 #include "type_id.h"
 
@@ -36,6 +39,7 @@ static const itype_id itype_colt_army( "colt_army" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_test_fault_self_damaging_rod( "test_fault_self_damaging_rod" );
 static const itype_id itype_test_fault_two_mech_rod( "test_fault_two_mech_rod" );
+static const itype_id itype_test_glock( "test_glock" );
 static const itype_id itype_test_transform_timed_baton( "test_transform_timed_baton" );
 
 static const relic_procgen_id relic_procgen_data_test_relic_hit_me( "test_relic_hit_me" );
@@ -256,4 +260,35 @@ TEST_CASE( "item-b09_item_category_spawn_rate_survives_override_and_save", "[aud
 
     globals.set_global_values( old_globals );
     CHECK( cat.get_spawn_rate() == Approx( 0.25f ) );
+}
+
+// IINF-B03: gun_recoil() divided recoil by the effective handling above 1, and multiplied it
+// by 1 + handling at or below 1.  Recoil therefore doubled when handling reached exactly 1,
+// and below 1 it shrank as handling got worse: arm strength 0 gave 1x recoil, 1 gave 2x.
+// Handling summed below 0 by mods made pow() return NaN.
+TEST_CASE( "iinf-b03_gun_recoil_never_rises_with_arm_strength", "[audit][item][gun]" )
+{
+    clear_avatar();
+    avatar &guy = get_avatar();
+    item gun( itype_test_glock );
+    gun.ammo_set( gun.ammo_default() );
+    REQUIRE( gun.ammo_remaining() > 0 );
+
+    // The 600 g test glock has handling 10: arm strength 0 gives an effective handling of 0,
+    // 1 gives exactly 1 and 2 or more gives 1.6.
+    int previous = INT_MAX;
+    for( int str = 0; str <= 10; ++str ) {
+        guy.set_str_base( str );
+        const int recoil = gun.gun_recoil( guy );
+        CAPTURE( str, guy.get_arm_str(), recoil, previous );
+        CHECK( recoil > 0 );
+        CHECK( recoil <= previous );
+        previous = recoil;
+    }
+    // the curve is continuous: handling 0 doubles the recoil, handling 1 leaves it as is
+    guy.set_str_base( 0 );
+    const int recoil_no_handling = gun.gun_recoil( guy );
+    guy.set_str_base( 1 );
+    const int recoil_handling_one = gun.gun_recoil( guy );
+    CHECK( recoil_no_handling == 2 * recoil_handling_one );
 }

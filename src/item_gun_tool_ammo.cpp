@@ -1333,7 +1333,8 @@ int item::gun_recoil( const Character &p, bool bipod, bool ideal_strength ) cons
     }
 
     // rescale from JSON units which are intentionally specified as integral values
-    handling /= 10;
+    // mods can take the sum below 0, where the power below has no real value
+    handling = std::max( handling / 10, 0.0 );
 
     // algorithm is biased so heavier weapons benefit more from improved handling
     handling = std::pow( wt, 0.8 ) * std::pow( handling, 1.2 );
@@ -1343,11 +1344,12 @@ int item::gun_recoil( const Character &p, bool bipod, bool ideal_strength ) cons
         qty += ammo_data()->ammo->recoil;
     }
 
-    // handling could be either a bonus or penalty dependent upon installed mods
-    if( handling > 1.0 ) {
+    // handling above 1 divides the recoil; below 1 it adds up to the same recoil again, the
+    // more the worse the handling, meeting the division at 1 so recoil never jumps
+    if( handling >= 1.0 ) {
         return qty / handling;
     } else {
-        return qty * ( 1.0 + std::abs( handling ) );
+        return qty * ( 2.0 - handling );
     }
 }
 
