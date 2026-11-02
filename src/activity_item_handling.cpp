@@ -1863,9 +1863,10 @@ static activity_reason_info find_base_construction(
 
     if( !cc ) {
         // try to build a variant from the same group
-        con = _find_alt_construction( you, loc, idx, part_con_idx, [&idx]( construction const & it ) {
+        const auto same_group = [&idx]( construction const & it ) {
             return it.group == idx->group;
-        } );
+        };
+        con = _find_alt_construction( you, loc, idx, part_con_idx, same_group );
         if( !idx->strict && con == nullptr ) {
             // try to build a pre-requisite from a different group, recursively
             checked_cache_t checked_cache;
