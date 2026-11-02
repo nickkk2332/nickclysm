@@ -386,6 +386,14 @@ item::item( const recipe *rec, int qty, item &component )
     }
 }
 
+void item::renew_uids()
+{
+    uid_ = item_uid( generate_next_item_uid() );
+    for( item *contained : all_items_ptr() ) {
+        contained->uid_ = item_uid( generate_next_item_uid() );
+    }
+}
+
 item::item( const item & ) = default;
 item::item( item && ) noexcept = default;
 item::~item() = default;

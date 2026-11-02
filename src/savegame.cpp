@@ -1687,6 +1687,11 @@ void game::unserialize_dimension_data( const JsonValue &jv )
             overmap_buffer.deserialize_placed_unique_specials( jsin );
         } else if( name == "power_networks" ) {
             power_networks().deserialize( jsin );
+        } else if( name == "next_item_uid" ) {
+            // Dimension travel saves this with the maps, but not the master save
+            int64_t saved = 0;
+            jsin.read( saved );
+            next_item_uid = std::max( next_item_uid, saved );
         }
     }
 }
@@ -1935,6 +1940,11 @@ void game::serialize_dimension_data( std::ostream &fout )
 
         json.member( "power_networks" );
         power_networks().serialize( json );
+
+        // Dimension travel saves the maps and this, not the master save that holds the uid
+        // counter; without this a crash after travel would leave the counter behind the uids of
+        // items saved in the maps
+        json.member( "next_item_uid", next_item_uid );
 
         json.end_object();
     } catch( const JsonError &e ) {

@@ -3285,6 +3285,8 @@ void item::io( Archive &archive )
     if constexpr( Archive::is_input::value ) {
         if( !uid_.is_valid() ) {
             uid_ = item_uid( generate_next_item_uid() );
+        } else {
+            reserve_item_uid( uid_.get_value() );
         }
     }
 
@@ -3580,9 +3582,13 @@ void item::deserialize( const JsonObject &data )
     if( data.has_object( "contents" ) ) {
         item_contents read_contents;
         data.read( "contents", read_contents );
-        contents.read_mods( read_contents );
+        // Moved in, not copied: contained items keep their uids, so saved item_locations into
+        // containers still find them, and nested contents are not copied once per level.
+        // read_mods takes only the MOD pocket's items and leaves the rest for combine.
+        contents.read_mods( std::move( read_contents ) );
         update_modified_pockets();
-        contents.combine( read_contents, false, true, false, true );
+        // NOLINTNEXTLINE(bugprone-use-after-move)
+        contents.combine( std::move( read_contents ), false, true, false, true );
 
         //migrate SOFTWARE pocket
         auto pockets_e_legacy = []( item_pocket const & pocket ) {

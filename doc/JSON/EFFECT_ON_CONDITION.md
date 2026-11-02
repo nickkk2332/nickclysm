@@ -2192,7 +2192,7 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | activates_mininuke | Triggers when any character arms a mininuke | { "character", `character_id` } | character / NONE |
 | administers_mutagen |  | { "character", `character_id` },<br/> { "technique", `mutagen_technique` }, | character / NONE |
 | angers_amigara_horrors | Triggers when amigara horrors are spawned as part of a mine finale | NONE | avatar / NONE |
-| avatar_enters_omt | Triggers when player crosses the overmap boundary, including when player spawns | { "pos", `tripoint` },<br/> { "oter_id", `oter_id` }, | avatar / NONE |
+| avatar_enters_omt | Triggers when player crosses the overmap boundary, including when player spawns | { "pos", `tripoint` },<br/> { "oter_id", `oter_id` },<br/> { "overmap_special", `overmap_special_id` }, empty if the OMT is in no special. This third field is new: a `trigger_event` for this event needs three arguments | avatar / NONE |
 | avatar_moves |  | { "mount", `mtype_id` },<br/> { "terrain", `ter_id` },<br/> { "movement_mode", `move_mode_id` },<br/> { "underwater", `bool` },<br/> { "z", `int` }, | avatar / NONE |
 | avatar_dies |  | NONE | avatar / NONE |
 | awakes_dark_wyrms | Triggers when `pedestal_wyrm` examine action is used | NONE | avatar / NONE |

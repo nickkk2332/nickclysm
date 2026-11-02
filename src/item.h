@@ -251,7 +251,11 @@ class item
          * run-length encoded run of identical items. */
         void set_uid( int64_t saved_uid ) {
             uid_ = item_uid( saved_uid );
+            reserve_item_uid( saved_uid );
         }
+        /** Gives this item and everything in it new uids, as copying it would. For items read
+         * from JSON that is not the save, whose uids may be in use. */
+        void renew_uids();
 
         /**
          * Filter converting this instance to another type preserving all other aspects

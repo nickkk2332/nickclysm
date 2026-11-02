@@ -27,7 +27,8 @@ class mapbuffer
          **/
         void save( bool delete_after_save = false );
 
-        /** Delete all buffered submaps. **/
+        /** Delete all buffered submaps, and forget which map files are on disk
+         * (for all mapbuffers). **/
         void clear();
 
         /** Delete all buffered submaps except those inside the reality bubble.

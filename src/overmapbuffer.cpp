@@ -1206,6 +1206,19 @@ std::optional<overmap_special_id> overmapbuffer::overmap_special_at(
     return om_loc.om->overmap_special_at( om_loc.local );
 }
 
+std::optional<overmap_special_id> overmapbuffer::overmap_special_at_if_loaded(
+    const tripoint_abs_omt &loc )
+{
+    point_abs_om om_pos;
+    point_om_omt local;
+    std::tie( om_pos, local ) = project_remain<coords::om>( loc.xy() );
+    const auto it = overmaps.find( om_pos );
+    if( it == overmaps.end() ) {
+        return std::nullopt;
+    }
+    return it->second->overmap_special_at( tripoint_om_omt( local, loc.z() ) );
+}
+
 std::optional<mapgen_arguments> overmapbuffer::get_existing_omt_stack_arguments(
     const point_abs_omt &p )
 {

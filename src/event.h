@@ -239,9 +239,12 @@ struct event_spec<event_type::angers_amigara_horrors> : event_spec_empty {};
 
 template<>
 struct event_spec<event_type::avatar_enters_omt> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "pos", cata_variant_type::tripoint },
             { "oter_id", cata_variant_type::oter_id },
+            // The special the OMT belongs to, empty if none. Recorded when the event is sent, so
+            // statistics never look it up in the overmap. Events saved before it was added lack it.
+            { "overmap_special", cata_variant_type::overmap_special_id },
         }
     };
 };

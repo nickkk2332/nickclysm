@@ -55,6 +55,10 @@ without timing it, then times a fixed amount of work.
 | `shrapnel_armored` | 1 grenade on an armored zombie, with 8 more 1 tile away and 16 more 2 tiles away, all surviving it | CMBT-P02 |
 | `npc_spell_eval` | 20 attack choices of an NPC knowing 4 attack spells (blast, cone, line, single target), 6 zombies and the player in range | NPC-P01, MAGIC-P02 |
 | `npc_weapon_eval` | 50 attack choices of an NPC with a rifle (2 fire modes), a shotgun, 2 melee weapons and rocks, 6 zombies at 3 to 30 tiles | NPC-P02 |
+| `stats_overmap_special_history` | the last overmap special entered, over 400 OMTs entered in 4 saved but unloaded overmaps, as a game load rebuilds it (in `benchmark_scenarios_load_test.cpp`) | EVT-P01 |
+| `mapbuffer_save_uniform` | saving 25 explored OMTs in a compressed world: 25 ground quads and 500 uniform quads (`benchmark_scenarios_load_test.cpp`) | MAP-P03 |
+| `mapbuffer_lookup_missing` | looking up the 84 submaps of 25 OMTs that are not on disk, in a compressed world, as `map::generate` does (`benchmark_scenarios_load_test.cpp`) | MAP-P03 |
+| `item_nested_deserialize` | reading a 5-level tree of 31 bags holding 186 items, 20 times (`benchmark_scenarios_load_test.cpp`) | INV-P01 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then

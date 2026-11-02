@@ -356,19 +356,22 @@ TEST_CASE( "stats_tracker_with_event_statistics", "[stats]" )
         send_game_start( b, u_id );
         CHECK( event_statistic_first_omt->value( s ) == cata_variant() );
         CHECK( event_statistic_avatar_last_item_wielded->value( s ) == cata_variant() );
-        b.send<event_type::avatar_enters_omt>( tripoint::zero, field );
+        b.send<event_type::avatar_enters_omt>( tripoint::zero, field,
+                                               overmap_special_id() );
         b.send<event_type::character_wields_item>( u_id, itype_crowbar );
         CHECK( event_statistic_first_omt->value( s ) == cata_variant( tripoint::zero ) );
         CHECK( event_statistic_avatar_last_item_wielded->value( s ) == cata_variant( itype_crowbar ) );
 
         calendar::turn += 1_minutes;
-        b.send<event_type::avatar_enters_omt>( tripoint::below, field );
+        b.send<event_type::avatar_enters_omt>( tripoint::below, field,
+                                               overmap_special_id() );
         b.send<event_type::character_wields_item>( u_id, itype_pipe );
         CHECK( event_statistic_first_omt->value( s ) == cata_variant( tripoint::zero ) );
         CHECK( event_statistic_avatar_last_item_wielded->value( s ) == cata_variant( itype_pipe ) );
 
         calendar::turn += 1_minutes;
-        b.send<event_type::avatar_enters_omt>( tripoint::zero, field );
+        b.send<event_type::avatar_enters_omt>( tripoint::zero, field,
+                                               overmap_special_id() );
         b.send<event_type::character_wields_item>( u_id, itype_crowbar );
         CHECK( event_statistic_first_omt->value( s ) == cata_variant( tripoint::zero ) );
         CHECK( event_statistic_avatar_last_item_wielded->value( s ) == cata_variant( itype_crowbar ) );
@@ -379,11 +382,13 @@ TEST_CASE( "stats_tracker_with_event_statistics", "[stats]" )
         const oter_id forest_thick( "forest_thick" );
         send_game_start( b, u_id );
         CHECK( event_statistic_num_avatar_enters_oter_test->value( s ) == cata_variant( 0 ) );
-        b.send<event_type::avatar_enters_omt>( tripoint::zero, forest );
+        b.send<event_type::avatar_enters_omt>( tripoint::zero, forest,
+                                               overmap_special_id() );
         CHECK( event_statistic_num_avatar_enters_oter_test->value( s ) == cata_variant( 1 ) );
 
         calendar::turn += 1_minutes;
-        b.send<event_type::avatar_enters_omt>( tripoint::below, forest_thick );
+        b.send<event_type::avatar_enters_omt>( tripoint::below, forest_thick,
+                                               overmap_special_id() );
         CHECK( event_statistic_num_avatar_enters_oter_test->value( s ) == cata_variant( 2 ) );
     }
 
@@ -395,7 +400,8 @@ TEST_CASE( "stats_tracker_with_event_statistics", "[stats]" )
         send_game_start( b, u_id );
         CHECK( event_statistic_last_oter_type_avatar_entered->value( s ) == cata_variant() );
 
-        b.send<event_type::avatar_enters_omt>( tripoint::zero, field );
+        b.send<event_type::avatar_enters_omt>( tripoint::zero, field,
+                                               overmap_special_id() );
         CHECK( event_statistic_last_oter_type_avatar_entered->value( s ) == cata_variant(
                    oter_type_field ) );
 
@@ -626,11 +632,13 @@ TEST_CASE( "achievements_tracker", "[stats]" )
         oter_id field( "field" );
 
         auto send_enter_omt_zero = [&]() {
-            b.send<event_type::avatar_enters_omt>( tripoint::zero, field );
+            b.send<event_type::avatar_enters_omt>( tripoint::zero, field,
+                                                   overmap_special_id() );
         };
 
         auto send_enter_omt_other = [&]() {
-            b.send<event_type::avatar_enters_omt>( tripoint::below, field );
+            b.send<event_type::avatar_enters_omt>( tripoint::below, field,
+                                                   overmap_special_id() );
         };
 
         achievement_id a_return_to_first_omt( "achievement_return_to_first_omt" );

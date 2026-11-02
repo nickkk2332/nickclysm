@@ -833,7 +833,7 @@
     "type": "event_transformation",
     "event_type": "avatar_enters_omt",
     "new_fields": { "oter_type_id": { "oter_type_of_oter": "oter_id" } },
-    "drop_fields": [ "oter_id" ]
+    "drop_fields": [ "oter_id", "overmap_special" ]
   },
   {
     "id": "last_oter_type_avatar_entered",
@@ -845,8 +845,13 @@
   {
     "id": "avatar_enters_overmap_special",
     "type": "event_transformation",
-    "event_transformation": "avatar_enters_oter_type",
-    "new_fields": { "overmap_special_id": { "overmap_special_at": "pos" } }
+    "//": "The special is recorded in the event, so this never loads an overmap. Events saved before it was recorded count as entering no special.",
+    "event_type": "avatar_enters_omt",
+    "new_fields": {
+      "oter_type_id": { "oter_type_of_oter": "oter_id" },
+      "overmap_special_id": { "overmap_special_if_any": "overmap_special" }
+    },
+    "drop_fields": [ "oter_id", "overmap_special" ]
   },
   {
     "id": "last_overmap_special_avatar_entered",
