@@ -29,7 +29,10 @@
 #include "coordinates.h"
 #include "item.h"
 #include "item_location.h"
+#include "map.h"
+#include "map_helpers.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "pocket_type.h"
 #include "rng.h"
 #include "type_id.h"
@@ -47,6 +50,8 @@ static const itype_id itype_scrap( "scrap" );
 
 static const quality_id qual_CUT( "CUT" );
 static const quality_id qual_HAMMER( "HAMMER" );
+
+static const ter_str_id ter_t_water_dp( "t_water_dp" );
 
 namespace
 {
@@ -106,6 +111,87 @@ void fill_nested_inventory( avatar &u )
     }
 }
 
+// Restores calendar::turn when it goes out of scope.
+struct restore_turn {
+    time_point saved = calendar::turn;
+    ~restore_turn() {
+        calendar::turn = saved;
+    }
+};
+
+// Four overmap tiles of the reality bubble (clear_map generated them) that the lake
+// scenarios flood, away from the avatar's corner.
+std::vector<tripoint_abs_omt> lake_omts()
+{
+    const tripoint_abs_omt base = project_to<coords::omt>( get_map().get_abs_sub() );
+    return { base + tripoint_rel_omt( 2, 2, 0 ), base + tripoint_rel_omt( 3, 2, 0 ),
+             base + tripoint_rel_omt( 2, 3, 0 ), base + tripoint_rel_omt( 3, 3, 0 ) };
+}
+
+// Turns the surface of an overmap tile into deep water, clearing any ice.
+void flood( const tripoint_abs_omt &omt )
+{
+    map &here = get_map();
+    const tripoint_abs_ms origin = project_to<coords::ms>( omt );
+    for( int y = 0; y < 2 * SEEY; ++y ) {
+        for( int x = 0; x < 2 * SEEX; ++x ) {
+            here.ter_set( here.get_bub( origin + tripoint_rel_ms( x, y, 0 ) ), ter_t_water_dp );
+        }
+    }
+}
+
+// Surface tiles of an overmap tile that aren't deep water any more (frozen).
+int frozen_tiles( const tripoint_abs_omt &omt )
+{
+    map &here = get_map();
+    const tripoint_abs_ms origin = project_to<coords::ms>( omt );
+    int frozen = 0;
+    for( int y = 0; y < 2 * SEEY; ++y ) {
+        for( int x = 0; x < 2 * SEEX; ++x ) {
+            frozen += here.ter( here.get_bub( origin + tripoint_rel_ms( x, y, 0 ) ) ) != ter_t_water_dp;
+        }
+    }
+    return frozen;
+}
+
+// Loading a smallmap runs the phase change pass over its submaps on every z-level.
+void load_smallmap( const tripoint_abs_omt &omt )
+{
+    smallmap sm;
+    sm.load( omt, false );
+}
+
+// Noon of the first day of the given season, plus some days.
+time_point day_in_season( season_type season, int days_in )
+{
+    time_point t = calendar::turn_zero + 12_hours;
+    while( season_of_year( t ) != season ) {
+        t += 1_days;
+    }
+    return t + days_in * 1_days;
+}
+
+// The first winter noon on which the whole lake freezes when loaded, so the frozen
+// scenario re-freezes every lake tile on every load.
+time_point freezing_day()
+{
+    const std::vector<tripoint_abs_omt> omts = lake_omts();
+    const time_point first = day_in_season( WINTER, 0 );
+    for( int day = 0; day < 91; ++day ) {
+        calendar::turn = first + day * 1_days;
+        int frozen = 0;
+        for( const tripoint_abs_omt &omt : omts ) {
+            flood( omt );
+            load_smallmap( omt );
+            frozen += frozen_tiles( omt );
+        }
+        if( frozen == static_cast<int>( omts.size() ) * 4 * SEEX * SEEY ) {
+            return calendar::turn;
+        }
+    }
+    return calendar::before_time_starts;
+}
+
 } // namespace
 
 // INV-P02: every inventory query walks the carried items through item_location, building a
@@ -138,5 +224,61 @@ TEST_CASE( "bench_inventory_queries", "[.][benchmark_scenario]" )
             }
         }
         CHECK( checksum > 0 );
+    } );
+}
+
+// MGEN-P01: loading a submap runs the phase change pass on each of its tiles, on every
+// z-level. Each lake tile samples the weather ten times. Here, in summer, nothing freezes.
+TEST_CASE( "bench_phase_change_lake_thawed", "[.][benchmark_scenario]" )
+{
+    restore_turn turn_guard;
+    run_scenario( "phase_change_lake_thawed",
+                  "40 smallmap loads over 4 overmap tiles of open lake in summer",
+    []() {
+        clear_avatar();
+        clear_map();
+        get_avatar().setpos( get_map(), tripoint_bub_ms( 6, 6, 0 ) );
+        calendar::turn = day_in_season( SUMMER, 30 );
+        for( const tripoint_abs_omt &omt : lake_omts() ) {
+            flood( omt );
+        }
+    }, []() {
+        const std::vector<tripoint_abs_omt> omts = lake_omts();
+        for( int i = 0; i < 40; ++i ) {
+            load_smallmap( omts[i % omts.size()] );
+        }
+        CHECK( frozen_tiles( omts.front() ) == 0 );
+    } );
+}
+
+// MGEN-P01: a frozen tile is thawed back to water and frozen again, through two full
+// ter_set calls, every time its submap is loaded.
+TEST_CASE( "bench_phase_change_lake_frozen", "[.][benchmark_scenario]" )
+{
+    restore_turn turn_guard;
+    time_point cold_day = calendar::before_time_starts;
+    run_scenario( "phase_change_lake_frozen",
+                  "40 smallmap loads over 4 overmap tiles of frozen lake in winter",
+    [&cold_day]() {
+        clear_avatar();
+        clear_map();
+        get_avatar().setpos( get_map(), tripoint_bub_ms( 6, 6, 0 ) );
+        if( cold_day == calendar::before_time_starts ) {
+            cold_day = freezing_day();
+            REQUIRE( cold_day != calendar::before_time_starts );
+        }
+        calendar::turn = cold_day;
+        for( const tripoint_abs_omt &omt : lake_omts() ) {
+            flood( omt );
+            // freeze it, so the timed loads find ice with the water recorded under it
+            load_smallmap( omt );
+            REQUIRE( frozen_tiles( omt ) == 4 * SEEX * SEEY );
+        }
+    }, []() {
+        const std::vector<tripoint_abs_omt> omts = lake_omts();
+        for( int i = 0; i < 40; ++i ) {
+            load_smallmap( omts[i % omts.size()] );
+        }
+        CHECK( frozen_tiles( omts.front() ) == 4 * SEEX * SEEY );
     } );
 }
