@@ -4078,7 +4078,7 @@ Flags, that can be used in different entries, can also be made in json, allowing
   "craft_inherit": true, // if true, if you craft something with this flag, this flag would be applied to result also
   "item_prefix": "[...",
   "item_suffix": "...]", // `item_prefix` and `item_suffix` will be added to the prefix and suffix of the item name
-  "vehicle_toggle": { "name": "force field", "hotkey": "TOGGLE_FORCE_FIELD" } // vehicle parts with this flag can be switched on and off together, see below
+  "vehicle_toggle": { "name": "force field" } // vehicle parts with this flag can be switched on and off together, see below
 },
 
 ```
@@ -4088,7 +4088,7 @@ Flags, that can be used in different entries, can also be made in json, allowing
 A flag with a `vehicle_toggle` object turns every vehicle part that has the flag into one switch group:
 
 - When `name` is set, the vehicle's electronics menu offers "Turn on <name>" / "Turn off <name>" while the vehicle has a working part with the flag, and switches all of them together. Entries are sorted by name.
-- `hotkey` is optional: an action id from the `VEHICLE` keybindings (`data/raw/keybindings/vehicle.json`), like `TOGGLE_HEADLIGHT`. Without it the menu picks a free key. Several toggles may share one action.
+- `hotkey` is optional: an action id from the `VEHICLE` keybindings (`data/raw/keybindings/vehicle.json`), like `TOGGLE_HEADLIGHT`. Without it the menu picks a free key. Several toggles may share one action. The action must already exist in `data/raw/keybindings/vehicle.json`, and mods cannot add new ones; an unknown action is not reported and leaves the menu entry with no key at all, it does not fall back to a free key.
 - A newly installed part with the flag starts switched on when another part of its group is already on.
 - `"vehicle_toggle": { }`, without a name, only does the last point; it has no menu entry.
 
