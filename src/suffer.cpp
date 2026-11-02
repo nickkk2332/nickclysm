@@ -1937,9 +1937,10 @@ void Character::mend( int rate_multiplier )
             continue;
         }
 
-        healing_factor *= bp->mend_rate;
+        // Per-limb factor: one limb's mend rate must not carry over to the limbs after it.
+        const double limb_factor = healing_factor * bp->mend_rate;
 
-        const time_duration dur_inc = 1_turns * roll_remainder( rate_multiplier * healing_factor );
+        const time_duration dur_inc = 1_turns * roll_remainder( rate_multiplier * limb_factor );
         effect &eff = get_effect( effect_mending, bp );
         if( eff.is_null() ) {
             add_effect( effect_mending, dur_inc, bp, true );
