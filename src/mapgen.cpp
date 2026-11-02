@@ -2920,13 +2920,9 @@ class jmapgen_spawn_item : public jmapgen_piece
             // 100% chance = exactly 1 item, otherwise scale by item spawn rate.
             const float spawn_rate = get_option<float>( "ITEM_SPAWNRATE" );
             int spawn_count = ( c == 100 ) ? 1 : roll_remainder( c * spawn_rate / 100.0f );
-            if( spawn_count <= 0 ) {
-                return;
-            }
-            const item category_sample( chosen_id, calendar::start_of_cataclysm );
             for( int i = 0; i < spawn_count; i++ ) {
                 // The item category's spawn rate drops or copies each item
-                for( int copies = item_group::category_spawn_count( category_sample ); copies > 0;
+                for( int copies = item_group::category_spawn_count( *chosen_id ); copies > 0;
                      copies-- ) {
                     const tripoint_bub_ms pos( x.get(), y.get(), dat.zlevel() + z.get() );
                     dat.m.spawn_item( pos, chosen_id, amount.get(), 0,

@@ -81,6 +81,8 @@ ItemList items_from( const item_group_id &group_id );
  * above it roll_remainder( rate ) times. Mission items always spawn once.
  */
 int category_spawn_count( const item &it );
+/** The same for a new item of @p type, without making one */
+int category_spawn_count( const itype &type );
 /** Applies @ref category_spawn_count to each of @p items, dropping or copying it. */
 void apply_category_spawn_rates( ItemList &items );
 /**

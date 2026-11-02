@@ -1097,12 +1097,10 @@ item_group::ItemList item_group::items_from( const item_group_id &group_id )
     return items_from( group_id, calendar::turn_zero );
 }
 
-int item_group::category_spawn_count( const item &it )
+// How many copies of an item to spawn at a category spawn rate of @p rate
+static int spawn_count_at_rate( float rate )
 {
-    if( it.has_flag( json_flag_MISSION_ITEM ) ) {
-        return 1;
-    }
-    const float rate = std::max( 0.0f, it.get_category_of_contents().get_spawn_rate() );
+    rate = std::max( 0.0f, rate );
     if( rate == 1.0f ) {
         return 1;
     }
@@ -1110,6 +1108,22 @@ int item_group::category_spawn_count( const item &it )
         return rng_float( 0.0f, 1.0f ) < rate ? 1 : 0;
     }
     return roll_remainder( rate );
+}
+
+int item_group::category_spawn_count( const item &it )
+{
+    if( it.has_flag( json_flag_MISSION_ITEM ) ) {
+        return 1;
+    }
+    return spawn_count_at_rate( it.get_category_of_contents().get_spawn_rate() );
+}
+
+int item_group::category_spawn_count( const itype &type )
+{
+    if( type.has_flag( json_flag_MISSION_ITEM ) || !type.category_force.is_valid() ) {
+        return 1;
+    }
+    return spawn_count_at_rate( type.category_force->get_spawn_rate() );
 }
 
 void item_group::apply_category_spawn_rates( ItemList &items )
