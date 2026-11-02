@@ -1,0 +1,49 @@
+[
+  {
+    "type": "fault",
+    "id": "test_fault_mech_dent",
+    "fault_type": "mechanical_damage",
+    "name": { "str": "test dent" },
+    "description": "Test fault: the %s is dented."
+  },
+  {
+    "type": "fault",
+    "id": "test_fault_mech_scratch",
+    "fault_type": "mechanical_damage",
+    "name": { "str": "test scratch" },
+    "description": "Test fault: the %s is scratched."
+  },
+  {
+    "type": "fault",
+    "id": "test_fault_mech_self_damaging",
+    "//": "Its instant damage rolls another mechanical fault, which could pick it again (ITEM-B04).",
+    "fault_type": "mechanical_damage",
+    "instant_damage": 1,
+    "name": { "str": "test spreading crack" },
+    "description": "Test fault: a crack in the %s that damages it when it appears."
+  },
+  {
+    "id": "test_fault_two_mech_rod",
+    "type": "ITEM",
+    "name": { "str": "TEST two-fault rod" },
+    "description": "A steel rod that can get one of two mechanical faults.",
+    "weight": "500 g",
+    "volume": "250 ml",
+    "material": [ "steel" ],
+    "symbol": "/",
+    "color": "light_gray",
+    "faults": [ { "fault": "test_fault_mech_dent" }, { "fault": "test_fault_mech_scratch" } ]
+  },
+  {
+    "id": "test_fault_self_damaging_rod",
+    "type": "ITEM",
+    "name": { "str": "TEST self-damaging rod" },
+    "description": "A steel rod whose only mechanical fault damages it when it appears.",
+    "weight": "500 g",
+    "volume": "250 ml",
+    "material": [ "steel" ],
+    "symbol": "/",
+    "color": "light_gray",
+    "faults": [ { "fault": "test_fault_mech_self_damaging" } ]
+  }
+]

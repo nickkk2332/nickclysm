@@ -9,8 +9,12 @@
 #include "itype.h"
 #include "type_id.h"
 
+static const fault_id fault_test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
+
 static const itype_id itype_briefcase_smg( "briefcase_smg" );
 static const itype_id itype_colt_army( "colt_army" );
+static const itype_id itype_test_fault_self_damaging_rod( "test_fault_self_damaging_rod" );
+static const itype_id itype_test_fault_two_mech_rod( "test_fault_two_mech_rod" );
 
 // ITEM-B03: Item_factory::finalize_post() returned right after giving complex firearms their
 // gun repair tools, so everything after it never ran for guns: the per-bodypart armor data
@@ -31,4 +35,42 @@ TEST_CASE( "item-b03_complex_guns_finish_item_finalization", "[audit][item]" )
     for( const pocket_data &pocket : itype_colt_army->pockets ) {
         CHECK( pocket._no_unload );
     }
+}
+
+// ITEM-B04: mod_damage() rolled a mechanical fault for every i in 0..qty step damage_scale,
+// inclusive, so one damage level (qty 1000) rolled twice.  An item already having a fault
+// could also roll it again, and set_fault() applies the fault's instant damage through
+// mod_damage(), so a fault with instant damage re-rolled itself until the stack overflowed.
+TEST_CASE( "item-b04_one_damage_level_rolls_one_mechanical_fault", "[audit][item]" )
+{
+    // Both test faults are always eligible, so the second roll picked a new fault half the time.
+    int items_with_two_faults = 0;
+    for( int i = 0; i < 64; ++i ) {
+        item rod( itype_test_fault_two_mech_rod );
+        REQUIRE( rod.faults.empty() );
+        rod.inc_damage();
+        REQUIRE( rod.damage() == itype::damage_scale );
+        CHECK( rod.faults.size() == 1 );
+        if( rod.faults.size() > 1 ) {
+            ++items_with_two_faults;
+        }
+    }
+    CHECK( items_with_two_faults == 0 );
+}
+
+TEST_CASE( "item-b04_instant_damage_fault_does_not_reroll_itself", "[audit][item]" )
+{
+    // The rod's only mechanical fault has 1 instant damage: getting it damages the rod, which
+    // rolled the same fault again, forever.  It must be set once.
+    item rod( itype_test_fault_self_damaging_rod );
+    REQUIRE( rod.faults.empty() );
+    rod.inc_damage();
+    CHECK( rod.has_fault( fault_test_fault_mech_self_damaging ) );
+    CHECK( rod.faults.size() == 1 );
+    CHECK( rod.damage() == itype::damage_scale + 1 );
+
+    // A fault the item already has can't be set again without force.
+    CHECK_FALSE( rod.can_have_fault( fault_test_fault_mech_self_damaging ) );
+    CHECK_FALSE( rod.set_fault( fault_test_fault_mech_self_damaging ) );
+    CHECK( rod.damage() == itype::damage_scale + 1 );
 }
