@@ -1863,13 +1863,119 @@ You can see selected location.
 "u_is_in_vehicle"
 ```
 
-### `has_ammo`
+### `u_has_ammo`, `npc_has_ammo`
 - type: simple string
-- return true if beta talker is an item and has enough ammo for at least one "shot".
+- return true if alpha or beta talker is an item and has enough ammo or charge for at least one use. When the other talker is a character, power they can supply to the item (a UPS, for example) counts too.
+- `has_ammo` is the old name of `npc_has_ammo` and still works.
 
-### `is_rotten`
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+Only fire the tool's effect when it is loaded
+```jsonc
+{ "if": "npc_has_ammo", "then": { "u_message": "Click." } }
+```
+
+### `u_is_rotten`, `npc_is_rotten`
 - type: simple string
-- return true if beta talker is an item and is rotten.
+- return true if alpha or beta talker is an item and is rotten.
+- `is_rotten` is the old name of `npc_is_rotten` and still works.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+{ "not": "npc_is_rotten" }
+```
+
+### `u_is_container`, `npc_is_container`
+- type: simple string
+- return true if alpha or beta talker is an item with at least one container pocket, a pocket that holds contents (magazines, mod slots and software slots are not container pockets). False for any talker that is not an item.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+"npc_is_container"
+```
+
+### `u_is_container_empty`, `npc_is_container_empty`
+- type: simple string
+- return true if alpha or beta talker is a container item whose container pockets hold nothing. A loaded battery or magazine and installed mods do not count as contents. False for items that are not containers.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+{ "and": [ "npc_is_container", { "not": "npc_is_container_empty" } ] }
+```
+
+### `u_is_sealed`, `npc_is_sealed`
+- type: simple string
+- return true if alpha or beta talker is an item with at least one sealed pocket, like a factory-sealed can or bottle. Sealed pockets keep their contents fresh longer and are opened when the contents are taken out.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+```jsonc
+{ "if": "npc_is_sealed", "then": { "u_message": "The lid is still on." } }
+```
+
+### `u_contains_item`, `npc_contains_item`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is an item that holds an item of this id anywhere in its container pockets, inside nested containers too. A container does not contain itself. False for talkers that are not items. An unknown item id is reported as an error.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+Does the backpack hold any water, even inside a bottle?
+```jsonc
+{ "npc_contains_item": "water_clean" }
+```
+
+```jsonc
+{ "u_contains_item": { "context_val": "wanted_item" } }
+```
+
+### `u_is_contained_in`, `npc_is_contained_in`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is an item inside a container of this id, directly or through any number of nested containers. An item that is worn, wielded or on the ground is not contained in anything. False for talkers that are not items. An unknown item id is reported as an error.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+True for a rock in a canvas sack that is itself in a backpack
+```jsonc
+{ "npc_is_contained_in": "backpack" }
+```
 
 ### `test_eoc`
 - type: string or [variable object](#variable-object)

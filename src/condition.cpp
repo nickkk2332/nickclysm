@@ -2050,16 +2050,97 @@ conditional_t::func f_test_eoc( const JsonObject &jo, std::string_view member )
     };
 }
 
-conditional_t::func f_has_ammo()
+conditional_t::func f_has_ammo( bool is_npc )
 {
-    return []( const_dialogue const & d ) {
-        item_location const *it = d.const_actor( true )->get_const_item();
+    return [is_npc]( const_dialogue const & d ) {
+        item_location const *it = d.const_actor( is_npc )->get_const_item();
         if( it ) {
-            return ( *it )->ammo_sufficient( d.const_actor( false )->get_const_character() );
+            // The other talker, when it is a character, is the one using the item.
+            Character const *user = d.has_actor( !is_npc ) ?
+                                    d.const_actor( !is_npc )->get_const_character() : nullptr;
+            return ( *it )->ammo_sufficient( user );
         } else {
-            debugmsg( "beta talker must be Item" );
+            debugmsg( "%s talker must be Item", is_npc ? "beta" : "alpha" );
             return false;
         }
+    };
+}
+
+// The item a talker wraps, or nullptr when the talker is not an item.
+item const *talker_item_or_null( const_dialogue const &d, bool is_npc )
+{
+    item_location const *it = d.const_actor( is_npc )->get_const_item();
+    return it != nullptr && *it ? it->get_item() : nullptr;
+}
+
+conditional_t::func f_is_container( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        return it != nullptr && it->is_container();
+    };
+}
+
+conditional_t::func f_is_sealed( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        return it != nullptr && it->any_pockets_sealed();
+    };
+}
+
+conditional_t::func f_is_container_empty( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        // only container pockets count: a loaded battery or an installed mod is not contents
+        return it != nullptr && it->is_container() &&
+               it->all_items_top( pocket_type::CONTAINER ).empty();
+    };
+}
+
+conditional_t::func f_contains_item( const JsonObject &jo, std::string_view member,
+                                     bool is_npc )
+{
+    str_or_var item_id = get_str_or_var( jo.get_member( member ), member, true );
+    return [item_id, is_npc]( const_dialogue const & d ) {
+        item const *container = talker_item_or_null( d, is_npc );
+        if( container == nullptr ) {
+            return false;
+        }
+        const itype_id id( item_id.evaluate( d ) );
+        if( !id.is_valid() ) {
+            debugmsg( "Unknown item id \"%s\" in contains_item.  %s", id.str(), d.get_callstack() );
+            return false;
+        }
+        return container->has_item_with( [container, &id]( const item & content ) {
+            return &content != container && content.typeId() == id;
+        } );
+    };
+}
+
+conditional_t::func f_is_contained_in( const JsonObject &jo, std::string_view member,
+                                       bool is_npc )
+{
+    str_or_var item_id = get_str_or_var( jo.get_member( member ), member, true );
+    return [item_id, is_npc]( const_dialogue const & d ) {
+        item_location const *it = d.const_actor( is_npc )->get_const_item();
+        if( it == nullptr || !*it ) {
+            return false;
+        }
+        const itype_id id( item_id.evaluate( d ) );
+        if( !id.is_valid() ) {
+            debugmsg( "Unknown item id \"%s\" in is_contained_in.  %s", id.str(),
+                      d.get_callstack() );
+            return false;
+        }
+        for( item_location parent = *it; parent.has_parent(); ) {
+            parent = parent.parent_item();
+            if( parent->typeId() == id ) {
+                return true;
+            }
+        }
+        return false;
     };
 }
 
@@ -2309,14 +2390,14 @@ conditional_t::func f_using_martial_art( const JsonObject &jo, std::string_view 
     };
 }
 
-conditional_t::func f_is_rotten()
+conditional_t::func f_is_rotten( bool is_npc )
 {
-    return []( const_dialogue const & d ) {
-        item_location const *it = d.const_actor( true )->get_const_item();
+    return [is_npc]( const_dialogue const & d ) {
+        item_location const *it = d.const_actor( is_npc )->get_const_item();
         if( it ) {
             return ( *it )->get_relative_rot() > 1;
         } else {
-            debugmsg( "beta talker must be Item" );
+            debugmsg( "%s talker must be Item", is_npc ? "beta" : "alpha" );
             return false;
         }
     };
@@ -2773,6 +2854,8 @@ parsers = {
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },
     {"test_eoc", jarg::member, &conditional_fun::f_test_eoc },
     {"u_has_part_flag", "npc_has_part_flag", jarg::string, &conditional_fun::f_has_part_flag },
+    {"u_contains_item", "npc_contains_item", jarg::member, &conditional_fun::f_contains_item },
+    {"u_is_contained_in", "npc_is_contained_in", jarg::member, &conditional_fun::f_is_contained_in },
 };
 
 // When updating this, please also update `dynamic_line_string_keys` in
@@ -2840,7 +2923,9 @@ parsers_simple = {
     {"u_is_item", "npc_is_item", &conditional_fun::f_is_item },
     {"u_is_furniture", "npc_is_furniture", &conditional_fun::f_is_furniture },
     {"u_is_vehicle", "npc_is_vehicle", &conditional_fun::f_is_vehicle },
-    {"has_ammo", &conditional_fun::f_has_ammo },
+    {"u_has_ammo", "npc_has_ammo", &conditional_fun::f_has_ammo },
+    // legacy spelling of npc_has_ammo
+    {"u_has_ammo", "has_ammo", &conditional_fun::f_has_ammo },
     {"player_see_u", "player_see_npc", &conditional_fun::f_player_see },
     {"u_see_npc", "npc_see_u", &conditional_fun::f_see_opposite },
     {"u_see_npc_loc", "npc_see_u_loc", &conditional_fun::f_see_opposite_coordinates },
@@ -2858,7 +2943,12 @@ parsers_simple = {
     {"u_is_on_rails", "npc_is_on_rails", &conditional_fun::f_is_on_rails },
     {"u_is_avatar_passenger", "npc_is_avatar_passenger", &conditional_fun::f_is_avatar_passenger },
     {"u_is_in_vehicle", "npc_is_in_vehicle", &conditional_fun::f_is_in_vehicle },
-    {"is_rotten", &conditional_fun::f_is_rotten },
+    {"u_is_rotten", "npc_is_rotten", &conditional_fun::f_is_rotten },
+    // legacy spelling of npc_is_rotten
+    {"u_is_rotten", "is_rotten", &conditional_fun::f_is_rotten },
+    {"u_is_container", "npc_is_container", &conditional_fun::f_is_container },
+    {"u_is_sealed", "npc_is_sealed", &conditional_fun::f_is_sealed },
+    {"u_is_container_empty", "npc_is_container_empty", &conditional_fun::f_is_container_empty },
 };
 
 conditional_t::conditional_t( const JsonObject &jo )

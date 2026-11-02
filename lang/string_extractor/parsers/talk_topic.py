@@ -42,6 +42,11 @@ dynamic_line_string_keys = [
     "u_is_sinking", "npc_is_sinking",
     "u_is_on_rails", "npc_is_on_rails",
     "u_is_avatar_passenger", "npc_is_avatar_passenger",
+    "u_has_ammo", "npc_has_ammo", "has_ammo",
+    "u_is_rotten", "npc_is_rotten", "is_rotten",
+    "u_is_container", "npc_is_container",
+    "u_is_sealed", "npc_is_sealed",
+    "u_is_container_empty", "npc_is_container_empty",
     # yes/no strings for complex conditions, 'and' list
     "yes", "no", "concatenate"
 ]

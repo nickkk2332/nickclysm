@@ -35,6 +35,7 @@
 #include "input_popup.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_pocket.h"
 #include "itype.h"
 #include "magic.h"
 #include "map.h"
@@ -1793,6 +1794,142 @@ double volume_eval( const_dialogue const &d, char scope,
     throw math::runtime_error( "For volume(), talker is not character nor item" );
 }
 
+Character const *carrier_talker( const_dialogue const &d, char scope, std::string_view func )
+{
+    Character const *const chr = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( chr == nullptr ) {
+        throw math::runtime_error( "For %s(), talker must be a character", func );
+    }
+    return chr;
+}
+
+item const *container_talker( const_dialogue const &d, char scope, std::string_view func )
+{
+    item_location const *const it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "For %s(), talker must be an item", func );
+    }
+    return it->get_item();
+}
+
+// Totals over an item's container pockets (the pockets that hold contents, not magazines,
+// mods or software). Per-pocket free space is clamped at zero, so an overfilled pocket does
+// not hide the room left in its neighbours.
+struct container_totals {
+    units::volume volume_capacity = 0_ml;
+    units::volume contents_volume = 0_ml;
+    units::volume remaining_volume = 0_ml;
+    units::mass weight_capacity = 0_gram;
+    units::mass contents_weight = 0_gram;
+    units::mass remaining_weight = 0_gram;
+    int contents_count = 0;
+};
+
+container_totals get_container_totals( item const &it )
+{
+    container_totals ret;
+    for( item_pocket const *pocket : it.get_pockets( item_pocket::ok_default_containers ) ) {
+        ret.volume_capacity += pocket->volume_capacity();
+        ret.contents_volume += pocket->contents_volume();
+        ret.remaining_volume += std::max( pocket->remaining_volume(), 0_ml );
+        ret.weight_capacity += pocket->weight_capacity();
+        ret.contents_weight += pocket->contains_weight();
+        ret.remaining_weight += std::max( pocket->remaining_weight(), 0_gram );
+        for( item const *content : pocket->all_items_top() ) {
+            ret.contents_count += content->count();
+        }
+    }
+    return ret;
+}
+
+double weight_carried_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milligram( carrier_talker( d, scope, "weight_carried" )->weight_carried() );
+}
+
+double weight_capacity_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    if( Character const *chr = d.const_actor( is_beta( scope ) )->get_const_character() ) {
+        return units::to_milligram( chr->weight_capacity() );
+    }
+    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it && *it ) {
+        return units::to_milligram( get_container_totals( *it->get_item() ).weight_capacity );
+    }
+    throw math::runtime_error( "For weight_capacity(), talker is not character nor item" );
+}
+
+double volume_carried_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( carrier_talker( d, scope, "volume_carried" )->volume_carried() );
+}
+
+double volume_capacity_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    if( Character const *chr = d.const_actor( is_beta( scope ) )->get_const_character() ) {
+        return units::to_milliliter( chr->volume_capacity() );
+    }
+    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it && *it ) {
+        return units::to_milliliter( get_container_totals( *it->get_item() ).volume_capacity );
+    }
+    throw math::runtime_error( "For volume_capacity(), talker is not character nor item" );
+}
+
+double free_volume_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( carrier_talker( d, scope, "free_volume" )->free_space() );
+}
+
+double contents_count_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return get_container_totals( *container_talker( d, scope, "contents_count" ) ).contents_count;
+}
+
+double contents_volume_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( get_container_totals( *container_talker( d, scope,
+                                 "contents_volume" ) ).contents_volume );
+}
+
+double contents_weight_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milligram( get_container_totals( *container_talker( d, scope,
+                                "contents_weight" ) ).contents_weight );
+}
+
+double remaining_volume_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milliliter( get_container_totals( *container_talker( d, scope,
+                                 "remaining_volume" ) ).remaining_volume );
+}
+
+double remaining_weight_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    return units::to_milligram( get_container_totals( *container_talker( d, scope,
+                                "remaining_weight" ) ).remaining_weight );
+}
+
 double vitamin_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
                      diag_kwargs const & /* kwargs */ )
 {
@@ -1979,7 +2116,17 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "vitamin", { "un", 1, vitamin_eval, vitamin_ass } },
     { "calories", { "un", 0, calories_eval, calories_ass, { "format", "dont_affect_weariness" } } },
     { "weight", { "un", 0, weight_eval } },
+    { "weight_carried", { "un", 0, weight_carried_eval } },
+    { "weight_capacity", { "un", 0, weight_capacity_eval } },
     { "volume", { "un", 0, volume_eval } },
+    { "volume_carried", { "un", 0, volume_carried_eval } },
+    { "volume_capacity", { "un", 0, volume_capacity_eval } },
+    { "free_volume", { "un", 0, free_volume_eval } },
+    { "contents_count", { "un", 0, contents_count_eval } },
+    { "contents_volume", { "un", 0, contents_volume_eval } },
+    { "contents_weight", { "un", 0, contents_weight_eval } },
+    { "remaining_volume", { "un", 0, remaining_volume_eval } },
+    { "remaining_weight", { "un", 0, remaining_weight_eval } },
     { "warmth", { "un", 1, warmth_eval } },
     { "weather", { "g", 1, weather_eval, weather_ass } },
     { "climate_control_str_heat", { "un", 0, climate_control_str_heat_eval } },
