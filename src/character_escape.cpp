@@ -335,7 +335,7 @@ bool Character::try_remove_grab( bool attacking )
 
             // Holding on against the struggle tires a character grabber.
             if( char_grabber != nullptr ) {
-                char_grabber->set_activity_level( grapple::exertion_level() );
+                char_grabber->set_activity_level( grapple::exertion_level( *char_grabber ) );
                 const int escape_skill = static_cast<int>( escape_chance / 10.0f );
                 const int cost = grapple::escape_stamina_cost( *char_grabber, *this, grab_str,
                                  escape_skill );

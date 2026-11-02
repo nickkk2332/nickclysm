@@ -178,9 +178,12 @@ bool sourced_from( const effect &eff, const Character &grabber )
 
 bool Character::can_grapple_while_wielding() const
 {
-    // TODO: when the martial-arts track lands, also allow a weapon that the active style lists in
-    // its grapple_weapons.
-    return !is_armed();
+    // Unarmed, or holding a weapon the active style lists in its grapple_weapons.
+    if( !is_armed() ) {
+        return true;
+    }
+    const item_location weapon = get_wielded_item();
+    return weapon && style_allows_grapple_weapon( *weapon );
 }
 
 Creature *Character::grabbed_creature() const
@@ -403,6 +406,12 @@ void grapple::process_turn( Character &grabber )
     if( grabber.get_stamina() < stamina_floor() ) {
         grabber.add_msg_if_player( m_bad, _( "You're too exhausted to maintain your hold." ) );
         end_hold( grabber, victim );
+        return;
+    }
+    // A style change can leave a weapon in hand that the new style can't grapple with.
+    if( !grabber.can_grapple_while_wielding() ) {
+        grabber.add_msg_if_player( m_info, _( "You can't keep your hold with that in hand." ) );
+        end_hold( grabber, victim );
     }
 }
 
@@ -530,7 +539,7 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
     const int strength = grab_strength( grabber, target );
 
     // Grabbing on is lighter work than striking: weariness is taken at the grappling level.
-    const float weary_mult = grabber.exertion_adjusted_move_multiplier( exertion_level() );
+    const float weary_mult = grabber.exertion_adjusted_move_multiplier( exertion_level( grabber ) );
     grabber.mod_moves( -100 - static_cast<int>( grabber.attack_speed( null_item_reference() ) /
                        weary_mult ) );
     grabber.burn_energy_arms( -arm_stamina_cost() );
@@ -651,10 +660,9 @@ bool grapple::within_min_hold( const Character &grabber, const Creature &target,
 
 // Exertion
 
-float grapple::exertion_level()
+float grapple::exertion_level( const Character &who )
 {
-    // TLG uses EXPLOSIVE_EXERCISE; the optional exertion-level track decides whether we do too.
-    return EXTRA_EXERCISE;
+    return who.melee_exertion_level();
 }
 
 // Dragging
@@ -830,7 +838,7 @@ int grapple::throw_stamina_cost( const Character &thrower, const Creature &victi
 
 int grapple::throw_move_cost( const Character &thrower )
 {
-    const float weary_mult = thrower.exertion_adjusted_move_multiplier( exertion_level() );
+    const float weary_mult = thrower.exertion_adjusted_move_multiplier( exertion_level( thrower ) );
     return 100 + static_cast<int>( thrower.attack_speed( null_item_reference() ) / weary_mult );
 }
 
@@ -999,7 +1007,7 @@ bool grapple::throw_held_creature( Character &thrower, Creature &victim,
         }
     }
 
-    thrower.set_activity_level( exertion_level() );
+    thrower.set_activity_level( exertion_level( thrower ) );
     thrower.mod_moves( -throw_move_cost( thrower ) );
     thrower.burn_energy_arms( -stamina_cost );
     return true;

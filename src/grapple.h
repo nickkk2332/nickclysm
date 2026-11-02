@@ -142,12 +142,11 @@ bool within_min_hold( const Character &grabber, const Creature &target, const ef
 // Exertion
 
 /**
- * The activity level of all grappling work: grabbing, holding on against a struggle, throwing.
- * EXTRA_EXERCISE (plan decision 3).
- * INTEGRATION POINT: the optional EXPLOSIVE exertion level (Phase 11) is wired in here, and
- * only here.
+ * The activity level of all grappling work by @p who: grabbing, holding on against a struggle,
+ * throwing. The same as melee: EXTRA_EXERCISE, or EXPLOSIVE_EXERCISE with the
+ * EXPLOSIVE_COMBAT_EXERTION world option on (Character::melee_exertion_level).
  */
-float exertion_level();
+float exertion_level( const Character &who );
 
 // Dragging
 
