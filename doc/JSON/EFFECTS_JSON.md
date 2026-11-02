@@ -7,6 +7,7 @@
     - [Comestibles](#comestibles)
     - [Creature attacks](#creature-attacks)
   - [Required fields](#required-fields)
+  - [Copy-from, extend and delete](#copy-from-extend-and-delete)
   - [Optional fields](#optional-fields)
     - [Max intensity](#max-intensity)
     - [Name](#name)
@@ -110,8 +111,40 @@ all of the listed effects to the player. The effects are added one after another
 ## Required fields
 ```jsonc
     "type": "effect_type", // Required
-    "id": "xxxx"           // Must be unique
+    "id": "xxxx"           // Must be unique within a mod
 ```
+
+Two definitions of one id from the same mod are a load error.  A later mod may redefine an effect: a plain definition replaces it whole, while one with `copy-from` changes only what it names.
+
+## Copy-from, extend and delete
+
+An effect type can copy another one (or an `"abstract"` one, which nothing can apply) and change only some fields.  A mod can change a vanilla effect by copying it onto its own id:
+
+```jsonc
+  {
+    "type": "effect_type",
+    "id": "taint",
+    "copy-from": "taint",                             // the vanilla definition
+    "extend": { "immune_flags": [ "TEEPSHIELD" ] }    // ...plus one immunity flag
+  },
+  {
+    "type": "effect_type",
+    "id": "taint_weak",
+    "copy-from": "taint",
+    "name": [ "Weak Taint" ],                         // replaces the inherited names
+    "rating": "neutral",                              // re-rates the inherited apply message(s)
+    "relative": { "max_intensity": -2 },              // numbers support "relative" and "proportional"
+    "delete": { "flags": [ "EFFECT_LIMB_SCORE_MOD" ] }
+  }
+```
+
+* Every field that the child leaves out keeps the parent's value.  A field the child gives replaces the parent's value.
+* `extend` and `delete` work on `flags`, `immune_flags`, `immune_bp_flags`, `resist_traits`, `resist_effects`, `removes_effects`, `blocks_effects` and `enchantments` (`delete` takes enchantment ids; inline enchantments are named `INLINE_ENCH_<effect id>_<index>`).
+* Numeric fields (`max_intensity`, `int_add_val`, `int_decay_step`, `dur_add_perc`, `max_duration`, ...) support `relative` and `proportional`.
+* `base_mods` and `scaling_mods` replace the parent's values only for the stats they name (`"str_mod"` replaces the parent's `str_mod` and its scaling).
+* `apply_message` replaces the parent's apply messages; a `rating` alone re-rates them.  `reduced_desc` keeps following `desc` unless the parent or the child sets it.
+* `int_dur_factor`, `miss_messages`, `decay_messages`, `apply_message`, `rating`, `reduced_desc`, `base_mods` and `scaling_mods` can only be replaced; using `relative`, `proportional`, `extend` or `delete` on them is a load error.
+* The parent may be defined later than the child: the child loads as soon as the parent does.  A parent that is never defined is reported when the game checks its data.
 
 ## Optional fields
 

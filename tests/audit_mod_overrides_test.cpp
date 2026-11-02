@@ -1,13 +1,32 @@
 #include <map>
+#include <string>
 #include <vector>
 
+#include "calendar.h"
 #include "cata_catch.h"
+#include "effect.h"
+#include "enums.h"
+#include "flexbuffer_json.h"
 #include "item_pocket.h"
 #include "itype.h"
+#include "json_error.h"
+#include "json_loader.h"
+#include "mod_tracker.h"
 #include "type_id.h"
 #include "units.h"
 
 static const ammotype ammo_rock( "rock" );
+
+static const efftype_id effect_audit_effect_base( "audit_effect_base" );
+static const efftype_id effect_audit_effect_child( "audit_effect_child" );
+static const efftype_id effect_audit_effect_from_abstract( "audit_effect_from_abstract" );
+static const efftype_id effect_audit_effect_late_child( "audit_effect_late_child" );
+static const efftype_id
+effect_effect_portal_storm_dungeon_time_tracker( "effect_portal_storm_dungeon_time_tracker" );
+static const efftype_id effect_took_antihistamine( "took_antihistamine" );
+static const efftype_id effect_took_flumed( "took_flumed" );
+
+static const flag_id json_flag_EFFECT_LIMB_SCORE_MOD( "EFFECT_LIMB_SCORE_MOD" );
 
 static const itype_id itype_audit_pocket_delete_extend( "audit_pocket_delete_extend" );
 static const itype_id itype_audit_pocket_inherit( "audit_pocket_inherit" );
@@ -83,5 +102,95 @@ TEST_CASE( "inv-j02_copy_from_items_patch_inherited_pockets", "[audit][pocket]" 
         CHECK( pockets[2].pocket_id == "hidden" );
         CHECK( pockets[2].raw_volume_capacity == 250_ml );
         CHECK( pockets[2].max_contains_weight == 500_gram );
+    }
+}
+
+// HLTH-J02: load_effect_type built every effect_type from scratch, so effect types had no
+// copy-from, extend or delete, and a second definition silently replaced the first.  On the old
+// code data/mods/TEST_DATA/audit_effect_overrides.json fails to load.
+TEST_CASE( "hlth-j02_effect_types_support_copy_from", "[audit][effect]" )
+{
+    const effect_type &base_type = effect_audit_effect_base.obj();
+    const effect_type &child_type = effect_audit_effect_child.obj();
+    const effect base( &base_type );
+    const effect child( &child_type );
+
+    SECTION( "absent members are inherited" ) {
+        CHECK( child.get_max_duration() == 1_hours );
+        CHECK( child.get_int_decay_tick() == 30 );
+        CHECK( child_type.has_flag( json_flag_EFFECT_LIMB_SCORE_MOD ) );
+        CHECK( child_type.get_mod_value( "STR", mod_action::MIN, 0, 1 ) == Approx( -1.0 ) );
+        CHECK( child.disp_name() == "audit child" );
+        CHECK( base.disp_name() == "audit base" );
+    }
+    SECTION( "relative adds to the parent's value" ) {
+        CHECK( base.get_max_intensity() == 5 );
+        CHECK( child.get_max_intensity() == 7 );
+    }
+    SECTION( "a bare rating re-rates the inherited apply message" ) {
+        CHECK( base_type.get_rating( 1 ) == m_bad );
+        CHECK( child_type.get_rating( 1 ) == m_good );
+    }
+    SECTION( "extend and delete change the inherited lists" ) {
+        CHECK( base.get_resist_effects() == std::vector<efftype_id> { effect_took_flumed } );
+        CHECK( child.get_resist_effects() ==
+               std::vector<efftype_id> { effect_took_flumed, effect_took_antihistamine } );
+        CHECK( base.get_removes_effects() ==
+               std::vector<efftype_id> { effect_took_flumed, effect_took_antihistamine } );
+        CHECK( child.get_removes_effects() == std::vector<efftype_id> { effect_took_antihistamine } );
+        CHECK( base_type.immune_flags.size() == 1 );
+        CHECK( child_type.immune_flags.count( json_character_flag( "AUDIT_IMMUNE_A" ) ) == 1 );
+        CHECK( child_type.immune_flags.count( json_character_flag( "AUDIT_IMMUNE_B" ) ) == 1 );
+        REQUIRE( base_type.enchantments.size() == 1 );
+        REQUIRE( child_type.enchantments.size() == 2 );
+        CHECK( child_type.enchantments[0] == base_type.enchantments[0] );
+        CHECK( child_type.enchantments[1].is_valid() );
+        CHECK( child_type.enchantments[1] != base_type.enchantments[0] );
+    }
+    SECTION( "an abstract parent is copied but not registered" ) {
+        const effect from_abstract( &effect_audit_effect_from_abstract.obj() );
+        CHECK( from_abstract.get_max_intensity() == 3 );
+        CHECK( from_abstract.get_int_add_val() == 2 );
+        CHECK_FALSE( efftype_id( "audit_effect_abstract" ).is_valid() );
+    }
+    SECTION( "a child loads once its later parent does" ) {
+        REQUIRE( effect_audit_effect_late_child.is_valid() );
+        const effect late_child( &effect_audit_effect_late_child.obj() );
+        CHECK( late_child.get_max_intensity() == 4 );
+        CHECK( late_child.disp_name() == "audit late child" );
+    }
+}
+
+// HLTH-J02: effects.json defined the portal storm dungeon tracker twice; the second one, which
+// silently won, had no max_intensity, so the tracker could never pass intensity 1.
+TEST_CASE( "hlth-j02_portal_storm_tracker_keeps_its_intensity_cap", "[audit][effect]" )
+{
+    const effect tracker( &effect_effect_portal_storm_dungeon_time_tracker.obj() );
+    CHECK( tracker.get_max_intensity() == 250000 );
+    CHECK( tracker.get_int_decay_tick() == 60 );
+}
+
+// HLTH-J02: an unknown top-level "rating" threw std::bad_optional_access instead of a JSON
+// error, and a second definition from the same mod went unreported.
+TEST_CASE( "hlth-j02_effect_type_load_errors", "[audit][effect]" )
+{
+    SECTION( "an unknown rating is a JSON error" ) {
+        const JsonObject jo = json_loader::from_string(
+                                  R"({ "id": "audit_rt_bad_rating", "rating": "awful" })" );
+        CHECK_THROWS_AS( load_effect_type( jo, "test_data" ), JsonError );
+        jo.allow_omitted_members();
+    }
+    SECTION( "two definitions from one mod are an error; another mod may override" ) {
+        const std::string json = R"({ "id": "audit_rt_duplicate", "max_intensity": 2 })";
+        const JsonObject first = json_loader::from_string( json );
+        load_effect_type( first, "audit_mod_a" );
+        const JsonObject second = json_loader::from_string( json );
+        CHECK_THROWS_AS( load_effect_type( second, "audit_mod_a" ), mod_error );
+        second.allow_omitted_members();
+        const JsonObject later = json_loader::from_string( R"({ "id": "audit_rt_duplicate",
+            "copy-from": "audit_rt_duplicate", "relative": { "max_intensity": 3 } })" );
+        load_effect_type( later, "audit_mod_b" );
+        const effect overridden( &efftype_id( "audit_rt_duplicate" ).obj() );
+        CHECK( overridden.get_max_intensity() == 5 );
     }
 }

@@ -162,6 +162,7 @@ The following `type`s currently support inheritance (non-exhaustive list):
 
 ```
 effect_on_condition
+effect_type
 furniture
 harvest
 ITEM

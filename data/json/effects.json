@@ -5955,15 +5955,6 @@
     "desc": [ "" ]
   },
   {
-    "id": "effect_portal_storm_dungeon_time_tracker",
-    "type": "effect_type",
-    "//": "Hidden effect, tracks how long you've been in the portal storm dungeon",
-    "name": [ "" ],
-    "desc": [ "" ],
-    "int_decay_step": 1,
-    "int_decay_tick": 120
-  },
-  {
     "type": "effect_type",
     "id": "effect_zero_manip",
     "//": "Hidden effect, sets manip to 0 so you drop what you're holding",

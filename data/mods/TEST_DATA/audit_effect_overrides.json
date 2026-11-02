@@ -1,0 +1,59 @@
+[
+  {
+    "//": "HLTH-J02: copies from a parent defined further down, so it waits for it.",
+    "type": "effect_type",
+    "id": "audit_effect_late_child",
+    "copy-from": "audit_effect_late_parent",
+    "name": [ "audit late child" ]
+  },
+  {
+    "type": "effect_type",
+    "abstract": "audit_effect_abstract",
+    "desc": [ "An abstract effect for the effect_type copy-from tests." ],
+    "max_intensity": 3,
+    "int_add_val": 2
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_effect_from_abstract",
+    "copy-from": "audit_effect_abstract",
+    "name": [ "audit from abstract" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_effect_base",
+    "name": [ "audit base" ],
+    "desc": [ "The parent of the effect_type copy-from tests." ],
+    "apply_message": "The audit effect applies.",
+    "rating": "bad",
+    "max_intensity": 5,
+    "max_duration": "1 h",
+    "int_decay_tick": 30,
+    "resist_effects": [ "took_flumed" ],
+    "removes_effects": [ "took_flumed", "took_antihistamine" ],
+    "immune_flags": [ "AUDIT_IMMUNE_A" ],
+    "flags": [ "EFFECT_LIMB_SCORE_MOD" ],
+    "base_mods": { "str_mod": [ -1 ] },
+    "enchantments": [ { "values": [ { "value": "SPEED", "add": -5 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_effect_child",
+    "copy-from": "audit_effect_base",
+    "name": [ "audit child" ],
+    "rating": "good",
+    "relative": { "max_intensity": 2 },
+    "extend": {
+      "immune_flags": [ "AUDIT_IMMUNE_B" ],
+      "resist_effects": [ "took_antihistamine" ],
+      "enchantments": [ { "values": [ { "value": "SPEED", "add": -1 } ] } ]
+    },
+    "delete": { "removes_effects": [ "took_flumed" ] }
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_effect_late_parent",
+    "name": [ "audit late parent" ],
+    "max_intensity": 4
+  }
+]

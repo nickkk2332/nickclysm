@@ -758,7 +758,7 @@
   },
   {
     "type": "effect_type",
-    "id": "effect_changeling_winter_walk_in_silence",
+    "id": "effect_changeling_winter_walk_on_the_snow",
     "name": [ "Snow-Fox's Stride" ],
     "desc": [ "With a light step, you can walk across even new-fallen snow at full speed." ],
     "apply_message": "",
