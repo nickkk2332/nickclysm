@@ -3756,9 +3756,11 @@ void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint
     // "Long steps" are allowed when crossing z-levels
     // Stairs teleport the player too
     if( rl_dist( pos, p ) > 1 && p.z() == pos.z() ) {
-        // On the same level? Not so much. Something weird happened
+        // On the same level? Not so much. Something weird happened; without this return the
+        // NPC hopped over the tiles in between (NPC-B17)
         path.clear();
         move_pause();
+        return;
     }
     creature_tracker &creatures = get_creature_tracker();
     bool attacking = false;
@@ -3992,6 +3994,19 @@ void npc::move_to_next()
                        "containing only current position" );
         move_pause();
         return;
+    }
+
+    // a path made before the NPC was shoved aside, or by a caller that didn't update it, no
+    // longer starts next to it: route to the same end again rather than step off it (NPC-B17)
+    if( path[0].z() == posz() && rl_dist( path[0], pos_bub() ) > 1 ) {
+        const tripoint_bub_ms dest = path.back();
+        path.clear();
+        update_path( dest, true );
+        if( path.empty() || ( path[0].z() == posz() && rl_dist( path[0], pos_bub() ) > 1 ) ) {
+            path.clear();
+            move_pause();
+            return;
+        }
     }
 
     move_to( path[0] );
