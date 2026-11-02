@@ -21,6 +21,8 @@
 
 static const faction_id faction_no_faction( "no_faction" );
 
+static const mfaction_str_id monfaction_human( "human" );
+
 namespace npc_factions
 {
 static std::vector<faction_template> all_templates;
@@ -38,6 +40,7 @@ faction_template::faction_template()
     power = 0;
     lone_wolf_faction = false;
     limited_area_claim = false;
+    consumes_food = false;
     currency = itype_id::NULL_ID();
     steal_persist = std::nullopt; // Default ask
 }
@@ -52,7 +55,17 @@ faction::faction( const faction_template &templ )
 void faction_template::load( const JsonObject &jsobj )
 {
     faction_template fac( jsobj );
-    npc_factions::all_templates.emplace_back( fac );
+    // A later definition (another mod's) replaces the earlier one (NPC-J02).  Before, both were
+    // kept: faction_manager built the faction from the last one but refreshed it from the first.
+    const auto old = std::find_if( npc_factions::all_templates.begin(),
+    npc_factions::all_templates.end(), [&fac]( const faction_template & f ) {
+        return f.id == fac.id;
+    } );
+    if( old != npc_factions::all_templates.end() ) {
+        *old = fac;
+    } else {
+        npc_factions::all_templates.emplace_back( fac );
+    }
 }
 
 void faction_template::check_consistency()
@@ -104,32 +117,58 @@ faction_price_rule faction_price_rules_reader::get_next( JsonValue &jv )
     return ret;
 }
 
-faction_template::faction_template( const JsonObject &jsobj )
-    : name( jsobj.get_string( "name" ) )
-    , likes_u( jsobj.get_int( "likes_u" ) )
-    , respects_u( jsobj.get_int( "respects_u" ) )
-    , trusts_u( jsobj.get_int( "trusts_u", 0 ) )
-    , known_by_u( jsobj.get_bool( "known_by_u" ) )
-    , id( faction_id( jsobj.get_string( "id" ) ) )
-    , size( jsobj.get_int( "size" ) )
-    , power( jsobj.get_int( "power" ) )
-    , wealth( jsobj.get_int( "wealth" ) )
+// The faction a "copy-from" names.  It must be defined before the faction that copies it.
+static const faction_template &faction_copy_parent( const JsonObject &jsobj )
 {
-    jsobj.get_member( "description" ).read( desc );
-    optional( jsobj, false, "consumes_food", consumes_food, false );
-    optional( jsobj, false, "price_rules", price_rules, faction_price_rules_reader {} );
+    const faction_id parent( jsobj.get_string( "copy-from" ) );
+    for( const faction_template &fac : npc_factions::all_templates ) {
+        if( fac.id == parent ) {
+            return fac;
+        }
+    }
+    jsobj.throw_error_at( "copy-from", string_format(
+                              "no faction %s is defined before this one", parent.str() ) );
+}
+
+// With "copy-from", starts from that faction and changes only the members given (NPC-J02).
+faction_template::faction_template( const JsonObject &jsobj )
+    : faction_template( jsobj.has_string( "copy-from" ) ? faction_copy_parent( jsobj ) :
+                        faction_template() )
+{
+    const bool was_loaded = jsobj.has_string( "copy-from" );
+    // members a full definition must give; a copy may change them, also with relative
+    const auto required = [&]( const std::string_view member, auto & value ) {
+        if( was_loaded ) {
+            optional( jsobj, true, member, value );
+        } else {
+            mandatory( jsobj, false, member, value );
+        }
+    };
+    mandatory( jsobj, false, "id", id );
+    required( "name", name );
+    required( "likes_u", likes_u );
+    required( "respects_u", respects_u );
+    optional( jsobj, was_loaded, "trusts_u", trusts_u, 0 );
+    required( "known_by_u", known_by_u );
+    required( "size", size );
+    required( "power", power );
+    required( "wealth", wealth );
+    required( "description", desc );
+    optional( jsobj, was_loaded, "consumes_food", consumes_food, false );
+    optional( jsobj, was_loaded, "price_rules", price_rules, faction_price_rules_reader {} );
     jsobj.read( "fac_food_supply", _food_supply, true );
     if( jsobj.has_string( "currency" ) ) {
         jsobj.read( "currency", currency, true );
         price_rules.emplace_back( currency, 1, 0 );
-    } else {
+    } else if( !was_loaded ) {
         currency = itype_id::NULL_ID();
     }
-    lone_wolf_faction = jsobj.get_bool( "lone_wolf_faction", false );
-    limited_area_claim = jsobj.get_bool( "limited_area_claim", false );
+    optional( jsobj, was_loaded, "lone_wolf_faction", lone_wolf_faction, false );
+    optional( jsobj, was_loaded, "limited_area_claim", limited_area_claim, false );
+    // a copy keeps the parent's relations to the factions it doesn't list
     load_relations( jsobj );
-    mon_faction = mfaction_str_id( jsobj.get_string( "mon_faction", "human" ) );
-    optional( jsobj, false, "epilogues", epilogue_data );
+    optional( jsobj, was_loaded, "mon_faction", mon_faction, monfaction_human );
+    optional( jsobj, was_loaded, "epilogues", epilogue_data );
 }
 
 std::string faction::describe() const

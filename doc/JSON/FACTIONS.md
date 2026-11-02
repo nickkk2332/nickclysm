@@ -82,6 +82,25 @@ Field                 | Meaning
 `"description"`       | string, optional. The player's description of this faction as seen in the faction menu.
 `"epilogues"`         | array of objects, optional. Requires these objects: `power_min` - minimal faction power for epilogue to appear, `power_max` - maximum faction power for epilogue to appear, `id` - id of text snippet containing text of epilogue.
 
+## Redefining and copying factions
+
+A later mod's definition of a faction id replaces the earlier one completely.  Two definitions of one id from the same mod are an error.
+
+With `"copy-from"`, a faction starts from another faction and changes only the fields it gives.  The parent must be defined earlier (in the same mod or a mod loaded before).  The fields a full definition must give become optional, numbers take `relative` and `proportional`, and `price_rules` takes `extend` and `delete`:
+
+```jsonc
+  {
+    "type": "faction",
+    "id": "free_merchants",
+    "copy-from": "free_merchants",           // a mod changing the vanilla faction
+    "currency": "my_mod_coin",               // adds its 100% price rule; the old currency's rule stays
+    "relative": { "likes_u": -10 },
+    "extend": { "price_rules": [ { "category": "guns", "markup": 2.0 } ] }
+  }
+```
+
+`relations` add to or replace the parent's relation to each faction listed; other fields that are given replace the parent's value.
+
 ## Scale of faction values
 Interacting with factions has certain effects on how the faction sees the player. These are reflected in values like `likes_u`, `respects_u` and `trusts_u`. Here's a (non-comprehensive) list to provide some context on how much these values are worth:
 

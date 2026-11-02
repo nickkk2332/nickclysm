@@ -213,6 +213,17 @@ This is the JSON that creates the NPC ID that is used to spawn an NPC in "mapgen
 | `per`         | Set perception of NPC.
 | `personality` | Set personality of NPC. For example, positive value of `aggression` means NPC is aggressive, negative value means NPC is defensive.
 
+A later mod's definition of an `npc` id replaces the earlier one completely; two definitions of one id from the same mod are an error.  With `"copy-from"`, an NPC starts from another `npc` (defined earlier, in the same mod or a mod loaded before) and changes only the fields it gives; `attitude` and `chat` are then optional, and a given `mission_offered` or `death_eocs` replaces the parent's list:
+
+```jsonc
+{
+  "type": "npc",
+  "id": "thug",
+  "copy-from": "thug",          // a mod changing the vanilla thug
+  "name_suffix": "Thug"
+}
+```
+
 ---
 
 # Writing dialogues

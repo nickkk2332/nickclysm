@@ -4,29 +4,50 @@
 
 #include "calendar.h"
 #include "cata_catch.h"
+#include "debug.h"
 #include "effect.h"
 #include "enums.h"
+#include "faction.h"
 #include "flexbuffer_json.h"
+#include "game.h"
+#include "init.h"
 #include "item_pocket.h"
 #include "itype.h"
 #include "json_error.h"
 #include "json_loader.h"
 #include "mod_tracker.h"
+#include "npc.h"
 #include "type_id.h"
 #include "units.h"
 
 static const ammotype ammo_rock( "rock" );
 
+static const efftype_id effect_audit_effect_abstract( "audit_effect_abstract" );
 static const efftype_id effect_audit_effect_base( "audit_effect_base" );
 static const efftype_id effect_audit_effect_child( "audit_effect_child" );
 static const efftype_id effect_audit_effect_from_abstract( "audit_effect_from_abstract" );
 static const efftype_id effect_audit_effect_late_child( "audit_effect_late_child" );
+static const efftype_id effect_audit_rt_duplicate( "audit_rt_duplicate" );
 static const efftype_id
 effect_effect_portal_storm_dungeon_time_tracker( "effect_portal_storm_dungeon_time_tracker" );
 static const efftype_id effect_took_antihistamine( "took_antihistamine" );
 static const efftype_id effect_took_flumed( "took_flumed" );
 
+static const faction_id faction_audit_faction_child( "audit_faction_child" );
+static const faction_id faction_audit_faction_parent( "audit_faction_parent" );
+static const faction_id faction_audit_rt_faction( "audit_rt_faction" );
+
+static const flag_id json_flag_AUDIT_IMMUNE_A( "AUDIT_IMMUNE_A" );
+static const flag_id json_flag_AUDIT_IMMUNE_B( "AUDIT_IMMUNE_B" );
 static const flag_id json_flag_EFFECT_LIMB_SCORE_MOD( "EFFECT_LIMB_SCORE_MOD" );
+
+static const itype_id itype_FMCNote( "FMCNote" );
+
+static const npc_class_id NC_NONE( "NC_NONE" );
+
+static const string_id<npc_template> npc_template_audit_npc_child( "audit_npc_child" );
+static const string_id<npc_template> npc_template_audit_npc_parent( "audit_npc_parent" );
+static const string_id<npc_template> npc_template_audit_rt_npc( "audit_rt_npc" );
 
 static const itype_id itype_audit_pocket_delete_extend( "audit_pocket_delete_extend" );
 static const itype_id itype_audit_pocket_inherit( "audit_pocket_inherit" );
@@ -139,8 +160,8 @@ TEST_CASE( "hlth-j02_effect_types_support_copy_from", "[audit][effect]" )
                std::vector<efftype_id> { effect_took_flumed, effect_took_antihistamine } );
         CHECK( child.get_removes_effects() == std::vector<efftype_id> { effect_took_antihistamine } );
         CHECK( base_type.immune_flags.size() == 1 );
-        CHECK( child_type.immune_flags.count( json_character_flag( "AUDIT_IMMUNE_A" ) ) == 1 );
-        CHECK( child_type.immune_flags.count( json_character_flag( "AUDIT_IMMUNE_B" ) ) == 1 );
+        CHECK( child_type.immune_flags.count( json_flag_AUDIT_IMMUNE_A ) == 1 );
+        CHECK( child_type.immune_flags.count( json_flag_AUDIT_IMMUNE_B ) == 1 );
         REQUIRE( base_type.enchantments.size() == 1 );
         REQUIRE( child_type.enchantments.size() == 2 );
         CHECK( child_type.enchantments[0] == base_type.enchantments[0] );
@@ -151,7 +172,7 @@ TEST_CASE( "hlth-j02_effect_types_support_copy_from", "[audit][effect]" )
         const effect from_abstract( &effect_audit_effect_from_abstract.obj() );
         CHECK( from_abstract.get_max_intensity() == 3 );
         CHECK( from_abstract.get_int_add_val() == 2 );
-        CHECK_FALSE( efftype_id( "audit_effect_abstract" ).is_valid() );
+        CHECK_FALSE( effect_audit_effect_abstract.is_valid() );
     }
     SECTION( "a child loads once its later parent does" ) {
         REQUIRE( effect_audit_effect_late_child.is_valid() );
@@ -190,7 +211,82 @@ TEST_CASE( "hlth-j02_effect_type_load_errors", "[audit][effect]" )
         const JsonObject later = json_loader::from_string( R"({ "id": "audit_rt_duplicate",
             "copy-from": "audit_rt_duplicate", "relative": { "max_intensity": 3 } })" );
         load_effect_type( later, "audit_mod_b" );
-        const effect overridden( &efftype_id( "audit_rt_duplicate" ).obj() );
+        const effect overridden( &effect_audit_rt_duplicate.obj() );
         CHECK( overridden.get_max_intensity() == 5 );
+    }
+}
+
+// NPC-J02: npc templates and factions had no copy-from.  On the old code
+// data/mods/TEST_DATA/audit_npc_overrides.json fails to load.
+TEST_CASE( "npc-j02_npc_and_faction_copy_from", "[audit][npc]" )
+{
+    SECTION( "an npc template copies its parent and changes what it gives" ) {
+        const npc_template &parent = npc_template_audit_npc_parent.obj();
+        const npc_template &child = npc_template_audit_npc_child.obj();
+        CHECK( parent.guy.get_fac_id() == faction_audit_faction_parent );
+        CHECK( child.guy.get_fac_id() == faction_audit_faction_child );
+        CHECK( child.name_suffix.translated() == "Child" );
+        CHECK( child.guy.myclass == NC_NONE );
+        CHECK( child.guy.mission == NPC_MISSION_GUARD );
+        CHECK( child.guy.chatbin.first_topic == "TALK_DONE" );
+        CHECK( child.str == 12 );
+    }
+    SECTION( "a faction copies its parent and changes what it gives" ) {
+        faction *child = g->faction_manager_ptr->get( faction_audit_faction_child );
+        REQUIRE( child != nullptr );
+        CHECK( child->get_name() == "Audit Children" );
+        CHECK( child->likes_u == 10 );
+        CHECK( child->power == 25 );
+        CHECK( child->wealth == 1000 );
+        CHECK( child->currency == itype_FMCNote );
+    }
+}
+
+namespace
+{
+// Exposes the loader every data file goes through.
+class audit_data_loader : public DynamicDataLoader
+{
+    public:
+        using DynamicDataLoader::load_object;
+};
+} // namespace
+
+// NPC-J02: a mod redefining an npc template was ignored (std::map::emplace kept the first),
+// and a redefined faction was half applied: faction_manager refreshed it from the first
+// definition.  Two definitions of one id from the same mod went unreported.
+TEST_CASE( "npc-j02_later_npc_and_faction_definitions_win", "[audit][npc]" )
+{
+    audit_data_loader loader;
+    SECTION( "a later mod's npc template replaces the earlier one" ) {
+        const std::string npc_json = R"({ "type": "npc", "id": "audit_rt_npc", "class": "NC_NONE",
+            "attitude": 0, "chat": "TALK_DONE", "name_suffix": "%s" })";
+        loader.load_object( json_loader::from_string( string_format( npc_json, "First" ) ),
+                            "audit_mod_a" );
+        loader.load_object( json_loader::from_string( string_format( npc_json, "Second" ) ),
+                            "audit_mod_b" );
+        CHECK( npc_template_audit_rt_npc->name_suffix.translated() == "Second" );
+    }
+    SECTION( "a later mod's faction replaces the earlier one" ) {
+        const std::string faction_json = R"({ "type": "faction", "id": "audit_rt_faction",
+            "name": "%s", "likes_u": %d, "respects_u": 0, "known_by_u": true, "size": 1,
+            "power": 1, "wealth": 0, "description": "A faction for the override test." })";
+        loader.load_object( json_loader::from_string( string_format( faction_json, "First", 1 ) ),
+                            "audit_mod_a" );
+        loader.load_object( json_loader::from_string( string_format( faction_json, "Second", 2 ) ),
+                            "audit_mod_b" );
+        faction *fac = g->faction_manager_ptr->get( faction_audit_rt_faction );
+        REQUIRE( fac != nullptr );
+        CHECK( fac->get_name() == "Second" );
+        CHECK( fac->likes_u == 2 );
+    }
+    SECTION( "two definitions from one mod are reported" ) {
+        const std::string npc_json = R"({ "type": "npc", "id": "audit_rt_npc_twice",
+            "class": "NC_NONE", "attitude": 0, "chat": "TALK_DONE" })";
+        const std::string msg = capture_debugmsg_during( [&]() {
+            loader.load_object( json_loader::from_string( npc_json ), "audit_mod_c" );
+            loader.load_object( json_loader::from_string( npc_json ), "audit_mod_c" );
+        } );
+        CHECK( msg.find( "two definitions" ) != std::string::npos );
     }
 }

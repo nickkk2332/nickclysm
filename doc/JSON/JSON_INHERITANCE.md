@@ -203,6 +203,7 @@ In summary, there is no "default" JSON inheritance, only shared degrees of suppo
 * `SPELL` has limited support, given their behavior is governed by its spell `effect`.  Flags are not always inherited.  Testing is required to guarantee an inherited spell will behave as intended, use at your own risk.
 * The `vitamins` field from `material` extends by default.
 * An `ITEM`'s `pocket_data` is patched pocket by pocket: `relative`, `proportional`, `delete` and `extend` select pockets by `id` or index (see [Changing inherited pockets](ITEM.md#changing-inherited-pockets)).
+* `npc` and `faction` can only `copy-from` an object loaded before them (see [NPCs.md](NPCs.md#npc-instance-definition) and [FACTIONS.md](FACTIONS.md#redefining-and-copying-factions)).
 
 
 ## Guidelines
