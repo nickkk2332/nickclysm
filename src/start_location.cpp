@@ -191,7 +191,8 @@ static void check_location_parameters( const std::string &sloc, const omt_types_
         }
         if( !known ) {
             debugmsg( "start_location %s sets parameter \"%s\", which no overmap special holding "
-                      "om_terrain \"%s\" has with overmap_special scope", sloc, param.first, loc.omt );
+                      "om_terrain \"%s\" has with overmap_special scope", sloc, param.first,
+                      loc.omt );
         } else if( !value_possible ) {
             debugmsg( "start_location %s sets parameter \"%s\" to \"%s\", a value it can't take",
                       sloc, param.first, param.second );

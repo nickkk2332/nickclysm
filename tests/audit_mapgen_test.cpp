@@ -2,6 +2,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "calendar.h"
@@ -324,8 +325,11 @@ TEST_CASE( "mgen-b07_start_location_parameters_cannot_break_mapgen", "[audit][ma
     REQUIRE( !args->has_value() );
 
     SECTION( "a parameter that fails validation sets nothing" ) {
-        const std::string messages = capture_debugmsg_during( [&spring_omt]() {
-            start_location_sloc_field->set_parameters( spring_omt, { { "audit_no_such_param", "x" } } );
+        const std::unordered_map<std::string, std::string> bad_params = {
+            { "audit_no_such_param", "x" }
+        };
+        const std::string messages = capture_debugmsg_during( [&spring_omt, &bad_params]() {
+            start_location_sloc_field->set_parameters( spring_omt, bad_params );
         } );
         CHECK( mentions( messages, "audit_no_such_param" ) );
         CHECK_FALSE( overmap_buffer.externally_set_args );
