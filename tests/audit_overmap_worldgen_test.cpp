@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "avatar.h"
+#include "basecamp.h"
 #include "cata_catch.h"
 #include "city.h"
 #include "coordinates.h"
@@ -155,4 +157,37 @@ TEST_CASE( "omap-b02_find_closest_special_looks_across_the_border", "[audit][ove
     params.search_range = 200;
     params.min_z = 1;
     CHECK( overmap_buffer.find_closest( origin, params ).is_invalid() );
+}
+
+// OMAP-B03: find_camp scanned an off-by-one [-3, +2] window and returned the first camp it met.
+// With two camps side by side (the Isherwood farm places them so under some rotations), looking
+// up the second returned the first, and special placement then renamed and moved that one.
+TEST_CASE( "omap-b03_find_camp_returns_the_camp_at_the_point", "[audit][overmap][camp]" )
+{
+    clear_avatar();
+    clear_map();
+    const point_abs_omt first = get_avatar().pos_abs_omt().xy() + point_rel_omt( 20, 20 );
+    const point_abs_omt second = first + point_rel_omt( 1, 0 );
+    REQUIRE( !overmap_buffer.find_camp( first ) );
+    overmap_buffer.add_camp( basecamp( "first", tripoint_abs_omt( first, 0 ) ) );
+    overmap_buffer.add_camp( basecamp( "second", tripoint_abs_omt( second, 0 ) ) );
+
+    std::optional<basecamp *> found = overmap_buffer.find_camp( second );
+    REQUIRE( found );
+    CHECK( ( *found )->camp_omt_pos().xy() == second );
+    found = overmap_buffer.find_camp( first );
+    REQUIRE( found );
+    CHECK( ( *found )->camp_omt_pos().xy() == first );
+
+    // Off the camps the nearest one wins, and the window reaches 3 OMTs on every side.
+    found = overmap_buffer.find_camp( second + point_rel_omt( 2, 0 ) );
+    REQUIRE( found );
+    CHECK( ( *found )->camp_omt_pos().xy() == second );
+    found = overmap_buffer.find_camp( first + point_rel_omt( -3, -3 ) );
+    REQUIRE( found );
+    CHECK( ( *found )->camp_omt_pos().xy() == first );
+    CHECK( !overmap_buffer.find_camp( first + point_rel_omt( -4, 0 ) ) );
+
+    overmap_buffer.get_om_global( first ).om->remove_camp( first );
+    overmap_buffer.get_om_global( second ).om->remove_camp( second );
 }

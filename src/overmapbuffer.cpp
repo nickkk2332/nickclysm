@@ -1577,17 +1577,29 @@ shared_ptr_fast<npc> overmapbuffer::find_npc_by_unique_id( const std::string &un
 
 std::optional<basecamp *> overmapbuffer::find_camp( const point_abs_omt &p )
 {
-    for( auto &it : overmaps ) {
-        const point_abs_omt p2( p );
-        for( int x2 = p2.x() - 3; x2 < p2.x() + 3; x2++ ) {
-            for( int y2 = p2.y() - 3; y2 < p2.y() + 3; y2++ ) {
-                if( std::optional<basecamp *> camp = it.second->find_camp( point_abs_omt( x2, y2 ) ) ) {
-                    return camp;
-                }
+    // The camp at p, or else the nearest camp at most search_radius OMTs away. This used to scan
+    // an off-by-one [-3, +2] window and return the first camp it met, so with two camps close
+    // together a lookup of one could return the other (OMAP-B03).
+    constexpr int search_radius = 3;
+    std::optional<basecamp *> best;
+    point_abs_omt best_pos;
+    int best_dist = 0;
+    for( auto &om_entry : overmaps ) {
+        for( std::pair<const point_abs_omt, basecamp> &camp_entry : om_entry.second->camps ) {
+            const point_rel_omt offset = camp_entry.first - p;
+            if( std::abs( offset.x() ) > search_radius || std::abs( offset.y() ) > search_radius ) {
+                continue;
+            }
+            const int dist = offset.x() * offset.x() + offset.y() * offset.y();
+            // Break ties on position so the result doesn't depend on hash map order.
+            if( !best || dist < best_dist || ( dist == best_dist && camp_entry.first < best_pos ) ) {
+                best = &camp_entry.second;
+                best_pos = camp_entry.first;
+                best_dist = dist;
             }
         }
     }
-    return std::nullopt;
+    return best;
 }
 
 void overmapbuffer::clear_camps( const point_abs_omt &p )
