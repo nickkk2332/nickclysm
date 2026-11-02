@@ -439,7 +439,6 @@ void npc_template::load( const JsonObject &jsobj, std::string_view src )
                       static_cast<int>( to_set ) );
             guy.set_attitude( NPCATT_NULL );
         }
-        guy.set_attitude( static_cast<npc_attitude>( jsobj.get_int( "attitude" ) ) );
     }
     if( jsobj.has_string( "mission" ) ) {
         guy.mission = io::string_to_enum<npc_mission>( jsobj.get_string( "mission" ) );

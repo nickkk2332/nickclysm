@@ -51,6 +51,8 @@ static const npc_class_id NC_NONE( "NC_NONE" );
 static const string_id<npc_template> npc_template_audit_npc_child( "audit_npc_child" );
 static const string_id<npc_template> npc_template_audit_npc_parent( "audit_npc_parent" );
 static const string_id<npc_template> npc_template_audit_rt_npc( "audit_rt_npc" );
+static const string_id<npc_template>
+npc_template_audit_rt_npc_bad_attitude( "audit_rt_npc_bad_attitude" );
 
 static const itype_id itype_audit_pocket_delete_extend( "audit_pocket_delete_extend" );
 static const itype_id itype_audit_pocket_inherit( "audit_pocket_inherit" );
@@ -352,4 +354,18 @@ TEST_CASE( "npc-j02_later_npc_and_faction_definitions_win", "[audit][npc]" )
         } );
         CHECK( msg.find( "two definitions" ) != std::string::npos );
     }
+}
+
+// NPC-J02 (review): an unknown "attitude" was reported and set to NPCATT_NULL, then set again
+// from the raw number, so the template kept the invalid attitude.
+TEST_CASE( "npc-j02_invalid_npc_attitude_becomes_null", "[audit][npc]" )
+{
+    audit_data_loader loader;
+    const std::string msg = capture_debugmsg_during( [&]() {
+        loader.load_object( json_loader::from_string( R"({ "type": "npc",
+            "id": "audit_rt_npc_bad_attitude", "class": "NC_NONE", "attitude": 99,
+            "chat": "TALK_DONE" })" ), "audit_mod_a" );
+    } );
+    CHECK( msg.find( "invalid attitude enum 99" ) != std::string::npos );
+    CHECK( npc_template_audit_rt_npc_bad_attitude->guy.get_attitude() == NPCATT_NULL );
 }
