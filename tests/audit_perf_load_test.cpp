@@ -1,10 +1,17 @@
+#include <cstddef>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "achievement.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_path.h"
 #include "cata_scope_helpers.h"
 #include "cata_variant.h"
 #include "character.h"
@@ -12,14 +19,22 @@
 #include "event.h"
 #include "event_bus.h"
 #include "event_statistics.h"
+#include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "json.h"
 #include "json_loader.h"
+#include "mapbuffer.h"
+#include "options_helpers.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "path_info.h"
 #include "point.h"
 #include "stats_tracker.h"
+#include "string_formatter.h"
+#include "submap.h"
 #include "type_id.h"
+#include "worldfactory.h"
+#include "zzip.h"
 
 static const achievement_id
 achievement_achievement_reach_exodii_base( "achievement_reach_exodii_base" );
@@ -34,6 +49,8 @@ event_statistic_last_oter_type_avatar_entered( "last_oter_type_avatar_entered" )
 static const oter_type_str_id oter_type_field( "field" );
 
 static const overmap_special_id overmap_special_evac_center( "evac_center" );
+
+static const ter_str_id ter_t_dirt( "t_dirt" );
 
 namespace
 {
@@ -192,4 +209,199 @@ TEST_CASE( "evt-p01_loading_a_save_keeps_achievements_and_grants_none",
     CHECK( s.value_of( event_statistic_last_overmap_special_avatar_entered ) ==
            cata_variant( overmap_special_evac_center ) );
     CHECK( overmap_buffer.global_state.overmap_count == overmaps_before );
+}
+
+namespace
+{
+
+// Runs fn with a new, empty world active, compressed or not; the test world comes back after.
+void in_scratch_world( bool compressed, const std::function<void()> &fn )
+{
+    WORLD *const test_world = world_generator->active_world;
+    const std::string name = compressed ? "audit map-p03 compressed" : "audit map-p03 plain";
+    WORLD *scratch = nullptr;
+    {
+        override_option compression( "WORLD_COMPRESSION2", compressed ? "true" : "false" );
+        scratch = world_generator->make_new_world( name, test_world->active_mod_order );
+    }
+    REQUIRE( scratch != nullptr );
+    world_generator->set_active_world( scratch );
+    on_out_of_scope restore( [&]() {
+        world_generator->set_active_world( test_world );
+        world_generator->delete_world( name, true );
+    } );
+    REQUIRE( scratch->has_compression_enabled() == compressed );
+    fn();
+}
+
+// The four submaps of an OMT: uniform rock, or with a dirt tile, so that the quad is saved
+void add_quad( mapbuffer &mb, const tripoint_abs_omt &omt, bool uniform, bool reverted = false )
+{
+    const tripoint_abs_sm base = project_to<coords::sm>( omt );
+    for( int dx = 0; dx < 2; ++dx ) {
+        for( int dy = 0; dy < 2; ++dy ) {
+            std::unique_ptr<submap> sm = std::make_unique<submap>();
+            if( !uniform ) {
+                sm->set_ter( point_sm_ms( 1, 1 ), ter_t_dirt.id() );
+            }
+            sm->reverted = reverted;
+            REQUIRE( mb.add_submap( base + tripoint_rel_sm( dx, dy, 0 ), sm ) );
+        }
+    }
+}
+
+bool quad_loads( mapbuffer &mb, const tripoint_abs_omt &omt )
+{
+    const submap *sm = mb.lookup_submap( project_to<coords::sm>( omt ) + tripoint_rel_sm( 1, 1,
+                                         0 ) );
+    return sm != nullptr && !sm->is_uniform() && sm->get_ter( point_sm_ms( 1, 1 ) ) == ter_t_dirt.id();
+}
+
+cata_path segment_path( const tripoint_abs_omt &omt )
+{
+    const tripoint_abs_seg seg = project_to<coords::seg>( omt );
+    return PATH_INFO::current_dimension_save_path() / "maps" /
+           string_format( "%d.%d.%d", seg.x(), seg.y(), seg.z() );
+}
+
+// A quad as the save holds it, read without the mapbuffer, as an older build would
+bool quad_file_holds_dirt( const tripoint_abs_omt &omt, bool compressed )
+{
+    const cata_path dir = segment_path( omt );
+    const std::string name = string_format( "%d.%d.%d.map", omt.x(), omt.y(), omt.z() );
+    std::string contents;
+    if( compressed ) {
+        cata_path zzip_name = dir;
+        zzip_name += zzip_suffix;
+        if( !file_exist( zzip_name ) ) {
+            return false;
+        }
+        std::optional<zzip> z = zzip::load( zzip_name.get_unrelative_path(),
+                                            ( PATH_INFO::world_base_save_path() / "maps.dict" ).get_unrelative_path() );
+        if( !z || !z->has_file( std::filesystem::u8path( name ) ) ) {
+            return false;
+        }
+        const std::vector<std::byte> bytes = z->get_file( std::filesystem::u8path( name ) );
+        contents.assign( reinterpret_cast<const char *>( bytes.data() ), bytes.size() );
+    } else {
+        if( !file_exist( dir / name ) ) {
+            return false;
+        }
+        contents = read_entire_file( ( dir / name ).get_unrelative_path() );
+    }
+    return contents.find( "t_dirt" ) != std::string::npos &&
+           contents.find( "coordinates" ) != std::string::npos;
+}
+
+} // namespace
+
+// MAP-P03: with compression on, saving opened (and so created) the segment's zzip for every
+// quad, even the uniform ones that are not written.
+TEST_CASE( "map-p03_saving_only_uniform_quads_creates_no_files", "[audit][map]" )
+{
+    const bool compressed = GENERATE( true, false );
+    CAPTURE( compressed );
+    in_scratch_world( compressed, [&]() {
+        const tripoint_abs_omt omt( 40, 40, 5 );
+        mapbuffer mb;
+        add_quad( mb, omt, true );
+        add_quad( mb, omt + tripoint_rel_omt( 1, 0, 0 ), true );
+        mb.save( true );
+        CHECK( mb.begin() == mb.end() );
+        cata_path zzip_name = segment_path( omt );
+        zzip_name += zzip_suffix;
+        CHECK_FALSE( file_exist( zzip_name ) );
+        CHECK_FALSE( dir_exist( segment_path( omt ).get_unrelative_path() ) );
+        // and nothing to load: the uniform quads get regenerated
+        CHECK( mb.lookup_submap( project_to<coords::sm>( omt ) ) == nullptr );
+    } );
+}
+
+// MAP-P03: lookups of quads that are not on disk are answered from a listing of each map
+// segment. The listing has to follow every save, delete and revert, and a cleared mapbuffer
+// (game load, dimension travel) must not keep it.
+TEST_CASE( "map-p03_quads_load_after_saves_reverts_and_clears", "[audit][map]" )
+{
+    const bool compressed = GENERATE( true, false );
+    CAPTURE( compressed );
+    in_scratch_world( compressed, [&]() {
+        // all in one segment, at one z-level
+        const tripoint_abs_omt a( 40, 40, 0 );
+        const tripoint_abs_omt b = a + tripoint_rel_omt( 1, 0, 0 );
+        const tripoint_abs_omt c = a + tripoint_rel_omt( 2, 0, 0 );
+        const tripoint_abs_omt d = a + tripoint_rel_omt( 3, 0, 0 );
+        mapbuffer mb;
+
+        // nothing saved yet
+        CHECK_FALSE( mb.submap_exists( project_to<coords::sm>( a ) ) );
+        CHECK_FALSE( quad_loads( mb, b ) );
+
+        // a saved quad loads, the others still don't
+        add_quad( mb, a, false );
+        mb.save( true );
+        REQUIRE( mb.begin() == mb.end() );
+        CHECK( quad_file_holds_dirt( a, compressed ) );
+        CHECK( quad_loads( mb, a ) );
+        CHECK_FALSE( quad_loads( mb, b ) );
+        CHECK( mb.submap_exists_approx( project_to<coords::sm>( a ) ) );
+
+        // a quad saved after a miss loads too
+        add_quad( mb, b, false );
+        mb.save( true );
+        CHECK( quad_file_holds_dirt( b, compressed ) );
+        CHECK( quad_loads( mb, b ) );
+        mb.save( true );
+
+        // a quad that reverts to uniform is deleted, and is not loaded again
+        add_quad( mb, c, false );
+        mb.save( true );
+        REQUIRE( quad_file_holds_dirt( c, compressed ) );
+        add_quad( mb, c, true, true );
+        mb.save( true );
+        CHECK_FALSE( quad_file_holds_dirt( c, compressed ) );
+        CHECK( mb.lookup_submap( project_to<coords::sm>( c ) ) == nullptr );
+        // and saved again when it changes again
+        add_quad( mb, c, false );
+        mb.save( true );
+        CHECK( quad_loads( mb, c ) );
+        mb.save( true );
+
+        // another mapbuffer writes d after this one saw it missing; once this one is
+        // cleared, as on a game load or dimension travel, d loads
+        CHECK_FALSE( quad_loads( mb, d ) );
+        {
+            mapbuffer other;
+            add_quad( other, d, false );
+            other.save( true );
+        }
+        mb.clear();
+        CHECK( quad_loads( mb, d ) );
+        CHECK( quad_loads( mb, a ) );
+    } );
+}
+
+// MAP-P03: worlds saved by older builds have a zzip for every segment the player saw, empty
+// when all its quads were uniform. Such a segment reads as having no quads, and can be
+// written to.
+TEST_CASE( "map-p03_empty_segment_zzip_from_an_older_build_loads", "[audit][map]" )
+{
+    in_scratch_world( true, [&]() {
+        const tripoint_abs_omt omt( 40, 40, -3 );
+        cata_path zzip_name = segment_path( omt );
+        zzip_name += zzip_suffix;
+        assure_dir_exist( PATH_INFO::current_dimension_save_path() / "maps" );
+        {
+            std::optional<zzip> z = zzip::load( zzip_name.get_unrelative_path(),
+                                                ( PATH_INFO::world_base_save_path() / "maps.dict" ).get_unrelative_path() );
+            REQUIRE( z );
+        }
+        REQUIRE( file_exist( zzip_name ) );
+        mapbuffer mb;
+        CHECK_FALSE( mb.submap_exists( project_to<coords::sm>( omt ) ) );
+        CHECK_FALSE( mb.submap_exists_approx( project_to<coords::sm>( omt ) ) );
+        add_quad( mb, omt, false );
+        mb.save( true );
+        CHECK( quad_file_holds_dirt( omt, true ) );
+        CHECK( quad_loads( mb, omt ) );
+    } );
 }

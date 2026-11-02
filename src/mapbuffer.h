@@ -5,6 +5,8 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <string>
+#include <unordered_set>
 
 #include "coordinates.h"
 
@@ -27,7 +29,7 @@ class mapbuffer
          **/
         void save( bool delete_after_save = false );
 
-        /** Delete all buffered submaps. **/
+        /** Delete all buffered submaps, and forget what is on disk. **/
         void clear();
 
         /** Delete all buffered submaps except those inside the reality bubble.
@@ -89,7 +91,26 @@ class mapbuffer
             const cata_path &dirname, const cata_path &filename,
             const tripoint_abs_omt &om_addr, std::list<tripoint_abs_sm> &submaps_to_delete,
             bool delete_after_save );
+        /**
+         * The quad files the segment holding @p om_addr has on disk. A segment is listed (one
+         * zzip or directory read) the first time it is asked for, and save_quad keeps the
+         * listing current, so a lookup of a quad that was never saved, the common case, needs
+         * no file access. nullptr if the segment could not be listed.
+         */
+        const std::unordered_set<std::string> *segment_listing( const tripoint_abs_omt &om_addr );
+        // Records a quad file written (or deleted) in its segment's listing, if it has one
+        void note_quad_file( const tripoint_abs_omt &om_addr, const std::string &file_name,
+                             bool on_disk );
+        // Drops the listings when the save directory or the compression mode has changed
+        void check_listings_current();
+
         submap_map_t submaps; // NOLINT(cata-serialize)
+        // Listings for segment_listing, which describe listed_maps_dir as stored with or without
+        // compression, as listed_compressed says
+        std::map<tripoint_abs_seg, std::unordered_set<std::string>>
+                segment_listings; // NOLINT(cata-serialize)
+        std::string listed_maps_dir; // NOLINT(cata-serialize)
+        bool listed_compressed = false; // NOLINT(cata-serialize)
 };
 
 extern mapbuffer MAPBUFFER;
