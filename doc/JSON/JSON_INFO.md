@@ -1851,9 +1851,12 @@ Note that burn_data is defined per material, but items may be made of multiple m
 
 | Identifier              | Description
 |---                      |---
-| `name`                  | Unique ID. Must be one continuous word, use underscores if necessary.
-| `default`               | (_optional_) Default monster, used to represent the monster group. (default: The monster with the highest `weight` in the group)
+| `id`                    | Unique ID. Must be one continuous word, use underscores if necessary. Defining a group with an `id` that already exists adds its `monsters` to the existing group, unless `override` is true.
+| `override`              | (_optional_) (bool) Replace an existing group with the same `id` instead of adding to it. (default: false)
+| `default`               | (_optional_) Default monster, used to represent the monster group and spawned when the roll picks no entry. (default: The monster with the highest `weight` in the group)
 | `monsters`              | To choose a monster for spawning, the game creates entries equal to the sum of all `weight` and picks one. Each monster will have a number of entries equal to its `weight`. See the table below for how to build the single monster definitions.
+| `freq_total`            | (_optional_) (int) The number the spawn roll is made against. When it is larger than the sum of all `weight`s, the rest of the roll goes to the `default` monster. (default: the sum of all `weight`s of entries without an `event`)
+| `auto_total`            | (_optional_) (bool) Set `freq_total` to the sum of all `weight`s, including entries added by other definitions of the same group. (default: false)
 | `is_safe`               | (_optional_) (bool) Check to not trigger safe-mode warning, currently inconsequential.
 | `is_animal`             | (_optional_) (bool) Check if that group has only normal animals, currently inconsequential.
 | `replace_monster_group` | (_optional_) (bool) Check if the group should be replaced completely by another monster group as game time progresses - doesn't affect already spawned monsters, as such mostly superseded by monster evolution.
@@ -1872,7 +1875,8 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 | `freq`            | (_optional_) Not used anymore, works exactly like weight
 | `cost_multiplier` | (_optional_) How many monsters each monster in this definition should count as, if spawning a limited number of monsters.  (default: 1)
 | `pack_size`       | (_optional_) The minimum and maximum number of monsters in this group that should spawn together.  (default: `[1,1]`)
-| `conditions`      | (_optional_) Conditions limit when monsters spawn. Valid options: `SUMMER`, `WINTER`, `AUTUMN`, `SPRING`, `DAY`, `NIGHT`, `DUSK`, `DAWN`. Multiple Time-of-day conditions (`DAY`, `NIGHT`, `DUSK`, `DAWN`) will be combined together so that any of those conditions makes the spawn valid. Multiple Season conditions (`SUMMER`, `WINTER`, `AUTUMN`, `SPRING`) will be combined together so that any of those conditions makes the spawn valid.
+| `conditions`      | (_optional_) Conditions limit when monsters spawn. Valid options: `SUMMER`, `WINTER`, `AUTUMN`, `SPRING`, `DAY`, `NIGHT`, `DUSK`, `DAWN`. Multiple Time-of-day conditions (`DAY`, `NIGHT`, `DUSK`, `DAWN`) will be combined together so that any of those conditions makes the spawn valid. Multiple Season conditions (`SUMMER`, `WINTER`, `AUTUMN`, `SPRING`) will be combined together so that any of those conditions makes the spawn valid. Any other value (including a different spelling such as `"Night"`) is a load error.
+| `condition`       | (_optional_) A [dialogue condition](EFFECT_ON_CONDITION.md#dialogue-conditions) that must be true for this entry to spawn. It is checked together with `conditions`, `starts`, `ends` and `event`. `u` is the avatar and there is no `npc`, so the condition can check the player (`u_has_trait`), global variables, weather or the time (`math` functions such as `weather('temperature')`), but not the spawn location. While it is false the entry is skipped and its share of the roll goes to the other entries or the `default` monster, exactly like an entry outside its `conditions`.
 | `starts`          | (_optional_) This entry becomes active after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
 | `ends`            | (_optional_) This entry becomes inactive after this much time multiplied by the evolution scaling factor.  Specified using time units (See [Time duration](#time-duration)).
 | `spawn_data`      | (_optional_) Any properties that the monster only has when spawned in this group. `ammo` defines how much of which ammo types the monster spawns with. Only applies to "monster" type entries.
@@ -1881,7 +1885,8 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 ```jsonc
 // Example of a monstergroup containing only "monster" entries:
 {
-  "name" : "GROUP_ANT",
+  "type" : "monstergroup",
+  "id" : "GROUP_ANT",
   "default" : "mon_ant",
   "monsters" : [
     { "monster" : "mon_ant", "weight" : 870, "cost_multiplier" : 0 },
@@ -1889,13 +1894,15 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
     { "monster" : "mon_ant_soldier", "weight" : 90, "cost_multiplier" : 5 },
     { "monster" : "mon_ant_queen", "weight" : 0, "cost_multiplier" : 0 },
     { "monster" : "mon_thing", "weight" : 100, "cost_multiplier" : 0, "pack_size" : [3,5], "conditions" : ["DUSK","DAWN","SUMMER"] },
-    { "monster" : "mon_santa", "weight" : 500, "event" : "christmas" }
+    { "monster" : "mon_santa", "weight" : 500, "event" : "christmas" },
+    // Only spawns once the player has angered the hive (a global variable set by an EOC).
+    { "monster" : "mon_ant_acid_soldier", "weight" : 50, "condition" : { "math" : [ "hive_angered == 1" ] } }
   ]
 },
 // Example of a monstergroup containing subgroups:
 {
   "type": "monstergroup",
-  "name": "GROUP_MIGO_RAID",
+  "id": "GROUP_MIGO_RAID",
   "//": "Meta-group for mi-gos on-the-go.",
   "monsters": [
     { "group": "GROUP_MI-GO_BASE_CAPTORS", "weight": 150, "cost_multiplier": 6, "pack_size": [ 1, 2 ] },
