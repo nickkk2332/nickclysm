@@ -1146,8 +1146,9 @@ void mapgen_function_json_base::setup_setmap( const JsonArray &parray )
         // These ops have no line or square variant, apply() would silently do nothing
         if( setmap_optype != JMAPGEN_SETMAP_OPTYPE_POINT && ( tmpop == JMAPGEN_SETMAP_BASH ||
                 tmpop == JMAPGEN_SETMAP_BURN || tmpop == JMAPGEN_SETMAP_VARIABLE ) ) {
-            pjo.throw_error_at( setmap_optype == JMAPGEN_SETMAP_OPTYPE_LINE ? "line" : "square",
-                                string_format( "\"%s\" is only supported with \"point\"", tmpval ) );
+            const bool is_line = setmap_optype == JMAPGEN_SETMAP_OPTYPE_LINE;
+            pjo.throw_error_at( is_line ? "line" : "square",
+                                string_format( "\"%s\" only works with \"point\"", tmpval ) );
         }
         jmapgen_int tmp_x2( 0, 0 );
         jmapgen_int tmp_y2( 0, 0 );
@@ -2443,7 +2444,8 @@ class jmapgen_corpse : public jmapgen_piece
                     const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
                   ) const override {
             if( !group.is_valid() ) {
-                debugmsg( "Invalid monster group \"%s\" for a corpse in %s", group.str(), context );
+                debugmsg( "Invalid monster group \"%s\" for a corpse in %s", group.str(),
+                          context );
             }
         }
 
