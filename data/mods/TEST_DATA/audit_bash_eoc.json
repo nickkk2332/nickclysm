@@ -59,7 +59,7 @@
         "id": "EOC_TEST_BASH_WALL_BROKEN",
         "effect": [
           {
-            "if": "has_alpha",
+            "if": { "or": [ "u_is_character", "u_is_monster" ] },
             "then": [ { "math": [ "test_bash_wall_alpha = 1" ] } ],
             "else": [ { "math": [ "test_bash_wall_alpha = 0" ] } ]
           },
@@ -77,14 +77,13 @@
     "bash": {
       "str_min": 1,
       "str_max": 1,
+      "sound_vol": 2,
+      "sound": "shnip.",
       "eoc_on_destroy": {
         "id": "EOC_TEST_BASH_WEB_CLEARED",
         "effect": [
           { "math": [ "test_bash_web_cleared_count += 1" ] },
-          {
-            "if": { "and": [ "has_alpha", "u_is_avatar" ] },
-            "then": [ { "math": [ "test_bash_web_by_avatar = 1" ] } ]
-          },
+          { "if": "u_is_avatar", "then": [ { "math": [ "test_bash_web_by_avatar = 1" ] } ] },
           { "copy_var": { "context_val": "field" }, "target_var": { "global_val": "test_bash_web_field" } }
         ]
       }

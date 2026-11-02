@@ -101,6 +101,7 @@
 #include "sounds.h"
 #include "string_formatter.h"
 #include "submap.h"
+#include "talker.h"
 #include "tileray.h"
 #include "translations.h"
 #include "trap.h"
@@ -4619,7 +4620,9 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
 }
 
 // Runs a bash's eoc_on_hit or eoc_on_destroy for the tile at p, with the basher (if any) as alpha.
-// Only on the main map: mapgen bashes temporary maps, where nothing happens in the game world.
+// With no known basher, alpha is an empty talker (as for ammo_effect EOCs): an EOC needs at least
+// one talker. Only on the main map: mapgen bashes temporary maps, where nothing happens in the
+// game world.
 static void run_bash_eoc( const map &m, const effect_on_condition_id &eoc,
                           const tripoint_bub_ms &p, Creature *basher,
                           const std::vector<std::pair<std::string, std::string>> &context )
@@ -4627,7 +4630,7 @@ static void run_bash_eoc( const map &m, const effect_on_condition_id &eoc,
     if( eoc.is_null() || &m != &get_map() ) {
         return;
     }
-    dialogue d( basher ? get_talker_for( basher ) : nullptr, nullptr );
+    dialogue d( basher ? get_talker_for( basher ) : std::make_unique<talker>(), nullptr );
     d.set_value( "loc", m.get_abs( p ) );
     for( const std::pair<std::string, std::string> &var : context ) {
         d.set_value( var.first, var.second );
