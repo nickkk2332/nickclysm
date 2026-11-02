@@ -39,6 +39,7 @@
 #include "field_type.h"
 #include "flat_set.h"
 #include "game.h"
+#include "grapple.h"
 #include "harvest.h"
 #include "imgui/imgui.h"
 #include "item.h"
@@ -2692,28 +2693,14 @@ bool monster::move_effects( bool )
     }
     if( has_effect_with_flag( json_flag_GRAB ) ) {
         // Pretty hacky, but monsters have no stats
-        map &here = get_map();
-        creature_tracker &creatures = get_creature_tracker();
-        const tripoint_range<tripoint_bub_ms> &surrounding = here.points_in_radius( pos_bub(), 1, 0 );
         for( const effect &grab : get_effects_with_flag( json_flag_GRAB ) ) {
-            // Is our grabber around?
-            monster *grabber = nullptr;
-            for( const tripoint_bub_ms loc : surrounding ) {
-                // In an edge case when two monsters grab each other
-                // Don't consider grabbed monster to be its own grabber
-                if( loc == pos_bub() ) {
-                    continue;
-                }
-                monster *mon = creatures.creature_at<monster>( loc );
-                if( mon && mon->has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
-                    add_msg_debug( debugmode::DF_MATTACK, "Grabber %s found", mon->name() );
-                    grabber = mon;
-                    break;
-                }
-            }
-
+            // The effect may be removed below, so keep what we need from it.
+            const efftype_id grab_id = grab.get_id();
+            const int grab_str = grab.get_intensity();
+            // Is our grabber around? Search the monsters in grab reach.
+            monster *const grabber = grapple::monster_grabber( *this, grab.get_bp() );
             if( grabber == nullptr ) {
-                remove_effect( grab.get_id() );
+                remove_effect( grab_id );
                 add_msg_debug( debugmode::DF_MATTACK, "Orphan grab found and removed" );
                 if( u_see_me && get_option<bool>( "LOG_MONSTER_MOVE_EFFECTS" ) ) {
                     add_msg( _( "The %s is no longer grabbed!" ), name() );
@@ -2721,16 +2708,15 @@ bool monster::move_effects( bool )
                 continue;
             }
             int monster = type->melee_skill + type->melee_damage.total_damage();
-            int grab_str = get_effect_int( grab.get_id() );
             add_msg_debug( debugmode::DF_MONSTER, "%s attempting to break grab %s, success %d in intensity %d",
-                           get_name(), grab.get_id().c_str(), monster, grab_str );
+                           get_name(), grab_id.c_str(), monster, grab_str );
             if( !x_in_y( monster, grab_str ) ) {
                 return false;
             } else {
                 if( u_see_me && get_option<bool>( "LOG_MONSTER_MOVE_EFFECTS" ) ) {
                     add_msg( _( "The %s breaks free from the %s's grab!" ), name(), grabber->name() );
                 }
-                remove_effect( grab.get_id() );
+                remove_effect( grab_id );
             }
         }
     }
@@ -2872,7 +2858,7 @@ void monster::remove_grab( bodypart_str_id bp )
 {
     grabbed_limbs.erase( bp );
     if( grabbed_limbs.empty() ) {
-        add_effect( effect_grabbing, 1_days, true, 1 );
+        remove_effect( effect_grabbing );
     }
 }
 
@@ -3045,23 +3031,35 @@ void monster::process_turn()
         }
     }
     creature_tracker &creatures = get_creature_tracker();
-    // Persist grabs as long as there's an adjacent target.
+    // Persist grabs as long as there's a grabbed target within our grab reach.
     if( has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
         bool remove = true;
-        for( const tripoint_bub_ms &dest : here.points_in_radius( pos_bub(), 1, 0 ) ) {
+        const int reach = std::max( 1, grapple::monster_grab_reach( *this ) );
+        const tripoint_bub_ms own_pos = pos_bub( here );
+        for( const tripoint_bub_ms &dest : here.points_in_radius( own_pos, reach, 1 ) ) {
+            // A monster that both holds and is held must not count its own grab.
+            if( dest == own_pos ) {
+                continue;
+            }
             const Creature *const you = creatures.creature_at<Creature>( dest );
             if( you && you->has_effect_with_flag( json_flag_GRAB ) ) {
                 add_msg_debug( debugmode::DF_MATTACK, "Grabbed creature %s found, persisting grab.",
                                you->get_name() );
                 remove = false;
+                break;
             }
         }
         if( remove ) {
+            std::vector<efftype_id> filters;
             for( const effect &eff : get_effects_with_flag( json_flag_GRAB_FILTER ) ) {
-                const efftype_id effid = eff.get_id();
+                filters.push_back( eff.get_id() );
+            }
+            for( const efftype_id &effid : filters ) {
                 remove_effect( effid );
                 add_msg_debug( debugmode::DF_MATTACK, "Grab filter effect %s removed.", effid.c_str() );
             }
+            // Forget the limbs too, or a later grab would bring the stale ones back.
+            grabbed_limbs.clear();
         }
     }
     // We update electrical fields here since they act every turn.

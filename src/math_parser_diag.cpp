@@ -231,6 +231,17 @@ double armor_eval( const_dialogue const &d, char scope, std::vector<diag_value> 
     return d.const_actor( is_beta( scope ) )->armor_at( dt, bp );
 }
 
+double arm_strength_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */,
+                          diag_kwargs const & /* kwargs */ )
+{
+    const_talker const *actor = d.const_actor( is_beta( scope ) );
+    if( Character const *const guy = actor->get_const_character() ) {
+        return guy->get_arm_str();
+    }
+    return actor->str_cur();
+}
+
 double charge_count_eval( const_dialogue const &d, char scope,
                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
@@ -2459,6 +2470,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "addiction_intensity", { "un", 1, addiction_intensity_eval } },
     { "addiction_turns", { "un", 1, addiction_turns_eval, addiction_turns_ass } },
     { "armor", { "un", 2, armor_eval } },
+    { "arm_strength", { "un", 0, arm_strength_eval } },
     { "artifact_resonance", { "un", 0, artifact_resonance_eval } },
     { "attack_speed", { "un", 0, attack_speed_eval } },
     { "speed", { "un", 0, move_speed_eval } },

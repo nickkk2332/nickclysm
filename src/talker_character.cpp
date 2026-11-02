@@ -24,6 +24,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "faction.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
@@ -828,6 +829,12 @@ int talker_character_const::get_size() const
     add_msg_debug( debugmode::DF_TALKER, "Size category of character %s = %d", me_chr_const->name,
                    me_chr_const->get_size() - 0 );
     return me_chr_const->get_size() - 0;
+}
+
+int talker_character_const::get_grab_strength() const
+{
+    // The strength of the grab this character would make.
+    return grapple::grab_strength( *me_chr_const, *me_chr_const );
 }
 
 void talker_character::set_stored_kcal( int value )

@@ -171,6 +171,7 @@ class talker_character_const: virtual public const_talker
         int get_stored_kcal() const override;
         int get_healthy_kcal() const override;
         int get_size() const override;
+        int get_grab_strength() const override;
         bool is_in_control_of( const vehicle &veh ) const override;
 
         bool worn_with_flag( const flag_id &flag, const bodypart_id &bp ) const override;

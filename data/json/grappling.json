@@ -1,0 +1,9 @@
+[
+  {
+    "type": "jmath_function",
+    "id": "grapple_grab_strength",
+    "//": "Strength of a character's grab, 1 to 100: the intensity of the target's grabbed effect.  u = grabber, n = target (the grabber itself when there is none).  From Cataclysm: The Last Generation: grip (at least 0.5) times arm strength, unarmed and melee skill and size; 18 for strength 10, skills 2 and medium size.",
+    "num_args": 0,
+    "return": "min( 100, 1 + round( max( 0.5, u_limb_score('grip') ) * ( u_arm_strength() + u_skill('unarmed') + u_skill('melee') + u_val('size') ) ) )"
+  }
+]
