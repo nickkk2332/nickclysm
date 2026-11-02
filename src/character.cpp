@@ -238,6 +238,7 @@ static const json_character_flag json_flag_ACIDBLOOD( "ACIDBLOOD" );
 static const json_character_flag json_flag_BIONIC_LIMB( "BIONIC_LIMB" );
 static const json_character_flag json_flag_BIONIC_TOGGLED( "BIONIC_TOGGLED" );
 static const json_character_flag json_flag_CANNIBAL( "CANNIBAL" );
+static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_CHANGE_TEMPERATURE( "CANNOT_CHANGE_TEMPERATURE" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
@@ -1911,6 +1912,42 @@ void Character::on_dodge( Creature *source, float difficulty, float training_lev
             }
         }
     }
+}
+
+void Character::on_grabbed( Creature &grabber, const bodypart_id &bp, int strength )
+{
+    ma_event_context grabbed_ctx;
+    grabbed_ctx.opponent = &grabber;
+    grabbed_ctx.grab_strength = strength;
+    grabbed_ctx.grab_part = bp.id();
+    martial_arts_data->ma_ongrabbed_effects( *this, grabbed_ctx );
+
+    // A grab this character goes along with is no attack to answer. grab_tolerated also lets the
+    // avatar grab an enemy without a roll (it is angry already); an enemy still answers.
+    const Character *const grabbing_character = grabber.as_character();
+    if( grabbing_character != nullptr && grapple::grab_tolerated( *grabbing_character, *this ) &&
+        attitude_to( grabber ) != Attitude::HOSTILE ) {
+        return;
+    }
+    // Nor can it answer when it can't act, or the grabber is out of reach or gone
+    if( is_dead_state() || in_sleep_state() || has_effect( effect_narcosis ) ||
+        has_effect( effect_fearparalyze ) || has_effect( effect_winded ) ||
+        has_effect( effect_incorporeal ) || has_flag( json_flag_CANNOT_MOVE ) ||
+        has_flag( json_flag_CANNOT_ATTACK ) || is_driving() || grabber.is_dead_state() ||
+        !is_adjacent( &grabber, false ) ) {
+        return;
+    }
+    technique_query query;
+    query.grab_counter = true;
+    const matec_id tec = std::get<0>( pick_technique( grabber, used_weapon(), query ) );
+    if( tec == tec_none ) {
+        return;
+    }
+    if( get_stamina() < get_stamina_max() / 3 ) {
+        add_msg_if_player( m_bad, _( "You try to counterattack, but you are too exhausted!" ) );
+        return;
+    }
+    melee_attack( grabber, false, tec );
 }
 
 float Character::get_melee() const

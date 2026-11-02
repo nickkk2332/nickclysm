@@ -2487,8 +2487,10 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
         bool crit = jo.get_bool( "crit", false );
         bool dodge_counter = jo.get_bool( "dodge_counter", false );
         bool block_counter = jo.get_bool( "block_counter", false );
+        bool grab_counter = jo.get_bool( "grab_counter", false );
 
-        return [blacklist, crit, dodge_counter, block_counter, ret_func]( const_dialogue const & d ) {
+        return [blacklist, crit, dodge_counter, block_counter, grab_counter,
+                   ret_func]( const_dialogue const & d ) {
             std::vector<matec_id> bl;
             bl.reserve( blacklist.size() );
             for( const str_or_var &sv : blacklist ) {
@@ -2496,7 +2498,7 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
             }
             return ret_func( d.const_actor( false )->get_random_technique( *d.const_actor(
                                  true )->get_const_creature(),
-                             crit, dodge_counter, block_counter, bl ).str() );
+                             crit, dodge_counter, block_counter, grab_counter, bl ).str() );
         };
     } else if( mutator == "topic_item" ) {
         return [ret_func]( const_dialogue const & d ) {

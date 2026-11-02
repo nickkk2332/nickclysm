@@ -17,6 +17,7 @@
 #include "calendar.h"
 #include "character.h"
 #include "character_id.h"
+#include "character_martial_arts.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "creature_tracker.h"
@@ -33,6 +34,7 @@
 #include "line.h"
 #include "map.h"
 #include "mapdata.h"
+#include "martialarts.h"
 #include "math_parser_jmath.h"
 #include "mattack_actors.h"
 #include "mattack_common.h"
@@ -261,8 +263,11 @@ Character *grapple::character_grabber( const Creature &victim, const effect &eff
     return nullptr;
 }
 
-bool grapple::start_hold( Character &grabber, Creature &victim, int strength,
-                          const bodypart_id &bp )
+namespace
+{
+
+// start_hold without the reactions, so that attempt_grab can tell of the grab first.
+bool establish_hold( Character &grabber, Creature &victim, int strength, const bodypart_id &bp )
 {
     // add_effect would merge into an existing grab and keep its source, so refuse instead.
     if( victim.has_effect( effect_grabbed, bp ) ) {
@@ -270,10 +275,43 @@ bool grapple::start_hold( Character &grabber, Creature &victim, int strength,
     }
     victim.add_effect( effect_source( &grabber ), effect_grabbed, 1_days, bp, true,
                        std::clamp( strength, 1, 100 ) );
-    if( hold_effect( grabber, victim ) == nullptr ) {
+    if( grapple::hold_effect( grabber, victim ) == nullptr ) {
         return false;
     }
     grabber.add_effect( effect_grabbing, 1_days, true, 1 );
+    return true;
+}
+
+// A hold was just established: the grabber's ongrab hooks fire, then a character victim reacts,
+// and its grab counter may end the hold.
+void react_to_hold( Character &grabber, Creature &victim, const bodypart_id &bp )
+{
+    const effect *const hold = grapple::hold_effect( grabber, victim );
+    if( hold == nullptr ) {
+        return;
+    }
+    const int strength = hold->get_intensity();
+    ma_event_context ctx;
+    ctx.opponent = &victim;
+    ctx.grab_strength = strength;
+    ctx.grab_part = bp.id();
+    grabber.martial_arts_data->ma_ongrab_effects( grabber, ctx );
+    // The hooks may have ended the hold already.
+    if( Character *const guy = victim.as_character();
+        guy != nullptr && grapple::hold_effect( grabber, victim ) != nullptr ) {
+        guy->on_grabbed( grabber, bp, strength );
+    }
+}
+
+} // namespace
+
+bool grapple::start_hold( Character &grabber, Creature &victim, int strength,
+                          const bodypart_id &bp )
+{
+    if( !establish_hold( grabber, victim, strength, bp ) ) {
+        return false;
+    }
+    react_to_hold( grabber, victim, bp );
     return true;
 }
 
@@ -593,13 +631,15 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
         if( rng( 0, 100 ) <= static_cast<int>( z->type->def_chance ) ) {
             z->type->sp_defense( *z, &grabber, nullptr );
         }
+        const bodypart_id no_part = bodypart_str_id::NULL_ID().id();
         if( z->is_dead_state() || grabber.is_dead_state() || !in_reach( grabber, *z ) ||
-            !start_hold( grabber, *z, strength, bodypart_str_id::NULL_ID().id() ) ) {
+            !establish_hold( grabber, *z, strength, no_part ) ) {
             grabber.add_msg_if_player( m_bad, _( "You can't get a grip on %s." ), z->disp_name() );
             return false;
         }
         grabber.add_msg_player_or_npc( m_good, _( "You grab %s." ), _( "<npcname> grabs %s." ),
                                        z->disp_name() );
+        react_to_hold( grabber, *z, no_part );
         return true;
     }
 
@@ -619,7 +659,7 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
     }
     // Characters are held by a limb. Skip the limbs somebody already holds.
     const std::optional<bodypart_id> bp = free_grab_part( target );
-    if( !bp || !start_hold( grabber, target, strength, *bp ) ) {
+    if( !bp || !establish_hold( grabber, target, strength, *bp ) ) {
         grabber.add_msg_if_player( m_bad, _( "You can't get a grip on %s." ), target.disp_name() );
         return false;
     }
@@ -630,6 +670,7 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
     if( guy != nullptr && !tolerate ) {
         guy->on_attacked( grabber );
     }
+    react_to_hold( grabber, target, *bp );
     return true;
 }
 

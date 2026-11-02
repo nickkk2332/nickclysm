@@ -877,6 +877,14 @@ class Character : public Creature, public visitable
         void on_dodge( Creature *source, float difficulty, float training_level = 0.0f ) override;
         /** Called after the player has tryed to dodge an attack */
         void on_try_dodge() override;
+        /**
+         * Called after `grabber` established a hold on this character's `bp` (a monster's grab
+         * attack, or a character's grab through grapple::start_hold) with that strength: fires
+         * the martial art's ongrabbed buffs and EOCs, then answers with a grab_counter technique
+         * if one is usable, the grabber is in melee reach and the grab isn't one this character
+         * tolerates (grapple::grab_tolerated).
+         */
+        void on_grabbed( Creature &grabber, const bodypart_id &bp, int strength );
 
         /** Combat getters */
         float get_dodge_base() const override;
@@ -1207,14 +1215,24 @@ class Character : public Creature, public visitable
             Creature const &t, const item_location &weap,
             bool crit, bool dodge_counter, bool block_counter, const std::vector<matec_id> &blacklist = {} )
         const;
+        /** As above, for the kind of attack in `query` (its `roll` is ignored: the pick rolls) */
+        std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> pick_technique(
+            Creature const &t, const item_location &weap, const technique_query &query,
+            const std::vector<matec_id> &blacklist = {} ) const;
         /** The usable techniques for an attack, sorted into the pools pick_technique draws from */
         technique_pools get_technique_pools( Creature const &t, const item_location &weap,
                                              bool crit, bool dodge_counter, bool block_counter,
+                                             const std::vector<matec_id> &blacklist = {} ) const;
+        technique_pools get_technique_pools( Creature const &t, const item_location &weap,
+                                             const technique_query &query,
                                              const std::vector<matec_id> &blacklist = {} ) const;
         // Filter techniques per tech, return a tech/vector/sublimb set
         std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
                 evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
                                     bool crit = false, bool dodge_counter = false, bool block_counter = false ) const;
+        std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
+                evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
+                                    const technique_query &query ) const;
         /**
          * Can the technique be used in this kind of attack on t? Returns why not, or
          * technique_rejection::none. When it can and query.roll is set, the chosen attack vector

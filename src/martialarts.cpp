@@ -349,6 +349,7 @@ void ma_technique::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "dummy", dummy, false );
     optional( jo, was_loaded, "dodge_counter", dodge_counter, false );
     optional( jo, was_loaded, "block_counter", block_counter, false );
+    optional( jo, was_loaded, "grab_counter", grab_counter, false );
     optional( jo, was_loaded, "miss_recovery", miss_recovery, false );
     optional( jo, was_loaded, "grab_break", grab_break, false );
     optional( jo, was_loaded, "fallback", fallback, false );
@@ -433,6 +434,21 @@ void ma_technique::check() const
     if( ( fallback || basic ) && ( dummy || defensive ) ) {
         debugmsg( "MA technique %s is %s, so \"%s\" has no effect", id.c_str(),
                   dummy ? "dummy" : "defensive", fallback ? "fallback" : "basic" );
+    }
+    // A counter answers one kind of event: a technique that is two kinds of counter never fires
+    const int counter_kinds = ( dodge_counter ? 1 : 0 ) + ( block_counter ? 1 : 0 ) +
+                              ( grab_counter ? 1 : 0 );
+    if( counter_kinds > 1 ) {
+        debugmsg( "MA technique %s sets more than one of \"dodge_counter\", \"block_counter\" and "
+                  "\"grab_counter\", so it can never be used", id.c_str() );
+    }
+    if( grab_counter && ( dummy || defensive ) ) {
+        debugmsg( "MA technique %s is %s, so \"grab_counter\" has no effect", id.c_str(),
+                  dummy ? "dummy" : "defensive" );
+    }
+    if( grab_counter && crit_tec ) {
+        debugmsg( "MA technique %s is a \"crit_tec\", which a grab counter never is, so "
+                  "\"grab_counter\" has no effect", id.c_str() );
     }
 }
 
@@ -552,6 +568,8 @@ void martialart::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "onmiss_buffs", onmiss_buffs, ma_buff_reader{} );
     optional( jo, was_loaded, "oncrit_buffs", oncrit_buffs, ma_buff_reader{} );
     optional( jo, was_loaded, "onkill_buffs", onkill_buffs, ma_buff_reader{} );
+    optional( jo, was_loaded, "ongrab_buffs", ongrab_buffs, ma_buff_reader{} );
+    optional( jo, was_loaded, "ongrabbed_buffs", ongrabbed_buffs, ma_buff_reader{} );
 
     for( JsonValue jv : jo.get_array( "static_eocs" ) ) {
         static_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
@@ -585,6 +603,12 @@ void martialart::load( const JsonObject &jo, std::string_view src )
     }
     for( JsonValue jv : jo.get_array( "onkill_eocs" ) ) {
         onkill_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+    for( JsonValue jv : jo.get_array( "ongrab_eocs" ) ) {
+        ongrab_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    }
+    for( JsonValue jv : jo.get_array( "ongrabbed_eocs" ) ) {
+        ongrabbed_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
 
     optional( jo, was_loaded, "techniques", techniques, string_id_reader<::ma_technique> {} );
@@ -1095,6 +1119,8 @@ std::string enum_to_string<technique_rejection>( technique_rejection data )
         case technique_rejection::not_dodge_counter: return "not_dodge_counter";
         case technique_rejection::block_counter_only: return "block_counter_only";
         case technique_rejection::not_block_counter: return "not_block_counter";
+        case technique_rejection::grab_counter_only: return "grab_counter_only";
+        case technique_rejection::not_grab_counter: return "not_grab_counter";
         case technique_rejection::too_slow: return "too_slow";
         case technique_rejection::crit_only: return "crit_only";
         case technique_rejection::not_on_crit: return "not_on_crit";
@@ -1170,6 +1196,10 @@ std::string ma_technique::rejection_text( technique_rejection why ) const
             return _( "block counter, automatic" );
         case technique_rejection::not_block_counter:
             return _( "not a block counter" );
+        case technique_rejection::grab_counter_only:
+            return _( "grab counter, automatic" );
+        case technique_rejection::not_grab_counter:
+            return _( "not a grab counter" );
         case technique_rejection::too_slow:
             return _( "too slow to counter now" );
         case technique_rejection::crit_only:
@@ -1502,6 +1532,22 @@ void martialart::remove_all_buffs( Character &u ) const
             u.remove_effect( eff_id );
         }
     }
+
+    // Remove ongrab buffs
+    for( const auto &elem : ongrab_buffs ) {
+        const efftype_id eff_id = elem->get_effect_id();
+        if( u.has_effect( eff_id ) && !elem->persists ) {
+            u.remove_effect( eff_id );
+        }
+    }
+
+    // Remove ongrabbed buffs
+    for( const auto &elem : ongrabbed_buffs ) {
+        const efftype_id eff_id = elem->get_effect_id();
+        if( u.has_effect( eff_id ) && !elem->persists ) {
+            u.remove_effect( eff_id );
+        }
+    }
 }
 
 void martialart::apply_static_buffs( Character &u ) const
@@ -1559,6 +1605,16 @@ void martialart::apply_onkill_buffs( Character &u ) const
     simultaneous_add( u, onkill_buffs );
 }
 
+void martialart::apply_ongrab_buffs( Character &u ) const
+{
+    simultaneous_add( u, ongrab_buffs );
+}
+
+void martialart::apply_ongrabbed_buffs( Character &u ) const
+{
+    simultaneous_add( u, ongrabbed_buffs );
+}
+
 void ma_event_context::activate( Character &u,
                                  const std::vector<effect_on_condition_id> &eocs ) const
 {
@@ -1584,6 +1640,12 @@ void ma_event_context::activate( Character &u,
         }
         if( killed ) {
             d.set_value( "killed", *killed ? 1.0 : 0.0 );
+        }
+        if( grab_strength ) {
+            d.set_value( "grab_strength", *grab_strength );
+        }
+        if( !grab_part.is_empty() && !grab_part.is_null() ) {
+            d.set_value( "grab_part", grab_part.str() );
         }
         eoc->activate_activation_only( d, "a martial art activation", "martial art being activated",
                                        "martial art" );
@@ -1650,6 +1712,16 @@ void martialart::apply_oncrit_eocs( Character &u, const ma_event_context &ctx ) 
 void martialart::apply_onkill_eocs( Character &u, const ma_event_context &ctx ) const
 {
     activate_eocs( u, onkill_eocs, ctx );
+}
+
+void martialart::apply_ongrab_eocs( Character &u, const ma_event_context &ctx ) const
+{
+    activate_eocs( u, ongrab_eocs, ctx );
+}
+
+void martialart::apply_ongrabbed_eocs( Character &u, const ma_event_context &ctx ) const
+{
+    activate_eocs( u, ongrabbed_eocs, ctx );
 }
 
 bool martialart::has_technique( const Character &u, const matec_id &tec_id ) const
@@ -2162,6 +2234,16 @@ void character_martial_arts::ma_onkill_effects( Character &owner, const ma_event
     style_selected->apply_onkill_buffs( owner );
     style_selected->apply_onkill_eocs( owner, ctx );
 }
+void character_martial_arts::ma_ongrab_effects( Character &owner, const ma_event_context &ctx )
+{
+    style_selected->apply_ongrab_buffs( owner );
+    style_selected->apply_ongrab_eocs( owner, ctx );
+}
+void character_martial_arts::ma_ongrabbed_effects( Character &owner, const ma_event_context &ctx )
+{
+    style_selected->apply_ongrabbed_buffs( owner );
+    style_selected->apply_ongrabbed_eocs( owner, ctx );
+}
 
 template<typename C, typename F>
 static void accumulate_ma_buff_effects( const C &container, F f )
@@ -2432,6 +2514,8 @@ std::string ma_technique::get_description() const
         type = _( "Block Counter" );
     } else if( dodge_counter ) {
         type = _( "Dodge Counter" );
+    } else if( grab_counter ) {
+        type = _( "Grab Counter" );
     } else if( miss_recovery ) {
         type = _( "Miss Recovery" );
     } else if( grab_break ) {
@@ -2490,6 +2574,11 @@ std::string ma_technique::get_description() const
 
     if( block_counter ) {
         dump += _( "* Will <info>counterattack</info> when you <info>block</info>" ) + std::string( "\n" );
+    }
+
+    if( grab_counter ) {
+        dump += _( "* Will <info>counterattack</info> when something <info>grabs</info> you" ) +
+                std::string( "\n" );
     }
 
     if( miss_recovery ) {
@@ -2708,6 +2797,8 @@ void ma_details_ui_impl::init_data()
         buff_desc( _( "Dodge buffs" ), ma.ondodge_buffs );
         buff_desc( _( "Block buffs" ), ma.onblock_buffs );
         buff_desc( _( "Get hit buffs" ), ma.ongethit_buffs );
+        buff_desc( _( "Grab buffs" ), ma.ongrab_buffs );
+        buff_desc( _( "Grabbed buffs" ), ma.ongrabbed_buffs );
 
         for( const auto &tech : ma.techniques ) {
             std::vector<std::string> tehcnique_lines =

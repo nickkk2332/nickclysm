@@ -82,6 +82,10 @@ class character_martial_arts
         void ma_oncrit_effects( Character &owner, const ma_event_context &ctx = {} );
         /** Fires all kill-triggered martial arts events */
         void ma_onkill_effects( Character &owner, const ma_event_context &ctx = {} );
+        /** Fires all ongrab buffs and eocs: owner established a hold on ctx.opponent */
+        void ma_ongrab_effects( Character &owner, const ma_event_context &ctx = {} );
+        /** Fires all ongrabbed buffs and eocs: ctx.opponent established a hold on owner */
+        void ma_ongrabbed_effects( Character &owner, const ma_event_context &ctx = {} );
 
         // Selects a valid attack vector, at random by weight. Without `random` nothing random
         // happens: the first valid vector is returned, to check that there is one.

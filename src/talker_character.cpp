@@ -1489,11 +1489,15 @@ void talker_character::die( map *here )
 }
 
 matec_id talker_character_const::get_random_technique( Creature const &t, bool crit,
-        bool dodge_counter, bool block_counter, const std::vector<matec_id> &blacklist ) const
+        bool dodge_counter, bool block_counter, bool grab_counter,
+        const std::vector<matec_id> &blacklist ) const
 {
-    return std::get<0>( me_chr_const->pick_technique( t, me_chr_const->used_weapon(), crit,
-                        dodge_counter,
-                        block_counter,
+    technique_query query;
+    query.crit = crit;
+    query.dodge_counter = dodge_counter;
+    query.block_counter = block_counter;
+    query.grab_counter = grab_counter;
+    return std::get<0>( me_chr_const->pick_technique( t, me_chr_const->used_weapon(), query,
                         blacklist ) );
 }
 

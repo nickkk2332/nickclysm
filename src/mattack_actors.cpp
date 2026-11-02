@@ -1206,6 +1206,17 @@ bool melee_actor::call( monster &z ) const
         eoc->activate( d );
     }
 
+    // Once the attack is over, a character it grabbed reacts: martial-art hooks, grab counters
+    if( grabbed_bp_id && grab_data.grab_effect != effect_null && !z.is_dead_state() ) {
+        Character *const victim = target->as_character();
+        if( victim != nullptr && target->has_effect( grab_data.grab_effect, *grabbed_bp_id ) ) {
+            const effect &grab = target->get_effect( grab_data.grab_effect, *grabbed_bp_id );
+            if( grab.has_flag( json_flag_GRAB ) ) {
+                victim->on_grabbed( z, *grabbed_bp_id, grab.get_intensity() );
+            }
+        }
+    }
+
     return true;
 }
 

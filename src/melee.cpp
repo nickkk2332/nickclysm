@@ -44,6 +44,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "game_inventory.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_components.h"
 #include "item_contents.h"
@@ -135,7 +136,6 @@ static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_TAKE_DAMAGE( "CANNOT_TAKE_DAMAGE" );
 static const json_character_flag json_flag_CBQ_LEARN_BONUS( "CBQ_LEARN_BONUS" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
-static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HARDTOHIT( "HARDTOHIT" );
 static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_PSEUDOPOD_GRASP( "PSEUDOPOD_GRASP" );
@@ -1578,12 +1578,28 @@ void Character::roll_damage( const damage_type_id &dt, bool crit, damage_instanc
         di.add_damage( dt, other_dam, arpen, armor_mult, other_mul );
     }
 }
+// The kind of attack the bool flags of the older signatures describe
+static technique_query attack_kind( bool crit, bool dodge_counter, bool block_counter )
+{
+    technique_query query;
+    query.crit = crit;
+    query.dodge_counter = dodge_counter;
+    query.block_counter = block_counter;
+    return query;
+}
+
 std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> Character::pick_technique(
     Creature const &t, const item_location &weap, bool crit,
     bool dodge_counter, bool block_counter, const std::vector<matec_id> &blacklist ) const
 {
-    const technique_pools pools = get_technique_pools( t, weap, crit, dodge_counter, block_counter,
-                                  blacklist );
+    return pick_technique( t, weap, attack_kind( crit, dodge_counter, block_counter ), blacklist );
+}
+
+std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> Character::pick_technique(
+    Creature const &t, const item_location &weap, const technique_query &query,
+    const std::vector<matec_id> &blacklist ) const
+{
+    const technique_pools pools = get_technique_pools( t, weap, query, blacklist );
     if( pools.possible.empty() && !pools.fallbacks.empty() ) {
         add_msg_debug( debugmode::DF_MELEE, "No ordinary technique possible, using fallbacks" );
     }
@@ -1598,6 +1614,13 @@ technique_pools Character::get_technique_pools( Creature const &t, const item_lo
         bool crit, bool dodge_counter, bool block_counter,
         const std::vector<matec_id> &blacklist ) const
 {
+    return get_technique_pools( t, weap, attack_kind( crit, dodge_counter, block_counter ),
+                                blacklist );
+}
+
+technique_pools Character::get_technique_pools( Creature const &t, const item_location &weap,
+        const technique_query &query, const std::vector<matec_id> &blacklist ) const
+{
     technique_pools pools;
     for( const matec_id &tec_id : martial_arts_data->get_all_techniques( weap, *this ) ) {
         add_msg_debug( debugmode::DF_MELEE, "Evaluating technique %s", tec_id->name );
@@ -1608,7 +1631,7 @@ technique_pools Character::get_technique_pools( Creature const &t, const item_lo
         }
 
         const std::optional<technique_pools::entry> tec = evaluate_technique( tec_id, t, weap,
-                crit, dodge_counter, block_counter );
+                query );
         if( !tec ) {
             continue;
         }
@@ -1632,10 +1655,16 @@ std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
         Character::evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
                                        bool crit, bool dodge_counter, bool block_counter ) const
 {
-    technique_query query;
-    query.crit = crit;
-    query.dodge_counter = dodge_counter;
-    query.block_counter = block_counter;
+    return evaluate_technique( tec_id, t, weap, attack_kind( crit, dodge_counter, block_counter ) );
+}
+
+std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
+        Character::evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
+                                       const technique_query &kind ) const
+{
+    // An automatic choice rolls
+    technique_query query = kind;
+    query.roll = true;
     std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> chosen;
     if( check_technique( tec_id, t, weap, query, &chosen ) != technique_rejection::none ) {
         return std::nullopt;
@@ -1702,9 +1731,14 @@ technique_rejection Character::check_technique( const matec_id &tec_id, Creature
         return reject( query.block_counter ? technique_rejection::not_block_counter :
                        technique_rejection::block_counter_only );
     }
+    // and grab counters
+    if( query.grab_counter != tec_id->grab_counter ) {
+        return reject( query.grab_counter ? technique_rejection::not_grab_counter :
+                       technique_rejection::grab_counter_only );
+    }
 
     // Don't counter if it would exhaust moves.
-    if( tec_id->block_counter || tec_id->dodge_counter ) {
+    if( tec_id->block_counter || tec_id->dodge_counter || tec_id->grab_counter ) {
         item &used_weap = used_weapon() ? *used_weapon() : null_item_reference();
         float move_cost = attack_speed( used_weap );
         move_cost *= tec_id->move_cost_multiplier( *this );
@@ -2050,6 +2084,11 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
     if( technique.knockback_dist && !( t.has_flag( mon_flag_IMMOBILE ) ||
                                        t.has_flag( json_flag_CANNOT_MOVE ) ) ) {
         const tripoint_bub_ms prev_pos = t_pos; // track target startpoint for knockback_follow
+        // Knocked back, a monster lets go of every grab it holds, on both sides (a character's
+        // holds end in knock_back_from). First, while its grabs are still within its reach.
+        if( monster *const mon = t.as_monster() ) {
+            grapple::release_grabs_by( *mon );
+        }
         const point_rel_ms kb_offset( rng( -technique.knockback_spread, technique.knockback_spread ),
                                       rng( -technique.knockback_spread, technique.knockback_spread ) );
         tripoint_bub_ms kb_point( pos.x() + kb_offset.x(), pos.y() + kb_offset.y(), pos.z() );
@@ -2082,21 +2121,6 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
                 if( t_pos != prev_pos ) {
                     g->place_player( prev_pos );
                     g->on_move_effects();
-                }
-            }
-        }
-        // Remove our grab if we knocked back our grabber (if we can do so is handled by tech conditions)
-        if( has_flag( json_flag_GRAB ) && t.has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
-            for( const effect &eff : get_effects_with_flag( json_flag_GRAB ) ) {
-                if( t.is_monster() ) {
-                    monster *m = t.as_monster();
-                    if( m->is_grabbing( eff.get_bp().id() ) ) {
-                        m->remove_grab( eff.get_bp().id() );
-                        const std::string released_body_part_name = eff.get_bp()->name.translated();
-                        remove_effect( eff.get_id(), eff.get_bp() );
-                        add_msg_debug( debugmode::DF_MELEE, "Grabber %s knocked back, grab on %s removed", t.get_name(),
-                                       released_body_part_name );
-                    }
                 }
             }
         }

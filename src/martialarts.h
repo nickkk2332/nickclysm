@@ -50,6 +50,8 @@ enum class technique_rejection : int {
     not_dodge_counter,  // the attack is a dodge counter, the technique isn't one
     block_counter_only, // a block counter, and the attack isn't one
     not_block_counter,  // the attack is a block counter, the technique isn't one
+    grab_counter_only,  // a grab counter, and the attack isn't one
+    not_grab_counter,   // the attack is a grab counter, the technique isn't one
     too_slow,           // a counter that would use up more moves than the attacker has
     crit_only,          // crit_tec, and the hit isn't a critical hit
     not_on_crit,        // the hit is a critical hit, the technique is neither crit_tec nor crit_ok
@@ -97,6 +99,8 @@ struct technique_query {
     bool crit = false;
     bool dodge_counter = false;
     bool block_counter = false;
+    // Answering a grab on the attacker (Character::on_grabbed)
+    bool grab_counter = false;
     // Roll negative weightings and pick an attack vector, as an attack does. Without it nothing
     // random happens: the weighting is ignored and an attack vector only has to exist.
     bool roll = true;
@@ -122,6 +126,12 @@ struct ma_event_context {
     std::optional<bool> hit;
     std::optional<bool> crit;
     std::optional<bool> killed;
+    // `grab_strength`: strength of the hold (the intensity of its GRAB effect), for ongrab and
+    // ongrabbed events
+    std::optional<int> grab_strength;
+    // `grab_part`: the body part held, for ongrab and ongrabbed events: your own when you are
+    // grabbed, the victim's when you grab; unset when the one held is a monster
+    bodypart_str_id grab_part;
 
     // Runs the EOCs with the user as alpha, the opponent as beta and the values above
     void activate( Character &u, const std::vector<effect_on_condition_id> &eocs ) const;
@@ -336,6 +346,7 @@ class ma_technique
         bool take_weapon = false;   // disarms and equips weapon if hands are free
         bool dodge_counter = false; // counter move activated on a dodge
         bool block_counter = false; // counter move activated on a block
+        bool grab_counter = false;  // counter move activated when something grabs you
 
         bool miss_recovery = false; // reduces the total move cost of a miss by 50%, post stumble modifier
         bool grab_break = false;    // allows grab_breaks, like tec_break
@@ -525,6 +536,10 @@ class martialart
 
         void apply_onkill_buffs( Character &u ) const;
 
+        void apply_ongrab_buffs( Character &u ) const;
+
+        void apply_ongrabbed_buffs( Character &u ) const;
+
         void activate_eocs( Character &u, const std::vector<effect_on_condition_id> &eocs,
                             const ma_event_context &ctx = {} ) const;
 
@@ -550,6 +565,10 @@ class martialart
         void apply_oncrit_eocs( Character &u, const ma_event_context &ctx ) const;
 
         void apply_onkill_eocs( Character &u, const ma_event_context &ctx ) const;
+
+        void apply_ongrab_eocs( Character &u, const ma_event_context &ctx ) const;
+
+        void apply_ongrabbed_eocs( Character &u, const ma_event_context &ctx ) const;
 
         // determines if a technique is valid or not for this style
         bool has_technique( const Character &u, const matec_id &tec_id ) const;
@@ -602,6 +621,8 @@ class martialart
         std::vector<mabuff_id> onmiss_buffs;
         std::vector<mabuff_id> oncrit_buffs;
         std::vector<mabuff_id> onkill_buffs;
+        std::vector<mabuff_id> ongrab_buffs;    // you establish a hold on a creature
+        std::vector<mabuff_id> ongrabbed_buffs; // something establishes a hold on you
         std::vector<effect_on_condition_id> static_eocs; // all eocs triggered by each condition
         std::vector<effect_on_condition_id> onmove_eocs;
         std::vector<effect_on_condition_id> onpause_eocs;
@@ -613,6 +634,8 @@ class martialart
         std::vector<effect_on_condition_id> onmiss_eocs;
         std::vector<effect_on_condition_id> oncrit_eocs;
         std::vector<effect_on_condition_id> onkill_eocs;
+        std::vector<effect_on_condition_id> ongrab_eocs;
+        std::vector<effect_on_condition_id> ongrabbed_eocs;
 };
 
 class ma_style_callback : public uilist_callback

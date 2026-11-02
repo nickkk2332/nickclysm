@@ -1307,7 +1307,7 @@ Mutator Name | Required Keys | Description
 `"game_option"` | `option`: String or [variable object](#variable-object). | Returns the value of the option as a string, for numerical options you should instead use the math function.
 `"ma_technique_name"` | `matec_id`: String or [variable object](#variable-object). | Returns the name of the martial arts tech with ID `matec_id` 
 `"ma_technique_description"` | `matec_id`: String or [variable object](#variable-object). | Returns the description of the martial arts tech with ID `matec_id` 
-`"valid_technique`" | `blacklist`: array of String or [variable object](#variable-object). <br/> `crit`: bool <br/> `dodge_counter`: bool <br/> `block_counter`: bool | Returns a random valid technique for the alpha talker to use against the beta talker with the provided specifications.
+`"valid_technique`" | `blacklist`: array of String or [variable object](#variable-object). <br/> `crit`: bool <br/> `dodge_counter`: bool <br/> `block_counter`: bool <br/> `grab_counter`: bool | Returns a random valid technique for the alpha talker to use against the beta talker with the provided specifications.
 `"u_/npc_loc_relative"` | `target`: String or [variable object](#variable-object). | target should be a string like "(x,y,z)" where x,y,z are coordinates relative to the player. Returns the abs_ms coordinates as a string (ready to store as a location variable), in the form "(x,y,z)" of the provided point relative to the alpha/beta talker respectively. So `"target":"(0,1,0)"` would return the point south of the talker.
 `"topic_item"` | | Returns current topic_item as a string. See [Repeat Responses](#repeat-responses)
 

@@ -7,6 +7,7 @@
     - [Martial art event EOCs](#martial-art-event-eocs)
     - [Martial art buffs](#martial-art-buffs)
     - [Grappling](#grappling)
+    - [Grab counters](#grab-counters)
   - [Techniques](#techniques)
     - [Fallback and basic techniques](#fallback-and-basic-techniques)
     - [The manual technique menu](#the-manual-technique-menu)
@@ -59,6 +60,8 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
   "ondodge_buffs": [  ],                 // List of buffs that are automatically applied on successful dodge
   "onblock_buffs": [  ],                 // List of buffs that are automatically applied on successful block
   "onkill_buffs": [  ],                  // List of buffs that are automatically applied upon killing an enemy
+  "ongrab_buffs": [  ],                  // List of buffs that are automatically applied when you get a hold on a creature
+  "ongrabbed_buffs": [  ],               // List of buffs that are automatically applied when something gets a hold on you
   "static_eocs": [                       // List of eocs that are automatically triggered every turn
     "EOC_ID",                            // Syntax allows either eoc IDs or as inline blocks
     { "id": "INLINE_EOC_ID" }
@@ -73,6 +76,8 @@ These are defined in JSON as `martial_art`, which sets rules for usage and appli
   "ondodge_eocs": [  ],                  // List of eocs that are automatically triggered on successful dodge
   "onblock_eocs": [  ],                  // List of eocs that are automatically triggered on successful block
   "onkill_eocs": [  ],                   // List of eocs that are automatically triggered upon killing an enemy
+  "ongrab_eocs": [  ],                   // List of eocs that are automatically triggered when you get a hold on a creature
+  "ongrabbed_eocs": [  ],                // List of eocs that are automatically triggered when something gets a hold on you
   "techniques": [                        // List of techniques available when this MA is used
     "tec_debug_slow",
     "tec_debug_arpen"
@@ -102,12 +107,18 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
 | `ongethit_eocs` | attacker, if there is one | `bp`, `damage` |
 | `onblock_eocs` | attacker | `bp`, `damage` |
 | `ondodge_eocs` | attacker, if there is one | none |
+| `ongrab_eocs` | the creature you got a hold on | `grab_strength`, `grab_part` |
+| `ongrabbed_eocs` | the grabber | `grab_strength`, `grab_part` |
 
 - `weapon`: string, id of the weapon used for the attack, `null` when unarmed.
 - `technique`: string, id of the technique used for the attack, `tec_none` when none.
 - `bp`: string, body part hit. For attack events it is the target's; for `ongethit_eocs` it is your own body part about to be hit, and for `onblock_eocs` the body part that takes the blocked hit.
 - `damage`: number. For attack events, the damage the hit dealt after armor. For `ongethit_eocs`, the incoming damage before blocking and armor; for `onblock_eocs`, the damage left after the block, before armor.
 - `hit`, `crit`, `killed`: 1 or 0.
+- `grab_strength`: number, the strength of the hold (1 to 100, the intensity of the `GRAB` effect).
+- `grab_part`: string, the body part held: the victim's for `ongrab_eocs`, your own for `ongrabbed_eocs`. Not set when the creature held is a monster (a monster is held as a whole).
+
+`ongrab_eocs` and `ongrabbed_eocs` run when a hold is established: your grab or an EOC's (anything that goes through the grappling code), and a monster's grab attack once the attack is over.  They run for every hold, also one you go along with (a friend's grab) or while you are asleep; a grab counter (see [Grab counters](#grab-counters)) comes after `ongrabbed_eocs`, so an `ongrabbed_buffs` buff can be what a counter requires.
 
 `onhit_eocs` run after the hit is dealt, so they see the damage; they still run when the hit deals no damage (check `_damage`). `ongethit_eocs` run for every melee hit you take, also while you are asleep, winded or driving and can't block. The beta talker can be missing (for example a hit with no attacker), so check `has_beta` before using `npc_` effects.
 
@@ -222,6 +233,19 @@ Grapple techniques combine a hold with the usual weapon requirements, so a knife
 The vanilla grapple techniques show more patterns.  Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a grapple with the target, whoever holds whom, so a judoka also answers a grab.  Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one in the clinch either way round.  Zui Quan's `tec_zuiquan_throw` (Drunken Fall) works held or holding and downs you as well as the target; its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling.  Brawling's `tec_brawl_strangle` needs your own hold (being held is not enough) and puts `choking` and `strangulation` on a breathing target, whose damage ignores armor.  All of them set `menu_visibility` so the manual technique menu lists them only when they could matter (see [The manual technique menu](#the-manual-technique-menu)).
 
 
+### Grab counters
+
+A technique with `"grab_counter": true` answers a grab the way a `dodge_counter` answers a dodge: when something gets a hold on you (a monster's grab attack, or a character's grab, also one started by an EOC), you attack the grabber with a grab counter picked as usual among those you can use.  First your style's `ongrabbed_buffs` and `ongrabbed_eocs` run, so a buff they add can be what the counter requires.  There is no counter when:
+
+- you go along with the grab: the avatar grabs you and you are its ally, or a neutral too helpless to mind (`grapple::grab_tolerated`); an enemy always answers;
+- you can't act: asleep, unconscious, paralyzed by fear, winded, driving, or unable to move or attack;
+- the grabber is out of melee reach (a monster with a long grab), or dead;
+- the counter would cost more moves than you have this turn (as for other counters).
+
+Below a third of your stamina you only get "You try to counterattack, but you are too exhausted!".  The counter is an ordinary attack: it can miss, and its `condition` sees the grabber as `npc`.  A counter with a knockback (`knockback_dist`) breaks the hold, since a knockback makes its target let go; other effects leave the hold in place.  The passive `grab_break` of a defensive technique is separate: it still helps you struggle free later.
+
+
+
 ## Techniques
 
 Techniques are special attacks performed while using a given MA style.  These are automatically used according to their specific requirements, as defined in their JSON blocks:
@@ -268,6 +292,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "aoe": "spin",                         // This technique has an area-of-effect. Doesn't proc against solo targets. Options are `aoe` (attacks adjacent nearby enemies), `impale` (hits target and one enemy behind it), and `wide` (hits enemies in an arc near the target)
   "block_counter": true,                 // This technique may automatically counterattack on a successful block
   "dodge_counter": true,                 // This technique may automatically counterattack on a successful dodge
+  "grab_counter": true,                  // This technique may automatically counterattack when something gets a hold on you. See Grab counters
   "weighting": 2,                        // Affects likelihood this technique will be selected when many are available. Negative weighting means the technique is only included in the list of possible techs once out of every `weighting` times ( 1/3 for a weighting of -3). For a fallback, see Fallback and basic techniques
   "fallback": true,                      // For an attacker with the MA_BASIC_FALLBACK flag, used only when no other technique is possible. Otherwise an ordinary technique. See Fallback and basic techniques
   "basic": true,                         // Joins whichever techniques get picked from, without keeping fallbacks out. See Fallback and basic techniques
@@ -287,7 +312,9 @@ Techniques are special attacks performed while using a given MA style.  These ar
 
 All fields, except for the ID, type and name are optional.
 
-Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, and `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those).
+Load-time checks report an unknown `post_hit_eocs` entry, an unknown `tech_effects` id, `fallback` or `basic` on a `dummy` or `defensive` technique (attacks never pick those), a technique that is more than one kind of counter (it could never be used), `grab_counter` on a `dummy`, `defensive` or `crit_tec` technique.
+
+A technique's knockback breaks the target's holds on both sides: a monster lets go of every grab it had, and every character hold the target is part of, holding or held, ends.
 
 For example, a cut that makes the target bleed longer the harder it hit:
 
@@ -326,7 +353,7 @@ In manual combat mode (`toggle_manual_combat`, Shift+Tab by default) each melee 
 
 The menu applies the same rules as the automatic choice, only nothing random: a negative `weighting` is not rolled, and an attack vector only has to exist.  A technique that can't be used now is greyed out with the reason in the second column, and its description, with that reason, in the panel below.  When the reason is the technique's `condition`, the menu shows its `condition_desc`, so write it as a short phrase after the bullet: `"* Only works on a <info>downed</info> target"` shows as "Only works on a downed target".  Without a `condition_desc` the menu says "conditions not met".  Technique conditions are evaluated on their own random numbers, so a condition that rolls (`roll_contested`, say) gives the same answer until the next turn.
 
-A `crit_tec` technique can be chosen: it comes off if the hit is a critical hit, and otherwise the attack is a basic attack.  Counters (`dodge_counter`, `block_counter`) and `defensive` techniques are listed but can't be chosen; they still trigger on their own.  A chosen technique otherwise is used as if forced, whatever the hit (a technique that is not `crit_ok` is still used on a crit).
+A `crit_tec` technique can be chosen: it comes off if the hit is a critical hit, and otherwise the attack is a basic attack.  Counters (`dodge_counter`, `block_counter`, `grab_counter`) and `defensive` techniques are listed but can't be chosen; they still trigger on their own.  A chosen technique otherwise is used as if forced, whatever the hit (a technique that is not `crit_ok` is still used on a crit).
 
 `menu_visibility` keeps a technique that only matters in a grapple out of the menu the rest of the time.  It only decides whether the menu lists the technique: the automatic choice, and whether the technique can be used, are unchanged (that is still the technique's `condition`).
 

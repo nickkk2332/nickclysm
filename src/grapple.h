@@ -62,7 +62,9 @@ Character *character_grabber( const Creature &victim, const effect &eff );
 /**
  * Establish the hold right away, with no roll and no cost: the victim gets a GRAB effect with
  * source @p grabber on @p bp (the null part for a monster), and the grabber a GRAB_FILTER effect.
- * Returns false (and changes nothing) if the victim can't take the effect.
+ * Returns false (and changes nothing) if the victim can't take the effect. Then the grabber's
+ * ongrab martial-art buffs and EOCs fire, and a character victim reacts (Character::on_grabbed):
+ * its ongrabbed hooks fire and a grab counter may end the hold at once. The result is still true.
  */
 bool start_hold( Character &grabber, Creature &victim, int strength, const bodypart_id &bp );
 
