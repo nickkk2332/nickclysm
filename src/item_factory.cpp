@@ -179,7 +179,7 @@ void patch_pocket( pocket_data &pocket, const JsonObject &changes, const bool re
         const std::string name = jm.name();
         const auto factor = [&]( const JsonValue & jv ) {
             const double f = jv.get_float();
-            if( f < 0 || f == 1 ) {
+            if( f <= 0 || f == 1 ) {
                 jv.throw_error( "proportional multiplier must be positive and not 1.0" );
             }
             return f;

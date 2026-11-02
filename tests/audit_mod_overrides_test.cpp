@@ -12,6 +12,7 @@
 #include "game.h"
 #include "init.h"
 #include "item_pocket.h"
+#include "pocket_type.h"
 #include "itype.h"
 #include "json_error.h"
 #include "json_loader.h"
@@ -62,21 +63,29 @@ static units::length default_item_length( const units::volume &volume )
     return length;
 }
 
+// Item_factory::finalize_pre appends a MIGRATION pocket to every item after its JSON pockets.
+static bool ends_with_migration_pocket( const std::vector<pocket_data> &pockets )
+{
+    return !pockets.empty() && pockets.back().type == pocket_type::MIGRATION;
+}
+
 // INV-J02: "pocket_data" could only be replaced whole, so a copy-from item that changed one
 // pocket had to restate every pocket of its parent.  The pocket loader now patches the
 // inherited pockets by "id" or index with relative, proportional, delete and extend.  On the
 // old code, data/mods/TEST_DATA/audit_pocket_overrides.json fails to load.
 TEST_CASE( "inv-j02_copy_from_items_patch_inherited_pockets", "[audit][pocket]" )
 {
+    // Four pockets from JSON plus the MIGRATION pocket finalize appends.
     const std::vector<pocket_data> &parent = itype_audit_pocket_parent->pockets;
-    REQUIRE( parent.size() == 4 );
+    REQUIRE( parent.size() == 5 );
+    REQUIRE( ends_with_migration_pocket( parent ) );
     REQUIRE( parent[0].pocket_id == "main" );
     REQUIRE( parent[1].pocket_id.empty() );
     REQUIRE( parent[1].max_item_length == default_item_length( 500_ml ) );
 
     SECTION( "without a patch every pocket is inherited" ) {
         const std::vector<pocket_data> &pockets = itype_audit_pocket_inherit->pockets;
-        REQUIRE( pockets.size() == 4 );
+        REQUIRE( pockets.size() == 5 );
         for( size_t i = 0; i < pockets.size(); ++i ) {
             CHECK( pockets[i] == parent[i] );
             CHECK( pockets[i].pocket_id == parent[i].pocket_id );
@@ -84,7 +93,8 @@ TEST_CASE( "inv-j02_copy_from_items_patch_inherited_pockets", "[audit][pocket]" 
     }
     SECTION( "relative adds to the pocket named by id or index" ) {
         const std::vector<pocket_data> &pockets = itype_audit_pocket_relative->pockets;
-        REQUIRE( pockets.size() == 4 );
+        REQUIRE( pockets.size() == 5 );
+        CHECK( ends_with_migration_pocket( pockets ) );
         CHECK( pockets[0].raw_volume_capacity == 3_liter );
         CHECK( pockets[0].moves == 80 );
         // an explicit max_item_length is kept
@@ -97,7 +107,8 @@ TEST_CASE( "inv-j02_copy_from_items_patch_inherited_pockets", "[audit][pocket]" 
     }
     SECTION( "proportional \"*\" scales every pocket the member applies to" ) {
         const std::vector<pocket_data> &pockets = itype_audit_pocket_proportional->pockets;
-        REQUIRE( pockets.size() == 4 );
+        REQUIRE( pockets.size() == 5 );
+        CHECK( ends_with_migration_pocket( pockets ) );
         CHECK( pockets[0].raw_volume_capacity == 4_liter );
         CHECK( pockets[0].max_contains_weight == 6_kilogram );
         CHECK( pockets[0].max_item_length == 40_cm );
@@ -116,7 +127,9 @@ TEST_CASE( "inv-j02_copy_from_items_patch_inherited_pockets", "[audit][pocket]" 
     }
     SECTION( "delete removes pockets by id and index, extend appends new ones" ) {
         const std::vector<pocket_data> &pockets = itype_audit_pocket_delete_extend->pockets;
-        REQUIRE( pockets.size() == 3 );
+        // 4 inherited - 2 deleted + 1 extended, then the MIGRATION pocket
+        REQUIRE( pockets.size() == 4 );
+        CHECK( ends_with_migration_pocket( pockets ) );
         CHECK( pockets[0].pocket_id == "main" );
         CHECK( pockets[0] == parent[0] );
         CHECK( pockets[1].pocket_id == "rocks" );
