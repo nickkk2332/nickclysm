@@ -1,10 +1,12 @@
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 
 #include "avatar.h"
+#include "avatar_action.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
@@ -14,6 +16,7 @@
 #include "creature.h"
 #include "dialogue.h"
 #include "effect.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "grapple.h"
@@ -23,6 +26,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "math_parser.h"
 #include "monster.h"
 #include "mtype.h"
@@ -34,6 +38,7 @@
 #include "teleport.h"
 #include "type_id.h"
 #include "units.h"
+#include "vehicle.h"
 
 // Grabs started by characters (src/grapple.h), ported from Cataclysm: The Last Generation.
 // Every roll below is either skipped (a tolerated grab, a hold set up directly) or made at
@@ -44,9 +49,12 @@ static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_pet( "pet" );
 static const efftype_id effect_test_no_grab( "test_no_grab" );
+static const efftype_id effect_tied( "tied" );
 static const efftype_id effect_winded( "winded" );
 
 static const faction_id faction_your_followers( "your_followers" );
+
+static const furn_str_id furn_f_chair( "f_chair" );
 
 static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
@@ -57,6 +65,10 @@ static const limb_score_id limb_score_grip( "grip" );
 
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_unarmed( "unarmed" );
+
+static const ter_str_id ter_t_water_dp( "t_water_dp" );
+
+static const vproto_id vehicle_prototype_bicycle( "bicycle" );
 
 static constexpr tripoint_bub_ms grabber_pos{ 60, 60, 0 };
 
@@ -610,4 +622,185 @@ TEST_CASE( "grapple_player_held_by_an_npc_is_not_an_orphan", "[grapple]" )
     guy.setpos( here, you.pos_bub() + tripoint{ 4, 0, 0 } );
     you.try_remove_grab( true );
     CHECK( !you.has_effect( effect_grabbed, body_part_arm_l ) );
+}
+
+// Phase 4: dragging
+
+TEST_CASE( "grapple_drag_odds", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    REQUIRE( you.get_size() == creature_size::medium );
+    // 50 kg, medium size
+    monster &mon = spawn_test_monster( "mon_test_speed_desc_base", you.pos_bub() + tripoint::east );
+    REQUIRE( units::to_kilogram( mon.get_weight() ) == Approx( 50.0 ) );
+
+    SECTION( "TLG's formula: one time in ( weight / ( strength * size ) + 0.25 ) ^ 2" ) {
+        REQUIRE( grapple::start_hold( you, mon, 20, no_part() ) );
+        // 50 / ( 20 * 3 ) = 0.8333, ( 0.8333 + 0.25 ) ^ 2 = 1.1736
+        CHECK( grapple::drag_chance( you, mon ) == Approx( 1 / 1.173611 ).epsilon( 1e-4 ) );
+    }
+    SECTION( "light enough is always dragged" ) {
+        REQUIRE( grapple::start_hold( you, mon, 100, no_part() ) );
+        CHECK( grapple::drag_chance( you, mon ) == Approx( 1.0 ) );
+    }
+    SECTION( "a pet is half as hard to drag" ) {
+        REQUIRE( grapple::start_hold( you, mon, 10, no_part() ) );
+        // 50 / 30 = 1.6667, ( 1.6667 + 0.25 ) ^ 2 = 3.6736
+        CHECK( grapple::drag_chance( you, mon ) == Approx( 1 / 3.673611 ).epsilon( 1e-4 ) );
+        make_pet( mon );
+        // Half the odds: ( 0.8333 + 0.25 ) ^ 2 = 1.1736
+        CHECK( grapple::drag_chance( you, mon ) == Approx( 1 / 1.173611 ).epsilon( 1e-4 ) );
+    }
+    SECTION( "the heaviest are dragged one time in a thousand" ) {
+        monster &hulk = spawn_test_monster( "mon_zombie_hulk", you.pos_bub() + tripoint::west );
+        REQUIRE( grapple::start_hold( you, hulk, 1, no_part() ) );
+        CHECK( grapple::drag_chance( you, hulk ) == Approx( 0.001 ) );
+    }
+}
+
+TEST_CASE( "grapple_drag_ally_discount", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    guy.set_attitude( NPCATT_NULL );
+    REQUIRE( !guy.is_player_ally() );
+    REQUIRE( grapple::start_hold( you, guy, 10, body_part_torso.id() ) );
+    const double odds = units::to_kilogram( guy.get_weight() ) / ( 10.0 * 3 );
+    const double stranger = grapple::drag_chance( you, guy );
+    CHECK( stranger == Approx( 1 / std::clamp( std::pow( odds + 0.25, 2 ), 1.0, 1000.0 ) ) );
+
+    // A follower walks along: the odds shrink by its move cost / 200.
+    make_follower( guy );
+    const int move_cost = guy.run_cost( 100, false );
+    REQUIRE( move_cost < 200 );
+    const double ally = grapple::drag_chance( you, guy );
+    const double eased = odds * move_cost / 200.0;
+    CHECK( ally == Approx( 1 / std::clamp( std::pow( eased + 0.25, 2 ), 1.0, 1000.0 ) ) );
+    CHECK( ally > stranger );
+
+    // Not while it sleeps.
+    guy.fall_asleep( 1_hours );
+    CHECK( grapple::drag_chance( you, guy ) == Approx( stranger ) );
+}
+
+TEST_CASE( "grapple_drag_across_a_map_shift_keeps_the_hold", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    const tripoint_abs_sm origin = here.get_abs_sub();
+    on_out_of_scope recentre( [&]() {
+        avatar &u = get_avatar();
+        u.release_grapple();
+        const tripoint_rel_sm off = origin - here.get_abs_sub();
+        u.setpos( here, u.pos_bub() + tripoint_rel_ms( off.x() * SEEX, off.y() * SEEY, 0 ) );
+        g->update_map( u );
+    } );
+    monster &zed = spawn_held( you, "mon_zombie", 100 );
+    REQUIRE( grapple::drag_chance( you, zed ) == Approx( 1.0 ) );
+    const tripoint_abs_ms start = you.pos_abs();
+    const int moves = you.get_moves();
+
+    // One step west crosses into the next submap: the map shifts to recentre on us.
+    const tripoint_bub_ms west = you.pos_bub() + tripoint::west;
+    REQUIRE( west.x() < HALF_MAPSIZE_X );
+    CHECK( g->walk_move( west, false, false ) );
+    CHECK( here.get_abs_sub() != origin );
+    CHECK( you.pos_abs() == start + tripoint::west );
+    CHECK( you.get_moves() < moves );
+    // The zombie took the tile we left, in absolute terms, and we still hold it.
+    CHECK( zed.pos_abs() == start );
+    CHECK( holds( you, zed ) );
+    you.process_turn();
+    CHECK( holds( you, zed ) );
+}
+
+TEST_CASE( "grapple_drag_an_npc_onto_a_vehicle_boards_it", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    // A bicycle with its saddle under us.
+    vehicle *const bike = here.add_vehicle( vehicle_prototype_bicycle, you.pos_bub(), 0_degrees,
+                                            0, veh_spawn_status::UNDAMAGED );
+    REQUIRE( bike != nullptr );
+    here.board_vehicle( you.pos_bub(), &you );
+    REQUIRE( you.in_vehicle );
+    const tripoint_abs_ms saddle = you.pos_abs();
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::south, "thug" );
+    make_follower( guy );
+    REQUIRE( grapple::start_hold( you, guy, 100, body_part_torso.id() ) );
+    REQUIRE( grapple::drag_chance( you, guy ) == Approx( 1.0 ) );
+
+    CHECK( g->walk_move( you.pos_bub() + tripoint::north, false, false ) );
+    CHECK( you.pos_abs() == saddle + tripoint::north );
+    CHECK( !you.in_vehicle );
+    CHECK( guy.pos_abs() == saddle );
+    CHECK( guy.in_vehicle );
+    CHECK( holds( you, guy ) );
+}
+
+TEST_CASE( "grapple_a_step_the_victim_cannot_follow_is_refused", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    const tripoint_abs_ms start = you.pos_abs();
+    const int moves = you.get_moves();
+    const int stamina = you.get_stamina();
+    Creature *victim = nullptr;
+
+    SECTION( "an immobile monster" ) {
+        monster &mon = spawn_test_monster( "mon_test_speed_desc_base_immobile",
+                                           you.pos_bub() + tripoint::east );
+        REQUIRE( grapple::start_hold( you, mon, 100, no_part() ) );
+        victim = &mon;
+    }
+    SECTION( "a tied monster" ) {
+        monster &mon = spawn_held( you, "mon_zombie", 100 );
+        mon.add_effect( effect_tied, 1_turns, true );
+        victim = &mon;
+    }
+    SECTION( "a pet standing in the way" ) {
+        monster &mon = spawn_held( you, "mon_zombie", 100 );
+        monster &dog = spawn_test_monster( "mon_dog", you.pos_bub() + tripoint::west );
+        make_pet( dog );
+        victim = &mon;
+    }
+    REQUIRE( victim != nullptr );
+    REQUIRE( holds( you, *victim ) );
+
+    CHECK( g->walk_move( you.pos_bub() + tripoint::west, false, false ) );
+    // Nothing happened: no step, no cost, and the hold is still there.
+    CHECK( you.pos_abs() == start );
+    CHECK( you.get_moves() == moves );
+    CHECK( you.get_stamina() == stamina );
+    CHECK( holds( you, *victim ) );
+}
+
+TEST_CASE( "grapple_no_swimming_while_holding", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    // A pet, so that safe mode has nothing to say about the step.
+    monster &dog = spawn_held( you, "mon_dog", 100 );
+    make_pet( dog );
+    const tripoint_bub_ms pool = you.pos_bub() + tripoint::west;
+    here.ter_set( pool, ter_t_water_dp.id() );
+    const tripoint_abs_ms start = you.pos_abs();
+    CHECK( !avatar_action::move( you, here, tripoint_rel_ms::west ) );
+    CHECK( you.pos_abs() == start );
+    CHECK( !you.is_swimming );
+    CHECK( holds( you, dog ) );
+}
+
+TEST_CASE( "grapple_holding_a_creature_and_an_object_are_exclusive", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    monster &zed = spawn_test_monster( "mon_zombie", you.pos_bub() + tripoint::east );
+    const tripoint_bub_ms chair = you.pos_bub() + tripoint::west;
+    here.furn_set( chair, furn_f_chair.id() );
+    you.grab( object_type::FURNITURE, tripoint_rel_ms::west );
+    const std::optional<std::string> refusal = grapple::grab_refusal( you, zed );
+    REQUIRE( refusal.has_value() );
+    CHECK( *refusal == "You're already holding on to something." );
+    you.grab( object_type::NONE );
+    CHECK( !grapple::grab_refusal( you, zed ).has_value() );
 }

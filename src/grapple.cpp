@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "character.h"
@@ -23,6 +24,7 @@
 #include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enums.h"
+#include "field_type.h"
 #include "game.h"
 #include "game_constants.h"
 #include "item_location.h"
@@ -41,20 +43,29 @@
 #include "string_formatter.h"
 #include "talker.h"
 #include "translations.h"
+#include "units.h"
+#include "veh_type.h"
+#include "vpart_position.h"
 #include "weighted_list.h"
 
+static const efftype_id effect_cramped_space( "cramped_space" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
+static const efftype_id effect_harnessed( "harnessed" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_narcosis( "narcosis" );
+static const efftype_id effect_ridden( "ridden" );
+static const efftype_id effect_tied( "tied" );
 static const efftype_id effect_winded( "winded" );
 
 static const effect_on_condition_id effect_on_condition_grab_condition( "grab_condition" );
 
+static const flag_id json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const flag_id json_flag_NO_GRAB( "NO_GRAB" );
 
+static const jmath_func_id jmath_func_grapple_drag_odds( "grapple_drag_odds" );
 static const jmath_func_id jmath_func_grapple_escape_stamina_cost( "grapple_escape_stamina_cost" );
 static const jmath_func_id jmath_func_grapple_grab_strength( "grapple_grab_strength" );
 static const jmath_func_id jmath_func_grapple_min_hold_turns( "grapple_min_hold_turns" );
@@ -387,6 +398,11 @@ std::optional<std::string> grapple::grab_refusal( const Character &grabber,
     if( const Creature *const held = grabber.grabbed_creature() ) {
         return string_format( _( "You're already holding %s." ), held->disp_name() );
     }
+    // Holding a creature and holding furniture or a vehicle are exclusive.
+    const avatar *const you = grabber.as_avatar();
+    if( you != nullptr && you->get_grab_type() != object_type::NONE ) {
+        return std::string( _( "You're already holding on to something." ) );
+    }
     const_dialogue d( get_const_talker_for( grabber ), get_const_talker_for( target ) );
     if( !effect_on_condition_grab_condition->test_condition( d ) ) {
         return string_format( _( "You can't get a grip on %s." ), target.disp_name() );
@@ -438,8 +454,8 @@ bool grapple::attempt_grab( Character &grabber, Creature &target )
     const bool tolerate = grab_tolerated( grabber, target );
     const int strength = grab_strength( grabber, target );
 
-    // Grabbing on is lighter work than striking, so weariness is taken at EXTRA_EXERCISE.
-    const float weary_mult = grabber.exertion_adjusted_move_multiplier( EXTRA_EXERCISE );
+    // Grabbing on is lighter work than striking: weariness is taken at the grappling level.
+    const float weary_mult = grabber.exertion_adjusted_move_multiplier( exertion_level() );
     grabber.mod_moves( -100 - static_cast<int>( grabber.attack_speed( null_item_reference() ) /
                        weary_mult ) );
     grabber.burn_energy_arms( -arm_stamina_cost() );
@@ -556,4 +572,125 @@ bool grapple::within_min_hold( const Character &grabber, const Creature &target,
     // Turn order would otherwise let a creature break a character's grab on the turn it lands.
     const int held_turns = to_turns<int>( calendar::turn - eff.get_start_time() );
     return held_turns <= min_hold_turns( grabber, target );
+}
+
+// Exertion
+
+float grapple::exertion_level()
+{
+    // TLG uses EXPLOSIVE_EXERCISE; the optional exertion-level track decides whether we do too.
+    return EXTRA_EXERCISE;
+}
+
+// Dragging
+
+double grapple::drag_chance( const Character &grabber, const Creature &victim )
+{
+    const effect *const hold = hold_effect( grabber, victim );
+    const int strength = hold != nullptr ? hold->get_intensity() : grab_strength( grabber, victim );
+    // An awake ally, or an NPC walking with us, moves along and makes it easier: TLG's discount
+    // by its own move cost. TLG read the grabber's move cost there; it is the ally's that counts.
+    int helper_move_cost = 0;
+    if( const npc *const guy = victim.as_npc() ) {
+        if( ( guy->is_walking_with() || guy->is_player_ally() ) && !guy->in_sleep_state() ) {
+            helper_move_cost = std::max( 1, guy->run_cost( 100, false ) );
+        }
+    }
+    // TLG meant to halve the odds for a pet, but tested the grabber for being one.
+    const monster *const mon = victim.as_monster();
+    const bool pet = mon != nullptr && mon->is_pet();
+    const double chance = eval_formula( jmath_func_grapple_drag_odds, grabber, victim, {
+        static_cast<double>( strength ), units::to_kilogram( victim.get_weight() ),
+        static_cast<double>( helper_move_cost ), pet ? 1.0 : 0.0
+    } );
+    return std::clamp( chance, 0.0, 1.0 );
+}
+
+std::optional<std::string> grapple::drag_refusal( const Character &grabber,
+        const Creature &victim, const tripoint_bub_ms &from, const tripoint_bub_ms &to )
+{
+    map &here = get_map();
+    const monster *const mon = victim.as_monster();
+    if( victim.has_effect( effect_tied ) || victim.has_effect( effect_harnessed ) ||
+        victim.has_effect( effect_ridden ) || victim.has_flag( json_flag_CANNOT_MOVE ) ||
+        ( mon != nullptr && mon->has_flag( mon_flag_IMMOBILE ) ) ) {
+        return string_format( _( "%s is immobile and cannot be moved." ),
+                              victim.disp_name( true ) );
+    }
+    // Walking into a held pet swaps places with it: that needs no drag.
+    const Creature *const in_the_way = get_creature_tracker().creature_at( to );
+    if( in_the_way != nullptr && in_the_way != &victim && in_the_way != &grabber ) {
+        //~ %1$s: the creature in the way, %2$s: the creature held
+        return string_format( _( "You can't push past %1$s while holding %2$s." ),
+                              in_the_way->disp_name(), victim.disp_name() );
+    }
+    // A hold across a ramp: the step back up or down would need a ramp of its own.
+    const tripoint_bub_ms at = victim.pos_bub( here );
+    if( at.z() != from.z() ) {
+        return string_format( _( "You can't drag %s up or down from there." ), victim.disp_name() );
+    }
+    const std::vector<field_type_id> fields = here.get_impassable_field_type_ids_at( from );
+    if( !here.passable( from ) || ( !fields.empty() && !victim.is_immune_fields( fields ) ) ||
+        ( here.has_flag_ter( ter_furn_flag::TFLAG_SMALL_PASSAGE, from ) &&
+          victim.get_size() > creature_size::medium ) ||
+        ( mon != nullptr && mon->is_aquatic_danger( from ) ) ) {
+        return string_format( _( "You can't drag %s there." ), victim.disp_name() );
+    }
+    return std::nullopt;
+}
+
+bool grapple::drag_to( Creature &victim, const tripoint_abs_ms &dest )
+{
+    map &here = get_map();
+    const tripoint_bub_ms to = here.get_bub( dest );
+    const Creature *const there = get_creature_tracker().creature_at( dest, true );
+    if( there != nullptr && there != &victim ) {
+        return false;
+    }
+    if( monster *const mon = victim.as_monster() ) {
+        // Pulled, not walking: it goes where it's dragged and keeps its own moves.
+        const int moves = mon->get_moves();
+        mon->move_to( to, /*force=*/true, /*step_on_critter=*/false );
+        mon->set_moves( moves );
+        return !mon->is_dead_state() && mon->pos_abs() == dest;
+    }
+    npc *const guy = victim.as_npc();
+    if( guy == nullptr ) {
+        return false;
+    }
+    // npc::move_to is the NPC's own walk, which a held NPC can't take; these are its steps.
+    const tripoint_bub_ms old_pos = guy->pos_bub( here );
+    if( guy->in_vehicle ) {
+        here.unboard_vehicle( old_pos );
+    }
+    guy->setpos( here, to );
+    if( here.veh_at( to ).part_with_feature( VPFLAG_BOARDABLE, true ) ) {
+        here.board_vehicle( to, guy );
+    }
+    here.creature_on_trap( *guy );
+    if( !guy->is_dead_state() ) {
+        here.creature_in_field( *guy );
+    }
+    if( !guy->is_dead_state() && guy->will_be_cramped_in_vehicle_tile( here, dest ) ) {
+        guy->add_effect( effect_cramped_space, 2_turns, true );
+    }
+    return !guy->is_dead_state() && guy->pos_abs() == dest;
+}
+
+void grapple::drag_after_step( Character &grabber, const tripoint_abs_ms &victim_at,
+                               const tripoint_abs_ms &from )
+{
+    // Look the creature up again: the step may have shifted the map, or ended the hold.
+    Creature *const victim = get_creature_tracker().creature_at( victim_at );
+    if( victim == nullptr || victim == &grabber || hold_effect( grabber, *victim ) == nullptr ||
+        grabber.pos_abs() == from ) {
+        return;
+    }
+    if( victim->pos_abs() != from ) {
+        drag_to( *victim, from );
+    }
+    if( victim->is_dead_state() || !in_reach( grabber, *victim ) ) {
+        grabber.add_msg_if_player( m_bad, _( "You lose your hold on %s." ), victim->disp_name() );
+        end_hold( grabber, victim );
+    }
 }

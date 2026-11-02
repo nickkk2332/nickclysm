@@ -21,6 +21,13 @@
     "return": "1 + trunc( 100 / max( 1, n_speed() ) )"
   },
   {
+    "type": "jmath_function",
+    "id": "grapple_drag_odds",
+    "//": "Chance, 0 to 1, that a character holding a creature drags it along one step.  u = grabber, n = victim, _0 = strength of the hold, _1 = the victim's weight in kg, _2 = the victim's move cost for a step when it is an awake ally or an NPC walking with the grabber, else 0 (it moves along: under 200 it eases the drag by _2 / 200), _3 = 1 when the victim is a pet (half as hard), else 0.  From Cataclysm: The Last Generation: odds = weight / ( strength * size ), and the drag succeeds one time in clamp( ( odds + 0.25 ) ^ 2, 1, 1000 ).",
+    "num_args": 4,
+    "return": "1 / clamp( ( _1 / ( max( 1, _0 ) * u_val('size') ) * ( _2 > 0 ? min( 1, _2 / 200 ) : 1 ) * ( _3 > 0 ? 0.5 : 1 ) + 0.25 ) ^ 2, 1, 1000 )"
+  },
+  {
     "type": "effect_on_condition",
     "id": "grab_condition",
     "//": "Tested, not run, before a character tries to grab a creature, with u = grabber and npc = target.  If the condition is false the grab is refused before any cost is paid.  Mods can extend it, e.g. to forbid grabbing blobs.",

@@ -499,6 +499,11 @@ bool avatar_action::move( avatar &you, map &m, const tripoint_rel_ms &d )
     }
     // Dive into water!
     if( toSwimmable && toDeepWater && !toBoat && !waterWalking ) {
+        // Nobody is dragged along by a swimmer: refuse rather than let go on the way.
+        if( const Creature *const held = you.grabbed_creature() ) {
+            add_msg( m_info, _( "You can't swim while holding %s." ), held->disp_name() );
+            return false;
+        }
         // Requires confirmation if we were on dry land previously
         if( is_riding ) {
             auto *mon = you.mounted_creature.get();

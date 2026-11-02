@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "coords_fwd.h"
 #include "type_id.h"
 
 class Character;
@@ -127,6 +128,46 @@ int min_hold_turns( const Character &grabber, const Creature &target );
 
 /** Whether the hold @p eff by @p grabber on @p target is still inside its minimum hold time. */
 bool within_min_hold( const Character &grabber, const Creature &target, const effect &eff );
+
+// Exertion
+
+/**
+ * The activity level of all grappling work: grabbing, holding on against a struggle, throwing.
+ * EXTRA_EXERCISE (plan decision 3).
+ * INTEGRATION POINT: the optional EXPLOSIVE exertion level (Phase 11) is wired in here, and
+ * only here.
+ */
+float exertion_level();
+
+// Dragging
+
+/**
+ * Chance, 0 to 1, that @p grabber drags @p victim along one step (grapple_drag_odds). Weight
+ * against grab strength and size; an ally that walks along, or a pet, is easier.
+ */
+double drag_chance( const Character &grabber, const Creature &victim );
+
+/**
+ * Why @p grabber, holding @p victim, can't step from @p from to @p to and drag the victim into
+ * @p from; nullopt if it can. Checked before anything is spent, so a refusal changes nothing.
+ */
+std::optional<std::string> drag_refusal( const Character &grabber, const Creature &victim,
+        const tripoint_bub_ms &from, const tripoint_bub_ms &to );
+
+/**
+ * Move @p victim to @p dest the way it moves itself: a monster through monster::move_to (forced,
+ * as it goes where it is pulled, and keeping its moves), an NPC through the vehicle boarding,
+ * trap and field steps of its own move. Gravity applies. Returns whether it got there.
+ */
+bool drag_to( Creature &victim, const tripoint_abs_ms &dest );
+
+/**
+ * After @p grabber stepped off @p from, drag the creature it held at @p victim_at into @p from.
+ * If the hold ended during the step nothing happens; if the creature can't follow, the hold ends
+ * with a message instead of lingering until the next turn.
+ */
+void drag_after_step( Character &grabber, const tripoint_abs_ms &victim_at,
+                      const tripoint_abs_ms &from );
 
 } // namespace grapple
 

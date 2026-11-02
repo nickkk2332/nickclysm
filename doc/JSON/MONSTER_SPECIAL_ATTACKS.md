@@ -254,6 +254,10 @@ A character can grab an adjacent creature with the grab action (`G`), ported fro
 
 The held creature gets a `grabbed` effect whose source is the grabbing character, and the character gets `grabbing`.  Each side finds the other by adjacency plus that source, so a hold is saved with the effects and needs no other data.  The hold ends when the two are no longer adjacent, when either is incorporeal or dead, when the grabber is winded, asleep or below the stamina floor, wields something, mounts a creature, is flung, has a seizure or swaps characters, and when either side is teleported or knocked back.  The held creature tries to break free like any other grab, but not within its minimum hold time, and followers never struggle against the player.  Every attempt costs the grabber stamina.  A held monster can't dodge, and gets angry.
 
+Holding a creature and holding furniture or a vehicle exclude each other.
+
+**Dragging.**  Walking while holding a creature drags it into the tile you left.  Each step rolls `grapple_drag_odds`; a failed roll costs the step but you stay put ("You strain to drag ...").  The creature moves the way it would move itself, so traps, fields, gravity and vehicle boarding apply to it, and its place is worked out in absolute coordinates, so a step that shifts the map doesn't lose it.  A step it can't follow is refused before anything is spent, and the hold is kept: a tied, harnessed, ridden, `IMMOBILE` or `CANNOT_MOVE` creature; another creature in the way (walking into the held pet itself just swaps places); a hold across a ramp, which would need the creature to change z-level; or a tile it can't enter (impassable for it, a small passage for a creature larger than medium, an impassable field, deep water for a monster that would drown).  Swimming, stairs, climbing and swapping places with a pet or NPC are refused while holding a creature, for the same reason.
+
 These parts are data:
 
 | What | Where
@@ -261,6 +265,7 @@ These parts are data:
 | `grapple_grab_strength` | `jmath_function` in `data/json/grappling.json`, `u` = grabber, `n` = target: the intensity of the target's `grabbed` effect, 1 to 100.
 | `grapple_escape_stamina_cost` | `jmath_function`, `u` = grabber, `n` = target, `_0` = strength of the hold, `_1` = the target's escape skill: stamina the grabber spends on each escape attempt.
 | `grapple_min_hold_turns` | `jmath_function`, `u` = grabber, `n` = target: turns before the target may try to break free.
+| `grapple_drag_odds` | `jmath_function`, `u` = grabber, `n` = target, `_0` = strength of the hold, `_1` = the target's weight in kg, `_2` = the target's move cost for a step when it is an awake ally or an NPC walking with the grabber (else 0), `_3` = 1 when the target is a pet: the chance, 0 to 1, that a step drags it along.  TLG's formula: `odds = weight / ( strength * size )`, cut by `_2 / 200` (when under 1) for an ally and halved for a pet; the drag succeeds one time in `clamp( ( odds + 0.25 ) ^ 2, 1, 1000 )`.
 | `grab_condition` | `effect_on_condition` in `data/json/grappling.json` whose `condition` is tested (not run) before the grab roll, with `u` = grabber and `npc` = target.  If it is false, the grab is refused before any cost is paid.  By default it refuses incorporeal grabbers and targets.
 | `GRAPPLE_STAMINA_FLOOR`, `GRAPPLE_ARM_STAMINA_COST` | `EXTERNAL_OPTION`s in `data/core/external_options.json`: the stamina needed to start or keep a hold (400), and the arm stamina a grab attempt costs (120).
 

@@ -115,6 +115,7 @@
 #include "gamemode.h"
 #include "gates.h"
 #include "get_version.h"
+#include "grapple.h"
 #include "harvest.h"
 #include "iexamine.h"
 #include "imgui/imgui_stdlib.h"
@@ -5363,7 +5364,7 @@ bool game::npc_menu( npc &who )
         if( !prompt_dangerous_tile( who.pos_bub() ) ) {
             return true;
         }
-        if( u.get_grab_type() == object_type::NONE ) {
+        if( u.get_grab_type() == object_type::NONE && !u.is_grabbing_creature() ) {
             // TODO: Make NPCs protest when displaced onto dangerous crap
             add_msg( _( "You swap places with %s." ), who.get_name() );
             swap_critters( u, who );
@@ -7768,6 +7769,28 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
         add_msg( m_warning, _( "You cannot board a vehicle whilst riding." ) );
         return false;
     }
+
+    // Holding a creature (grappling): it is dragged into the tile we leave, or we stay put.
+    // Holding an object instead is handled by grabbed_move; the two never go together.
+    Creature *held = furniture_move || grabbed ? nullptr : u.grabbed_creature();
+    std::optional<tripoint_abs_ms> held_at;
+    if( held != nullptr ) {
+        creature_tracker &creatures = get_creature_tracker();
+        if( creatures.creature_at<monster>( pos, true ) != nullptr ||
+            creatures.creature_at<npc>( pos ) != nullptr ) {
+            // A forced swap (trampled) already put someone where we stand.
+            u.add_msg_if_player( m_bad, _( "You lose your hold on %s." ), held->disp_name() );
+            grapple::end_hold( u, held );
+        } else if( const std::optional<std::string> refusal =
+                       grapple::drag_refusal( u, *held, pos, dest_loc ) ) {
+            // Refused before anything is spent; walking off would only drop the hold.
+            add_msg( m_info, *refusal );
+            return true;
+        } else if( held->pos_abs() != dest_loc_abs ) {
+            // (Walking into a held pet swaps places with it, which needs no drag.)
+            held_at = held->pos_abs();
+        }
+    }
     u.set_underwater( false );
 
     std::vector<std::string> harmful_stuff = get_dangerous_tile( dest_loc );
@@ -7856,6 +7879,11 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
             u.burn_move_stamina( 0.50 * ( previous_moves - u.get_moves() ) );
         }
     }
+    // Try to drag the held creature along. A failed drag still costs the step (TLG).
+    if( held_at && !x_in_y( grapple::drag_chance( u, *held ), 1.0 ) ) {
+        add_msg( m_bad, _( "You strain to drag %s." ), held->disp_name() );
+        return true;
+    }
     // Max out recoil & reset aim point
     u.recoil = MAX_RECOIL;
     u.last_target_pos = std::nullopt;
@@ -7936,6 +7964,12 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
     point_rel_sm submap_shift = place_player( dest_loc );
     point_rel_ms ms_shift = coords::project_to<coords::ms>( submap_shift );
     oldpos = oldpos - ms_shift.raw();
+
+    // The held creature takes the tile we left. Absolute coordinates: the step may have shifted
+    // the map.
+    if( held_at ) {
+        grapple::drag_after_step( u, *held_at, old_abs_pos );
+    }
 
     if( moving ) {
         cata_event_dispatch::avatar_moves( old_abs_pos, u, here );
@@ -9403,6 +9437,14 @@ void game::vertical_move( int movez, bool force, bool peeking )
 {
     if( u.has_flag( json_flag_CANNOT_MOVE ) ) {
         return;
+    }
+
+    // A held creature can't be dragged up or down: refuse rather than drop it on the way.
+    if( !force && !peeking ) {
+        if( const Creature *const held = u.grabbed_creature() ) {
+            add_msg( m_info, _( "You can't take %s up or down with you." ), held->disp_name() );
+            return;
+        }
     }
 
     if( u.is_mounted() ) {

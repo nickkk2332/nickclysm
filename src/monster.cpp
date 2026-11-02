@@ -39,7 +39,6 @@
 #include "field_type.h"
 #include "flat_set.h"
 #include "game.h"
-#include "game_constants.h"
 #include "grapple.h"
 #include "harvest.h"
 #include "imgui/imgui.h"
@@ -2744,7 +2743,7 @@ bool monster::move_effects( bool )
             if( char_grabber != nullptr ) {
                 // Holding on against the struggle tires the grabber.
                 const int escape_skill = static_cast<int>( std::max( get_melee(), get_dodge() ) );
-                char_grabber->set_activity_level( EXTRA_EXERCISE );
+                char_grabber->set_activity_level( grapple::exertion_level() );
                 const int cost = grapple::escape_stamina_cost( *char_grabber, *this, grab_str,
                                  escape_skill );
                 char_grabber->burn_energy_arms( -cost );
