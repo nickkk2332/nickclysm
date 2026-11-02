@@ -34,6 +34,8 @@ static const oter_str_id oter_road_nesw_manhole( "road_nesw_manhole" );
 static const oter_type_str_id oter_type_road( "road" );
 
 static constexpr int BUILDINGCHANCE = 4;
+// The largest size place_cities rolls for a random city.
+static constexpr int MAX_RANDOM_CITY_SIZE = 55;
 
 static pf::directed_path<point_om_omt> straight_path( const point_om_omt &source,
         om_direction::type dir, size_t len )
@@ -73,15 +75,18 @@ void overmap::place_cities()
     }
     // Urbanity grows cities and forestosity shrinks them, but never below size 2. This used
     // std::min and then clamped back up to op_city_size, so neither ever changed a city's size
-    // and max_urbanity did nothing (OMAP-B04).
+    // and max_urbanity did nothing (OMAP-B04). No rolled size exceeds MAX_RANDOM_CITY_SIZE, so
+    // max_city_size stops there too, which keeps the candidate radius OMAPX / 2 - max_city_size
+    // positive.
     const int city_size_adjust = std::max( urbanity - static_cast<int>( forestosity / 2.0f ),
                                            2 - op_city_size );
     int city_space_adjust = urbanity / 2;
-    const int max_city_size = std::max( 2, std::min( op_city_size + city_size_adjust,
-                                        op_city_size * max_urbanity ) );
+    const int max_city_size = std::clamp( std::min( op_city_size + city_size_adjust,
+                                          op_city_size * max_urbanity ), 2, MAX_RANDOM_CITY_SIZE );
     if( op_city_spacing > 0 ) {
-        // Urbanity can bring cities closer together, but never makes the spacing wider.
-        city_space_adjust = std::max( 0, std::min( city_space_adjust, op_city_spacing - 2 ) );
+        // Positive urbanity brings cities closer together, but never below a spacing of 2 (or
+        // the region's own spacing if that is smaller). Negative urbanity spreads them out.
+        city_space_adjust = std::min( city_space_adjust, std::max( 0, op_city_spacing - 2 ) );
         op_city_spacing = op_city_spacing - city_space_adjust + static_cast<int>( forestosity );
     }
     // make sure not to get too extreme on the spacing if you go way far.
@@ -182,7 +187,7 @@ void overmap::place_cities()
             }
             // Ensure that cities are at least size 2, as city of size 1 is just a crossroad with no buildings at all
             size = std::max( size, 2 );
-            size = std::min( size, 55 );
+            size = std::min( size, MAX_RANDOM_CITY_SIZE );
             // TODO: put cities closer to the edge when they can span overmaps
             // don't draw cities across the edge of the map, they will get clipped
             selected_point = random_entry_removed( city_candidates );

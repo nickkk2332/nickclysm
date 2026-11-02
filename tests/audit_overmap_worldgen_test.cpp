@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <memory>
 #include <optional>
@@ -216,11 +217,12 @@ static overmap &generate_bare_overmap( const point_abs_om &where )
 
 // OMAP-B04: place_cities combined urbanity with std::min instead of std::max and then clamped
 // the result back up to the region's city_size, so urbanity never grew a city: every random
-// city came from a base size of city_size - 1 or city_size. Far to the east, where the default
-// region raises urbanity, other sizes must now show up.
+// city came from a base size of city_size - 1 or city_size. Far to the south, where the default
+// region raises urbanity, other sizes must now show up. (Not to the east: the default region's
+// ocean covers every overmap from about x = 13 on, leaving no room for cities.)
 TEST_CASE( "omap-b04_urbanity_grows_cities", "[audit][overmap]" )
 {
-    overmap &om = generate_bare_overmap( point_abs_om( 20, 0 ) );
+    overmap &om = generate_bare_overmap( point_abs_om( 0, 40 ) );
     REQUIRE( om.get_urbanity() >= 10 );
     const region_settings_city &city_settings = om.get_settings().get_settings_city();
     REQUIRE( !city_settings.is_megacity );
@@ -243,6 +245,57 @@ TEST_CASE( "omap-b04_urbanity_grows_cities", "[audit][overmap]" )
         return old_sizes.count( c.size ) == 0;
     } );
     CHECK( any_new_size );
+}
+
+// OMAP-B04 (review): max_city_size grew with urbanity up to city_size * max_urbanity, while the
+// city candidates sit within OMAPX / 2 - max_city_size of the center. With city_size 12 and an
+// urbanity of 80 that radius went negative and the overmap got no cities at all. No rolled size
+// goes past 55, so max_city_size stops there now.
+TEST_CASE( "omap-b04_very_urban_overmaps_still_get_cities", "[audit][overmap]" )
+{
+    // Straight south, where the default region adds 5 urbanity per 10 overmaps and has no ocean.
+    const point_abs_om where( 0, 160 );
+    const tripoint_abs_omt where_omt = project_to<coords::omt>( tripoint_abs_om( where, 0 ) );
+    const region_settings &region = overmap_buffer.get_settings( where_omt );
+    region_settings_city &city_spec =
+        const_cast<region_settings_city &>( region.get_settings_city() );
+    REQUIRE( !city_spec.is_megacity );
+    REQUIRE( city::get_all().empty() );
+    restore_on_out_of_scope<int> restore_size( city_spec.city_size );
+    city_spec.city_size = 12;
+    // The old cap, city_size * max_urbanity, has to reach past OMAPX / 2.
+    REQUIRE( 12 * static_cast<int>( region.max_urban ) > OMAPX / 2 );
+
+    overmap &om = generate_bare_overmap( where );
+    // 12 + urbanity > OMAPX / 2, so the old candidate radius was negative.
+    REQUIRE( 12 + om.get_urbanity() > OMAPX / 2 );
+    // Spacing 2 and cities up to size 55: about four of them.
+    CHECK( !om.cities.empty() );
+}
+
+// OMAP-B04 (review): negative urbanity is meant to spread cities out (a region can set a negative
+// urbanity_increase for that). The first fix clamped the spacing adjustment at 0, so an overmap
+// with an urbanity of -30 and no forest still got about 31 tiny cities instead of at most one.
+TEST_CASE( "omap-b04_negative_urbanity_widens_city_spacing", "[audit][overmap]" )
+{
+    // Straight south of the origin: no forest increase applies there, so forestosity stays 0.
+    const point_abs_om where( 0, 30 );
+    const tripoint_abs_omt where_omt = project_to<coords::omt>( tripoint_abs_om( where, 0 ) );
+    region_settings &region =
+        const_cast<region_settings &>( overmap_buffer.get_settings( where_omt ) );
+    REQUIRE( !region.get_settings_city().is_megacity );
+    REQUIRE( region.get_settings_city().city_size == 8 );
+    REQUIRE( region.get_settings_city().city_spacing == 4 );
+    REQUIRE( city::get_all().empty() );
+    restore_on_out_of_scope<std::array<float, 4>> restore_urban( region.urban_increase );
+    // north, east, south, west
+    region.urban_increase = { 0.0f, 0.0f, -10.0f, 0.0f };
+
+    overmap &om = generate_bare_overmap( where );
+    REQUIRE( om.get_urbanity() == -30 );
+    // Spacing 4 + 15 (capped at 10) covers 1/1024 of the map with size 2 cities: 0.5 cities on
+    // average. The old spacing of 4 gave about 31.
+    CHECK( om.cities.size() <= 1 );
 }
 
 // OMAP-B05: building_bin::pick dereferenced the null pointer an empty bin hands back, and
