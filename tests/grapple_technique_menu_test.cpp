@@ -21,6 +21,7 @@
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
@@ -210,8 +211,8 @@ TEST_CASE( "grapple_tm_rejection_reasons", "[grapple][martial_arts]" )
         CHECK( rejection( why_not( dude, test_tm_knife, target ) ) == "weapon_category" );
         // A style that only knows knives: the club doesn't suit it
         use_style( dude, test_style_grapple );
-        target.add_effect( effect_grabbed, 1_days );
-        dude.add_effect( effect_grabbing, 1_days );
+        // Holding the target, so the condition passes and the club is what's wrong
+        REQUIRE( grapple::start_hold( dude, target, 20, bodypart_str_id::NULL_ID().id() ) );
         CHECK( rejection( why_not( dude, test_tech_grapple_knife, target ) ) == "wrong_weapon" );
     }
     SECTION( "a negative weighting is rolled only when the attack is chosen automatically" ) {

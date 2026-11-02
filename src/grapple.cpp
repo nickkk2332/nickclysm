@@ -453,6 +453,78 @@ void grapple::process_turn( Character &grabber )
     }
 }
 
+namespace
+{
+
+// A GRAB effect with a character source is that character's hold, never a monster's.
+bool has_character_source( const effect &eff )
+{
+    const std::optional<character_id> source = eff.get_source().get_character_id();
+    return source && source->is_valid();
+}
+
+} // namespace
+
+bool grapple::holds( const Creature &grabber, const Creature &victim )
+{
+    if( &grabber == &victim || grabber.is_dead_state() || victim.is_dead_state() ||
+        !grabber.has_effect_with_flag( json_flag_GRAB_FILTER ) ||
+        !victim.has_effect_with_flag( json_flag_GRAB ) ) {
+        return false;
+    }
+    if( const Character *const guy = grabber.as_character() ) {
+        return hold_effect( *guy, victim ) != nullptr && in_reach( *guy, victim );
+    }
+    const monster *const mon = grabber.as_monster();
+    if( mon == nullptr ) {
+        return false;
+    }
+    for( const effect &eff : victim.get_effects_with_flag( json_flag_GRAB ) ) {
+        if( !has_character_source( eff ) && monster_grabber( victim, eff.get_bp() ) == mon ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool grapple::holds_anyone( const Creature &grabber )
+{
+    if( grabber.is_dead_state() || !grabber.has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
+        return false;
+    }
+    if( const Character *const guy = grabber.as_character() ) {
+        return guy->grabbed_creature() != nullptr;
+    }
+    const monster *const mon = grabber.as_monster();
+    if( mon == nullptr ) {
+        return false;
+    }
+    map &here = get_map();
+    creature_tracker &creatures = get_creature_tracker();
+    const int reach = std::max( 1, monster_grab_reach( *mon ) );
+    for( const tripoint_bub_ms &p : here.points_in_radius( mon->pos_bub( here ), reach, 1 ) ) {
+        const Creature *const victim = creatures.creature_at( p );
+        if( victim != nullptr && holds( *mon, *victim ) ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool grapple::held_by_anyone( const Creature &victim )
+{
+    if( victim.is_dead_state() ) {
+        return false;
+    }
+    for( const effect &eff : victim.get_effects_with_flag( json_flag_GRAB ) ) {
+        if( has_character_source( eff ) ? character_grabber( victim, eff ) != nullptr :
+            monster_grabber( victim, eff.get_bp() ) != nullptr ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // The grab action
 
 namespace

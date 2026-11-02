@@ -95,6 +95,20 @@ int stamina_floor();
 /** Per-turn upkeep for a grabber. Called from Character::process_turn. */
 void process_turn( Character &grabber );
 
+/**
+ * Whether @p grabber, a character or a monster, holds @p victim now: a character through the
+ * GRAB effect it is the source of (hold_effect), while it is alive, in reach and still grabbing;
+ * a monster through a GRAB effect with no character source that monster_grabber() puts on it.
+ * Unlike the GRAB and GRAB_FILTER flags, this tells who holds whom.
+ */
+bool holds( const Creature &grabber, const Creature &victim );
+
+/** Whether @p grabber, a character or a monster, holds any creature now (see holds()). */
+bool holds_anyone( const Creature &grabber );
+
+/** Whether any character or monster holds @p victim now (see holds()). */
+bool held_by_anyone( const Creature &victim );
+
 // The grab action
 
 /** Arm stamina spent on a grab attempt. */

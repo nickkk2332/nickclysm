@@ -12,6 +12,7 @@
 #include "coordinates.h"
 #include "creature.h"
 #include "enums.h"
+#include "grapple.h"
 #include "item.h"
 #include "magic_enchantment.h"
 #include "map_helpers.h"
@@ -29,7 +30,6 @@
 static const bodypart_str_id body_part_debug_tail( "debug_tail" );
 static const efftype_id effect_downed( "downed" );
 static const efftype_id effect_grabbed( "grabbed" );
-static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_stunned( "stunned" );
 
 static const enchantment_id enchantment_ENCH_TEST_BIRD_PARTS( "ENCH_TEST_BIRD_PARTS" );
@@ -250,9 +250,10 @@ TEST_CASE( "Martial_art_technique_conditionals", "[martial_arts]" )
         REQUIRE( target_2.get_size() == 5 );
         CHECK( !dude.evaluate_technique( tec, target_2, dude.used_weapon(), false, false,
                                          false ).has_value() );
-        // test throwing a monster grabbing you (succeed)
-        dude.add_effect( effect_grabbed, 1_days );
-        target_3.add_effect( effect_grabbing, 1_days );
+        // test throwing a monster grabbing you (succeed: it has no grab strength to resist)
+        dude.add_effect( effect_grabbed, 1_days, body_part_torso );
+        target_3.add_grab( body_part_torso );
+        REQUIRE( grapple::holds( target_3, dude ) );
         REQUIRE( target_3.get_size() == 3 );
         REQUIRE( target_3.get_grab_strength() == 0 );
         CHECK( dude.evaluate_technique( tec, target_3, dude.used_weapon(), false, false,

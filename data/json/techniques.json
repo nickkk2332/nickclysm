@@ -33,15 +33,7 @@
           ]
         },
         {
-          "and": [
-            { "u_has_flag": "MA_BASIC_FALLBACK" },
-            {
-              "or": [
-                { "and": [ { "u_has_flag": "GRAB_FILTER" }, { "npc_has_flag": "GRAB" } ] },
-                { "and": [ { "u_has_flag": "GRAB" }, { "npc_has_flag": "GRAB_FILTER" } ] }
-              ]
-            }
-          ]
+          "and": [ { "u_has_flag": "MA_BASIC_FALLBACK" }, { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] } ]
         }
       ]
     },
@@ -212,8 +204,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -221,7 +212,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -447,8 +438,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -456,7 +446,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -489,8 +479,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -498,7 +487,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -542,8 +531,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -551,7 +539,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -595,8 +583,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -604,7 +591,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -1024,8 +1011,7 @@
     "condition": {
       "and": [
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
-        { "npc_has_flag": "GRAB" },
-        { "u_has_flag": "GRAB_FILTER" },
+        { "u_is_grabbing": "npc" },
         { "not": { "npc_has_species": "ZOMBIE" } },
         { "not": { "npc_has_species": "NETHER" } },
         { "not": { "npc_has_species": "NETHER_EMANATION" } },
@@ -1612,18 +1598,13 @@
     "unarmed_allowed": true,
     "melee_allowed": true,
     "crit_ok": true,
-    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  u_is_grabbing and u_is_grabbed tell it apart from a hold by or on a third creature.",
     "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
-        {
-          "or": [
-            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
-            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
-          ]
-        },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_bodytype": "blob" } },
         { "not": { "npc_bodytype": "fish" } },
@@ -1654,18 +1635,13 @@
         "message": "The weapon of %s has been forced out of their hands!"
       }
     ],
-    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  u_is_grabbing and u_is_grabbed tell it apart from a hold by or on a third creature.",
     "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
-        {
-          "or": [
-            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
-            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
-          ]
-        },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_bodytype": "blob" } },
         { "not": { "npc_bodytype": "fish" } },
@@ -1688,18 +1664,13 @@
     "melee_allowed": true,
     "crit_tec": true,
     "side_switch": true,
-    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  The target holding you is told apart from a third creature holding you by the target's own GRAB_FILTER.",
+    "//": "Ported from Cataclysm-TLG (PR #281 by worm-girl): Judo throws need a grapple with the target, whoever holds whom (TLG: only your hold).  u_is_grabbing and u_is_grabbed tell it apart from a hold by or on a third creature.",
     "menu_visibility": "grapple",
     "condition": {
       "and": [
         { "math": [ "u_val('size') <= n_val('size')" ] },
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
-        {
-          "or": [
-            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
-            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
-          ]
-        },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_bodytype": "blob" } },
         { "not": { "npc_bodytype": "fish" } },
@@ -1904,8 +1875,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -1913,7 +1883,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -2357,8 +2327,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -2366,7 +2335,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -2767,13 +2736,7 @@
     "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
     "unarmed_allowed": true,
     "//": "Knees a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) one in the clinch, whoever holds whom.",
-    "condition": {
-      "or": [
-        { "npc_has_effect": "downed" },
-        { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
-        { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
-      ]
-    },
+    "condition": { "or": [ { "npc_has_effect": "downed" }, { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
     "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
     "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] },
     "weighting": 3,
@@ -2788,13 +2751,7 @@
     "skill_requirements": [ { "name": "unarmed", "level": 4 } ],
     "unarmed_allowed": true,
     "//": "Locks the arm of a downed target, or (from Cataclysm-TLG PR #281 by worm-girl) of one in the clinch, whoever holds whom: the arm that grabs you is the arm to lock.",
-    "condition": {
-      "or": [
-        { "npc_has_effect": "downed" },
-        { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
-        { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
-      ]
-    },
+    "condition": { "or": [ { "npc_has_effect": "downed" }, { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
     "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
     "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] },
     "crit_ok": true,
@@ -2830,8 +2787,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -2839,7 +2795,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3033,8 +2989,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3042,7 +2997,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3142,8 +3097,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3151,7 +3105,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3180,8 +3134,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3189,7 +3142,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3278,8 +3231,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3287,7 +3239,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3363,8 +3315,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3372,7 +3323,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3526,8 +3477,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3535,7 +3485,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -3592,8 +3542,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -3601,7 +3550,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         },
         { "not": { "npc_has_effect": "downed" } },
@@ -3702,12 +3651,7 @@
       "and": [
         { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
         { "math": [ "n_val('size') != 1" ] },
-        {
-          "or": [
-            { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
-            { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
-          ]
-        },
+        { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
         { "not": { "npc_has_effect": "downed" } },
         { "not": { "npc_has_flag": "IMMOBILE" } },
         { "not": { "u_has_effect": "downed" } },

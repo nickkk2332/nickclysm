@@ -108,8 +108,7 @@
           "or": [
             {
               "and": [
-                { "npc_has_flag": "GRAB_FILTER" },
-                { "u_has_flag": "GRAB" },
+                { "u_is_grabbed": "npc" },
                 {
                   "roll_contested": { "math": [ "u_val('strength')" ] },
                   "die_size": 20,
@@ -117,7 +116,7 @@
                 }
               ]
             },
-            { "not": { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] } }
+            { "not": { "u_is_grabbed": "npc" } }
           ]
         }
       ]
@@ -247,7 +246,7 @@
     "//": "Needs both a hold on the target and a knife in hand.  The example in doc/JSON/MARTIALART_JSON.md.",
     "melee_allowed": true,
     "weapon_categories_allowed": [ "KNIVES" ],
-    "condition": { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
+    "condition": { "u_is_grabbing": "npc" },
     "condition_desc": "* Only works with a <info>knife</info> on a target <info>you are grabbing</info>",
     "messages": [ "You hold %s close and drive your knife in", "<npcname> holds %s close and drives a knife in" ],
     "mult_bonuses": [ { "stat": "damage", "type": "stab", "scale": 1.5 }, { "stat": "damage", "type": "cut", "scale": 1.5 } ],

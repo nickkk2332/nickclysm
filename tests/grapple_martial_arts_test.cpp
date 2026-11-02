@@ -6,6 +6,7 @@
 #include <tuple>
 #include <vector>
 
+#include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
@@ -17,11 +18,13 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
 #include "json.h"
 #include "json_loader.h"
+#include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "map_scale_constants.h"
@@ -35,8 +38,10 @@
 
 // Martial-arts side of the grappling port from Cataclysm-TLG (PRs #281 and #428 by worm-girl):
 // fallback and basic techniques, tech effects on the attacker, grapple-gated techniques and
-// the per-style grapple_weapons list.  A "hold" is set up directly with the grab effects: GRAB
-// (`grabbed`) on the held creature and GRAB_FILTER (`grabbing`) on the one holding it.
+// the per-style grapple_weapons list.  A hold is set up directly, as a grab would leave it: the
+// held creature gets GRAB (`grabbed`) from the one holding it, which gets GRAB_FILTER
+// (`grabbing`).  The grapple techniques ask who holds whom (u_is_grabbing / u_is_grabbed), so a
+// monster's hold on a character also lists the limb it holds.
 
 static const damage_type_id damage_bash( "bash" );
 
@@ -54,6 +59,9 @@ static const efftype_id effect_test_basic_fallback( "test_basic_fallback" );
 static const efftype_id effect_test_grapple_focus( "test_grapple_focus" );
 static const efftype_id effect_test_grapple_mark( "test_grapple_mark" );
 
+static const flag_id json_flag_GRAB( "GRAB" );
+static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
+
 static const itype_id itype_chain( "chain" );
 static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_knife_combat( "knife_combat" );
@@ -64,6 +72,7 @@ static const matec_id tec_brawl_strangle( "tec_brawl_strangle" );
 static const matec_id tec_judo_backthrow( "tec_judo_backthrow" );
 static const matec_id tec_judo_disarm( "tec_judo_disarm" );
 static const matec_id tec_judo_throw( "tec_judo_throw" );
+static const matec_id tec_kickboxing_push( "tec_kickboxing_push" );
 static const matec_id tec_pankration_grabdisarm( "tec_pankration_grabdisarm" );
 static const matec_id tec_pankration_grabknee( "tec_pankration_grabknee" );
 static const matec_id tec_zuiquan_fist( "tec_zuiquan_fist" );
@@ -97,11 +106,27 @@ static void use_style( Character &dude, const matype_id &style )
     dude.martial_arts_data->set_style( style, false );
 }
 
-// dude holds target: GRAB on the target, GRAB_FILTER on dude
+// dude holds target (by the torso, a monster as a whole)
 static void hold( Character &dude, Creature &target )
 {
-    target.add_effect( effect_grabbed, 1_days );
-    dude.add_effect( effect_grabbing, 1_days );
+    const bodypart_id part = target.is_monster() ? bodypart_str_id::NULL_ID().id() :
+                             body_part_torso.id();
+    REQUIRE( grapple::start_hold( dude, target, 20, part ) );
+    REQUIRE( grapple::holds( dude, target ) );
+}
+
+// mon holds dude by the right arm, as its grab attack would
+static void held_by( monster &mon, Character &dude )
+{
+    dude.add_effect( effect_grabbed, 1_days, body_part_arm_r, true, 20 );
+    mon.add_grab( body_part_arm_r );
+    REQUIRE( grapple::holds( mon, dude ) );
+}
+
+static void let_go( monster &mon, Character &dude )
+{
+    dude.remove_effect( effect_grabbed, body_part_arm_r );
+    mon.remove_grab( body_part_arm_r );
 }
 
 static std::set<matec_id> ids_of( const std::vector<technique_pools::entry> &pool )
@@ -302,8 +327,7 @@ TEST_CASE( "grapple_ma_base_techniques_follow_TLG_rules_with_the_flag", "[grappl
                std::set<matec_id> { tech_base_headbutt, tech_base_punch } );
     }
     SECTION( "held by the target: headbutt and kick" ) {
-        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
-        target.add_effect( effect_grabbing, 1_days );
+        held_by( target, dude );
         CHECK( usable( dude, tech_base_headbutt, target ) );
         CHECK( usable( dude, tech_base_kick, target ) );
     }
@@ -376,15 +400,16 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_grapple", "[grapple][martial_arts]"
         CHECK_FALSE( usable( dude, tec_judo_disarm, target ) );
         CHECK_FALSE( usable( dude, tec_judo_backthrow, target, true ) );
         // Held by someone else: the target isn't the one holding
-        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
+        monster &other = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::west );
+        held_by( other, dude );
         CHECK_FALSE( usable( dude, tec_judo_throw, target ) );
+        let_go( other, dude );
         // Held by the target: Judo answers a grab too
-        target.add_effect( effect_grabbing, 1_days );
+        held_by( target, dude );
         CHECK( usable( dude, tec_judo_throw, target ) );
         CHECK( usable( dude, tec_judo_disarm, target ) );
         CHECK( usable( dude, tec_judo_backthrow, target, true ) );
-        dude.remove_effect( effect_grabbed );
-        target.remove_effect( effect_grabbing );
+        let_go( target, dude );
 
         hold( dude, target );
         CHECK( usable( dude, tec_judo_throw, target ) );
@@ -399,17 +424,14 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_grapple", "[grapple][martial_arts]"
         CHECK_FALSE( usable( dude, tec_pankration_grabknee, target ) );
         CHECK_FALSE( usable( dude, tec_pankration_grabdisarm, target ) );
         // Held by the target
-        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
-        target.add_effect( effect_grabbing, 1_days );
+        held_by( target, dude );
         CHECK( usable( dude, tec_pankration_grabknee, target ) );
         CHECK( usable( dude, tec_pankration_grabdisarm, target ) );
-        dude.remove_effect( effect_grabbed );
-        target.remove_effect( effect_grabbing );
+        let_go( target, dude );
         hold( dude, target );
         CHECK( usable( dude, tec_pankration_grabknee, target ) );
         CHECK( usable( dude, tec_pankration_grabdisarm, target ) );
-        dude.remove_effect( effect_grabbing );
-        target.remove_effect( effect_grabbed );
+        grapple::end_hold( dude, &target );
         // The vanilla follow-up on a downed target stays
         target.add_effect( effect_downed, 1_days );
         CHECK( usable( dude, tec_pankration_grabknee, target ) );
@@ -420,11 +442,9 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_grapple", "[grapple][martial_arts]"
         CHECK_FALSE( usable( dude, tec_zuiquan_throw, target ) );
         CHECK( usable( dude, tec_zuiquan_fist, target ) );
         // Held by the target: the fall drags it down too
-        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
-        target.add_effect( effect_grabbing, 1_days );
+        held_by( target, dude );
         CHECK( usable( dude, tec_zuiquan_throw, target ) );
-        dude.remove_effect( effect_grabbed );
-        target.remove_effect( effect_grabbing );
+        let_go( target, dude );
         const auto spin_allowed = [&]() {
             const const_dialogue d( get_const_talker_for( dude ), get_const_talker_for( target ) );
             return tec_zuiquan_spin->condition( d );
@@ -454,11 +474,9 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_grapple", "[grapple][martial_arts]"
         use_style( dude, style_brawling );
         CHECK_FALSE( usable( dude, tec_brawl_strangle, target ) );
         // Held by the target is not enough: you need the hold
-        dude.add_effect( effect_grabbed, 1_days, body_part_arm_r );
-        target.add_effect( effect_grabbing, 1_days );
+        held_by( target, dude );
         CHECK_FALSE( usable( dude, tec_brawl_strangle, target ) );
-        dude.remove_effect( effect_grabbed );
-        target.remove_effect( effect_grabbing );
+        let_go( target, dude );
         hold( dude, target );
         REQUIRE( usable( dude, tec_brawl_strangle, target ) );
 
@@ -473,6 +491,122 @@ TEST_CASE( "grapple_ma_tlg_techniques_need_a_grapple", "[grapple][martial_arts]"
         monster &zed = spawn_test_monster( "mon_zombie", dude_pos + tripoint::west );
         zed.add_effect( effect_grabbed, 1_days );
         CHECK_FALSE( usable( dude, tec_brawl_strangle, zed ) );
+    }
+}
+
+// The GRAB and GRAB_FILTER flags only say that someone holds and someone is held, so with a third
+// creature the flag pairs enabled these techniques against a target that isn't in the grapple.
+TEST_CASE( "grapple_ma_techniques_tell_who_holds_whom", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    standard_npc dude( "TestCharacter", dude_pos, {}, 0, 8, 8, 8, 8 );
+    clear_character( dude, true );
+    // The headbutt's grapple rule comes with the flag
+    dude.add_effect( effect_test_basic_fallback, 1_days );
+    REQUIRE( dude.has_flag( json_flag_MA_BASIC_FALLBACK ) );
+    monster &target = spawn_test_monster( "mon_feral_human_pipe", dude_pos + tripoint::east );
+    // Bystanders: one next to you, two next to the target
+    monster &next_to_you = spawn_test_monster( "mon_feral_human_pipe",
+                           dude_pos + tripoint::west );
+    monster &next_to_target = spawn_test_monster( "mon_feral_human_pipe",
+                              target.pos_bub() + tripoint::east );
+    monster &also_next_to_target = spawn_test_monster( "mon_feral_human_pipe",
+                                   target.pos_bub() + tripoint::north );
+
+    const auto condition_met = [&]( const matec_id & tec ) {
+        REQUIRE( tec->has_condition );
+        const const_dialogue d( get_const_talker_for( dude ), get_const_talker_for( target ) );
+        return tec->condition( d );
+    };
+    // Need a grapple with the target, whoever holds whom
+    const std::vector<matec_id> either_way = {
+        tec_judo_throw, tec_judo_disarm, tec_judo_backthrow, tec_pankration_grabknee,
+        tec_pankration_grabdisarm, tec_zuiquan_throw, tech_base_headbutt
+    };
+    for( const matec_id &tec : either_way ) {
+        CAPTURE( tec.str() );
+        CHECK_FALSE( condition_met( tec ) );
+    }
+    CHECK_FALSE( condition_met( tec_brawl_strangle ) );
+
+    SECTION( "you hold someone else, and a third creature holds the target" ) {
+        hold( dude, next_to_you );
+        next_to_target.add_effect( effect_grabbing, 1_days );
+        target.add_effect( effect_grabbed, 1_days );
+        REQUIRE( grapple::holds( next_to_target, target ) );
+        // What the flag pair "you hold the target" saw
+        REQUIRE( dude.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+        REQUIRE( target.has_effect_with_flag( json_flag_GRAB ) );
+        for( const matec_id &tec : either_way ) {
+            CAPTURE( tec.str() );
+            CHECK_FALSE( condition_met( tec ) );
+        }
+        CHECK_FALSE( condition_met( tec_brawl_strangle ) );
+    }
+    SECTION( "the target holds someone else, and a third creature holds you" ) {
+        held_by( next_to_you, dude );
+        target.add_effect( effect_grabbing, 1_days );
+        also_next_to_target.add_effect( effect_grabbed, 1_days );
+        REQUIRE( grapple::holds( target, also_next_to_target ) );
+        // What the flag pair "the target holds you" saw
+        REQUIRE( dude.has_effect_with_flag( json_flag_GRAB ) );
+        REQUIRE( target.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+        for( const matec_id &tec : either_way ) {
+            CAPTURE( tec.str() );
+            CHECK_FALSE( condition_met( tec ) );
+        }
+    }
+    SECTION( "you hold the target" ) {
+        hold( dude, target );
+        for( const matec_id &tec : either_way ) {
+            CAPTURE( tec.str() );
+            CHECK( condition_met( tec ) );
+        }
+        CHECK( condition_met( tec_brawl_strangle ) );
+    }
+    SECTION( "the target holds you" ) {
+        held_by( target, dude );
+        for( const matec_id &tec : either_way ) {
+            CAPTURE( tec.str() );
+            CHECK( condition_met( tec ) );
+        }
+        // The strangle needs your own hold
+        CHECK_FALSE( condition_met( tec_brawl_strangle ) );
+    }
+}
+
+// The vanilla knockbacks "may fail on enemies grabbing you": they roll against the grab strength
+// of a target that holds you, and only then.
+TEST_CASE( "grapple_ma_grab_roll_only_against_the_one_holding_you", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    clear_avatar();
+    avatar &you = get_avatar();
+    you.setpos( get_map(), dude_pos );
+    npc &target = spawn_npc( ( dude_pos + tripoint::east ).xy(), "thug" );
+    monster &next_to_you = spawn_test_monster( "mon_feral_human_pipe",
+                           dude_pos + tripoint::west );
+    monster &next_to_target = spawn_test_monster( "mon_feral_human_pipe",
+                              target.pos_bub() + tripoint::east );
+    const auto push_allowed = [&]() {
+        const const_dialogue d( get_const_talker_for( you ), get_const_talker_for( target ) );
+        return tec_kickboxing_push->condition( d );
+    };
+    REQUIRE( tec_kickboxing_push->has_condition );
+    CHECK( push_allowed() );
+
+    SECTION( "the target holds you too hard to roll free" ) {
+        // n_val('grab_strength') is the hold's 100: a d20 plus your strength never beats it
+        REQUIRE( grapple::start_hold( target, you, 100, body_part_arm_l.id() ) );
+        CHECK_FALSE( push_allowed() );
+    }
+    SECTION( "a third creature holds you, and the target holds someone else: no roll" ) {
+        held_by( next_to_you, you );
+        REQUIRE( grapple::start_hold( target, next_to_target, 100,
+                                      bodypart_str_id::NULL_ID().id() ) );
+        REQUIRE( you.has_effect_with_flag( json_flag_GRAB ) );
+        REQUIRE( target.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+        CHECK( push_allowed() );
     }
 }
 

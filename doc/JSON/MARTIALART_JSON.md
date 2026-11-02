@@ -181,15 +181,17 @@ A buff can also carry character flags in `"flags"`, which the martial artist has
 
 ### Grappling
 
-Grappling techniques (ported from Cataclysm: The Last Generation) are ordinary techniques whose `condition` asks for a hold.  A creature that is held has an effect with the `GRAB` flag (`grabbed`), and the one holding it has an effect with the `GRAB_FILTER` flag (`grabbing`).  Monster grabs and a character's grab set the same effects, so in a technique condition (`u` is the martial artist, `npc` the target):
+Grappling techniques (ported from Cataclysm: The Last Generation) are ordinary techniques whose `condition` asks for a hold.  The conditions `u_is_grabbing` and `u_is_grabbed` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md#u_is_grabbing-npc_is_grabbing-u_is_grabbed-npc_is_grabbed)) say who holds whom, for a character's grab and a monster's alike, so in a technique condition (`u` is the martial artist, `npc` the target):
 
 | You want | Condition |
 | --- | --- |
-| you hold the target | `{ "and": [ { "u_has_flag": "GRAB_FILTER" }, { "npc_has_flag": "GRAB" } ] }` |
-| the target holds you | `{ "and": [ { "u_has_flag": "GRAB" }, { "npc_has_flag": "GRAB_FILTER" } ] }` |
+| you hold the target | `{ "u_is_grabbing": "npc" }` |
+| the target holds you | `{ "u_is_grabbed": "npc" }` |
+| a grapple with the target, whoever holds whom | `{ "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] }` |
 | not while you hold anyone | `{ "not": { "u_has_flag": "GRAB_FILTER" } }` |
+| not while anyone holds you | `{ "not": { "u_has_flag": "GRAB" } }` |
 
-These flags say that *someone* holds or is held, not who: if a third creature holds the target, the first row is true as long as you hold anyone.  That is why "the target holds you" checks the target's own `GRAB_FILTER`: your `GRAB` alone could come from someone else.  A technique that works either way round ("held or holding") puts the two rows in an `or`.
+A creature that is held has an effect with the `GRAB` flag (`grabbed`), and the one holding it has an effect with the `GRAB_FILTER` flag (`grabbing`).  These flags are enough to ask whether you hold anyone or anyone holds you, but they don't say who: pairing them (`u_has_flag` `GRAB_FILTER` with `npc_has_flag` `GRAB`) is also true when you hold someone else and a third creature holds the target, or when a third creature holds you and the target holds someone else.  Ask about the target with `u_is_grabbing` and `u_is_grabbed`.
 
 Grappling is unarmed.  A style can let some weapons stay in hand with `grapple_weapons`: while the style is selected, a listed weapon neither stops you from grabbing nor makes you let go.  Weapons match by weapon category or by item type, or `"any": true` allows all of them.  Unknown categories and items are load errors.  `grapple_weapons` is read as a whole: a `copy-from` style either keeps its parent's list or replaces it.  The vanilla styles have none.
 
@@ -202,7 +204,7 @@ Grapple techniques combine a hold with the usual weapon requirements, so a knife
   "name": "Knife in the Clinch",
   "melee_allowed": true,
   "weapon_categories_allowed": [ "KNIVES" ],                            // needs a knife in hand...
-  "condition": { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },    // ...and a hold on the target
+  "condition": { "u_is_grabbing": "npc" },                              // ...and a hold on the target
   "condition_desc": "* Only works with a <info>knife</info> on a target <info>you are grabbing</info>",
   "messages": [ "You hold %s close and drive your knife in", "<npcname> holds %s close and drives a knife in" ],
   "mult_bonuses": [ { "stat": "damage", "type": "stab", "scale": 1.5 }, { "stat": "damage", "type": "cut", "scale": 1.5 } ],
@@ -230,7 +232,7 @@ Grapple techniques combine a hold with the usual weapon requirements, so a knife
 }
 ```
 
-The vanilla grapple techniques show more patterns.  Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a grapple with the target, whoever holds whom, so a judoka also answers a grab.  Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one in the clinch either way round.  Zui Quan's `tec_zuiquan_throw` (Drunken Fall) works held or holding and downs you as well as the target; its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling.  Brawling's `tec_brawl_strangle` needs your own hold (being held is not enough) and puts `choking` and `strangulation` on a breathing target, whose damage ignores armor.  All of them set `menu_visibility` so the manual technique menu lists them only when they could matter (see [The manual technique menu](#the-manual-technique-menu)).
+The vanilla grapple techniques show more patterns.  Judo's `tec_judo_throw`, `tec_judo_disarm` and `tec_judo_backthrow` need a grapple with the target, whoever holds whom, so a judoka also answers a grab.  Pankration's `tec_pankration_grabknee` and `tec_pankration_grabdisarm` work on a downed target or one in the clinch either way round.  Zui Quan's `tec_zuiquan_throw` (Drunken Fall) works held or holding and downs you as well as the target; its `tec_zuiquan_fist` and `tec_zuiquan_spin` are barred while grappling.  Brawling's `tec_brawl_strangle` needs your own hold (being held is not enough) and puts `choking` and `strangulation` on a breathing target, whose damage ignores armor.  All of them set `menu_visibility` so the manual technique menu lists them only when they could matter (see [The manual technique menu](#the-manual-technique-menu)).  The knockbacks and throws of other styles that "may fail on enemies grabbing you" (Aikido, Taekwondo, Tai Chi and others) roll your strength against the target's `grab_strength` only when the target is the one holding you (`u_is_grabbed`).
 
 
 ### Grab counters
@@ -370,13 +372,7 @@ A `crit_tec` technique can be chosen: it comes off if the hit is a critical hit,
 Any other string is a load error.  For example, Pankration's arm lock is listed against a downed target or in a grapple:
 
 ```jsonc
-"condition": {
-  "or": [
-    { "npc_has_effect": "downed" },
-    { "and": [ { "npc_has_flag": "GRAB" }, { "u_has_flag": "GRAB_FILTER" } ] },
-    { "and": [ { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
-  ]
-},
+"condition": { "or": [ { "npc_has_effect": "downed" }, { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] },
 "condition_desc": "* Only works on a <info>downed</info> target, or one <info>you are grabbing</info> or <info>that is grabbing you</info>",
 "menu_visibility": { "or": [ { "npc_has_effect": "downed" }, { "u_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" } ] }
 ```

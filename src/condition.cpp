@@ -42,6 +42,7 @@
 #include "game_constants.h"
 #include "generic_factory.h"
 #include "global_vars.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_category.h"
 #include "item_location.h"
@@ -650,6 +651,57 @@ conditional_t::func f_is_riding( bool is_npc )
 conditional_t::func f_is_riding( const JsonObject &, std::string_view, bool is_npc )
 {
     return f_is_riding( is_npc );
+}
+
+// u_is_grabbing / npc_is_grabbing and u_is_grabbed / npc_is_grabbed take "any", or the other
+// talker: "npc" for u_, "u" for npc_. Returns whether the other talker is meant.
+bool grab_condition_names_other( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const std::string value = jo.get_string( member );
+    const std::string other = is_npc ? "u" : "npc";
+    if( value == other ) {
+        return true;
+    }
+    if( value != "any" ) {
+        jo.throw_error_at( member, string_format(
+                               "%s must be \"any\" or \"%s\" (the other talker), not \"%s\"",
+                               std::string( member ), other, value ) );
+    }
+    return false;
+}
+
+// Who holds whom, by the hold itself (grapple::holds): unlike the GRAB and GRAB_FILTER flags, a
+// third creature's hold doesn't count.
+conditional_t::func f_is_grabbing( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const bool other = grab_condition_names_other( jo, member, is_npc );
+    return [other, is_npc]( const_dialogue const & d ) {
+        const Creature *const self = d.const_actor( is_npc )->get_const_creature();
+        if( self == nullptr ) {
+            return false;
+        }
+        if( !other ) {
+            return grapple::holds_anyone( *self );
+        }
+        const Creature *const them = d.const_actor( !is_npc )->get_const_creature();
+        return them != nullptr && grapple::holds( *self, *them );
+    };
+}
+
+conditional_t::func f_is_grabbed( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const bool other = grab_condition_names_other( jo, member, is_npc );
+    return [other, is_npc]( const_dialogue const & d ) {
+        const Creature *const self = d.const_actor( is_npc )->get_const_creature();
+        if( self == nullptr ) {
+            return false;
+        }
+        if( !other ) {
+            return grapple::held_by_anyone( *self );
+        }
+        const Creature *const them = d.const_actor( !is_npc )->get_const_creature();
+        return them != nullptr && grapple::holds( *them, *self );
+    };
 }
 
 conditional_t::func f_npc_has_class( const JsonObject &jo, std::string_view member,
@@ -2831,6 +2883,8 @@ parsers = {
     {"u_has_class", "npc_has_class", jarg::member, &conditional_fun::f_npc_has_class },
     {"u_has_activity", "npc_has_activity", jarg::string, &conditional_fun::f_has_activity },
     {"u_is_riding", "npc_is_riding", jarg::string, &conditional_fun::f_is_riding },
+    {"u_is_grabbing", "npc_is_grabbing", jarg::member, &conditional_fun::f_is_grabbing },
+    {"u_is_grabbed", "npc_is_grabbed", jarg::member, &conditional_fun::f_is_grabbed },
     {"u_has_mission", jarg::string, &conditional_fun::f_u_has_mission },
     {"u_monsters_in_direction", jarg::string, &conditional_fun::f_u_monsters_in_direction },
     {"u_safe_mode_trigger", jarg::member, &conditional_fun::f_u_safe_mode_trigger },

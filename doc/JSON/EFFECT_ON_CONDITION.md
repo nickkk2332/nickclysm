@@ -542,6 +542,33 @@ Alpha talker has `GRAB` flag, and beta talker has `GRAB_FILTER` flag; monster us
 { "npc_has_flag": "GRAB_FILTER" }, { "u_has_flag": "GRAB" }
 ```
 
+A held creature has an effect with the `GRAB` flag, and the one holding it an effect with the `GRAB_FILTER` flag.  These flags say that someone holds or is held, not who: to ask whether the alpha talker holds the beta talker, or the other way round, use [`u_is_grabbing` and `u_is_grabbed`](#u_is_grabbing-npc_is_grabbing-u_is_grabbed-npc_is_grabbed).
+
+### `u_is_grabbing`, `npc_is_grabbing`, `u_is_grabbed`, `npc_is_grabbed`
+- type: string, `"any"` or the other talker (`"npc"` for `u_is_grabbing` and `u_is_grabbed`, `"u"` for `npc_is_grabbing` and `npc_is_grabbed`)
+- `u_is_grabbing`: true if the alpha talker holds the other talker (`"npc"`), or any creature (`"any"`).  `npc_is_grabbing` is the same for the beta talker
+- `u_is_grabbed`: true if the other talker holds the alpha talker (`"npc"`), or anyone does (`"any"`).  `npc_is_grabbed` is the same for the beta talker
+- These ask who holds whom, unlike the `GRAB` and `GRAB_FILTER` flags, which a hold between two other creatures can also give: when you hold A and B holds the target, `{ "u_has_flag": "GRAB_FILTER" }` and `{ "npc_has_flag": "GRAB" }` are both true, but `{ "u_is_grabbing": "npc" }` is not
+- Holds by characters (grappling) and by monsters (grab attacks) both count, on characters and monsters.  A hold counts only while the one holding is alive and in reach (a monster's grab reach), as the hold itself does
+- Any other value, or the talker itself (`{ "u_is_grabbing": "u" }`), is a load error.  A talker that isn't a creature holds nothing and isn't held
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
+
+#### Examples
+A grapple technique that works whether you hold the target or it holds you
+```jsonc
+"condition": { "or": [ { "u_is_grabbing": "npc" }, { "u_is_grabbed": "npc" } ] }
+```
+
+The beta talker is held, by anyone; the alpha talker holds nothing
+```jsonc
+{ "and": [ { "npc_is_grabbed": "any" }, { "not": { "u_is_grabbing": "any" } } ] }
+```
+
 ### `u_has_part_flag`, `npc_has_part_flag`
 - type: string or [variable object](##variable-object)
 - return true if alpha or beta talker is a vehicle with a part with a specific flag
