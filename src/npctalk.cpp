@@ -6274,9 +6274,16 @@ talk_effect_fun_t::func f_set_weather( const JsonObject &jo, std::string_view me
             return;
         }
         weather_manager &weather = get_weather();
-        // A duration of 0 or less ends at once, which just clears an earlier set_weather
-        weather.eoc_weather.set( wt, duration ? calendar::turn + duration->evaluate( d ) :
-                                 calendar::turn_max );
+        // A duration of 0 or less ends at once, which just clears an earlier set_weather;
+        // one reaching past calendar::turn_max (which would overflow) lasts until cleared
+        time_point end = calendar::turn_max;
+        if( duration ) {
+            const time_duration length = duration->evaluate( d );
+            if( length < calendar::turn_max - calendar::turn ) {
+                end = calendar::turn + length;
+            }
+        }
+        weather.eoc_weather.set( wt, end );
         weather.set_nextweather( calendar::turn );
     };
 }

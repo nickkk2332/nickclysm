@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -186,6 +187,24 @@ TEST_CASE( "loop-j01_eoc_weather_overrides_hold_until_they_run_out", "[audit][we
         CHECK( units::to_kelvin_delta( *weather.eoc_temperature_offset.value ) == Approx( -15 ) );
         CHECK( weather.eoc_temperature_offset.end == calendar::turn + 1_days );
         CHECK( !weather.eoc_temperature.value );
+
+        // A saved weather type that no longer exists (its mod was removed) is dropped, since
+        // nothing could ever end it; the other overrides still load
+        std::string saved = os.str();
+        const std::string saved_weather = R"("eoc_weather":"portal_storm")";
+        const size_t at = saved.find( saved_weather );
+        REQUIRE( at != std::string::npos );
+        saved.replace( at, saved_weather.size(), R"("eoc_weather":"audit_removed_weather")" );
+        weather.clear_eoc_overrides();
+        JsonObject removed = json_loader::from_string( saved );
+        removed.allow_omitted_members();
+        const std::string dmsg = capture_debugmsg_during( [&removed]() {
+            weather_manager::unserialize_all( removed );
+        } );
+        CHECK_THAT( dmsg, Catch::Contains( "audit_removed_weather" ) );
+        CHECK( !weather.eoc_weather.value );
+        CHECK( weather.eoc_weather.end == calendar::turn_max );
+        CHECK( weather.eoc_windspeed.value );
     }
 }
 

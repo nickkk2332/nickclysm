@@ -6005,7 +6005,7 @@ Halve the spawn rate of guns, and stop food from spawning
 ```
 
 #### `set_weather`
-Forces a weather type for some time, whatever the weather generator would pick. The weather changes at once (EOCs that react to a weather change run), stays through later weather changes and saves, and the normal weather comes back when the time runs out. Running it again replaces the previous one. The `ETERNAL_WEATHER` option and the debug menu's forced weather take precedence. To hold temperature or wind as well, assign `weather('temperature')`, `weather('temperature_offset')`, `weather('windpower')` or `weather('wind_direction')` with a `'duration'` (see the `weather` function in [NPCs.md](NPCs.md)).
+Forces a weather type for some time, whatever the weather generator would pick. The weather changes at once (EOCs that react to a weather change run), stays through later weather changes and saves, and the normal weather comes back when the time runs out. Running it again replaces the previous one. If the weather type no longer exists when a save is loaded (its mod was removed), the override is dropped. The `ETERNAL_WEATHER` option and the debug menu's forced weather take precedence. To hold temperature or wind as well, assign `weather('temperature')`, `weather('temperature_offset')`, `weather('windpower')` or `weather('wind_direction')` with a `'duration'` (see the `weather` function in [NPCs.md](NPCs.md)).
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |

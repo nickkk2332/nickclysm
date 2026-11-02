@@ -1773,9 +1773,16 @@ void weather_manager::unserialize_all( const JsonObject &w )
     weather_manager &weather = get_weather();
     weather.clear_eoc_overrides();
     if( w.has_member( "eoc_weather" ) ) {
-        weather.eoc_weather.set( weather_type_id( w.get_string( "eoc_weather" ) ),
-                                 calendar::turn_max );
-        w.read( "eoc_weather_end", weather.eoc_weather.end );
+        const weather_type_id saved_weather( w.get_string( "eoc_weather" ) );
+        time_point saved_end = calendar::turn_max;
+        w.read( "eoc_weather_end", saved_end );
+        // The mod that defined it may be gone: nothing could ever end such an override
+        if( saved_weather.is_valid() && saved_weather != WEATHER_NULL ) {
+            weather.eoc_weather.set( saved_weather, saved_end );
+        } else {
+            debugmsg( "Dropping the saved set_weather override: unknown weather type \"%s\".",
+                      saved_weather.str() );
+        }
     }
     if( w.has_member( "eoc_temperature" ) ) {
         weather.eoc_temperature.set( units::from_kelvin( w.get_float( "eoc_temperature" ) ),
