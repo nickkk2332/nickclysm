@@ -340,6 +340,19 @@ TEST_CASE( "hlth-b08_onhit_effect_caps_use_the_effect_they_add_to", "[audit][hea
         CHECK( u.get_effect( effect_debugged, body_part_torso ).get_intensity() == 4 );
         CHECK( u.get_effect_dur( effect_debugged, body_part_torso ) == 15_turns );
     }
+
+    SECTION( "an effect near the intensity cap is raised to it, not lowered" ) {
+        hit.intensity = 2;
+        hit.max_intensity = 3;
+        hit.duration = 1;
+        onhit.push_back( hit );
+        u.add_effect( effect_debugged, 10_turns, body_part_torso, false, 2 );
+        REQUIRE( u.get_effect( effect_debugged, body_part_torso ).get_intensity() == 2 );
+
+        audit_bash_torso( u );
+        // add_effect sets the intensity: the old code passed the leftover 3 - 2 = 1.
+        CHECK( u.get_effect( effect_debugged, body_part_torso ).get_intensity() == 3 );
+    }
     clear_avatar();
 }
 

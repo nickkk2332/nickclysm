@@ -1135,10 +1135,12 @@ void Character::on_damage_of_type( const effect_source &source, int adjusted_dam
                     add_msg_debug( debugmode::DF_CHARACTER,
                                    "Max intensity %d, current intensity %d", eff.max_intensity, prev_int );
                     if( ( prev_int + scaled_int ) > eff.max_intensity ) {
-                        scaled_int = eff.max_intensity - prev_int;
-                        int_capped = scaled_int <= 0;
+                        // add_effect sets the intensity of an existing effect: raise it to
+                        // the cap instead of setting it to the leftover increment.
+                        scaled_int = std::max( prev_int, eff.max_intensity );
+                        int_capped = prev_int >= eff.max_intensity;
                         add_msg_debug( debugmode::DF_CHARACTER,
-                                       "Limiting added intensity to %d", scaled_int );
+                                       "Limiting intensity to %d", scaled_int );
                     }
                 }
                 if( eff.max_duration != INT_MAX ) {
