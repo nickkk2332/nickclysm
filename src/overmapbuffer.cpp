@@ -1,6 +1,7 @@
 #include "overmapbuffer.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -11,6 +12,7 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 
 #include "basecamp.h"
 #include "calendar.h"
@@ -1322,6 +1324,164 @@ bool overmapbuffer::is_findable_location( const tripoint_abs_omt &location,
     return true;
 }
 
+namespace
+{
+// Whether an overmap terrain matches any of a search's wanted types, worked out once per
+// terrain for the whole search instead of by string comparisons on every tile.
+class omt_type_matcher
+{
+    public:
+        explicit omt_type_matcher( const std::vector<std::pair<std::string, ot_match_type>> &types ) :
+            types( types ) {}
+
+        bool matches( const oter_id &oter ) {
+            const size_t i = static_cast<size_t>( oter.to_i() );
+            if( i >= known.size() ) {
+                known.resize( std::max( i + 1, overmap_terrains::get_all().size() ), unknown );
+            }
+            if( known[i] == unknown ) {
+                known[i] = std::any_of( types.begin(), types.end(),
+                [&oter]( const std::pair<std::string, ot_match_type> &t ) {
+                    return is_ot_match( t.first, oter, t.second );
+                } ) ? yes : no;
+            }
+            return known[i] == yes;
+        }
+
+    private:
+        static constexpr char unknown = 0;
+        static constexpr char no = 1;
+        static constexpr char yes = 2;
+        const std::vector<std::pair<std::string, ot_match_type>> &types;
+        std::vector<char> known;
+};
+
+// Tests the tiles of a terrain search (one without an overmap special) as
+// overmapbuffer::is_findable_location does, but with the type test resolved once per terrain
+// and the overmap looked up once per column of tiles. Like is_findable_location, it touches
+// (loads, or generates unless existing_only) a column's overmap when it tests the first tile
+// there, and only if there are types to test.
+class omt_terrain_search
+{
+    public:
+        omt_terrain_search( overmapbuffer &buffer, const omt_find_params &params ) :
+            buffer( buffer ), params( params ), matcher( params.types ),
+            overmaps_seen( buffer.get_overmap_count() ),
+            levels_in_range( std::max( 0, std::min( params.max_z, OVERMAP_HEIGHT ) -
+                                       std::max( params.min_z, -OVERMAP_DEPTH ) + 1 ) ) {}
+
+        // The tiles tested next are in this column.
+        void start_column( const point_abs_omt &p ) {
+            column = p;
+            looked_up = false;
+        }
+
+        bool findable( int z ) {
+            if( params.types.empty() ) {
+                return false;
+            }
+            if( !looked_up ) {
+                look_up_overmap();
+            }
+            if( om == nullptr || z < -OVERMAP_DEPTH || z > OVERMAP_HEIGHT || !layer_may_match( z ) ) {
+                return false;
+            }
+            const tripoint_om_omt p( local, z );
+            if( !matcher.matches( om->ter_unsafe( p ) ) ) {
+                return false;
+            }
+            if( params.must_see && om->seen( p ) == om_vision_level::unseen ) {
+                return false;
+            }
+            if( params.cant_see && om->seen( p ) != om_vision_level::unseen ) {
+                return false;
+            }
+            return true;
+        }
+
+        // No tile of the current column (in the search's z range) can be findable: there is
+        // nothing to look for, no overmap there to look in, or no level of that overmap in the
+        // range holds a wanted terrain.
+        bool column_done() const {
+            return params.types.empty() ||
+                   ( looked_up && ( om == nullptr || state->dead_layers >= levels_in_range ) );
+        }
+
+    private:
+        struct layer_state {
+            int tests = 0;
+            bool scanned = false;
+            bool any_match = false;
+        };
+        struct overmap_state {
+            std::array<layer_state, OVERMAP_LAYERS> layers;
+            // levels checked whole and found to hold no wanted terrain
+            int dead_layers = 0;
+        };
+        // After this many tests on one level of an overmap, the whole level is checked for a
+        // wanted terrain once, so a search that would find nothing there skips the rest.
+        static constexpr int scan_after_tests = 1024;
+
+        bool layer_may_match( int z ) {
+            layer_state &layer = state->layers[z + OVERMAP_DEPTH];
+            if( layer.scanned ) {
+                return layer.any_match;
+            }
+            if( ++layer.tests < scan_after_tests ) {
+                return true;
+            }
+            layer.scanned = true;
+            for( int y = 0; y < OMAPY && !layer.any_match; ++y ) {
+                for( int x = 0; x < OMAPX; ++x ) {
+                    if( matcher.matches( om->ter_unsafe( tripoint_om_omt( x, y, z ) ) ) ) {
+                        layer.any_match = true;
+                        break;
+                    }
+                }
+            }
+            if( !layer.any_match ) {
+                ++state->dead_layers;
+            }
+            return layer.any_match;
+        }
+
+        void look_up_overmap() {
+            point_abs_om om_pos;
+            std::tie( om_pos, local ) = project_remain<coords::om>( column );
+            // Ask again for another overmap, or once an overmap was added (generated, or loaded
+            // from disk, which can create others): one that was missing may exist now.
+            if( !om_cached || om_pos != om_pos_cached ||
+                buffer.get_overmap_count() != overmaps_seen ) {
+                om = params.existing_only ? buffer.get_existing( om_pos ) : &buffer.get( om_pos );
+                om_pos_cached = om_pos;
+                om_cached = true;
+                if( buffer.get_overmap_count() != overmaps_seen ) {
+                    // a new overmap may have changed its neighbors, so check every level again
+                    overmaps_seen = buffer.get_overmap_count();
+                    overmap_states.clear();
+                }
+                state = om == nullptr ? nullptr : &overmap_states[om];
+            }
+            looked_up = true;
+        }
+
+        overmapbuffer &buffer;
+        const omt_find_params &params;
+        omt_type_matcher matcher;
+        int overmaps_seen;
+        // levels of the search's z range that an overmap has
+        int levels_in_range;
+        point_abs_omt column;
+        bool looked_up = false;
+        bool om_cached = false;
+        overmap *om = nullptr;
+        point_abs_om om_pos_cached;
+        point_om_omt local;
+        std::unordered_map<const overmap *, overmap_state> overmap_states;
+        overmap_state *state = nullptr;
+};
+} // namespace
+
 tripoint_abs_omt overmapbuffer::find_closest(
     const tripoint_abs_omt &origin, const std::string &type, int const radius, bool must_be_seen,
     ot_match_type match_type, bool existing_overmaps_only,
@@ -1412,14 +1572,19 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
 
         return result_pos;
     } else {
-
-        for( const point_abs_omt &loc_xy : closest_points_first( origin.xy(), min_dist, max_dist ) ) {
+        // The spiral of columns, nearest first, walked without building it up front. Each column
+        // is tested on every z-level in range, in the same order as always, so ties between
+        // equally close matches come out in the same order too.
+        omt_terrain_search search( *this, params );
+        find_point_closest_first( origin.xy().raw(), min_dist, max_dist, [&]( const point & raw ) {
+            const point_abs_omt loc_xy( raw );
             const int dist_xy = square_dist( origin.xy(), loc_xy );
 
             if( found_dist < dist_xy ) {
-                break;
+                return true;
             }
 
+            search.start_column( loc_xy );
             for( int z = params.min_z; z <= params.max_z; z++ ) {
                 const tripoint_abs_omt loc( loc_xy, z );
                 const int dist = square_dist( origin, loc );
@@ -1428,16 +1593,19 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
                     continue;
                 }
 
-                if( is_findable_location( loc, params ) ) {
+                if( search.findable( z ) ) {
                     if( dist < found_dist ) {
                         // A strictly closer match replaces the farther ones found so far.
                         result.clear();
                     }
                     found_dist = dist;
                     result.push_back( loc );
+                } else if( search.column_done() ) {
+                    break;
                 }
             }
-        }
+            return false;
+        } );
 
         return random_entry( result, tripoint_abs_omt::invalid );
     }
@@ -1511,11 +1679,16 @@ std::vector<tripoint_abs_omt> overmapbuffer::find_all( const tripoint_abs_omt &o
             }
         }
     } else {
-        for( const tripoint_abs_omt &loc : closest_points_first( origin, min_dist, max_dist ) ) {
-            if( is_findable_location( loc, params ) ) {
-                result.push_back( loc );
+        // The spiral around the origin, on its z-level, walked without building it up front.
+        omt_terrain_search search( *this, params );
+        find_point_closest_first( origin.xy().raw(), min_dist, max_dist, [&]( const point & raw ) {
+            const point_abs_omt loc_xy( raw );
+            search.start_column( loc_xy );
+            if( search.findable( origin.z() ) ) {
+                result.emplace_back( loc_xy, origin.z() );
             }
-        }
+            return false;
+        } );
     }
 
     return result;
