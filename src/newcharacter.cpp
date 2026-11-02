@@ -41,6 +41,7 @@
 #include "input_enums.h"
 #include "input_popup.h"
 #include "item.h"
+#include "item_location.h"
 #include "json.h"
 #include "loading_ui.h"
 #include "localized_comparator.h"
@@ -2340,6 +2341,16 @@ bool avatar::load_template( const std::string &template_name, pool_type &pool )
         }
 
         deserialize( legacy_template );
+
+        // The items keep the uids they had in the game the template was made from. Every
+        // character started from it would share them, with each other and with that game's items
+        // (in the same world, a predecessor's backpack), so give them new ones.
+        if( item_location wielded = get_wielded_item() ) {
+            wielded->renew_uids();
+        }
+        for( item_location &worn_item : top_items_loc() ) {
+            worn_item->renew_uids();
+        }
 
         // If stored_calories the template is under a million (kcals < 1000), assume it predates the
         // kilocalorie-to-literal-calorie conversion and is off by a factor of 1000.

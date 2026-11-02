@@ -3274,6 +3274,8 @@ void item::io( Archive &archive )
     if constexpr( Archive::is_input::value ) {
         if( !uid_.is_valid() ) {
             uid_ = item_uid( generate_next_item_uid() );
+        } else {
+            reserve_item_uid( uid_.get_value() );
         }
     }
 

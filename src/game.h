@@ -723,6 +723,8 @@ class game
         void reset_light_level();
         character_id assign_npc_id();
         int64_t assign_item_uid();
+        // Keeps the uids assign_item_uid hands out above one in use, e.g. read from a save
+        void reserve_item_uid( int64_t uid );
         Creature *is_hostile_nearby();
         Creature *is_hostile_very_close( bool dangerous = false );
         field_entry *is_in_dangerous_field();

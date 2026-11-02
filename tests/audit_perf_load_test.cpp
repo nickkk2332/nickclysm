@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -5,6 +6,7 @@
 #include <list>
 #include <memory>
 #include <optional>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -12,6 +14,7 @@
 #include <vector>
 
 #include "achievement.h"
+#include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_path.h"
@@ -26,6 +29,7 @@
 #include "event_statistics.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
+#include "game.h"
 #include "item.h"
 #include "item_location.h"
 #include "item_pocket.h"
@@ -41,9 +45,12 @@
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
+#include "player_difficulty.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "power_network.h"
 #include "ret_val.h"
+#include "scenario.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "submap.h"
@@ -132,6 +139,42 @@ const item *find_contained( const item &container, const itype_id &type )
         }
     }
     return nullptr;
+}
+
+// The uids of an item and everything in it
+std::vector<int64_t> uids_in( const item &it )
+{
+    std::vector<int64_t> result = { it.uid().get_value() };
+    for( const item *contained : it.all_items_ptr() ) {
+        result.push_back( contained->uid().get_value() );
+    }
+    return result;
+}
+
+// Saved items with every uid ("uid" and "rle_uids") replaced by the next from next_uid
+std::string renumber_uids( const std::string &json, int64_t &next_uid )
+{
+    static const std::regex uids( R"re("uid":\d+|"rle_uids":\[[0-9,]*\])re" );
+    std::string result;
+    std::string::const_iterator done = json.begin();
+    for( std::sregex_iterator m( json.begin(), json.end(), uids ), end; m != end; ++m ) {
+        result.append( done, ( *m )[0].first );
+        const std::string found = ( *m )[0].str();
+        if( found.rfind( "\"uid\"", 0 ) == 0 ) {
+            result += "\"uid\":" + std::to_string( next_uid++ );
+        } else {
+            const size_t count = found == "\"rle_uids\":[]" ? 0 :
+                                 std::count( found.begin(), found.end(), ',' ) + 1;
+            result += "\"rle_uids\":[";
+            for( size_t i = 0; i < count; ++i ) {
+                result += ( i == 0 ? "" : "," ) + std::to_string( next_uid++ );
+            }
+            result += "]";
+        }
+        done = ( *m )[0].second;
+    }
+    result.append( done, json.end() );
+    return result;
 }
 
 void send_game_start( event_bus &b )
@@ -460,6 +503,106 @@ TEST_CASE( "inv-p01_saved_pockets_beyond_the_definition_are_reinserted",
     CHECK( types_in( loaded, pocket_type::MIGRATION ).empty() );
     CHECK( find_contained( loaded, itype_lighter )->uid() == find_contained( can,
             itype_lighter )->uid() );
+}
+
+// INV-P01 follow-up, uid collisions: now that contained items keep their uids, a character made
+// from a template (which restores every item's uid) shared all of them with every other
+// character made from it, and with the game it was made from: in the same world, a new
+// character picking up its predecessor's backpack would have had two items with each uid.
+TEST_CASE( "inv-p01_characters_from_a_template_get_new_item_uids", "[audit][item][item_uid]" )
+{
+    const scenario *const old_scenario = get_scenario();
+    const std::string name = "audit inv-p01 uids";
+    on_out_of_scope cleanup( [&]() {
+        set_scenario( old_scenario );
+        remove_file( PATH_INFO::templatedir() + name + ".template" );
+    } );
+    REQUIRE( assure_dir_exist( PATH_INFO::templatedir() ) );
+
+    avatar original;
+    item pack( itype_test_backpack );
+    REQUIRE( pack.put_in( item( itype_tshirt ), pocket_type::CONTAINER ).success() );
+    original.wear_item( pack, false );
+    original.set_wielded_item( item( itype_test_mini_backpack ) );
+    std::set<int64_t> in_use;
+    for( item_location &worn : original.top_items_loc() ) {
+        for( int64_t uid : uids_in( *worn ) ) {
+            in_use.insert( uid );
+        }
+    }
+    in_use.insert( original.get_wielded_item()->uid().get_value() );
+    REQUIRE( in_use.size() == 3 );
+    original.save_template( name, pool_type::FREEFORM );
+
+    // two characters from the template: all their items' uids are new
+    for( int i = 0; i < 2; ++i ) {
+        avatar from_template;
+        pool_type pool = pool_type::TRANSFER;
+        REQUIRE( from_template.load_template( name, pool ) );
+        const std::vector<item_location> worn = from_template.top_items_loc();
+        REQUIRE( worn.size() == 1 );
+        REQUIRE( worn[0]->typeId() == itype_test_backpack );
+        REQUIRE( find_contained( *worn[0], itype_tshirt ) != nullptr );
+        REQUIRE( from_template.get_wielded_item() );
+        std::vector<int64_t> loaded = uids_in( *worn[0] );
+        loaded.push_back( from_template.get_wielded_item()->uid().get_value() );
+        for( int64_t uid : loaded ) {
+            CAPTURE( i, uid );
+            CHECK( uid > 0 );
+            CHECK( in_use.insert( uid ).second );
+        }
+    }
+}
+
+// INV-P01 follow-up, uid collisions: dimension travel saves the maps but not the master save
+// that holds the uid counter, so after a crash the counter could be behind uids already saved
+// in the maps. Reading a uid now keeps new uids above it, and the dimension data saved on travel
+// carries the counter too.
+TEST_CASE( "inv-p01_uids_read_from_a_save_keep_new_uids_above_them", "[audit][item][item_uid]" )
+{
+    // uids the counter has not reached, as in maps saved after the master save
+    int64_t next_uid = generate_next_item_uid() + 100000;
+
+    item pack( itype_test_backpack );
+    REQUIRE( pack.put_in( item( itype_tshirt ), pocket_type::CONTAINER ).success() );
+    const item loaded = from_json( renumber_uids( to_json( pack ), next_uid ) );
+    const std::vector<int64_t> loaded_uids = uids_in( loaded );
+    REQUIRE( loaded_uids.size() == 2 );
+    CHECK( *std::max_element( loaded_uids.begin(), loaded_uids.end() ) == next_uid - 1 );
+    CHECK( item( itype_scrap ).uid().get_value() > next_uid - 1 );
+
+    // a run of identical items, saved as one item and the uids of the others
+    next_uid += 100000;
+    cata::colony<item> run;
+    for( int i = 0; i < 3; ++i ) {
+        run.insert( item( itype_scrap ) );
+    }
+    std::ostringstream os;
+    JsonOut jsout( os );
+    jsout.write( run );
+    const std::string saved_run = renumber_uids( os.str(), next_uid );
+    REQUIRE( saved_run.find( "rle_uids" ) != std::string::npos );
+    cata::colony<item> loaded_run;
+    JsonValue jv = json_loader::from_string( saved_run );
+    REQUIRE( jv.read( loaded_run ) );
+    REQUIRE( loaded_run.size() == 3 );
+    for( const item &it : loaded_run ) {
+        CHECK( it.uid().get_value() >= next_uid - 3 );
+    }
+    CHECK( item( itype_scrap ).uid().get_value() > next_uid - 1 );
+
+    // the counter saved with the dimension data
+    const int64_t saved_counter = next_uid + 100000;
+    std::ostringstream dimension_os;
+    JsonOut dimension_out( dimension_os );
+    dimension_out.start_object();
+    // what reading dimension data replaces, as it is
+    dimension_out.member( "power_networks" );
+    g->power_networks().serialize( dimension_out );
+    dimension_out.member( "next_item_uid", saved_counter );
+    dimension_out.end_object();
+    g->unserialize_dimension_data( json_loader::from_string( dimension_os.str() ) );
+    CHECK( generate_next_item_uid() >= saved_counter );
 }
 
 namespace

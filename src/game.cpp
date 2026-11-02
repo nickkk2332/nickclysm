@@ -3723,6 +3723,11 @@ int64_t game::assign_item_uid()
     return next_item_uid++;
 }
 
+void game::reserve_item_uid( int64_t uid )
+{
+    next_item_uid = std::max( next_item_uid, uid + 1 );
+}
+
 Creature *game::is_hostile_nearby()
 {
     int distance = ( get_option<int>( "SAFEMODEPROXIMITY" ) <= 0 ) ? MAX_VIEW_DISTANCE :
