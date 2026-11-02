@@ -4438,6 +4438,7 @@ talk_effect_fun_t::func f_pickup_item( const JsonObject &jo, std::string_view me
             w.range = 1;
             options.apply( w, d );
             w.item = loc;
+            w.item_uid = loc->uid().get_value();
             w.item_type = loc->typeId();
             w.allow_theft = allow_theft;
             w.true_eocs = true_eocs;

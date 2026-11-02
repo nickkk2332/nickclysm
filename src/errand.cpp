@@ -1,6 +1,7 @@
 #include "errand.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
@@ -16,17 +17,22 @@
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "flag.h"
 #include "item.h"
 #include "json.h"
 #include "line.h"
 #include "map.h"
 #include "map_iterator.h"
+#include "map_selector.h"
 #include "npc.h"
 #include "pathfinding.h"
 #include "point.h"
 #include "ret_val.h"
 #include "talker.h"
 #include "translations.h"
+#include "vehicle.h"
+#include "vehicle_selector.h"
+#include "vpart_position.h"
 
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 
@@ -165,12 +171,16 @@ void settle_theft( Character &who, const item_location &loc )
 }
 
 // puts away what who wields, without the menu the avatar would get: in its pockets if they
-// hold it, else at its feet
-void free_hands( Character &who )
+// hold it, else at its feet; false if it can't let go of it
+bool free_hands( Character &who )
 {
     item_location weapon = who.get_wielded_item();
     if( !weapon ) {
-        return;
+        return true;
+    }
+    if( weapon->has_flag( flag_NO_UNWIELD ) ) {
+        // only a bionic weapon lets go, back into its bionic; unwield() switches that off
+        return who.unwield() && !who.get_wielded_item();
     }
     if( who.can_stash( *weapon ) ) {
         who.mod_moves( -who.item_handling_cost( *weapon ) );
@@ -180,6 +190,39 @@ void free_hands( Character &who )
     } else {
         put_into_vehicle_or_drop( who, item_drop_reason::deliberate, { who.remove_weapon() } );
     }
+    return true;
+}
+
+// the item with this uid among those at p, in containers too
+item_location find_by_uid( const tripoint_bub_ms &p, const int64_t uid, const itype_id &type )
+{
+    map &here = get_map();
+    item_location found;
+    const std::function<bool( item_location )> search = [&]( item_location loc ) {
+        if( loc->uid().get_value() == uid && loc->typeId() == type ) {
+            found = loc;
+            return true;
+        }
+        for( item *inner : loc->all_items_top() ) {
+            if( search( item_location( loc, inner ) ) ) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for( item &it : here.i_at( p ) ) {
+        if( search( item_location( map_cursor( p ), &it ) ) ) {
+            return found;
+        }
+    }
+    if( const std::optional<vpart_reference> cargo = here.veh_at( p ).cargo() ) {
+        for( item &it : cargo->items() ) {
+            if( search( item_location( vehicle_cursor( cargo->vehicle(), cargo->part_index() ), &it ) ) ) {
+                return found;
+            }
+        }
+    }
+    return item_location();
 }
 } // namespace
 
@@ -200,7 +243,7 @@ void walk_order::serialize( JsonOut &jsout ) const
     jsout.member( "false_eocs", false_eocs );
     jsout.member( "context", context );
     if( kind == walk_kind::pickup ) {
-        jsout.member( "item", item );
+        jsout.member( "item_uid", item_uid );
         jsout.member( "item_type", item_type );
         jsout.member( "allow_theft", allow_theft );
     }
@@ -228,7 +271,8 @@ void walk_order::deserialize( const JsonObject &jo )
     jo.read( "false_eocs", false_eocs );
     jo.read( "context", context );
     if( kind == walk_kind::pickup ) {
-        jo.read( "item", item );
+        // the location itself isn't kept: resolving a stale one complains
+        jo.read( "item_uid", item_uid );
         jo.read( "item_type", item_type );
         jo.read( "allow_theft", allow_theft );
     }
@@ -328,7 +372,11 @@ std::optional<std::vector<tripoint_bub_ms>> walk_route( const Character &who,
     // may end where nobody can stand
     if( range > 0 ) {
         std::vector<tripoint_bub_ms> route = route_to( pathfinding_target::radius( target, range ) );
-        if( !route.empty() && walk_end_tile( who, w, route.back() ) ) {
+        if( route.empty() ) {
+            // the most lenient search found nothing in range: neither will one per tile
+            return std::nullopt;
+        }
+        if( walk_end_tile( who, w, route.back() ) ) {
             return route;
         }
     }
@@ -427,11 +475,7 @@ void end_walk( Character &who, const std::string &why )
             }
             return;
         case walk_kind::pickup: {
-            item_location it = w->item;
-            if( it && it->typeId() != w->item_type ) {
-                // loaded from a save, the place held another item by then
-                it = item_location();
-            }
+            const item_location it = pickup_target( *w );
             if( why != reason::arrived ) {
                 run_eocs( who, it, w->false_eocs, w->context, why );
                 return;
@@ -449,6 +493,26 @@ void end_walk( Character &who, const std::string &why )
                       w->context, why );
             return;
     }
+}
+
+void drop_walk( Character &who )
+{
+    take_walk( who );
+}
+
+item_location pickup_target( const walk_order &w )
+{
+    if( w.item.where() != item_location::type::invalid ) {
+        // set by the effect this session: still valid, or gone
+        return w.item ? w.item : item_location();
+    }
+    // loaded from a save: look for it where it was
+    map &here = get_map();
+    const tripoint_bub_ms p = here.get_bub( w.target );
+    if( w.item_uid == 0 || !here.inbounds( p ) ) {
+        return item_location();
+    }
+    return find_by_uid( p, w.item_uid, w.item_type );
 }
 
 void review_walk( Character &who )
@@ -557,7 +621,9 @@ item_result wield( Character &who, const item_location &loc, const bool allow_th
         return { reason::cannot_wield, loc };
     }
     settle_theft( who, loc );
-    free_hands( who );
+    if( !free_hands( who ) ) {
+        return { reason::cannot_wield, loc };
+    }
     // costs what wielding it costs from where it is
     if( !who.wield( loc ) ) {
         return { reason::cannot_wield, loc };

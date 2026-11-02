@@ -9,6 +9,7 @@
 #include "activity_type.h"
 #include "avatar.h"
 #include "avatar_action.h"
+#include "bionics.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
@@ -47,22 +48,28 @@
 
 static const activity_id ACT_ADD_VARIABLE_COMPLETE( "ACT_ADD_VARIABLE_COMPLETE" );
 
+static const bionic_id bio_claws( "bio_claws" );
+static const bionic_id bio_power_storage( "bio_power_storage" );
+
 static const faction_id faction_tacoma_commune( "tacoma_commune" );
 static const faction_id faction_your_followers( "your_followers" );
 
 static const flag_id json_flag_NO_UNWIELD( "NO_UNWIELD" );
 
 static const itype_id itype_backpack( "backpack" );
+static const itype_id itype_bio_claws_weapon( "bio_claws_weapon" );
 static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const itype_id itype_crowbar( "crowbar" );
 static const itype_id itype_fridge_test( "fridge_test" );
 static const itype_id itype_hammer( "hammer" );
+static const itype_id itype_nail( "nail" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_tshirt( "tshirt" );
 static const itype_id itype_water_clean( "water_clean" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
+static const ter_str_id ter_t_door_c( "t_door_c" );
 static const ter_str_id ter_t_wall( "t_wall" );
 
 static constexpr tripoint_bub_ms errand_origin{ 50, 50, 0 };
@@ -441,7 +448,11 @@ TEST_CASE( "u_walk_to_give_up_after", "[npc][eoc][errand]" )
     walk_npc( guy, walk_to_spot_with( R"("give_up_after": 5)" ) );
     // with a time limit it waits for a way to open
     REQUIRE( guy.walk );
-    run_npc_turns( guy, 4 );
+    run_npc_turn( guy );
+    // looks for a way again in a few turns, not every turn
+    REQUIRE( guy.walk );
+    CHECK( guy.walk->retry_at > calendar::turn );
+    run_npc_turns( guy, 3 );
     CHECK( guy.walk );
     CHECK( result().empty() );
     run_until_walk_ends( guy, 5 );
@@ -849,6 +860,15 @@ TEST_CASE( "u_pickup_item_walks_there", "[npc][eoc][errand]" )
         CHECK( result() == "true" );
         CHECK( guy.amount_of( itype_crowbar ) == 1 );
     }
+    SECTION( "saved and loaded on the way, then gone" ) {
+        run_npc_turns( guy, 2 );
+        save_and_load( guy );
+        REQUIRE( guy.walk );
+        get_map().i_clear( spot );
+        run_until_walk_ends( guy, 20 );
+        CHECK( result() == "false" );
+        CHECK( reason() == "gone" );
+    }
     SECTION( "sent again for the same item, the walk goes on" ) {
         run_npc_turns( guy, 2 );
         const int serial = guy.walk->serial;
@@ -1088,4 +1108,105 @@ TEST_CASE( "errand_conditions_are_checked_at_load", "[eoc][errand]" )
                      JsonError );
     CHECK_THROWS_AS( load_condition(
                          R"({ "u_can_reach": { "global_val": "x" }, "max_distance": -1 })" ), JsonError );
+}
+
+// review fixes
+
+TEST_CASE( "u_walk_to_counts_closing_doors_as_walking", "[npc][eoc][errand]" )
+{
+    // a follower shuts the doors it walks through; that isn't an interruption
+    npc &guy = errand_follower();
+    map &here = get_map();
+    guy.rules.set_flag( ally_rule::close_doors );
+    const tripoint_bub_ms door = errand_origin + tripoint( 3, 0, 0 );
+    for( int y = -6; y <= 6; ++y ) {
+        here.ter_set( door + tripoint( 0, y, 0 ), y == 0 ? ter_t_door_c : ter_t_wall );
+    }
+    here.build_map_cache( 0 );
+    const tripoint_bub_ms there = errand_origin + tripoint( 7, 0, 0 );
+    set_spot( there );
+    walk_npc( guy, walk_to_spot_with( R"("interruptible": false)" ) );
+    REQUIRE( guy.walk );
+    run_until_walk_ends( guy, 30 );
+    CHECK( guy.pos_bub() == there );
+    CHECK( result() == "true" );
+    CHECK( here.ter( door ).id() == ter_t_door_c );
+}
+
+TEST_CASE( "u_walk_to_way_shut_on_the_way", "[npc][eoc][errand]" )
+{
+    // walled in after the NPC set off: it plans again rather than bash through
+    npc &guy = errand_npc();
+    map &here = get_map();
+    const tripoint_bub_ms there = errand_origin + tripoint( 8, 0, 0 );
+    set_spot( there );
+    walk_npc( guy, walk_to_spot + " }" );
+    run_npc_turns( guy, 2 );
+    REQUIRE( guy.walk );
+    wall_off( there );
+    const int turns = run_until_walk_ends( guy, 20 );
+    CHECK( result() == "false" );
+    CHECK( reason() == "unreachable" );
+    CHECK( turns < errand::walk_patience );
+    for( const tripoint_bub_ms &q : here.points_in_radius( there, 1 ) ) {
+        if( q != there ) {
+            CHECK( here.ter( q ).id() == ter_t_wall );
+        }
+    }
+}
+
+TEST_CASE( "u_wield_item_puts_a_bionic_weapon_away", "[npc][eoc][errand]" )
+{
+    npc &guy = errand_npc();
+    avatar &you = get_avatar();
+    const bool by_npc = GENERATE( true, false );
+    CAPTURE( by_npc );
+    Character &who = by_npc ? static_cast<Character &>( guy ) : you;
+    who.add_bionic( bio_power_storage );
+    who.set_power_level( who.get_max_power_level() );
+    who.add_bionic( bio_claws );
+    const std::optional<bionic *> claws = who.find_bionic_by_type( bio_claws );
+    REQUIRE( claws );
+    REQUIRE( who.activate_bionic( **claws ) );
+    REQUIRE( who.is_using_bionic_weapon() );
+    give_backpack( who );
+    item_location loc = who.i_add( item( itype_crowbar ) );
+    apply_to_item( item_effect( "u_wield_item" ), who, loc );
+    CHECK( result() == "true" );
+    CHECK_FALSE( who.is_using_bionic_weapon() );
+    REQUIRE( who.get_wielded_item() );
+    CHECK( who.get_wielded_item()->typeId() == itype_crowbar );
+    // the claws went back into the arm: none in the pack or on the ground
+    CHECK( who.amount_of( itype_bio_claws_weapon ) == 0 );
+    CHECK( get_map().i_at( who.pos_bub() ).empty() );
+    clear_avatar();
+}
+
+TEST_CASE( "u_pickup_item_of_a_stack", "[npc][eoc][errand]" )
+{
+    // nails picked up join the nails carried; the item talker follows the whole stack
+    npc &guy = errand_npc();
+    give_backpack( guy );
+    guy.i_add( item( itype_nail, calendar::turn, 5 ) );
+    const tripoint_bub_ms spot = errand_origin + tripoint( 1, 0, 0 );
+    item_location loc( map_cursor( spot ), &get_map().add_item( spot, item( itype_nail, calendar::turn,
+                       10 ) ) );
+    apply_to_item( item_effect( "u_pickup_item" ), guy, loc );
+    CHECK( result() == "true" );
+    CHECK( guy.charges_of( itype_nail ) == 15 );
+    REQUIRE( loc );
+    CHECK( loc->charges == 15 );
+}
+
+TEST_CASE( "npc_reboot_drops_the_walk", "[npc][errand]" )
+{
+    npc &guy = errand_npc();
+    set_spot( errand_origin + tripoint( 9, 0, 0 ) );
+    walk_npc( guy, walk_to_spot_with( R"("run": true)" ) );
+    run_npc_turn( guy );
+    REQUIRE( guy.is_running() );
+    guy.reboot();
+    CHECK_FALSE( guy.walk );
+    CHECK_FALSE( guy.is_running() );
+    CHECK( result().empty() );
 }

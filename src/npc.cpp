@@ -3359,7 +3359,7 @@ void npc::reboot()
     activity = player_activity();
     clear_destination();
     // dropped without its EOCs: the walk may be what spun
-    walk.reset();
+    errand::drop_walk( *this );
     activity_handlers::clean_may_activity_occupancy_items_var( *this );
     add_effect( effect_npc_suspend, 24_hours, true, 1 );
 }
