@@ -8,7 +8,10 @@
 #include "cata_catch.h"
 #include "character.h"
 #include "effect.h"
+#include "flag.h"
 #include "game_constants.h"
+#include "item.h"
+#include "map.h"
 #include "map_helpers.h"
 #include "morale.h"
 #include "player_helpers.h"
@@ -19,8 +22,12 @@ static const addiction_id addiction_nicotine( "nicotine" );
 static const bodypart_str_id body_part_arm_insect_l( "arm_insect_l" );
 static const bodypart_str_id body_part_wing_insect_l( "wing_insect_l" );
 
+static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_mending( "mending" );
 static const efftype_id effect_venom_dmg( "venom_dmg" );
+
+static const itype_id itype_test_longshirt( "test_longshirt" );
+static const itype_id itype_test_socks( "test_socks" );
 
 static const morale_type morale_food_good( "morale_food_good" );
 
@@ -200,4 +207,45 @@ TEST_CASE( "hlth-b06_morale_stacking_uses_sign_of_new_bonus", "[audit][health]" 
         m.add( morale_food_good, 10, 40, 1_hours, 30_minutes );
         CHECK( m.has( morale_food_good ) == 14 );
     }
+}
+
+// HLTH-B07: becoming incorporeal dropped only the items that can be taken off, but then
+// removed every item in inv_dump(), so worn NO_TAKEOFF items were destroyed.
+TEST_CASE( "hlth-b07_incorporeal_keeps_worn_no_takeoff_items", "[audit][health]" )
+{
+    clear_map();
+    clear_avatar();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms pos = u.pos_bub();
+
+    item shirt( itype_test_longshirt );
+    shirt.set_flag( flag_NO_TAKEOFF );
+    REQUIRE( u.wear_item( shirt, false ) );
+    REQUIRE( u.wear_item( item( itype_test_socks ), false ) );
+    REQUIRE( u.is_wearing( itype_test_longshirt ) );
+    REQUIRE( u.is_wearing( itype_test_socks ) );
+    REQUIRE( here.i_at( pos ).empty() );
+
+    u.add_effect( effect_incorporeal, 1_hours );
+    u.suffer();
+
+    // The socks fall through; the shirt that can't be taken off stays on.
+    CHECK( !u.is_wearing( itype_test_socks ) );
+    CHECK( u.is_wearing( itype_test_longshirt ) );
+    int socks_on_ground = 0;
+    int shirts_on_ground = 0;
+    for( const item &it : here.i_at( pos ) ) {
+        if( it.typeId() == itype_test_socks ) {
+            socks_on_ground++;
+        } else if( it.typeId() == itype_test_longshirt ) {
+            shirts_on_ground++;
+        }
+    }
+    CHECK( socks_on_ground == 1 );
+    CHECK( shirts_on_ground == 0 );
+
+    u.remove_effect( effect_incorporeal );
+    clear_avatar();
+    clear_map();
 }

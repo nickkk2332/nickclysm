@@ -1053,16 +1053,18 @@ void suffer::from_sunburn( Character &you, bool severe )
 void suffer::from_item_dropping( Character &you )
 {
     if( you.has_effect( effect_incorporeal ) && !you.has_flag( json_flag_ETHEREAL ) ) {
-        std::vector<item *> dump = you.inv_dump();
         std::list<item> tumble_items;
-        for( item *dump_item : dump ) {
+        // Only the items that fall are removed; the ones that can't be taken off stay put.
+        std::vector<item *> fallen;
+        for( item *dump_item : you.inv_dump() ) {
             if( !dump_item->has_flag( flag_NO_UNWIELD ) && !dump_item->has_flag( flag_NO_TAKEOFF ) &&
                 !dump_item->has_flag( flag_INTEGRATED ) ) {
                 tumble_items.push_back( *dump_item );
+                fallen.push_back( dump_item );
             }
         }
         put_into_vehicle_or_drop( you, item_drop_reason::tumbling, tumble_items );
-        for( item *i : dump ) {
+        for( item *i : fallen ) {
             you.i_rem( i );
         }
     }
