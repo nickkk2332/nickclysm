@@ -42,7 +42,7 @@ The NPC walks to a tile on the local map over the following turns, using its own
 - **`give_up_after`.** Without it the walk gives up at once when there's no way there (`unreachable`), or after 10 turns without progress (`blocked`). With it, the walk waits for a way to open and gives up only when the time is up (`timeout`).
 - **`interruptible`.** A fight, a flight, a noise to investigate or an urgent need always comes first. `true` (default): the walk waits and goes on afterwards. `false`: the walk ends with `false_eocs` (`interrupted`) the first time the NPC spends its turn on something else. For the avatar, auto-move stops the usual way (creature in the way, safe mode, the player) and the walk ends as `interrupted`; it never restarts on its own.
 - **EOCs and talkers.** `true_eocs` and `false_eocs` run when the walk ends, with the walker as `u` and no `npc`, the context variables of the EOC that started it, and `reason` (`arrived`, `unreachable`, `blocked`, `timeout`, `interrupted`, `cancelled`).
-- **For goals that run EOCs each turn.** Sending a character again to where it's already going keeps the walk (time limit and progress); a different spot replaces it without running the old EOCs. There is no effect to cancel a walk yet; the JSON goals (section H) will need one when a goal ends.
+- **For goals that run EOCs each turn.** Sending a character again to where it's already going keeps the walk (time limit and progress); a different spot replaces it without running the old EOCs. `u_cancel_walk` / `npc_cancel_walk` ends a walk (`cancelled`, or `{ "silent": true }` without EOCs), for a JSON goal (section H) that ends.
 
 ## B. `u_pickup_item` and inventory moves
 

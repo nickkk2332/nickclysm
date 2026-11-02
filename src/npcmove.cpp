@@ -1669,6 +1669,10 @@ void npc::move()
     // close the door it just walked through: finish it before deciding anything, or a
     // need executor keeps the activity attitude and a follower stops following
     if( activity.id() == ACT_CLOSE_TILE ) {
+        // the movement code set it, so a walk counts it as one of its steps
+        if( walk ) {
+            walk->stepped = true;
+        }
         execute_action( npc_player_activity );
         return;
     }
@@ -4058,13 +4062,25 @@ void npc::step_walk()
     }
     map &here = get_map();
     const tripoint_bub_ms before = pos_bub( here );
-    // the path is kept while it still leads to where the walk ends
+    const bool no_bashing = !walk->bash;
+    // the path is kept while it still leads to where the walk ends and its next step is still
+    // open (a door locked or a wall built since: plan again, bashing only if the walk may)
     const bool keep_path = !path.empty() && errand::walk_end_tile( *this, *walk, path.back() ) &&
-                           ( path.front().z() != before.z() || rl_dist( path.front(), before ) <= 1 );
+                           ( path.front().z() != before.z() ||
+                             ( rl_dist( path.front(), before ) <= 1 && can_move_to( path.front(), no_bashing ) ) );
     if( !keep_path ) {
-        std::optional<std::vector<tripoint_bub_ms>> route = errand::walk_route( *this, *walk, false );
+        if( walk->give_up_at && calendar::turn < walk->retry_at ) {
+            // no way there a moment ago: look again in a few turns, not every turn
+            move_pause();
+            return;
+        }
+        // around creatures first; through them (move_to() asks them to make way, or waits) when
+        // they're all that's in the way.  Waiting for a way to open, only walls matter.
+        std::optional<std::vector<tripoint_bub_ms>> route;
+        if( walk->retry_at == calendar::turn_zero ) {
+            route = errand::walk_route( *this, *walk, false );
+        }
         if( !route ) {
-            // through creatures: move_to() asks them to make way, or waits
             route = errand::walk_route( *this, *walk, true );
         }
         if( !route ) {
@@ -4073,14 +4089,24 @@ void npc::step_walk()
                 return;
             }
             // told to keep trying: waits for a way to open
+            walk->retry_at = calendar::turn + 5_turns;
             move_pause();
             return;
         }
+        walk->retry_at = calendar::turn_zero;
         path = std::move( *route );
         ai_cache.retained_trip = {};
     }
+    if( path.empty() ) {
+        move_pause();
+        return;
+    }
     const int moves_before = get_moves();
-    move_to_next();
+    // as move_to_next(), with the walk's own bashing rule
+    move_to( path.front(), no_bashing );
+    if( !path.empty() && pos_bub( here ) == path.front() ) {
+        path.erase( path.begin() );
+    }
     if( !walk ) {
         // something on the way ended it
         return;

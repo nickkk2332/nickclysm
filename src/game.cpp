@@ -98,6 +98,7 @@
 #include "effect_on_condition.h"
 #include "end_screen.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -9930,6 +9931,11 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 {
     map &here = get_map();
     avatar &player = get_avatar();
+    // a walk leads to a spot in the dimension being left (u_walk_to, "Move there!")
+    errand::end_walk( player, errand::reason::cancelled );
+    for( npc *guy : npc_travellers ) {
+        errand::end_walk( *guy, errand::reason::cancelled );
+    }
     std::vector<npc_ptr> moving_npcs;
     moving_npcs.reserve( npc_travellers.size() );
     if( !npc_travellers.empty() ) {

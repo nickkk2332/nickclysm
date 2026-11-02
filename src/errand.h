@@ -6,6 +6,7 @@
 // "Move there!" order, u_pickup_item with "walk") and moving one item (u_pickup_item,
 // u_wield_item, u_wear_item, u_drop_item).  See doc/JSON/EFFECT_ON_CONDITION.md.
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -50,8 +51,10 @@ struct walk_order {
     std::vector<effect_on_condition_id> false_eocs;
     // context values of the EOC that sent the character, passed on to true_eocs and false_eocs
     global_variables::impl_t context;
-    // walk_kind::pickup: the item, and its type, to tell it from another one after a load
+    // walk_kind::pickup: the item, found again after a load by its uid (or its type) where
+    // the walk ends, so a vanished item reads as gone without complaint
     item_location item;
+    int64_t item_uid = 0;
     itype_id item_type;
     bool allow_theft = true;
     // last turn the walker got anywhere; a walk stuck for errand::walk_patience is blocked
@@ -66,6 +69,8 @@ struct walk_order {
     time_point last_step = calendar::turn_zero;
     // tells this walk from one that replaced it
     int serial = 0;
+    // no way there for now: an NPC told to keep trying looks again at this turn
+    time_point retry_at = calendar::turn_zero;
     // took a step during the current npc::move()
     bool stepped = false;
 
@@ -128,6 +133,12 @@ void start_walk( Character &who, walk_order w );
 void set_walk( Character &who, const walk_order &w );
 // ends who's walk and runs its EOCs: for a pickup walk that arrived, the pickup first
 void end_walk( Character &who, const std::string &why );
+// ends who's walk without its EOCs, undoing what it set up (auto-move, running)
+void drop_walk( Character &who );
+// u_cancel_walk: ends who's walk as cancelled, with its false_eocs unless silent; false if none
+bool cancel_walk( Character &who, bool silent );
+// the item a pickup walk is for, or an empty location once it's gone
+item_location pickup_target( const walk_order &w );
 // at the start of an NPC's move: ends a walk that arrived or ran out of time
 void review_walk( Character &who );
 // the NPC spent its move on something else: a walk that isn't interruptible ends

@@ -5155,12 +5155,12 @@ The character takes one item from the ground (or a vehicle's cargo) into its inv
 | --- | --- | --- | --- |
 | "u_pickup_item" / "npc_pickup_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_pickup_item`, `"u"` for `npc_pickup_item`. Anything else is a load error |
 | "walk" | optional | boolean | default false; if the item is out of reach, walk next to it first (as [`u_walk_to`](#u_walk_to-npc_walk_to) with `range` 1) and take it on arrival |
-| "give_up_after", "run", "interruptible" | optional | | with `"walk": true` only, as in [`u_walk_to`](#u_walk_to-npc_walk_to) |
+| "give_up_after", "run", "interruptible" | optional | | with `"walk": true` only, as in [`u_walk_to`](#u_walk_to-npc_walk_to). After a save and load the item is found again where it was by its id; if it's gone by then, the pickup ends as `gone` |
 | "allow_theft" | optional | boolean | default true; taking an item that belongs to someone else is theft, with the usual reaction: for the avatar, a witness of the owning faction tells it off and goes after the item, and the item becomes the avatar's. False refuses instead (`owned`) |
 | "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once the item is taken |
 | "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run when it isn't |
 
-The pickup costs the moves the avatar's pickup costs. An item the character carries already counts as taken.
+The pickup costs the moves the avatar's pickup costs. An item the character carries already counts as taken. An item counted by charges (nails, rounds) joins a stack of the same the character carries, as any pickup does; the item talker then points at the whole stack, so a `u_drop_item` after it drops all of it.
 
 **Refusals.** When it can't take the item, nothing happens and `false_eocs` run with the context variable `reason`:
 
@@ -5219,7 +5219,7 @@ The character wields one item: one it carries, or one on the ground next to it. 
 | "allow_theft" | optional | boolean | default true; as in `u_pickup_item`, for an item on the ground |
 | "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
 
-`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wield` (the character can't wield it, or can't let go of what it wields, or the item is inside what it wields; the avatar is told why). An item it wields already counts as done. Afterwards the item talker points at the wielded item.
+`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wield` (the character can't wield it, or can't let go of what it wields, or the item is inside what it wields; the avatar is told why). An extended bionic weapon is retracted, as unwielding it does; a weapon that can't be let go of at all (cursed, a mutation's) refuses. An item it wields already counts as done. Afterwards the item talker points at the wielded item.
 
 ##### Valid talkers:
 
@@ -5708,7 +5708,7 @@ The character walks to a location over the following turns, the way it walks any
 | --- | --- | --- | --- |
 | "u_walk_to" / "npc_walk_to" | **mandatory** | [variable object](#variable-object) | the location to walk to, like one set by `u_location_variable` |
 | "range" | optional | int or [variable object](#variable-object) | default 0; the walk ends this close to the location: within this many tiles (square distance), on the location's z level. 0 is the tile itself, which must be one to stand on (a closed door will do), or, while another creature stands on it, a tile next to it. Use 1 to walk up to furniture or an item on a counter |
-| "give_up_after" | optional | int, duration or [variable object](#variable-object) | how long to keep trying (an int is turns). Without it the walk gives up as soon as there's no way there, or after 10 turns without getting anywhere (someone blocking a corridor); with it, the walk waits for a way to open and gives up only when the time is up. A value of 0 or less from a variable counts as not given |
+| "give_up_after" | optional | int, duration or [variable object](#variable-object) | how long to keep trying (an int is turns). Without it the walk gives up as soon as there's no way there, or after 10 turns without getting anywhere (someone blocking a corridor); with it, an NPC's walk waits for a way to open (looking again every few turns) and gives up only when the time is up. The avatar can't wait: see below. A value of 0 or less from a variable counts as not given |
 | "run" | optional | boolean | default false; run while the stamina lasts, then walk. Running stops when the walk ends |
 | "interruptible" | optional | boolean | default true; see below |
 | "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run on arrival |
@@ -5723,11 +5723,13 @@ The character walks to a location over the following turns, the way it walks any
 | `blocked` | 10 turns went by without the walker getting anywhere (without `give_up_after`) |
 | `timeout` | `give_up_after` passed |
 | `interrupted` | an NPC's walk with `"interruptible": false` was set aside; the avatar's auto-move stopped |
-| `cancelled` | the player told the follower "Follow me" |
+| `cancelled` | the player told the follower "Follow me", [`u_cancel_walk`](#u_cancel_walk-npc_cancel_walk) ended it, or the walker travelled to another dimension |
 
 **Interruptions (NPCs).** A walk is an order: it comes after combat, after investigating a noise and after urgent needs (thirst, hunger, sleep, temperature), and before following the player, guard duty and camp work. When a fight, a flight, a noise or such a need takes the NPC's turn, the walk waits and goes on once that's done. With `"interruptible": false` it doesn't wait: it ends with `false_eocs` and `reason` `interrupted` the first time the NPC spends its turn on something else.
 
-**The avatar.** For the avatar the walk is auto-move. It stops the way auto-move stops (a creature in the way, safe mode, the player stopping it) and then ends with `reason` `interrupted`; it doesn't start again on its own. `interruptible` doesn't apply.
+**The avatar.** For the avatar the walk is auto-move. It needs a route to start: with no way there it ends at once as `unreachable`, even with `give_up_after`, which for the avatar only limits the time. It stops the way auto-move stops (a creature in the way, safe mode, the player stopping it) and then ends with `reason` `interrupted`; it doesn't start again on its own. `interruptible` doesn't apply.
+
+**On the way.** The walker opens doors, and a follower shuts them behind it if its rules say so; that's part of the walk, not an interruption. It doesn't bash through what's in its way: a way that closes after it set off (a door locked, a wall built) makes it look for another, as if it had just started.
 
 **One walk at a time.** A new walk replaces the one in progress, whose EoCs don't run. Sending the character again to where it's already going doesn't start over: the time limit and progress carry on, and the new `range`, options and EoCs replace the old ones. So an EoC that runs every turn can call `u_walk_to` each time. A follower's "Move there!" order is the same kind of walk, and replaces it or is replaced by it.
 
@@ -5760,6 +5762,32 @@ The NPC you talk to walks to the shed door, says so when it's there, and tells y
 The NPC runs to the spot stored in its `camp_fire` variable; if anything else takes its turn on the way (a fight, a need), the walk ends instead of waiting
 ```jsonc
 { "npc_walk_to": { "npc_val": "camp_fire" }, "run": true, "interruptible": false, "false_eocs": [ "EOC_RAN_INTO_TROUBLE" ] }
+```
+
+#### `u_cancel_walk`, `npc_cancel_walk`
+Ends the walk the character is on ([`u_walk_to`](#u_walk_to-npc_walk_to), `u_pickup_item` with `"walk": true`, or a follower's "Move there!" order). Its `false_eocs` run with `reason` `cancelled`, unless `silent` is true. A character on no walk is left alone.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_cancel_walk" / "npc_cancel_walk" | **mandatory** | simple string, or an object | the object takes the fields below |
+| "silent" | optional | boolean | default false; true ends the walk without running its EoCs |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC stops where it is going, and its `false_eocs` learn why
+```jsonc
+"npc_cancel_walk"
+```
+
+You stop walking, and nothing else happens
+```jsonc
+{ "u_cancel_walk": { "silent": true } }
 ```
 
 #### `u_travel_to_dimension`
