@@ -323,6 +323,16 @@
     "occurrences": [ 0, 0 ]
   },
   {
+    "type": "overmap_connection",
+    "id": "test_audit_rail",
+    "//": "OMAP-B06 test: stands in for the railroads mod's local_railroad.",
+    "subtypes": [
+      { "terrain": "road", "locations": [ "road" ], "basic_cost": 0 },
+      { "terrain": "road", "locations": [ "field" ], "basic_cost": 5 },
+      { "terrain": "road", "locations": [ "forest" ], "basic_cost": 20 }
+    ]
+  },
+  {
     "type": "overmap_terrain",
     "id": "s_restaurant_deserted_test",
     "name": "abandoned drive-through",

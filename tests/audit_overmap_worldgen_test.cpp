@@ -23,6 +23,8 @@
 #include "submap.h"
 #include "type_id.h"
 
+static const overmap_connection_id overmap_connection_test_audit_rail( "test_audit_rail" );
+
 static const oter_str_id oter_field( "field" );
 static const oter_str_id oter_test_forest_very_thick( "test_forest_very_thick" );
 
@@ -268,4 +270,41 @@ TEST_CASE( "omap-b05_unfillable_building_bins_do_not_hang_or_crash", "[audit][ov
 
     overmap &om = generate_bare_overmap( where );
     CHECK( !om.cities.empty() );
+}
+
+// OMAP-B06: place_railroads laid its edge tables out E,S,W,N while neighbor_overmaps is N,E,S,W,
+// so it checked one neighbour and put the exit on another edge: a missing west neighbour got an
+// exit on the north edge, facing an overmap that already existed and would never connect back.
+TEST_CASE( "omap-b06_railroad_exits_face_ungenerated_overmaps", "[audit][overmap]" )
+{
+    const point_abs_om where( 20, 20 );
+    for( const point &offset : four_adjacent_offsets ) {
+        REQUIRE( overmap_buffer.get_existing( where + offset ) == nullptr );
+    }
+    // Railroads are off while the north neighbour generates, so it leaves no rail exits for
+    // `where` to inherit.
+    generate_bare_overmap( where + point::north );
+
+    const tripoint_abs_omt where_omt = project_to<coords::omt>( tripoint_abs_om( where, 0 ) );
+    region_settings &region =
+        const_cast<region_settings &>( overmap_buffer.get_settings( where_omt ) );
+    restore_on_out_of_scope<bool> restore_rails( region.place_railroads );
+    restore_on_out_of_scope<overmap_connection_id> restore_rail_connection(
+        region.overmap_connection.rail_connection );
+    region.place_railroads = true;
+    region.overmap_connection.rail_connection = overmap_connection_test_audit_rail;
+
+    overmap &om = generate_bare_overmap( where );
+    const std::vector<tripoint_om_omt> &rails_out =
+        om.connections_out[overmap_connection_test_audit_rail];
+    // The first three are the exits place_railroads picked. Anything after them was added when a
+    // rail to a city happened to end on the edge.
+    REQUIRE( rails_out.size() >= 3 );
+    for( size_t i = 0; i < 3; ++i ) {
+        const tripoint_om_omt &p = rails_out[i];
+        CAPTURE( p );
+        // East, south or west, where no overmap exists yet; never north.
+        CHECK( ( p.x() == OMAPX - 1 || p.y() == OMAPY - 1 || p.x() == 0 ) );
+        CHECK( p.y() != 0 );
+    }
 }

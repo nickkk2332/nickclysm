@@ -2236,38 +2236,29 @@ void overmap::place_railroads( const std::vector<const overmap *> &neighbor_over
 
     // At least 3 exit points, to guarantee railroad continuity across overmaps
     if( railroads_out.size() < 3 ) {
-
-        // x and y coordinates for a point on the edge in each direction
-        // -1 represents a variable one dimensional coordinate along that edge
-        // east == point( OMAPX - 1, n ); north == point( n, 0 );
-        static constexpr std::array<int, 4> edge_coords_x = {OMAPX - 1, -1, 0, -1};
-        static constexpr std::array<int, 4> edge_coords_y = {-1, OMAPY - 1, -1, 0};
-
-        // all the points on an edge except the 10 on each end
-        std::array < int, OMAPX - 20 > omap_num;
-        for( int i = 0; i < OMAPX - 20; i++ ) {
-            omap_num[i] = i + 10;
-        }
-
-        std::array < size_t, 4 > dirs = {0, 1, 2, 3};
+        // Same exit selection as place_roads. The old edge tables were laid out E,S,W,N while
+        // neighbor_overmaps is N,E,S,W, so each exit faced an overmap that already existed and
+        // would never connect back (OMAP-B06).
+        std::array<om_direction::type, 4> dirs = om_direction::all;
         std::shuffle( dirs.begin(), dirs.end(), rng_get_engine() );
 
-        for( size_t dir : dirs ) {
+        for( const om_direction::type dir : dirs ) {
             // only potentially add a new random connection toward ungenerated overmaps
-            if( neighbor_overmaps[dir] == nullptr ) {
-                std::shuffle( omap_num.begin(), omap_num.end(), rng_get_engine() );
-                for( const int &i : omap_num ) {
-                    tripoint_om_omt tmp = tripoint_om_omt(
-                                              edge_coords_x[dir] >= 0 ? edge_coords_x[dir] : i,
-                                              edge_coords_y[dir] >= 0 ? edge_coords_y[dir] : i,
-                                              0 );
-                    // Make sure these points don't conflict with rivers.
-                    if( !( is_river( ter( tmp ) ) ||
-                           // avoid adjacent rivers
-                           // east/west of a point on the north/south edge, and vice versa
-                           is_river( ter( tmp + point_rel_omt( four_adjacent_offsets[( dir + 1 ) % 4] ) ) ) ||
-                           is_river( ter( tmp + point_rel_omt( four_adjacent_offsets[( dir + 3 ) % 4] ) ) ) ) ) {
-                        railroads_out.push_back( tmp );
+            if( neighbor_overmaps[static_cast<int>( dir )] == nullptr ) {
+                // all the points on an edge except the 10 on each corner
+                std::vector<tripoint_om_omt> border = get_border( dir, 0, 10 );
+                std::shuffle( border.begin(), border.end(), rng_get_engine() );
+                // The neighbouring points along the edge.
+                const point_rel_omt along_right = om_direction::displace(
+                                                      om_direction::turn_right( dir ) );
+                const point_rel_omt along_left = om_direction::displace(
+                                                     om_direction::turn_left( dir ) );
+                for( const tripoint_om_omt &p : border ) {
+                    // Make sure these points don't conflict with rivers, or sit right beside
+                    // one along the edge.
+                    if( !( is_river( ter( p ) ) || is_river( ter( p + along_right ) ) ||
+                           is_river( ter( p + along_left ) ) ) ) {
+                        railroads_out.push_back( p );
                         break;
                     }
                 }
