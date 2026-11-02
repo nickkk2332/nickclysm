@@ -1,6 +1,13 @@
 # Port plan: player grabs, throws and grapple martial arts from Cataclysm: The Last Generation
 
-**Source.** Cataclysm: The Last Generation (TLG), <https://github.com/Cataclysm-TLG/Cataclysm-TLG>, read at commit `db141c6` (2026-11-01). The work is by worm-girl, mainly TLG PRs #26 (grappling and throwing, part 1), #58 (part 2), #281 (grapple techniques) and #428 (tuning and fallback attacks), plus later fixes (#1175, #1692, #1798, #1799, #1845, #1851, #2408, #3012). Both projects are CC BY-SA 3.0, so the code can be ported with credit. Each commit that ports TLG code should name the TLG PR and its author.
+**Source.** Cataclysm: The Last Generation (TLG), <https://github.com/Cataclysm-TLG/Cataclysm-TLG>, read at commit `db141c6` (2026-11-01). The work is by worm-girl, mainly TLG PRs #26 (grappling and throwing, part 1), #58 (part 2), #281 (grapple techniques) and #428 (tuning and fallback attacks), plus later fixes (#1175, #1692, #1798, #1799, #1845, #1851, #2408, #3012).
+
+**License.** Both projects are under the Creative Commons Attribution-ShareAlike 3.0 Unported license (CC BY-SA 3.0, <https://creativecommons.org/licenses/by-sa/3.0/>). Our `LICENSE.txt` says so for this project, and TLG's `LICENSE.txt` at `db141c6` says the same. Ported TLG code is an adaptation of TLG, which that license allows on these terms:
+
+- **Attribution.** Credit the source and its authors: name TLG and give its URI, name the authors (worm-girl), and say that the code is adapted from TLG. Each commit that ports TLG code names the TLG PRs and their author, and the ported code says it comes from TLG (`src/grapple.h` does).
+- **License.** Name the license and give its URI, as `LICENSE.txt` does for the whole project.
+- **Existing notices.** Keep any copyright, license or attribution notice that comes with the ported code.
+- **Share-alike.** A distributed adaptation must be under the same license (or a later or compatible one). This project is CC BY-SA 3.0 already, so that holds without any change.
 
 **Reference only.** Cataclysm-BN ported the same feature in BN PR #9108 and added a manual technique menu. BN's code base split from DDA in 2020, so it is used here for design ideas only.
 
