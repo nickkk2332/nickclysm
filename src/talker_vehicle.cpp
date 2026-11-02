@@ -15,9 +15,12 @@
 #include "talker_vehicle.h"
 #include "tileray.h"
 #include "units.h"
+#include "veh_type.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
+
+static const itype_id fuel_type_animal( "animal" );
 
 std::string talker_vehicle_const::disp_name() const
 {
@@ -121,6 +124,25 @@ static bool avatar_remote_controls( const vehicle &veh )
     return false;
 }
 
+// vehicle::player_in_control() without its fallback to remote_controlled()
+static bool avatar_at_controls( const vehicle &veh )
+{
+    if( veh.tags.count( "IN_CONTROL_OVERRIDE" ) ) {
+        return true;
+    }
+    const map &here = get_map();
+    const avatar &u = get_avatar();
+    const optional_vpart_position vp = here.veh_at( u.pos_bub() );
+    if( !vp || &vp->vehicle() != &veh || !u.controlling_vehicle ) {
+        return false;
+    }
+    if( veh.part_with_feature( vp->part_index(), VPFLAG_CONTROLS, false ) >= 0 ) {
+        return true;
+    }
+    return veh.part_with_feature( vp->mount_pos(), "CONTROL_ANIMAL", true ) >= 0 &&
+           veh.has_engine_type( fuel_type_animal, false ) && veh.get_harnessed_animal( here );
+}
+
 bool talker_vehicle_const::is_driven() const
 {
     const vehicle &veh = *me_veh_const;
@@ -128,11 +150,12 @@ bool talker_vehicle_const::is_driven() const
     if( veh.is_autodriving || veh.is_following || veh.is_patrolling ) {
         return true;
     }
-    // player_in_control() falls back to remote_controlled(), which has side effects
-    if( g->remoteveh() == &veh ) {
-        return avatar_remote_controls( veh );
+    // player_in_control() ends in remote_controlled(), which drops the remote link when no
+    // remote controls are in range; that can only happen while the link is to this vehicle
+    if( g->remoteveh() != &veh ) {
+        return veh.player_in_control( get_map(), get_avatar() );
     }
-    return veh.player_in_control( get_map(), get_avatar() );
+    return avatar_at_controls( veh ) || avatar_remote_controls( veh );
 }
 
 int talker_vehicle_const::get_vehicle_facing() const

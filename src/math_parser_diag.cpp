@@ -2044,7 +2044,12 @@ void vehicle_fuel_ass( double val, dialogue &d, char scope, std::vector<diag_val
     const int64_t target = vehicle_amount( val );
     if( target < current ) {
         const int excess = static_cast<int>( std::min<int64_t>( current - target, INT_MAX ) );
-        veh->drain( here, fuel, excess );
+        // take it only from the tanks fuel_left() counts: not racked vehicles' or frozen ones
+        veh->drain( here, fuel, excess, []( vehicle_part & vp ) {
+            return !vp.has_flag( vp_flag::carried_flag ) &&
+                   !( vp.is_tank() && !vp.get_base().empty() &&
+                      vp.get_base().legacy_front().made_of( phase_id::SOLID ) );
+        } );
         return;
     }
     int64_t to_add = target - current;

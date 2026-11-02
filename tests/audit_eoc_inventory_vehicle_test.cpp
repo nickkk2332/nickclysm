@@ -352,6 +352,27 @@ TEST_CASE( "veh-j01_math_reads_and_writes_vehicle_state", "[audit][eoc][vehicle]
         CHECK( veh.fuel_left( here, itype_gasoline ) == static_cast<int64_t>( capacity ) );
     }
 
+    SECTION( "fuel_leaves_carried_tanks_alone" ) {
+        // a racked vehicle's tank is not counted as fuel, so lowering the fuel must not drain it
+        vehicle &racked = place_two_frames( here, second_veh_pos );
+        const int carried = racked.install_part( here, point_rel_ms::zero, vpart_tank );
+        const int own = racked.install_part( here, point_rel_ms( 1, 0 ), vpart_tank );
+        REQUIRE( carried != -1 );
+        REQUIRE( own != -1 );
+        // vehicle::drain() goes through the parts in order, so it reaches the carried tank first
+        REQUIRE( carried < own );
+        racked.part( carried ).ammo_set( itype_gasoline, 1000 );
+        racked.part( own ).ammo_set( itype_gasoline, 1000 );
+        racked.part( carried ).set_flag( vp_flag::carried_flag );
+        dialogue dr( get_talker_for( racked ), nullptr );
+        REQUIRE( eval_math( dr, "u_vehicle_fuel('gasoline')" ) == 1000 );
+        eval_math( dr, "u_vehicle_fuel('gasoline') = 400" );
+        CHECK( eval_math( dr, "u_vehicle_fuel('gasoline')" ) == 400 );
+        CHECK( racked.part( own ).ammo_remaining() == 400 );
+        CHECK( racked.part( carried ).ammo_remaining() == 1000 );
+        here.destroy_vehicle( &racked );
+    }
+
     SECTION( "battery" ) {
         const double battery_max = eval_math( d, "u_vehicle_battery_max()" );
         REQUIRE( battery_max > 100 );
@@ -478,6 +499,11 @@ TEST_CASE( "veh-j01_vehicle_conditions_have_no_side_effects", "[audit][eoc][vehi
     veh.is_following = true;
     CHECK( is_driven( d ) );
     veh.is_following = false;
+    // the debug override counts as being at the controls, as in vehicle::player_in_control()
+    veh.tags.insert( "IN_CONTROL_OVERRIDE" );
+    CHECK( is_driven( d ) );
+    CHECK( g->remoteveh() == &veh );
+    veh.tags.erase( "IN_CONTROL_OVERRIDE" );
 
     g->setremoteveh( nullptr );
     here.destroy_vehicle( &veh );
