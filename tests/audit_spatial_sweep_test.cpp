@@ -24,7 +24,7 @@
 #include "teleport.h"
 #include "trap.h"
 #include "type_id.h"
-#include "veh_appliance.h"
+#include "units.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 
@@ -33,6 +33,8 @@ static const field_type_str_id field_fd_smoke( "fd_smoke" );
 static const ter_str_id ter_t_door_c( "t_door_c" );
 
 static const trap_str_id tr_dormant_corpse( "tr_dormant_corpse" );
+
+static const vproto_id vehicle_prototype_none( "none" );
 
 static const vpart_id vpart_ap_wall_light( "ap_wall_light" );
 
@@ -123,14 +125,26 @@ TEST_CASE( "spat-b05_wall_light_on_the_bubble_edge_stays_in_the_light_buffers",
     clear_avatar();
     map &here = get_map();
     const tripoint_bub_ms lamp_pos( MAPSIZE_X - 1, 5, 0 );
-    REQUIRE( place_appliance( here, lamp_pos, vpart_ap_wall_light, get_avatar() ) );
+    // Built by hand: place_appliance() asks the player which way a wall light faces.
+    vehicle *const lamp_veh = here.add_vehicle( vehicle_prototype_none, lamp_pos, 0_degrees, 0,
+                              veh_spawn_status::UNDAMAGED );
+    REQUIRE( lamp_veh != nullptr );
+    REQUIRE( lamp_veh->install_part( here, point_rel_ms::zero, vpart_ap_wall_light ) != -1 );
+    here.add_vehicle_to_cache( lamp_veh );
     const optional_vpart_position vp = here.veh_at( lamp_pos );
     REQUIRE( vp );
     vehicle &lamp = vp->vehicle();
+    // Facing east, so the light shines from the tile past the bubble's east edge.
+    for( int i = 0; i < lamp.part_count(); ++i ) {
+        lamp.part( i ).direction = 0_degrees;
+    }
     for( int i = 0; i < lamp.part_count(); ++i ) {
         lamp.part( i ).enabled = true;
     }
-    REQUIRE( lamp.lights().size() == 1 );
+    const std::vector<vehicle_part *> lights = lamp.lights();
+    REQUIRE( std::count_if( lights.begin(), lights.end(), []( const vehicle_part * lp ) {
+        return !lp->is_fake;
+    } ) == 1 );
 
     here.set_lightmap_cache_dirty( 0 );
     here.build_map_cache( 0 );

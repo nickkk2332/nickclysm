@@ -164,10 +164,15 @@ TEST_CASE( "hlth-b05_effect_chances_stop_scaling_at_max_effective_intensity",
            "[audit][health]" )
 {
     const effect_type *venom = &effect_venom_dmg.obj();
-    const effect capped( effect_source::empty(), venom, 1_hours, body_part_arm_l, false, 100,
-                         calendar::turn );
-    const effect over( effect_source::empty(), venom, 1_hours, body_part_arm_l, false, 120,
-                       calendar::turn );
+    // venom_dmg derives its intensity from the duration (int_dur_factor 18 turns), so give
+    // each effect the duration that matches its intensity.
+    const time_duration per_intensity = venom->intensity_duration();
+    REQUIRE( per_intensity > 0_turns );
+    const effect capped( effect_source::empty(), venom, per_intensity * 100, body_part_arm_l,
+                         false, 100, calendar::turn );
+    const effect over( effect_source::empty(), venom, per_intensity * 120, body_part_arm_l,
+                       false, 120, calendar::turn );
+    REQUIRE( capped.get_intensity() == 100 );
     REQUIRE( over.get_intensity() == 120 );
     REQUIRE( over.get_max_effective_intensity() == 100 );
     REQUIRE( over.get_effective_intensity() == 100 );
