@@ -308,6 +308,17 @@ bool establish_hold( Character &grabber, Creature &victim, int strength, const b
     if( victim.has_effect( effect_grabbed, bp ) ) {
         return false;
     }
+    // A new hold is the grabber's only one: a grab on this victim that still names it is left
+    // over from a hold that ended on the grabber's side only.
+    std::vector<std::pair<efftype_id, bodypart_id>> stale;
+    for( const effect &eff : victim.get_effects_with_flag( json_flag_GRAB ) ) {
+        if( sourced_from( eff, grabber ) ) {
+            stale.emplace_back( eff.get_id(), eff.get_bp() );
+        }
+    }
+    for( const std::pair<efftype_id, bodypart_id> &grab : stale ) {
+        victim.remove_effect( grab.first, grab.second );
+    }
     victim.add_effect( effect_source( &grabber ), effect_grabbed, 1_days, bp, true,
                        std::clamp( strength, 1, 100 ) );
     if( grapple::hold_effect( grabber, victim ) == nullptr ) {
@@ -356,6 +367,24 @@ bool grapple::start_hold( Character &grabber, Creature &victim, int strength,
 
 void grapple::end_hold( Character &grabber, Creature *victim )
 {
+    // A hold lost out of reach (the victim was pulled, pushed or flung away) still has its other
+    // side somewhere: find it, so both sides end.
+    if( victim == nullptr && grabber.has_effect_with_flag( json_flag_GRAB_FILTER ) ) {
+        for( Creature &critter : g->all_creatures() ) {
+            if( &critter == &grabber ) {
+                continue;
+            }
+            for( const effect &eff : critter.get_effects_with_flag( json_flag_GRAB ) ) {
+                if( sourced_from( eff, grabber ) ) {
+                    victim = &critter;
+                    break;
+                }
+            }
+            if( victim != nullptr ) {
+                break;
+            }
+        }
+    }
     if( victim != nullptr ) {
         std::vector<std::pair<efftype_id, bodypart_id>> held;
         for( const effect &eff : victim->get_effects_with_flag( json_flag_GRAB ) ) {
@@ -903,16 +932,26 @@ double grapple::drag_chance( const Character &grabber, const Creature &victim )
     return std::clamp( chance, 0.0, 1.0 );
 }
 
-std::optional<std::string> grapple::drag_refusal( const Character &grabber,
-        const Creature &victim, const tripoint_bub_ms &from, const tripoint_bub_ms &to )
+// Tied, harnessed, ridden or rooted: neither a drag nor a throw may move it.
+static std::optional<std::string> immobile_refusal( const Creature &victim )
 {
-    map &here = get_map();
     const monster *const mon = victim.as_monster();
     if( victim.has_effect( effect_tied ) || victim.has_effect( effect_harnessed ) ||
         victim.has_effect( effect_ridden ) || victim.has_flag( json_flag_CANNOT_MOVE ) ||
         ( mon != nullptr && mon->has_flag( mon_flag_IMMOBILE ) ) ) {
         return string_format( _( "%s is immobile and cannot be moved." ),
                               victim.disp_name( true ) );
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> grapple::drag_refusal( const Character &grabber,
+        const Creature &victim, const tripoint_bub_ms &from, const tripoint_bub_ms &to )
+{
+    map &here = get_map();
+    const monster *const mon = victim.as_monster();
+    if( std::optional<std::string> refusal = immobile_refusal( victim ) ) {
+        return refusal;
     }
     // Walking into a held pet swaps places with it: that needs no drag.
     const Creature *const in_the_way = get_creature_tracker().creature_at( to );
@@ -1051,9 +1090,10 @@ int grapple::throw_stamina_cost( const Character &thrower, const Creature &victi
 }
 
 int grapple::throw_stamina_cost_at( const Character &thrower, const Creature &victim,
-                                    int distance )
+                                    int distance, std::optional<float> full_force )
 {
-    const float force = throw_force_at( throw_force( thrower, victim ), distance );
+    const float force = throw_force_at( full_force ? std::max( 0.0f, *full_force ) :
+                                        throw_force( thrower, victim ), distance );
     const int cost = throw_stamina_cost( thrower, victim, force );
     // TLG: against machines the repulsor takes some of the work.
     return railgun_bonus( thrower, victim ) > 0 ? static_cast<int>( std::round( cost * 0.9 ) ) :
@@ -1104,9 +1144,13 @@ std::vector<tripoint_bub_ms> grapple::throw_path( const tripoint_bub_ms &from,
 }
 
 std::optional<std::string> grapple::throw_refusal( const Character &thrower,
-        const Creature &victim )
+        const Creature &victim, std::optional<float> full_force )
 {
-    const float force = throw_force( thrower, victim );
+    if( std::optional<std::string> refusal = immobile_refusal( victim ) ) {
+        return refusal;
+    }
+    const float force = full_force ? std::max( 0.0f, *full_force ) :
+                        throw_force( thrower, victim );
     const int size_gap = static_cast<int>( victim.get_size() ) -
                          static_cast<int>( thrower.get_size() );
     // TLG: a throw must be able to carry past the next tile, and a creature only a little larger.
@@ -1116,7 +1160,7 @@ std::optional<std::string> grapple::throw_refusal( const Character &thrower,
     }
     // The shortest throw, one tile, is the least you can do. How far you can afford to throw is
     // up to the target you pick.
-    const int cost = throw_stamina_cost_at( thrower, victim, 1 );
+    const int cost = throw_stamina_cost_at( thrower, victim, 1, full_force );
     if( thrower.get_stamina_max() < cost ) {
         return string_format( _( "You can't muster the strength to throw %s." ),
                               victim.disp_name() );
@@ -1146,7 +1190,7 @@ std::optional<std::string> grapple::throw_direction_refusal( const Character &th
 }
 
 std::optional<std::string> grapple::throw_target_refusal( const Character &thrower,
-        const Creature &victim, const tripoint_bub_ms &target )
+        const Creature &victim, const tripoint_bub_ms &target, std::optional<float> full_force )
 {
     if( std::optional<std::string> refusal = throw_direction_refusal( thrower, victim, target ) ) {
         return refusal;
@@ -1154,7 +1198,7 @@ std::optional<std::string> grapple::throw_target_refusal( const Character &throw
     // A fling takes one tile per step, diagonals included: count them the same way.
     const tripoint_bub_ms from = victim.pos_bub( get_map() );
     const int distance = square_dist( from.xy(), target.xy() );
-    if( thrower.get_stamina() < throw_stamina_cost_at( thrower, victim, distance ) ) {
+    if( thrower.get_stamina() < throw_stamina_cost_at( thrower, victim, distance, full_force ) ) {
         return string_format( _( "You're too exhausted to throw %s that far." ),
                               victim.disp_name() );
     }
@@ -1177,8 +1221,8 @@ bool grapple::throw_angers( const Character &thrower, const Creature &victim, fl
 
 bool grapple::break_free_to_throw( Character &thrower, const Creature &victim )
 {
-    if( !victim.has_effect_with_flag( json_flag_GRAB_FILTER ) ||
-        !thrower.has_effect_with_flag( json_flag_GRAB ) ) {
+    // Only the creature thrown has to let go first, not whoever else holds the thrower.
+    if( !holds( victim, thrower ) ) {
         return true;
     }
     if( thrower.try_remove_grab() ) {
@@ -1194,7 +1238,7 @@ bool grapple::throw_held_creature( Character &thrower, Creature &victim,
 {
     map &here = get_map();
     if( hold_effect( thrower, victim ) == nullptr ||
-        throw_target_refusal( thrower, victim, target ) ) {
+        throw_target_refusal( thrower, victim, target, full_force_in ) ) {
         return false;
     }
     const tripoint_bub_ms from = victim.pos_bub( here );
@@ -1209,11 +1253,8 @@ bool grapple::throw_held_creature( Character &thrower, Creature &victim,
     // A shorter throw is a gentler one, and lands where it was aimed.
     const float force = throw_force_at( full_force, distance );
     const bool railgun = railgun_bonus( thrower, victim ) > 0;
-    int stamina_cost = throw_stamina_cost( thrower, victim, force );
-    if( railgun ) {
-        // TLG: the repulsor takes some of the work.
-        stamina_cost = static_cast<int>( std::round( stamina_cost * 0.9 ) );
-    }
+    // TLG: the repulsor takes some of the work.
+    const int stamina_cost = throw_stamina_cost_at( thrower, victim, distance, full_force );
     const bool angers = throw_angers( thrower, victim, force );
 
     // A monster takes it as an attack.
@@ -1270,7 +1311,7 @@ bool grapple::throw_grabbed_creature( Character &thrower,
                                       std::optional<float> full_force )
 {
     Creature *const victim = thrower.grabbed_creature();
-    if( victim == nullptr || throw_refusal( thrower, *victim ) ) {
+    if( victim == nullptr || throw_refusal( thrower, *victim, full_force ) ) {
         return false;
     }
     if( avatar *const you = thrower.as_avatar() ) {
@@ -1296,7 +1337,7 @@ bool grapple::throw_grabbed_creature( Character &thrower,
         aim = tripoint_bub_ms( from.x() + ( from.x() - at.x() ) * range,
                                from.y() + ( from.y() - at.y() ) * range, from.z() );
     }
-    if( throw_target_refusal( thrower, *victim, aim ) ) {
+    if( throw_target_refusal( thrower, *victim, aim, full_force ) ) {
         return false;
     }
     return throw_held_creature( thrower, *victim, aim, full_force );

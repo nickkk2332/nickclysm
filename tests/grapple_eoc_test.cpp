@@ -520,6 +520,17 @@ TEST_CASE( "grapple_eoc_u_throw_grabbed", "[grapple][eoc]" )
         apply( R"({ "u_throw_grabbed": { "force": 20 } })", you, bystander );
         CHECK( mon.pos_bub() == start + tripoint( 2, 0, 0 ) );
     }
+    SECTION( "a force of its own is judged and paid for, not the thrower's" ) {
+        // Too weak to throw it at all by its own force, and it costs what the given force does
+        you.set_stamina( you.get_stamina_max() );
+        REQUIRE( grapple::throw_refusal( you, mon ) );
+        REQUIRE_FALSE( grapple::throw_refusal( you, mon, 30.0f ) );
+        const int stamina = you.get_stamina() - grapple::throw_stamina_cost_at( you, mon, 3, 30.0f );
+        apply( R"({ "u_throw_grabbed": { "force": 30 })" + say, you, bystander );
+        CHECK( result() == "true" );
+        CHECK( mon.pos_bub() == start + tripoint( 3, 0, 0 ) );
+        CHECK( you.get_stamina() == stamina );
+    }
     SECTION( "npc_throw_grabbed: an NPC throws what it holds" ) {
         grapple::end_hold( you, &mon );
         npc &guy = spawn_npc( mon.pos_bub().xy() + point::south, "thug" );
@@ -626,15 +637,26 @@ TEST_CASE( "grapple_eoc_events", "[grapple][eoc]" )
         CHECK( global_number( "test_grapple_throw_distance" ) == 3 );
         CHECK( global_number( "test_grapple_throw_force" ) == 31 );
     }
-    SECTION( "a hold lost with the victim out of reach names no victim" ) {
+    SECTION( "a hold lost with the victim out of reach ends on both sides, and names it" ) {
         REQUIRE( grapple::start_hold( you, mon, 20, no_part() ) );
         mon.setpos( here, you.pos_bub() + tripoint( 3, 0, 0 ) );
         mon.set_value( "test_grapple_event", std::string( "none" ) );
         you.process_turn();
         REQUIRE_FALSE( you.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+        CHECK_FALSE( mon.has_effect_with_flag( json_flag_GRAB ) );
         CHECK( global_number( "test_grapple_releases" ) == 1 );
         CHECK( you.get_value( "test_grapple_event" ) == "releases" );
-        CHECK( mon.get_value( "test_grapple_event" ) == "none" );
+        CHECK( mon.get_value( "test_grapple_event" ) == "released" );
+        CHECK( global_string( "test_grapple_victim_name" ) == mon.get_name() );
+        CHECK( global_string( "test_grapple_victim_type" ) == "mon_test_speed_desc_base" );
+    }
+    SECTION( "a hold whose victim is gone names no victim" ) {
+        REQUIRE( grapple::start_hold( you, mon, 20, no_part() ) );
+        // Its side ended without ours, as when it leaves the map
+        mon.remove_effect( effect_grabbed );
+        you.process_turn();
+        REQUIRE_FALSE( you.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+        CHECK( global_number( "test_grapple_releases" ) == 1 );
         CHECK( global_string( "test_grapple_victim_name" ).empty() );
         CHECK( global_string( "test_grapple_victim_type" ) == "mon_null" );
     }

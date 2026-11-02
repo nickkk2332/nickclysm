@@ -231,9 +231,18 @@ bool Character::try_remove_grab( bool attacking )
         } ) );
         int grab_break_factor = has_grab_break_tec() ? 10 : 0;
 
-        // Iterate through all our grabs and attempt to break them one by one
+        // Iterate through all our grabs and attempt to break them one by one. Breaking one ends
+        // a hold, and the events that sends can run EOCs, so walk a copy of what holds us and
+        // look each one up again.
+        std::vector<std::pair<efftype_id, bodypart_id>> grabs;
         for( const effect &eff : get_effects_with_flag( json_flag_GRAB ) ) {
-            // The effect may be removed below, so keep what we need from it.
+            grabs.emplace_back( eff.get_id(), eff.get_bp() );
+        }
+        for( const std::pair<efftype_id, bodypart_id> &held : grabs ) {
+            if( is_dead_state() || !has_effect( held.first, held.second ) ) {
+                continue;
+            }
+            const effect &eff = get_effect( held.first, held.second );
             const efftype_id eff_id = eff.get_id();
             const bodypart_id eff_bp = eff.get_bp();
             const int grab_str = eff.get_intensity();

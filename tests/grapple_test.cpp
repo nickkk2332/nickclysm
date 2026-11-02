@@ -1059,6 +1059,68 @@ TEST_CASE( "grapple_throw_refusals", "[grapple]" )
     }
 }
 
+// A throw moves what it throws: whatever holds it in place can't be thrown, as it can't be dragged.
+TEST_CASE( "grapple_throw_refuses_what_cant_be_moved", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    make_thrower( you );
+    monster &mon = spawn_held( you, "mon_test_speed_desc_base" );
+    REQUIRE( !grapple::throw_refusal( you, mon ) );
+    mon.add_effect( effect_tied, 1_turns, true );
+    const std::optional<std::string> refusal = grapple::throw_refusal( you, mon );
+    REQUIRE( refusal );
+    CHECK( *refusal == "The speed 100 monster is immobile and cannot be moved." );
+    CHECK( !grapple::throw_grabbed_creature( you, std::nullopt, std::nullopt ) );
+    CHECK( holds( you, mon ) );
+}
+
+// Throwing what you hold needs you free of it first, but not of some third creature.
+TEST_CASE( "grapple_throw_breaks_free_only_of_the_creature_thrown", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    const tripoint_bub_ms at = you.pos_bub();
+    npc &held = spawn_npc( ( at + tripoint::east ).xy(), "thug" );
+    npc &other = spawn_npc( ( at + tripoint( 2, 0, 0 ) ).xy(), "thug" );
+    npc &holder = spawn_npc( ( at + tripoint::south ).xy(), "thug" );
+    // You hold one thug, who holds another; a third thug holds you
+    REQUIRE( grapple::start_hold( you, held, 20, body_part_arm_l.id() ) );
+    REQUIRE( grapple::start_hold( held, other, 20, body_part_arm_l.id() ) );
+    REQUIRE( grapple::start_hold( holder, you, 100, body_part_arm_l.id() ) );
+    REQUIRE( held.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+    REQUIRE( you.has_effect_with_flag( json_flag_GRAB ) );
+    REQUIRE( !grapple::holds( held, you ) );
+    const int moves = you.get_moves();
+    CHECK( grapple::break_free_to_throw( you, held ) );
+    CHECK( you.get_moves() == moves );
+    CHECK( grapple::holds( holder, you ) );
+}
+
+// A hold whose victim was moved out of reach ends on both sides, not just the grabber's.
+TEST_CASE( "grapple_a_hold_lost_out_of_reach_ends_on_both_sides", "[grapple]" )
+{
+    avatar &you = setup_grapple_scene();
+    map &here = get_map();
+    npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+    REQUIRE( grapple::start_hold( you, guy, 20, body_part_arm_l.id() ) );
+    REQUIRE( guy.has_effect( effect_grabbed, body_part_arm_l ) );
+    // Pushed, pulled or flung away without a release
+    guy.setpos( here, you.pos_bub() + tripoint( 3, 0, 0 ) );
+    REQUIRE( you.grabbed_creature() == nullptr );
+    grapple::process_turn( you );
+    CHECK( !you.has_effect_with_flag( json_flag_GRAB_FILTER ) );
+    CHECK( !guy.has_effect( effect_grabbed, body_part_arm_l ) );
+
+    SECTION( "so grabbing it again holds it once" ) {
+        guy.setpos( here, you.pos_bub() + tripoint::east );
+        REQUIRE( grapple::start_hold( you, guy, 20, body_part_arm_r.id() ) );
+        int sourced = 0;
+        for( const effect &eff : guy.get_effects_with_flag( json_flag_GRAB ) ) {
+            sourced += eff.get_source().get_character_id() == you.getID() ? 1 : 0;
+        }
+        CHECK( sourced == 1 );
+    }
+}
+
 TEST_CASE( "grapple_throw_lands_where_it_is_aimed", "[grapple]" )
 {
     avatar &you = setup_grapple_scene();

@@ -2693,9 +2693,18 @@ bool monster::move_effects( bool )
         }
     }
     if( has_effect_with_flag( json_flag_GRAB ) ) {
-        // Pretty hacky, but monsters have no stats
+        // Ending a hold removes effects, and the grabber's reactions below can end other holds
+        // too, so walk a copy of what holds us and look each one up again.
+        std::vector<std::pair<efftype_id, bodypart_id>> grabs;
         for( const effect &grab : get_effects_with_flag( json_flag_GRAB ) ) {
-            // The effect may be removed below, so keep what we need from it.
+            grabs.emplace_back( grab.get_id(), grab.get_bp() );
+        }
+        // Pretty hacky, but monsters have no stats
+        for( const std::pair<efftype_id, bodypart_id> &held : grabs ) {
+            if( is_dead_state() || !has_effect( held.first, held.second ) ) {
+                continue;
+            }
+            const effect &grab = get_effect( held.first, held.second );
             const efftype_id grab_id = grab.get_id();
             const int grab_str = grab.get_intensity();
             // Is our grabber around? A character's grab names it as the effect's source;
@@ -2717,9 +2726,13 @@ bool monster::move_effects( bool )
                     grapple::end_hold( *char_grabber, this );
                     continue;
                 }
-                // Being held is an attack on us.
+                // Being held is an attack on us: our special defense may answer it (TLG called
+                // on_hit here, which also cast hit_me spells and trained the grabber's weakpoint
+                // proficiencies every turn of the hold).
                 if( friendly == 0 ) {
-                    on_hit( &here, char_grabber, bodypart_id( "torso" ) );
+                    if( rng( 0, 100 ) <= static_cast<int>( type->def_chance ) ) {
+                        type->sp_defense( *this, char_grabber, nullptr );
+                    }
                     if( type->has_anger_trigger( mon_trigger::HURT ) ) {
                         anger += 5;
                         aggro_character = true;
@@ -2732,8 +2745,15 @@ bool monster::move_effects( bool )
                         morale -= 15;
                     }
                 }
+                // The defense may have ended the hold, or killed or moved either of us.
+                if( is_dead_state() || !has_effect( grab_id, held.second ) ||
+                    grapple::character_grabber( *this, get_effect( grab_id, held.second ) ) !=
+                    char_grabber ) {
+                    continue;
+                }
                 // A fresh grab can't be broken at once: the character couldn't do that either.
-                if( grapple::within_min_hold( *char_grabber, *this, grab ) ) {
+                if( grapple::within_min_hold( *char_grabber, *this,
+                                              get_effect( grab_id, held.second ) ) ) {
                     return false;
                 }
             }

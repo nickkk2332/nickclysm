@@ -70,9 +70,11 @@ Character *character_grabber( const Creature &victim, const effect &eff );
 bool start_hold( Character &grabber, Creature &victim, int strength, const bodypart_id &bp );
 
 /**
- * End @p grabber's hold: remove the GRAB effects it holds on @p victim (if given) and every
- * GRAB_FILTER effect on @p grabber. Prints nothing. If anything was held, sends the
- * character_releases_grab event (with the victim only if it held @p victim).
+ * End @p grabber's hold: remove the GRAB effects it holds on @p victim and every GRAB_FILTER
+ * effect on @p grabber. With no @p victim given while @p grabber is still grabbing, the creature
+ * that carries its grab is looked for anywhere on the map, so a hold lost out of reach ends on
+ * both sides. Prints nothing. If anything was held, sends the character_releases_grab event
+ * (with the victim only if it held one).
  */
 void end_hold( Character &grabber, Creature *victim );
 
@@ -236,9 +238,10 @@ int throw_stamina_cost( const Character &thrower, const Creature &victim, float 
 /**
  * Stamina @p thrower spends to throw @p victim @p distance tiles (clamped to the throw's range):
  * the cost of the force for that distance, less the share a bio_railgun takes against machines.
- * What a throw actually costs.
+ * What a throw actually costs. @p full_force replaces throw_force() (an EOC throw's "force").
  */
-int throw_stamina_cost_at( const Character &thrower, const Creature &victim, int distance );
+int throw_stamina_cost_at( const Character &thrower, const Creature &victim, int distance,
+                           std::optional<float> full_force = std::nullopt );
 
 /** Moves a throw costs @p thrower. */
 int throw_move_cost( const Character &thrower );
@@ -261,9 +264,10 @@ std::vector<tripoint_bub_ms> throw_path( const tripoint_bub_ms &from,
  * Why @p thrower can't throw @p victim, the creature it holds, at all; nullopt if it can.
  * Checked before targeting, so a refusal changes nothing. The throw must be able to carry past
  * the next tile, and @p thrower needs the stamina for the shortest throw, one tile; whether it
- * can afford a longer one is up to throw_target_refusal.
+ * can afford a longer one is up to throw_target_refusal. @p full_force replaces throw_force().
  */
-std::optional<std::string> throw_refusal( const Character &thrower, const Creature &victim );
+std::optional<std::string> throw_refusal( const Character &thrower, const Creature &victim,
+        std::optional<float> full_force = std::nullopt );
 
 /**
  * Why @p victim can't be thrown toward @p target, whatever it costs; nullopt if it can: it goes
@@ -275,10 +279,11 @@ std::optional<std::string> throw_direction_refusal( const Character &thrower,
 /**
  * Why @p victim can't be thrown toward @p target; nullopt if it can. Besides where it may go
  * (throw_direction_refusal), @p thrower must have the stamina for a throw that far
- * (throw_stamina_cost_at).
+ * (throw_stamina_cost_at). @p full_force replaces throw_force().
  */
 std::optional<std::string> throw_target_refusal( const Character &thrower,
-        const Creature &victim, const tripoint_bub_ms &target );
+        const Creature &victim, const tripoint_bub_ms &target,
+        std::optional<float> full_force = std::nullopt );
 
 /** Whether a throw of @p force makes the held NPC @p victim angry (so the avatar is asked). */
 bool throw_angers( const Character &thrower, const Creature &victim, float force );
