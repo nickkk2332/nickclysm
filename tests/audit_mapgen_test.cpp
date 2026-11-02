@@ -4,16 +4,24 @@
 #include <utility>
 
 #include "cata_catch.h"
+#include "coordinates.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "json_error.h"
 #include "json_loader.h"
+#include "map.h"
+#include "map_helpers.h"
+#include "math_parser_diag_value.h"
 #include "mapdata.h"
 #include "mapgen.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
+#include "overmapbuffer.h"
+#include "point.h"
 #include "type_id.h"
+
+static const oter_str_id oter_field( "field" );
 
 static const ter_str_id ter_t_floor( "t_floor" );
 static const ter_str_id ter_t_linoleum_gray( "t_linoleum_gray" );
@@ -21,6 +29,9 @@ static const ter_str_id ter_t_linoleum_white( "t_linoleum_white" );
 
 static const update_mapgen_id
 update_mapgen_test_audit_place_variable_weight_nest( "test_audit_place_variable_weight_nest" );
+static const update_mapgen_id update_mapgen_test_audit_queue_other_point(
+    "test_audit_queue_other_point" );
+static const update_mapgen_id update_mapgen_test_audit_queue_point( "test_audit_queue_point" );
 static const update_mapgen_id update_mapgen_test_audit_update_variants(
     "test_audit_update_variants" );
 
@@ -166,4 +177,45 @@ TEST_CASE( "mgen-b03_line_and_square_reject_point_only_ops", "[audit][mapgen]" )
         setup( R"({ "line": "variable", "id": "audit_var", "x": 0, "y": 0, "x2": 5, "y2": 5 })" ),
         JsonError );
     CHECK_NOTHROW( setup( R"({ "point": "bash", "x": 0, "y": 0 })" ) );
+}
+
+// map::rotate took a queued variable point's position in its tile from reality bubble
+// coordinates with %, which goes negative west or north of the bubble's origin, and it
+// dropped queued points from other tiles.
+TEST_CASE( "mgen-b04_map_rotate_moves_queued_points_with_their_tile", "[audit][mapgen]" )
+{
+    clear_map();
+    set_queued_points();
+    global_variables &globals = get_globals();
+    globals.remove_global_value( "audit_queued_point" );
+    globals.remove_global_value( "audit_other_queued_point" );
+
+    // Both tiles lie west and north of the reality bubble's origin
+    const tripoint_abs_omt bubble_omt = project_to<coords::omt>( get_map().get_abs_sub() );
+    const tripoint_abs_omt rotated_omt = bubble_omt + tripoint_rel_omt( -3, -3, 0 );
+    const tripoint_abs_omt other_omt = bubble_omt + tripoint_rel_omt( -6, -3, 0 );
+    // Fields have no rotation of their own
+    overmap_buffer.ter_set( rotated_omt, oter_field.id() );
+    overmap_buffer.ter_set( other_omt, oter_field.id() );
+
+    // Queues ( 5, 7 ) in other_omt and leaves it queued
+    run_mapgen_update_func( update_mapgen_test_audit_queue_other_point, other_omt, {}, nullptr,
+                            false );
+    // Rotates rotated_omt by 3 turns, queues ( 2, 3 ) there and rotates it back by 1 turn
+    run_mapgen_update_func( update_mapgen_test_audit_queue_point, rotated_omt, {}, nullptr,
+                            false, false, false, 1 );
+    set_queued_points();
+
+    const tripoint_abs_ms rotated_origin = project_to<coords::ms>( rotated_omt );
+    const tripoint_abs_ms other_origin = project_to<coords::ms>( other_omt );
+    const diag_value *rotated = globals.maybe_get_global_value( "audit_queued_point" );
+    const diag_value *other = globals.maybe_get_global_value( "audit_other_queued_point" );
+    REQUIRE( rotated != nullptr );
+    // One turn takes ( 2, 3 ) to ( 24 - 3 - 1, 2 )
+    CHECK( rotated->tripoint() == rotated_origin + tripoint_rel_ms( 20, 2, 0 ) );
+    REQUIRE( other != nullptr );
+    CHECK( other->tripoint() == other_origin + tripoint_rel_ms( 5, 7, 0 ) );
+
+    globals.remove_global_value( "audit_queued_point" );
+    globals.remove_global_value( "audit_other_queued_point" );
 }

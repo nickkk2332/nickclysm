@@ -33,5 +33,16 @@
     "type": "mapgen",
     "update_mapgen_id": "test_audit_place_variable_weight_nest",
     "object": { "place_nested": [ { "chunks": [ "test_audit_nested_variable_weight" ], "x": 0, "y": 0 } ] }
+  },
+  {
+    "//": "Queues mapgen variable points that map::rotate must move with the tile (MGEN-B04).",
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_queue_point",
+    "object": { "set": [ { "point": "variable", "id": "audit_queued_point", "x": 2, "y": 3 } ] }
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_audit_queue_other_point",
+    "object": { "set": [ { "point": "variable", "id": "audit_other_queued_point", "x": 5, "y": 7 } ] }
   }
 ]

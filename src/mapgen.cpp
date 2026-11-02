@@ -7301,31 +7301,24 @@ void map::rotate( int turns )
             }
         }
         rebuild_vehicle_level_caches();
+    }
 
-        std::unordered_map<std::string, tripoint_abs_ms> temp_points = queued_points;
-        queued_points.clear();
-        for( std::pair<const std::string, tripoint_abs_ms> &queued_point : temp_points ) {
-            //This is all just a copy of the section rotating NPCs above
-            const point_abs_omt queued_point_omt( project_to<coords::omt>( queued_point.second.xy() ) );
-
-            // Note: We are rotating the entire overmap square (2x2 of submaps)
-            if( queued_point_omt != abs_omt.xy() || ( queued_point.second.z() != abs_sub.z() && !zlevels ) ) {
-                continue;
-            }
-            const point_abs_sm queued_point_sm( project_to<coords::sm>( queued_point.second.xy() ) );
-            const point_bub_ms queued_point_bub( reality_bubble().get_bub( queued_point.second.xy() ) );
-            point_bub_ms old( queued_point_bub.x() % SEEX, queued_point_bub.y() % SEEY );
-
-            if( queued_point_sm.x() % 2 != 0 ) {
-                old.x() += SEEX;
-            }
-            if( queued_point_sm.y() % 2 != 0 ) {
-                old.y() += SEEY;
-            }
-            const point_bub_ms new_pos( old.rotate( turns, {SEEX * 2, SEEY * 2} ) );
-            queued_points[queued_point.first] = get_abs( tripoint_bub_ms( new_pos,
-                                                queued_point.second.z() ) );
+    // Rotate the queued mapgen variable points (place_variables, "variable" set points) in
+    // this overmap tile, once: the whole tile turns, whatever the number of z-levels.
+    // Points elsewhere are left as they are.
+    for( std::pair<const std::string, tripoint_abs_ms> &queued_point : queued_points ) {
+        const tripoint_abs_ms &pos = queued_point.second;
+        if( pos.z() != abs_sub.z() && !zlevels ) {
+            continue;
         }
+        point_abs_omt pos_omt;
+        point_omt_ms pos_in_omt;
+        std::tie( pos_omt, pos_in_omt ) = project_remain<coords::omt>( pos.xy() );
+        if( pos_omt != abs_omt.xy() ) {
+            continue;
+        }
+        const point_omt_ms rotated = pos_in_omt.rotate( turns, { SEEX * 2, SEEY * 2 } );
+        queued_point.second = tripoint_abs_ms( project_combine( pos_omt, rotated ), pos.z() );
     }
 }
 
