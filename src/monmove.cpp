@@ -2388,8 +2388,8 @@ bool monster::move_to( const tripoint_bub_ms &p, bool force,
             if( here.has_flag( ter_furn_flag::TFLAG_SHARP, pos ) && !one_in( 4 ) &&
                 get_armor_type( damage_cut, bodypart_id( "torso" ) ) < sharp_damage &&
                 get_hp() > sharp_damage ) {
-                here.bash( pos, sharp_damage ); // Moving through a sharp terrain also
-                // smashes the terrain, weakly.
+                // Moving through a sharp terrain also smashes the terrain, weakly.
+                here.bash( pos, sharp_damage, false, false, false, nullptr, true, this );
                 apply_damage( nullptr, bodypart_id( "torso" ), sharp_damage );
             }
             if( here.has_flag( ter_furn_flag::TFLAG_ROUGH, pos ) && one_in( 6 ) &&

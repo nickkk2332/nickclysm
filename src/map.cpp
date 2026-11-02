@@ -5073,7 +5073,8 @@ void map::bash_field( const tripoint_bub_ms &p, bash_params &params )
 {
     std::vector<field_type_id> to_remove;
     for( const std::pair<const field_type_id, field_entry> &fd : field_at( p ) ) {
-        if( fd.first->bash_info && !fd.first->indestructible ) {
+        // A field removed earlier (removal is lazy) stays listed until fields are processed
+        if( fd.first->bash_info && !fd.first->indestructible && fd.second.is_field_alive() ) {
             params.did_bash = true;
             params.bashed_solid = true; // To prevent bashing furniture/vehicles
             to_remove.push_back( fd.first );

@@ -956,11 +956,10 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
     std::map<damage_type_id, int> smash_damage = smash_ability();
     for( std::pair<const field_type_id, field_entry> &fd_to_smsh : here.field_at( smashp ) ) {
         const std::optional<map_fd_bash_info> &bash_info = fd_to_smsh.first->bash_info;
-        if( !bash_info ) {
+        // A field removed earlier (removal is lazy) stays listed until fields are processed
+        if( !bash_info || !fd_to_smsh.second.is_field_alive() ) {
             continue;
         }
-        // Kept apart: removing the field invalidates fd_to_smsh
-        const field_type_id smashed_field = fd_to_smsh.first;
         int damage = bash_info->damage_to( smash_damage );
         if( ( damage <= 0 && one_in( 10 ) ) || fd_to_smsh.first->indestructible ) {
             add_msg( m_neutral, _( "You don't seem to be damaging the %s." ), fd_to_smsh.first->get_name() );
@@ -994,7 +993,7 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
         if( ret.did_smash && !bash_eoc.is_null() ) {
             dialogue d( get_talker_for( *this ), nullptr );
             d.set_value( "loc", here.get_abs( smashp ) );
-            d.set_value( "field", smashed_field.id().str() );
+            d.set_value( "field", fd_to_smsh.first.id().str() );
             bash_eoc->activate( d );
         }
         return ret;

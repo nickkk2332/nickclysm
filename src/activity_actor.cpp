@@ -10019,7 +10019,7 @@ void prying_activity_actor::handle_prying( Character &who )
 
             if( dice( 4, difficulty ) > dice_mech + dice_str ) {
                 // bash will always succeed
-                here.bash( target, 0, false, true );
+                here.bash( target, 0, false, true, false, nullptr, true, &who );
             }
         }
 

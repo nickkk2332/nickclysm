@@ -1011,10 +1011,10 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         sounds::sound( pos_bub(), 30, sounds::sound_t::combat, _( "VRRRRMP!" ), false, "bionic",
                        static_cast<std::string>( bio_resonator ) );
         for( const tripoint_bub_ms &bashpoint : here.points_in_radius( pos_bub(), 1 ) ) {
-            here.bash( bashpoint, 110 );
+            here.bash( bashpoint, 110, false, false, false, nullptr, true, this );
             // Multibash effect, so that doors &c will fall
-            here.bash( bashpoint, 110 );
-            here.bash( bashpoint, 110 );
+            here.bash( bashpoint, 110, false, false, false, nullptr, true, this );
+            here.bash( bashpoint, 110, false, false, false, nullptr, true, this );
         }
 
         mod_moves( -100 );

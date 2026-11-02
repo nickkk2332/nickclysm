@@ -6238,7 +6238,8 @@ bool Character::crush_frozen_liquid( item_location loc )
                                        hammering_item.tname() );
                     // FIXME: Hardcoded damage type
                     const int smashskill = get_arm_str() + hammering_item.damage_melee( damage_bash );
-                    here.bash( loc.pos_bub( here ), smashskill );
+                    here.bash( loc.pos_bub( here ), smashskill, false, false, false, nullptr, true,
+                               this );
                 }
             } else {
                 done_crush = false;

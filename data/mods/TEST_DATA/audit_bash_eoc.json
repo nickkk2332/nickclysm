@@ -80,7 +80,11 @@
       "eoc_on_destroy": {
         "id": "EOC_TEST_BASH_WEB_CLEARED",
         "effect": [
-          { "if": { "and": [ "has_alpha", "u_is_avatar" ] }, "then": [ { "math": [ "test_bash_web_by_avatar = 1" ] } ] },
+          { "math": [ "test_bash_web_cleared_count += 1" ] },
+          {
+            "if": { "and": [ "has_alpha", "u_is_avatar" ] },
+            "then": [ { "math": [ "test_bash_web_by_avatar = 1" ] } ]
+          },
           { "copy_var": { "context_val": "field" }, "target_var": { "global_val": "test_bash_web_field" } }
         ]
       }

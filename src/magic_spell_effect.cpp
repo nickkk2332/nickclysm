@@ -726,7 +726,7 @@ void spell_effect::attack( const spell &sp, Creature &caster, const tripoint_bub
             }
             // the bash already makes noise, so no need for spell::make_sound()
             here.bash( potential_target, sp.damage( caster ) * bash_scaling,
-                       sp.has_flag( spell_flag::SILENT ) );
+                       sp.has_flag( spell_flag::SILENT ), false, false, nullptr, true, &caster );
         }
     }
 }
@@ -1874,7 +1874,8 @@ void spell_effect::bash( const spell &sp, Creature &caster, const tripoint_bub_m
             continue;
         }
         // the bash already makes noise, so no need for spell::make_sound()
-        here.bash( potential_target, sp.damage( caster ), sp.has_flag( spell_flag::SILENT ) );
+        here.bash( potential_target, sp.damage( caster ), sp.has_flag( spell_flag::SILENT ), false,
+                   false, nullptr, true, &caster );
     }
 }
 

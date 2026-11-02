@@ -113,4 +113,22 @@ TEST_CASE( "map-j01_bash_eocs_run_when_a_tile_is_hit_or_broken", "[audit][map][e
         CHECK( field->str() == field_test_fd_bash_eoc_web.str() );
         CHECK( bash_global( "test_bash_web_by_avatar" ) == nullptr );
     }
+
+    SECTION( "a field already cleared this turn is not cleared again" ) {
+        REQUIRE( here.add_field( target, field_test_fd_bash_eoc_web, 1 ) );
+        here.bash( target, 10 );
+        REQUIRE( here.get_field( target, field_test_fd_bash_eoc_web ) == nullptr );
+
+        // The cleared web stays in the tile's field list until fields are next processed. It
+        // must not run its EOC again, nor shield the furniture from the bash.
+        here.furn_set( target, furn_test_f_bash_eoc_crate );
+        here.bash( target, 10, false, false, false, nullptr, true, &u );
+        CHECK( here.furn( target ) == furn_str_id::NULL_ID() );
+        tripoint_bub_ms smashp = target;
+        u.smash( smashp );
+
+        const diag_value *cleared = bash_global( "test_bash_web_cleared_count" );
+        REQUIRE( cleared != nullptr );
+        CHECK( cleared->dbl() == 1 );
+    }
 }
