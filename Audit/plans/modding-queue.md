@@ -83,10 +83,10 @@ The character operates a tile as if it examined it.
 - **Scope.** The proposal allows furniture and terrain whose examine action is an EOC (`"examine_action": { "type": "effect_on_condition" }`), plus a list of built-in actions known to be safe without a menu: doors and gates, switches and controls with no prompt, and sitting or lying down. Anything else is refused with a reason, rather than letting an NPC trigger a player menu.
 - **Open question.** Should examine actions get an NPC-aware variant over time, starting with the most useful ones (crafting stations, vending, terminals)?
 
-**Built (errands-ui batch).** The target is a location variable, or the other talker's tile (`"npc"`); it must be the talker's tile or next to it. `true_eocs`, and `false_eocs` with the context value `reason`.
+**Built (errands-ui batch).** The target is a location variable, or the other talker's tile (`"npc"`); it must be the talker's tile or next to it, on the same level. `true_eocs`, and `false_eocs` with the context value `reason`.
 - Doors, gates and hatches (anything with an `open` or `close` transform) open or close, for the avatar too.
 - The avatar gets the normal examine, without picking items up and without a creature's menu (`game::examine` is private, so its steps are followed).
-- An NPC may use EOC examine actions and these built-in ones, each read to check that it asks an NPC nothing: `controls_gate` (the NPC skips the confirmation), `harvest_furn`, `harvest_furn_nectar`, `harvest_ter`, `harvest_ter_nectar`, `harvest_plant_ex`, `harvested_plant`, `clear_overgrown`, `open_safe`. Anything else is refused. Switches (`fswitch`) ask a question and were left out; sitting and lying down are not examine actions.
+- An NPC may use EOC examine actions and these built-in ones, each read to check that it asks an NPC nothing: `controls_gate` (the NPC skips the confirmation), `harvest_furn`, `harvest_furn_nectar`, `harvest_ter`, `harvest_ter_nectar`, `harvest_plant_ex`, `clear_overgrown`. One that neither starts an activity nor changes the tile runs `false_eocs`. Anything else is refused. Switches (`fswitch`) ask a question and were left out; `harvested_plant` only prints a message, and `open_safe` is reached only through the safe's open transform, which the door rule handles; sitting and lying down are not examine actions.
 - The open question stays open.
 
 ## E. Small conditions to go with A–D

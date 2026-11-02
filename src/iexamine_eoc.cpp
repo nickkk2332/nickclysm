@@ -13,7 +13,6 @@
 #include "gates.h"
 #include "iexamine.h"
 #include "line.h"
-#include "messages.h"
 #include "map.h"
 #include "mapdata.h"
 #include "string_formatter.h"
@@ -42,10 +41,12 @@ struct npc_examine_action {
 };
 
 // The built-in examine actions an NPC may use from an EOC. Each was read to make sure that, run
-// for an NPC, it opens no menu, asks nothing and doesn't act on the avatar:
-// - controls_gate asks for confirmation, which npc_controls_gate skips;
+// for an NPC, it opens no menu, asks nothing and doesn't act on the avatar, and that what it does
+// shows as a started activity or a changed tile (so examine_from_eoc can tell it did something):
+// - controls_gate asks for confirmation, which npc_controls_gate skips; it starts the gate's
+//   activity;
 // - harvest_* only ask the avatar whether to pick (query_pick), then start the harvest activity;
-// - harvest_plant_ex, harvested_plant, clear_overgrown and open_safe ask nobody.
+// - harvest_plant_ex and clear_overgrown ask nobody, start an activity and change the furniture.
 const std::vector<npc_examine_action> &npc_examine_actions()
 {
     static const std::vector<npc_examine_action> actions = {
@@ -55,12 +56,28 @@ const std::vector<npc_examine_action> &npc_examine_actions()
         { &iexamine::harvest_ter, nullptr },
         { &iexamine::harvest_ter_nectar, nullptr },
         { &iexamine::harvest_plant_ex, nullptr },
-        { &iexamine::harvested_plant, nullptr },
         { &iexamine::clear_overgrown, nullptr },
-        { &iexamine::open_safe, nullptr },
     };
     return actions;
 }
+
+// What a built-in examine action can change: the tile, or the character's activity.
+struct examine_state {
+    ter_id ter;
+    furn_id furn;
+    activity_id activity;
+    size_t backlog;
+
+    examine_state( const Character &who, const tripoint_bub_ms &pos ) :
+        ter( get_map().ter( pos ) ), furn( get_map().furn( pos ) ), activity( who.activity.id() ),
+        backlog( who.backlog.size() ) {}
+
+    // Whether `who` started an activity or the tile changed since `before`.
+    bool changed_since( const examine_state &before, const Character &who ) const {
+        return ter != before.ter || furn != before.furn ||
+               ( !who.activity.is_null() && ( activity != before.activity || backlog != before.backlog ) );
+    }
+};
 
 // A door, gate, hatch or anything else that opens and closes: opens it if it is closed and
 // closes it if it is open. nullopt when it did; the reason otherwise. Not for vehicles.
@@ -87,39 +104,45 @@ std::optional<std::string> toggle_door( Character &who, const tripoint_bub_ms &p
 
 // As game::examine (which is private) for the avatar, without picking items up and without the
 // menus of a creature standing there: a vehicle, a construction, a trap, a computer, and then
-// the furniture or else the terrain, with the warning about a faction's property.
-void avatar_examine( Character &you, const tripoint_bub_ms &pos )
+// the furniture or else the terrain, with the warning about a faction's property. Why nothing
+// was examined, or nullopt once something was (a menu cancelled there can't be told apart).
+std::optional<std::string> avatar_examine( Character &you, const tripoint_bub_ms &pos )
 {
     map &here = get_map();
+    const std::string name = here.name( pos );
     if( const optional_vpart_position vp = here.veh_at( pos ) ) {
         if( you.is_mounted() ) {
-            you.add_msg_if_player( m_warning, _( "You cannot interact with a vehicle while mounted." ) );
-        } else if( !vp->vehicle().is_appliance() ) {
+            return std::string( _( "You cannot interact with a vehicle while mounted." ) );
+        }
+        if( !vp->vehicle().is_appliance() ) {
             vp->vehicle().interact_with( &here, pos, false );
-            return;
         } else {
             g->exam_appliance( vp->vehicle(), vp->mount_pos() );
-            return;
         }
+        return std::nullopt;
     }
     iexamine::part_con( you, pos );
     here.tr_at( pos ).examine( pos );
     if( here.has_flag( ter_furn_flag::TFLAG_CONSOLE, pos ) && !you.is_mounted() ) {
         g->use_computer( pos );
-        return;
+        return std::nullopt;
     }
     const bool furniture = here.has_furn( pos );
     const map_data_common_t &examined = furniture ?
                                         static_cast<const map_data_common_t &>( here.furn( pos ).obj() ) :
                                         static_cast<const map_data_common_t &>( here.ter( pos ).obj() );
-    if( furniture ? you.cant_do_mounted() : ( !examined.can_examine( pos ) || you.is_mounted() ) ) {
-        return;
+    if( you.is_mounted() ) {
+        return string_format( _( "You can't examine the %s while mounted." ), name );
+    }
+    if( !examined.can_examine( pos ) ) {
+        return string_format( _( "There is nothing to do with the %s." ), name );
     }
     if( !here.has_flag( "FREE_TO_EXAMINE", pos ) &&
         !g->warn_player_maybe_anger_local_faction( false, true ) ) {
-        return;
+        return string_format( _( "You leave the %s alone." ), name );
     }
     examined.examine( you, pos );
+    return std::nullopt;
 }
 
 } // namespace
@@ -131,7 +154,10 @@ std::optional<std::string> examine_from_eoc( Character &who, const tripoint_bub_
         return std::string( _( "That place is too far away." ) );
     }
     const std::string name = here.name( pos );
-    if( square_dist( who.pos_bub( here ), pos ) > 1 ) {
+    // As the examine action (choose_adjacent without vertical): never through a floor or a
+    // ceiling.
+    const tripoint_bub_ms from = who.pos_bub( here );
+    if( from.z() != pos.z() || square_dist( from.xy(), pos.xy() ) > 1 ) {
         return string_format( _( "The %s is out of reach." ), name );
     }
     const bool vehicle_there = static_cast<bool>( here.veh_at( pos ) );
@@ -141,8 +167,7 @@ std::optional<std::string> examine_from_eoc( Character &who, const tripoint_bub_
         return toggle_door( who, pos );
     }
     if( who.is_avatar() ) {
-        avatar_examine( who, pos );
-        return std::nullopt;
+        return avatar_examine( who, pos );
     }
     if( vehicle_there ) {
         return string_format( _( "An NPC can't operate the %s from an EOC." ), name );
@@ -166,7 +191,12 @@ std::optional<std::string> examine_from_eoc( Character &who, const tripoint_bub_
     }
     for( const npc_examine_action &action : npc_examine_actions() ) {
         if( examined.has_examine( action.examine ) ) {
+            const examine_state before( who, pos );
             ( action.for_npc != nullptr ? action.for_npc : action.examine )( who, pos );
+            if( !examine_state( who, pos ).changed_since( before, who ) ) {
+                // Out of season, nothing to harvest, a control with no gate...
+                return string_format( _( "Examining the %s did nothing." ), name );
+            }
             return std::nullopt;
         }
     }

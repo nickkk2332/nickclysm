@@ -5378,13 +5378,13 @@ You cancel activity `ACT_GAME` for 45 minutes
 #### `u_examine`, `npc_examine`
 
 The character operates a tile as if it examined it (the examine key). The tile must be the
-character's own tile or one next to it.
+character's own tile or one next to it, on the same level.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_examine" / "npc_examine" | **mandatory** | [variable object](#variable-object), or `"npc"` for `u_examine` and `"u"` for `npc_examine` | the location to examine, or the other talker's tile |
-| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the tile was examined |
-| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it wasn't; the context value `reason` says why, as a sentence |
+| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the tile was examined (see below) |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it wasn't, or nothing came of it; the context value `reason` says why, as a sentence |
 
 What happens:
 
@@ -5395,7 +5395,9 @@ What happens:
 - For the avatar, anything else runs the normal examine: a vehicle, a construction, a trap, a
   computer, then the furniture (or the terrain when there is no furniture), with its menus and
   the warning about a faction's property. Items there aren't picked up, and a creature standing
-  there is ignored.
+  there is ignored. `false_eocs` run when there is nothing to examine, when the avatar is
+  mounted, or when the player leaves a faction's property alone; `true_eocs` run otherwise, also
+  when the player cancels a menu the examine action opened.
 - An NPC never gets a menu. It may use the furniture (or else the terrain) when its examine
   action is an EOC (`"examine_action": { "type": "effect_on_condition" }`; the EOC runs with the
   NPC as `u`), or one of these built-in actions, which need no menu for an NPC:
@@ -5404,11 +5406,12 @@ What happens:
   | --- | --- |
   | `controls_gate` | uses the gate control, without the confirmation the avatar gets |
   | `harvest_furn`, `harvest_furn_nectar`, `harvest_ter`, `harvest_ter_nectar` | harvests the plant |
-  | `harvest_plant_ex`, `harvested_plant`, `clear_overgrown` | harvests a crop, or clears an overgrown one |
-  | `open_safe` | opens an unlocked safe |
+  | `harvest_plant_ex`, `clear_overgrown` | harvests a crop, or clears an overgrown one |
 
-  Anything else is refused, with the reason: other built-in actions open menus or ask questions,
-  and an NPC doesn't operate vehicles this way.
+  A built-in action counts as done when it started an activity or changed the tile; otherwise
+  (out of season, nothing to harvest, a control with no gate) `false_eocs` run. An EOC examine
+  action always counts as done. Anything else is refused, with the reason: other built-in actions
+  open menus or ask questions, and an NPC doesn't operate vehicles this way.
 
 ##### Valid talkers:
 
@@ -5418,9 +5421,13 @@ What happens:
 
 ##### Examples
 
-The NPC opens the shed door whose position is in the context value `shed_door`
+The NPC opens the shed door whose position is in the context value `shed_door`. Examining an
+open door would close it, so the effect only runs while the door is closed
 ```jsonc
-{ "npc_examine": { "context_val": "shed_door" }, "true_eocs": [ "EOC_OPENED" ], "false_eocs": [ "EOC_COULD_NOT_OPEN" ] }
+{
+  "if": { "map_terrain_id": "t_door_c", "loc": { "context_val": "shed_door" } },
+  "then": { "npc_examine": { "context_val": "shed_door" }, "true_eocs": [ "EOC_OPENED" ], "false_eocs": [ "EOC_COULD_NOT_OPEN" ] }
+}
 ```
 
 

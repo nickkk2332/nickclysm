@@ -116,6 +116,13 @@ bool now_doing( const Character &who, const std::vector<activity_id> &types )
     return std::find( types.begin(), types.end(), who.activity.id() ) != types.end();
 }
 
+// Whether `a` is `b` or next to it on the same level: as examine and the crafting menu count
+// reach, never through a floor or a ceiling.
+bool within_reach( const tripoint_abs_ms &a, const tripoint_abs_ms &b )
+{
+    return a.z() == b.z() && square_dist( a.xy(), b.xy() ) <= 1;
+}
+
 std::string did_not_start( const item &it )
 {
     return string_format( _( "Working on the %s stopped as soon as it started." ), it.tname() );
@@ -139,7 +146,7 @@ refusal reach_refusal( const Character &who, const item_location &it, bool must_
     if( must_carry ) {
         return string_format( _( "The %s has to be carried." ), it->tname() );
     }
-    if( square_dist( who.pos_abs(), it.pos_abs() ) > 1 ) {
+    if( !within_reach( who.pos_abs(), it.pos_abs() ) ) {
         return string_format( _( "The %s is out of reach." ), it->tname() );
     }
     return std::nullopt;
@@ -451,7 +458,7 @@ refusal start_craft( const activity_id &, Character &who, const eoc_activity_tar
     std::optional<tripoint_bub_ms> place;
     if( target.loc ) {
         const tripoint_bub_ms pos = here.get_bub( *target.loc );
-        if( !here.inbounds( pos ) || square_dist( who.pos_bub( here ), pos ) > 1 ) {
+        if( !here.inbounds( pos ) || !within_reach( who.pos_abs(), *target.loc ) ) {
             return std::string( _( "The place to craft at is out of reach." ) );
         }
         if( !here.can_put_items_ter_furn( pos ) ) {

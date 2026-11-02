@@ -33,6 +33,7 @@
 static const activity_id ACT_CLOSE_TILE( "ACT_CLOSE_TILE" );
 
 static const furn_str_id furn_f_safe_c( "f_safe_c" );
+static const furn_str_id furn_test_f_dead_gate_control( "test_f_dead_gate_control" );
 static const furn_str_id furn_f_safe_o( "f_safe_o" );
 static const furn_str_id furn_f_workbench( "f_workbench" );
 static const furn_str_id furn_test_f_eoc( "test_f_eoc" );
@@ -136,11 +137,27 @@ TEST_CASE( "eoc_examine_by_an_npc", "[eoc][iexamine][errands_ui]" )
         }
         CHECK( here.ter( spot ) == ter_t_door_c );
     }
-    SECTION( "a built-in action that needs no menu: an unlocked safe" ) {
+    SECTION( "furniture that opens opens like a door: an unlocked safe" ) {
         here.furn_set( spot, furn_f_safe_c );
         examine( guy, spot );
         CHECK( result() == "started" );
         CHECK( here.furn( spot ) == furn_f_safe_o );
+    }
+    SECTION( "an allowed action that does nothing runs false_eocs" ) {
+        // controls_gate with no gate data: "Nothing happens."
+        here.furn_set( spot, furn_test_f_dead_gate_control );
+        examine( guy, spot );
+        CHECK( result() == "refused" );
+        CHECK_THAT( reason(), Catch::Matchers::Contains( "did nothing" ) );
+        CHECK( guy.activity.is_null() );
+    }
+    SECTION( "a door right below is out of reach: not through the floor" ) {
+        const tripoint_bub_ms below = guy.pos_bub() + tripoint_rel_ms( 0, 0, -1 );
+        here.ter_set( below, ter_t_door_c );
+        examine( guy, below );
+        CHECK( result() == "refused" );
+        CHECK_THAT( reason(), Catch::Matchers::Contains( "out of reach" ) );
+        CHECK( here.ter( below ) == ter_t_door_c );
     }
     SECTION( "a built-in action with a menu is refused, and no menu opens" ) {
         here.furn_set( spot, furn_f_workbench );
@@ -186,6 +203,11 @@ TEST_CASE( "eoc_examine_by_the_avatar", "[eoc][iexamine][errands_ui]" )
         examine( u, spot );
         CHECK( result() == "started" );
         CHECK( here.ter( spot ) == ter_t_door_o );
+    }
+    SECTION( "nothing to examine runs false_eocs" ) {
+        examine( u, spot );
+        CHECK( result() == "refused" );
+        CHECK_THAT( reason(), Catch::Matchers::Contains( "nothing to do" ) );
     }
     SECTION( "the other talker's tile" ) {
         npc &guy = spawn_npc( spot.xy(), "test_talker" );

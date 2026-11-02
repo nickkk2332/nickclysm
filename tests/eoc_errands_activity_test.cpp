@@ -237,6 +237,14 @@ TEST_CASE( "act-j02_eoc_reads_a_book", "[audit][activity][errands_ui]" )
         CHECK_THAT( reason(), Catch::Matchers::Contains( "out of reach" ) );
         CHECK( guy.activity.is_null() );
     }
+    SECTION( "a book right below is out of reach: not through the floor" ) {
+        item_location book = on_ground( guy.pos_bub() + tripoint_rel_ms( 0, 0, -1 ),
+                                        item( itype_test_textbook_fabrication ) );
+        assign( R"("ACT_READ", "target_item": "npc")", guy, book );
+        CHECK( result() == "refused" );
+        CHECK_THAT( reason(), Catch::Matchers::Contains( "out of reach" ) );
+        CHECK( guy.activity.is_null() );
+    }
     SECTION( "something that isn't a book is refused" ) {
         item_location plank = guy.i_add( item( itype_2x4 ) );
         assign( R"("ACT_READ", "target_item": "npc")", guy, plank );

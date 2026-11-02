@@ -60,5 +60,16 @@
     "category": "test_eoc_show_text",
     "//": "u_show_text tests: the only snippet in its category, so the text is known.",
     "text": "A page about <u_name>."
+  },
+  {
+    "type": "furniture",
+    "id": "test_f_dead_gate_control",
+    "name": "test gate control with no gate",
+    "description": "u_examine tests: a gate control whose gate data doesn't exist, so using it does nothing.",
+    "symbol": "6",
+    "color": "white",
+    "move_cost_mod": 0,
+    "required_str": -1,
+    "examine_action": "controls_gate"
   }
 ]
