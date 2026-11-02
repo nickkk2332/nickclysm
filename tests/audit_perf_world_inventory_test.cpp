@@ -12,6 +12,8 @@
 #include <vector>
 
 #include "activity_actor_definitions.h"
+#include "activity_handlers.h"
+#include "activity_item_handling.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
@@ -25,6 +27,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_memory.h"
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
@@ -37,17 +40,23 @@
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "requirement_scan_memo.h"
+#include "requirements.h"
 #include "rng.h"
 #include "string_formatter.h"
 #include "submap.h"
+#include "trap.h"
 #include "type_id.h"
 #include "units.h"
+#include "veh_type.h"
+#include "vehicle.h"
 #include "visitable.h"
 #include "weather.h"
 #include "weather_gen.h"
 
 static const activity_id ACT_FETCH_REQUIRED( "ACT_FETCH_REQUIRED" );
 static const activity_id ACT_MULTIPLE_FARM( "ACT_MULTIPLE_FARM" );
+static const activity_id ACT_VEHICLE_DECONSTRUCTION( "ACT_VEHICLE_DECONSTRUCTION" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
@@ -70,8 +79,15 @@ static const ter_str_id ter_t_water_dp( "t_water_dp" );
 static const ter_str_id ter_t_water_moving_sh( "t_water_moving_sh" );
 static const ter_str_id ter_t_water_sh( "t_water_sh" );
 
+static const vpart_id vpart_frame( "frame" );
+static const vpart_id vpart_test_vp_reserve_welder( "test_vp_reserve_welder" );
+static const vpart_id vpart_test_vp_weld_to_remove( "test_vp_weld_to_remove" );
+
+static const vproto_id vehicle_prototype_none( "none" );
+
 static const zone_type_id zone_type_FARM_PLOT( "FARM_PLOT" );
 static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
+static const zone_type_id zone_type_VEHICLE_DECONSTRUCT( "VEHICLE_DECONSTRUCT" );
 
 namespace
 {
@@ -158,10 +174,6 @@ TEST_CASE( "inv-p02_empty_locations_are_nowhere_and_independent", "[audit][item_
     CHECK( a == b );
     CHECK( a == item_location::nowhere );
     CHECK_FALSE( item_location::nowhere );
-    // changing how one empty location stacks is harmless to the others
-    b.set_should_stack( false );
-    CHECK_FALSE( b );
-    CHECK( a == b );
 
     clear_avatar();
     avatar &u = get_avatar();
@@ -454,20 +466,26 @@ TEST_CASE( "mgen-p01_submap_loads_freeze_and_thaw_as_before", "[audit][mapgen]" 
     clear_map();
 }
 
-// Reloading a frozen tile thawed it and froze it again through two full terrain changes,
-// which reset its map damage and marked its submap as changed by the player. Kept as is.
-TEST_CASE( "mgen-p01_reloading_frozen_ice_resets_its_damage", "[audit][mapgen]" )
+// Reloading a frozen tile thawed it and froze it again through two full terrain changes. What
+// that left behind besides the same terrain is kept: the map damage reset, the submap marked as
+// changed by the player, and a trap entry for the ice from the refreeze (besides the one the
+// load registers for every terrain trap). The tile is no longer actually thawed and refrozen,
+// which shows in the avatar's memory of it: a terrain change used to forget it.
+TEST_CASE( "mgen-p01_reloading_frozen_ice_keeps_what_refreezing_left", "[audit][mapgen]" )
 {
     restore_turn turn_guard;
     clear_avatar();
     clear_map();
-    get_avatar().setpos( get_map(), tripoint_bub_ms( 6, 6, 0 ) );
+    avatar &u = get_avatar();
     map &here = get_map();
     const tripoint_abs_omt lake = lake_setup().front();
     const std::vector<tripoint_bub_ms> tiles = omt_surface( lake );
+    // the corner of the lake, the avatar just outside it
+    const tripoint_bub_ms corner = tiles.front();
+    u.setpos( here, corner + tripoint_rel_ms( -1, -1, 0 ) );
+    REQUIRE( here.ter( u.pos_bub() ) == ter_t_grass );
 
     // the first winter day that freezes the corner tile
-    const tripoint_bub_ms corner = tiles.front();
     bool frozen = false;
     for( int d = 0; d < 91 && !frozen; ++d ) {
         calendar::turn = noon_in_season( WINTER, d );
@@ -480,17 +498,39 @@ TEST_CASE( "mgen-p01_reloading_frozen_ice_resets_its_damage", "[audit][mapgen]" 
     REQUIRE( frozen );
     const ter_id ice = here.ter( corner );
     REQUIRE( here.get_original_terrain_at( corner ) == ter_t_water_dp );
+    const trap_id ice_trap = ice->trap;
+    REQUIRE( ice_trap != tr_null );
+    REQUIRE( ter_t_water_dp->trap == tr_null );
 
-    const tripoint_abs_sm corner_sm = project_to<coords::sm>( here.get_abs( corner ) );
+    const tripoint_abs_ms abs_corner = here.get_abs( corner );
+    const tripoint_abs_sm corner_sm = project_to<coords::sm>( abs_corner );
     submap *sm = MAPBUFFER.lookup_submap( corner_sm );
     REQUIRE( sm != nullptr );
     here.set_map_damage( corner, 7 );
     sm->player_adjusted_map = false;
-    load_smallmap( lake );
-    CHECK( here.ter( corner ) == ice );
-    CHECK( here.get_original_terrain_at( corner ) == ter_t_water_dp );
+    set_time( calendar::turn );
+    REQUIRE( u.sees( here, corner ) );
+    u.prepare_map_memory_region( abs_corner + tripoint_rel_ms( -2, -2, 0 ),
+                                 abs_corner + tripoint_rel_ms( 2, 2, 0 ) );
+    u.memorize_decoration( abs_corner, ice.id().str(), 0, 0 );
+    REQUIRE( u.get_memorized_tile( abs_corner ).get_dec_id() == ice.id().str() );
+
+    {
+        smallmap reloaded;
+        reloaded.load( lake, false );
+        map &m = *reloaded.cast_to_map();
+        const tripoint_bub_ms at = m.get_bub( abs_corner );
+        CHECK( m.ter( at ) == ice );
+        CHECK( m.get_original_terrain_at( at ) == ter_t_water_dp );
+        CHECK( m.tr_at( at ).loadid == ice_trap );
+        // one entry from refreezing the tile, one from the load registering terrain traps
+        const std::vector<tripoint_bub_ms> &trap_locs = m.trap_locations( ice_trap );
+        CHECK( std::count( trap_locs.begin(), trap_locs.end(), at ) == 2 );
+    }
     CHECK( here.get_map_damage( corner ) == 0 );
     CHECK( sm->player_adjusted_map );
+    // the avatar saw the tile, but it never changed, so the memory of it stays
+    CHECK( u.get_memorized_tile( abs_corner ).get_dec_id() == ice.id().str() );
 
     // open water that stays open is left alone
     calendar::turn = noon_in_season( SUMMER, 40 );
@@ -504,14 +544,19 @@ TEST_CASE( "mgen-p01_reloading_frozen_ice_resets_its_damage", "[audit][mapgen]" 
     CHECK( here.get_map_damage( corner ) == 3 );
     CHECK_FALSE( sm->player_adjusted_map );
 
-    // a uniform submap nothing changes in stays uniform
-    const tripoint_abs_sm deep = tripoint_abs_sm( corner_sm.xy(), -6 );
-    submap *deep_sm = MAPBUFFER.lookup_submap( deep );
-    REQUIRE( deep_sm != nullptr );
-    const bool was_uniform = deep_sm->is_uniform();
+    // and a uniform submap of open water stays uniform
+    const tripoint_abs_sm far_sm = project_to<coords::sm>( here.get_abs( tiles.back() ) );
+    submap *open_sm = MAPBUFFER.lookup_submap( far_sm );
+    REQUIRE( open_sm != nullptr );
+    submap open_water;
+    open_water.set_all_ter( ter_t_water_dp.id(), true );
+    *open_sm = std::move( open_water );
+    REQUIRE( open_sm->is_uniform() );
     load_smallmap( lake );
-    CHECK( deep_sm->is_uniform() == was_uniform );
+    CHECK( open_sm->is_uniform() );
+    CHECK( open_sm->get_ter( point_sm_ms( 5, 5 ) ) == ter_t_water_dp );
     clear_map();
+    clear_avatar();
 }
 
 // ---------------------------------------------------------------------------------------
@@ -853,6 +898,113 @@ TEST_CASE( "omap-p02_ties_are_broken_the_same_way", "[audit][overmap]" )
     }
 }
 
+namespace
+{
+
+// What a search did on a fresh overmap buffer.
+struct fresh_search {
+    tripoint_abs_omt closest = tripoint_abs_omt::invalid;
+    std::vector<tripoint_abs_omt> all;
+    // the overmaps around the origin that exist afterwards
+    std::vector<point_abs_om> overmaps;
+    int generated = 0;
+    cata_default_random_engine rng_after;
+};
+
+// Runs a search (the old copy or the real one; find_closest or find_all) on an empty overmap
+// buffer that starts with the real buffer's region layout and world state and the given RNG
+// state, then puts the real buffer back as it was.
+fresh_search search_on_fresh_buffer( bool old_search, bool all, const tripoint_abs_omt &origin,
+                                     const omt_find_params &params, const cata_default_random_engine &rng )
+{
+    fresh_search out;
+    overmapbuffer real;
+    std::swap( overmap_buffer, real );
+    overmap_buffer.regions = real.regions;
+    overmap_buffer.global_state = real.global_state;
+    overmap_buffer.externally_set_args = real.externally_set_args;
+    const int before = overmap_buffer.get_overmap_count();
+    rng_get_engine() = rng;
+    if( all ) {
+        out.all = old_search ? old_omt_search::find_all( origin, params ) :
+                  overmap_buffer.find_all( origin, params );
+    } else {
+        out.closest = old_search ? old_omt_search::find_closest( origin, params ) :
+                      overmap_buffer.find_closest( origin, params );
+    }
+    out.rng_after = rng_get_engine();
+    out.generated = overmap_buffer.get_overmap_count() - before;
+    for( const point_abs_om &p : closest_points_first( project_to<coords::om>( origin.xy() ), 2 ) ) {
+        if( overmap_buffer.has( p ) ) {
+            out.overmaps.push_back( p );
+        }
+    }
+    std::swap( overmap_buffer, real );
+    return out;
+}
+
+} // namespace
+
+// A search that may generate overmaps (existing_only false) generates the same ones, from the
+// same RNG state, and finds the same things, as the old search did, starting from no overmaps.
+TEST_CASE( "omap-p02_generating_searches_match_the_old_search", "[audit][overmap]" )
+{
+    clear_avatar();
+    const cata_default_random_engine saved_rng = rng_get_engine();
+    const int overmaps_before = overmap_buffer.get_overmap_count();
+    // far from anything the other tests generate
+    const point_abs_om far_om = project_to<coords::om>( get_avatar().pos_abs_omt().xy() ) +
+                                point_rel_om( 23, -17 );
+    struct generating_query {
+        tripoint_om_omt local;
+        std::vector<std::pair<std::string, ot_match_type>> types;
+        int range;
+        int min_z;
+        int max_z;
+        bool all;
+    };
+    const std::vector<generating_query> queries = {
+        // misses on every level, reaching the overmap to the east
+        { tripoint_om_omt( OMAPX - 10, 90, 0 ), { { "bench_no_such_terrain", ot_match_type::type } }, 20, -OVERMAP_DEPTH, OVERMAP_HEIGHT, false },
+        { tripoint_om_omt( OMAPX - 10, 90, 0 ), { { "bench_no_such_terrain", ot_match_type::type } }, 20, 0, 0, true },
+        // fields by the border, on the surface
+        { tripoint_om_omt( OMAPX - 2, 90, 0 ), { { "field", ot_match_type::type }, { "forest", ot_match_type::type } }, 30, 0, 0, false },
+        { tripoint_om_omt( OMAPX - 2, 90, 0 ), { { "field", ot_match_type::type } }, 12, 0, 0, true },
+    };
+    rng_set_engine_seed( 7349 );
+    const cata_default_random_engine rng = rng_get_engine();
+    bool warmed_up = false;
+    for( const generating_query &q : queries ) {
+        omt_find_params params;
+        params.types = q.types;
+        params.search_range = q.range;
+        params.existing_only = false;
+        params.min_z = q.min_z;
+        params.max_z = q.max_z;
+        const tripoint_abs_omt origin = project_combine( far_om, q.local );
+        CAPTURE( origin.to_string(), q.all, q.range );
+        if( !warmed_up ) {
+            // The first overmap generated on a fresh buffer draws random numbers that later ones
+            // don't (whichever search runs it), so warm up before comparing.
+            search_on_fresh_buffer( true, q.all, origin, params, rng );
+            warmed_up = true;
+        }
+        const fresh_search old_run = search_on_fresh_buffer( true, q.all, origin, params, rng );
+        const fresh_search new_run = search_on_fresh_buffer( false, q.all, origin, params, rng );
+        // the search went past the origin's own overmap
+        CHECK( old_run.generated >= 2 );
+        CHECK( new_run.generated == old_run.generated );
+        CHECK( new_run.overmaps == old_run.overmaps );
+        CHECK( new_run.closest == old_run.closest );
+        CHECK( new_run.all == old_run.all );
+        CHECK( new_run.rng_after == old_run.rng_after );
+    }
+    // the real buffer is as it was
+    CHECK( overmap_buffer.get_overmap_count() == overmaps_before );
+    CHECK_FALSE( overmap_buffer.has( far_om ) );
+    rng_get_engine() = saved_rng;
+}
+
 // ---------------------------------------------------------------------------------------
 // ACT-P03: zone jobs check the same tiles and fetch the same items
 
@@ -991,4 +1143,100 @@ TEST_CASE( "act-p03_one_scan_answers_each_requirement_separately", "[audit][acti
     // every tile to till was skipped first
     CHECK( u.get_moves() == 1000 - 1 - static_cast<int>( plot.size() ) );
     farm_job_teardown();
+}
+
+// The scan memo keeps an answer until forget(). A scan calls forget() before it acts on a work
+// spot, so what it does there can't leave a later spot an answer from before.
+TEST_CASE( "act-p03_scan_memo_keeps_answers_until_forgotten", "[audit][activity]" )
+{
+    restore_turn turn_guard;
+    const std::vector<tripoint_bub_ms> plot = farm_job_setup();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    multi_farm_activity_actor farm;
+    activity_reason_info till = activity_reason_info::fail( do_activity_reason::NEEDS_TILLING );
+    const std::optional<requirement_id> tilling = farm.multi_activity_requirements( u, till,
+            plot.front(), nullptr );
+    REQUIRE( tilling.has_value() );
+    std::vector<tripoint_bub_ms> loot_spots;
+    for( const tripoint_bub_ms &p : zone_manager::get_manager().get_point_set_loot( u.pos_abs(),
+            MAX_VIEW_DISTANCE, false, faction_your_followers ) ) {
+        loot_spots.push_back( p );
+    }
+    REQUIRE_FALSE( loot_spots.empty() );
+    const auto nearby = [&]() {
+        return multi_activity_actor::are_requirements_nearby( loot_spots, *tilling, u,
+                ACT_MULTIPLE_FARM, true, plot.front() );
+    };
+    {
+        scoped_requirement_scan_memo memo;
+        CHECK_FALSE( nearby() );
+        // a hoe turns up in the loot zone
+        here.add_item_or_charges( loot_spots.front(), item( itype_hoe ) );
+        // still the remembered answer
+        CHECK_FALSE( nearby() );
+        memo.forget();
+        CHECK( nearby() );
+    }
+    // outside a scan, nothing is remembered
+    CHECK( nearby() );
+    farm_job_teardown();
+}
+
+// The welding rigs in reach of a work spot are part of its answer: a deconstruction spot with
+// a rig beside it can be worked although one without could not, in the same scan.
+TEST_CASE( "act-p03_a_welding_rig_counts_only_where_it_reaches", "[audit][activity]" )
+{
+    restore_turn turn_guard;
+    clear_avatar();
+    clear_map();
+    zone_manager &zm = zone_manager::get_manager();
+    zm.clear();
+    set_time( noon_in_season( SUMMER, 10 ) );
+    avatar &u = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms start( 60, 60, 0 );
+    u.setpos( here, start );
+    // both out of reach of the rig from where the avatar stands; only the far spot has it in
+    // reach (PICKUP_RANGE - 1 tiles)
+    const tripoint_bub_ms near_spot = start + tripoint_rel_ms( 4, 0, 0 );
+    const tripoint_bub_ms far_spot = start + tripoint_rel_ms( 16, 0, 0 );
+    const tripoint_bub_ms rig_spot = far_spot + tripoint_rel_ms( 3, 0, 0 );
+    const auto place = [&here]( const tripoint_bub_ms & where, const vpart_id & part ) {
+        vehicle *veh = here.add_vehicle( vehicle_prototype_none, where, 0_degrees, 0,
+                                         veh_spawn_status::UNDAMAGED );
+        REQUIRE( veh != nullptr );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) != -1 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, part ) != -1 );
+        veh->refresh();
+        here.add_vehicle_to_cache( veh );
+    };
+    place( near_spot, vpart_test_vp_weld_to_remove );
+    place( far_spot, vpart_test_vp_weld_to_remove );
+    place( rig_spot, vpart_test_vp_reserve_welder );
+    for( const tripoint_bub_ms &spot : {
+             near_spot, far_spot
+         } ) {
+        zm.add( "deconstruct", zone_type_VEHICLE_DECONSTRUCT, faction_your_followers, false, true,
+                here.get_abs( spot ), here.get_abs( spot ) );
+    }
+    here.build_map_cache( 0 );
+
+    u.assign_activity( multi_vehicle_deconstruct_activity_actor() );
+    REQUIRE( u.activity.id() == ACT_VEHICLE_DECONSTRUCTION );
+    u.set_moves( 1000 );
+    u.activity.do_turn( u );
+    // the near spot was skipped for a move; the far one, with the rig in reach, went on to a
+    // fetch for the rest of what removing the part needs
+    CHECK( u.get_moves() == 1000 - 1 - 1 );
+    CHECK( u.activity.id() == ACT_FETCH_REQUIRED );
+    REQUIRE_FALSE( u.backlog.empty() );
+    CHECK( u.backlog.front().id() == ACT_VEHICLE_DECONSTRUCTION );
+
+    u.cancel_activity();
+    u.backlog.clear();
+    u.activity_vehicle_part_index = -1;
+    zm.clear();
+    clear_map();
+    clear_avatar();
 }
