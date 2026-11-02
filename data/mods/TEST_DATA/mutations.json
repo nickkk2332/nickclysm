@@ -604,5 +604,14 @@
     "points": 0,
     "description": "Test mutation whose enchantment changes spell values.",
     "enchantments": [ "test_ench_spell_power" ]
+  },
+  {
+    "//": "CMBT-P01 fixture: a shooter who passes over half the friends in the line of fire.",
+    "type": "mutation",
+    "id": "TEST_HALF_AVOID_FRIENDLY_FIRE",
+    "name": { "str": "Test Half Avoid Friendly Fire" },
+    "points": 0,
+    "description": "Test mutation that avoids friendly fire half the time.",
+    "enchantments": [ { "values": [ { "value": "AVOID_FRIENDRY_FIRE", "add": 0.5 } ] } ]
   }
 ]

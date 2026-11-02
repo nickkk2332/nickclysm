@@ -29,7 +29,8 @@ The scenarios can also be run directly: `tests/cata_test "[benchmark_scenario]"`
 
 ## Scenarios
 
-Each scenario (in `tests/benchmark_scenarios_test.cpp`) builds a fixed, seeded setup
+Each scenario (in `tests/benchmark_scenarios_test.cpp`, and the combat ones in
+`tests/benchmark_scenarios_combat_test.cpp`) builds a fixed, seeded setup
 without timing it, then times a fixed amount of work.
 
 | Scenario | Work timed | Audit findings it covers |
@@ -49,6 +50,11 @@ without timing it, then times a fixed amount of work.
 | `craft_unattended_wait` | 300 turns of a crafter waiting on an unattended craft step | CRAFT-P01 |
 | `farm_scan` | 5 check-only scans of a 10x10 planted farm plot (a check-only scan stops at the first tile, so it does not show ACT-P02's saving) | ACT-P02 |
 | `blueprint_build_reqs` | build requirements for every constructible terrain and furniture, 10 per call, 5 passes | TERR-P01 |
+| `shot_flockshot` | 2 rounds of 27.3x110 flockshot (24155 pellets): at an unarmored target 6 tiles away, at an armored one 2 tiles away | CMBT-P01 |
+| `shot_birdshot` | 30 rounds of 12 gauge birdshot (100 pellets) at a target 5 tiles away, the common case | CMBT-P01 |
+| `shrapnel_armored` | 1 grenade on an armored zombie, with 8 more 1 tile away and 16 more 2 tiles away, all surviving it | CMBT-P02 |
+| `npc_spell_eval` | 20 attack choices of an NPC knowing 4 attack spells (blast, cone, line, single target), 6 zombies and the player in range | NPC-P01, MAGIC-P02 |
+| `npc_weapon_eval` | 50 attack choices of an NPC with a rifle (2 fire modes), a shotgun, 2 melee weapons and rocks, 6 zombies at 3 to 30 tiles | NPC-P02 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then
