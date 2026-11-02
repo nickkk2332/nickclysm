@@ -1,16 +1,20 @@
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "bodypart.h"
 #include "cata_catch.h"
 #include "flag.h"
 #include "item.h"
+#include "item_group.h"
 #include "item_pocket.h"
 #include "itype.h"
 #include "type_id.h"
 
 static const fault_id fault_test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
 
+static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_briefcase_smg( "briefcase_smg" );
 static const itype_id itype_colt_army( "colt_army" );
 static const itype_id itype_test_fault_self_damaging_rod( "test_fault_self_damaging_rod" );
@@ -73,4 +77,34 @@ TEST_CASE( "item-b04_instant_damage_fault_does_not_reroll_itself", "[audit][item
     CHECK_FALSE( rod.can_have_fault( fault_test_fault_mech_self_damaging ) );
     CHECK_FALSE( rod.set_fault( fault_test_fault_mech_self_damaging ) );
     CHECK( rod.damage() == itype::damage_scale + 1 );
+}
+
+// ITEM-B06: Single_item_creator::every_item_min_max() read modifier->charges and
+// modifier->count for count-by-charges items before checking that the optional modifier
+// exists.  An entry written as a plain id, [id, prob] or {"item": x} has no modifier, so the
+// min/max came from uninitialized storage (bash drops and the terrain bash description).
+TEST_CASE( "item-b06_min_max_of_charges_item_without_modifier", "[audit][item]" )
+{
+    const int charges = itype_9mm->charges_default();
+    REQUIRE( itype_9mm->count_by_charges() );
+    REQUIRE( charges > 1 );
+
+    SECTION( "certain entry spawns one default stack" ) {
+        const Single_item_creator entry( itype_9mm.str(), Single_item_creator::S_ITEM, 100,
+                                         "item-b06 test" );
+        REQUIRE( !entry.modifier );
+        const std::map<const itype *, std::pair<int, int>> min_max = entry.every_item_min_max();
+        REQUIRE( min_max.size() == 1 );
+        CHECK( min_max.begin()->first == &itype_9mm.obj() );
+        CHECK( min_max.begin()->second == std::make_pair( charges, charges ) );
+    }
+
+    SECTION( "uncertain entry may spawn nothing" ) {
+        const Single_item_creator entry( itype_9mm.str(), Single_item_creator::S_ITEM, 1,
+                                         "item-b06 test" );
+        REQUIRE( !entry.modifier );
+        const std::map<const itype *, std::pair<int, int>> min_max = entry.every_item_min_max();
+        REQUIRE( min_max.size() == 1 );
+        CHECK( min_max.begin()->second == std::make_pair( 0, charges ) );
+    }
 }

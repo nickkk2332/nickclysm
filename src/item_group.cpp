@@ -449,6 +449,12 @@ std::map<const itype *, std::pair<int, int>> Single_item_creator::every_item_min
     switch( type ) {
         case S_ITEM: {
             const itype *i = item::find_type( itype_id( id ) );
+            if( i->count_by_charges() && !modifier ) {
+                // a plain entry spawns one default stack, or none if its probability is under 100
+                const int charges = i->charges_default();
+                const int min_charges = probability < 100 ? 0 : charges;
+                return { std::make_pair( i, std::make_pair( min_charges, charges ) ) };
+            }
             if( i->count_by_charges() ) {
                 // TODO: Not technically perfect for only charge_min/charge max and for ammo/liquids but Item_modifier::modify()'s logic is gross and I'd rather not try to replicate it perfectly as is
                 const int min_charges = modifier->charges.first == -1 ?
