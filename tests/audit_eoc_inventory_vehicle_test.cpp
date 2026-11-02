@@ -10,26 +10,39 @@
 #include "condition.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
+#include "game.h"
 #include "item.h"
 #include "item_location.h"
 #include "item_pocket.h"
 #include "json_loader.h"
+#include "map.h"
 #include "map_helpers.h"
 #include "math_parser.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
+#include "vehicle.h"
+#include "vpart_position.h"
+#include "vpart_range.h"
 
 static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_apple( "apple" );
 static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_bag_canvas( "bag_canvas" );
+static const itype_id itype_battery( "battery" );
 static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const itype_id itype_duffelbag( "duffelbag" );
+static const itype_id itype_gasoline( "gasoline" );
 static const itype_id itype_lighter( "lighter" );
+static const itype_id itype_remotevehcontrol( "remotevehcontrol" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_water_clean( "water_clean" );
+
+static const vproto_id vehicle_prototype_car( "car" );
+
+static constexpr tripoint_bub_ms car_pos( 60, 60, 0 );
 
 static conditional_t::func load_condition( const std::string &json )
 {
@@ -277,4 +290,154 @@ TEST_CASE( "inv-j03_is_rotten_and_has_ammo_pairs", "[audit][eoc][inventory]" )
         CHECK_FALSE( npc_has_ammo( d ) );
         CHECK_FALSE( has_ammo( d ) );
     }
+}
+
+static vehicle &place_empty_car( map &here )
+{
+    vehicle *veh = here.add_vehicle( vehicle_prototype_car, car_pos, 0_degrees, 0,
+                                     veh_spawn_status::UNDAMAGED );
+    REQUIRE( veh != nullptr );
+    return *veh;
+}
+
+// VEH-J01: no math function took a vehicle talker, so an EOC could not read or change fuel,
+// battery charge, engine state, speed, lock or part condition.
+TEST_CASE( "veh-j01_math_reads_and_writes_vehicle_state", "[audit][eoc][vehicle]" )
+{
+    clear_avatar();
+    clear_map();
+    clear_vehicles();
+    map &here = get_map();
+    vehicle &veh = place_empty_car( here );
+    dialogue d( get_talker_for( veh ), nullptr );
+
+    SECTION( "fuel" ) {
+        REQUIRE( veh.fuel_left( here, itype_gasoline ) == 0 );
+        CHECK( eval_math( d, "u_vehicle_fuel('gasoline')" ) == 0 );
+        // fills the empty tank that accepts gasoline
+        eval_math( d, "u_vehicle_fuel('gasoline') = 5000" );
+        CHECK( veh.fuel_left( here, itype_gasoline ) == 5000 );
+        CHECK( eval_math( d, "u_vehicle_fuel('gasoline')" ) == 5000 );
+        const double capacity = eval_math( d, "u_vehicle_fuel_capacity('gasoline')" );
+        CHECK( capacity == veh.fuel_capacity( here, itype_gasoline ) );
+        CHECK( capacity >= 5000 );
+        eval_math( d, "u_vehicle_fuel('gasoline') -= 3800" );
+        CHECK( veh.fuel_left( here, itype_gasoline ) == 1200 );
+        // more than the tanks hold fills them up
+        eval_math( d, "u_vehicle_fuel('gasoline') = 100000000" );
+        CHECK( veh.fuel_left( here, itype_gasoline ) == static_cast<int64_t>( capacity ) );
+    }
+
+    SECTION( "battery" ) {
+        const double battery_max = eval_math( d, "u_vehicle_battery_max()" );
+        REQUIRE( battery_max > 100 );
+        CHECK( battery_max == veh.fuel_capacity( here, itype_battery ) );
+        CHECK( eval_math( d, "u_vehicle_battery()" ) == 0 );
+        eval_math( d, "u_vehicle_battery() = 100" );
+        CHECK( veh.battery_left( here, false ) == 100 );
+        CHECK( eval_math( d, "u_vehicle_battery()" ) == 100 );
+        CHECK( eval_math( d, "u_vehicle_fuel('battery')" ) == 100 );
+        eval_math( d, "u_vehicle_fuel('battery') = 40" );
+        CHECK( veh.battery_left( here, false ) == 40 );
+    }
+
+    SECTION( "engine_and_speed" ) {
+        CHECK( eval_math( d, "u_vehicle_engine_on()" ) == 0 );
+        // an engine with no fuel does not start
+        eval_math( d, "u_vehicle_engine_on() = 1" );
+        CHECK_FALSE( veh.engine_on );
+        eval_math( d, "u_vehicle_fuel('gasoline') = 2000" );
+        eval_math( d, "u_vehicle_engine_on() = 1" );
+        CHECK( veh.engine_on );
+        CHECK( eval_math( d, "u_vehicle_engine_on()" ) == 1 );
+        CHECK( eval_math( d, "u_vehicle_power()" ) ==
+               Approx( units::to_watt( veh.total_power( here ) ) ) );
+        CHECK( eval_math( d, "u_vehicle_power()" ) > 0 );
+        CHECK( eval_math( d, "u_vehicle_max_speed()" ) ==
+               Approx( veh.max_velocity( here ) / 100.0 ) );
+        REQUIRE( veh.max_velocity( here ) > 2000 );
+
+        eval_math( d, "u_vehicle_cruise() = 20" );
+        CHECK( veh.cruise_velocity == 2000 );
+        CHECK( eval_math( d, "u_vehicle_cruise()" ) == Approx( 20 ) );
+        // cruise control cannot be set above what the engines reach
+        eval_math( d, "u_vehicle_cruise() = 100000" );
+        CHECK( veh.cruise_velocity == veh.max_velocity( here ) );
+
+        eval_math( d, "u_vehicle_velocity() = 10" );
+        CHECK( veh.velocity == 1000 );
+        CHECK( eval_math( d, "u_vehicle_velocity()" ) == Approx( 10 ) );
+
+        eval_math( d, "u_vehicle_engine_on() = 0" );
+        CHECK_FALSE( veh.engine_on );
+    }
+
+    SECTION( "lock" ) {
+        veh.is_locked = false;
+        eval_math( d, "u_vehicle_locked() = 1" );
+        CHECK( veh.is_locked );
+        CHECK( eval_math( d, "u_vehicle_locked()" ) == 1 );
+        eval_math( d, "u_vehicle_locked() = 0" );
+        CHECK_FALSE( veh.is_locked );
+    }
+
+    SECTION( "parts" ) {
+        const vehicle_part_with_feature_range<std::string> wheels = veh.get_avail_parts( "WHEEL" );
+        const int wheel_count = std::distance( wheels.begin(), wheels.end() );
+        REQUIRE( wheel_count >= 2 );
+        CHECK( eval_math( d, "u_vehicle_part_count('WHEEL')" ) == wheel_count );
+        CHECK( eval_math( d, "u_vehicle_part_broken_count('WHEEL')" ) == 0 );
+        CHECK( eval_math( d, "u_vehicle_part_hp('WHEEL')" ) == Approx( 100 ) );
+
+        vehicle_part &flat = ( *wheels.begin() ).part();
+        veh.set_hp( flat, 0, true );
+        REQUIRE( flat.is_broken() );
+        CHECK( eval_math( d, "u_vehicle_part_count('WHEEL')" ) == wheel_count - 1 );
+        CHECK( eval_math( d, "u_vehicle_part_broken_count('WHEEL')" ) == 1 );
+        CHECK( eval_math( d, "u_vehicle_part_hp('WHEEL')" ) == Approx( 0 ) );
+        CHECK( eval_math( d, "u_vehicle_part_hp('WHEEL', 'aggregate': 'max')" ) == Approx( 100 ) );
+        CHECK( eval_math( d, "u_vehicle_part_hp('WHEEL', 'aggregate': 'average')" ) ==
+               Approx( 100.0 * ( wheel_count - 1 ) / wheel_count ) );
+    }
+    here.destroy_vehicle( &veh );
+}
+
+// VEH-J01: u_is_remote_controlled and u_is_driven went through vehicle::remote_controlled(),
+// which drops the avatar's remote link when no remote controls are in range, so merely
+// checking a condition cut the connection. u_is_driven also ignored autopilot driving.
+TEST_CASE( "veh-j01_vehicle_conditions_have_no_side_effects", "[audit][eoc][vehicle]" )
+{
+    clear_avatar();
+    clear_map();
+    clear_vehicles();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    vehicle &veh = place_empty_car( here );
+    item remote( itype_remotevehcontrol );
+    remote.active = true;
+    REQUIRE( u.i_add( remote ) );
+    REQUIRE( u.has_active_item( itype_remotevehcontrol ) );
+    g->setremoteveh( &veh );
+    REQUIRE( g->remoteveh() == &veh );
+
+    const conditional_t::func is_remote_controlled = load_condition(
+                R"({ "condition": "u_is_remote_controlled" })" );
+    const conditional_t::func is_driven = load_condition( R"({ "condition": "u_is_driven" })" );
+    dialogue d( get_talker_for( veh ), nullptr );
+
+    // the car has no remote controls, so the link does not reach it
+    CHECK_FALSE( is_remote_controlled( d ) );
+    CHECK( g->remoteveh() == &veh );
+    CHECK_FALSE( is_driven( d ) );
+    CHECK( g->remoteveh() == &veh );
+
+    veh.is_patrolling = true;
+    CHECK( is_driven( d ) );
+    veh.is_patrolling = false;
+    veh.is_following = true;
+    CHECK( is_driven( d ) );
+    veh.is_following = false;
+
+    g->setremoteveh( nullptr );
+    here.destroy_vehicle( &veh );
 }

@@ -8,12 +8,16 @@
 #include "coordinates.h"
 #include "effect.h"
 #include "effect_source.h"
+#include "game.h"
+#include "line.h"
 #include "map.h"
 #include "math_parser_diag_value.h"
 #include "talker_vehicle.h"
 #include "tileray.h"
 #include "units.h"
 #include "vehicle.h"
+#include "vpart_position.h"
+#include "vpart_range.h"
 
 std::string talker_vehicle_const::disp_name() const
 {
@@ -101,10 +105,34 @@ int talker_vehicle_const::get_unloaded_weight() const
     return units::to_milligram( me_veh_const->unloaded_mass() );
 }
 
+// vehicle::remote_controlled() also drops the remote link, with a message, when the avatar
+// is out of range. A condition must not change the game, so check the range on its own.
+static bool avatar_remote_controls( const vehicle &veh )
+{
+    if( g->remoteveh() != &veh ) {
+        return false;
+    }
+    const tripoint_abs_ms avatar_pos = get_avatar().pos_abs();
+    for( const vpart_reference &vp : veh.get_avail_parts( "REMOTE_CONTROLS" ) ) {
+        if( rl_dist( avatar_pos, vp.pos_abs() ) <= 40 ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool talker_vehicle_const::is_driven() const
 {
-    //When/if npcs can drive this will need updating
-    return me_veh_const->player_in_control( get_map(), get_avatar() );
+    const vehicle &veh = *me_veh_const;
+    // autopilot, following and patrolling drive the vehicle without anyone at the controls
+    if( veh.is_autodriving || veh.is_following || veh.is_patrolling ) {
+        return true;
+    }
+    // player_in_control() falls back to remote_controlled(), which has side effects
+    if( g->remoteveh() == &veh ) {
+        return avatar_remote_controls( veh );
+    }
+    return veh.player_in_control( get_map(), get_avatar() );
 }
 
 int talker_vehicle_const::get_vehicle_facing() const
@@ -174,7 +202,7 @@ bool talker_vehicle_const::is_on_rails() const
 
 bool talker_vehicle_const::is_remote_controlled() const
 {
-    return me_veh_const->remote_controlled( get_avatar() );
+    return avatar_remote_controls( *me_veh_const );
 }
 
 bool talker_vehicle_const::is_passenger( Character &you ) const

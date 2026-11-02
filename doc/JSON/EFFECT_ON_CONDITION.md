@@ -1617,7 +1617,7 @@ You can see selected location.
 
 ### `u_is_driven`, `npc_is_driven`
 - type: simple string
-- return true if alpha or beta talker is a vehicle currently being driven
+- return true if alpha or beta talker is a vehicle currently being driven: by the avatar at its controls, by the avatar's remote control within range, or by its autopilot (autodrive, following or patrolling)
 
 #### Valid talkers:
 
@@ -1688,7 +1688,7 @@ You can see selected location.
 
 ### `u_is_remote_controlled`, `npc_is_remote_controlled`
 - type: simple string
-- return true if alpha or beta talker is a vehicle being remote controlled by the player
+- return true if alpha or beta talker is a vehicle being remote controlled by the player, with the remote controls within 40 tiles of the player. Checking it never changes the remote link: the game itself drops a link that is out of range.
 
 #### Valid talkers:
 
@@ -2955,6 +2955,38 @@ Run EOC_KILL_SHADOW on any mon_zombie_dog, mon_dog_zombie_cop or mon_dog_zombie_
     "mtype_ids": [ "mon_zombie_dog", "mon_dog_zombie_cop", "mon_dog_zombie_rot" ]
     "monster_range": 12
   }
+```
+
+#### `u_run_vehicle_eocs`, `npc_run_vehicle_eocs`
+Vehicles run EoCs, provided by this effect; only vehicles inside the reality bubble are affected. Each vehicle is the alpha talker of its EoC (there is no beta talker), so `u_vehicle_fuel('gasoline')`, `u_is_driven` and the other vehicle functions and conditions read it. The context variables of the calling EoC are passed on.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_run_vehicle_eocs"/ "npc_run_vehicle_eocs" | **mandatory** | array of eocs | EoCs that would be run by vehicles |
+| "vehicle_range" | optional | int | if used, only vehicles within this distance of the talker are affected |
+| "z_min" | optional | int or [variable object](#variable-object) | if used, only vehicles with z position >= z_min are affected |
+| "z_max" | optional | int or [variable object](#variable-object) | if used, only vehicles with z position <= z_max are affected |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ✔️ | ✔️ | ✔️ |
+
+##### Examples
+
+Drain a little fuel from every vehicle within 30 tiles of the player that is not being driven
+```jsonc
+{
+  "u_run_vehicle_eocs": [
+    {
+      "id": "EOC_SIPHON_PARKED_CARS",
+      "condition": { "and": [ { "not": "u_is_driven" }, { "math": [ "u_vehicle_fuel('gasoline') > 500" ] } ] },
+      "effect": [ { "math": [ "u_vehicle_fuel('gasoline') -= 500" ] } ]
+    }
+  ],
+  "vehicle_range": 30
+}
 ```
 
 #### `u_run_inv_eocs`, `npc_run_inv_eocs`

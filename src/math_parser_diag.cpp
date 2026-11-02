@@ -2,7 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <list>
 #include <memory>
@@ -31,6 +35,7 @@
 #include "enums.h"
 #include "faction.h"
 #include "field.h"
+#include "flag.h"
 #include "game.h"
 #include "input_popup.h"
 #include "item.h"
@@ -57,6 +62,9 @@
 #include "type_id.h"
 #include "units.h"
 #include "value_ptr.h"
+#include "vehicle.h"
+#include "vpart_position.h"
+#include "vpart_range.h"
 #include "weather.h"
 #include "weather_gen.h"
 #include "weather_type.h"
@@ -75,6 +83,8 @@ General guidelines for writing dialogue functions
   ex: school_level() split from spell_level() instead of spell_level('school':blorg)
 - throw math::runtime_error for all errors
 */
+
+static const itype_id itype_battery( "battery" );
 
 static const json_character_flag json_flag_MUTATION_THRESHOLD( "MUTATION_THRESHOLD" );
 
@@ -1930,6 +1940,305 @@ double remaining_weight_eval( const_dialogue const &d, char scope,
                                 "remaining_weight" ) ).remaining_weight );
 }
 
+vehicle const *vehicle_talker( const_dialogue const &d, char scope, std::string_view func )
+{
+    vehicle const *const veh = d.const_actor( is_beta( scope ) )->get_const_vehicle();
+    if( veh == nullptr ) {
+        throw math::runtime_error( "For %s(), talker must be a vehicle", func );
+    }
+    return veh;
+}
+
+vehicle *mutable_vehicle_talker( dialogue &d, char scope, std::string_view func )
+{
+    vehicle *const veh = d.actor( is_beta( scope ) )->get_vehicle();
+    if( veh == nullptr ) {
+        throw math::runtime_error( "For %s(), talker must be a vehicle", func );
+    }
+    return veh;
+}
+
+itype_id vehicle_fuel_param( const_dialogue const &d, diag_value const &param )
+{
+    const itype_id fuel( param.str( d ) );
+    if( !fuel.is_valid() ) {
+        throw math::runtime_error( R"(Unknown fuel "%s")", fuel.str() );
+    }
+    return fuel;
+}
+
+std::string vehicle_part_flag_param( const_dialogue const &d, diag_value const &param )
+{
+    std::string const &flag = param.str( d );
+    if( !flag_id( flag ).is_valid() ) {
+        throw math::runtime_error( R"(Unknown vehicle part flag "%s")", flag );
+    }
+    return flag;
+}
+
+// An amount of fuel or charge as the int the vehicle functions take.
+int64_t vehicle_amount( double val )
+{
+    return std::llround( std::clamp( val, 0.0, static_cast<double>( INT_MAX ) ) );
+}
+
+// Battery charge is shared by every vehicle and appliance connected by cables; reading and
+// writing it ignore the cable loss so a written value reads back unchanged.
+void set_vehicle_battery( vehicle &veh, map &here, double val )
+{
+    const int64_t current = veh.battery_left( here, false );
+    const int64_t target = vehicle_amount( val );
+    const int change = static_cast<int>( std::min<int64_t>( std::abs( target - current ),
+                                         INT_MAX ) );
+    if( target > current ) {
+        veh.charge_battery( here, change, false );
+    } else if( target < current ) {
+        veh.discharge_battery( here, change, false );
+    }
+}
+
+double vehicle_battery_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const & /* params */,
+                             diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_battery" )->battery_left( get_map(), false );
+}
+
+void vehicle_battery_ass( double val, dialogue &d, char scope,
+                          std::vector<diag_value> const & /* params */,
+                          diag_kwargs const & /* kwargs */ )
+{
+    set_vehicle_battery( *mutable_vehicle_talker( d, scope, "vehicle_battery" ), get_map(), val );
+}
+
+double vehicle_battery_max_eval( const_dialogue const &d, char scope,
+                                 std::vector<diag_value> const & /* params */,
+                                 diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_battery_max" )->fuel_capacity( get_map(),
+            itype_battery );
+}
+
+double vehicle_fuel_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_fuel" );
+    const itype_id fuel = vehicle_fuel_param( d, params[0] );
+    if( fuel == itype_battery ) {
+        return veh->battery_left( get_map(), false );
+    }
+    return veh->fuel_left( get_map(), fuel );
+}
+
+void vehicle_fuel_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                       diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_fuel" );
+    const itype_id fuel = vehicle_fuel_param( d, params[0] );
+    map &here = get_map();
+    if( fuel == itype_battery ) {
+        set_vehicle_battery( *veh, here, val );
+        return;
+    }
+    const int64_t current = veh->fuel_left( here, fuel );
+    const int64_t target = vehicle_amount( val );
+    if( target < current ) {
+        const int excess = static_cast<int>( std::min<int64_t>( current - target, INT_MAX ) );
+        veh->drain( here, fuel, excess );
+        return;
+    }
+    int64_t to_add = target - current;
+    const item fuel_item( fuel );
+    const auto fill = [veh, &fuel, &fuel_item, &to_add]( bool empty_stores ) {
+        for( const int idx : veh->fuel_containers ) {
+            vehicle_part &vp = veh->part( idx );
+            if( to_add <= 0 || vp.is_broken() || vp.has_flag( vp_flag::carried_flag ) ||
+                vp.is_battery() ) {
+                continue;
+            }
+            if( empty_stores ? !vp.ammo_current().is_null() || !vp.can_reload( fuel_item ) :
+                vp.ammo_current() != fuel ) {
+                continue;
+            }
+            const int held = empty_stores ? 0 : vp.ammo_remaining();
+            const int room = vp.item_capacity( fuel ) - held;
+            if( room <= 0 ) {
+                continue;
+            }
+            const int added = static_cast<int>( std::min<int64_t>( room, to_add ) );
+            if( vp.ammo_set( fuel, held + added ) > held ) {
+                to_add -= added;
+            }
+        }
+    };
+    // top up the stores that already hold this fuel, then fill empty ones that accept it
+    fill( false );
+    fill( true );
+    veh->invalidate_mass();
+}
+
+double vehicle_fuel_capacity_eval( const_dialogue const &d, char scope,
+                                   std::vector<diag_value> const &params,
+                                   diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_fuel_capacity" );
+    return veh->fuel_capacity( get_map(), vehicle_fuel_param( d, params[0] ) );
+}
+
+double vehicle_engine_on_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const & /* params */,
+                               diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_engine_on" )->engine_on ? 1 : 0;
+}
+
+void vehicle_engine_on_ass( double val, dialogue &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_engine_on" );
+    map &here = get_map();
+    if( !is_true( val ) ) {
+        if( veh->engine_on ) {
+            veh->stop_engines( here );
+        }
+        return;
+    }
+    if( veh->engine_on ) {
+        return;
+    }
+    // like vehicle::start_engines(): with no engine switched on, switch on every working one
+    if( std::none_of( veh->engines.begin(), veh->engines.end(), [veh]( int idx ) {
+    return veh->part( idx ).enabled && !veh->part( idx ).is_broken();
+    } ) ) {
+        for( const int idx : veh->engines ) {
+            veh->part( idx ).enabled = !veh->part( idx ).is_broken();
+        }
+    }
+    // engines without fuel would stall on the next turn anyway (vehicle::idle)
+    veh->engine_on = veh->total_power( here ) > 0_W;
+}
+
+// Speeds are stored in hundredths of a mile per hour.
+double vehicle_velocity_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_velocity" )->velocity / 100.0;
+}
+
+void vehicle_velocity_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const & /* params */,
+                           diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_velocity" );
+    map &here = get_map();
+    // what the engines could reach with fuel, so an empty tank does not pin the vehicle
+    const double low = veh->max_reverse_velocity( here, false );
+    const double high = veh->max_velocity( here, false );
+    veh->velocity = static_cast<int>( std::lround( std::clamp( val * 100.0, low, high ) ) );
+}
+
+double vehicle_cruise_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_cruise" )->cruise_velocity / 100.0;
+}
+
+void vehicle_cruise_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    vehicle *const veh = mutable_vehicle_talker( d, scope, "vehicle_cruise" );
+    map &here = get_map();
+    // the same limits as vehicle::cruise_thrust()
+    const double low = veh->max_reverse_velocity( here );
+    const double high = veh->max_velocity( here );
+    veh->cruise_velocity = static_cast<int>( std::lround( std::clamp( val * 100.0, low, high ) ) );
+}
+
+double vehicle_max_speed_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const & /* params */,
+                               diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_max_speed" )->max_velocity( get_map() ) / 100.0;
+}
+
+double vehicle_power_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const & /* params */,
+                           diag_kwargs const & /* kwargs */ )
+{
+    return units::to_watt( vehicle_talker( d, scope, "vehicle_power" )->total_power( get_map() ) );
+}
+
+double vehicle_locked_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return vehicle_talker( d, scope, "vehicle_locked" )->is_locked ? 1 : 0;
+}
+
+void vehicle_locked_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    mutable_vehicle_talker( d, scope, "vehicle_locked" )->is_locked = is_true( val );
+}
+
+double vehicle_part_count_eval( const_dialogue const &d, char scope,
+                                std::vector<diag_value> const &params,
+                                diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_count" );
+    const vehicle_part_with_feature_range<std::string> parts =
+        veh->get_avail_parts( vehicle_part_flag_param( d, params[0] ) );
+    return static_cast<double>( std::distance( parts.begin(), parts.end() ) );
+}
+
+double vehicle_part_broken_count_eval( const_dialogue const &d, char scope,
+                                       std::vector<diag_value> const &params,
+                                       diag_kwargs const & /* kwargs */ )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_broken_count" );
+    int broken = 0;
+    for( const vpart_reference &vp : veh->get_any_parts( vehicle_part_flag_param( d,
+            params[0] ) ) ) {
+        if( vp.part().is_broken() && !vp.part().has_flag( vp_flag::carried_flag ) ) {
+            ++broken;
+        }
+    }
+    return broken;
+}
+
+double vehicle_part_hp_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    vehicle const *const veh = vehicle_talker( d, scope, "vehicle_part_hp" );
+    std::string const &flag = vehicle_part_flag_param( d, params[0] );
+    diag_value const agg_val = kwargs.kwarg_or( "aggregate", "min" );
+    std::string const &agg = agg_val.str( d );
+    if( agg != "min" && agg != "max" && agg != "average" ) {
+        throw math::runtime_error( R"(Unknown aggregate "%s" for vehicle_part_hp())", agg );
+    }
+    std::vector<double> health;
+    for( const vpart_reference &vp : veh->get_any_parts( flag ) ) {
+        if( !vp.part().has_flag( vp_flag::carried_flag ) ) {
+            health.push_back( vp.part().health_percent() * 100.0 );
+        }
+    }
+    if( health.empty() ) {
+        return 0;
+    }
+    if( agg == "max" ) {
+        return *std::max_element( health.begin(), health.end() );
+    }
+    if( agg == "average" ) {
+        return std::accumulate( health.begin(), health.end(), 0.0 ) / health.size();
+    }
+    return *std::min_element( health.begin(), health.end() );
+}
+
 double vitamin_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
                      diag_kwargs const & /* kwargs */ )
 {
@@ -2131,6 +2440,19 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "weather", { "g", 1, weather_eval, weather_ass } },
     { "climate_control_str_heat", { "un", 0, climate_control_str_heat_eval } },
     { "climate_control_str_chill", { "un", 0, climate_control_str_chill_eval } },
+    { "vehicle_battery", { "un", 0, vehicle_battery_eval, vehicle_battery_ass } },
+    { "vehicle_battery_max", { "un", 0, vehicle_battery_max_eval } },
+    { "vehicle_cruise", { "un", 0, vehicle_cruise_eval, vehicle_cruise_ass } },
+    { "vehicle_engine_on", { "un", 0, vehicle_engine_on_eval, vehicle_engine_on_ass } },
+    { "vehicle_fuel", { "un", 1, vehicle_fuel_eval, vehicle_fuel_ass } },
+    { "vehicle_fuel_capacity", { "un", 1, vehicle_fuel_capacity_eval } },
+    { "vehicle_locked", { "un", 0, vehicle_locked_eval, vehicle_locked_ass } },
+    { "vehicle_max_speed", { "un", 0, vehicle_max_speed_eval } },
+    { "vehicle_part_broken_count", { "un", 1, vehicle_part_broken_count_eval } },
+    { "vehicle_part_count", { "un", 1, vehicle_part_count_eval } },
+    { "vehicle_part_hp", { "un", 1, vehicle_part_hp_eval, {}, { "aggregate" } } },
+    { "vehicle_power", { "un", 0, vehicle_power_eval } },
+    { "vehicle_velocity", { "un", 0, vehicle_velocity_eval, vehicle_velocity_ass } },
 };
 
 } // namespace
