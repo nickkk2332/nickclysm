@@ -420,9 +420,21 @@ refusal start_craft( const activity_id &, Character &who, const eoc_activity_tar
         if( who.lighting_craft_speed_multiplier( making ) <= 0.0f ) {
             return std::string( _( "It's too dark to craft." ) );
         }
-        who.assign_activity( craft_activity_actor( craft, false ) );
+        const requirement_data continue_reqs = craft->get_continue_reqs();
+        if( !continue_reqs.is_empty() &&
+            !continue_reqs.can_make_with_inventory( &who, who.crafting_inventory(),
+                    making.get_component_filter(), 1 ) ) {
+            return string_format( _( "The components to go on with the %s aren't at hand." ),
+                                  craft->tname() );
+        }
+        const std::string name = craft->tname();
+        {
+            // Going on can ask to consume missing components and to choose tools again.
+            const craft_prompt_suppressor no_prompts;
+            who.assign_activity( craft_activity_actor( craft, false ) );
+        }
         if( !now_doing( who, { ACT_CRAFT, ACT_CRAFT_WAIT } ) ) {
-            return did_not_start( *craft );
+            return string_format( _( "Working on the %s stopped as soon as it started." ), name );
         }
         return std::nullopt;
     }

@@ -67,6 +67,20 @@
     "text": "A page about <u_name>."
   },
   {
+    "type": "recipe",
+    "//": "u_assign_activity tests: two component alternatives, each split between inventory and ground.",
+    "activity_level": "NO_EXERCISE",
+    "result": "cudgel",
+    "id_suffix": "test_eoc_mixed",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "fabrication",
+    "difficulty": 0,
+    "time": "1 m",
+    "autolearn": false,
+    "components": [ [ [ "2x4", 2 ], [ "stick", 2 ] ] ]
+  },
+  {
     "type": "furniture",
     "id": "test_f_dead_gate_control",
     "name": "test gate control with no gate",

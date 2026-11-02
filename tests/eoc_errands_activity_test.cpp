@@ -16,6 +16,7 @@
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
+#include "item_components.h"
 #include "item_location.h"
 #include "json_error.h"
 #include "json_loader.h"
@@ -28,6 +29,7 @@
 #include "pocket_type.h"
 #include "point.h"
 #include "recipe.h"
+#include "requirements.h"
 #include "skill.h"
 #include "talker.h"
 #include "type_id.h"
@@ -51,6 +53,7 @@ static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_cudgel( "cudgel" );
 static const itype_id itype_knife_combat( "knife_combat" );
 static const itype_id itype_splinter( "splinter" );
+static const itype_id itype_stick( "stick" );
 static const itype_id itype_stanag30( "stanag30" );
 static const itype_id itype_test_audit_hook_widget( "test_audit_hook_widget" );
 static const itype_id itype_test_textbook_fabrication( "test_textbook_fabrication" );
@@ -61,6 +64,7 @@ static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const mtype_id mon_chicken( "mon_chicken" );
 
 static const recipe_id recipe_cudgel_test_activity_hooks( "cudgel_test_activity_hooks" );
+static const recipe_id recipe_cudgel_test_eoc_mixed( "cudgel_test_eoc_mixed" );
 
 static const skill_id skill_fabrication( "fabrication" );
 static const skill_id skill_survival( "survival" );
@@ -411,6 +415,9 @@ TEST_CASE( "act-j02_eoc_crafts_a_recipe", "[audit][activity][errands_ui]" )
     }
     SECTION( "the avatar crafts at a workbench" ) {
         u.learn_recipe( &recipe_cudgel_test_activity_hooks.obj() );
+        // The player's recraft target isn't the EOC's craft.
+        u.lastrecipe = recipe_cudgel_test_eoc_mixed;
+        u.last_batch = 3;
         const tripoint_bub_ms bench = u.pos_bub() + tripoint_rel_ms( 0, 1, 0 );
         here.furn_set( bench, furn_f_workbench );
         u.i_add( item( itype_2x4 ) );
@@ -426,8 +433,57 @@ TEST_CASE( "act-j02_eoc_crafts_a_recipe", "[audit][activity][errands_ui]" )
             on_bench |= it.is_craft();
         }
         CHECK( on_bench );
+        CHECK( u.lastrecipe == recipe_cudgel_test_eoc_mixed );
+        CHECK( u.last_batch == 3 );
         run_activity_to_the_end( u, ACT_CRAFT );
         CHECK( count_on_map_and_person( u, itype_cudgel ) == 1 );
+    }
+    SECTION( "the avatar crafts with components split between pack and ground, with no menu" ) {
+        u.learn_recipe( &recipe_cudgel_test_eoc_mixed.obj() );
+        item backpack( itype_backpack );
+        u.wear_item( backpack );
+        u.i_add( item( itype_2x4 ) );
+        u.i_add( item( itype_stick ) );
+        on_ground( u.pos_bub(), item( itype_2x4 ) );
+        on_ground( u.pos_bub(), item( itype_stick ) );
+        item_location none;
+        const std::string msg = capture_debugmsg_during( [&]() {
+            assign( R"("ACT_CRAFT", "recipe": "cudgel_test_eoc_mixed")", u, none );
+        } );
+        CHECK( msg.empty() );
+        CHECK( result() == "started" );
+        REQUIRE( u.activity.id() == ACT_CRAFT );
+        // The first alternative, from both places.
+        CHECK( count_on_map_and_person( u, itype_2x4 ) == 0 );
+        CHECK( count_on_map_and_person( u, itype_stick ) == 2 );
+    }
+    SECTION( "an NPC goes on with a craft that lost a component: it uses one at hand, unasked" ) {
+        guy.learn_recipe( &recipe_cudgel_test_activity_hooks.obj() );
+        // A craft that used a 2x4 but no longer holds it, as after a failure.
+        item lost( &recipe_cudgel_test_activity_hooks.obj(), 1, item_components(),
+                   std::vector<item_comp> { item_comp( itype_2x4, 1 ) } );
+        REQUIRE_FALSE( lost.get_continue_reqs().is_empty() );
+        item_location craft = on_ground( guy.pos_bub(), lost );
+        on_ground( guy.pos_bub(), item( itype_2x4 ) );
+        const std::string msg = capture_debugmsg_during( [&]() {
+            assign( R"("ACT_CRAFT", "target_item": "npc")", guy, craft );
+        } );
+        CHECK( msg.empty() );
+        CHECK( result() == "started" );
+        REQUIRE( guy.activity.id() == ACT_CRAFT );
+        CHECK( count_on_map_and_person( guy, itype_2x4 ) == 0 );
+        run_activity_to_the_end( guy, ACT_CRAFT );
+        CHECK( count_on_map_and_person( guy, itype_cudgel ) == 1 );
+    }
+    SECTION( "going on with a craft whose missing component isn't at hand is refused" ) {
+        guy.learn_recipe( &recipe_cudgel_test_activity_hooks.obj() );
+        item lost( &recipe_cudgel_test_activity_hooks.obj(), 1, item_components(),
+                   std::vector<item_comp> { item_comp( itype_2x4, 1 ) } );
+        item_location craft = on_ground( guy.pos_bub(), lost );
+        assign( R"("ACT_CRAFT", "target_item": "npc")", guy, craft );
+        CHECK( result() == "refused" );
+        CHECK_THAT( reason(), Catch::Matchers::Contains( "aren't at hand" ) );
+        CHECK( guy.activity.is_null() );
     }
     SECTION( "an NPC goes on with a craft in progress" ) {
         guy.learn_recipe( &recipe_cudgel_test_activity_hooks.obj() );

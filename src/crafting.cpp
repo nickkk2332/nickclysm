@@ -3921,7 +3921,7 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
         const int batch_size = 1;
 
         if( !continue_reqs.can_make_with_inventory( this, crafting_inventory(), std_filter, batch_size ) ) {
-            if( is_avatar() ) {
+            if( is_avatar() && !craft_prompts_suppressed() ) {
                 std::string buffer = _( "You don't have the required components to continue crafting!" );
                 buffer += "\n";
                 buffer += continue_reqs.list_missing();
@@ -3932,17 +3932,20 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
             return false;
         }
 
+        // With prompts suppressed, the answers are those of craft_command::execute: yes to
+        // consuming and to rotten components, no to favorited ones.
+        const bool ask = !craft_prompts_suppressed();
         std::string buffer = _( "Consume the missing components and continue crafting?" );
         buffer += "\n";
         buffer += continue_reqs.list_all();
-        if( !query_yn( buffer ) ) {
+        if( ask && !query_yn( buffer ) ) {
             return false;
         }
 
         if( !continue_reqs.can_make_with_inventory( this, crafting_inventory(), no_rotten_filter,
                 batch_size ) ) {
-            if( !query_yn( _( "Some components required to continue are rotten.\n"
-                              "Continue crafting anyway?" ) ) ) {
+            if( ask && !query_yn( _( "Some components required to continue are rotten.\n"
+                                     "Continue crafting anyway?" ) ) ) {
                 return false;
             }
             use_rotten_filter = false;
@@ -3950,8 +3953,8 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
 
         if( !continue_reqs.can_make_with_inventory( this, crafting_inventory(), no_favorite_filter,
                 batch_size ) ) {
-            if( !query_yn( _( "Some components required to continue are favorite.\n"
-                              "Continue crafting anyway?" ) ) ) {
+            if( !ask || !query_yn( _( "Some components required to continue are favorite.\n"
+                                      "Continue crafting anyway?" ) ) ) {
                 return false;
             }
             use_favorite_filter = false;
@@ -4026,7 +4029,7 @@ bool Character::can_continue_craft( item &craft, const requirement_data &continu
                 std::vector<std::vector<item_comp>>() );
 
         if( !tool_continue_reqs.can_make_with_inventory( this, crafting_inventory(), return_true<item> ) ) {
-            if( is_avatar() ) {
+            if( is_avatar() && !craft_prompts_suppressed() ) {
                 std::string buffer = _( "You don't have the necessary tools to continue crafting!" );
                 buffer += "\n";
                 buffer += tool_continue_reqs.list_missing();
@@ -4285,6 +4288,10 @@ comp_selection<item_comp> Character::select_item_component( const std::vector<it
         } else if( !map_has.empty() ) {
             selected.use_from = usage_from::map;
             selected.comp = map_has[0].first;
+        } else if( !mixed.empty() ) {
+            // Each alternative is partly carried and partly nearby: use both, as the menu offers.
+            selected.use_from = usage_from::both;
+            selected.comp = mixed[0].first;
         } else {
             debugmsg( "Attempted a recipe with no available components!" );
             selected.use_from = usage_from::cancel;

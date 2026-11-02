@@ -6806,7 +6806,15 @@ bool craft_activity_actor::check_if_craft_okay( item_location &craft_item, Chara
     if( !cached_continuation_requirements ) {
         cached_continuation_requirements = craft->get_continue_reqs();
     }
-    return crafter.can_continue_craft( *craft, *cached_continuation_requirements );
+    if( !crafter.can_continue_craft( *craft, *cached_continuation_requirements ) ) {
+        return false;
+    }
+    if( !cached_continuation_requirements->is_empty() ) {
+        // can_continue_craft just used up the missing components: checking the same requirements
+        // again next turn would find them missing and stop the craft.
+        cached_continuation_requirements = craft->get_continue_reqs();
+    }
+    return true;
 }
 
 void craft_activity_actor::start( player_activity &act, Character &crafter )

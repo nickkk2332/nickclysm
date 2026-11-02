@@ -260,12 +260,13 @@ void craft_command::execute( bool only_cache_comps )
         plans = std::move( *chosen );
     }
     crafter->start_craft( *this, loc, std::move( plans ) );
-    crafter->last_batch = batch_size;
-    crafter->lastrecipe = rec->ident();
     if( craft_prompts_suppressed() ) {
-        // Not the player's choice: keep it off their recent recipes.
+        // Not the player's choice: it changes neither what they recraft nor their recent
+        // recipes.
         return;
     }
+    crafter->last_batch = batch_size;
+    crafter->lastrecipe = rec->ident();
 
     const auto iter = std::find( uistate.recent_recipes.begin(), uistate.recent_recipes.end(),
                                  rec->ident() );
