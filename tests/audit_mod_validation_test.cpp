@@ -4,15 +4,28 @@
 
 #include "avatar.h"
 #include "cata_catch.h"
+#include "coordinates.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
+#include "global_vars.h"
+#include "item.h"
+#include "item_location.h"
+#include "itype.h"
+#include "iuse.h"
 #include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "magic_type.h"
+#include "map.h"
+#include "map_helpers.h"
+#include "math_parser_diag_value.h"
 #include "mongroup.h"
 #include "player_helpers.h"
+#include "ret_val.h"
 #include "type_id.h"
+
+static const itype_id itype_match( "match" );
+static const itype_id itype_test_eoc_use_rune( "test_eoc_use_rune" );
 
 static const mongroup_id GROUP_AUDIT_MONDT_J01( "GROUP_AUDIT_MONDT_J01" );
 
@@ -168,4 +181,65 @@ TEST_CASE( "magic-j03_magic_type_check_rejects_unknown_references", "[audit][mag
     CAPTURE( errors );
     CHECK( contains( errors, "audit_magic_j03_no_vitamin" ) );
     CHECK( contains( errors, R"(unknown jmath_function "audit_magic_j03_no_formula")" ) );
+}
+
+// USE-J01: the effect_on_conditions use action had no condition, its EOCs could neither
+// choose how many charges to spend nor cancel (refunding the time), and the tile passed to
+// it (u_activate's target_var) never reached them. The test rune's EOC_TEST_USE_RUNE spends
+// a second, copies use_location to a global and sets _charges / _cancel from globals.
+TEST_CASE( "use-j01_eoc_use_action_condition_charges_cancel_and_target", "[audit][iuse][eoc]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    global_variables &globvars = get_globals();
+    globvars.clear_global_values();
+    globvars.set_global_value( "test_use_rune_runs", 0 );
+    globvars.set_global_value( "test_use_rune_allowed", 1 );
+    globvars.set_global_value( "test_use_rune_charges", 3 );
+    globvars.set_global_value( "test_use_rune_cancel", 0 );
+
+    item_location rune = u.i_add( item( itype_test_eoc_use_rune ) );
+    REQUIRE( rune );
+    rune->ammo_set( itype_match, 20 );
+    REQUIRE( rune->ammo_remaining() == 20 );
+    const std::string method = "effect_on_conditions";
+    const tripoint_bub_ms target = u.pos_bub() + tripoint_rel_ms::east * 2;
+    u.set_moves( 200 );
+
+    SECTION( "the EOC picks the charges to spend and sees the target tile" ) {
+        u.invoke_item( rune.get_item(), method, target );
+        CHECK( globvars.get_global_value( "test_use_rune_runs" ) == 1 );
+        CHECK( rune->ammo_remaining() == 17 );
+        CHECK( u.get_moves() == 100 );
+        const diag_value &loc = globvars.get_global_value( "test_use_rune_loc" );
+        REQUIRE( loc.is_tripoint() );
+        CHECK( loc.tripoint() == here.get_abs( target ) );
+    }
+    SECTION( "zero charges spends nothing but keeps the time spent" ) {
+        globvars.set_global_value( "test_use_rune_charges", 0 );
+        u.invoke_item( rune.get_item(), method, target );
+        CHECK( globvars.get_global_value( "test_use_rune_runs" ) == 1 );
+        CHECK( rune->ammo_remaining() == 20 );
+        CHECK( u.get_moves() == 100 );
+    }
+    SECTION( "cancel spends nothing and refunds the time" ) {
+        globvars.set_global_value( "test_use_rune_cancel", 1 );
+        u.invoke_item( rune.get_item(), method, target );
+        CHECK( globvars.get_global_value( "test_use_rune_runs" ) == 1 );
+        CHECK( rune->ammo_remaining() == 20 );
+        CHECK( u.get_moves() == 200 );
+    }
+    SECTION( "a false condition blocks the action with its failure message" ) {
+        globvars.set_global_value( "test_use_rune_allowed", 0 );
+        const use_function *use = rune->type->get_use( method );
+        REQUIRE( use != nullptr );
+        const ret_val<void> allowed = use->can_call( u, *rune, target );
+        CHECK_FALSE( allowed.success() );
+        CHECK( allowed.str() == "The rune is dormant." );
+        u.invoke_item( rune.get_item(), method, target );
+        CHECK( globvars.get_global_value( "test_use_rune_runs" ) == 0 );
+        CHECK( rune->ammo_remaining() == 20 );
+    }
 }

@@ -953,5 +953,17 @@
         "then": [ { "math": [ "seen_details_check = 1" ] } ]
       }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_USE_RUNE",
+    "//": "USE-J01: records the use_location it got, spends a second and asks for test_use_rune_charges charges or a cancel.",
+    "effect": [
+      { "math": [ "test_use_rune_runs++" ] },
+      { "copy_var": { "context_val": "use_location" }, "target_var": { "global_val": "test_use_rune_loc" } },
+      { "turn_cost": "1 seconds" },
+      { "math": [ "_charges = test_use_rune_charges" ] },
+      { "math": [ "_cancel = test_use_rune_cancel" ] }
+    ]
   }
 ]

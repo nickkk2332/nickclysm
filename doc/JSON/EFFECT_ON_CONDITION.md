@@ -76,9 +76,9 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | martial_art: "static_eocs", "onmove_eocs", "onpause_eocs" | character (Character) | NONE                        |
 | technique: "eocs"                                | attacker (Character)        | target (Creature)           | runs before the hit, once per repeat
 | technique: "post_hit_eocs"                       | attacker (Character)        | target (Creature)           | runs once after the hit; same values as martial_art "onkill_eocs": `weapon`, `technique`, `bp`, `damage`, `hit`, `crit`, `killed`
-| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id
-| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 |
-| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 |
+| use_action: "type": "effect_on_conditions"       | user (Character)            | item (item)                 | `id`, string, stores item id; `use_location`, location variable, the tile the item is used at (the `target_var` of `u_activate`, otherwise the user's tile). The EOCs can set `charges` and `cancel`, see below
+| tick_action: "type": "effect_on_conditions"      | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
+| countdown_action: "type": "effect_on_conditions" | carrier (Character)         | item (item)                 | `id`; `use_location`, the item's tile
 | COMESTIBLE: "consumption_effect_on_conditions"   | user (Character)            | item (item)                 |
 | activity_type: "start_eoc"                       | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers; `resume`, number, 1 when resuming
 | activity_type: "completion_eoc"                  | character (Character)       | activity's item, if any     | `activity`, string, activity id; `moves_total`, `moves_left`, numbers
@@ -110,6 +110,33 @@ Some actions sent additional context variables, that can be used in EoC, in form
 
 ```jsonc
 { "math": [ "_act_cost == 2000" ] }
+```
+
+#### Item use actions: condition, charges and cancel
+
+An `effect_on_conditions` use action can be limited with a `condition` (u is the user, npc is the item), and its EOCs can tell the game what the activation cost by setting context values:
+
+- `"condition"`: a dialogue condition checked before the action runs, together with `need_worn` and `need_wielding`.  While it is false the action can't be used, and the item menu shows `"failure_message"` (or a generic message) as the reason.
+- `_charges`: how many uses to spend.  Each use costs the item's `charges_per_use` (or `ammo_required`), so `_charges = 3` spends three times that.  0 spends nothing.  It replaces `consume` (which spends 1 use) for this activation.
+- `_cancel`: when set to a non-zero value, the activation is cancelled: nothing is spent, the time the user spent is refunded, and the remaining EOCs of the action don't run.  Effects that already ran are not undone.
+
+Each EOC listed in the action runs on its own copy of the context, so it must set these values itself (in its own `effect` or `false_effect`); values set by EOCs it runs with `run_eocs` are not seen.  If several EOCs set them, the last one wins.  Activating a comestible never uses it up: an action on a comestible can't have `"consume": true` (a load error) and ignores `_charges`; use `consumption_effect_on_conditions` for effects when it is eaten.
+
+```jsonc
+{
+  "type": "effect_on_conditions",
+  "menu_text": "Invoke the rune",
+  "condition": { "not": "is_day" },
+  "failure_message": "The rune is dormant by day.",
+  "effect_on_conditions": [
+    {
+      "id": "EOC_RUNE_INVOKE",
+      "condition": { "u_query": "Pour all your power into the rune?", "default": false },
+      "effect": [ { "u_cast_spell": { "id": "rune_blast", "max_level": 5 }, "targeted": false }, { "math": [ "_charges = 3" ] } ],
+      "false_effect": [ { "math": [ "_cancel = 1" ] } ]
+    }
+  ]
+}
 ```
 
 ## Value types

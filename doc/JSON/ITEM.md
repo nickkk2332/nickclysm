@@ -1526,6 +1526,8 @@ The contents of `use_action` fields can either be a string indicating a built-in
   "consume": true,                         // defaults false: whether the iuse function should return 1 and attempt to consume the item
   "need_worn": true,          // (optional) If the item has to be worn to activate the EoC
   "need_wielding": true,      // (optional) If the item has to be wielded to activate the EoC
+  "condition": { "not": "is_day" }, // (optional) dialogue condition that must be true to activate; u is the user, npc is the item
+  "failure_message": "The rune is dormant by day.", // (optional) shown when "condition" is false
   "menu_text": "Infuse saline",            // (optional) Text displayed in the activation screen. Defaults to "Activate item"
   "description": "This debugs the game",   // Usage description
   "effect_on_conditions": [ "test_cond" ]  // IDs of the effect_on_conditions to activate

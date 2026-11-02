@@ -6758,5 +6758,29 @@
     "color": "light_gray",
     "qualities": [ [ "TEST_RESERVE_A", 1 ] ],
     "flags": [ "PSEUDO" ]
+  },
+  {
+    "id": "test_eoc_use_rune",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "test rune" },
+    "description": "A rune for testing effect_on_conditions use actions.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "price": "10 cent",
+    "price_postapoc": "50 cent",
+    "material": [ "stone" ],
+    "symbol": ",",
+    "color": "blue",
+    "charges_per_use": 1,
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "match": 20 } } ],
+    "use_action": {
+      "type": "effect_on_conditions",
+      "menu_text": "Invoke",
+      "condition": { "math": [ "test_use_rune_allowed == 1" ] },
+      "failure_message": "The rune is dormant.",
+      "effect_on_conditions": [ "EOC_TEST_USE_RUNE" ]
+    },
+    "flags": [ "NO_RELOAD", "NO_UNLOAD" ]
   }
 ]

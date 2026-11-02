@@ -62,6 +62,7 @@
 #include "map_selector.h"
 #include "mapdata.h"
 #include "material.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "messages.h"
 #include "monster.h"
@@ -5982,10 +5983,51 @@ void effect_on_conditions_actor::load( const JsonObject &obj, const std::string 
     optional( obj, false, "menu_text", menu_text );
     optional( obj, false, "need_worn", need_worn, false );
     optional( obj, false, "need_wielding", need_wielding, false );
+    if( obj.has_member( "condition" ) ) {
+        read_condition( obj, "condition", condition, false );
+    }
+    optional( obj, false, "failure_message", failure_message );
     // FIXME: eoc loading to generic factory
     for( JsonValue jv : obj.get_array( "effect_on_conditions" ) ) {
         eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
+}
+
+void effect_on_conditions_actor::finalize( const itype_id &my_item_type )
+{
+    // Activating an item doesn't use up comestibles; they must use
+    // consumption_effect_on_conditions to do something when eaten.
+    if( consume && item::find_type( my_item_type )->comestible ) {
+        debugmsg( "Item %s is a comestible with an effect_on_conditions use_action that consumes "
+                  "it, which can't work.  Use consumption_effect_on_conditions instead.",
+                  my_item_type.str() );
+    }
+}
+
+ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const item &it, map *,
+        const tripoint_bub_ms & ) const
+{
+    if( need_worn && !p.is_worn( it ) ) {
+        return ret_val<void>::make_failure( _( "You need to wear the %1$s before activating it." ),
+                                            it.tname() );
+    }
+    if( need_wielding && !p.is_wielding( it ) ) {
+        return ret_val<void>::make_failure( _( "You need to wield the %1$s before activating it." ),
+                                            it.tname() );
+    }
+    if( condition ) {
+        // The talkers only read the character and the item; item_location needs mutable ones.
+        const item_location loc( const_cast<Character &>( p ), const_cast<item *>( &it ) );
+        const const_dialogue d( get_const_talker_for( p ), get_const_talker_for( loc ) );
+        if( !condition( d ) ) {
+            if( failure_message.empty() ) {
+                return ret_val<void>::make_failure( _( "You can't use the %1$s right now." ),
+                                                    it.tname() );
+            }
+            return ret_val<void>::make_failure( failure_message.translated() );
+        }
+    }
+    return ret_val<void>::make_success();
 }
 
 std::string effect_on_conditions_actor::get_name() const
@@ -6002,21 +6044,67 @@ void effect_on_conditions_actor::info( const item &, std::vector<iteminfo> &dump
 }
 
 
+namespace
+{
+// What an effect_on_conditions use action's EOCs asked for, through the context values
+// "charges" and "cancel" they set.
+struct eoc_use_request {
+    std::optional<int> charges;
+    bool cancel = false;
+};
+} // namespace
+
+// Runs one of the use action's EOCs the way effect_on_condition::activate() does, on its own
+// copy of the dialogue, but keeps that copy so the context values it set can be read back.
+static void run_use_eoc( const effect_on_condition &eoc, const dialogue &d,
+                         eoc_use_request &request )
+{
+    if( eoc.type != eoc_type::ACTIVATION ) {
+        debugmsg( "Must use an activation eoc for item activation, but %s is not one.  Create a "
+                  "non-recurring effect_on_condition with its condition and effects instead.",
+                  eoc.id.str() );
+        return;
+    }
+    dialogue d_eoc( d );
+    d_eoc.amend_callstack( "EOC: " + eoc.id.str() );
+    if( !eoc.has_condition || eoc.condition( d_eoc ) ) {
+        eoc.true_effect.apply( d_eoc );
+    } else if( eoc.has_false_effect ) {
+        eoc.false_effect.apply( d_eoc );
+    }
+    if( const diag_value *charges = d_eoc.maybe_get_value( "charges" ) ) {
+        if( charges->is_dbl() ) {
+            request.charges = std::max( 0, static_cast<int>( std::lround( charges->dbl() ) ) );
+        } else {
+            debugmsg( "EOC %s set the context value charges to a non-number", eoc.id.str() );
+        }
+    }
+    if( const diag_value *cancel = d_eoc.maybe_get_value( "cancel" ) ) {
+        request.cancel = cancel->is_dbl() ? cancel->dbl() != 0 : !cancel->is_empty();
+    }
+}
+
 std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
         map *here, const tripoint_bub_ms &pos ) const
 {
-    if( it.type->comestible ) {
-        debugmsg( "Comestibles are not properly consumed via effect_on_conditions and effect_on_conditions should not be used on items of type comestible until/unless this is resolved.  Rather than a use_action, use the consumption_effect_on_conditions JSON parameter on the comestible" );
-        return 0;
-    }
-
-    if( need_worn && !p->is_worn( it ) ) {
-        p->add_msg_if_player( m_info, _( "You need to wear the %1$s before activating it." ), it.tname() );
+    // Normally checked by can_use(); tick and countdown actions call use() directly, and
+    // may have no carrier.
+    if( need_worn && ( p == nullptr || !p->is_worn( it ) ) ) {
+        if( p ) {
+            p->add_msg_if_player( m_info, _( "You need to wear the %1$s before activating it." ),
+                                  it.tname() );
+        }
         return std::nullopt;
     }
-    if( need_wielding && !p->is_wielding( it ) ) {
-        p->add_msg_if_player( m_info, _( "You need to wield the %1$s before activating it." ), it.tname() );
+    if( need_wielding && ( p == nullptr || !p->is_wielding( it ) ) ) {
+        if( p ) {
+            p->add_msg_if_player( m_info, _( "You need to wield the %1$s before activating it." ),
+                                  it.tname() );
+        }
         return std::nullopt;
+    }
+    if( here == nullptr ) {
+        here = &get_map();
     }
     Character *char_ptr = nullptr;
     item_location loc;
@@ -6033,19 +6121,26 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
 
     dialogue d( ( char_ptr == nullptr ? nullptr : get_talker_for( char_ptr ) ), get_talker_for( loc ) );
     write_var_value( var_type::context, "id", &d, it.typeId().str() );
+    // The tile the item is used at: u_activate's target_var, else the user's or item's tile.
+    write_var_value( var_type::context, "use_location", &d, here->get_abs( pos ) );
+    // Read before the EOCs run: they may destroy the item.
+    const bool comestible = static_cast<bool>( it.type->comestible );
+    eoc_use_request request;
     for( const effect_on_condition_id &eoc : eocs ) {
-        eoc->activate_activation_only( d, "activation", "item's involvement", "item" );
-    }
-    // Prevents crash from trying to spend charge with item removed
-    // NOTE: Because this section and/or calling stack does not check if the item exists in the surrounding tiles
-    // it will not properly decrement any item of type `comestible` if consumed via the `E` `Consume item` menu.
-    // Therefore, it is not advised to use items of type `comestible` with a `use_action` of type
-    // `effect_on_conditions` until/unless this section is properly updated to actually consume said item.
-    if( consume ) {
-        if( p && !p->has_item( it ) ) {
-            return 0;
+        run_use_eoc( *eoc, d, request );
+        if( request.cancel ) {
+            // Nothing is spent, and the caller refunds the time.
+            return std::nullopt;
         }
-        return 1;
     }
-    return 0;
+    // Activating a comestible can't use it up (see finalize()).
+    if( comestible ) {
+        return 0;
+    }
+    const int charges = request.charges.value_or( consume ? 1 : 0 );
+    // Prevents crash from trying to spend charges with the item removed (only compares addresses)
+    if( charges > 0 && p && !p->has_item( it ) ) {
+        return 0;
+    }
+    return charges;
 }
