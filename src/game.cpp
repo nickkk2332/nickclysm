@@ -1084,7 +1084,8 @@ bool game::start_game()
     time_of_last_load = std::chrono::steady_clock::now();
     tripoint_abs_omt abs_omt = u.pos_abs_omt();
     const oter_id &cur_ter = overmap_buffer.ter( abs_omt );
-    get_event_bus().send<event_type::avatar_enters_omt>( abs_omt.raw(), cur_ter );
+    get_event_bus().send<event_type::avatar_enters_omt>( abs_omt.raw(), cur_ter,
+            overmap_buffer.overmap_special_at( abs_omt ).value_or( overmap_special_id() ) );
 
     effect_on_conditions::load_new_character( u );
     if( debug_menu::is_debug_character() ) {
@@ -11688,7 +11689,8 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
     if( old_abs_omt != new_abs_omt ) {
         const oter_id &cur_ter = overmap_buffer.ter( new_abs_omt );
         const oter_id &past_ter = overmap_buffer.ter( old_abs_omt );
-        get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter );
+        get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter,
+                overmap_buffer.overmap_special_at( new_abs_omt ).value_or( overmap_special_id() ) );
         overmap_buffer.add_extra_note( new_abs_omt );
         // if the player has moved omt then might trigger an EOC for that OMT
         if( !past_ter->get_exit_EOC().is_null() ) {

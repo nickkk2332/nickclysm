@@ -2332,6 +2332,11 @@ Any or all of the following alterations can be made to the event stream:
 * Add new fields to each event based on event field transformations.  The event
   field transformations can be found in
   [`event_field_transformations.cpp`](/src/event_field_transformations.cpp).
+  Statistics are rebuilt from the whole event history (on every game load, for
+  one), so `overmap_special_at` only sees overmaps already in memory and finds
+  nothing elsewhere. For the OMTs the avatar entered, use the `overmap_special`
+  field of `avatar_enters_omt`, with `overmap_special_if_any` to skip OMTs in no
+  special.
 * Filter events based on the values they contain to produce a stream containing
   some subset of the input stream.
 * Drop some fields which are not of interest in the output stream.
