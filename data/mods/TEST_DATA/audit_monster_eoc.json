@@ -31,6 +31,7 @@
     "id": "test_eoc_unowned_attack",
     "//": "MONAI-J01: a special attack no monster has, which u_attack can still use.",
     "attack_type": "eoc",
+    "cooldown": 10,
     "eoc": [ "EOC_TEST_MON_UNOWNED_HIT" ]
   },
   {
