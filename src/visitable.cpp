@@ -58,6 +58,21 @@ static const quality_id qual_SMOKE_PIPE( "SMOKE_PIPE" );
 
 using item_filter = std::function<bool( const item & )>;
 
+// Walks what `self` holds as self.visit_items does (the same items, in the same order, with the
+// same responses), but builds an item_location only for each top-level item and walks the
+// items inside it directly. For queries that look only at the items, not at where they are:
+// a location costs an allocation and reference counting for every item visited (INV-P02).
+template <typename T>
+static VisitResponse visit_items_unlocated( const T &self,
+        const std::function<VisitResponse( const item & )> &func )
+{
+    return self.visit_items( [&func]( const item_location & top ) {
+        return top->visit_items( [&func]( item * e, item * ) {
+            return func( *e );
+        } ) == VisitResponse::ABORT ? VisitResponse::ABORT : VisitResponse::SKIP;
+    } );
+}
+
 /** @relates visitable */
 item *read_only_visitable::find_parent( const item &it ) const
 {
@@ -87,16 +102,16 @@ std::vector<item *> read_only_visitable::parents( const item &it ) const
 /** @relates visitable */
 bool read_only_visitable::has_item( const item &it ) const
 {
-    return visit_items( [&it]( const item_location & node ) {
-        return &*node == &it ? VisitResponse::ABORT : VisitResponse::NEXT;
+    return visit_items_unlocated( *this, [&it]( const item & node ) {
+        return &node == &it ? VisitResponse::ABORT : VisitResponse::NEXT;
     } ) == VisitResponse::ABORT;
 }
 
 /** @relates visitable */
 bool read_only_visitable::has_item_with( const item_filter &filter ) const
 {
-    return visit_items( [&filter]( const item_location & node ) {
-        return filter( *node ) ? VisitResponse::ABORT : VisitResponse::NEXT;
+    return visit_items_unlocated( *this, [&filter]( const item & node ) {
+        return filter( node ) ? VisitResponse::ABORT : VisitResponse::NEXT;
     } ) == VisitResponse::ABORT;
 }
 
@@ -332,8 +347,8 @@ template <typename T>
 static int max_quality_internal( const T &self, const quality_id &qual )
 {
     int res = INT_MIN;
-    self.visit_items( [&res, &qual]( const item_location & e ) {
-        res = std::max( res, e->get_quality( qual ) );
+    visit_items_unlocated( self, [&res, &qual]( const item & e ) {
+        res = std::max( res, e.get_quality( qual ) );
         return VisitResponse::NEXT;
     } );
     return res;
@@ -430,9 +445,9 @@ static inline std::vector<T> items_with_internal( V &self, const item_filter
         &filter )
 {
     std::vector<T> res;
-    self.visit_items( [&res, &filter]( const item_location & node ) {
-        if( filter( *node ) ) {
-            res.push_back( const_cast<T>( node.get_item() ) );
+    visit_items_unlocated( self, [&res, &filter]( const item & node ) {
+        if( filter( node ) ) {
+            res.push_back( const_cast<T>( &node ) );
         }
         return VisitResponse::NEXT;
     } );
@@ -452,9 +467,17 @@ std::vector<item *> read_only_visitable::items_with(
     return items_with_internal<item *>( *this, filter );
 }
 
+// The pockets a visit walks unless told otherwise, as one shared set: a default argument of
+// {pocket_type::CONTAINER} would build (and allocate) a set for every top-level item visited.
+static const std::set<pocket_type> &container_pockets()
+{
+    static const std::set<pocket_type> pockets = { pocket_type::CONTAINER };
+    return pockets;
+}
+
 static VisitResponse visit_internal( const std::function<VisitResponse( const item_location & )>
                                      &func,
-                                     const item_location &node, const std::set<pocket_type> &allowed_pockets = {pocket_type::CONTAINER} )
+                                     const item_location &node, const std::set<pocket_type> &allowed_pockets = container_pockets() )
 {
     if( !node.valid() ) {
         return VisitResponse::NEXT;
@@ -485,7 +508,8 @@ VisitResponse item_location::visit_contents( const
 }
 
 static VisitResponse visit_internal_legacy( const std::function<VisitResponse( item *, item * )>
-        &func, const item *node, item *parent = nullptr, const std::set<pocket_type> &allowed_pockets = { pocket_type::CONTAINER } )
+        &func, const item *node, item *parent = nullptr,
+        const std::set<pocket_type> &allowed_pockets = container_pockets() )
 {
     // hack to avoid repetition
     item *m_node = const_cast<item *>( node );
@@ -1115,31 +1139,31 @@ static void scan_tool_charges( const T &self, const itype_id &id,
                                int &raw_ups_charges )
 {
     map &here = get_map();
-    self.visit_items( [&]( const item_location & e ) {
-        if( ( id == e->typeId() || ( in_tools && id == e->ammo_current() ) ||
-              ( id == itype_UPS && e->has_flag( flag_IS_UPS ) ) ) &&
-            filter( *e ) && !e->is_broken() ) {
-            if( id == itype_UPS && e->has_flag( flag_IS_UPS ) ) {
+    visit_items_unlocated( self, [&]( const item & e ) {
+        if( ( id == e.typeId() || ( in_tools && id == e.ammo_current() ) ||
+              ( id == itype_UPS && e.has_flag( flag_IS_UPS ) ) ) &&
+            filter( e ) && !e.is_broken() ) {
+            if( id == itype_UPS && e.has_flag( flag_IS_UPS ) ) {
                 raw_ups_charges = sum_no_wrap( raw_ups_charges,
-                                               e->ammo_remaining_linked( here, nullptr ) );
+                                               e.ammo_remaining_linked( here, nullptr ) );
             } else if( id != itype_UPS ) {
-                if( e->uses_firing_requirements() ) {
-                    entries.push_back( build_multimag_entry( *e ) );
+                if( e.uses_firing_requirements() ) {
+                    entries.push_back( build_multimag_entry( e ) );
                 } else {
                     tool_stock_entry entry;
                     entry.kind = tool_stock_entry::kind_t::LEGACY;
-                    if( e->count_by_charges() ) {
-                        entry.local_charges = e->charges;
+                    if( e.count_by_charges() ) {
+                        entry.local_charges = e.charges;
                     } else {
-                        entry.local_charges = e->ammo_remaining_linked( here, nullptr );
-                        entry.uses_ups = e->has_flag( json_flag_USE_UPS );
-                        entry.uses_bionic = e->has_flag( json_flag_USES_BIONIC_POWER );
+                        entry.local_charges = e.ammo_remaining_linked( here, nullptr );
+                        entry.uses_ups = e.has_flag( json_flag_USE_UPS );
+                        entry.uses_bionic = e.has_flag( json_flag_USES_BIONIC_POWER );
                     }
                     entries.push_back( entry );
                 }
             }
         }
-        return e->is_container() ? VisitResponse::NEXT : VisitResponse::SKIP;
+        return e.is_container() ? VisitResponse::NEXT : VisitResponse::SKIP;
     } );
 }
 
@@ -1312,9 +1336,9 @@ static std::pair<int, int> kcal_range_of_internal( const T &self, const itype_id
         const item_filter &filter, Character &player_character )
 {
     std::pair<int, int> result( INT_MAX, INT_MIN );
-    self.visit_items( [&result, &id, &filter, &player_character]( const item_location & e ) {
-        if( e->typeId() == id && filter( *e ) ) {
-            int kcal = player_character.compute_effective_nutrients( *e ).kcal();
+    visit_items_unlocated( self, [&result, &id, &filter, &player_character]( const item & e ) {
+        if( e.typeId() == id && filter( e ) ) {
+            int kcal = player_character.compute_effective_nutrients( e ).kcal();
             if( kcal < result.first ) {
                 result.first = kcal;
             }
@@ -1368,10 +1392,10 @@ static int amount_of_internal( const T &self, const itype_id &id, bool pseudo, i
                                const item_filter &filter )
 {
     int qty = 0;
-    self.visit_items( [&qty, &id, &pseudo, &limit, &filter]( const item_location & e ) {
-        if( ( id == itype_any || e->typeId() == id ) &&
-            !e->has_flag( json_flag_ITEM_BROKEN ) && filter( *e ) &&
-            ( pseudo || !e->has_flag( json_flag_PSEUDO ) ) ) {
+    visit_items_unlocated( self, [&qty, &id, &pseudo, &limit, &filter]( const item & e ) {
+        if( ( id == itype_any || e.typeId() == id ) &&
+            !e.has_flag( json_flag_ITEM_BROKEN ) && filter( e ) &&
+            ( pseudo || !e.has_flag( json_flag_PSEUDO ) ) ) {
             qty = sum_no_wrap( qty, 1 );
         }
         return qty != limit ? VisitResponse::NEXT : VisitResponse::ABORT;
