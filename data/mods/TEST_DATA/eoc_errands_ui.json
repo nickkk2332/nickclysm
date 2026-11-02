@@ -1,0 +1,17 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ERRAND_STARTED",
+    "//": "EOC errand and UI tests: true_eocs of u_assign_activity and u_examine.",
+    "effect": [ { "set_string_var": "started", "target_var": { "global_val": "test_errand_result" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ERRAND_REFUSED",
+    "//": "EOC errand and UI tests: false_eocs of u_assign_activity and u_examine, with the reason.",
+    "effect": [
+      { "set_string_var": "refused", "target_var": { "global_val": "test_errand_result" } },
+      { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_errand_reason" } }
+    ]
+  }
+]

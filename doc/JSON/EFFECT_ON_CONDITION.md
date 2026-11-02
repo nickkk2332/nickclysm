@@ -5158,6 +5158,12 @@ NPC or character will start an activity
 | --- | --- | --- | --- |
 | "u_assign_activity" / "npc_assign_activity" | **mandatory** | string or [variable object](#variable-object), | id of activity to start |
 | "duration" | optional | int, duration or [variable object](#variable-object) | how long the activity would last; see below |
+| "target_item" | optional | `"npc"` for `u_assign_activity`, `"u"` for `npc_assign_activity` | the item to work on: the other talker, which must be an item (as in the EOCs of `u_run_inv_eocs`, `u_map_run_item_eocs` or an item's own EOCs). See [activities with a target](#activities-with-a-target) |
+| "target_loc" | optional | [variable object](#variable-object) | a location: where to put a new craft (`ACT_CRAFT`) |
+| "recipe" | optional | string or [variable object](#variable-object) | the recipe to craft (`ACT_CRAFT`) |
+| "butcher_type" | optional | string or [variable object](#variable-object) | for `ACT_BUTCHER`: `"quick"` (the default), `"full"`, `"field_dress"`, `"skin"`, `"quarter"`, `"dismember"`, `"dissect"` or `"bleed"` |
+| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run once the activity has started (when it finishes, the `character_finished_activity` event fires) |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it can't start; the context value `reason` says why, as a sentence (for example `The book is out of reach.`) |
 
 Activities defined only in JSON (like `ACT_GENERIC_EOC` or a mod's own activity) last `duration`.
 
@@ -5172,10 +5178,33 @@ but a duration can be started too:
 | `ACT_MEDITATE`, `ACT_TARGET_PRACTICE`, `ACT_WAIT_FOLLOWERS`, `ACT_WAIT_STAMINA`, `ACT_WAIT_WEATHER` | not allowed: they end on their own |
 | Zone jobs: `ACT_MOVE_LOOT`, `ACT_UNLOAD_LOOT`, `ACT_MULTIPLE_BUTCHER`, `ACT_MULTIPLE_CHOP_PLANKS`, `ACT_MULTIPLE_CHOP_TREES`, `ACT_MULTIPLE_CONSTRUCTION`, `ACT_MULTIPLE_CRAFT`, `ACT_MULTIPLE_DIS`, `ACT_MULTIPLE_FARM`, `ACT_MULTIPLE_FISH`, `ACT_MULTIPLE_MINE`, `ACT_MULTIPLE_MOP`, `ACT_MULTIPLE_READ`, `ACT_MULTIPLE_STUDY`, `ACT_VEHICLE_DECONSTRUCTION`, `ACT_VEHICLE_REPAIR` | not allowed: the job runs until its zones have no more work |
 
-Any other activity with an actor (for example `ACT_READ`, which needs a book) can't be started
-from an EOC. Naming one, or giving `duration` to an activity that takes none, is a load error.
+Some activities need a target; see below. Any other activity with an actor can't be started
+from an EOC. Naming one, giving `duration` to an activity that takes none, or giving a target
+field to an activity that doesn't take it (the error names the activity) is a load error.
 An activity id that comes from a variable is checked when the effect runs: an unknown id, or one
 that can't be started, is reported and nothing starts.
+
+###### Activities with a target
+
+These activities work on something, given by the fields above. They take no `duration`: they
+last as long as the work does. Nothing asks the player anything, for the avatar or for an NPC.
+When the activity can't start, nothing is done, `false_eocs` run, and the context value `reason`
+says why. The item has to be within reach: carried by the talker, or on (or in a container or a
+vehicle on) the talker's tile or a tile next to it.
+
+| Activity | Fields | What happens, and what is refused |
+| --- | --- | --- |
+| `ACT_READ` | `target_item`: the book | Reads it once, as the reading menu's first choice; the avatar's first read skims a book it hasn't identified. Refused: not a book, a spellbook (it is studied by using it), the talker can't read it (too dark, low morale, illiterate, not skilled enough...), a martial arts manual for an NPC |
+| `ACT_BUTCHER` | `target_item`: the corpse; `butcher_type` | Butchers a corpse lying on the ground, as the butchery menu does. Refused: not on the ground, no suitable tool, missing requirements, too dark, not in the mood, the corpse's state (already bled, field dressed, skinned or quartered; no organs, skin or blood), and for the avatar, a corpse whose butchery would ask for confirmation (human remains) |
+| `ACT_BUTCHER_FULL`, `ACT_BLEED`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT` | `target_item`: the corpse | As `ACT_BUTCHER` with that kind of butchery; they take no `butcher_type` |
+| `ACT_DISASSEMBLE` | `target_item` | Takes the item apart; a stack counted by charges is taken apart whole. Refused: it can't be disassembled (no recipe, missing tools), it's a favorite, it's worn, it belongs to someone else |
+| `ACT_CRAFT` | `recipe`, and optionally `target_loc`; or `target_item` | With `recipe`, starts a new craft of one: in hand, or at `target_loc` (the talker's tile or a tile next to it). As with the crafting menu, a workbench next to the talker is used if there is one. Components and tools are chosen as an NPC chooses them; rotten components may be used, favorited ones aren't. With `target_item`, goes on with that craft in progress, where it is. Refused: the talker doesn't know the recipe (`u_learn_recipe` teaches it), lacks its proficiencies or requirements, the components or tools aren't at hand, too dark, not in the mood |
+| `ACT_WEAR` | `target_item` | Puts the item on. Refused: already worn, it can't be worn (the reason says why), it belongs to someone else |
+| `ACT_UNLOAD` | `target_item` | Empties a container or a magazine over time. A gun or a tool gives up its magazine or ammo at once, with no activity (`true_eocs` still run). Refused: nothing in it, the contents are liquid (they would have to be poured somewhere), or there are several things to unload (gunmods, several magazines), which would need a choice |
+| `ACT_RELOAD` | `target_item` | Reloads it with the quickest ammo or magazine at hand (in a holster or an ammo pouch, the item it holds). The item has to be carried, unless it is used where it stands. Refused: it can't be reloaded now (full, or nothing fits), no ammo at hand |
+
+For every activity but a new craft, the item is the other talker, so the effect usually runs in
+an EOC that has the item as `npc`, with the character doing the work as `u`.
 
 `ACT_TARGET_PRACTICE` asks the player for a gun, a round count and a target, so only the avatar
 can be given it. Giving it to an NPC (as `u` or as `npc`) is reported when the effect runs, and
@@ -5204,6 +5233,41 @@ The NPC you are talking to starts working on your farm zones
 { "npc_assign_activity": "ACT_MULTIPLE_FARM" }
 ```
 
+The talker reads the first book it carries, and says why when it can't
+```jsonc
+{
+  "u_run_inv_eocs": "random",
+  "search_data": [ { "category": "books" } ],
+  "true_eocs": [
+    {
+      "id": "EOC_READ_IT",
+      "effect": [
+        {
+          "u_assign_activity": "ACT_READ",
+          "target_item": "npc",
+          "false_eocs": [ { "id": "EOC_CANT_READ", "effect": [ { "u_message": "<context_val:reason>" } ] } ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+The talker butchers a corpse lying next to it, the full way
+```jsonc
+{
+  "u_map_run_item_eocs": "random",
+  "search_data": [ { "flags": [ "CORPSE" ] } ],
+  "max_radius": 1,
+  "true_eocs": [ { "id": "EOC_BUTCHER_IT", "effect": [ { "u_assign_activity": "ACT_BUTCHER", "target_item": "npc", "butcher_type": "full" } ] } ]
+}
+```
+
+The talker crafts a makeshift crowbar at the workbench whose position is in the context value `bench`
+```jsonc
+{ "u_assign_activity": "ACT_CRAFT", "recipe": "makeshift_crowbar", "target_loc": { "context_val": "bench" } }
+```
+
 #### `u_cancel_activity`, `npc_cancel_activity`
 
 NPC or character will stop their current activity
@@ -5220,7 +5284,6 @@ You cancel activity `ACT_GAME` for 45 minutes
 ```jsonc
 { "u_cancel_activity" }
 ```
-
 
 #### `u_teleport`, `npc_teleport`
 You or NPC is teleported to `target_var` coordinates

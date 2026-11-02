@@ -5837,16 +5837,74 @@ talk_effect_fun_t::func f_message( const JsonObject &jo, std::string_view member
     };
 }
 
+// The other talker named by a member such as "target" in u_release_grab: "npc" for u_, "u" for
+// npc_.
+void check_other_talker( const JsonObject &jo, std::string_view member, bool is_npc );
+
+// u_assign_activity / npc_assign_activity: the talker starts an activity: a JSON activity for a
+// duration, an activity actor that needs at most a duration, or one of the activities that take
+// a target (activity_actors::takes_eoc_target). See doc/JSON/EFFECT_ON_CONDITION.md.
 talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_view member,
-        std::string_view, bool is_npc )
+        std::string_view src, bool is_npc )
 {
     const bool has_duration = jo.has_member( "duration" );
     duration_or_var dov = get_duration_or_var( jo, "duration", false );
     str_or_var act = get_str_or_var( jo.get_member( member ), member, true );
+
+    activity_actors::eoc_target_fields fields;
+    fields.item = jo.has_member( "target_item" );
+    fields.loc = jo.has_member( "target_loc" );
+    fields.recipe = jo.has_member( "recipe" );
+    fields.butcher_type = jo.has_member( "butcher_type" );
+    if( fields.item ) {
+        check_other_talker( jo, "target_item", is_npc );
+    }
+    std::optional<var_info> target_loc;
+    if( fields.loc ) {
+        target_loc = read_var_info( jo.get_object( "target_loc" ) );
+    }
+    std::optional<str_or_var> recipe;
+    if( fields.recipe ) {
+        recipe = get_str_or_var( jo.get_member( "recipe" ), "recipe", true );
+        if( jo.has_string( "recipe" ) ) {
+            const std::string context = jo.get_member( "recipe" ).get_root_source_path();
+            effect_on_conditions::add_load_check( [name = jo.get_string( "recipe" ), context]() {
+                if( !recipe_id( name ).is_valid() ) {
+                    debugmsg( "Recipe \"%s\" (in u_assign_activity in %s) does not exist", name,
+                              context );
+                }
+            } );
+        }
+    }
+    std::optional<str_or_var> butcher_type;
+    if( fields.butcher_type ) {
+        butcher_type = get_str_or_var( jo.get_member( "butcher_type" ), "butcher_type", true );
+        if( jo.has_string( "butcher_type" ) &&
+            !activity_actors::is_eoc_butcher_type( jo.get_string( "butcher_type" ) ) ) {
+            jo.throw_error_at( "butcher_type", "unknown butcher_type; use \"quick\", \"full\", "
+                               "\"field_dress\", \"skin\", \"quarter\", \"dismember\", "
+                               "\"dissect\" or \"bleed\"" );
+        }
+    }
+    const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+
     if( jo.has_string( member ) ) {
         // A literal id can be checked now; one from a variable is checked when it runs.
         const activity_id literal( jo.get_string( member ) );
-        if( activity_actors::has_actor( literal ) ) {
+        if( activity_actors::takes_eoc_target( literal ) ) {
+            if( const std::optional<std::string> error =
+                    activity_actors::eoc_target_fields_error( literal, fields ) ) {
+                jo.throw_error_at( member, *error );
+            }
+            if( has_duration ) {
+                jo.throw_error_at( "duration", string_format( "%s runs until its own work is done; "
+                                   "it takes no duration", literal.str() ) );
+            }
+        } else if( fields.any() ) {
+            jo.throw_error_at( member, *activity_actors::eoc_target_fields_error( literal, fields ) );
+        } else if( activity_actors::has_actor( literal ) ) {
             if( !activity_actors::can_start_from_eoc( literal ) ) {
                 jo.throw_error_at( member, string_format( "%s needs more than a duration to start, "
                                    "so an EOC can't start it", literal.str() ) );
@@ -5857,9 +5915,17 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
             }
         }
     }
-    return [is_npc, has_duration, dov, act, member = std::string( member )]( dialogue & d ) {
+    return [is_npc, has_duration, dov, act, fields, target_loc, recipe, butcher_type, true_eocs,
+            false_eocs, member = std::string( member )]( dialogue & d ) {
+        // false_eocs get the reason in the context value "reason".
+        const auto refuse = [&]( const std::string & reason ) {
+            dialogue refused( d );
+            refused.set_value( "reason", reason );
+            run_eoc_vector( false_eocs, refused );
+        };
         Character *target = d.actor( is_npc )->get_character();
         if( !target ) {
+            refuse( _( "Only a character can do an activity." ) );
             return;
         }
         const activity_id a( act.evaluate( d ) );
@@ -5867,13 +5933,58 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
             debugmsg( "%s: unknown activity %s", member, a.str() );
             return;
         }
+        if( const std::optional<std::string> error =
+                activity_actors::eoc_target_fields_error( a, fields ) ) {
+            // Only an id from a variable gets here; a literal one was checked at load.
+            debugmsg( "%s: %s", member, *error );
+            return;
+        }
+        if( activity_actors::takes_eoc_target( a ) ) {
+            activity_actors::eoc_activity_target what;
+            if( fields.item ) {
+                item_location *const it = d.has_actor( !is_npc ) ? d.actor( !is_npc )->get_item() :
+                                          nullptr;
+                if( it == nullptr || !*it ) {
+                    refuse( _( "There is no item to work on." ) );
+                    return;
+                }
+                what.item = *it;
+            }
+            if( target_loc ) {
+                what.loc = read_var_value( *target_loc, d ).tripoint();
+            }
+            if( recipe ) {
+                const recipe_id rid( recipe->evaluate( d ) );
+                if( !rid.is_valid() ) {
+                    debugmsg( "%s: unknown recipe %s", member, rid.str() );
+                    return;
+                }
+                what.recipe = rid;
+            }
+            if( butcher_type ) {
+                what.butcher_type = butcher_type->evaluate( d );
+                if( !activity_actors::is_eoc_butcher_type( *what.butcher_type ) ) {
+                    debugmsg( "%s: unknown butcher_type %s", member, *what.butcher_type );
+                    return;
+                }
+            }
+            if( const std::optional<std::string> no = activity_actors::start_with_target( a, *target,
+                    what ) ) {
+                refuse( *no );
+                return;
+            }
+            run_eoc_vector( true_eocs, d );
+            return;
+        }
         if( !activity_actors::has_actor( a ) ) {
             target->assign_activity( a, to_moves<int>( dov.evaluate( d ) ) );
+            run_eoc_vector( true_eocs, d );
             return;
         }
         if( activity_actors::eoc_start_needs_avatar( a ) && !target->is_avatar() ) {
             debugmsg( "%s: %s asks the player for input, so only the avatar can be given it, "
                       "not %s", member, a.str(), target->get_name() );
+            refuse( string_format( _( "Only the avatar can do %s." ), a.str() ) );
             return;
         }
         // The other talker is who ACT_WAIT_NPC waits for.
@@ -5891,6 +6002,7 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
             return;
         }
         target->assign_activity( *actor );
+        run_eoc_vector( true_eocs, d );
     };
 }
 
@@ -7250,6 +7362,7 @@ talk_effect_fun_t::func f_run_eoc_selector( const JsonObject &jo, std::string_vi
         chosen_eoc_id->activate( newDialog );
     };
 }
+
 
 struct span_param {
     bool has_min;
