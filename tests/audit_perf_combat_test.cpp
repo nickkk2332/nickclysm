@@ -24,6 +24,7 @@
 #include "coordinates.h"
 #include "creature.h"
 #include "creature_tracker.h"
+#include "enums.h"
 #include "explosion.h"
 #include "game.h"
 #include "gun_mode.h"
@@ -47,6 +48,11 @@
 #include "rng.h"
 #include "test_statistics.h"
 #include "type_id.h"
+#include "units.h"
+#include "veh_type.h"
+#include "vehicle.h"
+#include "vpart_position.h"
+#include "vpart_range.h"
 #include "weather.h"
 #include "weather_type.h"
 
@@ -87,7 +93,13 @@ static const spell_id spell_test_spell_pew( "test_spell_pew" );
 
 static const string_id<npc_template> npc_template_test_talker( "test_talker" );
 
+static const trait_id trait_TEST_HALF_AVOID_FRIENDLY_FIRE( "TEST_HALF_AVOID_FRIENDLY_FIRE" );
+
+static const ter_str_id ter_t_laminated_glass( "t_laminated_glass" );
 static const ter_str_id ter_t_wall( "t_wall" );
+static const ter_str_id ter_t_window( "t_window" );
+
+static const vproto_id vehicle_prototype_wheelchair( "wheelchair" );
 
 namespace
 {
@@ -267,6 +279,125 @@ armored_npc_stats grenade_npc_trials( int distance, int trials )
     return out;
 }
 
+struct scene_stats {
+    statistics<double> first;
+    statistics<bool> first_killed;
+    statistics<double> second;
+    statistics<double> friend_hurt;
+    statistics<bool> window_broken;
+    statistics<double> vehicle_damage;
+};
+
+// One shot per trial down a row: a follower 2 tiles out whom the shooter, also a follower,
+// avoids hitting half the time; laminated glass at 3, which weakens each pellet through it;
+// a plain window and a wheelchair just off the line at 5; a 100 HP target at 7 and another
+// hostile right behind it, which pellets reach once the target is dead.
+scene_stats scene_trials( const itype_id &gun, const itype_id &ammo, int trials )
+{
+    map &here = get_map();
+    // load_npcs() only loads NPCs near the player, who waits underground at (0, 0)
+    const tripoint_bub_ms shooter_pos( 36, 50, 0 );
+    const tripoint_bub_ms friend_pos = shooter_pos + tripoint_rel_ms( 2, 0, 0 );
+    const tripoint_bub_ms glass_pos = shooter_pos + tripoint_rel_ms( 3, 0, 0 );
+    const tripoint_bub_ms window_pos = shooter_pos + tripoint_rel_ms( 5, 1, 0 );
+    const tripoint_bub_ms vehicle_pos = shooter_pos + tripoint_rel_ms( 5, -1, 0 );
+    const tripoint_bub_ms first_pos = shooter_pos + tripoint_rel_ms( 7, 0, 0 );
+    const tripoint_bub_ms second_pos = shooter_pos + tripoint_rel_ms( 8, 0, 0 );
+    spawn_audit_npc( friend_pos );
+    std::unique_ptr<standard_npc> shooter = std::make_unique<standard_npc>( "Shooter",
+                                            shooter_pos, std::vector<itype_id>(), 5, 10, 10, 10, 10 );
+    shooter->set_fac( faction_your_followers );
+    shooter->set_mutation( trait_TEST_HALF_AVOID_FRIENDLY_FIRE );
+    shooter->recalculate_enchantment_cache();
+    scene_stats out;
+    rng_set_engine_seed( 4242 );
+    for( int i = 0; i < trials; ++i ) {
+        clear_creatures();
+        clear_npcs();
+        clear_vehicles();
+        for( int x = 0; x <= 14; ++x ) {
+            for( int y = -2; y <= 2; ++y ) {
+                const tripoint_bub_ms p = shooter_pos + tripoint_rel_ms( x, y, 0 );
+                here.i_clear( p );
+                here.clear_fields( p );
+            }
+        }
+        here.ter_set( glass_pos, ter_t_laminated_glass );
+        here.ter_set( window_pos, ter_t_window );
+        const character_id friend_id = here.place_npc( friend_pos.xy(), npc_template_test_talker );
+        npc &buddy = *g->find_npc( friend_id );
+        clear_character( buddy );
+        buddy.setpos( here, friend_pos );
+        buddy.set_fac( faction_your_followers );
+        g->load_npcs();
+        REQUIRE( get_creature_tracker().creature_at<npc>( friend_pos ) == &buddy );
+        REQUIRE( buddy.attitude_to( *shooter ) == Creature::Attitude::FRIENDLY );
+        vehicle *veh = here.add_vehicle( vehicle_prototype_wheelchair, vehicle_pos, 0_degrees, 0,
+                                         veh_spawn_status::UNDAMAGED );
+        REQUIRE( veh != nullptr );
+        int vehicle_hp = 0;
+        for( const vpart_reference &vpr : veh->get_all_parts() ) {
+            vehicle_hp += vpr.part().hp();
+        }
+        monster &first = spawn_test_monster( "mon_test_shotgun_0_bullet", first_pos, false );
+        monster &second = spawn_test_monster( "mon_test_shotgun_0_bullet", second_pos, false );
+        first.set_hp( 100 );
+        second.set_hp( 2000 );
+        int friend_hp = 0;
+        for( const bodypart_id &bp : buddy.get_all_body_parts() ) {
+            friend_hp += buddy.get_part_hp_cur( bp );
+        }
+
+        arm_shooter( *shooter, gun, {}, ammo );
+        shooter->recoil = 0;
+        shooter->fire_gun( here, first_pos, 1, *shooter->get_wielded_item() );
+
+        out.first.add( 100 - first.get_hp() );
+        out.first_killed.add( first.is_dead() || first.get_hp() <= 0 );
+        out.second.add( 2000 - second.get_hp() );
+        int friend_hp_after = 0;
+        for( const bodypart_id &bp : buddy.get_all_body_parts() ) {
+            friend_hp_after += buddy.get_part_hp_cur( bp );
+        }
+        // Capped: once hit, the friend can turn on the shooter, who then stops avoiding it,
+        // and rarely takes the rest of the shot.
+        out.friend_hurt.add( std::min( friend_hp - friend_hp_after, 100 ) );
+        out.window_broken.add( here.ter( window_pos ) != ter_t_window );
+        int vehicle_hp_after = 0;
+        if( const optional_vpart_position vp = here.veh_at( vehicle_pos ) ) {
+            for( const vpart_reference &vpr : vp->vehicle().get_all_parts() ) {
+                vehicle_hp_after += vpr.part().hp();
+            }
+        }
+        out.vehicle_damage.add( vehicle_hp - vehicle_hp_after );
+    }
+    clear_creatures();
+    clear_npcs();
+    clear_vehicles();
+    clear_avatar();
+    clear_map_and_put_player_underground();
+    return out;
+}
+
+void check_mean( const char *what, const statistics<double> &got, double mean, double margin )
+{
+    print_stats( what, got );
+    CAPTURE( what );
+    CAPTURE( got.n() );
+    CAPTURE( got.avg() );
+    CAPTURE( got.stddev() );
+    CHECK( got.avg() == Approx( mean ).margin( margin ) );
+}
+
+void check_rate( const char *what, const statistics<bool> &got, double rate, double margin )
+{
+    print_stats( what, got );
+    CAPTURE( what );
+    CAPTURE( got.n() );
+    CAPTURE( got.avg() );
+    CHECK( got.avg() == Approx( rate ).margin( margin ) );
+}
+
 // The best of all_evaluations(), chosen the way evaluate() chooses: the first strictly
 // better rating wins.
 npc_attack_rating best_of( const std::vector<npc_attack_rating> &all, npc_attack_rating best )
@@ -394,7 +525,7 @@ TEST_CASE( "cmbt-p01_shot_outcomes_match_per_pellet_simulation", "[audit][ranged
     }
     SECTION( "birdshot at a target whose armor stops every pellet" ) {
         check_outcome( shoot_trials( itype_shotgun_s, itype_shot_bird, 3, "mon_test_shotgun_1_bullet", 0,
-                                     300 ), 0.037, 0.07, 0, 0.01 );
+                                     2000 ), 0.025, 0.021, 0, 0.01 );
     }
     SECTION( "00 buckshot (9 pellets) at an armored target 5 tiles away" ) {
         check_outcome( shoot_trials( itype_shotgun_s, itype_shot_00, 5, "mon_test_shotgun_10_bullet", 0,
@@ -402,15 +533,34 @@ TEST_CASE( "cmbt-p01_shot_outcomes_match_per_pellet_simulation", "[audit][ranged
     }
     SECTION( "00 buckshot kill rate against a wounded target" ) {
         check_outcome( shoot_trials( itype_shotgun_s, itype_shot_00, 5, "mon_test_shotgun_0_bullet", 150,
-                                     1000 ), 152.54, 1.7, 0.881, 0.065 );
+                                     3000 ), 152.52, 1.05, 0.875, 0.04 );
     }
     SECTION( "40mm bird's nest (528 pellets) at an unarmored target 4 tiles away" ) {
         check_outcome( shoot_trials( itype_m79, itype_40x46mm_hornets_nest_410, 4,
-                                     "mon_test_shotgun_0_bullet", 0, 600 ), 296.04, 3.7, 0.69, 0.115 );
+                                     "mon_test_shotgun_0_bullet", 0, 2000 ), 296.44, 2.2, 0.716, 0.061 );
     }
     SECTION( "flockshot (24155 pellets) at an unarmored target 3 tiles away" ) {
         check_outcome( shoot_trials( itype_brogyaga, itype_273x110flock, 3, "mon_test_shotgun_0_bullet",
                                      2000, 60 ), 608.0, 21, 0, 0.01 );
+    }
+    SECTION( "00 buckshot past a friend, through glass, by a window and a wheelchair at two hostiles" ) {
+        const scene_stats got = scene_trials( itype_shotgun_s, itype_shot_00, 400 );
+        check_mean( "first", got.first, 69.88, 5.3 );
+        check_rate( "first_killed", got.first_killed, 0.06, 0.075 );
+        check_mean( "second", got.second, 0.035, 0.3 );
+        check_mean( "friend_hurt", got.friend_hurt, 13.9, 4.0 );
+        check_rate( "window_broken", got.window_broken, 0.3425, 0.15 );
+        // the weakened pellets don't get through the wheelchair's damage reduction
+        check_mean( "vehicle_damage", got.vehicle_damage, 0, 0.5 );
+    }
+    SECTION( "40mm bird's nest past a friend, through glass, by a window and a wheelchair at two hostiles" ) {
+        const scene_stats got = scene_trials( itype_m79, itype_40x46mm_hornets_nest_410, 300 );
+        check_mean( "first", got.first, 92.36, 5.3 );
+        check_rate( "first_killed", got.first_killed, 0.507, 0.18 );
+        check_mean( "second", got.second, 2.7, 2.2 );
+        check_mean( "friend_hurt", got.friend_hurt, 22.79, 6.2 );
+        check_rate( "window_broken", got.window_broken, 0.91, 0.1 );
+        check_mean( "vehicle_damage", got.vehicle_damage, 0, 0.5 );
     }
     SECTION( "flockshot at a target whose armor stops every pellet" ) {
         check_outcome( shoot_trials( itype_brogyaga, itype_273x110flock, 3, "mon_test_shotgun_1_bullet", 0,
@@ -435,7 +585,7 @@ TEST_CASE( "cmbt-p02_shrapnel_outcomes_match_per_fragment_simulation", "[audit][
         check_outcome( grenade_trials( "mon_zombie_armored", 1, 0, 100 ), 0, 0.15, 0, 0.01 );
     }
     SECTION( "NPC in a kevlar vest and helmet 6 tiles away" ) {
-        const armored_npc_stats got = grenade_npc_trials( 6, 400 );
+        const armored_npc_stats got = grenade_npc_trials( 6, 1000 );
         print_stats( "hp_lost", got.hp_lost );
         print_stats( "killed", got.killed );
         print_stats( "armor_damage", got.armor_damage );
@@ -444,9 +594,9 @@ TEST_CASE( "cmbt-p02_shrapnel_outcomes_match_per_fragment_simulation", "[audit][
         CAPTURE( got.killed.avg() );
         CAPTURE( got.armor_damage.avg() );
         CAPTURE( got.armor_damage.stddev() );
-        CHECK( got.hp_lost.avg() == Approx( 185.3 ).margin( 95 ) );
-        CHECK( got.killed.avg() == Approx( 0.1225 ).margin( 0.1 ) );
-        CHECK( got.armor_damage.avg() == Approx( 992.5 ).margin( 320 ) );
+        CHECK( got.hp_lost.avg() == Approx( 214.9 ).margin( 65 ) );
+        CHECK( got.killed.avg() == Approx( 0.152 ).margin( 0.068 ) );
+        CHECK( got.armor_damage.avg() == Approx( 970 ).margin( 191 ) );
     }
 }
 
