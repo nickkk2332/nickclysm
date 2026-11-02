@@ -8,6 +8,7 @@
 #include "avatar.h"
 #include "basecamp.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "city.h"
 #include "coordinates.h"
 #include "map_helpers.h"
@@ -25,6 +26,7 @@
 static const oter_str_id oter_field( "field" );
 static const oter_str_id oter_test_forest_very_thick( "test_forest_very_thick" );
 
+static const overmap_special_id overmap_special_test_audit_mansion( "test_audit_mansion" );
 static const overmap_special_id overmap_special_test_audit_road_shack( "test_audit_road_shack" );
 
 // An overmap a few overmaps away from the avatar, so these tests leave the map the rest of the
@@ -234,4 +236,36 @@ TEST_CASE( "omap-b04_urbanity_grows_cities", "[audit][overmap]" )
         return old_sizes.count( c.size ) == 0;
     } );
     CHECK( any_new_size );
+}
+
+// OMAP-B05: building_bin::pick dereferenced the null pointer an empty bin hands back, and
+// pick_random_building_to_place redrew forever when nothing in a bin fit the town. A region whose
+// parks bin is empty and whose houses and shops are all too big for any town must still
+// generate.
+TEST_CASE( "omap-b05_unfillable_building_bins_do_not_hang_or_crash", "[audit][overmap]" )
+{
+    building_bin empty_bin;
+    empty_bin.finalize();
+    CHECK( empty_bin.pick().is_null() );
+
+    building_bin too_big;
+    too_big.add( overmap_special_test_audit_mansion, 100 );
+    too_big.finalize();
+    REQUIRE( too_big.pick() == overmap_special_test_audit_mansion );
+
+    const point_abs_om where( 0, 20 );
+    const tripoint_abs_omt where_omt = project_to<coords::omt>( tripoint_abs_om( where, 0 ) );
+    const region_settings &region = overmap_buffer.get_settings( where_omt );
+    region_settings_city &city_spec =
+        const_cast<region_settings_city &>( region.get_settings_city() );
+    REQUIRE( city_spec.city_size > 0 );
+    restore_on_out_of_scope<building_bin> restore_houses( city_spec.houses );
+    restore_on_out_of_scope<building_bin> restore_shops( city_spec.shops );
+    restore_on_out_of_scope<building_bin> restore_parks( city_spec.parks );
+    city_spec.houses = too_big;
+    city_spec.shops = too_big;
+    city_spec.parks = empty_bin;
+
+    overmap &om = generate_bare_overmap( where );
+    CHECK( !om.cities.empty() );
 }

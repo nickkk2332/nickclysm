@@ -315,6 +315,14 @@
     "flags": [ "OVERMAP_UNIQUE" ]
   },
   {
+    "type": "overmap_special",
+    "id": "test_audit_mansion",
+    "//": "OMAP-B05 test: a city building no town is big enough for; occurrences [ 0, 0 ] keep it out of worldgen.",
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "cabin_north", "locations": [ "land" ] } ],
+    "city_sizes": [ 99, -1 ],
+    "occurrences": [ 0, 0 ]
+  },
+  {
     "type": "overmap_terrain",
     "id": "s_restaurant_deserted_test",
     "name": "abandoned drive-through",

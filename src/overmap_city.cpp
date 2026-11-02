@@ -263,19 +263,29 @@ overmap_special_id overmap::pick_random_building_to_place( int town_dist, int to
         }
     };
     auto pick_building = building_type_to_pick();
-    overmap_special_id ret;
-    bool existing_unique;
-    do {
-        ret = pick_building( city_spec );
+    // Redraw until a building fits, but give up (returning a null id) if the bin has nothing
+    // that fits this town; this used to loop forever on such region data (OMAP-B05).
+    constexpr int max_attempts = 50;
+    for( int attempt = 0; attempt < max_attempts; ++attempt ) {
+        const overmap_special_id ret = pick_building( city_spec );
+        if( ret.is_null() ) {
+            // Empty bin.
+            return ret;
+        }
+        bool existing_unique = false;
         if( ret->has_flag( "CITY_UNIQUE" ) ) {
             existing_unique = placed_unique_buildings.find( ret ) != placed_unique_buildings.end();
-        } else if( ret->has_flag( "GLOBALLY_UNIQUE" ) || ret->has_flag( "OVERMAP_UNIQUE" ) ) {
+        } else if( ret->has_flag( "GLOBALLY_UNIQUE" ) ) {
             existing_unique = overmap_buffer.contains_unique_special( ret );
-        } else {
-            existing_unique = false;
+        } else if( ret->has_flag( "OVERMAP_UNIQUE" ) ) {
+            // overmap_buffer only tracks globally unique specials.
+            existing_unique = contains_unique_special( ret );
         }
-    } while( existing_unique || !ret->get_constraints().city_size.contains( town_size ) );
-    return ret;
+        if( !existing_unique && ret->get_constraints().city_size.contains( town_size ) ) {
+            return ret;
+        }
+    }
+    return overmap_special_id::NULL_ID();
 }
 
 void overmap::place_building( const tripoint_om_omt &p, om_direction::type dir, const city &town,
@@ -289,6 +299,10 @@ void overmap::place_building( const tripoint_om_omt &p, om_direction::type dir, 
     for( size_t retries = 10; retries > 0; --retries ) {
         const overmap_special_id building_tid = pick_random_building_to_place( town_dist, town.size,
                                                 placed_unique_buildings );
+        if( building_tid.is_null() ) {
+            // Nothing in the bin fits this town.
+            continue;
+        }
         if( can_place_special( *building_tid, building_pos, building_dir, false ) ) {
             std::vector<tripoint_om_omt> used_tripoints = place_special( *building_tid, building_pos,
                     building_dir, town, false, false );
