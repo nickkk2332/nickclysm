@@ -43,9 +43,15 @@ static const faction_id faction_your_followers( "your_followers" );
 static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 
+static const matec_id tec_aikido_grab_counter( "tec_aikido_grab_counter" );
+static const matec_id tec_judo_grab_counter( "tec_judo_grab_counter" );
+static const matec_id tec_krav_maga_grab_counter( "tec_krav_maga_grab_counter" );
 static const matec_id test_tech_grab_counter( "test_tech_grab_counter" );
 static const matec_id test_tm_strike( "test_tm_strike" );
 
+static const matype_id style_aikido( "style_aikido" );
+static const matype_id style_judo( "style_judo" );
+static const matype_id style_krav_maga( "style_krav_maga" );
 static const matype_id test_style_grab_counter( "test_style_grab_counter" );
 static const matype_id test_style_grab_hooks( "test_style_grab_hooks" );
 
@@ -259,6 +265,40 @@ TEST_CASE( "grab_counter_is_its_own_kind_of_attack", "[grapple][martial_arts]" )
            test_tech_grab_counter );
     CHECK( std::get<0>( you.pick_technique( target, you.used_weapon(), false, false,
                                             false ) ) != test_tech_grab_counter );
+}
+
+TEST_CASE( "grab_counter_vanilla_styles", "[grapple][martial_arts]" )
+{
+    clear_map_without_vision();
+    clear_creatures();
+    clear_avatar();
+    avatar &dude = get_avatar();
+    dude.setpos( get_map(), you_pos );
+    dude.set_moves( 100 );
+    monster &zombie = spawn_test_monster( "mon_zombie", you_pos + tripoint::east );
+    const auto check = [&]( const matype_id & style, const matec_id & tec, const skill_id & skill,
+    int level ) {
+        CAPTURE( style.str() );
+        CHECK( style->techniques.count( tec ) == 1 );
+        use_style( dude, style );
+        technique_query query;
+        query.grab_counter = true;
+        query.roll = false;
+        dude.set_skill_level( skill, level - 1 );
+        CHECK( io::enum_to_string( dude.check_technique( tec, zombie, dude.used_weapon(),
+                                   query ) ) == "skill" );
+        dude.set_skill_level( skill, level );
+        CHECK( io::enum_to_string( dude.check_technique( tec, zombie, dude.used_weapon(),
+                                   query ) ) == "none" );
+        // Every vanilla grab counter knocks the grabber back, which ends the hold
+        CHECK( tec->knockback_dist > 0 );
+        CHECK( capture_debugmsg_during( [&tec]() {
+            tec->check();
+        } ).empty() );
+    };
+    check( style_judo, tec_judo_grab_counter, skill_unarmed, 1 );
+    check( style_aikido, tec_aikido_grab_counter, skill_unarmed, 3 );
+    check( style_krav_maga, tec_krav_maga_grab_counter, skill_melee, 3 );
 }
 
 TEST_CASE( "grab_counter_load_checks", "[grapple][martial_arts]" )

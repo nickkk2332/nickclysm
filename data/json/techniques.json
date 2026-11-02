@@ -628,6 +628,37 @@
   },
   {
     "type": "technique",
+    "id": "tec_aikido_grab_counter",
+    "name": "Wrist Turn (grab)",
+    "messages": [ "You turn the grabbing wrist and send %s tumbling", "<npcname> turns the grabbing wrist and sends %s tumbling" ],
+    "skill_requirements": [ { "name": "unarmed", "level": 3 } ],
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "grab_counter": true,
+    "//": "Kote gaeshi: the grabber's own force throws it off, ending the hold (the knockback breaks it), with little harm done.",
+    "//condition": "Humanoids of similar size and no flying",
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "math": [ "n_val('size') != 1" ] },
+        { "not": { "npc_has_effect": "downed" } },
+        { "or": [ { "npc_bodytype": "human" }, { "npc_bodytype": "angel" } ] },
+        { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>non-downed humanoid</info> target of <info>similar or smaller</info> size incapable of flight",
+    "down_dur": 1,
+    "knockback_dist": 1,
+    "mult_bonuses": [
+      { "stat": "movecost", "scale": 0.7 },
+      { "stat": "damage", "type": "bash", "scale": 0.5 },
+      { "stat": "damage", "type": "cut", "scale": 0.5 },
+      { "stat": "damage", "type": "stab", "scale": 0.5 }
+    ],
+    "attack_vectors": [ "vector_grasp" ]
+  },
+  {
+    "type": "technique",
     "id": "tec_bojutsu_thrust",
     "name": "Front Thrust",
     "messages": [ "You thrust at %s", "<npcname> thrusts at %s" ],
@@ -1694,6 +1725,32 @@
   },
   {
     "type": "technique",
+    "id": "tec_judo_grab_counter",
+    "name": "Counter Throw (grab)",
+    "messages": [ "You turn the grab against %s and throw them", "<npcname> turns the grab against %s and throws them" ],
+    "skill_requirements": [ { "name": "unarmed", "level": 1 } ],
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "grab_counter": true,
+    "//": "Answers a grab with a throw that ends the hold (the knockback breaks it).  Same targets as the other Judo throws.",
+    "condition": {
+      "and": [
+        { "math": [ "u_val('size') <= n_val('size')" ] },
+        { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+        { "not": { "npc_has_effect": "downed" } },
+        { "not": { "npc_bodytype": "blob" } },
+        { "not": { "npc_bodytype": "fish" } },
+        { "not": { "npc_bodytype": "snake" } },
+        { "or": [ { "not": { "npc_has_flag": "FLIES" } }, { "npc_has_flag": "DISABLE_FLIGHT" } ] }
+      ]
+    },
+    "condition_desc": "* Only works on a <info>non-downed</info> target of <info>your size or one size larger</info>, incapable of flight, and not a blob, fish or snake",
+    "down_dur": 1,
+    "knockback_dist": 1,
+    "attack_vectors": [ "vector_grasp" ]
+  },
+  {
+    "type": "technique",
     "id": "tec_karate_precise",
     "name": "Knifehand Strike",
     "messages": [ "You hit %s with a knifehand strike", "<npcname> hits %s with a knifehand strike" ],
@@ -2062,6 +2119,22 @@
     "unarmed_allowed": true,
     "defensive": true,
     "grab_break": true
+  },
+  {
+    "type": "technique",
+    "id": "tec_krav_maga_grab_counter",
+    "name": "Break-Away Strike (grab)",
+    "messages": [ "You strike %s and tear free of the grab", "<npcname> strikes %s and tears free of the grab" ],
+    "skill_requirements": [ { "name": "melee", "level": 3 } ],
+    "melee_allowed": true,
+    "unarmed_allowed": true,
+    "grab_counter": true,
+    "//": "A short strike that drives the grabber off, ending the hold (the knockback breaks it).",
+    "condition": { "math": [ "u_val('size') + 1 >= n_val('size')" ] },
+    "condition_desc": "* Only works on a target of <info>similar or smaller</info> size",
+    "stun_dur": 1,
+    "knockback_dist": 1,
+    "attack_vectors": [ "vector_null", "vector_elbow", "vector_knee", "vector_headbutt" ]
   },
   {
     "type": "technique",

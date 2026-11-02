@@ -244,6 +244,7 @@ A technique with `"grab_counter": true` answers a grab the way a `dodge_counter`
 
 Below a third of your stamina you only get "You try to counterattack, but you are too exhausted!".  The counter is an ordinary attack: it can miss, and its `condition` sees the grabber as `npc`.  A counter with a knockback (`knockback_dist`) breaks the hold, since a knockback makes its target let go; other effects leave the hold in place.  The passive `grab_break` of a defensive technique is separate: it still helps you struggle free later.
 
+Judo's `tec_judo_grab_counter` (a throw, unarmed 1), Aikido's `tec_aikido_grab_counter` (a wrist turn that throws the grabber off with little harm, unarmed 3) and Krav Maga's `tec_krav_maga_grab_counter` (a strike that drives the grabber off, melee 3) are the vanilla grab counters.
 
 
 ## Techniques

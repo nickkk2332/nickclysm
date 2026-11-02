@@ -91,7 +91,8 @@
       "tec_aikido_dodgedisarm",
       "tec_aikido_blockdisarm",
       "tec_aikido_dodgethrow",
-      "tec_aikido_blockthrow"
+      "tec_aikido_blockthrow",
+      "tec_aikido_grab_counter"
     ]
   },
   {
@@ -693,7 +694,7 @@
         ]
       }
     ],
-    "techniques": [ "tec_judo_backthrow", "tec_judo_disarm", "tec_judo_break", "tec_judo_throw" ]
+    "techniques": [ "tec_judo_backthrow", "tec_judo_disarm", "tec_judo_break", "tec_judo_throw", "tec_judo_grab_counter" ]
   },
   {
     "type": "martial_art",
@@ -798,7 +799,8 @@
       "tec_krav_maga_crit",
       "tec_krav_maga_takedown",
       "tec_krav_maga_disarm",
-      "tec_krav_maga_break"
+      "tec_krav_maga_break",
+      "tec_krav_maga_grab_counter"
     ],
     "weapon_category": [ "AUTOMATIC_RIFLES", "AUTOMATIC_PISTOLS", "KNIVES", "BATONS", "SHIVS" ]
   },
