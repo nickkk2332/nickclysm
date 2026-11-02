@@ -1,6 +1,7 @@
 #include "inventory_ui.h"
 
 #include <chrono>
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <tuple>
@@ -2069,23 +2070,9 @@ static bool drag_drop_allowed( Character &who, const item_location &src,
             return false;
         }
     }
-    // Containers holding both src and dest hold src before and after the move, so their
-    // capacity doesn't change; checking them as if src were added would refuse moves between
-    // pockets of one full bag. The move's own pocket checks still apply.
-    std::unordered_set<const item *> src_ancestors;
-    for( item_location p = src; p.has_parent(); ) {
-        p = p.parent_item();
-        src_ancestors.insert( p.get_item() );
-    }
-    bool shares_ancestor = src_ancestors.count( dest.get_item() ) > 0;
-    for( item_location p = dest; !shares_ancestor && p.has_parent(); ) {
-        p = p.parent_item();
-        shares_ancestor = src_ancestors.count( p.get_item() ) > 0;
-    }
     // drag_drop_item turns down a destination without pockets itself.
-    if( !shares_ancestor && !dest->get_container_pockets().empty() ) {
-        item copy( *src );
-        const ret_val<void> ret = dest.parents_can_contain_recursive( &copy );
+    if( !dest->get_container_pockets().empty() ) {
+        const ret_val<void> ret = drag_drop_parents_can_contain( src, dest );
         if( !ret.success() ) {
             popup( _( "Cannot put item in pocket: %s" ),
                    ret.str().empty() ? _( "item can't be stored there" ) : ret.str() );
@@ -2093,6 +2080,88 @@ static bool drag_drop_allowed( Character &who, const item_location &src,
         }
     }
     return true;
+}
+
+ret_val<void> drag_drop_parents_can_contain( const item_location &src,
+        const item_location &dest )
+{
+    item copy( *src );
+    // Each container holding src, with the pocket of it that src is in (directly or deeper).
+    std::unordered_map<const item *, const item_pocket *> src_holders;
+    for( item_location p = src; p.has_parent(); p = p.parent_item() ) {
+        src_holders.emplace( p.parent_item().get_item(), p.parent_pocket() );
+    }
+    // src moves between dest's own pockets: nothing around dest changes.
+    if( src_holders.count( dest.get_item() ) > 0 ) {
+        return ret_val<void>::make_success();
+    }
+    const item *shared = nullptr;
+    for( item_location p = dest; !shared && p.has_parent(); ) {
+        p = p.parent_item();
+        if( src_holders.count( p.get_item() ) > 0 ) {
+            shared = p.get_item();
+        }
+    }
+    if( !shared ) {
+        return dest.parents_can_contain_recursive( &copy );
+    }
+
+    // What leaves the pocket of `shared` that holds src when src is taken out: src, through
+    // the multipliers of the pockets in between, and no volume past a rigid one. This mirrors
+    // how parents_can_contain_recursive passes an added item up.
+    units::mass out_weight = copy.weight();
+    units::volume out_volume = copy.volume();
+    const item_pocket *src_pocket = src.parent_pocket();
+    for( item_location p = src.parent_item(); p.get_item() != shared; p = p.parent_item() ) {
+        if( src_pocket->rigid() ) {
+            out_volume = 0_ml;
+        }
+        out_weight = out_weight * src_pocket->get_pocket_data()->weight_multiplier;
+        out_volume = out_volume * src_pocket->get_pocket_data()->volume_multiplier;
+        src_pocket = p.parent_pocket();
+    }
+
+    // parents_can_contain_recursive up to the pocket of `shared` that holds dest. Above it
+    // nothing changes: `shared` holds src before and after.
+    units::mass it_weight = copy.weight();
+    units::volume it_volume = copy.volume();
+    units::length it_length = copy.length();
+    item_location current = dest;
+    // as parents_can_contain_recursive: the first pocket stands for the one src goes in
+    const item_pocket *current_pocket = dest->get_standard_pockets().front();
+    while( current.has_parent() ) {
+        const item_pocket *parent_pocket = current.parent_pocket();
+        if( current_pocket->rigid() ) {
+            it_volume = 0_ml;
+            it_length = 0_mm;
+        }
+        const pocket_data *current_data = current_pocket->get_pocket_data();
+        it_weight = it_weight * current_data->weight_multiplier;
+        it_volume = it_volume * current_data->volume_multiplier;
+        it_length = it_length * std::cbrt( current_data->volume_multiplier );
+
+        const bool at_shared = current.parent_item().get_item() == shared;
+        units::mass added_weight = it_weight;
+        units::volume added_volume = it_volume;
+        if( at_shared && parent_pocket == src_pocket ) {
+            // src leaves this pocket as it comes back into it
+            added_weight = std::max( 0_gram, it_weight - out_weight );
+            added_volume = std::max( 0_ml, it_volume - out_volume );
+        }
+        if( added_weight > parent_pocket->remaining_weight() ) {
+            return ret_val<void>::make_failure( _( "item is too heavy for a parent pocket" ) );
+        } else if( added_volume > parent_pocket->remaining_volume() ) {
+            return ret_val<void>::make_failure( _( "item is too big for a parent pocket" ) );
+        } else if( it_length > parent_pocket->get_pocket_data()->max_item_length ) {
+            return ret_val<void>::make_failure( _( "item is too long for a parent pocket" ) );
+        }
+        if( at_shared ) {
+            break;
+        }
+        current_pocket = parent_pocket;
+        current = current.parent_item();
+    }
+    return ret_val<void>::make_success();
 }
 
 bool inventory_selector::drag_drop_item( item *sourceItem, item *destItem )

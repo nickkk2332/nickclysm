@@ -1,5 +1,7 @@
 #include <functional>
+#include <list>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,6 +13,7 @@
 #include "inventory_ui.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_pocket.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_selector.h"
@@ -26,6 +29,8 @@ static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_bag_plastic( "bag_plastic" );
 static const itype_id itype_hammer( "hammer" );
 static const itype_id itype_knife_hunting( "knife_hunting" );
+static const itype_id itype_rock( "rock" );
+static const itype_id itype_test_jacket_jean( "test_jacket_jean" );
 
 namespace
 {
@@ -183,4 +188,59 @@ TEST_CASE( "haul_selector_skips_items_not_on_the_tile", "[inventory][ui]" )
             }
         }
     }
+}
+
+// UIINV-B02 (review): a drag between two items in one container skipped every parent check,
+// but the pocket of that container holding the destination still grows when the item comes
+// from its other pocket. Each of the jacket's two pockets holds 1 kg; a rock weighs 657 g.
+TEST_CASE( "uiinv-b02_drag_drop_checks_the_pockets_that_grow", "[audit][inventory]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    std::optional<std::list<item>::iterator> worn = u.wear_item( item( itype_test_jacket_jean ),
+            false );
+    REQUIRE( worn );
+    item &worn_jacket = **worn;
+    item_location jacket( u, &worn_jacket );
+    std::vector<item_pocket *> pockets = jacket->get_container_pockets();
+    REQUIRE( pockets.size() == 2 );
+    item_pocket &pocket_a = *pockets[0];
+    item_pocket &pocket_b = *pockets[1];
+    // pocket A: a plastic bag, and a rock beside it
+    item *bag_it = pocket_a.insert_item( item( itype_bag_plastic ) ).value();
+    item *rock_a_it = pocket_a.insert_item( item( itype_rock ) ).value();
+    REQUIRE( bag_it != nullptr );
+    REQUIRE( rock_a_it != nullptr );
+    item_location bag( jacket, bag_it );
+    const item_location rock_a( jacket, rock_a_it );
+    REQUIRE( pocket_a.remaining_weight() < item( itype_rock ).weight() );
+
+    SECTION( "from the jacket's other pocket into the bag" ) {
+        item *rock_b_it = pocket_b.insert_item( item( itype_rock ) ).value();
+        REQUIRE( rock_b_it != nullptr );
+        const item_location rock_b( jacket, rock_b_it );
+        // pocket A would hold the bag, two rocks, 1319 g
+        const ret_val<void> ret = drag_drop_parents_can_contain( rock_b, bag );
+        CHECK_FALSE( ret.success() );
+        CHECK( ret.str() == "item is too heavy for a parent pocket" );
+    }
+    SECTION( "from beside the bag into it, in the same pocket" ) {
+        // the rock leaves pocket A as it goes back in, in the bag
+        CHECK( drag_drop_parents_can_contain( rock_a, bag ).success() );
+    }
+    SECTION( "from the bag into the jacket" ) {
+        item *in_bag = bag->get_container_pockets().front()->insert_item( item( itype_rock ) ).value();
+        REQUIRE( in_bag != nullptr );
+        // pocket A is over its limit now, but its contents don't grow
+        CHECK( drag_drop_parents_can_contain( item_location( bag, in_bag ), jacket ).success() );
+    }
+    SECTION( "from the ground into the bag" ) {
+        item &ground_rock = here.add_item( u.pos_bub(), item( itype_rock ) );
+        REQUIRE_FALSE( ground_rock.is_null() );
+        const item_location from_ground( map_cursor( &here, u.pos_bub() ), &ground_rock );
+        CHECK_FALSE( drag_drop_parents_can_contain( from_ground, bag ).success() );
+    }
+    clear_avatar();
 }
