@@ -223,7 +223,8 @@ static float addiction_scaling( float at_min, float at_max, float add_lvl )
         return 1.0f;
     }
 
-    return lerp( at_min, at_max, ( add_lvl - MIN_ADDICTION_LEVEL ) / MAX_ADDICTION_LEVEL );
+    return lerp_clamped( at_min, at_max, ( add_lvl - MIN_ADDICTION_LEVEL ) /
+                         ( MAX_ADDICTION_LEVEL - MIN_ADDICTION_LEVEL ) );
 }
 
 void suffer::water_damage( Character &you )
@@ -1876,13 +1877,13 @@ void Character::mend( int rate_multiplier )
     if( has_effect( effect_cig ) ) {
         healing_factor *= 0.5;
     } else {
-        healing_factor *= addiction_scaling( 0.25f, 0.75f, addiction_level( addiction_nicotine ) );
+        healing_factor *= addiction_scaling( 0.75f, 0.25f, addiction_level( addiction_nicotine ) );
     }
 
     if( has_effect( effect_drunk ) ) {
         healing_factor *= 0.5;
     } else {
-        healing_factor *= addiction_scaling( 0.25f, 0.75f, addiction_level( addiction_alcohol ) );
+        healing_factor *= addiction_scaling( 0.75f, 0.25f, addiction_level( addiction_alcohol ) );
     }
 
     if( get_rad() > 0 && !has_trait( trait_RADIOGENIC ) ) {

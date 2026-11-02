@@ -5,6 +5,7 @@
 #include "cata_catch.h"
 #include "character.h"
 #include "effect.h"
+#include "map_helpers.h"
 #include "player_helpers.h"
 #include "type_id.h"
 
@@ -30,6 +31,7 @@ static int audit_mend_turns( Character &who, const bodypart_id &bp )
 // Whatever order the parts are visited in, the second one got the wrong rate.
 TEST_CASE( "hlth-b02_mend_rate_applies_per_limb", "[audit][health]" )
 {
+    clear_map();
     clear_avatar();
     avatar &u = get_avatar();
     u.set_mutation( trait_REGEN_LIZ );
@@ -53,5 +55,43 @@ TEST_CASE( "hlth-b02_mend_rate_applies_per_limb", "[audit][health]" )
     REQUIRE( wing > 100 );
     // Each limb mends at its own rate: 0.7 / 0.4. The old code gave 2.5 or 0.7.
     CHECK( static_cast<double>( arm ) / wing == Approx( 0.7 / 0.4 ).epsilon( 0.02 ) );
+    clear_avatar();
+}
+
+// HLTH-B03: the addiction penalty to fracture healing used lerp( 0.25, 0.75, t ), so a
+// level-3 addict healed at 25% speed and a level-20 addict at about 68%, the opposite of
+// the documented 25% to 75% slowdown, and t was divided by MAX instead of MAX - MIN.
+TEST_CASE( "hlth-b03_addiction_slows_fracture_healing_more_when_heavier", "[audit][health]" )
+{
+    clear_map();
+    clear_avatar();
+    avatar &u = get_avatar();
+    // MEND_ALL, so no splint is needed.
+    u.set_mutation( trait_REGEN_LIZ );
+    u.recalculate_enchantment_cache();
+    u.addictions.clear();
+    u.set_part_hp_cur( body_part_arm_l, 0 );
+    REQUIRE( u.is_limb_broken( body_part_arm_l ) );
+
+    const auto mend_with_addiction = [&u]( int level ) {
+        u.remove_effect( effect_mending, body_part_arm_l );
+        u.addictions.clear();
+        if( level > 0 ) {
+            u.addictions.emplace_back( addiction_nicotine, level );
+        }
+        REQUIRE( u.addiction_level( addiction_nicotine ) == level );
+        u.mend( 1000 );
+        return audit_mend_turns( u, body_part_arm_l );
+    };
+
+    const int clean = mend_with_addiction( 0 );
+    const int light = mend_with_addiction( MIN_ADDICTION_LEVEL );
+    const int heavy = mend_with_addiction( MAX_ADDICTION_LEVEL );
+    REQUIRE( clean > 1000 );
+
+    CHECK( static_cast<double>( light ) / clean == Approx( 0.75 ).epsilon( 0.02 ) );
+    CHECK( static_cast<double>( heavy ) / clean == Approx( 0.25 ).epsilon( 0.02 ) );
+    CHECK( heavy < light );
+    u.addictions.clear();
     clear_avatar();
 }
