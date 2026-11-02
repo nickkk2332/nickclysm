@@ -7,7 +7,7 @@ The owner asked for these on 2026-11-02, after the grappling port. They are queu
 1. **PR #3 review comments.** Not part of this queue, but they come first.
 2. **NPC errands:** `u_walk_to`, `u_pickup_item`, `u_wield_item` / `u_wear_item` / `u_drop_item`, targeted `u_assign_activity` and `u_examine` (sections A–E). Together they let a mod script an errand from start to end: walk to the shed, pick up the crowbar, wield it, pry the door, come back.
 3. **EOC UI:** a text window and a checklist menu (sections F–G).
-4. **NPC behavior tree EOC leaves (NPC-J03).** This needs a design discussion with the owner first; see section H.
+4. **NPC behavior tree goals from JSON (NPC-J03).** Decided; see section H and [npc-behavior-design.md](npc-behavior-design.md).
 
 Related findings that fit these batches (fold them in if they touch the same code):
 
@@ -110,19 +110,9 @@ A multi-select menu: each option can be ticked, confirming runs the EOCs of the 
 
 - **Parity.** It takes the same `hide_failing` and `variables` options as `run_eoc_selector`.
 
-## H. NPC behavior tree EOC leaves (NPC-J03): needs a design discussion
+## H. NPC behavior tree goals from JSON (NPC-J03): decided, after A–G
 
-The NPC behavior tree in `npc_behavior.json` can't express anything new today:
-- goals are dispatched by name in C++;
-- a JSON goal is always the lowest priority;
-- predicates and scores are fixed C++ functions.
-
-The audit's proposed fix:
-- a `{ "predicate": "condition", ... }` predicate;
-- a `{ "score": "math", ... }` score;
-- leaves that declare a priority category and run EOCs while the NPC is committed to them, until a condition is met.
-
-With A–D in place, a JSON goal could be "fetch water when thirsty and the jug is empty". It changes how NPCs decide what to do, so it gets its own design talk before any code.
+The design was talked through with the owner on 2026-11-02 and is written up in [npc-behavior-design.md](npc-behavior-design.md). Mod goals join a category; they run EOCs until done; mods edit one shared tree, gated by conditions; and every built-in goal is editable. It is built after A–G, because its goals use their effects.
 
 ## Not queued: designs waiting in the backlog
 
