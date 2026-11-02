@@ -2188,11 +2188,17 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
                 ( veh0 != nullptr && std::abs( veh0->velocity ) > 100 ) || // Diving from moving vehicle
                 ( veh0 != nullptr && veh0->player_in_control( here, get_avatar() ) ) || // Player is driving
                 has_effect( effect_amigara ) ||
-                has_flag( json_flag_GRAB );
-            if( !move_issue ) {
-                if( t_pos != prev_pos ) {
+                has_flag( json_flag_GRAB ) ||
+                // An NPC's step into the tile is a plain move: it can't leave a vehicle that way.
+                ( !is_avatar() && in_vehicle );
+            // t_pos is where the target stood before the hit, like prev_pos: compare its position
+            // now. Only the avatar is placed with place_player; anyone else steps in.
+            if( !move_issue && t.pos_bub( here ) != prev_pos && g->is_empty( prev_pos ) ) {
+                if( is_avatar() ) {
                     g->place_player( prev_pos );
                     g->on_move_effects();
+                } else {
+                    setpos( here, prev_pos );
                 }
             }
         }

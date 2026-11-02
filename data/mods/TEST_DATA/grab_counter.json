@@ -32,6 +32,17 @@
     "attack_vectors": [ "vector_punch" ]
   },
   {
+    "type": "technique",
+    "id": "test_tech_knockback_follow",
+    "name": "Test Knockback Follow",
+    "//": "A knockback that the attacker follows into the target's tile.",
+    "unarmed_allowed": true,
+    "knockback_dist": 1,
+    "knockback_follow": true,
+    "messages": [ "You test-push %s", "<npcname> test-pushes %s" ],
+    "attack_vectors": [ "vector_punch" ]
+  },
+  {
     "type": "martial_art",
     "id": "test_style_grab_counter",
     "name": { "str": "Test Grab Counter Style" },

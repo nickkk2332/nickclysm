@@ -54,6 +54,7 @@ static const matec_id tec_judo_grab_counter( "tec_judo_grab_counter" );
 static const matec_id tec_krav_maga_grab_counter( "tec_krav_maga_grab_counter" );
 static const matec_id test_tech_aimed_knockback( "test_tech_aimed_knockback" );
 static const matec_id test_tech_grab_counter( "test_tech_grab_counter" );
+static const matec_id test_tech_knockback_follow( "test_tech_knockback_follow" );
 static const matec_id test_tm_strike( "test_tm_strike" );
 
 static const matype_id style_aikido( "style_aikido" );
@@ -460,6 +461,39 @@ TEST_CASE( "controlled_knockback_is_aimed_in_manual_combat_mode", "[martial_arts
         } );
         CHECK( aims == 0 );
         CHECK( mon.pos_bub().x() > start.x() );
+    }
+}
+
+// knockback_follow compared the target's position before the hit with itself, so nobody ever
+// followed; and the step used place_player, which would have moved the avatar for an NPC.
+TEST_CASE( "knockback_follow_steps_into_the_tile", "[martial_arts][melee]" )
+{
+    avatar &you = setup_scene( test_style_aimed_knockback );
+    // Knocks the target back until a hit lands, attacking with a forced technique
+    const auto push = []( Character & who, monster & mon ) {
+        const tripoint_bub_ms start = mon.pos_bub();
+        for( int tries = 0; tries < 20 && mon.pos_bub() == start; ++tries ) {
+            who.set_moves( 100 );
+            who.melee_attack_abstract( mon, false, test_tech_knockback_follow );
+        }
+        REQUIRE( mon.pos_bub() != start );
+        return start;
+    };
+
+    SECTION( "the avatar follows" ) {
+        monster &mon = spawn_test_monster( "mon_test_counter_grabber", you_pos + tripoint::east );
+        const tripoint_bub_ms start = push( you, mon );
+        CHECK( you.pos_bub() == start );
+    }
+    SECTION( "an NPC follows, and the avatar stays put" ) {
+        const tripoint_bub_ms npc_pos = you_pos + tripoint( 0, 3, 0 );
+        npc &guy = spawn_npc( npc_pos.xy(), "test_talker" );
+        guy.remove_weapon();
+        make_fighter( guy );
+        monster &mon = spawn_test_monster( "mon_test_counter_grabber", npc_pos + tripoint::east );
+        const tripoint_bub_ms start = push( guy, mon );
+        CHECK( guy.pos_bub() == start );
+        CHECK( you.pos_bub() == you_pos );
     }
 }
 
