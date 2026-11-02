@@ -2286,45 +2286,131 @@ double warmth_eval( const_dialogue const &d, char scope, std::vector<diag_value>
 }
 
 double weather_eval( const_dialogue const &d, char /* scope */,
-                     std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+                     std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
+    weather_manager const &weather = get_weather_const();
     std::string const &aspect = params[0].str( d );
     if( aspect == "temperature" ) {
-        return units::to_kelvin( get_weather().weather_precise->temperature );
+        return units::to_kelvin( weather.weather_precise->temperature );
+    }
+    if( aspect == "temperature_offset" ) {
+        return units::to_kelvin_delta( weather.eoc_temperature_offset.value.value_or( 0_K_delta ) );
     }
     if( aspect == "windpower" ) {
-        return get_weather().weather_precise->windpower;
+        return weather.weather_precise->windpower;
+    }
+    if( aspect == "wind_direction" ) {
+        return weather.weather_precise->winddirection;
     }
     if( aspect == "humidity" ) {
-        return get_weather().weather_precise->humidity;
+        return weather.weather_precise->humidity;
     }
     if( aspect == "pressure" ) {
-        return get_weather().weather_precise->pressure;
+        return weather.weather_precise->pressure;
     }
     if( aspect == "precipitation" ) {
-        return precip_mm_per_hour( get_weather().weather_id->precip );
+        return precip_mm_per_hour( weather.weather_id->precip );
+    }
+    if( aspect == "duration_left" ) {
+        const double left = std::max( 0.0,
+                                      to_turns<double>( weather.nextweather - calendar::turn ) );
+        return _time_in_unit( left, kwargs.kwarg_or( "unit" ).str( d ) );
     }
     throw math::syntax_error( "Unknown weather aspect %s", aspect );
 }
 
-void weather_ass( double val, dialogue &d, char /* scope */, std::vector<diag_value> const &params,
-                  diag_kwargs const & /* kwargs */ )
+// When a durable override set by weather() should end: nullopt without a 'duration',
+// calendar::turn_max for 'PERMANENT'. A number is in turns (seconds).
+std::optional<time_point> _weather_override_end( const_dialogue const &d,
+        diag_kwargs const &kwargs )
 {
-    std::string const &aspect = params[0].str( d );
-    if( aspect == "temperature" ) {
-        get_weather().weather_precise->temperature = units::from_kelvin( val );
-        get_weather().temperature = units::from_kelvin( val );
-    } else if( aspect == "windpower" ) {
-        get_weather().weather_precise->windpower = val;
-    } else if( aspect == "humidity" ) {
-        get_weather().weather_precise->humidity = val;
-    } else if( aspect == "pressure" ) {
-        get_weather().weather_precise->pressure = val;
+    diag_value const duration = kwargs.kwarg_or( "duration" );
+    if( duration.is_empty() ) {
+        return std::nullopt;
+    }
+    double turns;
+    if( duration.is_dbl() ) {
+        turns = duration.dbl();
     } else {
-        throw math::syntax_error( "Unknown weather aspect %s", params[0].str( d ) );
+        std::string const &dur_str = duration.str( d );
+        if( dur_str == "PERMANENT" ) {
+            return calendar::turn_max;
+        }
+        turns = to_turns<double>( _read_from_string<time_duration>( dur_str,
+                                  time_duration::units ) );
+    }
+    if( turns >= to_turns<double>( calendar::turn_max - calendar::turn ) ) {
+        return calendar::turn_max;
+    }
+    return calendar::turn + time_duration::from_turns<double>( std::max( turns, 0.0 ) );
+}
+
+// Keeps value until end (a 'duration' of 0 or less removes the override); no end: no change
+template<typename T>
+void _hold_weather_override( timed_weather_override<T> &override,
+                             std::optional<time_point> const &end, T const &value )
+{
+    if( !end ) {
+        return;
+    }
+    if( *end <= calendar::turn ) {
+        override.reset();
+    } else {
+        override.set( value, *end );
+    }
+}
+
+// Without a 'duration' kwarg the value applies to the current weather only, as before, and
+// is regenerated at the next weather change. With one it is also held across weather changes.
+void weather_ass( double val, dialogue &d, char /* scope */, std::vector<diag_value> const &params,
+                  diag_kwargs const &kwargs )
+{
+    weather_manager &weather = get_weather();
+    std::string const &aspect = params[0].str( d );
+    std::optional<time_point> const end = _weather_override_end( d, kwargs );
+    if( aspect == "temperature" ) {
+        units::temperature const temp = units::from_kelvin( val );
+        weather.weather_precise->temperature = temp;
+        weather.temperature = temp;
+        _hold_weather_override( weather.eoc_temperature, end, temp );
+    } else if( aspect == "temperature_offset" ) {
+        // Not part of the generated weather, so it stays until it runs out or is cleared
+        units::temperature_delta const offset = units::from_kelvin_delta( val );
+        units::temperature_delta const change =
+            offset - weather.eoc_temperature_offset.value.value_or( 0_K_delta );
+        if( !weather.eoc_temperature.value ) {
+            weather.weather_precise->temperature += change;
+            weather.temperature += change;
+        }
+        const std::optional<time_point> offset_end = end.value_or( calendar::turn_max );
+        _hold_weather_override( weather.eoc_temperature_offset, offset_end, offset );
+    } else if( aspect == "windpower" ) {
+        weather.weather_precise->windpower = val;
+        if( !weather.windspeed_override ) {
+            weather.windspeed = static_cast<int>( std::lround( val ) );
+        }
+        _hold_weather_override( weather.eoc_windspeed, end, val );
+    } else if( aspect == "wind_direction" ) {
+        int const direction = ( static_cast<int>( std::lround( val ) ) % 360 + 360 ) % 360;
+        weather.weather_precise->winddirection = direction;
+        if( !weather.wind_direction_override ) {
+            weather.winddirection = direction;
+        }
+        _hold_weather_override( weather.eoc_wind_direction, end, direction );
+    } else if( aspect == "humidity" || aspect == "pressure" ) {
+        if( end ) {
+            throw math::runtime_error( "weather('%s') can't take a 'duration'", aspect );
+        }
+        if( aspect == "humidity" ) {
+            weather.weather_precise->humidity = val;
+        } else {
+            weather.weather_precise->pressure = val;
+        }
+    } else {
+        throw math::syntax_error( "Unknown or read-only weather aspect %s", aspect );
     }
 
-    get_weather().clear_temp_cache();
+    weather.clear_temp_cache();
 }
 
 double climate_control_str_heat_eval( const_dialogue const &d, char scope,
@@ -2448,7 +2534,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "remaining_volume", { "un", 0, remaining_volume_eval } },
     { "remaining_weight", { "un", 0, remaining_weight_eval } },
     { "warmth", { "un", 1, warmth_eval } },
-    { "weather", { "g", 1, weather_eval, weather_ass } },
+    { "weather", { "g", 1, weather_eval, weather_ass, { "duration", "unit" } } },
     { "climate_control_str_heat", { "un", 0, climate_control_str_heat_eval } },
     { "climate_control_str_chill", { "un", 0, climate_control_str_chill_eval } },
     { "vehicle_battery", { "un", 0, vehicle_battery_eval, vehicle_battery_ass } },

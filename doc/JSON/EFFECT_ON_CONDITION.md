@@ -5921,6 +5921,47 @@ Halve the spawn rate of guns, and stop food from spawning
 }
 ```
 
+#### `set_weather`
+Forces a weather type for some time, whatever the weather generator would pick. The weather changes at once (EOCs that react to a weather change run), stays through later weather changes and saves, and the normal weather comes back when the time runs out. Running it again replaces the previous one. The `ETERNAL_WEATHER` option and the debug menu's forced weather take precedence. To hold temperature or wind as well, assign `weather('temperature')`, `weather('temperature_offset')`, `weather('windpower')` or `weather('wind_direction')` with a `'duration'` (see the `weather` function in [NPCs.md](NPCs.md)).
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_weather" | **mandatory** | string or [variable object](#variable-object) | id of the weather type. An unknown id is a load error (a runtime error when it comes from a variable) |
+| "duration" | optional | int, duration, [variable object](#variable-object) or value between two | how long the weather is held. Omitted or `"PERMANENT"`: until `clear_weather_override`. 0 or less ends an earlier `set_weather` at once |
+
+##### Examples
+Summon a thunderstorm for three hours
+```jsonc
+{ "set_weather": "thunder", "duration": "3 h" }
+```
+
+Keep a portal storm until something clears it
+```jsonc
+{ "set_weather": "portal_storm" }
+```
+
+#### `clear_weather_override`
+Removes weather overrides set by `set_weather` or by `weather()` assignments with a `'duration'`, and recomputes the weather at once. Overrides from the debug menu are not touched.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "clear_weather_override" | **mandatory** | string or [variable object](#variable-object) | which override to remove: `weather` (from `set_weather`), `temperature`, `temperature_offset`, `windpower`, `wind_direction`, or `all` |
+
+##### Examples
+End a magical storm and its winds
+```jsonc
+[ { "clear_weather_override": "weather" }, { "clear_weather_override": "windpower" } ]
+```
+
+A week-long nuclear winter, 15 C colder than usual, that a later EOC can lift early
+```jsonc
+[
+  { "math": [ "weather('temperature_offset', 'duration': '7 d') = -15" ] },
+  { "run_eocs": "EOC_NUCLEAR_WINTER_ENDS", "time_in_future": "2 d" }
+]
+```
+where `EOC_NUCLEAR_WINTER_ENDS` runs `{ "clear_weather_override": "temperature_offset" }`
+
 #### `custom_light_level`
 Sets the ambient light of the world for some amount of time, ignoring time or sun/moon light
 

@@ -201,6 +201,31 @@ struct omt_snow_state {
     time_point last_update = calendar::turn;
 };
 
+// A value an EOC holds in place of the generated weather until `end`
+// (calendar::turn_max: until cleared). See set_weather in doc/JSON/EFFECT_ON_CONDITION.md.
+template<typename T>
+struct timed_weather_override {
+    std::optional<T> value;
+    time_point end = calendar::turn_max;
+
+    void set( const T &new_value, const time_point &until ) {
+        value = new_value;
+        end = until;
+    }
+    void reset() {
+        value.reset();
+        end = calendar::turn_max;
+    }
+    // Drops the value once its time is up; true if it did
+    bool expire( const time_point &now ) {
+        if( value && end <= now ) {
+            reset();
+            return true;
+        }
+        return false;
+    }
+};
+
 class weather_manager
 {
     public:
@@ -231,6 +256,20 @@ class weather_manager
         std::optional<int> wind_direction_override;
         std::optional<int> windspeed_override;
         weather_type_id weather_override;
+        // Overrides set by EOCs (set_weather, weather() assigned with a 'duration'). They are
+        // saved with the weather and applied each time the weather is generated; the debug
+        // overrides above take precedence. A temperature override replaces the generated
+        // temperature, the offset shifts it and is ignored while an override is active.
+        timed_weather_override<weather_type_id> eoc_weather;
+        timed_weather_override<units::temperature> eoc_temperature;
+        timed_weather_override<units::temperature_delta> eoc_temperature_offset;
+        timed_weather_override<double> eoc_windspeed;
+        timed_weather_override<int> eoc_wind_direction;
+        // Drops the EOC overrides whose time is up; true if any was dropped
+        bool expire_eoc_overrides();
+        void clear_eoc_overrides();
+        // Writes the active EOC overrides into a freshly generated weather point
+        void apply_eoc_overrides( w_point &w ) const;
         // not only sets nextweather, but updates weather as well
         void set_nextweather( time_point t );
         // The time at which weather will shift next.

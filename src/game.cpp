@@ -757,6 +757,7 @@ void game::setup()
     get_weather().forced_temperature.reset();
     get_weather().wind_direction_override.reset();
     get_weather().windspeed_override.reset();
+    get_weather().clear_eoc_overrides();
     get_weather().snow_depth_map.clear();
     // back to menu for save loading, new game etc
 }
@@ -9898,6 +9899,9 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 
     // Reset the overmap first before loading the dimension data
     overmap_buffer.clear();
+    // EOC weather overrides belong to the dimension being left (they were saved with it);
+    // the destination's own come back with its data
+    get_weather().clear_eoc_overrides();
     // Load in data specific to the dimension (like weather)
     load_dimension_data();
 

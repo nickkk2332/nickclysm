@@ -156,5 +156,8 @@ void reset();
 void load( const JsonObject &jo, const std::string &src );
 /** Checks all loaded from JSON are valid */
 void check_consistency();
+/** Records a weather type id named outside weather types (e.g. by an EOC), with where it
+ *  came from; check_consistency() reports it if no such weather type was loaded. */
+void add_pending_ref( const std::string &id, const std::string &context );
 } // namespace weather_types
 #endif // CATA_SRC_WEATHER_TYPE_H

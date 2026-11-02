@@ -158,6 +158,7 @@
 #include "vpart_position.h"
 #include "vpart_range.h"
 #include "weather.h"
+#include "weather_type.h"
 #include "weighted_list.h"
 #include "wound.h"
 
@@ -6204,6 +6205,84 @@ talk_effect_fun_t::func f_next_weather()
     };
 }
 
+talk_effect_fun_t::func f_set_weather( const JsonObject &jo, std::string_view member,
+                                       std::string_view src )
+{
+    str_or_var wtype = get_str_or_var( jo.get_member( member ), member, true );
+    if( wtype.is_constant() ) {
+        weather_types::add_pending_ref( wtype.constant(),
+                                        string_format( "set_weather in %s (%s)", src,
+                                                jo.get_member( member ).get_root_source_path() ) );
+    }
+    // Omitted or "PERMANENT": until cleared
+    std::optional<duration_or_var> duration;
+    if( jo.has_member( "duration" ) &&
+        !( jo.has_string( "duration" ) && jo.get_string( "duration" ) == "PERMANENT" ) ) {
+        duration_or_var dov;
+        mandatory( jo, false, "duration", dov );
+        duration = dov;
+    }
+    return [wtype, duration]( dialogue & d ) {
+        const weather_type_id wt( wtype.evaluate( d ) );
+        if( !wt.is_valid() || wt == WEATHER_NULL ) {
+            debugmsg( "set_weather: unknown weather type \"%s\".  %s", wt.str(),
+                      d.get_callstack() );
+            return;
+        }
+        weather_manager &weather = get_weather();
+        // A duration of 0 or less ends at once, which just clears an earlier set_weather
+        weather.eoc_weather.set( wt, duration ? calendar::turn + duration->evaluate( d ) :
+                                 calendar::turn_max );
+        weather.set_nextweather( calendar::turn );
+    };
+}
+
+static const std::array<std::string_view, 6> weather_override_aspects = { {
+        "weather", "temperature", "temperature_offset", "windpower", "wind_direction", "all"
+    }
+};
+
+talk_effect_fun_t::func f_clear_weather_override( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    str_or_var aspect = get_str_or_var( jo.get_member( member ), member, true );
+    if( aspect.is_constant() &&
+        std::find( weather_override_aspects.begin(), weather_override_aspects.end(),
+                   aspect.constant() ) == weather_override_aspects.end() ) {
+        jo.throw_error_at( member, string_format( "unknown weather override \"%s\"; expected "
+                           "weather, temperature, temperature_offset, windpower, wind_direction "
+                           "or all", aspect.constant() ) );
+    }
+    return [aspect]( dialogue & d ) {
+        const std::string what = aspect.evaluate( d );
+        if( std::find( weather_override_aspects.begin(), weather_override_aspects.end(),
+                       what ) == weather_override_aspects.end() ) {
+            debugmsg( "clear_weather_override: unknown weather override \"%s\".  %s", what,
+                      d.get_callstack() );
+            return;
+        }
+        const bool all = what == "all";
+        weather_manager &weather = get_weather();
+        if( all || what == "weather" ) {
+            weather.eoc_weather.reset();
+        }
+        if( all || what == "temperature" ) {
+            weather.eoc_temperature.reset();
+        }
+        if( all || what == "temperature_offset" ) {
+            weather.eoc_temperature_offset.reset();
+        }
+        if( all || what == "windpower" ) {
+            weather.eoc_windspeed.reset();
+        }
+        if( all || what == "wind_direction" ) {
+            weather.eoc_wind_direction.reset();
+        }
+        // Back to the generated weather now
+        weather.set_nextweather( calendar::turn );
+    };
+}
+
 talk_effect_fun_t::func f_copy_var( const JsonObject &jo, std::string_view member,
                                     std::string_view /* src */ )
 {
@@ -9061,6 +9140,8 @@ parsers = {
     { "map_spawn_item", jarg::member, &talk_effect_fun::f_spawn_item },
     { "clear_dimension", jarg::member, &talk_effect_fun::f_clear_dimension },
     { "mapgen_update", jarg::member, &talk_effect_fun::f_mapgen_update },
+    { "set_weather", jarg::member, &talk_effect_fun::f_set_weather },
+    { "clear_weather_override", jarg::member, &talk_effect_fun::f_clear_weather_override },
     { "alter_timed_events", jarg::member, &talk_effect_fun::f_alter_timed_events },
     { "revert_location", jarg::member, &talk_effect_fun::f_revert_location },
     { "copy_location", jarg::member, &talk_effect_fun::f_copy_location },
