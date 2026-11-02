@@ -40,8 +40,10 @@
 #include "current_map.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "do_turn.h"
 #include "drawing_primitives.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "explosion.h"
 #include "field.h"
@@ -4616,6 +4618,32 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
     return false;
 }
 
+// Runs a bash's eoc_on_hit or eoc_on_destroy for the tile at p, with the basher (if any) as alpha.
+// Only on the main map: mapgen bashes temporary maps, where nothing happens in the game world.
+static void run_bash_eoc( const map &m, const effect_on_condition_id &eoc,
+                          const tripoint_bub_ms &p, Creature *basher,
+                          const std::vector<std::pair<std::string, std::string>> &context )
+{
+    if( eoc.is_null() || &m != &get_map() ) {
+        return;
+    }
+    dialogue d( basher ? get_talker_for( basher ) : nullptr, nullptr );
+    d.set_value( "loc", m.get_abs( p ) );
+    for( const std::pair<std::string, std::string> &var : context ) {
+        d.set_value( var.first, var.second );
+    }
+    eoc->activate( d );
+}
+
+// Context of a terrain/furniture bash EOC: what was there before and what is there now
+static std::vector<std::pair<std::string, std::string>> ter_furn_bash_context(
+            const map &m, const tripoint_bub_ms &p, const ter_str_id &old_ter,
+            const furn_str_id &old_furn )
+{
+    return { { "old_ter", old_ter.str() }, { "old_furn", old_furn.str() },
+        { "new_ter", m.ter( p ).id().str() }, { "new_furn", m.furn( p ).id().str() } };
+}
+
 void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool repair_missing_ground )
 {
     int sound_volume = 0;
@@ -4746,6 +4774,10 @@ void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool rep
             add_field( p, bash->hit_field.first, bash->hit_field.second );
         }
 
+        if( !bash->eoc_on_hit.is_null() ) {
+            run_bash_eoc( *this, bash->eoc_on_hit, p, params.basher,
+                          ter_furn_bash_context( *this, p, terid.id, furnid.id ) );
+        }
         return;
     }
 
@@ -4922,24 +4954,32 @@ void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool rep
         sounds::sound( p, sound_volume, sounds::sound_t::combat, sound, false,
                        soundfxid, soundfxvariant );
     }
+    // Last, so the EOC sees the result (and anything it changes stays changed)
+    if( !bash->eoc_on_destroy.is_null() ) {
+        run_bash_eoc( *this, bash->eoc_on_destroy, p, params.basher,
+                      ter_furn_bash_context( *this, p, terid.id, furnid.id ) );
+    }
 }
 
 bash_params map::bash( const tripoint_bub_ms &p, const int str,
                        bool silent, bool destroy, bool bash_floor,
-                       const vehicle *bashing_vehicle, bool repair_missing_ground )
+                       const vehicle *bashing_vehicle, bool repair_missing_ground,
+                       Creature *basher )
 {
     // Temporary map is bound to a const reference for the call duration; bash returns by value.
     // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
     return bash( p, {{{damage_bash, str}}}, silent, destroy, bash_floor, bashing_vehicle,
-    repair_missing_ground );
+    repair_missing_ground, basher );
 }
 bash_params map::bash( const tripoint_bub_ms &p, const std::map<damage_type_id, int> &str,
                        bool silent, bool destroy, bool bash_floor,
-                       const vehicle *bashing_vehicle, bool repair_missing_ground )
+                       const vehicle *bashing_vehicle, bool repair_missing_ground,
+                       Creature *basher )
 {
     bash_params bsh{
         str, silent, destroy, bash_floor, static_cast<float>( rng_float( 0, 1.0f ) ), false, false, false, false
     };
+    bsh.basher = basher;
     if( !inbounds( p ) ) {
         return bsh;
     }
@@ -5041,6 +5081,10 @@ void map::bash_field( const tripoint_bub_ms &p, bash_params &params )
     }
     for( field_type_id fd : to_remove ) {
         remove_field( p, fd );
+        if( !fd->bash_info->eoc_on_destroy.is_null() ) {
+            run_bash_eoc( *this, fd->bash_info->eoc_on_destroy, p, params.basher,
+            { { "field", fd.id().str() } } );
+        }
     }
 }
 

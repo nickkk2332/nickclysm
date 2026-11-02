@@ -3908,7 +3908,7 @@ void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint
                here.bash_rating( smash_ability(), p ) > 0 &&
                !craft_reservation::bashing_would_break_reservation( here, *this, p ) ) {
         mod_moves( -get_speed() * 0.8 );
-        here.bash( p, smash_ability() );
+        here.bash( p, smash_ability(), false, false, false, nullptr, true, this );
     } else {
         if( attitude == NPCATT_MUG ||
             attitude == NPCATT_KILL ||

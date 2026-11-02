@@ -35,9 +35,11 @@
 #include "damage.h"
 #include "debug.h"
 #include "debug_menu.h"
+#include "dialogue.h"
 #include "diary.h"
 #include "distraction_manager.h"
 #include "do_turn.h"
+#include "effect_on_condition.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -957,6 +959,8 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
         if( !bash_info ) {
             continue;
         }
+        // Kept apart: removing the field invalidates fd_to_smsh
+        const field_type_id smashed_field = fd_to_smsh.first;
         int damage = bash_info->damage_to( smash_damage );
         if( ( damage <= 0 && one_in( 10 ) ) || fd_to_smsh.first->indestructible ) {
             add_msg( m_neutral, _( "You don't seem to be damaging the %s." ), fd_to_smsh.first->get_name() );
@@ -984,6 +988,14 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
         }
         if( ret.did_smash && !bash_info->hit_field.first.is_null() ) {
             here.add_field( smashp, bash_info->hit_field.first, bash_info->hit_field.second );
+        }
+        const effect_on_condition_id &bash_eoc = ret.success ? bash_info->eoc_on_destroy :
+                bash_info->eoc_on_hit;
+        if( ret.did_smash && !bash_eoc.is_null() ) {
+            dialogue d( get_talker_for( *this ), nullptr );
+            d.set_value( "loc", here.get_abs( smashp ) );
+            d.set_value( "field", smashed_field.id().str() );
+            bash_eoc->activate( d );
         }
         return ret;
     }
@@ -1026,7 +1038,8 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
         }
     }
 
-    const bash_params bash_result = here.bash( smashp, smash_damage, false, false, smash_floor );
+    const bash_params bash_result = here.bash( smashp, smash_damage, false, false, smash_floor,
+                                    nullptr, true, this );
     ret.can_smash = bash_result.can_bash;
     // Weariness scaling
     float weary_mult = 1.0f;

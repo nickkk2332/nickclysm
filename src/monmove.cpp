@@ -2052,7 +2052,7 @@ bool monster::bash_at( const tripoint_bub_ms &p )
     }
 
     std::map<damage_type_id, int> bashskill = group_bash_skill( p );
-    here.bash( p, bashskill );
+    here.bash( p, bashskill, false, false, false, nullptr, true, this );
     mod_moves( -get_speed() );
     return true;
 }

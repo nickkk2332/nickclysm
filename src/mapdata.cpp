@@ -15,6 +15,7 @@
 #include "character.h"
 #include "color.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
@@ -386,7 +387,7 @@ static void load_map_bash_tent_centers( const JsonArray &ja, std::vector<furn_st
 }
 
 void map_common_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                                 const std::string &context )
+                                 const std::string &context, std::string_view src )
 {
     optional( jo, was_loaded, "str_min", str_min, -1 );
     optional( jo, was_loaded, "str_max", str_max, -1 );
@@ -428,11 +429,19 @@ void map_common_bash_info::load( const JsonObject &jo, const bool was_loaded,
     if( jo.has_array( "tent_centers" ) ) {
         load_map_bash_tent_centers( jo.get_array( "tent_centers" ), tent_centers );
     }
+
+    if( jo.has_member( "eoc_on_hit" ) ) {
+        eoc_on_hit = effect_on_conditions::load_inline_eoc( jo.get_member( "eoc_on_hit" ), src );
+    }
+    if( jo.has_member( "eoc_on_destroy" ) ) {
+        eoc_on_destroy = effect_on_conditions::load_inline_eoc( jo.get_member( "eoc_on_destroy" ),
+                         src );
+    }
 }
 void map_ter_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                              const std::string &context )
+                              const std::string &context, std::string_view src )
 {
-    map_common_bash_info::load( jo, was_loaded, context );
+    map_common_bash_info::load( jo, was_loaded, context, src );
     mandatory( jo, was_loaded, "ter_set", ter_set );
     // Unless this block names it, the from-above result follows ter_set, so a copy-from that
     // overrides ter_set doesn't keep the parent's from-above result
@@ -441,15 +450,15 @@ void map_ter_bash_info::load( const JsonObject &jo, const bool was_loaded,
               ter_set );
 }
 void map_furn_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                               const std::string &context )
+                               const std::string &context, std::string_view src )
 {
-    map_common_bash_info::load( jo, was_loaded, context );
+    map_common_bash_info::load( jo, was_loaded, context, src );
     optional( jo, was_loaded, "furn_set", furn_set, furn_f_null );
 }
 void map_fd_bash_info::load( const JsonObject &jo, const bool was_loaded,
-                             const std::string &context )
+                             const std::string &context, std::string_view src )
 {
-    map_common_bash_info::load( jo, was_loaded, context );
+    map_common_bash_info::load( jo, was_loaded, context, src );
     optional( jo, was_loaded, "move_cost", fd_bash_move_cost, 100 );
     optional( jo, was_loaded, "msg_success", field_bash_msg_success );
 }
@@ -1479,7 +1488,7 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
             bash.emplace();
         }
         //TODO: Make overwriting these with "bash": { } works while still allowing overwriting single values ie for "ter_set"
-        bash->load( jo.get_object( "bash" ), bash_loaded, "terrain " + id.str() );
+        bash->load( jo.get_object( "bash" ), bash_loaded, "terrain " + id.str(), src );
     }
     if( jo.has_object( "deconstruct" ) ) {
         bool deconstruct_loaded = !!deconstruct;
@@ -1673,7 +1682,7 @@ void furn_t::load( const JsonObject &jo, const std::string &src )
         if( !bash_loaded ) {
             bash.emplace();
         }
-        bash->load( jo.get_object( "bash" ), bash_loaded, "furniture " + id.str() );
+        bash->load( jo.get_object( "bash" ), bash_loaded, "furniture " + id.str(), src );
     }
     if( jo.has_object( "deconstruct" ) ) {
         bool deconstruct_loaded = !!deconstruct;

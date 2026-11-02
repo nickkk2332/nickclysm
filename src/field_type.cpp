@@ -204,7 +204,7 @@ void field_effect::deserialize( const JsonObject &jo )
     field_types::load_immunity( jid, immunity_data );
 }
 
-void field_type::load( const JsonObject &jo, std::string_view )
+void field_type::load( const JsonObject &jo, std::string_view src )
 {
     optional( jo, was_loaded, "legacy_enum_id", legacy_enum_id, -1 );
     if( jo.has_array( "intensity_levels" ) ) {
@@ -344,7 +344,7 @@ void field_type::load( const JsonObject &jo, std::string_view )
         if( !bash_info ) {
             bash_info.emplace();
         }
-        bash_info->load( jo.get_object( "bash" ), was_loaded, "field " + id.str() );
+        bash_info->load( jo.get_object( "bash" ), was_loaded, "field " + id.str(), src );
     }
     if( was_loaded && jo.has_member( "copy-from" ) && looks_like.empty() ) {
         looks_like = jo.get_string( "copy-from" );

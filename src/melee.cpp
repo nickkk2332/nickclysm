@@ -1110,7 +1110,8 @@ void Character::reach_attack( const tripoint_bub_ms &p, int forced_movecost )
                    !( weapon.has_flag( flag_SPEAR ) &&
                       here.has_flag( ter_furn_flag::TFLAG_THIN_OBSTACLE, path_point ) ) ) {
             /** @ARM_STR increases bash effects when reach attacking past something */
-            here.bash( path_point, get_arm_str() + weapon.damage_melee( damage_bash ) );
+            here.bash( path_point, get_arm_str() + weapon.damage_melee( damage_bash ), false, false,
+                       false, nullptr, true, this );
             handle_melee_wear( get_wielded_item() );
             reduce_moves_from_attack( forced_movecost, move_cost );
             return;

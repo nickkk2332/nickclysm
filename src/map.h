@@ -198,6 +198,8 @@ struct bash_params {
      * have a roof either.
     */
     bool bashing_from_above = false;
+    // The creature doing the bashing, if any: the alpha talker of the bash EOCs
+    Creature *basher = nullptr;
 };
 
 /** Draw parameters used by map::drawsq() and similar methods. */
@@ -1339,15 +1341,16 @@ class map
          * @param destroy Destroys some otherwise unbashable tiles
          * @param bash_floor Allow bashing the floor and the tile that supports it
          * @param bashing_vehicle Vehicle that should NOT be bashed (because it is doing the bashing)
+         * @param basher Creature doing the bashing, if any (alpha of the bash EOCs)
          */
         bash_params bash( const tripoint_bub_ms &p, const std::map<damage_type_id, int> &str,
                           bool silent = false, bool destroy = false, bool bash_floor = false,
                           const vehicle *bashing_vehicle = nullptr,
-                          bool repair_missing_ground = true );
+                          bool repair_missing_ground = true, Creature *basher = nullptr );
         bash_params bash( const tripoint_bub_ms &p, int str,
                           bool silent = false, bool destroy = false, bool bash_floor = false,
                           const vehicle *bashing_vehicle = nullptr,
-                          bool repair_missing_ground = true );
+                          bool repair_missing_ground = true, Creature *basher = nullptr );
 
         // Effects of attacks/items
         bool hit_with_acid( const tripoint_bub_ms &p );

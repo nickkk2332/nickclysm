@@ -173,6 +173,7 @@ Use the `Home` key to return to the top.
         - [`bash_below`](#bash_below)
         - [`tent_centers`, `collapse_radius`](#tent_centers-collapse_radius)
         - [`items`](#items-1)
+        - [`eoc_on_hit`, `eoc_on_destroy`](#eoc_on_hit-eoc_on_destroy)
       - [`map_deconstruct_info`](#map_deconstruct_info)
         - [`furn_set`, `ter_set`](#furn_set-ter_set-1)
         - [`skill`](#skill)
@@ -3938,7 +3939,9 @@ Defines the various things that happen when the player or something else bashes 
     "destroy_only": true,
     "bash_below": true,
     "tent_centers": ["f_groundsheet", "f_fema_groundsheet", "f_skin_groundsheet"],
-    "items": "bashed_item_result_group" // if terrain or furniture uses `item`, you can omit this field, the game would pick the bash from item uncraft recipe, with some items bashed down to it's components. Alternatively, the game would pick it from the item deconstruction, with, again, some items bashed down to it's components.
+    "items": "bashed_item_result_group", // if terrain or furniture uses `item`, you can omit this field, the game would pick the bash from item uncraft recipe, with some items bashed down to it's components. Alternatively, the game would pick it from the item deconstruction, with, again, some items bashed down to it's components.
+    "eoc_on_hit": "EOC_ALTAR_STRUCK",
+    "eoc_on_destroy": { "id": "EOC_ALTAR_DESTROYED", "effect": [ { "math": [ "cult_anger += 10" ] } ] }
 }
 ```
 
@@ -3980,6 +3983,29 @@ This terrain is the roof of the tile below it, try to destroy that too. Further 
 ##### `items`
 
 (Optional) An item group (inline) or an id of an item group, see [ITEM_SPAWN.md](ITEM_SPAWN.md). The default subtype is "collection". Upon successful bashing, items from that group will be spawned.
+
+##### `eoc_on_hit`, `eoc_on_destroy`
+
+(Optional) An effect_on_condition id or an inline EOC. `eoc_on_hit` runs when a bash hits the terrain or furniture without breaking it; `eoc_on_destroy` runs once it breaks, after the new terrain or furniture, items and fields are in place. They run for every kind of bash (smashing, monsters, vehicles, explosions, fire, projectiles, collapses), but only in the game world, not while a map is being generated.
+
+The alpha talker is the creature doing the bashing when there is one (the player's or an NPC's smash, a monster bashing its way through, a melee attack through an obstacle); otherwise there is no alpha talker, so check `has_alpha` before using `u_` effects or conditions. There is no beta talker. Context variables: `loc` (location of the tile), `old_ter` and `old_furn` (ids before the bash), `new_ter` and `new_furn` (ids now; the same as before for `eoc_on_hit`).
+
+Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc` and `field` (the field type id).
+
+```jsonc
+"bash": {
+  "str_min": 40,
+  "str_max": 120,
+  "furn_set": "f_rubble",
+  "eoc_on_destroy": {
+    "id": "EOC_CULT_ALTAR_DESTROYED",
+    "effect": [
+      { "math": [ "cult_anger += 10" ] },
+      { "if": "has_alpha", "then": { "u_message": "The cultists will not forgive this.", "type": "bad" } }
+    ]
+  }
+}
+```
 
 #### `map_deconstruct_info`
 
@@ -4573,6 +4599,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
       "move_cost": 120, // how many moves it costs to successfully bash that field (default: 100)
       "hit_field": [ "fd_fire", 1 ] // field to create when hit and intensity. Also created on destruction
       "destroyed_field": [ "fd_fire", 2 ] // field to create when destroyed and intensity
+      "eoc_on_destroy": "EOC_WEB_TORN", // EOC run when bashing clears the field; "eoc_on_hit" when a smash fails to. See map_bash_info
       "items": [                                   // item dropped upon successful bashing
         { "item": "2x4", "count": [ 5, 8 ] },
         { "item": "nail", "charges": [ 6, 8 ] },
