@@ -470,6 +470,39 @@ Gameplay changes players will notice:
 
 With this batch the full suite passes, 2656 of 2656 test cases with seed 4242 and no errors logged, and every mod set still loads with no errors. The 52 new test cases are in `tests/npc_errand_test.cpp`, `tests/eoc_errands_activity_test.cpp` and `tests/eoc_errands_ui_test.cpp`.
 
+**Performance: twelve more high-severity findings.** These were built in three worktrees: combat and NPC attacks, loading and saving, and world and inventory. Each benchmark scenario was committed before its fix. The combat and world worktrees first committed tests that pin the old behavior, passing against the old code; the load fixes carry their tests in the same commits. A separate agent reviewed each worktree, and its comments were applied before merging. The numbers are in [benchmarks/README.md](benchmarks/README.md#round-4-twelve-more-high-severity-performance-findings).
+
+| ID | Status | Commits | Regression test or benchmark |
+|---|---|---|---|
+| NPC-P01 | fixed | `d07b5cfb` | `tests/audit_perf_combat_test.cpp`; benchmark `npc_spell_eval` |
+| MAGIC-P02 | fixed | `d07b5cfb` | `tests/audit_perf_combat_test.cpp`; benchmark `npc_spell_eval`. Also covers MAGIC-P04 and MAGIC-P05 inside NPC spell rating; casting and the targeting UI still use the original shape functions |
+| NPC-P02 | fixed | `ed1a52f8` | `tests/audit_perf_combat_test.cpp`; benchmark `npc_weapon_eval` |
+| CMBT-P01 | fixed | `f7f5226a`, `384c6872` | `tests/audit_perf_combat_test.cpp`; benchmarks `shot_flockshot`, `shot_birdshot`. Changes the order of a shot's random numbers (see below) |
+| CMBT-P02 | not changed | none | benchmark `shrapnel_armored`. A grenade among 25 armored zombies takes about 13 ms (about 170 fragment hits), so the full attack per fragment isn't worth replacing |
+| EVT-P01 | fixed | `209d2263`, `b3fb580f` | `tests/audit_perf_load_test.cpp`; benchmark `stats_overmap_special_history` |
+| MAP-P03 | fixed | `334b707a`, `74477812` | `tests/audit_perf_load_test.cpp`; benchmarks `mapbuffer_save_uniform`, `mapbuffer_lookup_missing` |
+| INV-P01 | fixed | `baed3534`, `e0f68119`, `0555b3a8` | `tests/audit_perf_load_test.cpp`; benchmark `item_nested_deserialize` |
+| INV-P02 | partial | `445dec4e`, `380292c3` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `inventory_queries`. Still open: the header-level steps (a bitmask pocket set in the visit APIs, `get_pseudo_items()` by reference, a public raw visitor). After this change they would gain little, and they need a near-full rebuild |
+| MGEN-P01 | fixed | `fdaaf2e6`, `8f06ed83` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `phase_change_lake_thawed`, `phase_change_lake_frozen` |
+| OMAP-P02 | fixed | `e30b243a`, `5e472856` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `omt_find_closest_miss`, `omt_find_npc_goals` |
+| ACT-P03 | fixed | `fbabc40e` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `zone_job_missing_tool` |
+
+The pinning tests compare each fast path with the old code. They cover every NPC spell and weapon rating against the full scan, including the random number state afterwards; the overmap searches against a copy of the old ones, including ties and which overmaps get generated; a year of lake loads against a copy of the old phase pass; and zone job scans with and without the tool. The shot tests compare damage and kill rates with the old code over many trials. The tests added after the world group's review were each checked by breaking the code they cover.
+
+Gameplay changes players will notice:
+- **Shotgun shots** (CMBT-P01). The pellets of a shot now fly together, a tile at a time, so their random numbers come in a different order and the same seed gives a different shot. Outcomes are statistically the same: for example, 00 buckshot at a 150 HP target averages 152.5 damage both ways. Effects that reach other tiles in the middle of a shot, such as a creature that splits or explodes on death, return fire or an on-hit EOC, can meet later pellets at a slightly different moment.
+- **Saved item references** (INV-P01). Items inside containers keep their uids across a save and load, so a saved reference into a container no longer fails with "item_location UID not found in container contents". A reference into a gun or tool mod, such as an underbarrel gun's magazine, is now saved too. Characters made from a template get fresh item uids.
+- **Achievements on "last overmap special entered"** (EVT-P01). Entries saved by older builds count as entering no special. Achievements already completed stay completed. An old history can no longer complete one on load.
+- **Frozen water** (MGEN-P01). A tile that stays frozen is no longer thawed and refrozen on every load, so the avatar's memory of it is no longer cleared. It is re-memorized when next seen.
+- **Map saves** (MAP-P03). A map segment whose quads are all sky or rock no longer gets an empty `.zzip` file. The save format is unchanged, and older builds read new saves.
+
+For modders:
+- `avatar_enters_omt` has a third field, `overmap_special`, empty when the OMT is in no special. A `trigger_event` for it needs three arguments. EOCs on the event get an `overmap_special` context variable. Older builds ignore the field in saves.
+- The `overmap_special_at` field transformation only consults overmaps already in memory, so no statistic can load or generate an overmap.
+- An item location saved into a mod pocket uses the new type `in_mod_pocket`. Older builds read it as `nowhere`, as they wrote it.
+
+With this batch the full suite passes, 2688 of 2688 test cases with seed 4242 and no errors logged. The 32 new test cases are in `tests/audit_perf_combat_test.cpp`, `tests/audit_perf_load_test.cpp` and `tests/audit_perf_world_inventory_test.cpp`, and every mod set still loads with no errors.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. After the third round (modding round 1 and bug sweep 1), all 228 `[audit]` test cases pass and the full suite passes: 2506 of 2506 with seed 4242, with no errors logged. Every mod set still loads with no errors. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.

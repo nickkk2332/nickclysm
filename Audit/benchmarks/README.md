@@ -124,3 +124,44 @@ in the working tree; `after-round3.json` is the branch itself. Both were run bac
 - `run_benchmarks.py` now finds `BENCH` lines that a log line without a newline has run
   into; before, `temp_map_load` (which loads maps, and logs about it) was silently
   missing from results.
+
+## Round 4: twelve more high-severity performance findings
+
+`before-round4.json` is the errands branch before this work (`4d3266c8`) with only the new
+scenario files added (and the test spells one of them uses), so it has none of the fixes.
+`after-round4.json` is the merged branch (`61727c0c`). Both were run back to back on an
+otherwise idle machine, 2 runs × 5 repetitions. Besides the new scenarios, the table has
+`temp_map_load` and `overmap_generate`, which run code these fixes touched.
+
+| Scenario | Before (ms) | After (ms) | Change | Fix |
+|---|---|---|---|---|
+| stats_overmap_special_history | 513 | 0.4 | **-99.9%** | EVT-P01: record the special when the OMT is entered, instead of loading every visited overmap on game load |
+| zone_job_missing_tool | 663 | 24 | **-96%** | ACT-P03: requirement checks share their answers within a scan |
+| omt_find_closest_miss | 160 | 7.5 | **-95%** | OMAP-P02: no spiral vector, one terrain match per type, skip overmap levels with nothing to find |
+| mapbuffer_lookup_missing | 29 | 1.7 | **-94%** | MAP-P03: list each segment's quad files once |
+| npc_spell_eval | 4478 | 354 | **-92%** | NPC-P01, MAGIC-P02: rate spells without recomputing areas and dps per tile |
+| shot_flockshot | 112 | 22 | **-80%** | CMBT-P01: the pellets of a shot fly together |
+| inventory_queries | 6.8 | 2.1 | **-69%** | INV-P02: one allocation per location, no locations below the top level |
+| omt_find_npc_goals | 5.9 | 2.5 | **-58%** | OMAP-P02 |
+| npc_weapon_eval | 46 | 22 | **-54%** | NPC-P02: rate weapons only at tiles with creatures |
+| mapbuffer_save_uniform | 13.9 | 6.8 | **-51%** | MAP-P03: don't open the save for uniform quads |
+| phase_change_lake_frozen | 122 | 98 | -20% (ranges overlap) | MGEN-P01 |
+| phase_change_lake_thawed | 110 | 95 | -14% (ranges overlap) | MGEN-P01 |
+| temp_map_load | 56 | 48 | -14% (ranges overlap) | MGEN-P01, on dry terrain |
+| shot_birdshot | 9.5 | 7.9 | -17% (within noise) | CMBT-P01, the common case |
+| item_nested_deserialize | 38 | 37 | -4% (within noise) | INV-P01 |
+| shrapnel_armored | 13.0 | 13.0 | none | CMBT-P02, not changed |
+| overmap_generate | 391 | 380 | -3% (within noise) | none |
+| data_load | 22427 | 22141 | -1% (within noise) | none |
+
+- **MGEN-P01** gains less than the audit expected. The phase pass was a smaller share of a
+  submap load than it estimated; the rest is `map::loadn`'s other work. The fix's own
+  back-to-back runs agree in direction (frozen lake 152 to 109 ms, thawed 130 to 99 ms), but
+  the ranges overlap in both measurements.
+- **INV-P01** is mainly a correctness fix: contained items now keep their uids, so saved item
+  locations into containers survive a load. JSON parsing dominates `item_nested_deserialize`;
+  the copies it removes were the smaller part.
+- **CMBT-P02** was measured and left alone: a grenade among 25 armored zombies, about 170
+  fragment hits, takes 13 ms.
+- `omt_find_closest_miss` depends on which overmaps already exist, and other scenarios
+  (`overmap_generate`) clear the overmap buffer, so compare only runs of the same scenario set.
