@@ -139,11 +139,33 @@ void mod_migrations::reset()
 void mod_migrations::check()
 {
     for( const auto &migration : migrated_mods ) {
-        if( !migration.second.is_valid() ) {
-            debugmsg( "mod_migration from '%s' specifies invalid new_id '%s'", migration.first.c_str(),
+        // new_id may be a mod renamed in its turn
+        const std::optional<mod_id> to = renamed_to( migration.first, migrated_mods );
+        if( !to ) {
+            debugmsg( "mod_migration from '%s' to '%s' leads round in a circle", migration.first.c_str(),
                       migration.second.c_str() );
+        } else if( !to->is_valid() ) {
+            debugmsg( "mod_migration from '%s' specifies invalid new_id '%s'", migration.first.c_str(),
+                      to->c_str() );
         }
     }
+}
+
+std::optional<mod_id> mod_migrations::renamed_to( const mod_id &id,
+        const std::map<mod_id, mod_id> &renames )
+{
+    std::set<mod_id> seen = { id };
+    std::optional<mod_id> ret;
+    for( auto it = renames.find( id ); it != renames.end(); it = renames.find( it->second ) ) {
+        if( !seen.insert( it->second ).second ) {
+            return std::nullopt;
+        }
+        ret = it->second;
+        if( it->second.is_valid() ) {
+            break;
+        }
+    }
+    return ret;
 }
 
 mod_manager::mod_manager()
@@ -481,10 +503,12 @@ void mod_manager::check_mods_list( WORLD *world ) const
 
     for( auto check_it = amo.begin(); check_it != amo.end(); ) {
         if( !check_it->is_valid() ) {
-            if( const auto replace_it = migrated_mods.find( *check_it ); replace_it != migrated_mods.end() &&
-                std::find( amo.begin(), amo.end(), replace_it->second ) == amo.end() ) {
-                // The renamed mod takes the old one's place in the load order
-                *check_it = replace_it->second;
+            // The renamed mod (maybe renamed again since) takes the old one's place in the load
+            // order, if it is installed and not in the list already
+            const std::optional<mod_id> new_id = mod_migrations::renamed_to( *check_it, migrated_mods );
+            if( new_id && new_id->is_valid() &&
+                std::find( amo.begin(), amo.end(), *new_id ) == amo.end() ) {
+                *check_it = *new_id;
                 changed = true;
             } else {
                 input_context dummy_ctxt( "YESNOQUIT" );

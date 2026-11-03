@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -52,35 +53,72 @@ profession_group_audit_data_b05_profession_group_child( "audit_data_b05_professi
 static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_open_air( "t_open_air" );
 
+namespace
+{
+// Runs check_mods_list on a world with these mods, and returns its list and its saved list
+std::pair<std::vector<mod_id>, std::vector<mod_id>> checked_mods_list(
+            const std::vector<mod_id> &mods )
+{
+    WORLD world( "audit data-b04" );
+    world.active_mod_order.clear();
+    // room to grow, so that the old code had no reallocation to hide behind
+    world.active_mod_order.reserve( 8 );
+    world.active_mod_order.insert( world.active_mod_order.end(), mods.begin(), mods.end() );
+
+    on_out_of_scope cleanup( [&]() {
+        remove_file( world.folder_path() / "mods.json" );
+        remove_directory( world.folder_path().get_unrelative_path() );
+    } );
+    REQUIRE( assure_dir_exist( world.folder_path() ) );
+    world_generator->get_mod_manager().check_mods_list( &world );
+
+    std::vector<mod_id> saved;
+    read_from_file_optional_json( world.folder_path() / "mods.json", [&]( const JsonValue & jv ) {
+        jv.read( saved );
+    } );
+    return { world.active_mod_order, saved };
+}
+} // namespace
+
 // DATA-B04: a mod_migration with "new_id" inserted the new id and then erased through the
 // old iterator, which then pointed at the new id: the renamed mod was dropped and the old
 // id kept (or worse, after a reallocation).  TEST_DATA renames
 // audit_data_b04_renamed_mod to test_data.
 TEST_CASE( "data-b04_mod_migration_renames_the_mod_in_place", "[audit][mods]" )
 {
-    WORLD world( "audit data-b04" );
-    std::vector<mod_id> &mods = world.active_mod_order;
-    mods.clear();
-    // room to grow, so that the old code had no reallocation to hide behind
-    mods.reserve( 8 );
-    mods.emplace_back( MOD_INFORMATION_dda );
-    mods.emplace_back( "audit_data_b04_renamed_mod" );
-
-    REQUIRE( assure_dir_exist( world.folder_path() ) );
-    on_out_of_scope cleanup( [&]() {
-        remove_file( world.folder_path() / "mods.json" );
-        remove_directory( world.folder_path().get_unrelative_path() );
-    } );
-    world_generator->get_mod_manager().check_mods_list( &world );
-
     const std::vector<mod_id> expected = { MOD_INFORMATION_dda, MOD_INFORMATION_test_data };
+    const auto [mods, saved] = checked_mods_list( { MOD_INFORMATION_dda,
+                               mod_id( "audit_data_b04_renamed_mod" )
+                                                  } );
     CHECK( mods == expected );
-    // and the world's saved list
-    std::vector<mod_id> saved;
-    REQUIRE( read_from_file_json( world.folder_path() / "mods.json", [&]( const JsonValue & jv ) {
-        jv.read( saved );
-    } ) );
     CHECK( saved == expected );
+}
+
+// DATA-B04: the new id may have been renamed in its turn.  TEST_DATA renames
+// audit_data_b04_chain_a to audit_data_b04_chain_b, and that to test_data.
+TEST_CASE( "data-b04_mod_migration_follows_a_rename_of_a_rename", "[audit][mods]" )
+{
+    const std::vector<mod_id> expected = { MOD_INFORMATION_dda, MOD_INFORMATION_test_data };
+    const auto [mods, saved] = checked_mods_list( { MOD_INFORMATION_dda,
+                               mod_id( "audit_data_b04_chain_a" )
+                                                  } );
+    CHECK( mods == expected );
+    CHECK( saved == expected );
+}
+
+// DATA-B04: renames that go round in a circle lead nowhere, and stop
+TEST_CASE( "data-b04_mod_renames_in_a_circle_lead_nowhere", "[audit][mods]" )
+{
+    const mod_id a( "audit_data_b04_circle_a" );
+    const mod_id b( "audit_data_b04_circle_b" );
+    const mod_id c( "audit_data_b04_circle_c" );
+    const std::map<mod_id, mod_id> renames = { { a, b }, { b, c }, { c, a } };
+    CHECK_FALSE( mod_migrations::renamed_to( a, renames ).has_value() );
+    CHECK_FALSE( mod_migrations::renamed_to( b, renames ).has_value() );
+    // a chain ends at the last id, installed or not
+    const std::map<mod_id, mod_id> chain = { { a, b }, { b, c } };
+    CHECK( mod_migrations::renamed_to( a, chain ) == std::optional<mod_id>( c ) );
+    CHECK_FALSE( mod_migrations::renamed_to( c, chain ).has_value() );
 }
 
 // DATA-B05: these types were never finalized, which is where an object whose copy-from

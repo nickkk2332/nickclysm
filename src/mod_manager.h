@@ -90,6 +90,12 @@ struct mod_migrations {
     static void load( const JsonObject &jo );
     static void check();
     static void reset();
+    /**
+     * Follows the renames of a mod id, through renames of renames.  Returns the last id
+     * (installed or not), or nothing when id wasn't renamed or the renames go round.
+     */
+    static std::optional<mod_id> renamed_to( const mod_id &id,
+            const std::map<mod_id, mod_id> &renames );
 };
 
 class mod_manager

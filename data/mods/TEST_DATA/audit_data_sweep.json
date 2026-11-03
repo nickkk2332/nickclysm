@@ -6,6 +6,18 @@
     "new_id": "test_data"
   },
   {
+    "type": "mod_migration",
+    "//": "DATA-B04 test: a mod renamed twice, to audit_data_b04_chain_b and then to test_data",
+    "id": "audit_data_b04_chain_a",
+    "new_id": "audit_data_b04_chain_b"
+  },
+  {
+    "type": "mod_migration",
+    "//": "DATA-B04 test: the second rename",
+    "id": "audit_data_b04_chain_b",
+    "new_id": "test_data"
+  },
+  {
     "type": "profession_group",
     "id": "audit_data_b05_profession_group_child",
     "//": "DATA-B05 test: copies from a parent defined after it",
