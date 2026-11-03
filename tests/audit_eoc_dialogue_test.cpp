@@ -666,3 +666,26 @@ TEST_CASE( "eoc-b09_talk_none_stays_on_the_first_topic", "[audit][npc_talk]" )
     CHECK( back_from( { "TALK_MISSION_START", "TALK_MISSION_OFFER" } ) ==
            topics{ "TALK_MISSION_START" } );
 }
+
+// EOC-B13 follow-up: bulk_trade_accept and bulk_donate gave the items to the buyer's character
+// without checking there was one, so donating to a monster crashed.
+TEST_CASE( "eoc-b13_bulk_donate_to_a_talker_that_isnt_a_character", "[audit][eoc]" )
+{
+    clear_map();
+    avatar &u = get_avatar();
+    monster &zed = spawn_test_monster( "mon_zombie", u.pos_bub() + point( 3, 0 ) );
+    on_out_of_scope restore( []() {
+        clear_creatures();
+    } );
+    // A character that isn't the avatar gives, so nothing asks for confirmation
+    standard_npc giver( "Giver", u.pos_bub() + point( -2, 0 ) );
+    giver.set_wielded_item( item( itype_test_rock ) );
+    REQUIRE( giver.has_amount( itype_test_rock, 1 ) );
+    dialogue d( get_talker_for( giver ), get_talker_for( zed ) );
+    d.cur_item = itype_test_rock;
+    const talk_effect_t donate = load_effect( R"({ "effect": "u_bulk_donate" })" );
+    CHECK_FALSE( capture_debugmsg_during( [&]() {
+        donate.apply( d );
+    } ).empty() );
+    CHECK( giver.has_amount( itype_test_rock, 1 ) );
+}
