@@ -55,6 +55,7 @@ Use the `Home` key to return to the top.
       - [Monster/Subgroup definition](#monstersubgroup-definition)
     - [Monster Factions](#monster-factions)
     - [Monsters](#monsters)
+    - [NPC behavior](#npc-behavior)
     - [Mutation Categories](#mutation-categories)
     - [Names](#names)
     - [Profession item substitution](#profession-item-substitution)
@@ -1938,6 +1939,10 @@ In monster groups, within the `"monsters"` array, you can define `"group"` objec
 ### Monsters
 
 See [MONSTERS.md](MONSTERS.md)
+
+### NPC behavior
+
+See [NPC_BEHAVIOR.md](NPC_BEHAVIOR.md)
 
 ### Mutation Categories
 
