@@ -1698,6 +1698,118 @@ double npc_goal_turns_eval( const_dialogue const &d, char scope,
     return guy == nullptr ? 0.0 : npc_goal_runtime::turns_on_goal( *guy );
 }
 
+// the NPC u or n is; nullptr when that talker isn't an NPC, or there is none
+const npc *scoped_npc( const_dialogue const &d, char scope )
+{
+    const bool beta = is_beta( scope );
+    return d.has_actor( beta ) ? d.const_actor( beta )->get_const_npc() : nullptr;
+}
+
+npc *scoped_npc( dialogue &d, char scope )
+{
+    const bool beta = is_beta( scope );
+    return d.has_actor( beta ) ? d.actor( beta )->get_npc() : nullptr;
+}
+
+// a personality trait npc_personality() names, nullptr for another name
+int8_t *personality_trait( npc_personality &p, std::string_view trait )
+{
+    if( trait == "aggression" ) {
+        return &p.aggression;
+    } else if( trait == "bravery" ) {
+        return &p.bravery;
+    } else if( trait == "collector" ) {
+        return &p.collector;
+    } else if( trait == "altruism" ) {
+        return &p.altruism;
+    }
+    return nullptr;
+}
+
+constexpr const char *personality_traits = "aggression, bravery, collector or altruism";
+
+void npc_personality_check( std::vector<diag_value> const &params )
+{
+    npc_personality p;
+    if( params[0].is_str() && personality_trait( p, params[0].str() ) == nullptr ) {
+        throw math::syntax_error( R"(npc_personality(): "%s" isn't %s)", params[0].str(),
+                                  personality_traits );
+    }
+}
+
+// npc_personality('aggression'): the trait, -10 to 10; 0 for a talker that isn't an NPC
+double npc_personality_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const std::string trait( params[0].str( d ) );
+    npc_personality p;
+    if( personality_trait( p, trait ) == nullptr ) {
+        throw math::runtime_error( R"(npc_personality(): "%s" isn't %s)", trait, personality_traits );
+    }
+    const npc *guy = scoped_npc( d, scope );
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    p = guy->personality;
+    return *personality_trait( p, trait );
+}
+
+// clamped to the personality range, as the npc_class bonuses are
+void npc_personality_ass( double val, dialogue &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const std::string trait( params[0].str( d ) );
+    npc *guy = scoped_npc( d, scope );
+    npc_personality none;
+    int8_t *value = personality_trait( guy == nullptr ? none : guy->personality, trait );
+    if( value == nullptr ) {
+        throw math::runtime_error( R"(npc_personality(): "%s" isn't %s)", trait, personality_traits );
+    }
+    if( guy != nullptr ) {
+        *value = static_cast<int8_t>( std::clamp( val, static_cast<double>( NPC_PERSONALITY_MIN ),
+                                      static_cast<double>( NPC_PERSONALITY_MAX ) ) );
+    }
+}
+
+// npc_danger(): the danger the NPC's AI rates around it, as npc_in_danger reads it
+double npc_danger_eval( const_dialogue const &d, char scope,
+                        std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const npc *guy = scoped_npc( d, scope );
+    return guy == nullptr ? 0.0 : guy->get_ai_danger();
+}
+
+// npc_panic(): how panicked the NPC is in a fight; it runs, and stops using cover, as it grows
+double npc_panic_eval( const_dialogue const &d, char scope,
+                       std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const npc *guy = scoped_npc( d, scope );
+    return guy == nullptr ? 0.0 : guy->mem_combat.panic;
+}
+
+constexpr const char *need_goals = "drink_water, eat_food, go_to_sleep or regulate_temperature";
+
+void npc_need_urgency_check( std::vector<diag_value> const &params )
+{
+    if( params[0].is_str() && !npc::goal_id_for( params[0].str() ) ) {
+        throw math::syntax_error( R"(npc_need_urgency(): "%s" isn't %s)", params[0].str(), need_goals );
+    }
+}
+
+// npc_need_urgency('drink_water'): the need's urgency, 0 to 1, as the arbitration and the
+// built-in scores have it
+double npc_need_urgency_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const std::string need( params[0].str( d ) );
+    const std::optional<npc::need_goal_id> id = npc::goal_id_for( need );
+    if( !id ) {
+        throw math::runtime_error( R"(npc_need_urgency(): "%s" isn't %s)", need, need_goals );
+    }
+    const npc *guy = scoped_npc( d, scope );
+    return guy == nullptr ? 0.0 : guy->current_need_urgency( *id );
+}
+
 double npc_trust_eval( const_dialogue const &d, char scope,
                        std::vector<diag_value> const & /* params */,
                        diag_kwargs const & /* kwargs */ )
@@ -2594,7 +2706,11 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "val", { "un", 1, u_val, u_val_ass } },
     { "npc_anger", { "un", 0, npc_anger_eval, npc_anger_ass } },
     { "npc_fear", { "un", 0, npc_fear_eval, npc_fear_ass } },
+    { "npc_danger", { "ung", 0, npc_danger_eval } },
     { "npc_goal_turns", { "ung", 0, npc_goal_turns_eval } },
+    { "npc_need_urgency", { "ung", 1, npc_need_urgency_eval, {}, {}, npc_need_urgency_check } },
+    { "npc_panic", { "ung", 0, npc_panic_eval } },
+    { "npc_personality", { "ung", 1, npc_personality_eval, npc_personality_ass, {}, npc_personality_check } },
     { "npc_value", { "un", 0, npc_value_eval, npc_value_ass } },
     { "npc_trust", { "un", 0, npc_trust_eval, npc_trust_ass } },
     { "ugliness", { "un", 0, ugliness_eval } },

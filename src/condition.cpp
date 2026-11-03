@@ -63,6 +63,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npc_ai_ids.h"
 #include "npc_decision_category.h"
 #include "npc_json_goal.h"
 #include "options.h"
@@ -2647,6 +2648,89 @@ conditional_t::func f_npc_goal( const JsonObject &jo, std::string_view member, b
     };
 }
 
+// the NPC u or npc is, nullptr for none, another kind of talker, or no talker at all
+static const npc *talker_npc( const_dialogue const &d, const bool is_npc )
+{
+    return d.has_actor( is_npc ) ? d.const_actor( is_npc )->get_const_npc() : nullptr;
+}
+
+// u_attitude / npc_attitude: the NPC's attitude is this one ("NPCATT_KILL")
+conditional_t::func f_npc_attitude( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    if( jo.has_string( member ) && !npc_attitude_from_id( jo.get_string( member ) ) ) {
+        jo.throw_error_at( member, string_format( "%s isn't an NPC attitude",
+                           jo.get_string( member ) ) );
+    }
+    const str_or_var attitude = get_str_or_var( jo.get_member( member ), member, true );
+    return [attitude, is_npc]( const_dialogue const & d ) {
+        const npc *guy = talker_npc( d, is_npc );
+        return guy != nullptr && npc_attitude_id( guy->get_attitude() ) == attitude.evaluate( d );
+    };
+}
+
+// u_mission / npc_mission: the NPC's mission is this one ("GUARD")
+conditional_t::func f_npc_mission( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    if( jo.has_string( member ) && !npc_mission_from_id( jo.get_string( member ) ) ) {
+        jo.throw_error_at( member, string_format( "%s isn't an NPC mission",
+                           jo.get_string( member ) ) );
+    }
+    const str_or_var mission = get_str_or_var( jo.get_member( member ), member, true );
+    return [mission, is_npc]( const_dialogue const & d ) {
+        const npc *guy = talker_npc( d, is_npc );
+        return guy != nullptr && npc_mission_id( guy->mission ) == mission.evaluate( d );
+    };
+}
+
+// u_on_shift / npc_on_shift: as the behavior predicate npc_on_shift
+conditional_t::func f_npc_on_shift( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        const npc *guy = talker_npc( d, is_npc );
+        return guy != nullptr && guy->is_on_shift();
+    };
+}
+
+// u_at_post / npc_at_post: the NPC has a guard post and stands on it
+conditional_t::func f_npc_at_post( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        const npc *guy = talker_npc( d, is_npc );
+        if( guy == nullptr ) {
+            return false;
+        }
+        const std::optional<tripoint_abs_ms> post = guy->get_guard_post();
+        return post && guy->pos_abs() == *post;
+    };
+}
+
+// faction_has_relation: [ faction, other faction, relation ], as the first faction's JSON
+// "relations" has them; false when the first faction doesn't exist
+conditional_t::func f_faction_has_relation( const JsonObject &jo, std::string_view member )
+{
+    const JsonArray arr = jo.get_array( member );
+    if( arr.size() != 3 ) {
+        jo.throw_error_at( member, string_format(
+                               "%s takes [ faction, other faction, relation ]", member ) );
+    }
+    if( arr.has_string( 2 ) && npc_factions::relation_strs.count( arr.get_string( 2 ) ) == 0 ) {
+        arr[2].throw_error( string_format( "%s isn't a faction relation", arr.get_string( 2 ) ) );
+    }
+    const str_or_var of = get_str_or_var( arr[0], member );
+    const str_or_var to = get_str_or_var( arr[1], member );
+    const str_or_var relation = get_str_or_var( arr[2], member );
+    return [of, to, relation]( const_dialogue const & d ) {
+        const std::string rel = relation.evaluate( d );
+        const auto found = npc_factions::relation_strs.find( rel );
+        if( found == npc_factions::relation_strs.end() ) {
+            debugmsg( "faction_has_relation: %s isn't a faction relation", rel );
+            return false;
+        }
+        const faction *fac = g->faction_manager_ptr->get( faction_id( of.evaluate( d ) ), false );
+        return fac != nullptr && fac->has_relationship( faction_id( to.evaluate( d ) ), found->second );
+    };
+}
+
 // npc_goal_category: u's current goal is in this category
 conditional_t::func f_npc_goal_category( const JsonObject &jo, std::string_view member )
 {
@@ -3127,6 +3211,9 @@ parsers = {
     {"u_can_reach", "npc_can_reach", jarg::member, &conditional_fun::f_can_reach },
     {"u_is_walking_to", "npc_is_walking_to", jarg::member, &conditional_fun::f_is_walking_to },
     {"u_npc_goal", "npc_npc_goal", jarg::member, &conditional_fun::f_npc_goal },
+    {"u_attitude", "npc_attitude", jarg::member, &conditional_fun::f_npc_attitude },
+    {"u_mission", "npc_mission", jarg::member, &conditional_fun::f_npc_mission },
+    {"faction_has_relation", jarg::array, &conditional_fun::f_faction_has_relation },
     {"npc_goal_category", jarg::member, &conditional_fun::f_npc_goal_category },
     {"is_weather", jarg::member, &conditional_fun::f_is_weather },
     {"map_terrain_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
@@ -3180,6 +3267,8 @@ parsers_simple = {
     {"u_following", "npc_following", &conditional_fun::f_npc_following },
     {"u_friend", "npc_friend", &conditional_fun::f_npc_friend },
     {"u_hostile", "npc_hostile", &conditional_fun::f_npc_hostile },
+    {"u_on_shift", "npc_on_shift", &conditional_fun::f_npc_on_shift },
+    {"u_at_post", "npc_at_post", &conditional_fun::f_npc_at_post },
     {"u_train_skills", "npc_train_skills", &conditional_fun::f_npc_train_skills },
     {"u_train_styles", "npc_train_styles", &conditional_fun::f_npc_train_styles },
     {"u_train_spells", "npc_train_spells", &conditional_fun::f_npc_train_spells },

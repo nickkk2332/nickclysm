@@ -1814,6 +1814,83 @@ You (an NPC) are seeing to a need
 { "npc_goal_category": "needs" }
 ```
 
+### `u_attitude`, `npc_attitude`
+- type: string or [variable object](#variable-object)
+- return true if the alpha or beta talker is an NPC with this attitude toward the avatar: `NPCATT_NULL`, `NPCATT_TALK`, `NPCATT_FOLLOW`, `NPCATT_LEAD`, `NPCATT_WAIT`, `NPCATT_MUG`, `NPCATT_WAIT_FOR_LEAVE`, `NPCATT_KILL`, `NPCATT_FLEE`, `NPCATT_FLEE_TEMP`, `NPCATT_HEAL`, `NPCATT_ACTIVITY` or `NPCATT_RECOVER_GOODS`. An NPC never keeps `NPCATT_FLEE`: it flees with `NPCATT_FLEE_TEMP`. An attitude written out that isn't one of these is a load error
+- false for a talker that isn't an NPC, or no talker at all. [NPC attitude events](#npc-attitude-events) report every change
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC you talk with is about to rob you
+```jsonc
+{ "npc_attitude": "NPCATT_MUG" }
+```
+
+### `u_mission`, `npc_mission`
+- type: string or [variable object](#variable-object)
+- return true if the alpha or beta talker is an NPC with this standing mission (not a quest the avatar takes on): `NULL`, `SHELTER`, `SHOPKEEP`, `GUARD_ALLY` (a follower posted as a guard), `GUARD`, `GUARD_PATROL`, `ACTIVITY`, `TRAVELLING` or `CAMP_RESIDENT`. A mission written out that isn't one of these is a load error
+- false for a talker that isn't an NPC, or no talker at all
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+You (an NPC) keep a shop
+```jsonc
+{ "u_mission": "SHOPKEEP" }
+```
+
+### `u_on_shift`, `npc_on_shift`
+- type: simple string
+- return true if the alpha or beta talker is an NPC with a guard post whose class's `work_hours` cover the current hour, the same as the behavior predicate [`npc_on_shift`](NPC_BEHAVIOR.md#built-in-predicates). An NPC walking with the avatar, or busy with an activity the avatar gave it, isn't on shift
+- false for a talker that isn't an NPC, or no talker at all
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+```jsonc
+{ "and": [ "npc_on_shift", { "not": "npc_at_post" } ] }
+```
+
+### `u_at_post`, `npc_at_post`
+- type: simple string
+- return true if the alpha or beta talker is an NPC with a guard post that stands on it, on shift or not
+- false for a talker that isn't an NPC, or no talker at all
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+```jsonc
+"u_at_post"
+```
+
+### `faction_has_relation`
+- type: array of three strings or [variable objects](#variable-object): `[ faction, other faction, relation ]`
+- return true if the first faction has the relation toward the second, as the first faction's `relations` in its JSON give them and effects have changed them since. Relations aren't mutual. The relation is one of the [faction relation flags](FACTIONS.md#faction-relations): `kill on sight`, `watch your back`, `share my stuff`, `share public goods`, `guard your stuff`, `lets you in`, `defends your space`, `knows your voice`; one written out that isn't is a load error
+- false when the first faction doesn't exist. Needs no talker
+
+#### Examples
+The Free Merchants shoot raiders on sight
+```jsonc
+{ "faction_has_relation": [ "free_merchants", "hells_raiders", "kill on sight" ] }
+```
+
 ### `u_can_reach`, `npc_can_reach`
 - type: [variable object](#variable-object)
 - return true if alpha or beta talker has a way to the location: the walk `u_walk_to` would take, with the same `range`, so walls, locked doors and an unloaded spot make it false. Creatures in the way don't count, since they may move. This runs a path search, so don't check it every turn for many characters
@@ -5393,6 +5470,76 @@ Adds the "share public goods" rule
 Removes the "kill on sight" rule
 ```jsonc
 { "u_set_fac_relation": "kill on sight", "set_value_to": false }
+```
+
+#### `u_set_attitude`, `npc_set_attitude`
+Changes how an NPC treats the avatar, through the dialogue effect for that attitude where there is one, so its messages, events and other effects are the dialogue's. The attitudes are those of [`u_attitude`](#u_attitude-npc_attitude) but `NPCATT_ACTIVITY` and `NPCATT_RECOVER_GOODS`, which stand for a task in hand; one written out that it can't set is a load error.
+
+| Attitude | As |
+| --- | --- |
+| `NPCATT_KILL` | the effect `hostile`: it turns hostile, with `npc_becomes_hostile` |
+| `NPCATT_FLEE`, `NPCATT_FLEE_TEMP` | `flee`: it runs from the avatar for a while (`NPCATT_FLEE_TEMP`) |
+| `NPCATT_MUG` | `start_mugging` |
+| `NPCATT_WAIT_FOR_LEAVE` | `player_leaving`: it waits, with patience from its aggression, before it attacks |
+| `NPCATT_FOLLOW` | `follow_only`: it follows the avatar without joining its faction, and drops its mission, post and walk. The effect `follow` recruits |
+| others | the attitude, set as it is |
+
+Every change triggers [`npc_attitude_changed`](#npc-attitude-events) with the cause `effect`. A talker that isn't an NPC, or no talker, is left as it is.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_attitude" / "npc_set_attitude" | **mandatory** | string or [variable object](#variable-object) | the attitude's id |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+```jsonc
+{ "npc_set_attitude": "NPCATT_FLEE_TEMP" }
+```
+
+#### `u_set_mission`, `npc_set_mission`
+Gives an NPC a standing mission, through the dialogue effect for it where there is one. The missions are those of [`u_mission`](#u_mission-npc_mission) but `TRAVELLING` and `ACTIVITY`, which need more than a mission (`u_set_goal` and `u_assign_activity` give them); one written out that it can't set is a load error.
+
+| Mission | As |
+| --- | --- |
+| `GUARD`, `GUARD_ALLY` | the effect `assign_guard`: a guard where it stands, `GUARD_ALLY` for one of the avatar's followers and `GUARD` for anyone else, whichever is asked |
+| `NULL` | `stop_guard` for a guard: a follower follows the avatar again, anyone else stands down (its attitude becomes `NPCATT_NULL`). Another NPC just drops its mission |
+| `CAMP_RESIDENT` | `return_to_camp_duties`, for an NPC with an assigned camp; one without is left as it is |
+| `GUARD_PATROL`, `SHOPKEEP`, `SHELTER` | the mission, and a post where it stands, as `assign_guard` gives an NPC that isn't a follower |
+
+A talker that isn't an NPC, or no talker, is left as it is.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_mission" / "npc_set_mission" | **mandatory** | string or [variable object](#variable-object) | the mission's id |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+```jsonc
+{ "u_set_mission": "GUARD" }
+```
+
+#### `set_faction_relation`
+Sets or clears the first faction's relation toward the second, as `relations` in faction JSON do; see [`faction_has_relation`](#faction_has_relation) for the relations. Unlike `u_set_fac_relation` it names both factions, so it needs no talker. A relation written out that isn't one is a load error; a faction that doesn't exist is an error when it runs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_faction_relation" | **mandatory** | array of three strings or [variable objects](#variable-object) | `[ faction, other faction, relation ]` |
+| "set_value_to" | optional | boolean | default true; whether to set, or clear, the relation |
+
+##### Examples
+The Free Merchants make peace with the raiders
+```jsonc
+{ "set_faction_relation": [ "free_merchants", "hells_raiders", "kill on sight" ], "set_value_to": false }
 ```
 
 #### `u_add_faction_trust`

@@ -116,6 +116,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npc_ai_ids.h"
 #include "npc_attitude_cause.h"
 #include "npc_opinion.h"
 #include "npctalk.h"
@@ -8458,6 +8459,165 @@ talk_effect_fun_t::func f_set_fac_relation( const JsonObject &jo, std::string_vi
     };
 }
 
+// the attitudes u_set_attitude may give: not the ones that stand for a task in hand
+static std::optional<npc_attitude> settable_attitude( const std::string_view id )
+{
+    const std::optional<npc_attitude> att = npc_attitude_from_id( id );
+    if( !att || *att == NPCATT_ACTIVITY || *att == NPCATT_RECOVER_GOODS ) {
+        return std::nullopt;
+    }
+    return att;
+}
+
+// u_set_attitude / npc_set_attitude: through the talk effect for that attitude where there is
+// one, so the side effects (messages, events, flight, patience) are the dialogue's
+talk_effect_fun_t::func f_set_attitude( const JsonObject &jo, std::string_view member,
+                                        std::string_view, bool is_npc )
+{
+    if( jo.has_string( member ) && !settable_attitude( jo.get_string( member ) ) ) {
+        jo.throw_error_at( member, string_format( "%s can't set the attitude %s", member,
+                           jo.get_string( member ) ) );
+    }
+    const str_or_var attitude = get_str_or_var( jo.get_member( member ), member, true );
+    return [attitude, is_npc]( dialogue & d ) {
+        npc *guy = d.has_actor( is_npc ) ? d.actor( is_npc )->get_npc() : nullptr;
+        if( guy == nullptr ) {
+            return;
+        }
+        const std::string id = attitude.evaluate( d );
+        const std::optional<npc_attitude> att = settable_attitude( id );
+        if( !att ) {
+            debugmsg( "u_set_attitude: %s isn't an attitude it can set", id );
+            return;
+        }
+        switch( *att ) {
+            case NPCATT_KILL:
+                talk_function::hostile( *guy );
+                break;
+            case NPCATT_FLEE:
+            case NPCATT_FLEE_TEMP:
+                talk_function::flee( *guy );
+                break;
+            case NPCATT_MUG:
+                talk_function::start_mugging( *guy );
+                break;
+            case NPCATT_WAIT_FOR_LEAVE:
+                talk_function::player_leaving( *guy );
+                break;
+            case NPCATT_FOLLOW:
+                // follows without joining the avatar's faction; the follow effect recruits
+                talk_function::follow_only( *guy );
+                break;
+            default:
+                guy->set_attitude( *att );
+                break;
+        }
+    };
+}
+
+// the missions u_set_mission may give: not travelling or an activity, which need more than a
+// mission
+static std::optional<npc_mission> settable_mission( const std::string_view id )
+{
+    const std::optional<npc_mission> mission = npc_mission_from_id( id );
+    if( !mission || *mission == NPC_MISSION_TRAVELLING || *mission == NPC_MISSION_ACTIVITY ) {
+        return std::nullopt;
+    }
+    return mission;
+}
+
+// u_set_mission / npc_set_mission: through the talk effect for that mission where there is one
+talk_effect_fun_t::func f_set_mission( const JsonObject &jo, std::string_view member,
+                                       std::string_view, bool is_npc )
+{
+    if( jo.has_string( member ) && !settable_mission( jo.get_string( member ) ) ) {
+        jo.throw_error_at( member, string_format( "%s can't set the mission %s", member,
+                           jo.get_string( member ) ) );
+    }
+    const str_or_var mission = get_str_or_var( jo.get_member( member ), member, true );
+    return [mission, is_npc]( dialogue & d ) {
+        npc *guy = d.has_actor( is_npc ) ? d.actor( is_npc )->get_npc() : nullptr;
+        if( guy == nullptr ) {
+            return;
+        }
+        const std::string id = mission.evaluate( d );
+        const std::optional<npc_mission> m = settable_mission( id );
+        if( !m ) {
+            debugmsg( "u_set_mission: %s isn't a mission it can set", id );
+            return;
+        }
+        switch( *m ) {
+            case NPC_MISSION_GUARD:
+            case NPC_MISSION_GUARD_ALLY:
+                // GUARD_ALLY for the avatar's allies, GUARD for anyone else
+                talk_function::assign_guard( *guy );
+                break;
+            case NPC_MISSION_CAMP_RESIDENT:
+                if( guy->assigned_camp ) {
+                    talk_function::return_to_camp_duties( *guy );
+                } else {
+                    add_msg_debug( debugmode::DF_NPC, "%s has no camp to be a resident of",
+                                   guy->get_name() );
+                }
+                break;
+            case NPC_MISSION_NULL:
+                if( guy->is_guarding() ) {
+                    talk_function::stop_guard( *guy );
+                } else {
+                    guy->set_mission( NPC_MISSION_NULL );
+                }
+                break;
+            default:
+                // a post where it stands, as assign_guard gives an NPC that isn't an ally
+                guy->set_mission( *m );
+                guy->set_omt_destination();
+                break;
+        }
+    };
+}
+
+// [ faction, other faction, relation ] of set_faction_relation and faction_has_relation
+static std::array<str_or_var, 3> read_faction_relation( const JsonObject &jo,
+        const std::string_view member )
+{
+    const JsonArray arr = jo.get_array( member );
+    if( arr.size() != 3 ) {
+        jo.throw_error_at( member, string_format(
+                               "%s takes [ faction, other faction, relation ]", member ) );
+    }
+    if( arr.has_string( 2 ) && npc_factions::relation_strs.count( arr.get_string( 2 ) ) == 0 ) {
+        arr[2].throw_error( string_format( "%s isn't a faction relation", arr.get_string( 2 ) ) );
+    }
+    return { get_str_or_var( arr[0], member ), get_str_or_var( arr[1], member ),
+             get_str_or_var( arr[2], member ) };
+}
+
+// set_faction_relation: the first faction's relation to the second, as its JSON "relations"
+// has them
+talk_effect_fun_t::func f_set_faction_relation( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    const std::array<str_or_var, 3> rel = read_faction_relation( jo, member );
+    const bool value = jo.get_bool( "set_value_to", true );
+    return [rel, value]( dialogue const & d ) {
+        const faction_id of( rel[0].evaluate( d ) );
+        const faction_id to( rel[1].evaluate( d ) );
+        const std::string relation = rel[2].evaluate( d );
+        const auto found = npc_factions::relation_strs.find( relation );
+        if( found == npc_factions::relation_strs.end() ) {
+            debugmsg( "set_faction_relation: %s isn't a faction relation", relation );
+            return;
+        }
+        faction *fac = g->faction_manager_ptr->get( of, false );
+        if( fac == nullptr || g->faction_manager_ptr->get( to, false ) == nullptr ) {
+            debugmsg( "set_faction_relation: no faction %s",
+                      fac == nullptr ? of.str() : to.str() );
+            return;
+        }
+        fac->relations[to.str()].set( static_cast<size_t>( found->second ), value );
+    };
+}
+
 talk_effect_fun_t::func f_add_morale( const JsonObject &jo, std::string_view member,
                                       std::string_view, bool is_npc )
 {
@@ -10073,6 +10233,9 @@ parsers = {
     { "u_run_inv_eocs", "npc_run_inv_eocs", jarg::member, &talk_effect_fun::f_run_inv_eocs },
     { "u_roll_remainder", "npc_roll_remainder", jarg::member, &talk_effect_fun::f_roll_remainder },
     { "u_set_fac_relation", "npc_set_fac_relation", jarg::member, &talk_effect_fun::f_set_fac_relation },
+    { "u_set_attitude", "npc_set_attitude", jarg::member, &talk_effect_fun::f_set_attitude },
+    { "u_set_mission", "npc_set_mission", jarg::member, &talk_effect_fun::f_set_mission },
+    { "set_faction_relation", jarg::array, &talk_effect_fun::f_set_faction_relation },
     { "u_add_morale", "npc_add_morale", jarg::member, &talk_effect_fun::f_add_morale },
     { "u_lose_morale", "npc_lose_morale", jarg::member, &talk_effect_fun::f_lose_morale },
     { "u_add_addiction", "npc_add_addiction", jarg::member, &talk_effect_fun::f_add_addiction },

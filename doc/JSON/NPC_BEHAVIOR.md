@@ -618,6 +618,27 @@ What an NPC is doing can be read in any EoC. The current goal is the one the NPC
 }
 ```
 
+## Reading and changing an NPC's AI
+
+Besides its goal, EOCs can read and change these of an NPC; each is described where it's linked. They give false or 0 for a talker that isn't an NPC, or a missing one, and change nothing then.
+
+| Name | Kind | Gives |
+| --- | --- | --- |
+| [`u_attitude`, `npc_attitude`](EFFECT_ON_CONDITION.md#u_attitude-npc_attitude) | condition | its attitude toward the avatar (`NPCATT_KILL`...) |
+| [`u_mission`, `npc_mission`](EFFECT_ON_CONDITION.md#u_mission-npc_mission) | condition | its standing mission (`GUARD`...) |
+| [`u_on_shift`, `npc_on_shift`](EFFECT_ON_CONDITION.md#u_on_shift-npc_on_shift) | condition | it has a guard post and its work hours cover now, as the predicate `npc_on_shift` |
+| [`u_at_post`, `npc_at_post`](EFFECT_ON_CONDITION.md#u_at_post-npc_at_post) | condition | it stands on its guard post |
+| [`npc_danger()`](NPCs.md#math) | math | the danger its AI rates around it, as `npc_in_danger` reads it |
+| [`npc_panic()`](NPCs.md#math) | math | how panicked it is in a fight |
+| [`npc_need_urgency('drink_water')`](NPCs.md#math) | math | a need's urgency, as the built-in scores give it |
+| [`npc_personality('aggression')`](NPCs.md#math) | math, assignable | a personality trait, -10 to 10 |
+| [`u_set_attitude`, `npc_set_attitude`](EFFECT_ON_CONDITION.md#u_set_attitude-npc_set_attitude) | effect | its attitude, through the dialogue effect for it |
+| [`u_set_mission`, `npc_set_mission`](EFFECT_ON_CONDITION.md#u_set_mission-npc_set_mission) | effect | its mission, through the dialogue effect for it |
+| [`npc_attitude_changed`, `npc_becomes_hostile`](EFFECT_ON_CONDITION.md#npc-attitude-events) | events | its attitude changed, and why |
+| `npc_recruited`, `npc_dismissed`, `npc_mutinies` | [events](EFFECT_ON_CONDITION.md#event-eoc-types) | it joined or left the avatar's followers, or mutinied |
+
+A faction's relations to other factions are read with [`faction_has_relation`](EFFECT_ON_CONDITION.md#faction_has_relation) and set with [`set_faction_relation`](EFFECT_ON_CONDITION.md#set_faction_relation).
+
 ## Debugging
 
 The debug menu's **Console…** has an **NPC decision** section in its **Creatures** tab: select an NPC and open it. It's worked out again each turn, so step the game with the console's controls to watch it change. It shows:

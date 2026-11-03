@@ -61,6 +61,7 @@
 #include "monster.h"
 #include "mtype.h"
 #include "mutation.h"
+#include "npc_ai_ids.h"
 #include "npc_attitude_cause.h"
 #include "npc_class.h"
 #include "npc_goal_state.h"
@@ -3507,6 +3508,48 @@ std::string npc_attitude_id( npc_attitude att )
     }
 
     return iter->second;
+}
+
+static bool is_legacy_attitude( const npc_attitude att )
+{
+    switch( att ) {
+        case NPCATT_LEGACY_1:
+        case NPCATT_LEGACY_2:
+        case NPCATT_LEGACY_3:
+        case NPCATT_LEGACY_4:
+        case NPCATT_LEGACY_5:
+        case NPCATT_LEGACY_6:
+            return true;
+        default:
+            return false;
+    }
+}
+
+std::optional<npc_attitude> npc_attitude_from_id( const std::string_view id )
+{
+    for( int i = NPCATT_NULL; i < NPCATT_END; ++i ) {
+        const npc_attitude att = static_cast<npc_attitude>( i );
+        if( !is_legacy_attitude( att ) && npc_attitude_id( att ) == id ) {
+            return att;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string npc_mission_id( const npc_mission mission )
+{
+    return io::enum_to_string( mission );
+}
+
+std::optional<npc_mission> npc_mission_from_id( const std::string_view id )
+{
+    for( int i = NPC_MISSION_NULL; i < NPC_MISSION_LAST; ++i ) {
+        const npc_mission mission = static_cast<npc_mission>( i );
+        if( mission != NPC_MISSION_LEGACY_1 && io::enum_to_string( mission ) == id ) {
+            return mission;
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<int> npc::closest_enemy_to_friendly_distance() const

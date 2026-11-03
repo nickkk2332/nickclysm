@@ -997,6 +997,8 @@ Effect | Description
 `bionic_install` | The NPC installs a bionic from your character's inventory onto your character, using very high skill, and charging you according to the operation's difficulty.
 `bionic_remove` | The NPC removes a bionic from your character, using very high skill, and charging you according to the operation's difficulty.
 `repair_bionic_limbs` | The NPC repairs all bionic and partially bionic limbs, charging you at a rate of 20x the number of HP required to fully heal.
+`u_set_attitude, npc_set_attitude: `string or [variable object](#variable-object) | Change the NPC's attitude toward the avatar, through `hostile`, `flee`, `follow_only` and the like where one fits. See [EOC effects](EFFECT_ON_CONDITION.md#u_set_attitude-npc_set_attitude).
+`u_set_mission, npc_set_mission: `string or [variable object](#variable-object) | Give the NPC a standing mission, through `assign_guard`, `stop_guard` or `return_to_camp_duties` where one fits.
 `npc_class_change: `string or [variable object](#variable-object) | Change the NPC's class to the new value.
 `npc_faction_change: `string or [variable object](#variable-object) | Change the NPC's faction membership to the new value.
 `u_faction_rep: `int or [variable object](#variable-object) | Increases your reputation with the NPC's current faction, or decreases it if the value is negative.
@@ -1076,6 +1078,10 @@ Condition | Type | Description
 `"u_train_styles" or "npc_train_styles"` | simple string | `true` if u or the NPC knows one or more martial arts styles that the player does not know.
 `"u_has_class" or "npc_has_class"` | string or [variable object](#variable-object) | `true` if u or the NPC's class id matches the provided string (e.g. `NC_BANDIT_TRADER`).
 `"u_is_in_faction" or "npc_is_in_faction"` | string or [variable object](#variable-object) | `true` if u or the NPC belongs to the faction with the given id (e.g. `your_followers`).
+`"u_attitude" or "npc_attitude"` | string or [variable object](#variable-object) | `true` if u or the NPC has this attitude toward the avatar (e.g. `NPCATT_KILL`). See [EOC conditions](EFFECT_ON_CONDITION.md#u_attitude-npc_attitude).
+`"u_mission" or "npc_mission"` | string or [variable object](#variable-object) | `true` if u or the NPC has this standing mission (e.g. `GUARD`).
+`"u_on_shift" or "npc_on_shift"` | simple string | `true` if u or the NPC has a guard post and its work hours cover now.
+`"u_at_post" or "npc_at_post"` | simple string | `true` if u or the NPC has a guard post and stands on it.
 `"u_near_om_location" or "npc_near_om_location"`, (*optional* `range : `int or [variable object](#variable-object) ) | string or [variable object](#variable-object) | same as at_om_location except it checks in a square stretching from the character range OMT's. NOTE: can only check OMT's in the reality bubble (maximum of ~2 OMTs distance from player's position)
 `"u_aim_rule" or "npc_aim_rule"` | string or [variable object](#variable-object) | `true` if u or the NPC follower AI rule for aiming matches the string.
 `"u_engagement_rule" or "npc_engagement_rule"` | string or [variable object](#variable-object) | `true` if u or the NPC follower AI rule for engagement matches the string.
@@ -1488,6 +1494,10 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | val(`s`)    |  ✅   |   varies  | u, n  | Return or set a Character or item value. Argument is a [Character/item aspect](#list-of-character-and-item-aspects).<br/><br/>These are all in one function for legacy reasons and are generally poorly tested. If you need one of them, consider porting it to a native math function.<br/><br/>Example:<br/>`{ "math": [ "u_val('strength') = 2" ] }`|
 | npc_anger()    |  ✅   |  ✅   | u, n  | Return NPC anger toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_anger() > 2" ] }`|
 | npc_fear()    |  ✅   |  ✅   | u, n  | Return NPC fear toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_fear() < 2" ] }`|
+| npc_danger()    |  ✅   |  ❌   | u, n  | Return the danger the NPC's AI rates around it, as the behavior predicate `npc_in_danger` reads it (above 0 is danger); 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_danger() > 5" ] }`|
+| npc_need_urgency(`s`/`v`)    |  ✅   |  ❌   | u, n  | Return how urgent a need is, 0 to 1, as the NPC's arbitration and the built-in scores have it (see [NPC behavior](NPC_BEHAVIOR.md#built-in-scores)). Argument is the need: `drink_water`, `eat_food`, `go_to_sleep` or `regulate_temperature`; another name written out is a load error. 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_need_urgency('drink_water') > 0.5" ] }`|
+| npc_panic()    |  ✅   |  ❌   | u, n  | Return how panicked the NPC is in a fight: it rises as it judges the fight lost, and the NPC runs, without regard for cover once it's high; 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_panic() > 10" ] }`|
+| npc_personality(`s`/`v`)    |  ✅   |  ✅   | u, n  | Return or set a personality trait of the NPC, -10 to 10: `aggression`, `bravery`, `collector` or `altruism`; another name written out is a load error. A value set is clamped to -10 to 10. 0 for a talker that isn't an NPC, which setting leaves alone. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_personality('bravery') += 2" ] }`|
 | npc_goal_turns()    |  ✅   |  ❌   | u, n  | Return the turns since the NPC's current goal started; 0 when it has none, or isn't an NPC. Callable without a prefix for u. See [JSON goals](NPC_BEHAVIOR.md#reading-goals-from-eocs). <br/><br/>Example:<br/> `{ "math": [ "npc_goal_turns() > 100" ] }`|
 | npc_trust()    |  ✅   |  ✅   | u, n  | Return NPC trust toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_trust() = 2" ] }`|
 | npc_value()    |  ✅   |  ✅   | u, n  | Return NPC value toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_value() += 2" ] }`|

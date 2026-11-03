@@ -120,6 +120,8 @@ Factions can have relations with each other that apply to each member of the fac
 
 Faction relationships are stored in a dictionary, with the dictionary keys being the name of the faction and the values being a second dictionary of boolean flags.  All flags are optional and default to false.  The faction with the dictionary is the acting faction and the other faction is the object faction.
 
+EOCs read a relation with the condition [`faction_has_relation`](EFFECT_ON_CONDITION.md#faction_has_relation) and change one with the effect [`set_faction_relation`](EFFECT_ON_CONDITION.md#set_faction_relation), naming both factions and a flag below.
+
 The flags have the following meanings:
 
 Flag                   | Meaning
