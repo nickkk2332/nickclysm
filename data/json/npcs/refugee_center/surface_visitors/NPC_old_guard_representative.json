@@ -477,7 +477,7 @@
         "text": "[50 merch] Fine.",
         "topic": "TALK_OLD_GUARD_REP_SUNKEN_HELICOPTER_2",
         "failure_explanation": "You don't have enough.",
-        "failure_topic": "TALK_DONE"
+        "failure_topic": "TALK_NONE"
       },
       { "text": "Never mind…", "topic": "TALK_OLD_GUARD_REP" }
     ]
@@ -541,7 +541,7 @@
         "text": "[25 merch] This better be worth.",
         "topic": "TALK_OLD_GUARD_REP_SUNKEN_HELICOPTER_CARGO_1",
         "failure_explanation": "You don't have enough.",
-        "failure_topic": "TALK_DONE"
+        "failure_topic": "TALK_NONE"
       },
       { "text": "Never mind…", "topic": "TALK_NONE" }
     ]
