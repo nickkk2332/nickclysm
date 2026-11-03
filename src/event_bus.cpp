@@ -93,7 +93,8 @@ void event_bus::send_with_talker( Creature *alpha, Creature *beta,
                                   const cata::event &e ) const
 {
     for( event_subscriber *s : subscribers ) {
-        s->notify( e, get_talker_for( alpha ), get_talker_for( beta ) );
+        // No beta when nobody else is involved, such as a monster hurt by bleeding
+        s->notify( e, get_talker_for( alpha ), beta ? get_talker_for( beta ) : nullptr );
     }
 }
 

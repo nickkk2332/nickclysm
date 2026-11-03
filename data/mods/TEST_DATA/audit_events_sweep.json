@@ -1,0 +1,20 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_evt_b03_monster_hurt",
+    "//": "EVT-B03 test: marks the alpha talker when a monster takes damage, while the global audit_evt_b03 is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "monster_takes_damage",
+    "condition": { "math": [ "audit_evt_b03 == 1" ] },
+    "effect": [ { "math": [ "u_audit_evt_b03_hurt = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_evt_b03_spell_cast",
+    "//": "EVT-B03 test: marks the alpha talker when a spell is cast, while the global audit_evt_b03 is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "character_casts_spell",
+    "condition": { "math": [ "audit_evt_b03 == 1" ] },
+    "effect": [ { "math": [ "u_audit_evt_b03_cast = 1" ] } ]
+  }
+]
