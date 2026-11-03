@@ -397,3 +397,29 @@ TEST_CASE( "inv-b08_mutation_qualities_count_their_level_and_number", "[audit][i
     CHECK_FALSE( they.has_quality( qual_TEST_RESERVE_A, 1, 3 ) );
     CHECK_FALSE( they.has_unreserved_quality( qual_TEST_RESERVE_A, 1, 3 ) );
 }
+
+// INV-B09: better_pocket() returned the spoil multiplier comparison for any perishable item,
+// even when both pockets had the same multiplier (the usual 1.0 and 1.0), so the later
+// tie-breakers never ran for food: watertightness, encumbrance, ripoff, rigidity, room.
+TEST_CASE( "inv-b09_equal_spoil_multipliers_fall_through_to_other_tie_breakers",
+           "[audit][pocket]" )
+{
+    pocket_data data_a( pocket_type::CONTAINER );
+    pocket_data data_b( pocket_type::CONTAINER );
+    const item apple( itype_test_apple );
+    REQUIRE( apple.is_comestible() );
+    REQUIRE( apple.get_comestible()->spoils != 0_seconds );
+    REQUIRE( apple.made_of( phase_id::SOLID ) );
+    REQUIRE( data_a.spoil_multiplier == data_b.spoil_multiplier );
+
+    // a solid is better kept out of a watertight pocket
+    data_a.watertight = true;
+    data_b.watertight = false;
+    CHECK( item_pocket( &data_a ).better_pocket( item_pocket( &data_b ), apple ) );
+    CHECK_FALSE( item_pocket( &data_b ).better_pocket( item_pocket( &data_a ), apple ) );
+
+    // a lower spoil multiplier still comes first
+    data_a.spoil_multiplier = 0.5f;
+    CHECK_FALSE( item_pocket( &data_a ).better_pocket( item_pocket( &data_b ), apple ) );
+    CHECK( item_pocket( &data_b ).better_pocket( item_pocket( &data_a ), apple ) );
+}

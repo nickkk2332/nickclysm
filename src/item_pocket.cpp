@@ -415,7 +415,8 @@ bool item_pocket::better_pocket( const item_pocket &rhs, const item &it, bool ne
         return !rhs.data->get_flag_restrictions().empty();
     }
 
-    if( it.is_comestible() && it.get_comestible()->spoils != 0_seconds ) {
+    if( it.is_comestible() && it.get_comestible()->spoils != 0_seconds &&
+        rhs.spoil_multiplier() != spoil_multiplier() ) {
         // a lower spoil multiplier is better
         return rhs.spoil_multiplier() < spoil_multiplier();
     }
