@@ -1456,7 +1456,11 @@ double time_since_eval( const_dialogue const &d, char /* scope */,
         } else if( val_str == "midnight" ) {
             ret = to_turns<double>( time_past_midnight( calendar::turn ) );
         } else if( val_str == "noon" ) {
+            // since the last 12:00, so 0 to 24 hours
             ret = to_turns<double>( calendar::turn - noon( calendar::turn ) );
+            if( ret < 0 ) {
+                ret += to_turns<double>( 1_days );
+            }
         } else {
             throw math::runtime_error( R"(Unknown time point "%s")", val_str );
         }
@@ -1487,7 +1491,7 @@ double time_until_eval( const_dialogue const &d, char /* scope */,
         } else if( val_str == "sunrise" ) {
             ret = to_turns<double>( sunrise( calendar::turn ) - calendar::turn );
         } else if( val_str == "noon" ) {
-            ret = to_turns<double>( calendar::turn - noon( calendar::turn ) );
+            ret = to_turns<double>( noon( calendar::turn ) - calendar::turn );
         } else {
             throw math::runtime_error( R"(Unknown time point "%s")", val_str );
         }

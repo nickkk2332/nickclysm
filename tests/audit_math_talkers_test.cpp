@@ -124,3 +124,34 @@ TEST_CASE( "math-b05_time_until_eoc_is_time_left", "[audit][math_parser][eoc]" )
     CHECK( eval_math( d, "time_until_eoc('EOC_AUDIT_MATH_B05_LOCAL')" ) == -1 );
     CHECK( eval_math( d, "u_time_until_eoc('EOC_AUDIT_MATH_B05_GLOBAL')" ) == -1 );
 }
+
+// MATH-B06, LOOP-B10: before 12:00 noon() went back from noon as far as it was ahead of it (at
+// 10:00, 08:00), and time_until('noon') used the time_since formula, so both returned
+// |time of day - 12 h|.
+TEST_CASE( "math-b06_loop-b10_time_since_and_until_noon", "[audit][math_parser][calendar]" )
+{
+    clear_avatar();
+    const restore_on_out_of_scope<time_point> restore_turn( calendar::turn );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    const time_point midnight = calendar::turn_zero + 50_days;
+    const std::string since = "time_since('noon', 'unit':'hours')";
+    const std::string until = "time_until('noon', 'unit':'hours')";
+
+    calendar::turn = midnight + 10_hours;
+    CHECK( noon( calendar::turn ) == midnight + 12_hours );
+    CHECK( eval_math( d, since ) == Approx( 22 ) );
+    CHECK( eval_math( d, until ) == Approx( 2 ) );
+
+    calendar::turn = midnight + 14_hours;
+    CHECK( noon( calendar::turn ) == midnight + 12_hours );
+    CHECK( eval_math( d, since ) == Approx( 2 ) );
+    CHECK( eval_math( d, until ) == Approx( 22 ) );
+
+    calendar::turn = midnight + 12_hours;
+    CHECK( eval_math( d, since ) == Approx( 0 ) );
+    CHECK( eval_math( d, until ) == Approx( 0 ) );
+
+    calendar::turn = midnight;
+    CHECK( eval_math( d, since ) == Approx( 12 ) );
+    CHECK( eval_math( d, until ) == Approx( 12 ) );
+}
