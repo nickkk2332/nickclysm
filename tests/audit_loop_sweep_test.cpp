@@ -504,3 +504,92 @@ TEST_CASE( "loop-b14_a_failed_dimension_travel_save_loses_nothing", "[audit][sav
     clear_map();
     clear_avatar();
 }
+
+// ---- LOOP-B15 ----
+
+static const efftype_id effect_test_loop_b15_weather_mark( "test_loop_b15_weather_mark" );
+
+static const weather_type_id weather_test_loop_b15_reaching( "test_loop_b15_reaching_weather" );
+
+// Weather passive effects reached every creature in the bubble, underground ones too, but only
+// while the avatar was above ground and out of the water.
+TEST_CASE( "loop-b15_weather_effects_reach_creatures_by_their_own_level", "[audit][weather]" )
+{
+    clear_map( -1, 1 );
+    clear_avatar();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms surface( 60, 60, 0 );
+    const tripoint_bub_ms cellar( 64, 60, -1 );
+    u.setpos( here, surface + tripoint_rel_ms( -10, 0, 0 ) );
+    here.ter_set( cellar, ter_t_floor );
+    here.ter_set( cellar + tripoint_rel_ms( -2, 0, 0 ), ter_t_floor );
+    monster &up_top = spawn_test_monster( "mon_zombie", surface );
+    monster &down_below = spawn_test_monster( "mon_zombie", cellar );
+
+    SECTION( "with the avatar on the surface" ) {
+        u.setpos( here, surface + tripoint_rel_ms( -10, 0, 0 ) );
+    }
+    SECTION( "with the avatar underground" ) {
+        u.setpos( here, cellar + tripoint_rel_ms( -2, 0, 0 ) );
+    }
+    handle_weather_effects( weather_test_loop_b15_reaching );
+    CHECK( up_top.has_effect( effect_test_loop_b15_weather_mark ) );
+    CHECK( !down_below.has_effect( effect_test_loop_b15_weather_mark ) );
+
+    clear_map( -1, 1 );
+    clear_avatar();
+}
+
+static const weather_type_id weather_drizzle( "drizzle" );
+
+// Weather now runs wherever the avatar is, but the avatar's own share still waits for it to
+// come out of the water, as it did when the game loop skipped all weather for a diver.
+TEST_CASE( "loop-b15_rain_does_not_wet_an_avatar_under_water", "[audit][weather]" )
+{
+    clear_map();
+    clear_avatar();
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    map &here = get_map();
+    avatar &u = get_avatar();
+    u.setpos( here, tripoint_bub_ms( 60, 60, 0 ) );
+    u.clear_worn();
+    u.set_wielded_item( item() );
+    const auto torso_wetness_after_a_drizzle = [&]() {
+        for( const bodypart_id &bp : u.get_all_body_parts() ) {
+            u.set_part_wetness( bp, 0 );
+        }
+        calendar::turn = calendar::turn_zero;
+        for( int i = 0; i < 60; ++i ) {
+            calendar::turn += 6_seconds;
+            handle_weather_effects( weather_drizzle );
+        }
+        return u.get_part_wetness( body_part_torso );
+    };
+    REQUIRE( torso_wetness_after_a_drizzle() > 0 );
+    u.set_underwater( true );
+    CHECK( torso_wetness_after_a_drizzle() == 0 );
+    u.set_underwater( false );
+    clear_avatar();
+}
+
+// is_creature_outside (u_is_outside, npc_is_outside) looked at the map's own level, not the
+// creature's.
+TEST_CASE( "loop-b15_is_outside_looks_at_the_creature_s_own_level", "[audit][weather]" )
+{
+    clear_map( -1, 1 );
+    map &here = get_map();
+    // A roof deck on the level above an indoor floor
+    const tripoint_bub_ms deck( 60, 60, 1 );
+    here.ter_set( deck, ter_t_flat_roof );
+    here.ter_set( deck + tripoint_rel_ms( 0, 0, -1 ), ter_t_floor );
+    here.invalidate_map_cache( 0 );
+    here.invalidate_map_cache( 1 );
+    here.build_map_cache( 0, true );
+    REQUIRE( here.get_abs_sub().z() == 0 );
+    REQUIRE( here.is_outside( deck ) );
+    REQUIRE( !here.is_outside( deck + tripoint_rel_ms( 0, 0, -1 ) ) );
+    const monster &on_deck = spawn_test_monster( "mon_zombie", deck );
+    CHECK( is_creature_outside( on_deck ) );
+    clear_map( -1, 1 );
+}

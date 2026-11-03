@@ -31,7 +31,7 @@ Each weather type is a type of weather that occurs, and what causes it. The only
 | `condition`          | A dialog condition to determine if this weather is happening.  See Dialogue conditions section of [NPCs](NPCs.md) A context variable of `weather_location` contains the location of the current tile checking its weather.  This can be used to have weather be based on location. |
 | `priority`           | An integer.  If the condition of multiple weather types are true the one with higher priority wins. |
 | `required_weathers`  | A string array of possible weathers, it is at this point in the loop. i.e. rain can only happen if the conditions for clouds light drizzle or drizzle are present.  Required weathers need to have lower load orders to be. |
-| `passive_effects`    | Passive effects, that will be applied on character when this weather occurs; for detailed syntax, see [field_effect](JSON_INFO.md#field_effect) |
+| `passive_effects`    | Passive effects, that will be applied to every creature in the reality bubble that is above ground and not under water while this weather occurs, wherever the player is; set `immune_inside` to spare creatures under a roof. For detailed syntax, see [field_effect](JSON_INFO.md#field_effect) |
 | `tint_color`         | RBG value that sunlight is tinted, during this weather.                                          |
 | `tint_strength`      | Value between 0 and 1 that indicates how strong tint_color is, where 0 is no tint at all.        |
 

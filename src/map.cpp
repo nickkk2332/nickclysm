@@ -4017,8 +4017,11 @@ bool map::is_flammable( const tripoint_bub_ms &p )
 
 void map::decay_fields_and_scent( const time_duration &amount )
 {
-    // Decay scent separately, so that later we can use field count to skip empty submaps
-    get_scent().decay();
+    // Decay scent separately, so that later we can use field count to skip empty submaps.
+    // The scent map covers the bubble's own level, which rain doesn't reach underground.
+    if( abs_sub.z() >= 0 ) {
+        get_scent().decay();
+    }
 
     // Rain falls on every level the map holds, but never underground
     const int minz = std::max( 0, zlevels ? -OVERMAP_DEPTH : abs_sub.z() );

@@ -86,8 +86,8 @@ bool is_creature_outside( const Creature &target )
     map &here = get_map();
     const tripoint_bub_ms pos = target.pos_bub( here );
 
-    return here.is_outside( tripoint_bub_ms( pos.xy(), here.get_abs_sub().z() ) ) &&
-           here.get_abs_sub().z() >= 0;
+    // The creature's own level, not the map's
+    return pos.z() >= 0 && here.is_outside( pos );
 }
 
 weather_type_id get_bad_weather()
@@ -471,6 +471,10 @@ void handle_weather_effects( const weather_type_id &w )
     //Possible TODO, make npc/monsters affected
     map &here = get_map();
     Character &target = get_player_character();
+    // Runs wherever the avatar is. Only the avatar's own share (getting wet, glare) waits for it
+    // to be out of the water; underground, the roof check and is_sheltered() keep it dry and
+    // out of the sun unless it is open to the sky.
+    const bool avatar_above_water = !target.is_underwater();
     if( w->rains && w->precip != precip_class::none ) {
         fill_water_collectors( precip_mm_per_hour( w->precip ) );
         int wetness = 0;
@@ -489,14 +493,20 @@ void handle_weather_effects( const weather_type_id &w )
         // Coarse correction to get us back to previously intended soaking rate.
         // Precipitation is vertical - only roofs/floors block it, not walls.
         // is_roofed() walks upward through all z-levels for a complete check.
-        if( calendar::once_every( 6_seconds ) && !here.is_roofed( target.pos_bub() ) ) {
+        if( avatar_above_water && calendar::once_every( 6_seconds ) &&
+            !here.is_roofed( target.pos_bub() ) ) {
             wet_character( target, wetness );
         }
     }
-    glare( w );
+    if( avatar_above_water ) {
+        glare( w );
+    }
 
     for( Creature &c : g->all_creatures() ) {
-        here.maybe_apply_field_effect( w->passive_effect, c );
+        // Weather doesn't reach underground or under water
+        if( c.pos_bub( here ).z() >= 0 && !c.is_underwater() ) {
+            here.maybe_apply_field_effect( w->passive_effect, c );
+        }
     }
 
     get_weather().lightning_active = false;

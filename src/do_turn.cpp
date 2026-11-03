@@ -773,9 +773,8 @@ bool game::do_turn()
         refresh_display();
     }
 
-    if( levz >= 0 && !u.is_underwater() ) {
-        handle_weather_effects( weather.weather_id );
-    }
+    // Wherever the avatar is: it only decides the avatar's own share
+    handle_weather_effects( weather.weather_id );
 
     handle_progress_ui();
 
