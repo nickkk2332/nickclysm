@@ -346,3 +346,34 @@ TEST_CASE( "eoc-b11_pickup_items_reads_its_limits", "[audit][eoc]" )
     } );
     CHECK( messages.empty() );
 }
+
+// EOC-B12: the whitelist_type and blacklist_type filters of u_pick_bodypart 'continue'd the
+// inner loop over types, so they never left a body part out.
+TEST_CASE( "eoc-b12_pick_bodypart_type_filters", "[audit][eoc]" )
+{
+    clear_avatar();
+    global_variables &globals = get_globals();
+    on_out_of_scope forget( [&globals]() {
+        globals.remove_global_value( "audit_b12_bp" );
+    } );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    const auto picks = [&]( const std::string & filters ) {
+        const talk_effect_t pick = load_effect(
+                                       R"({ "effect": { "u_pick_bodypart": { "global_val": "audit_b12_bp" },
+            "pick_random": true, )" + filters + " } }" );
+        std::set<std::string> picked;
+        for( int i = 0; i < 40; ++i ) {
+            globals.remove_global_value( "audit_b12_bp" );
+            pick.apply( d );
+            const diag_value *bp = globals.maybe_get_global_value( "audit_b12_bp" );
+            REQUIRE( bp != nullptr );
+            picked.insert( bp->str() );
+        }
+        return picked;
+    };
+
+    const std::set<std::string> arms = picks( R"("whitelist_type": [ "arm" ])" );
+    CHECK( arms == std::set<std::string> { "arm_l", "arm_r" } );
+    const std::set<std::string> not_limbs = picks( R"("blacklist_type": [ "arm", "leg" ])" );
+    CHECK( not_limbs == std::set<std::string> { "head", "torso" } );
+}

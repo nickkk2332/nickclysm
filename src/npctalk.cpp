@@ -3869,12 +3869,15 @@ talk_effect_fun_t::func f_pick_bodypart( const JsonObject &jo, std::string_view 
         for( const bodypart_id &bp_id : d.actor( is_npc )->get_all_body_parts(
                  get_body_part_flags::only_main | get_body_part_flags::sorted ) ) {
 
+            const auto has_type_of = [&d, &bp_id]( const std::vector<str_or_var> &types ) {
+                return std::any_of( types.begin(), types.end(), [&d, &bp_id]( const str_or_var & type ) {
+                    return bp_id->has_type( io::string_to_enum<bp_type>( type.evaluate( d ) ) );
+                } );
+            };
+
             // doesn't have bp type we want
-            for( const str_or_var &bp_type_var : whitelist_type ) {
-                const bp_type type = io::string_to_enum<bp_type>( bp_type_var.evaluate( d ) );
-                if( !bp_id->has_type( type ) ) {
-                    continue;
-                }
+            if( !whitelist_type.empty() && !has_type_of( whitelist_type ) ) {
+                continue;
             }
 
             // has no flag we want
@@ -3884,11 +3887,8 @@ talk_effect_fun_t::func f_pick_bodypart( const JsonObject &jo, std::string_view 
             }
 
             // has type we do not want
-            for( const str_or_var &bp_type_var : blacklist_type ) {
-                const bp_type type = io::string_to_enum<bp_type>( bp_type_var.evaluate( d ) );
-                if( bp_id->has_type( type ) ) {
-                    continue;
-                }
+            if( has_type_of( blacklist_type ) ) {
+                continue;
             }
 
             // has flag we do not want

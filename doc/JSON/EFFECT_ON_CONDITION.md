@@ -3854,8 +3854,8 @@ Allow to select the bodypart and store it in variable
 | "u_pick_bodypart", "npc_pick_bodypart" | **mandatory** | [variable object](#variable-object) | variable where the bodypart will be stored |
 | "whitelist_flag" | optional | string or [variable object](#variable-object) | If used, only bodyparts that has this flag will be allowed |
 | "blacklist_flag" | optional | string or [variable object](#variable-object) | If used, bodyparts that has this flag are excluded |
-| "whitelist_type" | optional | array of strings or [variable objects](#variable-object) | If used, only bodyparts of this type will be allowed |
-| "blacklist_type" | optional | array of strings or [variable objects](#variable-object) | If used, bodyparts of this type are excluded |
+| "whitelist_type" | optional | array of strings or [variable objects](#variable-object) | If used, only bodyparts of one of these types will be allowed |
+| "blacklist_type" | optional | array of strings or [variable objects](#variable-object) | If used, bodyparts of any of these types are excluded |
 | "wounded" | optional | bool | default unset; if true, only bodyparts that have wounds are allowed; if false, such bodyparts are excluded |
 | "pick_random" | optional | bool | default false; if true, or if talker is not an avatar, no selector will appear, and a random bodypart out of the possible will be assigned; if false, the list will appear, allowing to pick the limb manually |
 | "allow_cancel" | optional | bool | allows the menu to be cancelled |
