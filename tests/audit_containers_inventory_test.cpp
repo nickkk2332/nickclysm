@@ -32,8 +32,11 @@
 
 static const itype_id itype_audit_inv_b02_filter_rack( "audit_inv_b02_filter_rack" );
 static const itype_id itype_audit_inv_b03_fuel_burner( "audit_inv_b03_fuel_burner" );
+static const itype_id itype_audit_inv_b04_brick( "audit_inv_b04_brick" );
+static const itype_id itype_audit_inv_b04_sack( "audit_inv_b04_sack" );
 static const itype_id itype_gas_charger_on( "gas_charger_on" );
 static const itype_id itype_gasfilter_med( "gasfilter_med" );
+static const itype_id itype_pebble( "pebble" );
 static const itype_id itype_propane( "propane" );
 static const itype_id itype_small_propane_tank( "small_propane_tank" );
 
@@ -118,4 +121,48 @@ TEST_CASE( "inv-b03_fuel_burning_ups_burns_at_its_efficiency", "[audit][item]" )
         got += burner.energy_consume( request, pos, nullptr, efficiency );
         CHECK( units::to_kilojoule( got ) <= unit_kj );
     }
+}
+
+// INV-B04: max_charges_by_parent_recursive() walked up the container chain but measured the
+// innermost parent pocket at every level, so a nearly full outer container never limited what
+// went into a soft container nested two levels down, and the next overflow() dropped items.
+TEST_CASE( "inv-b04_parent_charge_limit_checks_every_parent_pocket", "[audit][item][pocket]" )
+{
+    clear_map();
+    map &here = get_map();
+    const tripoint_bub_ms pos( 60, 60, 0 );
+    const tile_items_cleanup cleanup{ pos };
+
+    // outer sack: a brick and the middle sack; middle sack: the (empty) inner sack
+    item middle_proto( itype_audit_inv_b04_sack );
+    REQUIRE( middle_proto.put_in( item( itype_audit_inv_b04_sack ),
+                                  pocket_type::CONTAINER ).success() );
+    item outer_proto( itype_audit_inv_b04_sack );
+    REQUIRE( outer_proto.put_in( item( itype_audit_inv_b04_brick ),
+                                 pocket_type::CONTAINER ).success() );
+    REQUIRE( outer_proto.put_in( middle_proto, pocket_type::CONTAINER ).success() );
+
+    item &outer = here.add_item( pos, outer_proto );
+    const item_location outer_loc( map_cursor( pos ), &outer );
+    item *middle = nullptr;
+    for( item *it : outer.all_items_top() ) {
+        if( it->typeId() == itype_audit_inv_b04_sack ) {
+            middle = it;
+        }
+    }
+    REQUIRE( middle != nullptr );
+    const item_location middle_loc( outer_loc, middle );
+    REQUIRE( middle->all_items_top().size() == 1 );
+    const item_location inner_loc( middle_loc, middle->all_items_top().front() );
+
+    // Room left in the outer sack's pocket, and in the middle sack's
+    const units::volume outer_room = middle_loc.volume_capacity();
+    const units::volume middle_room = inner_loc.volume_capacity();
+    const item pebble( itype_pebble );
+    REQUIRE( pebble.count_by_charges() );
+    REQUIRE( pebble.charges_per_volume( outer_room, true ) <
+             pebble.charges_per_volume( middle_room, true ) );
+
+    const ret_val<int> limit = inner_loc.max_charges_by_parent_recursive( pebble );
+    CHECK( limit.value() <= pebble.charges_per_volume( outer_room, true ) );
 }

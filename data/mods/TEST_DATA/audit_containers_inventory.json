@@ -33,5 +33,28 @@
       }
     ],
     "tool_ammo": [ "propane" ]
+  },
+  {
+    "id": "audit_inv_b04_sack",
+    "type": "ITEM",
+    "name": { "str": "TEST soft sack" },
+    "description": "A soft sack that holds 1 L (INV-B04).",
+    "weight": "50 g",
+    "volume": "100 ml",
+    "material": [ "cotton" ],
+    "symbol": ")",
+    "color": "white",
+    "pocket_data": [ { "pocket_type": "CONTAINER", "max_contains_volume": "1 L", "max_contains_weight": "10 kg", "moves": 100 } ]
+  },
+  {
+    "id": "audit_inv_b04_brick",
+    "type": "ITEM",
+    "name": { "str": "TEST filler brick" },
+    "description": "Takes up 750 ml (INV-B04).",
+    "weight": "1 kg",
+    "volume": "750 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "red"
   }
 ]
