@@ -14,6 +14,7 @@
 #include "creature.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "enums.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -25,6 +26,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "math_parser.h"
 #include "math_parser_type.h"
 #include "monster.h"
@@ -32,6 +34,8 @@
 #include "point.h"
 #include "talker.h"
 #include "type_id.h"
+#include "units.h"
+#include "vehicle.h"
 
 static double eval_math( dialogue &d, const std::string &expr )
 {
@@ -311,4 +315,71 @@ TEST_CASE( "math-b10_a_dead_item_talker_does_not_crash_later_effects", "[audit][
     load_effect( R"({ "effect": { "npc_set_random_fault_of_type": "mechanical_damage" } })" ).apply(
         d );
     CHECK_FALSE( rock );
+}
+
+static const vpart_id vpart_frame( "frame" );
+static const vpart_id vpart_seat( "seat" );
+
+static const vproto_id vehicle_prototype_none( "none" );
+
+// MATH-B11: val('pos_x/y/z') assignment called Creature::setpos directly: the map didn't follow
+// the avatar, a rider stayed boarded, a solid spot was entered, and monsters ignored it.
+TEST_CASE( "math-b11_val_pos_moves_like_a_teleport", "[audit][math_parser]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    clear_vehicles();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_abs_sm bubble = here.get_abs_sub();
+    const tripoint_abs_ms start = u.pos_abs();
+    const on_out_of_scope restore_bubble( [bubble, start]() {
+        clear_vehicles();
+        clear_creatures();
+        map &here = get_map();
+        here.load( bubble, false );
+        get_avatar().setpos( here, here.get_bub( start ) );
+    } );
+    dialogue d( get_talker_for( u ), nullptr );
+
+    SECTION( "the map follows the avatar" ) {
+        eval_math( d, "u_val('pos_x') += 20" );
+        CHECK( u.pos_abs() == start + tripoint::east * 20 );
+        CHECK( here.get_abs_sub() == bubble + tripoint::east );
+        CHECK( u.pos_bub().x() >= HALF_MAPSIZE_X );
+        CHECK( u.pos_bub().x() < HALF_MAPSIZE_X + SEEX );
+    }
+
+    SECTION( "no move into solid rock" ) {
+        // clear_map leaves the level below solid
+        REQUIRE( here.impassable( u.pos_bub() + tripoint::below ) );
+        eval_math( d, "u_val('pos_z') = -1" );
+        CHECK( u.pos_abs() == start );
+        CHECK_FALSE( u.is_dead_state() );
+    }
+
+    SECTION( "a rider gets off the vehicle" ) {
+        vehicle *veh = here.add_vehicle( vehicle_prototype_none, u.pos_bub(), 0_degrees, 0,
+                                         veh_spawn_status::UNDAMAGED );
+        REQUIRE( veh != nullptr );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) >= 0 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_seat ) >= 0 );
+        here.add_vehicle_to_cache( veh );
+        here.board_vehicle( u.pos_bub(), &u );
+        REQUIRE( u.in_vehicle );
+        REQUIRE( veh->get_riders().size() == 1 );
+
+        eval_math( d, "u_val('pos_x') += 3" );
+        CHECK( u.pos_abs() == start + tripoint::east * 3 );
+        CHECK_FALSE( u.in_vehicle );
+        CHECK( veh->get_riders().empty() );
+    }
+
+    SECTION( "a monster moves too" ) {
+        monster &mon = spawn_test_monster( "mon_zombie", u.pos_bub() + tripoint::east * 5 );
+        const tripoint_abs_ms mon_start = mon.pos_abs();
+        dialogue with_monster( get_talker_for( u ), get_talker_for( mon ) );
+        eval_math( with_monster, "n_val('pos_x') += 2" );
+        CHECK( mon.pos_abs() == mon_start + tripoint::east * 2 );
+    }
 }

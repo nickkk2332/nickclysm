@@ -113,6 +113,8 @@ class talker_monster: public talker_monster_const, public talker_cloner<talker_m
         void set_anger( int ) override;
         void set_morale( int ) override;
         void set_friendly( int ) override;
+        using talker::set_pos;
+        void set_pos( tripoint_abs_ms new_pos ) override;
         bool get_is_alive() const override;
         void die( map *here ) override;
 

@@ -1562,7 +1562,7 @@ These can be read or written to with `val()`.
 | `mana_percentage` | ❌ | Current mana as percent. |
 | `owed` | ✅ | Amount of money the Character owes the avatar. |
 | `pkill` | ✅ | Current painkiller level. |
-| `pos_x`<br/>`pos_y`<br/>`pos_z` | ✅ | Absolute coordinate of the character |
+| `pos_x`<br/>`pos_y`<br/>`pos_z` | ✅ | Absolute coordinate of the character or monster. Setting one moves it as `u_teleport` does without `force`: the map follows the avatar and a rider gets off its vehicle, but nothing happens if the spot is solid or taken, or the character has a dimensional anchor. Other talkers don't move. |
 | `power` | ✅ | Bionic or item power. Bionic power is returned in millijoules. Item power is returned in battery charges. |
 | `power_percentage` | ✅ | Percentage of max bionic or item power. |
 | `power_max` | ❌ | Max bionic or item power. Bionic power is returned in millijoules. Item power is returned in battery charges. |

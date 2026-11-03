@@ -45,6 +45,7 @@
 #include "skill.h"
 #include "string_formatter.h"
 #include "talker_character.h"
+#include "teleport.h"
 #include "translation.h"
 #include "translations.h"
 #include "units.h"
@@ -182,9 +183,11 @@ void talker_character::set_pos( tripoint_bub_ms new_pos )
     me_chr->setpos( here, new_pos );
 }
 
+// val('pos_x') and the like: moves as u_teleport does, so the map follows the avatar, a rider
+// gets off, and an occupied or solid spot (or a dimensional anchor) stops the move
 void talker_character::set_pos( tripoint_abs_ms new_pos )
 {
-    me_chr->setpos( new_pos );
+    teleport::teleport_to_point( *me_chr, get_map().get_bub( new_pos ), true, false, false );
 }
 
 void talker_character::set_trauma( int value )

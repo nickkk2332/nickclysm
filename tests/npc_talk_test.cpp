@@ -84,6 +84,8 @@ static const spell_id spell_test_spell_json( "test_spell_json" );
 static const spell_id spell_test_spell_lava( "test_spell_lava" );
 static const spell_id spell_test_spell_pew( "test_spell_pew" );
 
+static const ter_str_id ter_t_floor( "t_floor" );
+
 static const trait_id trait_ELFA_EARS( "ELFA_EARS" );
 
 static const trait_id trait_PROF_FED( "PROF_FED" );
@@ -1373,6 +1375,10 @@ TEST_CASE( "npc_arithmetic", "[npc_talk]" )
     effects.apply( d );
     CHECK( static_cast<int>( player_character.get_skill_level( skill ) ) == 10 );
 
+    // Assigning a position moves the avatar as u_teleport does: start mid-bubble, so the map
+    // doesn't shift under the test.
+    map &here = get_map();
+    player_character.setpos( here, tripoint_bub_ms( 66, 66, 0 ) );
     // "Move character position one tile west."
     pos = player_character.pos_abs();
     effects = d.responses[ 12 ].success;
@@ -1385,10 +1391,17 @@ TEST_CASE( "npc_arithmetic", "[npc_talk]" )
     effects.apply( d );
     CHECK( player_character.pos_abs().y() == pos.y() + 2 );
 
-    // "Sets character z level to -3."
+    // "Sets character z level to -3."  Into an open spot: a teleport won't enter rock.
+    const tripoint_abs_ms deep( player_character.pos_abs().xy(), -3 );
+    const ter_id deep_ter = here.ter( here.get_bub( deep ) );
+    const furn_id deep_furn = here.furn( here.get_bub( deep ) );
+    here.ter_set( here.get_bub( deep ), ter_t_floor );
+    here.furn_set( here.get_bub( deep ), furn_str_id::NULL_ID() );
     effects = d.responses[ 14 ].success;
     effects.apply( d );
     CHECK( player_character.posz() == -3 );
+    here.ter_set( here.get_bub( deep ), deep_ter );
+    here.furn_set( here.get_bub( deep ), deep_furn );
 
     // "Sets pain to 17."
     effects = d.responses[ 15 ].success;
