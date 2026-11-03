@@ -273,7 +273,7 @@ NPC missions are controlled by a separate but related JSON structure and are doc
 
 Two topics are special:
 - `TALK_DONE` ends the dialogue immediately.
-- `TALK_NONE` goes to the previously talked about topic.
+- `TALK_NONE` goes to the previously talked about topic; in the topic the conversation started with, it shows that topic again.
 
 If `npc` has the following fields, the game will display a dialogue with the indicated topic instead of default topic.
 
@@ -752,7 +752,7 @@ The short format is equivalent to (an unconditional switching of the topic, `eff
 }
 ```
 
-When using a conditional you can specify the response to still appear but be marked as unavailable. This can be done by adding a `failure_explanation` or `failure_topic` in the below example if the condition fails `*Didn't have enough: I, the player, say to you...` will be what appears in the responses, and if selected it will instead go to `TALK_EXPLAIN_FAILURE` and wont trigger the other effects:
+When using a conditional you can specify the response to still appear but be marked as unavailable. This can be done by adding a `failure_explanation` or `failure_topic` in the below example if the condition fails `*Didn't have enough: I, the player, say to you...` will be what appears in the responses, and if selected it will instead go to `TALK_EXPLAIN_FAILURE` and wont trigger the other effects.  Without a `failure_topic` the response is shown but can't be selected:
 ```jsonc
 {
   "condition": "...something...",
@@ -1593,7 +1593,7 @@ These can be read or written to with `val()`.
 | `body_temp` | ❌ | Current body temperature. |
 | `body_temp_delta` | ❌ | Difference in temperature between the hottest/coldest part and what feels like the hottest/coldest part. |
 | `cash` | ✅ | Amount of money |
-| `dodge` | ❌ | Current effective dodge |
+| `dodge` | ❌ | Current effective dodge; for monsters too |
 | `exp` | ✅ | Total experience earned. |
 | `sleepiness` | ✅ | Current sleepiness level. |
 | `fine_detail_vision_mod` | ❌ | Returned values range from 1.0 (unimpeded vision) to 11.0 (totally blind). |

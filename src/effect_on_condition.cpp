@@ -6,6 +6,7 @@
 #include <iterator>
 #include <list>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <ostream>
 #include <queue>
@@ -28,12 +29,10 @@
 #include "math_parser_diag_value.h"
 #include "mod_tracker.h"
 #include "npc.h"
-#include "output.h"
 #include "profession.h"
 #include "scenario.h"
 #include "string_formatter.h"
 #include "talker.h"
-#include "translations.h"
 #include "type_id.h"
 
 namespace io
@@ -254,8 +253,41 @@ void effect_on_conditions::queue_effect_on_condition( time_duration duration,
     }
 }
 
+// The character that has @p id now: control_npc moves characters' data between bodies.
+static Character *character_with_id( const character_id &id )
+{
+    avatar &u = get_avatar();
+    if( u.getID() == id ) {
+        return &u;
+    }
+    return g->find_npc( id );
+}
+
+// The character whose queue holds @p it now, looking first at the one that has @p id.
+static Character *character_holding( const queued_eocs::storage_iter &it, const character_id &id )
+{
+    std::vector<Character *> candidates;
+    if( Character *by_id = character_with_id( id ) ) {
+        candidates.push_back( by_id );
+    }
+    candidates.push_back( &get_avatar() );
+    for( npc &guy : g->all_npcs() ) {
+        candidates.push_back( &guy );
+    }
+    for( Character *candidate : candidates ) {
+        const std::list<queued_eoc> &list = candidate->queued_effect_on_conditions.list;
+        for( auto node = list.begin(); node != list.end(); ++node ) {
+            if( &*node == &*it ) {
+                return candidate;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// @p owner is the character whose queue this is, if any.
 static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_condition_id> &eoc_vector,
-                          dialogue &d )
+                          dialogue &d, const Character *owner )
 {
     static int reentrancy_depth = 0;
     ++reentrancy_depth;
@@ -282,48 +314,90 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
             eocs_to_queue.clear();
         } };
 
+    // Take what is due before running any of it: an EOC queued during the pass with no delay,
+    // such as one that queues itself again, waits for the next pass instead of making this one
+    // endless.
+    std::vector<queued_eocs::storage_iter> due;
     while( !eoc_queue.empty() &&
            eoc_queue.top().time <= calendar::turn ) {
-        queued_eocs::storage_iter it = eoc_queue.queue.top();
-        queued_eoc &top = *it;
+        due.push_back( eoc_queue.queue.top() );
         eoc_queue.queue.pop();
+    }
+
+    // An EOC that takes control of an NPC (control_npc) swaps the owner's data, this queue and
+    // its inactive list included, into another body; they are followed there.
+    queued_eocs *queue = &eoc_queue;
+    std::vector<effect_on_condition_id> *inactive = &eoc_vector;
+    const character_id owner_id = owner != nullptr ? owner->getID() : character_id();
+    for( size_t i = 0; i < due.size(); ++i ) {
+        const queued_eocs::storage_iter &it = due[i];
+        queued_eoc &top = *it;
 
         dialogue nested_d{ d };
         for( const auto &val : top.context ) {
             nested_d.set_value( val.first, val.second );
         }
         bool activated = top.eoc->activate( nested_d );
+        const bool moved = owner != nullptr && owner->getID() != owner_id;
+        // After a move, the entry is the other body's, and so is its next recurrence
+        std::optional<dialogue> moved_d;
+        std::optional<dialogue> moved_nested_d;
+        if( moved ) {
+            Character *moved_to = character_holding( it, owner_id );
+            if( moved_to == nullptr ) {
+                // The entries still due were taken off a priority queue that is now nowhere to
+                // be found, so there is no putting them back
+                debugmsg( "The queued EOCs of character %d moved to a body that can't be found while "
+                          "EOC %s ran; %d of them due this turn are lost.", owner_id.get_value(),
+                          top.eoc.str(), static_cast<int>( due.size() - i ) );
+                return;
+            }
+            queue = &moved_to->queued_effect_on_conditions;
+            inactive = &moved_to->inactive_effect_on_condition_vector;
+            moved_d.emplace( get_talker_for( *moved_to ), nullptr, d.get_conditionals(), d.get_context() );
+            moved_nested_d.emplace( *moved_d );
+            for( const auto &val : top.context ) {
+                moved_nested_d->set_value( val.first, val.second );
+            }
+        }
+        dialogue &owner_d = moved_d ? *moved_d : d;
+        dialogue &entry_d = moved_nested_d ? *moved_nested_d : nested_d;
         if( top.eoc->type == eoc_type::RECURRING ) {
             if( activated ) { // It worked so add it back
-                it->time = calendar::turn + next_recurrence( top.eoc, d );
+                it->time = calendar::turn + next_recurrence( top.eoc, owner_d );
                 eocs_to_queue.emplace_back( it );
             } else {
                 if( !top.eoc->check_deactivate(
-                        nested_d ) ) { // It failed but shouldn't be deactivated so add it back
-                    it->time = calendar::turn + next_recurrence( top.eoc, d );
+                        entry_d ) ) { // It failed but shouldn't be deactivated so add it back
+                    it->time = calendar::turn + next_recurrence( top.eoc, owner_d );
                     eocs_to_queue.emplace_back( it );
                 } else { // It failed and should be deactivated for now
-                    eoc_vector.push_back( top.eoc );
-                    eoc_queue.list.erase( it );
+                    inactive->push_back( top.eoc );
+                    queue->list.erase( it );
                 }
             }
         } else {
-            eoc_queue.list.erase( it );
+            queue->list.erase( it );
+        }
+        if( moved ) {
+            // The rest of the pass belongs to the old body, which runs it on its own turn
+            eocs_to_queue.insert( eocs_to_queue.end(), due.begin() + i + 1, due.end() );
+            break;
         }
     }
     for( queued_eocs::storage_iter &q_eoc : eocs_to_queue ) {
-        eoc_queue.queue.emplace( q_eoc );
+        queue->queue.emplace( q_eoc );
     }
 }
 
 void effect_on_conditions::process_effect_on_conditions( Character &you )
 {
     dialogue d( get_talker_for( you ), nullptr );
-    process_eocs( you.queued_effect_on_conditions, you.inactive_effect_on_condition_vector, d );
+    process_eocs( you.queued_effect_on_conditions, you.inactive_effect_on_condition_vector, d, &you );
     //only handle global eocs on the avatars turn
     if( you.is_avatar() ) {
         process_eocs( g->queued_global_effect_on_conditions, g->inactive_global_effect_on_condition_vector,
-                      d );
+                      d, nullptr );
     }
 }
 
@@ -358,9 +432,35 @@ void effect_on_conditions::process_reactivate()
                           g->queued_global_effect_on_conditions, d );
 }
 
+namespace
+{
+// The EOCs running inside one another right now, outermost first, however each was reached
+// (run_eocs, true_eocs, events, spells...); a dialogue's callstack text doesn't follow all of those.
+std::vector<effect_on_condition_id> running_eocs;
+// Set when a chain of EOCs went too deep: how many EOCs were running outside the chain.  Until it
+// has returned to them, every EOC in the chain stops at once.
+std::optional<size_t> stopping_above;
+// Deeper than EOCs need to nest: content that repeats something should loop with run_eocs'
+// "iterations" or "condition" instead of running itself again.  Each level takes about 2.5 KB of
+// stack in a release build (more in a debug build), and a Windows program's main thread gets 1 MB.
+constexpr int max_eoc_depth = 250;
+
+void leave_eoc()
+{
+    running_eocs.pop_back();
+    // Once the stopped chain has returned, EOCs run again
+    if( stopping_above && running_eocs.size() <= *stopping_above ) {
+        stopping_above.reset();
+    }
+}
+} // namespace
+
 bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
                                     const std::function<void( const dialogue & )> &on_done ) const
 {
+    if( stopping_above ) {
+        return false;
+    }
     const bool tracing = debug_menu::debug_capture::is_eoc_tracing();
     std::chrono::steady_clock::time_point trace_start;
     if( tracing ) {
@@ -369,13 +469,16 @@ bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
     bool retval = false;
     if( require_callstack_check ) {
         d.amend_callstack( "EOC: " + id.str() );
-        if( d.get_callstack().size() > 5000 ) {
-            if( query_yn( string_format( _( "Possible infinite loop in EOC %s.  Stop execution?" ),
-                                         id.str() ) ) ) {
-                return false;
-            }
-        }
     }
+    if( running_eocs.size() >= static_cast<size_t>( max_eoc_depth ) ) {
+        // The endless chain starts where this EOC first ran; whatever ran that goes on
+        stopping_above = std::find( running_eocs.begin(), running_eocs.end(), id ) - running_eocs.begin();
+        debugmsg( "EOC %s is nested %d deep, probably in an endless loop of EOCs running each other.  "
+                  "That chain of EOCs was stopped.", id.str(), max_eoc_depth );
+        return false;
+    }
+    running_eocs.push_back( id );
+    on_out_of_scope leave( leave_eoc );
     // each version needs a copy of the dialogue to pass down
     dialogue d_eoc( d );
     if( !has_condition || condition( d_eoc ) ) {

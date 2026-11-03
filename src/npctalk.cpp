@@ -4,6 +4,7 @@
 #include <climits>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <exception>
 #include <filesystem>
@@ -520,6 +521,40 @@ static void run_eoc_vector( const std::vector<effect_on_condition_id> &eocs, con
     for( const effect_on_condition_id &eoc : eocs ) {
         eoc->activate( newDialog );
     }
+}
+
+// What effects need from a talker, or nullptr after a debugmsg naming @p effect when the talker
+// has none: a monster, item, furniture, vehicle or zone isn't a character, only an item talker
+// has an item, and only an NPC has a faction.
+static Character *require_character( const dialogue &d, bool is_npc, std::string_view effect )
+{
+    Character *guy = d.actor( is_npc )->get_character();
+    if( guy == nullptr ) {
+        debugmsg( "%s needs the %s talker to be a character.  %s", effect, is_npc ? "beta" : "alpha",
+                  d.get_callstack() );
+    }
+    return guy;
+}
+
+static item_location *require_item( const dialogue &d, bool is_npc, std::string_view effect )
+{
+    item_location *it = d.actor( is_npc )->get_item();
+    if( it == nullptr || it->get_item() == nullptr ) {
+        debugmsg( "%s needs the %s talker to be an item.  %s", effect, is_npc ? "beta" : "alpha",
+                  d.get_callstack() );
+        return nullptr;
+    }
+    return it;
+}
+
+static faction *require_faction( const dialogue &d, bool is_npc, std::string_view effect )
+{
+    faction *fac = d.actor( is_npc )->get_faction();
+    if( fac == nullptr ) {
+        debugmsg( "%s needs the %s talker to have a faction.  %s", effect, is_npc ? "beta" : "alpha",
+                  d.get_callstack() );
+    }
+    return fac;
 }
 
 static std::vector<effect_on_condition_id> load_eoc_vector( const JsonObject &jo,
@@ -1688,9 +1723,6 @@ void avatar::talk_to( std::unique_ptr<talker> talk_with, bool radio_contact,
         for( const std::string &topic_id : d.actor( true )->get_topics( radio_contact ) ) {
             d.add_topic( topic_id );
         }
-        for( const std::string &topic_id : d.actor( true )->get_topics( radio_contact ) ) {
-            d.add_topic( topic_id );
-        }
     } else {
         d.add_topic( debug_topic );
     }
@@ -2610,13 +2642,16 @@ void parse_tags( std::string &phrase, const_talker const &u, const_talker const 
 void dialogue::add_gen_response( const talk_response &resp, bool insert_front,
                                  bool condition_exists, bool condition_result )
 {
+    // The flags go where the response goes: opt_imgui reads them by the response's index
     if( insert_front ) {
         responses.insert( responses.begin(), resp );
+        response_condition_exists.insert( response_condition_exists.begin(), condition_exists );
+        response_condition_eval.insert( response_condition_eval.begin(), condition_result );
     } else {
         responses.push_back( resp );
+        response_condition_exists.push_back( condition_exists );
+        response_condition_eval.push_back( condition_result );
     }
-    response_condition_exists.emplace_back( condition_exists );
-    response_condition_eval.emplace_back( condition_result );
 }
 
 void dialogue::add_topic( const std::string &topic_id )
@@ -3017,8 +3052,10 @@ talk_topic dialogue::opt_imgui( dialogue_imgui_impl &d_img, const talk_topic &to
                 const auto hotkey_it = std::find( response_hotkeys.begin(),
                                                   response_hotkeys.end(), evt );
                 response_ind = std::distance( response_hotkeys.begin(), hotkey_it );
-                if( response_condition_exists[response_ind] && ( !response_condition_eval[response_ind] &&
-                        !debug_mode ) ) {
+                // A key no response has leaves response_ind past the end
+                if( response_ind < response_condition_exists.size() &&
+                    response_condition_exists[response_ind] && ( !response_condition_eval[response_ind] &&
+                            !debug_mode ) ) {
                     action = "NONE";
                 }
             } else if( action == "QUIT" ) {
@@ -3641,7 +3678,10 @@ talk_effect_fun_t::func f_remove_category( const JsonObject &jo,
     str_or_var category = get_str_or_var( jo.get_member( member ), member, true );
 
     return [is_npc, category]( dialogue const & d ) {
-        Character *ch = d.actor( is_npc )->get_character();
+        Character *ch = require_character( d, is_npc, "lose_category" );
+        if( ch == nullptr ) {
+            return;
+        }
 
         const mutation_category_id cat_id( category.evaluate( d ) );
 
@@ -3671,7 +3711,10 @@ talk_effect_fun_t::func f_remove_mutation_type( const JsonObject &jo,
     str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
 
     return [is_npc, type]( dialogue const & d ) {
-        Character *ch = d.actor( is_npc )->get_character();
+        Character *ch = require_character( d, is_npc, "lose_mutation_type" );
+        if( ch == nullptr ) {
+            return;
+        }
 
         const std::string type_id = type.evaluate( d );
 
@@ -3868,12 +3911,15 @@ talk_effect_fun_t::func f_pick_bodypart( const JsonObject &jo, std::string_view 
         for( const bodypart_id &bp_id : d.actor( is_npc )->get_all_body_parts(
                  get_body_part_flags::only_main | get_body_part_flags::sorted ) ) {
 
+            const auto has_type_of = [&d, &bp_id]( const std::vector<str_or_var> &types ) {
+                return std::any_of( types.begin(), types.end(), [&d, &bp_id]( const str_or_var & type ) {
+                    return bp_id->has_type( io::string_to_enum<bp_type>( type.evaluate( d ) ) );
+                } );
+            };
+
             // doesn't have bp type we want
-            for( const str_or_var &bp_type_var : whitelist_type ) {
-                const bp_type type = io::string_to_enum<bp_type>( bp_type_var.evaluate( d ) );
-                if( !bp_id->has_type( type ) ) {
-                    continue;
-                }
+            if( !whitelist_type.empty() && !has_type_of( whitelist_type ) ) {
+                continue;
             }
 
             // has no flag we want
@@ -3883,11 +3929,8 @@ talk_effect_fun_t::func f_pick_bodypart( const JsonObject &jo, std::string_view 
             }
 
             // has type we do not want
-            for( const str_or_var &bp_type_var : blacklist_type ) {
-                const bp_type type = io::string_to_enum<bp_type>( bp_type_var.evaluate( d ) );
-                if( bp_id->has_type( type ) ) {
-                    continue;
-                }
+            if( has_type_of( blacklist_type ) ) {
+                continue;
             }
 
             // has flag we do not want
@@ -3955,8 +3998,12 @@ talk_effect_fun_t::func f_add_wound( const JsonObject &jo, std::string_view memb
 
     return [is_npc, bodypart_var, wound_to_be_added_var]( dialogue & d ) {
 
-        bodypart *bp =
-            d.actor( is_npc )->get_character()->get_part( bodypart_id( bodypart_var.evaluate( d ) ) );
+        Character *guy = require_character( d, is_npc, "add_wound" );
+        // get_part says so itself when the body part is missing
+        bodypart *bp = guy ? guy->get_part( bodypart_id( bodypart_var.evaluate( d ) ) ) : nullptr;
+        if( bp == nullptr ) {
+            return;
+        }
 
         wound_type_id wound_to_be_added = wound_type_id( wound_to_be_added_var.evaluate( d ) );
 
@@ -3979,8 +4026,11 @@ talk_effect_fun_t::func f_remove_wound( const JsonObject &jo, std::string_view m
 
     return [is_npc, bodypart_var, wound_to_be_removed_var]( dialogue & d ) {
 
-        bodypart *bp =
-            d.actor( is_npc )->get_character()->get_part( bodypart_id( bodypart_var.evaluate( d ) ) );
+        Character *guy = require_character( d, is_npc, "remove_wound" );
+        bodypart *bp = guy ? guy->get_part( bodypart_id( bodypart_var.evaluate( d ) ) ) : nullptr;
+        if( bp == nullptr ) {
+            return;
+        }
 
         std::vector<wound_type_id> wound_to_be_removed;
         wound_to_be_removed.reserve( wound_to_be_removed_var.size() );
@@ -4003,8 +4053,11 @@ talk_effect_fun_t::func f_remove_all_wounds( const JsonObject &jo, std::string_v
 
     return [is_npc, bodypart_var]( dialogue & d ) {
 
-        bodypart *bp =
-            d.actor( is_npc )->get_character()->get_part( bodypart_id( bodypart_var.evaluate( d ) ) );
+        Character *guy = require_character( d, is_npc, "remove_all_wounds" );
+        bodypart *bp = guy ? guy->get_part( bodypart_id( bodypart_var.evaluate( d ) ) ) : nullptr;
+        if( bp == nullptr ) {
+            return;
+        }
 
         std::vector<wound_type_id> wound_to_be_removed;
         wound_to_be_removed.reserve( bp->get_wounds().size() );
@@ -4289,17 +4342,23 @@ talk_effect_fun_t::func f_u_sell_item( const JsonObject &jo, std::string_view me
     optional( jo, false, "count", count, 1 );
     str_or_var item_name = get_str_or_var( jo.get_member( member ), member, true );
     return [item_name, cost, count, true_eocs, false_eocs]( dialogue & d ) {
+        // The buyer owns what it gets
+        const faction *buyer_faction = require_faction( d, true, "u_sell_item" );
+        if( buyer_faction == nullptr ) {
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
         int current_count = count.evaluate( d );
         itype_id current_item_name = itype_id( item_name.evaluate( d ) );
         if( item::count_by_charges( current_item_name ) &&
             d.actor( false )->has_charges( current_item_name, current_count ) ) {
             for( item &it : d.actor( false )->use_charges( current_item_name, current_count ) ) {
-                it.set_owner( d.actor( true )->get_faction()->id );
+                it.set_owner( buyer_faction->id );
                 d.actor( true )->i_add( it );
             }
         } else if( d.actor( false )->has_amount( current_item_name, current_count ) ) {
             for( item &it : d.actor( false )->use_amount( current_item_name, current_count ) ) {
-                it.set_owner( d.actor( true )->get_faction()->id );
+                it.set_owner( buyer_faction->id );
                 d.actor( true )->i_add( it );
             }
         } else {
@@ -4864,8 +4923,16 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
             int min_target_dist = dov_target_min_radius.evaluate( d );
             std::string cur_search_target = search_target.value().evaluate( d );
             bool found = false;
+            const int max_target_dist = dov_target_max_radius.evaluate( d );
             tripoint_range<tripoint_bub_ms> points = here.points_in_radius( here.get_bub( abs_ms ),
-                    size_t( dov_target_max_radius.evaluate( d ) ), size_t( 0 ) );
+                    size_t( max_target_dist ), size_t( 0 ) );
+            // Every NPC the search can reach, asked for once: enough submaps around the centre
+            // to cover the whole radius
+            std::vector<shared_ptr_fast<npc>> npcs_near;
+            if( search_type.value() == "npc" ) {
+                npcs_near = overmap_buffer.get_npcs_near( project_to<coords::sm>( abs_ms ),
+                            std::max( max_target_dist, 0 ) / SEEX + 1 );
+            }
             for( const tripoint_bub_ms &search_loc : points ) {
                 if( rl_dist( here.get_bub( talker_pos ), search_loc ) <= min_target_dist ) {
                     continue;
@@ -4922,9 +4989,9 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
                         break;
                     }
                 } else if( search_type.value() == "npc" ) {
-                    for( shared_ptr_fast<npc> &person : overmap_buffer.get_npcs_near( project_to<coords::sm>( abs_ms ),
-                            1 ) ) {
-                        if( person->pos_bub() == search_loc && ( person->myclass.c_str() == cur_search_target ||
+                    const tripoint_abs_ms search_abs = here.get_abs( search_loc );
+                    for( shared_ptr_fast<npc> &person : npcs_near ) {
+                        if( person->pos_abs() == search_abs && ( person->myclass.c_str() == cur_search_target ||
                                 cur_search_target.empty() ) ) {
                             target_pos = here.get_abs( search_loc );
                             found = true;
@@ -5514,6 +5581,12 @@ talk_effect_fun_t::func f_copy_location( const JsonObject &jo, std::string_view 
         // maptile is 4 submaps so queue up 4 submap reverts
         const tripoint_abs_sm revert_sm_base = project_to<coords::sm>( omt_pos );
         const tripoint_abs_sm new_sm_base = project_to<coords::sm>( omt_pos_new );
+        if( !MAPBUFFER.submap_exists( revert_sm_base ) ) {
+            // The place copied from has never been generated: generate it, as for the
+            // destination below
+            tinymap tm;
+            tm.load( omt_pos, true );
+        }
         if( !MAPBUFFER.submap_exists( new_sm_base ) ) {
             tinymap tm;
             // This creates the submaps if they didn't already exist.
@@ -5599,13 +5672,19 @@ talk_effect_fun_t::func f_bulk_trade_accept( const JsonObject &jo, std::string_v
     return [is_trade, is_npc, dov_quantity]( dialogue & d ) {
         talker *seller = d.actor( is_npc );
         talker *buyer = d.actor( !is_npc );
+        Character *seller_character = require_character( d, is_npc, "bulk_trade_accept" );
+        // The buyer owns what it gets
+        Character *buyer_character = require_character( d, !is_npc, "bulk_trade_accept" );
+        if( seller_character == nullptr || buyer_character == nullptr ) {
+            return;
+        }
         itype_id traded_itype_id = d.cur_item;
         int number_to_transfer = dov_quantity.evaluate( d );
 
         // Use a set! No duplicates! Duplicate pointers will be bad(crash) when we try to remove the item later.
         std::set<item_location> items_to_transfer;
 
-        seller->get_character()->visit_items( [&]( item_location visited ) {
+        seller_character->visit_items( [&]( item_location visited ) {
             if( visited->typeId() == traded_itype_id ) {
                 if( visited.has_parent() && ( visited.parent_item()->all_pockets_sealed() ||
                                               visited->made_of( phase_id::LIQUID ) ||
@@ -5618,7 +5697,7 @@ talk_effect_fun_t::func f_bulk_trade_accept( const JsonObject &jo, std::string_v
             return VisitResponse::NEXT;
         } );
 
-        if( seller->get_character()->is_avatar() ) {
+        if( seller_character->is_avatar() ) {
             std::string warning = _( "Really continue?  You will hand over the following items:" );
             int num_warnings = 0;
             for( const item_location &checked_item : items_to_transfer ) {
@@ -5637,7 +5716,8 @@ talk_effect_fun_t::func f_bulk_trade_accept( const JsonObject &jo, std::string_v
 
             const int npc_debt = d.actor( true )->debt();
             int price = total_price( *seller, traded_itype_id ) * ( is_npc ? -1 : 1 ) + npc_debt;
-            if( d.actor( true )->get_faction() && d.actor( true )->get_faction()->currency.is_empty() ) {
+            const faction *npc_faction = d.actor( true )->get_faction();
+            if( npc_faction == nullptr || npc_faction->currency.is_empty() ) {
                 debugmsg( "%s has no faction currency to pay with in bulk_trade_accept!",
                           d.actor( true )->disp_name() );
                 return; // Fatal, no reasonable way to recover.
@@ -5645,7 +5725,7 @@ talk_effect_fun_t::func f_bulk_trade_accept( const JsonObject &jo, std::string_v
 
             // This can be very confusing, so for the benefit of future contributors I have elected to make the variable names
             // terribly verbose.
-            const itype_id &currency_type = d.actor( true )->get_faction()->currency;
+            const itype_id &currency_type = npc_faction->currency;
             item one_currency_unit( currency_type );
             const int int_value_of_one_currency_unit = d.actor( true )->value( one_currency_unit );
             if( int_value_of_one_currency_unit <= 0 ) {
@@ -5686,7 +5766,7 @@ talk_effect_fun_t::func f_bulk_trade_accept( const JsonObject &jo, std::string_v
             // Now let's actually transfer the items!
             for( const item_location &transferred : items_to_transfer ) {
                 item transfer_copy( *transferred );
-                transfer_copy.set_owner( *buyer->get_character() );
+                transfer_copy.set_owner( *buyer_character );
                 buyer->i_add_or_drop( transfer_copy );
 
                 auto remove_items_filter = [&]( const item & it ) {
@@ -5702,7 +5782,7 @@ talk_effect_fun_t::func f_bulk_trade_accept( const JsonObject &jo, std::string_v
             int number_transferred = 0;
             for( const item_location &transferred : items_to_transfer ) {
                 item transfer_copy( *transferred );
-                transfer_copy.set_owner( *buyer->get_character() );
+                transfer_copy.set_owner( *buyer_character );
                 buyer->i_add_or_drop( transfer_copy );
 
                 // Count now, while the item still exists
@@ -5786,7 +5866,11 @@ talk_effect_fun_t::func f_level_spell_class( const JsonObject &jo, std::string_v
     dbl_or_var levels = get_dbl_or_var( jo, "levels", false, 1 );
     const bool random = jo.get_bool( "random", false );
     return [spell_class, levels, random, is_npc]( dialogue const & d ) {
-        std::vector<spell_id> known_spells = d.actor( is_npc )->get_character()->magic->spells();
+        const Character *guy = require_character( d, is_npc, "level_spell_class" );
+        if( guy == nullptr ) {
+            return;
+        }
+        std::vector<spell_id> known_spells = guy->magic->spells();
         std::vector<spell_id> valid_spells ;
         if( spell_class.evaluate( d ) == "all" ) {
             valid_spells = known_spells;
@@ -5837,7 +5921,11 @@ talk_effect_fun_t::func f_forget_recipe( const JsonObject &jo, std::string_view 
     return [forgotten_recipe, forgotten_recipe_is_category, forgotten_recipe_subcategory,
                       is_npc]( dialogue const & d ) {
         if( forgotten_recipe_is_category ) {
-            const recipe_subset &known_recipes = d.actor( is_npc )->get_character()->get_learned_recipes();
+            const Character *guy = require_character( d, is_npc, "forget_recipe" );
+            if( guy == nullptr ) {
+                return;
+            }
+            const recipe_subset &known_recipes = guy->get_learned_recipes();
             const crafting_category_id category_to_use( forgotten_recipe.evaluate( d ) );
             const std::string subcategory_to_forget = !forgotten_recipe_subcategory ? "" :
                     forgotten_recipe_subcategory.value().evaluate( d );
@@ -6277,7 +6365,8 @@ talk_effect_fun_t::func f_open_dialogue( const JsonObject &jo, std::string_view 
         if( has_member ) {
             actual_topic = topic.evaluate( d );
         }
-        if( !d.actor( false )->get_character()->is_avatar() ) { //only open a dialog if the avatar is alpha
+        const Character *alpha = d.actor( false )->get_character();
+        if( alpha == nullptr || !alpha->is_avatar() ) { //only open a dialog if the avatar is alpha
             run_eoc_vector( false_eocs, d );
             return;
         } else if( !actual_topic.empty() ) {
@@ -6290,13 +6379,24 @@ talk_effect_fun_t::func f_open_dialogue( const JsonObject &jo, std::string_view 
     };
 }
 
-talk_effect_fun_t::func f_take_control( const JsonObject &jo, std::string_view,
+talk_effect_fun_t::func f_take_control( const JsonObject &jo, std::string_view member,
                                         std::string_view src )
 {
-    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
-    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    std::vector<effect_on_condition_id> true_eocs;
+    std::vector<effect_on_condition_id> false_eocs;
+    if( !member.empty() && jo.has_object( member ) ) {
+        // { "take_control": { "true_eocs": [ ... ], "false_eocs": [ ... ] } }
+        const JsonObject inner = jo.get_object( member );
+        true_eocs = load_eoc_vector( inner, "true_eocs", src );
+        false_eocs = load_eoc_vector( inner, "false_eocs", src );
+    } else {
+        // The plain "take_control" effect, with the lists beside it
+        true_eocs = load_eoc_vector( jo, "true_eocs", src );
+        false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    }
     return [true_eocs, false_eocs]( dialogue const & d ) {
-        if( !d.actor( false )->get_character()->is_avatar() ) { //only take control if the avatar is alpha
+        const Character *alpha = d.actor( false )->get_character();
+        if( alpha == nullptr || !alpha->is_avatar() ) { //only take control if the avatar is alpha
             run_eoc_vector( false_eocs, d );
             return;
         } else if( d.actor( true )->get_npc() != nullptr ) {
@@ -7068,9 +7168,18 @@ talk_effect_fun_t::func f_set_fault( const JsonObject &jo, std::string_view memb
     bool force = jo.get_bool( "force", false );
     bool msg = jo.get_bool( "message", true );
     return [fault_var, force, msg, is_npc]( dialogue const & d ) {
-        // the talker skips an item that is gone (used up earlier in the same EOC)
+        // an item used up earlier in the same EOC is skipped silently (MATH-B10); a talker that
+        // isn't an item at all is reported (EOC-B13)
+        if( const item_location *gone = d.actor( is_npc )->get_item(); gone != nullptr &&
+            gone->get_item() == nullptr ) {
+            return;
+        }
+        item_location *it = require_item( d, is_npc, "set_fault" );
+        if( it == nullptr ) {
+            return;
+        }
         const Character *holder = msg ? d.actor( is_npc )->get_character() : nullptr;
-        d.actor( is_npc )->set_fault( fault_id( fault_var.evaluate( d ) ), force, holder );
+        it->get_item()->set_fault( fault_id( fault_var.evaluate( d ) ), force, holder );
     };
 }
 
@@ -7081,8 +7190,18 @@ talk_effect_fun_t::func f_set_random_fault_of_type( const JsonObject &jo, std::s
     bool force = jo.get_bool( "force", false );
     bool msg = jo.get_bool( "message", true );
     return [fault_type_var, force, msg, is_npc]( dialogue const & d ) {
+        // an item used up earlier in the same EOC is skipped silently (MATH-B10); a talker that
+        // isn't an item at all is reported (EOC-B13)
+        if( const item_location *gone = d.actor( is_npc )->get_item(); gone != nullptr &&
+            gone->get_item() == nullptr ) {
+            return;
+        }
+        item_location *it = require_item( d, is_npc, "set_random_fault_of_type" );
+        if( it == nullptr ) {
+            return;
+        }
         const Character *holder = msg ? d.actor( is_npc )->get_character() : nullptr;
-        d.actor( is_npc )->set_random_fault_of_type( fault_type_var.evaluate( d ), force, holder );
+        it->get_item()->set_random_fault_of_type( fault_type_var.evaluate( d ), force, holder );
     };
 }
 
@@ -8800,7 +8919,10 @@ talk_effect_fun_t::func f_add_faction_trust( const JsonObject &jo, std::string_v
 {
     dbl_or_var dov = get_dbl_or_var( jo, member );
     return [dov]( dialogue & d ) {
-        d.actor( true )->get_faction()->trusts_u += dov.evaluate( d );
+        faction *fac = require_faction( d, true, "u_add_faction_trust" );
+        if( fac != nullptr ) {
+            fac->trusts_u += dov.evaluate( d );
+        }
     };
 }
 
@@ -9845,23 +9967,19 @@ talk_effect_fun_t::func f_pickup_items( const JsonObject &jo, std::string_view m
                                         std::string_view, bool is_npc )
 {
     var_info target_var = read_var_info( jo.get_object( member ) );
-    int extra_moves_per_item = 0;
-    units::volume max_volume = -1_ml;
-    units::mass max_mass = -1_gram;
-    if( jo.has_int( "extra_moves_per_item" ) ) {
-        extra_moves_per_item = jo.get_int( "extra_moves_per_item" );
-    }
-    if( jo.has_float( "max_volume" ) ) {
-        max_volume =  units::from_milliliter( jo.get_float( "max_volume" ) );
-    }
-    if( jo.has_float( "max_mass" ) ) {
-        max_mass = units::from_gram( jo.has_float( "max_mass" ) );
-    }
+    // A limit below 0 means none
+    const dbl_or_var extra_moves_per_item = get_dbl_or_var( jo, "extra_moves_per_item", false, 0 );
+    const dbl_or_var max_volume = get_dbl_or_var( jo, "max_volume", false, -1 );
+    const dbl_or_var max_mass = get_dbl_or_var( jo, "max_mass", false, -1 );
     return [is_npc, target_var, extra_moves_per_item, max_volume, max_mass]( dialogue const & d ) {
         tripoint_abs_ms target_pos_abs = read_var_value( target_var, d ).tripoint();
         tripoint_bub_ms target_pos = get_map().get_bub( target_pos_abs );
         Character *c = d.actor( is_npc )->get_character();
-        Pickup::pick_info info = Pickup::pick_info( extra_moves_per_item, max_volume, max_mass );
+        const int volume_ml = max_volume.evaluate( d );
+        const std::int64_t mass_g = max_mass.evaluate( d );
+        Pickup::pick_info info = Pickup::pick_info( extra_moves_per_item.evaluate( d ),
+                                 volume_ml < 0 ? -1_ml : units::from_milliliter( volume_ml ),
+                                 mass_g < 0 ? -1_gram : units::from_gram( mass_g ) );
         if( c ) {
             ( *c ).pick_up( game_menus::inv::pickup( {target_pos}, {}, info ) );
         }
@@ -10821,7 +10939,9 @@ bool json_talk_response::gen_responses( dialogue &d, bool switch_done )
                 // Default is TALK_NONE otherwise go to the failure topic provided
                 tr.success.next_topic = talk_topic( failure_topic );
             }
-            d.add_gen_response( tr, false, !!condition, condition_result );
+            // With a failure topic it can be picked, and leads there; with only an explanation
+            // it is shown but can't be picked
+            d.add_gen_response( tr, false, failure_topic.empty() && !!condition, condition_result );
         }
     }
     return false;
@@ -10836,7 +10956,7 @@ bool json_talk_response::gen_repeat_response( dialogue &d, const itype_id &item_
             talk_response result = actual_response;
             result.success.next_topic.item_type = item_id;
             result.failure.next_topic.item_type = item_id;
-            d.add_gen_response( result, !!condition, true, true );
+            d.add_gen_response( result, true, !!condition, true );
             return is_switch && !is_default;
         }
     }

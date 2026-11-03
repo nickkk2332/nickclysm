@@ -269,10 +269,7 @@ void dialogue_imgui::draw_dialogue_imgui( bool is_computer, bool is_not_conversa
         conversation->actor( true )->update_missions( conversation->missions_assigned );
         const talk_topic next = conversation->opt_imgui( p_impl, conversation->topic_stack.back(), ctxt );
         if( next.id == "TALK_NONE" ) {
-            int cat = topic_category( conversation->topic_stack.back() );
-            do {
-                conversation->topic_stack.pop_back();
-            } while( cat != -1 && topic_category( conversation->topic_stack.back() ) == cat );
+            go_back_from_topic( conversation->topic_stack );
         }
         if( next.id == "TALK_DONE" || conversation->topic_stack.empty() ) {
             conversation->actor( true )->say(
@@ -282,6 +279,17 @@ void dialogue_imgui::draw_dialogue_imgui( bool is_computer, bool is_not_conversa
             conversation->add_topic( next );
         }
     }
+}
+
+void go_back_from_topic( std::vector<talk_topic> &topic_stack )
+{
+    if( topic_stack.size() <= 1 ) {
+        return;
+    }
+    const int cat = topic_category( topic_stack.back() );
+    do {
+        topic_stack.pop_back();
+    } while( cat != -1 && topic_stack.size() > 1 && topic_category( topic_stack.back() ) == cat );
 }
 
 void dialogue_imgui_impl::draw_dialogue_sidebar() const

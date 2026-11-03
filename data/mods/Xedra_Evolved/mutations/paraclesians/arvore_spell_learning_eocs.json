@@ -81,7 +81,7 @@
   {
     "type": "effect_on_condition",
     "id": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR",
-    "//": "This is a separate EoC to allow looping through until it finds a spell the Arvore knows. Probability is [11-Difficulty]",
+    "//": "Picks a spell to improve, weighted by [11-Difficulty].  A spell the character doesn't know, or that is at its cap, weighs 0, so only a spell that can improve is picked, and nothing happens when none can.",
     "condition": {
       "or": [
         { "math": [ "u_spell_level('arvore_nurture_the_green') < 15" ] },
@@ -113,31 +113,174 @@
     },
     "effect": {
       "weighted_list_eocs": [
-        [ "EOC_LEVELER_ARVORE_NURTURING_THE_GREEN", 9 ],
-        [ "EOC_LEVELER_ARVORE_NURTURING_THE_GREEN_AOE", 2 ],
-        [ "EOC_LEVELER_ARVORE_SUMMON_WOOD_WALL", 5 ],
-        [ "EOC_LEVELER_ARVORE_COMMUNE_WITH_NATURE", 7 ],
-        [ "EOC_LEVELER_ARVORE_SUMMON_BRIARS", 6 ],
-        [ "EOC_LEVELER_ARVORE_FOREST_TELEPORT", 7 ],
-        [ "EOC_LEVELER_ARVORE_CAUSE_DECAY", 2 ],
-        [ "EOC_LEVELER_ARVORE_SUMMON_PRESERVATION_CONTAINER", 7 ],
-        [ "EOC_LEVELER_ARVORE_SUMMON_FLORAL_BOAT", 4 ],
-        [ "EOC_LEVELER_ARVORE_SUMMON_WOOD_SPIRIT", 8 ],
-        [ "EOC_LEVELER_ARVORE_TERRAIN_BASH_SPELL", 4 ],
-        [ "EOC_LEVELER_ARVORE_FOREST_TRANSLOCATION", 2 ],
-        [ "EOC_LEVELER_ARVORE_TURN_INTO_TREE", 3 ],
-        [ "EOC_LEVELER_ARVORE_VERDANT_INFUSION", 6 ],
-        [ "EOC_LEVELER_ARVORE_SUMMON_GRASS_FIELD_SPELL", 10 ],
-        [ "EOC_LEVELER_ARVORE_ROOTS_SPELL", 8 ],
-        [ "EOC_LEVELER_ARVORE_CLIMBING_VINE_SPELL", 8 ],
-        [ "EOC_LEVELER_ARVORE_LIVING_TENT_SPELL", 6 ],
-        [ "EOC_LEVELER_ARVORE_ANTI_PLANT_SPELL", 7 ],
-        [ "EOC_LEVELER_ARVORE_DAMAGE_ZOMBIES_HEAL_LIVING", 1 ],
-        [ "EOC_LEVELER_ARVORE_TREE_TRANSFORM", 1 ],
-        [ "EOC_LEVELER_ARVORE_TREE_SINGING_SPELL", 5 ],
-        [ "EOC_LEVELER_ARVORE_CULTIVATE_GOBLIN_FRUIT", 3 ],
-        [ "EOC_LEVELER_ARVORE_WIND_BLOWS_WILLOW_BENDS", 6 ],
-        [ "EOC_LEVELER_ARVORE_MAKE_GOSSAMER", 4 ]
+        [
+          "EOC_LEVELER_ARVORE_NURTURING_THE_GREEN",
+          {
+            "math": [ "( u_spell_level('arvore_nurture_the_green') >= 0 ) * ( u_spell_level('arvore_nurture_the_green') < 15 ) * 9" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_NURTURING_THE_GREEN_AOE",
+          {
+            "math": [
+              "( u_spell_level('arvore_nurture_the_green_aoe') >= 0 ) * ( u_spell_level('arvore_nurture_the_green_aoe') < 15 ) * 2"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_SUMMON_WOOD_WALL",
+          {
+            "math": [ "( u_spell_level('arvore_growing_wood_walls') >= 0 ) * ( u_spell_level('arvore_growing_wood_walls') < 15 ) * 5" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_COMMUNE_WITH_NATURE",
+          {
+            "math": [ "( u_spell_level('arvore_commune_with_nature') >= 0 ) * ( u_spell_level('arvore_commune_with_nature') < 15 ) * 7" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_SUMMON_BRIARS",
+          {
+            "math": [ "( u_spell_level('arvore_summon_briars') >= 0 ) * ( u_spell_level('arvore_summon_briars') < 15 ) * 6" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_FOREST_TELEPORT",
+          {
+            "math": [ "( u_spell_level('arvore_traverse_the_wilds') >= 0 ) * ( u_spell_level('arvore_traverse_the_wilds') < 15 ) * 7" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_CAUSE_DECAY",
+          {
+            "math": [ "( u_spell_level('arvore_cause_decay') >= 0 ) * ( u_spell_level('arvore_cause_decay') < 15 ) * 2" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_SUMMON_PRESERVATION_CONTAINER",
+          {
+            "math": [
+              "( u_spell_level('arvore_summon_preservation_container') >= 0 ) * ( u_spell_level('arvore_summon_preservation_container') < 15 ) * 7"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_SUMMON_FLORAL_BOAT",
+          {
+            "math": [ "( u_spell_level('arvore_summon_floral_boat') >= 0 ) * ( u_spell_level('arvore_summon_floral_boat') < 15 ) * 4" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_SUMMON_WOOD_SPIRIT",
+          {
+            "math": [ "( u_spell_level('arvore_summon_wood_spirit') >= 0 ) * ( u_spell_level('arvore_summon_wood_spirit') < 35 ) * 8" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_TERRAIN_BASH_SPELL",
+          {
+            "math": [
+              "( u_spell_level('arvore_roots_crack_the_foundation') >= 0 ) * ( u_spell_level('arvore_roots_crack_the_foundation') < 15 ) * 4"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_FOREST_TRANSLOCATION",
+          {
+            "math": [ "( u_spell_level('arvore_forest_translocate') >= 0 ) * ( u_spell_level('arvore_forest_translocate') < 15 ) * 2" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_TURN_INTO_TREE",
+          {
+            "math": [ "( u_spell_level('arvore_overgrowth_spell') >= 0 ) * ( u_spell_level('arvore_overgrowth_spell') < 15 ) * 3" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_VERDANT_INFUSION",
+          {
+            "math": [ "( u_spell_level('arvore_verdant_infusion') >= 0 ) * ( u_spell_level('arvore_verdant_infusion') < 15 ) * 6" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_SUMMON_GRASS_FIELD_SPELL",
+          {
+            "math": [
+              "( u_spell_level('arvore_summon_grass_field_spell') >= 0 ) * ( u_spell_level('arvore_summon_grass_field_spell') < 15 ) * 10"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_ROOTS_SPELL",
+          {
+            "math": [ "( u_spell_level('arvore_roots_spell') >= 0 ) * ( u_spell_level('arvore_roots_spell') < 15 ) * 8" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_CLIMBING_VINE_SPELL",
+          {
+            "math": [ "( u_spell_level('arvore_climbing_vine_spell') >= 0 ) * ( u_spell_level('arvore_climbing_vine_spell') < 15 ) * 8" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_LIVING_TENT_SPELL",
+          {
+            "math": [
+              "( u_spell_level('arvore_create_living_tent_spell') >= 0 ) * ( u_spell_level('arvore_create_living_tent_spell') < 15 ) * 6"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_ANTI_PLANT_SPELL",
+          {
+            "math": [ "( u_spell_level('arvore_anti_plant_spell') >= 0 ) * ( u_spell_level('arvore_anti_plant_spell') < 15 ) * 7" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_DAMAGE_ZOMBIES_HEAL_LIVING",
+          {
+            "math": [
+              "( u_spell_level('arvore_damage_zombies_heal_living') >= 0 ) * ( u_spell_level('arvore_damage_zombies_heal_living') < 15 ) * 1"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_TREE_TRANSFORM",
+          {
+            "math": [ "( u_spell_level('arvore_turn_into_tree') >= 0 ) * ( u_spell_level('arvore_turn_into_tree') < 15 ) * 1" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_TREE_SINGING_SPELL",
+          {
+            "math": [ "( u_spell_level('arvore_tree_singing_spell') >= 0 ) * ( u_spell_level('arvore_tree_singing_spell') < 15 ) * 5" ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_CULTIVATE_GOBLIN_FRUIT",
+          {
+            "math": [
+              "( u_spell_level('arvore_cultivate_goblin_fruit') >= 0 ) * ( u_spell_level('arvore_cultivate_goblin_fruit') < 15 ) * 3"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_WIND_BLOWS_WILLOW_BENDS",
+          {
+            "math": [
+              "( u_spell_level('paraclesian_spell_dodge_bonus_arvore') >= 0 ) * ( u_spell_level('paraclesian_spell_dodge_bonus_arvore') < 15 ) * 6"
+            ]
+          }
+        ],
+        [
+          "EOC_LEVELER_ARVORE_MAKE_GOSSAMER",
+          {
+            "math": [
+              "( u_spell_level('paraclesian_spell_make_gossamer') >= 0 ) * ( u_spell_level('paraclesian_spell_make_gossamer') < 8 ) * 4"
+            ]
+          }
+        ]
       ]
     }
   },
@@ -153,8 +296,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_nurture_the_green') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -168,8 +310,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_nurture_the_green_aoe') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -183,8 +324,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_growing_wood_walls') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -198,8 +338,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_commune_with_nature') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -213,8 +352,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_summon_briars') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -228,8 +366,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_traverse_the_wilds') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -243,8 +380,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_cause_decay') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -258,8 +394,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_summon_preservation_container') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -273,8 +408,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_summon_floral_boat') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -288,8 +422,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_summon_wood_spirit') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -303,8 +436,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_roots_crack_the_foundation') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -318,8 +450,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_forest_translocate') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -333,8 +464,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_overgrowth_spell') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -348,8 +478,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_verdant_infusion') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -363,8 +492,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_summon_grass_field_spell') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -378,8 +506,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_roots_spell') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -393,8 +520,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_climbing_vine_spell') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -408,8 +534,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_create_living_tent_spell') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -423,8 +548,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_anti_plant_spell') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -438,8 +562,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_damage_zombies_heal_living') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -453,8 +576,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_turn_into_tree') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -468,8 +590,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_tree_singing_spell') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -483,8 +604,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('arvore_cultivate_goblin_fruit') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -498,8 +618,7 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('paraclesian_spell_dodge_bonus_arvore') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   },
   {
     "type": "effect_on_condition",
@@ -513,7 +632,6 @@
     "effect": [
       { "run_eocs": "EOC_ARVORE_SUCCESSFUL_LEVELER_MESSAGE" },
       { "math": [ "u_spell_exp('paraclesian_spell_make_gossamer') += paraclesian_passive_spell_exp(1)" ] }
-    ],
-    "false_effect": [ { "run_eocs": "EOC_ARVORE_SPELL_EXPERIENCE_INCREASER_SELECTOR" } ]
+    ]
   }
 ]

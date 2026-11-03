@@ -395,7 +395,7 @@ return true if alpha talker is character (avatar or NPC)
 - type: string or [variable object](#variable-object)
 - return true if alpha talker stands on specific overmap tile;
 - `FACTION_CAMP_ANY` can be used, that return true if alpha or beta talker stand on faction camp tile;
-- `FACTION_CAMP_START` can be used, that return true if alpha or beta talker stand on tile, that can be turned into faction camp
+- `FACTION_CAMP_START` can be used, that return true if alpha or beta talker stand on tile, that can be turned into faction camp; where that depends on how the tile's overmap special was generated (such as an evac shelter's layout), the tile only counts once the special has been generated
 
 #### Valid talkers:
 
@@ -2288,7 +2288,7 @@ True for a rock in a canvas sack that is itself in a backpack
 
 ### `test_eoc`
 - type: string or [variable object](#variable-object)
-- return true if the provided eoc's condition returns true
+- return true if the provided eoc's condition returns true; an eoc without a condition counts as true
 
 #### Valid talkers:
 
@@ -2554,7 +2554,7 @@ Opens a dialogue with computer; computer has defined `"chat_topics": [ "COMP_REF
 ```
 
 #### `take_control`
-If beta talker is NPC, take control of it
+If beta talker is NPC, take control of it. Queued EoCs belong to the body: when a queued EoC takes control, the queued EoCs still due in that turn stay with your old body and run on its turn.
 
 
 | Syntax | Optionality | Value  | Info |
@@ -2738,12 +2738,14 @@ NPC can offer missions `MISSION_A`, `B` and `C` now
 #### `run_eocs`
 Runs another EoC. It can be a separate EoC, or an inline EoC inside `run_eocs` effect
 
+EoCs can run each other up to 250 deep, counting every EoC that runs inside another, however it was started (`run_eocs`, `true_eocs`/`false_eocs`, events, spells...). A deeper chain is taken for an endless loop: it is stopped, with an error naming the EoC, back to where that EoC first ran; whatever ran it goes on. Loops made with `iterations` or `condition` don't add to the depth, so repeat something with those rather than with an EoC that runs itself again.
+
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "run_eocs" | **mandatory** | string (eoc id or inline eoc) or [variable object](#variable-object)) or array of eocs | EoC or EoCs that would be run |
 | "iterations" | optional | int or [variable object](#variable-object)) | if used, all eocs in run_eocs would be repeated this amount of times. Eocs are repeated in order; having `"run_eocs": [ "A", "B" ], "repeat": 3` would look like `A, B, A, B, A, B`. Default 1 |
 | "condition" | optional | int or [variable object](#variable-object)) | if used, eoc would be run as long as this condition will return true. if "condition" is used, "iterations" can be used to limit amount of runs to specific amount (default is 100 runs until terminated) |
-| "time_in_future" | optional | int, duration, [variable object](#variable-object) or value between two | if used, EoC would be activated this amount of time in future; default 0, meaning it would run instantly. If eoc is global, the avatar will be u and npc will be invalid. If eoc is not global, it will be queued for the current alpha if they are a character (avatar or npc) and not be queued otherwise. Doesn't work with "condition" and "iterations" |
+| "time_in_future" | optional | int, duration, [variable object](#variable-object) or value between two | if used, EoC would be activated this amount of time in future; default 0, meaning it would run instantly. An EoC queued while the queue is being worked through (by another queued EoC, or by itself) and due at once waits for the next turn's pass. If eoc is global, the avatar will be u and npc will be invalid. If eoc is not global, it will be queued for the current alpha if they are a character (avatar or npc) and not be queued otherwise. Doesn't work with "condition" and "iterations" |
 | "randomize_time_in_future" | optional | bool | used with time_in_future; if false, entire eoc array would run at the exact same moment; if true, each eoc in array would pick it's own time again and again |
 | "alpha_loc","beta_loc" | optional | [variable object](#variable-object) | Allows to swap talker by defining `u_location_variable`, where the EoC should be run. Set the alpha/beta talker to the creature at the location. |
 | "alpha_talker","beta_talker" | optional (If you use both "alpha_loc" and "alpha_talker", "alpha_talker" will be ignored, same for beta.) | string, [variable object](#variable-object) | Set alpha/beta talker. This can be either a `character_id` (you can get from [EOC event](#event-eocs) or result of [u_set_talker](#u_set_talkernpc_set_talker) ), or some hard-coded values: <br> `""`: null talker <br> `"u"/"npc": the alpha/beta talker of the EOC`(Should be Avatar/Character/NPC/Monster) <br> `"avatar"`: your avatar|
@@ -3176,8 +3178,8 @@ Opens a menu that allow to pick items from any point directly into the inventory
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_pickup_items" / "npc_pickup_items" | **mandatory** | [variable object](#variable-object) | location variable of the center of pickup |
-| "max_mass" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max weight of a single item you try to pick up, in grams |
-| "max_volume" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max volume of a single item you try to pick up, in milliliters |
+| "max_mass" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max total weight of the items picked up this way, in grams; picking up stops at the first item that would go over it |
+| "max_volume" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max total volume of the items picked up this way, in milliliters; picking up stops at the first item that would go over it |
 | "extra_moves_per_item" | optional | int or [variable object](#variable-object) | additional time penalty for picking up items via this effect, in moves. Multiplied by the distance between the character that picks up and the item |
 
 ##### Valid talkers:
@@ -3969,8 +3971,8 @@ Allow to select the bodypart and store it in variable
 | "u_pick_bodypart", "npc_pick_bodypart" | **mandatory** | [variable object](#variable-object) | variable where the bodypart will be stored |
 | "whitelist_flag" | optional | string or [variable object](#variable-object) | If used, only bodyparts that has this flag will be allowed |
 | "blacklist_flag" | optional | string or [variable object](#variable-object) | If used, bodyparts that has this flag are excluded |
-| "whitelist_type" | optional | array of strings or [variable objects](#variable-object) | If used, only bodyparts of this type will be allowed |
-| "blacklist_type" | optional | array of strings or [variable objects](#variable-object) | If used, bodyparts of this type are excluded |
+| "whitelist_type" | optional | array of strings or [variable objects](#variable-object) | If used, only bodyparts of one of these types will be allowed |
+| "blacklist_type" | optional | array of strings or [variable objects](#variable-object) | If used, bodyparts of any of these types are excluded |
 | "wounded" | optional | bool | default unset; if true, only bodyparts that have wounds are allowed; if false, such bodyparts are excluded |
 | "pick_random" | optional | bool | default false; if true, or if talker is not an avatar, no selector will appear, and a random bodypart out of the possible will be assigned; if false, the list will appear, allowing to pick the limb manually |
 | "allow_cancel" | optional | bool | allows the menu to be cancelled |

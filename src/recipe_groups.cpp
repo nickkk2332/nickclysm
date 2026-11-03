@@ -153,6 +153,11 @@ std::map<recipe_id, translation> recipe_group::get_recipes_by_id( const std::str
                 all_rec.emplace( recp );
                 break;
             }
+            if( maybe_args && !maybe_args->has_value() ) {
+                // The special's arguments are decided when it is first generated; until then a
+                // recipe that needs them doesn't match
+                continue;
+            }
             if( !!maybe_args ) {
                 bool parameters_matched = true;
                 for( const auto &key_value_set_pair : om_terrain.parameters ) {

@@ -12,6 +12,13 @@
 #include "panels.h"
 #include "translations.h"
 
+/**
+ * Goes back from the topic on top of @p topic_stack, as a TALK_NONE response does: the topic goes,
+ * with the topics of its category under it.  The topic the conversation started with stays, so a
+ * TALK_NONE response there shows that topic again instead of ending the conversation.
+ */
+void go_back_from_topic( std::vector<talk_topic> &topic_stack );
+
 class dialogue_imgui
 {
         friend class dialogue_imgui_impl;

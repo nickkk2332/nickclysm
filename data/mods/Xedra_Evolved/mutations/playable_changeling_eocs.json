@@ -847,8 +847,25 @@
   {
     "type": "effect_on_condition",
     "id": "EOC_BROWNIE_INDOOR_BLINK",
+    "//": "Tries up to 100 spots for one indoors.  In a small building surrounded by open ground there may be none.",
     "condition": { "not": "u_is_outside" },
     "effect": [
+      { "math": [ "u_brownie_blink_retry = 1" ] },
+      {
+        "run_eocs": "EOC_BROWNIE_INDOOR_BLINK_TRY",
+        "iterations": 100,
+        "condition": { "math": [ "u_brownie_blink_retry == 1" ] }
+      },
+      { "u_lose_var": "brownie_blink_retry" }
+    ],
+    "false_effect": { "u_message": "You must be indoors to slip through the cracks.", "type": "bad" }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_BROWNIE_INDOOR_BLINK_TRY",
+    "//": "One try: a passable spot 5 to 10 tiles away; if it is outdoors, try again.",
+    "effect": [
+      { "math": [ "u_brownie_blink_retry = 0" ] },
       {
         "u_location_variable": { "context_val": "brownie_teleport" },
         "passable_only": true,
@@ -862,12 +879,11 @@
               { "u_teleport": { "context_val": "brownie_teleport" } },
               { "u_message": "You carefully slip through the cracks.", "type": "good" }
             ],
-            "false_effect": [ { "run_eocs": "EOC_BROWNIE_INDOOR_BLINK" } ]
+            "false_effect": [ { "math": [ "u_brownie_blink_retry = 1" ] } ]
           }
         ]
       }
-    ],
-    "false_effect": { "u_message": "You must be indoors to slip through the cracks.", "type": "bad" }
+    ]
   },
   {
     "type": "effect_on_condition",
