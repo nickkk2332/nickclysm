@@ -170,6 +170,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "npc_attitude_cause.h"
+#include "npc_follower_list.h"
 #include "npctrade.h"
 #include "omdata.h"
 #include "options.h"
@@ -1799,6 +1800,16 @@ static std::optional<std::string> follower_change_name( const character_id &id )
     return guy->name;
 }
 
+void add_npc_follower_quietly( const character_id &id )
+{
+    get_avatar().follower_ids.insert( id );
+}
+
+void remove_npc_follower_quietly( const character_id &id )
+{
+    get_avatar().follower_ids.erase( id );
+}
+
 void game::add_npc_follower( const character_id &id )
 {
     if( u.follower_ids.insert( id ).second ) {
@@ -1867,21 +1878,22 @@ void game::validate_npc_followers()
     const std::vector<npc *> visible_followers = get_npcs_if( [&]( const npc & guy ) {
         return guy.is_player_ally();
     } );
+    // putting the list back together recruits no one: no npc_recruited
     for( npc *guy : visible_followers ) {
         update_faction_api( guy );
-        add_npc_follower( guy->getID() );
+        add_npc_follower_quietly( guy->getID() );
     }
     // Make sure overmapbuffered NPC followers are in the list.
     for( const auto &temp_guy : overmap_buffer.get_npcs_near_player( 300 ) ) {
         npc *guy = temp_guy.get();
         if( guy->is_player_ally() ) {
             update_faction_api( guy );
-            add_npc_follower( guy->getID() );
+            add_npc_follower_quietly( guy->getID() );
         }
     }
     // Make sure that serialized player followers sync up with game list
     for( const character_id &temp_id : u.follower_ids ) {
-        add_npc_follower( temp_id );
+        add_npc_follower_quietly( temp_id );
     }
 }
 

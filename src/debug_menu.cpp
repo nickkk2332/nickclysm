@@ -3737,11 +3737,12 @@ static void import_folower()
     try {
         shared_ptr_fast<npc> temp = make_shared_fast<npc>();
         temp->import_and_clean( npc_files[filemenu.ret] );
-        g->add_npc_follower( temp->getID() );
         temp->set_attitude( NPCATT_FOLLOW );
         temp->set_fac( faction_your_followers );
         temp->spawn_at_precise( get_avatar().pos_abs() + point( -4, -4 ) );
         overmap_buffer.insert_npc( temp );
+        // once it's in the overmap buffer, so npc_recruited has its name
+        g->add_npc_follower( temp->getID() );
         g->load_npcs();
     } catch( const std::exception &err ) {
         debugmsg( _( "Failed to read NPC: %s" ), err.what() );

@@ -114,6 +114,15 @@
   },
   {
     "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_GUARD_RECRUIT",
+    "//": "NPC AI hook tests: posts each recruit as a guard while the global test_ai_guard_recruits is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_recruited",
+    "condition": { "math": [ "test_ai_guard_recruits == 1" ] },
+    "effect": [ { "u_set_mission": "GUARD" } ]
+  },
+  {
+    "type": "effect_on_condition",
     "id": "EOC_TEST_AI_FLIP",
     "//": "NPC AI hook tests: while the global test_ai_flip is 1, changes the attitude again, whatever it became.",
     "eoc_type": "EVENT",

@@ -427,3 +427,31 @@ TEST_CASE( "memorial_notes_the_hostile_effect_alone", "[npc][npc_ai_hooks][memor
     CHECK( log.find( "became hostile." ) == log.rfind( "became hostile." ) );
 }
 
+// Recruiting finishes before npc_recruited goes out: what its EOCs do to the recruit stays.
+TEST_CASE( "npc_recruited_goes_out_once_recruited", "[npc][npc_ai_hooks][event][eoc]" )
+{
+    const ai_hooks_world world;
+    npc &guy = hooks_npc();
+    get_globals().set_global_value( "test_ai_guard_recruits", 1.0 );
+    talk_function::follow( guy );
+    get_globals().remove_global_value( "test_ai_guard_recruits" );
+    CHECK( guy.is_player_ally() );
+    CHECK( guy.mission == NPC_MISSION_GUARD_ALLY );
+    CHECK( guy.guard_pos == guy.pos_abs() );
+    guy.set_fac( faction_tacoma_commune );
+}
+
+// Putting the follower list back together recruits no one.
+TEST_CASE( "npc_follower_list_rebuilt_without_events", "[npc][npc_ai_hooks][event]" )
+{
+    const ai_hooks_world world;
+    npc &guy = hooks_npc();
+    guy.set_fac( faction_your_followers );
+    guy.set_attitude( NPCATT_FOLLOW );
+    REQUIRE( get_avatar().follower_ids.count( guy.getID() ) == 0 );
+    npc_event_recorder rec;
+    g->validate_npc_followers();
+    CHECK( get_avatar().follower_ids.count( guy.getID() ) == 1 );
+    CHECK( rec.of( event_type::npc_recruited ).empty() );
+    guy.set_fac( faction_tacoma_commune );
+}

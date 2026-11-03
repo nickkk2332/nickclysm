@@ -916,8 +916,6 @@ void talk_function::follow( npc &p )
 {
     p.set_attitude( NPCATT_FOLLOW );
     p.set_fac( faction_your_followers );
-    // npc_recruited goes out from here: its EOCs see the NPC recruited
-    g->add_npc_follower( p.getID() );
     p.set_mission( NPC_MISSION_NULL );
     errand::end_walk( p, errand::reason::cancelled );
     p.goal = npc::no_goal_point;
@@ -929,6 +927,8 @@ void talk_function::follow( npc &p )
     if( !p.custom_profession.empty() ) {
         p.custom_profession.clear();
     }
+    // last: npc_recruited goes out from here, and what its EOCs do to the recruit stays
+    g->add_npc_follower( p.getID() );
 }
 
 void talk_function::follow_only( npc &p )
