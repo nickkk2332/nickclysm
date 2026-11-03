@@ -4729,10 +4729,9 @@ std::optional<int> iuse::hotplate( Character *p, item *it, const tripoint_bub_ms
         return std::nullopt;
     }
 
-    if( heat_solid_items( p, it, p->pos_bub() ) ) {
-        return 1;
-    }
-    return std::nullopt;
+    // 0, as for the other heating actions: the heat activity uses the heater's charges when
+    // it finishes
+    return heat_solid_items( p, it, p->pos_bub() );
 }
 
 std::optional<int> iuse::hotplate_atomic( Character *p, item *it, const tripoint_bub_ms & )

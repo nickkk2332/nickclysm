@@ -36,6 +36,8 @@ static const itype_id itype_log( "log" );
 static const itype_id itype_saw( "saw" );
 static const itype_id itype_splinter( "splinter" );
 
+static const quality_id qual_HOTPLATE( "HOTPLATE" );
+
 namespace
 {
 
@@ -97,4 +99,23 @@ TEST_CASE( "use-b06_cutting_planks_keeps_the_log_until_the_cut_is_done", "[audit
         CHECK( count_on_tile( pos, itype_2x4 ) == 0 );
         CHECK( count_on_tile( pos, itype_splinter ) == 0 );
     }
+}
+
+// USE-B07 (data part): the HOTPLATE action heats with the item itself only if it has the
+// HOTPLATE quality.  The kerosene and soda can stoves had the action without the quality, so
+// they asked for a fire or another hotplate instead.
+// The code part (iuse::hotplate returned 1, so activation charged the heater on top of the
+// heat activity) needs the item selection menu, and is checked by reading.
+TEST_CASE( "use-b07_hotplate_action_items_have_the_hotplate_quality", "[audit][iuse]" )
+{
+    int checked = 0;
+    for( const itype *type : item_controller->all() ) {
+        if( type->get_use( "HOTPLATE" ) == nullptr ) {
+            continue;
+        }
+        CAPTURE( type->get_id().str() );
+        CHECK( item( type ).has_quality( qual_HOTPLATE ) );
+        ++checked;
+    }
+    CHECK( checked > 0 );
 }
