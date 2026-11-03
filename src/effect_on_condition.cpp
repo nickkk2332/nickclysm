@@ -263,6 +263,28 @@ static Character *character_with_id( const character_id &id )
     return g->find_npc( id );
 }
 
+// The character whose queue holds @p it now, looking first at the one that has @p id.
+static Character *character_holding( const queued_eocs::storage_iter &it, const character_id &id )
+{
+    std::vector<Character *> candidates;
+    if( Character *by_id = character_with_id( id ) ) {
+        candidates.push_back( by_id );
+    }
+    candidates.push_back( &get_avatar() );
+    for( npc &guy : g->all_npcs() ) {
+        candidates.push_back( &guy );
+    }
+    for( Character *candidate : candidates ) {
+        const std::list<queued_eoc> &list = candidate->queued_effect_on_conditions.list;
+        for( auto node = list.begin(); node != list.end(); ++node ) {
+            if( &*node == &*it ) {
+                return candidate;
+            }
+        }
+    }
+    return nullptr;
+}
+
 // @p owner is the character whose queue this is, if any.
 static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_condition_id> &eoc_vector,
                           dialogue &d, const Character *owner )
@@ -317,22 +339,37 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
         }
         bool activated = top.eoc->activate( nested_d );
         const bool moved = owner != nullptr && owner->getID() != owner_id;
+        // After a move, the entry is the other body's, and so is its next recurrence
+        std::optional<dialogue> moved_d;
+        std::optional<dialogue> moved_nested_d;
         if( moved ) {
-            Character *moved_to = character_with_id( owner_id );
+            Character *moved_to = character_holding( it, owner_id );
             if( moved_to == nullptr ) {
+                // The entries still due were taken off a priority queue that is now nowhere to
+                // be found, so there is no putting them back
+                debugmsg( "The queued EOCs of character %d moved to a body that can't be found while "
+                          "EOC %s ran; %d of them due this turn are lost.", owner_id.get_value(),
+                          top.eoc.str(), static_cast<int>( due.size() - i ) );
                 return;
             }
             queue = &moved_to->queued_effect_on_conditions;
             inactive = &moved_to->inactive_effect_on_condition_vector;
+            moved_d.emplace( get_talker_for( *moved_to ), nullptr, d.get_conditionals(), d.get_context() );
+            moved_nested_d.emplace( *moved_d );
+            for( const auto &val : top.context ) {
+                moved_nested_d->set_value( val.first, val.second );
+            }
         }
+        dialogue &owner_d = moved_d ? *moved_d : d;
+        dialogue &entry_d = moved_nested_d ? *moved_nested_d : nested_d;
         if( top.eoc->type == eoc_type::RECURRING ) {
             if( activated ) { // It worked so add it back
-                it->time = calendar::turn + next_recurrence( top.eoc, d );
+                it->time = calendar::turn + next_recurrence( top.eoc, owner_d );
                 eocs_to_queue.emplace_back( it );
             } else {
                 if( !top.eoc->check_deactivate(
-                        nested_d ) ) { // It failed but shouldn't be deactivated so add it back
-                    it->time = calendar::turn + next_recurrence( top.eoc, d );
+                        entry_d ) ) { // It failed but shouldn't be deactivated so add it back
+                    it->time = calendar::turn + next_recurrence( top.eoc, owner_d );
                     eocs_to_queue.emplace_back( it );
                 } else { // It failed and should be deactivated for now
                     inactive->push_back( top.eoc );
