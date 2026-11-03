@@ -33,6 +33,7 @@
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
+#include "line.h"
 #include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -42,6 +43,7 @@
 #include "mapgendata.h"
 #include "math_parser_diag_value.h"
 #include "monster.h"
+#include "mtype.h"
 #include "npc.h"
 #include "omdata.h"
 #include "overmap.h"
@@ -68,6 +70,7 @@ static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B15_RECURRING( "EOC_AUDIT_B15_RECURRING" );
 static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B15_TAKE_CONTROL( "EOC_AUDIT_B15_TAKE_CONTROL" );
+static const effect_on_condition_id effect_on_condition_EOC_HAUNTING_SPAWN( "EOC_HAUNTING_SPAWN" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
@@ -75,9 +78,14 @@ static const itype_id itype_test_backpack( "test_backpack" );
 static const itype_id itype_test_rock( "test_rock" );
 static const itype_id itype_test_sheet_metal_small( "test_sheet_metal_small" );
 
+static const mtype_id mon_XEDRA_officer( "mon_XEDRA_officer" );
+
 static const oter_str_id oter_field( "field" );
 
 static const overmap_special_id overmap_special_test_audit_b08_shelter( "test_audit_b08_shelter" );
+
+static const ter_str_id ter_t_rock( "t_rock" );
+static const ter_str_id ter_t_thconc_floor( "t_thconc_floor" );
 
 static talk_effect_t load_effect( const std::string &json )
 {
@@ -862,4 +870,93 @@ TEST_CASE( "eoc_take_control_object_form_reads_its_lists", "[audit][eoc]" )
     } );
     CHECK( messages.empty() );
     CHECK( global_number( "audit_b13_false_eocs" ) == 1 );
+}
+
+namespace
+{
+// Walls in every tile within @p radius of the avatar but its own, so nothing has room there
+void wall_in_avatar( int radius )
+{
+    map &here = get_map();
+    const tripoint_bub_ms centre = get_avatar().pos_bub();
+    for( const tripoint_bub_ms &p : here.points_in_radius( centre, radius ) ) {
+        if( p != centre ) {
+            here.ter_set( p, ter_t_rock );
+        }
+    }
+}
+
+// Roofs every tile within @p radius of the avatar, or only the avatar's own tile
+void roof_around_avatar( int radius )
+{
+    map &here = get_map();
+    const tripoint_bub_ms centre = get_avatar().pos_bub();
+    for( const tripoint_bub_ms &p : here.points_in_radius( centre, radius ) ) {
+        here.ter_set( p, ter_t_thconc_floor );
+    }
+    here.set_outside_cache_dirty( centre.z() );
+    here.build_outside_cache( centre.z() );
+}
+} // namespace
+
+// The officer of the Xedra haunting looked for a spawn spot by running itself again until one
+// worked; underground, where the haunting starts, most spots are solid rock.  It now tries up to
+// 100 spots.
+TEST_CASE( "eoc_haunting_spawn_gives_up_without_a_spot", "[audit][eoc]" )
+{
+    clear_map();
+    clear_avatar();
+    global_variables &globals = get_globals();
+    on_out_of_scope restore( [&globals]() {
+        globals.remove_global_value( "MERC_LOC" );
+        clear_creatures();
+        clear_map();
+        clear_avatar();
+    } );
+    const auto officers = []() {
+        int count = 0;
+        for( const monster &critter : g->all_monsters() ) {
+            count += critter.type->id == mon_XEDRA_officer ? 1 : 0;
+        }
+        return count;
+    };
+    SECTION( "nowhere to spawn: it stops quietly" ) {
+        wall_in_avatar( 50 );
+        CHECK( runs_quietly( effect_on_condition_EOC_HAUNTING_SPAWN ) );
+        CHECK( officers() == 0 );
+    }
+    SECTION( "room to spawn: the officer comes" ) {
+        CHECK( runs_quietly( effect_on_condition_EOC_HAUNTING_SPAWN ) );
+        CHECK( officers() == 1 );
+    }
+    CHECK_FALSE( get_avatar().maybe_get_value( "haunting_spawn_retry" ) );
+}
+
+// Xedra Evolved's brownie blink ran itself again whenever the spot it picked was outdoors, so in a
+// small building surrounded by open ground it never stopped.  It now tries up to 100 spots.  Needs
+// the mod: run with --mods=xedra_evolved "[xedra_evolved]".
+TEST_CASE( "eoc_brownie_blink_gives_up_without_an_indoor_spot", "[.][xedra_evolved]" )
+{
+    clear_map();
+    clear_avatar();
+    on_out_of_scope restore( []() {
+        clear_map();
+        clear_avatar();
+    } );
+    avatar &u = get_avatar();
+    const effect_on_condition_id blink( "EOC_BROWNIE_INDOOR_BLINK" );
+    const tripoint_bub_ms start = u.pos_bub();
+    SECTION( "indoors with only open ground around: it stays put" ) {
+        roof_around_avatar( 0 );
+        REQUIRE_FALSE( get_map().is_outside( start ) );
+        CHECK( runs_quietly( blink ) );
+        CHECK( u.pos_bub() == start );
+    }
+    SECTION( "indoors everywhere: it slips 5 to 10 tiles away" ) {
+        roof_around_avatar( 12 );
+        CHECK( runs_quietly( blink ) );
+        CHECK( rl_dist( u.pos_bub(), start ) >= 5 );
+        CHECK( square_dist( u.pos_bub(), start ) <= 10 );
+    }
+    CHECK_FALSE( u.maybe_get_value( "brownie_blink_retry" ) );
 }
