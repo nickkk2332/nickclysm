@@ -4,15 +4,24 @@
 #include "cata_catch.h"
 #include "cata_path.h"
 #include "cata_scope_helpers.h"
+#include "end_screen.h"
+#include "fault.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "json_loader.h"
 #include "mod_manager.h"
+#include "profession_group.h"
 #include "type_id.h"
 #include "worldfactory.h"
 
+static const end_screen_id
+end_screen_audit_data_b05_end_screen_child( "audit_data_b05_end_screen_child" );
+static const fault_group_id
+fault_group_audit_data_b05_fault_group_child( "audit_data_b05_fault_group_child" );
 static const mod_id MOD_INFORMATION_dda( "dda" );
 static const mod_id MOD_INFORMATION_test_data( "test_data" );
+static const profession_group_id
+profession_group_audit_data_b05_profession_group_child( "audit_data_b05_profession_group_child" );
 
 // DATA-B04: a mod_migration with "new_id" inserted the new id and then erased through the
 // old iterator, which then pointed at the new id: the renamed mod was dropped and the old
@@ -43,4 +52,15 @@ TEST_CASE( "data-b04_mod_migration_renames_the_mod_in_place", "[audit][mods]" )
         jv.read( saved );
     } ) );
     CHECK( saved == expected );
+}
+
+// DATA-B05: these types were never finalized, which is where an object whose copy-from
+// parent comes later is loaded: it was silently dropped.  In TEST_DATA each child comes
+// before its parent.
+TEST_CASE( "data-b05_copy_from_a_later_parent_loads", "[audit][mods]" )
+{
+    REQUIRE( profession_group_audit_data_b05_profession_group_child.is_valid() );
+    CHECK( profession_group_audit_data_b05_profession_group_child->get_professions().size() == 1 );
+    CHECK( end_screen_audit_data_b05_end_screen_child.is_valid() );
+    CHECK( fault_group_audit_data_b05_fault_group_child.is_valid() );
 }

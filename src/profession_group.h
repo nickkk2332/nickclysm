@@ -13,6 +13,8 @@ class JsonObject;
 struct profession_group {
 
         static void load_profession_group( const JsonObject &jo, const std::string &src );
+        static void reset();
+        static void finalize_all();
         void load( const JsonObject &jo, std::string_view );
         static const std::vector<profession_group> &get_all();
         static void check_profession_group_consistency();

@@ -92,6 +92,7 @@ void faults::reset()
 {
     fault_factory.reset();
     fault_fixes_factory.reset();
+    fault_group_factory.reset();
     faults_by_type.clear();
 }
 
@@ -99,6 +100,7 @@ void faults::finalize()
 {
     fault_factory.finalize();
     fault_fixes_factory.finalize();
+    fault_group_factory.finalize();
 
     for( const fault &f : fault_factory.get_all() ) {
         if( !f.type().empty() ) {

@@ -42,6 +42,16 @@ void end_screen::load_end_screen( const JsonObject &jo, const std::string &src )
     end_screen_factory.load( jo, src );
 }
 
+void end_screen::reset()
+{
+    end_screen_factory.reset();
+}
+
+void end_screen::finalize_all()
+{
+    end_screen_factory.finalize();
+}
+
 void end_screen::load( const JsonObject &jo, std::string_view )
 {
     mandatory( jo, was_loaded, "id", id );
