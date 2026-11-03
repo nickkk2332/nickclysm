@@ -177,10 +177,31 @@ void npc_decision_category::finalize_all()
     for( const auto &[id, goal] : npc_json_goals::registry().all() ) {
         goal_categories[id] = goal.category;
     }
+    // a built-in goal no list names may still have one from a node
+    for( const npc_goal_claim &claim : npc_json_goals::registry().claims() ) {
+        if( is_builtin_npc_goal( claim.goal ) && claim.category.is_valid() ) {
+            goal_categories.emplace( claim.goal, claim.category );
+        }
+    }
+    npc_json_goals::refresh_ranks();
 }
 
-// the categories' "goals" lists as claims
-static std::vector<npc_goal_claim> category_list_claims()
+std::optional<npc_decision_category_id> npc_decision_category::set_goal_category_for_test(
+    const std::string &goal, const std::optional<npc_decision_category_id> &cat )
+{
+    std::optional<npc_decision_category_id> was;
+    const auto it = goal_categories.find( goal );
+    if( it != goal_categories.end() ) {
+        was = it->second;
+        goal_categories.erase( it );
+    }
+    if( cat ) {
+        goal_categories.emplace( goal, *cat );
+    }
+    return was;
+}
+
+std::vector<npc_goal_claim> category_goal_claims()
 {
     std::vector<npc_goal_claim> claims;
     for( const npc_decision_category &cat : category_factory.get_all() ) {
@@ -191,9 +212,10 @@ static std::vector<npc_goal_claim> category_list_claims()
     return claims;
 }
 
-std::vector<std::string> check_goal_claims( const std::vector<npc_goal_claim> &node_claims )
+std::vector<std::string> check_goal_claims( const std::vector<npc_goal_claim> &list_claims,
+        const std::vector<npc_goal_claim> &node_claims )
 {
-    std::vector<npc_goal_claim> claims = category_list_claims();
+    std::vector<npc_goal_claim> claims = list_claims;
     claims.insert( claims.end(), node_claims.begin(), node_claims.end() );
     std::vector<std::string> errors;
     std::map<std::string, const npc_goal_claim *> first;
@@ -208,6 +230,13 @@ std::vector<std::string> check_goal_claims( const std::vector<npc_goal_claim> &n
             errors.push_back( string_format( "goal %s is given two categories: %s by %s and %s by %s",
                                              claim.goal, it->second->category.str(), it->second->source,
                                              claim.category.str(), claim.source ) );
+        }
+    }
+    // the C++ behind a built-in goal still runs it, but nothing would rank it
+    for( const std::string &goal : builtin_npc_goals() ) {
+        if( first.count( goal ) == 0 ) {
+            errors.push_back( string_format( "built-in goal %s has no npc_decision_category; list it in "
+                                             "one's \"goals\"", goal ) );
         }
     }
     return errors;
@@ -293,6 +322,12 @@ bool is_builtin_npc_goal( std::string_view goal )
 {
     const std::vector<std::string> &goals = builtin_npc_goals();
     return std::find( goals.begin(), goals.end(), goal ) != goals.end();
+}
+
+bool is_builtin_need_goal( std::string_view goal )
+{
+    return goal == "drink_water" || goal == "eat_food" || goal == "go_to_sleep" ||
+           goal == "start_fire" || goal == "regulate_temperature";
 }
 
 const char *category_name( const decision_category &cat )

@@ -26,6 +26,7 @@ struct npc_pursuit;
 namespace behavior
 {
 class node_t;
+class oracle_t;
 } // namespace behavior
 
 // why a JSON goal ended, passed to its end hooks as the context value "reason"
@@ -59,9 +60,12 @@ struct npc_goal_claim {
     std::string source;
 };
 
-// Errors in these claims together with the categories' "goals" lists: an unknown category, a
-// goal given two categories.
-std::vector<std::string> check_goal_claims( const std::vector<npc_goal_claim> &node_claims );
+// the loaded categories' "goals" lists, as claims
+std::vector<npc_goal_claim> category_goal_claims();
+// Errors in the categories' "goals" lists and the nodes' claims together: an unknown category, a
+// goal given two categories, a built-in goal given none.
+std::vector<std::string> check_goal_claims( const std::vector<npc_goal_claim> &list_claims,
+        const std::vector<npc_goal_claim> &node_claims );
 
 // The JSON goals of the loaded behavior nodes
 class npc_goal_registry
@@ -70,7 +74,9 @@ class npc_goal_registry
         // The "category" and an inline "goal" of behavior node `node`.  With a goal object it
         // registers the goal, sets goal_id to its id and returns true; with none (a plain goal
         // string, or no goal) it returns false and leaves goal_id alone.  Throws on a goal that
-        // takes a built-in goal's id, has no category, or another node defined already.
+        // takes a built-in goal's id, has no category, or another node defined already.  A node
+        // loaded again replaces what it defined only when it gives "goal" or "category" again:
+        // an override that changes only its conditions or score keeps its goal.
         bool load_node( const JsonObject &jo, const string_id<behavior::node_t> &node,
                         std::string_view src, std::string &goal_id );
         const npc_json_goal *find( std::string_view id ) const;
@@ -95,6 +101,11 @@ namespace npc_json_goals
 npc_goal_registry &registry();
 const npc_json_goal *find( std::string_view id );
 void reset();
+// the rank of the earliest category with a JSON goal, worked out after loading; INT_MAX for none
+int best_rank();
+void refresh_ranks();
+// for tests: puts `other` in place of the loaded goals (swap back to restore)
+void swap_registry_for_test( npc_goal_registry &other );
 } // namespace npc_json_goals
 
 // the tree npc::move() walks: npc_decision, or the one a test put in its place
@@ -150,7 +161,29 @@ struct npc_decision_report {
     std::string verdict;
 };
 
-// What JSON goals do to an NPC; a friend of npc
+// What the NPC's goal comes to this turn, worked out without acting on it: npc::move() acts
+// on it, and the decision debug view shows it.
+struct npc_goal_choice {
+    // what the tree picks, or a sleep it comes back to, and its score
+    std::string picked;
+    float picked_score = 0.0f;
+    // the goal the NPC was committed to, empty for none, and its score now
+    std::string committed;
+    float committed_score = 0.0f;
+    // the pick is a walk the committed JSON goal's EOCs sent the NPC on: the goal at work
+    bool own_walk = false;
+    // the committed goal is over: a built-in one by its own rule, a JSON one for json_end
+    bool completed = false;
+    std::string json_end;
+    // the pick takes over from a committed goal that isn't over, and why it does or doesn't
+    bool interrupted = false;
+    npc_interrupt_verdict verdict;
+    // the goal the NPC is on this turn, and its score
+    std::string goal;
+    float score = 0.0f;
+};
+
+// The NPC's goal decision and its JSON goals; a friend of npc
 class npc_goal_runtime
 {
     public:
@@ -190,6 +223,13 @@ class npc_goal_runtime
         static bool owns_walk( const npc &guy );
         // the goal's score now: its node's, or 0 when the node doesn't apply
         static float score( const npc &guy, const npc_json_goal &goal );
+        static float score( const npc_json_goal &goal, const behavior::oracle_t &oracle );
+        // its node's conditions hold
+        static bool node_applies( const npc_json_goal &goal, const behavior::oracle_t &oracle );
+        // What the goal comes to this turn: the tree's pick, the committed goal's end, a
+        // challenger taking over.  Changes nothing but the caches the walk fills; with an
+        // oracle that doesn't use them, nothing at all.  npc::move() calls sync() first.
+        static npc_goal_choice choose( npc &guy, const behavior::oracle_t &oracle );
         // A danger reaction of category `reaction` (a fight, a flight, a sound) is about to
         // take the NPC's move.  True when a JSON goal of a category at or above it keeps the
         // NPC instead: the one it's on, or one the tree picks now.  A JSON goal below it ends
@@ -202,6 +242,9 @@ class npc_goal_runtime
 
         // what the NPC decision debug view shows; changes nothing
         static npc_decision_report report( const npc &guy );
+
+        // how often holds_against() walked the tree, for tests
+        static int reaction_tree_walks;
 };
 
 #endif // CATA_SRC_NPC_JSON_GOAL_H

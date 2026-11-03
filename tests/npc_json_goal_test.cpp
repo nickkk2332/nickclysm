@@ -9,7 +9,9 @@
 #include "behavior.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_oracle.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature_tracker.h"
@@ -252,6 +254,8 @@ static npc &goal_npc()
     get_avatar().setpos( here, goal_origin + tripoint( -20, 0, 0 ) );
     npc &guy = spawn_npc( goal_origin.xy(), "test_talker" );
     clear_character( guy, true );
+    // npc_male in the hooks reads the empty npc talker; a female NPC would hide a wrong one
+    guy.male = true;
     guy.setpos( here, goal_origin );
     calm( guy );
     here.build_map_cache( 0 );
@@ -497,7 +501,7 @@ TEST_CASE( "npc_json_goal_until_timeout_and_end_hooks", "[npc][npc_goal]" )
     SECTION( "until" ) {
         goal_test_tree tree( "test_goal_until_tree" );
         adopt( guy, "test_goal_until" );
-        // the goal goes on alone, whatever the tree picks
+        // a goal with an until goes on while the tree picks something else
         goal_test_tree::use( "test_goal_idle_tree" );
         run_npc_turns( guy, 3 );
         CHECK( guy.get_committed_goal() == "test_goal_until" );
@@ -815,20 +819,92 @@ TEST_CASE( "npc_decision_report", "[npc][npc_goal]" )
     CHECK( global_number( "test_goal_starts" ) == 0 );
 }
 
-// a goal change is no statistic: nothing is kept in the save
-TEST_CASE( "npc_goal_changed_isnt_kept_for_statistics", "[npc][npc_goal][stats]" )
+// a goal that ends during its own walk doesn't start again at once (the walk counted as the
+// tree picking it)
+TEST_CASE( "npc_json_goal_ends_during_its_own_walk", "[npc][npc_goal][errand]" )
 {
     npc &guy = goal_npc();
-    goal_test_tree tree( "test_goal_until_tree" );
-    get_globals().set_global_value( "test_goal_listen", 1.0 );
-    const int before = get_stats().get_events( event_type::npc_goal_changed ).count();
-    adopt( guy, "test_goal_until" );
-    // the event went out
-    CHECK( global_string( "test_goal_changed_new" ) == "test_goal_until" );
-    CHECK( get_stats().get_events( event_type::npc_goal_changed ).count() == before );
-    CHECK( before == 0 );
-    CHECK_FALSE( stats_tracker::records( event_type::npc_goal_changed ) );
-    CHECK( stats_tracker::records( event_type::u_var_changed ) );
+    map &here = get_map();
+    const tripoint_abs_ms far = here.get_abs( goal_origin + tripoint( 15, 0, 0 ) );
+    const bool still_applies = GENERATE( false, true );
+    CAPTURE( still_applies );
+    SECTION( "until" ) {
+        goal_test_tree tree( "test_goal_walk_until_tree" );
+        get_globals().set_global_value( "test_goal_spot", far );
+        adopt( guy, "test_goal_walk_until" );
+        run_npc_turns( guy, 2 );
+        REQUIRE( npc_goal_runtime::owns_walk( guy ) );
+        REQUIRE( guy.json_goal->goal == "test_goal_walk_until" );
+        guy.set_value( "test_goal_off", still_applies ? 0.0 : 1.0 );
+        guy.set_value( "test_goal_finish", 1.0 );
+        run_npc_turn( guy );
+        CHECK( global_number( "test_goal_ends" ) == 1 );
+        CHECK( global_string( "test_goal_end_reason" ) == "done" );
+        // the walk went with it, and the goal didn't start again in that turn
+        CHECK_FALSE( guy.walk );
+        CHECK( global_number( "test_goal_starts" ) == 1 );
+        CHECK_FALSE( guy.json_goal->active() );
+        guy.set_value( "test_goal_finish", 0.0 );
+        run_npc_turn( guy );
+        // taken up again next turn only while its node applies
+        CHECK( global_number( "test_goal_starts" ) == ( still_applies ? 2 : 1 ) );
+    }
+    SECTION( "timeout" ) {
+        goal_test_tree tree( "test_goal_walk_timeout_tree" );
+        get_globals().set_global_value( "test_goal_spot", far );
+        adopt( guy, "test_goal_walk_timeout" );
+        const time_point started = guy.json_goal->started;
+        guy.set_value( "test_goal_off", still_applies ? 0.0 : 1.0 );
+        run_npc_turns( guy, 10, []( const npc & n ) {
+            return !n.json_goal->active();
+        } );
+        CHECK_FALSE( guy.json_goal->active() );
+        CHECK( calendar::turn - started == 6_turns );
+        CHECK( global_number( "test_goal_timeouts" ) == 1 );
+        CHECK( global_string( "test_goal_end_reason" ) == "timeout" );
+        CHECK( global_number( "test_goal_starts" ) == 1 );
+        CHECK_FALSE( guy.walk );
+        run_npc_turn( guy );
+        CHECK( global_number( "test_goal_starts" ) == ( still_applies ? 2 : 1 ) );
+    }
+}
+
+// a goal with neither until nor timeout lasts while its node applies
+TEST_CASE( "npc_json_goal_without_an_end_lasts_while_its_node_applies", "[npc][npc_goal]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_while_tree" );
+    adopt( guy, "test_goal_while" );
+    run_npc_turns( guy, 2 );
+    CHECK( guy.get_committed_goal() == "test_goal_while" );
+    CHECK( global_number( "test_goal_turns" ) == 3 );
+    guy.set_value( "test_goal_off", 1.0 );
+    run_npc_turn( guy );
+    CHECK_FALSE( guy.json_goal->active() );
+    CHECK( guy.get_committed_goal().empty() );
+    CHECK( global_number( "test_goal_interrupts" ) == 1 );
+    CHECK( global_string( "test_goal_end_reason" ) == "interrupted" );
+    CHECK( global_number( "test_goal_turns" ) == 3 );
+}
+
+// the NPC dies in the goal's on_interrupt: it doesn't take up the goal that interrupted it
+TEST_CASE( "npc_json_goal_hook_that_kills", "[npc][npc_goal]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_doomed_tree" );
+    adopt( guy, "test_goal_doomed" );
+    guy.wear_item( item( itype_backpack ), false );
+    item bottle( itype_bottle_plastic );
+    REQUIRE( bottle.put_in( item( itype_water_clean, calendar::turn, 2 ),
+                            pocket_type::CONTAINER ).success() );
+    REQUIRE( guy.i_add( bottle ) );
+    guy.set_thirst( 700 );
+    run_npc_turn( guy );
+    CHECK( guy.is_dead() );
+    CHECK( global_number( "test_goal_ends" ) == 1 );
+    CHECK( guy.get_committed_goal() != "drink_water" );
+    CHECK_FALSE( guy.activity );
+    clear_npcs();
 }
 
 // a JSON goal that keeps the NPC from a danger reaction keeps it from its side effects too
@@ -876,4 +952,182 @@ TEST_CASE( "npc_json_goal_held_reactions_change_nothing", "[npc][npc_goal]" )
         // investigating would have kept where it stood to come back to
         CHECK_FALSE( guy.get_ai_guard_pos() );
     }
+}
+
+// a JSON pick at or above a danger reaction holds it only when it would win this turn
+TEST_CASE( "npc_json_goal_reaction_held_only_by_a_winning_pick", "[npc][npc_goal]" )
+{
+    npc &guy = armed_follower();
+    goal_test_tree tree( "test_goal_wait_top_tree" );
+    guy.add_bionic( bio_power_storage );
+    guy.set_power_level( guy.get_max_power_level() );
+    guy.add_bionic( test_bio_npcj01_shield );
+    // drinking, in test_goal_top too: the goal's score (none) doesn't beat its thirst
+    const std::optional<npc_decision_category_id> was =
+        npc_decision_category::set_goal_category_for_test(
+            "drink_water", npc_decision_category_id( "test_goal_top" ) );
+    on_out_of_scope restore( [was]() {
+        npc_decision_category::set_goal_category_for_test( "drink_water", was );
+    } );
+    guy.wear_item( item( itype_backpack ), false );
+    item bottle( itype_bottle_plastic );
+    REQUIRE( bottle.put_in( item( itype_water_clean, calendar::turn, 2 ),
+                            pocket_type::CONTAINER ).success() );
+    REQUIRE( guy.i_add( bottle ) );
+    guy.set_thirst( 700 );
+    guy.set_committed_goal_for_test( "drink_water" );
+    map &here = get_map();
+    monster *zed = g->place_critter_at( mon_zombie, guy.pos_bub() + tripoint( 0, 3, 0 ) );
+    REQUIRE( zed != nullptr );
+    here.build_map_cache( 0 );
+    run_npc_turn( guy );
+    // the fight went ahead: it switched the combat CBM on
+    CHECK( guy.has_active_bionic( test_bio_npcj01_shield ) );
+    CHECK_FALSE( guy.json_goal->active() );
+    clear_creatures();
+}
+
+// the C++ rules of a built-in goal follow the goal, not its category
+TEST_CASE( "npc_builtin_goal_rules_follow_the_goal", "[npc][npc_goal]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_idle_tree" );
+    const std::optional<npc_decision_category_id> was =
+        npc_decision_category::set_goal_category_for_test(
+            "fight", npc_decision_category_id( "needs" ) );
+    on_out_of_scope restore( [was]() {
+        npc_decision_category::set_goal_category_for_test( "fight", was );
+    } );
+    REQUIRE( bt_goal_to_category( "fight" ) == decision_category::needs );
+    guy.set_committed_goal_for_test( "fight" );
+    // a fight lasts only while the tree picks it, in whatever category it is
+    const behavior::character_oracle_t oracle( &guy, false );
+    const npc_goal_choice choice = npc_goal_runtime::choose( guy, oracle );
+    CHECK( choice.committed == "fight" );
+    CHECK( choice.completed );
+    CHECK( choice.goal == "idle" );
+    guy.set_committed_goal_for_test( "" );
+}
+
+TEST_CASE( "npc_builtin_goal_without_a_category_is_a_load_error", "[npc][npc_goal]" )
+{
+    std::vector<npc_goal_claim> claims = category_goal_claims();
+    CHECK( check_goal_claims( claims, {} ).empty() );
+    // a mod's needs without copy-from and without its goals
+    claims.erase( std::remove_if( claims.begin(), claims.end(), []( const npc_goal_claim & c ) {
+        return c.category == npc_decision_category_id( "needs" );
+    } ), claims.end() );
+    const std::vector<std::string> errors = check_goal_claims( claims, {} );
+    CHECK( has_error( errors, "built-in goal drink_water has no npc_decision_category" ) );
+    CHECK( has_error( errors, "built-in goal start_fire has no npc_decision_category" ) );
+    // a node may give it one
+    const std::vector<npc_goal_claim> from_a_node = {
+        { "drink_water", npc_decision_category_id( "needs" ), "behavior x" }
+    };
+    CHECK_FALSE( has_error( check_goal_claims( claims, from_a_node ), "drink_water" ) );
+}
+
+// an override that changes a goal node's conditions or score keeps its goal
+TEST_CASE( "npc_json_goal_node_override_keeps_the_goal", "[npc][npc_goal]" )
+{
+    npc_goal_registry reg;
+    REQUIRE( load_goal_node( reg, "n1",
+                             R"({ "category": "needs", "goal": { "id": "test_load_kept", "timeout": "1 hour" } })" ) );
+    CHECK_FALSE( load_goal_node( reg, "n1",
+                                 R"({ "conditions": [ { "predicate": "npc_has_target" } ], "score": "npc_thirst_urgency" })" ) );
+    REQUIRE( reg.find( "test_load_kept" ) != nullptr );
+    CHECK( reg.find( "test_load_kept" )->timeout == 1_hours );
+    CHECK( reg.check().empty() );
+    // a plain goal string in its place replaces it
+    CHECK_FALSE( load_goal_node( reg, "n1", R"({ "goal": "follow_player" })" ) );
+    CHECK( reg.find( "test_load_kept" ) == nullptr );
+
+    // copy-from in the loaded data: the node keeps its goal, still registered
+    const npc_goal_registry saved = npc_json_goals::registry();
+    behavior::node_t node = behavior::node_t( string_id<behavior::node_t>( "test_goal_until" ).obj() );
+    node.was_loaded = true;
+    const JsonObject jo = json_loader::from_string(
+                              R"({ "conditions": [ { "predicate": "npc_has_target", "invert_result": true } ] })" );
+    node.load( jo, "test" );
+    CHECK( node.goal() == "test_goal_until" );
+    const npc_json_goal *kept = npc_json_goals::find( "test_goal_until" );
+    REQUIRE( kept != nullptr );
+    CHECK( kept->node == string_id<behavior::node_t>( "test_goal_until" ) );
+    npc_json_goals::registry() = saved;
+}
+
+// a goal change is no statistic: nothing is kept in the save
+TEST_CASE( "npc_goal_changed_isnt_kept_for_statistics", "[npc][npc_goal][stats]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_until_tree" );
+    get_globals().set_global_value( "test_goal_listen", 1.0 );
+    const int before = get_stats().get_events( event_type::npc_goal_changed ).count();
+    adopt( guy, "test_goal_until" );
+    // the event went out
+    CHECK( global_string( "test_goal_changed_new" ) == "test_goal_until" );
+    CHECK( get_stats().get_events( event_type::npc_goal_changed ).count() == before );
+    CHECK( before == 0 );
+    CHECK_FALSE( stats_tracker::records( event_type::npc_goal_changed ) );
+    CHECK( stats_tracker::records( event_type::u_var_changed ) );
+}
+
+// with no JSON goal loaded, a danger reaction never looks at the tree
+TEST_CASE( "npc_json_goal_reactions_skip_the_tree_without_goals", "[npc][npc_goal]" )
+{
+    npc &guy = armed_follower();
+    goal_test_tree tree( "test_goal_wait_top_tree" );
+    map &here = get_map();
+    monster *zed = g->place_critter_at( mon_zombie, guy.pos_bub() + tripoint( 0, 3, 0 ) );
+    REQUIRE( zed != nullptr );
+    here.build_map_cache( 0 );
+    {
+        npc_goal_registry none;
+        npc_json_goals::swap_registry_for_test( none );
+        on_out_of_scope restore( [&none]() {
+            npc_json_goals::swap_registry_for_test( none );
+        } );
+        REQUIRE( npc_json_goals::best_rank() > decision_category::combat.rank() );
+        const int walks = npc_goal_runtime::reaction_tree_walks;
+        run_npc_turn( guy );
+        CHECK( npc_goal_runtime::reaction_tree_walks == walks );
+        CHECK_FALSE( guy.json_goal->active() );
+    }
+    // with them, a goal before combat is looked for
+    REQUIRE( npc_json_goals::best_rank() <= decision_category::combat.rank() );
+    const int walks = npc_goal_runtime::reaction_tree_walks;
+    run_npc_turn( guy );
+    CHECK( npc_goal_runtime::reaction_tree_walks > walks );
+    CHECK( guy.get_committed_goal() == "test_goal_wait_top" );
+    clear_creatures();
+}
+
+TEST_CASE( "npc_json_goal_ends_on_reboot", "[npc][npc_goal]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_until_tree" );
+    adopt( guy, "test_goal_until" );
+    guy.reboot();
+    CHECK_FALSE( guy.json_goal->active() );
+    CHECK( guy.get_committed_goal().empty() );
+    CHECK( global_number( "test_goal_interrupts" ) == 1 );
+    CHECK( global_string( "test_goal_end_reason" ) == "interrupted" );
+}
+
+// turns the tree skips (a meal, a harvest) don't run the goal, but its timeout counts from its
+// start
+TEST_CASE( "npc_json_goal_timeout_counts_from_its_start", "[npc][npc_goal]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_timeout_tree" );
+    adopt( guy, "test_goal_timeout" );
+    goal_test_tree::use( "test_goal_idle_tree" );
+    const time_point started = guy.json_goal->started;
+    // ten turns in which nothing ran the goal
+    calendar::turn += 10_turns;
+    run_npc_turn( guy );
+    CHECK_FALSE( guy.json_goal->active() );
+    CHECK( global_string( "test_goal_end_reason" ) == "timeout" );
+    CHECK( global_number( "test_goal_end_turns" ) == 1 );
+    CHECK( calendar::turn - started == 12_turns );
 }

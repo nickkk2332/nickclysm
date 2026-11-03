@@ -178,6 +178,83 @@
     }
   },
   {
+    "type": "behavior",
+    "id": "test_goal_walk_until_tree",
+    "//": "NPC goal tests: a walk the NPC was sent on, and a goal that walks.",
+    "strategy": "utility",
+    "children": [ "npc_player_order", "test_goal_walk_until" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_walk_timeout_tree",
+    "strategy": "utility",
+    "children": [ "npc_player_order", "test_goal_walk_timeout" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_walk_until",
+    "//": "NPC goal tests: walks to the global location test_goal_spot and ends once u_test_goal_finish is 1.  Taken up while u_test_goal_off isn't 1.",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_test_goal_off != 1" ] } } ],
+    "category": "test_goal_late",
+    "goal": {
+      "id": "test_goal_walk_until",
+      "on_start": [ "EOC_TEST_GOAL_START", "EOC_TEST_GOAL_WALK" ],
+      "until": { "math": [ "u_test_goal_finish == 1" ] },
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ],
+      "on_timeout": [ "EOC_TEST_GOAL_TIMEOUT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_walk_timeout",
+    "//": "NPC goal tests: walks to test_goal_spot, for 5 turns at most.  Taken up while u_test_goal_off isn't 1.",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_test_goal_off != 1" ] } } ],
+    "category": "test_goal_late",
+    "goal": {
+      "id": "test_goal_walk_timeout",
+      "on_start": [ "EOC_TEST_GOAL_START", "EOC_TEST_GOAL_WALK" ],
+      "timeout": "5 turns",
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ],
+      "on_timeout": [ "EOC_TEST_GOAL_TIMEOUT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_while_tree",
+    "strategy": "fallback",
+    "children": [ "test_goal_while" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_while",
+    "//": "NPC goal tests: a goal with neither until nor timeout, which lasts while u_test_goal_off isn't 1.",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_test_goal_off != 1" ] } } ],
+    "category": "test_goal_late",
+    "goal": {
+      "id": "test_goal_while",
+      "on_start": [ "EOC_TEST_GOAL_START" ],
+      "on_turn": [ "EOC_TEST_GOAL_TURN" ],
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ],
+      "on_timeout": [ "EOC_TEST_GOAL_TIMEOUT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_doomed_tree",
+    "strategy": "utility",
+    "children": [ "npc_needs", "test_goal_doomed" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_doomed",
+    "//": "NPC goal tests: the NPC dies in this goal's on_interrupt.",
+    "category": "test_goal_late",
+    "goal": { "id": "test_goal_doomed", "on_interrupt": [ "EOC_TEST_GOAL_DIE" ], "on_end": [ "EOC_TEST_GOAL_END" ] }
+  },
+  {
     "type": "effect_on_condition",
     "id": "EOC_TEST_GOAL_START",
     "//": "NPC goal tests: an on_start hook.  Counts its runs and records the goal_id.",
@@ -269,5 +346,17 @@
       { "copy_var": { "context_val": "new_goal" }, "target_var": { "global_val": "test_goal_changed_new" } },
       { "set_string_var": "<u_name>", "target_var": { "global_val": "test_goal_changed_u" }, "parse_tags": true }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_WALK",
+    "//": "NPC goal tests: sends u to the global location test_goal_spot.",
+    "effect": [ { "u_walk_to": { "global_val": "test_goal_spot" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_DIE",
+    "//": "NPC goal tests: u dies.",
+    "effect": [ "u_die" ]
   }
 ]

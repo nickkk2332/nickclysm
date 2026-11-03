@@ -50,6 +50,9 @@ class npc_decision_category
         static const std::vector<npc_decision_category> &get_all();
         // every category, first to last
         static const std::vector<npc_decision_category_id> &order();
+        // for tests: puts a goal in another category, or in none; returns the one it had
+        static std::optional<npc_decision_category_id> set_goal_category_for_test(
+            const std::string &goal, const std::optional<npc_decision_category_id> &cat );
 };
 
 // One category's place in the order, as resolve_category_order() takes it
@@ -112,6 +115,10 @@ class decision_category
 // the goals with C++ behind them (npc::move() dispatches them); a JSON goal can't take their ids
 const std::vector<std::string> &builtin_npc_goals();
 bool is_builtin_npc_goal( std::string_view goal );
+// The built-in needs.  Two of them weigh their urgencies with margins against each other (see
+// judge_interrupt()), in whatever categories they are: the C++ rules of a built-in goal follow
+// the goal, its category only ranks it.
+bool is_builtin_need_goal( std::string_view goal );
 
 const char *category_name( const decision_category &cat );
 // the category of a goal: built-in ones from their category's "goals", JSON ones from their

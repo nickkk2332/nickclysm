@@ -1,11 +1,14 @@
 #include "npc_json_goal.h"
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <set>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 
+#include "avatar.h"
 #include "behavior.h"
 #include "calendar.h"
 #include "character_oracle.h"
@@ -18,6 +21,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "flexbuffer_json.h"
+#include "line.h"
 #include "global_vars.h"
 #include "math_parser_diag_value.h"
 #include "npc.h"
@@ -26,11 +30,18 @@
 #include "string_formatter.h"
 #include "talker.h"
 
+static const efftype_id effect_sleep( "sleep" );
+
+static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
+
 static const string_id<behavior::node_t> behavior_node_t_npc_decision( "npc_decision" );
+
+int npc_goal_runtime::reaction_tree_walks = 0;
 
 namespace
 {
 npc_goal_registry loaded_goals;
+int loaded_best_rank = std::numeric_limits<int>::max();
 std::optional<string_id<behavior::node_t>> test_tree_root;
 
 std::vector<effect_on_condition_id> load_hooks( const JsonObject &jo, std::string_view member,
@@ -113,8 +124,13 @@ const char *status_name( const behavior::status_t status )
 bool npc_goal_registry::load_node( const JsonObject &jo, const string_id<behavior::node_t> &node,
                                    std::string_view src, std::string &goal_id )
 {
+    if( !jo.has_member( "goal" ) && !jo.has_member( "category" ) ) {
+        // no goal of its own, or an override that keeps the one it has
+        return false;
+    }
     const std::string source = "behavior " + node.str();
-    // loaded again (a mod overriding the node): what it said before no longer holds
+    // loaded again with a goal or a category (a mod overriding the node): what it said before
+    // no longer holds
     claims_.erase( std::remove_if( claims_.begin(), claims_.end(),
     [&source]( const npc_goal_claim & claim ) {
         return claim.source == source;
@@ -186,7 +202,7 @@ const npc_json_goal *npc_goal_registry::find( std::string_view id ) const
 
 std::vector<std::string> npc_goal_registry::check() const
 {
-    std::vector<std::string> errors = check_goal_claims( claims_ );
+    std::vector<std::string> errors = check_goal_claims( category_goal_claims(), claims_ );
     for( const auto &[id, goal] : goals_ ) {
         for( const std::vector<effect_on_condition_id> *hooks : {
                  &goal.on_start, &goal.on_turn, &goal.on_end, &goal.on_interrupt, &goal.on_timeout
@@ -224,6 +240,26 @@ const npc_json_goal *npc_json_goals::find( std::string_view id )
 void npc_json_goals::reset()
 {
     loaded_goals.clear();
+    loaded_best_rank = std::numeric_limits<int>::max();
+}
+
+int npc_json_goals::best_rank()
+{
+    return loaded_best_rank;
+}
+
+void npc_json_goals::refresh_ranks()
+{
+    loaded_best_rank = std::numeric_limits<int>::max();
+    for( const auto &entry : loaded_goals.all() ) {
+        loaded_best_rank = std::min( loaded_best_rank, decision_category( entry.second.category ).rank() );
+    }
+}
+
+void npc_json_goals::swap_registry_for_test( npc_goal_registry &other )
+{
+    std::swap( loaded_goals, other );
+    refresh_ranks();
 }
 
 const behavior::node_t &npc_decision_tree()
@@ -384,12 +420,165 @@ bool npc_goal_runtime::owns_walk( const npc &guy )
 
 float npc_goal_runtime::score( const npc &guy, const npc_json_goal &goal )
 {
+    const behavior::character_oracle_t oracle( &guy );
+    return score( goal, oracle );
+}
+
+float npc_goal_runtime::score( const npc_json_goal &goal, const behavior::oracle_t &oracle )
+{
     if( !goal.node.is_valid() ) {
         return 0.0f;
     }
-    const behavior::character_oracle_t oracle( &guy );
     const behavior::behavior_return picked = goal.node.obj().tick( &oracle );
     return picked.result == behavior::status_t::running ? picked.score : 0.0f;
+}
+
+bool npc_goal_runtime::node_applies( const npc_json_goal &goal, const behavior::oracle_t &oracle )
+{
+    return goal.node.is_valid() &&
+           goal.node.obj().tick( &oracle ).result == behavior::status_t::running;
+}
+
+namespace
+{
+// a built-in goal the NPC is committed to is over by its own rule, `picked` being the tree's
+// pick; keyed by the goal, whatever its category
+bool builtin_goal_over( const npc &guy, const std::string &committed, const std::string &picked )
+{
+    if( committed == "return_to_guard_pos" ) {
+        const std::optional<tripoint_abs_ms> gp = guy.get_effective_guard_pos();
+        return gp && guy.pos_abs() == *gp;
+    }
+    if( committed == "hold_position" ) {
+        // persists only while the tree keeps picking it: off shift or displaced, the fresh
+        // goal takes over
+        return picked != "hold_position";
+    }
+    if( committed == "follow_player" ) {
+        const Character &pc = get_player_character();
+        return ( rl_dist( guy.pos_bub(), pc.pos_bub() ) <= guy.follow_distance() &&
+                 guy.posz() == pc.posz() ) || picked != "follow_player";
+    }
+    if( committed == "fight" || committed == "flee" ) {
+        // only as long as the tree keeps picking it
+        return picked != committed;
+    }
+    if( committed == "follow_embarked" ) {
+        return picked != "follow_embarked";
+    }
+    if( committed == "goto_ordered_position" ) {
+        return !guy.walk || errand::walk_arrived( guy, *guy.walk ) ||
+               picked != "goto_ordered_position";
+    }
+    if( const std::optional<npc::need_goal_id> gid = npc::goal_id_for( committed ) ) {
+        const behavior::character_oracle_t oracle( &guy );
+        bool satisfied = false;
+        switch( *gid ) {
+            case npc::need_goal_id::eat_food:
+            case npc::need_goal_id::drink_water:
+                // a meal ends when it's enough, not when the body has caught up
+                satisfied = !guy.intake_useful( *gid );
+                break;
+            case npc::need_goal_id::regulate_temperature:
+                satisfied = oracle.needs_temperature_regulation( "" ) != behavior::status_t::running;
+                break;
+            case npc::need_goal_id::go_to_sleep:
+                // leaving for another goal goes through judge_interrupt(); woken half way to
+                // tired, it lies back down first
+                satisfied = guy.has_effect( effect_sleep ) ||
+                            ( oracle.needs_sleep_badly( "" ) != behavior::status_t::running &&
+                              !guy.get_sleep_session().wants_resume( guy.get_sleepiness() ) );
+                break;
+        }
+        return satisfied || guy.plan_for( *gid ).last_result == npc::need_result::impossible;
+    }
+    if( committed == "start_fire" ) {
+        // legacy warmth fallback with no executor: ends with the cold, or when the tree stops
+        // picking it
+        const behavior::character_oracle_t oracle( &guy );
+        return oracle.needs_temperature_regulation( "" ) != behavior::status_t::running ||
+               picked != committed;
+    }
+    if( committed == "camp_work" || committed == "return_to_camp" || committed == "free_time" ) {
+        return picked != committed;
+    }
+    return false;
+}
+} // namespace
+
+npc_goal_choice npc_goal_runtime::choose( npc &guy, const behavior::oracle_t &oracle )
+{
+    npc_goal_choice c;
+    behavior::tree tree;
+    tree.add( &npc_decision_tree() );
+    std::tie( c.picked, c.picked_score ) = tree.tick_full( &oracle );
+    if( guy.goal_is_idle( c.picked ) && !guy.sleep_on_hold() &&
+        !guy.has_flag( json_flag_CANNOT_SLEEP ) &&
+        ( ( guy.sleep_stalled() && guy.get_sleepiness() >= sleepiness_levels::TIRED ) ||
+          guy.get_sleep_session().wants_resume( guy.get_sleepiness() ) ) &&
+        guy.best_need_view( npc::need_goal_id::go_to_sleep ).may_consider() ) {
+        // a sleep that stepped aside for work, or was woken early, comes back when nothing
+        // else is on offer
+        c.picked = "go_to_sleep";
+        c.picked_score = behavior::character_oracle_t( &guy ).sleepiness_urgency( "" );
+    }
+    c.goal = c.picked;
+    c.score = c.picked_score;
+    const npc_intention &in = guy.ai_cache.intention;
+    // a JSON goal loaded from a save is the commitment, as sync() makes it
+    c.committed = in.goal.empty() && guy.json_goal->active() ? guy.json_goal->goal : in.goal;
+    if( c.committed.empty() ) {
+        return c;
+    }
+    npc_pursuit current;
+    if( const npc_json_goal *json = npc_json_goals::find( c.committed ) ) {
+        current.goal = c.committed;
+        current.selection = score( *json, oracle );
+        c.committed_score = current.selection;
+        if( const std::optional<std::string> why = finish_reason( guy ) ) {
+            c.completed = true;
+            c.json_end = *why;
+        } else {
+            c.own_walk = c.picked == "goto_ordered_position" && owns_walk( guy );
+            // a goal with no end of its own lasts while its node applies or the tree picks it
+            if( !c.own_walk && c.picked != c.committed && !json->until && !json->timeout &&
+                !node_applies( *json, oracle ) ) {
+                c.completed = true;
+                c.json_end = npc_goal_reason::interrupted;
+            }
+        }
+        if( c.completed ) {
+            if( c.picked == "goto_ordered_position" && owns_walk( guy ) ) {
+                // the goal's walk ends with it
+                c.goal = "idle";
+                c.score = 0.0f;
+            }
+            return c;
+        }
+        if( c.own_walk ) {
+            c.goal = c.committed;
+            c.score = current.selection;
+            c.verdict = { false, "the tree's pick is the goal's own walk" };
+            return c;
+        }
+    } else if( builtin_goal_over( guy, c.committed, c.picked ) ) {
+        c.completed = true;
+        return c;
+    } else {
+        current = guy.committed_pursuit();
+    }
+    if( npc::goal_id_for( c.committed ) && c.picked == "start_fire" ) {
+        c.verdict = { false, "start_fire has no executor and doesn't displace a need that has one" };
+    } else {
+        c.verdict = judge_interrupt( current, { c.picked, c.picked_score, guy.goal_is_idle( c.picked ) } );
+    }
+    c.committed_score = current.selection;
+    c.interrupted = c.verdict.interrupt;
+    if( !c.interrupted ) {
+        c.goal = c.committed;
+        c.score = current.selection;
+    }
+    return c;
 }
 
 bool npc_goal_runtime::holds_against( npc &guy, const decision_category &reaction )
@@ -404,20 +593,22 @@ bool npc_goal_runtime::holds_against( npc &guy, const decision_category &reactio
         report_change( guy );
         return false;
     }
-    // only a goal at or above the reaction can keep the NPC from it: ask the tree only when
-    // it has one
-    if( npc_json_goals::registry().all().empty() ) {
+    // only a JSON goal at or above the reaction can keep the NPC from it: look at the tree
+    // only when some category that early holds one, and it has one
+    if( npc_json_goals::best_rank() > reaction.rank() ) {
         return false;
     }
+    ++reaction_tree_walks;
     std::set<const behavior::node_t *> seen;
     if( !tree_has_goal_at_or_above( npc_decision_tree(), reaction, seen ) ) {
         return false;
     }
+    // and only when it would win this turn's decision
     const behavior::character_oracle_t oracle( &guy );
-    behavior::tree tree;
-    tree.add( &npc_decision_tree() );
-    const npc_json_goal *picked = npc_json_goals::find( tree.tick( &oracle ) );
-    return picked != nullptr && !( reaction < decision_category( picked->category ) );
+    const npc_goal_choice choice = choose( guy, oracle );
+    const npc_json_goal *goal = npc_json_goals::find( choice.goal );
+    return goal != nullptr && choice.goal != choice.committed &&
+           !( reaction < decision_category( goal->category ) );
 }
 
 bool npc_goal_runtime::outranks( const npc &guy, const decision_category &cat )
@@ -479,14 +670,12 @@ bool describe_node( const behavior::node_t &node, const behavior::oracle_t *orac
 npc_decision_report npc_goal_runtime::report( const npc &guy )
 {
     npc_decision_report rep;
-    const behavior::character_oracle_t oracle( &guy );
+    // no evaluate_every cache: what the view shows must not change what the NPC's walk sees
+    const behavior::character_oracle_t oracle( &guy, false );
     const behavior::node_t &root = npc_decision_tree();
     const behavior::behavior_return picked = root.tick( &oracle );
     const behavior::node_t *picked_node = picked.result == behavior::status_t::running ?
                                           picked.selection : nullptr;
-    rep.picked_goal = picked_node == nullptr ? "idle" : picked_node->goal();
-    rep.picked_score = picked.score;
-    rep.picked_category = category_name( bt_goal_to_category( rep.picked_goal ) );
     std::set<const behavior::node_t *> on_path;
     describe_node( root, &oracle, picked_node, 0, on_path, rep.nodes );
 
@@ -494,30 +683,32 @@ npc_decision_report npc_goal_runtime::report( const npc &guy )
         rep.categories.push_back( { id.str(), id.obj().rank, id.obj().hysteresis } );
     }
 
-    rep.committed_goal = current_goal( guy );
+    // the decision npc::move() makes, the same way
+    const npc_goal_choice c = choose( const_cast<npc &>( guy ), oracle );
+    rep.picked_goal = c.picked;
+    rep.picked_score = c.picked_score;
+    rep.picked_category = category_name( bt_goal_to_category( c.picked ) );
+    rep.committed_goal = c.committed.empty() ? "idle" : c.committed;
     rep.committed_category = category_name( bt_goal_to_category( rep.committed_goal ) );
     rep.committed_turns = turns_on_goal( guy );
-    if( rep.committed_goal == "idle" ) {
-        rep.verdict = string_format( "nothing is committed: %s is taken up", rep.picked_goal );
-        return rep;
-    }
-    const npc_pursuit current = guy.committed_pursuit();
-    rep.committed_score = current.selection;
-    if( npc_json_goals::find( rep.committed_goal ) != nullptr ) {
-        if( const std::optional<std::string> why = finish_reason( guy ) ) {
-            rep.verdict = string_format( "%s ends this turn: %s", rep.committed_goal, *why );
-            return rep;
+    rep.committed_score = c.committed_score;
+    if( c.committed.empty() ) {
+        rep.verdict = string_format( "nothing is committed: %s is taken up", c.goal );
+    } else if( c.completed ) {
+        rep.verdict = c.json_end.empty() ?
+                      string_format( "%s is over: %s is taken up", c.committed, c.goal ) :
+                      string_format( "%s ends this turn (%s): %s is taken up", c.committed, c.json_end,
+                                     c.goal );
+    } else {
+        if( c.own_walk ) {
+            rep.verdict = string_format( "%s goes on: %s", c.committed, c.verdict.why );
+        } else if( c.picked == c.committed ) {
+            rep.verdict = string_format( "the tree picks %s again", c.committed );
+        } else {
+            rep.verdict = string_format( "%s %s %s: %s", c.picked,
+                                         c.interrupted ? "takes over from" : "doesn't take over from",
+                                         c.committed, c.verdict.why );
         }
     }
-    if( rep.picked_goal == rep.committed_goal ) {
-        rep.verdict = string_format( "the tree picks %s again", rep.committed_goal );
-        return rep;
-    }
-    const npc_interrupt_verdict v = judge_interrupt( current, {
-        rep.picked_goal, rep.picked_score, guy.goal_is_idle( rep.picked_goal )
-    } );
-    rep.verdict = string_format( "%s %s %s: %s", rep.picked_goal,
-                                 v.interrupt ? "takes over from" : "doesn't take over from",
-                                 rep.committed_goal, v.why );
     return rep;
 }

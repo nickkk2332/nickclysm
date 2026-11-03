@@ -1851,126 +1851,45 @@ void npc::move()
             const npc_attitude saved_att = attitude;
             const npc_mission saved_mis = mission;
 
-            behavior::character_oracle_t oracle( this );
-            behavior::tree decision_tree;
-            decision_tree.add( &npc_decision_tree() );
-            auto [new_goal, new_score] = decision_tree.tick_full( &oracle );
-            if( goal_is_idle( new_goal ) && !sleep_on_hold() && !has_flag( json_flag_CANNOT_SLEEP ) &&
-                ( ( sleep_stalled() && get_sleepiness() >= sleepiness_levels::TIRED ) ||
-                  sleep_session.wants_resume( get_sleepiness() ) ) &&
-                best_need_view( need_goal_id::go_to_sleep ).may_consider() ) {
-                // a sleep that stepped aside for work, or was woken early, comes back when
-                // nothing else is on offer
-                new_goal = "go_to_sleep";
-                new_score = oracle.sleepiness_urgency( "" );
-            }
-            // a JSON goal loaded from a save is the commitment again; the walk its own EOCs
-            // sent the NPC on is the goal at work, not an order taking over from it
+            // a JSON goal loaded from a save is the commitment again
             npc_goal_runtime::sync( *this );
-            if( new_goal == "goto_ordered_position" && npc_goal_runtime::owns_walk( *this ) ) {
-                new_goal = json_goal->goal;
+            if( is_dead() ) {
+                return;
             }
-
-            // Goal commitment: prevent flip-flopping between goals.
-            const std::string committed = ai_cache.intention.goal;
-            if( !committed.empty() ) {
-                // Check if committed goal is completed.
-                bool completed_goal = false;
-                if( npc_json_goals::find( committed ) != nullptr ) {
-                    // until or timeout; a challenger is judged below
-                    if( const std::optional<std::string> why = npc_goal_runtime::finish_reason( *this ) ) {
-                        npc_goal_runtime::end( *this, *why );
-                        ai_cache.intention = {};
-                        // reported even when the tree picks it again at once
-                        npc_goal_runtime::report_change( *this );
-                        completed_goal = true;
-                    }
-                } else if( committed == "return_to_guard_pos" ) {
-                    std::optional<tripoint_abs_ms> gp = get_effective_guard_pos();
-                    completed_goal = gp && pos_abs() == *gp;
-                } else if( committed == "hold_position" ) {
-                    // Persists only while BT keeps returning hold_position.
-                    // Off-shift (BT returns idle) or displaced (return_to_guard_pos):
-                    // the commitment clears and the fresh goal takes over.
-                    completed_goal = ( new_goal != "hold_position" );
-                } else if( committed == "follow_player" ) {
-                    const Character &pc = get_player_character();
-                    completed_goal = ( rl_dist( pos_bub(), pc.pos_bub() ) <= follow_distance()
-                                       && posz() == pc.posz() );
-                    if( !completed_goal ) {
-                        completed_goal = ( new_goal != "follow_player" );
-                    }
-                } else if( bt_goal_to_category( committed ) == decision_category::combat ) {
-                    // only as long as behavior tree keeps choosing it
-                    completed_goal = ( new_goal != committed );
-                } else if( committed == "follow_embarked" ) {
-                    completed_goal = ( new_goal != "follow_embarked" );
-                } else if( committed == "goto_ordered_position" ) {
-                    completed_goal = !walk || errand::walk_arrived( *this, *walk );
-                    if( !completed_goal ) {
-                        completed_goal = ( new_goal != "goto_ordered_position" );
-                    }
-                } else if( auto gid = goal_id_for( committed ); gid ) {
-                    behavior::character_oracle_t oracle( this );
-                    bool satisfied = false;
-                    switch( *gid ) {
-                        case need_goal_id::eat_food:
-                        case need_goal_id::drink_water:
-                            // meal ends when it's enough, not when the body has caught up
-                            satisfied = !intake_useful( *gid );
-                            break;
-                        case need_goal_id::regulate_temperature:
-                            satisfied = oracle.needs_temperature_regulation( "" ) != behavior::status_t::running;
-                            break;
-                        case need_goal_id::go_to_sleep:
-                            // leaving for another goal goes through should_interrupt() below;
-                            // woken half way to tired, it lies back down first
-                            satisfied = has_effect( effect_sleep ) ||
-                                        ( oracle.needs_sleep_badly( "" ) != behavior::status_t::running &&
-                                          !sleep_session.wants_resume( get_sleepiness() ) );
-                            break;
-                    }
-                    bool exec_impossible = plan_for( *gid ).last_result == need_result::impossible;
-                    completed_goal = satisfied || exec_impossible;
-                    if( completed_goal ) {
-                        end_need_pursuit( *gid );
-                    }
-                } else if( committed == "start_fire" ) {
-                    // Legacy warmth fallback: no executor, completes via
-                    // BT-fallthrough (fire lit and warmth resolves, or
-                    // predicate fails and BT picks something else).
-                    behavior::character_oracle_t oracle( this );
-                    bool satisfied = oracle.needs_temperature_regulation( "" ) != behavior::status_t::running;
-                    completed_goal = satisfied || ( new_goal != committed );
-                } else if( committed == "camp_work" ) {
-                    completed_goal = ( new_goal != "camp_work" );
-                } else if( committed == "return_to_camp" ) {
-                    completed_goal = ( new_goal != "return_to_camp" );
-                } else if( committed == "free_time" ) {
-                    completed_goal = ( new_goal != "free_time" );
-                }
-                if( completed_goal ) {
+            // what the tree picks, and whether it takes over from the committed goal; the
+            // decision debug view shows the same (npc_goal_runtime::report())
+            const behavior::character_oracle_t oracle( this );
+            const npc_goal_choice choice = npc_goal_runtime::choose( *this, oracle );
+            const std::string new_goal = choice.goal;
+            if( choice.completed ) {
+                if( npc_json_goals::find( choice.committed ) != nullptr ) {
+                    npc_goal_runtime::end( *this, choice.json_end );
                     ai_cache.intention = {};
-                } else {
-                    const npc_pursuit current = committed_pursuit();
-                    // start_fire has no executor and never displaces a goal that has one
-                    const bool lacks_executor = goal_id_for( committed ) && !goal_id_for( new_goal ) &&
-                                                npc_json_goals::find( new_goal ) == nullptr &&
-                                                bt_goal_to_category( new_goal ) == decision_category::needs;
-                    if( !lacks_executor && should_interrupt( current, { new_goal, new_score, goal_is_idle( new_goal ) } ) ) {
-                        if( const std::optional<need_goal_id> old_gid = goal_id_for( committed ) ) {
-                            end_need_pursuit( *old_gid );
-                        }
-                        npc_goal_runtime::end( *this, npc_goal_reason::interrupted );
-                        ai_cache.intention = {};
-                    } else {
-                        new_goal = committed;
+                    // reported even when the tree picks it again at once
+                    npc_goal_runtime::report_change( *this );
+                    if( is_dead() ) {
+                        return;
                     }
+                } else if( const std::optional<need_goal_id> gid = goal_id_for( choice.committed ) ) {
+                    end_need_pursuit( *gid );
                 }
+                ai_cache.intention = {};
+            } else if( choice.interrupted ) {
+                if( const std::optional<need_goal_id> old_gid = goal_id_for( choice.committed ) ) {
+                    end_need_pursuit( *old_gid );
+                }
+                npc_goal_runtime::end( *this, npc_goal_reason::interrupted );
+                if( is_dead() ) {
+                    return;
+                }
+                ai_cache.intention = {};
             }
             // adopted on every path, including a completion or interrupt this turn
             adopt_goal( new_goal );
             npc_goal_runtime::report_change( *this );
+            if( is_dead() ) {
+                return;
+            }
 
             // Dispatch based on the (possibly committed) goal.
             if( new_goal == "return_to_guard_pos" ) {
@@ -2054,6 +1973,9 @@ void npc::move()
                     case npc_goal_runtime::turn_result::ended:
                         action = npc_pause;
                         break;
+                }
+                if( is_dead() ) {
+                    return;
                 }
             } else if( is_executor_goal( new_goal ) ) {
                 if( new_goal == "go_to_sleep" ) {

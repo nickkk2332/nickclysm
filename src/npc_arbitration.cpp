@@ -361,7 +361,8 @@ npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
         }
         return { false, "same category, and it doesn't score above the committed goal with its hysteresis bonus" };
     }
-    if( new_cat != decision_category::needs ) {
+    // keyed by the goals: moving a built-in need to another category only changes its rank
+    if( !is_builtin_need_goal( current.goal ) || !is_builtin_need_goal( challenger.goal ) ) {
         return { false, "same category: the committed goal stays" };
     }
     // critical applies at every cost: a cheaper pursuit is never harder to leave

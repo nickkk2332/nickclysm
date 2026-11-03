@@ -63,6 +63,7 @@
 #include "mutation.h"
 #include "npc_class.h"
 #include "npc_goal_state.h"
+#include "npc_json_goal.h"
 #include "npctalk.h"
 #include "npctrade.h"
 #include "npctrade_utils.h"
@@ -3329,6 +3330,12 @@ void npc::reboot()
     // put them to sleep and reboot their brain.
     // they can be woken up by the player, and if their brain is fixed, great,
     // if not, they will faint again, and the NPC can be kept asleep until the bug is fixed.
+    // a JSON goal ends as interrupted; it may be what spun
+    if( json_goal->active() ) {
+        npc_goal_runtime::end( *this, npc_goal_reason::interrupted );
+        ai_cache.intention = {};
+        npc_goal_runtime::report_change( *this );
+    }
     cancel_activity();
     sleep_session.end();
     path.clear();
