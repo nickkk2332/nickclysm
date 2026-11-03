@@ -2,17 +2,25 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
 #include "behavior_oracle.h"
 #include "behavior_strategy.h"
+#include "calendar.h"
 #include "cata_assert.h"
+#include "condition.h"
+#include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "math_parser_type.h"
 #include "string_formatter.h"
+#include "talker.h"
 
 using namespace behavior;
 
@@ -67,23 +75,64 @@ status_t node_t::process_predicates( const oracle_t *subject ) const
     return result;
 }
 
+node_t::cached_evaluation *node_t::cached_for( const oracle_t *subject ) const
+{
+    if( evaluate_every_turns <= 0 || subject == nullptr ) {
+        return nullptr;
+    }
+    const std::optional<int> key = subject->cache_key();
+    if( !key ) {
+        return nullptr;
+    }
+    const int now = to_turn<int>( calendar::turn );
+    const auto expired = [this, now]( const cached_evaluation & c ) {
+        // time can go back too, when another game is loaded
+        return now < c.evaluated_at || now >= c.evaluated_at + evaluate_every_turns;
+    };
+    // drop the results of subjects that are gone, so the cache doesn't grow without bound
+    static constexpr size_t prune_above = 256;
+    if( evaluation_cache.size() > prune_above ) {
+        for( auto it = evaluation_cache.begin(); it != evaluation_cache.end(); ) {
+            it = expired( it->second ) ? evaluation_cache.erase( it ) : std::next( it );
+        }
+    }
+    auto [it, inserted] = evaluation_cache.try_emplace( *key );
+    cached_evaluation &cached = it->second;
+    if( inserted || expired( cached ) ) {
+        cached.evaluated_at = now;
+        cached.conditions = process_predicates( subject );
+        cached.score.reset();
+    }
+    return &cached;
+}
+
+float node_t::evaluate_score( const oracle_t *subject, cached_evaluation *cached ) const
+{
+    if( cached == nullptr ) {
+        return score_function_->first( subject, score_function_->second );
+    }
+    if( !cached->score ) {
+        cached->score = score_function_->first( subject, score_function_->second );
+    }
+    return *cached->score;
+}
+
 behavior_return node_t::tick( const oracle_t *subject ) const
 {
+    cached_evaluation *cached = cached_for( subject );
+    const status_t result = cached != nullptr ? cached->conditions : process_predicates( subject );
     if( children.empty() ) {
-        status_t result = process_predicates( subject );
         float score = 0.0f;
         if( result == status_t::running && score_function_ ) {
-            score = score_function_->first( subject, score_function_->second );
+            score = evaluate_score( subject, cached );
         }
         return { result, this, score };
     } else {
         cata_assert( strategy != nullptr );
-        status_t result = process_predicates( subject );
         if( result == status_t::running ) {
             behavior_return child_result = strategy->evaluate( subject, children );
             if( child_result.result == status_t::running && score_function_ ) {
-                child_result.score = score_function_->first( subject,
-                                     score_function_->second );
+                child_result.score = evaluate_score( subject, cached );
             }
             return child_result;
         } else {
@@ -134,6 +183,67 @@ generic_factory<behavior::node_t> behavior_factory( "behavior" );
 // What link_children() found at finalization, reported by check_consistency().
 std::vector<std::string> link_problems;
 
+// The subject as u, without a beta talker.
+const_dialogue subject_dialogue( const Creature &subject )
+{
+    return const_dialogue( get_const_talker_for( subject ), nullptr );
+}
+
+// A "predicate": "condition" entry: running when the dialogue condition is true, else failure.
+std::function<status_t( const oracle_t *, const std::string & )>
+read_dialogue_condition( const JsonObject &jo )
+{
+    if( !jo.has_member( "condition" ) ) {
+        jo.throw_error_at( "predicate", "A \"condition\" predicate needs a \"condition\"." );
+    }
+    std::function<bool( const_dialogue const & )> cond;
+    read_condition( jo, "condition", cond, false );
+    return [cond]( const oracle_t *subject, const std::string & ) {
+        const Creature *who = subject == nullptr ? nullptr : subject->creature();
+        if( who == nullptr ) {
+            return status_t::failure;
+        }
+        return cond( subject_dialogue( *who ) ) ? status_t::running : status_t::failure;
+    };
+}
+
+// A "score": { "math": [ ... ] } expression, evaluated with the subject as u.
+node_t::score_type read_math_score( const JsonObject &jo )
+{
+    eoc_math math;
+    math.from_json( jo, "math", math_type_t::ret );
+    return [math]( const oracle_t *subject, std::string_view ) {
+        const Creature *who = subject == nullptr ? nullptr : subject->creature();
+        if( who == nullptr ) {
+            return 0.0f;
+        }
+        const const_dialogue d = subject_dialogue( *who );
+        return static_cast<float>( math.act( d ) );
+    };
+}
+
+// A built-in score by name, with its argument checked.
+node_t::score_type read_named_score( const JsonObject &jo, const std::string &name_member,
+                                     const std::string &argument_member, const string_id<node_t> &id )
+{
+    const std::string name = jo.get_string( name_member );
+    const auto score = score_predicate_map.find( name );
+    if( score == score_predicate_map.end() ) {
+        jo.throw_error_at( name_member, string_format( "Behavior \"%s\" names score \"%s\", "
+                           "which is not a built-in score.", id.str(), name ) );
+    }
+    const bool takes_argument = scores_with_argument.count( name ) != 0;
+    if( jo.has_member( argument_member ) && !takes_argument ) {
+        jo.throw_error_at( argument_member, string_format( "Behavior \"%s\": score \"%s\" takes no "
+                           "argument.", id.str(), name ) );
+    }
+    if( !jo.has_member( argument_member ) && takes_argument ) {
+        jo.throw_error_at( name_member, string_format( "Behavior \"%s\": score \"%s\" needs an "
+                           "\"%s\".", id.str(), name, argument_member ) );
+    }
+    return score->second;
+}
+
 } // namespace
 
 /** @relates string_id */
@@ -171,6 +281,12 @@ void node_t::load( const JsonObject &jo, std::string_view )
     load_conditions( jo );
     optional( jo, was_loaded, "goal", _goal );
     load_score( jo );
+    time_duration evaluate_every = time_duration::from_turns( evaluate_every_turns );
+    optional( jo, was_loaded, "evaluate_every", evaluate_every, 0_turns );
+    if( evaluate_every < 0_turns ) {
+        jo.throw_error_at( "evaluate_every", "\"evaluate_every\" can't be negative." );
+    }
+    evaluate_every_turns = to_turns<int>( evaluate_every );
 }
 
 // "children" replaces the list. With copy-from, "delete": { "children": [ ids ] } removes
@@ -285,12 +401,29 @@ void node_t::load_conditions( const JsonObject &jo )
         condition_t condition;
         condition.predicate = entry.get_string( "predicate" );
         condition.invert = entry.get_bool( "invert_result", false );
+        if( condition.predicate == "condition" ) {
+            if( entry.has_member( "argument" ) ) {
+                entry.throw_error_at( "argument", string_format( "Behavior \"%s\": a \"condition\" "
+                                      "predicate takes no argument; write the test in \"condition\".", id.str() ) );
+            }
+            condition.func = read_dialogue_condition( entry );
+            return condition;
+        }
         const auto predicate = predicate_map.find( condition.predicate );
         if( predicate == predicate_map.end() ) {
             entry.throw_error_at( "predicate", string_format( "Behavior \"%s\" uses predicate \"%s\", "
-                                  "which is not a built-in predicate.", id.str(), condition.predicate ) );
+                                  "which is neither \"condition\" nor a built-in predicate.", id.str(), condition.predicate ) );
         }
         condition.func = predicate->second;
+        const bool takes_argument = predicates_with_argument.count( condition.predicate ) != 0;
+        if( entry.has_member( "argument" ) && !takes_argument ) {
+            entry.throw_error_at( "argument", string_format( "Behavior \"%s\": predicate \"%s\" takes "
+                                  "no argument.", id.str(), condition.predicate ) );
+        }
+        if( !entry.has_member( "argument" ) && takes_argument ) {
+            entry.throw_error_at( "predicate", string_format( "Behavior \"%s\": predicate \"%s\" needs "
+                                  "an \"argument\".", id.str(), condition.predicate ) );
+        }
         condition.argument = entry.get_string( "argument", "" );
         return condition;
     };
@@ -341,20 +474,34 @@ void node_t::load_conditions( const JsonObject &jo )
     }
 }
 
-// "score" is the name of a built-in score, with "score_argument".
+// "score" is the name of a built-in score (with "score_argument"),
+// { "named": ..., "argument": ..., "mult": ... } or { "math": [ ... ] }.
 void node_t::load_score( const JsonObject &jo )
 {
     if( jo.has_string( "score" ) ) {
-        const std::string score_id = jo.get_string( "score" );
-        const std::string score_arg = jo.get_string( "score_argument", "" );
-        auto new_score = score_predicate_map.find( score_id );
-        if( new_score != score_predicate_map.end() ) {
-            score_function_.emplace( new_score->second, score_arg );
+        score_type score = read_named_score( jo, "score", "score_argument", id );
+        score_function_.emplace( score, jo.get_string( "score_argument", "" ) );
+    } else if( jo.has_object( "score" ) ) {
+        const JsonObject score = jo.get_object( "score" );
+        if( score.has_member( "math" ) ) {
+            if( score.has_member( "named" ) ) {
+                score.throw_error( string_format( "Behavior \"%s\": a score is either \"named\" or "
+                                                  "\"math\", not both.", id.str() ) );
+            }
+            score_function_.emplace( read_math_score( score ), "" );
         } else {
-            debugmsg( "While loading %s, failed to find score predicate %s.",
-                      id.str(), score_id );
-            jo.throw_error( "Invalid score predicate in behavior." );
+            score_type named = read_named_score( score, "named", "argument", id );
+            if( score.has_member( "mult" ) ) {
+                const float mult = static_cast<float>( score.get_float( "mult" ) );
+                named = [named, mult]( const oracle_t *subject, std::string_view argument ) {
+                    return named( subject, argument ) * mult;
+                };
+            }
+            score_function_.emplace( named, score.get_string( "argument", "" ) );
         }
+    } else if( jo.has_member( "score" ) ) {
+        jo.throw_error_at( "score", string_format( "Behavior \"%s\": \"score\" is a score's name or "
+                           "an object.", id.str() ) );
     }
 }
 
@@ -456,6 +603,13 @@ std::vector<std::string> behavior::link_children( std::vector<node_t> &nodes )
         }
     }
     return problems;
+}
+
+void behavior::clear_evaluation_cache()
+{
+    for( const node_t &n : behavior_factory.get_all() ) {
+        n.evaluation_cache.clear();
+    }
 }
 
 void behavior::reset()

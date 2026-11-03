@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -90,6 +91,7 @@ class node_t
         bool was_loaded = false;
     private:
         friend std::vector<std::string> link_children( std::vector<node_t> &nodes );
+        friend void clear_evaluation_cache();
 
         std::vector<const node_t *> children;
         // The children named in JSON, in order. link_children() turns them into `children`.
@@ -97,8 +99,8 @@ class node_t
         const strategy_t *strategy = nullptr;
         using predicate_type = std::function<status_t( const oracle_t *, const std::string & )>;
         struct condition_t {
-            // The predicate's name in JSON, which "delete" matches. Empty for predicates
-            // added in code.
+            // The name used in JSON ("condition" for a dialogue condition), which
+            // "delete" matches. Empty for predicates added in code.
             std::string predicate;
             predicate_type func;
             std::string argument;
@@ -109,6 +111,21 @@ class node_t
         // TODO: make into an ID?
         std::string _goal;
         std::optional<std::pair<score_type, std::string>> score_function_;
+
+        // "evaluate_every": the conditions and score are reused for this many turns, separately
+        // for each subject. 0 evaluates them every time.
+        int evaluate_every_turns = 0;
+        struct cached_evaluation {
+            int evaluated_at = 0;
+            status_t conditions = status_t::running;
+            std::optional<float> score;
+        };
+        // Keyed by oracle_t::cache_key().
+        mutable std::unordered_map<int, cached_evaluation> evaluation_cache;
+        // The subject's cached evaluation, refreshed when it is missing or expired; nullptr
+        // when this node or this subject isn't cached.
+        cached_evaluation *cached_for( const oracle_t *subject ) const;
+        float evaluate_score( const oracle_t *subject, cached_evaluation *cached ) const;
 
         void load_children( const JsonObject &jo );
         void load_conditions( const JsonObject &jo );
@@ -122,6 +139,9 @@ class node_t
  * goal. A root is a node that no other node in @p nodes links to.
  */
 std::vector<std::string> link_children( std::vector<node_t> &nodes );
+
+// Forgets the results every node keeps for "evaluate_every".
+void clear_evaluation_cache();
 
 // Deserialization support.
 void load_behavior( const JsonObject &jo, const std::string &src );

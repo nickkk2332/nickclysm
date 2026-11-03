@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_CHARACTER_ORACLE_H
 #define CATA_SRC_CHARACTER_ORACLE_H
 
+#include <optional>
 #include <string_view>
 
 #include "behavior_oracle.h"
@@ -18,6 +19,9 @@ class character_oracle_t : public oracle_t
         explicit character_oracle_t( const Character *subject ) {
             this->subject = subject;
         }
+        const Creature *creature() const override;
+        // the character's id
+        std::optional<int> cache_key() const override;
         /**
          * Predicates used by AI to determine goals.
          */

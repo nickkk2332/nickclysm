@@ -3,6 +3,7 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "behavior.h"
@@ -86,5 +87,11 @@ score_predicate_map = {{
         { "npc_free_time_urgency", make_score_function( &character_oracle_t::free_time_urgency ) }
     }
 };
+
+// monster_special_available: "NAME" runs when the special attack is ready, "!NAME" also when the
+// monster has no such special attack.
+std::unordered_set<std::string> predicates_with_argument = { "monster_special_available" };
+
+std::unordered_set<std::string> scores_with_argument;
 
 } // namespace behavior

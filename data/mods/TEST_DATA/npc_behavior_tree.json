@@ -37,11 +37,13 @@
   {
     "type": "behavior",
     "id": "test_bt_leaf_first",
+    "conditions": [ { "predicate": "condition", "condition": { "u_has_trait": "IGNORE_SOUND" } } ],
     "goal": "test_first"
   },
   {
     "type": "behavior",
     "id": "test_bt_leaf_middle",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_bt_devotion > 50" ] } } ],
     "goal": "test_middle"
   },
   {
@@ -50,10 +52,88 @@
     "goal": "test_last"
   },
   {
-    "//": "A built-in node re-conditioned.",
+    "//": "Built-in nodes re-conditioned and re-scored.",
     "type": "behavior",
     "id": "test_bt_fight_anyway",
     "copy-from": "npc_fight",
     "delete": { "conditions": [ "npc_has_target" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_fight_devout",
+    "copy-from": "npc_fight",
+    "delete": { "conditions": [ "npc_has_target" ] },
+    "extend": { "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_bt_devotion > 50" ] } } ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_thirst_half",
+    "copy-from": "npc_thirst",
+    "score": { "named": "npc_thirst_urgency", "mult": 0.5 }
+  },
+  {
+    "//": "Condition predicates.",
+    "type": "behavior",
+    "id": "test_bt_has_trait",
+    "conditions": [ { "predicate": "condition", "condition": { "u_has_trait": "IGNORE_SOUND" } } ],
+    "goal": "test_has_trait"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_lacks_trait",
+    "conditions": [ { "predicate": "condition", "condition": { "u_has_trait": "IGNORE_SOUND" }, "invert_result": true } ],
+    "goal": "test_lacks_trait"
+  },
+  {
+    "//": "Score forms.",
+    "type": "behavior",
+    "id": "test_bt_score_named",
+    "goal": "test_score",
+    "score": { "named": "npc_thirst_urgency" }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_score_half",
+    "goal": "test_score",
+    "score": { "named": "npc_thirst_urgency", "mult": 0.5 }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_score_oracle",
+    "goal": "test_score",
+    "score": { "math": [ "oracle('npc_thirst_urgency') * 2" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_score_math",
+    "goal": "test_score",
+    "score": { "math": [ "u_bt_devotion / 100" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_pray_or_drink",
+    "strategy": "utility",
+    "children": [ "test_bt_pray", "test_bt_drink" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_pray",
+    "goal": "test_pray",
+    "score": { "math": [ "u_bt_devotion / 100" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_drink",
+    "goal": "test_drink",
+    "score": { "math": [ "oracle('npc_thirst_urgency')" ] }
+  },
+  {
+    "//": "Conditions and score reused for 5 turns.",
+    "type": "behavior",
+    "id": "test_bt_cached",
+    "evaluate_every": "5 turns",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_bt_devotion > 50" ] } } ],
+    "goal": "test_cached",
+    "score": { "math": [ "u_bt_devotion / 100" ] }
   }
 ]
