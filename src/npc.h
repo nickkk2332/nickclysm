@@ -59,6 +59,7 @@ class faction;
 class map;
 class mission;
 class monster;
+class npc_goal_runtime;
 class talker;
 class vehicle;
 
@@ -69,6 +70,7 @@ enum class relationship : int;
 struct Target_attributes;
 struct const_dialogue;
 struct faction_price_rule;
+struct npc_goal_state;
 
 constexpr int NPC_PERSONALITY_MIN = -10;
 constexpr int NPC_PERSONALITY_MAX = 10;
@@ -876,6 +878,8 @@ class npc_template;
 
 class npc : public Character
 {
+        // JSON goals (src/npc_json_goal.h) read and steer the committed goal
+        friend class npc_goal_runtime;
     public:
 
         npc();
@@ -1625,6 +1629,8 @@ class npc : public Character
         const npc_intention &get_intention() const {
             return ai_cache.intention;
         }
+        // the JSON goal the NPC is on, saved with it (src/npc_goal_state.h)
+        pimpl<npc_goal_state> json_goal;
         const std::optional<npc_suspended_task> &get_suspended_task() const {
             return suspended_task;
         }

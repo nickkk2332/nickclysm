@@ -62,6 +62,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc_class.h"
+#include "npc_goal_state.h"
 #include "npctalk.h"
 #include "npctrade.h"
 #include "npctrade_utils.h"

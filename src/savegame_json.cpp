@@ -98,6 +98,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npc_goal_state.h"
 #include "npc_sleep.h"
 #include "options.h"
 #include "overmapbuffer.h"
@@ -2225,6 +2226,8 @@ void npc::load( const JsonObject &data )
         complaints.emplace( member.name(), p );
     }
     data.read( "sleep_session", sleep_session );
+    *json_goal = npc_goal_state();
+    data.read( "json_goal", json_goal );
     data.read( "unique_id", unique_id );
     clear_personality_traits();
     generate_personality_traits();
@@ -2388,6 +2391,9 @@ void npc::store( JsonOut &json ) const
 
     json.member( "complaints", complaints );
     json.member( "sleep_session", sleep_session );
+    if( json_goal->active() ) {
+        json.member( "json_goal", json_goal );
+    }
     json.member( "unique_id", unique_id );
     json.member( "may_activity_occupancy_after_end_items_loc",
                  may_activity_occupancy_after_end_items_loc );
