@@ -272,7 +272,8 @@ void dialogue_imgui::draw_dialogue_imgui( bool is_computer, bool is_not_conversa
             int cat = topic_category( conversation->topic_stack.back() );
             do {
                 conversation->topic_stack.pop_back();
-            } while( cat != -1 && topic_category( conversation->topic_stack.back() ) == cat );
+            } while( cat != -1 && !conversation->topic_stack.empty() &&
+                     topic_category( conversation->topic_stack.back() ) == cat );
         }
         if( next.id == "TALK_DONE" || conversation->topic_stack.empty() ) {
             conversation->actor( true )->say(
