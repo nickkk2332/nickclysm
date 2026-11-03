@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <filesystem>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -13,6 +15,7 @@
 #include "cata_utility.h"
 #include "construction.h"
 #include "coordinates.h"
+#include "dependency_tree.h"
 #include "end_screen.h"
 #include "fault.h"
 #include "filesystem.h"
@@ -262,4 +265,24 @@ TEST_CASE( "data-b08_zzip_stack_that_cannot_open_fails_cleanly", "[audit][zzip]"
     CHECK_FALSE( z->compact( 0.0 ) );
     CHECK_FALSE( zzip_stack::extract_to_folder( stack_dir.get_unrelative_path(),
                  ( dir / "out" ).get_unrelative_path() ) );
+}
+
+// DATA-B09: dependencies were listed in depth-first pre-order, reversed, which isn't a valid
+// load order: with M needing A and B, and A needing B, A came before B.
+TEST_CASE( "data-b09_dependencies_come_after_their_own_dependencies", "[audit][mods]" )
+{
+    const mod_id core( "audit_core" );
+    const mod_id a( "audit_a" );
+    const mod_id b( "audit_b" );
+    const mod_id m( "audit_m" );
+    dependency_tree tree;
+    tree.init( { { core, {} }, { b, { core } }, { a, { core, b } }, { m, { core, a, b } } } );
+
+    const std::vector<mod_id> order = tree.get_dependencies_of_X_as_strings( m );
+    REQUIRE( order.size() == 3 );
+    const auto position = [&]( const mod_id & id ) {
+        return std::distance( order.begin(), std::find( order.begin(), order.end(), id ) );
+    };
+    CHECK( position( core ) < position( b ) );
+    CHECK( position( b ) < position( a ) );
 }

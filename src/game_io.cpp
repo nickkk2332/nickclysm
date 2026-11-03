@@ -188,10 +188,8 @@ bool game::check_mod_data( const std::vector<mod_id> &opts )
         try {
             load_core_data();
 
-            // Load any dependencies and de-duplicate them
-            std::vector<mod_id> dep_vector = tree.get_dependencies_of_X_as_strings( mod.ident );
-            std::set<mod_id> dep_set( dep_vector.begin(), dep_vector.end() );
-            for( const auto &dep : dep_set ) {
+            // Load the dependencies, each after the ones it depends on
+            for( const mod_id &dep : tree.get_dependencies_of_X_as_strings( mod.ident ) ) {
                 load_data_from_dir( dep->path, dep->ident.str() );
             }
 
