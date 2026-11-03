@@ -1381,7 +1381,8 @@ void spell_level_adjustment_ass( double val, dialogue &d, char scope,
     }
 }
 
-double _time_in_unit( double time, std::string_view unit )
+// How many turns one 'unit' is; no unit is turns
+double _turns_per_unit( std::string_view unit )
 {
     if( !unit.empty() ) {
         decltype( time_duration::units )::const_iterator iter = std::find_if( time_duration::units.cbegin(),
@@ -1393,11 +1394,16 @@ double _time_in_unit( double time, std::string_view unit )
         if( iter == time_duration::units.end() ) {
             throw math::runtime_error( R"(Unknown time unit "%s")", unit );
         } else {
-            return time / to_turns<double>( iter->second );
+            return to_turns<double>( iter->second );
         }
     }
 
-    return time;
+    return 1.0;
+}
+
+double _time_in_unit( double time, std::string_view unit )
+{
+    return unit.empty() ? time : time / _turns_per_unit( unit );
 }
 
 double time_eval( const_dialogue const &d, char /* scope */, std::vector<diag_value> const &params,
@@ -1418,13 +1424,15 @@ double time_eval( const_dialogue const &d, char /* scope */, std::vector<diag_va
     return _time_in_unit( ret, unit_val.str( d ) );
 }
 
-void time_ass( double val, dialogue & /* d */, char /* scope */,
-               std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+void time_ass( double val, dialogue &d, char /* scope */,
+               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     // intentionally duplicate check for str to avoid the `Expected str, got ...` error and get the
     // nicer one below
     if( params[0].is_str() && params[0].str() == "now" ) {
-        calendar::turn = calendar::turn_zero + time_duration::from_turns<double>( val );
+        // val is in the 'unit' time('now') reads in, as for time('now', 'unit':'hours') += 1
+        double const turns = val * _turns_per_unit( kwargs.kwarg_or( "unit" ).str( d ) );
+        calendar::turn = calendar::turn_zero + time_duration::from_turns<double>( turns );
     } else {
         throw math::syntax_error( "Only time('now') is a valid time() assignment target" );
     }
@@ -1818,6 +1826,24 @@ void calories_ass( double val, dialogue &d, char scope,
                    std::vector<diag_value> const & /* params */, diag_kwargs const &kwargs )
 {
     diag_value ignore_weariness_val = kwargs.kwarg_or( "dont_affect_weariness" );
+    diag_value format_value = kwargs.kwarg_or( "format", "raw" );
+
+    // val is in the format calories() reads in: with 'percent', percent of the healthy amount
+    std::string const &format = format_value.str( d );
+    if( format != "raw" && format != "percent" ) {
+        throw math::runtime_error( R"(Unknown format type "%s" for calories)", format );
+    }
+    if( format == "percent" ) {
+        if( !d.actor( is_beta( scope ) )->get_character() ) {
+            throw math::runtime_error( "Percent can be used only with character" );
+        }
+        double divisor = d.actor( is_beta( scope ) )->get_healthy_kcal() / 100.0;
+        if( divisor == 0 ) {
+            debugmsg( "Can't get healthy amount of calories, set raw calories instead" );
+        } else {
+            val = std::round( val * divisor );
+        }
+    }
 
     const bool ignore_weariness = is_true( ignore_weariness_val.dbl( d ) );
     int current_kcal = d.actor( is_beta( scope ) )->get_stored_kcal();

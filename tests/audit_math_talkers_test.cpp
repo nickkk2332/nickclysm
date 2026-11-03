@@ -1,7 +1,9 @@
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "dialogue.h"
@@ -46,4 +48,41 @@ TEST_CASE( "math-b03_faction_functions_reject_unknown_ids", "[audit][math_parser
     eval_math( d, "faction_like('your_followers') = 7" );
     CHECK( followers->likes_u == 7 );
     CHECK( eval_math( d, "faction_like('your_followers')" ) == 7 );
+}
+
+// MATH-B04: an assignment to time('now', 'unit':...) or calories('format':'percent') ignored the
+// kwarg, so time('now', 'unit':'hours') += 1 set the calendar to about 2201 turns and
+// u_calories('format':'percent') = 50 set 50 kcal.
+TEST_CASE( "math-b04_assignments_honour_the_read_kwargs", "[audit][math_parser]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    dialogue d( get_talker_for( u ), nullptr );
+
+    SECTION( "time('now') in a unit" ) {
+        const restore_on_out_of_scope<time_point> restore_turn( calendar::turn );
+        calendar::turn = calendar::turn_zero + 10_days + 3_hours;
+        eval_math( d, "time('now', 'unit':'hours') += 1" );
+        CHECK( calendar::turn == calendar::turn_zero + 10_days + 4_hours );
+        eval_math( d, "time('now', 'unit':'days') = 20" );
+        CHECK( calendar::turn == calendar::turn_zero + 20_days );
+        eval_math( d, "time('now') = 90" );
+        CHECK( calendar::turn == calendar::turn_zero + 90_seconds );
+    }
+
+    SECTION( "calories() as a percent" ) {
+        const on_out_of_scope restore_avatar( []() {
+            clear_avatar();
+        } );
+        const int healthy = u.get_healthy_kcal();
+        REQUIRE( healthy > 0 );
+        eval_math( d, "u_calories('format':'percent') = 50" );
+        CHECK( u.get_stored_kcal() == Approx( healthy / 2.0 ).margin( 1 ) );
+        CHECK( eval_math( d, "u_calories('format':'percent')" ) == Approx( 50 ).margin( 0.01 ) );
+        eval_math( d, "u_calories('format':'percent') += 10" );
+        CHECK( eval_math( d, "u_calories('format':'percent')" ) == Approx( 60 ).margin( 0.01 ) );
+        // raw still means kcal
+        eval_math( d, "u_calories() = 1000" );
+        CHECK( u.get_stored_kcal() == 1000 );
+    }
 }
