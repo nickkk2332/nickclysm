@@ -215,6 +215,11 @@ class stats_tracker : public event_subscriber
         using event_subscriber::notify;
         void notify( const cata::event & ) override;
 
+        // False for the event types stats_tracker neither keeps nor watches, ones too frequent
+        // and too varied to keep in a save (npc_goal_changed).  EVENT EOCs still get them;
+        // statistics, scores and achievements can't use them.
+        static bool records( event_type type );
+
         void serialize( JsonOut & ) const;
         void deserialize( const JsonObject &jo );
     private:

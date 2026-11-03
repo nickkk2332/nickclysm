@@ -442,6 +442,11 @@ std::unique_ptr<event_source> event_source::load( const JsonObject &jo )
     if( jo.has_member( "event_type" ) ) {
         event_type type = event_type::num_event_types;
         jo.read( "event_type", type, true );
+        if( !stats_tracker::records( type ) ) {
+            jo.throw_error_at( "event_type", string_format(
+                                   "%s isn't kept for statistics; only EVENT effect_on_conditions get it",
+                                   io::enum_to_string( type ) ) );
+        }
         return std::make_unique<event_type_event_source>( type );
     } else {
         string_id<event_transformation> transformation;

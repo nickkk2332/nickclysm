@@ -360,9 +360,18 @@ void stats_tracker::unwatch_all()
     unsub_all( stat_watchers );
 }
 
+bool stats_tracker::records( const event_type type )
+{
+    // one summary per NPC and pair of goals, kept for good, would grow every save
+    return type != event_type::npc_goal_changed;
+}
+
 void stats_tracker::notify( const cata::event &e )
 {
     const event_type type = e.type();
+    if( !records( type ) ) {
+        return;
+    }
     get_events( type ).add( e );
 
     auto it = event_type_watchers.find( type );

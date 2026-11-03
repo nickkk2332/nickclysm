@@ -42,6 +42,7 @@
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "stats_tracker.h"
 #include "talker.h"
 #include "type_id.h"
 
@@ -805,4 +806,20 @@ TEST_CASE( "npc_decision_report", "[npc][npc_goal]" )
     // the report changes nothing
     CHECK( guy.get_committed_goal() == "test_goal_hysteresis_a" );
     CHECK( global_number( "test_goal_starts" ) == 0 );
+}
+
+// a goal change is no statistic: nothing is kept in the save
+TEST_CASE( "npc_goal_changed_isnt_kept_for_statistics", "[npc][npc_goal][stats]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_until_tree" );
+    get_globals().set_global_value( "test_goal_listen", 1.0 );
+    const int before = get_stats().get_events( event_type::npc_goal_changed ).count();
+    adopt( guy, "test_goal_until" );
+    // the event went out
+    CHECK( global_string( "test_goal_changed_new" ) == "test_goal_until" );
+    CHECK( get_stats().get_events( event_type::npc_goal_changed ).count() == before );
+    CHECK( before == 0 );
+    CHECK_FALSE( stats_tracker::records( event_type::npc_goal_changed ) );
+    CHECK( stats_tracker::records( event_type::u_var_changed ) );
 }
