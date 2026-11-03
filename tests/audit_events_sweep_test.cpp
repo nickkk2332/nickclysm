@@ -4,9 +4,14 @@
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_path.h"
 #include "cata_scope_helpers.h"
+#include "cata_utility.h"
 #include "coordinates.h"
+#include "debug.h"
+#include "diary.h"
 #include "explosion.h"
+#include "filesystem.h"
 #include "game.h"
 #include "global_vars.h"
 #include "json.h"
@@ -15,6 +20,7 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "monster.h"
+#include "path_info.h"
 #include "player_helpers.h"
 #include "string_formatter.h"
 #include "timed_event.h"
@@ -144,4 +150,36 @@ TEST_CASE( "evt-b04_timed_explosion_from_an_older_save_loads", "[audit][timed_ev
     const timed_event *shell = get_timed_events().get( timed_event_type::EXPLOSION );
     REQUIRE( shell != nullptr );
     CHECK( shell->expl_data.power < 0.0f );
+}
+
+// EVT-B05: the diary read the names of the spells on its pages from the avatar's spellbook,
+// so a spell the avatar had forgotten since raised "Tried to get unknown spell", for example
+// in the diary written out on death.
+TEST_CASE( "evt-b05_diary_lists_spells_the_avatar_has_forgotten", "[audit][diary]" )
+{
+    clear_avatar();
+    REQUIRE_FALSE( get_avatar().magic->knows_spell( spell_test_fake_spell ) );
+
+    diary d;
+    d.deserialize( json_loader::from_string(
+                       R"({"owner":"Audit EVT-B05","pages":[{"text":"","turn":0,"spells":{"test_fake_spell":2}}]})" ) );
+
+    const cata_path dir = PATH_INFO::memorialdir_path();
+    const bool had_dir = dir_exist( dir.get_unrelative_path() );
+    REQUIRE( assure_dir_exist( dir ) );
+    const cata_path file = dir / "Audit EVT-B05s_diary.txt";
+    on_out_of_scope cleanup( [&]() {
+        remove_file( file );
+        if( !had_dir ) {
+            remove_directory( dir.get_unrelative_path() );
+        }
+    } );
+
+    // Writes the diary to the memorial folder; the question first is answered no in tests
+    const std::string errors = capture_debugmsg_during( [&]() {
+        d.death_entry();
+    } );
+    CHECK( errors.empty() );
+    const std::string text = read_entire_file( file.get_unrelative_path() );
+    CHECK( text.find( "test fake spell: 2" ) != std::string::npos );
 }
