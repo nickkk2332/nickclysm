@@ -37,6 +37,7 @@
 #include "path_info.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "save_fault.h"
 #include "submap.h"
 #include "type_id.h"
 #include "units.h"
@@ -323,4 +324,183 @@ TEST_CASE( "loop-b13_generated_weather_depends_only_on_time_place_and_seed", "[a
     CHECK( different == 0 );
     // Asking about any time leaves the live wind's direction alone
     CHECK( weather_generator::current_winddir == 90 );
+}
+
+// ---- LOOP-B14 ----
+
+namespace
+{
+// Makes the given save steps fail until it goes out of scope
+class failing_save_steps
+{
+    public:
+        explicit failing_save_steps( const std::set<std::string> &steps ) {
+            save_fault::failing_steps() = steps;
+            save_fault::started_steps().clear();
+        }
+        failing_save_steps( const failing_save_steps & ) = delete;
+        failing_save_steps &operator=( const failing_save_steps & ) = delete;
+        ~failing_save_steps() {
+            save_fault::failing_steps().clear();
+            save_fault::started_steps().clear();
+        }
+};
+
+// Puts back everything a save writes: the test world's folder, its list of saves and the
+// last-world record outside it. The test world is otherwise only saved when the run ends, and
+// later tests rely on that.
+class keep_save_files
+{
+    public:
+        keep_save_files() : world( PATH_INFO::world_base_save_path().get_unrelative_path() ),
+            saves( world_generator->active_world->world_saves ),
+            last_world_name( world_generator->last_world_name ),
+            last_character_name( world_generator->last_character_name ) {
+            remember( world );
+            remember( PATH_INFO::lastworld().get_unrelative_path() );
+        }
+        keep_save_files( const keep_save_files & ) = delete;
+        keep_save_files &operator=( const keep_save_files & ) = delete;
+        ~keep_save_files() {
+            std::vector<std::filesystem::path> added;
+            if( std::filesystem::exists( world ) ) {
+                for( const auto &entry : std::filesystem::recursive_directory_iterator( world ) ) {
+                    if( !dirs.count( entry.path() ) && !files.count( entry.path() ) ) {
+                        added.push_back( entry.path() );
+                    }
+                }
+            }
+            const std::filesystem::path lastworld = PATH_INFO::lastworld().get_unrelative_path();
+            if( !files.count( lastworld ) ) {
+                added.push_back( lastworld );
+            }
+            for( const std::filesystem::path &path : added ) {
+                std::error_code ec;
+                std::filesystem::remove_all( path, ec );
+            }
+            for( const auto &file : files ) {
+                std::ofstream out( file.first, std::ios::binary | std::ios::trunc );
+                out << file.second;
+            }
+            world_generator->active_world->world_saves = saves;
+            world_generator->last_world_name = last_world_name;
+            world_generator->last_character_name = last_character_name;
+        }
+    private:
+        void remember( const std::filesystem::path &path ) {
+            if( std::filesystem::is_regular_file( path ) ) {
+                std::ifstream in( path, std::ios::binary );
+                std::ostringstream ss;
+                ss << in.rdbuf();
+                files[path] = ss.str();
+            } else if( std::filesystem::is_directory( path ) ) {
+                dirs.insert( path );
+                for( const auto &entry : std::filesystem::directory_iterator( path ) ) {
+                    remember( entry.path() );
+                }
+            }
+        }
+        std::filesystem::path world;
+        std::map<std::filesystem::path, std::string> files;
+        std::set<std::filesystem::path> dirs;
+        std::vector<save_t> saves;
+        std::string last_world_name;
+        std::string last_character_name;
+};
+} // namespace
+
+static bool save_step_started( const std::string &step )
+{
+    const std::vector<std::string> &started = save_fault::started_steps();
+    return std::find( started.begin(), started.end(), step ) != started.end();
+}
+
+// game::save() wrote the player file first, so when a later step failed the world on disk
+// was older than the player: items picked up since the last save existed twice on reload and
+// items dropped were gone.
+TEST_CASE( "loop-b14_a_failed_world_save_leaves_the_player_file_alone", "[audit][savegame]" )
+{
+    REQUIRE( !g->save_is_dirty );
+    keep_save_files keep_files;
+    failing_save_steps fail( { "maps" } );
+    bool saved = true;
+    const std::string message = capture_debugmsg_during( [&saved]() {
+        saved = g->save();
+    } );
+    CHECK( !saved );
+    CHECK( message.find( "game not saved" ) != std::string::npos );
+    CHECK( save_step_started( "maps" ) );
+    CHECK( !save_step_started( "player" ) );
+}
+
+// Achievements go to a folder shared by every world and the options record is only for
+// debugging, but failing to write either one stopped the whole save.
+TEST_CASE( "loop-b14_achievements_and_the_options_record_do_not_stop_a_save",
+           "[audit][savegame]" )
+{
+    REQUIRE( !g->save_is_dirty );
+    keep_save_files keep_files;
+    failing_save_steps fail( { "achievements", "options_record" } );
+    CHECK( g->save() );
+    CHECK( save_step_started( "maps" ) );
+    CHECK( save_step_started( "player" ) );
+}
+
+static const dimension_id dimension_scarlet( "scarlet" );
+
+static const itype_id itype_rock( "rock" );
+
+static const mtype_id mon_zombie( "mon_zombie" );
+
+static const vproto_id vehicle_prototype_bicycle( "bicycle" );
+
+// Dimension travel took the travelling items, vehicle and NPCs out of the world before it
+// saved, and when the save failed it returned with them still out: they were lost.
+TEST_CASE( "loop-b14_a_failed_dimension_travel_save_loses_nothing", "[audit][savegame]" )
+{
+    clear_map();
+    clear_avatar();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms spot( 60, 60, 0 );
+    u.setpos( here, spot );
+
+    const tripoint_bub_ms rock_spot = spot + tripoint_rel_ms( 1, 0, 0 );
+    item &rock = here.add_item( rock_spot, item( itype_rock ) );
+    REQUIRE( rock.typeId() == itype_rock );
+    const item_location rock_loc( map_cursor( here.get_abs( rock_spot ) ), &rock );
+    const tripoint_bub_ms bike_spot = spot + tripoint_rel_ms( 0, 5, 0 );
+    vehicle *bike = here.add_vehicle( vehicle_prototype_bicycle, bike_spot, 0_degrees, 0,
+                                      veh_spawn_status::UNDAMAGED );
+    REQUIRE( bike != nullptr );
+    npc &guy = spawn_npc( ( spot + tripoint_rel_ms( 3, 0, 0 ) ).xy(), "test_talker" );
+    const character_id guy_id = guy.getID();
+    const tripoint_bub_ms zed_spot = spot + tripoint_rel_ms( -5, 0, 0 );
+    spawn_test_monster( "mon_zombie", zed_spot );
+
+    {
+        failing_save_steps fail( { "maps" } );
+        CHECK( !g->travel_to_dimension( dimension_scarlet, { &guy }, { rock_loc }, rock_spot, bike ) );
+    }
+
+    int rocks = 0;
+    for( const item &it : here.i_at( rock_spot ) ) {
+        if( it.typeId() == itype_rock ) {
+            rocks++;
+        }
+    }
+    CHECK( rocks == 1 );
+    const optional_vpart_position bike_part = here.veh_at( bike_spot );
+    CHECK( bike_part.has_value() );
+    CHECK( g->find_npc( guy_id ) != nullptr );
+    int zombies = 0;
+    for( const monster &critter : g->all_monsters() ) {
+        if( critter.type->id == mon_zombie && rl_dist( critter.pos_bub( here ), zed_spot ) <= 1 ) {
+            zombies++;
+        }
+    }
+    CHECK( zombies == 1 );
+
+    clear_map();
+    clear_avatar();
 }

@@ -9979,6 +9979,7 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 
     std::vector<item> place_items;
     place_items.reserve( item_travellers.size() );
+    const bool was_in_vehicle = player.in_vehicle;
     for( item_location il : item_travellers ) {
         item *it = il.get_item();
         if( it ) {
@@ -10000,6 +10001,36 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     }
     // Make sure we don't mess up savedata if for some reason maps can't be saved
     if( !save_maps() || !save_dimension_data() ) {
+        // Stay, and put back everything taken out for the trip, so nothing is lost
+        if( vehicle_ref ) {
+            vehicle *const restored = vehicle_ref.get();
+            here.place_vehicle( std::move( vehicle_ref ) );
+            here.reset_vehicles_sm_pos();
+            for( const int level : restored->occupied_levels( here ) ) {
+                here.on_vehicle_moved( level );
+            }
+            if( restored->tracking_on ) {
+                overmap_buffer.add_vehicle( restored );
+            }
+        }
+        if( was_in_vehicle && here.veh_at( player.pos_bub( here ) ) ) {
+            here.board_vehicle( player.pos_bub( here ), &player );
+            player.controlling_vehicle = controlling_vehicle;
+        }
+        // The items go where the trip would have put them
+        const tripoint_bub_ms item_center = item_travellers_location.value_or( player.pos_bub( here ) );
+        for( const item &it : place_items ) {
+            here.add_item_or_charges( item_center, it );
+        }
+        if( !moving_npcs.empty() ) {
+            overmap &old_om = overmap_buffer.get( project_to<coords::om>( player.pos_abs().xy() ) );
+            for( const npc_ptr &guy : moving_npcs ) {
+                old_om.insert_npc( guy );
+            }
+        }
+        load_npcs();
+        // The monsters were stored on the overmap
+        here.spawn_monsters( true, true );
         return false;
     }
     player.save_map_memory();

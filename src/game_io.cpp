@@ -76,6 +76,7 @@
 #include "pimpl.h"
 #include "popup.h"
 #include "safemode_ui.h"
+#include "save_fault.h"
 #if defined(TILES)
 #include "sdltiles.h"
 #endif
@@ -570,9 +571,37 @@ void game::load_packs( const std::string &msg, const std::vector<mod_id> &packs 
     }
 }
 
+namespace save_fault
+{
+std::set<std::string> &failing_steps()
+{
+    static std::set<std::string> steps;
+    return steps;
+}
+
+std::vector<std::string> &started_steps()
+{
+    static std::vector<std::string> steps;
+    return steps;
+}
+
+bool step_fails( const std::string &step )
+{
+    if( failing_steps().empty() ) {
+        // Nothing is set up to fail, so this isn't a test of the save: record nothing
+        return false;
+    }
+    started_steps().push_back( step );
+    return failing_steps().count( step ) > 0;
+}
+} // namespace save_fault
+
 //Saves all factions and missions and npcs.
 bool game::save_factions_missions_npcs()
 {
+    if( save_fault::step_fails( "master" ) ) {
+        return false;
+    }
     cata_path masterfile = PATH_INFO::world_base_save_path() / SAVE_MASTER;
     return write_to_file( masterfile, [&]( std::ostream & fout ) {
         serialize_master( fout );
@@ -581,6 +610,9 @@ bool game::save_factions_missions_npcs()
 //Saves per-dimension data like Weather and overmapbuffer state
 bool game::save_dimension_data()
 {
+    if( save_fault::step_fails( "dimension" ) ) {
+        return false;
+    }
     cata_path data_file = PATH_INFO::current_dimension_save_path() / SAVE_DIMENSION_DATA;
     return write_to_file( data_file, [&]( std::ostream & fout ) {
         serialize_dimension_data( fout );
@@ -588,6 +620,9 @@ bool game::save_dimension_data()
 }
 bool game::save_maps()
 {
+    if( save_fault::step_fails( "maps" ) ) {
+        return false;
+    }
     map &here = get_map();
 
     try {
@@ -603,6 +638,9 @@ bool game::save_maps()
 
 bool game::save_player_data()
 {
+    if( save_fault::step_fails( "player" ) ) {
+        return false;
+    }
     const cata_path playerfile = PATH_INFO::player_base_save_path();
 
     bool saved_data;
@@ -653,6 +691,9 @@ bool game::save_player_data()
 
 bool game::save_achievements()
 {
+    if( save_fault::step_fails( "achievements" ) ) {
+        return false;
+    }
     const std::string &achievement_dir = PATH_INFO::achievementdir();
 
     //Check if achievement dir exists
@@ -708,6 +749,9 @@ bool game::save_achievements()
 
 bool game::save_external_options_record()
 {
+    if( save_fault::step_fails( "options_record" ) ) {
+        return false;
+    }
     const cata_path externals = PATH_INFO::world_base_save_path() / PATH_INFO::external_options();
     const bool saved_externals = write_to_file( externals, [&]( std::ostream & fout ) {
         JsonOut jout( fout );
@@ -753,12 +797,13 @@ bool game::save()
     std::chrono::seconds total_time_played = time_played_at_last_load + time_since_load;
     events().send<event_type::game_save>( time_since_load, total_time_played );
     try {
-        if( !save_player_data() ||
-            !save_achievements() ||
-            !save_factions_missions_npcs() ||
-            !save_external_options_record() ||
+        // The world goes first: if it fails, the player file on disk still matches the world
+        // on disk, instead of the player keeping items the world also still has (or losing
+        // ones it never got)
+        if( !save_factions_missions_npcs() ||
             !save_dimension_data() ||
             !save_maps() ||
+            !save_player_data() ||
             !get_auto_pickup().save_character() ||
             !get_auto_notes_settings().save( true ) ||
             !get_safemode().save_character() ||
@@ -771,6 +816,14 @@ bool game::save()
             debugmsg( "game not saved" );
             return false;
         } else {
+            // Achievements go to a folder shared by every world, and the options record is
+            // only for debugging. Failing to write either is reported, but the game is saved.
+            if( !save_achievements() ) {
+                DebugLog( D_WARNING, DC_ALL ) << "game::save: achievements not written";
+            }
+            if( !save_external_options_record() ) {
+                DebugLog( D_WARNING, DC_ALL ) << "game::save: external options record not written";
+            }
             world_generator->last_world_name = world_generator->active_world->world_name;
             world_generator->last_character_name = u.name;
             world_generator->save_last_world_info();
