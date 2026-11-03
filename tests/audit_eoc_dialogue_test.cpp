@@ -54,6 +54,8 @@ static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B07_REQUEUE( "EOC_AUDIT_B07_REQUEUE" );
 static const effect_on_condition_id effect_on_condition_EOC_AUDIT_B14_LOOP( "EOC_AUDIT_B14_LOOP" );
 static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_B14_OUTER( "EOC_AUDIT_B14_OUTER" );
+static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B14_RECURSE( "EOC_AUDIT_B14_RECURSE" );
 static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B15_LATER( "EOC_AUDIT_B15_LATER" );
@@ -688,4 +690,26 @@ TEST_CASE( "eoc-b13_bulk_donate_to_a_talker_that_isnt_a_character", "[audit][eoc
         donate.apply( d );
     } ).empty() );
     CHECK( giver.has_amount( itype_test_rock, 1 ) );
+}
+
+// EOC-B14 follow-up: the stop flag stayed up until no EOC at all was running, so after an endless
+// chain started inside another EOC (or a dialogue an EOC opened), every later EOC there did nothing.
+TEST_CASE( "eoc-b14_eocs_after_a_stopped_chain_still_run", "[audit][eoc]" )
+{
+    global_variables &globals = get_globals();
+    on_out_of_scope forget( [&globals]() {
+        globals.remove_global_value( "audit_b14_depth" );
+        globals.remove_global_value( "audit_b14_after" );
+    } );
+    globals.remove_global_value( "audit_b14_after" );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    const std::string messages = capture_debugmsg_during( [&]() {
+        effect_on_condition_EOC_AUDIT_B14_OUTER->activate( d );
+    } );
+    CAPTURE( messages );
+    const std::string::size_type first = messages.find( "is nested" );
+    CHECK( first != std::string::npos );
+    CHECK( messages.find( "is nested", first + 1 ) == std::string::npos );
+    // The EOC that started the endless chain ran inside another, which goes on
+    CHECK( global_number( "audit_b14_after" ) == 1 );
 }

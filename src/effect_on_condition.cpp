@@ -6,6 +6,7 @@
 #include <iterator>
 #include <list>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <ostream>
 #include <queue>
@@ -396,20 +397,31 @@ void effect_on_conditions::process_reactivate()
 
 namespace
 {
-// How many EOCs are running inside one another right now, however each was reached (run_eocs,
-// true_eocs, events, spells...); a dialogue's callstack text doesn't follow all of those.
-int eoc_depth = 0;
-// Set when a chain of EOCs went too deep; every EOC still in it then stops at once.
-bool eoc_depth_exceeded = false;
-// Far deeper than EOCs nest in practice.  Each level takes about 2.5 KB of stack in a release
-// build, and a Windows program's main thread gets 1 MB.
+// The EOCs running inside one another right now, outermost first, however each was reached
+// (run_eocs, true_eocs, events, spells...); a dialogue's callstack text doesn't follow all of those.
+std::vector<effect_on_condition_id> running_eocs;
+// Set when a chain of EOCs went too deep: how many EOCs were running outside the chain.  Until it
+// has returned to them, every EOC in the chain stops at once.
+std::optional<size_t> stopping_above;
+// Deeper than EOCs need to nest: content that repeats something should loop with run_eocs'
+// "iterations" or "condition" instead of running itself again.  Each level takes about 2.5 KB of
+// stack in a release build (more in a debug build), and a Windows program's main thread gets 1 MB.
 constexpr int max_eoc_depth = 250;
+
+void leave_eoc()
+{
+    running_eocs.pop_back();
+    // Once the stopped chain has returned, EOCs run again
+    if( stopping_above && running_eocs.size() <= *stopping_above ) {
+        stopping_above.reset();
+    }
+}
 } // namespace
 
 bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
                                     const std::function<void( const dialogue & )> &on_done ) const
 {
-    if( eoc_depth_exceeded ) {
+    if( stopping_above ) {
         return false;
     }
     const bool tracing = debug_menu::debug_capture::is_eoc_tracing();
@@ -421,18 +433,15 @@ bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
     if( require_callstack_check ) {
         d.amend_callstack( "EOC: " + id.str() );
     }
-    if( eoc_depth >= max_eoc_depth ) {
-        eoc_depth_exceeded = true;
+    if( running_eocs.size() >= static_cast<size_t>( max_eoc_depth ) ) {
+        // The endless chain starts where this EOC first ran; whatever ran that goes on
+        stopping_above = std::find( running_eocs.begin(), running_eocs.end(), id ) - running_eocs.begin();
         debugmsg( "EOC %s is nested %d deep, probably in an endless loop of EOCs running each other.  "
                   "That chain of EOCs was stopped.", id.str(), max_eoc_depth );
         return false;
     }
-    ++eoc_depth;
-    on_out_of_scope leave_eoc( [] {
-        --eoc_depth;
-        // Once the whole chain has returned, the next one starts afresh
-        eoc_depth_exceeded = eoc_depth_exceeded && eoc_depth > 0;
-    } );
+    running_eocs.push_back( id );
+    on_out_of_scope leave( leave_eoc );
     // each version needs a copy of the dialogue to pass down
     dialogue d_eoc( d );
     if( !has_condition || condition( d_eoc ) ) {

@@ -121,5 +121,17 @@
     "id": "EOC_AUDIT_B15_LATER",
     "//": "EOC-B15: due in the same pass, after the takeover; it belongs to the old body.",
     "effect": [ { "math": [ "audit_b15_later++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_OUTER",
+    "//": "EOC-B14: starts an endless chain, then runs another EOC once the chain is stopped.",
+    "effect": [ { "run_eocs": "EOC_AUDIT_B14_RECURSE" }, { "run_eocs": "EOC_AUDIT_B14_AFTER" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_AFTER",
+    "//": "EOC-B14: counts that it ran.",
+    "effect": [ { "math": [ "audit_b14_after++" ] } ]
   }
 ]
