@@ -149,6 +149,11 @@ struct achievement_state {
     // The values for each requirement at the time of completion or failure
     std::vector<cata_variant> final_values;
 
+    // Whether achievements were enabled when it became that state.  Completions made
+    // while they were disabled (after debug menu use) are not written to the
+    // achievements folder.
+    bool achievements_enabled = true;
+
     std::string ui_text( const achievement * ) const;
 
     void serialize( JsonOut & ) const;

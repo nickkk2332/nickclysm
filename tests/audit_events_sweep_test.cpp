@@ -1,17 +1,25 @@
+#include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
+#include "achievement.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_path.h"
 #include "cata_scope_helpers.h"
 #include "cata_utility.h"
+#include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "diary.h"
+#include "event.h"
+#include "event_bus.h"
 #include "explosion.h"
 #include "filesystem.h"
+#include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
 #include "json.h"
@@ -22,11 +30,15 @@
 #include "monster.h"
 #include "path_info.h"
 #include "player_helpers.h"
+#include "stats_tracker.h"
 #include "string_formatter.h"
 #include "timed_event.h"
 #include "type_id.h"
 
+static const achievement_id achievement_achievement_arcade_mode( "achievement_arcade_mode" );
+static const achievement_id achievement_achievement_kill_zombie( "achievement_kill_zombie" );
 static const itype_id itype_nail( "nail" );
+static const mtype_id mon_zombie( "mon_zombie" );
 static const spell_id spell_test_fake_spell( "test_fake_spell" );
 
 namespace
@@ -182,4 +194,80 @@ TEST_CASE( "evt-b05_diary_lists_spells_the_avatar_has_forgotten", "[audit][diary
     CHECK( errors.empty() );
     const std::string text = read_entire_file( file.get_unrelative_path() );
     CHECK( text.find( "test fake spell: 2" ) != std::string::npos );
+}
+
+namespace
+{
+// The achievements a tracker writes to the achievements folder
+std::set<std::string> written_achievements( const achievements_tracker &a )
+{
+    std::ostringstream os;
+    a.write_json_achievements( os, "Audit EVT-B07" );
+    std::set<std::string> ret;
+    const JsonObject jo = json_loader::from_string( os.str() );
+    jo.allow_omitted_members();
+    for( const std::string id : jo.get_array( "achievements" ) ) {
+        ret.insert( id );
+    }
+    return ret;
+}
+
+void start_and_kill_a_zombie( event_bus &b, achievements_tracker &a, bool enabled )
+{
+    const character_id u_id = get_player_character().getID();
+    b.send<event_type::game_start>( "audit" );
+    b.send<event_type::game_avatar_new>( true, false, u_id, "Audit EVT-B07", "CUSTOM_PROFESSION" );
+    a.set_enabled( enabled );
+    b.send<event_type::character_kills_monster>( u_id, mon_zombie, 0 );
+    REQUIRE( a.is_completed( achievement_achievement_kill_zombie ) ==
+             achievement_completion::completed );
+}
+} // namespace
+
+// EVT-B07: using the debug menu disables achievements, but those completed afterwards were
+// still written to the achievements folder, which unlocks professions and scenarios in
+// every world.
+TEST_CASE( "evt-b07_achievements_earned_while_disabled_are_not_written",
+           "[audit][achievement]" )
+{
+    const auto ignore = []( const achievement *, bool ) {};
+
+    SECTION( "earned while enabled" ) {
+        event_bus b;
+        stats_tracker s;
+        b.subscribe( &s );
+        achievements_tracker a( s, ignore, ignore, true );
+        b.subscribe( &a );
+        start_and_kill_a_zombie( b, a, true );
+        CHECK( written_achievements( a ).count( achievement_achievement_kill_zombie.str() ) );
+    }
+
+    SECTION( "earned while disabled" ) {
+        event_bus b;
+        stats_tracker s;
+        b.subscribe( &s );
+        achievements_tracker a( s, ignore, ignore, true );
+        b.subscribe( &a );
+        start_and_kill_a_zombie( b, a, false );
+        // given from the debug menu on purpose
+        a.report_achievement( &achievement_achievement_arcade_mode.obj(),
+                              achievement_completion::completed );
+        // and enabling them again doesn't count what was earned meanwhile
+        a.set_enabled( true );
+
+        std::set<std::string> written = written_achievements( a );
+        CHECK_FALSE( written.count( achievement_achievement_kill_zombie.str() ) );
+        CHECK( written.count( achievement_achievement_arcade_mode.str() ) );
+
+        // also after a save and load
+        std::ostringstream os;
+        JsonOut jsout( os );
+        a.serialize( jsout );
+        stats_tracker s2;
+        achievements_tracker loaded( s2, ignore, ignore, false );
+        loaded.deserialize( json_loader::from_string( os.str() ).get_object() );
+        written = written_achievements( loaded );
+        CHECK_FALSE( written.count( achievement_achievement_kill_zombie.str() ) );
+        CHECK( written.count( achievement_achievement_arcade_mode.str() ) );
+    }
 }

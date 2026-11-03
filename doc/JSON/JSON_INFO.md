@@ -2569,6 +2569,12 @@ add an `"anything"` constraint on it.  For example:
 This is a simple "survive a day" but is triggered by waking up, so it will be
 completed when you wake up for the first time after 24 hours into the game.
 
+Using the debug menu disables achievements for that game.  Achievements
+completed while they are disabled still show in that game, but they are not
+written to the `achievements` folder, so they don't unlock professions or
+scenarios in other games.  Arcade Mode, which the debug menu gives on purpose,
+is the exception.
+
 #### `conduct`
 
 A conduct is a self-imposed constraint that players can choose to aspire to

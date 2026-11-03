@@ -642,6 +642,11 @@ void achievement_state::serialize( JsonOut &jsout ) const
     jsout.member_as_string( "completion", completion );
     jsout.member( "last_state_change", last_state_change );
     jsout.member( "final_values", final_values );
+    // Only written when false, so that saves without debug menu use stay readable by
+    // builds that don't know this member
+    if( !achievements_enabled ) {
+        jsout.member( "achievements_enabled", achievements_enabled );
+    }
     jsout.end_object();
 }
 
@@ -650,6 +655,9 @@ void achievement_state::deserialize( const JsonObject &jo )
     jo.read( "completion", completion );
     jo.read( "last_state_change", last_state_change );
     jo.read( "final_values", final_values );
+    // Older saves don't say; treat their achievements as earned while enabled, as before
+    achievements_enabled = true;
+    jo.read( "achievements_enabled", achievements_enabled );
 }
 
 achievement_tracker::achievement_tracker( const achievement &a, achievements_tracker &tracker,
@@ -802,7 +810,8 @@ void achievements_tracker::report_achievement( const achievement *a, achievement
     achievement_state{
         comp,
         calendar::turn,
-        tracker_it->second.current_values()
+        tracker_it->second.current_values(),
+        is_enabled()
     }
     );
     trackers_.erase( tracker_it );
@@ -858,7 +867,11 @@ void achievements_tracker::write_json_achievements(
     std::vector<achievement_id> ach_ids;
 
     for( const auto &kv : achievements_status_ ) {
-        if( kv.second.completion == achievement_completion::completed ) {
+        // Achievements earned while they were disabled (after debug menu use) must not
+        // unlock anything for other games.  Arcade mode is given from the debug menu on
+        // purpose, so it is kept.
+        if( kv.second.completion == achievement_completion::completed &&
+            ( kv.second.achievements_enabled || kv.first == achievement_achievement_arcade_mode ) ) {
             ach_ids.push_back( kv.first );
         }
     }
