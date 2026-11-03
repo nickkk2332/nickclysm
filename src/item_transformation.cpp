@@ -126,11 +126,14 @@ void item_transformation::transform( Character *carrier, item &it, bool dont_tak
 
     // TODO: Get rid of dont_take_off when/if the takeoff operation moves
     // the item rather than creating a copy.
-    if( !dont_take_off && carrier && carrier->is_worn( it ) ) {
+    // dont_take_off only keeps a worn item that is no longer armor on: worn armor that changes in
+    // place still updates what the wearer counts as worn.
+    if( carrier && carrier->is_worn( it ) ) {
         if( !it.is_armor() ) {
-            item_location il = item_location( *carrier, &it );
-            carrier->takeoff( il );
-
+            if( !dont_take_off ) {
+                item_location il = item_location( *carrier, &it );
+                carrier->takeoff( il );
+            }
         } else {
             carrier->calc_encumbrance();
             carrier->update_bodytemp();

@@ -33,11 +33,17 @@ static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
 
 static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_audit_use_b08_rune( "audit_use_b08_rune" );
+static const itype_id itype_blindfold( "blindfold" );
+static const itype_id itype_blindfold_up( "blindfold_up" );
 static const itype_id itype_log( "log" );
 static const itype_id itype_saw( "saw" );
 static const itype_id itype_splinter( "splinter" );
 
+static const morale_type morale_perm_constrained( "morale_perm_constrained" );
+
 static const quality_id qual_HOTPLATE( "HOTPLATE" );
+
+static const trait_id trait_VANITY( "VANITY" );
 
 namespace
 {
@@ -143,4 +149,34 @@ TEST_CASE( "use-b08_eoc_use_action_finds_the_item_where_it_is", "[audit][iuse_ac
     // Its EOC removes the item it was used from.
     actor->use( &they, rune, &here, pos );
     CHECK( count_on_tile( pos, itype_audit_use_b08_rune ) == 0 );
+}
+
+// USE-B09: every in-place transformation passes dont_take_off, which also skipped the worn
+// armor bookkeeping, so morale kept counting the old item's coverage.  A vain character who
+// raised a blindfold kept the "constrained" penalty for the eyes until save and load.
+TEST_CASE( "use-b09_transforming_worn_armor_updates_its_coverage_for_morale",
+           "[audit][iuse_actor]" )
+{
+    clear_avatar();
+    avatar &they = get_avatar();
+    const avatar_and_tile_cleanup cleanup{ they.pos_bub() };
+    they.set_mutation( trait_VANITY );
+    REQUIRE( they.has_trait( trait_VANITY ) );
+    REQUIRE( they.has_morale( morale_perm_constrained ) == 0 );
+
+    std::optional<std::list<item>::iterator> worn = they.wear_item( item( itype_blindfold ), false );
+    REQUIRE( worn.has_value() );
+    item &blindfold = **worn;
+    // covered eyes constrain a vain character
+    REQUIRE( they.has_morale( morale_perm_constrained ) < 0 );
+
+    const itype *lowered = blindfold.type;
+    REQUIRE( lowered->invoke( &they, blindfold, they.pos_bub() ).has_value() );
+    REQUIRE( blindfold.typeId() == itype_blindfold_up );
+    REQUIRE( they.is_worn( blindfold ) );
+    // raised, it covers the head only
+    CHECK( they.has_morale( morale_perm_constrained ) == 0 );
+
+    REQUIRE( they.takeoff( item_location( they, &blindfold ) ) );
+    CHECK( they.has_morale( morale_perm_constrained ) == 0 );
 }
