@@ -16,11 +16,17 @@ enum class status_t : char;
 class character_oracle_t : public oracle_t
 {
     public:
-        explicit character_oracle_t( const Character *subject ) {
+        // Without `use_cache`, nodes with "evaluate_every" neither read nor fill their cache:
+        // for diagnostic walks that must not change what the real walk sees.
+        explicit character_oracle_t( const Character *subject, bool use_cache = true ) {
             this->subject = subject;
+            this->use_cache = use_cache;
+        }
+        oracle_kind kind() const override {
+            return oracle_kind::character;
         }
         const Creature *creature() const override;
-        // the character's id
+        // the character's id, when it has a valid one
         std::optional<int> cache_key() const override;
         /**
          * Predicates used by AI to determine goals.
@@ -69,6 +75,7 @@ class character_oracle_t : public oracle_t
         float free_time_urgency( std::string_view ) const;
     private:
         const Character *subject;
+        bool use_cache = true;
 };
 
 } //namespace behavior

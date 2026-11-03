@@ -15,6 +15,9 @@ namespace behavior
 {
 enum class status_t : char;
 
+// Which oracle a built-in predicate or score reads.
+enum class oracle_kind : char { any, character, monster };
+
 /**
  * An oracle is a class in charge of introspecting into a game entity in a particular way.
  * The base class has trivial functionality, but provides a mechanism for aggregating oracle
@@ -26,6 +29,9 @@ class oracle_t
 {
     public:
         virtual ~oracle_t() = default;
+        virtual oracle_kind kind() const {
+            return oracle_kind::any;
+        }
         // The creature this oracle reads. Dialogue conditions and math scores in the tree see it
         // as u. nullptr when there is none: such nodes then fail, and score 0.
         virtual const Creature *creature() const {
@@ -50,6 +56,11 @@ extern std::unordered_map<std::string, std::function<float( const oracle_t *, st
 // "", and loading a node that gives them an argument is an error, so none is silently ignored.
 extern std::unordered_set<std::string> predicates_with_argument;
 extern std::unordered_set<std::string> scores_with_argument;
+
+// The oracle a built-in predicate or score reads; `any` for a name that isn't built in. Given
+// another kind of oracle, a built-in fails (predicates) or gives 0 (scores) with a debugmsg.
+oracle_kind predicate_kind( const std::string &name );
+oracle_kind score_kind( const std::string &name );
 
 } // namespace behavior
 #endif // CATA_SRC_BEHAVIOR_ORACLE_H

@@ -1051,6 +1051,14 @@ double moon_phase_eval( const_dialogue const & /* d */, char /* scope */,
     return static_cast<int>( get_moon_phase( calendar::turn ) );
 }
 
+// oracle('name'): a literal name must be a named score.
+void oracle_check( std::vector<diag_value> const &params )
+{
+    if( params[0].is_str() && behavior::score_predicate_map.count( params[0].str() ) == 0 ) {
+        throw math::syntax_error( R"(oracle(): "%s" is not a named score)", params[0].str() );
+    }
+}
+
 // A named score of the NPC behavior tree (score_predicate_map), for u.
 double oracle_eval( const_dialogue const &d, char /* scope */,
                     std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
@@ -2545,7 +2553,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "moon_phase", { "g", 0, moon_phase_eval } },
     { "morale", { "un", 0, morale_eval, morale_ass, { "raw" } } },
     { "num_input", { "g", 2, num_input_eval } },
-    { "oracle", { "g", 1, oracle_eval } },
+    { "oracle", { "g", 1, oracle_eval, {}, {}, oracle_check } },
     { "oxygen", { "un", 0, oxygen_eval, oxygen_ass } },
     { "oxygen_max", { "un", 0, oxygen_max_eval } },
     { "pain", { "un", 0, pain_eval, pain_ass, { "type" } } },

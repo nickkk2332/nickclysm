@@ -106,8 +106,7 @@ the need that won inside it, while `npc_thirst` replaces the score of its leaves
 `"predicate": "condition"` runs any dialogue condition, math included. It is running when the
 condition is true and fails when it is false, so a `fallback` parent moves on to its next child.
 
-- The NPC is `u`. There is no beta talker: `npc_` conditions and `n_` math have nothing to
-  read.
+- The NPC is `u`. The beta talker is empty: `npc_` conditions are false and `n_` math reads 0.
 - A condition can limit a branch to some NPCs: by class (`u_has_class`), trait
   (`u_has_trait`), or a variable that an EOC sets.
 - Monster goal nodes take them too, with the monster as `u`.
@@ -132,7 +131,9 @@ Put cheap tests first, since the first test that fails ends the node, and use
 
 ### Built-in predicates
 
-They read the NPC through C++. None of the NPC predicates reads an `argument`.
+They read the NPC through C++. None of the NPC predicates reads an `argument`. An NPC
+predicate in a monster's tree, or a monster predicate in an NPC's, fails (and an NPC score
+gives 0), with an error; a tree that uses both kinds is reported at load.
 
 | Predicate | Running when | Otherwise
 |---|---|---
@@ -185,7 +186,7 @@ urgent. There are three ways to write one:
 |---|---
 | a string | The name of a built-in score. `score_argument` would be its argument, but no built-in score reads one, so giving one is a load error.
 | `named` | The name of a built-in score. `mult` (_optional_, default 1) multiplies it; `argument` as `score_argument`.
-| `math` | A [math expression](NPCs.md#math), with the NPC as `u` and no beta. The math function `oracle('name')` gives a built-in score, so a node can combine one with anything else: `"math": [ "max( oracle('npc_thirst_urgency'), u_devotion / 100 )" ]`.
+| `math` | A [math expression](NPCs.md#math), with the NPC as `u` and an empty beta (`n_` math reads 0). The math function `oracle('name')` gives a built-in score, so a node can combine one with anything else: `"math": [ "max( oracle('npc_thirst_urgency'), u_devotion / 100 )" ]`. A name written in quotes is checked at load.
 
 A score is only worked out when its node is running. A node without a score scores 0, unless
 it has children (see [How a node is walked](#how-a-node-is-walked)).
@@ -267,8 +268,8 @@ When a field is given, it replaces the inherited one: `children`, `conditions`, 
   The anchor (`before` or `after`) is a child of the inherited list, or one inserted earlier in
   the same `extend`.
 - `"delete": { "children": [ ... ] }` removes children by id.
-- Deletions apply to the inherited list before the inserts, and anchors may name a deleted child.
-  So a child can be replaced in place, or moved:
+- Deletions apply to the inherited list before the inserts. An anchor names a child in the list,
+  or else one that was deleted. So a child can be replaced in place, or moved:
 
   ```jsonc
   // replace combat with a mod's own
@@ -318,15 +319,25 @@ These stop loading with an error that points at the JSON:
 
 - an unknown predicate or built-in score, an `argument` for one that reads none, or a missing
   one where it is needed
-- `before` or `after` naming something that is not a child, or both in one insert
-- deleting a child or condition the node doesn't have; inserting a child it already has
+- an unknown name written in quotes in `oracle('...')`
+- both `before` and `after` in one insert
 - `extend` or `delete` without `copy-from`
+
+Edits that two mods may well both make are reported, with where they are in the JSON, and
+loading goes on:
+
+- deleting a child or condition the node doesn't have (skipped)
+- inserting a child it already has (skipped)
+- `before` or `after` naming something that is not a child (the child is added at the end)
+- a member of `extend` or `delete` that nothing reads, such as a misspelt `"childs"`
 
 These are reported once everything is loaded:
 
 - a child that is not a behavior (it is left out)
 - a child listed twice
 - a cycle, with its path (the link that closes it is left out, so a walk always ends)
+- a node whose children were all left out: it fails, so its parent moves on
 - a tree whose root reaches no leaf with a goal (it can only ever give `"idle"`); a root is a
   node no other node lists as a child
+- a tree that uses both NPC and monster predicates or scores
 - a node with neither children nor a goal, with both, or with children but no strategy

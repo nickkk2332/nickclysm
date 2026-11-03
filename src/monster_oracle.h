@@ -18,6 +18,9 @@ class monster_oracle_t : public oracle_t
         explicit monster_oracle_t( const monster *subject ) {
             this->subject = subject;
         }
+        oracle_kind kind() const override {
+            return oracle_kind::monster;
+        }
         const Creature *creature() const override;
         /**
          * Predicates used by AI to determine goals.

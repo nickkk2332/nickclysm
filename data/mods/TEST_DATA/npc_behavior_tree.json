@@ -135,5 +135,24 @@
     "conditions": [ { "predicate": "condition", "condition": { "math": [ "u_bt_devotion > 50" ] } } ],
     "goal": "test_cached",
     "score": { "math": [ "u_bt_devotion / 100" ] }
+  },
+  {
+    "//": "Conditions and math that read the beta talker, which is empty.",
+    "type": "behavior",
+    "id": "test_bt_beta_condition",
+    "conditions": [ { "predicate": "condition", "condition": { "npc_has_trait": "IGNORE_SOUND" } } ],
+    "goal": "test_beta_condition"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_beta_math",
+    "goal": "test_beta_math",
+    "score": { "math": [ "1 + n_val('strength') + n_bt_devotion" ] }
+  },
+  {
+    "//": "Replaced and put back by the test of the reporting path; nothing links to it.",
+    "type": "behavior",
+    "id": "test_bt_reported",
+    "goal": "test_reported"
   }
 ]

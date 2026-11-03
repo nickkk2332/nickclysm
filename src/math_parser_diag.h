@@ -33,10 +33,16 @@ struct dialogue_func {
     using fa_t = void( * )( double val, dialogue &, char, std::vector<diag_value> const &,
                             diag_kwargs const & );
 
+    // Checks the arguments written as literals when the expression is parsed (unknown ones are
+    // empty); throws math::syntax_error to reject them.
+    using fc_t = void( * )( std::vector<diag_value> const & );
+
     using kwargs_t = std::vector<std::string_view>;
 
-    dialogue_func( std::string_view sc_, int n_, fe_t fe_, fa_t fa_ = {}, kwargs_t kw_ = {} )
-        : scopes( sc_ ), num_params( n_ ), fe( fe_ ), fa( fa_ ), kwargs( std::move( kw_ ) )
+    dialogue_func( std::string_view sc_, int n_, fe_t fe_, fa_t fa_ = {}, kwargs_t kw_ = {},
+                   fc_t fc_ = {} )
+        : scopes( sc_ ), num_params( n_ ), fe( fe_ ), fa( fa_ ), kwargs( std::move( kw_ ) ),
+          fc( fc_ )
     {}
     std::string_view scopes;
     int num_params{};
@@ -45,6 +51,8 @@ struct dialogue_func {
     fa_t fa;
 
     kwargs_t kwargs;
+
+    fc_t fc;
 };
 using pdiag_func = dialogue_func const *;
 

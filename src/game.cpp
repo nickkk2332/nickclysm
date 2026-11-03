@@ -50,6 +50,7 @@
 #include "avatar.h"
 #include "avatar_action.h"
 #include "basecamp.h"
+#include "behavior.h"
 #include "bionics.h"
 #include "body_part_set.h"
 #include "bodygraph.h"
@@ -714,6 +715,8 @@ void game::setup()
     m = map();
 
     next_npc_id = character_id( 1 );
+    // ids start over, so results kept for "evaluate_every" would match the wrong NPCs
+    behavior::clear_evaluation_cache();
     next_mission_id = 1;
     next_item_uid = 1;
     uquit = QUIT_NO;   // We haven't quit the game

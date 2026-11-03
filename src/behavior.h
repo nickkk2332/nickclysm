@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_BEHAVIOR_H
 #define CATA_SRC_BEHAVIOR_H
 
+#include <cstddef>
 #include <functional>
 #include <optional>
 #include <string>
@@ -73,6 +74,10 @@ class node_t
         std::string goal() const;
         // The children, in the order the strategy visits them.
         const std::vector<const node_t *> &get_children() const;
+        // What the node holds, for tests and debugging, as
+        // "strategy fallback; if npc_in_danger, !x, y(arg), condition; score s; every 5; goal g",
+        // leaving out what it doesn't have.
+        std::string summary() const;
 
         // Interface to construct a node.
         void set_strategy( const strategy_t *new_strategy );
@@ -111,6 +116,9 @@ class node_t
         // TODO: make into an ID?
         std::string _goal;
         std::optional<std::pair<score_type, std::string>> score_function_;
+        // The built-in score's name (empty for math), and how summary() shows the score.
+        std::string score_name_;
+        std::string score_label_;
 
         // "evaluate_every": the conditions and score are reused for this many turns, separately
         // for each subject. 0 evaluates them every time.
@@ -122,21 +130,25 @@ class node_t
         };
         // Keyed by oracle_t::cache_key().
         mutable std::unordered_map<int, cached_evaluation> evaluation_cache;
+        // Expired entries are pruned when the cache reaches this size, which then doubles.
+        mutable size_t evaluation_cache_prune_at = 256;
         // The subject's cached evaluation, refreshed when it is missing or expired; nullptr
         // when this node or this subject isn't cached.
         cached_evaluation *cached_for( const oracle_t *subject ) const;
         float evaluate_score( const oracle_t *subject, cached_evaluation *cached ) const;
 
-        void load_children( const JsonObject &jo );
-        void load_conditions( const JsonObject &jo );
+        void load_children( const JsonObject &jo, const JsonObject &extend, const JsonObject &remove );
+        void load_conditions( const JsonObject &jo, const JsonObject &extend,
+                              const JsonObject &remove );
         void load_score( const JsonObject &jo );
 };
 
 /**
  * Resolves each node's child ids to the nodes with those ids. An unknown child, or a link that
- * would close a cycle, is left out, so ticking a tree always ends. Returns one message per
- * problem: unknown or repeated children, cycles, and trees whose root reaches no leaf with a
- * goal. A root is a node that no other node in @p nodes links to.
+ * would close a cycle, is left out, so ticking a tree always ends; a node whose children were all
+ * left out fails. Returns one message per problem: unknown or repeated children, cycles, trees
+ * whose root reaches no leaf with a goal, and trees that use both NPC and monster predicates or
+ * scores. A root is a node that no other node in @p nodes links to.
  */
 std::vector<std::string> link_children( std::vector<node_t> &nodes );
 

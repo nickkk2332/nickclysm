@@ -52,6 +52,41 @@ const std::vector<const node_t *> &node_t::get_children() const
     return children;
 }
 
+std::string node_t::summary() const
+{
+    std::vector<std::string> parts;
+    for( const auto &[name, known] : strategy_map ) {
+        if( known == strategy && strategy != nullptr ) {
+            parts.push_back( "strategy " + name );
+        }
+    }
+    if( !conditions.empty() ) {
+        std::string list;
+        for( const condition_t &condition : conditions ) {
+            list += list.empty() ? "" : ", ";
+            list += ( condition.invert ? "!" : "" ) + condition.predicate;
+            if( !condition.argument.empty() ) {
+                list += "(" + condition.argument + ")";
+            }
+        }
+        parts.push_back( "if " + list );
+    }
+    if( score_function_ ) {
+        parts.push_back( "score " + ( score_label_.empty() ? "code" : score_label_ ) );
+    }
+    if( evaluate_every_turns > 0 ) {
+        parts.push_back( string_format( "every %d", evaluate_every_turns ) );
+    }
+    if( !_goal.empty() ) {
+        parts.push_back( "goal " + _goal );
+    }
+    std::string out;
+    for( const std::string &part : parts ) {
+        out += ( out.empty() ? "" : "; " ) + part;
+    }
+    return out;
+}
+
 status_t node_t::process_predicates( const oracle_t *subject ) const
 {
     status_t result = status_t::running;
@@ -89,12 +124,14 @@ node_t::cached_evaluation *node_t::cached_for( const oracle_t *subject ) const
         // time can go back too, when another game is loaded
         return now < c.evaluated_at || now >= c.evaluated_at + evaluate_every_turns;
     };
-    // drop the results of subjects that are gone, so the cache doesn't grow without bound
-    static constexpr size_t prune_above = 256;
-    if( evaluation_cache.size() > prune_above ) {
+    // Drop the results of subjects that are gone, so the cache doesn't grow without bound. Each
+    // prune waits for the cache to double, so its cost is spread over the inserts.
+    if( evaluation_cache.size() >= evaluation_cache_prune_at ) {
         for( auto it = evaluation_cache.begin(); it != evaluation_cache.end(); ) {
             it = expired( it->second ) ? evaluation_cache.erase( it ) : std::next( it );
         }
+        static constexpr size_t min_prune_at = 256;
+        evaluation_cache_prune_at = std::max( min_prune_at, 2 * evaluation_cache.size() );
     }
     auto [it, inserted] = evaluation_cache.try_emplace( *key );
     cached_evaluation &cached = it->second;
@@ -119,6 +156,10 @@ float node_t::evaluate_score( const oracle_t *subject, cached_evaluation *cached
 
 behavior_return node_t::tick( const oracle_t *subject ) const
 {
+    if( children.empty() && !child_ids.empty() ) {
+        // every child was unknown or closed a cycle (reported at load): not a leaf
+        return { status_t::failure, nullptr, 0.0f };
+    }
     cached_evaluation *cached = cached_for( subject );
     const status_t result = cached != nullptr ? cached->conditions : process_predicates( subject );
     if( children.empty() ) {
@@ -183,10 +224,21 @@ generic_factory<behavior::node_t> behavior_factory( "behavior" );
 // What link_children() found at finalization, reported by check_consistency().
 std::vector<std::string> link_problems;
 
-// The subject as u, without a beta talker.
+// The subject as u. The beta is an empty talker, so beta conditions are false and beta math
+// reads 0 (a null beta would crash them).
 const_dialogue subject_dialogue( const Creature &subject )
 {
-    return const_dialogue( get_const_talker_for( subject ), nullptr );
+    return const_dialogue( get_const_talker_for( subject ), std::make_unique<talker>() );
+}
+
+// A problem in a node's JSON that loading can skip: reported with its place in the JSON.
+void report_at( const JsonValue &jv, const std::string &message )
+{
+    try {
+        jv.throw_error( message );
+    } catch( const JsonError &err ) {
+        debugmsg( "%s", err.what() );
+    }
 }
 
 // A "predicate": "condition" entry: running when the dialogue condition is true, else failure.
@@ -266,7 +318,10 @@ void behavior::load_behavior( const JsonObject &jo, const std::string &src )
 
 void node_t::load( const JsonObject &jo, std::string_view )
 {
-    load_children( jo );
+    // read once, so that a member of "extend" or "delete" nothing reads is reported
+    const JsonObject extend = jo.get_object( "extend" );
+    const JsonObject remove = jo.get_object( "delete" );
+    load_children( jo, extend, remove );
     if( jo.has_string( "strategy" ) ) {
         std::unordered_map<std::string, const strategy_t *>::iterator new_strategy =
             behavior::strategy_map.find( jo.get_string( "strategy" ) );
@@ -278,7 +333,7 @@ void node_t::load( const JsonObject &jo, std::string_view )
             jo.throw_error( "Invalid strategy in behavior." );
         }
     }
-    load_conditions( jo );
+    load_conditions( jo, extend, remove );
     optional( jo, was_loaded, "goal", _goal );
     load_score( jo );
     time_duration evaluate_every = time_duration::from_turns( evaluate_every_turns );
@@ -292,9 +347,11 @@ void node_t::load( const JsonObject &jo, std::string_view )
 // "children" replaces the list. With copy-from, "delete": { "children": [ ids ] } removes
 // inherited children, and "extend": { "children": [ ... ] } adds children, each an id (added at
 // the end) or { "id": ..., "before": anchor } or { "id": ..., "after": anchor }. Anchors name a
-// child of the inherited list (deleted ones too, so a child can be replaced in place) or one
-// inserted earlier in the same "extend".
-void node_t::load_children( const JsonObject &jo )
+// child of the list (a deleted one too, so a child can be replaced in place) or one inserted
+// earlier in the same "extend". Edits that don't apply, such as two mods deleting the same
+// child, are reported and skipped; an insert whose anchor is missing goes at the end.
+void node_t::load_children( const JsonObject &jo, const JsonObject &extend,
+                            const JsonObject &remove )
 {
     if( jo.has_array( "children" ) ) {
         child_ids.clear();
@@ -307,18 +364,8 @@ void node_t::load_children( const JsonObject &jo )
         warn_disabled_feature( jo, "delete", "children", "no copy-from" );
         return;
     }
-    JsonObject extend;
-    JsonObject remove;
-    if( jo.has_object( "extend" ) ) {
-        extend = jo.get_object( "extend" );
-        extend.allow_omitted_members();
-    }
-    if( jo.has_object( "delete" ) ) {
-        remove = jo.get_object( "delete" );
-        remove.allow_omitted_members();
-    }
-    const bool extending = jo.has_object( "extend" ) && extend.has_member( "children" );
-    const bool deleting = jo.has_object( "delete" ) && remove.has_member( "children" );
+    const bool extending = extend.has_member( "children" );
+    const bool deleting = remove.has_member( "children" );
     if( !extending && !deleting ) {
         return;
     }
@@ -331,17 +378,19 @@ void node_t::load_children( const JsonObject &jo )
     for( const string_id<node_t> &child : child_ids ) {
         entries.push_back( { child, false } );
     }
-    const auto find = [&entries]( const string_id<node_t> &child, bool include_deleted ) {
+    const auto find = [&entries]( const string_id<node_t> &child, bool deleted ) {
         return std::find_if( entries.begin(), entries.end(), [&]( const entry & e ) {
-            return e.child == child && ( include_deleted || !e.deleted );
+            return e.child == child && e.deleted == deleted;
         } );
     };
     if( deleting ) {
-        for( const std::string &child : remove.get_as_string_array( "children" ) ) {
+        for( JsonValue jv : remove.get_array( "children" ) ) {
+            const std::string child = jv.get_string();
             const auto it = find( string_id<node_t>( child ), false );
             if( it == entries.end() ) {
-                remove.throw_error_at( "children", string_format( "Behavior \"%s\" can't delete "
-                                       "child \"%s\": it has no such child.", id.str(), child ) );
+                report_at( jv, string_format( "Behavior \"%s\" can't delete child \"%s\": it has no "
+                                              "such child.  Skipped.", id.str(), child ) );
+                continue;
             }
             it->deleted = true;
         }
@@ -366,18 +415,23 @@ void node_t::load_children( const JsonObject &jo )
                 }
             }
             if( find( string_id<node_t>( child ), false ) != entries.end() ) {
-                jv.throw_error( string_format( "Behavior \"%s\" already has child \"%s\".  To move "
-                                               "it, delete it as well.", id.str(), child ) );
+                report_at( jv, string_format( "Behavior \"%s\" already has child \"%s\" (to move it, "
+                                              "delete it as well).  Skipped.", id.str(), child ) );
+                continue;
             }
             auto at = entries.end();
             if( anchor ) {
-                at = find( string_id<node_t>( anchor->first ), true );
+                // the child in the list, else the place of a deleted one
+                const string_id<node_t> anchor_id( anchor->first );
+                at = find( anchor_id, false );
                 if( at == entries.end() ) {
-                    jv.throw_error( string_format( "Behavior \"%s\" can't insert \"%s\" %s \"%s\": it "
-                                                   "has no such child.", id.str(), child, anchor->second ? "after" : "before",
-                                                   anchor->first ) );
+                    at = find( anchor_id, true );
                 }
-                if( anchor->second ) {
+                if( at == entries.end() ) {
+                    report_at( jv, string_format( "Behavior \"%s\" can't insert \"%s\" %s \"%s\": it "
+                                                  "has no such child.  Added at the end.", id.str(), child,
+                                                  anchor->second ? "after" : "before", anchor->first ) );
+                } else if( anchor->second ) {
                     ++at;
                 }
             }
@@ -394,8 +448,10 @@ void node_t::load_children( const JsonObject &jo )
 
 // "conditions" replaces the list. With copy-from, "delete": { "conditions": [ ... ] } removes
 // every condition using a predicate, given by name or as { "predicate": ..., "argument": ... },
-// and "extend": { "conditions": [ ... ] } appends conditions.
-void node_t::load_conditions( const JsonObject &jo )
+// and "extend": { "conditions": [ ... ] } appends conditions. Deleting a condition the node
+// doesn't have is reported and skipped.
+void node_t::load_conditions( const JsonObject &jo, const JsonObject &extend,
+                              const JsonObject &remove )
 {
     const auto read_entry = [this]( const JsonObject & entry ) {
         condition_t condition;
@@ -439,38 +495,30 @@ void node_t::load_conditions( const JsonObject &jo )
         warn_disabled_feature( jo, "delete", "conditions", "no copy-from" );
         return;
     }
-    if( jo.has_object( "delete" ) ) {
-        JsonObject remove = jo.get_object( "delete" );
-        remove.allow_omitted_members();
-        for( JsonValue jv : remove.get_array( "conditions" ) ) {
-            std::string predicate;
-            std::optional<std::string> argument;
-            if( jv.test_string() ) {
-                predicate = jv.get_string();
-            } else {
-                JsonObject match = jv.get_object();
-                predicate = match.get_string( "predicate" );
-                if( match.has_member( "argument" ) ) {
-                    argument = match.get_string( "argument" );
-                }
+    for( JsonValue jv : remove.get_array( "conditions" ) ) {
+        std::string predicate;
+        std::optional<std::string> argument;
+        if( jv.test_string() ) {
+            predicate = jv.get_string();
+        } else {
+            JsonObject match = jv.get_object();
+            predicate = match.get_string( "predicate" );
+            if( match.has_member( "argument" ) ) {
+                argument = match.get_string( "argument" );
             }
-            const size_t before = conditions.size();
-            conditions.erase( std::remove_if( conditions.begin(), conditions.end(),
-            [&]( const condition_t &c ) {
-                return c.predicate == predicate && ( !argument || c.argument == *argument );
-            } ), conditions.end() );
-            if( conditions.size() == before ) {
-                jv.throw_error( string_format( "Behavior \"%s\" can't delete condition \"%s\": it has "
-                                               "no such condition.", id.str(), predicate ) );
-            }
+        }
+        const size_t before = conditions.size();
+        conditions.erase( std::remove_if( conditions.begin(), conditions.end(),
+        [&]( const condition_t &c ) {
+            return c.predicate == predicate && ( !argument || c.argument == *argument );
+        } ), conditions.end() );
+        if( conditions.size() == before ) {
+            report_at( jv, string_format( "Behavior \"%s\" can't delete condition \"%s\": it has no "
+                                          "such condition.  Skipped.", id.str(), predicate ) );
         }
     }
-    if( jo.has_object( "extend" ) ) {
-        JsonObject extend = jo.get_object( "extend" );
-        extend.allow_omitted_members();
-        for( const JsonObject entry : extend.get_array( "conditions" ) ) {
-            conditions.push_back( read_entry( entry ) );
-        }
+    for( const JsonObject entry : extend.get_array( "conditions" ) ) {
+        conditions.push_back( read_entry( entry ) );
     }
 }
 
@@ -481,6 +529,8 @@ void node_t::load_score( const JsonObject &jo )
     if( jo.has_string( "score" ) ) {
         score_type score = read_named_score( jo, "score", "score_argument", id );
         score_function_.emplace( score, jo.get_string( "score_argument", "" ) );
+        score_name_ = jo.get_string( "score" );
+        score_label_ = score_name_;
     } else if( jo.has_object( "score" ) ) {
         const JsonObject score = jo.get_object( "score" );
         if( score.has_member( "math" ) ) {
@@ -489,13 +539,18 @@ void node_t::load_score( const JsonObject &jo )
                                                   "\"math\", not both.", id.str() ) );
             }
             score_function_.emplace( read_math_score( score ), "" );
+            score_name_.clear();
+            score_label_ = "math";
         } else {
             score_type named = read_named_score( score, "named", "argument", id );
+            score_name_ = score.get_string( "named" );
+            score_label_ = score_name_;
             if( score.has_member( "mult" ) ) {
                 const float mult = static_cast<float>( score.get_float( "mult" ) );
                 named = [named, mult]( const oracle_t *subject, std::string_view argument ) {
                     return named( subject, argument ) * mult;
                 };
+                score_label_ += string_format( "*%g", mult );
             }
             score_function_.emplace( named, score.get_string( "argument", "" ) );
         }
@@ -585,7 +640,7 @@ std::vector<std::string> behavior::link_children( std::vector<node_t> &nodes )
     const std::function<bool( size_t )> reaches = [&]( size_t i ) {
         if( !reaches_leaf[i] ) {
             const node_t &n = nodes[i];
-            bool found = n.children.empty() && !n._goal.empty();
+            bool found = n.children.empty() && n.child_ids.empty() && !n._goal.empty();
             for( const node_t *child : n.children ) {
                 if( reaches( static_cast<size_t>( child - nodes.data() ) ) ) {
                     found = true;
@@ -596,10 +651,53 @@ std::vector<std::string> behavior::link_children( std::vector<node_t> &nodes )
         }
         return *reaches_leaf[i];
     };
+    // A node in the subtree that uses NPC predicates or scores, and one that uses monster ones.
+    struct kinds {
+        const node_t *character = nullptr;
+        const node_t *monster = nullptr;
+    };
+    std::vector<std::optional<kinds>> subtree_kinds( nodes.size() );
+    const std::function<kinds( size_t )> kinds_below = [&]( size_t i ) {
+        if( !subtree_kinds[i] ) {
+            const node_t &n = nodes[i];
+            kinds found;
+            const auto note = [&found, &n]( oracle_kind kind ) {
+                if( kind == oracle_kind::character && found.character == nullptr ) {
+                    found.character = &n;
+                } else if( kind == oracle_kind::monster && found.monster == nullptr ) {
+                    found.monster = &n;
+                }
+            };
+            for( const node_t::condition_t &condition : n.conditions ) {
+                note( predicate_kind( condition.predicate ) );
+            }
+            note( score_kind( n.score_name_ ) );
+            for( const node_t *child : n.children ) {
+                const kinds below = kinds_below( static_cast<size_t>( child - nodes.data() ) );
+                if( found.character == nullptr ) {
+                    found.character = below.character;
+                }
+                if( found.monster == nullptr ) {
+                    found.monster = below.monster;
+                }
+            }
+            subtree_kinds[i] = found;
+        }
+        return *subtree_kinds[i];
+    };
     for( size_t i = 0; i < nodes.size(); ++i ) {
-        if( !linked[i] && !reaches( i ) ) {
+        if( linked[i] ) {
+            continue;
+        }
+        if( !reaches( i ) ) {
             problems.push_back( string_format( "Behavior tree \"%s\" reaches no leaf with a goal, so "
                                                "it always decides \"idle\".", nodes[i].id.str() ) );
+        }
+        const kinds found = kinds_below( i );
+        if( found.character != nullptr && found.monster != nullptr ) {
+            problems.push_back( string_format( "Behavior tree \"%s\" uses NPC predicates or scores (in "
+                                               "\"%s\") and monster ones (in \"%s\"), so one kind always fails.",
+                                               nodes[i].id.str(), found.character->id.str(), found.monster->id.str() ) );
         }
     }
     return problems;

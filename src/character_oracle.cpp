@@ -76,7 +76,7 @@ const Creature *character_oracle_t::creature() const
 
 std::optional<int> character_oracle_t::cache_key() const
 {
-    if( subject == nullptr ) {
+    if( !use_cache || subject == nullptr || !subject->getID().is_valid() ) {
         return std::nullopt;
     }
     return subject->getID().get_value();

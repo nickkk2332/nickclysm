@@ -1719,7 +1719,8 @@ void npc::move()
                    get_name(), target_name, ai_cache.danger, *confident_range_cache );
 
     if( debug_mode && debugmode::enabled_filters.count( debugmode::DF_NPC_NEEDS ) ) {
-        behavior::character_oracle_t oracle( this );
+        // diagnostic only: must not fill the evaluate_every cache the real walk reads
+        behavior::character_oracle_t oracle( this, false );
         behavior::tree bt;
         bt.add( &behavior_node_t_npc_needs.obj() );
         const std::string bt_goal = bt.tick( &oracle );
@@ -1756,7 +1757,8 @@ void npc::move()
     std::string bt_decision_goal;
     decision_category bt_decision_cat = decision_category::unmodeled;
     if( debug_mode && debugmode::enabled_filters.count( debugmode::DF_NPC_NEEDS ) ) {
-        behavior::character_oracle_t decision_oracle( this );
+        // diagnostic only, before the attitude change: must not fill the evaluate_every cache
+        behavior::character_oracle_t decision_oracle( this, false );
         behavior::tree decision_tree;
         decision_tree.add( &behavior_node_t_npc_decision.obj() );
         bt_decision_goal = decision_tree.tick( &decision_oracle );

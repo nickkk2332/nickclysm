@@ -16,9 +16,12 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "character_id.h"
 #include "character_oracle.h"
+#include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "debug.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -30,6 +33,7 @@
 #include "map_helpers_tests.h"
 #include "math_parser.h"
 #include "monster.h"
+#include "monster_oracle.h"
 #include "npc.h"
 #include "player_helpers.h"
 #include "point.h"
@@ -44,8 +48,12 @@ static const itype_id itype_backpack( "backpack" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
+static const string_id<behavior::node_t> behavior_node_t_ABSORB_ITEMS( "ABSORB_ITEMS" );
 static const string_id<behavior::node_t> behavior_node_t_npc_decision( "npc_decision" );
 static const string_id<behavior::node_t> behavior_node_t_npc_thirst( "npc_thirst" );
+static const string_id<behavior::node_t>
+behavior_node_t_test_bt_beta_condition( "test_bt_beta_condition" );
+static const string_id<behavior::node_t> behavior_node_t_test_bt_beta_math( "test_bt_beta_math" );
 static const string_id<behavior::node_t> behavior_node_t_test_bt_cached( "test_bt_cached" );
 static const string_id<behavior::node_t>
 behavior_node_t_test_bt_fight_anyway( "test_bt_fight_anyway" );
@@ -60,6 +68,7 @@ static const string_id<behavior::node_t> behavior_node_t_test_bt_no_combat( "tes
 static const string_id<behavior::node_t>
 behavior_node_t_test_bt_pray_or_drink( "test_bt_pray_or_drink" );
 static const string_id<behavior::node_t> behavior_node_t_test_bt_replaced( "test_bt_replaced" );
+static const string_id<behavior::node_t> behavior_node_t_test_bt_reported( "test_bt_reported" );
 static const string_id<behavior::node_t> behavior_node_t_test_bt_score_half( "test_bt_score_half" );
 static const string_id<behavior::node_t> behavior_node_t_test_bt_score_math( "test_bt_score_math" );
 static const string_id<behavior::node_t>
@@ -73,20 +82,6 @@ static const trait_id trait_IGNORE_SOUND( "IGNORE_SOUND" );
 
 namespace
 {
-
-// The node and, below it, its children: "id:goal" for a leaf, "id(child,child)" otherwise.
-std::string dump( const behavior::node_t &node )
-{
-    const std::vector<const behavior::node_t *> &children = node.get_children();
-    if( children.empty() ) {
-        return node.id.str() + ":" + node.goal();
-    }
-    std::string out = node.id.str() + "(";
-    for( size_t i = 0; i < children.size(); ++i ) {
-        out += ( i == 0 ? "" : "," ) + dump( *children[i] );
-    }
-    return out + ")";
-}
 
 std::vector<std::string> child_names( const behavior::node_t &node )
 {
@@ -125,10 +120,20 @@ behavior::node_t load_node( const std::string &id, const std::string &json,
         node.was_loaded = true;
     }
     node.id = string_id<behavior::node_t>( id );
-    JsonObject jo = json_loader::from_string( json );
-    jo.allow_omitted_members();
+    // no allow_omitted_members(): a field that loading ignores fails the test
+    const JsonObject jo = json_loader::from_string( json );
     node.load( jo, "" );
     return node;
+}
+
+// The node and its subtree, a line each: its id, then what summary() gives, indented by depth.
+std::string describe( const behavior::node_t &node, int depth = 0 )
+{
+    std::string out = std::string( 2 * depth, ' ' ) + node.id.str() + ": " + node.summary() + "\n";
+    for( const behavior::node_t *child : node.get_children() ) {
+        out += describe( *child, depth + 1 );
+    }
+    return out;
 }
 
 // Nodes from (id, JSON) pairs, linked as finalization links the loaded ones.
@@ -155,28 +160,49 @@ bool mentions( const std::vector<std::string> &problems, const std::string &text
 
 } // namespace
 
-// The vanilla tree loads to the same shape as before it moved onto generic_factory's
-// copy-from, extend and delete.
+// The vanilla tree loads to the same nodes, with the same strategies, conditions and scores, as
+// before it moved onto generic_factory's copy-from, extend and delete.
 TEST_CASE( "npc_decision_tree_loads_unchanged", "[npc][behavior]" )
 {
-    CHECK( dump( behavior_node_t_npc_decision.obj() ) ==
-           "npc_decision("
-           "npc_combat(npc_flee:flee,npc_fight:fight),"
-           "npc_investigate:investigate_sound,"
-           "npc_priorities("
-           "npc_needs("
-           "npc_homeostasis(npc_regulate_temperature:regulate_temperature,"
-           "npc_make_fire:regulate_temperature),"
-           "npc_thirst(npc_obtain_water(npc_drink_water:drink_water,npc_seek_water:drink_water)),"
-           "npc_hunger(npc_obtain_food(npc_eat_food:eat_food,npc_forage_food:eat_food)),"
-           "npc_sleepiness(npc_go_to_sleep:go_to_sleep)),"
-           "npc_duty(npc_return_to_post:return_to_guard_pos,npc_hold_post:hold_position),"
-           "npc_follow_embarked:follow_embarked,"
-           "npc_follow:follow_player,"
-           "npc_player_order:goto_ordered_position,"
-           "npc_camp_work:camp_work,"
-           "npc_return_to_camp:return_to_camp,"
-           "npc_free_time:free_time))" );
+    CHECK( describe( behavior_node_t_npc_decision.obj() ) ==
+           "npc_decision: strategy fallback\n"
+           "  npc_combat: strategy fallback; if npc_in_danger\n"
+           "    npc_flee: if npc_should_flee; goal flee\n"
+           "    npc_fight: if npc_has_target; goal fight\n"
+           "  npc_investigate: if npc_has_sound_alerts; goal investigate_sound\n"
+           "  npc_priorities: strategy utility\n"
+           "    npc_needs: strategy utility\n"
+           "      npc_homeostasis: strategy fallback; if npc_needs_temperature_regulation; "
+           "score npc_temperature_urgency\n"
+           "        npc_regulate_temperature: if npc_can_regulate_temperature; goal regulate_temperature\n"
+           "        npc_make_fire: if npc_can_make_fire; goal regulate_temperature\n"
+           "      npc_thirst: strategy sequential; if npc_needs_water_badly; score npc_thirst_urgency\n"
+           "        npc_obtain_water: strategy fallback\n"
+           "          npc_drink_water: if npc_has_water; goal drink_water\n"
+           "          npc_seek_water: if npc_can_obtain_water; goal drink_water\n"
+           "      npc_hunger: strategy sequential; if npc_needs_food_badly; score npc_hunger_urgency\n"
+           "        npc_obtain_food: strategy fallback\n"
+           "          npc_eat_food: if npc_has_food; goal eat_food\n"
+           "          npc_forage_food: if npc_can_obtain_food; goal eat_food\n"
+           "      npc_sleepiness: strategy sequential; if npc_needs_sleep_badly; "
+           "score npc_sleepiness_urgency\n"
+           "        npc_go_to_sleep: if npc_can_sleep; goal go_to_sleep\n"
+           "    npc_duty: strategy fallback; score npc_duty_urgency\n"
+           "      npc_return_to_post: if npc_on_shift, npc_displaced_from_post; goal return_to_guard_pos\n"
+           "      npc_hold_post: if npc_on_shift; goal hold_position\n"
+           "    npc_follow_embarked: if npc_should_embark; score npc_embark_urgency; goal follow_embarked\n"
+           "    npc_follow: if npc_is_following; score npc_following_urgency; goal follow_player\n"
+           "    npc_player_order: if npc_has_goto_order; score npc_goto_order_urgency; "
+           "goal goto_ordered_position\n"
+           "    npc_camp_work: if npc_has_camp_job; score npc_camp_work_urgency; goal camp_work\n"
+           "    npc_return_to_camp: if npc_is_away_from_camp; score npc_return_to_camp_urgency; "
+           "goal return_to_camp\n"
+           "    npc_free_time: if npc_is_camp_idle; score npc_free_time_urgency; goal free_time\n" );
+    // inverted conditions and arguments, from the monster goals
+    CHECK( describe( behavior_node_t_ABSORB_ITEMS.obj() ) ==
+           "ABSORB_ITEMS: strategy sequential; if monster_not_hallucination, !monster_split_possible, "
+           "monster_special_available(!SPLIT), monster_special_available(ABSORB_ITEMS), "
+           "monster_items_available; goal ABSORB_ITEMS\n" );
 }
 
 TEST_CASE( "behavior_copy_from_extend_and_delete_children", "[npc][behavior]" )
@@ -320,9 +346,18 @@ TEST_CASE( "math_oracle_function_reads_named_scores", "[npc][behavior][math_pars
     REQUIRE( thirst.parse( "oracle('npc_thirst_urgency')" ) );
     CHECK( thirst.eval( d ) == Approx( oracle.thirst_urgency( "" ) ) );
 
+    // a name written as a literal is checked when the expression is parsed, at load
     math_exp unknown;
-    REQUIRE( unknown.parse( "oracle('no_such_score')" ) );
-    CHECK_THROWS_WITH( unknown.eval( d ), Catch::Matchers::Contains( "is not a named score" ) );
+    CHECK_THROWS_WITH( unknown.parse( "oracle('no_such_score')", false ),
+                       Catch::Matchers::Contains( "\"no_such_score\" is not a named score" ) );
+    load_node( "test_val_bad",
+               "{ \"goal\": \"g\", \"score\": { \"math\": [ \"oracle('no_such_score')\" ] } }" );
+    CHECK_THROWS_WITH( finalize_conditions(), Catch::Matchers::Contains( "is not a named score" ) );
+    // one from a variable, when it is read
+    guy.set_value( "bt_score_name", std::string( "no_such_score" ) );
+    math_exp from_variable;
+    REQUIRE( from_variable.parse( "oracle(u_bt_score_name)" ) );
+    CHECK_THROWS_WITH( from_variable.eval( d ), Catch::Matchers::Contains( "is not a named score" ) );
 
     monster &zombie = spawn_test_monster( "mon_zombie", tripoint_bub_ms( 55, 55, 0 ) );
     const const_dialogue monster_d( get_const_talker_for( zombie ), nullptr );
@@ -516,7 +551,12 @@ TEST_CASE( "behavior_positioned_inserts", "[behavior]" )
         load_node( "test_val_c", R"({ "goal": "c" })" ),
         load_node( "test_val_d", R"({ "goal": "d" })" ),
         load_node( "test_val_e", R"({ "goal": "e" })" ),
-        load_node( "test_val_f", R"({ "goal": "f" })" )
+        load_node( "test_val_f", R"({ "goal": "f" })" ),
+        // a moved: the anchor "a" for c is the live child, not the deleted one
+        load_node( "test_val_moved", R"({ "extend": { "children": [
+            { "id": "test_val_a", "after": "test_val_b" },
+            { "id": "test_val_c", "before": "test_val_a" } ] },
+            "delete": { "children": [ "test_val_a" ] } })", &base )
     };
     CHECK( behavior::link_children( nodes ).empty() );
     CHECK( child_names( nodes[0] ) == std::vector<std::string> { "test_val_a", "test_val_b" } );
@@ -524,25 +564,47 @@ TEST_CASE( "behavior_positioned_inserts", "[behavior]" )
         "test_val_d", "test_val_a", "test_val_c", "test_val_e", "test_val_b", "test_val_f"
     };
     CHECK( child_names( nodes[1] ) == inserted );
+    CHECK( child_names( nodes[8] ) ==
+           std::vector<std::string> { "test_val_b", "test_val_c", "test_val_a" } );
 
-    SECTION( "an anchor that is not a child is an error" ) {
-        CHECK_THROWS_WITH( load_node( "test_val_bad", R"({ "extend": { "children": [
-            { "id": "test_val_c", "before": "test_val_x" } ] } })", &base ),
-                           Catch::Matchers::Contains( "can't insert \"test_val_c\" before \"test_val_x\"" ) );
+    SECTION( "an anchor that is not a child is reported, and the child goes at the end" ) {
+        behavior::node_t bad;
+        const std::string reported = capture_debugmsg_during( [&]() {
+            bad = load_node( "test_val_bad", R"({ "extend": { "children": [
+                { "id": "test_val_c", "before": "test_val_x" } ] } })", &base );
+        } );
+        CHECK_THAT( reported, Catch::Matchers::Contains(
+                        "can't insert \"test_val_c\" before \"test_val_x\": it has no such child." ) );
+        std::vector<behavior::node_t> linked = { bad, nodes[2], nodes[3], nodes[4] };
+        behavior::link_children( linked );
+        CHECK( child_names( linked[0] ) ==
+               std::vector<std::string> { "test_val_a", "test_val_b", "test_val_c" } );
+    }
+    SECTION( "before and after in one insert is an error" ) {
         CHECK_THROWS_WITH( load_node( "test_val_bad", R"({ "extend": { "children": [
             { "id": "test_val_c", "before": "test_val_a", "after": "test_val_b" } ] } })", &base ),
                            Catch::Matchers::Contains( "not both" ) );
     }
-    SECTION( "deleting a child that isn't there is an error" ) {
-        CHECK_THROWS_WITH( load_node( "test_val_bad", R"({ "delete": { "children": [ "test_val_x" ] } })",
-                                      &base ), Catch::Matchers::Contains( "can't delete child \"test_val_x\"" ) );
-        CHECK_THROWS_WITH( load_node( "test_val_bad",
-                                      R"({ "delete": { "conditions": [ "npc_has_water" ] } })", &base ),
-                           Catch::Matchers::Contains( "can't delete condition \"npc_has_water\"" ) );
+    SECTION( "the same edit applied twice is reported and skipped" ) {
+        // as when two mods delete the same child, or add the same one
+        const std::string edit = R"({ "delete": { "children": [ "test_val_a" ] },
+            "extend": { "children": [ "test_val_c" ] } })";
+        const behavior::node_t once = load_node( "test_val_once", edit, &base );
+        behavior::node_t twice;
+        const std::string reported = capture_debugmsg_during( [&]() {
+            twice = load_node( "test_val_twice", edit, &once );
+        } );
+        CHECK_THAT( reported, Catch::Matchers::Contains( "can't delete child \"test_val_a\"" ) );
+        CHECK_THAT( reported, Catch::Matchers::Contains( "already has child \"test_val_c\"" ) );
+        std::vector<behavior::node_t> linked = { twice, nodes[2], nodes[3], nodes[4] };
+        behavior::link_children( linked );
+        CHECK( child_names( linked[0] ) == std::vector<std::string> { "test_val_b", "test_val_c" } );
     }
-    SECTION( "inserting a child twice is an error" ) {
-        CHECK_THROWS_WITH( load_node( "test_val_bad", R"({ "extend": { "children": [ "test_val_a" ] } })",
-                                      &base ), Catch::Matchers::Contains( "already has child \"test_val_a\"" ) );
+    SECTION( "deleting a condition that isn't there is reported and skipped" ) {
+        const std::string reported = capture_debugmsg_during( [&]() {
+            load_node( "test_val_bad", R"({ "delete": { "conditions": [ "npc_has_water" ] } })", &base );
+        } );
+        CHECK_THAT( reported, Catch::Matchers::Contains( "can't delete condition \"npc_has_water\"" ) );
     }
     SECTION( "extend and delete need copy-from" ) {
         CHECK_THROWS_WITH( load_node( "test_val_bad", R"({ "extend": { "children": [ "test_val_a" ] } })" ),
@@ -551,6 +613,43 @@ TEST_CASE( "behavior_positioned_inserts", "[behavior]" )
             "delete": { "conditions": [ "npc_has_water" ] } })" ),
                            Catch::Matchers::Contains( "no copy-from" ) );
     }
+    SECTION( "a typo in extend or delete is reported" ) {
+        CHECK_THAT( capture_debugmsg_during( [&]() {
+            load_node( "test_val_bad", R"({ "extend": { "childs": [ "test_val_c" ] } })", &base );
+        } ), Catch::Matchers::Contains( "Invalid or misplaced field name \"childs\"" ) );
+        CHECK_THAT( capture_debugmsg_during( [&]() {
+            load_node( "test_val_bad", R"({ "delete": { "condition": [ "npc_has_water" ] } })", &base );
+        } ), Catch::Matchers::Contains( "Invalid or misplaced field name \"condition\"" ) );
+    }
+}
+
+TEST_CASE( "behavior_delete_conditions", "[behavior]" )
+{
+    behavior::predicate_map["test_bt_tagged"] = []( const behavior::oracle_t *, std::string_view ) {
+        return behavior::status_t::running;
+    };
+    behavior::predicates_with_argument.insert( "test_bt_tagged" );
+
+    const behavior::node_t base = load_node( "test_val_base", R"({ "goal": "g", "conditions": [
+        { "predicate": "test_bt_tagged", "argument": "a" },
+        { "predicate": "npc_on_shift" },
+        { "predicate": "test_bt_tagged", "argument": "b" },
+        { "predicate": "npc_displaced_from_post", "invert_result": true } ] })" );
+    CHECK( base.summary() == "if test_bt_tagged(a), npc_on_shift, test_bt_tagged(b), "
+           "!npc_displaced_from_post; goal g" );
+    // by name and argument: only that one
+    CHECK( load_node( "test_val_one", R"({ "delete": { "conditions": [
+        { "predicate": "test_bt_tagged", "argument": "b" } ] } })", &base ).summary() ==
+           "if test_bt_tagged(a), npc_on_shift, !npc_displaced_from_post; goal g" );
+    // by name: every one using the predicate
+    CHECK( load_node( "test_val_all", R"({ "delete": { "conditions": [ "test_bt_tagged" ] } })",
+                      &base ).summary() == "if npc_on_shift, !npc_displaced_from_post; goal g" );
+    CHECK( load_node( "test_val_two", R"({ "delete": { "conditions": [ "npc_on_shift",
+        "npc_displaced_from_post" ] } })", &base ).summary() ==
+           "if test_bt_tagged(a), test_bt_tagged(b); goal g" );
+
+    behavior::predicate_map.erase( "test_bt_tagged" );
+    behavior::predicates_with_argument.erase( "test_bt_tagged" );
 }
 
 TEST_CASE( "behavior_tree_checks_at_load", "[behavior]" )
@@ -590,9 +689,23 @@ TEST_CASE( "behavior_tree_checks_at_load", "[behavior]" )
         } );
         CHECK( mentions( problems, "Behavior \"test_val_c\" lists child \"test_val_a\", which closes a "
                          "cycle: test_val_a -> test_val_b -> test_val_c -> test_val_a." ) );
-        // the link that closes the cycle is left out, so a tick ends
+        // the link that closes the cycle is left out, so a tick ends; c has lost its only child,
+        // so it fails, and the fallback goes on to the leaf
         CHECK( nodes[2].get_children().empty() );
-        CHECK( nodes[0].tick( nullptr ).result == behavior::status_t::running );
+        CHECK( nodes[2].tick( nullptr ).result == behavior::status_t::failure );
+        behavior::tree tree;
+        tree.add( &nodes[0] );
+        CHECK( tree.tick( nullptr ) == "g" );
+    }
+    SECTION( "a node whose children are all unknown fails" ) {
+        const std::vector<std::string> problems = link( nodes, {
+            { "test_val_root", R"({ "strategy": "fallback", "children": [ "test_val_mid", "test_val_leaf" ] })" },
+            { "test_val_mid", R"({ "strategy": "fallback", "children": [ "test_val_missing" ] })" },
+            { "test_val_leaf", R"({ "goal": "g" })" }
+        } );
+        behavior::tree tree;
+        tree.add( &nodes[0] );
+        CHECK( tree.tick( nullptr ) == "g" );
     }
     SECTION( "a root that reaches no leaf" ) {
         const std::vector<std::string> problems = link( nodes, {
@@ -603,4 +716,114 @@ TEST_CASE( "behavior_tree_checks_at_load", "[behavior]" )
         // only roots are reported
         CHECK_FALSE( mentions( problems, "Behavior tree \"test_val_mid\"" ) );
     }
+    SECTION( "NPC and monster predicates in one tree" ) {
+        const std::vector<std::string> problems = link( nodes, {
+            { "test_val_root", R"({ "strategy": "fallback", "children": [ "test_val_npc", "test_val_monster" ] })" },
+            { "test_val_npc", R"({ "conditions": [ { "predicate": "npc_has_target" } ], "goal": "n" })" },
+            { "test_val_monster", R"({ "conditions": [ { "predicate": "monster_adjacent_plants" } ], "goal": "m" })" }
+        } );
+        CHECK( mentions( problems, "Behavior tree \"test_val_root\" uses NPC predicates or scores (in "
+                         "\"test_val_npc\") and monster ones (in \"test_val_monster\")" ) );
+        const std::string npc_only = R"({ "conditions": [ { "predicate": "npc_has_target" } ],
+            "score": "npc_thirst_urgency", "goal": "n" })";
+        CHECK( link( nodes, {
+            { "test_val_root", R"({ "strategy": "utility", "children": [ "test_val_npc" ] })" },
+            { "test_val_npc", npc_only }
+        } ).empty() );
+    }
+}
+
+// The real reporting path: a node loaded into the factory, finalization, then the load checks.
+TEST_CASE( "behavior_problems_reported_after_finalization", "[behavior]" )
+{
+    const auto load_into_factory = []( const std::string & json, const std::string & src ) {
+        const JsonObject jo = json_loader::from_string( json );
+        behavior::load_behavior( jo, src );
+    };
+    // replace test_bt_reported, which nothing links to, from another source
+    load_into_factory( R"({ "id": "test_bt_reported", "strategy": "fallback",
+        "children": [ "test_bt_reported", "test_bt_reported_missing" ] })", "test_bt_override" );
+    behavior::finalize();
+    const std::string reported = capture_debugmsg_during( []() {
+        behavior::check_consistency();
+    } );
+    // and put it back
+    load_into_factory( R"({ "id": "test_bt_reported", "goal": "test_reported" })",
+                       "test_bt_restore" );
+    behavior::finalize();
+    CHECK( capture_debugmsg_during( []() {
+        behavior::check_consistency();
+    } ).empty() );
+
+    CHECK_THAT( reported, Catch::Matchers::Contains( "Behavior \"test_bt_reported\" lists child "
+                "\"test_bt_reported\", which closes a cycle: test_bt_reported -> test_bt_reported." ) );
+    CHECK_THAT( reported, Catch::Matchers::Contains( "Behavior \"test_bt_reported\" lists child "
+                "\"test_bt_reported_missing\", which is not a behavior." ) );
+    CHECK_THAT( reported, Catch::Matchers::Contains( "Behavior tree \"test_bt_reported\" reaches no "
+                "leaf with a goal" ) );
+    CHECK( behavior_node_t_test_bt_reported->goal() == "test_reported" );
+}
+
+// Conditions and math scores see an empty beta: npc_ conditions are false and n_ math reads 0.
+TEST_CASE( "behavior_conditions_without_beta", "[npc][behavior]" )
+{
+    clear_map();
+    npc &guy = plain_npc();
+    guy.set_mutation( trait_IGNORE_SOUND );
+    CHECK( decide( behavior_node_t_test_bt_beta_condition.obj(), guy ).first == "idle" );
+    const auto [goal, score] = decide( behavior_node_t_test_bt_beta_math.obj(), guy );
+    CHECK( goal == "test_beta_math" );
+    CHECK( score == Approx( 1.0f ) );
+    guy.unset_mutation( trait_IGNORE_SOUND );
+
+    // in a monster's goals too
+    monster &zombie = spawn_test_monster( "mon_zombie", tripoint_bub_ms( 55, 55, 0 ) );
+    const behavior::monster_oracle_t monster_oracle( &zombie );
+    CHECK( behavior_node_t_test_bt_beta_condition->tick( &monster_oracle ).result ==
+           behavior::status_t::failure );
+    CHECK( behavior_node_t_test_bt_beta_math->tick( &monster_oracle ).score == Approx( 1.0f ) );
+    clear_creatures();
+    clear_npcs();
+}
+
+// A built-in predicate or score given the other kind of oracle fails safely.
+TEST_CASE( "behavior_predicates_for_another_oracle", "[npc][behavior]" )
+{
+    clear_map();
+    npc &guy = plain_npc();
+    monster &zombie = spawn_test_monster( "mon_zombie", tripoint_bub_ms( 55, 55, 0 ) );
+    const behavior::character_oracle_t npc_oracle( &guy );
+    const behavior::monster_oracle_t monster_oracle( &zombie );
+    const behavior::node_t npc_node = load_node( "test_val_npc", R"({ "goal": "g",
+        "conditions": [ { "predicate": "npc_should_flee", "invert_result": true } ],
+        "score": "npc_thirst_urgency" })" );
+    const behavior::node_t monster_node = load_node( "test_val_monster", R"({ "goal": "g",
+        "conditions": [ { "predicate": "monster_not_hallucination" } ] })" );
+    REQUIRE( npc_node.tick( &npc_oracle ).result == behavior::status_t::running );
+    REQUIRE( monster_node.tick( &monster_oracle ).result == behavior::status_t::running );
+    // npc_should_flee fails for a monster, so the inverted condition runs, and the score is 0
+    behavior::behavior_return wrong = { behavior::status_t::failure, nullptr };
+    CHECK_THAT( capture_debugmsg_during( [&]() {
+        wrong = npc_node.tick( &monster_oracle );
+    } ), Catch::Matchers::Contains( "\"npc_should_flee\" is for NPCs" ) );
+    CHECK( wrong.score == 0.0f );
+    CHECK_THAT( capture_debugmsg_during( [&]() {
+        CHECK( monster_node.tick( &npc_oracle ).result == behavior::status_t::failure );
+    } ), Catch::Matchers::Contains( "\"monster_not_hallucination\" is for monsters" ) );
+    clear_creatures();
+    clear_npcs();
+}
+
+TEST_CASE( "behavior_evaluate_every_needs_a_valid_id", "[npc][behavior]" )
+{
+    clear_map();
+    npc &guy = plain_npc();
+    CHECK( behavior::character_oracle_t( &guy ).cache_key() == guy.getID().get_value() );
+    // diagnostic walks keep out of the cache
+    CHECK_FALSE( behavior::character_oracle_t( &guy, false ).cache_key().has_value() );
+    const character_id saved = guy.getID();
+    guy.setID( character_id(), true );
+    CHECK_FALSE( behavior::character_oracle_t( &guy ).cache_key().has_value() );
+    guy.setID( saved, true );
+    clear_npcs();
 }
