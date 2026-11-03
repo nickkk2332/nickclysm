@@ -70,6 +70,8 @@ class node_t
         // Entry point for tree traversal.
         behavior_return tick( const oracle_t *subject ) const;
         std::string goal() const;
+        // The children, in the order the strategy visits them.
+        const std::vector<const node_t *> &get_children() const;
 
         // Interface to construct a node.
         void set_strategy( const strategy_t *new_strategy );
@@ -87,15 +89,39 @@ class node_t
         std::vector<std::pair<string_id<node_t>, mod_id>> src;
         bool was_loaded = false;
     private:
+        friend std::vector<std::string> link_children( std::vector<node_t> &nodes );
+
         std::vector<const node_t *> children;
+        // The children named in JSON, in order. link_children() turns them into `children`.
+        std::vector<string_id<node_t>> child_ids;
         const strategy_t *strategy = nullptr;
         using predicate_type = std::function<status_t( const oracle_t *, const std::string & )>;
-        std::vector<std::tuple<predicate_type, std::string, bool>> conditions;
+        struct condition_t {
+            // The predicate's name in JSON, which "delete" matches. Empty for predicates
+            // added in code.
+            std::string predicate;
+            predicate_type func;
+            std::string argument;
+            bool invert = false;
+        };
+        std::vector<condition_t> conditions;
         status_t process_predicates( const oracle_t *subject ) const;
         // TODO: make into an ID?
         std::string _goal;
         std::optional<std::pair<score_type, std::string>> score_function_;
+
+        void load_children( const JsonObject &jo );
+        void load_conditions( const JsonObject &jo );
+        void load_score( const JsonObject &jo );
 };
+
+/**
+ * Resolves each node's child ids to the nodes with those ids. An unknown child, or a link that
+ * would close a cycle, is left out, so ticking a tree always ends. Returns one message per
+ * problem: unknown or repeated children, cycles, and trees whose root reaches no leaf with a
+ * goal. A root is a node that no other node in @p nodes links to.
+ */
+std::vector<std::string> link_children( std::vector<node_t> &nodes );
 
 // Deserialization support.
 void load_behavior( const JsonObject &jo, const std::string &src );

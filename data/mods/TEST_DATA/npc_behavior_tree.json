@@ -1,0 +1,59 @@
+[
+  {
+    "//": "Editing the shared NPC decision tree (tests/npc_behavior_tree_test.cpp).  Combat deleted.",
+    "type": "behavior",
+    "id": "test_bt_no_combat",
+    "copy-from": "npc_decision",
+    "delete": { "children": [ "npc_combat" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_inserts",
+    "copy-from": "npc_decision",
+    "extend": {
+      "children": [
+        { "id": "test_bt_leaf_first", "before": "npc_combat" },
+        { "id": "test_bt_leaf_middle", "after": "npc_combat" },
+        "test_bt_leaf_last"
+      ]
+    }
+  },
+  {
+    "//": "Combat replaced in place: inserted before the child it deletes.",
+    "type": "behavior",
+    "id": "test_bt_replaced",
+    "copy-from": "npc_decision",
+    "extend": { "children": [ { "id": "test_bt_leaf_first", "before": "npc_combat" } ] },
+    "delete": { "children": [ "npc_combat" ] }
+  },
+  {
+    "//": "A child moved: deleted, and inserted again elsewhere.",
+    "type": "behavior",
+    "id": "test_bt_moved",
+    "copy-from": "npc_decision",
+    "extend": { "children": [ { "id": "npc_priorities", "before": "npc_combat" } ] },
+    "delete": { "children": [ "npc_priorities" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_leaf_first",
+    "goal": "test_first"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_leaf_middle",
+    "goal": "test_middle"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bt_leaf_last",
+    "goal": "test_last"
+  },
+  {
+    "//": "A built-in node re-conditioned.",
+    "type": "behavior",
+    "id": "test_bt_fight_anyway",
+    "copy-from": "npc_fight",
+    "delete": { "conditions": [ "npc_has_target" ] }
+  }
+]
