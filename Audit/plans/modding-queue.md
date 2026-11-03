@@ -7,7 +7,7 @@ The owner asked for these on 2026-11-02, after the grappling port. They are queu
 1. **PR #3 review comments.** Not part of this queue, but they come first. Done; PR #3 is merged.
 2. **Built (2026-11-02). NPC errands:** `u_walk_to`, `u_pickup_item`, `u_wield_item` / `u_wear_item` / `u_drop_item`, targeted `u_assign_activity` and `u_examine` (sections A–E). Together they let a mod script an errand from start to end: walk to the shed, pick up the crowbar, wield it, pry the door, come back.
 3. **Built (2026-11-02). EOC UI:** a text window and a checklist menu (sections F–G).
-4. **Next. NPC behavior tree goals from JSON (NPC-J03).** Decided; see section H and [npc-behavior-design.md](npc-behavior-design.md).
+4. **Built (2026-11-03). NPC behavior tree goals from JSON (NPC-J03).** See section H, [npc-behavior-design.md](npc-behavior-design.md) and `doc/JSON/NPC_BEHAVIOR.md`.
 
 Related findings that fit these batches (fold them in if they touch the same code):
 
@@ -145,9 +145,9 @@ A multi-select menu: each option can be ticked, confirming runs the EOCs of the 
 
 **Built (errands-ui batch).** As proposed, with `descriptions` and `keys` too. `variables` pass context values to the ticked options' EOCs, as in `run_eoc_selector`; setting one variable per option instead of running EOCs was not built. It shows only when `u` is the avatar, and runs `false_eocs` otherwise. A wrong array size or `min`/`max` out of range is a load error. The test hook is `eoc_ui::checklist_test_answer`.
 
-## H. NPC behavior tree goals from JSON (NPC-J03): decided, after A–G
+## H. NPC behavior tree goals from JSON (NPC-J03): built
 
-The design was talked through with the owner on 2026-11-02 and is written up in [npc-behavior-design.md](npc-behavior-design.md). Mod goals join a category; they run EOCs until done; mods edit one shared tree, gated by conditions; and every built-in goal is editable. It is built after A–G, because its goals use their effects.
+The design was talked through with the owner on 2026-11-02 and is written up in [npc-behavior-design.md](npc-behavior-design.md). Mod goals join a category; they run EOCs until done; mods edit one shared tree, gated by conditions; and every built-in goal is editable. It was built after A–G, because its goals use their effects, and is documented for modders in `doc/JSON/NPC_BEHAVIOR.md`.
 
 ## Not queued: designs waiting in the backlog
 
