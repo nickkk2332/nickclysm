@@ -75,6 +75,7 @@
 #include "mission_companion.h"
 #include "mongroup.h"
 #include "npc.h"
+#include "npc_attitude_cause.h"
 #include "npctalk.h"
 #include "omdata.h"
 #include "options.h"
@@ -4349,7 +4350,11 @@ void basecamp::recruit_return( const mission_id &miss_id, int score )
     avatar &player_character = get_avatar();
     recruit->spawn_at_precise( player_character.pos_abs() + point( -4, -4 ) );
     overmap_buffer.insert_npc( recruit );
-    recruit->form_opinion( player_character );
+    {
+        // the recruit's starting attitude: no attitude events, until it's recruited below
+        const npc_attitude_cause spawning( npc_attitude_cause::spawn );
+        recruit->form_opinion( player_character );
+    }
     recruit->mission = NPC_MISSION_NULL;
     recruit->add_new_mission( mission::reserve_random( ORIGIN_ANY_NPC,
                               recruit->pos_abs_omt(),

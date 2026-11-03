@@ -116,6 +116,7 @@ class faction_mission
         translation footer;
         static void load_faction_missions( const JsonObject &jo, const std::string &src );
         static void reset();
+        static void finalize_all();
         static void check_consistency();
         void load( const JsonObject &jo, const std::string_view &src );
         void check() const;

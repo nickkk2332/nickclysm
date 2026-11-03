@@ -286,6 +286,21 @@ void dimension_world::finalize_all()
     dimension_factory.finalize();
 }
 
+void dimension_world::reset()
+{
+    dimension_factory.reset();
+}
+
+void dimension_region_layout::reset()
+{
+    dimension_regions_factory.reset();
+}
+
+void dimension_region_layout::finalize_all()
+{
+    dimension_regions_factory.finalize();
+}
+
 template<typename T>
 static void load_layout_generator( const JsonObject &jo,
                                    std::shared_ptr<dimension_region_layout_generator> &layout_generator )

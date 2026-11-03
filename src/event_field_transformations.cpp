@@ -67,15 +67,27 @@ static std::vector<cata_variant> oter_type_of_oter( const cata_variant &v )
     return result;
 }
 
+// Statistics are rebuilt from the whole event history, on every game load among other times,
+// so this only consults overmaps already in memory: it never loads or generates one. Statistics
+// that need the special of an OMT the avatar entered read avatar_enters_omt's overmap_special.
 static std::vector<cata_variant> overmap_special_at( const cata_variant &v )
 {
     const tripoint_abs_omt p( v.get<tripoint>() );
-    std::optional<overmap_special_id> special = overmap_buffer.overmap_special_at( p );
+    std::optional<overmap_special_id> special = overmap_buffer.overmap_special_at_if_loaded( p );
     if( special ) {
         return { cata_variant( *special ) };
     } else {
         return {};
     }
+}
+
+// The special itself, or nothing when it is empty (the OMT is in no special)
+static std::vector<cata_variant> overmap_special_if_any( const cata_variant &v )
+{
+    if( v.get_string().empty() ) {
+        return {};
+    }
+    return { v };
 }
 
 static std::vector<cata_variant> species_of_monster( const cata_variant &v )
@@ -117,6 +129,13 @@ const std::unordered_map<std::string, event_field_transformation> event_field_tr
     {
         "overmap_special_at",
         { overmap_special_at, cata_variant_type::overmap_special_id, { cata_variant_type::tripoint } }
+    },
+    {
+        "overmap_special_if_any",
+        {
+            overmap_special_if_any, cata_variant_type::overmap_special_id,
+            { cata_variant_type::overmap_special_id }
+        }
     },
     {
         "species_of_monster",

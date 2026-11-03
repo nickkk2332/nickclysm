@@ -16,6 +16,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "behavior_oracle.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_variant.h"
@@ -23,6 +24,7 @@
 #include "cata_utility.h"
 #include "character.h"
 #include "character_id.h"
+#include "character_oracle.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -51,6 +53,7 @@
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "npc_json_goal.h"
 #include "options.h"
 #include "pimpl.h"
 #include "point.h"
@@ -347,7 +350,8 @@ double damage_level_eval( const_dialogue const &d, char scope,
                           diag_kwargs const & /* kwargs */ )
 {
     item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
-    if( !it ) {
+    // an item that is gone (used up earlier in the same EOC) is no item
+    if( it == nullptr || !*it ) {
         throw math::runtime_error( "subject of damage_level() must be an item" );
     }
     return ( *it )->damage_level();
@@ -388,17 +392,28 @@ double encumbrance_eval( const_dialogue const &d, char scope, std::vector<diag_v
     return d.const_actor( is_beta( scope ) )->encumbrance_at( bp );
 }
 
+// The faction a faction_*() function names. An unknown id is a math error, not a crash.
+faction *_get_faction( const_dialogue const &d, diag_value const &id_val )
+{
+    std::string const &id = id_val.str( d );
+    faction *fac = g->faction_manager_ptr->get( faction_id( id ), false );
+    if( fac == nullptr ) {
+        throw math::runtime_error( R"(Unknown faction "%s")", id );
+    }
+    return fac;
+}
+
 double faction_like_eval( const_dialogue const &d, char /* scope */,
                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->likes_u;
 }
 
 void faction_like_ass( double val, dialogue &d, char /* scope */,
                        std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->likes_u = val;
 }
 
@@ -406,28 +421,28 @@ double faction_respect_eval( const_dialogue const &d, char /* scope */,
                              std::vector<diag_value> const &params,
                              diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->respects_u;
 }
 
 void faction_respect_ass( double val, dialogue &d, char /* scope */,
                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->respects_u = val;
 }
 
 double faction_trust_eval( const_dialogue const &d, char /* scope */,
                            std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->trusts_u;
 }
 
 void faction_trust_ass( double val, dialogue &d, char /* scope */,
                         std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->trusts_u = val;
 }
 
@@ -435,7 +450,7 @@ double faction_food_supply_eval( const_dialogue const &d, char /* scope */,
                                  std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     diag_value vit_val = kwargs.kwarg_or( "vitamin" );
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     if( !vit_val.is_empty() ) {
         return static_cast<double>(
                    fac->food_supply().get_vitamin( vitamin_id( vit_val.str( d ) ) ) );
@@ -447,42 +462,42 @@ double faction_wealth_eval( const_dialogue const &d, char /* scope */,
                             std::vector<diag_value> const &params,
                             diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->wealth;
 }
 
 void faction_wealth_ass( double val, dialogue &d, char /* scope */,
                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->wealth = val;
 }
 
 double faction_power_eval( const_dialogue const &d, char /* scope */,
                            std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->power;
 }
 
 void faction_power_ass( double val, dialogue &d, char /* scope */,
                         std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->power = val;
 }
 
 double faction_size_eval( const_dialogue const &d, char /* scope */,
                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->size;
 }
 
 void faction_size_ass( double val, dialogue &d, char /* scope */,
                        std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->size = val;
 }
 
@@ -515,7 +530,7 @@ double gun_damage_eval( const_dialogue const &d, char scope, std::vector<diag_va
 {
 
     item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
-    if( it == nullptr ) {
+    if( it == nullptr || !*it ) {
         throw math::runtime_error( "subject of gun_damage() must be an item" );
     }
     std::string const &dt_str = params[0].str( d );
@@ -801,7 +816,7 @@ double melee_damage_eval( const_dialogue const &d, char scope,
 {
 
     item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
-    if( it == nullptr ) {
+    if( it == nullptr || !*it ) {
         throw math::runtime_error( "subject of melee_damage() must be an item" );
     }
     std::string const &dt_str = params[0].str( d );
@@ -858,9 +873,9 @@ bool _filter_character( Character const *beta, Character const &guy, int radius,
 {
     if( ( !guy.is_hallucination() || allow_hallucinations ) &&
         ( beta == nullptr || beta->getID() != guy.getID() ) ) {
-        return beta == nullptr ||
-               ( _friend_match_filter_character( *beta, guy, filter ) &&
-                 radius >= rl_dist( guy.pos_abs(), loc ) );
+        // Without a character there is no attitude to match (the caller allows only "any")
+        return ( beta == nullptr || _friend_match_filter_character( *beta, guy, filter ) ) &&
+               radius >= rl_dist( guy.pos_abs(), loc );
     }
     return false;
 }
@@ -905,6 +920,11 @@ double _characters_nearby_eval( const_dialogue const &d, char scope,
     int const hallucinations_int = static_cast<int>( allow_hallucinations_val.dbl( d ) );
     if( hallucinations_int != 0 ) {
         allow_hallucinations = true;
+    }
+    if( filter != character_filter::any &&
+        d.const_actor( beta )->get_const_character() == nullptr ) {
+        throw math::runtime_error(
+            R"(characters_nearby() attitude "%s" needs a character to compare with)", filter_str );
     }
 
     std::vector<Character *> const targets = g->get_characters_if(
@@ -1047,6 +1067,32 @@ double moon_phase_eval( const_dialogue const & /* d */, char /* scope */,
                         diag_kwargs const & /* kwargs */ )
 {
     return static_cast<int>( get_moon_phase( calendar::turn ) );
+}
+
+// oracle('name'): a literal name must be a named score.
+void oracle_check( std::vector<diag_value> const &params )
+{
+    if( params[0].is_str() && behavior::score_predicate_map.count( params[0].str() ) == 0 ) {
+        throw math::syntax_error( R"(oracle(): "%s" is not a named score)", params[0].str() );
+    }
+}
+
+// A named score of the NPC behavior tree (score_predicate_map), for u.
+double oracle_eval( const_dialogue const &d, char /* scope */,
+                    std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const std::string name( params[0].str( d ) );
+    const auto score = behavior::score_predicate_map.find( name );
+    if( score == behavior::score_predicate_map.end() ) {
+        throw math::runtime_error( R"(oracle(): "%s" is not a named score)", name );
+    }
+    const Character *who = d.has_actor( false ) ? d.const_actor( false )->get_const_character() :
+                           nullptr;
+    if( who == nullptr ) {
+        throw math::runtime_error( "oracle() needs u to be a character" );
+    }
+    const behavior::character_oracle_t oracle( who );
+    return score->second( &oracle, "" );
 }
 
 double oxygen_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &/*params*/,
@@ -1341,7 +1387,8 @@ void spell_level_adjustment_ass( double val, dialogue &d, char scope,
     }
 }
 
-double _time_in_unit( double time, std::string_view unit )
+// How many turns one 'unit' is; no unit is turns
+double _turns_per_unit( std::string_view unit )
 {
     if( !unit.empty() ) {
         decltype( time_duration::units )::const_iterator iter = std::find_if( time_duration::units.cbegin(),
@@ -1353,11 +1400,16 @@ double _time_in_unit( double time, std::string_view unit )
         if( iter == time_duration::units.end() ) {
             throw math::runtime_error( R"(Unknown time unit "%s")", unit );
         } else {
-            return time / to_turns<double>( iter->second );
+            return to_turns<double>( iter->second );
         }
     }
 
-    return time;
+    return 1.0;
+}
+
+double _time_in_unit( double time, std::string_view unit )
+{
+    return unit.empty() ? time : time / _turns_per_unit( unit );
 }
 
 double time_eval( const_dialogue const &d, char /* scope */, std::vector<diag_value> const &params,
@@ -1378,13 +1430,16 @@ double time_eval( const_dialogue const &d, char /* scope */, std::vector<diag_va
     return _time_in_unit( ret, unit_val.str( d ) );
 }
 
-void time_ass( double val, dialogue & /* d */, char /* scope */,
-               std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+void time_ass( double val, dialogue &d, char /* scope */,
+               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     // intentionally duplicate check for str to avoid the `Expected str, got ...` error and get the
     // nicer one below
     if( params[0].is_str() && params[0].str() == "now" ) {
-        calendar::turn = calendar::turn_zero + time_duration::from_turns<double>( val );
+        // val is in the 'unit' time('now') reads in, as for time('now', 'unit':'hours') += 1.
+        // Rounded: the trip through the unit can land a hair below a whole turn.
+        double const turns = val * _turns_per_unit( kwargs.kwarg_or( "unit" ).str( d ) );
+        calendar::turn = calendar::turn_zero + time_duration::from_turns<double>( std::round( turns ) );
     } else {
         throw math::syntax_error( "Only time('now') is a valid time() assignment target" );
     }
@@ -1408,7 +1463,11 @@ double time_since_eval( const_dialogue const &d, char /* scope */,
         } else if( val_str == "midnight" ) {
             ret = to_turns<double>( time_past_midnight( calendar::turn ) );
         } else if( val_str == "noon" ) {
+            // since the last 12:00, so 0 to 24 hours
             ret = to_turns<double>( calendar::turn - noon( calendar::turn ) );
+            if( ret < 0 ) {
+                ret += to_turns<double>( 1_days );
+            }
         } else {
             throw math::runtime_error( R"(Unknown time point "%s")", val_str );
         }
@@ -1439,7 +1498,7 @@ double time_until_eval( const_dialogue const &d, char /* scope */,
         } else if( val_str == "sunrise" ) {
             ret = to_turns<double>( sunrise( calendar::turn ) - calendar::turn );
         } else if( val_str == "noon" ) {
-            ret = to_turns<double>( calendar::turn - noon( calendar::turn ) );
+            ret = to_turns<double>( noon( calendar::turn ) - calendar::turn );
         } else {
             throw math::runtime_error( R"(Unknown time point "%s")", val_str );
         }
@@ -1454,19 +1513,33 @@ double time_until_eval( const_dialogue const &d, char /* scope */,
     return _time_in_unit( ret, unit_val.str( d ) );
 }
 
-double time_until_eoc_eval( const_dialogue const &d, char /* scope */,
+// Time until the EOC next runs, or -1 if it isn't queued. Global EOCs are queued in the game,
+// the others on the character they run for (u_ and n_ scopes).
+double time_until_eoc_eval( const_dialogue const &d, char scope,
                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     diag_value unit_val = kwargs.kwarg_or( "unit" );
 
     effect_on_condition_id eoc_id( params[0].str( d ) );
-    const std::list<queued_eoc> &list = g->queued_global_effect_on_conditions.list;
-    std::list<queued_eoc>::const_iterator it = std::find_if( list.cbegin(),
-    list.cend(), [&eoc_id]( queued_eoc const & eoc ) {
-        return eoc.eoc == eoc_id;
-    } );
-
-    return it != list.end() ? _time_in_unit( to_turn<double>( it->time ), unit_val.str( d ) ) : -1;
+    queued_eocs const *queue = &g->queued_global_effect_on_conditions;
+    if( scope != 'g' ) {
+        Character const *chr = d.const_actor( is_beta( scope ) )->get_const_character();
+        if( chr == nullptr ) {
+            return -1;
+        }
+        queue = &chr->queued_effect_on_conditions;
+    }
+    std::optional<time_point> soonest;
+    for( queued_eoc const &eoc : queue->list ) {
+        if( eoc.eoc == eoc_id && ( !soonest || eoc.time < *soonest ) ) {
+            soonest = eoc.time;
+        }
+    }
+    if( !soonest ) {
+        return -1;
+    }
+    return _time_in_unit( std::max( 0.0, to_turns<double>( *soonest - calendar::turn ) ),
+                          unit_val.str( d ) );
 }
 
 double effect_duration_eval( const_dialogue const &d, char scope,
@@ -1659,6 +1732,128 @@ double npc_value_eval( const_dialogue const &d, char scope,
     }
 }
 
+// turns since the NPC's current goal started; 0 when it has none, or isn't an NPC
+double npc_goal_turns_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    const const_talker *who = d.const_actor( is_beta( scope ) );
+    const npc *guy = who == nullptr ? nullptr : who->get_const_npc();
+    return guy == nullptr ? 0.0 : npc_goal_runtime::turns_on_goal( *guy );
+}
+
+// the NPC u or n is; nullptr when that talker isn't an NPC, or there is none
+const npc *scoped_npc( const_dialogue const &d, char scope )
+{
+    const bool beta = is_beta( scope );
+    return d.has_actor( beta ) ? d.const_actor( beta )->get_const_npc() : nullptr;
+}
+
+npc *scoped_npc( dialogue &d, char scope )
+{
+    const bool beta = is_beta( scope );
+    return d.has_actor( beta ) ? d.actor( beta )->get_npc() : nullptr;
+}
+
+// a personality trait npc_personality() names, nullptr for another name
+int8_t *personality_trait( npc_personality &p, std::string_view trait )
+{
+    if( trait == "aggression" ) {
+        return &p.aggression;
+    } else if( trait == "bravery" ) {
+        return &p.bravery;
+    } else if( trait == "collector" ) {
+        return &p.collector;
+    } else if( trait == "altruism" ) {
+        return &p.altruism;
+    }
+    return nullptr;
+}
+
+constexpr const char *personality_traits = "aggression, bravery, collector or altruism";
+
+void npc_personality_check( std::vector<diag_value> const &params )
+{
+    npc_personality p;
+    if( params[0].is_str() && personality_trait( p, params[0].str() ) == nullptr ) {
+        throw math::syntax_error( R"(npc_personality(): "%s" isn't %s)", params[0].str(),
+                                  personality_traits );
+    }
+}
+
+// npc_personality('aggression'): the trait, -10 to 10; 0 for a talker that isn't an NPC
+double npc_personality_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const std::string trait( params[0].str( d ) );
+    npc_personality p;
+    if( personality_trait( p, trait ) == nullptr ) {
+        throw math::runtime_error( R"(npc_personality(): "%s" isn't %s)", trait, personality_traits );
+    }
+    const npc *guy = scoped_npc( d, scope );
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    p = guy->personality;
+    return *personality_trait( p, trait );
+}
+
+// clamped to the personality range, as the npc_class bonuses are
+void npc_personality_ass( double val, dialogue &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const std::string trait( params[0].str( d ) );
+    npc *guy = scoped_npc( d, scope );
+    npc_personality none;
+    int8_t *value = personality_trait( guy == nullptr ? none : guy->personality, trait );
+    if( value == nullptr ) {
+        throw math::runtime_error( R"(npc_personality(): "%s" isn't %s)", trait, personality_traits );
+    }
+    if( guy != nullptr ) {
+        *value = static_cast<int8_t>( std::clamp( val, static_cast<double>( NPC_PERSONALITY_MIN ),
+                                      static_cast<double>( NPC_PERSONALITY_MAX ) ) );
+    }
+}
+
+// npc_danger(): the danger the NPC's AI rates around it, as npc_in_danger reads it
+double npc_danger_eval( const_dialogue const &d, char scope,
+                        std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const npc *guy = scoped_npc( d, scope );
+    return guy == nullptr ? 0.0 : guy->get_ai_danger();
+}
+
+// npc_panic(): how panicked the NPC is in a fight; it runs, and stops using cover, as it grows
+double npc_panic_eval( const_dialogue const &d, char scope,
+                       std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const npc *guy = scoped_npc( d, scope );
+    return guy == nullptr ? 0.0 : guy->mem_combat.panic;
+}
+
+constexpr const char *need_goals = "drink_water, eat_food, go_to_sleep or regulate_temperature";
+
+void npc_need_urgency_check( std::vector<diag_value> const &params )
+{
+    if( params[0].is_str() && !npc::goal_id_for( params[0].str() ) ) {
+        throw math::syntax_error( R"(npc_need_urgency(): "%s" isn't %s)", params[0].str(), need_goals );
+    }
+}
+
+// npc_need_urgency('drink_water'): the need's urgency, 0 to 1, as the arbitration and the
+// built-in scores have it
+double npc_need_urgency_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const std::string need( params[0].str( d ) );
+    const std::optional<npc::need_goal_id> id = npc::goal_id_for( need );
+    if( !id ) {
+        throw math::runtime_error( R"(npc_need_urgency(): "%s" isn't %s)", need, need_goals );
+    }
+    const npc *guy = scoped_npc( d, scope );
+    return guy == nullptr ? 0.0 : guy->current_need_urgency( *id );
+}
+
 double npc_trust_eval( const_dialogue const &d, char scope,
                        std::vector<diag_value> const & /* params */,
                        diag_kwargs const & /* kwargs */ )
@@ -1768,6 +1963,24 @@ void calories_ass( double val, dialogue &d, char scope,
                    std::vector<diag_value> const & /* params */, diag_kwargs const &kwargs )
 {
     diag_value ignore_weariness_val = kwargs.kwarg_or( "dont_affect_weariness" );
+    diag_value format_value = kwargs.kwarg_or( "format", "raw" );
+
+    // val is in the format calories() reads in: with 'percent', percent of the healthy amount
+    std::string const &format = format_value.str( d );
+    if( format != "raw" && format != "percent" ) {
+        throw math::runtime_error( R"(Unknown format type "%s" for calories)", format );
+    }
+    if( format == "percent" ) {
+        if( !d.actor( is_beta( scope ) )->get_character() ) {
+            throw math::runtime_error( "Percent can be used only with character" );
+        }
+        double divisor = d.actor( is_beta( scope ) )->get_healthy_kcal() / 100.0;
+        if( divisor == 0 ) {
+            debugmsg( "Can't get healthy amount of calories, set raw calories instead" );
+        } else {
+            val = std::round( val * divisor );
+        }
+    }
 
     const bool ignore_weariness = is_true( ignore_weariness_val.dbl( d ) );
     int current_kcal = d.actor( is_beta( scope ) )->get_stored_kcal();
@@ -2269,7 +2482,7 @@ double vitamin_eval( const_dialogue const &d, char scope, std::vector<diag_value
     if( Character const *const chr = actor->get_const_character(); chr != nullptr ) {
         return chr->vitamin_get( vitamin_id( id_str ) );
     }
-    if( item_location const *const itm = actor->get_const_item(); itm != nullptr ) {
+    if( item_location const *const itm = actor->get_const_item(); itm != nullptr && *itm ) {
         const std::map<vitamin_id, int> &vitamin_data =
             default_character_compute_effective_nutrients( *itm->get_item() ).vitamins();
         const auto &v = vitamin_data.find( vitamin_id( id_str ) );
@@ -2477,7 +2690,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "artifact_resonance", { "un", 0, artifact_resonance_eval } },
     { "attack_speed", { "un", 0, attack_speed_eval } },
     { "speed", { "un", 0, move_speed_eval } },
-    { "characters_nearby", { "ung", 0, characters_nearby_eval, {}, { "radius", "attitude", "location" } } },
+    { "characters_nearby", { "ung", 0, characters_nearby_eval, {}, { "radius", "attitude", "location", "allow_hallucinations" } } },
     { "charge_count", { "un", 1, charge_count_eval } },
     { "consumption_count", { "un", 1, consumption_count_eval, {}, { "hours" } } },
     { "consumption_count_total", { "un", 0, consumption_count_total_eval, {}, { "hours" } } },
@@ -2525,6 +2738,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "moon_phase", { "g", 0, moon_phase_eval } },
     { "morale", { "un", 0, morale_eval, morale_ass, { "raw" } } },
     { "num_input", { "g", 2, num_input_eval } },
+    { "oracle", { "g", 1, oracle_eval, {}, {}, oracle_check } },
     { "oxygen", { "un", 0, oxygen_eval, oxygen_ass } },
     { "oxygen_max", { "un", 0, oxygen_max_eval } },
     { "pain", { "un", 0, pain_eval, pain_ass, { "type" } } },
@@ -2548,12 +2762,17 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "time", { "g", 1, time_eval, time_ass, { "unit" } } },
     { "time_since", { "g", 1, time_since_eval, {}, { "unit" } } },
     { "time_until", { "g", 1, time_until_eval, {}, { "unit" } } },
-    { "time_until_eoc", { "g", 1, time_until_eoc_eval, {}, { "unit" } } },
+    { "time_until_eoc", { "ung", 1, time_until_eoc_eval, {}, { "unit" } } },
     { "trauma", { "un", 0, trauma_eval, trauma_ass } },
     { "proficiency", { "un", 1, proficiency_eval, proficiency_ass, { "format", "direct" } } },
     { "val", { "un", 1, u_val, u_val_ass } },
     { "npc_anger", { "un", 0, npc_anger_eval, npc_anger_ass } },
     { "npc_fear", { "un", 0, npc_fear_eval, npc_fear_ass } },
+    { "npc_danger", { "ung", 0, npc_danger_eval } },
+    { "npc_goal_turns", { "ung", 0, npc_goal_turns_eval } },
+    { "npc_need_urgency", { "ung", 1, npc_need_urgency_eval, {}, {}, npc_need_urgency_check } },
+    { "npc_panic", { "ung", 0, npc_panic_eval } },
+    { "npc_personality", { "ung", 1, npc_personality_eval, npc_personality_ass, {}, npc_personality_check } },
     { "npc_value", { "un", 0, npc_value_eval, npc_value_ass } },
     { "npc_trust", { "un", 0, npc_trust_eval, npc_trust_ass } },
     { "ugliness", { "un", 0, ugliness_eval } },

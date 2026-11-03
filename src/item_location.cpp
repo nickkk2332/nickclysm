@@ -760,19 +760,35 @@ class item_location::impl::item_in_container : public item_location::impl
         item_in_container( const item_location &container, item *which ) :
             impl( which ), container( container ) {}
 
+        // A gun or tool mod, which is not among the contents calc_index counts
+        bool is_mod_of_container() const {
+            if( !container ) {
+                return false;
+            }
+            for( const item *it : container->all_items_top( pocket_type::MOD ) ) {
+                if( target() == it ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         void serialize( JsonOut &js ) const override {
             if( !target() ) {
                 item_location::nowhere.serialize( js );
                 return;
             }
             int idx = calc_index();
-            if( idx < 0 ) {
+            // A mod is found by uid alone. Its own type keeps older builds, which can't find
+            // it, from reporting an error: they read it as nowhere, as they wrote it.
+            const bool in_mod_pocket = idx < 0 && target()->uid().is_valid() && is_mod_of_container();
+            if( idx < 0 && !in_mod_pocket ) {
                 item_location::nowhere.serialize( js );
                 return;
             }
             js.start_object();
             js.member( "idx", idx );
-            js.member( "type", "in_container" );
+            js.member( "type", in_mod_pocket ? "in_mod_pocket" : "in_container" );
             js.member( "parent", container );
             if( target()->uid().is_valid() ) {
                 js.member( "uid", target()->uid().get_value() );
@@ -1001,23 +1017,30 @@ class item_location::impl::item_in_crafting_inventory : public item_location::im
 
 const item_location item_location::nowhere;
 
+// Every empty location shares one nowhere implementation, so making one (get_wielded_item()
+// when nothing is wielded, a default argument, a failed lookup) allocates nothing. Nothing in
+// it changes: it refers to no item and set_should_stack() leaves it alone.
 item_location::item_location()
-    : ptr( new impl::nowhere() ) {}
+{
+    static const std::shared_ptr<impl> shared_nowhere = std::make_shared<impl::nowhere>();
+    ptr = shared_nowhere;
+}
 
+// make_shared puts the implementation and its reference count in one allocation.
 item_location::item_location( const map_cursor &mc, item *which )
-    : ptr( new impl::item_on_map( mc, which ) ) {}
+    : ptr( std::make_shared<impl::item_on_map>( mc, which ) ) {}
 
 item_location::item_location( Character &ch, item *which )
-    : ptr( new impl::item_on_person( ch, which ) ) {}
+    : ptr( std::make_shared<impl::item_on_person>( ch, which ) ) {}
 
 item_location::item_location( const vehicle_cursor &vc, item *which )
-    : ptr( new impl::item_on_vehicle( vc, which ) ) {}
+    : ptr( std::make_shared<impl::item_on_vehicle>( vc, which ) ) {}
 
 item_location::item_location( const item_location &container, item *which )
-    : ptr( new impl::item_in_container( container, which ) ) {}
+    : ptr( std::make_shared<impl::item_in_container>( container, which ) ) {}
 
 item_location::item_location( temp_crafting_inventory &inv, item *which )
-    : ptr( new impl::item_in_crafting_inventory( inv, which ) )
+    : ptr( std::make_shared<impl::item_in_crafting_inventory>( inv, which ) )
 {
 }
 
@@ -1105,20 +1128,23 @@ void item_location::deserialize( const JsonObject &obj )
         if( veh && part >= 0 && part < veh->part_count() ) {
             ptr = std::make_shared<impl::item_on_vehicle>( vehicle_cursor( *veh, part ), idx, uid );
         }
-    } else if( type == "in_container" ) {
+    } else if( type == "in_container" || type == "in_mod_pocket" ) {
+        // in_mod_pocket: a gun or tool mod of the parent, found by uid
+        const bool in_mod_pocket = type == "in_mod_pocket";
         item_location parent;
         obj.read( "parent", parent );
         if( !parent.ptr->valid() ) {
             if( parent == nowhere ) {
                 debugmsg( "parent location doesn't exist.  Item_location has lost its target over a save/load cycle." );
-                ptr = std::make_shared<impl::nowhere>();
+                ptr = item_location().ptr;
                 return;
             }
             debugmsg( "parent location does not point to valid item" );
             ptr = std::make_shared<impl::item_on_map>( map_cursor( parent.pos_abs() ), idx ); // drop on ground
             return;
         }
-        const std::list<item *> parent_contents = parent->all_items_container_top();
+        const std::list<item *> parent_contents = in_mod_pocket ?
+                parent->all_items_top( pocket_type::MOD ) : parent->all_items_container_top();
 
         item *found = nullptr;
         if( uid > 0 ) {
@@ -1130,7 +1156,7 @@ void item_location::deserialize( const JsonObject &obj )
             }
             if( !found ) {
                 debugmsg( "item_location UID not found in container contents" );
-                ptr = std::make_shared<impl::nowhere>();
+                ptr = item_location().ptr;
                 return;
             }
         } else if( idx > -1 && idx < static_cast<int>( parent_contents.size() ) ) {
@@ -1144,7 +1170,7 @@ void item_location::deserialize( const JsonObject &obj )
             ptr = std::make_shared<impl::item_in_container>( parent, found );
         } else {
             debugmsg( "contents index greater than contents size" );
-            ptr = std::make_shared<impl::nowhere>();
+            ptr = item_location().ptr;
         }
     }
 }
@@ -1399,7 +1425,7 @@ void item_location::remove_item( item &inside )
             return;
         }
         ptr->remove_item();
-        ptr = std::make_shared<impl::nowhere>();
+        ptr = item_location().ptr;
     } else {
         visitable::remove_item( inside );
     }
@@ -1455,6 +1481,10 @@ const item *item_location::get_item() const
 
 void item_location::set_should_stack( bool should_stack ) const
 {
+    // the shared nowhere implementation stays as it is (it obtains nothing anyway)
+    if( ptr->where() == type::invalid ) {
+        return;
+    }
     ptr->should_stack = should_stack;
 }
 

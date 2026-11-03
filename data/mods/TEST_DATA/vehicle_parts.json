@@ -34,6 +34,25 @@
     "variants": [ { "symbols": ";", "symbols_broken": "*" } ]
   },
   {
+    "//": "Zone-job fixture (ACT-P03): a part whose removal needs a welder, so whether a deconstruction spot is workable turns on the welding rigs in reach.",
+    "type": "vehicle_part",
+    "id": "test_vp_weld_to_remove",
+    "name": { "str": "test welded-on part" },
+    "item": "test_vp_reserve_welder",
+    "description": "TestPart",
+    "durability": 400,
+    "categories": [ "other" ],
+    "broken_color": "dark_gray",
+    "location": "center",
+    "flags": [ "NO_REPAIR" ],
+    "requirements": {
+      "install": { "skills": [ [ "mechanics", 0 ] ] },
+      "removal": { "skills": [ [ "mechanics", 0 ] ], "using": [ [ "test_reserve_vehicle_weld", 1 ] ] }
+    },
+    "breaks_into": [  ],
+    "variants": [ { "symbols": ";", "symbols_broken": "*" } ]
+  },
+  {
     "type": "ITEM",
     "id": "test_vp_reserve_welder",
     "category": "other",

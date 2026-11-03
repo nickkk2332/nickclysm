@@ -48,7 +48,23 @@
   {
     "type": "effect_on_condition",
     "id": "EOC_HAUNTING_SPAWN",
+    "//": "Tries up to 100 spots 25 to 45 tiles away for the officer.  Underground most of them are solid rock.",
     "effect": [
+      { "math": [ "u_haunting_spawn_retry = 1" ] },
+      {
+        "run_eocs": "EOC_HAUNTING_SPAWN_TRY",
+        "iterations": 100,
+        "condition": { "math": [ "u_haunting_spawn_retry == 1" ] }
+      },
+      { "u_lose_var": "haunting_spawn_retry" }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_HAUNTING_SPAWN_TRY",
+    "//": "One spot for the officer; once it spawns, darkness spreads around it.",
+    "effect": [
+      { "math": [ "u_haunting_spawn_retry = 0" ] },
       { "u_location_variable": { "global_val": "MERC_LOC" }, "min_radius": 25, "max_radius": 45 },
       {
         "u_spawn_monster": "mon_XEDRA_officer",
@@ -56,17 +72,24 @@
         "min_radius": 1,
         "max_radius": 2,
         "target_var": { "global_val": "MERC_LOC" },
-        "false_eocs": [ "EOC_HAUNTING_SPAWN" ]
-      },
-      {
-        "u_transform_radius": 20,
-        "target_var": { "global_val": "MERC_LOC" },
-        "ter_furn_transform": "merc_darkness_transform"
-      },
-      {
-        "u_transform_radius": 20,
-        "target_var": { "global_val": "MERC_LOC" },
-        "ter_furn_transform": "merc_darkness_transform_walls"
+        "true_eocs": [
+          {
+            "id": "EOC_HAUNTING_SPAWN_DARKNESS",
+            "effect": [
+              {
+                "u_transform_radius": 20,
+                "target_var": { "global_val": "MERC_LOC" },
+                "ter_furn_transform": "merc_darkness_transform"
+              },
+              {
+                "u_transform_radius": 20,
+                "target_var": { "global_val": "MERC_LOC" },
+                "ter_furn_transform": "merc_darkness_transform_walls"
+              }
+            ]
+          }
+        ],
+        "false_eocs": [ { "id": "EOC_HAUNTING_SPAWN_AGAIN", "effect": [ { "math": [ "u_haunting_spawn_retry = 1" ] } ] } ]
       }
     ]
   },

@@ -17,6 +17,7 @@
 #include "character_martial_arts.h"
 #include "coordinates.h"
 #include "enums.h"
+#include "errand.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
@@ -119,6 +120,7 @@ void clear_character( Character &dummy, bool skip_nutrition )
     dummy.activity.set_to_null();
     dummy.backlog.clear();
     dummy.clear_destination();
+    dummy.walk.reset();
     // Reset age/height before stored kcal since get_healthy_kcal()
     // depends on height.
     dummy.reset_chargen_attributes();

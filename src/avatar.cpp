@@ -55,6 +55,7 @@
 #include "mission.h"
 #include "move_mode.h"
 #include "npc.h"
+#include "npc_follower_list.h"
 #include "npc_opinion.h"
 #include "options.h"
 #include "output.h"
@@ -163,10 +164,11 @@ void avatar::control_npc( npc &np, const bool debug )
     std::swap( get_shadow_npc(), np );
     // move shadow npc character data into avatar
     swap_character( get_shadow_npc() );
-    // the avatar character is no longer a follower NPC
-    g->remove_npc_follower( getID() );
+    // the avatar character is no longer a follower NPC; a change of bodies recruits and
+    // dismisses no one
+    remove_npc_follower_quietly( getID() );
     // the previous avatar character is now a follower
-    g->add_npc_follower( np.getID() );
+    add_npc_follower_quietly( np.getID() );
     np.set_fac( faction_your_followers );
     // perception and mutations may have changed, so reset light level caches
     g->reset_light_level();

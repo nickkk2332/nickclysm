@@ -12,6 +12,7 @@
 
 #include "activity_actor_definitions.h"
 #include "character.h"
+#include "craft_prompts.h"
 #include "crafting.h"
 #include "crafting_enums.h"
 #include "debug.h"
@@ -163,12 +164,15 @@ void craft_command::execute( bool only_cache_comps )
     if( need_selections ) {
         if( !crafter->can_make( rec, batch_size ) ) {
             if( crafter->can_start_craft( rec, recipe_filter_flags::none, batch_size ) ) {
-                if( !query_yn( _( "You don't have enough charges to complete the %s.\n"
+                if( !craft_prompts_suppressed() &&
+                    !query_yn( _( "You don't have enough charges to complete the %s.\n"
                                   "Start crafting anyway?" ), rec->result_name() ) ) {
                     return;
                 }
             } else if( !rec->character_has_required_proficiencies( *crafter ) ) {
-                popup( _( "You don't have the required proficiencies to craft this!" ) );
+                if( !craft_prompts_suppressed() ) {
+                    popup( _( "You don't have the required proficiencies to craft this!" ) );
+                }
                 return;
             } else {
                 debugmsg( "Tried to start craft without sufficient charges" );
@@ -179,8 +183,8 @@ void craft_command::execute( bool only_cache_comps )
         flags = recipe_filter_flags::no_rotten;
 
         if( !crafter->can_start_craft( rec, flags, batch_size ) ) {
-            if( !query_yn( _( "This craft will use rotten components.\n"
-                              "Start crafting anyway?" ) ) ) {
+            if( !craft_prompts_suppressed() && !query_yn( _( "This craft will use rotten components.\n"
+                    "Start crafting anyway?" ) ) ) {
                 return;
             }
             flags = recipe_filter_flags::none;
@@ -188,8 +192,8 @@ void craft_command::execute( bool only_cache_comps )
 
         flags |= recipe_filter_flags::no_favorite;
         if( !crafter->can_start_craft( rec, flags, batch_size ) ) {
-            if( !query_yn( _( "This craft will use favorited components.\n"
-                              "Start crafting anyway?" ) ) ) {
+            if( craft_prompts_suppressed() || !query_yn( _( "This craft will use favorited components.\n"
+                    "Start crafting anyway?" ) ) ) {
                 return;
             }
             flags = flags & recipe_filter_flags::no_rotten ? recipe_filter_flags::no_rotten :
@@ -247,7 +251,7 @@ void craft_command::execute( bool only_cache_comps )
     }
 
     std::vector<attention_plan> plans;
-    if( rec->has_attention_steps() && crafter->is_avatar() ) {
+    if( rec->has_attention_steps() && crafter->is_avatar() && !craft_prompts_suppressed() ) {
         std::optional<std::vector<attention_plan>> chosen =
                 show_craft_planning_modal( *rec, *crafter, batch_size, /*from_step=*/0, {} );
         if( !chosen ) {
@@ -256,6 +260,11 @@ void craft_command::execute( bool only_cache_comps )
         plans = std::move( *chosen );
     }
     crafter->start_craft( *this, loc, std::move( plans ) );
+    if( craft_prompts_suppressed() ) {
+        // Not the player's choice: it changes neither what they recraft nor their recent
+        // recipes.
+        return;
+    }
     crafter->last_batch = batch_size;
     crafter->lastrecipe = rec->ident();
 
@@ -620,7 +629,7 @@ item craft_command::create_in_progress_craft()
     const auto filter = rec->get_component_filter( flags );
 
     if( crafter->is_avatar() &&
-        !continue_prompt_liquids( filter ) ) {
+        !continue_prompt_liquids( filter, craft_prompts_suppressed() ) ) {
         // player cancelled when prompted to unload liquid
         return item();
     }

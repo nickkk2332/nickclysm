@@ -81,6 +81,7 @@ Field                 | Meaning
 `"limited_area_claim"`| bool, optional. Default false. Whether or not camps owned by this faction 'claim' the entire reality bubble and will be angered by hostile player actions in that area.  If true, they only claim the specific OMT the camp is located on.
 `"description"`       | string, optional. The player's description of this faction as seen in the faction menu.
 `"epilogues"`         | array of objects, optional. Requires these objects: `power_min` - minimal faction power for epilogue to appear, `power_max` - maximum faction power for epilogue to appear, `id` - id of text snippet containing text of epilogue.
+`"mutiny_faction"`    | string, optional, default `"amf"`. The faction a member that mutinies joins. Only the avatar's followers mutiny, so in practice it's `your_followers`'s field that counts. A faction that doesn't exist is an error after loading. The event [`npc_mutinies`](EFFECT_ON_CONDITION.md#event-eoc-types) reports a mutiny.
 
 ## Redefining and copying factions
 
@@ -118,6 +119,8 @@ Interacting with factions has certain effects on how the faction sees the player
 Factions can have relations with each other that apply to each member of the faction.  Faction relationships are not reciprocal: members of the Free Merchants will defend members of the Lobby Beggars, but members of the Lobby Beggars will not defend members of the Free Merchants.
 
 Faction relationships are stored in a dictionary, with the dictionary keys being the name of the faction and the values being a second dictionary of boolean flags.  All flags are optional and default to false.  The faction with the dictionary is the acting faction and the other faction is the object faction.
+
+EOCs read a relation with the condition [`faction_has_relation`](EFFECT_ON_CONDITION.md#faction_has_relation) and change one with the effect [`set_faction_relation`](EFFECT_ON_CONDITION.md#set_faction_relation), naming both factions and a flag below.
 
 The flags have the following meanings:
 

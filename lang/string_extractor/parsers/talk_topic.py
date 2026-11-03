@@ -19,6 +19,7 @@ dynamic_line_string_keys = [
     "has_available_mission", "has_many_available_missions",
     "mission_complete", "mission_incomplete", "mission_has_generic_rewards",
     "npc_available", "npc_following", "npc_friend", "npc_hostile",
+    "u_on_shift", "npc_on_shift", "u_at_post", "npc_at_post",
     "npc_train_skills", "npc_train_styles", "npc_train_spells",
     "at_safe_space", "is_day", "npc_has_activity",
     "u_is_travelling", "npc_is_travelling",

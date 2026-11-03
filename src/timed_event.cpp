@@ -68,6 +68,7 @@ timed_event::timed_event( timed_event_type e_t, const time_point &w, int f_id, t
     , map_square( p )
     , strength( s )
     , key( std::move( key ) )
+    , dimension( g->get_dimension_prefix() )
 {
     map_point = project_to<coords::sm>( map_square );
 }
@@ -81,6 +82,7 @@ timed_event::timed_event( timed_event_type e_t, const time_point &w, int f_id, t
     , strength( s )
     , string_id( std::move( s_id ) )
     , key( std::move( key ) )
+    , dimension( g->get_dimension_prefix() )
 {
     map_point = project_to<coords::sm>( map_square );
 }
@@ -94,6 +96,7 @@ timed_event::timed_event( timed_event_type e_t, const time_point &w, int f_id, t
     , strength( s )
     , string_id( std::move( s_id ) )
     , key( std::move( key ) )
+    , dimension( g->get_dimension_prefix() )
     , revert( std::move( sr ) )
 {
     map_point = project_to<coords::sm>( map_square );
@@ -106,6 +109,7 @@ timed_event::timed_event( timed_event_type e_t, const time_point &w, const tripo
     , faction_id( -1 )
     , map_square( p )
     , strength( -1 )
+    , dimension( g->get_dimension_prefix() )
 {
     map_point = project_to<coords::sm>( map_square );
     expl_data = explos_data;
@@ -335,8 +339,11 @@ void timed_event::actualize()
 
         case timed_event_type::REVERT_SUBMAP: {
             submap *sm = MAPBUFFER.lookup_submap( map_point );
-            sm->revert_submap( revert );
-            reality_bubble().invalidate_map_cache( map_point.z() );
+            // Never generated, or not saved: there is nothing to put back
+            if( sm != nullptr ) {
+                sm->revert_submap( revert );
+                reality_bubble().invalidate_map_cache( map_point.z() );
+            }
             break;
         }
 
@@ -396,9 +403,31 @@ void timed_event::per_turn()
     }
 }
 
+// Events that change the map at their location.  The location is only meaningful in the
+// dimension the event was queued in.
+static bool happens_at_location( timed_event_type type )
+{
+    switch( type ) {
+        case timed_event_type::DSA_ALRP_SUMMON:
+        case timed_event_type::EXPLOSION:
+        case timed_event_type::REVERT_SUBMAP:
+        case timed_event_type::TRANSFORM_RADIUS:
+        case timed_event_type::UPDATE_MAPGEN:
+            return true;
+        default:
+            return false;
+    }
+}
+
 void timed_event_manager::process()
 {
+    const dimension_id current_dimension = g->get_dimension_prefix();
     for( auto it = events.begin(); it != events.end(); ) {
+        if( happens_at_location( it->type ) && it->dimension != current_dimension ) {
+            // Waits until the player is back in its dimension
+            ++it;
+            continue;
+        }
         it->per_turn();
         if( it->when <= calendar::turn ) {
             it->actualize();

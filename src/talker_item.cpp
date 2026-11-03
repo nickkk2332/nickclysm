@@ -19,62 +19,85 @@ static const ammotype ammo_battery( "battery" );
 
 static const itype_id itype_battery( "battery" );
 
+namespace
+{
+// The item, or nullptr once it is gone: an EOC can still hold the talker of an item that was used
+// up (taken apart, crafted with, destroyed) earlier in the same EOC.
+const item *alive( const item_location *loc )
+{
+    return loc != nullptr ? loc->get_item() : nullptr;
+}
+
+item *alive( item_location *loc )
+{
+    return loc != nullptr ? loc->get_item() : nullptr;
+}
+} // namespace
+
 std::string talker_item_const::disp_name() const
 {
-    return me_it_const->get_item()->display_name();
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->display_name() : std::string();
 }
 
 std::string talker_item_const::get_name() const
 {
-    return me_it_const->get_item()->type_name();
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->type_name() : std::string();
 }
 
+// An item that is gone has no position: these give the invalid point, and say nothing.
 int talker_item_const::posx( const map &here ) const
 {
-    return me_it_const->pos_bub( here ).x();
+    return pos_bub( here ).x();
 }
 
 int talker_item_const::posy( const map &here ) const
 {
-    return me_it_const->pos_bub( here ).y();
+    return pos_bub( here ).y();
 }
 
 int talker_item_const::posz() const
 {
-    return me_it_const->pos_abs().z();
+    return pos_abs().z();
 }
 
 tripoint_bub_ms talker_item_const::pos_bub( const map &here ) const
 {
-    return me_it_const->pos_bub( here );
+    return alive( me_it_const ) != nullptr ? me_it_const->pos_bub( here ) : tripoint_bub_ms::invalid;
 }
 
 tripoint_abs_ms talker_item_const::pos_abs() const
 {
-    return me_it_const->pos_abs();
+    return alive( me_it_const ) != nullptr ? me_it_const->pos_abs() : tripoint_abs_ms::invalid;
 }
 
 tripoint_abs_omt talker_item_const::pos_abs_omt() const
 {
-    return get_player_character().pos_abs_omt();
+    return alive( me_it_const ) != nullptr ? project_to<coords::omt>( pos_abs() ) :
+           tripoint_abs_omt::invalid;
 }
 
 diag_value const *talker_item_const::maybe_get_value( const std::string &var_name ) const
 {
-    return me_it_const->get_item()->maybe_get_value( var_name );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->maybe_get_value( var_name ) : nullptr;
 }
 
 bool talker_item_const::has_flag( const flag_id &f ) const
 {
-    add_msg_debug( debugmode::DF_TALKER, "Item %s checked for flag %s",
-                   me_it_const->get_item()->tname(),
-                   f.c_str() );
-    return me_it_const->get_item()->has_flag( f );
+    const item *it = alive( me_it_const );
+    if( it == nullptr ) {
+        return false;
+    }
+    add_msg_debug( debugmode::DF_TALKER, "Item %s checked for flag %s", it->tname(), f.c_str() );
+    return it->has_flag( f );
 }
 
 std::vector<std::string> talker_item_const::get_topics( bool ) const
 {
-    return me_it_const->get_item()->typeId()->chat_topics;
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->typeId()->chat_topics : std::vector<std::string>();
 }
 
 bool talker_item_const::will_talk_to_u( const Character &you, bool ) const
@@ -84,33 +107,42 @@ bool talker_item_const::will_talk_to_u( const Character &you, bool ) const
 
 int talker_item_const::get_cur_hp( const bodypart_id & ) const
 {
-    return me_it_const->get_item()->max_damage() - me_it_const->get_item()->damage();
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->max_damage() - it->damage() : 0;
 }
 
 int talker_item_const::get_degradation() const
 {
-    return me_it_const->get_item()->degradation();
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->degradation() : 0;
 }
 
 int talker_item_const::get_hp_max( const bodypart_id & ) const
 {
-    return me_it_const->get_item()->max_damage();
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->max_damage() : 0;
 }
 
 units::energy talker_item_const::power_cur() const
 {
-    return 1_mJ * me_it_const->get_item()->ammo_remaining( );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? 1_mJ * it->ammo_remaining( ) : 0_mJ;
 }
 
 units::energy talker_item_const::power_max() const
 {
-    return 1_mJ * me_it_const->get_item()->ammo_capacity( ammo_battery );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? 1_mJ * it->ammo_capacity( ammo_battery ) : 0_mJ;
 }
 
 int talker_item_const::get_artifact_resonance() const
 {
+    const item *it = alive( me_it_const );
+    if( it == nullptr ) {
+        return 0;
+    }
     int ret = 0;
-    for( enchant_cache &this_ench : me_it_const->get_item()->get_proc_enchantments() ) {
+    for( enchant_cache &this_ench : it->get_proc_enchantments() ) {
         ret += this_ench.get_value_add( enchant_vals::mod::ARTIFACT_RESONANCE );
     }
     return ret;
@@ -118,84 +150,105 @@ int talker_item_const::get_artifact_resonance() const
 
 int talker_item_const::get_count() const
 {
-    return me_it_const->get_item()->count();
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->count() : 0;
 }
 
 int talker_item_const::coverage_at( bodypart_id &id ) const
 {
-    return me_it_const->get_item()->get_coverage( id );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->get_coverage( id ) : 0;
 }
 
 int talker_item_const::encumbrance_at( bodypart_id &id ) const
 {
-    return me_it_const->get_item()->get_encumber( get_player_character(), id );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->get_encumber( get_player_character(), id ) : 0;
 }
 
 int talker_item_const::get_volume() const
 {
-
-    return units::to_milliliter( me_it_const->get_item()->volume() );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? units::to_milliliter( it->volume() ) : 0;
 }
 
 int talker_item_const::get_weight() const
 {
-
-    return units::to_milligram( me_it_const->get_item()->weight() );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? units::to_milligram( it->weight() ) : 0;
 }
 
 int talker_item_const::get_quality( const std::string &quality, bool strict ) const
 {
-    return me_it_const->get_quality( quality, strict );
+    return alive( me_it_const ) != nullptr ? me_it_const->get_quality( quality, strict ) : 0;
 }
 
 void talker_item::set_value( const std::string &var_name, diag_value const &value )
 {
-    me_it->get_item()->set_var( var_name, value );
+    if( item *it = alive( me_it ) ) {
+        it->set_var( var_name, value );
+    }
 }
 
 void talker_item::remove_value( const std::string &var_name )
 {
-    me_it->get_item()->erase_var( var_name );
+    if( item *it = alive( me_it ) ) {
+        it->erase_var( var_name );
+    }
 }
 
 void talker_item::set_power_cur( units::energy value )
 {
-    me_it->get_item()->ammo_set( itype_battery, clamp( static_cast<int>( value.value() ), 0,
-                                 me_it->get_item()->ammo_capacity( ammo_battery ) ) );
+    if( item *it = alive( me_it ) ) {
+        it->ammo_set( itype_battery, clamp( static_cast<int>( value.value() ), 0,
+                                            it->ammo_capacity( ammo_battery ) ) );
+    }
 }
 
 void talker_item::set_all_parts_hp_cur( int set )
 {
-    me_it->get_item()->set_damage( me_it->get_item()->max_damage() - set );
+    if( item *it = alive( me_it ) ) {
+        it->set_damage( it->max_damage() - set );
+    }
 }
 
 void talker_item::set_degradation( int set )
 {
-    me_it->get_item()->set_degradation( set );
+    if( item *it = alive( me_it ) ) {
+        it->set_degradation( set );
+    }
 }
 
 void talker_item::die( map * )
 {
-    me_it->remove_item();
+    if( alive( me_it ) != nullptr ) {
+        me_it->remove_item();
+    }
 }
 
 void talker_item::set_fault( const fault_id &fault_id, bool force, const Character *holder )
 {
-    me_it->get_item()->set_fault( fault_id, force, holder );
+    if( item *it = alive( me_it ) ) {
+        it->set_fault( fault_id, force, holder );
+    }
 }
 
 void talker_item::set_random_fault_of_type( const std::string &fault_type, bool force,
         const Character *holder )
 {
-    me_it->get_item()->set_random_fault_of_type( fault_type, force, holder );
+    if( item *it = alive( me_it ) ) {
+        it->set_random_fault_of_type( fault_type, force, holder );
+    }
 }
 
 int talker_item_const::get_price() const
 {
-    return me_it_const->get_item()->price( false );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->price( false ) : 0;
 }
 
 int talker_item_const::get_price_postapoc() const
 {
-    return me_it_const->get_item()->price( true );
+    const item *it = alive( me_it_const );
+    return it != nullptr ? it->price( true ) : 0;
 }

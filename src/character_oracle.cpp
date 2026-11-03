@@ -12,12 +12,14 @@
 #include "calendar.h"
 #include "character.h"
 #include "coordinates.h"
+#include "errand.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
 #include "map.h"
 #include "mapdata.h"
 #include "npc.h"
+#include "npc_ai_tuning.h"
 #include "npc_arbitration.h"
 #include "overmapbuffer.h"
 #include "point.h"
@@ -68,6 +70,19 @@ static bool npc_within_camp( const npc &n )
 namespace behavior
 {
 
+const Creature *character_oracle_t::creature() const
+{
+    return subject;
+}
+
+std::optional<int> character_oracle_t::cache_key() const
+{
+    if( !use_cache || subject == nullptr || !subject->getID().is_valid() ) {
+        return std::nullopt;
+    }
+    return subject->getID().get_value();
+}
+
 // To avoid a local minima when the character has access to warmth in a shelter but gets cold
 // when they go outside, this method needs to only alert when travel time to known shelter
 // approaches time to freeze.
@@ -89,7 +104,7 @@ status_t character_oracle_t::needs_water_badly( std::string_view ) const
         return status_t::success;
     }
     // Check thirst threshold.
-    if( subject->get_thirst() > npc_thirst_act_level ) {
+    if( subject->get_thirst() > ai_tuning_of( *subject ).thirst_act_level() ) {
         return status_t::running;
     }
     return status_t::success;
@@ -102,7 +117,8 @@ status_t character_oracle_t::needs_food_badly( std::string_view ) const
         return status_t::success;
     }
     // Short-term: stomach empty and actively starving.
-    if( subject->get_hunger() >= 300 && subject->get_starvation() > base_metabolic_rate ) {
+    if( subject->get_hunger() >= ai_tuning_of( *subject ).starvation_hunger &&
+        subject->get_starvation() > base_metabolic_rate ) {
         return status_t::running;
     }
     // Long-term: short of calories, the same line where intake stops
@@ -244,9 +260,9 @@ status_t character_oracle_t::can_regulate_temperature( std::string_view ) const
 
 status_t character_oracle_t::needs_sleep_badly( std::string_view ) const
 {
-    // TIRED (191): low enough that off-shift NPCs go to bed early.
+    // TIRED (191) by default: low enough that off-shift NPCs go to bed early.
     // On-shift duty (0.45) easily beats sleep urgency at this level (0.191).
-    if( subject->get_sleepiness() >= static_cast<int>( sleepiness_levels::TIRED ) ) {
+    if( subject->get_sleepiness() >= ai_tuning_of( *subject ).tired_level() ) {
         return status_t::running;
     }
     return status_t::success;
@@ -258,8 +274,7 @@ float character_oracle_t::thirst_urgency( std::string_view ) const
         return 0.0f;
     }
     // 0 = hydrated, 1 = dehydration death (threshold 1200, character_health.cpp).
-    static constexpr float death_threshold = 1200.0f;
-    return std::clamp( subject->get_thirst() / death_threshold, 0.0f, 1.0f );
+    return std::clamp( subject->get_thirst() / npc_thirst_scale, 0.0f, 1.0f );
 }
 
 float character_oracle_t::hunger_urgency( std::string_view ) const
@@ -303,7 +318,7 @@ status_t character_oracle_t::can_sleep( std::string_view ) const
     if( subject->has_flag( json_flag_CANNOT_SLEEP ) ) {
         return status_t::failure;
     }
-    if( subject->get_sleepiness() < static_cast<int>( sleepiness_levels::TIRED ) ) {
+    if( subject->get_sleepiness() < ai_tuning_of( *subject ).tired_level() ) {
         return status_t::failure;
     }
     if( const npc *n = dynamic_cast<const npc *>( subject ) ) {
@@ -320,8 +335,7 @@ status_t character_oracle_t::can_sleep( std::string_view ) const
 float character_oracle_t::sleepiness_urgency( std::string_view ) const
 {
     // 0 = rested, 1 = forced unconsciousness (MASSIVE_SLEEPINESS = 1000).
-    static constexpr float cap = 1000.0f;
-    return std::clamp( subject->get_sleepiness() / cap, 0.0f, 1.0f );
+    return std::clamp( subject->get_sleepiness() / npc_sleepiness_scale, 0.0f, 1.0f );
 }
 
 // Top-level decision predicates. These need NPC-specific state (ai_cache,
@@ -415,11 +429,12 @@ float character_oracle_t::duty_urgency( std::string_view ) const
         return 0.0f;
     }
     const bool on = n->is_on_shift();
+    const npc_ai_tuning &tuning = ai_tuning_of( *n );
 
     if( n->pos_abs() == *gp ) {
         // At post: on-shift returns a baseline that resists moderate
         // tiredness. Off-shift returns 0 so needs (sleep) can win.
-        return on ? 0.45f : 0.0f;
+        return on ? tuning.duty : 0.0f;
     }
     // Off-shift: no duty pull at all. Guard stays where they are
     // (bed, shelter, wherever) until their shift starts.
@@ -429,7 +444,7 @@ float character_oracle_t::duty_urgency( std::string_view ) const
     // Displaced on-shift: distance-based with a floor so the NPC
     // strongly prefers returning even when close to post.
     const int dist = rl_dist( n->pos_abs(), *gp );
-    return std::max( 0.45f, std::min( 0.5f, dist * 0.05f ) );
+    return std::max( tuning.duty, std::min( tuning.duty_max, dist * 0.05f ) );
 }
 
 status_t character_oracle_t::npc_is_following( std::string_view ) const
@@ -460,15 +475,17 @@ float character_oracle_t::npc_following_urgency( std::string_view ) const
         return 0.0f;
     }
     const Character &player = get_player_character();
+    const float most = ai_tuning_of( *n ).follow_max;
     if( n->posz() != player.posz() ) {
-        return 0.6f;
+        return most;
     }
     const int dist = rl_dist( n->pos_abs(), player.pos_abs() );
     const int radius = n->desired_follow_radius();
     if( dist <= radius ) {
         return 0.0f;
     }
-    return std::clamp( 0.3f + ( dist - radius ) * 0.015f, 0.3f, 0.6f );
+    // from 0.3 just outside the radius
+    return std::min( 0.3f + ( dist - radius ) * 0.015f, most );
 }
 
 status_t character_oracle_t::npc_should_embark( std::string_view ) const
@@ -505,11 +522,12 @@ float character_oracle_t::npc_embark_urgency( std::string_view ) const
 
 status_t character_oracle_t::npc_has_goto_order( std::string_view ) const
 {
+    // a walk: the follower "Move there!" order, or u_walk_to
     const npc *n = dynamic_cast<const npc *>( subject );
-    if( !n || !n->goto_to_this_pos || n->has_flag( json_flag_CANNOT_MOVE ) ) {
+    if( !n || !n->walk || n->has_flag( json_flag_CANNOT_MOVE ) ) {
         return status_t::failure;
     }
-    if( n->pos_abs() == *n->goto_to_this_pos ) {
+    if( errand::walk_arrived( *n, *n->walk ) ) {
         return status_t::success;
     }
     return status_t::running;
@@ -518,15 +536,12 @@ status_t character_oracle_t::npc_has_goto_order( std::string_view ) const
 float character_oracle_t::npc_goto_order_urgency( std::string_view ) const
 {
     const npc *n = dynamic_cast<const npc *>( subject );
-    if( !n || !n->goto_to_this_pos ) {
-        return 0.0f;
-    }
-    if( n->pos_abs() == *n->goto_to_this_pos ) {
+    if( !n || !n->walk || errand::walk_arrived( *n, *n->walk ) ) {
         return 0.0f;
     }
     // Player-directed order. Beats generic follow (capped at 0.6)
-    // but loses to life-threatening needs (thirst at 0.75+).
-    return 0.65f;
+    // but loses to life-threatening needs (thirst at 0.75+), by default.
+    return ai_tuning_of( *n ).goto_order;
 }
 
 status_t character_oracle_t::has_camp_job( std::string_view ) const
@@ -578,7 +593,7 @@ float character_oracle_t::camp_work_urgency( std::string_view ) const
         || !npc_within_camp( *n ) || !n->has_job() ) {
         return 0.0f;
     }
-    return 0.4f;
+    return ai_tuning_of( *n ).camp_work;
 }
 
 float character_oracle_t::return_to_camp_urgency( std::string_view ) const
@@ -588,8 +603,8 @@ float character_oracle_t::return_to_camp_urgency( std::string_view ) const
         || npc_within_camp( *n ) ) {
         return 0.0f;
     }
-    // Below follow max (0.6), above duty (0.45).
-    return 0.5f;
+    // Below follow max (0.6), above duty (0.45), by default.
+    return ai_tuning_of( *n ).return_to_camp;
 }
 
 float character_oracle_t::free_time_urgency( std::string_view ) const
@@ -600,7 +615,7 @@ float character_oracle_t::free_time_urgency( std::string_view ) const
         || !npc_within_camp( *n ) ) {
         return 0.0f;
     }
-    return 0.35f;
+    return ai_tuning_of( *n ).free_time;
 }
 
 } // namespace behavior

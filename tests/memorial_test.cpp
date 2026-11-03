@@ -269,8 +269,16 @@ TEST_CASE( "memorials", "[memorial]" )
     check_memorial<event_type::loses_addiction>(
         m,  "Overcame addiction to alcohol.", ch, addiction_alcohol );
 
-    check_memorial<event_type::npc_becomes_hostile>(
-        m,  "npc_name became hostile.", ch2, "npc_name" );
+    // the hostile effect writes "became hostile." itself (npc_ai_events_test.cpp), as when it
+    // alone sent the event; the event writes nothing, whatever caused it
+    for( const char *cause : {
+             "", "effect", "angered", "opinion", "mutiny", "faction", "panic", "theft", "ai"
+         } ) {
+        CAPTURE( cause );
+        m.clear();
+        get_event_bus().send<event_type::npc_becomes_hostile>( ch2, "npc_name", cause );
+        CHECK( m.dump().empty() );
+    }
 
     check_memorial<event_type::opens_portal>(
         m,  "Opened a portal." );

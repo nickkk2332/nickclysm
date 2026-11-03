@@ -181,6 +181,9 @@ class faction_template
                 relations;
         mfaction_str_id mon_faction; // mon_faction_id of the monster faction; defaults to human
         std::vector<faction_epilogue_data> epilogue_data;
+        // where a member that mutinies goes (npc::mutiny()); "amf" unless the JSON says otherwise.
+        // Template data: a faction from a save takes it from its template.
+        faction_id mutiny_faction;
 };
 
 class faction : public faction_template

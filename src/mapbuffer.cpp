@@ -5,6 +5,7 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -55,6 +56,81 @@ static cata_path find_dirname( const tripoint_abs_omt &om_addr )
     return PATH_INFO::current_dimension_save_path() / "maps" / segment;
 }
 
+// The quad files each map segment has on disk, so that a lookup of a quad that was never saved,
+// the common case, needs no file access. A segment is listed (one zzip or directory read) the
+// first time it is asked for. The listings are kept per maps directory and compression mode and
+// shared by every mapbuffer, so a write through any of them keeps them current;
+// mapbuffer::clear() drops them all.
+using segment_listings_t = std::map<tripoint_abs_seg, std::unordered_set<std::string>>;
+static std::map<std::pair<std::string, bool>, segment_listings_t> all_segment_listings;
+
+// The listings for the current dimension's maps directory and the world's compression mode
+static segment_listings_t &current_segment_listings()
+{
+    std::string maps_dir = ( PATH_INFO::current_dimension_save_path() / "maps" ).generic_u8string();
+    const bool compressed = world_generator->active_world->has_compression_enabled();
+    return all_segment_listings[std::make_pair( std::move( maps_dir ), compressed )];
+}
+
+// The quad files the segment holding om_addr has on disk; nullptr if it could not be listed
+static const std::unordered_set<std::string> *segment_listing( const tripoint_abs_omt &om_addr )
+{
+    segment_listings_t &listings = current_segment_listings();
+    const tripoint_abs_seg segment = project_to<coords::seg>( om_addr );
+    const auto known = listings.find( segment );
+    if( known != listings.end() ) {
+        return &known->second;
+    }
+
+    std::unordered_set<std::string> listing;
+    const cata_path dirname = find_dirname( om_addr );
+    if( world_generator->active_world->has_compression_enabled() ) {
+        cata_path zzip_name = dirname;
+        zzip_name += zzip_suffix;
+        // An absent zzip lists nothing; don't create it by opening it
+        if( file_exist( zzip_name ) ) {
+            std::optional<zzip> z = zzip::load( zzip_name.get_unrelative_path(),
+                                                ( PATH_INFO::world_base_save_path() / "maps.dict" ).get_unrelative_path() );
+            if( !z ) {
+                // Leave it to the lookup, which reports it
+                return nullptr;
+            }
+            for( const std::filesystem::path &entry : z->get_entries() ) {
+                listing.insert( entry.generic_u8string() );
+            }
+        }
+    } else {
+        const std::filesystem::path dir = dirname.get_unrelative_path();
+        try {
+            if( std::filesystem::is_directory( dir ) ) {
+                for( const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator( dir ) ) {
+                    listing.insert( entry.path().filename().generic_u8string() );
+                }
+            }
+        } catch( const std::filesystem::filesystem_error & ) {
+            return nullptr;
+        }
+    }
+    return &listings.emplace( segment, std::move( listing ) ).first->second;
+}
+
+// Records a quad file written (or deleted) in its segment's listing, if it has one
+static void note_quad_file( const tripoint_abs_omt &om_addr, const std::string &file_name,
+                            bool on_disk )
+{
+    segment_listings_t &listings = current_segment_listings();
+    const auto known = listings.find( project_to<coords::seg>( om_addr ) );
+    if( known == listings.end() ) {
+        // Not listed yet; listing it later reads the save
+        return;
+    }
+    if( on_disk ) {
+        known->second.insert( file_name );
+    } else {
+        known->second.erase( file_name );
+    }
+}
+
 mapbuffer MAPBUFFER;
 
 mapbuffer::mapbuffer() = default;
@@ -63,6 +139,8 @@ mapbuffer::~mapbuffer() = default;
 void mapbuffer::clear()
 {
     submaps.clear();
+    // A cleared buffer is about to load another save or dimension
+    all_segment_listings.clear();
 }
 
 void mapbuffer::clear_outside_reality_bubble()
@@ -157,9 +235,12 @@ bool mapbuffer::submap_exists_approx( const tripoint_abs_sm &p )
     if( iter == submaps.end() ) {
         try {
             const tripoint_abs_omt om_addr = project_to<coords::omt>( p );
-            const cata_path dirname = find_dirname( om_addr );
             std::string file_name = quad_file_name( om_addr );
+            if( const std::unordered_set<std::string> *listing = segment_listing( om_addr ) ) {
+                return listing->count( file_name ) > 0;
+            }
 
+            const cata_path dirname = find_dirname( om_addr );
             if( world_generator->active_world->has_compression_enabled() ) {
                 cata_path zzip_name = dirname;
                 zzip_name += zzip_suffix;
@@ -250,27 +331,7 @@ void mapbuffer::save_quad(
     offsets.push_back( point_rel_sm::south_east );
 
     bool all_uniform = true;
-    bool reverted_to_uniform = false;
-    bool file_exists = false;
-
-    std::optional<zzip> z;
-    cata_path zzip_name = dirname;
-    zzip_name += zzip_suffix;
-    // The number of uniform submaps is so enormous that the filesystem overhead
-    // for this step of just checking if the quad exists approaches 70% of the
-    // total cost of saving the mapbuffer, in one test save I had.
-    if( world_generator->active_world->has_compression_enabled() ) {
-        z = zzip::load( zzip_name.get_unrelative_path(),
-                        ( PATH_INFO::world_base_save_path() / "maps.dict" ).get_unrelative_path() );
-        if( !z ) {
-            throw std::runtime_error( "Failed opening compressed save file " +
-                                      zzip_name.get_unrelative_path().generic_u8string() );
-        }
-        file_exists = z->has_file( filename.get_relative_path().filename() );
-    } else {
-        file_exists = std::filesystem::exists( filename.get_unrelative_path() );
-    }
-
+    bool any_reverted = false;
     for( point_rel_sm &offsets_offset : offsets ) {
         tripoint_abs_sm submap_addr = project_to<coords::sm>( om_addr );
         submap_addr += offsets_offset.raw(); // TODO: Make += etc. available to relative parameters as well.
@@ -279,29 +340,58 @@ void mapbuffer::save_quad(
         const auto iter = submaps.find( submap_addr );
         const submap *sm = iter == submaps.end() ? nullptr : iter->second.get();
         if( sm != nullptr ) {
-            if( !sm->is_uniform() ) {
+            // A uniform submap holding spawns, constructions or phase reverts is saved too
+            if( !sm->is_uniform() || sm->holds_more_than_terrain() ) {
                 all_uniform = false;
             } else if( sm->reverted ) {
-                reverted_to_uniform = file_exists;
+                any_reverted = true;
             }
         }
     }
 
+    const bool compressed = world_generator->active_world->has_compression_enabled();
+    const std::filesystem::path quad_file = filename.get_relative_path().filename();
+    std::optional<zzip> z;
+    cata_path zzip_name = dirname;
+    zzip_name += zzip_suffix;
+    const auto open_zzip = [&]() {
+        z = zzip::load( zzip_name.get_unrelative_path(),
+                        ( PATH_INFO::world_base_save_path() / "maps.dict" ).get_unrelative_path() );
+        if( !z ) {
+            throw std::runtime_error( "Failed opening compressed save file " +
+                                      zzip_name.get_unrelative_path().generic_u8string() );
+        }
+    };
+
+    bool reverted_to_uniform = false;
     if( all_uniform ) {
-        // Nothing to save - this quad will be regenerated faster than it would be re-read
-        if( delete_after_save ) {
-            for( auto &submap_addr : submap_addrs ) {
-                if( submaps.count( submap_addr ) > 0 && submaps[submap_addr] != nullptr ) {
-                    submaps_to_delete.push_back( submap_addr );
-                }
+        // Nothing to save - this quad will be regenerated faster than it would be re-read.
+        // Uniform quads are the great majority, so nothing here opens the save (for a
+        // compressed world, opening the segment's zzip would also create it) unless a
+        // submap reverted to uniform, whose saved quad then has to go.
+        if( any_reverted ) {
+            if( !compressed ) {
+                reverted_to_uniform = std::filesystem::exists( filename.get_unrelative_path() );
+            } else if( file_exist( zzip_name ) ) {
+                open_zzip();
+                reverted_to_uniform = z->has_file( quad_file );
             }
         }
-
         // deleting the file might fail on some platforms in some edge cases so force serialize this
         // uniform quad
         if( !reverted_to_uniform ) {
+            if( delete_after_save ) {
+                for( auto &submap_addr : submap_addrs ) {
+                    const auto iter = submaps.find( submap_addr );
+                    if( iter != submaps.end() && iter->second != nullptr ) {
+                        submaps_to_delete.push_back( submap_addr );
+                    }
+                }
+            }
             return;
         }
+    } else if( compressed ) {
+        open_zzip();
     }
 
     std::stringstream stringout;
@@ -343,7 +433,7 @@ void mapbuffer::save_quad(
     std::string s = std::move( stringout ).str();
 
     if( z ) {
-        z->add_file( filename.get_relative_path().filename(), s );
+        z->add_file( quad_file, s );
     } else {
         // Don't create the directory if it would be empty
         assure_dir_exist( dirname );
@@ -351,12 +441,17 @@ void mapbuffer::save_quad(
             fout << s;
         } );
     }
+    note_quad_file( om_addr, quad_file.generic_u8string(), true );
 
     if( all_uniform && reverted_to_uniform ) {
+        bool deleted = false;
         if( z ) {
-            z->delete_files( { filename.get_relative_path().filename() } );
+            deleted = z->delete_files( { quad_file } );
         } else {
-            std::filesystem::remove( filename.get_unrelative_path() );
+            deleted = std::filesystem::remove( filename.get_unrelative_path() );
+        }
+        if( deleted ) {
+            note_quad_file( om_addr, quad_file.generic_u8string(), false );
         }
     }
     if( z ) {
@@ -374,8 +469,16 @@ submap *mapbuffer::unserialize_submaps( const tripoint_abs_sm &p )
 {
     // Map the tripoint to the submap quad that stores it.
     const tripoint_abs_omt om_addr = project_to<coords::omt>( p );
-    const cata_path dirname = find_dirname( om_addr );
     std::string file_name = quad_file_name( om_addr );
+
+    // Most lookups that miss are for quads that were never saved (uniform ones, and
+    // map::generate asks for every submap of an OMT): answer those from the listing
+    const std::unordered_set<std::string> *listing = segment_listing( om_addr );
+    if( listing != nullptr && listing->count( file_name ) == 0 ) {
+        return nullptr;
+    }
+
+    const cata_path dirname = find_dirname( om_addr );
     std::filesystem::path file_name_path = std::filesystem::u8path( file_name );
     cata_path quad_path = dirname / file_name;
 
@@ -445,8 +548,13 @@ void mapbuffer::deserialize( const JsonArray &ja )
         if( submap_json.has_int( "version" ) ) {
             version = submap_json.get_int( "version" );
         }
+        // A submap saved uniform has no radiation (nor furniture, items...)
+        bool saved_uniform = true;
         for( JsonMember submap_member : submap_json ) {
             std::string submap_member_name = submap_member.name();
+            if( submap_member_name == "radiation" ) {
+                saved_uniform = false;
+            }
             if( submap_member_name == "coordinates" ) {
                 JsonArray coords_array = submap_member;
                 tripoint_abs_sm loc{ coords_array.next_int(), coords_array.next_int(), coords_array.next_int() };
@@ -454,6 +562,12 @@ void mapbuffer::deserialize( const JsonArray &ja )
             } else {
                 sm->load( submap_member, submap_member_name, version );
             }
+        }
+        // Loading makes it non-uniform: make it uniform again, as it was generated, so that it
+        // costs no more than one that wasn't saved.  Marked reverted, so that its quad file is
+        // deleted if it ends up with nothing to save.
+        if( saved_uniform && sm->make_uniform_if_possible() ) {
+            sm->reverted = true;
         }
 
         if( !add_submap( submap_coordinates, sm ) ) {

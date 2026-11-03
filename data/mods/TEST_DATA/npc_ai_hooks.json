@@ -1,0 +1,150 @@
+[
+  {
+    "type": "npc_class",
+    "id": "test_npc_ai_tuned",
+    "//": "NPC AI hook tests (tests/npc_ai_hooks_test.cpp): every ai_tuning number moved off its default.",
+    "name": { "str": "AI tuning tester" },
+    "job_description": "I test how NPCs are tuned.",
+    "common": false,
+    "ai_tuning": {
+      "needs": {
+        "drink_water": { "act": 0.25, "insist": 0.3, "emergency": 0.5 },
+        "eat_food": { "act": 0.1, "insist": 0.2, "emergency": 0.3 },
+        "go_to_sleep": { "act": 0.1, "insist": 0.2, "emergency": 0.3 },
+        "regulate_temperature": { "act": 0.5, "insist": 0.6, "emergency": 0.7 }
+      },
+      "need_critical_urgency": 0.5,
+      "urgency": {
+        "duty": 0.2,
+        "duty_max": 0.3,
+        "follow_max": 0.4,
+        "goto": 0.7,
+        "camp_work": 0.15,
+        "return_to_camp": 0.25,
+        "free_time": 0.1
+      },
+      "starvation_hunger": 100,
+      "camp_meal_kcal": 800,
+      "sleep": {
+        "settle_interval": "1 minutes",
+        "settle_timeout": "5 minutes",
+        "stall_wakes": 2,
+        "stall_window": "10 minutes",
+        "stall_duration": "1 hours"
+      }
+    }
+  },
+  {
+    "type": "npc_class",
+    "id": "test_npc_ai_tuned_child",
+    "//": "NPC AI hook tests: copies test_npc_ai_tuned and changes one number.",
+    "copy-from": "test_npc_ai_tuned",
+    "name": { "str": "AI tuning tester's child" },
+    "job_description": "I test how NPCs are tuned.",
+    "common": false,
+    "ai_tuning": { "urgency": { "goto": 0.8 } }
+  },
+  {
+    "type": "faction",
+    "id": "test_npc_ai_deserters",
+    "//": "NPC AI hook tests: where the hawks' mutineers go.",
+    "name": "Test Deserters",
+    "likes_u": 0,
+    "respects_u": 0,
+    "known_by_u": false,
+    "size": 1,
+    "power": 1,
+    "wealth": 0,
+    "description": "They left in a hurry."
+  },
+  {
+    "type": "faction",
+    "id": "test_npc_ai_hawks",
+    "//": "NPC AI hook tests: kills the doves on sight; its mutineers desert.",
+    "name": "Test Hawks",
+    "likes_u": 0,
+    "respects_u": 0,
+    "known_by_u": false,
+    "size": 1,
+    "power": 1,
+    "wealth": 0,
+    "description": "They don't like doves.",
+    "mutiny_faction": "test_npc_ai_deserters",
+    "relations": { "test_npc_ai_doves": { "kill on sight": true } }
+  },
+  {
+    "type": "faction",
+    "id": "test_npc_ai_doves",
+    "//": "NPC AI hook tests: no relation to the hawks.",
+    "name": "Test Doves",
+    "likes_u": 0,
+    "respects_u": 0,
+    "known_by_u": false,
+    "size": 1,
+    "power": 1,
+    "wealth": 0,
+    "description": "They don't know the hawks."
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_ATTITUDE_CHANGED",
+    "//": "NPC AI hook tests: records npc_attitude_changed while the global test_ai_listen is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_attitude_changed",
+    "condition": { "math": [ "test_ai_listen == 1" ] },
+    "effect": [
+      { "math": [ "test_ai_attitude_changes += 1" ] },
+      { "copy_var": { "context_val": "old_attitude" }, "target_var": { "global_val": "test_ai_old" } },
+      { "copy_var": { "context_val": "new_attitude" }, "target_var": { "global_val": "test_ai_new" } },
+      { "copy_var": { "context_val": "cause" }, "target_var": { "global_val": "test_ai_cause" } },
+      { "set_string_var": "<u_name>", "target_var": { "global_val": "test_ai_u" }, "parse_tags": true }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_MUTINY",
+    "//": "NPC AI hook tests: records npc_mutinies while the global test_ai_listen is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_mutinies",
+    "condition": { "math": [ "test_ai_listen == 1" ] },
+    "effect": [
+      { "copy_var": { "context_val": "new_faction" }, "target_var": { "global_val": "test_ai_mutiny_to" } },
+      { "set_string_var": "<u_name>", "target_var": { "global_val": "test_ai_mutiny_u" }, "parse_tags": true }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_GUARD_RECRUIT",
+    "//": "NPC AI hook tests: posts each recruit as a guard while the global test_ai_guard_recruits is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_recruited",
+    "condition": { "math": [ "test_ai_guard_recruits == 1" ] },
+    "effect": [ { "u_set_mission": "GUARD" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_FLIP",
+    "//": "NPC AI hook tests: while the global test_ai_flip is 1, changes the attitude again, whatever it became.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_attitude_changed",
+    "condition": { "math": [ "test_ai_flip == 1" ] },
+    "effect": [
+      {
+        "if": { "compare_string": [ "NPCATT_TALK", { "context_val": "new_attitude" } ] },
+        "then": { "u_set_attitude": "NPCATT_NULL" },
+        "else": { "u_set_attitude": "NPCATT_TALK" }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_CALM",
+    "//": "NPC AI hook tests: while the global test_ai_calm is 1, an NPC that sets out to kill calms down at once.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_attitude_changed",
+    "condition": {
+      "and": [ { "math": [ "test_ai_calm == 1" ] }, { "compare_string": [ "NPCATT_KILL", { "context_val": "new_attitude" } ] } ]
+    },
+    "effect": [ { "u_set_attitude": "NPCATT_NULL" } ]
+  }
+]

@@ -4,16 +4,16 @@ The owner asked for these on 2026-11-02, after the grappling port. They are queu
 
 ## Order
 
-1. **PR #3 review comments.** Not part of this queue, but they come first.
-2. **NPC errands:** `u_walk_to`, `u_pickup_item`, `u_wield_item` / `u_wear_item` / `u_drop_item`, targeted `u_assign_activity` and `u_examine` (sections A–E). Together they let a mod script an errand from start to end: walk to the shed, pick up the crowbar, wield it, pry the door, come back.
-3. **EOC UI:** a text window and a checklist menu (sections F–G).
-4. **NPC behavior tree goals from JSON (NPC-J03).** Decided; see section H and [npc-behavior-design.md](npc-behavior-design.md).
+1. **PR #3 review comments.** Not part of this queue, but they come first. Done; PR #3 is merged.
+2. **Built (2026-11-02). NPC errands:** `u_walk_to`, `u_pickup_item`, `u_wield_item` / `u_wear_item` / `u_drop_item`, targeted `u_assign_activity` and `u_examine` (sections A–E). Together they let a mod script an errand from start to end: walk to the shed, pick up the crowbar, wield it, pry the door, come back.
+3. **Built (2026-11-02). EOC UI:** a text window and a checklist menu (sections F–G).
+4. **Built (2026-11-03). NPC behavior tree goals from JSON (NPC-J03).** See section H, [npc-behavior-design.md](npc-behavior-design.md) and `doc/JSON/NPC_BEHAVIOR.md`.
 
 Related findings that fit these batches (fold them in if they touch the same code):
 
 | Finding | What it is |
 |---|---|
-| NPC-B17 | `npc::move_to` teleports when the next path step is not adjacent. `u_walk_to` needs this fixed. |
+| NPC-B17 | `npc::move_to` teleports when the next path step is not adjacent. `u_walk_to` needs this fixed. Fixed with section A, as was NPC-B14 (the "Move there!" order lost on load). |
 | EOC-J15 | `u_var_changed` does not fire on math changes. Widgets and EOCs watching a variable miss updates. |
 | EOC-J06 | Mods can't define their own events. |
 | EOC-J08, EOC-J13 | Monster, furniture and vehicle talkers silently ignore most effects. |
@@ -35,6 +35,15 @@ The NPC walks to a tile on the local map over the following turns, using its own
 - **Saves.** The goal is saved with the NPC, unlike the follower "go to" order (NPC-B14).
 - **Condition.** `u_is_walking_to` reports whether a walk is in progress.
 
+**Built (2026-11-02), as proposed, with these settled points** (doc/JSON/EFFECT_ON_CONDITION.md has the full syntax):
+
+- **One mechanism.** The walk is `Character::walk` (`src/errand.h`). The follower "Move there!" order is the same walk with no EOCs, so NPC-B14 is fixed with it: the order is saved, gives up when there's no way there or after 10 turns without progress (the NPC says "I can't get there."), ends next to a target another creature stands on, and "Follow me" ends it. NPC-B17 (the teleport in `npc::move_to`) is fixed first.
+- **In the decision tree** an NPC walks it as the existing `npc_player_order` node (goal `goto_ordered_position`, category `order`, score 0.65). The JSON tree is unchanged.
+- **`give_up_after`.** Without it the walk gives up at once when there's no way there (`unreachable`), or after 10 turns without progress (`blocked`). With it, the walk waits for a way to open and gives up only when the time is up (`timeout`).
+- **`interruptible`.** A fight, a flight, a noise to investigate or an urgent need always comes first. `true` (default): the walk waits and goes on afterwards. `false`: the walk ends with `false_eocs` (`interrupted`) the first time the NPC spends its turn on something else. For the avatar, auto-move stops the usual way (creature in the way, safe mode, the player) and the walk ends as `interrupted`; it never restarts on its own.
+- **EOCs and talkers.** `true_eocs` and `false_eocs` run when the walk ends, with the walker as `u` and no `npc`, the context variables of the EOC that started it, and `reason` (`arrived`, `unreachable`, `blocked`, `timeout`, `interrupted`, `cancelled`).
+- **For goals that run EOCs each turn.** Sending a character again to where it's already going keeps the walk (time limit and progress); a different spot replaces it without running the old EOCs. `u_cancel_walk` / `npc_cancel_walk` ends a walk (`cancelled`, or `{ "silent": true }` without EOCs), for a JSON goal (section H) that ends.
+
 ## B. `u_pickup_item` and inventory moves
 
 | Effect | What it does |
@@ -53,6 +62,14 @@ The NPC walks to a tile on the local map over the following turns, using its own
 - **Item handles.** The item comes from an item talker (`u_map_run_item_eocs`, `u_run_inv_eocs`) or from `search_data` plus a location. EOC-J01 (no handle to an item in a variable) limits how far one EOC can pass the item to another; this batch may need a minimal item handle.
 - **Costs and refusals.** Pickups cost moves as a normal pickup does. Refusals give a reason: too heavy, no room, owned by a faction (it counts as theft, with the usual reaction), out of reach.
 
+**Built (2026-11-02):**
+
+- **The item** is the other talker only: `"u_pickup_item": "npc"`, `"npc_pickup_item": "u"`; anything else is a load error. No `search_data` form and no item handle: on success the item talker follows the item (into the pack, the hand, onto the ground), so the next effect of the same EOC acts on it. `true_eocs` and `false_eocs` run with the character as `u` and the item as `npc`, and `reason`.
+- **Refusal reasons:** `gone`, `held` (someone else carries it), `owned`, `liquid`, `would_spill`, `too_heavy`, `no_room`, `out_of_reach`; `cannot_wield`, `cannot_wear`; `not_carried`, `cannot_drop`.
+- **Theft.** `allow_theft` (default true) takes someone else's item as theft, through the same `on_pickup()` ownership code as any pickup: for the avatar a witness of the owning faction speaks up and goes after the goods, and the item becomes the avatar's. `false` refuses with `owned`. The avatar's `THIEF_MODE` setting isn't consulted, since no menu may open.
+- **`u_wield_item` and `u_wear_item`** also take an item on the ground next to the character. What it wielded goes into its pockets, or at its feet; no menu. `u_drop_item` drops on the character's own tile.
+- **`"walk": true`** walks next to the item (a pickup walk, saved with the character, the item remembered by its `item_location`) and takes it on arrival; an item gone by then ends it with `gone`. Other refusals are checked before the walk starts.
+
 ## C. Targeted activities (the rest of ACT-J02)
 
 `u_assign_activity` gains a target, so activities that need one work from an EOC.
@@ -64,6 +81,12 @@ The NPC walks to a tile on the local map over the following turns, using its own
 ```
 
 - **Which activities first.** Each activity actor takes its targets differently, so they are ported one at a time. Proposed first set: read, butcher and disassemble, craft at a workbench, wear, unload and reload. The rest are refused with a load error that names the activity.
+
+**Built (errands-ui batch).** As proposed, with these settled:
+- `target_item` names the other talker, which must be an item (`"npc"` for `u_assign_activity`, `"u"` for `npc_assign_activity`). The proposal's `npc_assign_activity` with `"target_item": "npc"` is written `u_assign_activity` in an item EOC (`u_run_inv_eocs`, `u_map_run_item_eocs`), where the character is `u`.
+- First set: `ACT_READ` (reads once), `ACT_BUTCHER` with `butcher_type` (and the typed `ACT_BUTCHER_FULL`, `ACT_BLEED`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT`), `ACT_DISASSEMBLE`, `ACT_CRAFT` (`recipe` with an optional `target_loc`, or `target_item` for a craft in progress), `ACT_WEAR`, `ACT_UNLOAD`, `ACT_RELOAD`.
+- `true_eocs` run when the activity starts; `false_eocs` when it can't, with the reason in the context value `reason`. Nothing asks the player, for the avatar either.
+- The item must be carried, or on the talker's tile or next to it. A craft uses the components an NPC would pick; rotten ones may be used, favorited ones aren't.
 
 ## D. `u_examine` / `npc_examine`
 
@@ -77,6 +100,12 @@ The character operates a tile as if it examined it.
 - **Scope.** The proposal allows furniture and terrain whose examine action is an EOC (`"examine_action": { "type": "effect_on_condition" }`), plus a list of built-in actions known to be safe without a menu: doors and gates, switches and controls with no prompt, and sitting or lying down. Anything else is refused with a reason, rather than letting an NPC trigger a player menu.
 - **Open question.** Should examine actions get an NPC-aware variant over time, starting with the most useful ones (crafting stations, vending, terminals)?
 
+**Built (errands-ui batch).** The target is a location variable, or the other talker's tile (`"npc"`); it must be the talker's tile or next to it, on the same level. `true_eocs`, and `false_eocs` with the context value `reason`.
+- Doors, gates and hatches (anything with an `open` or `close` transform) open or close, for the avatar too.
+- The avatar gets the normal examine, without picking items up and without a creature's menu (`game::examine` is private, so its steps are followed).
+- An NPC may use EOC examine actions and these built-in ones, each read to check that it asks an NPC nothing: `controls_gate` (the NPC skips the confirmation), `harvest_furn`, `harvest_furn_nectar`, `harvest_ter`, `harvest_ter_nectar`, `harvest_plant_ex`, `clear_overgrown`. One that neither starts an activity nor changes the tile runs `false_eocs`. Anything else is refused. Switches (`fswitch`) ask a question and were left out; `harvested_plant` only prints a message, and `open_safe` is reached only through the safe's open transform, which the door rule handles; sitting and lying down are not examine actions.
+- The open question stays open.
+
 ## E. Small conditions to go with A–D
 
 | Condition | Checks |
@@ -84,6 +113,8 @@ The character operates a tile as if it examined it.
 | `u_has_item_in_hand` | The talker is holding a given item. |
 | `u_can_reach` | A location is reachable by path. |
 | `u_is_doing_activity` | Gives the activity id, not only whether any activity is running. |
+
+**Built (2026-11-02):** `u_has_item_in_hand` takes an item id, or `{ "id": ..., "flag": ... }` (either or both). `u_can_reach` takes a location, `range` (as `u_walk_to`) and `max_distance` (steps); creatures in the way don't count. `u_is_doing_activity` takes an activity id or `"any"`. Each has an `npc_` form.
 
 ## F. Text window: `u_show_text`
 
@@ -98,6 +129,8 @@ A scrollable window with a title, text (with dialogue tags and snippets), and op
 - **Who sees it.** The avatar only. For an NPC it does nothing and runs `false_eocs`.
 - **Tests.** In tests it answers through a test hook, as the technique menu does.
 
+**Built (errands-ui batch).** As proposed, except that a button's EOCs are in `"eocs"`, not `"effect"`, since `effect` elsewhere means inline effects. `"snippet": true` takes the text from a snippet category; `"hide_failing"` hides buttons whose condition fails instead of greying them out. The test hook is `eoc_ui::show_text_test_answer`.
+
 ## G. Checklist menu: `run_eoc_checklist`
 
 A multi-select menu: each option can be ticked, confirming runs the EOCs of the ticked options (or sets one variable per option), and cancelling runs nothing. `run_eoc_selector` already picks one option; this picks several.
@@ -110,9 +143,11 @@ A multi-select menu: each option can be ticked, confirming runs the EOCs of the 
 
 - **Parity.** It takes the same `hide_failing` and `variables` options as `run_eoc_selector`.
 
-## H. NPC behavior tree goals from JSON (NPC-J03): decided, after A–G
+**Built (errands-ui batch).** As proposed, with `descriptions` and `keys` too. `variables` pass context values to the ticked options' EOCs, as in `run_eoc_selector`; setting one variable per option instead of running EOCs was not built. It shows only when `u` is the avatar, and runs `false_eocs` otherwise. A wrong array size or `min`/`max` out of range is a load error. The test hook is `eoc_ui::checklist_test_answer`.
 
-The design was talked through with the owner on 2026-11-02 and is written up in [npc-behavior-design.md](npc-behavior-design.md). Mod goals join a category; they run EOCs until done; mods edit one shared tree, gated by conditions; and every built-in goal is editable. It is built after A–G, because its goals use their effects.
+## H. NPC behavior tree goals from JSON (NPC-J03): built
+
+The design was talked through with the owner on 2026-11-02 and is written up in [npc-behavior-design.md](npc-behavior-design.md). Mod goals join a category; they run EOCs until done; mods edit one shared tree, gated by conditions; and every built-in goal is editable. It was built after A–G, because its goals use their effects, and is documented for modders in `doc/JSON/NPC_BEHAVIOR.md`.
 
 ## Not queued: designs waiting in the backlog
 

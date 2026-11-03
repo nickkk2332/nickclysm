@@ -7,6 +7,8 @@
 #include <string>
 
 #include "calendar.h"
+#include "coordinates.h"
+#include "item_location.h"
 #include "type_id.h"
 
 class Character;
@@ -41,6 +43,52 @@ bool eoc_start_needs_avatar( const activity_id &type );
  */
 std::unique_ptr<activity_actor> make_for_eoc( const activity_id &type, const Character &who,
         const std::string &other_name, const std::optional<time_duration> &duration );
+
+/** The targets u_assign_activity gives an activity (see doc/JSON/EFFECT_ON_CONDITION.md). */
+struct eoc_activity_target {
+    /** "target_item": the item of the other talker */
+    item_location item;
+    /** "target_loc" */
+    std::optional<tripoint_abs_ms> loc;
+    /** "recipe" */
+    std::optional<recipe_id> recipe;
+    /** "butcher_type" */
+    std::optional<std::string> butcher_type;
+};
+
+/** Which target fields a u_assign_activity effect has. */
+struct eoc_target_fields {
+    bool item = false;
+    bool loc = false;
+    bool recipe = false;
+    bool butcher_type = false;
+
+    bool any() const {
+        return item || loc || recipe || butcher_type;
+    }
+};
+
+/** Whether u_assign_activity can start @p type with a target. */
+bool takes_eoc_target( const activity_id &type );
+
+/**
+ * Why u_assign_activity can't start @p type with the target fields @p given: a field the
+ * activity needs is missing, or one it doesn't take is there (any field, for an activity that
+ * takes no target). nullopt if it can.
+ */
+std::optional<std::string> eoc_target_fields_error( const activity_id &type,
+        const eoc_target_fields &given );
+
+/** Whether @p name is a "butcher_type" u_assign_activity knows ("quick", "full"...). */
+bool is_eoc_butcher_type( const std::string &name );
+
+/**
+ * Starts @p type for @p who with @p target, as u_assign_activity does. Nothing asks the player,
+ * whether @p who is the avatar or an NPC (@p type must take a target).
+ * @returns why it didn't start (nothing was done then), or nullopt once it started
+ */
+std::optional<std::string> start_with_target( const activity_id &type, Character &who,
+        const eoc_activity_target &target );
 
 } // namespace activity_actors
 

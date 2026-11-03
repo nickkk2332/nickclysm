@@ -498,6 +498,412 @@ std::set<tripoint_bub_ms> calculate_spell_effect_area( const spell &sp,
     return targets;
 }
 
+namespace
+{
+
+// Calls visit( p ) on each point of line_to( from, to ) in order, without building the vector,
+// until visit returns false. Returns whether it got to the end.
+template<typename Visit>
+bool visit_line_to( const tripoint_bub_ms &from, const tripoint_bub_ms &to, Visit &&visit )
+{
+    // line_to() from a point to itself is that point
+    if( from == to ) {
+        return visit( from );
+    }
+    bool reached_end = true;
+    bresenham( from, to, 0, 0, [&]( const tripoint_bub_ms & p ) {
+        if( !visit( p ) ) {
+            reached_end = false;
+        }
+        return reached_end;
+    } );
+    return reached_end;
+}
+
+// calc_ray_end( angle, range, p, out ) for one angle and many ranges, with the same
+// arithmetic, but the trigonometry done once.
+class ray_ends
+{
+    public:
+        explicit ray_ends( units::angle angle ) {
+            angle = fmod( angle, 360_degrees );
+            if( angle < 0_degrees ) {
+                angle += 360_degrees;
+            }
+            if( trigdist ) {
+                cos_ = cos( angle );
+                sin_ = sin( angle );
+            } else {
+                mult_ = angle >= 135_degrees && angle <= 315_degrees ? -1 : 1;
+                x_major_ = angle <= 45_degrees || ( 135_degrees <= angle && angle <= 215_degrees ) ||
+                           315_degrees < angle;
+                tan_ = tan( angle );
+            }
+        }
+
+        tripoint end( const int range, const tripoint &p ) const {
+            tripoint out;
+            out.z = p.z;
+            if( trigdist ) {
+                out.x = p.x + range * cos_;
+                out.y = p.y + range * sin_;
+            } else if( x_major_ ) {
+                out.x = p.x + range * mult_;
+                out.y = p.y + range * tan_ * mult_;
+            } else {
+                out.x = p.x + range * 1 / tan_ * mult_;
+                out.y = p.y + range * mult_;
+            }
+            return out;
+        }
+
+    private:
+        double cos_ = 0.0;
+        double sin_ = 0.0;
+        double tan_ = 0.0;
+        int mult_ = 1;
+        bool x_major_ = false;
+};
+
+} // namespace
+
+struct spell_area_calculator::impl {
+    const spell &sp;
+    const Creature &caster;
+    const map &here;
+    const tripoint_bub_ms source;
+    std::optional<spell_effect::override_parameters> params;
+    int aoe = 0;
+    bool usable = false;
+
+    // The cached square of tiles around the caster, indexed so that sorting indices sorts
+    // the tiles as tripoint_bub_ms sorts them (x, then y).
+    tripoint_bub_ms corner;
+    int side = 0;
+    std::vector<int8_t> passable_cache;
+    std::vector<int8_t> valid_cache;
+    std::vector<Creature *> critter_cache;
+    std::vector<uint8_t> critter_known;
+
+    // For each cone ray end: the passable start of line_to( source, end ), as tile indices
+    // in ray_lines from ray_line_start for ray_line_size tiles. -1 when not worked out yet.
+    std::vector<int> ray_line_start;
+    std::vector<int> ray_line_size;
+    std::vector<int> ray_lines;
+
+    // Scratch for one area.
+    std::vector<uint8_t> in_area;
+    std::vector<int> area_tiles;
+    std::set<tripoint_bub_ms> far_area;
+    std::vector<uint8_t> is_ray_end;
+    std::vector<int> ray_end_tiles;
+    std::set<tripoint_bub_ms> far_ray_ends;
+    std::vector<tripoint_bub_ms> result;
+
+    impl( const spell &sp, const Creature &caster );
+
+    int index( const tripoint_bub_ms &p ) const {
+        const int x = p.x() - corner.x();
+        const int y = p.y() - corner.y();
+        if( p.z() != corner.z() || x < 0 || y < 0 || x >= side || y >= side ) {
+            return -1;
+        }
+        return x * side + y;
+    }
+    tripoint_bub_ms point_at( const int idx ) const {
+        return corner + tripoint_rel_ms( idx / side, idx % side, 0 );
+    }
+
+    bool passable( const tripoint_bub_ms &p ) {
+        const int idx = index( p );
+        if( idx < 0 ) {
+            return here.passable( p );
+        }
+        if( passable_cache[idx] < 0 ) {
+            passable_cache[idx] = here.passable( p ) ? 1 : 0;
+        }
+        return passable_cache[idx] == 1;
+    }
+    bool passable_line( const tripoint_bub_ms &from, const tripoint_bub_ms &to ) {
+        return visit_line_to( from, to, [this]( const tripoint_bub_ms & p ) {
+            return passable( p );
+        } );
+    }
+    Creature *creature_at( const tripoint_bub_ms &p ) {
+        const int idx = index( p );
+        if( idx < 0 ) {
+            return get_creature_tracker().creature_at<Creature>( p );
+        }
+        if( !critter_known[idx] ) {
+            critter_cache[idx] = get_creature_tracker().creature_at<Creature>( p );
+            critter_known[idx] = 1;
+        }
+        return critter_cache[idx];
+    }
+    bool valid_target( const tripoint_bub_ms &p ) {
+        const int idx = index( p );
+        if( idx < 0 ) {
+            return sp.is_valid_target( caster, p );
+        }
+        if( valid_cache[idx] < 0 ) {
+            valid_cache[idx] = sp.is_valid_target( caster, p ) ? 1 : 0;
+        }
+        return valid_cache[idx] == 1;
+    }
+
+    void mark( const tripoint_bub_ms &p ) {
+        const int idx = index( p );
+        if( idx < 0 ) {
+            far_area.insert( p );
+        } else if( !in_area[idx] ) {
+            in_area[idx] = 1;
+            area_tiles.push_back( idx );
+        }
+    }
+
+    // spell_effect_epicenter()
+    tripoint_bub_ms epicenter( const tripoint_bub_ms &target );
+    // spell_effect::spell_effect_blast()
+    void blast( const tripoint_bub_ms &target );
+    // spell_effect_cone_range_override()
+    void cone( const tripoint_bub_ms &target );
+    // The marked tiles that are valid targets, sorted, into result; clears the marks.
+    void collect( bool erase_source );
+};
+
+spell_area_calculator::impl::impl( const spell &sp, const Creature &caster ) :
+    sp( sp ), caster( caster ), here( get_map() ), source( caster.pos_bub() )
+{
+    // calculate_spell_effect_area() works these out for every target. If they draw random
+    // numbers, each area can differ, so put the numbers back and leave it to that.
+    cata_default_random_engine &engine = rng_get_engine();
+    const cata_default_random_engine before = engine;
+    params.emplace( sp, caster );
+    aoe = sp.aoe( caster );
+    if( engine != before ) {
+        engine = before;
+        return;
+    }
+    // a target condition may be evaluated per tile, so it must be asked as often as before
+    usable = !sp.id()->has_target_condition;
+
+    int reach = params->range + 2;
+    if( sp.shape() != spell_shape::cone ) {
+        // a cone's aoe is its angle
+        reach += std::max( aoe, 0 );
+    }
+    // tiles further away are still answered, just not remembered
+    reach = std::min( reach, 70 );
+    corner = source - tripoint_rel_ms( reach, reach, 0 );
+    side = 2 * reach + 1;
+    const size_t tiles = static_cast<size_t>( side ) * side;
+    passable_cache.assign( tiles, -1 );
+    valid_cache.assign( tiles, -1 );
+    critter_cache.assign( tiles, nullptr );
+    critter_known.assign( tiles, 0 );
+    in_area.assign( tiles, 0 );
+    if( sp.shape() == spell_shape::cone ) {
+        ray_line_start.assign( tiles, -1 );
+        ray_line_size.assign( tiles, 0 );
+        is_ray_end.assign( tiles, 0 );
+    }
+}
+
+tripoint_bub_ms spell_area_calculator::impl::epicenter( const tripoint_bub_ms &target )
+{
+    if( !here.inbounds( source ) || sp.has_flag( spell_flag::TARGET_TELEPORT ) ) {
+        return target;
+    }
+    if( sp.shape() == spell_shape::blast && !sp.has_flag( spell_flag::NO_PROJECTILE ) ) {
+        // stop on the last tile before a wall, or on the wall if it is the first tile
+        tripoint_bub_ms stop = target;
+        std::optional<tripoint_bub_ms> previous;
+        visit_line_to( source, target, [&]( const tripoint_bub_ms & p ) {
+            if( !passable( p ) ) {
+                stop = previous ? *previous : p;
+                return false;
+            }
+            previous = p;
+            return true;
+        } );
+        return stop;
+    }
+    return target;
+}
+
+void spell_area_calculator::impl::blast( const tripoint_bub_ms &target )
+{
+    const int radius = params->aoe_radius;
+    for( const tripoint_bub_ms &p : here.points_in_radius( target, radius ) ) {
+        // in_spell_aoe()
+        if( rl_dist( target, p ) > radius ) {
+            continue;
+        }
+        if( !params->ignore_walls && !passable_line( target, p ) ) {
+            continue;
+        }
+        mark( p );
+    }
+}
+
+void spell_area_calculator::impl::cone( const tripoint_bub_ms &target )
+{
+    const units::angle initial_angle = coord_to_angle( source.raw(), target.raw() );
+    const units::angle half_width = units::from_degrees( params->aoe_radius / 2.0 );
+    const units::angle start_angle = initial_angle - half_width;
+    const units::angle end_angle = initial_angle + half_width;
+    for( units::angle angle = start_angle; angle <= end_angle; angle += 1_degrees ) {
+        const ray_ends rays( angle );
+        for( int range = 1; range <= params->range; range++ ) {
+            const tripoint_bub_ms potential( rays.end( range, source.raw() ) );
+            if( params->ignore_walls ) {
+                mark( potential );
+                continue;
+            }
+            const int idx = index( potential );
+            if( idx < 0 ) {
+                far_ray_ends.insert( potential );
+            } else if( !is_ray_end[idx] ) {
+                is_ray_end[idx] = 1;
+                ray_end_tiles.push_back( idx );
+            }
+        }
+    }
+    if( params->ignore_walls ) {
+        return;
+    }
+    // each ray end adds the passable start of the line to it; the lines are the same for
+    // every target, so they are worked out once
+    for( const int end_idx : ray_end_tiles ) {
+        is_ray_end[end_idx] = 0;
+        if( ray_line_start[end_idx] < 0 ) {
+            ray_line_start[end_idx] = static_cast<int>( ray_lines.size() );
+            visit_line_to( source, point_at( end_idx ), [this]( const tripoint_bub_ms & p ) {
+                if( !passable( p ) ) {
+                    return false;
+                }
+                // between the caster and a cached ray end, so cached too
+                ray_lines.push_back( index( p ) );
+                return true;
+            } );
+            ray_line_size[end_idx] = static_cast<int>( ray_lines.size() ) - ray_line_start[end_idx];
+        }
+        const int start = ray_line_start[end_idx];
+        for( int i = start; i < start + ray_line_size[end_idx]; ++i ) {
+            const int idx = ray_lines[i];
+            if( !in_area[idx] ) {
+                in_area[idx] = 1;
+                area_tiles.push_back( idx );
+            }
+        }
+    }
+    ray_end_tiles.clear();
+    for( const tripoint_bub_ms &end : far_ray_ends ) {
+        visit_line_to( source, end, [this]( const tripoint_bub_ms & p ) {
+            if( !passable( p ) ) {
+                return false;
+            }
+            mark( p );
+            return true;
+        } );
+    }
+    far_ray_ends.clear();
+}
+
+void spell_area_calculator::impl::collect( const bool erase_source )
+{
+    std::sort( area_tiles.begin(), area_tiles.end() );
+    for( const int idx : area_tiles ) {
+        in_area[idx] = 0;
+        const tripoint_bub_ms p = point_at( idx );
+        if( !( erase_source && p == source ) && valid_target( p ) ) {
+            result.push_back( p );
+        }
+    }
+    area_tiles.clear();
+    if( !far_area.empty() ) {
+        for( const tripoint_bub_ms &p : far_area ) {
+            if( !( erase_source && p == source ) && valid_target( p ) ) {
+                result.push_back( p );
+            }
+        }
+        far_area.clear();
+        std::sort( result.begin(), result.end() );
+    }
+}
+
+spell_area_calculator::spell_area_calculator( const spell &sp, const Creature &caster ) :
+    impl_( std::make_unique<impl>( sp, caster ) )
+{
+}
+
+spell_area_calculator::~spell_area_calculator() = default;
+
+bool spell_area_calculator::usable() const
+{
+    return impl_->usable;
+}
+
+int spell_area_calculator::aoe() const
+{
+    return impl_->aoe;
+}
+
+int spell_area_calculator::range() const
+{
+    return impl_->params->range;
+}
+
+bool spell_area_calculator::passable( const tripoint_bub_ms &p )
+{
+    return impl_->passable( p );
+}
+
+bool spell_area_calculator::passable_line( const tripoint_bub_ms &from,
+        const tripoint_bub_ms &to )
+{
+    return impl_->passable_line( from, to );
+}
+
+Creature *spell_area_calculator::creature_at( const tripoint_bub_ms &p )
+{
+    return impl_->creature_at( p );
+}
+
+bool spell_area_calculator::valid_target( const tripoint_bub_ms &p )
+{
+    return impl_->valid_target( p );
+}
+
+const std::vector<tripoint_bub_ms> &spell_area_calculator::area( const tripoint_bub_ms &target )
+{
+    impl &d = *impl_;
+    d.result.clear();
+    const tripoint_bub_ms epicenter = d.epicenter( target );
+    const spell_shape shape = d.sp.shape();
+    // calculate_spell_effect_area() returns a small blast or cone unfiltered
+    if( d.aoe < 1 && shape != spell_shape::line ) {
+        d.result.push_back( epicenter );
+        return d.result;
+    }
+    switch( shape ) {
+        case spell_shape::blast:
+            d.blast( epicenter );
+            break;
+        case spell_shape::cone:
+            d.cone( epicenter );
+            break;
+        default:
+            for( const tripoint_bub_ms &p : d.sp.effect_area( *d.params, d.source, epicenter ) ) {
+                d.mark( p );
+            }
+            break;
+    }
+    // spell_effect_cone_range_override() leaves out the caster
+    d.collect( shape == spell_shape::cone );
+    return d.result;
+}
+
 static std::set<tripoint_bub_ms> spell_effect_area( const spell &sp, const tripoint_bub_ms &target,
         const Creature &caster )
 {

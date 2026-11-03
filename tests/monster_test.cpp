@@ -1102,8 +1102,23 @@ static void dormant_monsters_spawn_correctly( const tripoint_abs_omt &origin )
     CHECK( g->num_creatures() == num_creatures_prev - 1UL );
 }
 
+// The horde tests walk the avatar far away, and the reality bubble with it.  Both go back where
+// they were afterwards: where the bubble is decides the weather the tests after them get.
+static std::function<void()> bubble_restorer()
+{
+    const tripoint_abs_sm bubble = get_map().get_abs_sub();
+    const tripoint_abs_ms avatar_at = get_avatar().pos_abs();
+    return [bubble, avatar_at]() {
+        clear_creatures();
+        map &here = get_map();
+        here.load( bubble, false );
+        get_avatar().setpos( here, here.get_bub( avatar_at ) );
+    };
+}
+
 TEST_CASE( "monsters_appear_on_map_as_expected", "[monster][map][hordes]" )
 {
+    const on_out_of_scope restore_bubble( bubble_restorer() );
     tripoint_abs_omt origin{ 90, 90, 0 };
     // This clear_area call is very expensive, so just do it once for all the related
     // tests and space them out far enough apart to avoid interfering with each other.
@@ -1137,6 +1152,7 @@ TEST_CASE( "monsters_appear_on_map_as_expected", "[monster][map][hordes]" )
 
 TEST_CASE( "dormant_monsters_materialize_correctly", "[monster][map][hordes]" )
 {
+    const on_out_of_scope restore_bubble( bubble_restorer() );
     tripoint_abs_omt origin{ 90, 90, 0 };
     clear_area( origin + point::north_west * 18, origin + point::south_east * 18 );
     dormant_monsters_spawn_correctly( origin );
@@ -1202,6 +1218,7 @@ TEST_CASE( "failed_horde_placement_preserves_entity", "[monster][hordes]" )
 
 TEST_CASE( "obstacles_placed_on_map_are_present_in_overmap", "[map][hordes]" )
 {
+    const on_out_of_scope restore_bubble( bubble_restorer() );
     clear_map_without_vision();
     map &here = get_map();
     tripoint_bub_ms player_start_pos{ 11 * 6, 11 * 6, 0 };

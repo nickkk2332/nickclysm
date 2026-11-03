@@ -118,6 +118,11 @@ void faction_mission::reset()
     faction_mission_factory.reset();
 }
 
+void faction_mission::finalize_all()
+{
+    faction_mission_factory.finalize();
+}
+
 ///Format the string as a list item, e.g. "> foo"
 static std::string desc_list_item( const std::string &item )
 {

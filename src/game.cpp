@@ -22,6 +22,7 @@
 #include <map>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <queue>
 #include <set>
 #include <sstream>
@@ -50,6 +51,7 @@
 #include "avatar.h"
 #include "avatar_action.h"
 #include "basecamp.h"
+#include "behavior.h"
 #include "bionics.h"
 #include "body_part_set.h"
 #include "bodygraph.h"
@@ -98,6 +100,7 @@
 #include "effect_on_condition.h"
 #include "end_screen.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -166,6 +169,8 @@
 #include "move_mode.h"
 #include "mtype.h"
 #include "npc.h"
+#include "npc_attitude_cause.h"
+#include "npc_follower_list.h"
 #include "npctrade.h"
 #include "omdata.h"
 #include "options.h"
@@ -190,6 +195,7 @@
 #include "ret_val.h"
 #include "rng.h"
 #include "safemode_ui.h"
+#include "save_fault.h"
 #include "scenario.h"
 #include "scent_map.h"
 #include "scores_ui.h"
@@ -713,6 +719,8 @@ void game::setup()
     m = map();
 
     next_npc_id = character_id( 1 );
+    // ids start over, so results kept for "evaluate_every" would match the wrong NPCs
+    behavior::clear_evaluation_cache();
     next_mission_id = 1;
     next_item_uid = 1;
     uquit = QUIT_NO;   // We haven't quit the game
@@ -745,6 +753,9 @@ void game::setup()
     kill_tracker_ptr->clear();
     achievements_tracker_ptr->clear();
     eoc_events_ptr->clear();
+    // A new character must not start with the last one's memorial; loading a save reads
+    // that character's own log
+    memorial_logger_ptr->clear();
     // reset follower list
     scent.reset();
     effect_on_conditions::clear( u );
@@ -1084,7 +1095,8 @@ bool game::start_game()
     time_of_last_load = std::chrono::steady_clock::now();
     tripoint_abs_omt abs_omt = u.pos_abs_omt();
     const oter_id &cur_ter = overmap_buffer.ter( abs_omt );
-    get_event_bus().send<event_type::avatar_enters_omt>( abs_omt.raw(), cur_ter );
+    get_event_bus().send<event_type::avatar_enters_omt>( abs_omt.raw(), cur_ter,
+            overmap_buffer.overmap_special_at( abs_omt ).value_or( overmap_special_id() ) );
 
     effect_on_conditions::load_new_character( u );
     if( debug_menu::is_debug_character() ) {
@@ -1349,8 +1361,12 @@ void game::create_starting_npcs()
     // start_loc::place_player relies on this and must be updated if this is changed
     tmp->spawn_at_precise( u.pos_abs() + point::north_west );
     overmap_buffer.insert_npc( tmp );
-    tmp->form_opinion( u );
-    tmp->set_attitude( NPCATT_NULL );
+    {
+        // its starting attitude: no attitude events
+        const npc_attitude_cause spawning( npc_attitude_cause::spawn );
+        tmp->form_opinion( u );
+        tmp->set_attitude( NPCATT_NULL );
+    }
     //This sets the NPC mission. This NPC remains in the starting location.
     tmp->mission = NPC_MISSION_SHELTER;
     tmp->chatbin.first_topic = "TALK_SHELTER";
@@ -1774,14 +1790,46 @@ npc *game::find_npc_by_unique_id( const std::string &unique_id )
     return overmap_buffer.find_npc_by_unique_id( unique_id ).get();
 }
 
+// the name for npc_recruited and npc_dismissed; nullopt for a follower that died, which
+// character_dies reports
+static std::optional<std::string> follower_change_name( const character_id &id )
+{
+    const shared_ptr_fast<npc> guy = overmap_buffer.find_npc( id );
+    if( !guy ) {
+        return std::string();
+    }
+    if( guy->is_dead() ) {
+        return std::nullopt;
+    }
+    return guy->name;
+}
+
+void add_npc_follower_quietly( const character_id &id )
+{
+    get_avatar().follower_ids.insert( id );
+}
+
+void remove_npc_follower_quietly( const character_id &id )
+{
+    get_avatar().follower_ids.erase( id );
+}
+
 void game::add_npc_follower( const character_id &id )
 {
-    u.follower_ids.insert( id );
+    if( u.follower_ids.insert( id ).second ) {
+        if( const std::optional<std::string> name = follower_change_name( id ) ) {
+            get_event_bus().send<event_type::npc_recruited>( id, *name );
+        }
+    }
 }
 
 void game::remove_npc_follower( const character_id &id )
 {
-    u.follower_ids.erase( id );
+    if( u.follower_ids.erase( id ) != 0 ) {
+        if( const std::optional<std::string> name = follower_change_name( id ) ) {
+            get_event_bus().send<event_type::npc_dismissed>( id, *name );
+        }
+    }
 }
 
 static void update_faction_api( npc *guy )
@@ -1834,21 +1882,22 @@ void game::validate_npc_followers()
     const std::vector<npc *> visible_followers = get_npcs_if( [&]( const npc & guy ) {
         return guy.is_player_ally();
     } );
+    // putting the list back together recruits no one: no npc_recruited
     for( npc *guy : visible_followers ) {
         update_faction_api( guy );
-        add_npc_follower( guy->getID() );
+        add_npc_follower_quietly( guy->getID() );
     }
     // Make sure overmapbuffered NPC followers are in the list.
     for( const auto &temp_guy : overmap_buffer.get_npcs_near_player( 300 ) ) {
         npc *guy = temp_guy.get();
         if( guy->is_player_ally() ) {
             update_faction_api( guy );
-            add_npc_follower( guy->getID() );
+            add_npc_follower_quietly( guy->getID() );
         }
     }
     // Make sure that serialized player followers sync up with game list
     for( const character_id &temp_id : u.follower_ids ) {
-        add_npc_follower( temp_id );
+        add_npc_follower_quietly( temp_id );
     }
 }
 
@@ -3722,6 +3771,11 @@ int64_t game::assign_item_uid()
     return next_item_uid++;
 }
 
+void game::reserve_item_uid( int64_t uid )
+{
+    next_item_uid = std::max( next_item_uid, uid + 1 );
+}
+
 Creature *game::is_hostile_nearby()
 {
     int distance = ( get_option<int>( "SAFEMODEPROXIMITY" ) <= 0 ) ? MAX_VIEW_DISTANCE :
@@ -4151,14 +4205,12 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
     }
     std::size_t force_remaining = traj.size();
     if( monster *const targ = creatures.creature_at<monster>( tp, true ) ) {
-        const tripoint_bub_ms targ_pos = targ->pos_bub( here );
-
         if( stun > 0 ) {
             targ->add_effect( effect_stunned, 1_turns * stun );
             add_msg( _( "%s was stunned!" ), targ->name() );
         }
         for( size_t i = 1; i < traj.size(); i++ ) {
-            if( here.impassable( traj[i].xy() ) ) {
+            if( here.impassable( traj[i] ) ) {
                 targ->setpos( here, traj[i - 1] );
                 force_remaining = traj.size() - i;
                 if( stun != 0 ) {
@@ -4196,20 +4248,24 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
                 break;
             }
             targ->setpos( here, traj[i] );
-            if( here.has_flag( ter_furn_flag::TFLAG_LIQUID, targ_pos ) && targ->can_drown() &&
-                !targ->is_dead() ) {
+            // The tile it is moving through, not the one it started on. Deep water, as for a
+            // monster walking in: wading through shallow water drowns nothing.
+            if( targ->is_aquatic_danger( traj[i] ) && !targ->is_dead() ) {
                 targ->die( &here, nullptr );
                 if( u.sees( here, *targ ) ) {
                     add_msg( _( "The %s drowns!" ), targ->name() );
                 }
             }
-            if( !here.has_flag( ter_furn_flag::TFLAG_LIQUID, targ_pos ) &&
+            if( !here.has_flag( ter_furn_flag::TFLAG_LIQUID, traj[i] ) &&
                 targ->has_flag( mon_flag_AQUATIC ) &&
                 !targ->is_dead() ) {
                 targ->die( &here, nullptr );
                 if( u.sees( here, *targ ) ) {
                     add_msg( _( "The %s flops around and dies!" ), targ->name() );
                 }
+            }
+            if( targ->is_dead() ) {
+                break;
             }
         }
     } else if( npc *const targ = creatures.creature_at<npc>( tp ) ) {
@@ -4218,7 +4274,7 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
             add_msg( _( "%s was stunned!" ), targ->get_name() );
         }
         for( size_t i = 1; i < traj.size(); i++ ) {
-            if( here.impassable( traj[i].xy() ) ) { // oops, we hit a wall!
+            if( here.impassable( traj[i] ) ) { // oops, we hit a wall!
                 targ->setpos( here, traj[i - 1] );
                 force_remaining = traj.size() - i;
                 if( stun != 0 ) {
@@ -9930,6 +9986,25 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 {
     map &here = get_map();
     avatar &player = get_avatar();
+    // Save first, with everything still in place: if the dimension can't be saved, the trip
+    // fails before anything is taken out of it
+    if( !save_dimension_data() || !save_maps() ) {
+        return false;
+    }
+    // Who rides the vehicle, before anyone is unboarded or unloaded
+    std::vector<std::pair<character_id, tripoint_abs_ms>> passengers;
+    if( veh != nullptr ) {
+        for( const vpart_reference &vp : veh->get_avail_parts( VPFLAG_BOARDABLE ) ) {
+            if( vp.part().has_flag( vp_flag::passenger_flag ) ) {
+                passengers.emplace_back( vp.part().passenger_id, here.get_abs( vp.pos_bub( here ) ) );
+            }
+        }
+    }
+    // a walk leads to a spot in the dimension being left (u_walk_to, "Move there!")
+    errand::end_walk( player, errand::reason::cancelled );
+    for( npc *guy : npc_travellers ) {
+        errand::end_walk( *guy, errand::reason::cancelled );
+    }
     std::vector<npc_ptr> moving_npcs;
     moving_npcs.reserve( npc_travellers.size() );
     if( !npc_travellers.empty() ) {
@@ -9962,10 +10037,15 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 
     std::vector<item> place_items;
     place_items.reserve( item_travellers.size() );
+    // Where each item was, in case it has to go back
+    std::vector<tripoint_abs_ms> item_origins;
+    item_origins.reserve( item_travellers.size() );
+    const bool was_in_vehicle = player.in_vehicle;
     for( item_location il : item_travellers ) {
         item *it = il.get_item();
         if( it ) {
             place_items.push_back( *it );
+            item_origins.push_back( il.pos_abs() );
             il.remove_item();
         }
     }
@@ -9981,8 +10061,58 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     if( veh != nullptr ) {
         vehicle_ref = here.detach_vehicle( veh );
     }
-    // Make sure we don't mess up savedata if for some reason maps can't be saved
-    if( !save_maps() || !save_dimension_data() ) {
+    // Save the dimension being left again, now without the travellers. Should this fail
+    // anyway (the disk filled up since the save above, say), stay, put everything back where
+    // it was, and save again so that what this save did write has them too. A tow line the
+    // vehicle had stays unhooked: its cable lies at the hitch, as when unhitched by hand.
+    if( !save_fault::forced_result( "travel_save" ).value_or( true ) ||
+        !save_dimension_data() || !save_maps() ) {
+        if( vehicle_ref ) {
+            vehicle *const restored = vehicle_ref.get();
+            here.place_vehicle( std::move( vehicle_ref ) );
+            here.reset_vehicles_sm_pos();
+            for( const int level : restored->occupied_levels( here ) ) {
+                here.on_vehicle_moved( level );
+            }
+            if( restored->tracking_on ) {
+                overmap_buffer.add_vehicle( restored );
+            }
+        }
+        for( size_t i = 0; i < place_items.size(); i++ ) {
+            here.add_item_or_charges( here.get_bub( item_origins[i] ), place_items[i] );
+        }
+        if( !moving_npcs.empty() ) {
+            overmap &old_om = overmap_buffer.get( project_to<coords::om>( player.pos_abs().xy() ) );
+            for( const npc_ptr &guy : moving_npcs ) {
+                old_om.insert_npc( guy );
+            }
+        }
+        load_npcs();
+        if( was_in_vehicle && here.veh_at( player.pos_bub( here ) ) ) {
+            here.board_vehicle( player.pos_bub( here ), &player );
+            player.controlling_vehicle = controlling_vehicle;
+        }
+        for( const std::pair<character_id, tripoint_abs_ms> &seat : passengers ) {
+            Character *const passenger = critter_by_id<Character>( seat.first );
+            if( passenger != nullptr && !passenger->is_avatar() && !passenger->in_vehicle ) {
+                here.board_vehicle( here.get_bub( seat.second ), passenger );
+            }
+        }
+        // Only the monsters stored on the overmap above: spawning everything the map would
+        // could bring monster groups in view
+        const tripoint_abs_sm bubble = here.get_abs_sub();
+        for( int z = -OVERMAP_DEPTH; z <= OVERMAP_HEIGHT; z++ ) {
+            for( int x = 0; x < here.getmapsize(); x++ ) {
+                for( int y = 0; y < here.getmapsize(); y++ ) {
+                    overmap_buffer.spawn_monster( tripoint_abs_sm( bubble.x() + x, bubble.y() + y, z ),
+                                                  true );
+                }
+            }
+        }
+        // A failure here shows its own message, as the one above did
+        if( save_dimension_data() ) {
+            save_maps();
+        }
         return false;
     }
     player.save_map_memory();
@@ -10663,6 +10793,8 @@ void game::perhaps_add_random_npc( bool ignore_spawn_timers_and_rates )
     // adds the npc to the correct overmap.
     tmp->spawn_at_omt( spawn_point );
     overmap_buffer.insert_npc( tmp );
+    // its starting attitude: no attitude events
+    const npc_attitude_cause spawning( npc_attitude_cause::spawn );
     tmp->form_opinion( u );
     tmp->mission = NPC_MISSION_NULL;
     tmp->long_term_goal_action();
@@ -11688,7 +11820,8 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
     if( old_abs_omt != new_abs_omt ) {
         const oter_id &cur_ter = overmap_buffer.ter( new_abs_omt );
         const oter_id &past_ter = overmap_buffer.ter( old_abs_omt );
-        get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter );
+        get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter,
+                overmap_buffer.overmap_special_at( new_abs_omt ).value_or( overmap_special_id() ) );
         overmap_buffer.add_extra_note( new_abs_omt );
         // if the player has moved omt then might trigger an EOC for that OMT
         if( !past_ter->get_exit_EOC().is_null() ) {

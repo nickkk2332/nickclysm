@@ -516,6 +516,35 @@ void submap::set_original_ter( const point_sm_ms &p, const ter_id &t )
     original_terrain[p] = t;
 }
 
+bool submap::holds_more_than_terrain() const
+{
+    return !spawns.empty() || !partial_constructions.empty() || !original_terrain.empty();
+}
+
+bool submap::make_uniform_if_possible()
+{
+    if( is_uniform() ) {
+        return true;
+    }
+    if( !computers.empty() || !ephemeral_data.empty() || !cosmetics.empty() ||
+        !vehicles.empty() || camp || field_count != 0 ) {
+        return false;
+    }
+    const ter_id ter = m->ter[0][0];
+    for( int x = 0; x < SEEX; x++ ) {
+        for( int y = 0; y < SEEY; y++ ) {
+            if( m->ter[x][y] != ter || m->frn[x][y] != furn_str_id::NULL_ID() ||
+                !m->itm[x][y].empty() || m->fld[x][y].field_count() != 0 ||
+                m->trp[x][y] != tr_null || m->rad[x][y] != 0 || m->lum[x][y] != 0 ) {
+                return false;
+            }
+        }
+    }
+    m.reset();
+    uniform_ter = ter;
+    return true;
+}
+
 void submap::clear_original_ter( const point_sm_ms &p )
 {
     original_terrain.erase( p );

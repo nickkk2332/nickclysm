@@ -74,6 +74,7 @@
 #include "output.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "phase_change.h"
 #include "pocket_type.h"
 #include "point.h"
 #include "regional_settings.h"
@@ -6570,93 +6571,185 @@ ret_val<void> jmapgen_objects::has_vehicle_collision( const mapgendata &dat,
     return ret_val<void>::make_success();
 }
 
-void map::temp_based_phase_change_at( const tripoint_bub_ms &p, const weather_generator &wgen )
+namespace
 {
-    // If we have a recorded original terrain, use its rules to revert or
-    if( has_original_terrain_at( p ) ) {
-        const ter_id orig_id = get_original_terrain_at( p );
-        ter_set( p, orig_id );
+// what the live scoped_phase_temperatures keep: the generator they were made for, and a
+// sampler for it, made when first needed
+struct phase_temperature_scope_state {
+    int depth = 0;
+    const weather_generator *wgen = nullptr;
+    std::optional<weather_temperature_sampler> sampler;
+};
+
+phase_temperature_scope_state &phase_temperature_scope()
+{
+    static phase_temperature_scope_state state;
+    return state;
+}
+
+// The times the phase change pass averages the weather temperature over: 08:00 on each of the
+// ten days before today. They change only once a day.
+std::vector<time_point> phase_sample_times()
+{
+    std::vector<time_point> times;
+    times.reserve( 10 );
+    for( int d = 0; d < 10; d++ ) {
+        time_point base_date = calendar::turn - ( d + 1 ) * 1_days;
+        const time_duration time_of_day = ( base_date - calendar::turn_zero ) % 1_days;
+        times.push_back( base_date - time_of_day + 8_hours );
     }
-    const tripoint_abs_ms abs_p = get_abs( p );
-    const ter_str_id cur_id = ter( p ).id();
-    const ter_t &cur_ter = cur_id.obj();
-    // Bail out early if neither this terrain nor a recorded original
-    // terrain declare a phase_method.
-    if( cur_ter.phase_method.empty() && !has_original_terrain_at( p ) ) {
-        return;
+    return times;
+}
+} // namespace
+
+scoped_phase_temperatures::scoped_phase_temperatures( const weather_generator &wgen )
+{
+    phase_temperature_scope_state &state = phase_temperature_scope();
+    if( state.depth++ == 0 ) {
+        state.wgen = &wgen;
     }
-    units::temperature standard = 0_K;
-    // `phase_method` selects which phase behavior to apply.
-    if( cur_ter.phase_method == "water_freeze" ) {
-        // 10-day average at 08:00.
-        //1103515245u = random
-        unsigned seed = static_cast<unsigned>( g->get_seed() ) ^
-                        static_cast<unsigned>( abs_p.x() * 1103515245u + abs_p.y() );
-        units::temperature sum = 0_K;
-        for( int d = 0; d < 10; d++ ) {
-            time_point base_date = calendar::turn - ( d + 1 ) * 1_days;
-            const time_duration time_of_day = ( base_date - calendar::turn_zero ) % 1_days;
-            const time_point t = base_date - time_of_day + 8_hours;
+}
+
+scoped_phase_temperatures::~scoped_phase_temperatures()
+{
+    phase_temperature_scope_state &state = phase_temperature_scope();
+    if( --state.depth == 0 ) {
+        state.wgen = nullptr;
+        state.sampler.reset();
+    }
+}
+
+// The 10-day average temperature at 08:00 that decides whether water at abs_p is frozen.
+static units::temperature phase_standard_temperature( const tripoint_abs_ms &abs_p,
+        const weather_generator &wgen )
+{
+    //1103515245u = random
+    unsigned seed = static_cast<unsigned>( g->get_seed() ) ^
+                    static_cast<unsigned>( abs_p.x() * 1103515245u + abs_p.y() );
+    units::temperature sum = 0_K;
+    phase_temperature_scope_state &scope = phase_temperature_scope();
+    if( scope.depth > 0 && scope.wgen == &wgen ) {
+        if( !scope.sampler ) {
+            scope.sampler.emplace( wgen, phase_sample_times() );
+        }
+        for( size_t d = 0; d < 10; d++ ) {
+            sum += scope.sampler->temperature( d, abs_p, seed );
+        }
+    } else {
+        for( const time_point &t : phase_sample_times() ) {
             sum += wgen.get_weather_temperature( abs_p, t, seed );
         }
-        standard = sum / 10.0;
-    } else {
+    }
+    return sum / 10.0;
+}
+
+// The terrain the phase rules of `tt` (whose own id is base_id) give at temperature
+// `standard`, or t_pseudo_phase for no change.
+static ter_str_id phase_target( const ter_t &tt, const ter_str_id &base_id,
+                                units::temperature standard )
+{
+    if( tt.phase_targets.empty() ) {
+        return ter_t_pseudo_phase;
+    }
+    const size_t targ_n = tt.phase_targets.size();
+    const size_t temp_n = tt.phase_temps.size();
+    if( temp_n + 1 != targ_n ) {
+        debugmsg( "ter %s: phase_targets and phase_temps length mismatch (expected temps == targets-1)",
+                  base_id.str() );
+        return ter_t_pseudo_phase;
+    }
+    const auto target = [&]( size_t i ) {
+        return tt.phase_targets[i] == ter_t_pseudo_phase ? base_id : tt.phase_targets[i];
+    };
+    if( standard < tt.phase_temps[0] ) {
+        return target( 0 );
+    }
+    // Intermediate ranges: inclusive upper bound
+    for( size_t i = 0; i + 1 < temp_n; ++i ) {
+        if( standard >= tt.phase_temps[i] && standard <= tt.phase_temps[i + 1] ) {
+            return target( i + 1 );
+        }
+    }
+    if( standard > tt.phase_temps.back() ) {
+        return target( targ_n - 1 );
+    }
+    return ter_t_pseudo_phase;
+}
+
+// Terrain that ter_set fills with a finite liquid: setting it spawns an item.
+static bool ter_set_spawns_liquid( const ter_t &tt )
+{
+    return !tt.liquid_source_item_id.is_null() &&
+           tt.liquid_source_count != std::make_pair( 0, 0 );
+}
+
+void map::temp_based_phase_change_at( const tripoint_bub_ms &p, const weather_generator &wgen )
+{
+    if( !inbounds( p ) ) {
         return;
     }
-
-    auto apply_phase_thresholds = [&]( const ter_t & tt, const ter_str_id & base_id ) -> ter_str_id {
-        if( tt.phase_targets.empty() )
-        {
-            return ter_t_pseudo_phase;
+    point_sm_ms l;
+    submap *const sm = unsafe_get_submap_at( p, l );
+    if( sm == nullptr ) {
+        debugmsg( "Called temp_based_phase_change_at for unloaded submap" );
+        return;
+    }
+    const ter_id cur = sm->get_ter( l );
+    // A tile changed by phase rules records the terrain it had before. Those rules (of the
+    // original terrain, if recorded) decide what the tile is now.
+    const bool has_original = sm->has_original_ter( l );
+    const ter_id base = has_original ? sm->get_original_ter( l ) : cur;
+    const ter_t &base_ter = base.obj();
+    // `phase_method` selects which phase behavior to apply; only water_freeze exists.
+    if( base_ter.phase_method != "water_freeze" ) {
+        // Revert to the original terrain, if any (a no-op when the tile already shows it).
+        if( has_original ) {
+            ter_set( p, base );
         }
-        const size_t targ_n = tt.phase_targets.size();
-        const size_t temp_n = tt.phase_temps.size();
-        if( temp_n + 1 != targ_n )
-        {
-            debugmsg( "ter %s: phase_targets and phase_temps length mismatch (expected temps == targets-1)",
-                      base_id.str() );
-            return ter_t_pseudo_phase;
-        }
-        std::vector<ter_str_id> targets;
-        targets.reserve( targ_n );
-        for( size_t i = 0; i < targ_n; ++i )
-        {
-            ter_str_id target = tt.phase_targets[i];
-            if( target == ter_t_pseudo_phase ) {
-                target = base_id;
+        return;
+    }
+    const ter_str_id chosen = phase_target( base_ter, base.id(),
+                                            phase_standard_temperature( get_abs( p ), wgen ) );
+    const ter_id target = chosen != ter_t_pseudo_phase && chosen != base.id() ? chosen.id() : base;
+    if( target == cur ) {
+        const ter_t &cur_ter = cur.obj();
+        if( has_original && cur != base && !ter_set_spawns_liquid( base_ter ) &&
+            !ter_set_spawns_liquid( cur_ter ) ) {
+            // Still frozen as it was. This used to thaw the tile and freeze it again through two
+            // full ter_set calls. Of what those left behind besides the same terrain, keep the
+            // reset of the tile's map damage, the submap marked as changed, and the trap and
+            // emission entries each call added for its terrain (ice has a trap): until the map
+            // is actualized, or if it isn't (map::load during explosions), those entries are
+            // what registers them.
+            sm->set_map_damage( l, 0 );
+            if( !mapgen_in_progress ) {
+                sm->player_adjusted_map = true;
             }
-            targets.push_back( target );
-        }
-
-        if( standard < tt.phase_temps[0] )
-        {
-            return targets[0];
-        }
-
-        // Intermediate ranges: inclusive upper bound
-        for( size_t i = 0; i + 1 < temp_n; ++i )
-        {
-            if( standard >= tt.phase_temps[i] && standard <= tt.phase_temps[i + 1] ) {
-                return targets[i + 1];
+            for( const ter_t *set_to : {
+                     &base_ter, &cur_ter
+                 } ) {
+                if( set_to->trap != tr_null ) {
+                    traplocs[set_to->trap.to_i()].push_back( p );
+                }
+                if( !set_to->emissions.empty() ) {
+                    field_ter_locs.push_back( p );
+                }
             }
+            return;
         }
-
-        if( standard > tt.phase_temps.back() )
-        {
-            return targets.back();
+        if( !has_original || cur == base ) {
+            // nothing to change
+            return;
         }
-
-        return ter_t_pseudo_phase;
-    };
-
-    // No original recorded: evaluate using the current terrain's rules and
-    // record original before transforming.
-
-    const ter_str_id chosen = apply_phase_thresholds( cur_ter, cur_id );
-    if( chosen != ter_t_pseudo_phase && chosen != cur_id ) {
+    }
+    // Revert to the original terrain (dropping its record), then apply the new phase.
+    if( has_original ) {
+        ter_set( p, base );
+    }
+    if( target != base ) {
+        ter_set( p, target );
         // Record original terrain so it can be reverted later.
-        ter_set( p, chosen );
-        set_original_terrain_at( p, cur_id.id() );
+        set_original_terrain_at( p, base );
     }
 }
 

@@ -11,6 +11,7 @@
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_attire.h"
 #include "character_id.h"
@@ -83,6 +84,8 @@ static const skill_id skill_driving( "driving" );
 static const spell_id spell_test_spell_json( "test_spell_json" );
 static const spell_id spell_test_spell_lava( "test_spell_lava" );
 static const spell_id spell_test_spell_pew( "test_spell_pew" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
 
 static const trait_id trait_ELFA_EARS( "ELFA_EARS" );
 
@@ -1373,6 +1376,18 @@ TEST_CASE( "npc_arithmetic", "[npc_talk]" )
     effects.apply( d );
     CHECK( static_cast<int>( player_character.get_skill_level( skill ) ) == 10 );
 
+    // Assigning a position moves the avatar as u_teleport does: start mid-bubble, so the map
+    // doesn't shift under the test, and put the avatar and the map's level back afterwards.
+    map &here = get_map();
+    const tripoint_abs_sm bubble = here.get_abs_sub();
+    const tripoint_abs_ms home = player_character.pos_abs();
+    const std::function<void()> go_home = [&player_character, bubble, home]() {
+        map &m = get_map();
+        m.load( bubble, false );
+        player_character.setpos( m, m.get_bub( home ) );
+    };
+    const on_out_of_scope back_home( go_home );
+    player_character.setpos( here, tripoint_bub_ms( 66, 66, 0 ) );
     // "Move character position one tile west."
     pos = player_character.pos_abs();
     effects = d.responses[ 12 ].success;
@@ -1385,10 +1400,20 @@ TEST_CASE( "npc_arithmetic", "[npc_talk]" )
     effects.apply( d );
     CHECK( player_character.pos_abs().y() == pos.y() + 2 );
 
-    // "Sets character z level to -3."
+    // "Sets character z level to -3."  Into an open spot: a teleport won't enter rock.
+    const tripoint_abs_ms deep( player_character.pos_abs().xy(), -3 );
+    const ter_id deep_ter = here.ter( here.get_bub( deep ) );
+    const furn_id deep_furn = here.furn( here.get_bub( deep ) );
+    here.ter_set( here.get_bub( deep ), ter_t_floor );
+    here.furn_set( here.get_bub( deep ), furn_str_id::NULL_ID() );
     effects = d.responses[ 14 ].success;
     effects.apply( d );
     CHECK( player_character.posz() == -3 );
+    go_home();
+    here.ter_set( here.get_bub( deep ), deep_ter );
+    here.furn_set( here.get_bub( deep ), deep_furn );
+    REQUIRE( player_character.pos_abs() == home );
+    REQUIRE( here.get_abs_sub() == bubble );
 
     // "Sets pain to 17."
     effects = d.responses[ 15 ].success;

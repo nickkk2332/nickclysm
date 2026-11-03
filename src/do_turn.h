@@ -15,4 +15,7 @@ struct npc_turn_result {
 // one NPC's share of a game turn, exactly as the game loop runs it
 npc_turn_result process_npc_turn( map &m, npc &guy );
 
+// the monsters' (and then the active NPCs') share of a game turn, exactly as the game loop runs it
+void monmove();
+
 #endif // CATA_SRC_DO_TURN_H

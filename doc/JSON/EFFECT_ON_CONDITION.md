@@ -18,6 +18,7 @@ An effect_on_condition is an object allowing the combination of dialog condition
 - [EVENT EOCs:](#event-eocs)
   - [Event Context Vars:](#event-context-vars)
   - [Event EOC Types:](#event-eoc-types)
+  - [NPC attitude events](#npc-attitude-events)
   - [Context Variables For Other EOCs](#context-variables-for-other-eocs)
 - [Effects](#effects)
   - [General](#general)
@@ -394,7 +395,7 @@ return true if alpha talker is character (avatar or NPC)
 - type: string or [variable object](#variable-object)
 - return true if alpha talker stands on specific overmap tile;
 - `FACTION_CAMP_ANY` can be used, that return true if alpha or beta talker stand on faction camp tile;
-- `FACTION_CAMP_START` can be used, that return true if alpha or beta talker stand on tile, that can be turned into faction camp
+- `FACTION_CAMP_START` can be used, that return true if alpha or beta talker stand on tile, that can be turned into faction camp; where that depends on how the tile's overmap special was generated (such as an evac shelter's layout), the tile only counts once the special has been generated
 
 #### Valid talkers:
 
@@ -767,6 +768,27 @@ Print a message if the character selected Fisher profession or the Fishing backg
   "condition": { "or": [ { "u_has_profession": "fisher" }, { "u_has_profession": "fishing" } ] },
   "effect": { "u_message": "Good morning. Nice day for fishing ain't it?" }
 }
+```
+
+### `u_is_in_faction`, `npc_is_in_faction`
+- type: string or [variable object](#variable-object)
+- return true if alpha / beta talker belongs to the given faction id (the avatar's is `your_followers`)
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+True if the alpha talker is one of the player's followers
+```jsonc
+{ "u_is_in_faction": "your_followers" }
+```
+
+True if the beta talker belongs to the faction stored in the alpha talker's variable `rival_faction`
+```jsonc
+{ "npc_is_in_faction": { "u_val": "rival_faction" } }
 ```
 
 ### `u_has_strength`, `npc_has_strength`, `u_has_dexterity`, `npc_has_dexterity`, `u_has_intelligence`, `npc_has_intelligence`, `u_has_perception`, `npc_has_perception`
@@ -1183,6 +1205,27 @@ true if you do not drive
 { "not": "u_driving" }
 ```
 
+### `u_is_doing_activity`, `npc_is_doing_activity`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is doing this activity, by id, or any activity for `"any"`. `u_has_activity` is the same as `"any"`. An unknown activity id is reported as an error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC is reading
+```jsonc
+{ "npc_is_doing_activity": "ACT_READ" }
+```
+
+You are busy with something
+```jsonc
+{ "u_is_doing_activity": "any" }
+```
+
 ### `u_know_recipe`
 - type: string or [variable object](#variable-object)
 - return true if character know specific recipe;
@@ -1299,6 +1342,32 @@ check do you wield a gun with `pistol` skill
 check do you wield a gun with `22` ammo type (.22 LR)
 ```jsonc
 { "u_has_wielded_with_ammotype": "22" }
+```
+
+### `u_has_item_in_hand`, `npc_has_item_in_hand`
+- type: string, [variable object](#variable-object), or an object with `id` and/or `flag`
+- return true if alpha or beta talker wields an item of this id; with `{ "flag": ... }`, an item with this flag; with both, an item of this id with this flag. An unknown item id is reported as an error
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC holds a crowbar
+```jsonc
+{ "npc_has_item_in_hand": "crowbar" }
+```
+
+You hold something that clips onto a belt
+```jsonc
+{ "u_has_item_in_hand": { "flag": "BELT_CLIP" } }
+```
+
+You hold the item whose id is in the context variable `tool`
+```jsonc
+{ "u_has_item_in_hand": { "context_val": "tool" } }
 ```
 
 ### `u_can_see`, `npc_can_see`
@@ -1692,6 +1761,158 @@ You can see selected location.
 ]
 ```
 
+### `u_is_walking_to`, `npc_is_walking_to`
+- type: `"any"` or [variable object](#variable-object)
+- return true if alpha or beta talker is on a walk: one from [`u_walk_to`](#u_walk_to-npc_walk_to), from `u_pickup_item` with `"walk": true`, or a follower's "Move there!" order. With a location, only if the walk goes there
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC isn't walking anywhere
+```jsonc
+{ "not": { "npc_is_walking_to": "any" } }
+```
+
+You are on your way to the spot in `camp_fire`
+```jsonc
+{ "u_is_walking_to": { "u_val": "camp_fire" } }
+```
+
+### `u_npc_goal`, `npc_npc_goal`
+- type: string or [variable object](#variable-object)
+- return true if the alpha or beta talker is an NPC whose current goal is this one: the goal it is committed to, a built-in one or a [JSON goal](NPC_BEHAVIOR.md#json-goals), or `idle` when it has none
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC is fetching the crowbar
+```jsonc
+{ "npc_npc_goal": "fetch_crowbar" }
+```
+
+### `npc_goal_category`
+- type: string or [variable object](#variable-object)
+- return true if the alpha talker is an NPC whose current goal is in this [decision category](NPC_BEHAVIOR.md#categories)
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+You (an NPC) are seeing to a need
+```jsonc
+{ "npc_goal_category": "needs" }
+```
+
+### `u_attitude`, `npc_attitude`
+- type: string or [variable object](#variable-object)
+- return true if the alpha or beta talker is an NPC with this attitude toward the avatar: `NPCATT_NULL`, `NPCATT_TALK`, `NPCATT_FOLLOW`, `NPCATT_LEAD`, `NPCATT_WAIT`, `NPCATT_MUG`, `NPCATT_WAIT_FOR_LEAVE`, `NPCATT_KILL`, `NPCATT_FLEE`, `NPCATT_FLEE_TEMP`, `NPCATT_HEAL`, `NPCATT_ACTIVITY` or `NPCATT_RECOVER_GOODS`. An NPC never keeps `NPCATT_FLEE`: it flees with `NPCATT_FLEE_TEMP`. An attitude written out that isn't one of these is a load error
+- false for a talker that isn't an NPC, or no talker at all. [NPC attitude events](#npc-attitude-events) report every change
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC you talk with is about to rob you
+```jsonc
+{ "npc_attitude": "NPCATT_MUG" }
+```
+
+### `u_mission`, `npc_mission`
+- type: string or [variable object](#variable-object)
+- return true if the alpha or beta talker is an NPC with this standing mission (not a quest the avatar takes on): `NULL`, `SHELTER`, `SHOPKEEP`, `GUARD_ALLY` (a follower posted as a guard), `GUARD`, `GUARD_PATROL`, `ACTIVITY`, `TRAVELLING` or `CAMP_RESIDENT`. A mission written out that isn't one of these is a load error
+- false for a talker that isn't an NPC, or no talker at all
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+You (an NPC) keep a shop
+```jsonc
+{ "u_mission": "SHOPKEEP" }
+```
+
+### `u_on_shift`, `npc_on_shift`
+- type: simple string
+- return true if the alpha or beta talker is an NPC with a guard post whose class's `work_hours` cover the current hour, the same as the behavior predicate [`npc_on_shift`](NPC_BEHAVIOR.md#built-in-predicates). An NPC walking with the avatar, or busy with an activity the avatar gave it, isn't on shift
+- false for a talker that isn't an NPC, or no talker at all
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+```jsonc
+{ "and": [ "npc_on_shift", { "not": "npc_at_post" } ] }
+```
+
+### `u_at_post`, `npc_at_post`
+- type: simple string
+- return true if the alpha or beta talker is an NPC with a guard post that stands on it, on shift or not
+- false for a talker that isn't an NPC, or no talker at all
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+```jsonc
+"u_at_post"
+```
+
+### `faction_has_relation`
+- type: array of three strings or [variable objects](#variable-object): `[ faction, other faction, relation ]`
+- return true if the first faction has the relation toward the second, as the first faction's `relations` in its JSON give them and effects have changed them since. Relations aren't mutual. The relation is one of the [faction relation flags](FACTIONS.md#faction-relations): `kill on sight`, `watch your back`, `share my stuff`, `share public goods`, `guard your stuff`, `lets you in`, `defends your space`, `knows your voice`; one written out that isn't is a load error
+- false when the first faction doesn't exist. Needs no talker
+
+#### Examples
+The Free Merchants shoot raiders on sight
+```jsonc
+{ "faction_has_relation": [ "free_merchants", "hells_raiders", "kill on sight" ] }
+```
+
+### `u_can_reach`, `npc_can_reach`
+- type: [variable object](#variable-object)
+- return true if alpha or beta talker has a way to the location: the walk `u_walk_to` would take, with the same `range`, so walls, locked doors and an unloaded spot make it false. Creatures in the way don't count, since they may move. This runs a path search, so don't check it every turn for many characters
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_can_reach" / "npc_can_reach" | **mandatory** | [variable object](#variable-object) | the location |
+| "range" | optional | int or [variable object](#variable-object) | default 0; as in `u_walk_to`: a tile this close to the location will do |
+| "max_distance" | optional | int or [variable object](#variable-object) | the way may be at most this many steps long; without it, any length the path search finds |
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC can get next to the shed door within 30 steps
+```jsonc
+{ "npc_can_reach": { "global_val": "shed_door" }, "range": 1, "max_distance": 30 }
+```
+
 ### `u_see_npc`, `npc_see_u`
 - type: simple string
 - return true if alpha talker can see beta talker, or vice versa
@@ -2067,7 +2288,7 @@ True for a rock in a canvas sack that is itself in a backpack
 
 ### `test_eoc`
 - type: string or [variable object](#variable-object)
-- return true if the provided eoc's condition returns true
+- return true if the provided eoc's condition returns true; an eoc without a condition counts as true
 
 #### Valid talkers:
 
@@ -2089,10 +2310,12 @@ The code base supports the use of reusable EOCs, you can use these to get guaran
 | EOC_RandEnc | Spawns a random encounter at the specified `omt` with mapgen update `map_update` that is later removed with `map_removal`. It has a 1 in `chance` chance of happening and can only occur after `days_till_spawn`. Can optionally only happen if `random_enc_condition` is true | `map_update`: a mapgen update ID <br/> `omt`: overmap tile ID where this happens <br/> `map_removal`: a mapgen update ID <br/> `chance`: an integer <br/> `days_till_spawn`: an integer <br/> `random_enc_condition`: a set condition |
 
 # EVENT EOCs:
-EVENT EOCs trigger on in game events specified in the event_type enum in `event.h`. When an EVENT EOC triggers it tries to perform the EOC on the NPC that is the focus of the event and if it cannot determine one, triggers on the avatar. So any cata_event that has a field for "avatar_id", "character", "attacker", "killer", "npc" will potentially resolve to another npc rather than the avatar, based on who the event triggers for.
+EVENT EOCs trigger on in game events specified in the event_type enum in `event.h`. Unless the event gives its own talkers (see the table), the alpha talker is the character the event is about: the first of the fields "avatar_id", "character", "attacker", "killer" and "npc" that the event has and that holds a valid character, the avatar or an NPC. An event that has none of these fields runs its EOCs on the avatar. An event that has one of them, but whose character can't be found (a spell cast without a caster, an NPC that isn't loaded), runs no EVENT EOCs.
 
 ## Event Context Vars:
 Every event EOC passes context vars with each of their key value pairs that the event has in C++.  They are all converted to strings when made context variables but their original types are included for reference below.  At some point this documentation may go out of sync, The up to date info for each event can be found in event.h
+
+The `trigger_event` effect sends one of these events, with `args`, one value per field in the order of `event.h`.  Each value must fit its field: a whole number for `int` and `character_id`, 0 or 1 for `bool`, an existing id (or an empty string) for an id.  An event with a value that doesn't fit isn't sent, and shows an error.  `game_avatar_new`, `game_load`, `game_over`, `game_save`, `game_start` and `player_gets_achievement` can only be sent by the game: an EOC that triggers one of them fails to load.
 
 ## Event EOC Types:
 
@@ -2102,7 +2325,7 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | activates_mininuke | Triggers when any character arms a mininuke | { "character", `character_id` } | character / NONE |
 | administers_mutagen |  | { "character", `character_id` },<br/> { "technique", `mutagen_technique` }, | character / NONE |
 | angers_amigara_horrors | Triggers when amigara horrors are spawned as part of a mine finale | NONE | avatar / NONE |
-| avatar_enters_omt | Triggers when player crosses the overmap boundary, including when player spawns | { "pos", `tripoint` },<br/> { "oter_id", `oter_id` }, | avatar / NONE |
+| avatar_enters_omt | Triggers when player crosses the overmap boundary, including when player spawns | { "pos", `tripoint` },<br/> { "oter_id", `oter_id` },<br/> { "overmap_special", `overmap_special_id` }, empty if the OMT is in no special. This third field is new: a `trigger_event` for this event needs three arguments | avatar / NONE |
 | avatar_moves |  | { "mount", `mtype_id` },<br/> { "terrain", `ter_id` },<br/> { "movement_mode", `move_mode_id` },<br/> { "underwater", `bool` },<br/> { "z", `int` }, | avatar / NONE |
 | avatar_dies |  | NONE | avatar / NONE |
 | awakes_dark_wyrms | Triggers when `pedestal_wyrm` examine action is used | NONE | avatar / NONE |
@@ -2115,7 +2338,7 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | camp_upgrade_completed | Triggers when companions finish a camp upgrade, including a salt water pipe segment | { "camp_name", `string` },<br/> { "pos", `tripoint` } (location of the upgraded overmap tile, its north-west corner),<br/> { "upgrade", `string` } (id of the upgrade's recipe) | avatar / NONE |
 | causes_resonance_cascade | Triggers when resonance cascade option is activated via "old lab" finale's computer | NONE | avatar / NONE |
 | character_butchered_corpse | Triggers after succesful butchering action. Possible values of butcher_type are `ACT_BLEED`, `ACT_BUTCHER`, `ACT_BUTCHER_FULL`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT` | { "character", `character_id` }, { "monster_id", `mtype_id` }, { "butcher_type", `string` }, | character / NONE |
-| character_casts_spell | Triggers when a character casts spells. When a spell with multiple effects is cast, the number of effects will be triggered | { "character", `character_id` },<br/> { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` }, | character / NONE |
+| character_casts_spell | Triggers when a character casts spells. When a spell with multiple effects is cast, the number of effects will be triggered. A spell cast without a caster (by an item, for example) has an invalid `character`, and runs no EVENT EOCs | { "character", `character_id` },<br/> { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` }, | character / NONE |
 | character_consumes_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
 | character_dies |  | { "character", `character_id` }, | character / NONE |
 | character_eats_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
@@ -2193,7 +2416,11 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | learns_martial_art | |  { "character", `character_id` },<br/> { "martial_art", `matype_id` }, | character / NONE |
 | loses_addiction | | { "character", `character_id` },<br/> { "add_type", `addiction_id` }, | character / NONE |
 | loses_mutation | |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
-| npc_becomes_hostile | Triggers when NPC's attitude is set to `NPCATT_KILL` via dialogue effect `hostile` | { "npc", `character_id` },<br/> { "npc_name", `string` }, | NPC / NONE |
+| npc_attitude_changed | Triggers whenever an NPC's attitude changes, whatever changes it: an effect, the avatar, the NPC's own decisions, including each switch of a hostile NPC between fleeing and fighting. `cause` says what; see [NPC attitude events](#npc-attitude-events). Not for the attitude an NPC is made with, nor for NPCs that aren't real (a template's, a hallucination). Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "old_attitude", `string` }, an attitude id such as `NPCATT_KILL`<br/> { "new_attitude", `string` },<br/> { "cause", `string` }, | NPC / NONE |
+| npc_becomes_hostile | Triggers when an NPC grows more hostile than it was last reported: as it turns hostile (`NPCATT_MUG`, `NPCATT_WAIT_FOR_LEAVE` or `NPCATT_KILL`) from a neutral or friendly attitude, and once more if it then sets out to kill (`NPCATT_KILL`). Fleeing (`NPCATT_FLEE_TEMP`) doesn't calm it down, so a hostile NPC that keeps running and coming back is reported once; a neutral or friendly attitude does. It goes out after the change's `npc_attitude_changed`, if the NPC is still hostile then, whatever changed it ([NPC attitude events](#npc-attitude-events)). The memorial's "became hostile" comes from the `hostile` effect alone, as before. The `cause` field is new: a `trigger_event` for this event needs three arguments | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "cause", `string` }, | NPC / NONE |
+| npc_dismissed | Triggers when an NPC leaves the avatar's follower list alive: the `leave` effect, a mutiny. It goes out as the NPC leaves the list, before the rest of what dismisses it (its new faction, its attitude). A follower that dies doesn't trigger it (`character_dies` does), nor one whose body the avatar takes over | { "npc", `character_id` },<br/> { "npc_name", `string` }, | NPC / NONE |
+| npc_mutinies | Triggers when a follower mutinies: it leaves the avatar's faction for its faction's [`mutiny_faction`](FACTIONS.md) (`amf` in vanilla). After the NPC has left: after its `npc_dismissed` and its `npc_attitude_changed` with the cause `mutiny` | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "old_faction", `faction_id` },<br/> { "new_faction", `faction_id` }, | NPC / NONE |
+| npc_recruited | Triggers when an NPC joins the avatar's follower list: the `follow` effect, the debug menu. It goes out once the recruitment is done (`NPCATT_FOLLOW`, the faction `your_followers`, its mission, post and walk dropped, its cash handed over), so what its EOCs do to the recruit (a guard post, say) stays. Putting the list back together as a game loads, or the avatar's former body joining it when the avatar takes over a follower, doesn't trigger it | { "npc", `character_id` },<br/> { "npc_name", `string` }, | NPC / NONE |
 | opens_portal | Triggers when TOGGLE PORTAL option is activated via ("old lab" finale's?) computer | NONE | avatar / NONE |
 | opens_spellbook | Triggers when player opens the spell menu OR when NPC evaluates spell as best weapon(in preparation to use it) | { "character", `character_id` } | character / NONE |
 | opens_temple | Triggers when `pedestal_temple` examine action is used to consume a petrified eye | NONE | avatar / NONE |
@@ -2214,7 +2441,41 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | triggers_alarm | Triggers when alarm is sounded as a failure state of hacking, prying, using a computer, or (if player is sufficiently close)damaged terrain with ALARMED flag | { "character", `character_id` } | character / NONE |
 | uses_debug_menu | | { "debug_menu_option", `debug_menu_index` }, | avatar / NONE |
 | u_var_changed | | { "var", `string` },<br/> { "value", `string` }, | avatar / NONE |
+| npc_goal_changed | Triggers when the goal an NPC is committed to changes, built-in or [JSON](NPC_BEHAVIOR.md#reading-goals-from-eocs); `idle` stands for none. Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "old_goal", `string` },<br/> { "new_goal", `string` }, | NPC / NONE |
 | vehicle_moves | | { "avatar_on_board", `bool` },<br/> { "avatar_is_driving", `bool` },<br/> { "avatar_remote_control", `bool` },<br/> { "is_flying_aircraft", `bool` },<br/> { "is_floating_watercraft", `bool` },<br/> { "is_on_rails", `bool` },<br/> { "is_falling", `bool` },<br/> { "is_sinking", `bool` },<br/> { "is_skidding", `bool` },<br/> { "velocity", `int` }, // vehicle current velocity, mph * 100<br/> { "z", `int` }, | vehicle / avatar |
+
+### NPC attitude events
+
+An NPC's attitude is how it treats the avatar (`NPCATT_FOLLOW`, `NPCATT_KILL`...); the condition [`u_attitude`](#u_attitude-npc_attitude) reads it and the effect [`u_set_attitude`](#u_set_attitude-npc_set_attitude) sets it. Every change triggers `npc_attitude_changed`, and a turn to hostility also `npc_becomes_hostile`. Their `cause` says what changed it, as far as the game knows:
+
+| `cause` | The attitude changed because |
+| --- | --- |
+| `effect` | of a dialogue response's or an EOC's effects: `hostile`, `follow`, `flee`, `u_set_attitude`, `u_set_mission` and the like |
+| `angered` | the NPC was angered: the avatar attacked it, stole from it or did something else it won't stand for |
+| `opinion` | the NPC sized the avatar up: on meeting it, on being pushed aside, or as a conversation starts (when it decides to rob the avatar, say) |
+| `mutiny` | the NPC left the avatar's faction (`npc_mutinies`) |
+| `faction` | the NPC's faction is hostile to the avatar's, and it turned on the avatar on sight |
+| `panic` | the NPC runs from a fight |
+| `theft` | the NPC saw the avatar steal, or answers a call about a theft |
+| `ai` | of another decision the NPC made on its turn: its flight ending, a mugger losing patience, giving up on a leader that lags behind |
+| empty | none of these is known: the debug menu |
+
+- **The attitude an NPC is made with** isn't a change: an NPC placed by mapgen, spawned at random or made by the debug menu takes its first opinion of the avatar unreported, and counts as already reported for `npc_becomes_hostile`. A bandit spawned hostile triggers no `npc_becomes_hostile` until it has calmed down and turns hostile again.
+- **Fleeing and fighting.** `npc_attitude_changed` reports every change, so a hostile NPC that panics and comes back reports each switch; filter on `old_attitude` and `new_attitude` for those. `npc_becomes_hostile` is the once-per-hostility event, and statistics don't keep `npc_attitude_changed`.
+- **Don't change an NPC's attitude in an EOC of these events.** The change is made, but it isn't reported (an EOC that always changes it would otherwise go on without end), and it's an error, said once. `npc_becomes_hostile` doesn't go out for an NPC such an EOC calmed down.
+
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_BOUNTY_ON_ANGERED_MERCHANT",
+  "eoc_type": "EVENT",
+  "required_event": "npc_becomes_hostile",
+  "condition": {
+    "and": [ { "u_is_in_faction": "free_merchants" }, { "compare_string": [ "angered", { "context_val": "cause" } ] } ]
+  },
+  "effect": [ { "math": [ "bounty_on_you += 100" ] } ]
+}
+```
 
 ## Context Variables For Other EOCs
 Other EOCs have some variables as well that they have access to, they are as follows:
@@ -2231,6 +2492,9 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | bionics: "deactivated_eocs" | { "this", `bionic_id` } |
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
 | furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
+| `u_walk_to`: "true_eocs", "false_eocs" | { "reason", `string` why the walk ended }, and the context variables of the EoC that started the walk |
+| `u_pickup_item`, `u_wield_item`, `u_wear_item`, `u_drop_item`: "true_eocs", "false_eocs" | { "reason", `string` why it was refused, or `done` }, and the context variables of the EoC |
+| behavior goal: "on_start", "on_turn", "on_end", "on_interrupt", "on_timeout" | { "goal_id", `string` }, { "turns_active", `int` goal-active turns so far }, and in the end hooks { "reason", `string`: `done`, `timeout` or `interrupted` }; see [JSON goals](NPC_BEHAVIOR.md#json-goals) |
 
 
 # Effects
@@ -2292,7 +2556,7 @@ Opens a dialogue with computer; computer has defined `"chat_topics": [ "COMP_REF
 ```
 
 #### `take_control`
-If beta talker is NPC, take control of it
+If beta talker is NPC, take control of it. Queued EoCs belong to the body: when a queued EoC takes control, the queued EoCs still due in that turn stay with your old body and run on its turn.
 
 
 | Syntax | Optionality | Value  | Info |
@@ -2476,12 +2740,14 @@ NPC can offer missions `MISSION_A`, `B` and `C` now
 #### `run_eocs`
 Runs another EoC. It can be a separate EoC, or an inline EoC inside `run_eocs` effect
 
+EoCs can run each other up to 250 deep, counting every EoC that runs inside another, however it was started (`run_eocs`, `true_eocs`/`false_eocs`, events, spells...). A deeper chain is taken for an endless loop: it is stopped, with an error naming the EoC, back to where that EoC first ran; whatever ran it goes on. Loops made with `iterations` or `condition` don't add to the depth, so repeat something with those rather than with an EoC that runs itself again.
+
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "run_eocs" | **mandatory** | string (eoc id or inline eoc) or [variable object](#variable-object)) or array of eocs | EoC or EoCs that would be run |
 | "iterations" | optional | int or [variable object](#variable-object)) | if used, all eocs in run_eocs would be repeated this amount of times. Eocs are repeated in order; having `"run_eocs": [ "A", "B" ], "repeat": 3` would look like `A, B, A, B, A, B`. Default 1 |
 | "condition" | optional | int or [variable object](#variable-object)) | if used, eoc would be run as long as this condition will return true. if "condition" is used, "iterations" can be used to limit amount of runs to specific amount (default is 100 runs until terminated) |
-| "time_in_future" | optional | int, duration, [variable object](#variable-object) or value between two | if used, EoC would be activated this amount of time in future; default 0, meaning it would run instantly. If eoc is global, the avatar will be u and npc will be invalid. If eoc is not global, it will be queued for the current alpha if they are a character (avatar or npc) and not be queued otherwise. Doesn't work with "condition" and "iterations" |
+| "time_in_future" | optional | int, duration, [variable object](#variable-object) or value between two | if used, EoC would be activated this amount of time in future; default 0, meaning it would run instantly. An EoC queued while the queue is being worked through (by another queued EoC, or by itself) and due at once waits for the next turn's pass. If eoc is global, the avatar will be u and npc will be invalid. If eoc is not global, it will be queued for the current alpha if they are a character (avatar or npc) and not be queued otherwise. Doesn't work with "condition" and "iterations" |
 | "randomize_time_in_future" | optional | bool | used with time_in_future; if false, entire eoc array would run at the exact same moment; if true, each eoc in array would pick it's own time again and again |
 | "alpha_loc","beta_loc" | optional | [variable object](#variable-object) | Allows to swap talker by defining `u_location_variable`, where the EoC should be run. Set the alpha/beta talker to the creature at the location. |
 | "alpha_talker","beta_talker" | optional (If you use both "alpha_loc" and "alpha_talker", "alpha_talker" will be ignored, same for beta.) | string, [variable object](#variable-object) | Set alpha/beta talker. This can be either a `character_id` (you can get from [EOC event](#event-eocs) or result of [u_set_talker](#u_set_talkernpc_set_talker) ), or some hard-coded values: <br> `""`: null talker <br> `"u"/"npc": the alpha/beta talker of the EOC`(Should be Avatar/Character/NPC/Monster) <br> `"avatar"`: your avatar|
@@ -2914,8 +3180,8 @@ Opens a menu that allow to pick items from any point directly into the inventory
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_pickup_items" / "npc_pickup_items" | **mandatory** | [variable object](#variable-object) | location variable of the center of pickup |
-| "max_mass" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max weight of a single item you try to pick up, in grams |
-| "max_volume" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max volume of a single item you try to pick up, in milliliters |
+| "max_mass" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max total weight of the items picked up this way, in grams; picking up stops at the first item that would go over it |
+| "max_volume" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max total volume of the items picked up this way, in milliliters; picking up stops at the first item that would go over it |
 | "extra_moves_per_item" | optional | int or [variable object](#variable-object) | additional time penalty for picking up items via this effect, in moves. Multiplied by the distance between the character that picks up and the item |
 
 ##### Valid talkers:
@@ -3606,6 +3872,96 @@ you can pick one of four options from `Choose your destiny` list;
 }
 ```
 
+#### `run_eoc_checklist`
+Open a menu where the player ticks several options, then confirms. Confirming runs the EoCs of
+the ticked options, in their order; cancelling runs nothing. It takes the options of
+[`run_eoc_selector`](#run_eoc_selector).
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "run_eoc_checklist" | **mandatory** | array of strings or [variable objects](#variable-object) or inline EOCs | list of EoCs that can be ticked; an EoC whose condition fails is grayed out and can't be ticked |
+| "names" | optional | array of strings or [variable objects](#variable-object) | name of each option; one per EoC |
+| "descriptions" | optional | array of strings or [variable objects](#variable-object) | description of each option; one per EoC |
+| "keys" | optional | array of single characters | a shortcut for each option; one per EoC |
+| "checked" | optional | array of booleans | whether each option is ticked when the menu opens; one per EoC. A grayed-out option is never ticked |
+| "min" | optional | int | how many options must be ticked to confirm; default 0 |
+| "max" | optional | int | how many options may be ticked at most; default all of them. At least 1 and at least `min` |
+| "title" | optional | string | the menu's title; default `Tick the options you want.` |
+| "hide_failing" | optional | boolean | if true, an option whose EoC fails its condition is left out instead of grayed out |
+| "variables" | optional | array of objects of `"variable_name": "variable"` | context variables passed to the EoCs: one object for all of them, or one per EoC; as in `run_eoc_selector` |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run instead of showing the menu when `u` is not the avatar |
+
+Names, descriptions and the title take the dialogue tags `u_message` takes. Giving `names`,
+`descriptions`, `keys`, `checked` or several `variables` a size other than the number of EoCs, or
+`min` and `max` out of range, is a load error.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+The player picks one or two things to bring:
+```jsonc
+{
+  "run_eoc_checklist": [ "EOC_PACK_FOOD", "EOC_PACK_WATER", "EOC_PACK_TOOLS" ],
+  "names": [ "Food", "Water", "Tools" ],
+  "checked": [ true, true, false ],
+  "min": 1,
+  "max": 2,
+  "title": "What do you bring?"
+}
+```
+
+#### `u_show_text`, `npc_show_text`
+Show the player a scrollable window with a title, a text and a row of buttons that each run
+EoCs; for journals, notes, quest logs, tutorials and terminal-like screens. The window closes when
+a button is pressed or when the player closes it (closing runs nothing).
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_show_text" / "npc_show_text" | **mandatory** | object | the window, with the fields below |
+| "title" | optional | string or [variable object](#variable-object) | the window's title |
+| "text" | **mandatory** | string or [variable object](#variable-object) | the text; with `"snippet": true`, a snippet category, and a random snippet from it is shown |
+| "snippet" | optional | boolean | default false; see `text` |
+| "buttons" | optional | array of objects | the buttons, from left to right; see below. Without buttons the window only shows the text |
+| "hide_failing" | optional | boolean | if true, a button whose condition fails is left out instead of grayed out |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | next to `u_show_text`: run instead of showing the window when the talker is not the avatar |
+
+Each button has:
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "name" | **mandatory** | string or [variable object](#variable-object) | the button's label |
+| "eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the button is pressed, with the same talkers and context |
+| "condition" | optional | [condition](#condition) | while it is false, the button is grayed out and can't be pressed |
+
+The title, text and button names take the dialogue tags `u_message` takes (`<u_name>`,
+`<context_val:...>` and the others). The player scrolls with the arrow keys and page keys, picks a
+button with left and right (or tab), presses it with confirm, and closes the window with quit.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+A journal whose text is in a global variable, with a button that needs a pencil:
+```jsonc
+{
+  "u_show_text": {
+    "title": "Field journal",
+    "text": { "global_val": "journal_text" },
+    "buttons": [
+      { "name": "Close" },
+      { "name": "Tear out the page", "eocs": [ "EOC_TEAR_PAGE" ], "condition": { "u_has_item": "pencil" } }
+    ]
+  }
+}
+```
+
 ## Character effects
 
 #### `u_pick_bodypart`, `npc_pick_bodypart`
@@ -3617,8 +3973,8 @@ Allow to select the bodypart and store it in variable
 | "u_pick_bodypart", "npc_pick_bodypart" | **mandatory** | [variable object](#variable-object) | variable where the bodypart will be stored |
 | "whitelist_flag" | optional | string or [variable object](#variable-object) | If used, only bodyparts that has this flag will be allowed |
 | "blacklist_flag" | optional | string or [variable object](#variable-object) | If used, bodyparts that has this flag are excluded |
-| "whitelist_type" | optional | array of strings or [variable objects](#variable-object) | If used, only bodyparts of this type will be allowed |
-| "blacklist_type" | optional | array of strings or [variable objects](#variable-object) | If used, bodyparts of this type are excluded |
+| "whitelist_type" | optional | array of strings or [variable objects](#variable-object) | If used, only bodyparts of one of these types will be allowed |
+| "blacklist_type" | optional | array of strings or [variable objects](#variable-object) | If used, bodyparts of any of these types are excluded |
 | "wounded" | optional | bool | default unset; if true, only bodyparts that have wounds are allowed; if false, such bodyparts are excluded |
 | "pick_random" | optional | bool | default false; if true, or if talker is not an avatar, no selector will appear, and a random bodypart out of the possible will be assigned; if false, the list will appear, allowing to pick the limb manually |
 | "allow_cancel" | optional | bool | allows the menu to be cancelled |
@@ -4966,6 +5322,139 @@ Variables are also supported
   },
 ```
 
+#### `u_pickup_item`, `npc_pickup_item`
+The character takes one item from the ground (or a vehicle's cargo) into its inventory: the very item the other talker is, with its charges, damage, contents and variables. No menu opens, and NPCs can do it too. The other talker is usually the `npc` that `u_map_run_item_eocs` or `u_run_inv_eocs` gives their EoCs, or the item an item's own EoC runs on.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_pickup_item" / "npc_pickup_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_pickup_item`, `"u"` for `npc_pickup_item`. Anything else is a load error |
+| "walk" | optional | boolean | default false; if the item is out of reach, walk next to it first (as [`u_walk_to`](#u_walk_to-npc_walk_to) with `range` 1) and take it on arrival |
+| "give_up_after", "run", "interruptible" | optional | | with `"walk": true` only, as in [`u_walk_to`](#u_walk_to-npc_walk_to). After a save and load the item is found again where it was by its id; if it's gone by then, the pickup ends as `gone` |
+| "allow_theft" | optional | boolean | default true; taking an item that belongs to someone else is theft, with the usual reaction: for the avatar, a witness of the owning faction tells it off and goes after the item, and the item becomes the avatar's. False refuses instead (`owned`) |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run once the item is taken |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run when it isn't |
+
+The pickup costs the moves the avatar's pickup costs. An item the character carries already counts as taken. An item counted by charges (nails, rounds) joins a stack of the same the character carries, as any pickup does; the item talker then points at the whole stack, so a `u_drop_item` after it drops all of it.
+
+**Refusals.** When it can't take the item, nothing happens and `false_eocs` run with the context variable `reason`:
+
+| `reason` | Why |
+| --- | --- |
+| `gone` | the item no longer exists |
+| `held` | someone else carries it |
+| `owned` | it's someone else's and `allow_theft` is false |
+| `liquid` | it's a spilt liquid or a gas |
+| `would_spill` | an open container with liquid in it |
+| `too_heavy` | too heavy: more than the avatar can lift, or more than an NPC can carry |
+| `no_room` | no pocket holds it |
+| `out_of_reach` | not on the character's tile or next to it, on its z level, or sealed in furniture; with `"walk": true` the character walks there instead |
+| a walk's reason | with `"walk": true`, the walk ended without getting there (`unreachable`, `blocked`, `timeout`, `interrupted`, `cancelled`) |
+
+**Talkers.** `true_eocs` and `false_eocs` run with the character as `u` and the item as `npc` (also for `npc_pickup_item`), whose `reason` is `done` when the item was taken. Once the item is taken, the item talker points at it in the inventory, so later effects of the same EoC find it there: `{ "u_pickup_item": "npc" }, { "u_wield_item": "npc" }` picks up and wields. With `"walk": true` the item is taken later, so put what follows into `true_eocs`.
+
+Unlike [`u_pickup_items`](#u_pickup_items-npc_pickup_items), which opens the pickup menu on a tile, this takes one given item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+The NPC goes for a crowbar within 10 tiles, picks it up and wields it, and says so if it can't
+```jsonc
+{
+  "npc_map_run_item_eocs": "random",
+  "search_data": [ { "id": "crowbar" } ],
+  "max_radius": 10,
+  "true_eocs": [
+    {
+      "id": "EOC_FETCH_CROWBAR",
+      "effect": [
+        {
+          "u_pickup_item": "npc",
+          "walk": true,
+          "true_eocs": [ { "id": "EOC_WIELD_CROWBAR", "effect": [ { "u_wield_item": "npc" } ] } ],
+          "false_eocs": [ { "id": "EOC_NO_CROWBAR", "effect": [ { "message": "<u_name> can't get the crowbar: <context_val:reason>." } ] } ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### `u_wield_item`, `npc_wield_item`
+The character wields one item: one it carries, or one on the ground next to it. What it wielded before goes into its pockets, or at its feet when they're full; no menu opens. It costs the moves wielding costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_wield_item" / "npc_wield_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_wield_item`, `"u"` for `npc_wield_item` |
+| "allow_theft" | optional | boolean | default true; as in `u_pickup_item`, for an item on the ground |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wield` (the character can't wield it, or can't let go of what it wields, or the item is inside what it wields; the avatar is told why). An extended bionic weapon is retracted, as unwielding it does; a weapon that can't be let go of at all (cursed, a mutation's) refuses. An item it wields already counts as done. Afterwards the item talker points at the wielded item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+Wield the item this EoC runs on
+```jsonc
+{ "u_wield_item": "npc", "false_eocs": [ "EOC_CANT_WIELD" ] }
+```
+
+#### `u_wear_item`, `npc_wear_item`
+The character puts on one item: one it carries or wields, or one on the ground next to it. It costs the moves putting it on costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_wear_item" / "npc_wear_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_wear_item`, `"u"` for `npc_wear_item` |
+| "allow_theft" | optional | boolean | default true; as in `u_pickup_item`, for an item on the ground |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `held`, `owned`, `out_of_reach` as for `u_pickup_item`, or `cannot_wear` (it isn't something to wear, or doesn't fit with what's worn; the avatar is told why). An item it wears already counts as done. Afterwards the item talker points at the worn item.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+The NPC puts on every piece of clothing it carries
+```jsonc
+{ "npc_run_inv_eocs": "all", "search_data": [ { "category": "clothing" } ], "true_eocs": [ { "id": "EOC_PUT_IT_ON", "effect": [ { "u_wear_item": "npc" } ] } ] }
+```
+
+#### `u_drop_item`, `npc_drop_item`
+The character drops one item it carries, wields or wears, on its own tile (into a vehicle's cargo if there is one). It costs the moves dropping costs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_drop_item" / "npc_drop_item" | **mandatory** | string | the talker that is the item: `"npc"` for `u_drop_item`, `"u"` for `npc_drop_item` |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | as in `u_pickup_item` |
+
+`reason` on refusal: `gone`, `not_carried` (the character doesn't have it), or `cannot_drop` (an integrated item, or one it can't take off). Afterwards the item talker points at the item where it landed.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ (the other talker) | ❌ |
+
+##### Examples
+
+Drop every rock you carry
+```jsonc
+{ "u_run_inv_eocs": "all", "search_data": [ { "id": "rock" } ], "true_eocs": [ { "id": "EOC_DROP_ROCK", "effect": [ { "u_drop_item": "npc" } ] } ] }
+```
+
 #### `u_set_fac_relation`, `npc_set_fac_relation`
 Can be used only in `talk_topic`, as the code relies on the NPC you talk with to obtain info about it's faction.
 
@@ -4989,6 +5478,78 @@ Adds the "share public goods" rule
 Removes the "kill on sight" rule
 ```jsonc
 { "u_set_fac_relation": "kill on sight", "set_value_to": false }
+```
+
+#### `u_set_attitude`, `npc_set_attitude`
+Changes how an NPC treats the avatar, through the dialogue effect for that attitude where there is one, so its messages, events and other effects are the dialogue's. The attitudes are those of [`u_attitude`](#u_attitude-npc_attitude) but `NPCATT_ACTIVITY` and `NPCATT_RECOVER_GOODS`, which stand for a task in hand; one written out that it can't set is a load error.
+
+| Attitude | As |
+| --- | --- |
+| `NPCATT_KILL` | the effect `hostile`: it turns hostile, with `npc_becomes_hostile` |
+| `NPCATT_FLEE`, `NPCATT_FLEE_TEMP` | `flee`: it runs from the avatar for a while (`NPCATT_FLEE_TEMP`) |
+| `NPCATT_MUG` | `start_mugging` |
+| `NPCATT_WAIT_FOR_LEAVE` | `player_leaving`: it waits, with patience from its aggression, before it attacks |
+| `NPCATT_FOLLOW` | `follow_only`: it follows the avatar without joining its faction, and drops its mission, post and walk. The effect `follow` recruits |
+| others | the attitude, set as it is |
+
+On one of the avatar's followers, a hostile or fleeing attitude (`NPCATT_KILL`, `NPCATT_MUG`, `NPCATT_WAIT_FOR_LEAVE`, `NPCATT_FLEE`, `NPCATT_FLEE_TEMP`) makes it mutiny first, as an angered follower does: it leaves the follower list and the avatar's faction for its faction's [`mutiny_faction`](FACTIONS.md) (`npc_dismissed`, `npc_mutinies`), then takes the attitude. An activity the avatar gave the NPC ends first, as `assign_guard` ends it: its mission and attitude go back to what they were before it.
+
+Every change triggers [`npc_attitude_changed`](#npc-attitude-events) with the cause `effect`. A talker that isn't an NPC, or no talker, is left as it is.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_attitude" / "npc_set_attitude" | **mandatory** | string or [variable object](#variable-object) | the attitude's id |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+```jsonc
+{ "npc_set_attitude": "NPCATT_FLEE_TEMP" }
+```
+
+#### `u_set_mission`, `npc_set_mission`
+Gives an NPC a standing mission, through the dialogue effect for it where there is one. The missions are those of [`u_mission`](#u_mission-npc_mission) but `TRAVELLING` and `ACTIVITY`, which need more than a mission (`u_set_goal` and `u_assign_activity` give them); one written out that it can't set is a load error.
+
+| Mission | As |
+| --- | --- |
+| `GUARD`, `GUARD_ALLY` | the effect `assign_guard`: a guard where it stands, `GUARD_ALLY` for one of the avatar's followers and `GUARD` for anyone else, whichever is asked |
+| `NULL` | `stop_guard` for a guard: a follower follows the avatar again, anyone else stands down (its attitude becomes `NPCATT_NULL`). Another NPC just drops its mission |
+| `CAMP_RESIDENT` | `return_to_camp_duties`, for an NPC with an assigned camp; one without is left as it is |
+| `GUARD_PATROL`, `SHOPKEEP`, `SHELTER` | the mission, and a post where it stands, as `assign_guard` gives an NPC that isn't a follower |
+
+An activity the avatar gave the NPC ends first, as `assign_guard` ends it, so the NPC doesn't go back to the activity's mission later. A talker that isn't an NPC, or no talker, is left as it is.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_mission" / "npc_set_mission" | **mandatory** | string or [variable object](#variable-object) | the mission's id |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+```jsonc
+{ "u_set_mission": "GUARD" }
+```
+
+#### `set_faction_relation`
+Sets or clears the first faction's relation toward the second, as `relations` in faction JSON do; see [`faction_has_relation`](#faction_has_relation) for the relations. Unlike `u_set_fac_relation` it names both factions, so it needs no talker. A relation written out that isn't one is a load error; a faction that doesn't exist is an error when it runs.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_faction_relation" | **mandatory** | array of three strings or [variable objects](#variable-object) | `[ faction, other faction, relation ]` |
+| "set_value_to" | optional | boolean | default true; whether to set, or clear, the relation |
+
+##### Examples
+The Free Merchants make peace with the raiders
+```jsonc
+{ "set_faction_relation": [ "free_merchants", "hells_raiders", "kill on sight" ], "set_value_to": false }
 ```
 
 #### `u_add_faction_trust`
@@ -5158,6 +5719,12 @@ NPC or character will start an activity
 | --- | --- | --- | --- |
 | "u_assign_activity" / "npc_assign_activity" | **mandatory** | string or [variable object](#variable-object), | id of activity to start |
 | "duration" | optional | int, duration or [variable object](#variable-object) | how long the activity would last; see below |
+| "target_item" | optional | `"npc"` for `u_assign_activity`, `"u"` for `npc_assign_activity` | the item to work on: the other talker, which must be an item (as in the EOCs of `u_run_inv_eocs`, `u_map_run_item_eocs` or an item's own EOCs). See [activities with a target](#activities-with-a-target) |
+| "target_loc" | optional | [variable object](#variable-object) | a location: where to put a new craft (`ACT_CRAFT`) |
+| "recipe" | optional | string or [variable object](#variable-object) | the recipe to craft (`ACT_CRAFT`) |
+| "butcher_type" | optional | string or [variable object](#variable-object) | for `ACT_BUTCHER`: `"quick"` (the default), `"full"`, `"field_dress"`, `"skin"`, `"quarter"`, `"dismember"`, `"dissect"` or `"bleed"` |
+| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run once the activity has started (when it finishes, the `character_finished_activity` event fires) |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it can't start; the context value `reason` says why, as a sentence (for example `The book is out of reach.`) |
 
 Activities defined only in JSON (like `ACT_GENERIC_EOC` or a mod's own activity) last `duration`.
 
@@ -5172,10 +5739,44 @@ but a duration can be started too:
 | `ACT_MEDITATE`, `ACT_TARGET_PRACTICE`, `ACT_WAIT_FOLLOWERS`, `ACT_WAIT_STAMINA`, `ACT_WAIT_WEATHER` | not allowed: they end on their own |
 | Zone jobs: `ACT_MOVE_LOOT`, `ACT_UNLOAD_LOOT`, `ACT_MULTIPLE_BUTCHER`, `ACT_MULTIPLE_CHOP_PLANKS`, `ACT_MULTIPLE_CHOP_TREES`, `ACT_MULTIPLE_CONSTRUCTION`, `ACT_MULTIPLE_CRAFT`, `ACT_MULTIPLE_DIS`, `ACT_MULTIPLE_FARM`, `ACT_MULTIPLE_FISH`, `ACT_MULTIPLE_MINE`, `ACT_MULTIPLE_MOP`, `ACT_MULTIPLE_READ`, `ACT_MULTIPLE_STUDY`, `ACT_VEHICLE_DECONSTRUCTION`, `ACT_VEHICLE_REPAIR` | not allowed: the job runs until its zones have no more work |
 
-Any other activity with an actor (for example `ACT_READ`, which needs a book) can't be started
-from an EOC. Naming one, or giving `duration` to an activity that takes none, is a load error.
+Some activities need a target; see below. Any other activity with an actor can't be started
+from an EOC. Naming one, giving `duration` to an activity that takes none, or giving a target
+field to an activity that doesn't take it (the error names the activity) is a load error.
 An activity id that comes from a variable is checked when the effect runs: an unknown id, or one
 that can't be started, is reported and nothing starts.
+
+###### Activities with a target
+
+These activities work on something, given by the fields above. They take no `duration`: they
+last as long as the work does. Nothing asks the player anything, for the avatar or for an NPC.
+When the activity can't start, `false_eocs` run and the context value `reason` says why. The item
+has to be within reach: carried by the talker, or on (or in a container or a vehicle on) the
+talker's tile or a tile next to it, on the same level.
+
+Usually a refused activity leaves everything as it was. A craft or a disassembly, though, uses
+up its components or its item as it starts; if it then stops at once (rare: the craft had to be
+dropped, for example), the components stay used up and the craft or disassembly in progress is
+left where it is, as the crafting menu leaves it, and `false_eocs` run.
+
+When starting uses up the item that was the other talker (a disassembly takes it apart, a craft
+uses it as a component), `npc` in `true_eocs` and `false_eocs` is the craft or disassembly in
+progress, or there is no `npc` when there is none. Later effects of the EOC that ran
+`u_assign_activity` still have the used-up item as `npc`: it has no name or values, and changing
+it does nothing.
+
+| Activity | Fields | What happens, and what is refused |
+| --- | --- | --- |
+| `ACT_READ` | `target_item`: the book | Reads it once, as the reading menu's first choice; the avatar's first read skims a book it hasn't identified. Refused: not a book, a spellbook (it is studied by using it), the talker can't read it (too dark, low morale, illiterate, not skilled enough...), a martial arts manual for an NPC |
+| `ACT_BUTCHER` | `target_item`: the corpse; `butcher_type` | Butchers a corpse lying on the ground, as the butchery menu does. Refused: not on the ground, no suitable tool, missing requirements, too dark, not in the mood, the corpse's state (already bled, field dressed, skinned or quartered; no organs, skin or blood), and for the avatar, a corpse whose butchery would ask for confirmation (human remains) |
+| `ACT_BUTCHER_FULL`, `ACT_BLEED`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT` | `target_item`: the corpse | As `ACT_BUTCHER` with that kind of butchery; they take no `butcher_type` |
+| `ACT_DISASSEMBLE` | `target_item` | Takes the item apart; a stack counted by charges is taken apart whole. Refused: it can't be disassembled (no recipe, missing tools), it's a favorite, it's worn, it belongs to someone else |
+| `ACT_CRAFT` | `recipe`, and optionally `target_loc`; or `target_item` | With `recipe`, starts a new craft of one: in hand, or at `target_loc` (the talker's tile or a tile next to it). As with the crafting menu, a workbench next to the talker is used if there is one. Components and tools are chosen as an NPC chooses them; rotten components may be used, favorited ones aren't. With `target_item`, goes on with that craft in progress, where it is, using up any components it is missing without asking (as when the player agrees to). Refused: the talker doesn't know the recipe (`u_learn_recipe` teaches it), lacks its proficiencies or requirements, the components or tools aren't at hand (for a craft in progress, the components it is missing), too dark, not in the mood |
+| `ACT_WEAR` | `target_item` | Puts the item on. Refused: already worn, it can't be worn (the reason says why), it belongs to someone else |
+| `ACT_UNLOAD` | `target_item` | Empties a container or a magazine over time. A gun or a tool gives up its magazine or ammo at once, with no activity (`true_eocs` still run). Refused: nothing in it, the contents are liquid (they would have to be poured somewhere), or there are several things to unload (gunmods, several magazines), which would need a choice |
+| `ACT_RELOAD` | `target_item` | Reloads it with the quickest ammo or magazine at hand (in a holster or an ammo pouch, the item it holds). The item has to be carried, unless it is used where it stands. Refused: it can't be reloaded now (full, or nothing fits), no ammo at hand |
+
+For every activity but a new craft, the item is the other talker, so the effect usually runs in
+an EOC that has the item as `npc`, with the character doing the work as `u`.
 
 `ACT_TARGET_PRACTICE` asks the player for a gun, a round count and a target, so only the avatar
 can be given it. Giving it to an NPC (as `u` or as `npc`) is reported when the effect runs, and
@@ -5204,6 +5805,41 @@ The NPC you are talking to starts working on your farm zones
 { "npc_assign_activity": "ACT_MULTIPLE_FARM" }
 ```
 
+The talker reads the first book it carries, and says why when it can't
+```jsonc
+{
+  "u_run_inv_eocs": "random",
+  "search_data": [ { "category": "books" } ],
+  "true_eocs": [
+    {
+      "id": "EOC_READ_IT",
+      "effect": [
+        {
+          "u_assign_activity": "ACT_READ",
+          "target_item": "npc",
+          "false_eocs": [ { "id": "EOC_CANT_READ", "effect": [ { "u_message": "<context_val:reason>" } ] } ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+The talker butchers a corpse lying next to it, the full way
+```jsonc
+{
+  "u_map_run_item_eocs": "random",
+  "search_data": [ { "flags": [ "CORPSE" ] } ],
+  "max_radius": 1,
+  "true_eocs": [ { "id": "EOC_BUTCHER_IT", "effect": [ { "u_assign_activity": "ACT_BUTCHER", "target_item": "npc", "butcher_type": "full" } ] } ]
+}
+```
+
+The talker crafts a makeshift crowbar at the workbench whose position is in the context value `bench`
+```jsonc
+{ "u_assign_activity": "ACT_CRAFT", "recipe": "makeshift_crowbar", "target_loc": { "context_val": "bench" } }
+```
+
 #### `u_cancel_activity`, `npc_cancel_activity`
 
 NPC or character will stop their current activity
@@ -5219,6 +5855,61 @@ NPC or character will stop their current activity
 You cancel activity `ACT_GAME` for 45 minutes
 ```jsonc
 { "u_cancel_activity" }
+```
+
+#### `u_examine`, `npc_examine`
+
+The character operates a tile as if it examined it (the examine key). The tile must be the
+character's own tile or one next to it, on the same level.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_examine" / "npc_examine" | **mandatory** | [variable object](#variable-object), or `"npc"` for `u_examine` and `"u"` for `npc_examine` | the location to examine, or the other talker's tile |
+| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the tile was examined (see below) |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it wasn't, or nothing came of it; the context value `reason` says why, as a sentence |
+
+What happens:
+
+- A door, gate, hatch or anything else with an `open` or `close` transform opens if it is closed
+  and closes if it is open, for the avatar and NPCs alike. Closing takes the close action's
+  activity, which nudges small items aside and fails on a creature in the way. A door that only
+  opens from the inside fails from outside; a vehicle's door isn't toggled this way.
+- For the avatar, anything else runs the normal examine: a vehicle, a construction, a trap, a
+  computer, then the furniture (or the terrain when there is no furniture), with its menus and
+  the warning about a faction's property. Items there aren't picked up, and a creature standing
+  there is ignored. `false_eocs` run when there is nothing to examine, when the avatar is
+  mounted, or when the player leaves a faction's property alone; `true_eocs` run otherwise, also
+  when the player cancels a menu the examine action opened.
+- An NPC never gets a menu. It may use the furniture (or else the terrain) when its examine
+  action is an EOC (`"examine_action": { "type": "effect_on_condition" }`; the EOC runs with the
+  NPC as `u`), or one of these built-in actions, which need no menu for an NPC:
+
+  | Examine action | What the NPC does |
+  | --- | --- |
+  | `controls_gate` | uses the gate control, without the confirmation the avatar gets |
+  | `harvest_furn`, `harvest_furn_nectar`, `harvest_ter`, `harvest_ter_nectar` | harvests the plant |
+  | `harvest_plant_ex`, `clear_overgrown` | harvests a crop, or clears an overgrown one |
+
+  A built-in action counts as done when it started an activity or changed the tile; otherwise
+  (out of season, nothing to harvest, a control with no gate) `false_eocs` run. An EOC examine
+  action always counts as done. Anything else is refused, with the reason: other built-in actions
+  open menus or ask questions, and an NPC doesn't operate vehicles this way.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC opens the shed door whose position is in the context value `shed_door`. Examining an
+open door would close it, so the effect only runs while the door is closed
+```jsonc
+{
+  "if": { "map_terrain_id": "t_door_c", "loc": { "context_val": "shed_door" } },
+  "then": { "npc_examine": { "context_val": "shed_door" }, "true_eocs": [ "EOC_OPENED" ], "false_eocs": [ "EOC_COULD_NOT_OPEN" ] }
+}
 ```
 
 
@@ -5254,6 +5945,95 @@ You teleport to `grass_place` with message `Yay!`; as `force` boolean is `true`,
   "fail_message": "Something is very wrong!",
   "force": true
 }
+```
+
+#### `u_walk_to`, `npc_walk_to`
+The character walks to a location over the following turns, the way it walks anywhere: NPCs open doors, push past friendly NPCs and avoid traps and fires; the avatar uses auto-move. When it gets there `true_eocs` run; when it gives up, `false_eocs` run. The walk is saved with the character.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_walk_to" / "npc_walk_to" | **mandatory** | [variable object](#variable-object) | the location to walk to, like one set by `u_location_variable` |
+| "range" | optional | int or [variable object](#variable-object) | default 0; the walk ends this close to the location: within this many tiles (square distance), on the location's z level. 0 is the tile itself, which must be one to stand on (a closed door will do), or, while another creature stands on it, a tile next to it. Use 1 to walk up to furniture or an item on a counter |
+| "give_up_after" | optional | int, duration or [variable object](#variable-object) | how long to keep trying (an int is turns). Without it the walk gives up as soon as there's no way there, or after 10 turns without getting anywhere (someone blocking a corridor); with it, an NPC's walk waits for a way to open (looking again every few turns) and gives up only when the time is up. The avatar can't wait: see below. A value of 0 or less from a variable counts as not given |
+| "run" | optional | boolean | default false; run while the stamina lasts, then walk. Running stops when the walk ends |
+| "interruptible" | optional | boolean | default true; see below |
+| "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run on arrival |
+| "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | run when the walk ends without arriving |
+
+**When the EOCs run.** `true_eocs` and `false_eocs` run later, when the walk ends, with the walker as `u` and no `npc` (like a queued EoC), even when the walk ends at once. They get the context variables of the EoC that started the walk, and `reason`:
+
+| `reason` | When |
+| --- | --- |
+| `arrived` | the walker is there (`true_eocs`) |
+| `unreachable` | there is no way there: walls, a locked door, a spot out of the loaded map, or a walker that can't move. Without `give_up_after` this is found when the walk starts, so `false_eocs` run at once |
+| `blocked` | 10 turns went by without the walker getting anywhere (without `give_up_after`) |
+| `timeout` | `give_up_after` passed |
+| `interrupted` | an NPC's walk with `"interruptible": false` was set aside; the avatar's auto-move stopped |
+| `cancelled` | the player told the follower "Follow me", [`u_cancel_walk`](#u_cancel_walk-npc_cancel_walk) ended it, or the walker travelled to another dimension |
+
+**Interruptions (NPCs).** A walk is an order: it comes after combat, after investigating a noise and after urgent needs (thirst, hunger, sleep, temperature), and before following the player, guard duty and camp work. When a fight, a flight, a noise or such a need takes the NPC's turn, the walk waits and goes on once that's done. With `"interruptible": false` it doesn't wait: it ends with `false_eocs` and `reason` `interrupted` the first time the NPC spends its turn on something else.
+
+**The avatar.** For the avatar the walk is auto-move. It needs a route to start: with no way there it ends at once as `unreachable`, even with `give_up_after`, which for the avatar only limits the time. It stops the way auto-move stops (a creature in the way, safe mode, the player stopping it) and then ends with `reason` `interrupted`; it doesn't start again on its own. `interruptible` doesn't apply.
+
+**On the way.** The walker opens doors, and a follower shuts them behind it if its rules say so; that's part of the walk, not an interruption. It doesn't bash through what's in its way: a way that closes after it set off (a door locked, a wall built) makes it look for another, as if it had just started.
+
+**One walk at a time.** A new walk replaces the one in progress, whose EoCs don't run. Sending the character again to where it's already going doesn't start over: the time limit and progress carry on, and the new `range`, options and EoCs replace the old ones. So an EoC that runs every turn can call `u_walk_to` each time. A follower's "Move there!" order is the same kind of walk, and replaces it or is replaced by it.
+
+Use `u_is_walking_to` to check for a walk in progress and `u_can_reach` to check for a way there before sending anyone.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC you talk to walks to the shed door, says so when it's there, and tells you if it can't get there in five minutes
+```jsonc
+{
+  "npc_walk_to": { "global_val": "shed_door" },
+  "range": 1,
+  "give_up_after": "5 minutes",
+  "true_eocs": [ { "id": "EOC_AT_THE_SHED", "effect": [ { "u_message": "<u_name> reaches the shed.", "type": "info" } ] } ],
+  "false_eocs": [
+    {
+      "id": "EOC_NOT_AT_THE_SHED",
+      "effect": [ { "u_message": "<u_name> can't get to the shed: <context_val:reason>.", "type": "bad" } ]
+    }
+  ]
+}
+```
+
+The NPC runs to the spot stored in its `camp_fire` variable; if anything else takes its turn on the way (a fight, a need), the walk ends instead of waiting
+```jsonc
+{ "npc_walk_to": { "npc_val": "camp_fire" }, "run": true, "interruptible": false, "false_eocs": [ "EOC_RAN_INTO_TROUBLE" ] }
+```
+
+#### `u_cancel_walk`, `npc_cancel_walk`
+Ends the walk the character is on ([`u_walk_to`](#u_walk_to-npc_walk_to), `u_pickup_item` with `"walk": true`, or a follower's "Move there!" order). Its `false_eocs` run with `reason` `cancelled`, unless `silent` is true. A character on no walk is left alone.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_cancel_walk" / "npc_cancel_walk" | **mandatory** | simple string, or an object | the object takes the fields below |
+| "silent" | optional | boolean | default false; true ends the walk without running its EoCs |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+The NPC stops where it is going, and its `false_eocs` learn why
+```jsonc
+"npc_cancel_walk"
+```
+
+You stop walking, and nothing else happens
+```jsonc
+{ "u_cancel_walk": { "silent": true } }
 ```
 
 #### `u_travel_to_dimension`
@@ -5770,7 +6550,7 @@ You pick `first` and `center` locations and store it, then mirror them to create
 
 #### `u_die`, `npc_die`
 Alpha or beta talker will instantly die.
-If the target is an item, it will be deleted.
+If the target is an item, it will be deleted. Later effects of the same EOC (and later EOCs of the same `use_action`) still have the deleted item as that talker, so `npc_is_item` is still true, but it has no name, values or place: conditions such as `npc_has_flag`, `npc_has_ammo`, `npc_is_rotten`, `npc_at_om_location`, `npc_near_om_location` and `npc_at_safe_space` are false, changing it does nothing, and math that needs the item or its position (`damage_level()`, `gun_damage()`, `melee_damage()`, `vitamin()`, `val('pos_x')`, `val('pos_y')`, `val('pos_z')`) reports an error.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -6243,6 +7023,8 @@ Store `vitrified_farm_ground`. When `vitrified_farm_escape_key` is called, the l
 
 #### `alter_timed_events`
 All effects, that has this event as a `key`, would be triggered, if they did not yet.  Usually used with `mapgen_update` or `revert_location` with `"time_in_future": "infinite"`
+
+A delayed change to the map (`mapgen_update`, `revert_location`, `u_transform_radius` with `time_in_future`) happens in the dimension it was made in.  If the player is in another dimension when it is due, it waits until they are back; one for a dimension the player never returns to stays queued.  If its dimension no longer exists when the game is loaded (the mod that added it was removed), the change is dropped.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |

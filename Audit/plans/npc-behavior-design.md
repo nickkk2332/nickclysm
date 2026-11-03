@@ -1,6 +1,6 @@
 # Design: NPC behavior tree goals from JSON (NPC-J03)
 
-**Status:** decided with the owner on 2026-11-02. It will be built after the NPC errand and EOC UI batch in the [modding queue](modding-queue.md), whose effects (`u_walk_to`, item pickup, targeted activities, `u_examine`) are what most JSON goals will use.
+**Status:** decided with the owner on 2026-11-02 and built on 2026-11-03, after the NPC errand and EOC UI batch in the [modding queue](modding-queue.md), whose effects (`u_walk_to`, item pickup, targeted activities, `u_examine`) are what most JSON goals use. The modder documentation is `doc/JSON/NPC_BEHAVIOR.md`. Where the build settled something this design left open, the doc is the reference: for example, a goal with neither `until` nor `timeout` lasts while its node applies, and `npc_goal_changed` is not kept in statistics.
 
 ## How NPCs decide today
 

@@ -59,6 +59,7 @@ class faction;
 class map;
 class mission;
 class monster;
+class npc_goal_runtime;
 class talker;
 class vehicle;
 
@@ -69,6 +70,7 @@ enum class relationship : int;
 struct Target_attributes;
 struct const_dialogue;
 struct faction_price_rule;
+struct npc_goal_state;
 
 constexpr int NPC_PERSONALITY_MIN = -10;
 constexpr int NPC_PERSONALITY_MAX = 10;
@@ -876,6 +878,8 @@ class npc_template;
 
 class npc : public Character
 {
+        // JSON goals (src/npc_json_goal.h) read and steer the committed goal
+        friend class npc_goal_runtime;
     public:
 
         npc();
@@ -1369,6 +1373,8 @@ class npc : public Character
                       std::set<tripoint_bub_ms> *nomove = nullptr );
         // Next in <path>
         void move_to_next();
+        // one step of the walk it's on (Character::walk): the goal goto_ordered_position
+        void step_walk();
         // Maneuver so we won't shoot u
         void avoid_friendly_fire();
         void escape_explosion();
@@ -1623,6 +1629,8 @@ class npc : public Character
         const npc_intention &get_intention() const {
             return ai_cache.intention;
         }
+        // the JSON goal the NPC is on, saved with it (src/npc_goal_state.h)
+        pimpl<npc_goal_state> json_goal;
         const std::optional<npc_suspended_task> &get_suspended_task() const {
             return suspended_task;
         }
@@ -1781,8 +1789,6 @@ class npc : public Character
 
         // Where we last saw the player
         std::optional<tripoint_abs_ms> last_player_seen_pos;
-        // Player orders a friendly NPC to move to this position
-        std::optional<tripoint_abs_ms> goto_to_this_pos;
         int last_seen_player_turn = 0; // Timeout to forgetting
 
         //Safe reference to an item at a specific location in case it gets deleted before pickup

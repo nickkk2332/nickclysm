@@ -142,6 +142,11 @@ enum class event_type : int {
     u_var_changed,
     vehicle_moves,
     character_butchered_corpse,
+    npc_goal_changed,
+    npc_attitude_changed,
+    npc_recruited,
+    npc_dismissed,
+    npc_mutinies,
     num_event_types // last
 };
 
@@ -209,7 +214,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 118,
+static_assert( static_cast<int>( event_type::num_event_types ) == 123,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -239,9 +244,12 @@ struct event_spec<event_type::angers_amigara_horrors> : event_spec_empty {};
 
 template<>
 struct event_spec<event_type::avatar_enters_omt> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "pos", cata_variant_type::tripoint },
             { "oter_id", cata_variant_type::oter_id },
+            // The special the OMT belongs to, empty if none. Recorded when the event is sent, so
+            // statistics never look it up in the overmap. Events saved before it was added lack it.
+            { "overmap_special", cata_variant_type::overmap_special_id },
         }
     };
 };
@@ -933,11 +941,68 @@ struct event_spec<event_type::loses_mutation> {
     };
 };
 
+// cause: why, as npc_attitude_changed gives it (npc_attitude_cause.h)
 template<>
 struct event_spec<event_type::npc_becomes_hostile> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "npc_name", cata_variant_type::string },
+            { "cause", cata_variant_type::string },
+        }
+    };
+};
+
+// attitudes as their ids ("NPCATT_KILL"); cause: why, "" when unknown (npc_attitude_cause.h)
+template<>
+struct event_spec<event_type::npc_attitude_changed> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "npc_name", cata_variant_type::string },
+            { "old_attitude", cata_variant_type::string },
+            { "new_attitude", cata_variant_type::string },
+            { "cause", cata_variant_type::string },
+        }
+    };
+};
+
+// joined the avatar's follower list
+template<>
+struct event_spec<event_type::npc_recruited> {
     static constexpr std::array<event_field, 2> fields = {{
             { "npc", cata_variant_type::character_id },
             { "npc_name", cata_variant_type::string },
+        }
+    };
+};
+
+// left the avatar's follower list, alive
+template<>
+struct event_spec<event_type::npc_dismissed> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "npc_name", cata_variant_type::string },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::npc_mutinies> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "npc_name", cata_variant_type::string },
+            { "old_faction", cata_variant_type::faction_id },
+            { "new_faction", cata_variant_type::faction_id },
+        }
+    };
+};
+
+// the goal an NPC is committed to changed; "idle" for none (doc/JSON/NPC_BEHAVIOR.md)
+template<>
+struct event_spec<event_type::npc_goal_changed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "old_goal", cata_variant_type::string },
+            { "new_goal", cata_variant_type::string },
         }
     };
 };

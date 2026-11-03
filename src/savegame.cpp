@@ -21,6 +21,7 @@
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "explosion.h"
 #include "faction.h"
 #include "hash_utils.h"
 #include "horde_entity.h"
@@ -1687,6 +1688,11 @@ void game::unserialize_dimension_data( const JsonValue &jv )
             overmap_buffer.deserialize_placed_unique_specials( jsin );
         } else if( name == "power_networks" ) {
             power_networks().deserialize( jsin );
+        } else if( name == "next_item_uid" ) {
+            // Dimension travel saves this with the maps, but not the master save
+            int64_t saved = 0;
+            jsin.read( saved );
+            next_item_uid = std::max( next_item_uid, saved );
         }
     }
 }
@@ -1888,6 +1894,20 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
         get_timed_events().add( static_cast<timed_event_type>( type ), when, faction_id, map_square,
                                 strength,
                                 string_id, std::move( revert ), key );
+        timed_event &added = get_timed_events().events.back();
+        // Saves before this was written lose the blast: the explosion stays a dud
+        if( jo.has_object( "explosion" ) ) {
+            jo.read( "explosion", added.expl_data );
+        }
+        // Not written for the main dimension, nor by older builds
+        added.dimension = dimension_world_default;
+        jo.read( "dimension", added.dimension );
+        // Its dimension is gone (with its mod, say): it could never happen
+        if( !added.dimension.is_valid() ) {
+            DebugLog( D_WARNING, D_GAME ) << "Dropping a timed event of type " << type
+                                          << " queued in unknown dimension '" << added.dimension.str() << "'";
+            get_timed_events().events.pop_back();
+        }
     }
 }
 
@@ -1936,6 +1956,11 @@ void game::serialize_dimension_data( std::ostream &fout )
         json.member( "power_networks" );
         power_networks().serialize( json );
 
+        // Dimension travel saves the maps and this, not the master save that holds the uid
+        // counter; without this a crash after travel would leave the counter behind the uids of
+        // items saved in the maps
+        json.member( "next_item_uid", next_item_uid );
+
         json.end_object();
     } catch( const JsonError &e ) {
         debugmsg( "error saving to %s: %s", SAVE_DIMENSION_DATA, e.c_str() );
@@ -1979,6 +2004,27 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
         jsout.member( "type", elem.type );
         jsout.member( "when", elem.when );
         jsout.member( "key", elem.key );
+        if( elem.dimension != dimension_world_default ) {
+            jsout.member( "dimension", elem.dimension );
+        }
+        if( elem.type == timed_event_type::EXPLOSION ) {
+            // read back by explosion_data::deserialize
+            const explosion_data &ex = elem.expl_data;
+            jsout.member( "explosion" );
+            jsout.start_object();
+            jsout.member( "power", ex.power );
+            jsout.member( "distance_factor", ex.distance_factor );
+            jsout.member( "max_noise", ex.max_noise );
+            jsout.member( "fire", ex.fire );
+            jsout.member( "shrapnel" );
+            jsout.start_object();
+            jsout.member( "casing_mass", ex.shrapnel.casing_mass );
+            jsout.member( "fragment_mass", ex.shrapnel.fragment_mass );
+            jsout.member( "recovery", ex.shrapnel.recovery );
+            jsout.member( "drop", ex.shrapnel.drop );
+            jsout.end_object();
+            jsout.end_object();
+        }
         if( elem.revert.is_uniform() ) {
             jsout.member( "revert", elem.revert.get_ter( point_sm_ms::zero ) );
         } else {

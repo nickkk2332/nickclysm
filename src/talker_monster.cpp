@@ -16,6 +16,7 @@
 #include "monster.h"
 #include "monstergenerator.h"
 #include "mtype.h"
+#include "teleport.h"
 #include "units.h"
 
 std::string talker_monster_const::disp_name() const
@@ -226,6 +227,14 @@ bool talker_monster_const::is_swimming() const
 void talker_monster::set_friendly( int new_val )
 {
     me_mon->friendly = new_val;
+}
+
+// val('pos_x') and the like: moves as u_teleport does, and falls at once over open air
+void talker_monster::set_pos( tripoint_abs_ms new_pos )
+{
+    if( teleport::teleport_to_point( *me_mon, get_map().get_bub( new_pos ), true, false, false ) ) {
+        me_mon->gravity_check();
+    }
 }
 
 bool talker_monster::get_is_alive() const

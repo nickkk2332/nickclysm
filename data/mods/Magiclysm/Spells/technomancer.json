@@ -763,7 +763,7 @@
   {
     "type": "effect_on_condition",
     "id": "EOC_CONJURE_UPS_EFFECT_AMMEND_ITEM_COUNT",
-    "//": "Reduce item count if the total chargeable power / uncharged item count is less than 1.",
+    "//": "With less than 1 power per uncharged item, count only as many items as there is whole power for.",
     "condition": {
       "and": [
         { "math": [ "u_technomancer_conjure_ups_powering", ">=", "1" ] },
@@ -771,10 +771,7 @@
         { "math": [ "u_technomancer_conjure_ups_powering / u_technomancer_conjure_ups_item_count", "<", "1" ] }
       ]
     },
-    "effect": [
-      { "math": [ "u_technomancer_conjure_ups_item_count--" ] },
-      { "run_eocs": "EOC_CONJURE_UPS_EFFECT_AMMEND_ITEM_COUNT" }
-    ]
+    "effect": [ { "math": [ "u_technomancer_conjure_ups_item_count = floor( u_technomancer_conjure_ups_powering )" ] } ]
   },
   {
     "type": "effect_on_condition",

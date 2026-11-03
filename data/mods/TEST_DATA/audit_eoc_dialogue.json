@@ -1,0 +1,137 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B06_NO_CONDITION",
+    "//": "EOC-B06: an EOC without a condition, for test_eoc.",
+    "effect": [ { "math": [ "audit_b06_ran = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B06_FALSE_CONDITION",
+    "//": "EOC-B06: an EOC whose condition is false, for test_eoc.",
+    "condition": { "math": [ "audit_b06_never == 1" ] },
+    "effect": [ { "math": [ "audit_b06_ran = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B07_REQUEUE",
+    "//": "EOC-B07: counts its runs and queues itself again with no delay, up to 50 runs.",
+    "condition": { "math": [ "audit_b07_runs < 50" ] },
+    "effect": [ { "math": [ "audit_b07_runs++" ] }, { "run_eocs": "EOC_AUDIT_B07_REQUEUE", "time_in_future": 0 } ]
+  },
+  {
+    "type": "overmap_special",
+    "id": "test_audit_b08_shelter",
+    "//": "EOC-B08: one evac shelter tile, placed by hand; its layout parameter is set by the test.",
+    "locations": [ "land" ],
+    "occurrences": [ 0, 0 ],
+    "flags": [ "SHOULD_NOT_SPAWN" ],
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "shelter_north" } ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_B10",
+    "//": "EOC-B10: responses that fail with and without a failure topic, shown though unavailable, plain, and repeated per item.",
+    "dynamic_line": "Audit B10.",
+    "replace_built_in_responses": true,
+    "responses": [
+      {
+        "text": "Fails with a topic.",
+        "condition": { "math": [ "audit_b10_never == 1" ] },
+        "failure_explanation": "Not now",
+        "failure_topic": "TALK_AUDIT_B10_FAILED",
+        "topic": "TALK_DONE"
+      },
+      {
+        "text": "Fails with an explanation.",
+        "condition": { "math": [ "audit_b10_never == 1" ] },
+        "failure_explanation": "Never",
+        "topic": "TALK_DONE"
+      },
+      {
+        "text": "Shown though unavailable.",
+        "condition": { "math": [ "audit_b10_never == 1" ] },
+        "show_always": true,
+        "topic": "TALK_DONE"
+      },
+      { "text": "Available.", "topic": "TALK_DONE" }
+    ],
+    "repeat_responses": [
+      {
+        "for_item": [ "test_rock" ],
+        "response": { "text": "Repeated with a condition.", "condition": { "math": [ "audit_b10_never == 0" ] }, "topic": "TALK_DONE" }
+      },
+      { "for_item": [ "test_rock" ], "response": { "text": "Repeated without a condition.", "topic": "TALK_DONE" } }
+    ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_B10_FAILED",
+    "//": "EOC-B10: where the failed response with a failure topic leads.",
+    "dynamic_line": "Audit B10 failed.",
+    "responses": [ { "text": "Done.", "topic": "TALK_DONE" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B13_MARK",
+    "//": "EOC-B13: records that a false_eocs list ran.",
+    "effect": [ { "math": [ "audit_b13_false_eocs++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_RECURSE",
+    "//": "EOC-B14: runs itself through run_eocs forever, counting how deep it got.",
+    "effect": [ { "math": [ "audit_b14_depth++" ] }, { "run_eocs": "EOC_AUDIT_B14_RECURSE" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_LOOP_BODY_WITH_A_RATHER_LONG_IDENTIFIER",
+    "//": "EOC-B14: the body of a 300-iteration loop; its long id filled the old callstack text quickly.",
+    "effect": [ { "math": [ "audit_b14_iterations++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_LOOP",
+    "//": "EOC-B14: a plain loop, not recursion.",
+    "effect": [ { "run_eocs": "EOC_AUDIT_B14_LOOP_BODY_WITH_A_RATHER_LONG_IDENTIFIER", "iterations": 300 } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_TAKE_CONTROL",
+    "//": "EOC-B15: queued on the avatar; takes control of the NPC whose character id is in audit_b15_npc.",
+    "effect": [ { "run_eocs": "EOC_AUDIT_B15_TAKE_CONTROL_INNER", "beta_talker": { "global_val": "audit_b15_npc" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_TAKE_CONTROL_INNER",
+    "//": "EOC-B15: the take_control itself.",
+    "effect": [ "take_control" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_RECURRING",
+    "//": "EOC-B15: a recurring EOC the test puts on the avatar's own queue, due in the same pass as the takeover.  Global, so new NPCs don't get it, and idle outside the test.",
+    "recurrence": "1 h",
+    "global": true,
+    "condition": { "math": [ "audit_b15_active == 1" ] },
+    "effect": [ { "math": [ "audit_b15_recurring++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_LATER",
+    "//": "EOC-B15: due in the same pass, after the takeover; it belongs to the old body.",
+    "effect": [ { "math": [ "audit_b15_later++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_OUTER",
+    "//": "EOC-B14: starts an endless chain, then runs another EOC once the chain is stopped.",
+    "effect": [ { "run_eocs": "EOC_AUDIT_B14_RECURSE" }, { "run_eocs": "EOC_AUDIT_B14_AFTER" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_AFTER",
+    "//": "EOC-B14: counts that it ran.",
+    "effect": [ { "math": [ "audit_b14_after++" ] } ]
+  }
+]

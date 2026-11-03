@@ -65,6 +65,7 @@
 #include "effect.h"
 #include "effect_source.h"
 #include "enum_conversions.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -97,6 +98,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npc_goal_state.h"
 #include "npc_sleep.h"
 #include "options.h"
 #include "overmapbuffer.h"
@@ -1215,6 +1217,12 @@ void Character::load( const JsonObject &data )
         queued_effect_on_conditions.push( temp );
     }
     data.read( "inactive_eocs", inactive_effect_on_condition_vector );
+
+    walk.reset();
+    if( data.has_object( "walk" ) ) {
+        walk = std::make_unique<walk_order>();
+        walk->deserialize( data.get_object( "walk" ) );
+    }
 }
 
 /**
@@ -1450,6 +1458,10 @@ void Character::store( JsonOut &json ) const
 
     json.end_array();
     json.member( "inactive_eocs", inactive_effect_on_condition_vector );
+
+    if( walk ) {
+        json.member( "walk", *walk );
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2214,6 +2226,13 @@ void npc::load( const JsonObject &data )
         complaints.emplace( member.name(), p );
     }
     data.read( "sleep_session", sleep_session );
+    *json_goal = npc_goal_state();
+    data.read( "json_goal", json_goal );
+    if( data.has_string( "hostility_reported" ) ) {
+        const std::string hostility = data.get_string( "hostility_reported" );
+        json_goal->hostility = hostility == "kill" ? npc_hostility::kill : hostility == "hostile" ?
+                               npc_hostility::hostile : npc_hostility::none;
+    }
     data.read( "unique_id", unique_id );
     clear_personality_traits();
     generate_personality_traits();
@@ -2377,6 +2396,23 @@ void npc::store( JsonOut &json ) const
 
     json.member( "complaints", complaints );
     json.member( "sleep_session", sleep_session );
+    if( json_goal->active() ) {
+        json.member( "json_goal", json_goal );
+    }
+    // how hostile npc_becomes_hostile last reported the NPC (npc.cpp)
+    if( json_goal->hostility ) {
+        switch( *json_goal->hostility ) {
+            case npc_hostility::none:
+                json.member( "hostility_reported", "none" );
+                break;
+            case npc_hostility::hostile:
+                json.member( "hostility_reported", "hostile" );
+                break;
+            case npc_hostility::kill:
+                json.member( "hostility_reported", "kill" );
+                break;
+        }
+    }
     json.member( "unique_id", unique_id );
     json.member( "may_activity_occupancy_after_end_items_loc",
                  may_activity_occupancy_after_end_items_loc );
@@ -3274,6 +3310,8 @@ void item::io( Archive &archive )
     if constexpr( Archive::is_input::value ) {
         if( !uid_.is_valid() ) {
             uid_ = item_uid( generate_next_item_uid() );
+        } else {
+            reserve_item_uid( uid_.get_value() );
         }
     }
 
@@ -3569,9 +3607,13 @@ void item::deserialize( const JsonObject &data )
     if( data.has_object( "contents" ) ) {
         item_contents read_contents;
         data.read( "contents", read_contents );
-        contents.read_mods( read_contents );
+        // Moved in, not copied: contained items keep their uids, so saved item_locations into
+        // containers still find them, and nested contents are not copied once per level.
+        // read_mods takes only the MOD pocket's items and leaves the rest for combine.
+        contents.read_mods( std::move( read_contents ) );
         update_modified_pockets();
-        contents.combine( read_contents, false, true, false, true );
+        // NOLINTNEXTLINE(bugprone-use-after-move)
+        contents.combine( std::move( read_contents ), false, true, false, true );
 
         //migrate SOFTWARE pocket
         auto pockets_e_legacy = []( item_pocket const & pocket ) {
@@ -5137,6 +5179,59 @@ void field_type_migrations::check()
     }
 }
 
+void submap::store_phase_reverts( JsonOut &jsout ) const
+{
+    jsout.member( "phase_reverts" );
+    jsout.start_array();
+    for( const auto &entry : original_terrain ) {
+        jsout.start_array();
+        jsout.write( entry.first.x() );
+        jsout.write( entry.first.y() );
+        jsout.write( entry.second.obj().id.str() );
+        jsout.end_array();
+    }
+    jsout.end_array();
+}
+
+void submap::store_spawns( JsonOut &jsout ) const
+{
+    jsout.member( "spawns" );
+    jsout.start_array();
+    for( const spawn_point &elem : spawns ) {
+        jsout.start_array();
+        // TODO: json should know how to write string_ids
+        jsout.write( elem.type.str() );
+        jsout.write( elem.count );
+        jsout.write( elem.pos.x() );
+        jsout.write( elem.pos.y() );
+        jsout.write( elem.faction_id );
+        jsout.write( elem.mission_id );
+        jsout.write( elem.friendly );
+        jsout.write( elem.name );
+        jsout.end_array();
+    }
+    jsout.end_array();
+}
+
+void submap::store_partial_constructions( JsonOut &jsout ) const
+{
+    jsout.member( "partial_constructions" );
+    jsout.start_array();
+    for( const auto &elem : partial_constructions ) {
+        jsout.write( elem.first.x() );
+        jsout.write( elem.first.y() );
+        jsout.write( elem.first.z() );
+        jsout.write( elem.second.counter );
+        jsout.write( elem.second.id.id() );
+        jsout.start_array();
+        for( const item &it : elem.second.components ) {
+            jsout.write( it );
+        }
+        jsout.end_array();
+    }
+    jsout.end_array();
+}
+
 void submap::store( JsonOut &jsout ) const
 {
     jsout.member( "turn_last_touched", last_touched );
@@ -5149,6 +5244,16 @@ void submap::store( JsonOut &jsout ) const
     if( is_uniform() ) {
         _write_rle_terrain( jsout, uniform_ter.id().str(), SEEX * SEEY );
         jsout.end_array();
+        // and what it holds besides, which doesn't make it non-uniform
+        if( !original_terrain.empty() ) {
+            store_phase_reverts( jsout );
+        }
+        if( !spawns.empty() ) {
+            store_spawns( jsout );
+        }
+        if( !partial_constructions.empty() ) {
+            store_partial_constructions( jsout );
+        }
         return;
     }
     std::string last_id;
@@ -5299,34 +5404,10 @@ void submap::store( JsonOut &jsout ) const
     jsout.end_array();
 
     // Output any recorded original terrain for phase reverts
-    jsout.member( "phase_reverts" );
-    jsout.start_array();
-    for( const auto &entry : original_terrain ) {
-        jsout.start_array();
-        jsout.write( entry.first.x() );
-        jsout.write( entry.first.y() );
-        jsout.write( entry.second.obj().id.str() );
-        jsout.end_array();
-    }
-    jsout.end_array();
+    store_phase_reverts( jsout );
 
     // Output the spawn points
-    jsout.member( "spawns" );
-    jsout.start_array();
-    for( const spawn_point &elem : spawns ) {
-        jsout.start_array();
-        // TODO: json should know how to write string_ids
-        jsout.write( elem.type.str() );
-        jsout.write( elem.count );
-        jsout.write( elem.pos.x() );
-        jsout.write( elem.pos.y() );
-        jsout.write( elem.faction_id );
-        jsout.write( elem.mission_id );
-        jsout.write( elem.friendly );
-        jsout.write( elem.name );
-        jsout.end_array();
-    }
-    jsout.end_array();
+    store_spawns( jsout );
 
     jsout.member( "vehicles" );
     jsout.start_array();
@@ -5337,21 +5418,7 @@ void submap::store( JsonOut &jsout ) const
     }
     jsout.end_array();
 
-    jsout.member( "partial_constructions" );
-    jsout.start_array();
-    for( const auto &elem : partial_constructions ) {
-        jsout.write( elem.first.x() );
-        jsout.write( elem.first.y() );
-        jsout.write( elem.first.z() );
-        jsout.write( elem.second.counter );
-        jsout.write( elem.second.id.id() );
-        jsout.start_array();
-        for( const item &it : elem.second.components ) {
-            jsout.write( it );
-        }
-        jsout.end_array();
-    }
-    jsout.end_array();
+    store_partial_constructions( jsout );
 
     if( !computers.empty() ) {
         jsout.member( "computers" );

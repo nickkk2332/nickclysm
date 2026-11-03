@@ -996,13 +996,6 @@ void memorial_logger::notify( const cata::event &e )
             }
             break;
         }
-        case event_type::npc_becomes_hostile: {
-            std::string name = e.get<cata_variant_type::string>( "npc_name" );
-            add( pgettext( "memorial_male", "%s became hostile." ),
-                 pgettext( "memorial_female", "%s became hostile." ),
-                 name );
-            break;
-        }
         case event_type::opens_portal: {
             add( pgettext( "memorial_male", "Opened a portal." ),
                  pgettext( "memorial_female", "Opened a portal." ) );
@@ -1179,6 +1172,14 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::u_var_changed:
         case event_type::vehicle_moves:
         case event_type::character_butchered_corpse:
+        case event_type::npc_goal_changed:
+        // "became hostile" is the hostile effect's own (talk_function::hostile()), as it was
+        // when that effect alone sent npc_becomes_hostile
+        case event_type::npc_becomes_hostile:
+        case event_type::npc_attitude_changed:
+        case event_type::npc_recruited:
+        case event_type::npc_dismissed:
+        case event_type::npc_mutinies:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

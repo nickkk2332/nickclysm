@@ -8,7 +8,10 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <ostream>
+#include <string>
+#include <string_view>
 
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
@@ -17,6 +20,7 @@
 #include "avatar.h"
 #include "basecamp.h"
 #include "bodypart.h"
+#include "cata_scope_helpers.h"
 #include "catacharset.h"
 #include "character.h"
 #include "character_attire.h"
@@ -35,6 +39,7 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -60,7 +65,12 @@
 #include "monster.h"
 #include "mtype.h"
 #include "mutation.h"
+#include "npc_ai_ids.h"
+#include "npc_ai_tuning.h"
+#include "npc_attitude_cause.h"
 #include "npc_class.h"
+#include "npc_goal_state.h"
+#include "npc_json_goal.h"
 #include "npctalk.h"
 #include "npctrade.h"
 #include "npctrade_utils.h"
@@ -187,6 +197,7 @@ static const trait_id trait_TERRIFYING( "TERRIFYING" );
 static const trait_id trait_TRADE_BACKEND( "TRADE_BACKEND" );
 
 static void starting_clothes( npc &who, const npc_class_id &type, bool male );
+static void report_attitude_change( npc &guy, npc_attitude old_attitude );
 static void starting_inv( npc &who, const npc_class_id &type );
 static void starting_inv_ammo( npc &who, std::list<item> &res, int multiplier );
 
@@ -1248,7 +1259,11 @@ void npc::revert_after_activity()
     // task put aside to rest keeps the NPC's mission and attitude
     if( !suspended_task ) {
         mission = previous_mission;
+        const npc_attitude was = attitude;
         attitude = previous_attitude;
+        if( attitude != was ) {
+            report_attitude_change( *this, was );
+        }
     }
     activity = player_activity();
     current_activity_id = activity_id::NULL_ID();
@@ -1826,6 +1841,7 @@ void npc::invalidate_range_cache()
 
 void npc::form_opinion( const Character &you )
 {
+    const npc_attitude_cause cause( npc_attitude_cause::opinion );
     op_of_u = get_opinion_values( you );
 
     decide_needs();
@@ -1964,6 +1980,8 @@ void npc::mutiny()
     if( !my_fac || !is_player_ally() ) {
         return;
     }
+    const npc_attitude_cause cause( npc_attitude_cause::mutiny );
+    const faction_id left = my_fac->id;
     const bool seen = get_player_view().sees( here, pos_bub( here ) );
     if( seen ) {
         add_msg( m_bad, _( "%s is tired of your incompetent leadership and abuse!" ), disp_name() );
@@ -1978,8 +1996,10 @@ void npc::mutiny()
     my_fac->likes_u = std::max( 0, my_fac->likes_u / 2 + 10 );
     my_fac->respects_u -= 5;
     my_fac->trusts_u -= 5;
+    // the faction it leaves says where it goes
+    const faction_id joins = my_fac->mutiny_faction;
     g->remove_npc_follower( getID() );
-    set_fac( faction_amf );
+    set_fac( joins );
     rules = npc_follower_rules(); // Mutinous NPCs no longer follower your rules
     job.clear_all_priorities();
     if( assigned_camp ) {
@@ -1988,9 +2008,10 @@ void npc::mutiny()
     chatbin.first_topic = chatbin.talk_stranger_neutral;
     set_attitude( NPCATT_NULL );
     say( _( "<follower_mutiny>  Adios, motherfucker!" ), sounds::sound_t::order );
-    if( seen ) {
+    if( seen && my_fac ) {
         my_fac->known_by_u = true;
     }
+    get_event_bus().send<event_type::npc_mutinies>( getID(), name, left, get_fac_id() );
 }
 
 float npc::vehicle_danger( int radius ) const
@@ -2033,14 +2054,17 @@ void npc::make_angry()
     if( is_enemy() ) {
         return; // We're already angry!
     }
+    const npc_attitude_cause cause( npc_attitude_cause::angered );
 
     // player allies that become angry should stop being player allies
-    if( is_player_ally() ) {
+    const bool mutinied = is_player_ally();
+    if( mutinied ) {
         mutiny();
     }
 
-    // Make associated faction, if any, angry at the player too.
-    if( my_fac && !my_fac->lone_wolf_faction && my_fac->id != faction_amf ) {
+    // Make associated faction, if any, angry at the player too: not the one a mutineer just
+    // joined, which the mutiny chose, not the NPC
+    if( !mutinied && my_fac && !my_fac->lone_wolf_faction && my_fac->id != faction_amf ) {
         my_fac->likes_u = std::min( -15, my_fac->likes_u - 5 );
         my_fac->respects_u = std::min( -15, my_fac->respects_u - 5 );
         my_fac->trusts_u = std::min( -15, my_fac->trusts_u - 5 );
@@ -2512,8 +2536,10 @@ void npc::reconcile_schedule()
         }
         clear_committed_goal();
     } else if( !on_shift && !in_sleep_state() && !needs_food() ) {
-        if( get_sleepiness() < static_cast<int>( sleepiness_levels::TIRED ) ) {
-            set_sleepiness( sleepiness_levels::TIRED );
+        // tired enough to go to bed
+        const int tired = ai_tuning_of( *this ).tired_level();
+        if( get_sleepiness() < tired ) {
+            set_sleepiness( tired );
         }
     }
 }
@@ -2544,7 +2570,7 @@ void npc::reconcile_schedule_on_load()
         int mins_in = wraps && now_mins < start_mins
                       ? ( 24 * 60 - start_mins + now_mins )
                       : ( now_mins - start_mins );
-        int expected = mins_in * static_cast<int>( sleepiness_levels::TIRED ) / shift_len;
+        int expected = mins_in * ai_tuning_of( *this ).tired_level() / shift_len;
         set_sleepiness( expected );
     }
 }
@@ -3327,6 +3353,12 @@ void npc::reboot()
     // put them to sleep and reboot their brain.
     // they can be woken up by the player, and if their brain is fixed, great,
     // if not, they will faint again, and the NPC can be kept asleep until the bug is fixed.
+    // a JSON goal ends as interrupted; it may be what spun
+    if( json_goal->active() ) {
+        npc_goal_runtime::end( *this, npc_goal_reason::interrupted );
+        ai_cache.intention = {};
+        npc_goal_runtime::report_change( *this );
+    }
     cancel_activity();
     sleep_session.end();
     path.clear();
@@ -3357,6 +3389,8 @@ void npc::reboot()
     ai_cache.searched_tiles.clear();
     activity = player_activity();
     clear_destination();
+    // dropped without its EOCs: the walk may be what spun
+    errand::drop_walk( *this );
     activity_handlers::clean_may_activity_occupancy_items_var( *this );
     add_effect( effect_npc_suspend, 24_hours, true, 1 );
 }
@@ -3483,6 +3517,48 @@ std::string npc_attitude_id( npc_attitude att )
     }
 
     return iter->second;
+}
+
+static bool is_legacy_attitude( const npc_attitude att )
+{
+    switch( att ) {
+        case NPCATT_LEGACY_1:
+        case NPCATT_LEGACY_2:
+        case NPCATT_LEGACY_3:
+        case NPCATT_LEGACY_4:
+        case NPCATT_LEGACY_5:
+        case NPCATT_LEGACY_6:
+            return true;
+        default:
+            return false;
+    }
+}
+
+std::optional<npc_attitude> npc_attitude_from_id( const std::string_view id )
+{
+    for( int i = NPCATT_NULL; i < NPCATT_END; ++i ) {
+        const npc_attitude att = static_cast<npc_attitude>( i );
+        if( !is_legacy_attitude( att ) && npc_attitude_id( att ) == id ) {
+            return att;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string npc_mission_id( const npc_mission mission )
+{
+    return io::enum_to_string( mission );
+}
+
+std::optional<npc_mission> npc_mission_from_id( const std::string_view id )
+{
+    for( int i = NPC_MISSION_NULL; i < NPC_MISSION_LAST; ++i ) {
+        const npc_mission mission = static_cast<npc_mission>( i );
+        if( mission != NPC_MISSION_LEGACY_1 && io::enum_to_string( mission ) == id ) {
+            return mission;
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<int> npc::closest_enemy_to_friendly_distance() const
@@ -4150,6 +4226,95 @@ npc_attitude npc::get_attitude() const
     return attitude;
 }
 
+// What makes attitude changes known.  The innermost open npc_attitude_cause says why.
+static const char *open_attitude_cause = "";
+
+npc_attitude_cause::npc_attitude_cause( const char *cause ) : previous( open_attitude_cause )
+{
+    open_attitude_cause = cause;
+}
+
+npc_attitude_cause::~npc_attitude_cause()
+{
+    open_attitude_cause = previous;
+}
+
+const char *npc_attitude_cause::current()
+{
+    return open_attitude_cause;
+}
+
+// how hostile an attitude is, for npc_becomes_hostile; nullopt for a flight, which keeps how
+// hostile the NPC was
+static std::optional<npc_hostility> hostility_of( const npc &guy, const npc_attitude att )
+{
+    switch( guy.get_attitude_group( att ) ) {
+        case attitude_group::hostile:
+            return att == NPCATT_KILL ? npc_hostility::kill : npc_hostility::hostile;
+        case attitude_group::fearful:
+            return std::nullopt;
+        case attitude_group::neutral:
+        case attitude_group::friendly:
+            break;
+    }
+    return npc_hostility::none;
+}
+
+// npc_attitude_changed for every change, and npc_becomes_hostile when the NPC grows more
+// hostile than it was last reported: as it turns hostile, and again if it then sets out to kill.
+// A flight doesn't calm it down, so a hostile NPC that keeps breaking off to flee and coming
+// back is reported once.
+static void report_attitude_change( npc &guy, const npc_attitude old_attitude )
+{
+    // templates, stand-ins for turrets and monsters, and hallucinations aren't anyone to react to
+    if( !guy.getID().is_valid() || guy.is_fake() || guy.is_hallucination() ) {
+        return;
+    }
+    npc_goal_state &state = *guy.json_goal;
+    const npc_attitude new_attitude = guy.get_attitude();
+    const npc_hostility was = state.hostility ? *state.hostility :
+                              hostility_of( guy, old_attitude ).value_or( npc_hostility::none );
+    const std::optional<npc_hostility> now = hostility_of( guy, new_attitude );
+    const bool turns_hostile = now && *now > was;
+    // a flight keeps how hostile the NPC was, and so does growing less hostile: only a neutral or
+    // friendly attitude calms it down
+    if( !now ) {
+        state.hostility = was;
+    } else if( *now == npc_hostility::none ) {
+        state.hostility = npc_hostility::none;
+    } else {
+        state.hostility = std::max( was, *now );
+    }
+    // an NPC being made takes its starting attitude
+    if( std::string_view( npc_attitude_cause::current() ) == npc_attitude_cause::spawn ) {
+        return;
+    }
+    if( state.reporting_attitude ) {
+        // an EOC of these events changed the attitude again: reporting that would start over,
+        // without end for an EOC that always changes it
+        if( !state.warned_nested_attitude ) {
+            state.warned_nested_attitude = true;
+            debugmsg( "%s's attitude changed from %s to %s while its attitude events ran; the change "
+                      "isn't reported.  Don't change an NPC's attitude in an EOC of npc_attitude_changed "
+                      "or npc_becomes_hostile", guy.get_name(), npc_attitude_id( old_attitude ),
+                      npc_attitude_id( new_attitude ) );
+        }
+        return;
+    }
+    state.reporting_attitude = true;
+    state.warned_nested_attitude = false;
+    on_out_of_scope reported( [&state]() {
+        state.reporting_attitude = false;
+    } );
+    const std::string cause = npc_attitude_cause::current();
+    get_event_bus().send<event_type::npc_attitude_changed>( guy.getID(), guy.name,
+            npc_attitude_id( old_attitude ), npc_attitude_id( new_attitude ), cause );
+    // only an NPC still hostile after those EOCs has turned hostile
+    if( turns_hostile && guy.get_attitude_group( guy.get_attitude() ) == attitude_group::hostile ) {
+        get_event_bus().send<event_type::npc_becomes_hostile>( guy.getID(), guy.name, cause );
+    }
+}
+
 void npc::set_attitude( npc_attitude new_attitude )
 {
     const map &here = get_map();
@@ -4186,7 +4351,12 @@ void npc::set_attitude( npc_attitude new_attitude )
                 break;
         }
     }
+    const npc_attitude old_attitude = attitude;
     attitude = new_attitude;
+    // NPCATT_FLEE asked of an NPC already on NPCATT_FLEE_TEMP changes nothing
+    if( attitude != old_attitude ) {
+        report_attitude_change( *this, old_attitude );
+    }
 }
 
 bool npc::theft_witness_compare( const npc *lhs, const npc *rhs )

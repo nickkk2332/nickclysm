@@ -34,6 +34,7 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_algo.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_attire.h"
 #include "character_id.h"
@@ -49,6 +50,7 @@
 #include "dispersion.h"
 #include "effect.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "explosion.h"
@@ -86,9 +88,13 @@
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "npc_ai_tuning.h"
 #include "npc_arbitration.h"
 #include "npc_attack.h"
+#include "npc_attitude_cause.h"
 #include "npc_decision_category.h"
+#include "npc_goal_state.h"
+#include "npc_json_goal.h"
 #include "npc_opinion.h"
 #include "npc_sleep.h"
 #include "npc_trip.h"
@@ -198,11 +204,13 @@ static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
 
+static const move_mode_id move_mode_run( "run" );
+static const move_mode_id move_mode_walk( "walk" );
+
 static const npc_class_id NC_EVAC_SHOPKEEP( "NC_EVAC_SHOPKEEP" );
 
 static const skill_id skill_firstaid( "firstaid" );
 
-static const string_id<behavior::node_t> behavior_node_t_npc_decision( "npc_decision" );
 static const string_id<behavior::node_t> behavior_node_t_npc_needs( "npc_needs" );
 
 static const trait_id trait_IGNORE_SOUND( "IGNORE_SOUND" );
@@ -228,8 +236,6 @@ static constexpr int NPC_THIRST_CONSUME  = 40;  // "Thirsty"
 static constexpr int NPC_THIRST_COMPLAIN = 80;  // "Very thirsty"
 static constexpr int NPC_HUNGER_CONSUME  = 80;  // 50% of what's needed to refuse training.
 static constexpr int NPC_HUNGER_COMPLAIN = 160; // The level at which we refuse to do some tasks.
-// least a camp serves a hungry NPC, whatever its weight
-static constexpr int camp_routine_meal_kcal = 500;
 
 enum npc_action : int {
     npc_undecided = 0,
@@ -254,79 +260,6 @@ enum npc_action : int {
     npc_worker_downtime,
     num_npc_actions
 };
-
-const char *category_name( decision_category cat )
-{
-    switch( cat ) {
-        case decision_category::combat:
-            return "combat";
-        case decision_category::investigate:
-            return "investigate";
-        case decision_category::needs:
-            return "needs";
-        case decision_category::follow:
-            return "follow";
-        case decision_category::order:
-            return "order";
-        case decision_category::duty:
-            return "duty";
-        case decision_category::camp_work:
-            return "camp_work";
-        case decision_category::camp_travel:
-            return "camp_travel";
-        case decision_category::free_time:
-            return "free_time";
-        case decision_category::idle:
-            return "idle";
-        case decision_category::unmodeled:
-            return "unmodeled";
-    }
-    return "unmodeled";
-}
-
-decision_category bt_goal_to_category( const std::string &goal )
-{
-    if( goal == "fight" || goal == "flee" ) {
-        return decision_category::combat;
-    }
-    if( goal == "investigate_sound" ) {
-        return decision_category::investigate;
-    }
-    if( goal == "drink_water" || goal == "eat_food" || goal == "go_to_sleep" ||
-        goal == "start_fire" || goal == "regulate_temperature" ) {
-        return decision_category::needs;
-    }
-    if( goal == "follow_player" || goal == "follow_embarked" ) {
-        return decision_category::follow;
-    }
-    if( goal == "goto_ordered_position" ) {
-        return decision_category::order;
-    }
-    if( goal == "return_to_guard_pos" || goal == "hold_position" ) {
-        return decision_category::duty;
-    }
-    if( goal == "camp_work" ) {
-        return decision_category::camp_work;
-    }
-    if( goal == "return_to_camp" ) {
-        return decision_category::camp_travel;
-    }
-    if( goal == "free_time" ) {
-        return decision_category::free_time;
-    }
-    if( goal == "idle" ) {
-        return decision_category::idle;
-    }
-    return decision_category::unmodeled;
-}
-
-const char *classify_comparison( decision_category bt, decision_category cascade )
-{
-    if( bt == decision_category::unmodeled || cascade == decision_category::unmodeled ) {
-        return "unmodeled";
-    }
-    return bt == cascade ? "converged" : "DIVERGED";
-}
 
 static decision_category cascade_action_to_category( npc_action action )
 {
@@ -356,6 +289,33 @@ static decision_category cascade_action_to_category( npc_action action )
         default:
             return decision_category::unmodeled;
     }
+}
+
+// The reactions to danger, picked before the decision tree.  Which one applies is worked out
+// first, with no side effects, so that a JSON goal that keeps the NPC can stop it running.
+enum class danger_reaction : int {
+    none, escape_explosion, flee_vehicle, flee_attacker, use_inhaler, fight, investigate,
+    ignore_sound
+};
+
+// what a reaction counts as against a JSON goal; nullopt for none
+static std::optional<decision_category> danger_reaction_category( const danger_reaction r )
+{
+    switch( r ) {
+        case danger_reaction::escape_explosion:
+        case danger_reaction::flee_vehicle:
+        case danger_reaction::flee_attacker:
+        case danger_reaction::fight:
+            return decision_category::combat;
+        case danger_reaction::use_inhaler:
+            return decision_category::needs;
+        case danger_reaction::investigate:
+            return decision_category::investigate;
+        case danger_reaction::none:
+        case danger_reaction::ignore_sound:
+            break;
+    }
+    return std::nullopt;
 }
 
 
@@ -1405,6 +1365,7 @@ void npc::act_on_danger_assessment()
                 mem_combat.repositioning = false; // we're not just moving, we're running.
                 warn_about( "run_away", run_away_for );
                 if( !is_player_ally() ) {
+                    const npc_attitude_cause panic( npc_attitude_cause::panic );
                     set_attitude( NPCATT_FLEE_TEMP );
                 }
                 if( mem_combat.panic > 5 && is_player_ally() && sees( here, player_character ) ) {
@@ -1493,6 +1454,7 @@ void npc::regen_ai_cache()
             if( sound_source ) {
                 if( my_fac == sound_source->my_fac && sound_source->known_stolen_item ) {
                     sound_source->known_stolen_item = nullptr;
+                    const npc_attitude_cause theft( npc_attitude_cause::theft );
                     set_attitude( NPCATT_RECOVER_GOODS );
                 }
             }
@@ -1623,6 +1585,8 @@ void npc::end_cancelled_task()
 
 void npc::move()
 {
+    // attitude changes this turn are the NPC's own doing, unless something more telling says why
+    const npc_attitude_cause cause( npc_attitude_cause::ai );
     const int moves_at_decision = get_moves();
     ai_cache.decisions++;
     const map &here = get_map();
@@ -1638,6 +1602,23 @@ void npc::move()
     // sleep effects decide what the session says, before anything reads it
     reconcile_sleep_session();
     regen_ai_cache();
+    // a walk (u_walk_to, "Move there!") that arrived or ran out of time ends here, its EOCs
+    // run before the NPC decides anything
+    errand::review_walk( *this );
+    if( is_dead() ) {
+        return;
+    }
+    // a walk the NPC spends this move on something else waits, or ends when it isn't
+    // interruptible: a fight, a flight or a need comes first either way
+    const int walk_serial = walk ? walk->serial : 0;
+    if( walk ) {
+        walk->stepped = false;
+    }
+    on_out_of_scope walk_check( [this, walk_serial, moves_at_decision]() {
+        if( walk && walk->serial == walk_serial && !walk->stepped && get_moves() < moves_at_decision ) {
+            errand::walk_passed_over( *this );
+        }
+    } );
     // Surgery and spellcasting must complete without re-evaluation
     // (they have their own internal state machines).
     if( activity.id() == ACT_OPERATION || activity.id() == ACT_SPELLCASTING ) {
@@ -1647,6 +1628,10 @@ void npc::move()
     // close the door it just walked through: finish it before deciding anything, or a
     // need executor keeps the activity attitude and a follower stops following
     if( activity.id() == ACT_CLOSE_TILE ) {
+        // the movement code set it, so a walk counts it as one of its steps
+        if( walk ) {
+            walk->stepped = true;
+        }
         execute_action( npc_player_activity );
         return;
     }
@@ -1693,7 +1678,8 @@ void npc::move()
                    get_name(), target_name, ai_cache.danger, *confident_range_cache );
 
     if( debug_mode && debugmode::enabled_filters.count( debugmode::DF_NPC_NEEDS ) ) {
-        behavior::character_oracle_t oracle( this );
+        // diagnostic only: must not fill the evaluate_every cache the real walk reads
+        behavior::character_oracle_t oracle( this, false );
         behavior::tree bt;
         bt.add( &behavior_node_t_npc_needs.obj() );
         const std::string bt_goal = bt.tick( &oracle );
@@ -1710,6 +1696,7 @@ void npc::move()
     Character &player_character = get_player_character();
     //faction opinion determines if it should consider you hostile
     if( !is_enemy() && guaranteed_hostile() && sees( here, player_character ) ) {
+        const npc_attitude_cause hostile_faction( npc_attitude_cause::faction );
         if( is_player_ally() ) {
             mutiny();
         }
@@ -1730,9 +1717,10 @@ void npc::move()
     std::string bt_decision_goal;
     decision_category bt_decision_cat = decision_category::unmodeled;
     if( debug_mode && debugmode::enabled_filters.count( debugmode::DF_NPC_NEEDS ) ) {
-        behavior::character_oracle_t decision_oracle( this );
+        // diagnostic only, before the attitude change: must not fill the evaluate_every cache
+        behavior::character_oracle_t decision_oracle( this, false );
         behavior::tree decision_tree;
-        decision_tree.add( &behavior_node_t_npc_decision.obj() );
+        decision_tree.add( &npc_decision_tree() );
         bt_decision_goal = decision_tree.tick( &decision_oracle );
         bt_decision_cat = bt_goal_to_category( bt_decision_goal );
     }
@@ -1761,35 +1749,69 @@ void npc::move()
      * something nasty is going to happen.
      */
 
+    danger_reaction reaction = danger_reaction::none;
     if( !ai_cache.dangerous_explosives.empty() && !has_flag( json_flag_CANNOT_MOVE ) ) {
-        action = npc_escape_explosion;
+        reaction = danger_reaction::escape_explosion;
     } else if( is_enemy() && vehicle_danger( avoidance_vehicles_radius ) >= 0 &&
                !has_flag( json_flag_CANNOT_MOVE ) ) {
-        // TODO: Think about how this actually needs to work, for now assume flee from player
-        ai_cache.target = g->shared_from( player_character );
-        action = method_of_fleeing();
+        reaction = danger_reaction::flee_vehicle;
     } else if( ( target == &player_character && attitude == NPCATT_FLEE_TEMP ) ||
                has_effect( effect_npc_run_away ) ) {
-        if( hp_percentage() > 30 && target && rl_dist( pos_bub(), target->pos_bub() ) <= 1 &&
-            !has_flag( json_flag_CANNOT_ATTACK ) ) {
-            action = method_of_attack();
-        } else if( !has_flag( json_flag_CANNOT_MOVE ) ) {
-            action = method_of_fleeing();
-        }
+        reaction = danger_reaction::flee_attacker;
     } else if( has_effect( effect_asthma ) && ( has_charges( itype_inhaler, 1 ) ||
                has_charges( itype_oxygen_tank, 1 ) ||
                has_charges( itype_smoxygen_tank, 1 ) ) ) {
-        action = npc_heal;
+        reaction = danger_reaction::use_inhaler;
     } else if( target != nullptr && ai_cache.danger > 0 && !has_flag( json_flag_CANNOT_ATTACK ) ) {
-        action = method_of_attack();
+        reaction = danger_reaction::fight;
     } else if( !ai_cache.sound_alerts.empty() && !is_walking_with() &&
                !has_flag( json_flag_CANNOT_MOVE ) ) {
-        if( has_trait( trait_IGNORE_SOUND ) ) {
+        reaction = has_trait( trait_IGNORE_SOUND ) ? danger_reaction::ignore_sound :
+                   danger_reaction::investigate;
+    }
+    // a reaction ends a JSON goal of a later category, and waits while the NPC is on one of its
+    // own category or an earlier one (doc/JSON/NPC_BEHAVIOR.md)
+    if( const std::optional<decision_category> reaction_cat = danger_reaction_category( reaction ) ) {
+        if( npc_goal_runtime::holds_against( *this, *reaction_cat ) ) {
+            reaction = danger_reaction::none;
+        }
+        // the goal's end hooks may have killed it
+        if( is_dead() ) {
+            return;
+        }
+    }
+    switch( reaction ) {
+        case danger_reaction::none:
+            break;
+        case danger_reaction::escape_explosion:
+            action = npc_escape_explosion;
+            break;
+        case danger_reaction::flee_vehicle:
+            // TODO: Think about how this actually needs to work, for now assume flee from player
+            ai_cache.target = g->shared_from( player_character );
+            action = method_of_fleeing();
+            break;
+        case danger_reaction::flee_attacker:
+            if( hp_percentage() > 30 && target && rl_dist( pos_bub(), target->pos_bub() ) <= 1 &&
+                !has_flag( json_flag_CANNOT_ATTACK ) ) {
+                action = method_of_attack();
+            } else if( !has_flag( json_flag_CANNOT_MOVE ) ) {
+                action = method_of_fleeing();
+            }
+            break;
+        case danger_reaction::use_inhaler:
+            action = npc_heal;
+            break;
+        case danger_reaction::fight:
+            action = method_of_attack();
+            break;
+        case danger_reaction::ignore_sound:
             // Discard alerts and fall through to BT/needs below.
             // Hard-coding npc_return_to_guard_pos here would fight the
             // BT sleep goal when ambient sounds keep refilling the queue.
             ai_cache.sound_alerts.clear();
-        } else {
+            break;
+        case danger_reaction::investigate: {
             tripoint_abs_ms cur_s_abs_pos = ai_cache.s_abs_pos;
             if( !ai_cache.guard_pos ) {
                 ai_cache.guard_pos = pos_abs();
@@ -1818,6 +1840,7 @@ void npc::move()
                 add_msg_debug( debugmode::DF_NPC, "NPC %s: investigating sound at x(%d) y(%d)", get_name(),
                                ai_cache.s_abs_pos.x(), ai_cache.s_abs_pos.y() );
             }
+            break;
         }
     }
     if( action == npc_undecided ) {
@@ -1833,108 +1856,45 @@ void npc::move()
             const npc_attitude saved_att = attitude;
             const npc_mission saved_mis = mission;
 
-            behavior::character_oracle_t oracle( this );
-            behavior::tree decision_tree;
-            decision_tree.add( &behavior_node_t_npc_decision.obj() );
-            auto [new_goal, new_score] = decision_tree.tick_full( &oracle );
-            if( goal_is_idle( new_goal ) && !sleep_on_hold() && !has_flag( json_flag_CANNOT_SLEEP ) &&
-                ( ( sleep_stalled() && get_sleepiness() >= sleepiness_levels::TIRED ) ||
-                  sleep_session.wants_resume( get_sleepiness() ) ) &&
-                best_need_view( need_goal_id::go_to_sleep ).may_consider() ) {
-                // a sleep that stepped aside for work, or was woken early, comes back when
-                // nothing else is on offer
-                new_goal = "go_to_sleep";
-                new_score = oracle.sleepiness_urgency( "" );
+            // a JSON goal loaded from a save is the commitment again
+            npc_goal_runtime::sync( *this );
+            if( is_dead() ) {
+                return;
             }
-
-            // Goal commitment: prevent flip-flopping between goals.
-            const std::string committed = ai_cache.intention.goal;
-            if( !committed.empty() ) {
-                // Check if committed goal is completed.
-                bool completed_goal = false;
-                if( committed == "return_to_guard_pos" ) {
-                    std::optional<tripoint_abs_ms> gp = get_effective_guard_pos();
-                    completed_goal = gp && pos_abs() == *gp;
-                } else if( committed == "hold_position" ) {
-                    // Persists only while BT keeps returning hold_position.
-                    // Off-shift (BT returns idle) or displaced (return_to_guard_pos):
-                    // the commitment clears and the fresh goal takes over.
-                    completed_goal = ( new_goal != "hold_position" );
-                } else if( committed == "follow_player" ) {
-                    const Character &pc = get_player_character();
-                    completed_goal = ( rl_dist( pos_bub(), pc.pos_bub() ) <= follow_distance()
-                                       && posz() == pc.posz() );
-                    if( !completed_goal ) {
-                        completed_goal = ( new_goal != "follow_player" );
-                    }
-                } else if( bt_goal_to_category( committed ) == decision_category::combat ) {
-                    // only as long as behavior tree keeps choosing it
-                    completed_goal = ( new_goal != committed );
-                } else if( committed == "follow_embarked" ) {
-                    completed_goal = ( new_goal != "follow_embarked" );
-                } else if( committed == "goto_ordered_position" ) {
-                    completed_goal = !goto_to_this_pos || pos_abs() == *goto_to_this_pos;
-                    if( !completed_goal ) {
-                        completed_goal = ( new_goal != "goto_ordered_position" );
-                    }
-                } else if( auto gid = goal_id_for( committed ); gid ) {
-                    behavior::character_oracle_t oracle( this );
-                    bool satisfied = false;
-                    switch( *gid ) {
-                        case need_goal_id::eat_food:
-                        case need_goal_id::drink_water:
-                            // meal ends when it's enough, not when the body has caught up
-                            satisfied = !intake_useful( *gid );
-                            break;
-                        case need_goal_id::regulate_temperature:
-                            satisfied = oracle.needs_temperature_regulation( "" ) != behavior::status_t::running;
-                            break;
-                        case need_goal_id::go_to_sleep:
-                            // leaving for another goal goes through should_interrupt() below;
-                            // woken half way to tired, it lies back down first
-                            satisfied = has_effect( effect_sleep ) ||
-                                        ( oracle.needs_sleep_badly( "" ) != behavior::status_t::running &&
-                                          !sleep_session.wants_resume( get_sleepiness() ) );
-                            break;
-                    }
-                    bool exec_impossible = plan_for( *gid ).last_result == need_result::impossible;
-                    completed_goal = satisfied || exec_impossible;
-                    if( completed_goal ) {
-                        end_need_pursuit( *gid );
-                    }
-                } else if( committed == "start_fire" ) {
-                    // Legacy warmth fallback: no executor, completes via
-                    // BT-fallthrough (fire lit and warmth resolves, or
-                    // predicate fails and BT picks something else).
-                    behavior::character_oracle_t oracle( this );
-                    bool satisfied = oracle.needs_temperature_regulation( "" ) != behavior::status_t::running;
-                    completed_goal = satisfied || ( new_goal != committed );
-                } else if( committed == "camp_work" ) {
-                    completed_goal = ( new_goal != "camp_work" );
-                } else if( committed == "return_to_camp" ) {
-                    completed_goal = ( new_goal != "return_to_camp" );
-                } else if( committed == "free_time" ) {
-                    completed_goal = ( new_goal != "free_time" );
-                }
-                if( completed_goal ) {
+            // what the tree picks, and whether it takes over from the committed goal; the
+            // decision debug view shows the same (npc_goal_runtime::report())
+            const behavior::character_oracle_t oracle( this );
+            const npc_goal_choice choice = npc_goal_runtime::choose( *this, oracle );
+            const std::string new_goal = choice.goal;
+            if( choice.completed ) {
+                if( npc_json_goals::find( choice.committed ) != nullptr ) {
+                    npc_goal_runtime::end( *this, choice.json_end );
                     ai_cache.intention = {};
-                } else {
-                    const npc_pursuit current = committed_pursuit();
-                    // start_fire has no executor and never displaces a goal that has one
-                    const bool lacks_executor = goal_id_for( committed ) && !goal_id_for( new_goal ) &&
-                                                bt_goal_to_category( new_goal ) == decision_category::needs;
-                    if( !lacks_executor && should_interrupt( current, { new_goal, new_score, goal_is_idle( new_goal ) } ) ) {
-                        if( const std::optional<need_goal_id> old_gid = goal_id_for( committed ) ) {
-                            end_need_pursuit( *old_gid );
-                        }
-                        ai_cache.intention = {};
-                    } else {
-                        new_goal = committed;
+                    // reported even when the tree picks it again at once
+                    npc_goal_runtime::report_change( *this );
+                    if( is_dead() ) {
+                        return;
                     }
+                } else if( const std::optional<need_goal_id> gid = goal_id_for( choice.committed ) ) {
+                    end_need_pursuit( *gid );
                 }
+                ai_cache.intention = {};
+            } else if( choice.interrupted ) {
+                if( const std::optional<need_goal_id> old_gid = goal_id_for( choice.committed ) ) {
+                    end_need_pursuit( *old_gid );
+                }
+                npc_goal_runtime::end( *this, npc_goal_reason::interrupted );
+                if( is_dead() ) {
+                    return;
+                }
+                ai_cache.intention = {};
             }
             // adopted on every path, including a completion or interrupt this turn
             adopt_goal( new_goal );
+            npc_goal_runtime::report_change( *this );
+            if( is_dead() ) {
+                return;
+            }
 
             // Dispatch based on the (possibly committed) goal.
             if( new_goal == "return_to_guard_pos" ) {
@@ -1998,6 +1958,30 @@ void npc::move()
                         complain();
                     }
                 }
+            } else if( const npc_json_goal *json = npc_json_goals::find( new_goal ) ) {
+                // what its EOCs gave the NPC to do, through the usual executors
+                switch( npc_goal_runtime::take_turn( *this, *json, moves_at_decision ) ) {
+                    case npc_goal_runtime::turn_result::walk:
+                        action = npc_goto_to_this_pos;
+                        break;
+                    case npc_goal_runtime::turn_result::activity:
+                        action = npc_player_activity;
+                        break;
+                    case npc_goal_runtime::turn_result::task:
+                        // the activity code below takes the task up
+                        action = npc_undecided;
+                        break;
+                    case npc_goal_runtime::turn_result::spent:
+                        action = npc_noop;
+                        break;
+                    case npc_goal_runtime::turn_result::wait:
+                    case npc_goal_runtime::turn_result::ended:
+                        action = npc_pause;
+                        break;
+                }
+                if( is_dead() ) {
+                    return;
+                }
             } else if( is_executor_goal( new_goal ) ) {
                 if( new_goal == "go_to_sleep" ) {
                     suspend_task_for_rest();
@@ -2034,6 +2018,8 @@ void npc::move()
                 // Non-executor needs goal. Legacy address_needs fallback.
                 action = address_needs();
             }
+            // an executor or a goal's own EOCs may have ended the commitment
+            npc_goal_runtime::report_change( *this );
 
             // Debug: executor state for needs goals.
             if( auto dbg_gid = goal_id_for( new_goal ); dbg_gid ) {
@@ -2159,7 +2145,8 @@ void npc::move()
         }
     };
     if( ai_cache.danger > 0 && target != nullptr &&
-        is_passive_follow_action( action ) && !has_flag( json_flag_CANNOT_ATTACK ) ) {
+        is_passive_follow_action( action ) && !has_flag( json_flag_CANNOT_ATTACK ) &&
+        !npc_goal_runtime::outranks( *this, decision_category::combat ) ) {
         bool engage = false;
         if( player_character.in_vehicle && in_vehicle && is_walking_with() ) {
             // Both must occupy the same vehicle; player in a different vehicle
@@ -2513,15 +2500,9 @@ void npc::execute_action( npc_action action )
             mug_player( player_character );
             break;
 
-        case npc_goto_to_this_pos: {
-            update_path( here.get_bub( *goto_to_this_pos ) );
-            move_to_next();
-
-            if( pos_abs() == *goto_to_this_pos ) {
-                goto_to_this_pos = std::nullopt;
-            }
+        case npc_goto_to_this_pos:
+            step_walk();
             break;
-        }
 
         case npc_goto_destination:
             go_to_omt_destination();
@@ -2568,6 +2549,7 @@ void npc::witness_thievery( item *it )
     if( myclass == NC_EVAC_SHOPKEEP ) {
         return;
     }
+    const npc_attitude_cause theft( npc_attitude_cause::theft );
     set_attitude( NPCATT_RECOVER_GOODS );
 }
 
@@ -3331,9 +3313,10 @@ npc_action npc::address_needs( float danger )
     }
 
     // same obligations as the behavior tree's sleep goal, but only an allowed verdict sleeps here
-    const bool tired = get_sleepiness() >= sleepiness_levels::TIRED ||
+    const int tired_level = ai_tuning_of( *this ).tired_level();
+    const bool tired = get_sleepiness() >= tired_level ||
                        ( is_walking_with() && player_character.in_sleep_state() &&
-                         get_sleepiness() > sleepiness_levels::TIRED / 2 );
+                         get_sleepiness() > tired_level / 2 );
     if( danger <= 0.01 && tired && !sleep_on_hold() && !has_flag( json_flag_CANNOT_SLEEP ) &&
         judge_option( rest_option_best_case() ).permission == npc_permission::allowed ) {
         return npc_sleep;
@@ -3756,9 +3739,11 @@ void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint
     // "Long steps" are allowed when crossing z-levels
     // Stairs teleport the player too
     if( rl_dist( pos, p ) > 1 && p.z() == pos.z() ) {
-        // On the same level? Not so much. Something weird happened
+        // On the same level? Not so much. Something weird happened; without this return the
+        // NPC hopped over the tiles in between (NPC-B17)
         path.clear();
         move_pause();
+        return;
     }
     creature_tracker &creatures = get_creature_tracker();
     bool attacking = false;
@@ -3994,9 +3979,112 @@ void npc::move_to_next()
         return;
     }
 
+    // a path made before the NPC was shoved aside, or by a caller that didn't update it, no
+    // longer starts next to it: route to the same end again rather than step off it (NPC-B17)
+    if( path[0].z() == posz() && rl_dist( path[0], pos_bub() ) > 1 ) {
+        const tripoint_bub_ms dest = path.back();
+        path.clear();
+        update_path( dest, true );
+        if( path.empty() || ( path[0].z() == posz() && rl_dist( path[0], pos_bub() ) > 1 ) ) {
+            path.clear();
+            move_pause();
+            return;
+        }
+    }
+
     move_to( path[0] );
     if( !path.empty() && pos_bub() == path[0] ) { // Move was successful
         path.erase( path.begin() );
+    }
+}
+
+void npc::step_walk()
+{
+    if( !walk ) {
+        move_pause();
+        return;
+    }
+    walk->stepped = true;
+    if( errand::walk_arrived( *this, *walk ) ) {
+        errand::end_walk( *this, errand::reason::arrived );
+        return;
+    }
+    // back from a pause (a fight, a need, a save): patience starts over.  A slow NPC steps
+    // every few turns, which isn't a pause.
+    if( walk->last_step + 5_turns < calendar::turn ) {
+        walk->last_progress = calendar::turn;
+    }
+    walk->last_step = calendar::turn;
+    if( walk->run ) {
+        if( !is_running() && can_run() ) {
+            set_movement_mode( move_mode_run );
+            walk->switched_to_run = true;
+        } else if( is_running() && !can_run() ) {
+            set_movement_mode( move_mode_walk );
+        }
+    }
+    map &here = get_map();
+    const tripoint_bub_ms before = pos_bub( here );
+    const bool no_bashing = !walk->bash;
+    // the path is kept while it still leads to where the walk ends and its next step is still
+    // open (a door locked or a wall built since: plan again, bashing only if the walk may)
+    const bool keep_path = !path.empty() && errand::walk_end_tile( *this, *walk, path.back() ) &&
+                           ( path.front().z() != before.z() ||
+                             ( rl_dist( path.front(), before ) <= 1 && can_move_to( path.front(), no_bashing ) ) );
+    if( !keep_path ) {
+        if( walk->give_up_at && calendar::turn < walk->retry_at ) {
+            // no way there a moment ago: look again in a few turns, not every turn
+            move_pause();
+            return;
+        }
+        // around creatures first; through them (move_to() asks them to make way, or waits) when
+        // they're all that's in the way.  Waiting for a way to open, only walls matter.
+        std::optional<std::vector<tripoint_bub_ms>> route;
+        if( walk->retry_at == calendar::turn_zero ) {
+            route = errand::walk_route( *this, *walk, false );
+        }
+        if( !route ) {
+            route = errand::walk_route( *this, *walk, true );
+        }
+        if( !route ) {
+            if( !walk->give_up_at ) {
+                errand::end_walk( *this, errand::reason::unreachable );
+                return;
+            }
+            // told to keep trying: waits for a way to open
+            walk->retry_at = calendar::turn + 5_turns;
+            move_pause();
+            return;
+        }
+        walk->retry_at = calendar::turn_zero;
+        path = std::move( *route );
+        ai_cache.retained_trip = {};
+    }
+    if( path.empty() ) {
+        move_pause();
+        return;
+    }
+    const int moves_before = get_moves();
+    // as move_to_next(), with the walk's own bashing rule
+    move_to( path.front(), no_bashing );
+    if( !path.empty() && pos_bub( here ) == path.front() ) {
+        path.erase( path.begin() );
+    }
+    if( !walk ) {
+        // something on the way ended it
+        return;
+    }
+    if( pos_bub( here ) != before ) {
+        walk->last_progress = calendar::turn;
+    }
+    if( walk->run && is_running() ) {
+        burn_move_stamina( moves_before - get_moves() );
+    }
+    if( errand::walk_arrived( *this, *walk ) ) {
+        errand::end_walk( *this, errand::reason::arrived );
+    } else if( !walk->give_up_at &&
+               calendar::turn - walk->last_progress >= time_duration::from_turns( errand::walk_patience ) ) {
+        errand::end_walk( *this, errand::reason::blocked );
     }
 }
 
@@ -5608,7 +5696,8 @@ bool npc::consume_food_from_camp( consume_filter filter )
         int desired_kcals = std::min( static_cast<int>( base_metabolic_rate ), std::max( 0,
                                       kcal_threshold + 100 - current_kcals ) );
         if( routine_meal ) {
-            desired_kcals = std::max( desired_kcals, camp_routine_meal_kcal );
+            // least a camp serves a hungry NPC, whatever its weight
+            desired_kcals = std::max( desired_kcals, ai_tuning_of( *this ).camp_meal_kcal );
         }
         int kcals_to_eat = std::min( desired_kcals, bcp->get_owner()->food_supply().kcal() );
 
@@ -5744,7 +5833,7 @@ bool npc::intake_useful( const need_goal_id id ) const
     switch( id ) {
         case need_goal_id::drink_water:
             // adjusted thirst already subtracts water waiting in the stomach
-            return get_thirst() > npc_thirst_act_level;
+            return get_thirst() > ai_tuning_of( *this ).thirst_act_level();
         case need_goal_id::eat_food:
             return get_hunger() > NPC_HUNGER_CONSUME || calories_short( *this );
         case need_goal_id::regulate_temperature:
@@ -7759,11 +7848,13 @@ void npc::clear_committed_goal()
     if( const std::optional<need_goal_id> gid = goal_id_for( ai_cache.intention.goal ) ) {
         end_need_pursuit( *gid );
     }
+    npc_goal_runtime::end( *this, npc_goal_reason::interrupted );
     // drops any self-care activity, whichever goal started it
     if( is_self_care_activity() ) {
         abandon_activity();
     }
     ai_cache.intention = {};
+    npc_goal_runtime::report_change( *this );
 }
 
 float npc::current_need_urgency( need_goal_id id ) const
@@ -7961,7 +8052,7 @@ npc::need_result npc::execute_go_to_sleep()
             } else {
                 // every spot the NPC may use was tried this cycle: let other work through,
                 // and try the best spot again from scratch
-                sleep_session.stall();
+                sleep_session.stall( ai_tuning_of( *this ) );
                 failed.clear();
             }
             plan.last_result = need_result::impossible;

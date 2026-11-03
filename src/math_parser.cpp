@@ -831,6 +831,9 @@ void math_exp::math_exp_impl::new_func()
                 _validate_unused_kwargs( v.df, kwargs );
                 output.emplace( std::in_place_type_t<func_diag>(), v.df->fe, v.df->fa, v.scope,
                                 params, kwargs );
+                if( v.df->fc != nullptr ) {
+                    v.df->fc( std::get<func_diag>( output.top().data ).params );
+                }
             },
             [&params, this]( pmath_func v )
             {

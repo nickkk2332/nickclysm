@@ -14,6 +14,13 @@ int64_t generate_next_item_uid()
     return g->assign_item_uid();
 }
 
+void reserve_item_uid( int64_t uid )
+{
+    if( g ) {
+        g->reserve_item_uid( uid );
+    }
+}
+
 void item_uid::serialize( JsonOut &jsout ) const
 {
     jsout.write( value );

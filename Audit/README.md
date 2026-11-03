@@ -362,7 +362,7 @@ Modding features:
 
 | ID | Status | Commits | Regression test |
 |---|---|---|---|
-| ACT-J02 | partial | `06f6c4a4` | `tests/audit_activities_crafting_test.cpp`. Still open: activities that need an item or a target (reading a specific book, for example) |
+| ACT-J02 | partial | `06f6c4a4`, `13973129` | `tests/audit_activities_crafting_test.cpp`, `tests/eoc_errands_activity_test.cpp`. Activities with a target: reading, butchery, disassembly, crafting, wearing, unloading and reloading. Still open: the other activities that need a target |
 | ACT-J03 | partial | `2d596bc0`, `b53594ec` | `tests/audit_activities_crafting_test.cpp`. Still open: an "outcome" field on the event, and a context object on `u_assign_activity` |
 | CRAFT-J02 | partial | `e7222c8a` | `tests/audit_activities_crafting_test.cpp`. Still open: recipe start and fail hooks, and events for crafting, disassembly and recipe learning |
 | TERR-J01 | partial | `33e6f99a`, `f93e4745` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: moving the hardcoded vanilla `post_special` functions to JSON |
@@ -433,13 +433,207 @@ Gameplay changes players will notice besides the new actions: Judo's throws need
 
 Bugs fixed along the way: a monster that let go of a grab still counted as grabbing (`remove_grab` re-added the effect); monster grabs worked on incorporeal targets; `knockback_follow` never moved the attacker, and would have moved the avatar when an NPC used it; a technique that was two kinds of counter (Xedra Evolved's three devil tail counters, dodge and block) never fired, and now answers either. TLG bugs that were not copied: the flat throw cost, the landing tile's trap not going off, matching grabs by intensity instead of by grabber, a monster counting its own grab, a forbidden-effects list that was never cleared and a "pulled" effect that was never applied, and enemy NPCs that could be grabbed with no hit roll.
 
+**NPC errands and EOC UI: modding queue sections A–G.** These were asked for by the owner after the grappling port and are planned in [plans/modding-queue.md](plans/modding-queue.md). That file records what was settled for each section. They were built in two worktrees, one for walking and items and one for activities, examine and UI. A separate agent reviewed each worktree, and the two were then merged. Section H, NPC behavior-tree goals from JSON ([plans/npc-behavior-design.md](plans/npc-behavior-design.md)), comes next and uses these effects.
+
+For modders, everything is documented in `doc/JSON/EFFECT_ON_CONDITION.md` and `doc/PLAYER_ACTIVITY.md`:
+
+- **Walking.** `u_walk_to` / `npc_walk_to` send a character to a location variable. Options:
+  - `range`, `run`, `give_up_after`, `interruptible`
+  - `true_eocs`/`false_eocs`, which run when the walk ends
+
+  The walk is saved with the character. An NPC walks it through the existing "player order" node of its decision tree, so a fight or an urgent need still comes first. `u_cancel_walk` ends a walk. `u_is_walking_to` reads one.
+- **Items.** `u_pickup_item`, `u_wield_item`, `u_wear_item` and `u_drop_item` act on the item talker, optionally walking to it first (`"walk": true`). The item talker follows the item, so "pick up, then wield" works in one EOC. Taking someone else's item counts as theft unless `allow_theft` is false.
+- **Activities with a target** (ACT-J02). `u_assign_activity` takes `target_item`, `target_loc`, `recipe` and `butcher_type` for reading, butchery, disassembly, crafting (new or in progress), wearing, unloading and reloading. `true_eocs`/`false_eocs` now work with every activity.
+- **Examine.** `u_examine` / `npc_examine` operate an adjacent tile on the same level:
+  - Doors, gates and hatches open or close.
+  - The avatar otherwise gets the normal examine.
+  - An NPC may use EOC examine actions and a short list of built-in ones that ask nothing, such as gate controls and harvesting.
+- **UI.** `u_show_text` is a scrollable text window with buttons that run EOCs. `run_eoc_checklist` is a menu to tick several options.
+- **Conditions.** `u_has_item_in_hand`, `u_can_reach` and `u_is_doing_activity`.
+- **Results.** Every effect reports how it went: `true_eocs` or `false_eocs` run with a `reason` context value, such as `arrived`, `blocked`, `owned` or `no_room`. None of them opens a menu for an NPC. A targeted activity asks the player nothing either: a choice it would need, such as butchering human remains or unloading a gun with several things in it, is refused with a reason.
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| NPC-B17 | fixed | `4bfe5f91`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
+| NPC-B14 | fixed | `b537b04e`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
+| ACT-J02 | partial | see the third-round table above | `tests/eoc_errands_activity_test.cpp` |
+
+Gameplay changes players will notice:
+- **"Move there!" orders** (NPC-B14):
+  - A follower keeps the order across a save and load.
+  - With no way there, it says "I can't get there." and gives up.
+  - It stops next to the spot if someone is standing on it.
+  - "Follow me" cancels the order.
+- **No more teleporting NPCs** (NPC-B17). An NPC whose path went stale no longer hops over the tiles in between; it re-routes or waits.
+- **Resuming a craft.** A craft in progress that was missing components used them up and then stopped a turn later with "don't have the required components". It now keeps going.
+- **NPC reloading and unloading.** Messages name the NPC instead of saying "You", and an NPC's reload no longer opens a menu.
+
+With this batch the full suite passes, 2656 of 2656 test cases with seed 4242 and no errors logged, and every mod set still loads with no errors. The 52 new test cases are in `tests/npc_errand_test.cpp`, `tests/eoc_errands_activity_test.cpp` and `tests/eoc_errands_ui_test.cpp`.
+
+**Performance: twelve more high-severity findings.** These were built in three worktrees: combat and NPC attacks, loading and saving, and world and inventory. Each benchmark scenario was committed before its fix. The combat and world worktrees first committed tests that pin the old behavior, passing against the old code; the load fixes carry their tests in the same commits. A separate agent reviewed each worktree, and its comments were applied before merging. The numbers are in [benchmarks/README.md](benchmarks/README.md#round-4-twelve-more-high-severity-performance-findings).
+
+| ID | Status | Commits | Regression test or benchmark |
+|---|---|---|---|
+| NPC-P01 | fixed | `d07b5cfb` | `tests/audit_perf_combat_test.cpp`; benchmark `npc_spell_eval` |
+| MAGIC-P02 | fixed | `d07b5cfb` | `tests/audit_perf_combat_test.cpp`; benchmark `npc_spell_eval`. Also covers MAGIC-P04 and MAGIC-P05 inside NPC spell rating; casting and the targeting UI still use the original shape functions |
+| NPC-P02 | fixed | `ed1a52f8` | `tests/audit_perf_combat_test.cpp`; benchmark `npc_weapon_eval` |
+| CMBT-P01 | fixed | `f7f5226a`, `384c6872` | `tests/audit_perf_combat_test.cpp`; benchmarks `shot_flockshot`, `shot_birdshot`. Changes the order of a shot's random numbers (see below) |
+| CMBT-P02 | not changed | none | benchmark `shrapnel_armored`. A grenade among 25 armored zombies takes about 13 ms (about 170 fragment hits), so the full attack per fragment isn't worth replacing |
+| EVT-P01 | fixed | `209d2263`, `b3fb580f` | `tests/audit_perf_load_test.cpp`; benchmark `stats_overmap_special_history` |
+| MAP-P03 | fixed | `334b707a`, `74477812` | `tests/audit_perf_load_test.cpp`; benchmarks `mapbuffer_save_uniform`, `mapbuffer_lookup_missing` |
+| INV-P01 | fixed | `baed3534`, `e0f68119`, `0555b3a8` | `tests/audit_perf_load_test.cpp`; benchmark `item_nested_deserialize` |
+| INV-P02 | partial | `445dec4e`, `380292c3` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `inventory_queries`. Still open: the header-level steps (a bitmask pocket set in the visit APIs, `get_pseudo_items()` by reference, a public raw visitor). After this change they would gain little, and they need a near-full rebuild |
+| MGEN-P01 | fixed | `fdaaf2e6`, `8f06ed83` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `phase_change_lake_thawed`, `phase_change_lake_frozen` |
+| OMAP-P02 | fixed | `e30b243a`, `5e472856` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `omt_find_closest_miss`, `omt_find_npc_goals` |
+| ACT-P03 | fixed | `fbabc40e` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `zone_job_missing_tool` |
+
+The pinning tests compare each fast path with the old code. They cover every NPC spell and weapon rating against the full scan, including the random number state afterwards; the overmap searches against a copy of the old ones, including ties and which overmaps get generated; a year of lake loads against a copy of the old phase pass; and zone job scans with and without the tool. The shot tests compare damage and kill rates with the old code over many trials. The tests added after the world group's review were each checked by breaking the code they cover.
+
+Gameplay changes players will notice:
+- **Shotgun shots** (CMBT-P01). The pellets of a shot now fly together, a tile at a time, so their random numbers come in a different order and the same seed gives a different shot. Outcomes are statistically the same: for example, 00 buckshot at a 150 HP target averages 152.5 damage both ways. Effects that reach other tiles in the middle of a shot, such as a creature that splits or explodes on death, return fire or an on-hit EOC, can meet later pellets at a slightly different moment.
+- **Saved item references** (INV-P01). Items inside containers keep their uids across a save and load, so a saved reference into a container no longer fails with "item_location UID not found in container contents". A reference into a gun or tool mod, such as an underbarrel gun's magazine, is now saved too. Characters made from a template get fresh item uids.
+- **Achievements on "last overmap special entered"** (EVT-P01). Entries saved by older builds count as entering no special. Achievements already completed stay completed. An old history can no longer complete one on load.
+- **Frozen water** (MGEN-P01). A tile that stays frozen is no longer thawed and refrozen on every load, so the avatar's memory of it is no longer cleared. It is re-memorized when next seen.
+- **Map saves** (MAP-P03). A map segment whose quads are all sky or rock no longer gets an empty `.zzip` file. The save format is unchanged, and older builds read new saves.
+
+For modders:
+- `avatar_enters_omt` has a third field, `overmap_special`, empty when the OMT is in no special. A `trigger_event` for it needs three arguments. EOCs on the event get an `overmap_special` context variable. Older builds ignore the field in saves.
+- The `overmap_special_at` field transformation only consults overmaps already in memory, so no statistic can load or generate an overmap.
+- An item location saved into a mod pocket uses the new type `in_mod_pocket`. Older builds read it as `nowhere`, as they wrote it.
+
+With this batch the full suite passes, 2688 of 2688 test cases with seed 4242 and no errors logged. The 32 new test cases are in `tests/audit_perf_combat_test.cpp`, `tests/audit_perf_load_test.cpp` and `tests/audit_perf_world_inventory_test.cpp`, and every mod set still loads with no errors.
+
+**NPC behavior from JSON: modding queue section H (NPC-J03).** Mods can now add NPC behavior, not just rearrange the vanilla tree. The design was settled with the owner in [plans/npc-behavior-design.md](plans/npc-behavior-design.md). It was built in two worktrees: the tree (editing, conditions, scores and load checks) and the goals (categories, JSON goals, EOC reads and debugging). A separate agent reviewed each one. The two were merged, and the review fixes were made on the merged code.
+
+For modders, everything is documented with examples in `doc/JSON/NPC_BEHAVIOR.md`:
+
+- **Editing the tree.** `behavior` nodes support `copy-from`, `extend` and `delete`, and a child can be inserted `before` or `after` another. Built-in nodes, combat included, can be deleted, re-conditioned and re-scored. An edit that doesn't apply, such as two mods deleting the same child, is reported and skipped.
+- **Conditions.** `"predicate": "condition"` takes any dialogue condition, with the NPC as `u`; `npc_` conditions read nothing there. New conditions `u_is_in_faction` / `npc_is_in_faction` let a branch apply to one faction's NPCs.
+- **Scores.** A score can be a math expression, or a built-in score with a multiplier. `oracle('name')` reads a built-in score in math. `evaluate_every` caches a node's conditions and score per NPC.
+- **Categories.** These are the `npc_decision_category` type. A mod adds its own `before` or `after` a built-in one, with its own hysteresis.
+- **JSON goals.** A leaf node can carry a `category` and a `goal`:
+  - `on_start` and `on_turn` EOCs
+  - an `until` condition and a `timeout`
+  - `on_end`, `on_interrupt` and `on_timeout` hooks, with context values `goal_id`, `turns_active` and `reason`
+
+  A goal uses the errand effects, such as `u_walk_to`, `u_pickup_item` and targeted activities, to do its work. It is saved with the NPC. A goal with neither `until` nor `timeout` lasts while its node applies.
+- **Reading goals.** `u_npc_goal`, `npc_goal_category`, `npc_goal_turns()` and the `npc_goal_changed` event. The event fires for built-in goals too, but statistics don't keep it, so saves don't grow.
+- **Debugging.** Debug menu → Console → Creatures → "NPC decision" shows, for a chosen NPC:
+  - each condition and score
+  - the category order
+  - the committed goal, and why it won
+- **New load errors:**
+  - unknown, duplicate or cyclic children, and a tree with no reachable goal
+  - NPC and monster predicates mixed
+  - a bad predicate argument, an unknown `oracle()` name, and typos in `extend` / `delete`
+  - a JSON goal reusing a built-in goal's id, given two categories or an unknown category
+  - a built-in goal left without a category
+
+| ID | Status | Commits | Regression test or benchmark |
+|---|---|---|---|
+| NPC-J03 | fixed | `f2cc3d53`, `e2f62418`, `844f4cb0`, `a31114d8`, `950645fc`, `d22af887`, `52725bb8` | `tests/npc_behavior_tree_test.cpp`, `tests/npc_json_goal_test.cpp`; benchmark `npc_decision` |
+| NPC-J05 | partial | `e58bc280` | `tests/npc_json_goal_test.cpp`. An NPC's goal is readable. Still open: attitude, personality and faction relations |
+
+Vanilla NPCs decide as before:
+- A test pins every node of `npc_decision`: its strategy, conditions, score and goal.
+- The built-in categories keep today's order.
+- The NPC suites pass unchanged.
+
+The built-in end and interrupt rules (when a fight ends, the urgency margins between needs) are keyed by goal, so moving a built-in goal to another category changes only its rank. Running the new tests in the full suite also turned up two old test bugs. The NPC follower-rules tests left their NPCs in the overmap buffer, at an invalid position. Three horde tests left the reality bubble about 90 overmap tiles away, where the test date is below freezing, so a later test's water froze. Both now restore what they change.
+
+Cost: the `npc_decision` benchmark (300 turns of the tree for 20 NPCs) takes 53 ms before and 55 ms after, medians of three interleaved rounds whose ranges overlap, so the vanilla tree costs the same within noise (about 9 µs per NPC per turn). Four condition and math nodes add about 4 ms, under 1 µs per NPC per turn, and `evaluate_every: 5 turns` takes back most of that. The numbers are in [benchmarks/README.md](benchmarks/README.md#section-h-the-npc-decision-tree).
+
+With this batch the full suite passes, 2734 of 2734 test cases with seed 4242 and no errors logged. The 46 new test cases are mainly in `tests/npc_behavior_tree_test.cpp` and `tests/npc_json_goal_test.cpp`, and every mod set still loads with no errors.
+
+**NPC follow-ups (NPC-J04, NPC-J05, NPC-J10) and bug sweep, slice 2.** These were built after section H, in five worktrees: the NPC follow-ups, and four bug batches covering chapters 1 to 5 (EOC and dialogue, math and talkers, events and data loading, game loop and weather). A separate agent reviewed each worktree, and its comments were fixed before merging. The batches built and passed their focused tests on their own, then were merged and run through the full suite once.
+
+For modders (documented in `doc/JSON/EFFECT_ON_CONDITION.md`, `NPCs.md`, `NPC_BEHAVIOR.md` and `FACTIONS.md`):
+- **NPC events.**
+  - New events:
+    - `npc_attitude_changed`, with a `cause`: `effect`, `angered`, `opinion`, `mutiny`, `faction`, `panic`, `theft` or `ai`.
+    - `npc_recruited`, `npc_dismissed` and `npc_mutinies`.
+  - `npc_becomes_hostile` now fires for every way an NPC turns hostile, once until it calms down again, and not at spawn.
+  - A faction's `mutiny_faction` says where mutineers go.
+- **Reading and changing NPCs.**
+  - Math: `npc_personality()` (assignable), `npc_danger()`, `npc_panic()` and `npc_need_urgency()`.
+  - Conditions: `npc_attitude`, `npc_mission`, `npc_on_shift` and `npc_at_post`.
+  - Effects: `npc_set_attitude` and `npc_set_mission`, which go through the same code as the matching dialogue effects.
+  - Factions: `faction_has_relation` and `set_faction_relation`.
+- **AI tuning.** An `npc_class` can set `ai_tuning`: need thresholds, urgencies, starvation, camp meal size and sleep timings. Vanilla classes keep today's values exactly.
+- **EOCs.**
+  - About 20 effects and conditions no longer crash on the wrong kind of talker; they give one debug message instead.
+  - An EOC chain stops at 250 levels deep, with one message.
+  - An EOC queued with no delay from inside a queued EOC runs a turn later.
+  - `failure_topic` responses can be picked.
+  - `u_pickup_items` limits and `u_pick_bodypart` filters work.
+  - The documented object form of `take_control` loads.
+- **Math.**
+  - `%` groups left to right; no shipped JSON changes result.
+  - `time_since('noon')` and `time_until('noon')` are right before midday.
+  - `time()`/`calories()` assignments honour `unit` and `format`.
+  - `val('pos_x/y/z')` assignment moves like a teleport.
+  - `time_until_eoc()` returns the time left.
+- **Events.**
+  - EVENT EOCs no longer fall back to the avatar when the event's character can't be found. For example, a monster hurt by bleeding is now `u`.
+  - `trigger_event` arguments are checked.
+  - Timed map changes happen in the dimension they were made in.
+- **Data and mods.**
+  - `mod_migration` renames work, including chains.
+  - A plain-number weather `temperature_modifier` means °C.
+  - When a world loads with a broken mod list (a missing dependency, a conflict or the wrong order), a prompt offers to fix it, load anyway or go back, as the owner chose.
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| NPC-J04 | fixed | `c1e9b5fa`, `6ba4f89e`, `3b3f2823` | `tests/npc_ai_events_test.cpp` |
+| NPC-J05 | fixed | `e58bc280` (section H), `e0be4807`, `dbaf7c8b` | `tests/npc_ai_eoc_test.cpp` |
+| NPC-J10 | partial | `28437d7e` | `tests/npc_ai_tuning_test.cpp`. Still open: custom needs (the need set is a fixed enum), and the embark urgency, noise-wake window and temperature predicate |
+| EOC-B06 to EOC-B15 | fixed | `8c0da604` to `ff0b0985`, follow-ups `dae7c28f` to `db21dfb9` | `tests/audit_eoc_dialogue_test.cpp` (EOC-B09's UI path and EOC-B10's hotkey read are checked by reading) |
+| MATH-B03 to MATH-B11, LOOP-B10 | fixed | `eb2fd836` to `94250384`, follow-ups `242c90f2` to `a4106430` | `tests/audit_math_talkers_test.cpp` |
+| MATH-B12 | already fixed | by LOOP-J01 (`a17a8639`, `e1b3f7ef`) | existing `loop-j01_eoc_weather_overrides_hold_until_they_run_out` |
+| EVT-B03 to EVT-B10 | fixed | `6c203ba4` to `cbe83093`, follow-ups `3218e2c6`, `8c7b137f`, `5cc75dd7`, `94ea0bb4` | `tests/audit_events_sweep_test.cpp` (EVT-B06 needs a full game setup and is checked by reading) |
+| DATA-B04, DATA-B06, DATA-B07, DATA-B08 | fixed | `ef1af991`, `70395ba2`, `5e336317`, `42771b3b`, follow-ups `28d1c58b`, `bbc9087d`, `423cafa9`, `bb3e39f4` | `tests/audit_data_sweep_test.cpp` |
+| DATA-B05 | partial | `108c2b82` | `tests/audit_data_sweep_test.cpp`. Still open: mutation types and the charge/temperature removal blacklists still carry over between worlds in one session (the fix needs widely included headers; no shipped content shows it) |
+| DATA-B09 | fixed | `3cbe8ccc`, `f67fe1f3` | `tests/audit_data_sweep_test.cpp` |
+| LOOP-B05, LOOP-B12 | already fixed | by EVT-B01 (`90c08ef9`) and MAP-B03 | existing tests |
+| LOOP-B06 to LOOP-B09, LOOP-B13 to LOOP-B15 | fixed | `12247a06` to `d27488aa`, follow-ups `858c62d4` to `e37c37f7` | `tests/audit_loop_sweep_test.cpp` (LOOP-B07 is a menu and is checked by reading) |
+| LOOP-B11 | partial | `6fcccdc6` | `tests/audit_loop_sweep_test.cpp`. Still open: the avatar's water landing after knockback (needs design: which water, swim cost, map shift) |
+
+Gameplay changes players will notice:
+- **Seasons for water and maple sap** were 81 days early.
+  - Water is now warmest in early August and coldest in early February, so swimming at a default spring start is much colder: about 40 °F instead of 66 °F.
+  - Maple sap runs from late February to early May.
+- **Scarlet storms** now chill the surface by 2 to 30 °C. Their values had been read in a unit that made them do almost nothing. Underground is unaffected.
+- **Weather is consistent:** the same time and place give the same weather, and only live weather updates turn the wind. Wind direction now lasts hours instead of changing almost every update. Weather keeps working while you're in a basement or underwater.
+- **Alarms.**
+  - "Set alarm for dawn" sets the alarm for dawn.
+  - The motion alarm goes off at most once a turn, only for unfriendly monsters that moved or appeared in range.
+- **Saves.**
+  - A failed save no longer leaves the character file and the world out of step.
+  - A failed trip to another dimension keeps your vehicle, passengers, items and NPCs. A tow line is left unhitched.
+  - Mortar shells survive a save.
+  - Lake and open-air areas keep partial constructions and spawns.
+- **Dialogue.**
+  - "Go back" in an NPC's opening topic stays in the conversation.
+  - Responses with a `failure_topic` can be picked: for example, the Old Guard's "You don't have enough." now goes back instead of being greyed out.
+- **NPCs.**
+  - A new character no longer starts with the previous one's memorial.
+  - The memorial logs "became hostile" exactly as before.
+  - Knocked-back monsters drown in the deep water they cross, not the shallow water they started in.
+- **Teleports.** A teleport that is refused (`u_teleport`, spells, `val('pos_*')`) changes nothing: you keep your seat, mount and grabs.
+- **Mod content updated** to keep its behavior under the new rules:
+  - Xedra's six paraclesian spell selectors, its brownie blink and the haunting spawn no longer recurse.
+  - Magiclysm's and MindOverMatter's item-count EOCs no longer recurse.
+  - Three MindOverMatter and Xedra damage EOCs need an attacker.
+
+With these batches the full suite passes, 2834 of 2834 test cases with seed 4242 and no errors logged, and every mod set still loads with no errors. The 100 new test cases are mainly in `tests/npc_ai_*_test.cpp` and `tests/audit_{eoc_dialogue,math_talkers,events_sweep,data_sweep,loop_sweep}_test.cpp`. The tests of the changed mod content are hidden and run with those mods loaded (`--mods=no_npc_food,xedra_evolved,mindovermatter,magiclysm "[xedra_evolved],[mindovermatter]"`); they pass.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. After the third round (modding round 1 and bug sweep 1), all 228 `[audit]` test cases pass and the full suite passes: 2506 of 2506 with seed 4242, with no errors logged. Every mod set still loads with no errors. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
 
 Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five tests failed in full-suite runs but passed alone, because earlier tests left state behind. The main culprit: `clear_character()` did not reset the stat bonuses that hardcoded effects add, so after a frostbite test the avatar kept -2 INT, which slowed learning by 10% in later crafting tests. Three other tests (`memorials`, `available_reloadables`, `monster_speed_description`) now clear the map or the avatar themselves.
 
-**Build note.** With the default precompiled header (`PCH=1`) and GCC 13, the build's dependency files list no project headers, so editing a `.h` file does not rebuild the files that include it. Build with `PCH=0` (or clean first) after any header change. A full test-suite run peaks around 9 GB of memory, so two runs at once do not fit in a 16 GB container.
+**Build note.** With the default precompiled header (`PCH=1`) and GCC 13, the build's dependency files list no project headers, so editing a `.h` file does not rebuild the files that include it. Build with `PCH=0` (or clean first) after any header change. A full test-suite run peaks around 10 GB of memory, so two runs at once do not fit in a 16 GB container.
 
 **Gameplay changes players will notice.**
 

@@ -86,8 +86,8 @@ bool is_creature_outside( const Creature &target )
     map &here = get_map();
     const tripoint_bub_ms pos = target.pos_bub( here );
 
-    return here.is_outside( tripoint_bub_ms( pos.xy(), here.get_abs_sub().z() ) ) &&
-           here.get_abs_sub().z() >= 0;
+    // The creature's own level, not the map's
+    return pos.z() >= 0 && here.is_outside( pos );
 }
 
 weather_type_id get_bad_weather()
@@ -471,6 +471,10 @@ void handle_weather_effects( const weather_type_id &w )
     //Possible TODO, make npc/monsters affected
     map &here = get_map();
     Character &target = get_player_character();
+    // Runs wherever the avatar is. Only the avatar's own share (getting wet, glare) waits for it
+    // to be out of the water; underground, the roof check and is_sheltered() keep it dry and
+    // out of the sun unless it is open to the sky.
+    const bool avatar_above_water = !target.is_underwater();
     if( w->rains && w->precip != precip_class::none ) {
         fill_water_collectors( precip_mm_per_hour( w->precip ) );
         int wetness = 0;
@@ -489,14 +493,23 @@ void handle_weather_effects( const weather_type_id &w )
         // Coarse correction to get us back to previously intended soaking rate.
         // Precipitation is vertical - only roofs/floors block it, not walls.
         // is_roofed() walks upward through all z-levels for a complete check.
-        if( calendar::once_every( 6_seconds ) && !here.is_roofed( target.pos_bub() ) ) {
+        if( avatar_above_water && calendar::once_every( 6_seconds ) &&
+            !here.is_roofed( target.pos_bub() ) ) {
             wet_character( target, wetness );
         }
     }
-    glare( w );
+    if( avatar_above_water ) {
+        glare( w );
+    }
 
     for( Creature &c : g->all_creatures() ) {
-        here.maybe_apply_field_effect( w->passive_effect, c );
+        // Above ground the weather reaches everyone (immune_inside spares those indoors);
+        // underground only those under open sky, as with getting wet. Under water nobody:
+        // the weather's air, fog or spores don't reach them there.
+        const tripoint_bub_ms pos = c.pos_bub( here );
+        if( !c.is_underwater() && ( pos.z() >= 0 || !here.is_roofed( pos ) ) ) {
+            here.maybe_apply_field_effect( w->passive_effect, c );
+        }
     }
 
     get_weather().lightning_active = false;
@@ -1142,6 +1155,13 @@ void weather_manager::update_weather()
         const weather_generator &weather_gen = get_cur_weather_gen();
         w = weather_gen.get_weather( player_character.pos_abs(), calendar::turn,
                                      g->get_seed() );
+        // The live wind keeps blowing from where it did, and takes the generated direction now
+        // and then: more often the weaker it is, and whenever it falls still
+        int &live_direction = weather_generator::current_winddir;
+        if( live_direction == 1000 || one_in( static_cast<int>( w.windpower ) * 2160 ) ) {
+            live_direction = w.winddirection;
+        }
+        w.winddirection = live_direction;
         // Before picking the weather type, so a forced cold or wind shows in it
         apply_eoc_overrides( w );
         weather_type_id old_weather = weather_id;
@@ -1317,7 +1337,10 @@ units::temperature weather_manager::get_temperature( const tripoint_bub_ms &loca
         temp_mod = get_heat_radiation( location );
         temp_mod += get_convection_temperature( location );
         temp_mod += get_map().get_temperature_mod( location );
-        temp_mod += weather_id->temperature_modifier;
+        // Weather reaches every level above ground, indoors too, but not underground
+        if( location.z() >= 0 ) {
+            temp_mod += weather_id->temperature_modifier;
+        }
 
         temp += temp_mod;
     }

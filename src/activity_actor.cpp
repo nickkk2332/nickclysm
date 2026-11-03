@@ -119,6 +119,7 @@
 #include "proficiency.h"
 #include "ranged.h"
 #include "recipe.h"
+#include "requirement_scan_memo.h"
 #include "requirements.h"
 #include "ret_val.h"
 #include "rng.h"
@@ -5519,7 +5520,15 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
     // a farm scan asks every tile whether it is warm enough to plant; the answer is the
     // same across an overmap tile within this turn
     const scoped_planting_memo planting_memo;
+    // the requirement checks of the work spots the scan skips share their answers, as nothing
+    // changes between them; anything else the scan does at a spot may change things
+    scoped_requirement_scan_memo requirement_memo;
+    bool previous_skipped = true;
     for( const tripoint_abs_ms &src : src_sorted ) {
+        if( !previous_skipped ) {
+            requirement_memo.forget();
+        }
+        previous_skipped = false;
         const tripoint_bub_ms &src_bub = here.get_bub( src );
         if( !check_only ) {
             if( !here.inbounds( src_bub ) ) {
@@ -5556,6 +5565,7 @@ bool multi_zone_activity_actor::simulate_turn( player_activity &act, Character &
         }
         req_fail_reason.convert_requirement_check_result( req_res );
         if( req_fail_reason.check_skip_location() ) {
+            previous_skipped = true;
             if( use_cache ) {
                 cache.sources.erase( src );
             }
@@ -6806,7 +6816,15 @@ bool craft_activity_actor::check_if_craft_okay( item_location &craft_item, Chara
     if( !cached_continuation_requirements ) {
         cached_continuation_requirements = craft->get_continue_reqs();
     }
-    return crafter.can_continue_craft( *craft, *cached_continuation_requirements );
+    if( !crafter.can_continue_craft( *craft, *cached_continuation_requirements ) ) {
+        return false;
+    }
+    if( !cached_continuation_requirements->is_empty() ) {
+        // can_continue_craft just used up the missing components: checking the same requirements
+        // again next turn would find them missing and stop the craft.
+        cached_continuation_requirements = craft->get_continue_reqs();
+    }
+    return true;
 }
 
 void craft_activity_actor::start( player_activity &act, Character &crafter )
@@ -8607,13 +8625,18 @@ void reload_activity_actor::reload_msg( Character &who, bool finished )
         if( reloadable.has_flag( flag_RELOAD_ONE ) && !ammo_uses_speedloader &&
             !ammo_uses_speedloader_clip ) {
 
-            add_msg( m_neutral, _( "You insert %dx %s into the %s." ), qty, ammo_name, reloadable_name );
+            who.add_msg_player_or_npc( m_neutral, _( "You insert %dx %s into the %s." ),
+                                       _( "<npcname> inserts %dx %s into the %s." ), qty, ammo_name,
+                                       reloadable_name );
         }
         make_reload_sound( who, reloadable );
     } else if( reloadable.is_watertight_container() ) {
-        add_msg( m_neutral, _( "You refill the %s." ), reloadable_name );
+        who.add_msg_player_or_npc( m_neutral, _( "You refill the %s." ),
+                                   _( "<npcname> refills the %s." ), reloadable_name );
     } else {
-        add_msg( m_neutral, _( "You reload the %1$s with %2$s." ), reloadable_name, ammo_name );
+        who.add_msg_player_or_npc( m_neutral, _( "You reload the %1$s with %2$s." ),
+                                   _( "<npcname> reloads the %1$s with %2$s." ), reloadable_name,
+                                   ammo_name );
     }
 }
 
@@ -8667,6 +8690,13 @@ void reload_activity_actor::reload( player_activity &act, Character &who, int lo
         // try_add copied the old item, so remove it now.
         loc.remove_item();
         target_loc = new_loc;
+        return;
+    }
+
+    if( !who.is_avatar() ) {
+        // Nobody to ask: an NPC drops it, as the prompt does by default.
+        target_loc = here.add_item_or_charges_ret_loc( loc.pos_bub( here ), reloadable );
+        loc.remove_item();
         return;
     }
 

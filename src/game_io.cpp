@@ -11,6 +11,7 @@
 #include <ctime>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -23,6 +24,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -31,6 +33,7 @@
 #include "auto_note.h"
 #include "auto_pickup.h"
 #include "avatar.h"
+#include "behavior.h"
 #include "cached_options.h"
 #include "calendar.h"
 #include "cata_path.h"
@@ -75,6 +78,7 @@
 #include "pimpl.h"
 #include "popup.h"
 #include "safemode_ui.h"
+#include "save_fault.h"
 #if defined(TILES)
 #include "sdltiles.h"
 #endif
@@ -187,10 +191,8 @@ bool game::check_mod_data( const std::vector<mod_id> &opts )
         try {
             load_core_data();
 
-            // Load any dependencies and de-duplicate them
-            std::vector<mod_id> dep_vector = tree.get_dependencies_of_X_as_strings( mod.ident );
-            std::set<mod_id> dep_set( dep_vector.begin(), dep_vector.end() );
-            for( const auto &dep : dep_set ) {
+            // Load the dependencies, each after the ones it depends on
+            for( const mod_id &dep : tree.get_dependencies_of_X_as_strings( mod.ident ) ) {
                 load_data_from_dir( dep->path, dep->ident.str() );
             }
 
@@ -322,6 +324,8 @@ bool game::load( const std::string &world )
 bool game::load( const save_t &name )
 {
     map &here = get_map();
+    // results kept for "evaluate_every" belong to the previous game's NPCs
+    behavior::clear_evaluation_cache();
 
     const cata_path worldpath = PATH_INFO::world_base_save_path();
     const cata_path save_file_path = PATH_INFO::world_base_save_path() /
@@ -567,9 +571,170 @@ void game::load_packs( const std::string &msg, const std::vector<mod_id> &packs 
     }
 }
 
+namespace save_fault
+{
+std::set<std::string> &failing_steps()
+{
+    static std::set<std::string> steps;
+    return steps;
+}
+
+std::set<std::string> &skipped_steps()
+{
+    static std::set<std::string> steps;
+    return steps;
+}
+
+std::vector<std::string> &started_steps()
+{
+    static std::vector<std::string> steps;
+    return steps;
+}
+
+std::optional<bool> forced_result( const std::string &step )
+{
+    if( failing_steps().empty() && skipped_steps().empty() ) {
+        // Nothing is set up, so this isn't a test of the save: record nothing
+        return std::nullopt;
+    }
+    started_steps().push_back( step );
+    if( failing_steps().count( step ) > 0 ) {
+        return false;
+    }
+    if( skipped_steps().count( step ) > 0 ) {
+        return true;
+    }
+    return std::nullopt;
+}
+} // namespace save_fault
+
+namespace
+{
+// The player's save file, written in full under a temporary name before the world is saved and
+// renamed over the old one after. Whatever can stop the player file being written (a save
+// locked by a sync tool or an antivirus, a full disk) shows up before the world on disk
+// changes, so the world and the player file are not saved at different moments.
+class staged_player_save
+{
+    public:
+        staged_player_save() = default;
+        staged_player_save( const staged_player_save & ) = delete;
+        staged_player_save &operator=( const staged_player_save & ) = delete;
+        ~staged_player_save() {
+            discard();
+        }
+
+        // Writes the player file under the temporary name. False if it can't be written.
+        bool stage( const std::string &json );
+        // Renames the temporary file over the player file.
+        bool commit();
+
+    private:
+        void discard() {
+            if( !staged.empty() ) {
+                std::error_code ec;
+                std::filesystem::remove( staged, ec );
+                staged.clear();
+            }
+        }
+        std::filesystem::path staged;
+        std::filesystem::path final_path;
+};
+
+bool staged_player_save::stage( const std::string &json )
+{
+    if( const std::optional<bool> forced = save_fault::forced_result( "player" ) ) {
+        return *forced;
+    }
+    const cata_path playerfile = PATH_INFO::player_base_save_path();
+    const bool compressed = world_generator->active_world->has_compression_enabled();
+    final_path = ( compressed ? playerfile + SAVE_EXTENSION + zzip_suffix :
+                   playerfile + SAVE_EXTENSION ).get_unrelative_path();
+    staged = final_path;
+    staged.concat( ".staged" ); // NOLINT(cata-u8-path)
+
+    std::error_code ec;
+    if( std::filesystem::exists( final_path, ec ) ) {
+        // The rename at the end replaces it, which a lock by another program would stop
+        std::fstream writable( final_path, std::ios::in | std::ios::out | std::ios::binary );
+        if( !writable.is_open() ) {
+            debugmsg( "Can't write the save file %s", final_path.generic_u8string() );
+            staged.clear();
+            return false;
+        }
+    }
+
+    if( !compressed ) {
+        if( !write_to_file( staged.generic_u8string(), [&json]( std::ostream & fout ) {
+        fout << json;
+    }, _( "player data" ) ) ) {
+            discard();
+            return false;
+        }
+        return true;
+    }
+
+    // Add the player to a copy of the compressed save, so the save itself stays as it was
+    // until commit()
+    std::filesystem::remove( staged, ec );
+    ec.clear();
+    if( std::filesystem::exists( final_path, ec ) && !ec ) {
+        std::filesystem::copy_file( final_path, staged, ec );
+    }
+    if( ec ) {
+        // The file could not be read (e.g. locked by OneDrive or an antivirus)
+        debugmsg( "Failed to copy compressed save file %s: %s", final_path.generic_u8string(),
+                  ec.message() );
+        discard();
+        return false;
+    }
+    std::optional<zzip> z = zzip::load( staged );
+    if( !z ) {
+        debugmsg( "Failed to open compressed save file %s", staged.generic_u8string() );
+        discard();
+        return false;
+    }
+    const std::filesystem::path save_name =
+        ( playerfile + SAVE_EXTENSION ).get_unrelative_path().filename();
+    if( !z->add_file( save_name, json ) ) {
+        z.reset();
+        discard();
+        return false;
+    }
+    std::filesystem::path compacted = staged;
+    compacted.concat( ".tmp" ); // NOLINT(cata-u8-path)
+    if( z->compact_to( compacted, 2.0 ) ) {
+        z.reset();
+        if( !rename_file( compacted, staged ) ) {
+            std::filesystem::remove( compacted, ec );
+            discard();
+            return false;
+        }
+    }
+    return true;
+}
+
+bool staged_player_save::commit()
+{
+    if( staged.empty() ) {
+        // A test skipped the player file
+        return true;
+    }
+    if( !rename_file( staged, final_path ) ) {
+        debugmsg( "Failed to move %s into place", final_path.generic_u8string() );
+        return false;
+    }
+    staged.clear();
+    return true;
+}
+} // namespace
+
 //Saves all factions and missions and npcs.
 bool game::save_factions_missions_npcs()
 {
+    if( const std::optional<bool> forced = save_fault::forced_result( "master" ) ) {
+        return *forced;
+    }
     cata_path masterfile = PATH_INFO::world_base_save_path() / SAVE_MASTER;
     return write_to_file( masterfile, [&]( std::ostream & fout ) {
         serialize_master( fout );
@@ -578,6 +743,9 @@ bool game::save_factions_missions_npcs()
 //Saves per-dimension data like Weather and overmapbuffer state
 bool game::save_dimension_data()
 {
+    if( const std::optional<bool> forced = save_fault::forced_result( "dimension" ) ) {
+        return *forced;
+    }
     cata_path data_file = PATH_INFO::current_dimension_save_path() / SAVE_DIMENSION_DATA;
     return write_to_file( data_file, [&]( std::ostream & fout ) {
         serialize_dimension_data( fout );
@@ -585,6 +753,9 @@ bool game::save_dimension_data()
 }
 bool game::save_maps()
 {
+    if( const std::optional<bool> forced = save_fault::forced_result( "maps" ) ) {
+        return *forced;
+    }
     map &here = get_map();
 
     try {
@@ -598,37 +769,11 @@ bool game::save_maps()
     }
 }
 
+// The player's files other than the save itself, which game::save() writes with a
+// staged_player_save
 bool game::save_player_data()
 {
     const cata_path playerfile = PATH_INFO::player_base_save_path();
-
-    bool saved_data;
-    if( world_generator->active_world->has_compression_enabled() ) {
-        std::stringstream save;
-        serialize_json( save );
-        std::filesystem::path save_path = ( playerfile + SAVE_EXTENSION +
-                                            zzip_suffix ).get_unrelative_path();
-        std::filesystem::path tmp_path = save_path;
-        tmp_path.concat( ".tmp" ); // NOLINT(cata-u8-path)
-        std::optional<zzip> z = zzip::load( save_path );
-        if( !z ) {
-            // The file could not be mapped (e.g. locked by OneDrive or an antivirus)
-            debugmsg( "Failed to open compressed save file %s", save_path.generic_u8string() );
-            saved_data = false;
-        } else {
-            const std::filesystem::path save_name =
-                ( playerfile + SAVE_EXTENSION ).get_unrelative_path().filename();
-            saved_data = z->add_file( save_name, save.str() );
-            if( saved_data && z->compact_to( tmp_path, 2.0 ) ) {
-                z.reset();
-                saved_data = rename_file( tmp_path, save_path );
-            }
-        }
-    } else {
-        saved_data = write_to_file( playerfile + SAVE_EXTENSION, [&]( std::ostream & fout ) {
-            serialize_json( fout );
-        }, _( "player data" ) );
-    }
     const bool saved_map_memory = u.save_map_memory();
     const bool saved_log = write_to_file( playerfile + SAVE_EXTENSION_LOG, [&](
     std::ostream & fout ) {
@@ -641,7 +786,7 @@ bool game::save_player_data()
     }, _( "quick shortcuts" ) );
 #endif
     const bool saved_diary = u.get_avatar_diary()->store();
-    return saved_data && saved_map_memory && saved_log && saved_diary
+    return saved_map_memory && saved_log && saved_diary
 #if defined(__ANDROID__)
            && saved_shortcuts
 #endif
@@ -650,6 +795,9 @@ bool game::save_player_data()
 
 bool game::save_achievements()
 {
+    if( const std::optional<bool> forced = save_fault::forced_result( "achievements" ) ) {
+        return *forced;
+    }
     const std::string &achievement_dir = PATH_INFO::achievementdir();
 
     //Check if achievement dir exists
@@ -705,6 +853,9 @@ bool game::save_achievements()
 
 bool game::save_external_options_record()
 {
+    if( const std::optional<bool> forced = save_fault::forced_result( "options_record" ) ) {
+        return *forced;
+    }
     const cata_path externals = PATH_INFO::world_base_save_path() / PATH_INFO::external_options();
     const bool saved_externals = write_to_file( externals, [&]( std::ostream & fout ) {
         JsonOut jout( fout );
@@ -750,12 +901,20 @@ bool game::save()
     std::chrono::seconds total_time_played = time_played_at_last_load + time_since_load;
     events().send<event_type::game_save>( time_since_load, total_time_played );
     try {
-        if( !save_player_data() ||
-            !save_achievements() ||
-            !save_factions_missions_npcs() ||
-            !save_external_options_record() ||
+        // Master first, so the id counters it holds never fall behind anything saved after it.
+        // Then the player file is written in full under a temporary name, and only renamed into
+        // place once the world is saved: a player file that can't be written stops the save
+        // before the world on disk changes, so the world and the player file never come from
+        // different moments (items twice, or gone, on reload).
+        std::stringstream player_json;
+        serialize_json( player_json );
+        staged_player_save player_file;
+        if( !save_factions_missions_npcs() ||
+            !player_file.stage( player_json.str() ) ||
             !save_dimension_data() ||
             !save_maps() ||
+            !player_file.commit() ||
+            !save_player_data() ||
             !get_auto_pickup().save_character() ||
             !get_auto_notes_settings().save( true ) ||
             !get_safemode().save_character() ||
@@ -768,6 +927,14 @@ bool game::save()
             debugmsg( "game not saved" );
             return false;
         } else {
+            // Achievements go to a folder shared by every world, and the options record is
+            // only for debugging. Failing to write either is reported, but the game is saved.
+            if( !save_achievements() ) {
+                DebugLog( D_WARNING, DC_ALL ) << "game::save: achievements not written";
+            }
+            if( !save_external_options_record() ) {
+                DebugLog( D_WARNING, DC_ALL ) << "game::save: external options record not written";
+            }
             world_generator->last_world_name = world_generator->active_world->world_name;
             world_generator->last_character_name = u.name;
             world_generator->save_last_world_info();

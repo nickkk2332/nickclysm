@@ -8380,6 +8380,11 @@ bool vehicle::restore_folded_parts( const item &it )
 {
     const JsonValue jv_parts = json_loader::from_string( it.get_var( "folded_parts" ) );
     deserialize_parts( static_cast<JsonArray>( jv_parts ) );
+    // The parts' items come back with the uids they had when folded, but the folded item (and
+    // its var) may have been copied since, so they could be in use
+    for( vehicle_part &vp : parts ) {
+        vp.base.renew_uids();
+    }
 
     // item should have snapshot of average part damage in item var. take difference of current
     // item's damage and snapshotted damage, then randomly apply to parts in chunks to roughly match.

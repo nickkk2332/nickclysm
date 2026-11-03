@@ -28,6 +28,7 @@
 #include "debug.h"
 #include "dialogue_chatbin.h"
 #include "enums.h"
+#include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -41,6 +42,7 @@
 #include "magic.h"
 #include "map.h"
 #include "martialarts.h"
+#include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
 #include "monster.h"
@@ -519,6 +521,8 @@ void talk_function::stop_guard( npc &p )
     p.set_attitude( NPCATT_FOLLOW );
     add_msg( _( "%s begins to follow you." ), p.get_name() );
     p.set_mission( NPC_MISSION_NULL );
+    // "Follow me" takes over from a walk it was sent on (NPC-B14)
+    errand::end_walk( p, errand::reason::cancelled );
     if( p.has_companion_mission() ) {
         p.reset_companion_mission();
     }
@@ -910,10 +914,10 @@ void talk_function::drop_items_in_place( npc &p )
 
 void talk_function::follow( npc &p )
 {
-    g->add_npc_follower( p.getID() );
     p.set_attitude( NPCATT_FOLLOW );
     p.set_fac( faction_your_followers );
     p.set_mission( NPC_MISSION_NULL );
+    errand::end_walk( p, errand::reason::cancelled );
     p.goal = npc::no_goal_point;
     p.guard_pos = std::nullopt;
     p.clear_ai_guard_pos();
@@ -923,12 +927,15 @@ void talk_function::follow( npc &p )
     if( !p.custom_profession.empty() ) {
         p.custom_profession.clear();
     }
+    // last: npc_recruited goes out from here, and what its EOCs do to the recruit stays
+    g->add_npc_follower( p.getID() );
 }
 
 void talk_function::follow_only( npc &p )
 {
     p.set_attitude( NPCATT_FOLLOW );
     p.set_mission( NPC_MISSION_NULL );
+    errand::end_walk( p, errand::reason::cancelled );
     p.goal = npc::no_goal_point;
     p.guard_pos = std::nullopt;
     p.clear_ai_guard_pos();
@@ -972,7 +979,9 @@ void talk_function::hostile( npc &p )
         add_msg( _( "%s turns hostile!" ), p.get_name() );
     }
 
-    get_event_bus().send<event_type::npc_becomes_hostile>( p.getID(), p.name );
+    // npc_becomes_hostile goes out from set_attitude(); the memorial notes this effect alone
+    get_memorial().add( pgettext( "memorial_male", "%s became hostile." ),
+                        pgettext( "memorial_female", "%s became hostile." ), p.name );
     p.set_attitude( NPCATT_KILL );
 }
 

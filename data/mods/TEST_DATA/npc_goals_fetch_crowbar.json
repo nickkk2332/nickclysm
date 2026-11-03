@@ -1,0 +1,92 @@
+[
+  {
+    "type": "behavior",
+    "id": "npc_fetch_crowbar",
+    "//": "The worked example of doc/JSON/NPC_BEHAVIOR.md, word for word but for these comments and the extension of npc_priorities, which would change every test's NPCs.  tests/npc_json_goal_test.cpp runs it.",
+    "category": "free_time",
+    "conditions": [
+      {
+        "predicate": "condition",
+        "condition": {
+          "and": [
+            { "not": { "u_has_item": "crowbar" } },
+            {
+              "or": [
+                { "math": [ "u_fetch_crowbar_failed_at == 0" ] },
+                { "math": [ "time('now') - u_fetch_crowbar_failed_at > time('1 d')" ] }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "score": { "math": [ "0.3" ] },
+    "goal": {
+      "id": "fetch_crowbar",
+      "on_start": [ "EOC_FETCH_CROWBAR_START" ],
+      "until": {
+        "or": [
+          { "and": [ { "u_has_item": "crowbar" }, { "math": [ "u_fetch_crowbar_back == 1" ] } ] },
+          { "math": [ "u_fetch_crowbar_lost == 1" ] }
+        ]
+      },
+      "timeout": "30 minutes",
+      "on_timeout": [ "EOC_FETCH_CROWBAR_LOST" ],
+      "on_end": [ "EOC_FETCH_CROWBAR_END" ]
+    }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_FETCH_CROWBAR_START",
+    "effect": [
+      { "math": [ "u_fetch_crowbar_back = 0" ] },
+      { "math": [ "u_fetch_crowbar_lost = 0" ] },
+      { "u_location_variable": { "u_val": "fetch_crowbar_home" } },
+      {
+        "u_map_run_item_eocs": "random",
+        "search_data": [ { "id": "crowbar" } ],
+        "max_radius": 10,
+        "true_eocs": [
+          {
+            "id": "EOC_FETCH_CROWBAR_GO",
+            "effect": [
+              {
+                "u_pickup_item": "npc",
+                "walk": true,
+                "true_eocs": [ "EOC_FETCH_CROWBAR_RETURN" ],
+                "false_eocs": [ "EOC_FETCH_CROWBAR_LOST" ]
+              }
+            ]
+          }
+        ],
+        "false_eocs": [ "EOC_FETCH_CROWBAR_LOST" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_FETCH_CROWBAR_RETURN",
+    "effect": [
+      {
+        "u_walk_to": { "u_val": "fetch_crowbar_home" },
+        "true_eocs": [ { "id": "EOC_FETCH_CROWBAR_BACK", "effect": [ { "math": [ "u_fetch_crowbar_back = 1" ] } ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_FETCH_CROWBAR_LOST",
+    "effect": [ { "math": [ "u_fetch_crowbar_lost = 1" ] }, { "math": [ "u_fetch_crowbar_failed_at = time('now')" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_FETCH_CROWBAR_END",
+    "effect": [
+      {
+        "if": { "u_has_item": "crowbar" },
+        "then": { "u_message": "<u_name> is back with a crowbar.", "type": "good" },
+        "else": { "u_message": "<u_name> gives up on the crowbar (<context_val:reason>)." }
+      }
+    ]
+  }
+]

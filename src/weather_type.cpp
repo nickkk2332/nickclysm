@@ -110,7 +110,13 @@ void weather_type::load( const JsonObject &jo, std::string_view )
     mandatory( jo, was_loaded, "ranged_penalty", ranged_penalty );
     mandatory( jo, was_loaded, "sight_penalty", sight_penalty );
     mandatory( jo, was_loaded, "light_modifier", light_modifier );
-    optional( jo, was_loaded, "temperature_modifier", temperature_modifier, 0_K_delta );
+    if( jo.has_number( "temperature_modifier" ) ) {
+        // A plain number is degrees Celsius, like a weather generator's base_temperature.
+        // The units reader would take it as legacy body temperature units (0.002 K).
+        temperature_modifier = units::from_celsius_delta( jo.get_float( "temperature_modifier" ) );
+    } else {
+        optional( jo, was_loaded, "temperature_modifier", temperature_modifier, 0_K_delta );
+    }
     mandatory( jo, was_loaded, "priority", priority );
     optional( jo, was_loaded, "light_multiplier", light_multiplier, 1.f );
     optional( jo, was_loaded, "sun_multiplier", sun_multiplier, 1.f );

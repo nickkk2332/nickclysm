@@ -293,6 +293,12 @@ class submap
         bool is_uniform() const {
             return !static_cast<bool>( m );
         }
+        // Whether a uniform submap still holds something saving must keep: pending spawns,
+        // partial constructions or phase reverts.  They don't make it non-uniform.
+        bool holds_more_than_terrain() const;
+        // Makes the submap uniform again when every tile has the same terrain and nothing
+        // else, as it was generated.  Returns whether it is uniform.
+        bool make_uniform_if_possible();
 
         // Merge the contents of the two submaps onto the target submap. If there is a
         // conflict the overlay wins out. Note that it's technically possible for both
@@ -328,6 +334,11 @@ class submap
         };
 
     private:
+        // Parts of store(), which a uniform submap also writes when it holds them
+        void store_phase_reverts( JsonOut &jsout ) const;
+        void store_spawns( JsonOut &jsout ) const;
+        void store_partial_constructions( JsonOut &jsout ) const;
+
         std::map<point_sm_ms, tile_data> ephemeral_data;
         std::map<point_sm_ms, computer> computers;
         std::unique_ptr<maptile_soa> m;

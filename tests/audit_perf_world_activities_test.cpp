@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -23,9 +24,9 @@
 #include "player_helpers.h"
 #include "recipe.h"
 #include "ret_val.h"
-#include "rng.h"
 #include "type_id.h"
 #include "weather.h"
+#include "weather_sample_count.h"
 
 static const faction_id faction_your_followers( "your_followers" );
 
@@ -111,11 +112,11 @@ TEST_CASE( "act-p02_farm_check_of_a_tile_to_till_samples_no_weather", "[audit][a
     zm.add( "plot", zone_type_FARM_PLOT, faction_your_followers, false, true,
             here.get_abs( plot ), here.get_abs( plot ), options );
 
-    const cata_default_random_engine before = rng_get_engine();
+    const uint64_t samples_before = weather_samples_taken();
     multi_farm_activity_actor actor;
     const activity_reason_info info = actor.multi_activity_can_do( u, plot );
     CHECK( info.reason == do_activity_reason::NEEDS_TILLING );
-    CHECK( rng_get_engine() == before );
+    CHECK( weather_samples_taken() == samples_before );
     zm.clear();
 }
 
@@ -137,15 +138,15 @@ TEST_CASE( "act-p02_planting_memo_samples_the_weather_once_per_overmap_tile",
     {
         const scoped_planting_memo memo;
         const ret_val<void> at_first = warm_enough_to_plant( first, itype_seed_buckwheat );
-        const cata_default_random_engine before = rng_get_engine();
+        const uint64_t samples_before = weather_samples_taken();
         const ret_val<void> at_second = warm_enough_to_plant( second, itype_seed_buckwheat );
-        CHECK( rng_get_engine() == before );
+        CHECK( weather_samples_taken() == samples_before );
         CHECK( at_first.success() == uncached.success() );
         CHECK( at_second.success() == uncached.success() );
         CHECK( std::string( at_second.c_str() ) == std::string( uncached.c_str() ) );
     }
     // out of the scope, each call samples again
-    const cata_default_random_engine before = rng_get_engine();
+    const uint64_t samples_before = weather_samples_taken();
     warm_enough_to_plant( second, itype_seed_buckwheat );
-    CHECK( rng_get_engine() != before );
+    CHECK( weather_samples_taken() > samples_before );
 }

@@ -428,7 +428,7 @@ if ! lang/extract_json_strings.py \
 
 ## Migration
 
-Mod migrations should be located in the `\data\core\` folder and enable a no longer existing `id` to be silently migrated to a new id when loading a world where the old mod is present.
+Mod migrations should be located in the `\data\core\` folder and enable a no longer existing `id` to be silently migrated to a new id when loading a world where the old mod is present.  The new mod takes the old one's place in the world's load order.
 
 ```json
   {
@@ -450,7 +450,7 @@ Mod removals should be located in the `\data\core\` folder and must include a me
     "type": "mod_migration",
     "//": "Removed in 0.X experimental meaning this can be removed after 0.X stable",
     "id": "old_mod_id",
-    "removal_message": "Removed because it hasn't been maintained in a decade."
+    "removal_reason": "Removed because it hasn't been maintained in a decade."
   }
 ```
 

@@ -2488,8 +2488,8 @@ bool Character::add_or_drop_with_msg( item &it, const bool /*unloading*/, const 
             put_into_vehicle_or_drop( *this, item_drop_reason::tumbling, { it } );
         } else {
             // successfully added
-            add_msg( _( "You put the %s in your inventory." ), ni->tname() );
-            add_msg( m_info, "%c - %s", ni->invlet == 0 ? ' ' : ni->invlet, ni->tname() );
+            add_msg_if_player( _( "You put the %s in your inventory." ), ni->tname() );
+            add_msg_if_player( m_info, "%c - %s", ni->invlet == 0 ? ' ' : ni->invlet, ni->tname() );
         }
     }
     return true;
@@ -2796,13 +2796,14 @@ bool Character::unload( item_location &loc, bool bypass_activity,
         target->deactivate( this );
     }
 
-    add_msg( _( "You unload your %s." ), target->tname() );
+    add_msg_player_or_npc( _( "You unload your %s." ), _( "<npcname> unloads their %s." ),
+                           target->tname() );
 
     if( it.has_flag( flag_MAG_DESTROY ) && it.ammo_remaining( ) == 0 ) {
         loc.remove_item();
     }
 
-    get_player_character().recoil = MAX_RECOIL;
+    recoil = MAX_RECOIL;
 
     return true;
 }

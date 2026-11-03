@@ -1,0 +1,58 @@
+[
+  {
+    "//": "NPC goal categories, first to last: a goal in an earlier category interrupts one in a later category.  See doc/JSON/NPC_BEHAVIOR.md.",
+    "type": "npc_decision_category",
+    "id": "combat",
+    "goals": [ "fight", "flee" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "investigate",
+    "goals": [ "investigate_sound" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "needs",
+    "goals": [ "drink_water", "eat_food", "go_to_sleep", "start_fire", "regulate_temperature" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "follow",
+    "goals": [ "follow_player", "follow_embarked" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "order",
+    "goals": [ "goto_ordered_position" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "duty",
+    "goals": [ "return_to_guard_pos", "hold_position" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "camp_work",
+    "goals": [ "camp_work" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "camp_travel",
+    "goals": [ "return_to_camp" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "free_time",
+    "goals": [ "free_time" ]
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "idle",
+    "goals": [ "idle" ]
+  },
+  {
+    "//": "Goals in no category.",
+    "type": "npc_decision_category",
+    "id": "unmodeled"
+  }
+]

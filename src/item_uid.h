@@ -11,6 +11,10 @@ class JsonOut;
 // Returns 0 if the game state is not yet initialized.
 int64_t generate_next_item_uid();
 
+// Keeps the UIDs generated from now on above this one, which is in use: read from a save, whose
+// counter may be behind the items saved after it (e.g. maps saved on dimension travel).
+void reserve_item_uid( int64_t uid );
+
 class item_uid
 {
     public:

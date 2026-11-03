@@ -88,6 +88,7 @@
 #include "overmap_map_data_cache.h"
 #include "overmapbuffer.h"
 #include "pathfinding.h"
+#include "phase_change.h"
 #include "pocket_type.h"
 #include "power_network.h"
 #include "projectile.h"
@@ -4016,8 +4017,11 @@ bool map::is_flammable( const tripoint_bub_ms &p )
 
 void map::decay_fields_and_scent( const time_duration &amount )
 {
-    // Decay scent separately, so that later we can use field count to skip empty submaps
-    get_scent().decay();
+    // Decay scent separately, so that later we can use field count to skip empty submaps.
+    // The scent map covers the bubble's own level, which rain doesn't reach underground.
+    if( abs_sub.z() >= 0 ) {
+        get_scent().decay();
+    }
 
     // Rain falls on every level the map holds, but never underground
     const int minz = std::max( 0, zlevels ? -OVERMAP_DEPTH : abs_sub.z() );
@@ -9643,14 +9647,19 @@ void map::loadn( const point_bub_sm &grid, bool update_vehicles )
             add_tree_tops( { grid.x(), grid.y(), z } );
         }
         // When a submap is loaded into the reality bubble, apply
-        // temperature-based phase changes
+        // temperature-based phase changes. Only tiles whose terrain has phase rules, or that
+        // phase rules changed before, can change.
         const weather_generator &wgen = get_weather().get_cur_weather_gen();
+        const scoped_phase_temperatures phase_temperatures( wgen );
         const tripoint_abs_sm pos_sm = { grid_abs_sub.xy(), z };
         const tripoint_abs_ms sm_abs_ms = project_to<coords::ms>( pos_sm );
         const tripoint_bub_ms sm_origin = get_bub( sm_abs_ms );
         for( int sx = 0; sx < SEEX; ++sx ) {
             for( int sy = 0; sy < SEEX; ++sy ) {
-                temp_based_phase_change_at( sm_origin + point( sx, sy ), wgen );
+                const point_sm_ms l( sx, sy );
+                if( tmpsub->has_original_ter( l ) || !tmpsub->get_ter( l )->phase_method.empty() ) {
+                    temp_based_phase_change_at( sm_origin + point( sx, sy ), wgen );
+                }
             }
         }
     }
@@ -9898,10 +9907,14 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
         const time_duration late_winter_start = 3.75f * calendar::season_length();
 
         const time_point last_actualize = calendar::turn - time_since_last_actualize;
-        const time_duration last_actualize_tof = time_past_new_year( last_actualize );
+        // Times of year from the start of spring (turn_zero), like the bounds above.
+        // time_past_new_year() counts from Jan 1, 81 days later.
+        const time_duration last_actualize_tof = ( last_actualize - calendar::turn_zero ) %
+                calendar::year_length();
         bool last_producing = last_actualize_tof >= late_winter_start ||
                               last_actualize_tof < early_spring_end;
-        const time_duration current_tof = time_past_new_year( calendar::turn );
+        const time_duration current_tof = ( calendar::turn - calendar::turn_zero ) %
+                                          calendar::year_length();
         bool current_producing = current_tof >= late_winter_start ||
                                  current_tof < early_spring_end;
 

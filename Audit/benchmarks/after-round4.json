@@ -1,0 +1,140 @@
+{
+  "label": "after-round4",
+  "commit": "61727c0c",
+  "date": "2026-11-03T00:10:17",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpus": 4,
+    "system": "Linux-6.18.44-fc-v230-x86_64-with-glibc2.39"
+  },
+  "binary": "tests/cata_test",
+  "seed": 4242,
+  "scenarios": {
+    "inventory_queries": {
+      "median_ms": 2.13,
+      "min_ms": 1.98,
+      "max_ms": 2.28,
+      "samples": 10,
+      "work": "amount, charges, quality, filter and wielded-item queries on a full inventory, 300 rounds"
+    },
+    "item_nested_deserialize": {
+      "median_ms": 37.015,
+      "min_ms": 35.5,
+      "max_ms": 55.19,
+      "samples": 10,
+      "work": "read a 5-level tree of 31 bags holding 186 items (and their contents), 20 times"
+    },
+    "mapbuffer_lookup_missing": {
+      "median_ms": 1.66,
+      "min_ms": 1.34,
+      "max_ms": 2.21,
+      "samples": 10,
+      "work": "look up the 84 submaps of 25 OMTs not on disk, compressed world"
+    },
+    "mapbuffer_save_uniform": {
+      "median_ms": 6.805,
+      "min_ms": 4.01,
+      "max_ms": 8.51,
+      "samples": 10,
+      "work": "save 25 explored OMTs: 25 ground quads and 500 uniform quads, compressed world"
+    },
+    "npc_spell_eval": {
+      "median_ms": 353.72,
+      "min_ms": 320.7,
+      "max_ms": 402.06,
+      "samples": 10,
+      "work": "20 attack choices of an NPC knowing 4 attack spells, 6 zombies and the player in range"
+    },
+    "npc_weapon_eval": {
+      "median_ms": 21.57,
+      "min_ms": 19.22,
+      "max_ms": 22.87,
+      "samples": 10,
+      "work": "50 attack choices of an NPC with a rifle, a shotgun, 2 melee weapons and rocks, 6 zombies in range"
+    },
+    "omt_find_closest_miss": {
+      "median_ms": 7.470000000000001,
+      "min_ms": 6.75,
+      "max_ms": 8.44,
+      "samples": 10,
+      "work": "2 find_closest misses within one overmap width on all z-levels, existing overmaps only"
+    },
+    "omt_find_npc_goals": {
+      "median_ms": 2.505,
+      "min_ms": 2.35,
+      "max_ms": 2.87,
+      "samples": 10,
+      "work": "10 NPC goal searches for 6 shop types within 75 tiles, 4 find_all of fields within 60"
+    },
+    "overmap_generate": {
+      "median_ms": 379.635,
+      "min_ms": 326.04,
+      "max_ms": 412.07,
+      "samples": 10,
+      "work": "generate one overmap from scratch"
+    },
+    "phase_change_lake_frozen": {
+      "median_ms": 97.755,
+      "min_ms": 85.0,
+      "max_ms": 125.38,
+      "samples": 10,
+      "work": "40 smallmap loads over 4 overmap tiles of lake, frozen on the coldest winter day"
+    },
+    "phase_change_lake_thawed": {
+      "median_ms": 94.64,
+      "min_ms": 71.91,
+      "max_ms": 143.02,
+      "samples": 10,
+      "work": "40 smallmap loads over 4 overmap tiles of open lake in summer"
+    },
+    "shot_birdshot": {
+      "median_ms": 7.89,
+      "min_ms": 6.3,
+      "max_ms": 16.02,
+      "samples": 10,
+      "work": "30 rounds of 12 gauge birdshot at a target 5 tiles away"
+    },
+    "shot_flockshot": {
+      "median_ms": 22.27,
+      "min_ms": 19.67,
+      "max_ms": 27.57,
+      "samples": 10,
+      "work": "2 rounds of 27.3x110 flockshot: at an unarmored target 6 tiles away, at an armored one 2 tiles away"
+    },
+    "shrapnel_armored": {
+      "median_ms": 12.955,
+      "min_ms": 12.37,
+      "max_ms": 13.98,
+      "samples": 10,
+      "work": "1 grenade on an armored zombie, with 8 more 1 tile away and 16 more 2 tiles away"
+    },
+    "stats_overmap_special_history": {
+      "median_ms": 0.42,
+      "min_ms": 0.38,
+      "max_ms": 0.53,
+      "samples": 10,
+      "work": "last overmap special entered, over 400 OMTs entered in 4 saved, unloaded overmaps"
+    },
+    "temp_map_load": {
+      "median_ms": 48.055,
+      "min_ms": 45.96,
+      "max_ms": 52.57,
+      "samples": 10,
+      "work": "load 100 tinymaps and 20 smallmaps over generated terrain, one wall edit each"
+    },
+    "zone_job_missing_tool": {
+      "median_ms": 23.585,
+      "min_ms": 21.08,
+      "max_ms": 30.31,
+      "samples": 10,
+      "work": "3 farm scans of a 10x10 plot to till, no digging tool, 900 loot tiles of 3 items"
+    },
+    "data_load": {
+      "median_ms": 22140.5,
+      "min_ms": 21724,
+      "max_ms": 22557,
+      "samples": 2,
+      "work": "test binary start to \"Game data loaded\""
+    }
+  }
+}
