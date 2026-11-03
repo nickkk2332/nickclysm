@@ -503,13 +503,55 @@ For modders:
 
 With this batch the full suite passes, 2688 of 2688 test cases with seed 4242 and no errors logged. The 32 new test cases are in `tests/audit_perf_combat_test.cpp`, `tests/audit_perf_load_test.cpp` and `tests/audit_perf_world_inventory_test.cpp`, and every mod set still loads with no errors.
 
+**NPC behavior from JSON: modding queue section H (NPC-J03).** Mods can now add NPC behavior, not just rearrange the vanilla tree. The design was settled with the owner in [plans/npc-behavior-design.md](plans/npc-behavior-design.md). It was built in two worktrees: the tree (editing, conditions, scores and load checks) and the goals (categories, JSON goals, EOC reads and debugging). A separate agent reviewed each one. The two were merged, and the review fixes were made on the merged code.
+
+For modders, everything is documented with examples in `doc/JSON/NPC_BEHAVIOR.md`:
+
+- **Editing the tree.** `behavior` nodes support `copy-from`, `extend` and `delete`, and a child can be inserted `before` or `after` another. Built-in nodes, combat included, can be deleted, re-conditioned and re-scored. An edit that doesn't apply, such as two mods deleting the same child, is reported and skipped.
+- **Conditions.** `"predicate": "condition"` takes any dialogue condition, with the NPC as `u`; `npc_` conditions read nothing there. New conditions `u_is_in_faction` / `npc_is_in_faction` let a branch apply to one faction's NPCs.
+- **Scores.** A score can be a math expression, or a built-in score with a multiplier. `oracle('name')` reads a built-in score in math. `evaluate_every` caches a node's conditions and score per NPC.
+- **Categories.** These are the `npc_decision_category` type. A mod adds its own `before` or `after` a built-in one, with its own hysteresis.
+- **JSON goals.** A leaf node can carry a `category` and a `goal`:
+  - `on_start` and `on_turn` EOCs
+  - an `until` condition and a `timeout`
+  - `on_end`, `on_interrupt` and `on_timeout` hooks, with context values `goal_id`, `turns_active` and `reason`
+
+  A goal uses the errand effects, such as `u_walk_to`, `u_pickup_item` and targeted activities, to do its work. It is saved with the NPC. A goal with neither `until` nor `timeout` lasts while its node applies.
+- **Reading goals.** `u_npc_goal`, `npc_goal_category`, `npc_goal_turns()` and the `npc_goal_changed` event. The event fires for built-in goals too, but statistics don't keep it, so saves don't grow.
+- **Debugging.** Debug menu → Console → Creatures → "NPC decision" shows, for a chosen NPC:
+  - each condition and score
+  - the category order
+  - the committed goal, and why it won
+- **New load errors:**
+  - unknown, duplicate or cyclic children, and a tree with no reachable goal
+  - NPC and monster predicates mixed
+  - a bad predicate argument, an unknown `oracle()` name, and typos in `extend` / `delete`
+  - a JSON goal reusing a built-in goal's id, given two categories or an unknown category
+  - a built-in goal left without a category
+
+| ID | Status | Commits | Regression test or benchmark |
+|---|---|---|---|
+| NPC-J03 | fixed | `f2cc3d53`, `e2f62418`, `844f4cb0`, `a31114d8`, `950645fc`, `d22af887`, `52725bb8` | `tests/npc_behavior_tree_test.cpp`, `tests/npc_json_goal_test.cpp`; benchmark `npc_decision` |
+| NPC-J05 | partial | `e58bc280` | `tests/npc_json_goal_test.cpp`. An NPC's goal is readable. Still open: attitude, personality and faction relations |
+
+Vanilla NPCs decide as before:
+- A test pins every node of `npc_decision`: its strategy, conditions, score and goal.
+- The built-in categories keep today's order.
+- The NPC suites pass unchanged.
+
+The built-in end and interrupt rules (when a fight ends, the urgency margins between needs) are keyed by goal, so moving a built-in goal to another category changes only its rank. Running the new tests in the full suite also turned up two old test bugs. The NPC follower-rules tests left their NPCs in the overmap buffer, at an invalid position. Three horde tests left the reality bubble about 90 overmap tiles away, where the test date is below freezing, so a later test's water froze. Both now restore what they change.
+
+Cost: the `npc_decision` benchmark (300 turns of the tree for 20 NPCs) takes 53 ms before and 55 ms after, medians of three interleaved rounds whose ranges overlap, so the vanilla tree costs the same within noise (about 9 µs per NPC per turn). Four condition and math nodes add about 4 ms, under 1 µs per NPC per turn, and `evaluate_every: 5 turns` takes back most of that. The numbers are in [benchmarks/README.md](benchmarks/README.md#section-h-the-npc-decision-tree).
+
+With this batch the full suite passes, 2734 of 2734 test cases with seed 4242 and no errors logged. The 46 new test cases are mainly in `tests/npc_behavior_tree_test.cpp` and `tests/npc_json_goal_test.cpp`, and every mod set still loads with no errors.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. After the third round (modding round 1 and bug sweep 1), all 228 `[audit]` test cases pass and the full suite passes: 2506 of 2506 with seed 4242, with no errors logged. Every mod set still loads with no errors. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
 
 Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five tests failed in full-suite runs but passed alone, because earlier tests left state behind. The main culprit: `clear_character()` did not reset the stat bonuses that hardcoded effects add, so after a frostbite test the avatar kept -2 INT, which slowed learning by 10% in later crafting tests. Three other tests (`memorials`, `available_reloadables`, `monster_speed_description`) now clear the map or the avatar themselves.
 
-**Build note.** With the default precompiled header (`PCH=1`) and GCC 13, the build's dependency files list no project headers, so editing a `.h` file does not rebuild the files that include it. Build with `PCH=0` (or clean first) after any header change. A full test-suite run peaks around 9 GB of memory, so two runs at once do not fit in a 16 GB container.
+**Build note.** With the default precompiled header (`PCH=1`) and GCC 13, the build's dependency files list no project headers, so editing a `.h` file does not rebuild the files that include it. Build with `PCH=0` (or clean first) after any header change. A full test-suite run peaks around 10 GB of memory, so two runs at once do not fit in a 16 GB container.
 
 **Gameplay changes players will notice.**
 

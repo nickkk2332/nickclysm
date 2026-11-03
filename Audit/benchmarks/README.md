@@ -165,3 +165,21 @@ otherwise idle machine, 2 runs × 5 repetitions. Besides the new scenarios, the 
   fragment hits, takes 13 ms.
 - `omt_find_closest_miss` depends on which overmaps already exist, and other scenarios
   (`overmap_generate`) clear the overmap buffer, so compare only runs of the same scenario set.
+
+## Section H: the NPC decision tree
+
+Section H (NPC-J03) made the behavior tree editable and added conditions, math scores and
+JSON goals. `npc_decision` times 300 turns of the `npc_decision` tree for 20 NPCs (followers,
+guards, thirsty and idle). Before is `c9871943` with only the scenario added; after is the
+section H branch. Three interleaved rounds of 5 repetitions each, on an otherwise idle machine:
+
+| Scenario | Before, median of rounds (ms) | After, median of rounds (ms) | Fastest repetition, before / after (ms) |
+|---|---|---|---|
+| npc_decision | 53.1 | 55.0 | 48.5 / 50.2 |
+| npc_decision_condition_math | | 59.2 | 56.2 |
+| npc_decision_condition_math_cached | | 55.2 | 51.9 |
+
+- The vanilla tree costs the same within noise (the round medians range 52 to 66 ms both
+  before and after), about 9 µs per NPC per turn.
+- The four condition and math nodes add about 4 ms, under 1 µs per NPC per turn;
+  `evaluate_every: 5 turns` takes back most of it.
