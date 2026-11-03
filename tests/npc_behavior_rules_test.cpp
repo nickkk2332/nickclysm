@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
 #include "enums.h"
@@ -49,6 +50,8 @@ static shared_ptr_fast<npc> setup_generic_rules_test( ally_rule rule_to_test,
     tripoint_bub_ms next_to = player.pos_bub() + point::north;
     REQUIRE( next_to != player.pos_bub() );
     shared_ptr_fast<npc> guy = make_shared_fast<npc>();
+    // placed before it's loaded, or loading it looks for a spot near nowhere
+    guy->spawn_at_precise( here.get_abs( next_to ) );
     overmap_buffer.insert_npc( guy );
     g->load_npcs();
     clear_character( *guy );
@@ -66,6 +69,18 @@ static shared_ptr_fast<npc> setup_generic_rules_test( ally_rule rule_to_test,
     return guy;
 }
 
+// takes the test's NPC out of the overmap buffer and the follower list again, so that later
+// tests that load NPCs don't try to place it
+static on_out_of_scope forget_rules_npc( const shared_ptr_fast<npc> &guy )
+{
+    const character_id id = guy->getID();
+    return on_out_of_scope( [id]() {
+        g->remove_npc_follower( id );
+        overmap_buffer.remove_npc( id );
+        clear_npcs();
+    } );
+}
+
 TEST_CASE( "NPC-rules-avoid-doors", "[npc_rules]" )
 {
     /* Avoid doors rule
@@ -79,6 +94,7 @@ TEST_CASE( "NPC-rules-avoid-doors", "[npc_rules]" )
     const ally_rule rule_to_test = ally_rule::avoid_doors;
     const shared_ptr_fast<npc> &test_subject = setup_generic_rules_test( rule_to_test,
             update_mapgen_debug_npc_rules_test_avoid_doors );
+    const on_out_of_scope forget_subject = forget_rules_npc( test_subject );
     map &here = get_map();
     tripoint_bub_ms chair_target = test_subject->pos_bub();
     for( const tripoint_bub_ms &furn_loc : here.points_in_radius( test_subject->pos_bub(), 60 ) ) {
@@ -113,6 +129,7 @@ TEST_CASE( "NPC-rules-close-doors", "[npc_rules]" )
     const ally_rule rule_to_test = ally_rule::close_doors;
     const shared_ptr_fast<npc> &test_subject = setup_generic_rules_test( rule_to_test,
             update_mapgen_debug_npc_rules_test_close_doors );
+    const on_out_of_scope forget_subject = forget_rules_npc( test_subject );
     // Some sanity checking to make sure we can even do this test
     REQUIRE( !test_subject->rules.has_flag( ally_rule::avoid_doors ) );
     REQUIRE( !test_subject->rules.has_flag( ally_rule::avoid_locks ) );
@@ -183,6 +200,7 @@ TEST_CASE( "NPC-rules-avoid-locks", "[npc_rules]" )
     const ally_rule rule_to_test = ally_rule::avoid_locks;
     const shared_ptr_fast<npc> &test_subject = setup_generic_rules_test( rule_to_test,
             update_mapgen_debug_npc_rules_test_close_doors );
+    const on_out_of_scope forget_subject = forget_rules_npc( test_subject );
     // Some sanity checking to make sure we can even do this test
     REQUIRE( !test_subject->rules.has_flag( ally_rule::avoid_doors ) );
     map &here = get_map();
