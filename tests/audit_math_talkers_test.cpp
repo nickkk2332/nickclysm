@@ -7,13 +7,22 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "faction.h"
 #include "game.h"
+#include "global_vars.h"
+#include "line.h"
+#include "map.h"
+#include "map_helpers.h"
+#include "map_helpers_tests.h"
 #include "math_parser.h"
 #include "math_parser_type.h"
+#include "monster.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "talker.h"
 #include "type_id.h"
 
@@ -154,4 +163,43 @@ TEST_CASE( "math-b06_loop-b10_time_since_and_until_noon", "[audit][math_parser][
     calendar::turn = midnight;
     CHECK( eval_math( d, since ) == Approx( 12 ) );
     CHECK( eval_math( d, until ) == Approx( 12 ) );
+}
+
+// MATH-B07: the documented 'allow_hallucinations' kwarg failed to load, and when the talker
+// wasn't a character every character in the bubble was counted, whatever the radius.
+TEST_CASE( "math-b07_characters_nearby_radius_and_kwargs", "[audit][math_parser]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    const on_out_of_scope cleanup( []() {
+        clear_npcs();
+        clear_creatures();
+        get_globals().remove_global_value( "audit_math_b07_loc" );
+    } );
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms mon_at = u.pos_bub() + tripoint::east * 10;
+    monster &mon = spawn_test_monster( "mon_zombie", mon_at );
+    spawn_npc( ( mon_at + tripoint::east * 5 ).xy(), "test_talker" );
+    REQUIRE( rl_dist( u.pos_abs(), mon.pos_abs() ) == 10 );
+    REQUIRE( g->get_characters_if( []( const Character & ) {
+        return true;
+    } ).size() == 2 );
+
+    dialogue by_monster( get_talker_for( mon ), nullptr );
+    CHECK( eval_math( by_monster, "u_characters_nearby('radius': 3)" ) == 0 );
+    CHECK( eval_math( by_monster, "u_characters_nearby('radius': 7)" ) == 1 );
+    CHECK( eval_math( by_monster, "u_characters_nearby('radius': 12)" ) == 2 );
+    CHECK( eval_math( by_monster, "u_characters_nearby('radius': 12, 'attitude': 'any')" ) == 2 );
+    // A monster has no attitude to the characters to filter by.
+    CHECK_THROWS_AS( eval_math( by_monster,
+                                "u_characters_nearby('radius': 12, 'attitude': 'hostile')" ), math::runtime_error );
+    // The global scope with a location filters by radius too.
+    get_globals().set_global_value( "audit_math_b07_loc", here.get_abs( mon_at ) );
+    CHECK( eval_math( by_monster,
+                      "characters_nearby('radius': 3, 'location': audit_math_b07_loc)" ) == 0 );
+
+    dialogue by_avatar( get_talker_for( u ), nullptr );
+    CHECK( eval_math( by_avatar, "u_characters_nearby('radius': 30, 'allow_hallucinations': 1)" ) ==
+           1 );
 }

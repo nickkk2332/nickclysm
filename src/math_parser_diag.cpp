@@ -872,9 +872,9 @@ bool _filter_character( Character const *beta, Character const &guy, int radius,
 {
     if( ( !guy.is_hallucination() || allow_hallucinations ) &&
         ( beta == nullptr || beta->getID() != guy.getID() ) ) {
-        return beta == nullptr ||
-               ( _friend_match_filter_character( *beta, guy, filter ) &&
-                 radius >= rl_dist( guy.pos_abs(), loc ) );
+        // Without a character there is no attitude to match (the caller allows only "any")
+        return ( beta == nullptr || _friend_match_filter_character( *beta, guy, filter ) ) &&
+               radius >= rl_dist( guy.pos_abs(), loc );
     }
     return false;
 }
@@ -919,6 +919,11 @@ double _characters_nearby_eval( const_dialogue const &d, char scope,
     int const hallucinations_int = static_cast<int>( allow_hallucinations_val.dbl( d ) );
     if( hallucinations_int != 0 ) {
         allow_hallucinations = true;
+    }
+    if( filter != character_filter::any &&
+        d.const_actor( beta )->get_const_character() == nullptr ) {
+        throw math::runtime_error(
+            R"(characters_nearby() attitude "%s" needs a character to compare with)", filter_str );
     }
 
     std::vector<Character *> const targets = g->get_characters_if(
@@ -2571,7 +2576,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "artifact_resonance", { "un", 0, artifact_resonance_eval } },
     { "attack_speed", { "un", 0, attack_speed_eval } },
     { "speed", { "un", 0, move_speed_eval } },
-    { "characters_nearby", { "ung", 0, characters_nearby_eval, {}, { "radius", "attitude", "location" } } },
+    { "characters_nearby", { "ung", 0, characters_nearby_eval, {}, { "radius", "attitude", "location", "allow_hallucinations" } } },
     { "charge_count", { "un", 1, charge_count_eval } },
     { "consumption_count", { "un", 1, consumption_count_eval, {}, { "hours" } } },
     { "consumption_count_total", { "un", 0, consumption_count_total_eval, {}, { "hours" } } },
