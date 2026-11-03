@@ -324,13 +324,22 @@ npc_turn_result process_npc_turn( map &m, npc &guy )
     return result;
 }
 
-namespace
-{
 void monmove()
 {
     g->cleanup_dead();
     map &m = get_map();
     avatar &u = get_avatar();
+    // The motion alarm goes off at most once a turn, for a monster that isn't friendly and
+    // moved or appeared within range during the turn. Where every monster was is taken first,
+    // so one moved by another (pushed, knocked back, teleported) counts as well.
+    const int motion_alarm_range = u.enchantment_cache->modify_value(
+                                       enchant_vals::mod::MOTION_ALARM, 0 );
+    std::unordered_map<const monster *, tripoint_abs_ms> start_positions;
+    if( motion_alarm_range > 0 ) {
+        for( const monster &critter : g->all_monsters() ) {
+            start_positions.emplace( &critter, critter.pos_abs() );
+        }
+    }
 
     for( monster &critter : g->all_monsters() ) {
         if( !m.inbounds( critter.pos_abs() ) ) {
@@ -390,23 +399,6 @@ void monmove()
             m.creature_in_field( critter );
         }
 
-        if( !critter.is_dead() && !critter.is_hallucination() &&
-            rl_dist( u.pos_abs(), critter.pos_abs() ) < u.enchantment_cache->modify_value(
-                enchant_vals::mod::MOTION_ALARM, 0 ) ) {
-            if( u.has_active_bionic( bio_alarm ) ) {
-                u.mod_power_level( -bio_alarm->power_trigger );
-                add_msg( m_warning, _( "Your motion alarm goes off!" ) );
-                g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
-                                                    _( "Your motion alarm goes off!" ) );
-            } else {
-                add_msg( m_warning, _( "You suddenly feel alerted!" ) );
-                g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
-                                                    _( "Your instincts warn you for danger!" ) );
-            }
-            if( u.has_effect( effect_sleep ) ) {
-                u.wake_up();
-            }
-        }
     }
 
     g->cleanup_dead();
@@ -421,8 +413,42 @@ void monmove()
         process_npc_turn( m, guy );
     }
     g->cleanup_dead();
+
+    // Friendly monsters (pets, mounts, charmed ones) and those that stayed put don't set the
+    // motion alarm off; NPCs never do
+    bool motion_detected = false;
+    if( motion_alarm_range > 0 ) {
+        for( const monster &critter : g->all_monsters() ) {
+            if( critter.is_dead() || critter.is_hallucination() || critter.friendly != 0 ||
+                rl_dist( u.pos_abs(), critter.pos_abs() ) >= motion_alarm_range ) {
+                continue;
+            }
+            const auto start = start_positions.find( &critter );
+            if( start == start_positions.end() || start->second != critter.pos_abs() ) {
+                motion_detected = true;
+                break;
+            }
+        }
+    }
+    if( motion_detected ) {
+        if( u.has_active_bionic( bio_alarm ) ) {
+            u.mod_power_level( -bio_alarm->power_trigger );
+            add_msg( m_warning, _( "Your motion alarm goes off!" ) );
+            g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
+                                                _( "Your motion alarm goes off!" ) );
+        } else {
+            add_msg( m_warning, _( "You suddenly feel alerted!" ) );
+            g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
+                                                _( "Your instincts warn you for danger!" ) );
+        }
+        if( u.has_effect( effect_sleep ) ) {
+            u.wake_up();
+        }
+    }
 }
 
+namespace
+{
 void overmap_npc_move()
 {
     avatar &u = get_avatar();
@@ -763,9 +789,8 @@ bool game::do_turn()
         refresh_display();
     }
 
-    if( levz >= 0 && !u.is_underwater() ) {
-        handle_weather_effects( weather.weather_id );
-    }
+    // Wherever the avatar is: it only decides the avatar's own share
+    handle_weather_effects( weather.weather_id );
 
     handle_progress_ui();
 

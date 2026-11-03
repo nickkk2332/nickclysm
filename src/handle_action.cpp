@@ -1254,7 +1254,8 @@ static void wait()
             return target_time - calendar::turn;
         };
 
-        add_menu_item( 9,  'd',
+        // Not 9: that is the nine hour alarm, and a second 9 would set that instead
+        add_menu_item( 16, 'd',
                        setting_alarm ? _( "Set alarm for dawn" ) : _( "Wait till daylight" ),
                        diurnal_time_before( daylight_time( calendar::turn ) ) );
         add_menu_item( 10,  'n',

@@ -1,0 +1,36 @@
+[
+  {
+    "type": "effect_type",
+    "id": "test_loop_b15_weather_mark",
+    "name": [ "Test Weather Mark" ],
+    "desc": [ "LOOP-B15: given by test_loop_b15_reaching_weather." ],
+    "max_duration": "1 h"
+  },
+  {
+    "id": "test_loop_b15_reaching_weather",
+    "type": "weather_type",
+    "name": "test reaching weather",
+    "//": "LOOP-B15: its passive effect reaches creatures indoors as well.  Never generated.",
+    "color": "light_gray",
+    "map_color": "light_gray",
+    "sym": "~",
+    "ranged_penalty": 0,
+    "sight_penalty": 1.0,
+    "light_modifier": 0,
+    "sound_attn": 0,
+    "dangerous": false,
+    "precip": "none",
+    "rains": false,
+    "priority": 0,
+    "passive_effects": [
+      {
+        "effect_id": "test_loop_b15_weather_mark",
+        "intensity": 1,
+        "min_duration": "10 m",
+        "max_duration": "10 m",
+        "is_environmental": false
+      }
+    ],
+    "condition": { "math": [ "false" ] }
+  }
+]
