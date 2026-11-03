@@ -2623,6 +2623,8 @@ NPC can offer missions `MISSION_A`, `B` and `C` now
 #### `run_eocs`
 Runs another EoC. It can be a separate EoC, or an inline EoC inside `run_eocs` effect
 
+EoCs can run each other up to 250 deep, counting every EoC that runs inside another, however it was started (`run_eocs`, `true_eocs`/`false_eocs`, events, spells...). A deeper chain is taken for an endless loop: it is stopped, with an error naming the EoC. Loops made with `iterations` or `condition` don't add to the depth.
+
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "run_eocs" | **mandatory** | string (eoc id or inline eoc) or [variable object](#variable-object)) or array of eocs | EoC or EoCs that would be run |

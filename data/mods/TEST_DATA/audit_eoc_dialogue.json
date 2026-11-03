@@ -76,5 +76,23 @@
     "id": "EOC_AUDIT_B13_MARK",
     "//": "EOC-B13: records that a false_eocs list ran.",
     "effect": [ { "math": [ "audit_b13_false_eocs++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_RECURSE",
+    "//": "EOC-B14: runs itself through run_eocs forever, counting how deep it got.",
+    "effect": [ { "math": [ "audit_b14_depth++" ] }, { "run_eocs": "EOC_AUDIT_B14_RECURSE" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_LOOP_BODY_WITH_A_RATHER_LONG_IDENTIFIER",
+    "//": "EOC-B14: the body of a 300-iteration loop; its long id filled the old callstack text quickly.",
+    "effect": [ { "math": [ "audit_b14_iterations++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B14_LOOP",
+    "//": "EOC-B14: a plain loop, not recursion.",
+    "effect": [ { "run_eocs": "EOC_AUDIT_B14_LOOP_BODY_WITH_A_RATHER_LONG_IDENTIFIER", "iterations": 300 } ]
   }
 ]

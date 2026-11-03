@@ -28,12 +28,10 @@
 #include "math_parser_diag_value.h"
 #include "mod_tracker.h"
 #include "npc.h"
-#include "output.h"
 #include "profession.h"
 #include "scenario.h"
 #include "string_formatter.h"
 #include "talker.h"
-#include "translations.h"
 #include "type_id.h"
 
 namespace io
@@ -365,9 +363,24 @@ void effect_on_conditions::process_reactivate()
                           g->queued_global_effect_on_conditions, d );
 }
 
+namespace
+{
+// How many EOCs are running inside one another right now, however each was reached (run_eocs,
+// true_eocs, events, spells...); a dialogue's callstack text doesn't follow all of those.
+int eoc_depth = 0;
+// Set when a chain of EOCs went too deep; every EOC still in it then stops at once.
+bool eoc_depth_exceeded = false;
+// Far deeper than EOCs nest in practice.  Each level takes about 2.5 KB of stack in a release
+// build, and a Windows program's main thread gets 1 MB.
+constexpr int max_eoc_depth = 250;
+} // namespace
+
 bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
                                     const std::function<void( const dialogue & )> &on_done ) const
 {
+    if( eoc_depth_exceeded ) {
+        return false;
+    }
     const bool tracing = debug_menu::debug_capture::is_eoc_tracing();
     std::chrono::steady_clock::time_point trace_start;
     if( tracing ) {
@@ -376,13 +389,19 @@ bool effect_on_condition::activate( dialogue &d, bool require_callstack_check,
     bool retval = false;
     if( require_callstack_check ) {
         d.amend_callstack( "EOC: " + id.str() );
-        if( d.get_callstack().size() > 5000 ) {
-            if( query_yn( string_format( _( "Possible infinite loop in EOC %s.  Stop execution?" ),
-                                         id.str() ) ) ) {
-                return false;
-            }
-        }
     }
+    if( eoc_depth >= max_eoc_depth ) {
+        eoc_depth_exceeded = true;
+        debugmsg( "EOC %s is nested %d deep, probably in an endless loop of EOCs running each other.  "
+                  "That chain of EOCs was stopped.", id.str(), max_eoc_depth );
+        return false;
+    }
+    ++eoc_depth;
+    on_out_of_scope leave_eoc( [] {
+        --eoc_depth;
+        // Once the whole chain has returned, the next one starts afresh
+        eoc_depth_exceeded = eoc_depth_exceeded && eoc_depth > 0;
+    } );
     // each version needs a copy of the dialogue to pass down
     dialogue d_eoc( d );
     if( !has_condition || condition( d_eoc ) ) {

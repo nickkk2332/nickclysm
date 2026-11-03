@@ -51,6 +51,9 @@
 
 static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B07_REQUEUE( "EOC_AUDIT_B07_REQUEUE" );
+static const effect_on_condition_id effect_on_condition_EOC_AUDIT_B14_LOOP( "EOC_AUDIT_B14_LOOP" );
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_B14_RECURSE( "EOC_AUDIT_B14_RECURSE" );
 
 static const itype_id itype_test_rock( "test_rock" );
 
@@ -537,4 +540,35 @@ TEST_CASE( "eoc-b13_conditions_with_the_wrong_talker_are_false", "[audit][eoc]" 
         read_dodge.apply( d );
         CHECK( global_number( "audit_b13_dodge" ) == Approx( zed.get_dodge() ) );
     }
+}
+
+// EOC-B14: run_eocs gives each run a new dialogue without the callstack, so an EOC that ran
+// itself through it was never stopped and overflowed the stack.
+TEST_CASE( "eoc-b14_endless_recursion_stops_with_one_message", "[audit][eoc]" )
+{
+    global_variables &globals = get_globals();
+    on_out_of_scope forget( [&globals]() {
+        globals.remove_global_value( "audit_b14_depth" );
+    } );
+    globals.remove_global_value( "audit_b14_depth" );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    const std::string messages = capture_debugmsg_during( [&]() {
+        effect_on_condition_EOC_AUDIT_B14_RECURSE->activate( d );
+    } );
+    CAPTURE( messages );
+    CHECK( global_number( "audit_b14_depth" ) > 100 );
+    // Stopped once, not at every level on the way back out
+    const std::string::size_type first = messages.find( "EOC EOC_AUDIT_B14_RECURSE is nested" );
+    REQUIRE( first != std::string::npos );
+    CHECK( messages.find( "is nested", messages.find( "is nested" ) + 1 ) == std::string::npos );
+
+    // The next chain starts afresh
+    globals.remove_global_value( "audit_b14_iterations" );
+    on_out_of_scope forget_iterations( [&globals]() {
+        globals.remove_global_value( "audit_b14_iterations" );
+    } );
+    CHECK( capture_debugmsg_during( [&]() {
+        effect_on_condition_EOC_AUDIT_B14_LOOP->activate( d );
+    } ).empty() );
+    CHECK( global_number( "audit_b14_iterations" ) == 300 );
 }
