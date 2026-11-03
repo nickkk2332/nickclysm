@@ -39,7 +39,7 @@
         "id": "mon_sevenoclock_activate",
         "spell_data": { "id": "mon_sevenoclock_activate", "min_level": 1, "hit_self": true },
         "allow_no_target": true,
-        "condition": { "math": [ "time_since('noon', 'unit':'hours') >= 7" ] },
+        "condition": { "math": [ "min( time_since('noon', 'unit':'hours'), time_until('noon', 'unit':'hours') ) >= 7" ] },
         "monster_message": "%1$s is blotted by shadows for an instant then reemerges, visibly angrier than before.",
         "cooldown": 1
       },
@@ -95,7 +95,7 @@
         "id": "mon_sevenoclock_pacify",
         "spell_data": { "id": "mon_sevenoclock_pacify", "min_level": 1, "hit_self": true },
         "allow_no_target": true,
-        "condition": { "math": [ "time_until('noon', 'unit':'hours') <= 7" ] },
+        "condition": { "math": [ "min( time_since('noon', 'unit':'hours'), time_until('noon', 'unit':'hours') ) <= 7" ] },
         "monster_message": "%1$s is blotted by shadows for an instant then reemerges, visibly calmer than before.",
         "cooldown": 1
       },

@@ -338,7 +338,7 @@ constexpr std::array<binary_op, 15> binary_ops{
     binary_op{ "-", 2, binary_op::associativity::left, math_opers::sub },
     binary_op{ "*", 3, binary_op::associativity::left, math_opers::mul },
     binary_op{ "/", 3, binary_op::associativity::left, math_opers::div },
-    binary_op{ "%", 3, binary_op::associativity::right, math_opers::mod },
+    binary_op{ "%", 3, binary_op::associativity::left, math_opers::mod },
     binary_op{ "^", 4, binary_op::associativity::right, math_opers::math_pow },
     binary_op{ ".", 10, binary_op::associativity::right },
 };

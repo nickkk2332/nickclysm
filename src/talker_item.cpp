@@ -46,34 +46,36 @@ std::string talker_item_const::get_name() const
     return it != nullptr ? it->type_name() : std::string();
 }
 
+// An item that is gone has no position: these give the invalid point, and say nothing.
 int talker_item_const::posx( const map &here ) const
 {
-    return me_it_const->pos_bub( here ).x();
+    return pos_bub( here ).x();
 }
 
 int talker_item_const::posy( const map &here ) const
 {
-    return me_it_const->pos_bub( here ).y();
+    return pos_bub( here ).y();
 }
 
 int talker_item_const::posz() const
 {
-    return me_it_const->pos_abs().z();
+    return pos_abs().z();
 }
 
 tripoint_bub_ms talker_item_const::pos_bub( const map &here ) const
 {
-    return me_it_const->pos_bub( here );
+    return alive( me_it_const ) != nullptr ? me_it_const->pos_bub( here ) : tripoint_bub_ms::invalid;
 }
 
 tripoint_abs_ms talker_item_const::pos_abs() const
 {
-    return me_it_const->pos_abs();
+    return alive( me_it_const ) != nullptr ? me_it_const->pos_abs() : tripoint_abs_ms::invalid;
 }
 
 tripoint_abs_omt talker_item_const::pos_abs_omt() const
 {
-    return get_player_character().pos_abs_omt();
+    return alive( me_it_const ) != nullptr ? project_to<coords::omt>( pos_abs() ) :
+           tripoint_abs_omt::invalid;
 }
 
 diag_value const *talker_item_const::maybe_get_value( const std::string &var_name ) const

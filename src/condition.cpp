@@ -374,6 +374,14 @@ static bodypart_id get_bp_from_str( const std::string &ctxt )
 // A string condition names one of the simple condition parsers. An unknown name used to
 // compile to an always-false condition (always true under "not") without any error, so
 // typos went unnoticed; report them at load time instead.
+// An item talker whose item is gone (npc_die, or used up earlier in the same EOC). It has no
+// position, so the conditions about where it is are false.
+static bool is_gone_item( const const_talker &talker )
+{
+    item_location const *it = talker.get_const_item();
+    return it != nullptr && !*it;
+}
+
 static bool is_known_string_condition( std::string_view type )
 {
     return dialogue_data::simple_string_conds().count( std::string( type ) ) > 0;
@@ -1174,6 +1182,9 @@ conditional_t::func f_at_om_location( const JsonObject &jo, std::string_view mem
 {
     str_or_var location = get_str_or_var( jo.get_member( member ), member, true );
     return [location, is_npc]( const_dialogue const & d ) {
+        if( is_gone_item( *d.const_actor( is_npc ) ) ) {
+            return false;
+        }
         const tripoint_abs_omt omt_pos = d.const_actor( is_npc )->pos_abs_omt();
         const oter_id &omt_ter = overmap_buffer.ter( omt_pos );
         const std::string &omt_str = omt_ter.id().str();
@@ -1257,6 +1268,9 @@ conditional_t::func f_near_om_location( const JsonObject &jo, std::string_view m
     str_or_var location = get_str_or_var( jo.get_member( member ), member, true );
     const dbl_or_var range = get_dbl_or_var( jo, "range", false, 1 );
     return [location, range, is_npc]( const_dialogue const & d ) {
+        if( is_gone_item( *d.const_actor( is_npc ) ) ) {
+            return false;
+        }
         const tripoint_abs_omt omt_pos = d.const_actor( is_npc )->pos_abs_omt();
         for( const tripoint_abs_omt &curr_pos : points_in_radius( omt_pos,
                 range.evaluate( d ) ) ) {
@@ -1841,7 +1855,8 @@ conditional_t::func f_follower_present( const JsonObject &jo, std::string_view m
 conditional_t::func f_at_safe_space( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
-        return overmap_buffer.is_safe( d.const_actor( is_npc )->pos_abs_omt() ) &&
+        return !is_gone_item( *d.const_actor( is_npc ) ) &&
+               overmap_buffer.is_safe( d.const_actor( is_npc )->pos_abs_omt() ) &&
                d.const_actor( is_npc )->is_safe();
     };
 }
@@ -2195,6 +2210,10 @@ conditional_t::func f_has_ammo( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
         item_location const *it = d.const_actor( is_npc )->get_const_item();
+        if( it && !*it ) {
+            // gone: used up earlier in the same EOC
+            return false;
+        }
         if( it ) {
             // The other talker, when it is a character, is the one using the item.
             Character const *user = d.has_actor( !is_npc ) ?
@@ -2756,6 +2775,10 @@ conditional_t::func f_is_rotten( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
         item_location const *it = d.const_actor( is_npc )->get_const_item();
+        if( it && !*it ) {
+            // gone: used up earlier in the same EOC
+            return false;
+        }
         if( it ) {
             return ( *it )->get_relative_rot() > 1;
         } else {
@@ -2959,6 +2982,10 @@ double  conditional_t::get_legacy_dbl( const_dialogue const &d, std::string_view
 {
     const bool is_npc = scope == 'n';
 
+    if( ( checked_value == "pos_x" || checked_value == "pos_y" || checked_value == "pos_z" ) &&
+        is_gone_item( *d.const_actor( is_npc ) ) ) {
+        throw math::runtime_error( R"(val("%s"): the item is gone)", checked_value );
+    }
     if( auto iter = f_get_vals.find( checked_value ); iter != f_get_vals.end() ) {
         return ( d.const_actor( is_npc )->*( iter->second ) )();
 

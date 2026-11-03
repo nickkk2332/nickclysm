@@ -28,6 +28,7 @@ class talker_zone_const : public const_talker_cloner<talker_zone_const>
         }
 
         tripoint_abs_ms pos_abs() const override;
+        tripoint_abs_omt pos_abs_omt() const override;
 
     private:
         const zone_data *me_zone_const{};

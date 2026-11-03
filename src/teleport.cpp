@@ -184,6 +184,15 @@ bool teleport::teleport_creature( Creature &critter, int min_distance, int max_d
     return teleport_to_point( critter, new_pos, safe, add_teleglow );
 }
 
+// Whether the terrain or furniture at p, outside the reality bubble, is solid. Loads that overmap
+// tile on its own (generating it if it is new) without moving the bubble; vehicles aren't seen.
+static bool impassable_outside_bubble( const tripoint_abs_ms &p )
+{
+    tinymap probe;
+    probe.load( project_to<coords::omt>( p ), false );
+    return probe.impassable( probe.get_omt( p ) );
+}
+
 bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, bool safe,
                                   bool add_teleglow, bool display_message, bool force, bool force_safe )
 {
@@ -208,12 +217,21 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
         }
         return false;
     }
-    // Teleporting slips out of any hold, on either side. This must happen before the map can
-    // shift under the avatar, while both sides of the hold are still next to each other.
-    grapple::release_all( critter );
-    if( p && p->in_vehicle ) {
-        here.unboard_vehicle( p->pos_bub() );
-    }
+    // Teleporting slips out of any hold, on either side, and off a vehicle seat. That waits until
+    // nothing can refuse the teleport any more, so a refused one leaves both as they were, except
+    // that it must happen before the map shifts under the avatar, while both sides of a hold are
+    // still next to each other.
+    bool let_go_done = false;
+    const auto let_go = [&]() {
+        if( let_go_done ) {
+            return;
+        }
+        let_go_done = true;
+        grapple::release_all( critter );
+        if( p && p->in_vehicle ) {
+            here.unboard_vehicle( p->pos_bub() );
+        }
+    };
     map tm;
     map *dest = &here;
     tripoint_bub_ms dest_target = target;
@@ -223,6 +241,15 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
     tripoint_abs_omt original_omt;
     if( !here.inbounds( target ) ) {
         if( c_is_u ) {
+            // Moving the bubble lets go of everything, so look for solid ground there first.
+            // A creature or a vehicle in the way is only found after the bubble has moved.
+            if( safe && !force && !force_safe && impassable_outside_bubble( abs_ms ) ) {
+                if( display_message ) {
+                    add_msg( m_bad, _( "You cannot teleport safely." ) );
+                }
+                return false;
+            }
+            let_go();
             original_omt = project_to<coords::omt>( critter.pos_abs() );
             g->place_player_overmap( project_to<coords::omt>( abs_ms ), false );
             map_reloaded_for_avatar = true;
@@ -262,6 +289,7 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
                 restore_map_on_failure();
                 return false;
             }
+            let_go();
             critter.apply_damage( nullptr, bodypart_id( "torso" ), 9999 );
             if( c_is_u ) {
                 get_event_bus().send<event_type::teleports_into_wall>( p->getID(),
@@ -333,6 +361,7 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
                 return false;
             }
             if( force ) {
+                let_go();
                 //this should only happen through debug menu, so this won't affect the player.
                 poor_soul->apply_damage( nullptr, bodypart_id( "torso" ), 9999 );
                 poor_soul->check_dead_state( &here );
@@ -343,6 +372,7 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
                 restore_map_on_failure();
                 return false;
             } else if( !collision ) {
+                let_go();
                 //we passed all the conditions needed for a teleport accident, so handle messages for teleport accidents here
                 const bool poor_soul_is_u = poor_soul->is_avatar();
                 if( poor_soul_is_u && display_message ) {
@@ -387,6 +417,7 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
             }
         }
     }
+    let_go();
     critter.move_to( abs_ms );
     //there was a collision with a creature at some point, so handle that.
     if( collision ) {

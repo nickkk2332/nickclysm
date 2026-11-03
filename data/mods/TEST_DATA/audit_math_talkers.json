@@ -1,0 +1,15 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_MATH_B05_GLOBAL",
+    "//": "MATH-B05: a global EOC, queued in the game, for time_until_eoc().",
+    "global": true,
+    "effect": [ { "math": [ "audit_math_b05_ran = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_MATH_B05_LOCAL",
+    "//": "MATH-B05: a non-global EOC, queued on the character, for u_time_until_eoc().",
+    "effect": [ { "math": [ "audit_math_b05_ran = 1" ] } ]
+  }
+]
