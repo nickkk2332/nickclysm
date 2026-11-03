@@ -365,7 +365,9 @@ units::temperature weather_generator::get_water_temperature() const
 
     season_effective_time t( calendar::turn );
     int season_length = to_days<int>( calendar::season_length() );
-    int day = to_days<int>( time_past_new_year( t.t ) );
+    // Days since the start of spring (turn_zero), where the yearly curve below starts.
+    // time_past_new_year() counts from Jan 1, 81 days later.
+    int day = to_days<int>( ( t.t - calendar::turn_zero ) % calendar::year_length() );
     int hour = hour_of_day<int>( t.t );
 
     float water_temperature = 0;

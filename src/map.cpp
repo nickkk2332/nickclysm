@@ -9904,10 +9904,14 @@ void map::produce_sap( const tripoint_bub_ms &p, const time_duration &time_since
         const time_duration late_winter_start = 3.75f * calendar::season_length();
 
         const time_point last_actualize = calendar::turn - time_since_last_actualize;
-        const time_duration last_actualize_tof = time_past_new_year( last_actualize );
+        // Times of year from the start of spring (turn_zero), like the bounds above.
+        // time_past_new_year() counts from Jan 1, 81 days later.
+        const time_duration last_actualize_tof = ( last_actualize - calendar::turn_zero ) %
+                calendar::year_length();
         bool last_producing = last_actualize_tof >= late_winter_start ||
                               last_actualize_tof < early_spring_end;
-        const time_duration current_tof = time_past_new_year( calendar::turn );
+        const time_duration current_tof = ( calendar::turn - calendar::turn_zero ) %
+                                          calendar::year_length();
         bool current_producing = current_tof >= late_winter_start ||
                                  current_tof < early_spring_end;
 
