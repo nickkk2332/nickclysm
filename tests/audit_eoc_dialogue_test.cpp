@@ -743,8 +743,9 @@ bool runs_quietly( const effect_on_condition_id &eoc )
 // EOC-B14 follow-up: Xedra Evolved's paraclesian spell-experience selectors picked any spell by
 // weight and ran themselves again whenever the pick was unknown or at its cap.  Once every known
 // spell was at its cap they never stopped, and before that a run could still go 250 deep.  They
-// now weigh such spells 0.  Needs the mod: run with --mods=xedra_evolved.
-TEST_CASE( "eoc-b14_xedra_spell_selectors_dont_run_themselves_again", "[.][audit][eoc][xedra]" )
+// now weigh such spells 0.  Needs the mod: run with --mods=xedra_evolved "[xedra_evolved]".  Its only
+// tags are the mods', so "[eoc]" or "[audit]" runs without the mods don't select it.
+TEST_CASE( "eoc-b14_xedra_spell_selectors_dont_run_themselves_again", "[.][xedra_evolved]" )
 {
     clear_avatar();
     on_out_of_scope restore( []() {
@@ -782,9 +783,9 @@ TEST_CASE( "eoc-b14_xedra_spell_selectors_dont_run_themselves_again", "[.][audit
 
 // EOC-B14 follow-up: Magiclysm's and Mind Over Matter's item-count amendments took one item off
 // per run and ran themselves again, once per item over the power available.  Needs the mods: run
-// with --mods=magiclysm,mindovermatter.
+// with --mods=magiclysm,mindovermatter "[mindovermatter]".
 TEST_CASE( "eoc-b14_item_count_amendments_dont_run_themselves_again",
-           "[.][audit][eoc][magiclysm][mindovermatter]" )
+           "[.][magiclysm][mindovermatter]" )
 {
     clear_avatar();
     global_variables &globals = get_globals();
