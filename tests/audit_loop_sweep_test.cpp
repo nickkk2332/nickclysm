@@ -202,3 +202,36 @@ TEST_CASE( "loop-b08_motion_alarm_goes_off_once_a_turn_for_strangers_that_move",
     clear_map();
     clear_avatar();
 }
+
+// ---- LOOP-B09 ----
+
+static const weather_type_id weather_scarlet_dimension_storm( "scarlet_dimension_storm" );
+static const weather_type_id weather_scarlet_storm_5( "scarlet_storm_5" );
+
+// A plain number for a weather type's temperature_modifier was read in legacy body temperature
+// units (0.002 K), so the scarlet storms' -2 to -30 chilled by 0.004 to 0.06 K.
+TEST_CASE( "loop-b09_weather_temperature_modifier_is_in_degrees", "[audit][weather]" )
+{
+    CHECK( units::to_kelvin_delta( weather_scarlet_dimension_storm->temperature_modifier ) ==
+           Approx( -20 ) );
+    CHECK( units::to_kelvin_delta( weather_scarlet_storm_5->temperature_modifier ) ==
+           Approx( -30 ) );
+
+    const auto loaded_modifier = []( const std::string & value ) {
+        const std::string json = R"({ "id": "test_loop_b09", "type": "weather_type", "name": "test",)"
+                                 R"( "sym": "x", "ranged_penalty": 0, "sight_penalty": 1.0,)"
+                                 R"( "light_modifier": 0, "priority": 0, "sound_attn": 0,)"
+                                 R"( "dangerous": false, "precip": "none", "rains": false,)"
+                                 R"( "temperature_modifier": )" + value + " }";
+        JsonObject jo = json_loader::from_string( json );
+        jo.allow_omitted_members();
+        weather_type wt;
+        wt.load( jo, "" );
+        return units::to_kelvin_delta( wt.temperature_modifier );
+    };
+    // A plain number counts in degrees Celsius, like a weather generator's base_temperature
+    CHECK( loaded_modifier( "-20" ) == Approx( -20 ) );
+    CHECK( loaded_modifier( "-7.5" ) == Approx( -7.5 ) );
+    CHECK( loaded_modifier( R"("-20 C")" ) == Approx( -20 ) );
+    CHECK( loaded_modifier( R"("-500 mC")" ) == Approx( -0.5 ) );
+}
