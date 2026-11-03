@@ -503,8 +503,11 @@ void handle_weather_effects( const weather_type_id &w )
     }
 
     for( Creature &c : g->all_creatures() ) {
-        // Weather doesn't reach underground or under water
-        if( c.pos_bub( here ).z() >= 0 && !c.is_underwater() ) {
+        // Above ground the weather reaches everyone (immune_inside spares those indoors);
+        // underground only those under open sky, as with getting wet. Under water nobody:
+        // the weather's air, fog or spores don't reach them there.
+        const tripoint_bub_ms pos = c.pos_bub( here );
+        if( !c.is_underwater() && ( pos.z() >= 0 || !here.is_roofed( pos ) ) ) {
             here.maybe_apply_field_effect( w->passive_effect, c );
         }
     }

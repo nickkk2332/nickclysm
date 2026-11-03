@@ -668,7 +668,8 @@ static const efftype_id effect_test_loop_b15_weather_mark( "test_loop_b15_weathe
 static const weather_type_id weather_test_loop_b15_reaching( "test_loop_b15_reaching_weather" );
 
 // Weather passive effects reached every creature in the bubble, underground ones too, but only
-// while the avatar was above ground and out of the water.
+// while the avatar was above ground and out of the water. Now they reach the creatures above
+// ground, and underground ones only under open sky, as rain does.
 TEST_CASE( "loop-b15_weather_effects_reach_creatures_by_their_own_level", "[audit][weather]" )
 {
     clear_map( -1, 1 );
@@ -677,11 +678,18 @@ TEST_CASE( "loop-b15_weather_effects_reach_creatures_by_their_own_level", "[audi
     avatar &u = get_avatar();
     const tripoint_bub_ms surface( 60, 60, 0 );
     const tripoint_bub_ms cellar( 64, 60, -1 );
+    const tripoint_bub_ms pit( 68, 60, -1 );
     u.setpos( here, surface + tripoint_rel_ms( -10, 0, 0 ) );
     here.ter_set( cellar, ter_t_floor );
     here.ter_set( cellar + tripoint_rel_ms( -2, 0, 0 ), ter_t_floor );
+    // A pit: a floor one level down, open to the sky
+    here.ter_set( pit, ter_t_floor );
+    here.ter_set( pit + tripoint_rel_ms( 0, 0, 1 ), ter_t_open_air );
+    REQUIRE( !here.is_roofed( pit ) );
+    REQUIRE( here.is_roofed( cellar ) );
     monster &up_top = spawn_test_monster( "mon_zombie", surface );
     monster &down_below = spawn_test_monster( "mon_zombie", cellar );
+    monster &in_the_pit = spawn_test_monster( "mon_zombie", pit );
 
     SECTION( "with the avatar on the surface" ) {
         u.setpos( here, surface + tripoint_rel_ms( -10, 0, 0 ) );
@@ -692,9 +700,59 @@ TEST_CASE( "loop-b15_weather_effects_reach_creatures_by_their_own_level", "[audi
     handle_weather_effects( weather_test_loop_b15_reaching );
     CHECK( up_top.has_effect( effect_test_loop_b15_weather_mark ) );
     CHECK( !down_below.has_effect( effect_test_loop_b15_weather_mark ) );
+    CHECK( in_the_pit.has_effect( effect_test_loop_b15_weather_mark ) );
 
     clear_map( -1, 1 );
     clear_avatar();
+}
+
+// The game loop ran the weather only while the avatar was above ground and out of the water,
+// so while it was in a cellar nothing on the surface got the weather.
+TEST_CASE( "loop-b15_the_game_loop_runs_the_weather_with_the_avatar_underground",
+           "[audit][weather][game_loop]" )
+{
+    clear_map( -1, 1 );
+    clear_avatar();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    weather_manager &weather = get_weather();
+    override_option no_autosave( "AUTOSAVE", "false" );
+    override_option normal_weather( "ETERNAL_WEATHER", "normal" );
+    restore_on_out_of_scope restore_direction( weather_generator::current_winddir );
+    const on_out_of_scope weather_back( [&weather]() {
+        weather.eoc_weather.reset();
+        weather.set_nextweather( calendar::turn );
+    } );
+    // The tests' game is a new one, so the turn doesn't advance the calendar (which would need
+    // a game mode the tests don't have); it does all the rest
+    restore_on_out_of_scope restore_new_game( g->new_game );
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    const on_out_of_scope back_up( [&here]() {
+        here.vertical_shift( 0 );
+        clear_map( -1, 1 );
+        clear_avatar();
+    } );
+    g->new_game = true;
+    // Between minutes, hours and days, so no hourly or daily work runs in the turn
+    calendar::turn = calendar::turn_zero + 2_days + 12_hours + 17_turns;
+    // The weather as an EOC sets it: a new game's turn clears the debug override
+    weather.eoc_weather.set( weather_test_loop_b15_reaching, calendar::turn_max );
+    weather.set_nextweather( calendar::turn );
+    REQUIRE( weather.weather_id == weather_test_loop_b15_reaching );
+
+    const tripoint_bub_ms cellar( 60, 60, -1 );
+    here.ter_set( cellar, ter_t_floor );
+    u.setpos( here, cellar );
+    // The bubble's own level follows the avatar down, as it does in the game
+    here.vertical_shift( -1 );
+    REQUIRE( here.get_abs_sub().z() == -1 );
+    monster &up_top = spawn_test_monster( "mon_test_speed_desc_base_immobile",
+                                          tripoint_bub_ms( 70, 60, 0 ) );
+    // With no moves left the turn doesn't wait for the player's input
+    u.set_moves( -1000 );
+    g->do_turn();
+    REQUIRE( weather.weather_id == weather_test_loop_b15_reaching );
+    CHECK( up_top.has_effect( effect_test_loop_b15_weather_mark ) );
 }
 
 static const weather_type_id weather_drizzle( "drizzle" );
