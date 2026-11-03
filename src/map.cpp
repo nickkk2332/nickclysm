@@ -7374,8 +7374,6 @@ void map::partial_con_set( const tripoint_bub_ms &p, const partial_con &con )
         debugmsg( "Tried to set construction at %s but the submap is not loaded", l.to_string() );
         return;
     }
-    // A uniform submap is saved as its terrain alone
-    current_submap->ensure_nonuniform();
     if( !current_submap->partial_constructions.emplace( tripoint_sm_ms( l, p.z() ), con ).second ) {
         debugmsg( "set partial con on top of terrain which already has a partial con" );
     }

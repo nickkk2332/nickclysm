@@ -4,7 +4,6 @@
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -20,13 +19,14 @@
 #include "fault.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
-#include "json.h"
 #include "json_loader.h"
 #include "map.h"
-#include "map_helpers_tests.h"
-#include "map_scale_constants.h"
+#include "map_helpers.h"
+#include "mapbuffer.h"
 #include "mod_manager.h"
+#include "omdata.h"
 #include "options_helpers.h"
+#include "overmapbuffer.h"
 #include "path_info.h"
 #include "point.h"
 #include "profession_group.h"
@@ -43,9 +43,13 @@ static const fault_group_id
 fault_group_audit_data_b05_fault_group_child( "audit_data_b05_fault_group_child" );
 static const mod_id MOD_INFORMATION_dda( "dda" );
 static const mod_id MOD_INFORMATION_test_data( "test_data" );
+static const mongroup_id GROUP_test_nested_packsize( "test_nested_packsize" );
+static const mtype_id mon_test_CBM( "mon_test_CBM" );
+static const oter_str_id oter_open_air( "open_air" );
 static const profession_group_id
 profession_group_audit_data_b05_profession_group_child( "audit_data_b05_profession_group_child" );
 static const ter_str_id ter_t_dirt( "t_dirt" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
 
 // DATA-B04: a mod_migration with "new_id" inserted the new id and then erased through the
 // old iterator, which then pointed at the new id: the renamed mod was dropped and the old
@@ -91,62 +95,109 @@ TEST_CASE( "data-b05_copy_from_a_later_parent_loads", "[audit][mods]" )
 
 namespace
 {
-// What saving the submap writes
-JsonObject stored( const submap &sm )
+// Runs fn with a new, empty world active; the test world comes back after
+void in_active_audit_world( const std::string &name, const std::function<void()> &fn )
 {
-    std::ostringstream os;
-    JsonOut jsout( os );
-    jsout.start_object();
-    sm.store( jsout );
-    jsout.end_object();
-    JsonObject jo = json_loader::from_string( os.str() );
-    jo.allow_omitted_members();
-    return jo;
+    WORLD *const test_world = world_generator->active_world;
+    WORLD *scratch = nullptr;
+    {
+        override_option compression( "WORLD_COMPRESSION2", "false" );
+        scratch = world_generator->make_new_world( name, test_world->active_mod_order );
+    }
+    REQUIRE( scratch != nullptr );
+    world_generator->set_active_world( scratch );
+    on_out_of_scope restore( [&]() {
+        world_generator->set_active_world( test_world );
+        world_generator->delete_world( name, true );
+    } );
+    fn();
 }
 } // namespace
 
-// DATA-B06: a uniform submap is saved as its terrain alone, but a partial construction (or
-// a phase revert) didn't make it non-uniform, so it was lost on save: on a lake or in the
-// air, a construction's progress and its components were gone.
-TEST_CASE( "data-b06_construction_on_a_uniform_submap_is_saved", "[audit][mapbuffer]" )
+// DATA-B06: a uniform submap was saved as its terrain alone, so a partial construction, a
+// pending spawn or a phase revert on it (on a lake, in the open air) was lost.  They are
+// saved now, and the submap stays uniform: it costs no more than before.
+TEST_CASE( "data-b06_uniform_submap_keeps_its_state_through_save_and_load",
+           "[audit][mapbuffer]" )
 {
-    map &here = get_map();
-    // A submap at the top of the sky, made uniform as open air and lake surfaces are
-    // generated; put back as it was afterwards
-    tripoint_bub_ms p( 3, 4, OVERMAP_HEIGHT );
-    point_sm_ms l;
-    submap *sm = map_meddler::unsafe_get_submap_at( p, l );
-    REQUIRE( sm != nullptr );
-    submap before = sm->get_revert_submap();
-    const bool was_reverted = sm->reverted;
-    submap blank;
-    blank.set_all_ter( sm->get_ter( l ), true );
-    sm->revert_submap( blank );
-    on_out_of_scope restore( [&]() {
-        here.partial_con_remove( p );
-        here.clear_original_terrain_at( p );
-        sm->revert_submap( before );
-        sm->reverted = was_reverted;
-    } );
-    REQUIRE( sm->is_uniform() );
-
-    SECTION( "partial construction" ) {
+    in_active_audit_world( "audit data-b06", []() {
+        const tripoint_abs_sm addr = project_to<coords::sm>( tripoint_abs_omt( 40, 40, 1 ) );
+        mapbuffer mb;
+        // a uniform quad, as open air is generated
+        for( int dx = 0; dx < 2; ++dx ) {
+            for( int dy = 0; dy < 2; ++dy ) {
+                std::unique_ptr<submap> fresh = std::make_unique<submap>();
+                fresh->set_all_ter( ter_t_open_air.id(), true );
+                REQUIRE( mb.add_submap( addr + tripoint_rel_sm( dx, dy, 0 ), fresh ) );
+            }
+        }
+        submap *sm = mb.lookup_submap( addr );
+        REQUIRE( sm != nullptr );
         partial_con con;
         con.id = construction_test_constr_door_frame.id();
         con.counter = 4321;
-        here.partial_con_set( p, con );
-        CHECK_FALSE( sm->is_uniform() );
-        const JsonObject jo = stored( *sm );
-        REQUIRE( jo.has_array( "partial_constructions" ) );
-        CHECK_FALSE( jo.get_array( "partial_constructions" ).empty() );
-    }
-    SECTION( "phase revert" ) {
-        here.set_original_terrain_at( p, ter_t_dirt.id() );
-        CHECK_FALSE( sm->is_uniform() );
-        const JsonObject jo = stored( *sm );
-        REQUIRE( jo.has_array( "phase_reverts" ) );
-        CHECK_FALSE( jo.get_array( "phase_reverts" ).empty() );
-    }
+        sm->partial_constructions.emplace( tripoint_sm_ms( 3, 4, 1 ), con );
+        sm->spawns.emplace_back( mon_test_CBM, 2, point_sm_ms( 5, 6 ) );
+        sm->set_original_ter( point_sm_ms( 2, 2 ), ter_t_dirt.id() );
+        REQUIRE( sm->is_uniform() );
+
+        mb.save( true );
+        REQUIRE( mb.begin() == mb.end() );
+        submap *loaded = mb.lookup_submap( addr );
+        REQUIRE( loaded != nullptr );
+        CHECK( loaded->is_uniform() );
+        CHECK( loaded->get_ter( point_sm_ms( 7, 7 ) ) == ter_t_open_air.id() );
+        REQUIRE( loaded->partial_constructions.size() == 1 );
+        CHECK( loaded->partial_constructions.begin()->second.counter == 4321 );
+        REQUIRE( loaded->spawns.size() == 1 );
+        CHECK( loaded->spawns.front().type == mon_test_CBM );
+        CHECK( loaded->get_original_ter( point_sm_ms( 2, 2 ) ) == ter_t_dirt.id() );
+        const submap *neighbour = mb.lookup_submap( addr + tripoint_rel_sm( 1, 1, 0 ) );
+        REQUIRE( neighbour != nullptr );
+        CHECK( neighbour->is_uniform() );
+
+        // With nothing left on it, the saved quad goes: it is generated again
+        loaded->partial_constructions.clear();
+        loaded->spawns.clear();
+        loaded->clear_original_ter( point_sm_ms( 2, 2 ) );
+        mb.save( true );
+        CHECK( mb.lookup_submap( addr ) == nullptr );
+    } );
+}
+
+// DATA-B06: a spawn added to a uniform submap leaves it uniform.  Reproducing monsters add
+// spawns that are used at once; a submap made non-uniform by one would be saved for good,
+// and, in the air, would cost every turn in the populated z-level cache.
+TEST_CASE( "data-b06_spawn_on_a_uniform_submap_leaves_it_uniform", "[audit][mapbuffer]" )
+{
+    clear_map();
+    // Nothing outside the reality bubble stays buffered, and the tests never save maps
+    MAPBUFFER.clear_outside_reality_bubble();
+    const tripoint_abs_omt omt = project_to<coords::omt>( get_map().get_abs_sub() ) +
+                                 tripoint_rel_omt( 12, 12, 0 );
+    const oter_id original_oter = overmap_buffer.ter( omt );
+    overmap_buffer.ter_set( omt, oter_open_air.id() );
+    on_out_of_scope restore( [&]() {
+        MAPBUFFER.clear_outside_reality_bubble();
+        overmap_buffer.ter_set( omt, original_oter );
+    } );
+
+    tinymap tm;
+    tm.load( omt, false );
+    submap *sm = MAPBUFFER.lookup_submap( project_to<coords::sm>( omt ) );
+    REQUIRE( sm != nullptr );
+    REQUIRE( sm->is_uniform() );
+
+    tm.place_spawns( GROUP_test_nested_packsize, 1, point_omt_ms( 3, 3 ), point_omt_ms( 3, 3 ),
+                     omt.z(), 1.0f, true );
+    REQUIRE_FALSE( sm->spawns.empty() );
+    CHECK( sm->is_uniform() );
+    CHECK( sm->holds_more_than_terrain() );
+
+    // used at once, as a reproducing monster's: nothing is left to save
+    sm->spawns.clear();
+    CHECK( sm->is_uniform() );
+    CHECK_FALSE( sm->holds_more_than_terrain() );
 }
 
 namespace
