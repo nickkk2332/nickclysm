@@ -192,6 +192,7 @@
 #include "ret_val.h"
 #include "rng.h"
 #include "safemode_ui.h"
+#include "save_fault.h"
 #include "scenario.h"
 #include "scent_map.h"
 #include "scores_ui.h"
@@ -9942,6 +9943,20 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 {
     map &here = get_map();
     avatar &player = get_avatar();
+    // Save first, with everything still in place: if the dimension can't be saved, the trip
+    // fails before anything is taken out of it
+    if( !save_dimension_data() || !save_maps() ) {
+        return false;
+    }
+    // Who rides the vehicle, before anyone is unboarded or unloaded
+    std::vector<std::pair<character_id, tripoint_abs_ms>> passengers;
+    if( veh != nullptr ) {
+        for( const vpart_reference &vp : veh->get_avail_parts( VPFLAG_BOARDABLE ) ) {
+            if( vp.part().has_flag( vp_flag::passenger_flag ) ) {
+                passengers.emplace_back( vp.part().passenger_id, here.get_abs( vp.pos_bub( here ) ) );
+            }
+        }
+    }
     // a walk leads to a spot in the dimension being left (u_walk_to, "Move there!")
     errand::end_walk( player, errand::reason::cancelled );
     for( npc *guy : npc_travellers ) {
@@ -9979,11 +9994,15 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 
     std::vector<item> place_items;
     place_items.reserve( item_travellers.size() );
+    // Where each item was, in case it has to go back
+    std::vector<tripoint_abs_ms> item_origins;
+    item_origins.reserve( item_travellers.size() );
     const bool was_in_vehicle = player.in_vehicle;
     for( item_location il : item_travellers ) {
         item *it = il.get_item();
         if( it ) {
             place_items.push_back( *it );
+            item_origins.push_back( il.pos_abs() );
             il.remove_item();
         }
     }
@@ -9999,9 +10018,12 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     if( veh != nullptr ) {
         vehicle_ref = here.detach_vehicle( veh );
     }
-    // Make sure we don't mess up savedata if for some reason maps can't be saved
-    if( !save_maps() || !save_dimension_data() ) {
-        // Stay, and put back everything taken out for the trip, so nothing is lost
+    // Save the dimension being left again, now without the travellers. Should this fail
+    // anyway (the disk filled up since the save above, say), stay, put everything back where
+    // it was, and save again so that what this save did write has them too. A tow line the
+    // vehicle had stays unhooked: its cable lies at the hitch, as when unhitched by hand.
+    if( !save_fault::forced_result( "travel_save" ).value_or( true ) ||
+        !save_dimension_data() || !save_maps() ) {
         if( vehicle_ref ) {
             vehicle *const restored = vehicle_ref.get();
             here.place_vehicle( std::move( vehicle_ref ) );
@@ -10013,14 +10035,8 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
                 overmap_buffer.add_vehicle( restored );
             }
         }
-        if( was_in_vehicle && here.veh_at( player.pos_bub( here ) ) ) {
-            here.board_vehicle( player.pos_bub( here ), &player );
-            player.controlling_vehicle = controlling_vehicle;
-        }
-        // The items go where the trip would have put them
-        const tripoint_bub_ms item_center = item_travellers_location.value_or( player.pos_bub( here ) );
-        for( const item &it : place_items ) {
-            here.add_item_or_charges( item_center, it );
+        for( size_t i = 0; i < place_items.size(); i++ ) {
+            here.add_item_or_charges( here.get_bub( item_origins[i] ), place_items[i] );
         }
         if( !moving_npcs.empty() ) {
             overmap &old_om = overmap_buffer.get( project_to<coords::om>( player.pos_abs().xy() ) );
@@ -10029,8 +10045,31 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
             }
         }
         load_npcs();
-        // The monsters were stored on the overmap
-        here.spawn_monsters( true, true );
+        if( was_in_vehicle && here.veh_at( player.pos_bub( here ) ) ) {
+            here.board_vehicle( player.pos_bub( here ), &player );
+            player.controlling_vehicle = controlling_vehicle;
+        }
+        for( const std::pair<character_id, tripoint_abs_ms> &seat : passengers ) {
+            Character *const passenger = critter_by_id<Character>( seat.first );
+            if( passenger != nullptr && !passenger->is_avatar() && !passenger->in_vehicle ) {
+                here.board_vehicle( here.get_bub( seat.second ), passenger );
+            }
+        }
+        // Only the monsters stored on the overmap above: spawning everything the map would
+        // could bring monster groups in view
+        const tripoint_abs_sm bubble = here.get_abs_sub();
+        for( int z = -OVERMAP_DEPTH; z <= OVERMAP_HEIGHT; z++ ) {
+            for( int x = 0; x < here.getmapsize(); x++ ) {
+                for( int y = 0; y < here.getmapsize(); y++ ) {
+                    overmap_buffer.spawn_monster( tripoint_abs_sm( bubble.x() + x, bubble.y() + y, z ),
+                                                  true );
+                }
+            }
+        }
+        // A failure here shows its own message, as the one above did
+        if( save_dimension_data() ) {
+            save_maps();
+        }
         return false;
     }
     player.save_map_memory();

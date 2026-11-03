@@ -3,9 +3,11 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "avatar.h"
@@ -30,9 +32,11 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "map_selector.h"
+#include "mapbuffer.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "options_helpers.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
 #include "player_helpers.h"
@@ -41,6 +45,7 @@
 #include "submap.h"
 #include "type_id.h"
 #include "units.h"
+#include "veh_type.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "weather.h"
@@ -330,25 +335,28 @@ TEST_CASE( "loop-b13_generated_weather_depends_only_on_time_place_and_seed", "[a
 
 namespace
 {
-// Makes the given save steps fail until it goes out of scope
-class failing_save_steps
+// Sets which save steps fail and which pass without writing, until it goes out of scope
+class save_steps
 {
     public:
-        explicit failing_save_steps( const std::set<std::string> &steps ) {
-            save_fault::failing_steps() = steps;
+        save_steps( const std::set<std::string> &failing, const std::set<std::string> &skipped ) {
+            save_fault::failing_steps() = failing;
+            save_fault::skipped_steps() = skipped;
             save_fault::started_steps().clear();
         }
-        failing_save_steps( const failing_save_steps & ) = delete;
-        failing_save_steps &operator=( const failing_save_steps & ) = delete;
-        ~failing_save_steps() {
+        save_steps( const save_steps & ) = delete;
+        save_steps &operator=( const save_steps & ) = delete;
+        ~save_steps() {
             save_fault::failing_steps().clear();
+            save_fault::skipped_steps().clear();
             save_fault::started_steps().clear();
         }
 };
 
 // Puts back everything a save writes: the test world's folder, its list of saves and the
 // last-world record outside it. The test world is otherwise only saved when the run ends, and
-// later tests rely on that.
+// later tests rely on that. The tests skip the world's own steps, so nothing should be left
+// for this to do but the few small files a save always writes.
 class keep_save_files
 {
     public:
@@ -415,22 +423,92 @@ static bool save_step_started( const std::string &step )
     return std::find( started.begin(), started.end(), step ) != started.end();
 }
 
-// game::save() wrote the player file first, so when a later step failed the world on disk
-// was older than the player: items picked up since the last save existed twice on reload and
-// items dropped were gone.
-TEST_CASE( "loop-b14_a_failed_world_save_leaves_the_player_file_alone", "[audit][savegame]" )
+// A real save of the maps would drop the submaps outside the bubble from memory
+static size_t submaps_in_memory()
 {
-    REQUIRE( !g->save_is_dirty );
-    keep_save_files keep_files;
-    failing_save_steps fail( { "maps" } );
+    size_t count = 0;
+    for( auto &submap_entry : MAPBUFFER ) {
+        static_cast<void>( submap_entry );
+        count++;
+    }
+    return count;
+}
+
+// The player's save files as they are on disk, the staged copy included
+static std::string player_save_files()
+{
+    std::string state;
+    const std::filesystem::path base = PATH_INFO::player_base_save_path().get_unrelative_path();
+    for( const char *suffix : {
+             ".sav", ".sav.staged", ".sav.zzip", ".sav.zzip.staged"
+         } ) {
+        std::filesystem::path path = base;
+        path.concat( suffix ); // NOLINT(cata-u8-path)
+        state += suffix;
+        if( std::filesystem::exists( path ) ) {
+            std::ifstream in( path, std::ios::binary );
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            state += ": " + ss.str() + "\n";
+        } else {
+            state += ": none\n";
+        }
+    }
+    return state;
+}
+
+// Runs a save that is expected to fail, and returns its debug message
+static std::string failed_save_message()
+{
     bool saved = true;
     const std::string message = capture_debugmsg_during( [&saved]() {
         saved = g->save();
     } );
     CHECK( !saved );
-    CHECK( message.find( "game not saved" ) != std::string::npos );
-    CHECK( save_step_started( "maps" ) );
-    CHECK( !save_step_started( "player" ) );
+    return message;
+}
+
+// game::save() wrote the player file first, so when a later step failed the world on disk
+// was older than the player: items picked up since the last save existed twice on reload and
+// items dropped were gone. Now the player file is written under a temporary name first and
+// only takes the old one's place once the world is saved.
+TEST_CASE( "loop-b14_a_failed_world_save_leaves_the_player_file_alone", "[audit][savegame]" )
+{
+    restore_on_out_of_scope restore_dirty( g->save_is_dirty );
+    g->save_is_dirty = false;
+    keep_save_files keep_files;
+    const size_t submaps = submaps_in_memory();
+    const std::string player_files = player_save_files();
+    {
+        // The player file is staged for real
+        save_steps steps( { "maps" }, { "master", "dimension" } );
+        CHECK( failed_save_message().find( "game not saved" ) != std::string::npos );
+        CHECK( save_step_started( "player" ) );
+        CHECK( save_step_started( "maps" ) );
+    }
+    // The staged file is gone and the old player file is as it was
+    CHECK( player_save_files() == player_files );
+    CHECK( submaps_in_memory() == submaps );
+}
+
+// A player file that couldn't be written (LOOP-B04: a save locked by a sync tool or an
+// antivirus) failed only after the world was saved, leaving the world newer than the player.
+TEST_CASE( "loop-b14_a_player_file_that_cannot_be_written_stops_the_save_before_the_world",
+           "[audit][savegame]" )
+{
+    restore_on_out_of_scope restore_dirty( g->save_is_dirty );
+    g->save_is_dirty = false;
+    keep_save_files keep_files;
+    const std::string player_files = player_save_files();
+    {
+        save_steps steps( { "player" }, { "master" } );
+        CHECK( failed_save_message().find( "game not saved" ) != std::string::npos );
+        CHECK( save_step_started( "player" ) );
+        // The world is left as it was, matching the player file
+        CHECK( !save_step_started( "dimension" ) );
+        CHECK( !save_step_started( "maps" ) );
+    }
+    CHECK( player_save_files() == player_files );
 }
 
 // Achievements go to a folder shared by every world and the options record is only for
@@ -438,61 +516,114 @@ TEST_CASE( "loop-b14_a_failed_world_save_leaves_the_player_file_alone", "[audit]
 TEST_CASE( "loop-b14_achievements_and_the_options_record_do_not_stop_a_save",
            "[audit][savegame]" )
 {
-    REQUIRE( !g->save_is_dirty );
+    restore_on_out_of_scope restore_dirty( g->save_is_dirty );
+    g->save_is_dirty = false;
     keep_save_files keep_files;
-    failing_save_steps fail( { "achievements", "options_record" } );
-    CHECK( g->save() );
-    CHECK( save_step_started( "maps" ) );
-    CHECK( save_step_started( "player" ) );
+    const size_t submaps = submaps_in_memory();
+    {
+        save_steps steps( { "achievements", "options_record" },
+        { "master", "player", "dimension", "maps" } );
+        CHECK( g->save() );
+        CHECK( save_step_started( "maps" ) );
+        CHECK( save_step_started( "player" ) );
+        CHECK( save_step_started( "achievements" ) );
+    }
+    CHECK( submaps_in_memory() == submaps );
 }
 
 static const dimension_id dimension_scarlet( "scarlet" );
 
+static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_rock( "rock" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
 static const vproto_id vehicle_prototype_bicycle( "bicycle" );
 
+static int items_of_type_at( const tripoint_bub_ms &p, const itype_id &type )
+{
+    int count = 0;
+    for( const item &it : get_map().i_at( p ) ) {
+        if( it.typeId() == type ) {
+            count++;
+        }
+    }
+    return count;
+}
+
 // Dimension travel took the travelling items, vehicle and NPCs out of the world before it
-// saved, and when the save failed it returned with them still out: they were lost.
+// saved, and when the save failed it returned with them still out: they were lost. Now it saves
+// before taking anything out, and if the save after that fails it puts everything back where it
+// was: items on their own tiles, riders in their seats, monsters without new ones.
 TEST_CASE( "loop-b14_a_failed_dimension_travel_save_loses_nothing", "[audit][savegame]" )
 {
     clear_map();
     clear_avatar();
+    const on_out_of_scope cleanup( []() {
+        clear_map();
+        clear_avatar();
+    } );
+    keep_save_files keep_files;
+    const size_t submaps = submaps_in_memory();
     map &here = get_map();
     avatar &u = get_avatar();
     const tripoint_bub_ms spot( 60, 60, 0 );
     u.setpos( here, spot );
 
+    // Items on two tiles, gathered around the spot
     const tripoint_bub_ms rock_spot = spot + tripoint_rel_ms( 1, 0, 0 );
+    const tripoint_bub_ms plank_spot = spot + tripoint_rel_ms( -1, 1, 0 );
     item &rock = here.add_item( rock_spot, item( itype_rock ) );
+    item &plank = here.add_item( plank_spot, item( itype_2x4 ) );
     REQUIRE( rock.typeId() == itype_rock );
-    const item_location rock_loc( map_cursor( here.get_abs( rock_spot ) ), &rock );
+    REQUIRE( plank.typeId() == itype_2x4 );
+    const std::vector<item_location> items = {
+        item_location( map_cursor( here.get_abs( rock_spot ) ), &rock ),
+        item_location( map_cursor( here.get_abs( plank_spot ) ), &plank )
+    };
+
+    // A bicycle with the travelling NPC in the saddle
     const tripoint_bub_ms bike_spot = spot + tripoint_rel_ms( 0, 5, 0 );
     vehicle *bike = here.add_vehicle( vehicle_prototype_bicycle, bike_spot, 0_degrees, 0,
                                       veh_spawn_status::UNDAMAGED );
     REQUIRE( bike != nullptr );
-    npc &guy = spawn_npc( ( spot + tripoint_rel_ms( 3, 0, 0 ) ).xy(), "test_talker" );
-    const character_id guy_id = guy.getID();
+    std::optional<tripoint_bub_ms> seat;
+    for( const vpart_reference &vp : bike->get_avail_parts( VPFLAG_BOARDABLE ) ) {
+        seat = vp.pos_bub( here );
+        break;
+    }
+    REQUIRE( seat.has_value() );
+    npc &rider = spawn_npc( ( spot + tripoint_rel_ms( 3, 3, 0 ) ).xy(), "test_talker" );
+    here.board_vehicle( *seat, &rider );
+    REQUIRE( rider.in_vehicle );
+    const character_id rider_id = rider.getID();
+
     const tripoint_bub_ms zed_spot = spot + tripoint_rel_ms( -5, 0, 0 );
     spawn_test_monster( "mon_zombie", zed_spot );
 
-    {
-        failing_save_steps fail( { "maps" } );
-        CHECK( !g->travel_to_dimension( dimension_scarlet, { &guy }, { rock_loc }, rock_spot, bike ) );
+    SECTION( "the save before the trip fails, so nothing is taken out" ) {
+        save_steps steps( { "maps" }, { "dimension" } );
+        CHECK( !g->travel_to_dimension( dimension_scarlet, { &rider }, items, spot, bike ) );
+        CHECK( !save_step_started( "travel_save" ) );
+    }
+    SECTION( "the save without the travellers fails, so they are put back" ) {
+        save_steps steps( { "travel_save" }, { "dimension", "maps" } );
+        CHECK( !g->travel_to_dimension( dimension_scarlet, { &rider }, items, spot, bike ) );
+        CHECK( save_step_started( "travel_save" ) );
     }
 
-    int rocks = 0;
-    for( const item &it : here.i_at( rock_spot ) ) {
-        if( it.typeId() == itype_rock ) {
-            rocks++;
-        }
-    }
-    CHECK( rocks == 1 );
+    CHECK( items_of_type_at( rock_spot, itype_rock ) == 1 );
+    CHECK( items_of_type_at( plank_spot, itype_2x4 ) == 1 );
+    CHECK( here.i_at( spot ).empty() );
     const optional_vpart_position bike_part = here.veh_at( bike_spot );
-    CHECK( bike_part.has_value() );
-    CHECK( g->find_npc( guy_id ) != nullptr );
+    REQUIRE( bike_part.has_value() );
+    npc *const back = g->find_npc( rider_id );
+    REQUIRE( back != nullptr );
+    CHECK( back->in_vehicle );
+    CHECK( back->pos_bub( here ) == *seat );
+    const optional_vpart_position seat_part = here.veh_at( *seat );
+    REQUIRE( seat_part.has_value() );
+    CHECK( seat_part->vehicle().get_passenger( static_cast<int>( seat_part->part_index() ) ) == back );
     int zombies = 0;
     for( const monster &critter : g->all_monsters() ) {
         if( critter.type->id == mon_zombie && rl_dist( critter.pos_bub( here ), zed_spot ) <= 1 ) {
@@ -500,9 +631,7 @@ TEST_CASE( "loop-b14_a_failed_dimension_travel_save_loses_nothing", "[audit][sav
         }
     }
     CHECK( zombies == 1 );
-
-    clear_map();
-    clear_avatar();
+    CHECK( submaps_in_memory() == submaps );
 }
 
 // ---- LOOP-B15 ----
