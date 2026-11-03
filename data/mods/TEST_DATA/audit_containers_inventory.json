@@ -1,0 +1,14 @@
+[
+  {
+    "id": "audit_inv_b02_filter_rack",
+    "type": "ITEM",
+    "name": { "str": "TEST filter rack" },
+    "description": "A rack with a magazine pocket that takes gas filters by flag, with no ammo restriction (INV-B02).",
+    "weight": "200 g",
+    "volume": "500 ml",
+    "material": [ "plastic" ],
+    "symbol": "[",
+    "color": "dark_gray",
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "flag_restriction": [ "GASFILTER_MED" ] } ]
+  }
+]
