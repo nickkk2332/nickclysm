@@ -46,6 +46,7 @@
 static const achievement_id achievement_achievement_arcade_mode( "achievement_arcade_mode" );
 static const achievement_id achievement_achievement_kill_zombie( "achievement_kill_zombie" );
 static const achievement_id achievement_conduct_zero_kills( "conduct_zero_kills" );
+static const dimension_id dimension_abyss( "abyss" );
 static const event_statistic_id event_statistic_audit_evt_b08_unique_z( "audit_evt_b08_unique_z" );
 static const event_statistic_id event_statistic_max_move_z( "max_move_z" );
 static const event_statistic_id event_statistic_min_move_z( "min_move_z" );
@@ -424,7 +425,7 @@ TEST_CASE( "evt-b09_map_events_wait_for_their_dimension", "[audit][timed_event]"
 {
     timed_events_restorer restore;
     const dimension_id here = g->get_dimension_prefix();
-    const dimension_id elsewhere( "audit_evt_b09_elsewhere" );
+    REQUIRE( here != dimension_abyss );
     const tripoint_abs_ms far_away = get_avatar().pos_abs() + tripoint_rel_ms( 2400, 2400, 0 );
     get_timed_events().add( timed_event_type::REVERT_SUBMAP, calendar::turn, -1, far_away, 0, "",
                             submap(), "audit_evt_b09" );
@@ -434,12 +435,12 @@ TEST_CASE( "evt-b09_map_events_wait_for_their_dimension", "[audit][timed_event]"
     CHECK( revert->dimension == here );
 
     // queued in another dimension: it waits, also through a save and load
-    revert->dimension = elsewhere;
+    revert->dimension = dimension_abyss;
     get_timed_events().process();
     load_timed_events( saved_timed_events() );
     revert = get_timed_events().get( timed_event_type::REVERT_SUBMAP, "audit_evt_b09" );
     REQUIRE( revert != nullptr );
-    CHECK( revert->dimension == elsewhere );
+    CHECK( revert->dimension == dimension_abyss );
 
     // back in its dimension, it happens
     revert->dimension = here;
@@ -460,6 +461,20 @@ TEST_CASE( "evt-b09_timed_event_from_an_older_save_is_in_the_main_dimension",
     const timed_event *revert = get_timed_events().get( timed_event_type::REVERT_SUBMAP );
     REQUIRE( revert != nullptr );
     CHECK( revert->dimension == dimension_id( "default" ) );
+}
+
+// EVT-B09: an event for a dimension that no longer exists (its mod removed) could never
+// happen: it is dropped on load
+TEST_CASE( "evt-b09_timed_event_for_an_unknown_dimension_is_dropped", "[audit][timed_event]" )
+{
+    timed_events_restorer restore;
+    load_timed_events( string_format(
+                           R"([{"faction":-1,"map_point":[0,0,0],"map_square":[0,0,0],"strength":-1,)"
+                           R"("string_id":"","type":%d,"when":%d,"key":"","revert":"t_null",)"
+                           R"("dimension":"audit_evt_b09_no_such_dimension"}])",
+                           static_cast<int>( timed_event_type::REVERT_SUBMAP ),
+                           to_turns<int>( calendar::turn - calendar::turn_zero ) + 600 ) );
+    CHECK_FALSE( get_timed_events().queued( timed_event_type::REVERT_SUBMAP ) );
 }
 
 namespace

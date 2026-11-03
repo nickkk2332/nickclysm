@@ -6835,7 +6835,7 @@ Store `vitrified_farm_ground`. When `vitrified_farm_escape_key` is called, the l
 #### `alter_timed_events`
 All effects, that has this event as a `key`, would be triggered, if they did not yet.  Usually used with `mapgen_update` or `revert_location` with `"time_in_future": "infinite"`
 
-A delayed change to the map (`mapgen_update`, `revert_location`, `u_transform_radius` with `time_in_future`) happens in the dimension it was made in.  If the player is in another dimension when it is due, it waits until they are back.
+A delayed change to the map (`mapgen_update`, `revert_location`, `u_transform_radius` with `time_in_future`) happens in the dimension it was made in.  If the player is in another dimension when it is due, it waits until they are back; one for a dimension the player never returns to stays queued.  If its dimension no longer exists when the game is loaded (the mod that added it was removed), the change is dropped.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |

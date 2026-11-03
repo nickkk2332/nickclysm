@@ -1902,6 +1902,12 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
         // Not written for the main dimension, nor by older builds
         added.dimension = dimension_world_default;
         jo.read( "dimension", added.dimension );
+        // Its dimension is gone (with its mod, say): it could never happen
+        if( !added.dimension.is_valid() ) {
+            DebugLog( D_WARNING, D_GAME ) << "Dropping a timed event of type " << type
+                                          << " queued in unknown dimension '" << added.dimension.str() << "'";
+            get_timed_events().events.pop_back();
+        }
     }
 }
 
