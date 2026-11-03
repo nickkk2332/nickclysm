@@ -32,8 +32,9 @@ The scenarios can also be run directly: `tests/cata_test "[benchmark_scenario]"`
 Each scenario builds a fixed, seeded setup without timing it, then times a fixed amount
 of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones marked
 *combat* (`tests/benchmark_scenarios_combat_test.cpp`), *load*
-(`tests/benchmark_scenarios_load_test.cpp`) and *world*
-(`tests/benchmark_scenarios_world_test.cpp`).
+(`tests/benchmark_scenarios_load_test.cpp`), *world*
+(`tests/benchmark_scenarios_world_test.cpp`) and *npc*
+(`tests/benchmark_scenarios_npc_test.cpp`).
 
 | Scenario | Work timed | Audit findings it covers |
 |---|---|---|
@@ -67,6 +68,7 @@ of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones 
 | `omt_find_closest_miss` (*world*) | 2 `find_closest` searches that match nothing, within one overmap width on all z-levels, existing overmaps only | OMAP-P02 |
 | `omt_find_npc_goals` (*world*) | 10 NPC-style goal searches for any of 6 shop types within 75 tiles on the surface, and 4 `find_all` of fields within 60 tiles | OMAP-P02 |
 | `zone_job_missing_tool` (*world*) | 3 farm scans of a 10x10 plot to till with no digging tool anywhere, beside a loot zone of 900 tiles holding 3 items each | ACT-P03 |
+| `npc_decision` (*npc*) | 300 turns of the `npc_decision` behavior tree for 20 NPCs (5 followers, 5 guards, 5 thirsty carrying water, 5 idle), as `npc::move()` walks it | NPC-J03 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then
