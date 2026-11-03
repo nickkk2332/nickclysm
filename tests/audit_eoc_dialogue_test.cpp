@@ -23,6 +23,7 @@
 #include "coordinates.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_imgui.h"
 #include "effect_on_condition.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
@@ -637,4 +638,31 @@ TEST_CASE( "eoc-b15_take_control_from_a_queued_eoc_keeps_both_queues_whole", "[a
     CHECK( global_number( "audit_b15_later" ) == 0 );
     CHECK( count_in( u.queued_effect_on_conditions,
                      effect_on_condition_EOC_AUDIT_B15_RECURRING ) == 0 );
+}
+
+// EOC-B09 follow-up: once talk_to stopped loading the opening topics twice, a TALK_NONE response
+// in the topic a conversation started with emptied the topic stack and ended the conversation;
+// vanilla responses such as the farmer's "Let's trade items" rely on coming back to that topic.
+TEST_CASE( "eoc-b09_talk_none_stays_on_the_first_topic", "[audit][npc_talk]" )
+{
+    const auto back_from = []( const std::vector<std::string> &ids ) {
+        std::vector<talk_topic> topic_stack;
+        for( const std::string &id : ids ) {
+            topic_stack.emplace_back( id );
+        }
+        go_back_from_topic( topic_stack );
+        std::vector<std::string> left;
+        for( const talk_topic &topic : topic_stack ) {
+            left.push_back( topic.id );
+        }
+        return left;
+    };
+    using topics = std::vector<std::string>;
+    CHECK( back_from( { "TALK_AUDIT_FIRST" } ) == topics{ "TALK_AUDIT_FIRST" } );
+    CHECK( back_from( { "TALK_AUDIT_FIRST", "TALK_AUDIT_SECOND" } ) == topics{ "TALK_AUDIT_FIRST" } );
+    // The topics of one category go back together, but never past the first topic
+    CHECK( back_from( { "TALK_AUDIT_FIRST", "TALK_MISSION_OFFER", "TALK_MISSION_DESCRIBE" } ) ==
+           topics{ "TALK_AUDIT_FIRST" } );
+    CHECK( back_from( { "TALK_MISSION_START", "TALK_MISSION_OFFER" } ) ==
+           topics{ "TALK_MISSION_START" } );
 }
