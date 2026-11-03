@@ -1544,7 +1544,7 @@ These can be read or written to with `val()`.
 | `body_temp` | ❌ | Current body temperature. |
 | `body_temp_delta` | ❌ | Difference in temperature between the hottest/coldest part and what feels like the hottest/coldest part. |
 | `cash` | ✅ | Amount of money |
-| `dodge` | ❌ | Current effective dodge |
+| `dodge` | ❌ | Current effective dodge; for monsters too |
 | `exp` | ✅ | Total experience earned. |
 | `sleepiness` | ✅ | Current sleepiness level. |
 | `fine_detail_vision_mod` | ❌ | Returned values range from 1.0 (unimpeded vision) to 11.0 (totally blind). |

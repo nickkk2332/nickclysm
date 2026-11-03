@@ -507,15 +507,54 @@ conditional_t::func f_is_trait_purifiable( const JsonObject &jo, std::string_vie
     };
 }
 
+// What conditions need from a talker, or nullptr after a debugmsg naming @p condition when the
+// talker has none: a monster, item, furniture, vehicle or zone isn't a character, only a monster
+// or character is a creature, and only an NPC has a faction.
+const Character *require_character( const_dialogue const &d, bool is_npc,
+                                    std::string_view condition )
+{
+    const Character *guy = d.const_actor( is_npc )->get_const_character();
+    if( guy == nullptr ) {
+        debugmsg( "%s needs the %s talker to be a character.  %s", condition, is_npc ? "beta" : "alpha",
+                  d.get_callstack() );
+    }
+    return guy;
+}
+
+const Creature *require_creature( const_dialogue const &d, bool is_npc,
+                                  std::string_view condition )
+{
+    const Creature *critter = d.const_actor( is_npc )->get_const_creature();
+    if( critter == nullptr ) {
+        debugmsg( "%s needs the %s talker to be a creature.  %s", condition, is_npc ? "beta" : "alpha",
+                  d.get_callstack() );
+    }
+    return critter;
+}
+
+const faction *require_faction( const_dialogue const &d, bool is_npc,
+                                std::string_view condition )
+{
+    const faction *fac = d.const_actor( is_npc )->get_faction();
+    if( fac == nullptr ) {
+        debugmsg( "%s needs the %s talker to have a faction.  %s", condition, is_npc ? "beta" : "alpha",
+                  d.get_callstack() );
+    }
+    return fac;
+}
+
 conditional_t::func f_has_visible_trait( const JsonObject &jo, std::string_view member,
         bool is_npc )
 {
     str_or_var trait_to_check_var = get_str_or_var( jo.get_member( member ), member, true );
     return [trait_to_check_var, is_npc]( const_dialogue const & d ) {
-        const_talker const *observer = d.const_actor( !is_npc );
+        const Character *observer = require_character( d, !is_npc, "has_visible_trait" );
+        const Character *observed_character = require_character( d, is_npc, "has_visible_trait" );
+        if( observer == nullptr || observed_character == nullptr ) {
+            return false;
+        }
         const_talker const *observed = d.const_actor( is_npc );
-        int visibility_cap = observer->get_const_character()->get_mutation_visibility_cap(
-                                 observed->get_const_character() );
+        int visibility_cap = observer->get_mutation_visibility_cap( observed_character );
         const trait_id trait_to_check( trait_to_check_var.evaluate( d ) );
         bool observed_has = observed->has_trait( trait_to_check );
         const mutation_branch &mut_branch = trait_to_check.obj();
@@ -528,7 +567,10 @@ conditional_t::func f_has_profession( const JsonObject &jo, std::string_view mem
 {
     str_or_var prof_to_check_var = get_str_or_var( jo.get_member( member ), member, true );
     return [prof_to_check_var, is_npc ]( const_dialogue const & d ) {
-        const Character *ch = d.const_actor( is_npc )->get_const_character();
+        const Character *ch = require_character( d, is_npc, "has_profession" );
+        if( ch == nullptr ) {
+            return false;
+        }
         const profession *prof_present = ch->prof;
         const profession_id prof_to_check( prof_to_check_var.evaluate( d ) );
         if( !!prof_present ) {
@@ -1134,9 +1176,16 @@ conditional_t::func f_bodypart_is_bleeding( const JsonObject &jo, std::string_vi
     return [bp, is_npc]( const_dialogue const & d ) {
         bodypart_id bid = bp.evaluate( d ).empty() ? bodypart_str_id::NULL_ID() :
                           bodypart_id( bp.evaluate( d ) );
-        const const_talker &who = *d.const_actor( is_npc );
+        if( require_character( d, is_npc, "bodypart_is_bleeding" ) == nullptr ) {
+            return false;
+        }
+        // get_part says so itself when the body part is missing
+        const bodypart *part = d.const_actor( is_npc )->get_bodypart( bid );
+        if( part == nullptr ) {
+            return false;
+        }
 
-        for( const wound &wd : who.get_bodypart( bid )->get_wounds() ) {
+        for( const wound &wd : part->get_wounds() ) {
             if( wd.type->is_bleeding_wound() ) {
                 return true;
             }
@@ -1548,8 +1597,11 @@ conditional_t::func f_player_see( bool is_npc )
 
     return [is_npc, &here]( const_dialogue const & d ) {
         if( d.has_actor( is_npc ) ) {
-            const Creature *c = d.const_actor( is_npc )->get_const_creature();
-            return get_player_view().sees( here, *c );
+            const const_talker &target = *d.const_actor( is_npc );
+            const Creature *c = target.get_const_creature();
+            // Items, furniture, vehicles and zones are seen where they are
+            return c ? get_player_view().sees( here, *c ) :
+                   get_player_view().sees( here, target.pos_bub( here ) );
         }
         return false;
     };
@@ -1911,7 +1963,8 @@ conditional_t::func f_is_day()
 conditional_t::func f_is_outside( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
-        return is_creature_outside( *d.const_actor( is_npc )->get_const_creature() );
+        const Creature *c = require_creature( d, is_npc, "is_outside" );
+        return c != nullptr && is_creature_outside( *c );
     };
 }
 
@@ -2123,7 +2176,8 @@ conditional_t::func f_has_faction_trust( const JsonObject &jo, std::string_view 
 {
     dbl_or_var dov = get_dbl_or_var( jo, member );
     return [dov]( const_dialogue const & d ) {
-        return d.const_actor( true )->get_faction()->trusts_u >= dov.evaluate( d );
+        const faction *fac = require_faction( d, true, "u_has_faction_trust" );
+        return fac != nullptr && fac->trusts_u >= dov.evaluate( d );
     };
 }
 
@@ -2884,7 +2938,11 @@ double  conditional_t::get_legacy_dbl( const_dialogue const &d, std::string_view
         }
         return static_cast<double>( g->allies().size() );
     } else if( checked_value == "dodge" ) {
-        return d.const_actor( is_npc )->get_const_character()->get_dodge();
+        const Creature *c = d.const_actor( is_npc )->get_const_creature();
+        if( c == nullptr ) {
+            throw math::runtime_error( "Can't get dodge of a talker that isn't a creature" );
+        }
+        return c->get_dodge();
     } else if( checked_value == "power_percentage" ) {
         // Energy in milijoule
         units::energy::value_type power_max = d.const_actor( is_npc )->power_max().value();

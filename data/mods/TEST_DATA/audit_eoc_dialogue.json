@@ -70,5 +70,11 @@
     "//": "EOC-B10: where the failed response with a failure topic leads.",
     "dynamic_line": "Audit B10 failed.",
     "responses": [ { "text": "Done.", "topic": "TALK_DONE" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B13_MARK",
+    "//": "EOC-B13: records that a false_eocs list ran.",
+    "effect": [ { "math": [ "audit_b13_false_eocs++" ] } ]
   }
 ]
