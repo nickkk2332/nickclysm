@@ -69,6 +69,8 @@ of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones 
 | `omt_find_npc_goals` (*world*) | 10 NPC-style goal searches for any of 6 shop types within 75 tiles on the surface, and 4 `find_all` of fields within 60 tiles | OMAP-P02 |
 | `zone_job_missing_tool` (*world*) | 3 farm scans of a 10x10 plot to till with no digging tool anywhere, beside a loot zone of 900 tiles holding 3 items each | ACT-P03 |
 | `npc_decision` (*npc*) | 300 turns of the `npc_decision` behavior tree for 20 NPCs (5 followers, 5 guards, 5 thirsty carrying water, 5 idle), as `npc::move()` walks it | NPC-J03 |
+| `npc_decision_condition_math` (*npc*) | the same, with 4 condition and math nodes added to the priorities (`data/mods/TEST_DATA/npc_behavior_bench.json`) | NPC-J03 |
+| `npc_decision_condition_math_cached` (*npc*) | the same, with those 4 nodes evaluated every 5 turns | NPC-J03 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then

@@ -47,6 +47,10 @@ static const item_group_id Item_spawn_data_test_bottle_water( "test_bottle_water
 static const itype_id itype_backpack( "backpack" );
 
 static const string_id<behavior::node_t> behavior_node_t_npc_decision( "npc_decision" );
+static const string_id<behavior::node_t>
+behavior_node_t_test_bench_decision( "test_bench_decision" );
+static const string_id<behavior::node_t>
+behavior_node_t_test_bench_decision_cached( "test_bench_decision_cached" );
 
 namespace
 {
@@ -164,6 +168,7 @@ void decision_scenario( const std::string &name, const std::string &work_descrip
     std::vector<npc *> npcs;
     run_scenario( name, work_description, [&npcs]() {
         npcs = spawn_decision_npcs();
+        behavior::clear_evaluation_cache();
     }, [&npcs, &root]() {
         // the followers, guards and thirsty NPCs all have something to do
         CHECK( walk_decision_tree( npcs, root.obj() ) >= decision_turns * decision_npc_count / 2 );
@@ -180,4 +185,23 @@ TEST_CASE( "bench_npc_decision", "[.][benchmark_scenario]" )
     decision_scenario( "npc_decision",
                        "300 turns of the npc_decision tree for 20 NPCs: followers, guards, thirsty and idle",
                        behavior_node_t_npc_decision );
+}
+
+// NPC-J03: the same, with four nodes added to the priorities
+// (data/mods/TEST_DATA/npc_behavior_bench.json): a trait and math condition with a math
+// score, a math condition and score calling oracle(), a time condition, and a built-in
+// condition with a scaled named score.
+TEST_CASE( "bench_npc_decision_condition_math", "[.][benchmark_scenario]" )
+{
+    decision_scenario( "npc_decision_condition_math",
+                       "300 turns of npc_decision with 4 condition and math nodes added, for 20 NPCs",
+                       behavior_node_t_test_bench_decision );
+}
+
+// NPC-J03: the same nodes, each with "evaluate_every": "5 turns".
+TEST_CASE( "bench_npc_decision_condition_math_cached", "[.][benchmark_scenario]" )
+{
+    decision_scenario( "npc_decision_condition_math_cached",
+                       "300 turns of npc_decision with the 4 condition and math nodes evaluated every 5 turns, for 20 NPCs",
+                       behavior_node_t_test_bench_decision_cached );
 }
