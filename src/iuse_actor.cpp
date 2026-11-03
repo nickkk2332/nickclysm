@@ -1979,7 +1979,8 @@ std::map<itype_id, int> salvage_actor::salvage_results( item_location cut, doubl
                   efficiency * 100.0, cut.get_item()->tname() );
     }
 
-    std::map<itype_id, int> salvage;
+    // fractions of each output, rounded down once at the end
+    std::map<itype_id, double> salvage_amounts;
     std::map<material_id, units::mass> mat_to_weight;
     std::set<material_id> mat_set;
     for( const std::pair<const material_id, int> &mat : cut.get_item()->made_of() ) {
@@ -1997,14 +1998,14 @@ std::map<itype_id, int> salvage_actor::salvage_results( item_location cut, doubl
     // efficiency is decreased every time the ingredients of a recipe have more mass than the output
     // num_adjusted represents the number of items and efficiency in one value
     std::function<void( item, float )> cut_up_component =
-        [&salvage, &mat_set, &distribute_uniformly, &cut_up_component]
+        [&salvage_amounts, &mat_set, &distribute_uniformly, &cut_up_component]
     ( const item & curr, float num_adjusted ) -> void {
 
         // If it is one of the basic components, add it into the list
         if( curr.type->is_basic_component() )
         {
-            int num_actual = static_cast<int>( num_adjusted );
-            salvage[curr.typeId()] += num_actual;
+            const int count = curr.count_by_charges() ? curr.charges : 1;
+            salvage_amounts[curr.typeId()] += static_cast<double>( num_adjusted ) * count;
             return;
         }
 
@@ -2073,10 +2074,18 @@ std::map<itype_id, int> salvage_actor::salvage_results( item_location cut, doubl
     // Add the uniformly distributed mass to the relevant salvage items
     for( const auto &iter : mat_to_weight ) {
         if( const std::optional<itype_id> id = iter.first->salvaged_into() ) {
-            salvage[*id] += iter.second / id->obj().weight;
+            salvage_amounts[*id] += static_cast<double>( iter.second.value() ) /
+                                    id->obj().weight.value();
         }
     }
 
+    // Rounding down once per output, rather than per component, makes a loss of efficiency
+    // cost a share of the yield instead of all of it.  The allowance absorbs the float error
+    // of the efficiency.
+    std::map<itype_id, int> salvage;
+    for( const std::pair<const itype_id, double> &amount : salvage_amounts ) {
+        salvage[amount.first] = static_cast<int>( std::floor( amount.second + 0.0001 ) );
+    }
     return salvage;
 }
 

@@ -36,10 +36,13 @@ static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_audit_use_b08_rune( "audit_use_b08_rune" );
 static const itype_id itype_blindfold( "blindfold" );
 static const itype_id itype_blindfold_up( "blindfold_up" );
+static const itype_id itype_cotton_patchwork( "cotton_patchwork" );
 static const itype_id itype_fishing_rod_basic( "fishing_rod_basic" );
 static const itype_id itype_log( "log" );
+static const itype_id itype_paper( "paper" );
 static const itype_id itype_saw( "saw" );
 static const itype_id itype_splinter( "splinter" );
+static const itype_id itype_tshirt( "tshirt" );
 
 static const morale_type morale_perm_constrained( "morale_perm_constrained" );
 
@@ -239,4 +242,45 @@ TEST_CASE( "use-b10_still_water_with_no_fish_is_a_poor_fishing_spot", "[audit][i
     }
     CHECK( doubted );
     Messages::clear_messages();
+}
+
+// USE-B11: salvage rounded each remembered basic component down on its own.  A crafted item
+// keeps one component item per unit, so any loss of efficiency (a Fabrication or dexterity roll,
+// damage) turned every one into 0: cutting up a crafted t-shirt gave nothing.  A component
+// counted by charges gave at most one, whatever its charges.
+TEST_CASE( "use-b11_salvage_rounds_once_per_material", "[audit][iuse_actor][salvage]" )
+{
+    clear_map();
+    map &here = get_map();
+    const tripoint_bub_ms pos( 60, 60, 0 );
+    const avatar_and_tile_cleanup cleanup{ pos };
+
+    item shirt( itype_tshirt );
+    REQUIRE( shirt.is_salvageable() );
+    REQUIRE( itype_cotton_patchwork->is_basic_component() );
+    REQUIRE( itype_paper->is_basic_component() );
+    for( int i = 0; i < 24; ++i ) {
+        item patch( itype_cotton_patchwork );
+        shirt.components.add( patch );
+    }
+    item paper( itype_paper );
+    REQUIRE( paper.count_by_charges() );
+    paper.charges = 10;
+    shirt.components.add( paper );
+
+    item &placed = here.add_item( pos, shirt );
+    const item_location cut( map_cursor( pos ), &placed );
+
+    SECTION( "with no losses everything comes back" ) {
+        std::map<itype_id, int> got = salvage_actor::salvage_results( cut, 1.0 );
+        CHECK( got[itype_cotton_patchwork] == 24 );
+        CHECK( got[itype_paper] == 10 );
+    }
+
+    SECTION( "a loss of efficiency costs a share, not everything" ) {
+        // the Fabrication roll's 0.9: 21.6 patches and 9 sheets of paper
+        std::map<itype_id, int> got = salvage_actor::salvage_results( cut, 0.9 );
+        CHECK( got[itype_cotton_patchwork] == 21 );
+        CHECK( got[itype_paper] == 9 );
+    }
 }
