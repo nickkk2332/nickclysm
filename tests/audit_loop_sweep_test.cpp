@@ -235,3 +235,65 @@ TEST_CASE( "loop-b09_weather_temperature_modifier_is_in_degrees", "[audit][weath
     CHECK( loaded_modifier( R"("-20 C")" ) == Approx( -20 ) );
     CHECK( loaded_modifier( R"("-500 mC")" ) == Approx( -0.5 ) );
 }
+
+// ---- LOOP-B11 ----
+
+static const ter_str_id ter_t_flat_roof( "t_flat_roof" );
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_wall( "t_wall" );
+static const ter_str_id ter_t_water_dp( "t_water_dp" );
+static const ter_str_id ter_t_water_sh( "t_water_sh" );
+
+// Knockback tested for water on the tile the target started on instead of the one it was
+// moving through, and looked for walls on the map's own level instead of the target's.
+TEST_CASE( "loop-b11_knockback_checks_the_tiles_the_target_moves_through", "[audit][game_loop]" )
+{
+    clear_map( -1, 1 );
+    clear_avatar();
+    map &here = get_map();
+    get_avatar().setpos( here, tripoint_bub_ms( 30, 30, 0 ) );
+    // Knocked from the west, the target slides three tiles east
+    const tripoint_bub_ms start( 60, 60, 0 );
+    const tripoint_rel_ms east( 1, 0, 0 );
+    const tripoint_rel_ms up( 0, 0, 1 );
+
+    SECTION( "out of shallow water onto dry ground" ) {
+        here.ter_set( start, ter_t_water_sh );
+        monster &pig = spawn_test_monster( "mon_pig", start );
+        REQUIRE( pig.can_drown() );
+        g->knockback( start - east, start, 3, 0, 1 );
+        CHECK( !pig.is_dead() );
+        CHECK( pig.pos_bub( here ) == start + east * 3 );
+    }
+
+    SECTION( "off dry ground into deep water" ) {
+        for( int i = 1; i <= 3; i++ ) {
+            here.ter_set( start + east * i, ter_t_water_dp );
+        }
+        monster &pig = spawn_test_monster( "mon_pig", start );
+        REQUIRE( pig.can_drown() );
+        g->knockback( start - east, start, 3, 0, 1 );
+        CHECK( pig.is_dead() );
+    }
+
+    SECTION( "a water creature out of the water onto land" ) {
+        here.ter_set( start, ter_t_water_dp );
+        monster &eel = spawn_test_monster( "mon_fish_eel", start );
+        REQUIRE( eel.has_flag( mon_flag_AQUATIC ) );
+        g->knockback( start - east, start, 3, 0, 1 );
+        CHECK( eel.is_dead() );
+    }
+
+    SECTION( "on the level above the map's own" ) {
+        for( int i = 0; i <= 3; i++ ) {
+            here.ter_set( start + up + east * i, ter_t_floor );
+        }
+        // A wall one level down, under the middle of the slide
+        here.ter_set( start + east * 2, ter_t_wall );
+        monster &zed = spawn_test_monster( "mon_zombie", start + up );
+        g->knockback( start + up - east, start + up, 3, 0, 1 );
+        CHECK( zed.pos_bub( here ) == start + up + east * 3 );
+    }
+
+    clear_map( -1, 1 );
+}

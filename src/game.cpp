@@ -4161,14 +4161,12 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
     }
     std::size_t force_remaining = traj.size();
     if( monster *const targ = creatures.creature_at<monster>( tp, true ) ) {
-        const tripoint_bub_ms targ_pos = targ->pos_bub( here );
-
         if( stun > 0 ) {
             targ->add_effect( effect_stunned, 1_turns * stun );
             add_msg( _( "%s was stunned!" ), targ->name() );
         }
         for( size_t i = 1; i < traj.size(); i++ ) {
-            if( here.impassable( traj[i].xy() ) ) {
+            if( here.impassable( traj[i] ) ) {
                 targ->setpos( here, traj[i - 1] );
                 force_remaining = traj.size() - i;
                 if( stun != 0 ) {
@@ -4206,20 +4204,24 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
                 break;
             }
             targ->setpos( here, traj[i] );
-            if( here.has_flag( ter_furn_flag::TFLAG_LIQUID, targ_pos ) && targ->can_drown() &&
-                !targ->is_dead() ) {
+            // The tile it is moving through, not the one it started on. Deep water, as for a
+            // monster walking in: wading through shallow water drowns nothing.
+            if( targ->is_aquatic_danger( traj[i] ) && !targ->is_dead() ) {
                 targ->die( &here, nullptr );
                 if( u.sees( here, *targ ) ) {
                     add_msg( _( "The %s drowns!" ), targ->name() );
                 }
             }
-            if( !here.has_flag( ter_furn_flag::TFLAG_LIQUID, targ_pos ) &&
+            if( !here.has_flag( ter_furn_flag::TFLAG_LIQUID, traj[i] ) &&
                 targ->has_flag( mon_flag_AQUATIC ) &&
                 !targ->is_dead() ) {
                 targ->die( &here, nullptr );
                 if( u.sees( here, *targ ) ) {
                     add_msg( _( "The %s flops around and dies!" ), targ->name() );
                 }
+            }
+            if( targ->is_dead() ) {
+                break;
             }
         }
     } else if( npc *const targ = creatures.creature_at<npc>( tp ) ) {
@@ -4228,7 +4230,7 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
             add_msg( _( "%s was stunned!" ), targ->get_name() );
         }
         for( size_t i = 1; i < traj.size(); i++ ) {
-            if( here.impassable( traj[i].xy() ) ) { // oops, we hit a wall!
+            if( here.impassable( traj[i] ) ) { // oops, we hit a wall!
                 targ->setpos( here, traj[i - 1] );
                 force_remaining = traj.size() - i;
                 if( stun != 0 ) {
