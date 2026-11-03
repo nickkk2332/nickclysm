@@ -30,18 +30,24 @@
 #include "type_id.h"
 
 static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
+static const activity_id ACT_FISH( "ACT_FISH" );
 
 static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_audit_use_b08_rune( "audit_use_b08_rune" );
 static const itype_id itype_blindfold( "blindfold" );
 static const itype_id itype_blindfold_up( "blindfold_up" );
+static const itype_id itype_fishing_rod_basic( "fishing_rod_basic" );
 static const itype_id itype_log( "log" );
 static const itype_id itype_saw( "saw" );
 static const itype_id itype_splinter( "splinter" );
 
 static const morale_type morale_perm_constrained( "morale_perm_constrained" );
 
+static const oter_str_id oter_field( "field" );
+
 static const quality_id qual_HOTPLATE( "HOTPLATE" );
+
+static const ter_str_id ter_t_water_sh( "t_water_sh" );
 
 static const trait_id trait_VANITY( "VANITY" );
 
@@ -179,4 +185,58 @@ TEST_CASE( "use-b09_transforming_worn_armor_updates_its_coverage_for_morale",
 
     REQUIRE( they.takeoff( item_location( they, &blindfold ) ) );
     CHECK( they.has_morale( morale_perm_constrained ) == 0 );
+}
+
+namespace
+{
+
+// Puts a tile's terrain and its overmap tile's terrain back when it goes out of scope.
+struct terrain_restore {
+    tripoint_bub_ms pos;
+    ter_id ter;
+    tripoint_abs_omt omt;
+    oter_id oter;
+    ~terrain_restore() {
+        get_map().ter_set( pos, ter );
+        overmap_buffer.ter_set( omt, oter );
+    }
+};
+
+} // namespace
+
+// USE-B10: good_fishing_spot() rejected still water with no fish nearby only inside a river
+// overmap tile, where water has a current, so the check almost never fired: a pond, swamp or
+// cave pool with no fish was always a good spot.
+TEST_CASE( "use-b10_still_water_with_no_fish_is_a_poor_fishing_spot", "[audit][iuse]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &they = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms water = they.pos_bub() + tripoint_rel_ms::east;
+    const avatar_and_tile_cleanup cleanup{ water };
+
+    // An overmap tile that is no river, lake or ocean
+    const tripoint_abs_omt omt = project_to<coords::omt>( here.get_abs( water ) );
+    const terrain_restore restore{ water, here.ter( water ), omt, overmap_buffer.ter( omt ) };
+    overmap_buffer.ter_set( omt, oter_field.id() );
+    here.ter_set( water, ter_t_water_sh );
+    REQUIRE( here.has_flag( ter_furn_flag::TFLAG_FISHABLE, water ) );
+    REQUIRE_FALSE( here.has_flag( ter_furn_flag::TFLAG_CURRENT, water ) );
+
+    item rod( itype_fishing_rod_basic );
+    Messages::clear_messages();
+    const std::optional<int> used = iuse::fishing_rod( &they, &rod, they.pos_bub() );
+    const bool fishing = they.has_activity( ACT_FISH );
+    they.cancel_activity();
+
+    CHECK_FALSE( used.has_value() );
+    CHECK_FALSE( fishing );
+    bool doubted = false;
+    for( const std::pair<std::string, std::string> &msg :
+         Messages::recent_messages( Messages::size() ) ) {
+        doubted |= msg.second.find( "You doubt you will have much luck" ) != std::string::npos;
+    }
+    CHECK( doubted );
+    Messages::clear_messages();
 }

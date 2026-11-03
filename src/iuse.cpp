@@ -1404,7 +1404,8 @@ std::optional<int> iuse::remove_all_mods( Character *p, item *, const tripoint_b
     return 0;
 }
 
-static bool good_fishing_spot( const tripoint_bub_ms &pos, Character *p )
+// Callers tell the player when it isn't.
+static bool good_fishing_spot( const tripoint_bub_ms &pos )
 {
     std::unordered_set<tripoint_bub_ms> fishable_locations = g->get_fishable_locations_bub(
                 MAX_VIEW_DISTANCE, pos );
@@ -1417,13 +1418,17 @@ static bool good_fishing_spot( const tripoint_bub_ms &pos, Character *p )
         // this is a ridiculous way to find a good fishing spot, but I'm just trying
         // to do oceans right now.  Maybe is_water_body() would be better?
         // if you find this comment still here and it's later than 2025, LOL.
-        is_ot_match( "river_", cur_omt, ot_match_type::contains ) &&
+        !is_ot_match( "river_", cur_omt, ot_match_type::contains ) &&
         !cur_omt->is_lake() && !cur_omt->is_ocean() &&
         !cur_omt->is_lake_shore() && !cur_omt->is_ocean_shore() ) {
-        p->add_msg_if_player( m_info, _( "You doubt you will have much luck catching fish here." ) );
         return false;
     }
     return true;
+}
+
+static void poor_fishing_spot_message( Character &p )
+{
+    p.add_msg_if_player( m_info, _( "You doubt you will have much luck catching fish here." ) );
 }
 
 std::optional<int> iuse::fishing_rod( Character *p, item *it, const tripoint_bub_ms & )
@@ -1437,14 +1442,23 @@ std::optional<int> iuse::fishing_rod( Character *p, item *it, const tripoint_bub
     }
     map &here = get_map();
     std::optional<tripoint_bub_ms> found;
+    bool poor_spot = false;
     for( const tripoint_bub_ms &pnt : here.points_in_radius( p->pos_bub(), 1 ) ) {
-        if( here.has_flag( ter_furn_flag::TFLAG_FISHABLE, pnt ) && good_fishing_spot( pnt, p ) ) {
+        if( !here.has_flag( ter_furn_flag::TFLAG_FISHABLE, pnt ) ) {
+            continue;
+        }
+        if( good_fishing_spot( pnt ) ) {
             found = pnt;
             break;
         }
+        poor_spot = true;
     }
     if( !found ) {
-        p->add_msg_if_player( m_info, _( "You can't fish there!" ) );
+        if( poor_spot ) {
+            poor_fishing_spot_message( *p );
+        } else {
+            p->add_msg_if_player( m_info, _( "You can't fish there!" ) );
+        }
         return std::nullopt;
     }
 
@@ -1492,7 +1506,8 @@ std::optional<int> iuse::fish_trap( Character *p, item *it, const tripoint_bub_m
         p->add_msg_if_player( m_info, _( "You can't fish there!" ) );
         return std::nullopt;
     }
-    if( !good_fishing_spot( pnt, p ) ) {
+    if( !good_fishing_spot( pnt ) ) {
+        poor_fishing_spot_message( *p );
         return std::nullopt;
     }
 
