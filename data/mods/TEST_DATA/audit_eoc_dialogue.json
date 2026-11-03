@@ -1,0 +1,15 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B06_NO_CONDITION",
+    "//": "EOC-B06: an EOC without a condition, for test_eoc.",
+    "effect": [ { "math": [ "audit_b06_ran = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B06_FALSE_CONDITION",
+    "//": "EOC-B06: an EOC whose condition is false, for test_eoc.",
+    "condition": { "math": [ "audit_b06_never == 1" ] },
+    "effect": [ { "math": [ "audit_b06_ran = 1" ] } ]
+  }
+]

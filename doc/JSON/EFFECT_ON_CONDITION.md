@@ -2210,7 +2210,7 @@ True for a rock in a canvas sack that is itself in a backpack
 
 ### `test_eoc`
 - type: string or [variable object](#variable-object)
-- return true if the provided eoc's condition returns true
+- return true if the provided eoc's condition returns true; an eoc without a condition counts as true
 
 #### Valid talkers:
 

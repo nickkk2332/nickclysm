@@ -2186,7 +2186,7 @@ conditional_t::func f_test_eoc( const JsonObject &jo, std::string_view member )
             debugmsg( "Invalid eoc id: %s", eocToTest.evaluate( d ) );
             return false;
         }
-        return tested->condition( d );
+        return tested->test_condition( d );
     };
 }
 
