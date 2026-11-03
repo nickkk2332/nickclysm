@@ -1,6 +1,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "achievement.h"
@@ -62,6 +63,21 @@ struct globals_restorer {
         get_globals().set_global_values( saved );
     }
 };
+
+// Puts back the game's statistics for these event types
+struct event_stats_restorer {
+    std::vector<std::pair<event_type, event_multiset>> saved;
+    explicit event_stats_restorer( const std::vector<event_type> &types ) {
+        for( event_type type : types ) {
+            saved.emplace_back( type, get_stats().get_events( type ) );
+        }
+    }
+    ~event_stats_restorer() {
+        for( const std::pair<event_type, event_multiset> &events : saved ) {
+            get_stats().get_events( events.first ) = events.second;
+        }
+    }
+};
 } // namespace
 
 // EVT-B03: monster_takes_damage from nothing (bleeding, fire, a fall) was sent without
@@ -72,6 +88,7 @@ TEST_CASE( "evt-b03_monster_hurt_by_nothing_is_the_alpha_talker", "[audit][event
     clear_avatar();
     avatar &u = get_avatar();
     globals_restorer restore_globals;
+    event_stats_restorer restore_stats( { event_type::monster_takes_damage } );
     on_out_of_scope cleanup( [&]() {
         u.remove_value( "audit_evt_b03_hurt" );
         clear_creatures();
@@ -93,6 +110,7 @@ TEST_CASE( "evt-b03_spell_without_a_caster_runs_no_event_eocs", "[audit][event]"
     clear_avatar();
     avatar &u = get_avatar();
     globals_restorer restore_globals;
+    event_stats_restorer restore_stats( { event_type::character_casts_spell } );
     on_out_of_scope cleanup( [&]() {
         u.remove_value( "audit_evt_b03_cast" );
     } );
