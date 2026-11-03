@@ -32,6 +32,7 @@
 static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
 
 static const itype_id itype_2x4( "2x4" );
+static const itype_id itype_audit_use_b08_rune( "audit_use_b08_rune" );
 static const itype_id itype_log( "log" );
 static const itype_id itype_saw( "saw" );
 static const itype_id itype_splinter( "splinter" );
@@ -118,4 +119,28 @@ TEST_CASE( "use-b07_hotplate_action_items_have_the_hotplate_quality", "[audit][i
         ++checked;
     }
     CHECK( checked > 0 );
+}
+
+// USE-B08: the effect_on_conditions use action always gave its EOCs a character-relative
+// location for the item, so an item used where it lies (ALLOWS_REMOTE_USE) was removed or
+// changed through the wrong location.
+TEST_CASE( "use-b08_eoc_use_action_finds_the_item_where_it_is", "[audit][iuse_actor]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &they = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms pos = they.pos_bub() + tripoint_rel_ms::east;
+    const avatar_and_tile_cleanup cleanup{ pos };
+
+    item &rune = here.add_item( pos, item( itype_audit_use_b08_rune ) );
+    const use_function *use = rune.type->get_use( "effect_on_conditions" );
+    REQUIRE( use != nullptr );
+    const effect_on_conditions_actor *actor =
+        dynamic_cast<const effect_on_conditions_actor *>( use->get_actor_ptr() );
+    REQUIRE( actor != nullptr );
+
+    // Its EOC removes the item it was used from.
+    actor->use( &they, rune, &here, pos );
+    CHECK( count_on_tile( pos, itype_audit_use_b08_rune ) == 0 );
 }

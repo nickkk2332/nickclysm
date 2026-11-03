@@ -1523,7 +1523,7 @@ The contents of `use_action` fields can either be a string indicating a built-in
 },
 "use_action": {
   "type": "effect_on_conditions",          // Activate effect_on_conditions
-  "consume": true,                         // defaults false: whether the iuse function should return 1 and attempt to consume the item
+  "consume": true,                         // defaults false: whether using it spends one use: charges_per_use charges of its ammo, or the item itself if it is SINGLE_USE.  Any other item stays; an EOC that should use it up removes it (u_consume_item)
   "need_worn": true,          // (optional) If the item has to be worn to activate the EoC
   "need_wielding": true,      // (optional) If the item has to be wielded to activate the EoC
   "condition": { "not": "is_day" }, // (optional) dialogue condition that must be true to activate; u is the user, npc is the item

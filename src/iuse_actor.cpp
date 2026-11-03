@@ -6004,8 +6004,8 @@ void effect_on_conditions_actor::finalize( const itype_id &my_item_type )
     }
 }
 
-ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const item &it, map *,
-        const tripoint_bub_ms & ) const
+ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const item &it, map *here,
+        const tripoint_bub_ms &pos ) const
 {
     if( need_worn && !p.is_worn( it ) ) {
         return ret_val<void>::make_failure( _( "You need to wear the %1$s before activating it." ),
@@ -6017,7 +6017,10 @@ ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const ite
     }
     if( condition ) {
         // The talkers only read the character and the item; item_location needs mutable ones.
-        const item_location loc( const_cast<Character &>( p ), const_cast<item *>( &it ) );
+        Character &who = const_cast<Character &>( p );
+        item &used = const_cast<item &>( it );
+        const item_location loc = try_form_loc( who, here, pos, used ).value_or( item_location( who,
+                                  &used ) );
         const const_dialogue d( get_const_talker_for( p ), get_const_talker_for( loc ) );
         if( !condition( d ) ) {
             if( failure_message.empty() ) {
@@ -6127,7 +6130,8 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
         } else if( npc *n = p->as_npc() ) {
             char_ptr = n;
         }
-        loc = item_location( *p->as_character(), &it );
+        // where the item is: carried, or on the map or in a vehicle (ALLOWS_REMOTE_USE)
+        loc = try_form_loc( *p, here, pos, it ).value_or( item_location( *p, &it ) );
     } else {
         loc = item_location( map_cursor( here, pos ), &it );
     }

@@ -1,0 +1,20 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_use_b08_destroy_item",
+    "effect": [ "npc_die" ]
+  },
+  {
+    "id": "audit_use_b08_rune",
+    "type": "ITEM",
+    "name": { "str": "TEST crumbling rune" },
+    "description": "Crumbles when used, from wherever it lies (USE-B08).",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_gray",
+    "flags": [ "ALLOWS_REMOTE_USE" ],
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_audit_use_b08_destroy_item" ] }
+  }
+]
