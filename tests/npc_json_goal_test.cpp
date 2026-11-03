@@ -41,6 +41,7 @@
 #include "npc_goal_state.h"
 #include "npc_json_goal.h"
 #include "npc_turn_helpers.h"
+#include "options_helpers.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
@@ -49,6 +50,7 @@
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
+#include "weather.h"
 
 // JSON goals (doc/JSON/NPC_BEHAVIOR.md): decision categories as JSON, goals defined on behavior
 // leaves, what runs them in npc::move(), their saves, what EOCs read about them and the decision
@@ -183,6 +185,8 @@ static const bionic_id test_bio_npcj01_shield( "test_bio_npcj01_shield" );
 
 static const ter_str_id ter_t_wall( "t_wall" );
 
+static const weather_type_id weather_clear( "clear" );
+
 static void forget_goal_globals()
 {
     for( const std::string &name : goal_globals ) {
@@ -212,18 +216,26 @@ static std::optional<tripoint_bub_ms> end_pos()
     return get_map().get_bub( value->tripoint() );
 }
 
-// npc::move() walks this tree while the test runs; the globals go too
+// npc::move() walks this tree while the test runs; the globals go too.  The weather is mild
+// and clear meanwhile: where earlier tests left the reality bubble, noon in March can freeze
+// a bottle of water within a turn.
 struct goal_test_tree {
-    explicit goal_test_tree( const std::string &root ) {
+    explicit goal_test_tree( const std::string &root ) : weather( weather_clear ) {
         forget_goal_globals();
         set_npc_decision_tree_for_test( string_id<behavior::node_t>( root ) );
+        get_weather().forced_temperature = units::from_celsius( 20 );
+        get_weather().clear_temp_cache();
     }
     goal_test_tree( const goal_test_tree & ) = delete;
     goal_test_tree &operator=( const goal_test_tree & ) = delete;
     ~goal_test_tree() {
         set_npc_decision_tree_for_test( std::nullopt );
         forget_goal_globals();
+        get_weather().forced_temperature = old_temperature;
+        get_weather().clear_temp_cache();
     }
+    const std::optional<units::temperature> old_temperature = get_weather().forced_temperature;
+    const scoped_weather_override weather;
     static void use( const std::string &root ) {
         set_npc_decision_tree_for_test( string_id<behavior::node_t>( root ) );
     }
@@ -243,9 +255,13 @@ static void calm( npc &guy )
     guy.clear_ai_guard_pos();
 }
 
-// an NPC alone in an empty field, the avatar out of its way
+// an NPC alone in an empty field, the avatar out of its way, the reality bubble at the origin
+// whatever earlier tests left
 static npc &goal_npc()
 {
+    if( get_map().get_abs_sub() != tripoint_abs_sm() ) {
+        get_map().load( tripoint_abs_sm(), false );
+    }
     clear_map_with_vision();
     clear_avatar();
     clear_npcs();
