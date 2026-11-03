@@ -2605,13 +2605,16 @@ void parse_tags( std::string &phrase, const_talker const &u, const_talker const 
 void dialogue::add_gen_response( const talk_response &resp, bool insert_front,
                                  bool condition_exists, bool condition_result )
 {
+    // The flags go where the response goes: opt_imgui reads them by the response's index
     if( insert_front ) {
         responses.insert( responses.begin(), resp );
+        response_condition_exists.insert( response_condition_exists.begin(), condition_exists );
+        response_condition_eval.insert( response_condition_eval.begin(), condition_result );
     } else {
         responses.push_back( resp );
+        response_condition_exists.push_back( condition_exists );
+        response_condition_eval.push_back( condition_result );
     }
-    response_condition_exists.emplace_back( condition_exists );
-    response_condition_eval.emplace_back( condition_result );
 }
 
 void dialogue::add_topic( const std::string &topic_id )
@@ -3012,8 +3015,10 @@ talk_topic dialogue::opt_imgui( dialogue_imgui_impl &d_img, const talk_topic &to
                 const auto hotkey_it = std::find( response_hotkeys.begin(),
                                                   response_hotkeys.end(), evt );
                 response_ind = std::distance( response_hotkeys.begin(), hotkey_it );
-                if( response_condition_exists[response_ind] && ( !response_condition_eval[response_ind] &&
-                        !debug_mode ) ) {
+                // A key no response has leaves response_ind past the end
+                if( response_ind < response_condition_exists.size() &&
+                    response_condition_exists[response_ind] && ( !response_condition_eval[response_ind] &&
+                            !debug_mode ) ) {
                     action = "NONE";
                 }
             } else if( action == "QUIT" ) {
@@ -10651,7 +10656,9 @@ bool json_talk_response::gen_responses( dialogue &d, bool switch_done )
                 // Default is TALK_NONE otherwise go to the failure topic provided
                 tr.success.next_topic = talk_topic( failure_topic );
             }
-            d.add_gen_response( tr, false, !!condition, condition_result );
+            // With a failure topic it can be picked, and leads there; with only an explanation
+            // it is shown but can't be picked
+            d.add_gen_response( tr, false, failure_topic.empty() && !!condition, condition_result );
         }
     }
     return false;
@@ -10666,7 +10673,7 @@ bool json_talk_response::gen_repeat_response( dialogue &d, const itype_id &item_
             talk_response result = actual_response;
             result.success.next_topic.item_type = item_id;
             result.failure.next_topic.item_type = item_id;
-            d.add_gen_response( result, !!condition, true, true );
+            d.add_gen_response( result, true, !!condition, true );
             return is_switch && !is_default;
         }
     }

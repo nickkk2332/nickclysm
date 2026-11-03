@@ -715,7 +715,7 @@ The short format is equivalent to (an unconditional switching of the topic, `eff
 }
 ```
 
-When using a conditional you can specify the response to still appear but be marked as unavailable. This can be done by adding a `failure_explanation` or `failure_topic` in the below example if the condition fails `*Didn't have enough: I, the player, say to you...` will be what appears in the responses, and if selected it will instead go to `TALK_EXPLAIN_FAILURE` and wont trigger the other effects:
+When using a conditional you can specify the response to still appear but be marked as unavailable. This can be done by adding a `failure_explanation` or `failure_topic` in the below example if the condition fails `*Didn't have enough: I, the player, say to you...` will be what appears in the responses, and if selected it will instead go to `TALK_EXPLAIN_FAILURE` and wont trigger the other effects.  Without a `failure_topic` the response is shown but can't be selected:
 ```jsonc
 {
   "condition": "...something...",

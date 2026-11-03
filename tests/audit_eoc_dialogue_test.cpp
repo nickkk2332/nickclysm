@@ -52,6 +52,8 @@
 static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B07_REQUEUE( "EOC_AUDIT_B07_REQUEUE" );
 
+static const itype_id itype_test_rock( "test_rock" );
+
 static const oter_str_id oter_field( "field" );
 
 static const overmap_special_id overmap_special_test_audit_b08_shelter( "test_audit_b08_shelter" );
@@ -288,4 +290,47 @@ TEST_CASE( "eoc-b08_location_variable_finds_npcs_across_its_whole_radius", "[aud
     const diag_value *found = globals.maybe_get_global_value( "audit_b08_npc_loc" );
     REQUIRE( found != nullptr );
     CHECK( found->tripoint() == guy_pos );
+}
+
+// EOC-B10: a failed response with a failure_topic was listed but could never be picked; and
+// front-inserted responses (repeat responses) took the condition flags of the response that
+// had been at their index.
+TEST_CASE( "eoc-b10_response_flags_follow_their_responses", "[audit][npc_talk]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    u.i_add( item( itype_test_rock ) );
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    dialogue d( get_talker_for( u ), get_talker_for( u ) );
+    d.add_topic( "TALK_AUDIT_B10" );
+    d.gen_responses( d.topic_stack.back() );
+    REQUIRE( d.responses.size() == d.response_condition_exists.size() );
+    REQUIRE( d.responses.size() == d.response_condition_eval.size() );
+
+    std::vector<std::string> texts;
+    std::map<std::string, bool> selectable;
+    std::map<std::string, std::string> next_topic;
+    for( size_t i = 0; i < d.responses.size(); ++i ) {
+        const std::string text = d.responses[i].truetext.translated();
+        texts.push_back( text );
+        selectable[text] = !d.response_condition_exists[i] || d.response_condition_eval[i];
+        next_topic[text] = d.responses[i].success.next_topic.id;
+    }
+    CAPTURE( texts );
+    REQUIRE( texts.size() == 6 );
+    // Repeat responses go in front
+    CHECK( texts[0] == "Repeated without a condition." );
+    CHECK( texts[1] == "Repeated with a condition." );
+
+    CHECK( selectable["Repeated without a condition."] );
+    CHECK( selectable["Repeated with a condition."] );
+    CHECK( selectable["Available."] );
+    CHECK_FALSE( selectable["Shown though unavailable."] );
+    // A failure explanation alone only explains
+    CHECK_FALSE( selectable["*Never: Fails with an explanation."] );
+    // A failure topic can be picked, and leads there
+    CHECK( selectable["*Not now: Fails with a topic."] );
+    CHECK( next_topic["*Not now: Fails with a topic."] == "TALK_AUDIT_B10_FAILED" );
 }

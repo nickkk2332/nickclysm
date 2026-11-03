@@ -27,5 +27,48 @@
     "occurrences": [ 0, 0 ],
     "flags": [ "SHOULD_NOT_SPAWN" ],
     "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "shelter_north" } ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_B10",
+    "//": "EOC-B10: responses that fail with and without a failure topic, shown though unavailable, plain, and repeated per item.",
+    "dynamic_line": "Audit B10.",
+    "replace_built_in_responses": true,
+    "responses": [
+      {
+        "text": "Fails with a topic.",
+        "condition": { "math": [ "audit_b10_never == 1" ] },
+        "failure_explanation": "Not now",
+        "failure_topic": "TALK_AUDIT_B10_FAILED",
+        "topic": "TALK_DONE"
+      },
+      {
+        "text": "Fails with an explanation.",
+        "condition": { "math": [ "audit_b10_never == 1" ] },
+        "failure_explanation": "Never",
+        "topic": "TALK_DONE"
+      },
+      {
+        "text": "Shown though unavailable.",
+        "condition": { "math": [ "audit_b10_never == 1" ] },
+        "show_always": true,
+        "topic": "TALK_DONE"
+      },
+      { "text": "Available.", "topic": "TALK_DONE" }
+    ],
+    "repeat_responses": [
+      {
+        "for_item": [ "test_rock" ],
+        "response": { "text": "Repeated with a condition.", "condition": { "math": [ "audit_b10_never == 0" ] }, "topic": "TALK_DONE" }
+      },
+      { "for_item": [ "test_rock" ], "response": { "text": "Repeated without a condition.", "topic": "TALK_DONE" } }
+    ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_B10_FAILED",
+    "//": "EOC-B10: where the failed response with a failure topic leads.",
+    "dynamic_line": "Audit B10 failed.",
+    "responses": [ { "text": "Done.", "topic": "TALK_DONE" } ]
   }
 ]
