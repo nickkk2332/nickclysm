@@ -83,6 +83,9 @@ class node_t
         // Loading interface.
         void load( const JsonObject &jo, std::string_view src );
         void check() const;
+        const std::vector<const node_t *> &get_children() const {
+            return children;
+        }
         string_id<node_t> id;
         std::vector<std::pair<string_id<node_t>, mod_id>> src;
         bool was_loaded = false;

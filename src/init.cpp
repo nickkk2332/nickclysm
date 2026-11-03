@@ -93,6 +93,7 @@
 #include "npc.h"
 #include "npc_class.h"
 #include "npc_decision_category.h"
+#include "npc_json_goal.h"
 #include "omdata.h"
 #include "options.h"
 #include "overlay_ordering.h"
@@ -797,6 +798,7 @@ void DynamicDataLoader::unload_data()
     ascii_art::reset();
     bash_damage_profile::reset();
     behavior::reset();
+    npc_json_goals::reset();
     npc_decision_category::reset();
     body_part_type::reset();
     butchery_requirements::reset();

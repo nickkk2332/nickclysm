@@ -17,5 +17,244 @@
     "id": "test_goal_late",
     "//": "NPC goal tests: a category after free_time, so after needs and orders too.",
     "after": "free_time"
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_idle_tree",
+    "//": "NPC goal tests: a decision tree that picks nothing, so a committed goal goes on alone.",
+    "goal": "idle"
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_errand_tree",
+    "//": "NPC goal tests: needs, a walk the NPC was sent on, and the fetch goal.",
+    "strategy": "utility",
+    "children": [ "npc_needs", "npc_player_order", "test_goal_fetch" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_wait_tree",
+    "strategy": "utility",
+    "children": [ "npc_needs", "test_goal_wait" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_wait_early_tree",
+    "strategy": "utility",
+    "children": [ "npc_needs", "test_goal_wait_early" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_wait_top_tree",
+    "strategy": "fallback",
+    "children": [ "test_goal_wait_top", "npc_combat" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_hysteresis_tree",
+    "strategy": "utility",
+    "children": [ "test_goal_hysteresis_a", "test_goal_hysteresis_b" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_until_tree",
+    "strategy": "fallback",
+    "children": [ "test_goal_until" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_timeout_tree",
+    "strategy": "fallback",
+    "children": [ "test_goal_timeout" ]
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_fetch",
+    "//": "Walks to the t-shirt at the global location test_goal_spot, picks it up and walks back.  Not picked once the NPC carries a t-shirt it could wear.",
+    "conditions": [ { "predicate": "npc_can_wear_warmer_clothes", "invert_result": true } ],
+    "category": "test_goal_late",
+    "goal": {
+      "id": "test_goal_fetch",
+      "on_start": [ "EOC_TEST_GOAL_START", "EOC_TEST_GOAL_FETCH_START" ],
+      "until": { "and": [ { "u_has_item": "tshirt" }, { "math": [ "u_test_goal_back == 1" ] } ] },
+      "timeout": "1 hour",
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ],
+      "on_timeout": [ "EOC_TEST_GOAL_TIMEOUT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_wait",
+    "category": "test_goal_late",
+    "goal": {
+      "id": "test_goal_wait",
+      "on_start": [ "EOC_TEST_GOAL_START" ],
+      "on_turn": [ "EOC_TEST_GOAL_TURN" ],
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ],
+      "on_timeout": [ "EOC_TEST_GOAL_TIMEOUT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_wait_early",
+    "category": "test_goal_early",
+    "goal": {
+      "id": "test_goal_wait_early",
+      "on_start": [ "EOC_TEST_GOAL_START" ],
+      "on_turn": [ "EOC_TEST_GOAL_TURN" ],
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_wait_early_b",
+    "//": "NPC goal tests: a second goal of test_goal_early, for its hysteresis.",
+    "category": "test_goal_early",
+    "goal": { "id": "test_goal_wait_early_b" }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_wait_top",
+    "category": "test_goal_top",
+    "goal": {
+      "id": "test_goal_wait_top",
+      "on_start": [ "EOC_TEST_GOAL_START" ],
+      "on_turn": [ "EOC_TEST_GOAL_TURN" ],
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_need",
+    "//": "NPC goal tests: a JSON goal among the needs, for the hysteresis against built-in needs.",
+    "category": "needs",
+    "goal": { "id": "test_goal_need" }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_hysteresis_a",
+    "//": "NPC goal tests: scored by how hungry the NPC is.",
+    "category": "test_goal_late",
+    "score": "npc_hunger_urgency",
+    "goal": { "id": "test_goal_hysteresis_a", "on_end": [ "EOC_TEST_GOAL_END" ], "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_hysteresis_b",
+    "//": "NPC goal tests: scored by how thirsty the NPC is.",
+    "category": "test_goal_late",
+    "score": "npc_thirst_urgency",
+    "goal": { "id": "test_goal_hysteresis_b", "on_start": [ "EOC_TEST_GOAL_START" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_until",
+    "category": "test_goal_late",
+    "goal": {
+      "id": "test_goal_until",
+      "on_start": [ "EOC_TEST_GOAL_START" ],
+      "on_turn": [ "EOC_TEST_GOAL_TURN" ],
+      "until": { "or": [ { "math": [ "u_test_goal_finish == 1" ] }, "npc_male" ] },
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ],
+      "on_timeout": [ "EOC_TEST_GOAL_TIMEOUT" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_goal_timeout",
+    "category": "test_goal_late",
+    "goal": {
+      "id": "test_goal_timeout",
+      "on_turn": [ "EOC_TEST_GOAL_TURN" ],
+      "timeout": "5 turns",
+      "on_end": [ "EOC_TEST_GOAL_END" ],
+      "on_interrupt": [ "EOC_TEST_GOAL_INTERRUPT" ],
+      "on_timeout": [ "EOC_TEST_GOAL_TIMEOUT" ]
+    }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_START",
+    "//": "NPC goal tests: an on_start hook.  Counts its runs and records the goal_id.",
+    "effect": [
+      { "math": [ "test_goal_starts++" ] },
+      { "copy_var": { "context_val": "goal_id" }, "target_var": { "global_val": "test_goal_start_id" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_TURN",
+    "//": "NPC goal tests: an on_turn hook.  Counts its runs and records turns_active.  Reads the npc talker, which a goal's hooks get empty.",
+    "effect": [
+      { "math": [ "test_goal_turns++" ] },
+      { "math": [ "test_goal_turns_active = _turns_active" ] },
+      { "if": "npc_male", "then": { "math": [ "test_goal_turns = -100" ] } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_END",
+    "//": "NPC goal tests: an on_end hook.  Counts its runs and records the reason, the goal_id, turns_active and where the NPC is.",
+    "effect": [
+      { "math": [ "test_goal_ends++" ] },
+      { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_goal_end_reason" } },
+      { "copy_var": { "context_val": "goal_id" }, "target_var": { "global_val": "test_goal_end_id" } },
+      { "math": [ "test_goal_end_turns = _turns_active" ] },
+      { "u_location_variable": { "global_val": "test_goal_end_pos" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_INTERRUPT",
+    "//": "NPC goal tests: an on_interrupt hook.  Counts its runs and records the reason.",
+    "effect": [
+      { "math": [ "test_goal_interrupts++" ] },
+      { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_goal_interrupt_reason" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_TIMEOUT",
+    "//": "NPC goal tests: an on_timeout hook.  Counts its runs and records the reason.",
+    "effect": [
+      { "math": [ "test_goal_timeouts++" ] },
+      { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_goal_timeout_reason" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_FETCH_START",
+    "//": "NPC goal tests: the fetch goal's errand.  Remembers where the NPC stands, then walks to the t-shirt to pick it up.",
+    "effect": [
+      { "u_location_variable": { "u_val": "test_goal_home" } },
+      {
+        "u_map_run_item_eocs": "random",
+        "loc": { "global_val": "test_goal_spot" },
+        "max_radius": 0,
+        "search_data": [ { "id": "tshirt" } ],
+        "true_eocs": [ "EOC_TEST_GOAL_FETCH_GO" ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_FETCH_GO",
+    "//": "NPC goal tests: the fetch goal walks to the item (npc) and takes it, then walks back.",
+    "effect": [ { "u_pickup_item": "npc", "walk": true, "true_eocs": [ "EOC_TEST_GOAL_FETCH_RETURN" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_FETCH_RETURN",
+    "effect": [ { "u_walk_to": { "u_val": "test_goal_home" }, "true_eocs": [ "EOC_TEST_GOAL_FETCH_BACK" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_FETCH_BACK",
+    "effect": [ { "math": [ "u_test_goal_back = 1" ] } ]
   }
 ]

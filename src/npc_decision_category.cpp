@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "npc_json_goal.h"
 #include "string_formatter.h"
 
 namespace
@@ -172,6 +173,44 @@ void npc_decision_category::finalize_all()
             goal_categories.emplace( goal, cat.id );
         }
     }
+    // a JSON goal's own category comes first; a disagreeing list is a load error
+    for( const auto &[id, goal] : npc_json_goals::registry().all() ) {
+        goal_categories[id] = goal.category;
+    }
+}
+
+// the categories' "goals" lists as claims
+static std::vector<npc_goal_claim> category_list_claims()
+{
+    std::vector<npc_goal_claim> claims;
+    for( const npc_decision_category &cat : category_factory.get_all() ) {
+        for( const std::string &goal : cat.goals ) {
+            claims.push_back( { goal, cat.id, "npc_decision_category " + cat.id.str() } );
+        }
+    }
+    return claims;
+}
+
+std::vector<std::string> check_goal_claims( const std::vector<npc_goal_claim> &node_claims )
+{
+    std::vector<npc_goal_claim> claims = category_list_claims();
+    claims.insert( claims.end(), node_claims.begin(), node_claims.end() );
+    std::vector<std::string> errors;
+    std::map<std::string, const npc_goal_claim *> first;
+    for( const npc_goal_claim &claim : claims ) {
+        if( !claim.category.is_valid() ) {
+            errors.push_back( string_format( "%s puts goal %s in npc_decision_category %s, which doesn't exist",
+                                             claim.source, claim.goal, claim.category.str() ) );
+            continue;
+        }
+        const auto [it, added] = first.emplace( claim.goal, &claim );
+        if( !added && it->second->category != claim.category ) {
+            errors.push_back( string_format( "goal %s is given two categories: %s by %s and %s by %s",
+                                             claim.goal, it->second->category.str(), it->second->source,
+                                             claim.category.str(), claim.source ) );
+        }
+    }
+    return errors;
 }
 
 void npc_decision_category::check_consistency()
@@ -195,12 +234,14 @@ void npc_decision_category::check_consistency()
     }
     for( const npc_decision_category &cat : category_factory.get_all() ) {
         for( const std::string &goal : cat.goals ) {
-            if( !is_builtin_npc_goal( goal ) ) {
+            if( !is_builtin_npc_goal( goal ) && npc_json_goals::find( goal ) == nullptr ) {
                 errors.push_back( string_format( "npc_decision_category %s lists goal %s, which doesn't exist",
                                                  cat.id.str(), goal ) );
             }
         }
     }
+    const std::vector<std::string> claim_errors = npc_json_goals::registry().check();
+    errors.insert( errors.end(), claim_errors.begin(), claim_errors.end() );
     for( const std::string &error : errors ) {
         debugmsg( "%s", error );
     }

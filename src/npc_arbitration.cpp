@@ -22,6 +22,7 @@
 #include "npc.h"
 #include "npc_class.h"
 #include "npc_decision_category.h"
+#include "npc_json_goal.h"
 #include "npc_trip.h"
 #include "stomach.h"
 #include "translations.h"
@@ -328,40 +329,70 @@ bool calories_short( const Character &who )
     return who.get_stored_kcal() + pending < who.get_healthy_kcal() * ( 1.0f - food_act_level );
 }
 
-bool should_interrupt( const npc_pursuit &current, const npc_challenger &challenger )
+npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
+                                       const npc_challenger &challenger )
 {
     if( current.cost == npc_interrupt_cost::wake_only ) {
-        return false;
+        return { false, "asleep: only the body's own wakers get it up" };
     }
     // obligation changed (leader left, order given, shift began): pursuit ends
     if( !current.permitted ) {
-        return true;
+        return { true, "its obligations no longer allow the committed goal" };
     }
     if( current.yields && !challenger.idle && challenger.goal != current.goal ) {
-        return true;
+        return { true, "the committed goal is stalled and gives way to any work" };
     }
     const decision_category cur_cat = bt_goal_to_category( current.goal );
     const decision_category new_cat = bt_goal_to_category( challenger.goal );
     if( new_cat != cur_cat ) {
-        return new_cat < cur_cat;
+        if( new_cat < cur_cat ) {
+            return { true, "its category comes first" };
+        }
+        return { false, "its category comes later" };
     }
-    if( new_cat != decision_category::needs || challenger.goal == current.goal ) {
-        return false;
+    if( challenger.goal == current.goal ) {
+        return { false, "it's the same goal" };
+    }
+    if( npc_json_goals::find( current.goal ) != nullptr ||
+        npc_json_goals::find( challenger.goal ) != nullptr ) {
+        // a JSON goal on either side: the higher score wins, the committed one's raised
+        if( challenger.selection > current.selection * ( 1.0f + cur_cat.hysteresis() ) ) {
+            return { true, "same category, and it scores above the committed goal with its hysteresis bonus" };
+        }
+        return { false, "same category, and it doesn't score above the committed goal with its hysteresis bonus" };
+    }
+    if( new_cat != decision_category::needs ) {
+        return { false, "same category: the committed goal stays" };
     }
     // critical applies at every cost: a cheaper pursuit is never harder to leave
     const bool critical = challenger.selection > need_critical_urgency &&
                           challenger.selection > current.selection;
+    float margin = 0.0f;
     switch( current.cost ) {
         case npc_interrupt_cost::cheap:
-            return challenger.selection > current.selection + preempt_margin || critical;
-        case npc_interrupt_cost::stalled:
-            return challenger.selection > current.selection + preempt_margin * 2 || critical;
-        case npc_interrupt_cost::costly:
-            return challenger.selection > current.selection + preempt_margin * 3 || critical;
-        case npc_interrupt_cost::wake_only:
+            margin = preempt_margin;
             break;
+        case npc_interrupt_cost::stalled:
+            margin = preempt_margin * 2;
+            break;
+        case npc_interrupt_cost::costly:
+            margin = preempt_margin * 3;
+            break;
+        case npc_interrupt_cost::wake_only:
+            return { false, "asleep: only the body's own wakers get it up" };
     }
-    return false;
+    if( challenger.selection > current.selection + margin ) {
+        return { true, "a more urgent need, past the margin for leaving this one" };
+    }
+    if( critical ) {
+        return { true, "a critical need, more urgent than this one" };
+    }
+    return { false, "not enough more urgent than the need pursued" };
+}
+
+bool should_interrupt( const npc_pursuit &current, const npc_challenger &challenger )
+{
+    return judge_interrupt( current, challenger ).interrupt;
 }
 
 void npc::record_selected_option( const need_goal_id id, const npc_option_cost &cost )
@@ -510,6 +541,8 @@ npc_pursuit npc::committed_pursuit() const
         current.selection = view.selection;
         current.permitted = view.may_consider();
         current.yields = *gid == need_goal_id::go_to_sleep && sleep_stalled();
+    } else if( const npc_json_goal *goal = npc_json_goals::find( current.goal ) ) {
+        current.selection = npc_goal_runtime::score( *this, *goal );
     }
     return current;
 }

@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "npc_json_goal.h"
 
 using namespace behavior;
 
@@ -154,7 +155,7 @@ void behavior::load_behavior( const JsonObject &jo, const std::string &src )
     behavior_factory.load( jo, src );
 }
 
-void node_t::load( const JsonObject &jo, std::string_view )
+void node_t::load( const JsonObject &jo, std::string_view src )
 {
     // We don't initialize the node unless it has no children (opportunistic optimization).
     // Instead we initialize a parallel struct that holds the labels until finalization.
@@ -188,7 +189,10 @@ void node_t::load( const JsonObject &jo, std::string_view )
         conditions.emplace_back( new_predicate->second, predicate_argument,
                                  invert_result );
     }
-    optional( jo, was_loaded, "goal", _goal );
+    // a JSON goal ("goal": { ... }) and its "category" (src/npc_json_goal.h)
+    if( !npc_json_goals::registry().load_node( jo, id, src, _goal ) ) {
+        optional( jo, was_loaded, "goal", _goal );
+    }
     if( jo.has_string( "score" ) ) {
         const std::string score_id = jo.get_string( "score" );
         const std::string score_arg = jo.get_string( "score_argument", "" );
