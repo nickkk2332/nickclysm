@@ -391,17 +391,28 @@ double encumbrance_eval( const_dialogue const &d, char scope, std::vector<diag_v
     return d.const_actor( is_beta( scope ) )->encumbrance_at( bp );
 }
 
+// The faction a faction_*() function names. An unknown id is a math error, not a crash.
+faction *_get_faction( const_dialogue const &d, diag_value const &id_val )
+{
+    std::string const &id = id_val.str( d );
+    faction *fac = g->faction_manager_ptr->get( faction_id( id ), false );
+    if( fac == nullptr ) {
+        throw math::runtime_error( R"(Unknown faction "%s")", id );
+    }
+    return fac;
+}
+
 double faction_like_eval( const_dialogue const &d, char /* scope */,
                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->likes_u;
 }
 
 void faction_like_ass( double val, dialogue &d, char /* scope */,
                        std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->likes_u = val;
 }
 
@@ -409,28 +420,28 @@ double faction_respect_eval( const_dialogue const &d, char /* scope */,
                              std::vector<diag_value> const &params,
                              diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->respects_u;
 }
 
 void faction_respect_ass( double val, dialogue &d, char /* scope */,
                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->respects_u = val;
 }
 
 double faction_trust_eval( const_dialogue const &d, char /* scope */,
                            std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->trusts_u;
 }
 
 void faction_trust_ass( double val, dialogue &d, char /* scope */,
                         std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->trusts_u = val;
 }
 
@@ -438,7 +449,7 @@ double faction_food_supply_eval( const_dialogue const &d, char /* scope */,
                                  std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     diag_value vit_val = kwargs.kwarg_or( "vitamin" );
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     if( !vit_val.is_empty() ) {
         return static_cast<double>(
                    fac->food_supply().get_vitamin( vitamin_id( vit_val.str( d ) ) ) );
@@ -450,42 +461,42 @@ double faction_wealth_eval( const_dialogue const &d, char /* scope */,
                             std::vector<diag_value> const &params,
                             diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->wealth;
 }
 
 void faction_wealth_ass( double val, dialogue &d, char /* scope */,
                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->wealth = val;
 }
 
 double faction_power_eval( const_dialogue const &d, char /* scope */,
                            std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->power;
 }
 
 void faction_power_ass( double val, dialogue &d, char /* scope */,
                         std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->power = val;
 }
 
 double faction_size_eval( const_dialogue const &d, char /* scope */,
                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     return fac->size;
 }
 
 void faction_size_ass( double val, dialogue &d, char /* scope */,
                        std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
-    faction *fac = g->faction_manager_ptr->get( faction_id( params[0].str( d ) ) );
+    faction *fac = _get_faction( d, params[0] );
     fac->size = val;
 }
 
