@@ -50,6 +50,11 @@ static const itype_id itype_test_apple( "test_apple" );
 static const itype_id itype_water_clean( "water_clean" );
 static const itype_id itype_waterskin( "waterskin" );
 
+static const quality_id qual_TEST_RESERVE_A( "TEST_RESERVE_A" );
+
+static const trait_id trait_TEST_RESERVE_QUALITIES( "TEST_RESERVE_QUALITIES" );
+static const trait_id trait_TEST_RESERVE_QUALITIES_2( "TEST_RESERVE_QUALITIES_2" );
+
 namespace
 {
 
@@ -363,4 +368,32 @@ TEST_CASE( "inv-b06_autopickup_leaves_containers_whole_unless_it_takes_them",
         CHECK( left.typeId() == itype_audit_inv_b04_sack );
         CHECK( left.all_items_top().size() == 1 );
     }
+}
+
+// INV-B08: has_quality() and has_unreserved_quality() answered true for any mutation with the
+// quality, whatever level and count were asked for.
+TEST_CASE( "inv-b08_mutation_qualities_count_their_level_and_number", "[audit][inventory]" )
+{
+    clear_avatar();
+    const avatar_cleanup reset_avatar;
+    avatar &they = get_avatar();
+    REQUIRE_FALSE( they.has_quality( qual_TEST_RESERVE_A ) );
+
+    // TEST_RESERVE_A at level 1
+    they.set_mutation( trait_TEST_RESERVE_QUALITIES );
+    REQUIRE( they.has_trait( trait_TEST_RESERVE_QUALITIES ) );
+    CHECK( they.has_quality( qual_TEST_RESERVE_A, 1 ) );
+    CHECK( they.has_unreserved_quality( qual_TEST_RESERVE_A, 1 ) );
+    CHECK_FALSE( they.has_quality( qual_TEST_RESERVE_A, 2 ) );
+    CHECK_FALSE( they.has_unreserved_quality( qual_TEST_RESERVE_A, 2 ) );
+    CHECK_FALSE( they.has_quality( qual_TEST_RESERVE_A, 1, 2 ) );
+    CHECK_FALSE( they.has_unreserved_quality( qual_TEST_RESERVE_A, 1, 2 ) );
+
+    // a second source of it
+    they.set_mutation( trait_TEST_RESERVE_QUALITIES_2 );
+    REQUIRE( they.has_trait( trait_TEST_RESERVE_QUALITIES_2 ) );
+    CHECK( they.has_quality( qual_TEST_RESERVE_A, 1, 2 ) );
+    CHECK( they.has_unreserved_quality( qual_TEST_RESERVE_A, 1, 2 ) );
+    CHECK_FALSE( they.has_quality( qual_TEST_RESERVE_A, 1, 3 ) );
+    CHECK_FALSE( they.has_unreserved_quality( qual_TEST_RESERVE_A, 1, 3 ) );
 }

@@ -254,8 +254,11 @@ bool Character::has_quality( const quality_id &qual, int level, int qty ) const
 
     for( const trait_id &mut : get_functioning_mutations() ) {
         const auto &q = mut->provided_qualities.find( qual );
-        if( q != mut->provided_qualities.end() ) {
-            return true;
+        if( q != mut->provided_qualities.end() && q->second >= level ) {
+            if( qty <= 1 ) {
+                return true;
+            }
+            qty--;
         }
     }
 
@@ -287,14 +290,16 @@ bool Character::has_unreserved_quality( const quality_id &qual, int level, int q
         }
     }
 
-    // level/qty are deliberately ignored on this branch, matching Character::has_quality. an
-    // automation caller must answer as that function does when no reservation is involved,
-    // or converting a call site silently changes what an NPC will do. the crafting gate
-    // counts occurrences instead, through has_intrinsic_quality
+    // matching Character::has_quality: an automation caller must answer as that function does
+    // when no reservation is involved, or converting a call site silently changes what an NPC
+    // will do
     for( const trait_id &mut : get_functioning_mutations() ) {
         const auto &q = mut->provided_qualities.find( qual );
-        if( q != mut->provided_qualities.end() ) {
-            return true;
+        if( q != mut->provided_qualities.end() && q->second >= level ) {
+            if( qty <= 1 ) {
+                return true;
+            }
+            qty--;
         }
     }
 
