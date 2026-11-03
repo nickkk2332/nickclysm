@@ -122,7 +122,7 @@ condition is true and fails when it is false, so a `fallback` parent moves on to
         "and": [
           { "u_is_in_faction": "mymod_monks" },
           { "u_has_trait": "DEVOUT" },
-          { "math": [ "time_since('sunrise') < time('1 h')" ] }
+          { "math": [ "time_since('midnight') < time('7 h')" ] }
         ]
       }
     }
@@ -413,12 +413,12 @@ A behavior leaf can carry its goal as an object instead of a string, and the cat
   "id": "npc_pray_at_dawn",
   "category": "worship",
   "conditions": [ { "predicate": "condition", "condition": { "u_has_trait": "DEVOUT" } } ],
-  "score": { "math": [ "1 - time_since('sunrise') / time('2 h')" ] },
+  "score": { "math": [ "u_devotion / 100" ] },
   "goal": {
     "id": "pray_at_dawn",
     "on_start": [ "EOC_FIND_SHRINE_AND_WALK" ],
     "on_turn": [ "EOC_PRAY_IF_AT_SHRINE" ],
-    "until": { "u_has_var": "prayed_today" },
+    "until": { "math": [ "u_prayed_today == 1" ] },
     "timeout": "2 hours",
     "on_interrupt": [ "EOC_PRAYER_INTERRUPTED" ]
   }
