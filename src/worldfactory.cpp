@@ -2158,10 +2158,8 @@ bool WORLD::set_compression_enabled( bool enabled )
         std::vector<cata_path> dimension_folders = get_directories( world_folder_path / "dimensions" );
         dimension_folders.push_back( world_folder_path );
 
-        copy_file( maps_dict, world_folder_path / "maps.dict" );
-        copy_file( overmaps_dict, world_folder_path / "overmaps.dict" );
-        copy_file( mmr_dict, world_folder_path / "mmr.dict" );
-
+        // Nothing is deleted, and the world doesn't count as compressed, until every
+        // dimension is compressed: a failure leaves the world as it was.
         for( const cata_path &dimension_folder : dimension_folders ) {
             {
                 std::vector<cata_path> maps_folders = get_directories( dimension_folder / "maps" );
@@ -2177,7 +2175,7 @@ bool WORLD::set_compression_enabled( bool enabled )
                         return false;
                     }
                 }
-                folders_to_clean = std::move( maps_folders );
+                folders_to_clean.insert( folders_to_clean.end(), maps_folders.begin(), maps_folders.end() );
             }
             {
                 std::vector<cata_path> overmaps = get_files_from_path( "o.", dimension_folder );
@@ -2287,32 +2285,43 @@ bool WORLD::set_compression_enabled( bool enabled )
 
                     std::optional<zzip> save_zzip = zzip::load( ( dimension_folder / save_file_name +
                                                     zzip_suffix ).get_unrelative_path() );
-                    if( !save_zzip ) {
+                    if( !save_zzip || !save_zzip->add_file( save_file_name, savefile_contents ) ) {
                         return false;
                     }
-                    save_zzip->add_file( save_file_name, savefile_contents );
                     files_to_clean.push_back( save );
                 }
             }
+        }
 
-            size_t done = 0;
-            size_t to_do = folders_to_clean.size() + files_to_clean.size();
-            for( const cata_path &folder : folders_to_clean ) {
-                popup.message( _( "Cleaning up [%d/%d]" ), done++, to_do );
-                ui_manager::redraw();
-                refresh_display();
-                inp_mngr.pump_events();
-                std::error_code ec;
-                std::filesystem::remove_all( folder.get_unrelative_path(), ec );
+        // The dictionaries make the world read as compressed
+        const std::array<cata_path, 3> world_dicts = {
+            world_folder_path / "maps.dict", world_folder_path / "overmaps.dict", world_folder_path / "mmr.dict"
+        };
+        if( !copy_file( maps_dict, world_dicts[0] ) || !copy_file( overmaps_dict, world_dicts[1] ) ||
+            !copy_file( mmr_dict, world_dicts[2] ) ) {
+            for( const cata_path &dict : world_dicts ) {
+                remove_file( dict );
             }
-            for( const cata_path &file : files_to_clean ) {
-                popup.message( _( "Cleaning up [%d/%d]" ), done++, to_do );
-                ui_manager::redraw();
-                refresh_display();
-                inp_mngr.pump_events();
-                std::error_code ec;
-                std::filesystem::remove( file.get_unrelative_path(), ec );
-            }
+            return false;
+        }
+
+        size_t done = 0;
+        size_t to_do = folders_to_clean.size() + files_to_clean.size();
+        for( const cata_path &folder : folders_to_clean ) {
+            popup.message( _( "Cleaning up [%d/%d]" ), done++, to_do );
+            ui_manager::redraw();
+            refresh_display();
+            inp_mngr.pump_events();
+            std::error_code ec;
+            std::filesystem::remove_all( folder.get_unrelative_path(), ec );
+        }
+        for( const cata_path &file : files_to_clean ) {
+            popup.message( _( "Cleaning up [%d/%d]" ), done++, to_do );
+            ui_manager::redraw();
+            refresh_display();
+            inp_mngr.pump_events();
+            std::error_code ec;
+            std::filesystem::remove( file.get_unrelative_path(), ec );
         }
     } else {
         std::vector<cata_path> dimension_folders = get_directories( world_folder_path / "dimensions" );
@@ -2322,9 +2331,10 @@ bool WORLD::set_compression_enabled( bool enabled )
         cata_path overmaps_dict = world_folder_path / "overmaps.dict";
         cata_path mmr_dict = world_folder_path / "mmr.dict";
 
+        // Every dimension needs the dictionaries, and nothing is deleted until all are
+        // extracted: a failure leaves the world as it was.
+        std::vector<cata_path> zzips_to_clean;
         for( const cata_path &dimension_folder : dimension_folders ) {
-
-            std::vector<cata_path> zzips_to_clean;
 
             std::vector<cata_path> maps_zzips = get_files_from_path( "zzip", dimension_folder / "maps", false,
                                                 true );
@@ -2423,18 +2433,19 @@ bool WORLD::set_compression_enabled( bool enabled )
                     zzips_to_clean.push_back( std::move( save_zzip ) );
                 }
             }
-            remove_file( maps_dict );
-            remove_file( overmaps_dict );
-            remove_file( mmr_dict );
-            done = 0;
-            for( const cata_path &zzip_to_clean : zzips_to_clean ) {
-                popup.message( _( "Cleaning up [%d/%d]" ), done++, zzips_to_clean.size() );
-                ui_manager::redraw();
-                refresh_display();
-                inp_mngr.pump_events();
-                std::error_code ec;
-                std::filesystem::remove( zzip_to_clean.get_unrelative_path(), ec );
-            }
+        }
+        // Without the dictionaries the world reads as uncompressed
+        remove_file( maps_dict );
+        remove_file( overmaps_dict );
+        remove_file( mmr_dict );
+        size_t done = 0;
+        for( const cata_path &zzip_to_clean : zzips_to_clean ) {
+            popup.message( _( "Cleaning up [%d/%d]" ), done++, zzips_to_clean.size() );
+            ui_manager::redraw();
+            refresh_display();
+            inp_mngr.pump_events();
+            std::error_code ec;
+            std::filesystem::remove( zzip_to_clean.get_unrelative_path(), ec );
         }
     }
     is_compressed = enabled;

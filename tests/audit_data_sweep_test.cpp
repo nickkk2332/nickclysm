@@ -1,10 +1,15 @@
+#include <filesystem>
+#include <functional>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "cata_catch.h"
 #include "cata_path.h"
 #include "cata_scope_helpers.h"
+#include "cata_utility.h"
 #include "construction.h"
 #include "coordinates.h"
 #include "end_screen.h"
@@ -17,11 +22,14 @@
 #include "map_helpers_tests.h"
 #include "map_scale_constants.h"
 #include "mod_manager.h"
+#include "options_helpers.h"
+#include "path_info.h"
 #include "point.h"
 #include "profession_group.h"
 #include "submap.h"
 #include "type_id.h"
 #include "worldfactory.h"
+#include "zzip.h"
 
 static const construction_str_id construction_test_constr_door_frame( "test_constr_door_frame" );
 static const end_screen_id
@@ -134,4 +142,97 @@ TEST_CASE( "data-b06_construction_on_a_uniform_submap_is_saved", "[audit][mapbuf
         REQUIRE( jo.has_array( "phase_reverts" ) );
         CHECK_FALSE( jo.get_array( "phase_reverts" ).empty() );
     }
+}
+
+namespace
+{
+// Runs fn on a new, empty, uncompressed world (not the active one), deleted afterwards
+void in_audit_world( const std::string &name, const std::function<void( WORLD & )> &fn )
+{
+    WORLD *scratch = nullptr;
+    {
+        override_option compression( "WORLD_COMPRESSION2", "false" );
+        scratch = world_generator->make_new_world( name,
+                  world_generator->active_world->active_mod_order );
+    }
+    REQUIRE( scratch != nullptr );
+    on_out_of_scope cleanup( [&]() {
+        world_generator->delete_world( name, true );
+    } );
+    REQUIRE_FALSE( scratch->has_compression_enabled() );
+    fn( *scratch );
+}
+
+void write_text( const cata_path &file, const std::string &text )
+{
+    REQUIRE( assure_dir_exist( file.parent_path() ) );
+    write_to_file( file, [&]( std::ostream & os ) {
+        os << text;
+    } );
+}
+
+bool world_reads_compressed( const WORLD &world )
+{
+    // as a fresh load of the world would see it
+    WORLD fresh( world.world_name );
+    return fresh.has_compression_enabled();
+}
+} // namespace
+
+// DATA-B07: a zzip whose dictionary is missing crashed on load
+TEST_CASE( "data-b07_zzip_with_a_missing_dictionary_does_not_load", "[audit][zzip]" )
+{
+    const cata_path dir = PATH_INFO::savedir_path() / "audit data-b07 zzip";
+    REQUIRE( assure_dir_exist( dir ) );
+    on_out_of_scope cleanup( [&]() {
+        std::error_code ec;
+        std::filesystem::remove_all( dir.get_unrelative_path(), ec );
+    } );
+    const std::optional<zzip> z = zzip::load( ( dir / "audit.zzip" ).get_unrelative_path(),
+                                  ( dir / "audit_missing.dict" ).get_unrelative_path() );
+    CHECK_FALSE( z.has_value() );
+}
+
+// DATA-B07: decompressing deleted the dictionaries after the first dimension, so the next
+// one couldn't be read: a crash, and a half-decompressed world.
+TEST_CASE( "data-b07_world_with_dimensions_compresses_and_decompresses", "[audit][zzip]" )
+{
+    in_audit_world( "audit data-b07 round trip", []( WORLD & world ) {
+        const cata_path root = world.folder_path();
+        const cata_path dim_map = root / "dimensions" / "audit_dim" / "maps" / "0.0.0" / "0.0.0.map";
+        const cata_path root_overmap = root / "o.0.0";
+        write_text( dim_map, "audit dimension map" );
+        write_text( root_overmap, "audit overmap" );
+
+        REQUIRE( world.set_compression_enabled( true ) );
+        CHECK( world_reads_compressed( world ) );
+        CHECK_FALSE( file_exist( dim_map ) );
+        CHECK_FALSE( file_exist( root_overmap ) );
+
+        REQUIRE( world.set_compression_enabled( false ) );
+        CHECK_FALSE( world_reads_compressed( world ) );
+        CHECK( read_entire_file( dim_map.get_unrelative_path() ) == "audit dimension map" );
+        CHECK( read_entire_file( root_overmap.get_unrelative_path() ) == "audit overmap" );
+    } );
+}
+
+// DATA-B07: compressing copied the dictionaries in first and deleted each dimension's files
+// once that dimension was done, so a failure later on left a world that reads as
+// compressed, with some of its maps only in the uncompressed files it then ignores.
+TEST_CASE( "data-b07_failed_compression_leaves_the_world_as_it_was", "[audit][zzip]" )
+{
+    in_audit_world( "audit data-b07 failure", []( WORLD & world ) {
+        const cata_path root = world.folder_path();
+        const cata_path dim_map = root / "dimensions" / "audit_dim" / "maps" / "0.0.0" / "0.0.0.map";
+        const cata_path root_map = root / "maps" / "1.1.1" / "1.1.1.map";
+        write_text( dim_map, "audit dimension map" );
+        write_text( root_map, "audit map" );
+        // The root's map segment can't be compressed: a folder is in the zzip's way
+        REQUIRE( assure_dir_exist( root / "maps" / "1.1.1.zzip" ) );
+
+        CHECK_FALSE( world.set_compression_enabled( true ) );
+        CHECK_FALSE( world_reads_compressed( world ) );
+        CHECK( file_exist( dim_map ) );
+        CHECK( file_exist( root_map ) );
+    } );
 }
