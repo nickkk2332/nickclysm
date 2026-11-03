@@ -1502,19 +1502,33 @@ double time_until_eval( const_dialogue const &d, char /* scope */,
     return _time_in_unit( ret, unit_val.str( d ) );
 }
 
-double time_until_eoc_eval( const_dialogue const &d, char /* scope */,
+// Time until the EOC next runs, or -1 if it isn't queued. Global EOCs are queued in the game,
+// the others on the character they run for (u_ and n_ scopes).
+double time_until_eoc_eval( const_dialogue const &d, char scope,
                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     diag_value unit_val = kwargs.kwarg_or( "unit" );
 
     effect_on_condition_id eoc_id( params[0].str( d ) );
-    const std::list<queued_eoc> &list = g->queued_global_effect_on_conditions.list;
-    std::list<queued_eoc>::const_iterator it = std::find_if( list.cbegin(),
-    list.cend(), [&eoc_id]( queued_eoc const & eoc ) {
-        return eoc.eoc == eoc_id;
-    } );
-
-    return it != list.end() ? _time_in_unit( to_turn<double>( it->time ), unit_val.str( d ) ) : -1;
+    queued_eocs const *queue = &g->queued_global_effect_on_conditions;
+    if( scope != 'g' ) {
+        Character const *chr = d.const_actor( is_beta( scope ) )->get_const_character();
+        if( chr == nullptr ) {
+            return -1;
+        }
+        queue = &chr->queued_effect_on_conditions;
+    }
+    std::optional<time_point> soonest;
+    for( queued_eoc const &eoc : queue->list ) {
+        if( eoc.eoc == eoc_id && ( !soonest || eoc.time < *soonest ) ) {
+            soonest = eoc.time;
+        }
+    }
+    if( !soonest ) {
+        return -1;
+    }
+    return _time_in_unit( std::max( 0.0, to_turns<double>( *soonest - calendar::turn ) ),
+                          unit_val.str( d ) );
 }
 
 double effect_duration_eval( const_dialogue const &d, char scope,
@@ -2625,7 +2639,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "time", { "g", 1, time_eval, time_ass, { "unit" } } },
     { "time_since", { "g", 1, time_since_eval, {}, { "unit" } } },
     { "time_until", { "g", 1, time_until_eval, {}, { "unit" } } },
-    { "time_until_eoc", { "g", 1, time_until_eoc_eval, {}, { "unit" } } },
+    { "time_until_eoc", { "ung", 1, time_until_eoc_eval, {}, { "unit" } } },
     { "trauma", { "un", 0, trauma_eval, trauma_ass } },
     { "proficiency", { "un", 1, proficiency_eval, proficiency_ass, { "format", "direct" } } },
     { "val", { "un", 1, u_val, u_val_ass } },

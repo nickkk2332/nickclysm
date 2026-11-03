@@ -6,7 +6,9 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
 #include "dialogue.h"
+#include "effect_on_condition.h"
 #include "faction.h"
 #include "game.h"
 #include "math_parser.h"
@@ -85,4 +87,40 @@ TEST_CASE( "math-b04_assignments_honour_the_read_kwargs", "[audit][math_parser]"
         eval_math( d, "u_calories() = 1000" );
         CHECK( u.get_stored_kcal() == 1000 );
     }
+}
+
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_MATH_B05_GLOBAL( "EOC_AUDIT_MATH_B05_GLOBAL" );
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_MATH_B05_LOCAL( "EOC_AUDIT_MATH_B05_LOCAL" );
+
+// MATH-B05: time_until_eoc() returned the turn the EOC was queued for, not the time left, found
+// only the first of several queued runs, and couldn't see the EOCs queued on a character.
+TEST_CASE( "math-b05_time_until_eoc_is_time_left", "[audit][math_parser][eoc]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    const restore_on_out_of_scope<time_point> restore_turn( calendar::turn );
+    const restore_on_out_of_scope<queued_eocs> restore_global( g->queued_global_effect_on_conditions );
+    const restore_on_out_of_scope<queued_eocs> restore_local( u.queued_effect_on_conditions );
+    calendar::turn = calendar::turn_zero + 100_days;
+    dialogue d( get_talker_for( u ), nullptr );
+
+    const std::string global = "time_until_eoc('EOC_AUDIT_MATH_B05_GLOBAL', 'unit':'minutes')";
+    CHECK( eval_math( d, global ) == -1 );
+    effect_on_conditions::queue_effect_on_condition( 30_minutes,
+            effect_on_condition_EOC_AUDIT_MATH_B05_GLOBAL, u, {} );
+    effect_on_conditions::queue_effect_on_condition( 10_minutes,
+            effect_on_condition_EOC_AUDIT_MATH_B05_GLOBAL, u, {} );
+    CHECK( eval_math( d, global ) == Approx( 10 ) );
+    calendar::turn += 4_minutes;
+    CHECK( eval_math( d, global ) == Approx( 6 ) );
+
+    // Not global: queued on the character.
+    effect_on_conditions::queue_effect_on_condition( 20_minutes,
+            effect_on_condition_EOC_AUDIT_MATH_B05_LOCAL, u, {} );
+    CHECK( eval_math( d, "u_time_until_eoc('EOC_AUDIT_MATH_B05_LOCAL', 'unit':'minutes')" ) ==
+           Approx( 20 ) );
+    CHECK( eval_math( d, "time_until_eoc('EOC_AUDIT_MATH_B05_LOCAL')" ) == -1 );
+    CHECK( eval_math( d, "u_time_until_eoc('EOC_AUDIT_MATH_B05_GLOBAL')" ) == -1 );
 }
