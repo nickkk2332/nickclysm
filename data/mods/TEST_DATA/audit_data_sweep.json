@@ -1,0 +1,8 @@
+[
+  {
+    "type": "mod_migration",
+    "//": "DATA-B04 test: a mod renamed to test_data",
+    "id": "audit_data_b04_renamed_mod",
+    "new_id": "test_data"
+  }
+]

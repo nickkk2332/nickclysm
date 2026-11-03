@@ -479,12 +479,12 @@ void mod_manager::check_mods_list( WORLD *world ) const
     std::vector<mod_id> &amo = world->active_mod_order;
     bool changed = false;
 
-    for( auto check_it = amo.begin(); check_it != amo.end(); check_it++ ) {
+    for( auto check_it = amo.begin(); check_it != amo.end(); ) {
         if( !check_it->is_valid() ) {
             if( const auto replace_it = migrated_mods.find( *check_it ); replace_it != migrated_mods.end() &&
                 std::find( amo.begin(), amo.end(), replace_it->second ) == amo.end() ) {
-                amo.insert( check_it, replace_it->second );
-                amo.erase( check_it );
+                // The renamed mod takes the old one's place in the load order
+                *check_it = replace_it->second;
                 changed = true;
             } else {
                 input_context dummy_ctxt( "YESNOQUIT" );
@@ -505,12 +505,13 @@ void mod_manager::check_mods_list( WORLD *world ) const
                     case query_ynq_result::no:
                         break;
                     case query_ynq_result::yes:
-                        amo.erase( check_it-- );
+                        check_it = amo.erase( check_it );
                         changed = true;
-                        break;
+                        continue;
                 }
             }
         }
+        ++check_it;
     }
     // If we migrated or the player chose to remove a mod, overwrite the mod list.
     if( changed ) {
