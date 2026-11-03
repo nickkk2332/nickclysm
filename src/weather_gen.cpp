@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -25,6 +26,7 @@
 #include "talker.h"
 #include "translation.h"
 #include "weather.h"
+#include "weather_sample_count.h"
 #include "weather_type.h"
 
 namespace
@@ -49,6 +51,16 @@ constexpr double seasonal_noise_magnitude = 0.5;
 
 weather_generator::weather_generator() = default;
 int weather_generator::current_winddir = 1000;
+
+namespace
+{
+std::atomic<uint64_t> weather_samples{ 0 };
+} // namespace
+
+uint64_t weather_samples_taken()
+{
+    return weather_samples.load( std::memory_order_relaxed );
+}
 
 namespace
 {
@@ -290,6 +302,7 @@ units::temperature weather_generator::get_weather_temperature(
 w_point weather_generator::get_weather( const tripoint_abs_ms &location, const time_point &real_t,
                                         unsigned seed ) const
 {
+    weather_samples.fetch_add( 1, std::memory_order_relaxed );
     season_effective_time t( real_t );
     const weather_gen_common common = get_common_data( location, real_t, seed );
 
