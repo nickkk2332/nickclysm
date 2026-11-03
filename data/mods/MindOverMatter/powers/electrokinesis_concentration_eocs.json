@@ -473,7 +473,7 @@
   {
     "type": "effect_on_condition",
     "id": "EOC_ELECTROKIN_PERSONAL_BATTERY_EFFECT_AMMEND_ITEM_COUNT",
-    "//": "Reduce item count if the total chargeable power / uncharged item count is less than 1.",
+    "//": "With less than 1 power per uncharged item, count only as many items as there is whole power for.",
     "condition": {
       "and": [
         { "math": [ "u_electrokin_personal_battery_power_count", ">=", "1" ] },
@@ -483,10 +483,7 @@
         }
       ]
     },
-    "effect": [
-      { "math": [ "u_electrokin_personal_battery_item_count--" ] },
-      { "run_eocs": "EOC_ELECTROKIN_PERSONAL_BATTERY_EFFECT_AMMEND_ITEM_COUNT" }
-    ]
+    "effect": [ { "math": [ "u_electrokin_personal_battery_item_count = floor( u_electrokin_personal_battery_power_count )" ] } ]
   },
   {
     "type": "effect_on_condition",

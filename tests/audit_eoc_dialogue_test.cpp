@@ -8,6 +8,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -32,6 +33,7 @@
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
+#include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
@@ -712,4 +714,87 @@ TEST_CASE( "eoc-b14_eocs_after_a_stopped_chain_still_run", "[audit][eoc]" )
     CHECK( messages.find( "is nested", first + 1 ) == std::string::npos );
     // The EOC that started the endless chain ran inside another, which goes on
     CHECK( global_number( "audit_b14_after" ) == 1 );
+}
+
+namespace
+{
+// Runs @p eoc on the avatar; true when it logged nothing
+bool runs_quietly( const effect_on_condition_id &eoc )
+{
+    REQUIRE( eoc.is_valid() );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    const std::string messages = capture_debugmsg_during( [&]() {
+        eoc->activate( d );
+    } );
+    CAPTURE( eoc.str(), messages );
+    return messages.empty();
+}
+} // namespace
+
+// EOC-B14 follow-up: Xedra Evolved's paraclesian spell-experience selectors picked any spell by
+// weight and ran themselves again whenever the pick was unknown or at its cap.  Once every known
+// spell was at its cap they never stopped, and before that a run could still go 250 deep.  They
+// now weigh such spells 0.  Needs the mod: run with --mods=xedra_evolved.
+TEST_CASE( "eoc-b14_xedra_spell_selectors_dont_run_themselves_again", "[.][audit][eoc][xedra]" )
+{
+    clear_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    avatar &u = get_avatar();
+    // Each selector, with one of its spells and that spell's cap
+    const std::vector<std::tuple<std::string, std::string, int>> selectors = {
+        { "ARVORE", "arvore_nurture_the_green", 15 },
+        { "HOMULLUS", "homullus_summon_feral_spell", 35 },
+        { "IERDE", "ierde_summon_earth_spirit", 35 },
+        { "SALAMANDER", "salamander_make_fire", 15 },
+        { "SYLPH", "ominous_wind", 20 },
+        { "UNDINE", "grant_buoyancy", 20 },
+    };
+    for( const auto &[kind, spell_name, cap] : selectors ) {
+        CAPTURE( kind );
+        const effect_on_condition_id selector( "EOC_" + kind + "_SPELL_EXPERIENCE_INCREASER_SELECTOR" );
+        const spell_id sp( spell_name );
+        // No spell to improve: nothing happens
+        CHECK( runs_quietly( selector ) );
+        // One spell that can improve: it is picked every time
+        u.magic->learn_spell( sp, u, true );
+        const int xp_before = u.magic->get_spell( sp ).xp();
+        CHECK( runs_quietly( selector ) );
+        CHECK( u.magic->get_spell( sp ).xp() > xp_before );
+        // At its cap, it can't
+        u.magic->set_spell_level( sp, cap, &u );
+        const int xp_at_cap = u.magic->get_spell( sp ).xp();
+        CHECK( runs_quietly( selector ) );
+        CHECK( u.magic->get_spell( sp ).xp() == xp_at_cap );
+        u.magic->forget_spell( sp );
+    }
+}
+
+// EOC-B14 follow-up: Magiclysm's and Mind Over Matter's item-count amendments took one item off
+// per run and ran themselves again, once per item over the power available.  Needs the mods: run
+// with --mods=magiclysm,mindovermatter.
+TEST_CASE( "eoc-b14_item_count_amendments_dont_run_themselves_again",
+           "[.][audit][eoc][magiclysm][mindovermatter]" )
+{
+    clear_avatar();
+    global_variables &globals = get_globals();
+    on_out_of_scope restore( [&globals]() {
+        globals.remove_global_value( "audit_b14_items" );
+        clear_avatar();
+    } );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    const auto amended_count = [&]( const std::string & eoc, const std::string & power,
+    const std::string & count ) {
+        load_effect( R"({ "effect": [ { "math": [ ")" + power + R"( = 5.5" ] }, { "math": [ ")" + count +
+                     R"( = 400" ] } ] })" ).apply( d );
+        CHECK( runs_quietly( effect_on_condition_id( eoc ) ) );
+        load_effect( R"({ "effect": { "math": [ "audit_b14_items = )" + count + R"(" ] } })" ).apply( d );
+        return global_number( "audit_b14_items" );
+    };
+    CHECK( amended_count( "EOC_CONJURE_UPS_EFFECT_AMMEND_ITEM_COUNT",
+                          "u_technomancer_conjure_ups_powering", "u_technomancer_conjure_ups_item_count" ) == 5 );
+    CHECK( amended_count( "EOC_ELECTROKIN_PERSONAL_BATTERY_EFFECT_AMMEND_ITEM_COUNT",
+                          "u_electrokin_personal_battery_power_count",
+                          "u_electrokin_personal_battery_item_count" ) == 5 );
 }
