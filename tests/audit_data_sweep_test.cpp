@@ -431,3 +431,98 @@ TEST_CASE( "data-b09_dependencies_come_after_their_own_dependencies", "[audit][m
     CHECK( position( core ) < position( b ) );
     CHECK( position( b ) < position( a ) );
 }
+
+namespace
+{
+// Installed mods, made up for these tests
+struct audit_mods {
+    std::map<mod_id, MOD_INFORMATION> installed;
+
+    void add( const char *id, const std::vector<mod_id> &dependencies,
+              const std::vector<mod_id> &conflicts = {} ) {
+        MOD_INFORMATION &mod = installed[mod_id( id )];
+        mod.ident = mod_id( id );
+        mod.dependencies = dependencies;
+        mod.conflicts = conflicts;
+    }
+
+    mod_list_check check( const std::vector<mod_id> &mods ) const {
+        return check_mod_list( mods, [this]( const mod_id & id ) -> const MOD_INFORMATION * {
+            const auto it = installed.find( id );
+            return it == installed.end() ? nullptr : &it->second;
+        } );
+    }
+};
+
+bool has_problem( const mod_list_check &check, mod_list_problem::kind what, const char *mod,
+                  const char *other )
+{
+    return std::any_of( check.problems.begin(), check.problems.end(),
+    [&]( const mod_list_problem & p ) {
+        return p.what == what && p.mod == mod_id( mod ) && p.other == mod_id( other );
+    } );
+}
+} // namespace
+
+// DATA-B09: nothing checked a world's mod list when it was loaded, so a mod update that
+// added a dependency or a conflict loaded silently.  The check, and the list it would fix,
+// are what the player is asked about.
+TEST_CASE( "data-b09_world_mod_list_is_checked", "[audit][mods]" )
+{
+    using kind = mod_list_problem::kind;
+    const mod_id core( "audit_core" );
+    const mod_id a( "audit_a" );
+    const mod_id b( "audit_b" );
+    const mod_id c( "audit_c" );
+    audit_mods mods;
+    mods.add( "audit_core", {} );
+    mods.add( "audit_b", { core } );
+    mods.add( "audit_a", { core, b } );
+    mods.add( "audit_c", { core }, { a } );
+    mods.add( "audit_d", { core, mod_id( "audit_not_installed" ) } );
+
+    SECTION( "a clean list" ) {
+        const std::vector<mod_id> list = { core, b, a };
+        const mod_list_check check = mods.check( list );
+        CHECK( check.problems.empty() );
+        CHECK( check.fixed == list );
+    }
+    SECTION( "a missing dependency that is installed" ) {
+        const mod_list_check check = mods.check( { core, a } );
+        CHECK( check.problems.size() == 1 );
+        CHECK( has_problem( check, kind::missing_dependency, "audit_a", "audit_b" ) );
+        CHECK( check.fixed == std::vector<mod_id> { core, b, a } );
+    }
+    SECTION( "a dependency that isn't installed" ) {
+        const std::vector<mod_id> list = { core, mod_id( "audit_d" ) };
+        const mod_list_check check = mods.check( list );
+        CHECK( check.problems.size() == 1 );
+        CHECK( has_problem( check, kind::dependency_not_installed, "audit_d", "audit_not_installed" ) );
+        // nothing that can be fixed
+        CHECK( check.fixed == list );
+    }
+    SECTION( "a conflict" ) {
+        const std::vector<mod_id> list = { core, b, a, c };
+        const mod_list_check check = mods.check( list );
+        CHECK( check.problems.size() == 1 );
+        CHECK( has_problem( check, kind::conflict, "audit_c", "audit_a" ) );
+        CHECK( check.fixed == list );
+    }
+    SECTION( "the wrong order" ) {
+        const mod_list_check check = mods.check( { core, a, b } );
+        CHECK( check.problems.size() == 1 );
+        CHECK( has_problem( check, kind::before_its_dependency, "audit_a", "audit_b" ) );
+        CHECK( check.fixed == std::vector<mod_id> { core, b, a } );
+    }
+}
+
+// DATA-B09: the shipped mods' own lists check clean
+TEST_CASE( "data-b09_test_world_mod_list_checks_clean", "[audit][mods]" )
+{
+    const std::vector<mod_id> list = { mod_id( "dda" ), mod_id( "test_data" ) };
+    const mod_list_check check = check_mod_list( list, []( const mod_id & id ) {
+        return id.is_valid() ? &id.obj() : nullptr;
+    } );
+    CHECK( check.problems.empty() );
+    CHECK( check.fixed == list );
+}

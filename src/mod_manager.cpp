@@ -21,6 +21,7 @@
 #include "output.h"
 #include "path_info.h"
 #include "string_formatter.h"
+#include "uilist.h"
 #include "worldfactory.h"
 
 static const mod_id MOD_INFORMATION_dev_default( "dev:default" );
@@ -166,6 +167,112 @@ std::optional<mod_id> mod_migrations::renamed_to( const mod_id &id,
         }
     }
     return ret;
+}
+
+mod_list_check check_mod_list( const std::vector<mod_id> &mods,
+                               const std::function<const MOD_INFORMATION *( const mod_id & )> &find_mod )
+{
+    mod_list_check ret;
+    const auto listed = [&]( const mod_id & id ) {
+        return std::find( mods.begin(), mods.end(), id ) != mods.end();
+    };
+
+    // Missing dependencies, also those of the dependencies that would be added
+    std::vector<mod_id> added;
+    std::vector<mod_id> to_check = mods;
+    std::set<mod_id> checked;
+    for( size_t i = 0; i < to_check.size(); ++i ) {
+        const mod_id id = to_check[i];
+        const MOD_INFORMATION *mod = find_mod( id );
+        // A mod that isn't installed is check_mods_list's business
+        if( !checked.insert( id ).second || mod == nullptr ) {
+            continue;
+        }
+        for( const mod_id &dep : mod->dependencies ) {
+            if( listed( dep ) || std::find( added.begin(), added.end(), dep ) != added.end() ) {
+                continue;
+            }
+            if( find_mod( dep ) != nullptr ) {
+                ret.problems.push_back( { mod_list_problem::kind::missing_dependency, id, dep } );
+                added.push_back( dep );
+                to_check.push_back( dep );
+            } else {
+                ret.problems.push_back( { mod_list_problem::kind::dependency_not_installed, id, dep } );
+            }
+        }
+    }
+
+    // Conflicts, and mods before the ones they need
+    std::set<std::pair<mod_id, mod_id>> conflicts;
+    for( auto it = mods.begin(); it != mods.end(); ++it ) {
+        const MOD_INFORMATION *mod = find_mod( *it );
+        if( mod == nullptr ) {
+            continue;
+        }
+        for( const mod_id &other : mod->conflicts ) {
+            if( listed( other ) &&
+                conflicts.emplace( std::min( *it, other ), std::max( *it, other ) ).second ) {
+                ret.problems.push_back( { mod_list_problem::kind::conflict, *it, other } );
+            }
+        }
+        for( const mod_id &dep : mod->dependencies ) {
+            if( std::find( std::next( it ), mods.end(), dep ) != mods.end() ) {
+                ret.problems.push_back( { mod_list_problem::kind::before_its_dependency, *it, dep } );
+            }
+        }
+    }
+
+    // The list in its own order, but with each mod after the ones it needs: a mod's
+    // dependencies are placed before it, in the order the mod lists them
+    std::set<mod_id> wanted( mods.begin(), mods.end() );
+    wanted.insert( added.begin(), added.end() );
+    std::set<mod_id> placed;
+    std::set<mod_id> visiting;
+    std::function<void( const mod_id & )> place = [&]( const mod_id & id ) {
+        // already placed, or a circle (reported by the dependency tree)
+        if( placed.count( id ) || !visiting.insert( id ).second ) {
+            return;
+        }
+        if( const MOD_INFORMATION *mod = find_mod( id ) ) {
+            for( const mod_id &dep : mod->dependencies ) {
+                if( wanted.count( dep ) ) {
+                    place( dep );
+                }
+            }
+        }
+        placed.insert( id );
+        ret.fixed.push_back( id );
+    };
+    for( const mod_id &id : mods ) {
+        place( id );
+    }
+    return ret;
+}
+
+static std::string mod_list_problem_text( const mod_list_problem &problem )
+{
+    const auto name = []( const mod_id & id ) {
+        return id.is_valid() ? id->name() : id.str();
+    };
+    switch( problem.what ) {
+        case mod_list_problem::kind::missing_dependency:
+            //~ %1$s and %2$s are mod names
+            return string_format( _( "%1$s needs %2$s, which this world doesn't load." ),
+                                  name( problem.mod ), name( problem.other ) );
+        case mod_list_problem::kind::dependency_not_installed:
+            //~ %1$s and %2$s are mod names
+            return string_format( _( "%1$s needs %2$s, which isn't installed." ),
+                                  name( problem.mod ), name( problem.other ) );
+        case mod_list_problem::kind::conflict:
+            //~ %1$s and %2$s are mod names
+            return string_format( _( "%1$s and %2$s conflict." ), name( problem.mod ),
+                                  name( problem.other ) );
+        case mod_list_problem::kind::before_its_dependency:
+            //~ %1$s and %2$s are mod names
+            return string_format( _( "%1$s is loaded before %2$s, which it needs." ),
+                                  name( problem.mod ), name( problem.other ) );
+    }
+    return std::string();
 }
 
 mod_manager::mod_manager()
@@ -540,6 +647,40 @@ void mod_manager::check_mods_list( WORLD *world ) const
     // If we migrated or the player chose to remove a mod, overwrite the mod list.
     if( changed ) {
         save_mods_list( world );
+    }
+
+    // Missing dependencies, conflicts and mods before the ones they need: the player picks
+    const mod_list_check check = check_mod_list( amo, []( const mod_id & id ) {
+        return id.is_valid() ? &id.obj() : nullptr;
+    } );
+    if( check.problems.empty() ) {
+        return;
+    }
+    std::string text = _( "This world's list of mods has problems:" );
+    for( const mod_list_problem &problem : check.problems ) {
+        text += "\n" + mod_list_problem_text( problem );
+    }
+    const auto mod_name = []( const mod_id & id ) {
+        return id.is_valid() ? id->name() : id.str();
+    };
+    uilist menu;
+    menu.text = text;
+    if( check.fixed != amo ) {
+        menu.addentry_desc( 0, true, 'f', _( "Fix the list" ),
+                            string_format(
+                                _( "Add the missing mods that are installed, and load each mod after the ones it needs: %s" ),
+                                enumerate_as_string( check.fixed.begin(), check.fixed.end(), mod_name,
+                                        enumeration_conjunction::none ) ) );
+    }
+    menu.addentry_desc( 1, true, 'l', _( "Load anyway" ),
+                        _( "Load the world with its list of mods as it is." ) );
+    menu.addentry_desc( 2, true, 'b', _( "Go back" ), _( "Return to the main menu." ) );
+    menu.query();
+    if( menu.ret == 0 ) {
+        amo = check.fixed;
+        save_mods_list( world );
+    } else if( menu.ret != 1 ) {
+        throw std::runtime_error( _( "Player aborted load." ) );
     }
 }
 
