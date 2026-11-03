@@ -436,8 +436,12 @@ bool Pickup::do_pickup( std::vector<item_location> &targets, std::vector<int> &q
         problem = !pick_one_up( target, quantity, got_water, got_gas, mapPickup, autopickup,
                                 stash_successful, got_frozen_liquid, info );
         if( info.total_bulk_volume > 200_ml ) {
-            // Bulk loading is not allowed beyond a certain volume
-            info = Pickup::pick_info();
+            // Bulk loading is not allowed beyond a certain volume.  The limits this pickup was
+            // started with, and what it picked up so far, still count.
+            Pickup::pick_info next( info.extra_moves_per_distance, info.max_volume, info.max_mass );
+            next.picked_up_volume = info.picked_up_volume;
+            next.picked_up_mass = info.picked_up_mass;
+            info = next;
         }
     }
 

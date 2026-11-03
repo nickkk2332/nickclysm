@@ -37,6 +37,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapgendata.h"
 #include "math_parser_diag_value.h"
@@ -45,6 +46,7 @@
 #include "omdata.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "pickup.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "talker.h"
@@ -68,7 +70,9 @@ effect_on_condition_EOC_AUDIT_B15_TAKE_CONTROL( "EOC_AUDIT_B15_TAKE_CONTROL" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
+static const itype_id itype_test_backpack( "test_backpack" );
 static const itype_id itype_test_rock( "test_rock" );
+static const itype_id itype_test_sheet_metal_small( "test_sheet_metal_small" );
 
 static const oter_str_id oter_field( "field" );
 
@@ -797,4 +801,34 @@ TEST_CASE( "eoc-b14_item_count_amendments_dont_run_themselves_again",
     CHECK( amended_count( "EOC_ELECTROKIN_PERSONAL_BATTERY_EFFECT_AMMEND_ITEM_COUNT",
                           "u_electrokin_personal_battery_power_count",
                           "u_electrokin_personal_battery_item_count" ) == 5 );
+}
+
+// EOC-B11 follow-up: once 200 ml had been picked up, Pickup::do_pickup reset its pick_info to
+// stop bulk loading, and the limits u_pickup_items set (and the totals so far) went with it.
+TEST_CASE( "eoc-b11_pickup_limits_hold_past_the_bulk_reset", "[audit][eoc]" )
+{
+    clear_map();
+    clear_avatar();
+    on_out_of_scope restore( []() {
+        clear_map();
+        clear_avatar();
+    } );
+    avatar &u = get_avatar();
+    map &here = get_map();
+    u.wear_item( item( itype_test_backpack ), false );
+    // Three 250 ml, 250 g plates under the avatar, and room for two of them by weight
+    const tripoint_bub_ms spot = u.pos_bub();
+    std::vector<item_location> targets;
+    std::vector<int> quantities;
+    for( int i = 0; i < 3; ++i ) {
+        item &plate = here.add_item( spot, item( itype_test_sheet_metal_small ) );
+        targets.emplace_back( map_cursor( here.get_abs( spot ) ), &plate );
+        quantities.push_back( 0 );
+    }
+    Pickup::pick_info info( 0, -1_ml, 600_gram );
+    bool stash_successful = true;
+    u.set_moves( 100000 );
+    Pickup::do_pickup( targets, quantities, false, stash_successful, info );
+    CHECK( u.amount_of( itype_test_sheet_metal_small ) == 2 );
+    CHECK( here.i_at( spot ).size() == 1 );
 }
