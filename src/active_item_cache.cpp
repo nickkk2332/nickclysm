@@ -13,10 +13,11 @@
 
 float item_reference::spoil_multiplier() const
 {
+    // The best pocket counts, as for a carried item (item_pocket::process)
     return std::accumulate(
                pocket_chain.begin(), pocket_chain.end(), 1.0F,
     []( float a, item_pocket const * pk ) {
-        return a * pk->spoil_multiplier();
+        return std::min( a, pk->spoil_multiplier() );
     } );
 }
 
@@ -50,10 +51,12 @@ bool active_item_cache::add( item &it, point_rel_ms location, item *parent,
     std::vector<item_pocket const *> pockets = pocket_chain;
     bool ret = false;
     for( item_pocket *pk : it.get_standard_pockets() ) {
+        // only the pockets the contents are in, not their siblings
         pockets.emplace_back( pk );
         for( item *pkit : pk->all_items_top() ) {
             ret |= add( *pkit, location, &it, pockets );
         }
+        pockets.pop_back();
     }
     int speed = it.processing_speed();
     if( speed == item::NO_PROCESSING ) {

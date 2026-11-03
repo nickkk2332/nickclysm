@@ -34,11 +34,15 @@ static const itype_id itype_audit_inv_b02_filter_rack( "audit_inv_b02_filter_rac
 static const itype_id itype_audit_inv_b03_fuel_burner( "audit_inv_b03_fuel_burner" );
 static const itype_id itype_audit_inv_b04_brick( "audit_inv_b04_brick" );
 static const itype_id itype_audit_inv_b04_sack( "audit_inv_b04_sack" );
+static const itype_id itype_audit_inv_b05_cold_bag( "audit_inv_b05_cold_bag" );
+static const itype_id itype_audit_inv_b05_cool_box( "audit_inv_b05_cool_box" );
+static const itype_id itype_audit_inv_b05_two_pocket_rig( "audit_inv_b05_two_pocket_rig" );
 static const itype_id itype_gas_charger_on( "gas_charger_on" );
 static const itype_id itype_gasfilter_med( "gasfilter_med" );
 static const itype_id itype_pebble( "pebble" );
 static const itype_id itype_propane( "propane" );
 static const itype_id itype_small_propane_tank( "small_propane_tank" );
+static const itype_id itype_test_apple( "test_apple" );
 
 namespace
 {
@@ -165,4 +169,61 @@ TEST_CASE( "inv-b04_parent_charge_limit_checks_every_parent_pocket", "[audit][it
 
     const ret_val<int> limit = inner_loc.max_charges_by_parent_recursive( pebble );
     CHECK( limit.value() <= pebble.charges_per_volume( outer_room, true ) );
+}
+
+static const item_reference *find_apple_reference( const std::vector<item_reference> &refs )
+{
+    for( const item_reference &ref : refs ) {
+        if( ref.item_ref && ref.item_ref->typeId() == itype_test_apple ) {
+            return &ref;
+        }
+    }
+    return nullptr;
+}
+
+// INV-B05: active_item_cache::add() appended every sibling pocket to one shared chain, so an
+// item in a container's second pocket carried the first pocket too, and items on the map or in
+// a vehicle took its spoil multiplier and insulation.  Nested pockets also multiplied their
+// spoil multipliers, where a carried item gets the best (lowest) one.
+TEST_CASE( "inv-b05_active_item_pocket_chain_holds_only_enclosing_pockets",
+           "[audit][item][pocket]" )
+{
+    SECTION( "a sibling pocket is not in the chain" ) {
+        item rig( itype_audit_inv_b05_two_pocket_rig );
+        const std::vector<item_pocket *> pockets = rig.get_standard_pockets();
+        REQUIRE( pockets.size() == 2 );
+        REQUIRE( pockets[0]->spoil_multiplier() < 1.0f );
+        REQUIRE( pockets[1]->spoil_multiplier() == 1.0f );
+        // the first pocket only takes gas filters, so the apple goes in the second
+        REQUIRE( rig.put_in( item( itype_test_apple ), pocket_type::CONTAINER ).success() );
+        REQUIRE( pockets[0]->empty() );
+        REQUIRE( pockets[1]->size() == 1 );
+
+        active_item_cache cache;
+        REQUIRE( cache.add( rig, point_rel_ms::zero ) );
+        const std::vector<item_reference> refs = cache.get();
+        const item_reference *apple = find_apple_reference( refs );
+        REQUIRE( apple != nullptr );
+        CHECK( apple->pocket_chain.size() == 1 );
+        CHECK( apple->spoil_multiplier() == Approx( 1.0f ) );
+    }
+
+    SECTION( "nested pockets give the best spoil multiplier, as carried items get" ) {
+        item box( itype_audit_inv_b05_cool_box );
+        REQUIRE( box.put_in( item( itype_test_apple ), pocket_type::CONTAINER ).success() );
+        item bag( itype_audit_inv_b05_cold_bag );
+        REQUIRE( bag.put_in( box, pocket_type::CONTAINER ).success() );
+        const float bag_mult = bag.get_standard_pockets().front()->spoil_multiplier();
+        const float box_mult = box.get_standard_pockets().front()->spoil_multiplier();
+        REQUIRE( bag_mult < box_mult );
+        REQUIRE( box_mult < 1.0f );
+
+        active_item_cache cache;
+        REQUIRE( cache.add( bag, point_rel_ms::zero ) );
+        const std::vector<item_reference> refs = cache.get();
+        const item_reference *apple = find_apple_reference( refs );
+        REQUIRE( apple != nullptr );
+        CHECK( apple->pocket_chain.size() == 2 );
+        CHECK( apple->spoil_multiplier() == Approx( bag_mult ) );
+    }
 }
