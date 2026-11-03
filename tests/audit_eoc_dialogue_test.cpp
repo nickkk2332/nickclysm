@@ -54,6 +54,14 @@ effect_on_condition_EOC_AUDIT_B07_REQUEUE( "EOC_AUDIT_B07_REQUEUE" );
 static const effect_on_condition_id effect_on_condition_EOC_AUDIT_B14_LOOP( "EOC_AUDIT_B14_LOOP" );
 static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B14_RECURSE( "EOC_AUDIT_B14_RECURSE" );
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_B15_LATER( "EOC_AUDIT_B15_LATER" );
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_B15_RECURRING( "EOC_AUDIT_B15_RECURRING" );
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_B15_TAKE_CONTROL( "EOC_AUDIT_B15_TAKE_CONTROL" );
+
+static const faction_id faction_your_followers( "your_followers" );
 
 static const itype_id itype_test_rock( "test_rock" );
 
@@ -571,4 +579,62 @@ TEST_CASE( "eoc-b14_endless_recursion_stops_with_one_message", "[audit][eoc]" )
         effect_on_condition_EOC_AUDIT_B14_LOOP->activate( d );
     } ).empty() );
     CHECK( global_number( "audit_b14_iterations" ) == 300 );
+}
+
+// EOC-B15: process_eocs held the avatar's queue and an iterator into it while a queued EOC ran;
+// take_control swapped the queue with the NPC's, and the pass then erased and re-queued nodes of
+// the old body's list through the new body's queue.
+TEST_CASE( "eoc-b15_take_control_from_a_queued_eoc_keeps_both_queues_whole", "[audit][eoc]" )
+{
+    clear_map();
+    clear_avatar();
+    avatar &u = get_avatar();
+    const eoc_queues_aside aside;
+    g->faction_manager_ptr->create_if_needed();
+    npc &guy = spawn_npc( u.pos_bub().xy() + point( 2, 0 ), "test_talker" );
+    guy.set_fac( faction_your_followers );
+    REQUIRE( guy.is_player_ally() );
+    const character_id avatar_id = u.getID();
+    const character_id npc_id = guy.getID();
+    global_variables &globals = get_globals();
+    globals.set_global_value( "audit_b15_npc", std::to_string( npc_id.get_value() ) );
+    globals.set_global_value( "audit_b15_active", 1 );
+    on_out_of_scope restore( [&]() {
+        // Back to the avatar's own body, and the NPC goes away
+        if( u.getID() != avatar_id ) {
+            npc *old_body = g->find_npc( avatar_id );
+            if( old_body != nullptr ) {
+                u.control_npc( *old_body );
+            }
+        }
+        g->remove_npc_follower( npc_id );
+        overmap_buffer.remove_npc( npc_id );
+        clear_npcs();
+        for( const char *name : {
+                 "audit_b15_npc", "audit_b15_active", "audit_b15_recurring", "audit_b15_later"
+             } ) {
+            globals.remove_global_value( name );
+        }
+    } );
+
+    // A recurring EOC first, then the takeover, then one more due in the same pass
+    u.queued_effect_on_conditions.push( queued_eoc{ effect_on_condition_EOC_AUDIT_B15_RECURRING, calendar::turn - 2_turns, {} } );
+    u.queued_effect_on_conditions.push( queued_eoc{ effect_on_condition_EOC_AUDIT_B15_TAKE_CONTROL, calendar::turn - 1_turns, {} } );
+    u.queued_effect_on_conditions.push( queued_eoc{ effect_on_condition_EOC_AUDIT_B15_LATER, calendar::turn, {} } );
+    effect_on_conditions::process_effect_on_conditions( u );
+
+    REQUIRE( u.getID() == npc_id );
+    const npc *old_body = g->find_npc( avatar_id );
+    REQUIRE( old_body != nullptr );
+    const queued_eocs &old_queue = old_body->queued_effect_on_conditions;
+    CHECK( queue_is_whole( old_queue ) );
+    CHECK( queue_is_whole( u.queued_effect_on_conditions ) );
+    // The old body keeps its recurring EOC and the one the pass didn't get to
+    CHECK( global_number( "audit_b15_recurring" ) == 1 );
+    CHECK( count_in( old_queue, effect_on_condition_EOC_AUDIT_B15_RECURRING ) == 1 );
+    CHECK( count_in( old_queue, effect_on_condition_EOC_AUDIT_B15_TAKE_CONTROL ) == 0 );
+    CHECK( count_in( old_queue, effect_on_condition_EOC_AUDIT_B15_LATER ) == 1 );
+    CHECK( global_number( "audit_b15_later" ) == 0 );
+    CHECK( count_in( u.queued_effect_on_conditions,
+                     effect_on_condition_EOC_AUDIT_B15_RECURRING ) == 0 );
 }

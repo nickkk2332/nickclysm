@@ -252,8 +252,19 @@ void effect_on_conditions::queue_effect_on_condition( time_duration duration,
     }
 }
 
+// The character that has @p id now: control_npc moves characters' data between bodies.
+static Character *character_with_id( const character_id &id )
+{
+    avatar &u = get_avatar();
+    if( u.getID() == id ) {
+        return &u;
+    }
+    return g->find_npc( id );
+}
+
+// @p owner is the character whose queue this is, if any.
 static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_condition_id> &eoc_vector,
-                          dialogue &d )
+                          dialogue &d, const Character *owner )
 {
     static int reentrancy_depth = 0;
     ++reentrancy_depth;
@@ -290,7 +301,13 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
         eoc_queue.queue.pop();
     }
 
-    for( const queued_eocs::storage_iter &it : due ) {
+    // An EOC that takes control of an NPC (control_npc) swaps the owner's data, this queue and
+    // its inactive list included, into another body; they are followed there.
+    queued_eocs *queue = &eoc_queue;
+    std::vector<effect_on_condition_id> *inactive = &eoc_vector;
+    const character_id owner_id = owner != nullptr ? owner->getID() : character_id();
+    for( size_t i = 0; i < due.size(); ++i ) {
+        const queued_eocs::storage_iter &it = due[i];
         queued_eoc &top = *it;
 
         dialogue nested_d{ d };
@@ -298,6 +315,15 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
             nested_d.set_value( val.first, val.second );
         }
         bool activated = top.eoc->activate( nested_d );
+        const bool moved = owner != nullptr && owner->getID() != owner_id;
+        if( moved ) {
+            Character *moved_to = character_with_id( owner_id );
+            if( moved_to == nullptr ) {
+                return;
+            }
+            queue = &moved_to->queued_effect_on_conditions;
+            inactive = &moved_to->inactive_effect_on_condition_vector;
+        }
         if( top.eoc->type == eoc_type::RECURRING ) {
             if( activated ) { // It worked so add it back
                 it->time = calendar::turn + next_recurrence( top.eoc, d );
@@ -308,27 +334,32 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
                     it->time = calendar::turn + next_recurrence( top.eoc, d );
                     eocs_to_queue.emplace_back( it );
                 } else { // It failed and should be deactivated for now
-                    eoc_vector.push_back( top.eoc );
-                    eoc_queue.list.erase( it );
+                    inactive->push_back( top.eoc );
+                    queue->list.erase( it );
                 }
             }
         } else {
-            eoc_queue.list.erase( it );
+            queue->list.erase( it );
+        }
+        if( moved ) {
+            // The rest of the pass belongs to the old body, which runs it on its own turn
+            eocs_to_queue.insert( eocs_to_queue.end(), due.begin() + i + 1, due.end() );
+            break;
         }
     }
     for( queued_eocs::storage_iter &q_eoc : eocs_to_queue ) {
-        eoc_queue.queue.emplace( q_eoc );
+        queue->queue.emplace( q_eoc );
     }
 }
 
 void effect_on_conditions::process_effect_on_conditions( Character &you )
 {
     dialogue d( get_talker_for( you ), nullptr );
-    process_eocs( you.queued_effect_on_conditions, you.inactive_effect_on_condition_vector, d );
+    process_eocs( you.queued_effect_on_conditions, you.inactive_effect_on_condition_vector, d, &you );
     //only handle global eocs on the avatars turn
     if( you.is_avatar() ) {
         process_eocs( g->queued_global_effect_on_conditions, g->inactive_global_effect_on_condition_vector,
-                      d );
+                      d, nullptr );
     }
 }
 

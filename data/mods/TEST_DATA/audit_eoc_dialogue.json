@@ -94,5 +94,32 @@
     "id": "EOC_AUDIT_B14_LOOP",
     "//": "EOC-B14: a plain loop, not recursion.",
     "effect": [ { "run_eocs": "EOC_AUDIT_B14_LOOP_BODY_WITH_A_RATHER_LONG_IDENTIFIER", "iterations": 300 } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_TAKE_CONTROL",
+    "//": "EOC-B15: queued on the avatar; takes control of the NPC whose character id is in audit_b15_npc.",
+    "effect": [ { "run_eocs": "EOC_AUDIT_B15_TAKE_CONTROL_INNER", "beta_talker": { "global_val": "audit_b15_npc" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_TAKE_CONTROL_INNER",
+    "//": "EOC-B15: the take_control itself.",
+    "effect": [ "take_control" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_RECURRING",
+    "//": "EOC-B15: a recurring EOC the test puts on the avatar's own queue, due in the same pass as the takeover.  Global, so new NPCs don't get it, and idle outside the test.",
+    "recurrence": "1 h",
+    "global": true,
+    "condition": { "math": [ "audit_b15_active == 1" ] },
+    "effect": [ { "math": [ "audit_b15_recurring++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_B15_LATER",
+    "//": "EOC-B15: due in the same pass, after the takeover; it belongs to the old body.",
+    "effect": [ { "math": [ "audit_b15_later++" ] } ]
   }
 ]

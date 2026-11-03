@@ -2439,7 +2439,7 @@ Opens a dialogue with computer; computer has defined `"chat_topics": [ "COMP_REF
 ```
 
 #### `take_control`
-If beta talker is NPC, take control of it
+If beta talker is NPC, take control of it. Queued EoCs belong to the body: when a queued EoC takes control, the queued EoCs still due in that turn stay with your old body and run on its turn.
 
 
 | Syntax | Optionality | Value  | Info |
