@@ -1386,7 +1386,11 @@ int item_contents::ammo_consume( int qty, map *here, const tripoint_bub_ms &pos,
             if( mag == nullptr ) {
                 continue;
             }
-            const int res = mag->ammo_consume( qty, *here, pos, nullptr );
+            // A fuel burner burns the fuel in its magazine at its own efficiency, in kJ like
+            // the integral magazine below.
+            const int res = fuel_efficiency >= 0 ?
+                            mag->get_contents().ammo_consume( qty, here, pos, fuel_efficiency ) :
+                            mag->ammo_consume( qty, *here, pos, nullptr );
             if( res && mag->ammo_remaining() == 0 ) {
                 if( mag->has_flag( json_flag_MAG_DESTROY ) ) {
                     pocket.remove_item( *mag );
@@ -1399,15 +1403,18 @@ int item_contents::ammo_consume( int qty, map *here, const tripoint_bub_ms &pos,
             consumed += res;
         } else if( pocket.is_type( pocket_type::MAGAZINE ) ) {
             if( !pocket.empty() && pocket.front().is_fuel() && fuel_efficiency >= 0 ) {
+                // Read before burning: the last of the fuel takes its item with it.
+                const units::energy fuel_energy = pocket.front().fuel_energy();
                 // if using fuel instead of battery, everything is in kJ
                 // charges is going to be the energy needed over the energy in 1 unit of fuel * the efficiency of the generator
                 int charges_used = ceil( static_cast<float>( units::from_kilojoule( static_cast<std::int64_t>
                                          ( qty ) ).value() ) / (
-                                             static_cast<float>( pocket.front().fuel_energy().value() ) * fuel_efficiency ) );
+                                             static_cast<float>( fuel_energy.value() ) * fuel_efficiency ) );
 
                 const int res = pocket.ammo_consume( charges_used );
-                //calculate the amount of energy generated
-                int energy_generated = res * units::to_kilojoule( pocket.front().fuel_energy() );
+                // the energy the burnt fuel gave at the generator's efficiency, rounded once
+                const int energy_generated = static_cast<int>( static_cast<double>( units::to_millijoule(
+                                                 fuel_energy ) ) / 1000000.0 * res * fuel_efficiency );
                 consumed += energy_generated;
                 qty -= energy_generated;
                 qty = std::max( 0, qty );

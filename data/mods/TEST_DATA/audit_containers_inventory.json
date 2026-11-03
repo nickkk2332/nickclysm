@@ -10,5 +10,28 @@
     "symbol": "[",
     "color": "dark_gray",
     "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "flag_restriction": [ "GASFILTER_MED" ] } ]
+  },
+  {
+    "id": "audit_inv_b03_fuel_burner",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "TEST fuel burner" },
+    "description": "A fuel-burning generator with its own propane magazine and half efficiency (INV-B03).",
+    "weight": "1 kg",
+    "volume": "1 L",
+    "material": [ "steel" ],
+    "symbol": ";",
+    "color": "light_gray",
+    "fuel_efficiency": 0.5,
+    "pocket_data": [
+      {
+        "pocket_type": "MAGAZINE",
+        "airtight": true,
+        "watertight": true,
+        "rigid": true,
+        "ammo_restriction": { "propane": 100 }
+      }
+    ],
+    "tool_ammo": [ "propane" ]
   }
 ]
