@@ -2,11 +2,13 @@
 #ifndef CATA_SRC_BEHAVIOR_H
 #define CATA_SRC_BEHAVIOR_H
 
+#include <cstddef>
 #include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -70,6 +72,22 @@ class node_t
         // Entry point for tree traversal.
         behavior_return tick( const oracle_t *subject ) const;
         std::string goal() const;
+        // The children, in the order the strategy visits them.
+        const std::vector<const node_t *> &get_children() const;
+        // What the node holds, for tests and debugging, as
+        // "strategy fallback; if npc_in_danger, !x, y(arg), condition; score s; every 5; goal g",
+        // leaving out what it doesn't have.
+        std::string summary() const;
+
+        // For the NPC decision debug view (npc_json_goal.h): what each condition says now
+        struct condition_trace {
+            std::string label;
+            status_t result;
+        };
+        std::vector<condition_trace> trace_conditions( const oracle_t *subject ) const;
+        bool has_score() const {
+            return score_function_.has_value();
+        }
 
         // Interface to construct a node.
         void set_strategy( const strategy_t *new_strategy );
@@ -83,34 +101,69 @@ class node_t
         // Loading interface.
         void load( const JsonObject &jo, std::string_view src );
         void check() const;
-        const std::vector<const node_t *> &get_children() const {
-            return children;
-        }
-
-        // For the NPC decision debug view (npc_json_goal.h): what each condition says now
-        struct condition_trace {
-            std::string label;
-            status_t result;
-        };
-        std::vector<condition_trace> trace_conditions( const oracle_t *subject ) const;
-        bool has_score() const {
-            return score_function_.has_value();
-        }
         string_id<node_t> id;
         std::vector<std::pair<string_id<node_t>, mod_id>> src;
         bool was_loaded = false;
     private:
+        friend std::vector<std::string> link_children( std::vector<node_t> &nodes );
+        friend void clear_evaluation_cache();
+
         std::vector<const node_t *> children;
+        // The children named in JSON, in order. link_children() turns them into `children`.
+        std::vector<string_id<node_t>> child_ids;
         const strategy_t *strategy = nullptr;
         using predicate_type = std::function<status_t( const oracle_t *, const std::string & )>;
-        std::vector<std::tuple<predicate_type, std::string, bool>> conditions;
-        // the predicate's name for each loaded condition, for trace_conditions()
-        std::vector<std::string> condition_names;
+        struct condition_t {
+            // The name used in JSON ("condition" for a dialogue condition), which
+            // "delete" matches. Empty for predicates added in code.
+            std::string predicate;
+            predicate_type func;
+            std::string argument;
+            bool invert = false;
+        };
+        std::vector<condition_t> conditions;
         status_t process_predicates( const oracle_t *subject ) const;
         // TODO: make into an ID?
         std::string _goal;
         std::optional<std::pair<score_type, std::string>> score_function_;
+        // The built-in score's name (empty for math), and how summary() shows the score.
+        std::string score_name_;
+        std::string score_label_;
+
+        // "evaluate_every": the conditions and score are reused for this many turns, separately
+        // for each subject. 0 evaluates them every time.
+        int evaluate_every_turns = 0;
+        struct cached_evaluation {
+            int evaluated_at = 0;
+            status_t conditions = status_t::running;
+            std::optional<float> score;
+        };
+        // Keyed by oracle_t::cache_key().
+        mutable std::unordered_map<int, cached_evaluation> evaluation_cache;
+        // Expired entries are pruned when the cache reaches this size, which then doubles.
+        mutable size_t evaluation_cache_prune_at = 256;
+        // The subject's cached evaluation, refreshed when it is missing or expired; nullptr
+        // when this node or this subject isn't cached.
+        cached_evaluation *cached_for( const oracle_t *subject ) const;
+        float evaluate_score( const oracle_t *subject, cached_evaluation *cached ) const;
+
+        void load_children( const JsonObject &jo, const JsonObject &extend, const JsonObject &remove );
+        void load_conditions( const JsonObject &jo, const JsonObject &extend,
+                              const JsonObject &remove );
+        void load_score( const JsonObject &jo );
 };
+
+/**
+ * Resolves each node's child ids to the nodes with those ids. An unknown child, or a link that
+ * would close a cycle, is left out, so ticking a tree always ends; a node whose children were all
+ * left out fails. Returns one message per problem: unknown or repeated children, cycles, trees
+ * whose root reaches no leaf with a goal, and trees that use both NPC and monster predicates or
+ * scores. A root is a node that no other node in @p nodes links to.
+ */
+std::vector<std::string> link_children( std::vector<node_t> &nodes );
+
+// Forgets the results every node keeps for "evaluate_every".
+void clear_evaluation_cache();
 
 // Deserialization support.
 void load_behavior( const JsonObject &jo, const std::string &src );

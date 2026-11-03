@@ -769,6 +769,27 @@ Print a message if the character selected Fisher profession or the Fishing backg
 }
 ```
 
+### `u_is_in_faction`, `npc_is_in_faction`
+- type: string or [variable object](#variable-object)
+- return true if alpha / beta talker belongs to the given faction id (the avatar's is `your_followers`)
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+True if the alpha talker is one of the player's followers
+```jsonc
+{ "u_is_in_faction": "your_followers" }
+```
+
+True if the beta talker belongs to the faction stored in the alpha talker's variable `rival_faction`
+```jsonc
+{ "npc_is_in_faction": { "u_val": "rival_faction" } }
+```
+
 ### `u_has_strength`, `npc_has_strength`, `u_has_dexterity`, `npc_has_dexterity`, `u_has_intelligence`, `npc_has_intelligence`, `u_has_perception`, `npc_has_perception`
 - type: int or [variable object](#variable-object)
 - Return true if alpha or beta talker stat is at least the value or higher

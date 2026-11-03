@@ -31,6 +31,7 @@
 #include "auto_note.h"
 #include "auto_pickup.h"
 #include "avatar.h"
+#include "behavior.h"
 #include "cached_options.h"
 #include "calendar.h"
 #include "cata_path.h"
@@ -322,6 +323,8 @@ bool game::load( const std::string &world )
 bool game::load( const save_t &name )
 {
     map &here = get_map();
+    // results kept for "evaluate_every" belong to the previous game's NPCs
+    behavior::clear_evaluation_cache();
 
     const cata_path worldpath = PATH_INFO::world_base_save_path();
     const cata_path save_file_path = PATH_INFO::world_base_save_path() /

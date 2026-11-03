@@ -1,0 +1,89 @@
+[
+  {
+    "//": "npc_decision with four condition and math nodes among the priorities, for the benchmark scenarios in tests/benchmark_scenarios_npc_test.cpp.",
+    "type": "behavior",
+    "id": "test_bench_decision",
+    "copy-from": "npc_decision",
+    "extend": { "children": [ { "id": "test_bench_priorities", "before": "npc_priorities" } ] },
+    "delete": { "children": [ "npc_priorities" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_priorities",
+    "copy-from": "npc_priorities",
+    "extend": { "children": [ "test_bench_devout", "test_bench_parched", "test_bench_famished", "test_bench_night_owl" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_devout",
+    "conditions": [
+      {
+        "predicate": "condition",
+        "condition": { "and": [ { "not": { "u_has_trait": "IGNORE_SOUND" } }, { "math": [ "u_val('strength') >= 4" ] } ] }
+      }
+    ],
+    "score": { "math": [ "0.1 + u_bench_devotion / 1000" ] },
+    "goal": "test_bench_pray"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_parched",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "oracle('npc_thirst_urgency') > 0.9" ] } } ],
+    "score": { "math": [ "oracle('npc_thirst_urgency')" ] },
+    "goal": "drink_water"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_famished",
+    "conditions": [ { "predicate": "npc_needs_food_badly" } ],
+    "score": { "named": "npc_hunger_urgency", "mult": 0.5 },
+    "goal": "eat_food"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_night_owl",
+    "conditions": [ { "predicate": "condition", "condition": { "math": [ "time_since('midnight') < time('2 h')" ] } } ],
+    "score": { "math": [ "0.2" ] },
+    "goal": "test_bench_stay_up"
+  },
+  {
+    "//": "The same nodes, each evaluated every 5 turns.",
+    "type": "behavior",
+    "id": "test_bench_decision_cached",
+    "copy-from": "test_bench_decision",
+    "extend": { "children": [ { "id": "test_bench_priorities_cached", "before": "test_bench_priorities" } ] },
+    "delete": { "children": [ "test_bench_priorities" ] }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_priorities_cached",
+    "copy-from": "npc_priorities",
+    "extend": {
+      "children": [ "test_bench_devout_cached", "test_bench_parched_cached", "test_bench_famished_cached", "test_bench_night_owl_cached" ]
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_devout_cached",
+    "copy-from": "test_bench_devout",
+    "evaluate_every": "5 turns"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_parched_cached",
+    "copy-from": "test_bench_parched",
+    "evaluate_every": "5 turns"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_famished_cached",
+    "copy-from": "test_bench_famished",
+    "evaluate_every": "5 turns"
+  },
+  {
+    "type": "behavior",
+    "id": "test_bench_night_owl_cached",
+    "copy-from": "test_bench_night_owl",
+    "evaluate_every": "5 turns"
+  }
+]

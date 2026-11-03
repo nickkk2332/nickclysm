@@ -740,6 +740,15 @@ conditional_t::func f_npc_has_class( const JsonObject &jo, std::string_view memb
     };
 }
 
+conditional_t::func f_is_in_faction( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    str_or_var faction_to_check = get_str_or_var( jo.get_member( member ), member, true );
+    return [faction_to_check, is_npc]( const_dialogue const & d ) {
+        const faction *fac = d.const_actor( is_npc )->get_faction();
+        return fac != nullptr && fac->id == faction_id( faction_to_check.evaluate( d ) );
+    };
+}
+
 conditional_t::func f_u_has_mission( const JsonObject &jo, std::string_view member )
 {
     str_or_var u_mission = get_str_or_var( jo.get_member( member ), member, true );
@@ -3046,6 +3055,7 @@ parsers = {
     },
     {"u_bodytype", "npc_bodytype", jarg::member, &conditional_fun::f_bodytype },
     {"u_has_class", "npc_has_class", jarg::member, &conditional_fun::f_npc_has_class },
+    {"u_is_in_faction", "npc_is_in_faction", jarg::member, &conditional_fun::f_is_in_faction },
     {"u_has_activity", "npc_has_activity", jarg::string, &conditional_fun::f_has_activity },
     {"u_is_doing_activity", "npc_is_doing_activity", jarg::member, &conditional_fun::f_is_doing_activity },
     {"u_is_riding", "npc_is_riding", jarg::string, &conditional_fun::f_is_riding },
