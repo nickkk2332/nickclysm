@@ -42,9 +42,11 @@
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "sounds.h"
 #include "stats_tracker.h"
 #include "talker.h"
 #include "type_id.h"
+#include "units.h"
 
 // JSON goals (doc/JSON/NPC_BEHAVIOR.md): decision categories as JSON, goals defined on behavior
 // leaves, what runs them in npc::move(), their saves, what EOCs read about them and the decision
@@ -173,6 +175,11 @@ static const std::vector<std::string> goal_globals = {
     "test_goal_timeout_reason", "test_goal_spot", "test_goal_listen", "test_goal_changed_old",
     "test_goal_changed_new", "test_goal_changed_u", "test_goal_name", "test_goal_end_pos"
 };
+
+static const bionic_id bio_power_storage( "bio_power_storage" );
+static const bionic_id test_bio_npcj01_shield( "test_bio_npcj01_shield" );
+
+static const ter_str_id ter_t_wall( "t_wall" );
 
 static void forget_goal_globals()
 {
@@ -822,4 +829,51 @@ TEST_CASE( "npc_goal_changed_isnt_kept_for_statistics", "[npc][npc_goal][stats]"
     CHECK( before == 0 );
     CHECK_FALSE( stats_tracker::records( event_type::npc_goal_changed ) );
     CHECK( stats_tracker::records( event_type::u_var_changed ) );
+}
+
+// a JSON goal that keeps the NPC from a danger reaction keeps it from its side effects too
+TEST_CASE( "npc_json_goal_held_reactions_change_nothing", "[npc][npc_goal]" )
+{
+    SECTION( "a fight" ) {
+        npc &guy = armed_follower();
+        goal_test_tree tree( "test_goal_wait_top_tree" );
+        guy.add_bionic( bio_power_storage );
+        guy.set_power_level( guy.get_max_power_level() );
+        guy.add_bionic( test_bio_npcj01_shield );
+        adopt( guy, "test_goal_wait_top" );
+        const units::energy power = guy.get_power_level();
+        map &here = get_map();
+        monster *zed = g->place_critter_at( mon_zombie, guy.pos_bub() + tripoint( 0, 3, 0 ) );
+        REQUIRE( zed != nullptr );
+        here.build_map_cache( 0 );
+        run_npc_turns( guy, 2 );
+        REQUIRE( guy.get_committed_goal() == "test_goal_wait_top" );
+        // the combat CBM was never switched on, nor off again
+        CHECK_FALSE( guy.has_active_bionic( test_bio_npcj01_shield ) );
+        CHECK( guy.get_power_level() == power );
+        clear_creatures();
+    }
+    SECTION( "a sound" ) {
+        npc &guy = goal_npc();
+        goal_test_tree tree( "test_goal_wait_top_tree" );
+        adopt( guy, "test_goal_wait_top" );
+        // a bang behind walls, out of sight
+        map &here = get_map();
+        const tripoint_bub_ms bang = goal_origin + tripoint( 5, 0, 0 );
+        for( const tripoint_bub_ms &p : here.points_in_radius( bang, 1 ) ) {
+            if( p != bang ) {
+                here.ter_set( p, ter_t_wall );
+            }
+        }
+        here.build_map_cache( 0 );
+        // NPCs ignore noise by default
+        guy.rules.clear_flag( ally_rule::ignore_noise );
+        guy.handle_sound( sounds::sound_t::combat, "a bang", 60, bang );
+        REQUIRE( guy.has_ai_sound_alerts() );
+        REQUIRE_FALSE( guy.get_ai_guard_pos() );
+        run_npc_turn( guy );
+        CHECK( guy.get_committed_goal() == "test_goal_wait_top" );
+        // investigating would have kept where it stood to come back to
+        CHECK_FALSE( guy.get_ai_guard_pos() );
+    }
 }

@@ -291,18 +291,31 @@ static decision_category cascade_action_to_category( npc_action action )
     }
 }
 
-// what a reaction to danger, picked before the decision tree, counts as against a JSON goal
-static decision_category danger_reaction_category( const npc_action action )
+// The reactions to danger, picked before the decision tree.  Which one applies is worked out
+// first, with no side effects, so that a JSON goal that keeps the NPC can stop it running.
+enum class danger_reaction : int {
+    none, escape_explosion, flee_vehicle, flee_attacker, use_inhaler, fight, investigate,
+    ignore_sound
+};
+
+// what a reaction counts as against a JSON goal; nullopt for none
+static std::optional<decision_category> danger_reaction_category( const danger_reaction r )
 {
-    switch( action ) {
-        case npc_investigate_sound:
-        case npc_return_to_guard_pos:
-            return decision_category::investigate;
-        case npc_heal:
-            return decision_category::needs;
-        default:
+    switch( r ) {
+        case danger_reaction::escape_explosion:
+        case danger_reaction::flee_vehicle:
+        case danger_reaction::flee_attacker:
+        case danger_reaction::fight:
             return decision_category::combat;
+        case danger_reaction::use_inhaler:
+            return decision_category::needs;
+        case danger_reaction::investigate:
+            return decision_category::investigate;
+        case danger_reaction::none:
+        case danger_reaction::ignore_sound:
+            break;
     }
+    return std::nullopt;
 }
 
 
@@ -1731,35 +1744,69 @@ void npc::move()
      * something nasty is going to happen.
      */
 
+    danger_reaction reaction = danger_reaction::none;
     if( !ai_cache.dangerous_explosives.empty() && !has_flag( json_flag_CANNOT_MOVE ) ) {
-        action = npc_escape_explosion;
+        reaction = danger_reaction::escape_explosion;
     } else if( is_enemy() && vehicle_danger( avoidance_vehicles_radius ) >= 0 &&
                !has_flag( json_flag_CANNOT_MOVE ) ) {
-        // TODO: Think about how this actually needs to work, for now assume flee from player
-        ai_cache.target = g->shared_from( player_character );
-        action = method_of_fleeing();
+        reaction = danger_reaction::flee_vehicle;
     } else if( ( target == &player_character && attitude == NPCATT_FLEE_TEMP ) ||
                has_effect( effect_npc_run_away ) ) {
-        if( hp_percentage() > 30 && target && rl_dist( pos_bub(), target->pos_bub() ) <= 1 &&
-            !has_flag( json_flag_CANNOT_ATTACK ) ) {
-            action = method_of_attack();
-        } else if( !has_flag( json_flag_CANNOT_MOVE ) ) {
-            action = method_of_fleeing();
-        }
+        reaction = danger_reaction::flee_attacker;
     } else if( has_effect( effect_asthma ) && ( has_charges( itype_inhaler, 1 ) ||
                has_charges( itype_oxygen_tank, 1 ) ||
                has_charges( itype_smoxygen_tank, 1 ) ) ) {
-        action = npc_heal;
+        reaction = danger_reaction::use_inhaler;
     } else if( target != nullptr && ai_cache.danger > 0 && !has_flag( json_flag_CANNOT_ATTACK ) ) {
-        action = method_of_attack();
+        reaction = danger_reaction::fight;
     } else if( !ai_cache.sound_alerts.empty() && !is_walking_with() &&
                !has_flag( json_flag_CANNOT_MOVE ) ) {
-        if( has_trait( trait_IGNORE_SOUND ) ) {
+        reaction = has_trait( trait_IGNORE_SOUND ) ? danger_reaction::ignore_sound :
+                   danger_reaction::investigate;
+    }
+    // a reaction ends a JSON goal of a later category, and waits while the NPC is on one of its
+    // own category or an earlier one (doc/JSON/NPC_BEHAVIOR.md)
+    if( const std::optional<decision_category> reaction_cat = danger_reaction_category( reaction ) ) {
+        if( npc_goal_runtime::holds_against( *this, *reaction_cat ) ) {
+            reaction = danger_reaction::none;
+        }
+        // the goal's end hooks may have killed it
+        if( is_dead() ) {
+            return;
+        }
+    }
+    switch( reaction ) {
+        case danger_reaction::none:
+            break;
+        case danger_reaction::escape_explosion:
+            action = npc_escape_explosion;
+            break;
+        case danger_reaction::flee_vehicle:
+            // TODO: Think about how this actually needs to work, for now assume flee from player
+            ai_cache.target = g->shared_from( player_character );
+            action = method_of_fleeing();
+            break;
+        case danger_reaction::flee_attacker:
+            if( hp_percentage() > 30 && target && rl_dist( pos_bub(), target->pos_bub() ) <= 1 &&
+                !has_flag( json_flag_CANNOT_ATTACK ) ) {
+                action = method_of_attack();
+            } else if( !has_flag( json_flag_CANNOT_MOVE ) ) {
+                action = method_of_fleeing();
+            }
+            break;
+        case danger_reaction::use_inhaler:
+            action = npc_heal;
+            break;
+        case danger_reaction::fight:
+            action = method_of_attack();
+            break;
+        case danger_reaction::ignore_sound:
             // Discard alerts and fall through to BT/needs below.
             // Hard-coding npc_return_to_guard_pos here would fight the
             // BT sleep goal when ambient sounds keep refilling the queue.
             ai_cache.sound_alerts.clear();
-        } else {
+            break;
+        case danger_reaction::investigate: {
             tripoint_abs_ms cur_s_abs_pos = ai_cache.s_abs_pos;
             if( !ai_cache.guard_pos ) {
                 ai_cache.guard_pos = pos_abs();
@@ -1788,13 +1835,8 @@ void npc::move()
                 add_msg_debug( debugmode::DF_NPC, "NPC %s: investigating sound at x(%d) y(%d)", get_name(),
                                ai_cache.s_abs_pos.x(), ai_cache.s_abs_pos.y() );
             }
+            break;
         }
-    }
-    // a danger reaction ends a JSON goal of a later category, and waits while the NPC is on one
-    // of its own category or an earlier one (doc/JSON/NPC_BEHAVIOR.md)
-    if( action != npc_undecided &&
-        npc_goal_runtime::holds_against( *this, danger_reaction_category( action ) ) ) {
-        action = npc_undecided;
     }
     if( action == npc_undecided ) {
         // No present danger
