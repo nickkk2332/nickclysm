@@ -4231,7 +4231,8 @@ std::optional<int> iuse::blood_draw( Character *p, item *it, const tripoint_bub_
     return 1;
 }
 
-void iuse::cut_log_into_planks( Character &p )
+// The log stays where it is until the cut is done.
+static void start_cutting_log( Character &p, const item_location &log )
 {
     if( p.cant_do_mounted() ) {
         return;
@@ -4239,8 +4240,13 @@ void iuse::cut_log_into_planks( Character &p )
     const int moves = to_moves<int>( 20_minutes );
     p.add_msg_if_player( _( "You cut the log into planks." ) );
 
-    p.assign_activity( chop_planks_activity_actor( moves ) );
+    p.assign_activity( chop_planks_activity_actor( moves, log ) );
     p.activity.placement = get_map().get_abs( p.pos_bub() );
+}
+
+void iuse::cut_log_into_planks( Character &p )
+{
+    start_cutting_log( p, item_location() );
 }
 
 std::optional<int> iuse::lumber( Character *p, item *it, const tripoint_bub_ms & )
@@ -4257,8 +4263,7 @@ std::optional<int> iuse::lumber( Character *p, item *it, const tripoint_bub_ms &
     // Check if player is standing on any lumber
     for( item &i : here.i_at( p->pos_bub() ) ) {
         if( i.typeId() == itype_log ) {
-            here.i_rem( p->pos_bub(), &i );
-            cut_log_into_planks( *p );
+            start_cutting_log( *p, item_location( map_cursor( p->pos_bub() ), &i ) );
             return 1;
         }
     }
@@ -4277,8 +4282,7 @@ std::optional<int> iuse::lumber( Character *p, item *it, const tripoint_bub_ms &
         p->add_msg_if_player( m_info, _( "You don't have that item!" ) );
         return std::nullopt;
     }
-    p->i_rem( &*loc );
-    cut_log_into_planks( *p );
+    start_cutting_log( *p, loc );
     return 1;
 }
 

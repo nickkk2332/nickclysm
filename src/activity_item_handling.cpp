@@ -3651,10 +3651,11 @@ static bool chop_plank_activity( Character &you, const tripoint_bub_ms &src_loc 
     map &here = get_map();
     for( item &i : here.i_at( src_loc ) ) {
         if( i.typeId() == itype_log ) {
-            here.i_rem( src_loc, &i );
             int moves = to_moves<int>( 20_minutes );
             you.add_msg_if_player( _( "You cut the log into planks." ) );
-            you.assign_activity( chop_planks_activity_actor( moves ) );
+            // the log stays until the cut is done
+            you.assign_activity( chop_planks_activity_actor( moves,
+                                 item_location( map_cursor( src_loc ), &i ) ) );
             you.activity.placement = here.get_abs( src_loc );
             return true;
         }
