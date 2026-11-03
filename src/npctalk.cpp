@@ -10199,6 +10199,18 @@ talk_effect_fun_t::func f_wants_to_talk( bool is_npc )
     };
 }
 
+// A number is passed in full: the default formatting would write 1000000 as "1e+06"
+std::string trigger_event_arg( diag_value const &v )
+{
+    if( v.is_dbl() ) {
+        const double d = v.dbl();
+        if( std::isfinite( d ) && d == std::trunc( d ) && std::fabs( d ) < 1e15 ) {
+            return std::to_string( static_cast<long long>( d ) );
+        }
+    }
+    return v.to_string();
+}
+
 talk_effect_fun_t::func f_trigger_event( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -10206,6 +10218,15 @@ talk_effect_fun_t::func f_trigger_event( const JsonObject &jo, std::string_view 
     JsonArray const &jargs = jo.get_array( "args" );
 
     event_type type = io::string_to_enum<event_type>( type_str );
+    // Only the game itself can start, load, save or end a game, or award an achievement.
+    // Faked, these break statistics and achievements (or trip an assertion).
+    static const std::set<event_type> engine_only = {
+        event_type::game_avatar_new, event_type::game_load, event_type::game_over,
+        event_type::game_save, event_type::game_start, event_type::player_gets_achievement
+    };
+    if( engine_only.count( type ) ) {
+        jo.throw_error_at( member, string_format( "event type \"%s\" can't be triggered", type_str ) );
+    }
     std::vector<diag_value_or_var> args;
     args.reserve( jargs.size() );
     for( JsonValue const &jv : jargs ) {
@@ -10219,7 +10240,7 @@ talk_effect_fun_t::func f_trigger_event( const JsonObject &jo, std::string_view 
         args_str.reserve( args.size() );
         std::transform( args.cbegin(), args.cend(),
         std::back_inserter( args_str ), [&d]( diag_value_or_var const & sov ) {
-            return sov.evaluate( d ).to_string();
+            return trigger_event_arg( sov.evaluate( d ) );
         } );
         get_event_bus().send( cata::event::make_dyn( type, args_str ) );
     };

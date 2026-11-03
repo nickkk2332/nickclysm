@@ -5179,6 +5179,59 @@ void field_type_migrations::check()
     }
 }
 
+void submap::store_phase_reverts( JsonOut &jsout ) const
+{
+    jsout.member( "phase_reverts" );
+    jsout.start_array();
+    for( const auto &entry : original_terrain ) {
+        jsout.start_array();
+        jsout.write( entry.first.x() );
+        jsout.write( entry.first.y() );
+        jsout.write( entry.second.obj().id.str() );
+        jsout.end_array();
+    }
+    jsout.end_array();
+}
+
+void submap::store_spawns( JsonOut &jsout ) const
+{
+    jsout.member( "spawns" );
+    jsout.start_array();
+    for( const spawn_point &elem : spawns ) {
+        jsout.start_array();
+        // TODO: json should know how to write string_ids
+        jsout.write( elem.type.str() );
+        jsout.write( elem.count );
+        jsout.write( elem.pos.x() );
+        jsout.write( elem.pos.y() );
+        jsout.write( elem.faction_id );
+        jsout.write( elem.mission_id );
+        jsout.write( elem.friendly );
+        jsout.write( elem.name );
+        jsout.end_array();
+    }
+    jsout.end_array();
+}
+
+void submap::store_partial_constructions( JsonOut &jsout ) const
+{
+    jsout.member( "partial_constructions" );
+    jsout.start_array();
+    for( const auto &elem : partial_constructions ) {
+        jsout.write( elem.first.x() );
+        jsout.write( elem.first.y() );
+        jsout.write( elem.first.z() );
+        jsout.write( elem.second.counter );
+        jsout.write( elem.second.id.id() );
+        jsout.start_array();
+        for( const item &it : elem.second.components ) {
+            jsout.write( it );
+        }
+        jsout.end_array();
+    }
+    jsout.end_array();
+}
+
 void submap::store( JsonOut &jsout ) const
 {
     jsout.member( "turn_last_touched", last_touched );
@@ -5191,6 +5244,16 @@ void submap::store( JsonOut &jsout ) const
     if( is_uniform() ) {
         _write_rle_terrain( jsout, uniform_ter.id().str(), SEEX * SEEY );
         jsout.end_array();
+        // and what it holds besides, which doesn't make it non-uniform
+        if( !original_terrain.empty() ) {
+            store_phase_reverts( jsout );
+        }
+        if( !spawns.empty() ) {
+            store_spawns( jsout );
+        }
+        if( !partial_constructions.empty() ) {
+            store_partial_constructions( jsout );
+        }
         return;
     }
     std::string last_id;
@@ -5341,34 +5404,10 @@ void submap::store( JsonOut &jsout ) const
     jsout.end_array();
 
     // Output any recorded original terrain for phase reverts
-    jsout.member( "phase_reverts" );
-    jsout.start_array();
-    for( const auto &entry : original_terrain ) {
-        jsout.start_array();
-        jsout.write( entry.first.x() );
-        jsout.write( entry.first.y() );
-        jsout.write( entry.second.obj().id.str() );
-        jsout.end_array();
-    }
-    jsout.end_array();
+    store_phase_reverts( jsout );
 
     // Output the spawn points
-    jsout.member( "spawns" );
-    jsout.start_array();
-    for( const spawn_point &elem : spawns ) {
-        jsout.start_array();
-        // TODO: json should know how to write string_ids
-        jsout.write( elem.type.str() );
-        jsout.write( elem.count );
-        jsout.write( elem.pos.x() );
-        jsout.write( elem.pos.y() );
-        jsout.write( elem.faction_id );
-        jsout.write( elem.mission_id );
-        jsout.write( elem.friendly );
-        jsout.write( elem.name );
-        jsout.end_array();
-    }
-    jsout.end_array();
+    store_spawns( jsout );
 
     jsout.member( "vehicles" );
     jsout.start_array();
@@ -5379,21 +5418,7 @@ void submap::store( JsonOut &jsout ) const
     }
     jsout.end_array();
 
-    jsout.member( "partial_constructions" );
-    jsout.start_array();
-    for( const auto &elem : partial_constructions ) {
-        jsout.write( elem.first.x() );
-        jsout.write( elem.first.y() );
-        jsout.write( elem.first.z() );
-        jsout.write( elem.second.counter );
-        jsout.write( elem.second.id.id() );
-        jsout.start_array();
-        for( const item &it : elem.second.components ) {
-            jsout.write( it );
-        }
-        jsout.end_array();
-    }
-    jsout.end_array();
+    store_partial_constructions( jsout );
 
     if( !computers.empty() ) {
         jsout.member( "computers" );

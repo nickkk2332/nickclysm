@@ -1230,12 +1230,14 @@ void main_menu::world_tab( const std::string &worldname )
             break;
         case 3: // Toggle save compression
             if( world_generator->get_world( worldname )->has_compression_enabled() ) {
-                if( query_yn( _( "Disable save compression?" ) ) ) {
-                    world_generator->get_world( worldname )->set_compression_enabled( false );
+                if( query_yn( _( "Disable save compression?" ) ) &&
+                    !world_generator->get_world( worldname )->set_compression_enabled( false ) ) {
+                    popup( _( "Save compression could not be disabled.  The world is left as it was." ) );
                 }
             } else {
-                if( query_yn( _( "Enable save compression?" ) ) ) {
-                    world_generator->get_world( worldname )->set_compression_enabled( true );
+                if( query_yn( _( "Enable save compression?" ) ) &&
+                    !world_generator->get_world( worldname )->set_compression_enabled( true ) ) {
+                    popup( _( "Save compression could not be enabled.  The world is left as it was." ) );
                 }
             }
             break;

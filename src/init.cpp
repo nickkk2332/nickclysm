@@ -796,6 +796,7 @@ void DynamicDataLoader::unload_data()
     ammunition_type::reset();
     anatomy::reset();
     ascii_art::reset();
+    attack_vector::reset();
     bash_damage_profile::reset();
     behavior::reset();
     npc_json_goals::reset();
@@ -813,9 +814,12 @@ void DynamicDataLoader::unload_data()
     construction_groups::reset();
     damage_type::reset();
     damage_info_order::reset();
+    dimension_world::reset();
+    dimension_region_layout::reset();
     disease_type::reset();
     dreams.clear();
     emit::reset();
+    end_screen::reset();
     get_help().reset();
     enchantment::reset();
     event_statistic::reset();
@@ -828,6 +832,8 @@ void DynamicDataLoader::unload_data()
     field_types::reset();
     field_type_migrations::reset();
     gates::reset();
+    // var_migration entries, which are applied to the saves being loaded
+    get_globals().migrations.clear();
     harvest_drop_type::reset();
     harvest_list::reset();
     item_category::reset();
@@ -865,6 +871,7 @@ void DynamicDataLoader::unload_data()
     map_data_placeholders::reset();
     profession::reset();
     profession_blacklist::reset();
+    profession_group::reset();
     proficiency::reset();
     proficiency_category::reset();
     proficiency_migration::reset();
@@ -977,6 +984,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Crafting Categories" ), &crafting_category::finalize_all },
             { _( "Damage Types" ), &damage_type::finalize_all },
             { _( "Damage info orders" ), &damage_info_order::finalize_all },
+            { _( "Dimension region layouts" ), &dimension_region_layout::finalize_all },
             { _( "Dimensions" ), &dimension_world::finalize_all },
             { _( "Diseases" ), &disease_type::finalize_all },
             { _( "Weather types" ), &weather_types::finalize_all },
@@ -985,6 +993,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Field types" ), &field_types::finalize_all },
             { _( "Ammo effects" ), &ammo_effects::finalize_all },
             { _( "Emissions" ), &emit::finalize },
+            { _( "End screens" ), &end_screen::finalize_all },
             { _( "Enchantments" ), &enchantment::finalize_all },
             { _( "Event Statistics" ), &event_statistic::finalize_all },
             { _( "Event Transformations" ), &event_transformation::finalize_all },
@@ -1054,6 +1063,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Overmap Special Migrations" ), &overmap_special_migration::finalize_all },
             { _( "Overmap placeholders" ), &map_data_placeholders::finalize },
             { _( "Professions" ), &profession::finalize_all },
+            { _( "Profession groups" ), &profession_group::finalize_all },
             { _( "Proficiencies" ), &proficiency::finalize_all },
             { _( "Proficiency Categories" ), &proficiency_category::finalize_all },
             { _( "Qualities" ), &quality::finalize_all },
@@ -1070,6 +1080,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Terrain" ), &finalize_terrain },
             { _( "Terrain/Furniture Transforms" ), &ter_furn_transform::finalize_all },
             { _( "Missions" ), &mission_type::finalize_all },
+            { _( "Faction missions" ), &faction_mission::finalize_all },
             { _( "Harvest lists" ), &harvest_list::finalize_all },
             { _( "Anatomies" ), &anatomy::finalize_all },
             { _( "Mutations" ), &mutation_branch::finalize_all },

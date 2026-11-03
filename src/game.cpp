@@ -753,6 +753,9 @@ void game::setup()
     kill_tracker_ptr->clear();
     achievements_tracker_ptr->clear();
     eoc_events_ptr->clear();
+    // A new character must not start with the last one's memorial; loading a save reads
+    // that character's own log
+    memorial_logger_ptr->clear();
     // reset follower list
     scent.reset();
     effect_on_conditions::clear( u );

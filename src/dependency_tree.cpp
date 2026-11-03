@@ -156,41 +156,32 @@ std::vector<mod_id> dependency_node::get_dependencies_as_strings()
 
 std::vector<dependency_node *> dependency_node::get_dependencies_as_nodes()
 {
-    std::vector<dependency_node *> dependencies;
+    // Depth first, listing each node after all of its own dependencies (post-order), so
+    // that loading in this order loads every mod after the mods it depends on.  A node is
+    // marked found before its parents are visited, which also stops at circular
+    // dependencies (reported elsewhere).
     std::vector<dependency_node *> ret;
     std::set<mod_id> found;
-
-    std::stack<dependency_node *> nodes_to_check;
-    for( dependency_node *&elem : parents ) {
-        nodes_to_check.push( elem );
-    }
     found.insert( key );
 
-    while( !nodes_to_check.empty() ) {
-        dependency_node *check = nodes_to_check.top();
-        nodes_to_check.pop();
-
-        // make sure that the one we are checking is not THIS one
-        if( found.find( check->key ) != found.end() ) {
-            continue; // just keep going, we aren't really caring about availability right now
+    // the node, and the index of its next parent to visit
+    std::vector<std::pair<dependency_node *, size_t>> path;
+    for( dependency_node *root : parents ) {
+        if( !found.insert( root->key ).second ) {
+            continue;
         }
-
-        // add check to dependencies
-        dependencies.push_back( check );
-
-        // add parents to check list
-        for( dependency_node *&elem : check->parents ) {
-            nodes_to_check.push( elem );
-        }
-        found.insert( check->key );
-    }
-
-    // sort from the back!
-    for( std::vector<dependency_node *>::reverse_iterator it =
-             dependencies.rbegin();
-         it != dependencies.rend(); ++it ) {
-        if( std::find( ret.begin(), ret.end(), *it ) == ret.end() ) {
-            ret.push_back( *it );
+        path.emplace_back( root, 0 );
+        while( !path.empty() ) {
+            auto &[node, next_parent] = path.back();
+            if( next_parent < node->parents.size() ) {
+                dependency_node *parent = node->parents[next_parent++];
+                if( found.insert( parent->key ).second ) {
+                    path.emplace_back( parent, 0 );
+                }
+            } else {
+                ret.push_back( node );
+                path.pop_back();
+            }
         }
     }
 

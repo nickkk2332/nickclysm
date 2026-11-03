@@ -2427,20 +2427,23 @@ The sum of the numeric value in the specified field across all events:
 "field" : "damage"
 ```
 
-The maximum of the numeric value in the specified field across all events:
+The maximum of the numeric value in the specified field across all events (0
+when there are no events yet):
 ```jsonc
 "stat_type" : "maximum"
 "field" : "damage"
 ```
 
-The minimum of the numeric value in the specified field across all events:
+The minimum of the numeric value in the specified field across all events (0
+when there are no events yet):
 ```jsonc
 "stat_type" : "minimum"
 "field" : "damage"
 ```
 
 Assume there is only a single event to consider, and take the value of the
-given field for that unique event:
+given field for that unique event.  Several events that are all the same count
+as one; once there are different events there is no value:
 ```jsonc
 "stat_type": "unique_value",
 "field": "avatar_id"
@@ -2568,6 +2571,12 @@ add an `"anything"` constraint on it.  For example:
 
 This is a simple "survive a day" but is triggered by waking up, so it will be
 completed when you wake up for the first time after 24 hours into the game.
+
+Using the debug menu disables achievements for that game.  Achievements
+completed while they are disabled still show in that game, but they are not
+written to the `achievements` folder, so they don't unlock professions or
+scenarios in other games.  Arcade Mode, which the debug menu gives on purpose,
+is the exception.
 
 #### `conduct`
 

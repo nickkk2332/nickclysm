@@ -413,15 +413,22 @@ std::optional<zzip> zzip::load(
         cctx = it->second.cctx;
         dctx = it->second.dctx;
     } else {
-        cctx = ZSTD_createCCtx();
-        ZSTD_CCtx_setParameter( cctx, ZSTD_c_compressionLevel, 7 );
-        dctx = ZSTD_createDCtx();
-
         std::vector<char> dictionary;
         if( !dictionary_path.empty() ) {
             std::shared_ptr<const mmap_file> dictionary_file = mmap_file::map_file( dictionary_path );
+            if( !dictionary_file ) {
+                // Missing or unreadable: nothing in this zzip could be read or written
+                ret.reset();
+                return ret;
+            }
             dictionary.resize( dictionary_file->len() );
             memcpy( dictionary.data(), dictionary_file->base(), dictionary_file->len() );
+        }
+
+        cctx = ZSTD_createCCtx();
+        ZSTD_CCtx_setParameter( cctx, ZSTD_c_compressionLevel, 7 );
+        dctx = ZSTD_createDCtx();
+        if( !dictionary.empty() ) {
             ZSTD_CCtx_loadDictionary_byReference( cctx, dictionary.data(), dictionary.size() );
             ZSTD_DCtx_loadDictionary_byReference( dctx, dictionary.data(), dictionary.size() );
         }

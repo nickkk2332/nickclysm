@@ -770,7 +770,8 @@
     "id": "EOC_HEDGE_PREVENT_WILD_ANIMAL_ATTACKS_EXPLOIT_PREVENTER",
     "eoc_type": "EVENT",
     "required_event": "monster_takes_damage",
-    "condition": { "u_has_effect": "effect_hedge_prevent_wild_animal_attacks" },
+    "//": "has_beta: only damage done by an attacker; bleeding, fire or a fall has none",
+    "condition": { "and": [ "has_beta", { "u_has_effect": "effect_hedge_prevent_wild_animal_attacks" } ] },
     "effect": [ { "math": [ "u_val('anger') += 100" ] }, { "u_lose_effect": "effect_hedge_prevent_wild_animal_attacks" } ]
   },
   {

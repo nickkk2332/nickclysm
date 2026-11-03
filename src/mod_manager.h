@@ -3,6 +3,7 @@
 #define CATA_SRC_MOD_MANAGER_H
 
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -90,7 +91,46 @@ struct mod_migrations {
     static void load( const JsonObject &jo );
     static void check();
     static void reset();
+    /**
+     * Follows the renames of a mod id, through renames of renames.  Returns the last id
+     * (installed or not), or nothing when id wasn't renamed or the renames go round.
+     */
+    static std::optional<mod_id> renamed_to( const mod_id &id,
+            const std::map<mod_id, mod_id> &renames );
 };
+
+// A problem with a world's list of mods
+struct mod_list_problem {
+    enum class kind : int {
+        // a mod needs another that the list doesn't have, but that is installed
+        missing_dependency,
+        // a mod needs another that isn't installed
+        dependency_not_installed,
+        // two mods of the list conflict
+        conflict,
+        // a mod comes before another that it needs
+        before_its_dependency,
+    };
+    kind what;
+    mod_id mod;
+    // the mod it needs, or the one it conflicts with
+    mod_id other;
+};
+
+struct mod_list_check {
+    std::vector<mod_list_problem> problems;
+    // The list with the missing dependencies that are installed added, and every mod after
+    // the mods it needs.  The same as the list checked when there is nothing of this to fix.
+    std::vector<mod_id> fixed;
+};
+
+/**
+ * Checks a world's list of mods for missing dependencies, conflicts, and mods that come
+ * before the ones they need.  find_mod gives a mod's information, or nullptr when the mod
+ * isn't installed.
+ */
+mod_list_check check_mod_list( const std::vector<mod_id> &mods,
+                               const std::function<const MOD_INFORMATION *( const mod_id & )> &find_mod );
 
 class mod_manager
 {

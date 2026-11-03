@@ -340,7 +340,8 @@ void mapbuffer::save_quad(
         const auto iter = submaps.find( submap_addr );
         const submap *sm = iter == submaps.end() ? nullptr : iter->second.get();
         if( sm != nullptr ) {
-            if( !sm->is_uniform() ) {
+            // A uniform submap holding spawns, constructions or phase reverts is saved too
+            if( !sm->is_uniform() || sm->holds_more_than_terrain() ) {
                 all_uniform = false;
             } else if( sm->reverted ) {
                 any_reverted = true;
@@ -547,8 +548,13 @@ void mapbuffer::deserialize( const JsonArray &ja )
         if( submap_json.has_int( "version" ) ) {
             version = submap_json.get_int( "version" );
         }
+        // A submap saved uniform has no radiation (nor furniture, items...)
+        bool saved_uniform = true;
         for( JsonMember submap_member : submap_json ) {
             std::string submap_member_name = submap_member.name();
+            if( submap_member_name == "radiation" ) {
+                saved_uniform = false;
+            }
             if( submap_member_name == "coordinates" ) {
                 JsonArray coords_array = submap_member;
                 tripoint_abs_sm loc{ coords_array.next_int(), coords_array.next_int(), coords_array.next_int() };
@@ -556,6 +562,12 @@ void mapbuffer::deserialize( const JsonArray &ja )
             } else {
                 sm->load( submap_member, submap_member_name, version );
             }
+        }
+        // Loading makes it non-uniform: make it uniform again, as it was generated, so that it
+        // costs no more than one that wasn't saved.  Marked reverted, so that its quad file is
+        // deleted if it ends up with nothing to save.
+        if( saved_uniform && sm->make_uniform_if_possible() ) {
+            sm->reverted = true;
         }
 
         if( !add_submap( submap_coordinates, sm ) ) {

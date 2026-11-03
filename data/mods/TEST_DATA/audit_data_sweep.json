@@ -1,0 +1,56 @@
+[
+  {
+    "type": "mod_migration",
+    "//": "DATA-B04 test: a mod renamed to test_data",
+    "id": "audit_data_b04_renamed_mod",
+    "new_id": "test_data"
+  },
+  {
+    "type": "mod_migration",
+    "//": "DATA-B04 test: a mod renamed twice, to audit_data_b04_chain_b and then to test_data",
+    "id": "audit_data_b04_chain_a",
+    "new_id": "audit_data_b04_chain_b"
+  },
+  {
+    "type": "mod_migration",
+    "//": "DATA-B04 test: the second rename",
+    "id": "audit_data_b04_chain_b",
+    "new_id": "test_data"
+  },
+  {
+    "type": "profession_group",
+    "id": "audit_data_b05_profession_group_child",
+    "//": "DATA-B05 test: copies from a parent defined after it",
+    "copy-from": "audit_data_b05_profession_group_parent"
+  },
+  {
+    "type": "profession_group",
+    "id": "audit_data_b05_profession_group_parent",
+    "professions": [ "unemployed" ]
+  },
+  {
+    "type": "end_screen",
+    "id": "audit_data_b05_end_screen_child",
+    "//": "DATA-B05 test: copies from a parent defined after it",
+    "copy-from": "audit_data_b05_end_screen_parent"
+  },
+  {
+    "type": "end_screen",
+    "id": "audit_data_b05_end_screen_parent",
+    "//": "never shown",
+    "priority": -1000,
+    "picture_id": "ascii_tombstone",
+    "condition": { "math": [ "0" ] }
+  },
+  {
+    "type": "fault_group",
+    "id": "audit_data_b05_fault_group_child",
+    "//": "DATA-B05 test: copies from a parent defined after it",
+    "copy-from": "audit_data_b05_fault_group_parent"
+  },
+  {
+    "type": "fault_group",
+    "id": "audit_data_b05_fault_group_parent",
+    "group": [ { "fault": "fault_electronic_blown_fuse" } ]
+  }
+]

@@ -76,6 +76,7 @@ class dimension_world
         void load( const JsonObject &jo, const std::string_view &src );
         void finalize();
         static void finalize_all();
+        static void reset();
         static void load_dimensions( const JsonObject &jo, const std::string &src );
 };
 
@@ -193,4 +194,6 @@ class dimension_region_layout
 
         void load( const JsonObject &jo, const std::string_view &src );
         static void load_dimension_regions( const JsonObject &jo, const std::string &src );
+        static void reset();
+        static void finalize_all();
 };

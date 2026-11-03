@@ -717,37 +717,49 @@ void eoc_events::notify( const cata::event &e, std::unique_ptr<talker> alpha,
         has_cached = true;
     }
 
-    for( const effect_on_condition &eoc : event_EOCs[e.type()] ) {
-        if( !alpha ) {
-            // try to assign a character for the EOC
-            // TODO: refactor event_spec to take consistent inputs
-            npc *alpha_talker = nullptr;
-            const std::vector<std::string> potential_alphas = { "avatar_id", "character", "attacker", "killer", "npc" };
-            for( const std::string &potential_key : potential_alphas ) {
-                cata_variant cv = e.get_variant_or_void( potential_key );
-                if( cv != cata_variant() ) {
-                    character_id potential_id = cv.get<cata_variant_type::character_id>();
-                    if( potential_id.is_valid() ) {
-                        alpha_talker = g->find_npc( potential_id );
-                        // if we find a successful entry exit early
-                        break;
-                    }
+    const std::vector<effect_on_condition> &eocs = event_EOCs[e.type()];
+    if( eocs.empty() ) {
+        return;
+    }
+    if( !alpha ) {
+        // The alpha talker is the character the event is about.  An event that names no
+        // character runs its EOCs on the avatar.  One that names a character who can't be
+        // found (a spell cast with no caster, an NPC that isn't loaded) runs none, rather
+        // than running them on the avatar.
+        // TODO: refactor event_spec to take consistent inputs
+        const std::vector<std::string> potential_alphas = { "avatar_id", "character", "attacker", "killer", "npc" };
+        bool names_a_character = false;
+        Creature *subject = nullptr;
+        for( const std::string &potential_key : potential_alphas ) {
+            cata_variant cv = e.get_variant_or_void( potential_key );
+            if( cv != cata_variant() ) {
+                names_a_character = true;
+                character_id potential_id = cv.get<cata_variant_type::character_id>();
+                if( potential_id.is_valid() ) {
+                    avatar &u = get_avatar();
+                    subject = potential_id == u.getID() ? static_cast<Creature *>( &u ) :
+                              g->find_npc( potential_id );
+                    // if we find a successful entry exit early
+                    break;
                 }
             }
-            if( alpha_talker ) {
-                alpha = get_talker_for( alpha_talker );
-            } else {
-                alpha = get_talker_for( get_avatar() );
-            }
         }
+        if( subject ) {
+            alpha = get_talker_for( subject );
+        } else if( !names_a_character ) {
+            alpha = get_talker_for( get_avatar() );
+        } else {
+            return;
+        }
+    }
+
+    for( const effect_on_condition &eoc : eocs ) {
         dialogue d;
         global_variables::impl_t context;
         for( const auto &val : e.data() ) {
             context[val.first] = diag_value{ val.second };
         }
 
-        // if we have an NPC to trigger this event for, do so,
-        // otherwise fallback to having it effect the player
         d = dialogue( alpha->clone(), beta ? beta->clone() : nullptr, {}, context );
 
         eoc.activate( d );

@@ -204,16 +204,16 @@ void diary::changes( Container diary_page::* member, Fn &&get_entry,
 static diary_entry_opt spell_change( const std::pair<const string_id<spell_type>, int> &elem,
                                      diary_page *const prevpage )
 {
-    avatar *u = &get_avatar();
     const bool improved = prevpage && prevpage->known_spells.count( elem.first ) > 0;
     const int prevlvl = improved ? prevpage->known_spells[ elem.first ] : -1;
     if( elem.second != prevlvl ) {
-        const spell s = u->magic->get_spell( elem.first );
+        // From the spell type: the avatar may have forgotten the spell since
+        const spell_type &s = elem.first.obj();
         return { {
                 improved ?
-                string_format( _( "%s: %d -> %d" ), s.name(), prevlvl, elem.second ) :
-                string_format( _( "%s: %d" ), s.name(), elem.second )
-                , s.description()
+                string_format( _( "%s: %d -> %d" ), s.name.translated(), prevlvl, elem.second ) :
+                string_format( _( "%s: %d" ), s.name.translated(), elem.second )
+                , s.description.translated()
             } };
 
     }
