@@ -6799,12 +6799,14 @@ std::optional<int> iuse::radiocar( Character *p, item *it, const tripoint_bub_ms
             }
             item &put = *loc;
 
-            if( put.has_flag( flag_RADIOCARITEM ) && ( put.volume() <= 1250_ml ||
-                    ( put.weight() <= 2_kilogram ) ) ) {
+            // the car's pocket decides what fits, and the item leaves the inventory only
+            // once it is in the car
+            if( put.has_flag( flag_RADIOCARITEM ) && it->can_contain( put ).success() &&
+                it->put_in( put, pocket_type::CONTAINER ).success() ) {
                 p->mod_moves( -to_moves<int>( 3_seconds ) );
                 p->add_msg_if_player( _( "You armed your RC car with %s." ),
                                       put.tname() );
-                it->put_in( p->i_rem( &put ), pocket_type::CONTAINER );
+                p->i_rem( &put );
             } else if( !put.has_flag( flag_RADIOCARITEM ) ) {
                 p->add_msg_if_player( _( "You want to arm your RC car with %s?  But how?" ),
                                       put.tname() );
