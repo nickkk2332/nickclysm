@@ -8,7 +8,10 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <ostream>
+#include <string>
+#include <string_view>
 
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
@@ -17,6 +20,7 @@
 #include "avatar.h"
 #include "basecamp.h"
 #include "bodypart.h"
+#include "cata_scope_helpers.h"
 #include "catacharset.h"
 #include "character.h"
 #include "character_attire.h"
@@ -193,7 +197,7 @@ static const trait_id trait_TERRIFYING( "TERRIFYING" );
 static const trait_id trait_TRADE_BACKEND( "TRADE_BACKEND" );
 
 static void starting_clothes( npc &who, const npc_class_id &type, bool male );
-static void report_attitude_change( const npc &guy, npc_attitude old_attitude );
+static void report_attitude_change( npc &guy, npc_attitude old_attitude );
 static void starting_inv( npc &who, const npc_class_id &type );
 static void starting_inv_ammo( npc &who, std::list<item> &res, int multiplier );
 
@@ -4238,22 +4242,73 @@ const char *npc_attitude_cause::current()
     return open_attitude_cause;
 }
 
-// npc_attitude_changed, and npc_becomes_hostile when the NPC turns on the avatar: its attitude
-// joins the hostile group, or becomes NPCATT_KILL from another hostile one (as the hostile talk
-// effect always reported it)
-static void report_attitude_change( const npc &guy, const npc_attitude old_attitude )
+// how hostile an attitude is, for npc_becomes_hostile; nullopt for a flight, which keeps how
+// hostile the NPC was
+static std::optional<npc_hostility> hostility_of( const npc &guy, const npc_attitude att )
+{
+    switch( guy.get_attitude_group( att ) ) {
+        case attitude_group::hostile:
+            return att == NPCATT_KILL ? npc_hostility::kill : npc_hostility::hostile;
+        case attitude_group::fearful:
+            return std::nullopt;
+        case attitude_group::neutral:
+        case attitude_group::friendly:
+            break;
+    }
+    return npc_hostility::none;
+}
+
+// npc_attitude_changed for every change, and npc_becomes_hostile when the NPC grows more
+// hostile than it was last reported: as it turns hostile, and again if it then sets out to kill.
+// A flight doesn't calm it down, so a hostile NPC that keeps breaking off to flee and coming
+// back is reported once.
+static void report_attitude_change( npc &guy, const npc_attitude old_attitude )
 {
     // templates, stand-ins for turrets and monsters, and hallucinations aren't anyone to react to
     if( !guy.getID().is_valid() || guy.is_fake() || guy.is_hallucination() ) {
         return;
     }
+    npc_goal_state &state = *guy.json_goal;
     const npc_attitude new_attitude = guy.get_attitude();
+    const npc_hostility was = state.hostility ? *state.hostility :
+                              hostility_of( guy, old_attitude ).value_or( npc_hostility::none );
+    const std::optional<npc_hostility> now = hostility_of( guy, new_attitude );
+    const bool turns_hostile = now && *now > was;
+    // a flight keeps how hostile the NPC was, and so does growing less hostile: only a neutral or
+    // friendly attitude calms it down
+    if( !now ) {
+        state.hostility = was;
+    } else if( *now == npc_hostility::none ) {
+        state.hostility = npc_hostility::none;
+    } else {
+        state.hostility = std::max( was, *now );
+    }
+    // an NPC being made takes its starting attitude
+    if( std::string_view( npc_attitude_cause::current() ) == npc_attitude_cause::spawn ) {
+        return;
+    }
+    if( state.reporting_attitude ) {
+        // an EOC of these events changed the attitude again: reporting that would start over,
+        // without end for an EOC that always changes it
+        if( !state.warned_nested_attitude ) {
+            state.warned_nested_attitude = true;
+            debugmsg( "%s's attitude changed from %s to %s while its attitude events ran; the change "
+                      "isn't reported.  Don't change an NPC's attitude in an EOC of npc_attitude_changed "
+                      "or npc_becomes_hostile", guy.get_name(), npc_attitude_id( old_attitude ),
+                      npc_attitude_id( new_attitude ) );
+        }
+        return;
+    }
+    state.reporting_attitude = true;
+    state.warned_nested_attitude = false;
+    on_out_of_scope reported( [&state]() {
+        state.reporting_attitude = false;
+    } );
     const std::string cause = npc_attitude_cause::current();
     get_event_bus().send<event_type::npc_attitude_changed>( guy.getID(), guy.name,
             npc_attitude_id( old_attitude ), npc_attitude_id( new_attitude ), cause );
-    const bool was_hostile = guy.get_attitude_group( old_attitude ) == attitude_group::hostile;
-    if( guy.get_attitude_group( new_attitude ) == attitude_group::hostile &&
-        ( !was_hostile || new_attitude == NPCATT_KILL ) ) {
+    // only an NPC still hostile after those EOCs has turned hostile
+    if( turns_hostile && guy.get_attitude_group( guy.get_attitude() ) == attitude_group::hostile ) {
         get_event_bus().send<event_type::npc_becomes_hostile>( guy.getID(), guy.name, cause );
     }
 }

@@ -42,6 +42,7 @@
 #include "magic.h"
 #include "map.h"
 #include "martialarts.h"
+#include "memorial_logger.h"
 #include "messages.h"
 #include "mission.h"
 #include "monster.h"
@@ -978,7 +979,9 @@ void talk_function::hostile( npc &p )
         add_msg( _( "%s turns hostile!" ), p.get_name() );
     }
 
-    // npc_becomes_hostile goes out from set_attitude()
+    // npc_becomes_hostile goes out from set_attitude(); the memorial notes this effect alone
+    get_memorial().add( pgettext( "memorial_male", "%s became hostile." ),
+                        pgettext( "memorial_female", "%s became hostile." ), p.name );
     p.set_attitude( NPCATT_KILL );
 }
 

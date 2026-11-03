@@ -25,6 +25,9 @@ class npc_attitude_cause
         static constexpr const char *theft = "theft";
         // anything else the NPC decides on its turn (npc::move())
         static constexpr const char *ai = "ai";
+        // the NPC is being made: what it takes now (its first opinion of the avatar) is its
+        // starting attitude, and goes unreported
+        static constexpr const char *spawn = "spawn";
 
         // cause is one of the names above, or another string that outlives the scope
         explicit npc_attitude_cause( const char *cause );

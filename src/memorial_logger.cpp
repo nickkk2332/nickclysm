@@ -44,7 +44,6 @@
 #include "monstergenerator.h"
 #include "mtype.h"
 #include "mutation.h"
-#include "npc_attitude_cause.h"
 #include "omdata.h"
 #include "output.h"
 #include "overmap.h"
@@ -997,18 +996,6 @@ void memorial_logger::notify( const cata::event &e )
             }
             break;
         }
-        case event_type::npc_becomes_hostile: {
-            // only a turn a dialogue or EOC effect made, as when the hostile effect alone sent
-            // the event; not an NPC sizing the avatar up as it spawns
-            if( e.get<cata_variant_type::string>( "cause" ) != npc_attitude_cause::effect ) {
-                break;
-            }
-            std::string name = e.get<cata_variant_type::string>( "npc_name" );
-            add( pgettext( "memorial_male", "%s became hostile." ),
-                 pgettext( "memorial_female", "%s became hostile." ),
-                 name );
-            break;
-        }
         case event_type::opens_portal: {
             add( pgettext( "memorial_male", "Opened a portal." ),
                  pgettext( "memorial_female", "Opened a portal." ) );
@@ -1186,6 +1173,9 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::vehicle_moves:
         case event_type::character_butchered_corpse:
         case event_type::npc_goal_changed:
+        // "became hostile" is the hostile effect's own (talk_function::hostile()), as it was
+        // when that effect alone sent npc_becomes_hostile
+        case event_type::npc_becomes_hostile:
         case event_type::npc_attitude_changed:
         case event_type::npc_recruited:
         case event_type::npc_dismissed:

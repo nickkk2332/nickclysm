@@ -43,7 +43,8 @@ inline const tripoint_bub_ms npc_spot( 60, 60, 0 );
 
 inline const std::vector<std::string> hook_globals = {
     "test_ai_listen", "test_ai_attitude_changes", "test_ai_old", "test_ai_new", "test_ai_cause",
-    "test_ai_u", "test_ai_mutiny_to", "test_ai_mutiny_u", "test_ai_var"
+    "test_ai_u", "test_ai_mutiny_to", "test_ai_mutiny_u", "test_ai_var", "test_ai_guard_recruits",
+    "test_ai_flip", "test_ai_calm"
 };
 
 // What these tests change of the world the other tests share goes back as it was: the reality

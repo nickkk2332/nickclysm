@@ -111,5 +111,31 @@
       { "copy_var": { "context_val": "new_faction" }, "target_var": { "global_val": "test_ai_mutiny_to" } },
       { "set_string_var": "<u_name>", "target_var": { "global_val": "test_ai_mutiny_u" }, "parse_tags": true }
     ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_FLIP",
+    "//": "NPC AI hook tests: while the global test_ai_flip is 1, changes the attitude again, whatever it became.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_attitude_changed",
+    "condition": { "math": [ "test_ai_flip == 1" ] },
+    "effect": [
+      {
+        "if": { "compare_string": [ "NPCATT_TALK", { "context_val": "new_attitude" } ] },
+        "then": { "u_set_attitude": "NPCATT_NULL" },
+        "else": { "u_set_attitude": "NPCATT_TALK" }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_CALM",
+    "//": "NPC AI hook tests: while the global test_ai_calm is 1, an NPC that sets out to kill calms down at once.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_attitude_changed",
+    "condition": {
+      "and": [ { "math": [ "test_ai_calm == 1" ] }, { "compare_string": [ "NPCATT_KILL", { "context_val": "new_attitude" } ] } ]
+    },
+    "effect": [ { "u_set_attitude": "NPCATT_NULL" } ]
   }
 ]

@@ -169,6 +169,7 @@
 #include "move_mode.h"
 #include "mtype.h"
 #include "npc.h"
+#include "npc_attitude_cause.h"
 #include "npctrade.h"
 #include "omdata.h"
 #include "options.h"
@@ -1355,8 +1356,12 @@ void game::create_starting_npcs()
     // start_loc::place_player relies on this and must be updated if this is changed
     tmp->spawn_at_precise( u.pos_abs() + point::north_west );
     overmap_buffer.insert_npc( tmp );
-    tmp->form_opinion( u );
-    tmp->set_attitude( NPCATT_NULL );
+    {
+        // its starting attitude: no attitude events
+        const npc_attitude_cause spawning( npc_attitude_cause::spawn );
+        tmp->form_opinion( u );
+        tmp->set_attitude( NPCATT_NULL );
+    }
     //This sets the NPC mission. This NPC remains in the starting location.
     tmp->mission = NPC_MISSION_SHELTER;
     tmp->chatbin.first_topic = "TALK_SHELTER";
@@ -10701,6 +10706,8 @@ void game::perhaps_add_random_npc( bool ignore_spawn_timers_and_rates )
     // adds the npc to the correct overmap.
     tmp->spawn_at_omt( spawn_point );
     overmap_buffer.insert_npc( tmp );
+    // its starting attitude: no attitude events
+    const npc_attitude_cause spawning( npc_attitude_cause::spawn );
     tmp->form_opinion( u );
     tmp->mission = NPC_MISSION_NULL;
     tmp->long_term_goal_action();

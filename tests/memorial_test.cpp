@@ -269,13 +269,10 @@ TEST_CASE( "memorials", "[memorial]" )
     check_memorial<event_type::loses_addiction>(
         m,  "Overcame addiction to alcohol.", ch, addiction_alcohol );
 
-    check_memorial<event_type::npc_becomes_hostile>(
-        m,  "npc_name became hostile.", ch2, "npc_name", "effect" );
-
-    // only a dialogue or EOC effect's turn makes the memorial, as when only the hostile effect
-    // sent the event
+    // the hostile effect writes "became hostile." itself (npc_ai_events_test.cpp), as when it
+    // alone sent the event; the event writes nothing, whatever caused it
     for( const char *cause : {
-             "", "angered", "opinion", "mutiny", "faction", "panic", "theft", "ai"
+             "", "effect", "angered", "opinion", "mutiny", "faction", "panic", "theft", "ai"
          } ) {
         CAPTURE( cause );
         m.clear();

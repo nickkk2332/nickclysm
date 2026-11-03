@@ -2228,6 +2228,11 @@ void npc::load( const JsonObject &data )
     data.read( "sleep_session", sleep_session );
     *json_goal = npc_goal_state();
     data.read( "json_goal", json_goal );
+    if( data.has_string( "hostility_reported" ) ) {
+        const std::string hostility = data.get_string( "hostility_reported" );
+        json_goal->hostility = hostility == "kill" ? npc_hostility::kill : hostility == "hostile" ?
+                               npc_hostility::hostile : npc_hostility::none;
+    }
     data.read( "unique_id", unique_id );
     clear_personality_traits();
     generate_personality_traits();
@@ -2393,6 +2398,20 @@ void npc::store( JsonOut &json ) const
     json.member( "sleep_session", sleep_session );
     if( json_goal->active() ) {
         json.member( "json_goal", json_goal );
+    }
+    // how hostile npc_becomes_hostile last reported the NPC (npc.cpp)
+    if( json_goal->hostility ) {
+        switch( *json_goal->hostility ) {
+            case npc_hostility::none:
+                json.member( "hostility_reported", "none" );
+                break;
+            case npc_hostility::hostile:
+                json.member( "hostility_reported", "hostile" );
+                break;
+            case npc_hostility::kill:
+                json.member( "hostility_reported", "kill" );
+                break;
+        }
     }
     json.member( "unique_id", unique_id );
     json.member( "may_activity_occupancy_after_end_items_loc",

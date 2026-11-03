@@ -105,6 +105,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npc_attitude_cause.h"
 #include "npc_class.h"
 #include "npc_opinion.h"
 #include "npctalk.h"
@@ -3889,6 +3890,8 @@ static void spawn_npc()
     temp->randomize();
     temp->spawn_at_precise( player_character.pos_abs() + point( -4, -4 ) );
     overmap_buffer.insert_npc( temp );
+    // its starting attitude: no attitude events
+    const npc_attitude_cause spawning( npc_attitude_cause::spawn );
     temp->form_opinion( player_character );
     temp->mission = NPC_MISSION_NULL;
     temp->add_new_mission( mission::reserve_random( ORIGIN_ANY_NPC, temp->pos_abs_omt(),
@@ -3911,6 +3914,8 @@ static void spawn_npc_follower()
     temp->randomize();
     temp->spawn_at_precise( player_character.pos_abs() + point( -4, -4 ) );
     overmap_buffer.insert_npc( temp );
+    // its starting attitude: no attitude events
+    const npc_attitude_cause spawning( npc_attitude_cause::spawn );
     temp->form_opinion( player_character );
     temp->set_attitude( NPCATT_FOLLOW );
     temp->set_fac( faction_your_followers );
@@ -3954,6 +3959,8 @@ static void spawn_named_npc()
         temp->load_npc_template( chosen );
         temp->spawn_at_precise( player_character.pos_abs() + point( -4, -4 ) );
         overmap_buffer.insert_npc( temp );
+        // its starting attitude: no attitude events
+        const npc_attitude_cause spawning( npc_attitude_cause::spawn );
         temp->form_opinion( player_character );
 
         g->load_npcs();
