@@ -166,8 +166,14 @@ TEST_CASE( "loop-b08_motion_alarm_goes_off_once_a_turn_for_strangers_that_move",
     clear_map();
     clear_avatar();
     restore_on_out_of_scope restore_turn( calendar::turn );
-    set_time_to_day();
     avatar &u = get_avatar();
+    // The bionic, its power and the monsters go however the test ends
+    const on_out_of_scope cleanup( [&u]() {
+        clear_map();
+        clear_avatar();
+        u.set_power_level( 0_kJ );
+    } );
+    set_time_to_day();
     map &here = get_map();
     const tripoint_bub_ms center( 60, 60, 0 );
     u.setpos( here, center );
@@ -204,9 +210,6 @@ TEST_CASE( "loop-b08_motion_alarm_goes_off_once_a_turn_for_strangers_that_move",
         spawn_test_monster( "mon_test_speed_desc_base_immobile", center + tripoint_rel_ms( 2, 0, 0 ) );
         CHECK( alarm_power_used_in_one_turn() == 0_J );
     }
-
-    clear_map();
-    clear_avatar();
 }
 
 // ---- LOOP-B09 ----

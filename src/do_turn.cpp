@@ -329,10 +329,17 @@ void monmove()
     g->cleanup_dead();
     map &m = get_map();
     avatar &u = get_avatar();
-    // The motion alarm goes off at most once a turn, for a stranger that moved within range
+    // The motion alarm goes off at most once a turn, for a monster that isn't friendly and
+    // moved or appeared within range during the turn. Where every monster was is taken first,
+    // so one moved by another (pushed, knocked back, teleported) counts as well.
     const int motion_alarm_range = u.enchantment_cache->modify_value(
                                        enchant_vals::mod::MOTION_ALARM, 0 );
-    bool motion_detected = false;
+    std::unordered_map<const monster *, tripoint_abs_ms> start_positions;
+    if( motion_alarm_range > 0 ) {
+        for( const monster &critter : g->all_monsters() ) {
+            start_positions.emplace( &critter, critter.pos_abs() );
+        }
+    }
 
     for( monster &critter : g->all_monsters() ) {
         if( !m.inbounds( critter.pos_abs() ) ) {
@@ -377,7 +384,6 @@ void monmove()
             critter.try_biosignature();
             critter.try_reproduce();
         }
-        const tripoint_abs_ms pos_before_moving = critter.pos_abs();
         while( critter.get_moves() > 0 && !critter.is_dead() && !critter.has_effect( effect_ridden ) ) {
             critter.made_footstep = false;
             // Controlled critters don't make their own plans
@@ -393,14 +399,37 @@ void monmove()
             m.creature_in_field( critter );
         }
 
-        // Pets (a mount is always one) and creatures that stayed put don't set it off
-        if( !motion_detected && !critter.is_dead() && !critter.is_hallucination() &&
-            critter.friendly == 0 && critter.pos_abs() != pos_before_moving &&
-            rl_dist( u.pos_abs(), critter.pos_abs() ) < motion_alarm_range ) {
-            motion_detected = true;
-        }
     }
 
+    g->cleanup_dead();
+
+    // The remaining monsters are all alive, but may be outside of the reality bubble.
+    // If so, despawn them. This is not the same as dying, they will be stored for later and the
+    // monster::die function is not called.
+    g->despawn_nonlocal_monsters();
+
+    // Now, do active NPCs.
+    for( npc &guy : g->all_npcs() ) {
+        process_npc_turn( m, guy );
+    }
+    g->cleanup_dead();
+
+    // Friendly monsters (pets, mounts, charmed ones) and those that stayed put don't set the
+    // motion alarm off; NPCs never do
+    bool motion_detected = false;
+    if( motion_alarm_range > 0 ) {
+        for( const monster &critter : g->all_monsters() ) {
+            if( critter.is_dead() || critter.is_hallucination() || critter.friendly != 0 ||
+                rl_dist( u.pos_abs(), critter.pos_abs() ) >= motion_alarm_range ) {
+                continue;
+            }
+            const auto start = start_positions.find( &critter );
+            if( start == start_positions.end() || start->second != critter.pos_abs() ) {
+                motion_detected = true;
+                break;
+            }
+        }
+    }
     if( motion_detected ) {
         if( u.has_active_bionic( bio_alarm ) ) {
             u.mod_power_level( -bio_alarm->power_trigger );
@@ -416,19 +445,6 @@ void monmove()
             u.wake_up();
         }
     }
-
-    g->cleanup_dead();
-
-    // The remaining monsters are all alive, but may be outside of the reality bubble.
-    // If so, despawn them. This is not the same as dying, they will be stored for later and the
-    // monster::die function is not called.
-    g->despawn_nonlocal_monsters();
-
-    // Now, do active NPCs.
-    for( npc &guy : g->all_npcs() ) {
-        process_npc_turn( m, guy );
-    }
-    g->cleanup_dead();
 }
 
 namespace
