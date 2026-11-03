@@ -96,6 +96,18 @@ bool tree_has_goal_at_or_above( const behavior::node_t &node, const decision_cat
     } );
 }
 
+const char *status_name( const behavior::status_t status )
+{
+    switch( status ) {
+        case behavior::status_t::running:
+            return "running";
+        case behavior::status_t::success:
+            return "success";
+        case behavior::status_t::failure:
+            return "failure";
+    }
+    return "failure";
+}
 } // namespace
 
 bool npc_goal_registry::load_node( const JsonObject &jo, const string_id<behavior::node_t> &node,
@@ -424,4 +436,88 @@ void npc_goal_runtime::report_change( npc &guy )
     std::string old = std::exchange( state.reported, now );
     get_event_bus().send<event_type::npc_goal_changed>( guy.getID(), std::move( old ),
             std::string( now ) );
+}
+
+namespace
+{
+// depth first from node; true when it's on the path to `picked`
+bool describe_node( const behavior::node_t &node, const behavior::oracle_t *oracle,
+                    const behavior::node_t *picked, const int depth,
+                    std::set<const behavior::node_t *> &on_path_to_here,
+                    std::vector<npc_decision_report::node_line> &lines )
+{
+    npc_decision_report::node_line line;
+    line.depth = depth;
+    line.id = node.id.str();
+    for( const behavior::node_t::condition_trace &trace : node.trace_conditions( oracle ) ) {
+        line.conditions.push_back( { trace.label, trace.result == behavior::status_t::running } );
+    }
+    const behavior::behavior_return result = node.tick( oracle );
+    line.result = status_name( result.result );
+    if( node.has_score() && result.result == behavior::status_t::running ) {
+        line.score = result.score;
+    }
+    if( node.get_children().empty() ) {
+        line.goal = node.goal();
+        line.category = category_name( bt_goal_to_category( line.goal ) );
+    }
+    const size_t at = lines.size();
+    lines.push_back( line );
+    bool picked_here = &node == picked;
+    // a tree that loops back on itself is shown once
+    if( on_path_to_here.insert( &node ).second ) {
+        for( const behavior::node_t *child : node.get_children() ) {
+            picked_here |= describe_node( *child, oracle, picked, depth + 1, on_path_to_here, lines );
+        }
+        on_path_to_here.erase( &node );
+    }
+    lines[at].picked = picked_here;
+    return picked_here;
+}
+} // namespace
+
+npc_decision_report npc_goal_runtime::report( const npc &guy )
+{
+    npc_decision_report rep;
+    const behavior::character_oracle_t oracle( &guy );
+    const behavior::node_t &root = npc_decision_tree();
+    const behavior::behavior_return picked = root.tick( &oracle );
+    const behavior::node_t *picked_node = picked.result == behavior::status_t::running ?
+                                          picked.selection : nullptr;
+    rep.picked_goal = picked_node == nullptr ? "idle" : picked_node->goal();
+    rep.picked_score = picked.score;
+    rep.picked_category = category_name( bt_goal_to_category( rep.picked_goal ) );
+    std::set<const behavior::node_t *> on_path;
+    describe_node( root, &oracle, picked_node, 0, on_path, rep.nodes );
+
+    for( const npc_decision_category_id &id : npc_decision_category::order() ) {
+        rep.categories.push_back( { id.str(), id.obj().rank, id.obj().hysteresis } );
+    }
+
+    rep.committed_goal = current_goal( guy );
+    rep.committed_category = category_name( bt_goal_to_category( rep.committed_goal ) );
+    rep.committed_turns = turns_on_goal( guy );
+    if( rep.committed_goal == "idle" ) {
+        rep.verdict = string_format( "nothing is committed: %s is taken up", rep.picked_goal );
+        return rep;
+    }
+    const npc_pursuit current = guy.committed_pursuit();
+    rep.committed_score = current.selection;
+    if( npc_json_goals::find( rep.committed_goal ) != nullptr ) {
+        if( const std::optional<std::string> why = finish_reason( guy ) ) {
+            rep.verdict = string_format( "%s ends this turn: %s", rep.committed_goal, *why );
+            return rep;
+        }
+    }
+    if( rep.picked_goal == rep.committed_goal ) {
+        rep.verdict = string_format( "the tree picks %s again", rep.committed_goal );
+        return rep;
+    }
+    const npc_interrupt_verdict v = judge_interrupt( current, {
+        rep.picked_goal, rep.picked_score, guy.goal_is_idle( rep.picked_goal )
+    } );
+    rep.verdict = string_format( "%s %s %s: %s", rep.picked_goal,
+                                 v.interrupt ? "takes over from" : "doesn't take over from",
+                                 rep.committed_goal, v.why );
+    return rep;
 }

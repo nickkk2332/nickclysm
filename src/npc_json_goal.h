@@ -111,6 +111,45 @@ struct npc_interrupt_verdict {
 npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
                                        const npc_challenger &challenger );
 
+// What the NPC decision debug view shows for an NPC
+struct npc_decision_report {
+    struct condition_line {
+        std::string label;
+        bool holds = false;
+    };
+    // one line per node of the tree, depth first
+    struct node_line {
+        int depth = 0;
+        std::string id;
+        std::vector<condition_line> conditions;
+        // running, success or failure
+        std::string result;
+        std::optional<float> score;
+        // a leaf's goal, with its category
+        std::string goal;
+        std::string category;
+        // on the path to the goal the tree picks
+        bool picked = false;
+    };
+    struct category_line {
+        std::string id;
+        int rank = 0;
+        float hysteresis = 0.0f;
+    };
+    std::vector<node_line> nodes;
+    std::vector<category_line> categories;
+    std::string picked_goal;
+    float picked_score = 0.0f;
+    std::string picked_category;
+    // the goal the NPC is committed to, "idle" for none
+    std::string committed_goal;
+    std::string committed_category;
+    float committed_score = 0.0f;
+    int committed_turns = 0;
+    // why the committed goal stays, or what takes over
+    std::string verdict;
+};
+
 // What JSON goals do to an NPC; a friend of npc
 class npc_goal_runtime
 {
@@ -160,6 +199,9 @@ class npc_goal_runtime
         static bool outranks( const npc &guy, const decision_category &cat );
         // sends npc_goal_changed when the current goal isn't the one last reported
         static void report_change( npc &guy );
+
+        // what the NPC decision debug view shows; changes nothing
+        static npc_decision_report report( const npc &guy );
 };
 
 #endif // CATA_SRC_NPC_JSON_GOAL_H

@@ -759,3 +759,50 @@ TEST_CASE( "npc_goal_changed_event", "[npc][npc_goal][event]" )
     guy.remove_value( "test_goal_finish" );
     get_event_bus().unsubscribe( &recorder );
 }
+
+TEST_CASE( "npc_decision_report", "[npc][npc_goal]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_hysteresis_tree" );
+    guy.set_stored_kcal( guy.get_healthy_kcal() * 7 / 10 );
+    guy.set_thirst( 0 );
+    adopt( guy, "test_goal_hysteresis_a" );
+    guy.set_thirst( 1200 * 32 / 100 );
+
+    const npc_decision_report rep = npc_goal_runtime::report( guy );
+    REQUIRE( rep.nodes.size() == 3 );
+    CHECK( rep.nodes[0].id == "test_goal_hysteresis_tree" );
+    CHECK( rep.nodes[0].picked );
+    CHECK( rep.nodes[1].id == "test_goal_hysteresis_a" );
+    CHECK( rep.nodes[1].depth == 1 );
+    CHECK( rep.nodes[1].goal == "test_goal_hysteresis_a" );
+    CHECK( rep.nodes[1].category == "test_goal_late" );
+    CHECK( rep.nodes[1].result == "running" );
+    REQUIRE( rep.nodes[1].score );
+    CHECK( *rep.nodes[1].score == Approx( 0.3f ).margin( 0.01f ) );
+    CHECK_FALSE( rep.nodes[1].picked );
+    CHECK( rep.nodes[2].picked );
+    CHECK( rep.picked_goal == "test_goal_hysteresis_b" );
+    CHECK( rep.committed_goal == "test_goal_hysteresis_a" );
+    CHECK( rep.committed_category == "test_goal_late" );
+    CHECK( rep.committed_score == Approx( 0.3f ).margin( 0.01f ) );
+    CHECK( rep.verdict.find( "doesn't take over" ) != std::string::npos );
+    CHECK( rep.verdict.find( "hysteresis" ) != std::string::npos );
+    REQUIRE_FALSE( rep.categories.empty() );
+    CHECK( rep.categories.front().id == "test_goal_top" );
+
+    // conditions, true or false
+    goal_test_tree::use( "test_goal_errand_tree" );
+    const npc_decision_report errand = npc_goal_runtime::report( guy );
+    const auto fetch = std::find_if( errand.nodes.begin(), errand.nodes.end(),
+    []( const npc_decision_report::node_line & line ) {
+        return line.id == "test_goal_fetch";
+    } );
+    REQUIRE( fetch != errand.nodes.end() );
+    REQUIRE( fetch->conditions.size() == 1 );
+    CHECK( fetch->conditions[0].label == "not npc_can_wear_warmer_clothes" );
+    CHECK( fetch->conditions[0].holds );
+    // the report changes nothing
+    CHECK( guy.get_committed_goal() == "test_goal_hysteresis_a" );
+    CHECK( global_number( "test_goal_starts" ) == 0 );
+}

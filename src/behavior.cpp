@@ -188,6 +188,7 @@ void node_t::load( const JsonObject &jo, std::string_view src )
         const bool invert_result = predicate_object.get_bool( "invert_result", false );
         conditions.emplace_back( new_predicate->second, predicate_argument,
                                  invert_result );
+        condition_names.push_back( predicate_id );
     }
     // a JSON goal ("goal": { ... }) and its "category" (src/npc_json_goal.h)
     if( !npc_json_goals::registry().load_node( jo, id, src, _goal ) ) {
@@ -205,6 +206,27 @@ void node_t::load( const JsonObject &jo, std::string_view src )
             jo.throw_error( "Invalid score predicate in behavior." );
         }
     }
+}
+
+std::vector<node_t::condition_trace> node_t::trace_conditions( const oracle_t *subject ) const
+{
+    std::vector<condition_trace> traces;
+    for( size_t i = 0; i < conditions.size(); ++i ) {
+        const auto &[predicate, argument, invert] = conditions[i];
+        std::string label = i < condition_names.size() ? condition_names[i] : "condition";
+        if( !argument.empty() ) {
+            label += "( " + argument + " )";
+        }
+        if( invert ) {
+            label = "not " + label;
+        }
+        status_t result = predicate( subject, argument );
+        if( invert && result != status_t::success ) {
+            result = result == status_t::running ? status_t::failure : status_t::running;
+        }
+        traces.push_back( { label, result } );
+    }
+    return traces;
 }
 
 void node_t::check() const

@@ -86,6 +86,16 @@ class node_t
         const std::vector<const node_t *> &get_children() const {
             return children;
         }
+
+        // For the NPC decision debug view (npc_json_goal.h): what each condition says now
+        struct condition_trace {
+            std::string label;
+            status_t result;
+        };
+        std::vector<condition_trace> trace_conditions( const oracle_t *subject ) const;
+        bool has_score() const {
+            return score_function_.has_value();
+        }
         string_id<node_t> id;
         std::vector<std::pair<string_id<node_t>, mod_id>> src;
         bool was_loaded = false;
@@ -94,6 +104,8 @@ class node_t
         const strategy_t *strategy = nullptr;
         using predicate_type = std::function<status_t( const oracle_t *, const std::string & )>;
         std::vector<std::tuple<predicate_type, std::string, bool>> conditions;
+        // the predicate's name for each loaded condition, for trace_conditions()
+        std::vector<std::string> condition_names;
         status_t process_predicates( const oracle_t *subject ) const;
         // TODO: make into an ID?
         std::string _goal;

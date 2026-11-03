@@ -75,6 +75,7 @@
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "npc_json_goal.h"
 #include "npc_opinion.h"
 #include "output.h"
 #include "path_info.h"
@@ -2517,6 +2518,65 @@ void tab_player_view::draw_body( debug_console &host )
 }
 
 
+// The NPC decision view: the tree with each node's conditions and score, the category order,
+// and the goal the NPC is committed to and why (npc_goal_runtime::report()), worked out once a
+// turn.
+static void draw_npc_decision( const npc &guy )
+{
+    static character_id report_for;
+    static time_point report_at = calendar::before_time_starts;
+    static npc_decision_report rep;
+    if( report_for != guy.getID() || report_at != calendar::turn ) {
+        rep = npc_goal_runtime::report( guy );
+        report_for = guy.getID();
+        report_at = calendar::turn;
+    }
+    kv_panel( "npc_decision", [&]() {
+        kv_row( "committed goal", string_format( "%s (%s), %d turns, score %.2f", rep.committed_goal,
+                rep.committed_category, rep.committed_turns, rep.committed_score ) );
+        kv_row( "tree picks", string_format( "%s (%s), score %.2f", rep.picked_goal,
+                                             rep.picked_category, rep.picked_score ) );
+        kv_row( "why", rep.verdict );
+    } );
+    std::string order;
+    for( const npc_decision_report::category_line &cat : rep.categories ) {
+        order += string_format( "%s%s (%.0f%%)", order.empty() ? "" : " > ", cat.id,
+                                cat.hysteresis * 100.0f );
+    }
+    ImGui::TextDisabled( "%s", "categories, first to last (hysteresis):" );
+    ImGui::TextWrapped( "%s", order.c_str() );
+    if( ImGui::BeginTable( "npc_decision_nodes", 5,
+                           ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
+                           ImGuiTableFlags_SizingStretchProp ) ) {
+        ImGui::TableSetupColumn( "Node", ImGuiTableColumnFlags_WidthStretch );
+        fit_col( "Result" );
+        fit_col( "Score" );
+        ImGui::TableSetupColumn( "Conditions", ImGuiTableColumnFlags_WidthStretch );
+        ImGui::TableSetupColumn( "Goal", ImGuiTableColumnFlags_WidthStretch );
+        ImGui::TableHeadersRow();
+        for( const npc_decision_report::node_line &line : rep.nodes ) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            const std::string name = std::string( line.depth * 2, ' ' ) + line.id;
+            cataimgui::draw_colored_text( name, line.picked ? c_light_green : c_white );
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted( line.result.c_str() );
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted( line.score ? string_format( "%.2f", *line.score ).c_str() : "" );
+            ImGui::TableNextColumn();
+            for( const npc_decision_report::condition_line &cond : line.conditions ) {
+                cataimgui::draw_colored_text( string_format( "%s %s", cond.holds ? "yes" : "no",
+                                              cond.label ), cond.holds ? c_light_green : c_light_red );
+            }
+            ImGui::TableNextColumn();
+            if( !line.goal.empty() ) {
+                ImGui::TextUnformatted( string_format( "%s (%s)", line.goal, line.category ).c_str() );
+            }
+        }
+        ImGui::EndTable();
+    }
+}
+
 const char *tab_creatures_view::label() const
 {
     return "Creatures";
@@ -2978,6 +3038,10 @@ void tab_creatures_view::draw_body( debug_console &host )
             return VisitResponse::NEXT;
         } );
         ImGui::TextDisabled( "%d carried", items_carried );
+    }
+
+    if( sel_npc && ImGui::CollapsingHeader( "NPC decision##cr" ) ) {
+        draw_npc_decision( *sel_npc );
     }
 }
 
