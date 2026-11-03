@@ -52,6 +52,19 @@
 static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B07_REQUEUE( "EOC_AUDIT_B07_REQUEUE" );
 
+static const oter_str_id oter_field( "field" );
+
+static const overmap_special_id overmap_special_test_audit_b08_shelter( "test_audit_b08_shelter" );
+
+static talk_effect_t load_effect( const std::string &json )
+{
+    const JsonObject jo = json_loader::from_string( json );
+    talk_effect_t effect( jo, "effect", "audit_eoc_dialogue_test" );
+    // Math is parsed after loading; outside data loading that has to be done by hand.
+    finalize_conditions();
+    return effect;
+}
+
 static conditional_t::func load_condition( const std::string &json )
 {
     const JsonObject jo = json_loader::from_string( json );
@@ -150,4 +163,129 @@ TEST_CASE( "eoc-b07_requeue_with_no_delay_waits_for_the_next_pass", "[audit][eoc
     // The next run is waiting in the queue
     CHECK( count_in( u.queued_effect_on_conditions, effect_on_condition_EOC_AUDIT_B07_REQUEUE ) == 1 );
     CHECK( queue_is_whole( u.queued_effect_on_conditions ) );
+}
+
+// EOC-B08 (1): copy_location generated a missing destination but looked the source up with
+// lookup_submap, which is null for a place never generated, and dereferenced it.
+TEST_CASE( "eoc-b08_copy_location_from_a_place_never_generated", "[audit][eoc]" )
+{
+    clear_map();
+    map &here = get_map();
+    const tripoint_abs_omt home = project_to<coords::omt>( here.get_abs_sub() );
+    // Well outside the reality bubble, in the same overmap
+    const point_om_omt local = project_remain<coords::om>( home.xy() ).remainder;
+    const point_rel_omt away( local.x() < OMAPX / 2 ? 30 : -30, local.y() < OMAPY / 2 ? 30 : -30 );
+    const tripoint_abs_omt source = home + away;
+    const tripoint_abs_omt dest = source + point_rel_omt( 1, 0 );
+    const tripoint_abs_sm source_sm = project_to<coords::sm>( source );
+    REQUIRE_FALSE( MAPBUFFER.submap_exists( source_sm ) );
+    REQUIRE_FALSE( MAPBUFFER.submap_exists( project_to<coords::sm>( dest ) ) );
+
+    // Plain fields generate nothing that outlives the submaps
+    const oter_id old_source = overmap_buffer.ter( source );
+    const oter_id old_dest = overmap_buffer.ter( dest );
+    overmap_buffer.ter_set( source, oter_field.id() );
+    overmap_buffer.ter_set( dest, oter_field.id() );
+    global_variables &globals = get_globals();
+    globals.set_global_value( "audit_b08_source", project_to<coords::ms>( source ) );
+    globals.set_global_value( "audit_b08_dest", project_to<coords::ms>( dest ) );
+    on_out_of_scope restore( [&]() {
+        globals.remove_global_value( "audit_b08_source" );
+        globals.remove_global_value( "audit_b08_dest" );
+        overmap_buffer.ter_set( source, old_source );
+        overmap_buffer.ter_set( dest, old_dest );
+        MAPBUFFER.clear_outside_reality_bubble();
+    } );
+
+    const size_t events_before = get_timed_events().get_all().size();
+    const talk_effect_t copy = load_effect(
+                                   R"({ "effect": { "copy_location": { "global_val": "audit_b08_source" },
+        "new_loc": { "global_val": "audit_b08_dest" }, "time_in_future": 0, "key": "audit_b08_copy" } })" );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    copy.apply( d );
+    CHECK( MAPBUFFER.submap_exists( source_sm ) );
+    // One revert per submap of the tile
+    CHECK( get_timed_events().get_all().size() == events_before + 4 );
+
+    // Carry the copy out, which also takes the events off the queue
+    get_timed_events().set_all( "audit_b08_copy", 0_turns );
+    get_timed_events().process();
+    CHECK( get_timed_events().get_all().size() == events_before );
+}
+
+// EOC-B08 (2): near_om_location checked FACTION_CAMP_START on each tile around the talker with
+// the centre tile's mapgen arguments, so a camp start that depends on them was judged by the
+// wrong ones.  A bare-bones camp can start anywhere, so the answer is always yes; the wrong
+// arguments showed as errors about the shelter's parameters, or as an exception when the centre
+// belonged to a special not generated yet.
+TEST_CASE( "eoc-b08_near_om_location_reads_each_tiles_own_arguments", "[audit][eoc]" )
+{
+    const tripoint_abs_omt home = project_to<coords::omt>( get_map().get_abs_sub() );
+    const point_om_omt local = project_remain<coords::om>( home.xy() ).remainder;
+    const point_rel_omt away( local.x() < OMAPX / 2 ? 40 : -40, local.y() < OMAPY / 2 ? 20 : -20 );
+    // An evac shelter on the first tile the search looks at
+    const tripoint_abs_omt centre = home + away;
+    const tripoint_abs_omt shelter = centre + point_rel_omt( -1, -1 );
+    const oter_id old_shelter = overmap_buffer.ter( shelter );
+    REQUIRE( overmap_buffer.place_special( *overmap_special_test_audit_b08_shelter, shelter,
+                                           om_direction::type::north, false, true ) );
+    std::optional<mapgen_arguments> *args = overmap_buffer.mapgen_args( shelter );
+    REQUIRE( args != nullptr );
+    on_out_of_scope restore( [&]() {
+        args->reset();
+        overmap_buffer.ter_set( shelter, old_shelter );
+    } );
+
+    // Someone standing next to it
+    npc stander;
+    stander.spawn_at_precise( project_to<coords::ms>( centre ) );
+    dialogue d( get_talker_for( stander ), nullptr );
+    const conditional_t::func near_camp_start = load_condition(
+                R"({ "condition": { "u_near_om_location": "FACTION_CAMP_START", "range": 1 } })" );
+    const auto check_quietly = [&]() {
+        bool result = false;
+        const std::string messages = capture_debugmsg_during( [&]() {
+            result = near_camp_start( d );
+        } );
+        CHECK( messages.empty() );
+        CHECK( result );
+    };
+
+    SECTION( "the shelter's layout is decided" ) {
+        const std::unordered_map<std::string, cata_variant> layout = {
+            { "shelter_layout", cata_variant::from_string( cata_variant_type::nested_mapgen_id, "24x24_shelter" ) }
+        };
+        *args = mapgen_arguments( layout );
+        check_quietly();
+    }
+    SECTION( "not decided yet, as before the shelter is generated" ) {
+        args->reset();
+        check_quietly();
+    }
+}
+
+// EOC-B08 (3): location_variable's npc search only asked for NPCs within one submap of the
+// centre, and compared their reality-bubble position with a point of the map it searched.
+TEST_CASE( "eoc-b08_location_variable_finds_npcs_across_its_whole_radius", "[audit][eoc]" )
+{
+    clear_map();
+    avatar &u = get_avatar();
+    const npc &guy = spawn_npc( u.pos_bub().xy() + point( 30, 0 ), "test_talker" );
+    const character_id guy_id = guy.getID();
+    const tripoint_abs_ms guy_pos = guy.pos_abs();
+    global_variables &globals = get_globals();
+    on_out_of_scope restore( [&]() {
+        globals.remove_global_value( "audit_b08_npc_loc" );
+        overmap_buffer.remove_npc( guy_id );
+        clear_npcs();
+    } );
+
+    const talk_effect_t find_npc = load_effect(
+                                       R"({ "effect": { "u_location_variable": { "global_val": "audit_b08_npc_loc" },
+        "npc": "", "target_max_radius": 35 } })" );
+    dialogue d( get_talker_for( u ), nullptr );
+    find_npc.apply( d );
+    const diag_value *found = globals.maybe_get_global_value( "audit_b08_npc_loc" );
+    REQUIRE( found != nullptr );
+    CHECK( found->tripoint() == guy_pos );
 }

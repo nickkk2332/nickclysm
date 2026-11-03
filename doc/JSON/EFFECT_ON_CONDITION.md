@@ -394,7 +394,7 @@ return true if alpha talker is character (avatar or NPC)
 - type: string or [variable object](#variable-object)
 - return true if alpha talker stands on specific overmap tile;
 - `FACTION_CAMP_ANY` can be used, that return true if alpha or beta talker stand on faction camp tile;
-- `FACTION_CAMP_START` can be used, that return true if alpha or beta talker stand on tile, that can be turned into faction camp
+- `FACTION_CAMP_START` can be used, that return true if alpha or beta talker stand on tile, that can be turned into faction camp; where that depends on how the tile's overmap special was generated (such as an evac shelter's layout), the tile only counts once the special has been generated
 
 #### Valid talkers:
 

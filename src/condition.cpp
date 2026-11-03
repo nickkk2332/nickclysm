@@ -1260,7 +1260,7 @@ conditional_t::func f_near_om_location( const JsonObject &jo, std::string_view m
         for( const tripoint_abs_omt &curr_pos : points_in_radius( omt_pos,
                 range.evaluate( d ) ) ) {
             const oter_id &omt_ter = overmap_buffer.ter( curr_pos );
-            const std::optional<mapgen_arguments> *maybe_args = overmap_buffer.mapgen_args( omt_pos );
+            const std::optional<mapgen_arguments> *maybe_args = overmap_buffer.mapgen_args( curr_pos );
             const std::string &omt_str = omt_ter.id().str();
             std::string location_value = location.evaluate( d );
 

@@ -18,5 +18,14 @@
     "//": "EOC-B07: counts its runs and queues itself again with no delay, up to 50 runs.",
     "condition": { "math": [ "audit_b07_runs < 50" ] },
     "effect": [ { "math": [ "audit_b07_runs++" ] }, { "run_eocs": "EOC_AUDIT_B07_REQUEUE", "time_in_future": 0 } ]
+  },
+  {
+    "type": "overmap_special",
+    "id": "test_audit_b08_shelter",
+    "//": "EOC-B08: one evac shelter tile, placed by hand; its layout parameter is set by the test.",
+    "locations": [ "land" ],
+    "occurrences": [ 0, 0 ],
+    "flags": [ "SHOULD_NOT_SPAWN" ],
+    "overmaps": [ { "point": [ 0, 0, 0 ], "overmap": "shelter_north" } ]
   }
 ]

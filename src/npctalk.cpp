@@ -4862,8 +4862,16 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
             int min_target_dist = dov_target_min_radius.evaluate( d );
             std::string cur_search_target = search_target.value().evaluate( d );
             bool found = false;
+            const int max_target_dist = dov_target_max_radius.evaluate( d );
             tripoint_range<tripoint_bub_ms> points = here.points_in_radius( here.get_bub( abs_ms ),
-                    size_t( dov_target_max_radius.evaluate( d ) ), size_t( 0 ) );
+                    size_t( max_target_dist ), size_t( 0 ) );
+            // Every NPC the search can reach, asked for once: enough submaps around the centre
+            // to cover the whole radius
+            std::vector<shared_ptr_fast<npc>> npcs_near;
+            if( search_type.value() == "npc" ) {
+                npcs_near = overmap_buffer.get_npcs_near( project_to<coords::sm>( abs_ms ),
+                            std::max( max_target_dist, 0 ) / SEEX + 1 );
+            }
             for( const tripoint_bub_ms &search_loc : points ) {
                 if( rl_dist( here.get_bub( talker_pos ), search_loc ) <= min_target_dist ) {
                     continue;
@@ -4920,9 +4928,9 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
                         break;
                     }
                 } else if( search_type.value() == "npc" ) {
-                    for( shared_ptr_fast<npc> &person : overmap_buffer.get_npcs_near( project_to<coords::sm>( abs_ms ),
-                            1 ) ) {
-                        if( person->pos_bub() == search_loc && ( person->myclass.c_str() == cur_search_target ||
+                    const tripoint_abs_ms search_abs = here.get_abs( search_loc );
+                    for( shared_ptr_fast<npc> &person : npcs_near ) {
+                        if( person->pos_abs() == search_abs && ( person->myclass.c_str() == cur_search_target ||
                                 cur_search_target.empty() ) ) {
                             target_pos = here.get_abs( search_loc );
                             found = true;
@@ -5512,6 +5520,12 @@ talk_effect_fun_t::func f_copy_location( const JsonObject &jo, std::string_view 
         // maptile is 4 submaps so queue up 4 submap reverts
         const tripoint_abs_sm revert_sm_base = project_to<coords::sm>( omt_pos );
         const tripoint_abs_sm new_sm_base = project_to<coords::sm>( omt_pos_new );
+        if( !MAPBUFFER.submap_exists( revert_sm_base ) ) {
+            // The place copied from has never been generated: generate it, as for the
+            // destination below
+            tinymap tm;
+            tm.load( omt_pos, true );
+        }
         if( !MAPBUFFER.submap_exists( new_sm_base ) ) {
             tinymap tm;
             // This creates the submaps if they didn't already exist.
