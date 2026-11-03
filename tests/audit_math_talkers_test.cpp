@@ -90,6 +90,10 @@ TEST_CASE( "math-b04_assignments_honour_the_read_kwargs", "[audit][math_parser]"
         CHECK( calendar::turn == calendar::turn_zero + 20_days );
         eval_math( d, "time('now') = 90" );
         CHECK( calendar::turn == calendar::turn_zero + 90_seconds );
+        // Off a whole hour: 15:00:04 in hours, plus one, times 3600 lands a hair below 16:00:04.
+        calendar::turn = calendar::turn_zero + 10_days + 15_hours + 4_seconds;
+        eval_math( d, "time('now', 'unit':'hours') += 1" );
+        CHECK( calendar::turn == calendar::turn_zero + 10_days + 16_hours + 4_seconds );
     }
 
     SECTION( "calories() as a percent" ) {
@@ -383,3 +387,4 @@ TEST_CASE( "math-b11_val_pos_moves_like_a_teleport", "[audit][math_parser]" )
         CHECK( mon.pos_abs() == mon_start + tripoint::east * 2 );
     }
 }
+

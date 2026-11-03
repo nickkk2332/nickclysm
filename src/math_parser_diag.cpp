@@ -1436,9 +1436,10 @@ void time_ass( double val, dialogue &d, char /* scope */,
     // intentionally duplicate check for str to avoid the `Expected str, got ...` error and get the
     // nicer one below
     if( params[0].is_str() && params[0].str() == "now" ) {
-        // val is in the 'unit' time('now') reads in, as for time('now', 'unit':'hours') += 1
+        // val is in the 'unit' time('now') reads in, as for time('now', 'unit':'hours') += 1.
+        // Rounded: the trip through the unit can land a hair below a whole turn.
         double const turns = val * _turns_per_unit( kwargs.kwarg_or( "unit" ).str( d ) );
-        calendar::turn = calendar::turn_zero + time_duration::from_turns<double>( turns );
+        calendar::turn = calendar::turn_zero + time_duration::from_turns<double>( std::round( turns ) );
     } else {
         throw math::syntax_error( "Only time('now') is a valid time() assignment target" );
     }
