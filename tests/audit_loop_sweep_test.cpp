@@ -88,7 +88,17 @@ static int sap_made_in_the_day_before( const time_duration &since_spring )
 {
     clear_map();
     map &here = get_map();
+    restore_on_out_of_scope restore_turn( calendar::turn );
     const time_point start = calendar::turn;
+    // The submaps of the tree's map square, which the load below catches up: put back as
+    // touched at the real time, however the helper ends
+    std::vector<submap *> submaps;
+    const on_out_of_scope touch_back( [&submaps, start]() {
+        for( submap *sm : submaps ) {
+            sm->last_touched = start;
+        }
+        clear_map();
+    } );
     // The next such time at least a day ahead, so every submap the load catches up moves forwards
     time_point when = calendar::turn_zero + since_spring;
     while( when < start + 1_days ) {
@@ -100,8 +110,6 @@ static int sap_made_in_the_day_before( const time_duration &since_spring )
     here.ter_set( tree, ter_t_tree_maple_tapped );
     here.add_item( tree, item( itype_bucket ) );
     const tripoint_abs_omt tree_omt = project_to<coords::omt>( here.get_abs( tree ) );
-    // The submaps of the tree's map square, which the load below catches up
-    std::vector<submap *> submaps;
     for( int dx = 0; dx < SEEX * 2; dx += SEEX ) {
         for( int dy = 0; dy < SEEY * 2; dy += SEEY ) {
             const tripoint_abs_ms corner = project_to<coords::ms>( tree_omt ) + tripoint_rel_ms( dx, dy, 0 );
@@ -126,11 +134,6 @@ static int sap_made_in_the_day_before( const time_duration &since_spring )
             }
         }
     }
-    calendar::turn = start;
-    for( submap *sm : submaps ) {
-        sm->last_touched = start;
-    }
-    clear_map();
     return sap;
 }
 
