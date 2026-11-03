@@ -2194,6 +2194,10 @@ conditional_t::func f_has_ammo( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
         item_location const *it = d.const_actor( is_npc )->get_const_item();
+        if( it && !*it ) {
+            // gone: used up earlier in the same EOC
+            return false;
+        }
         if( it ) {
             // The other talker, when it is a character, is the one using the item.
             Character const *user = d.has_actor( !is_npc ) ?
@@ -2672,6 +2676,10 @@ conditional_t::func f_is_rotten( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
         item_location const *it = d.const_actor( is_npc )->get_const_item();
+        if( it && !*it ) {
+            // gone: used up earlier in the same EOC
+            return false;
+        }
         if( it ) {
             return ( *it )->get_relative_rot() > 1;
         } else {

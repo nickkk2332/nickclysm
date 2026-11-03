@@ -9,15 +9,18 @@
 #include "character.h"
 #include "clzones.h"
 #include "computer.h"
+#include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "faction.h"
+#include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
+#include "json_loader.h"
 #include "line.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -251,4 +254,61 @@ TEST_CASE( "math-b09_talkers_report_their_own_overmap_tile", "[audit][math_parse
     zone_data zone( "audit zone", zone_type_LOOT_UNSORTED, faction_your_followers, false, true,
                     here.get_abs( away ), here.get_abs( away + tripoint::east ) );
     CHECK( get_talker_for( zone )->pos_abs_omt() == project_to<coords::omt>( here.get_abs( away ) ) );
+}
+
+static talk_effect_t load_effect( const std::string &json )
+{
+    const JsonObject jo = json_loader::from_string( json );
+    talk_effect_t effect( jo, "effect", "audit_math_talkers_test" );
+    // Math is parsed after loading; outside data loading that has to be done by hand.
+    finalize_conditions();
+    return effect;
+}
+
+static conditional_t::func load_condition( const std::string &json )
+{
+    const JsonObject jo = json_loader::from_string( json );
+    conditional_t::func condition;
+    read_condition( jo, "condition", condition, false );
+    return condition;
+}
+
+// MATH-B10: once npc_die removed the item, the item talker stayed in the dialogue, and later
+// effects of the same EOC that read the item dereferenced a null pointer.
+TEST_CASE( "math-b10_a_dead_item_talker_does_not_crash_later_effects", "[audit][math_parser][eoc]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms at = u.pos_bub() + tripoint::east;
+    item_location rock = here.add_item_or_charges_ret_loc( at, item( itype_test_rock ) );
+    REQUIRE( rock );
+    dialogue d( get_talker_for( u ), get_talker_for( rock ) );
+
+    load_effect( R"({ "effect": [ "npc_die" ] })" ).apply( d );
+    REQUIRE_FALSE( rock );
+    CHECK( here.i_at( at ).empty() );
+
+    // What the talker answers itself (fixed before this finding)
+    CHECK( d.actor( true )->get_name().empty() );
+    load_effect( R"({ "effect": { "math": [ "n_audit_math_b10 = 1" ] } })" ).apply( d );
+    CHECK( eval_math( d, "n_audit_math_b10" ) == 0 );
+
+    // Math functions about an item that is gone are errors, not crashes.
+    const std::vector<std::string> item_functions = {
+        "n_damage_level()", "n_gun_damage('ALL')", "n_melee_damage('ALL')", "n_vitamin('calcium')"
+    };
+    for( const std::string &expr : item_functions ) {
+        CAPTURE( expr );
+        CHECK_THROWS_AS( eval_math( d, expr ), math::runtime_error );
+    }
+    // Conditions about it are false.
+    CHECK_FALSE( load_condition( R"({ "condition": "npc_has_ammo" })" )( d ) );
+    CHECK_FALSE( load_condition( R"({ "condition": "npc_is_rotten" })" )( d ) );
+    // Effects that change it do nothing.
+    load_effect( R"({ "effect": { "npc_set_fault": "fault_armor_lc_dented" } })" ).apply( d );
+    load_effect( R"({ "effect": { "npc_set_random_fault_of_type": "mechanical_damage" } })" ).apply(
+        d );
+    CHECK_FALSE( rock );
 }

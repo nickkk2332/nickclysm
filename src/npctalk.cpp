@@ -7066,9 +7066,9 @@ talk_effect_fun_t::func f_set_fault( const JsonObject &jo, std::string_view memb
     bool force = jo.get_bool( "force", false );
     bool msg = jo.get_bool( "message", true );
     return [fault_var, force, msg, is_npc]( dialogue const & d ) {
-        item_location &it = *d.actor( is_npc )->get_item();
+        // the talker skips an item that is gone (used up earlier in the same EOC)
         const Character *holder = msg ? d.actor( is_npc )->get_character() : nullptr;
-        it.get_item()->set_fault( fault_id( fault_var.evaluate( d ) ), force, holder );
+        d.actor( is_npc )->set_fault( fault_id( fault_var.evaluate( d ) ), force, holder );
     };
 }
 
@@ -7079,9 +7079,8 @@ talk_effect_fun_t::func f_set_random_fault_of_type( const JsonObject &jo, std::s
     bool force = jo.get_bool( "force", false );
     bool msg = jo.get_bool( "message", true );
     return [fault_type_var, force, msg, is_npc]( dialogue const & d ) {
-        item_location &it = *d.actor( is_npc )->get_item();
         const Character *holder = msg ? d.actor( is_npc )->get_character() : nullptr;
-        it.get_item()->set_random_fault_of_type( fault_type_var.evaluate( d ), force, holder );
+        d.actor( is_npc )->set_random_fault_of_type( fault_type_var.evaluate( d ), force, holder );
     };
 }
 

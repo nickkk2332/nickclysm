@@ -350,7 +350,8 @@ double damage_level_eval( const_dialogue const &d, char scope,
                           diag_kwargs const & /* kwargs */ )
 {
     item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
-    if( !it ) {
+    // an item that is gone (used up earlier in the same EOC) is no item
+    if( it == nullptr || !*it ) {
         throw math::runtime_error( "subject of damage_level() must be an item" );
     }
     return ( *it )->damage_level();
@@ -529,7 +530,7 @@ double gun_damage_eval( const_dialogue const &d, char scope, std::vector<diag_va
 {
 
     item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
-    if( it == nullptr ) {
+    if( it == nullptr || !*it ) {
         throw math::runtime_error( "subject of gun_damage() must be an item" );
     }
     std::string const &dt_str = params[0].str( d );
@@ -815,7 +816,7 @@ double melee_damage_eval( const_dialogue const &d, char scope,
 {
 
     item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
-    if( it == nullptr ) {
+    if( it == nullptr || !*it ) {
         throw math::runtime_error( "subject of melee_damage() must be an item" );
     }
     std::string const &dt_str = params[0].str( d );
@@ -2368,7 +2369,7 @@ double vitamin_eval( const_dialogue const &d, char scope, std::vector<diag_value
     if( Character const *const chr = actor->get_const_character(); chr != nullptr ) {
         return chr->vitamin_get( vitamin_id( id_str ) );
     }
-    if( item_location const *const itm = actor->get_const_item(); itm != nullptr ) {
+    if( item_location const *const itm = actor->get_const_item(); itm != nullptr && *itm ) {
         const std::map<vitamin_id, int> &vitamin_data =
             default_character_compute_effective_nutrients( *itm->get_item() ).vitamins();
         const auto &v = vitamin_data.find( vitamin_id( id_str ) );
