@@ -4,6 +4,7 @@
 
 - [Creating new NPCs](#creating-new-npcs)
   - [NPC Class definition](#npc-class-definition)
+    - [AI tuning](#ai-tuning)
     - [Shopkeeper NPC configuration](#shopkeeper-npc-configuration)
   - [NPC instance definition](#npc-instance-definition)
 - [Writing dialogues](#writing-dialogues)
@@ -75,9 +76,45 @@ Format:
   "shopkeeper_blacklist": "test_blacklist",
   "restock_interval": "6 days",
   "proficiencies": [ "prof_gunsmithing_basic", "prof_spotting" ],         // Optional. Note that prereqs do not need to be defined. NPCs of this class will learn this proficiency *and all pre-requisite proficiencies*.
-  "traits": [ { "group": "BG_survival_story_EVACUEE" }, { "group": "NPC_starting_traits" }, { "group": "Appearance_demographics" } ]     // Optional
+  "traits": [ { "group": "BG_survival_story_EVACUEE" }, { "group": "NPC_starting_traits" }, { "group": "Appearance_demographics" } ],    // Optional
+  "ai_tuning": { "needs": { "drink_water": { "act": 0.5 } } }               // Optional. See [AI tuning](#ai-tuning) below.
 }
 ```
+
+### AI tuning
+`"ai_tuning"` changes the numbers an NPC's needs, its weighing of needs against duties and its sleep run on. Every member is optional; what isn't given keeps the default, which is how every NPC behaves without it, or with `"copy-from"` keeps the copied class's value. [NPC behavior](NPC_BEHAVIOR.md#tuning) explains what each number does.
+
+```jsonc
+"ai_tuning": {
+  "needs": {                                    // per need: act <= insist <= emergency, each 0 to 1
+    "drink_water": { "act": 0.433, "insist": 0.667, "emergency": 0.75 },   // thirst / 1200
+    "eat_food": { "act": 0.2, "insist": 0.4, "emergency": 0.6 },           // share of healthy stored calories missing
+    "go_to_sleep": { "act": 0.191, "insist": 0.383, "emergency": 0.575 },  // sleepiness / 1000
+    "regulate_temperature": { "act": 0.75, "insist": 0.75, "emergency": 0.75 }
+  },
+  "need_critical_urgency": 0.75,                // a need this urgent takes over from another whatever the margin
+  "urgency": {                                  // the scores of the built-in obligations, 0 to 1
+    "duty": 0.45,                               // a guard on shift at its post, and the least away from it
+    "duty_max": 0.5,                            // away from its post, at the most
+    "follow_max": 0.6,                          // following the avatar from far behind
+    "goto": 0.65,                               // walking where it was ordered to
+    "camp_work": 0.4,
+    "return_to_camp": 0.5,
+    "free_time": 0.35
+  },
+  "starvation_hunger": 300,                     // hunger from which an NPC burning stored calories counts as starving
+  "camp_meal_kcal": 500,                        // the least a camp serves a merely hungry NPC
+  "sleep": {
+    "settle_interval": "3 minutes",             // a settling NPC tries to fall asleep this often
+    "settle_timeout": "30 minutes",             // and gives the spot up after this long
+    "stall_wakes": 3,                           // woken this often
+    "stall_window": "30 minutes",               // within this long, its sleep stalls
+    "stall_duration": "30 minutes"              // and steps aside for other work this long
+  }
+}
+```
+
+Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. The set of needs is fixed: a mod can't add one here.
 
 ### Shopkeeper NPC configuration
 `npc_class` supports several properties for configuring the behavior of NPCs that behave as shopkeepers:

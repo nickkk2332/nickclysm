@@ -1,5 +1,50 @@
 [
   {
+    "type": "npc_class",
+    "id": "test_npc_ai_tuned",
+    "//": "NPC AI hook tests (tests/npc_ai_hooks_test.cpp): every ai_tuning number moved off its default.",
+    "name": { "str": "AI tuning tester" },
+    "job_description": "I test how NPCs are tuned.",
+    "common": false,
+    "ai_tuning": {
+      "needs": {
+        "drink_water": { "act": 0.25, "insist": 0.3, "emergency": 0.5 },
+        "eat_food": { "act": 0.1, "insist": 0.2, "emergency": 0.3 },
+        "go_to_sleep": { "act": 0.1, "insist": 0.2, "emergency": 0.3 },
+        "regulate_temperature": { "act": 0.5, "insist": 0.6, "emergency": 0.7 }
+      },
+      "need_critical_urgency": 0.5,
+      "urgency": {
+        "duty": 0.2,
+        "duty_max": 0.3,
+        "follow_max": 0.4,
+        "goto": 0.7,
+        "camp_work": 0.15,
+        "return_to_camp": 0.25,
+        "free_time": 0.1
+      },
+      "starvation_hunger": 100,
+      "camp_meal_kcal": 800,
+      "sleep": {
+        "settle_interval": "1 minutes",
+        "settle_timeout": "5 minutes",
+        "stall_wakes": 2,
+        "stall_window": "10 minutes",
+        "stall_duration": "1 hours"
+      }
+    }
+  },
+  {
+    "type": "npc_class",
+    "id": "test_npc_ai_tuned_child",
+    "//": "NPC AI hook tests: copies test_npc_ai_tuned and changes one number.",
+    "copy-from": "test_npc_ai_tuned",
+    "name": { "str": "AI tuning tester's child" },
+    "job_description": "I test how NPCs are tuned.",
+    "common": false,
+    "ai_tuning": { "urgency": { "goto": 0.8 } }
+  },
+  {
     "type": "faction",
     "id": "test_npc_ai_deserters",
     "//": "NPC AI hook tests: where the hawks' mutineers go.",

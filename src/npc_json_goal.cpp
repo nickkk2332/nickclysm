@@ -25,6 +25,7 @@
 #include "global_vars.h"
 #include "math_parser_diag_value.h"
 #include "npc.h"
+#include "npc_ai_tuning.h"
 #include "npc_arbitration.h"
 #include "npc_goal_state.h"
 #include "string_formatter.h"
@@ -487,7 +488,8 @@ bool builtin_goal_over( const npc &guy, const std::string &committed, const std:
                 // tired, it lies back down first
                 satisfied = guy.has_effect( effect_sleep ) ||
                             ( oracle.needs_sleep_badly( "" ) != behavior::status_t::running &&
-                              !guy.get_sleep_session().wants_resume( guy.get_sleepiness() ) );
+                              !guy.get_sleep_session().wants_resume( guy.get_sleepiness(),
+                                      ai_tuning_of( guy ) ) );
                 break;
         }
         return satisfied || guy.plan_for( *gid ).last_result == npc::need_result::impossible;
@@ -512,10 +514,11 @@ npc_goal_choice npc_goal_runtime::choose( npc &guy, const behavior::oracle_t &or
     behavior::tree tree;
     tree.add( &npc_decision_tree() );
     std::tie( c.picked, c.picked_score ) = tree.tick_full( &oracle );
+    const npc_ai_tuning &tuning = ai_tuning_of( guy );
     if( guy.goal_is_idle( c.picked ) && !guy.sleep_on_hold() &&
         !guy.has_flag( json_flag_CANNOT_SLEEP ) &&
-        ( ( guy.sleep_stalled() && guy.get_sleepiness() >= sleepiness_levels::TIRED ) ||
-          guy.get_sleep_session().wants_resume( guy.get_sleepiness() ) ) &&
+        ( ( guy.sleep_stalled() && guy.get_sleepiness() >= tuning.tired_level() ) ||
+          guy.get_sleep_session().wants_resume( guy.get_sleepiness(), tuning ) ) &&
         guy.best_need_view( npc::need_goal_id::go_to_sleep ).may_consider() ) {
         // a sleep that stepped aside for work, or was woken early, comes back when nothing
         // else is on offer
@@ -570,7 +573,8 @@ npc_goal_choice npc_goal_runtime::choose( npc &guy, const behavior::oracle_t &or
     if( npc::goal_id_for( c.committed ) && c.picked == "start_fire" ) {
         c.verdict = { false, "start_fire has no executor and doesn't displace a need that has one" };
     } else {
-        c.verdict = judge_interrupt( current, { c.picked, c.picked_score, guy.goal_is_idle( c.picked ) } );
+        c.verdict = judge_interrupt( current, { c.picked, c.picked_score, guy.goal_is_idle( c.picked ) },
+                                     tuning.need_critical_urgency );
     }
     c.committed_score = current.selection;
     c.interrupted = c.verdict.interrupt;

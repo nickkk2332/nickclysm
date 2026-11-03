@@ -11,6 +11,7 @@
 
 #include "calendar.h"
 #include "faction.h"
+#include "npc_ai_tuning.h"
 #include "translation.h"
 #include "type_id.h"
 
@@ -106,6 +107,8 @@ class npc_class
         // Work shift hours [start, end). Default [0,24] = always on duty.
         // Wraps midnight: [22,6] means 10pm-6am.
         std::pair<int, int> work_hours_ = { 0, 24 };
+        // "ai_tuning": the defaults unless the class or the one it copies gives some
+        npc_ai_tuning ai_tuning;
 
     public:
         npc_class_id id;
@@ -151,6 +154,9 @@ class npc_class
         };
         const time_duration &get_shop_restock_interval() const;
         const std::pair<int, int> &get_work_hours() const;
+        const npc_ai_tuning &get_ai_tuning() const {
+            return ai_tuning;
+        }
         faction_price_rule const *get_price_rules( item const &it, npc const &guy ) const;
 
         bool is_common() const;

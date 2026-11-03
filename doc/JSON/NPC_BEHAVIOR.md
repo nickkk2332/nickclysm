@@ -148,9 +148,9 @@ gives 0), with an error; a tree that uses both kinds is reported at load.
 | `npc_has_target` | it has a target | failure
 | `npc_has_sound_alerts` | it heard a sound worth investigating; never for companions walking with the player, immobile NPCs or `IGNORE_SOUND` | failure
 | `npc_needs_temperature_regulation` | a body part is very cold | success
-| `npc_needs_water_badly` | thirst is above 520 | success (also for NPCs that don't need food)
-| `npc_needs_food_badly` | it is starving, or short of calories | success (also for NPCs that don't need food)
-| `npc_needs_sleep_badly` | sleepiness is at least tired | success
+| `npc_needs_water_badly` | thirst is above its class's `drink_water` `act` level ([Tuning](#tuning)), 520 by default | success (also for NPCs that don't need food)
+| `npc_needs_food_badly` | it is starving, or short of calories (by default 20% of a healthy store) | success (also for NPCs that don't need food)
+| `npc_needs_sleep_badly` | sleepiness is at least tired (191, by default) | success
 | `npc_has_water`, `npc_has_food` | it carries something it may drink or eat for the need, and may stop to consume it | failure
 | `npc_can_obtain_water`, `npc_can_obtain_food` | there is a source it may go to | failure
 | `npc_can_regulate_temperature` | it can put on warmer clothes, reach a warmth source, or wait indoors (for up to 60 turns without getting warmer) | failure
@@ -212,6 +212,8 @@ it has children (see [How a node is walked](#how-a-node-is-walked)).
 | `npc_camp_work_urgency` | 0.4 for a camp resident with a job, in its camp
 | `npc_return_to_camp_urgency` | 0.5 for a camp resident outside its camp
 | `npc_free_time_urgency` | 0.35 for an idle camp resident in its camp
+
+These are the defaults. An NPC class can change the levels the needs act at and the obligations' scores, for its NPCs alone; see [Tuning](#tuning).
 
 ### `evaluate_every`
 
@@ -638,6 +640,57 @@ Besides its goal, EOCs can read and change these of an NPC; each is described wh
 | `npc_recruited`, `npc_dismissed`, `npc_mutinies` | [events](EFFECT_ON_CONDITION.md#event-eoc-types) | it joined or left the avatar's followers, or mutinied |
 
 A faction's relations to other factions are read with [`faction_has_relation`](EFFECT_ON_CONDITION.md#faction_has_relation) and set with [`set_faction_relation`](EFFECT_ON_CONDITION.md#set_faction_relation).
+
+## Tuning
+
+An NPC class's `ai_tuning` ([NPCs.md](NPCs.md#ai-tuning)) changes the numbers the built-in needs, the weighing of needs against obligations and sleep run on, for that class's NPCs. A class that gives none, every vanilla one, has the defaults below: the game's behavior without it. With `copy-from` a class keeps what the class it copies gives and changes what it gives itself. To weigh a score for one branch of the tree instead, edit that node's `score` ([Scores](#scores)).
+
+### Needs
+
+Each built-in need has an urgency from 0 to 1, its built-in score: thirst / 1200, the share of a healthy calorie store missing, sleepiness / 1000, how cold the coldest body part is. `needs` gives three levels on that scale for each:
+
+| Level | What waits for it | `drink_water` | `eat_food` | `go_to_sleep` | `regulate_temperature` |
+| --- | --- | --- | --- | --- | --- |
+| `act` | the need's predicate: `npc_needs_water_badly` (thirst above it), `npc_needs_food_badly` (calories short by more than it), `npc_needs_sleep_badly` and `npc_can_sleep` (sleepiness at it); also what a discouraged option's level relaxes to while the avatar stays put | 0.433 (thirst 520) | 0.2 | 0.191 (tired) | 0.75 |
+| `insist` | an option the NPC's obligations discourage, such as a trip out of the follow radius, or sleep while the avatar is on the move | 0.667 (thirst 800) | 0.4 | 0.383 (dead tired) | 0.75 |
+| `emergency` | an option they allow only in an emergency, such as leaving a guard post or a walk it was ordered on | 0.75 | 0.6 | 0.575 (exhausted) | 0.75 |
+
+Each level is 0 to 1, and `act` <= `insist` <= `emergency`. The temperature predicate isn't tuned (it fires on a very cold body part): those levels only decide when the NPC may leave an obligation to get warm.
+
+| Member | Default | What it does |
+| --- | --- | --- |
+| `need_critical_urgency` | 0.75 | a need more urgent than this takes over from another need the NPC is on, whether or not it beats it by the margin it otherwise needs (0.15 to 0.45, by what breaking off the first one costs) |
+| `starvation_hunger` | 300 | an NPC burning its stored calories counts as starving, and looks for food even when not short of calories, from this hunger |
+| `camp_meal_kcal` | 500 | the least a camp's larder serves an NPC that is hungry but not short of calories |
+
+### Obligations
+
+`urgency` sets the built-in scores of the obligations, 0 to 1, against the needs' urgencies:
+
+| Member | Default | Score |
+| --- | --- | --- |
+| `duty` | 0.45 | `npc_duty_urgency` of a guard on shift at its post, and the least while it's away from it |
+| `duty_max` | 0.5 | `npc_duty_urgency` away from its post at the most (0.05 a tile); at least `duty` |
+| `follow_max` | 0.6 | `npc_following_urgency` at the most, and on another level: from 0.3 just outside the follow radius, 0.015 more a tile |
+| `goto` | 0.65 | `npc_goto_order_urgency` |
+| `camp_work` | 0.4 | `npc_camp_work_urgency` |
+| `return_to_camp` | 0.5 | `npc_return_to_camp_urgency` |
+| `free_time` | 0.35 | `npc_free_time_urgency` |
+
+### Sleep
+
+| `sleep` member | Default | What it does |
+| --- | --- | --- |
+| `settle_interval` | 3 minutes | an NPC lying down tries to fall asleep this often, each try easier than the last (up to the tenth) |
+| `settle_timeout` | 30 minutes | then it gives the spot up and looks for another |
+| `stall_wakes`, `stall_window` | 3, 30 minutes | woken this many times within this long, its sleep stalls |
+| `stall_duration` | 30 minutes | a stalled sleep gives way to any other work this long |
+
+A woken NPC lies back down while it is still half as tired as `go_to_sleep`'s `act`.
+
+### What can't be tuned
+
+The set of needs is fixed: `drink_water`, `eat_food`, `go_to_sleep` and `regulate_temperature`. A mod can't add one (blood, mana, a battery to charge) through tuning; a [JSON goal](#json-goals) with a math score covers much of what such a need would do.
 
 ## Debugging
 

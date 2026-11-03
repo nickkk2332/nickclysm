@@ -38,6 +38,7 @@
 #include "map_iterator.h"
 #include "messages.h"
 #include "npc.h"
+#include "npc_ai_tuning.h"
 #include "npc_arbitration.h"
 #include "npc_sleep.h"
 #include "npc_turn_helpers.h"
@@ -1184,14 +1185,15 @@ TEST_CASE( "loaded_settler_rechecks_obligations_on_its_first_turn",
 TEST_CASE( "settling_patience_grows_with_time_lying_down", "[npc][sleep]" )
 {
     npc_sleep_session ses;
-    ses.begin_settling();
-    CHECK( ses.patience() == 0 );
+    const npc_ai_tuning &tuning = npc_ai_tuning::defaults();
+    ses.begin_settling( tuning );
+    CHECK( ses.patience( tuning ) == 0 );
     calendar::turn += 7_minutes;
-    CHECK( ses.patience() == 2 );
+    CHECK( ses.patience( tuning ) == 2 );
     calendar::turn += 2_hours;
-    CHECK( ses.patience() == 10 );
-    ses.begin_settling();
-    CHECK( ses.patience() == 0 );
+    CHECK( ses.patience( tuning ) == 10 );
+    ses.begin_settling( tuning );
+    CHECK( ses.patience( tuning ) == 0 );
 }
 
 TEST_CASE( "old_save_without_session_still_settles", "[npc][sleep]" )

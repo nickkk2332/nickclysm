@@ -88,6 +88,7 @@
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "npc_ai_tuning.h"
 #include "npc_arbitration.h"
 #include "npc_attack.h"
 #include "npc_attitude_cause.h"
@@ -235,8 +236,6 @@ static constexpr int NPC_THIRST_CONSUME  = 40;  // "Thirsty"
 static constexpr int NPC_THIRST_COMPLAIN = 80;  // "Very thirsty"
 static constexpr int NPC_HUNGER_CONSUME  = 80;  // 50% of what's needed to refuse training.
 static constexpr int NPC_HUNGER_COMPLAIN = 160; // The level at which we refuse to do some tasks.
-// least a camp serves a hungry NPC, whatever its weight
-static constexpr int camp_routine_meal_kcal = 500;
 
 enum npc_action : int {
     npc_undecided = 0,
@@ -3314,9 +3313,10 @@ npc_action npc::address_needs( float danger )
     }
 
     // same obligations as the behavior tree's sleep goal, but only an allowed verdict sleeps here
-    const bool tired = get_sleepiness() >= sleepiness_levels::TIRED ||
+    const int tired_level = ai_tuning_of( *this ).tired_level();
+    const bool tired = get_sleepiness() >= tired_level ||
                        ( is_walking_with() && player_character.in_sleep_state() &&
-                         get_sleepiness() > sleepiness_levels::TIRED / 2 );
+                         get_sleepiness() > tired_level / 2 );
     if( danger <= 0.01 && tired && !sleep_on_hold() && !has_flag( json_flag_CANNOT_SLEEP ) &&
         judge_option( rest_option_best_case() ).permission == npc_permission::allowed ) {
         return npc_sleep;
@@ -5696,7 +5696,8 @@ bool npc::consume_food_from_camp( consume_filter filter )
         int desired_kcals = std::min( static_cast<int>( base_metabolic_rate ), std::max( 0,
                                       kcal_threshold + 100 - current_kcals ) );
         if( routine_meal ) {
-            desired_kcals = std::max( desired_kcals, camp_routine_meal_kcal );
+            // least a camp serves a hungry NPC, whatever its weight
+            desired_kcals = std::max( desired_kcals, ai_tuning_of( *this ).camp_meal_kcal );
         }
         int kcals_to_eat = std::min( desired_kcals, bcp->get_owner()->food_supply().kcal() );
 
@@ -5832,7 +5833,7 @@ bool npc::intake_useful( const need_goal_id id ) const
     switch( id ) {
         case need_goal_id::drink_water:
             // adjusted thirst already subtracts water waiting in the stomach
-            return get_thirst() > npc_thirst_act_level;
+            return get_thirst() > ai_tuning_of( *this ).thirst_act_level();
         case need_goal_id::eat_food:
             return get_hunger() > NPC_HUNGER_CONSUME || calories_short( *this );
         case need_goal_id::regulate_temperature:
@@ -8051,7 +8052,7 @@ npc::need_result npc::execute_go_to_sleep()
             } else {
                 // every spot the NPC may use was tried this cycle: let other work through,
                 // and try the best spot again from scratch
-                sleep_session.stall();
+                sleep_session.stall( ai_tuning_of( *this ) );
                 failed.clear();
             }
             plan.last_result = need_result::impossible;

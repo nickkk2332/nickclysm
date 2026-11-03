@@ -11,6 +11,7 @@
 #include "debug.h"
 #include "messages.h"
 #include "npc.h"
+#include "npc_ai_tuning.h"
 #include "npc_arbitration.h"
 #include "point.h"
 #include "rng.h"
@@ -25,17 +26,13 @@ static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
 
 namespace
 {
-// a settling NPC rolls to fall asleep this often
-constexpr time_duration settle_attempt_interval = 3_minutes;
-// and gives a spot up after this long
-constexpr time_duration settle_timeout = 30_minutes;
+// the settle and stall timings are the NPC's tuning (npc_ai_tuning): how often a settling NPC
+// rolls to fall asleep, when it gives a spot up, how many wakes in how long stall its sleep and
+// for how long
 // patience stops growing after this many attempts
 constexpr int settle_patience_cap = 10;
-// this many wakes inside restless_window stall the sleep
-constexpr int restless_wake_limit = 3;
+// noise wakes counted within this long hold sleep back
 constexpr time_duration restless_window = 30_minutes;
-// stalled sleep steps aside for other work this long
-constexpr time_duration stall_duration = 30_minutes;
 // a woken NPC that hasn't lain back down forgets the attempt after this
 constexpr time_duration stale_wake_timeout = 1_minutes;
 // a second noise wake holds sleep back this long, doubling with each further wake up to
@@ -49,33 +46,33 @@ constexpr time_duration player_wake_grace = 1_hours;
 constexpr int player_wake_grace_margin = 100;
 } // namespace
 
-void npc_sleep_session::begin_settling()
+void npc_sleep_session::begin_settling( const npc_ai_tuning &tuning )
 {
     phase = npc_sleep_phase::settling;
     settle_started = calendar::turn;
-    next_attempt = calendar::turn + settle_attempt_interval;
+    next_attempt = calendar::turn + tuning.settle_interval;
 }
 
-void npc_sleep_session::note_wake()
+void npc_sleep_session::note_wake( const npc_ai_tuning &tuning )
 {
     if( phase != npc_sleep_phase::settling && phase != npc_sleep_phase::asleep ) {
         return;
     }
-    if( calendar::turn - wake_window_start > restless_window ) {
+    if( calendar::turn - wake_window_start > tuning.stall_window ) {
         wake_window_start = calendar::turn;
         wakes = 0;
     }
     wakes++;
     woken_at = calendar::turn;
     phase = npc_sleep_phase::woken;
-    if( wakes >= restless_wake_limit ) {
-        stall();
+    if( wakes >= tuning.stall_wakes ) {
+        stall( tuning );
     }
 }
 
-void npc_sleep_session::stall()
+void npc_sleep_session::stall( const npc_ai_tuning &tuning )
 {
-    stalled_until = calendar::turn + stall_duration;
+    stalled_until = calendar::turn + tuning.stall_duration;
 }
 
 void npc_sleep_session::end()
@@ -102,16 +99,15 @@ bool npc_sleep_session::stalled() const
     return calendar::turn < stalled_until;
 }
 
-bool npc_sleep_session::wants_resume( const int sleepiness ) const
+bool npc_sleep_session::wants_resume( const int sleepiness, const npc_ai_tuning &tuning ) const
 {
-    return phase == npc_sleep_phase::woken &&
-           sleepiness >= static_cast<int>( sleepiness_levels::TIRED ) / 2;
+    return phase == npc_sleep_phase::woken && sleepiness >= tuning.tired_level() / 2;
 }
 
-int npc_sleep_session::patience() const
+int npc_sleep_session::patience( const npc_ai_tuning &tuning ) const
 {
     return std::min( settle_patience_cap,
-                     static_cast<int>( ( calendar::turn - settle_started ) / settle_attempt_interval ) );
+                     static_cast<int>( ( calendar::turn - settle_started ) / tuning.settle_interval ) );
 }
 
 bool npc::try_fall_asleep_now()
@@ -119,7 +115,7 @@ bool npc::try_fall_asleep_now()
     if( has_flag( json_flag_CANNOT_SLEEP ) ) {
         return false;
     }
-    if( sleep_readiness() + sleep_session.patience() + rng( -8, 8 ) <= 0 ) {
+    if( sleep_readiness() + sleep_session.patience( ai_tuning_of( *this ) ) + rng( -8, 8 ) <= 0 ) {
         return false;
     }
     fall_asleep();
@@ -137,11 +133,12 @@ npc::need_result npc::settle_here()
         plan.source_kind = need_source::sleep_spot;
         plan.target = pos_abs();
     }
-    sleep_session.begin_settling();
+    const npc_ai_tuning &tuning = ai_tuning_of( *this );
+    sleep_session.begin_settling( tuning );
     if( try_fall_asleep_now() ) {
         return need_result::progressed;
     }
-    add_effect( effect_lying_down, settle_timeout + 1_minutes, false, 1 );
+    add_effect( effect_lying_down, tuning.settle_timeout + 1_minutes, false, 1 );
     // adding the effect already asked rest_interruption(); this turn's review mustn't
     // reuse that answer
     ai_cache.rest_review = {};
@@ -152,6 +149,7 @@ npc::need_result npc::settle_here()
 bool npc::sleep_settle_step()
 {
     npc_sleep_session &ses = sleep_session;
+    const npc_ai_tuning &tuning = ai_tuning_of( *this );
     if( has_flag( json_flag_CANNOT_SLEEP ) ) {
         // can't fall asleep at all now: stop lying here, the spot isn't to blame
         ai_cache.sleep_plan.clear();
@@ -160,7 +158,7 @@ bool npc::sleep_settle_step()
     }
     if( ses.phase != npc_sleep_phase::settling ) {
         // lying down from a save or a script: settle from now on
-        ses.begin_settling();
+        ses.begin_settling( tuning );
         return false;
     }
     if( calendar::turn < ses.next_attempt ) {
@@ -169,14 +167,14 @@ bool npc::sleep_settle_step()
     if( try_fall_asleep_now() ) {
         return true;
     }
-    if( calendar::turn - ses.settle_started >= settle_timeout ) {
+    if( calendar::turn - ses.settle_started >= tuning.settle_timeout ) {
         // can't sleep here: the executor looks elsewhere
         ai_cache.sleep_failed_targets.insert( pos_abs() );
         ai_cache.sleep_plan.clear();
         ses.phase = npc_sleep_phase::none;
         return true;
     }
-    ses.next_attempt = calendar::turn + settle_attempt_interval;
+    ses.next_attempt = calendar::turn + tuning.settle_interval;
     return false;
 }
 
@@ -186,7 +184,7 @@ void npc::reconcile_sleep_session()
     if( ( ses.phase == npc_sleep_phase::settling || ses.phase == npc_sleep_phase::asleep ) &&
         !in_sleep_state() ) {
         // sleep effects gone without wake_up(): debug menu, a script
-        ses.note_wake();
+        ses.note_wake( ai_tuning_of( *this ) );
     } else if( ses.phase == npc_sleep_phase::woken && get_committed_goal() != "go_to_sleep" &&
                !ai_cache.sleep_plan.active() && calendar::turn - ses.woken_at > stale_wake_timeout ) {
         // woken and no sleep goal or plan took it up: forget the attempt
@@ -205,7 +203,7 @@ void npc::wake_up()
     Character::wake_up();
     // narcosis makes Character::wake_up() return early
     if( was_resting && !has_effect( effect_narcosis ) ) {
-        sleep_session.note_wake();
+        sleep_session.note_wake( ai_tuning_of( *this ) );
     }
 }
 

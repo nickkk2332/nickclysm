@@ -293,6 +293,10 @@ void npc_class::load( const JsonObject &jo, std::string_view )
 
     optional( jo, was_loaded, "proficiencies", _starting_proficiencies );
     optional( jo, was_loaded, "sells_belongings", sells_belongings, true );
+    // changes what the class has: the defaults, or with copy-from what it copies
+    if( jo.has_object( "ai_tuning" ) ) {
+        ai_tuning.load( jo.get_object( "ai_tuning" ) );
+    }
     /* Mutation rounds can be specified as follows:
      *   "mutation_rounds": {
      *     "ANY" : { "constant": 1 },

@@ -8,6 +8,7 @@
 
 class JsonObject;
 class JsonOut;
+struct npc_ai_tuning;
 
 enum class npc_sleep_phase : int {
     none,
@@ -20,7 +21,7 @@ enum class npc_sleep_phase : int {
 
 // how one attempt to sleep is going, what has happened to it, and the holds that outlive
 // it. effects say whether the NPC lies or sleeps; permission and interruption are decided
-// elsewhere
+// elsewhere. Its timings come from the NPC's tuning (npc_ai_tuning).
 struct npc_sleep_session {
     // the attempt
     npc_sleep_phase phase = npc_sleep_phase::none;
@@ -43,18 +44,19 @@ struct npc_sleep_session {
     int noise_wakes = 0;
     time_point last_noise_wake = calendar::turn_zero;
 
-    void begin_settling();
-    // settling or asleep -> woken; too many wakes inside restless_window stall the sleep
-    void note_wake();
-    void stall();
+    void begin_settling( const npc_ai_tuning &tuning );
+    // settling or asleep -> woken; too many wakes inside the tuning's stall window stall the
+    // sleep
+    void note_wake( const npc_ai_tuning &tuning );
+    void stall( const npc_ai_tuning &tuning );
     // forgets the attempt and its history, keeps the holds
     void end();
     bool in_grace( int sleepiness ) const;
     bool stalled() const;
     // woken but still worth lying back down: half way to tired
-    bool wants_resume( int sleepiness ) const;
+    bool wants_resume( int sleepiness, const npc_ai_tuning &tuning ) const;
     // lying still a while makes sleep come easier: a point per attempt interval, capped
-    int patience() const;
+    int patience( const npc_ai_tuning &tuning ) const;
 
     void serialize( JsonOut &json ) const;
     void deserialize( const JsonObject &data );

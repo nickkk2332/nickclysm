@@ -62,6 +62,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc_ai_ids.h"
+#include "npc_ai_tuning.h"
 #include "npc_attitude_cause.h"
 #include "npc_class.h"
 #include "npc_goal_state.h"
@@ -2529,8 +2530,10 @@ void npc::reconcile_schedule()
         }
         clear_committed_goal();
     } else if( !on_shift && !in_sleep_state() && !needs_food() ) {
-        if( get_sleepiness() < static_cast<int>( sleepiness_levels::TIRED ) ) {
-            set_sleepiness( sleepiness_levels::TIRED );
+        // tired enough to go to bed
+        const int tired = ai_tuning_of( *this ).tired_level();
+        if( get_sleepiness() < tired ) {
+            set_sleepiness( tired );
         }
     }
 }
@@ -2561,7 +2564,7 @@ void npc::reconcile_schedule_on_load()
         int mins_in = wraps && now_mins < start_mins
                       ? ( 24 * 60 - start_mins + now_mins )
                       : ( now_mins - start_mins );
-        int expected = mins_in * static_cast<int>( sleepiness_levels::TIRED ) / shift_len;
+        int expected = mins_in * ai_tuning_of( *this ).tired_level() / shift_len;
         set_sleepiness( expected );
     }
 }

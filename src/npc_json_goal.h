@@ -121,6 +121,9 @@ struct npc_interrupt_verdict {
 };
 npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
                                        const npc_challenger &challenger );
+// with the NPC's need_critical_urgency (npc_ai_tuning) in place of the default
+npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
+                                       const npc_challenger &challenger, float critical_urgency );
 
 // What the NPC decision debug view shows for an NPC
 struct npc_decision_report {

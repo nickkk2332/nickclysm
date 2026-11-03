@@ -20,6 +20,7 @@
 #include "map.h"
 #include "messages.h"
 #include "npc.h"
+#include "npc_ai_tuning.h"
 #include "npc_class.h"
 #include "npc_decision_category.h"
 #include "npc_json_goal.h"
@@ -54,13 +55,6 @@ constexpr int rest_cooldown_drift = 2;
 constexpr time_duration leader_settle_delay = 2_minutes;
 // and this long as settled
 constexpr time_duration leader_settled_after = 15_minutes;
-
-struct need_levels {
-    // where the need's own predicate fires; a discouraged floor relaxes down to it
-    float act;
-    float insist;
-    float emergency;
-};
 
 enum class post_duty : int { none, guard, shift };
 } // namespace
@@ -98,41 +92,25 @@ const char *obligation_name( const npc_obligation o )
 }
 
 // raw urgency at which a need overrides a discouraged or emergency-only option
-static need_levels levels_for( const npc::need_goal_id id )
+static const npc_need_levels &levels_for( const npc_ai_tuning &tuning, const npc::need_goal_id id )
 {
     switch( id ) {
         case npc::need_goal_id::drink_water:
-            // act level and 800 on the 1200 dehydration scale, emergency at critical (900)
-            return { npc_thirst_act_level / 1200.0f, 800.0f / 1200.0f, need_critical_urgency };
+            return tuning.drink_water;
         case npc::need_goal_id::go_to_sleep:
-            return { static_cast<float>( sleepiness_levels::TIRED ) / 1000.0f,
-                     static_cast<float>( sleepiness_levels::DEAD_TIRED ) / 1000.0f,
-                     static_cast<float>( sleepiness_levels::EXHAUSTED ) / 1000.0f };
+            return tuning.go_to_sleep;
         case npc::need_goal_id::eat_food:
-            // calorie urgency, share of healthy stored calories missing
-            return { food_act_level, 0.4f, 0.6f };
+            return tuning.eat_food;
         case npc::need_goal_id::regulate_temperature:
             break;
     }
-    // no option costs declared: overrides wait for the critical level
-    return { need_critical_urgency, need_critical_urgency, need_critical_urgency };
+    return tuning.regulate_temperature;
 }
 
+// with the default tuning; npc::need_view() uses the NPC's own
 float npc_need_floor( const npc::need_goal_id id, const npc_permission_verdict &v )
 {
-    const need_levels levels = levels_for( id );
-    switch( v.permission ) {
-        case npc_permission::allowed:
-            return 0.0f;
-        case npc_permission::discouraged:
-            // relaxes from insist toward the need's own level as ease grows
-            return levels.act + ( levels.insist - levels.act ) * ( 1.0f - v.ease );
-        case npc_permission::emergency_only:
-            return levels.emergency;
-        case npc_permission::blocked:
-            break;
-    }
-    return std::numeric_limits<float>::infinity();
+    return npc_need_floor( levels_for( npc_ai_tuning::defaults(), id ), v );
 }
 
 // 0 while the leader travels, rising to 1 as it stays in one place
@@ -300,8 +278,9 @@ npc_need_view npc::need_view( const need_goal_id id, const npc_option_cost &cost
     view.kind = cost.where_known() ? npc_option_kind::actual : npc_option_kind::best_case;
     view.raw = current_need_urgency( id );
     view.verdict = judge_option( cost );
-    view.floor = npc_need_floor( id, view.verdict );
-    view.strict_floor = npc_need_floor( id, { view.verdict.permission, view.verdict.by, 0.0f } );
+    const npc_need_levels &levels = levels_for( ai_tuning_of( *this ), id );
+    view.floor = npc_need_floor( levels, view.verdict );
+    view.strict_floor = npc_need_floor( levels, { view.verdict.permission, view.verdict.by, 0.0f } );
     view.selection = view.raw >= view.floor ? view.raw : 0.0f;
     return view;
 }
@@ -326,11 +305,18 @@ static std::optional<tripoint_abs_ms> walk_target_of( const npc &guy )
 bool calories_short( const Character &who )
 {
     const int pending = who.stomach.get_calories() + who.guts.get_calories();
-    return who.get_stored_kcal() + pending < who.get_healthy_kcal() * ( 1.0f - food_act_level );
+    return who.get_stored_kcal() + pending <
+           who.get_healthy_kcal() * ( 1.0f - ai_tuning_of( who ).eat_food.act );
 }
 
 npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
                                        const npc_challenger &challenger )
+{
+    return judge_interrupt( current, challenger, need_critical_urgency );
+}
+
+npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
+                                       const npc_challenger &challenger, const float critical_urgency )
 {
     if( current.cost == npc_interrupt_cost::wake_only ) {
         return { false, "asleep: only the body's own wakers get it up" };
@@ -366,7 +352,7 @@ npc_interrupt_verdict judge_interrupt( const npc_pursuit &current,
         return { false, "same category: the committed goal stays" };
     }
     // critical applies at every cost: a cheaper pursuit is never harder to leave
-    const bool critical = challenger.selection > need_critical_urgency &&
+    const bool critical = challenger.selection > critical_urgency &&
                           challenger.selection > current.selection;
     float margin = 0.0f;
     switch( current.cost ) {
@@ -498,7 +484,7 @@ void npc::arm_rest_cooldown()
 {
     const Character &leader = get_player_character();
     const float raw = current_need_urgency( need_goal_id::go_to_sleep );
-    const need_levels levels = levels_for( need_goal_id::go_to_sleep );
+    const npc_need_levels &levels = ai_tuning_of( *this ).go_to_sleep;
     npc_short_term_cache::rest_cooldown &cd = ai_cache.no_rest_option;
     cd.until = calendar::turn + rest_cooldown_duration;
     cd.leader_asleep = leader.in_sleep_state();
@@ -606,8 +592,9 @@ std::optional<npc_challenger> npc::rest_interruption() const
     }
     // wins only once resting here is no longer allowed
     challengers.push_back( { "idle", 0.0f, true } );
+    const float critical = ai_tuning_of( *this ).need_critical_urgency;
     for( const npc_challenger &c : challengers ) {
-        if( should_interrupt( current, c ) ) {
+        if( judge_interrupt( current, c, critical ).interrupt ) {
             add_msg_debug( debugmode::DF_NPC_NEEDS, "NPC %s: gets up for %s, rest %s by %s",
                            get_name(), c.goal, permission_name( rest.verdict.permission ),
                            obligation_name( rest.verdict.by ) );
