@@ -270,7 +270,18 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Overcame addiction to alcohol.", ch, addiction_alcohol );
 
     check_memorial<event_type::npc_becomes_hostile>(
-        m,  "npc_name became hostile.", ch2, "npc_name" );
+        m,  "npc_name became hostile.", ch2, "npc_name", "effect" );
+
+    // only a dialogue or EOC effect's turn makes the memorial, as when only the hostile effect
+    // sent the event
+    for( const char *cause : {
+             "", "angered", "opinion", "mutiny", "faction", "panic", "theft", "ai"
+         } ) {
+        CAPTURE( cause );
+        m.clear();
+        get_event_bus().send<event_type::npc_becomes_hostile>( ch2, "npc_name", cause );
+        CHECK( m.dump().empty() );
+    }
 
     check_memorial<event_type::opens_portal>(
         m,  "Opened a portal." );

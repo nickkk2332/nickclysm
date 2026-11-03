@@ -1,0 +1,70 @@
+[
+  {
+    "type": "faction",
+    "id": "test_npc_ai_deserters",
+    "//": "NPC AI hook tests: where the hawks' mutineers go.",
+    "name": "Test Deserters",
+    "likes_u": 0,
+    "respects_u": 0,
+    "known_by_u": false,
+    "size": 1,
+    "power": 1,
+    "wealth": 0,
+    "description": "They left in a hurry."
+  },
+  {
+    "type": "faction",
+    "id": "test_npc_ai_hawks",
+    "//": "NPC AI hook tests: kills the doves on sight; its mutineers desert.",
+    "name": "Test Hawks",
+    "likes_u": 0,
+    "respects_u": 0,
+    "known_by_u": false,
+    "size": 1,
+    "power": 1,
+    "wealth": 0,
+    "description": "They don't like doves.",
+    "mutiny_faction": "test_npc_ai_deserters",
+    "relations": { "test_npc_ai_doves": { "kill on sight": true } }
+  },
+  {
+    "type": "faction",
+    "id": "test_npc_ai_doves",
+    "//": "NPC AI hook tests: no relation to the hawks.",
+    "name": "Test Doves",
+    "likes_u": 0,
+    "respects_u": 0,
+    "known_by_u": false,
+    "size": 1,
+    "power": 1,
+    "wealth": 0,
+    "description": "They don't know the hawks."
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_ATTITUDE_CHANGED",
+    "//": "NPC AI hook tests: records npc_attitude_changed while the global test_ai_listen is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_attitude_changed",
+    "condition": { "math": [ "test_ai_listen == 1" ] },
+    "effect": [
+      { "math": [ "test_ai_attitude_changes += 1" ] },
+      { "copy_var": { "context_val": "old_attitude" }, "target_var": { "global_val": "test_ai_old" } },
+      { "copy_var": { "context_val": "new_attitude" }, "target_var": { "global_val": "test_ai_new" } },
+      { "copy_var": { "context_val": "cause" }, "target_var": { "global_val": "test_ai_cause" } },
+      { "set_string_var": "<u_name>", "target_var": { "global_val": "test_ai_u" }, "parse_tags": true }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AI_MUTINY",
+    "//": "NPC AI hook tests: records npc_mutinies while the global test_ai_listen is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_mutinies",
+    "condition": { "math": [ "test_ai_listen == 1" ] },
+    "effect": [
+      { "copy_var": { "context_val": "new_faction" }, "target_var": { "global_val": "test_ai_mutiny_to" } },
+      { "set_string_var": "<u_name>", "target_var": { "global_val": "test_ai_mutiny_u" }, "parse_tags": true }
+    ]
+  }
+]

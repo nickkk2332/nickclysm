@@ -913,9 +913,10 @@ void talk_function::drop_items_in_place( npc &p )
 
 void talk_function::follow( npc &p )
 {
-    g->add_npc_follower( p.getID() );
     p.set_attitude( NPCATT_FOLLOW );
     p.set_fac( faction_your_followers );
+    // npc_recruited goes out from here: its EOCs see the NPC recruited
+    g->add_npc_follower( p.getID() );
     p.set_mission( NPC_MISSION_NULL );
     errand::end_walk( p, errand::reason::cancelled );
     p.goal = npc::no_goal_point;
@@ -977,7 +978,7 @@ void talk_function::hostile( npc &p )
         add_msg( _( "%s turns hostile!" ), p.get_name() );
     }
 
-    get_event_bus().send<event_type::npc_becomes_hostile>( p.getID(), p.name );
+    // npc_becomes_hostile goes out from set_attitude()
     p.set_attitude( NPCATT_KILL );
 }
 

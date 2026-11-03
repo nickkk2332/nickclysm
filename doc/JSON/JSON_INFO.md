@@ -2316,9 +2316,9 @@ events can be transformed and summarized in various ways.  There are three
 concepts involved: event streams, event statistics, and scores.
 
 * Each `event_type` defined by the game generates an event stream, except the
-  few too frequent and too varied to keep in a save: `npc_goal_changed`. EVENT
-  effect_on_conditions get those, but no transformation, statistic or score can
-  use them (it's a load error).
+  few too frequent and too varied to keep in a save: `npc_goal_changed` and
+  `npc_attitude_changed`. EVENT effect_on_conditions get those, but no
+  transformation, statistic or score can use them (it's a load error).
 * Further event streams can be defined in json by applying an
   `event_transformation` to an existing event stream.
 * An `event_statistic` summarizes an event stream into a single value (usually

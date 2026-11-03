@@ -18,6 +18,7 @@ An effect_on_condition is an object allowing the combination of dialog condition
 - [EVENT EOCs:](#event-eocs)
   - [Event Context Vars:](#event-context-vars)
   - [Event EOC Types:](#event-eoc-types)
+  - [NPC attitude events](#npc-attitude-events)
   - [Context Variables For Other EOCs](#context-variables-for-other-eocs)
 - [Effects](#effects)
   - [General](#general)
@@ -2336,7 +2337,11 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | learns_martial_art | |  { "character", `character_id` },<br/> { "martial_art", `matype_id` }, | character / NONE |
 | loses_addiction | | { "character", `character_id` },<br/> { "add_type", `addiction_id` }, | character / NONE |
 | loses_mutation | |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
-| npc_becomes_hostile | Triggers when NPC's attitude is set to `NPCATT_KILL` via dialogue effect `hostile` | { "npc", `character_id` },<br/> { "npc_name", `string` }, | NPC / NONE |
+| npc_attitude_changed | Triggers whenever an NPC's attitude changes, whatever changes it: an effect, the avatar, the NPC's own decisions. `cause` says what; see [NPC attitude events](#npc-attitude-events). Not for NPCs that aren't real (a template's, a hallucination). Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "old_attitude", `string` }, an attitude id such as `NPCATT_KILL`<br/> { "new_attitude", `string` },<br/> { "cause", `string` }, | NPC / NONE |
+| npc_becomes_hostile | Triggers when an NPC turns hostile: its attitude becomes `NPCATT_KILL`, `NPCATT_MUG` or `NPCATT_WAIT_FOR_LEAVE` from one that isn't hostile, or `NPCATT_KILL` from another hostile one. Once per change, after the attitude changed and after its `npc_attitude_changed`, whatever changed it ([NPC attitude events](#npc-attitude-events)); the memorial notes it only when the cause is `effect`. The `cause` field is new: a `trigger_event` for this event needs three arguments | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "cause", `string` }, | NPC / NONE |
+| npc_dismissed | Triggers when an NPC leaves the avatar's follower list alive: the `leave` effect, a mutiny. It goes out as the NPC leaves the list, before the rest of what dismisses it (its new faction, its attitude). A follower that dies doesn't trigger it (`character_dies` does) | { "npc", `character_id` },<br/> { "npc_name", `string` }, | NPC / NONE |
+| npc_mutinies | Triggers when a follower mutinies: it leaves the avatar's faction for its faction's [`mutiny_faction`](FACTIONS.md) (`amf` in vanilla). After the NPC has left: after its `npc_dismissed` and its `npc_attitude_changed` with the cause `mutiny` | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "old_faction", `faction_id` },<br/> { "new_faction", `faction_id` }, | NPC / NONE |
+| npc_recruited | Triggers when an NPC joins the avatar's follower list: the `follow` effect (once the NPC follows with `NPCATT_FOLLOW` in the faction `your_followers`), the debug menu | { "npc", `character_id` },<br/> { "npc_name", `string` }, | NPC / NONE |
 | opens_portal | Triggers when TOGGLE PORTAL option is activated via ("old lab" finale's?) computer | NONE | avatar / NONE |
 | opens_spellbook | Triggers when player opens the spell menu OR when NPC evaluates spell as best weapon(in preparation to use it) | { "character", `character_id` } | character / NONE |
 | opens_temple | Triggers when `pedestal_temple` examine action is used to consume a petrified eye | NONE | avatar / NONE |
@@ -2359,6 +2364,35 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | u_var_changed | | { "var", `string` },<br/> { "value", `string` }, | avatar / NONE |
 | npc_goal_changed | Triggers when the goal an NPC is committed to changes, built-in or [JSON](NPC_BEHAVIOR.md#reading-goals-from-eocs); `idle` stands for none. Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "old_goal", `string` },<br/> { "new_goal", `string` }, | NPC / NONE |
 | vehicle_moves | | { "avatar_on_board", `bool` },<br/> { "avatar_is_driving", `bool` },<br/> { "avatar_remote_control", `bool` },<br/> { "is_flying_aircraft", `bool` },<br/> { "is_floating_watercraft", `bool` },<br/> { "is_on_rails", `bool` },<br/> { "is_falling", `bool` },<br/> { "is_sinking", `bool` },<br/> { "is_skidding", `bool` },<br/> { "velocity", `int` }, // vehicle current velocity, mph * 100<br/> { "z", `int` }, | vehicle / avatar |
+
+### NPC attitude events
+
+An NPC's attitude is how it treats the avatar (`NPCATT_FOLLOW`, `NPCATT_KILL`...); the condition [`u_attitude`](#u_attitude-npc_attitude) reads it and the effect [`u_set_attitude`](#u_set_attitude-npc_set_attitude) sets it. Every change triggers `npc_attitude_changed`, and a turn to hostility also `npc_becomes_hostile`. Their `cause` says what changed it, as far as the game knows:
+
+| `cause` | The attitude changed because |
+| --- | --- |
+| `effect` | of a dialogue response's or an EOC's effects: `hostile`, `follow`, `flee`, `u_set_attitude`, `u_set_mission` and the like |
+| `angered` | the NPC was angered: the avatar attacked it, stole from it or did something else it won't stand for |
+| `opinion` | the NPC sized the avatar up: on meeting it, on being pushed aside, or as a conversation starts (when it decides to rob the avatar, say) |
+| `mutiny` | the NPC left the avatar's faction (`npc_mutinies`) |
+| `faction` | the NPC's faction is hostile to the avatar's, and it turned on the avatar on sight |
+| `panic` | the NPC runs from a fight |
+| `theft` | the NPC saw the avatar steal, or answers a call about a theft |
+| `ai` | of another decision the NPC made on its turn: its flight ending, a mugger losing patience, giving up on a leader that lags behind |
+| empty | none of these is known: the debug menu, the start of a game |
+
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_BOUNTY_ON_ANGERED_MERCHANT",
+  "eoc_type": "EVENT",
+  "required_event": "npc_becomes_hostile",
+  "condition": {
+    "and": [ { "u_is_in_faction": "free_merchants" }, { "compare_string": [ "angered", { "context_val": "cause" } ] } ]
+  },
+  "effect": [ { "math": [ "bounty_on_you += 100" ] } ]
+}
+```
 
 ## Context Variables For Other EOCs
 Other EOCs have some variables as well that they have access to, they are as follows:

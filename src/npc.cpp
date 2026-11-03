@@ -61,6 +61,7 @@
 #include "monster.h"
 #include "mtype.h"
 #include "mutation.h"
+#include "npc_attitude_cause.h"
 #include "npc_class.h"
 #include "npc_goal_state.h"
 #include "npc_json_goal.h"
@@ -190,6 +191,7 @@ static const trait_id trait_TERRIFYING( "TERRIFYING" );
 static const trait_id trait_TRADE_BACKEND( "TRADE_BACKEND" );
 
 static void starting_clothes( npc &who, const npc_class_id &type, bool male );
+static void report_attitude_change( const npc &guy, npc_attitude old_attitude );
 static void starting_inv( npc &who, const npc_class_id &type );
 static void starting_inv_ammo( npc &who, std::list<item> &res, int multiplier );
 
@@ -1251,7 +1253,11 @@ void npc::revert_after_activity()
     // task put aside to rest keeps the NPC's mission and attitude
     if( !suspended_task ) {
         mission = previous_mission;
+        const npc_attitude was = attitude;
         attitude = previous_attitude;
+        if( attitude != was ) {
+            report_attitude_change( *this, was );
+        }
     }
     activity = player_activity();
     current_activity_id = activity_id::NULL_ID();
@@ -1829,6 +1835,7 @@ void npc::invalidate_range_cache()
 
 void npc::form_opinion( const Character &you )
 {
+    const npc_attitude_cause cause( npc_attitude_cause::opinion );
     op_of_u = get_opinion_values( you );
 
     decide_needs();
@@ -1967,6 +1974,8 @@ void npc::mutiny()
     if( !my_fac || !is_player_ally() ) {
         return;
     }
+    const npc_attitude_cause cause( npc_attitude_cause::mutiny );
+    const faction_id left = my_fac->id;
     const bool seen = get_player_view().sees( here, pos_bub( here ) );
     if( seen ) {
         add_msg( m_bad, _( "%s is tired of your incompetent leadership and abuse!" ), disp_name() );
@@ -1981,8 +1990,10 @@ void npc::mutiny()
     my_fac->likes_u = std::max( 0, my_fac->likes_u / 2 + 10 );
     my_fac->respects_u -= 5;
     my_fac->trusts_u -= 5;
+    // the faction it leaves says where it goes
+    const faction_id joins = my_fac->mutiny_faction;
     g->remove_npc_follower( getID() );
-    set_fac( faction_amf );
+    set_fac( joins );
     rules = npc_follower_rules(); // Mutinous NPCs no longer follower your rules
     job.clear_all_priorities();
     if( assigned_camp ) {
@@ -1991,9 +2002,10 @@ void npc::mutiny()
     chatbin.first_topic = chatbin.talk_stranger_neutral;
     set_attitude( NPCATT_NULL );
     say( _( "<follower_mutiny>  Adios, motherfucker!" ), sounds::sound_t::order );
-    if( seen ) {
+    if( seen && my_fac ) {
         my_fac->known_by_u = true;
     }
+    get_event_bus().send<event_type::npc_mutinies>( getID(), name, left, get_fac_id() );
 }
 
 float npc::vehicle_danger( int radius ) const
@@ -2036,6 +2048,7 @@ void npc::make_angry()
     if( is_enemy() ) {
         return; // We're already angry!
     }
+    const npc_attitude_cause cause( npc_attitude_cause::angered );
 
     // player allies that become angry should stop being player allies
     if( is_player_ally() ) {
@@ -4161,6 +4174,44 @@ npc_attitude npc::get_attitude() const
     return attitude;
 }
 
+// What makes attitude changes known.  The innermost open npc_attitude_cause says why.
+static const char *open_attitude_cause = "";
+
+npc_attitude_cause::npc_attitude_cause( const char *cause ) : previous( open_attitude_cause )
+{
+    open_attitude_cause = cause;
+}
+
+npc_attitude_cause::~npc_attitude_cause()
+{
+    open_attitude_cause = previous;
+}
+
+const char *npc_attitude_cause::current()
+{
+    return open_attitude_cause;
+}
+
+// npc_attitude_changed, and npc_becomes_hostile when the NPC turns on the avatar: its attitude
+// joins the hostile group, or becomes NPCATT_KILL from another hostile one (as the hostile talk
+// effect always reported it)
+static void report_attitude_change( const npc &guy, const npc_attitude old_attitude )
+{
+    // templates, stand-ins for turrets and monsters, and hallucinations aren't anyone to react to
+    if( !guy.getID().is_valid() || guy.is_fake() || guy.is_hallucination() ) {
+        return;
+    }
+    const npc_attitude new_attitude = guy.get_attitude();
+    const std::string cause = npc_attitude_cause::current();
+    get_event_bus().send<event_type::npc_attitude_changed>( guy.getID(), guy.name,
+            npc_attitude_id( old_attitude ), npc_attitude_id( new_attitude ), cause );
+    const bool was_hostile = guy.get_attitude_group( old_attitude ) == attitude_group::hostile;
+    if( guy.get_attitude_group( new_attitude ) == attitude_group::hostile &&
+        ( !was_hostile || new_attitude == NPCATT_KILL ) ) {
+        get_event_bus().send<event_type::npc_becomes_hostile>( guy.getID(), guy.name, cause );
+    }
+}
+
 void npc::set_attitude( npc_attitude new_attitude )
 {
     const map &here = get_map();
@@ -4197,7 +4248,12 @@ void npc::set_attitude( npc_attitude new_attitude )
                 break;
         }
     }
+    const npc_attitude old_attitude = attitude;
     attitude = new_attitude;
+    // NPCATT_FLEE asked of an NPC already on NPCATT_FLEE_TEMP changes nothing
+    if( attitude != old_attitude ) {
+        report_attitude_change( *this, old_attitude );
+    }
 }
 
 bool npc::theft_witness_compare( const npc *lhs, const npc *rhs )

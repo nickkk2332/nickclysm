@@ -19,6 +19,7 @@
 #include "type_id.h"
 #include "vitamin.h"
 
+static const faction_id faction_amf( "amf" );
 static const faction_id faction_no_faction( "no_faction" );
 
 static const mfaction_str_id monfaction_human( "human" );
@@ -43,6 +44,7 @@ faction_template::faction_template()
     consumes_food = false;
     currency = itype_id::NULL_ID();
     steal_persist = std::nullopt; // Default ask
+    mutiny_faction = faction_amf;
 }
 
 faction::faction( const faction_template &templ )
@@ -75,6 +77,13 @@ void faction_template::check_consistency()
             if( !epi.epilogue.is_valid() ) {
                 debugmsg( "There's no snippet with id %s", epi.epilogue.str() );
             }
+        }
+        if( std::none_of( npc_factions::all_templates.begin(), npc_factions::all_templates.end(),
+        [&fac]( const faction_template & other ) {
+        return other.id == fac.mutiny_faction;
+    } ) ) {
+            debugmsg( "faction %s has mutiny_faction %s, which isn't a faction", fac.id.str(),
+                      fac.mutiny_faction.str() );
         }
     }
 }
@@ -169,6 +178,7 @@ faction_template::faction_template( const JsonObject &jsobj )
     load_relations( jsobj );
     optional( jsobj, was_loaded, "mon_faction", mon_faction, monfaction_human );
     optional( jsobj, was_loaded, "epilogues", epilogue_data );
+    optional( jsobj, was_loaded, "mutiny_faction", mutiny_faction, faction_amf );
 }
 
 std::string faction::describe() const
@@ -597,6 +607,7 @@ faction *faction_manager::get( const faction_id &id, const bool complain )
                         elem.second.desc = fac_temp.desc;
                         elem.second.mon_faction = fac_temp.mon_faction;
                         elem.second.epilogue_data = fac_temp.epilogue_data;
+                        elem.second.mutiny_faction = fac_temp.mutiny_faction;
                         for( const auto &rel_data : fac_temp.relations ) {
                             if( elem.second.relations.find( rel_data.first ) == elem.second.relations.end() ) {
                                 elem.second.relations[rel_data.first] = rel_data.second;

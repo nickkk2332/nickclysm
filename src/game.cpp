@@ -22,6 +22,7 @@
 #include <map>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <queue>
 #include <set>
 #include <sstream>
@@ -1779,14 +1780,36 @@ npc *game::find_npc_by_unique_id( const std::string &unique_id )
     return overmap_buffer.find_npc_by_unique_id( unique_id ).get();
 }
 
+// the name for npc_recruited and npc_dismissed; nullopt for a follower that died, which
+// character_dies reports
+static std::optional<std::string> follower_change_name( const character_id &id )
+{
+    const shared_ptr_fast<npc> guy = overmap_buffer.find_npc( id );
+    if( !guy ) {
+        return std::string();
+    }
+    if( guy->is_dead() ) {
+        return std::nullopt;
+    }
+    return guy->name;
+}
+
 void game::add_npc_follower( const character_id &id )
 {
-    u.follower_ids.insert( id );
+    if( u.follower_ids.insert( id ).second ) {
+        if( const std::optional<std::string> name = follower_change_name( id ) ) {
+            get_event_bus().send<event_type::npc_recruited>( id, *name );
+        }
+    }
 }
 
 void game::remove_npc_follower( const character_id &id )
 {
-    u.follower_ids.erase( id );
+    if( u.follower_ids.erase( id ) != 0 ) {
+        if( const std::optional<std::string> name = follower_change_name( id ) ) {
+            get_event_bus().send<event_type::npc_dismissed>( id, *name );
+        }
+    }
 }
 
 static void update_faction_api( npc *guy )

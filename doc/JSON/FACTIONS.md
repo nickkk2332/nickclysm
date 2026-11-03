@@ -81,6 +81,7 @@ Field                 | Meaning
 `"limited_area_claim"`| bool, optional. Default false. Whether or not camps owned by this faction 'claim' the entire reality bubble and will be angered by hostile player actions in that area.  If true, they only claim the specific OMT the camp is located on.
 `"description"`       | string, optional. The player's description of this faction as seen in the faction menu.
 `"epilogues"`         | array of objects, optional. Requires these objects: `power_min` - minimal faction power for epilogue to appear, `power_max` - maximum faction power for epilogue to appear, `id` - id of text snippet containing text of epilogue.
+`"mutiny_faction"`    | string, optional, default `"amf"`. The faction a member that mutinies joins. Only the avatar's followers mutiny, so in practice it's `your_followers`'s field that counts. A faction that doesn't exist is an error after loading. The event [`npc_mutinies`](EFFECT_ON_CONDITION.md#event-eoc-types) reports a mutiny.
 
 ## Redefining and copying factions
 

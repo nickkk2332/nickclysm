@@ -362,8 +362,9 @@ void stats_tracker::unwatch_all()
 
 bool stats_tracker::records( const event_type type )
 {
-    // one summary per NPC and pair of goals, kept for good, would grow every save
-    return type != event_type::npc_goal_changed;
+    // one summary per NPC and pair of goals or attitudes (and cause), kept for good, would grow
+    // every save
+    return type != event_type::npc_goal_changed && type != event_type::npc_attitude_changed;
 }
 
 void stats_tracker::notify( const cata::event &e )

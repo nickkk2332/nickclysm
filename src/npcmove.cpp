@@ -90,6 +90,7 @@
 #include "npc.h"
 #include "npc_arbitration.h"
 #include "npc_attack.h"
+#include "npc_attitude_cause.h"
 #include "npc_decision_category.h"
 #include "npc_goal_state.h"
 #include "npc_json_goal.h"
@@ -1365,6 +1366,7 @@ void npc::act_on_danger_assessment()
                 mem_combat.repositioning = false; // we're not just moving, we're running.
                 warn_about( "run_away", run_away_for );
                 if( !is_player_ally() ) {
+                    const npc_attitude_cause panic( npc_attitude_cause::panic );
                     set_attitude( NPCATT_FLEE_TEMP );
                 }
                 if( mem_combat.panic > 5 && is_player_ally() && sees( here, player_character ) ) {
@@ -1453,6 +1455,7 @@ void npc::regen_ai_cache()
             if( sound_source ) {
                 if( my_fac == sound_source->my_fac && sound_source->known_stolen_item ) {
                     sound_source->known_stolen_item = nullptr;
+                    const npc_attitude_cause theft( npc_attitude_cause::theft );
                     set_attitude( NPCATT_RECOVER_GOODS );
                 }
             }
@@ -1583,6 +1586,8 @@ void npc::end_cancelled_task()
 
 void npc::move()
 {
+    // attitude changes this turn are the NPC's own doing, unless something more telling says why
+    const npc_attitude_cause cause( npc_attitude_cause::ai );
     const int moves_at_decision = get_moves();
     ai_cache.decisions++;
     const map &here = get_map();
@@ -1692,6 +1697,7 @@ void npc::move()
     Character &player_character = get_player_character();
     //faction opinion determines if it should consider you hostile
     if( !is_enemy() && guaranteed_hostile() && sees( here, player_character ) ) {
+        const npc_attitude_cause hostile_faction( npc_attitude_cause::faction );
         if( is_player_ally() ) {
             mutiny();
         }
@@ -2544,6 +2550,7 @@ void npc::witness_thievery( item *it )
     if( myclass == NC_EVAC_SHOPKEEP ) {
         return;
     }
+    const npc_attitude_cause theft( npc_attitude_cause::theft );
     set_attitude( NPCATT_RECOVER_GOODS );
 }
 

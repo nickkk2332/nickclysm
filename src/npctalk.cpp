@@ -116,6 +116,7 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npc_attitude_cause.h"
 #include "npc_opinion.h"
 #include "npctalk.h"
 #include "npctalk_rules.h"
@@ -9972,6 +9973,8 @@ void talk_effect_t::set_effect( talkfunction_ptr ptr )
 
 talk_topic talk_effect_t::apply( dialogue &d ) const
 {
+    // attitudes these effects change (hostile, follow, u_set_attitude...) changed by an effect
+    const npc_attitude_cause cause( npc_attitude_cause::effect );
     if( d.has_beta ) {
         // Need to get a reference to the mission before effects are applied, because effects can remove the mission
         const mission *miss = d.actor( true )->selected_mission();
@@ -11053,6 +11056,7 @@ void load_talk_topic( const JsonObject &jo, std::string_view src )
 
 std::string npc::pick_talk_topic( const Character &/*u*/ )
 {
+    const npc_attitude_cause cause( npc_attitude_cause::opinion );
     if( personality.aggression > 0 ) {
         if( op_of_u.fear * 2 < personality.bravery && personality.altruism < 0 ) {
             set_attitude( NPCATT_MUG );
