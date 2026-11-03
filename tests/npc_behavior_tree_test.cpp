@@ -40,6 +40,7 @@
 #include "talker.h"
 #include "type_id.h"
 
+static const faction_id faction_no_faction( "no_faction" );
 static const faction_id faction_your_followers( "your_followers" );
 
 static const item_group_id Item_spawn_data_test_bottle_water( "test_bottle_water" );
@@ -825,5 +826,37 @@ TEST_CASE( "behavior_evaluate_every_needs_a_valid_id", "[npc][behavior]" )
     guy.setID( character_id(), true );
     CHECK_FALSE( behavior::character_oracle_t( &guy ).cache_key().has_value() );
     guy.setID( saved, true );
+    clear_npcs();
+}
+
+TEST_CASE( "is_in_faction_condition", "[npc][eoc]" )
+{
+    clear_map();
+    npc &guy = plain_npc();
+    avatar &you = get_avatar();
+    const auto check = []( const std::string & json, const Creature & u, const Creature * beta ) {
+        const JsonObject jo = json_loader::from_string( json );
+        const conditional_t condition( jo );
+        const const_dialogue d( get_const_talker_for( u ),
+                                beta == nullptr ? nullptr : get_const_talker_for( *beta ) );
+        return condition( d );
+    };
+    guy.set_fac( faction_your_followers );
+    CHECK( check( R"({ "u_is_in_faction": "your_followers" })", guy, nullptr ) );
+    CHECK_FALSE( check( R"({ "u_is_in_faction": "no_faction" })", guy, nullptr ) );
+    CHECK( check( R"({ "npc_is_in_faction": "your_followers" })", you, &guy ) );
+    guy.set_fac( faction_no_faction );
+    CHECK_FALSE( check( R"({ "u_is_in_faction": "your_followers" })", guy, nullptr ) );
+    CHECK( check( R"({ "u_is_in_faction": "no_faction" })", guy, nullptr ) );
+    CHECK_FALSE( check( R"({ "npc_is_in_faction": "your_followers" })", you, &guy ) );
+    // the avatar, and a faction given by a variable
+    CHECK( check( R"({ "u_is_in_faction": "your_followers" })", you, nullptr ) );
+    you.set_value( "bt_faction", std::string( "your_followers" ) );
+    CHECK( check( R"({ "u_is_in_faction": { "u_val": "bt_faction" } })", you, nullptr ) );
+    you.remove_value( "bt_faction" );
+    // a monster is in no NPC faction
+    monster &zombie = spawn_test_monster( "mon_zombie", tripoint_bub_ms( 55, 55, 0 ) );
+    CHECK_FALSE( check( R"({ "u_is_in_faction": "your_followers" })", zombie, nullptr ) );
+    clear_creatures();
     clear_npcs();
 }

@@ -108,7 +108,7 @@ condition is true and fails when it is false, so a `fallback` parent moves on to
 
 - The NPC is `u`. The beta talker is empty: `npc_` conditions are false and `n_` math reads 0.
 - A condition can limit a branch to some NPCs: by class (`u_has_class`), trait
-  (`u_has_trait`), or a variable that an EOC sets.
+  (`u_has_trait`), faction (`u_is_in_faction`), or a variable that an EOC sets.
 - Monster goal nodes take them too, with the monster as `u`.
 
 ```jsonc
@@ -118,7 +118,13 @@ condition is true and fails when it is false, so a `fallback` parent moves on to
   "conditions": [
     {
       "predicate": "condition",
-      "condition": { "and": [ { "u_has_trait": "DEVOUT" }, { "math": [ "time_since('sunrise') < time('1 h')" ] } ] }
+      "condition": {
+        "and": [
+          { "u_is_in_faction": "mymod_monks" },
+          { "u_has_trait": "DEVOUT" },
+          { "math": [ "time_since('sunrise') < time('1 h')" ] }
+        ]
+      }
     }
   ],
   "goal": "mymod_pray"
