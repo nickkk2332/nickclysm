@@ -4,6 +4,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -202,9 +203,34 @@ TEST_CASE( "data-b06_spawn_on_a_uniform_submap_leaves_it_uniform", "[audit][mapb
 
 namespace
 {
+// A folder for a test's files, under one only these tests use.  Removed with everything in
+// it when the test ends, whatever happened.
+struct audit_scratch_folder {
+    cata_path parent = PATH_INFO::user_dir_path() / "audit_sweep_tests";
+    cata_path path;
+    explicit audit_scratch_folder( const std::string &name ) : path( parent / name ) {
+        remove();
+    }
+    ~audit_scratch_folder() {
+        remove();
+        std::error_code ec;
+        // only if empty
+        std::filesystem::remove( parent.get_unrelative_path(), ec );
+    }
+    void remove() const {
+        std::error_code ec;
+        std::filesystem::remove_all( path.get_unrelative_path(), ec );
+    }
+};
+
 // Runs fn on a new, empty, uncompressed world (not the active one), deleted afterwards
 void in_audit_world( const std::string &name, const std::function<void( WORLD & )> &fn )
 {
+    on_out_of_scope cleanup( [&]() {
+        if( world_generator->get_world( name ) != nullptr ) {
+            world_generator->delete_world( name, true );
+        }
+    } );
     WORLD *scratch = nullptr;
     {
         override_option compression( "WORLD_COMPRESSION2", "false" );
@@ -212,9 +238,6 @@ void in_audit_world( const std::string &name, const std::function<void( WORLD & 
                   world_generator->active_world->active_mod_order );
     }
     REQUIRE( scratch != nullptr );
-    on_out_of_scope cleanup( [&]() {
-        world_generator->delete_world( name, true );
-    } );
     REQUIRE_FALSE( scratch->has_compression_enabled() );
     fn( *scratch );
 }
@@ -233,19 +256,26 @@ bool world_reads_compressed( const WORLD &world )
     WORLD fresh( world.world_name );
     return fresh.has_compression_enabled();
 }
+
+// Everything in a folder, files and folders, by path
+std::set<std::string> contents( const cata_path &folder )
+{
+    std::set<std::string> ret;
+    for( const std::filesystem::directory_entry &entry :
+         std::filesystem::recursive_directory_iterator( folder.get_unrelative_path() ) ) {
+        ret.insert( entry.path().lexically_relative( folder.get_unrelative_path() ).generic_u8string() );
+    }
+    return ret;
+}
 } // namespace
 
 // DATA-B07: a zzip whose dictionary is missing crashed on load
 TEST_CASE( "data-b07_zzip_with_a_missing_dictionary_does_not_load", "[audit][zzip]" )
 {
-    const cata_path dir = PATH_INFO::savedir_path() / "audit data-b07 zzip";
-    REQUIRE( assure_dir_exist( dir ) );
-    on_out_of_scope cleanup( [&]() {
-        std::error_code ec;
-        std::filesystem::remove_all( dir.get_unrelative_path(), ec );
-    } );
-    const std::optional<zzip> z = zzip::load( ( dir / "audit.zzip" ).get_unrelative_path(),
-                                  ( dir / "audit_missing.dict" ).get_unrelative_path() );
+    const audit_scratch_folder dir( "data-b07 zzip" );
+    REQUIRE( assure_dir_exist( dir.path ) );
+    const std::optional<zzip> z = zzip::load( ( dir.path / "audit.zzip" ).get_unrelative_path(),
+                                  ( dir.path / "audit_missing.dict" ).get_unrelative_path() );
     CHECK_FALSE( z.has_value() );
 }
 
@@ -274,22 +304,52 @@ TEST_CASE( "data-b07_world_with_dimensions_compresses_and_decompresses", "[audit
 
 // DATA-B07: compressing copied the dictionaries in first and deleted each dimension's files
 // once that dimension was done, so a failure later on left a world that reads as
-// compressed, with some of its maps only in the uncompressed files it then ignores.
+// compressed, with some of its maps only in the uncompressed files it then ignores.  Now a
+// failure leaves the world as it was, without the zzips it had made.
 TEST_CASE( "data-b07_failed_compression_leaves_the_world_as_it_was", "[audit][zzip]" )
 {
     in_audit_world( "audit data-b07 failure", []( WORLD & world ) {
         const cata_path root = world.folder_path();
         const cata_path dim_map = root / "dimensions" / "audit_dim" / "maps" / "0.0.0" / "0.0.0.map";
+        const cata_path root_overmap = root / "o.0.0";
         const cata_path root_map = root / "maps" / "1.1.1" / "1.1.1.map";
         write_text( dim_map, "audit dimension map" );
+        write_text( root_overmap, "audit overmap" );
         write_text( root_map, "audit map" );
+        // A zzip left over from an earlier attempt, which this one would have added to
+        write_text( root / "dimensions" / "audit_dim" / "maps" / "0.0.0.zzip", "stale" );
         // The root's map segment can't be compressed: a folder is in the zzip's way
         REQUIRE( assure_dir_exist( root / "maps" / "1.1.1.zzip" ) );
+        std::set<std::string> before = contents( root );
+        // replaced by a fresh one, which then goes with the rest
+        before.erase( "dimensions/audit_dim/maps/0.0.0.zzip" );
 
         CHECK_FALSE( world.set_compression_enabled( true ) );
         CHECK_FALSE( world_reads_compressed( world ) );
-        CHECK( file_exist( dim_map ) );
-        CHECK( file_exist( root_map ) );
+        CHECK( contents( root ) == before );
+        CHECK( read_entire_file( dim_map.get_unrelative_path() ) == "audit dimension map" );
+    } );
+}
+
+// DATA-B07: a failed decompression leaves the world compressed, without the files it had
+// extracted
+TEST_CASE( "data-b07_failed_decompression_leaves_the_world_as_it_was", "[audit][zzip]" )
+{
+    in_audit_world( "audit data-b07 failed decompression", []( WORLD & world ) {
+        const cata_path root = world.folder_path();
+        const cata_path dim_map = root / "dimensions" / "audit_dim" / "maps" / "0.0.0" / "0.0.0.map";
+        write_text( dim_map, "audit dimension map" );
+        write_text( root / "o.0.0", "audit overmap" );
+        REQUIRE( world.set_compression_enabled( true ) );
+        // The root's overmap can't be extracted: a folder is in its way.  The dimension is
+        // extracted before.
+        REQUIRE( assure_dir_exist( root / "o.0.0" ) );
+        const std::set<std::string> before = contents( root );
+
+        CHECK_FALSE( world.set_compression_enabled( false ) );
+        CHECK( world_reads_compressed( world ) );
+        CHECK( contents( root ) == before );
+        CHECK_FALSE( file_exist( dim_map ) );
     } );
 }
 
