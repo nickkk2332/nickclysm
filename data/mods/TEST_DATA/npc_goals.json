@@ -256,5 +256,18 @@
     "type": "effect_on_condition",
     "id": "EOC_TEST_GOAL_FETCH_BACK",
     "effect": [ { "math": [ "u_test_goal_back = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GOAL_CHANGED",
+    "//": "NPC goal tests: records npc_goal_changed while the global test_goal_listen is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "npc_goal_changed",
+    "condition": { "math": [ "test_goal_listen == 1" ] },
+    "effect": [
+      { "copy_var": { "context_val": "old_goal" }, "target_var": { "global_val": "test_goal_changed_old" } },
+      { "copy_var": { "context_val": "new_goal" }, "target_var": { "global_val": "test_goal_changed_new" } },
+      { "set_string_var": "<u_name>", "target_var": { "global_val": "test_goal_changed_u" }, "parse_tags": true }
+    ]
   }
 ]

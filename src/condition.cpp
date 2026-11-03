@@ -63,6 +63,8 @@
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npc_decision_category.h"
+#include "npc_json_goal.h"
 #include "options.h"
 #include "output.h"
 #include "overmap.h"
@@ -2626,6 +2628,37 @@ conditional_t::func f_using_martial_art( const JsonObject &jo, std::string_view 
     };
 }
 
+// u_npc_goal / npc_npc_goal: the NPC's current goal is this one ("idle" for none)
+conditional_t::func f_npc_goal( const JsonObject &jo, std::string_view member, bool is_npc )
+{
+    const str_or_var goal = get_str_or_var( jo.get_member( member ), member, true );
+    return [goal, is_npc]( const_dialogue const & d ) {
+        const npc *guy = d.const_actor( is_npc )->get_const_npc();
+        return guy != nullptr && npc_goal_runtime::current_goal( *guy ) == goal.evaluate( d );
+    };
+}
+
+// npc_goal_category: u's current goal is in this category
+conditional_t::func f_npc_goal_category( const JsonObject &jo, std::string_view member )
+{
+    const str_or_var category = get_str_or_var( jo.get_member( member ), member, true );
+    if( jo.has_string( member ) ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [id = jo.get_string( member ), context]() {
+            if( !npc_decision_category_id( id ).is_valid() ) {
+                debugmsg( "npc_decision_category \"%s\" (in npc_goal_category in %s) does not exist", id,
+                          context );
+            }
+        } );
+    }
+    return [category]( const_dialogue const & d ) {
+        const npc *guy = d.const_actor( false )->get_const_npc();
+        return guy != nullptr &&
+               bt_goal_to_category( npc_goal_runtime::current_goal( *guy ) ).id().str() ==
+               category.evaluate( d );
+    };
+}
+
 conditional_t::func f_is_rotten( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
@@ -3083,6 +3116,8 @@ parsers = {
     {"u_can_see_location", "npc_can_see_location", jarg::member, &conditional_fun::f_can_see_location },
     {"u_can_reach", "npc_can_reach", jarg::member, &conditional_fun::f_can_reach },
     {"u_is_walking_to", "npc_is_walking_to", jarg::member, &conditional_fun::f_is_walking_to },
+    {"u_npc_goal", "npc_npc_goal", jarg::member, &conditional_fun::f_npc_goal },
+    {"npc_goal_category", jarg::member, &conditional_fun::f_npc_goal_category },
     {"is_weather", jarg::member, &conditional_fun::f_is_weather },
     {"map_terrain_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
     {"map_furniture_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },

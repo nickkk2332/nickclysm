@@ -668,3 +668,94 @@ TEST_CASE( "npc_json_goal_saved_mid_goal", "[npc][npc_goal]" )
     CHECK( global_number( "test_goal_interrupts" ) == 0 );
     CHECK( guy.get_intention().since == before.started );
 }
+
+static bool test_condition( const std::string &condition, const_dialogue const &d )
+{
+    const JsonObject jo = json_loader::from_string( R"({ "condition": )" + condition + " }" );
+    jo.allow_omitted_members();
+    conditional_t::func cond;
+    read_condition( jo, "condition", cond, false );
+    finalize_conditions();
+    return cond( d );
+}
+
+TEST_CASE( "npc_goal_conditions_and_math", "[npc][npc_goal][eoc]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_until_tree" );
+    const dialogue d( get_talker_for( guy ), nullptr );
+    CHECK( test_condition( R"({ "u_npc_goal": "idle" })", d ) );
+    CHECK( test_condition( R"({ "npc_goal_category": "idle" })", d ) );
+    CHECK( test_condition( R"({ "math": [ "npc_goal_turns() == 0" ] })", d ) );
+
+    adopt( guy, "test_goal_until" );
+    run_npc_turns( guy, 3 );
+    CHECK( test_condition( R"({ "u_npc_goal": "test_goal_until" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "u_npc_goal": "idle" })", d ) );
+    get_globals().set_global_value( "test_goal_name", "test_goal_until" );
+    CHECK( test_condition( R"({ "u_npc_goal": { "global_val": "test_goal_name" } })", d ) );
+    CHECK( test_condition( R"({ "npc_goal_category": "test_goal_late" })", d ) );
+    CHECK_FALSE( test_condition( R"({ "npc_goal_category": "needs" })", d ) );
+    // taken up four turns ago
+    CHECK( test_condition( R"({ "math": [ "npc_goal_turns() == 4" ] })", d ) );
+    CHECK( test_condition( R"({ "math": [ "u_npc_goal_turns() == 4" ] })", d ) );
+
+    // the NPC as the beta talker
+    const dialogue with_npc( get_talker_for( get_avatar() ), get_talker_for( guy ) );
+    CHECK( test_condition( R"({ "npc_npc_goal": "test_goal_until" })", with_npc ) );
+    CHECK_FALSE( test_condition( R"({ "u_npc_goal": "test_goal_until" })", with_npc ) );
+    CHECK( test_condition( R"({ "math": [ "n_npc_goal_turns() == 4" ] })", with_npc ) );
+    CHECK( test_condition( R"({ "math": [ "u_npc_goal_turns() == 0" ] })", with_npc ) );
+
+    // built-in goals too
+    guy.set_committed_goal_for_test( "drink_water" );
+    CHECK( test_condition( R"({ "npc_goal_category": "needs" })", d ) );
+    CHECK( test_condition( R"({ "u_npc_goal": "drink_water" })", d ) );
+    guy.set_committed_goal_for_test( "" );
+    *guy.json_goal = npc_goal_state();
+}
+
+namespace
+{
+struct goal_change_recorder : public event_subscriber {
+    using event_subscriber::notify;
+    std::vector<cata::event> changes;
+    void notify( const cata::event &e ) override {
+        if( e.type() == event_type::npc_goal_changed ) {
+            changes.push_back( e );
+        }
+    }
+};
+} // namespace
+
+TEST_CASE( "npc_goal_changed_event", "[npc][npc_goal][event]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_until_tree" );
+    goal_change_recorder recorder;
+    get_event_bus().subscribe( &recorder );
+    get_globals().set_global_value( "test_goal_listen", 1.0 );
+    adopt( guy, "test_goal_until" );
+    REQUIRE( recorder.changes.size() == 1 );
+    const cata::event &started = recorder.changes.front();
+    CHECK( started.get<cata_variant_type::character_id>( "npc" ) == guy.getID() );
+    CHECK( started.get<cata_variant_type::string>( "old_goal" ) == "idle" );
+    CHECK( started.get<cata_variant_type::string>( "new_goal" ) == "test_goal_until" );
+    // an EOC of the event runs with the NPC as u
+    CHECK( global_string( "test_goal_changed_old" ) == "idle" );
+    CHECK( global_string( "test_goal_changed_new" ) == "test_goal_until" );
+    CHECK( global_string( "test_goal_changed_u" ) == guy.get_name() );
+
+    // no change, no event
+    run_npc_turns( guy, 2 );
+    CHECK( recorder.changes.size() == 1 );
+
+    goal_test_tree::use( "test_goal_idle_tree" );
+    guy.set_value( "test_goal_finish", 1.0 );
+    run_npc_turn( guy );
+    REQUIRE( recorder.changes.size() == 2 );
+    CHECK( recorder.changes.back().get<cata_variant_type::string>( "old_goal" ) == "test_goal_until" );
+    CHECK( recorder.changes.back().get<cata_variant_type::string>( "new_goal" ) == "idle" );
+    guy.remove_value( "test_goal_finish" );
+    get_event_bus().unsubscribe( &recorder );
+}

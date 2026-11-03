@@ -142,6 +142,7 @@ enum class event_type : int {
     u_var_changed,
     vehicle_moves,
     character_butchered_corpse,
+    npc_goal_changed,
     num_event_types // last
 };
 
@@ -209,7 +210,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 118,
+static_assert( static_cast<int>( event_type::num_event_types ) == 119,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -941,6 +942,17 @@ struct event_spec<event_type::npc_becomes_hostile> {
     static constexpr std::array<event_field, 2> fields = {{
             { "npc", cata_variant_type::character_id },
             { "npc_name", cata_variant_type::string },
+        }
+    };
+};
+
+// the goal an NPC is committed to changed; "idle" for none (doc/JSON/NPC_BEHAVIOR.md)
+template<>
+struct event_spec<event_type::npc_goal_changed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "npc", cata_variant_type::character_id },
+            { "old_goal", cata_variant_type::string },
+            { "new_goal", cata_variant_type::string },
         }
     };
 };

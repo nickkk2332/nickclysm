@@ -1486,6 +1486,7 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | val(`s`)    |  ✅   |   varies  | u, n  | Return or set a Character or item value. Argument is a [Character/item aspect](#list-of-character-and-item-aspects).<br/><br/>These are all in one function for legacy reasons and are generally poorly tested. If you need one of them, consider porting it to a native math function.<br/><br/>Example:<br/>`{ "math": [ "u_val('strength') = 2" ] }`|
 | npc_anger()    |  ✅   |  ✅   | u, n  | Return NPC anger toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_anger() > 2" ] }`|
 | npc_fear()    |  ✅   |  ✅   | u, n  | Return NPC fear toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_fear() < 2" ] }`|
+| npc_goal_turns()    |  ✅   |  ❌   | u, n  | Return the turns since the NPC's current goal started; 0 when it has none, or isn't an NPC. Callable without a prefix for u. See [JSON goals](NPC_BEHAVIOR.md#reading-goals-from-eocs). <br/><br/>Example:<br/> `{ "math": [ "npc_goal_turns() > 100" ] }`|
 | npc_trust()    |  ✅   |  ✅   | u, n  | Return NPC trust toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_trust() = 2" ] }`|
 | npc_value()    |  ✅   |  ✅   | u, n  | Return NPC value toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_value() += 2" ] }`|
 | ugliness()    |  ✅   |  ❌   | u, n  | Return ugliness of character. <br/><br/>Example:<br/> `{ "math": [ "n_ugliness() > 0" ] }`|

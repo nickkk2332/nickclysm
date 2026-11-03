@@ -1179,6 +1179,7 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::u_var_changed:
         case event_type::vehicle_moves:
         case event_type::character_butchered_corpse:
+        case event_type::npc_goal_changed:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

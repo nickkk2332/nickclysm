@@ -51,6 +51,7 @@
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "npc_json_goal.h"
 #include "options.h"
 #include "pimpl.h"
 #include "point.h"
@@ -1659,6 +1660,16 @@ double npc_value_eval( const_dialogue const &d, char scope,
     }
 }
 
+// turns since the NPC's current goal started; 0 when it has none, or isn't an NPC
+double npc_goal_turns_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    const const_talker *who = d.const_actor( is_beta( scope ) );
+    const npc *guy = who == nullptr ? nullptr : who->get_const_npc();
+    return guy == nullptr ? 0.0 : npc_goal_runtime::turns_on_goal( *guy );
+}
+
 double npc_trust_eval( const_dialogue const &d, char scope,
                        std::vector<diag_value> const & /* params */,
                        diag_kwargs const & /* kwargs */ )
@@ -2554,6 +2565,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "val", { "un", 1, u_val, u_val_ass } },
     { "npc_anger", { "un", 0, npc_anger_eval, npc_anger_ass } },
     { "npc_fear", { "un", 0, npc_fear_eval, npc_fear_ass } },
+    { "npc_goal_turns", { "ung", 0, npc_goal_turns_eval } },
     { "npc_value", { "un", 0, npc_value_eval, npc_value_ass } },
     { "npc_trust", { "un", 0, npc_trust_eval, npc_trust_ass } },
     { "ugliness", { "un", 0, ugliness_eval } },

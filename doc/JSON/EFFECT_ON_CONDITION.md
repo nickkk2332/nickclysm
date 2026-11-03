@@ -1760,6 +1760,38 @@ You are on your way to the spot in `camp_fire`
 { "u_is_walking_to": { "u_val": "camp_fire" } }
 ```
 
+### `u_npc_goal`, `npc_npc_goal`
+- type: string or [variable object](#variable-object)
+- return true if the alpha or beta talker is an NPC whose current goal is this one: the goal it is committed to, a built-in one or a [JSON goal](NPC_BEHAVIOR.md#json-goals), or `idle` when it has none
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The NPC is fetching the crowbar
+```jsonc
+{ "npc_npc_goal": "fetch_crowbar" }
+```
+
+### `npc_goal_category`
+- type: string or [variable object](#variable-object)
+- return true if the alpha talker is an NPC whose current goal is in this [decision category](NPC_BEHAVIOR.md#categories)
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+You (an NPC) are seeing to a need
+```jsonc
+{ "npc_goal_category": "needs" }
+```
+
 ### `u_can_reach`, `npc_can_reach`
 - type: [variable object](#variable-object)
 - return true if alpha or beta talker has a way to the location: the walk `u_walk_to` would take, with the same `range`, so walls, locked doors and an unloaded spot make it false. Creatures in the way don't count, since they may move. This runs a path search, so don't check it every turn for many characters
@@ -2304,6 +2336,7 @@ Every event EOC passes context vars with each of their key value pairs that the 
 | triggers_alarm | Triggers when alarm is sounded as a failure state of hacking, prying, using a computer, or (if player is sufficiently close)damaged terrain with ALARMED flag | { "character", `character_id` } | character / NONE |
 | uses_debug_menu | | { "debug_menu_option", `debug_menu_index` }, | avatar / NONE |
 | u_var_changed | | { "var", `string` },<br/> { "value", `string` }, | avatar / NONE |
+| npc_goal_changed | Triggers when the goal an NPC is committed to changes, built-in or [JSON](NPC_BEHAVIOR.md#reading-goals-from-eocs); `idle` stands for none | { "npc", `character_id` },<br/> { "old_goal", `string` },<br/> { "new_goal", `string` }, | NPC / NONE |
 | vehicle_moves | | { "avatar_on_board", `bool` },<br/> { "avatar_is_driving", `bool` },<br/> { "avatar_remote_control", `bool` },<br/> { "is_flying_aircraft", `bool` },<br/> { "is_floating_watercraft", `bool` },<br/> { "is_on_rails", `bool` },<br/> { "is_falling", `bool` },<br/> { "is_sinking", `bool` },<br/> { "is_skidding", `bool` },<br/> { "velocity", `int` }, // vehicle current velocity, mph * 100<br/> { "z", `int` }, | vehicle / avatar |
 
 ## Context Variables For Other EOCs
@@ -2323,6 +2356,7 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
 | `u_walk_to`: "true_eocs", "false_eocs" | { "reason", `string` why the walk ended }, and the context variables of the EoC that started the walk |
 | `u_pickup_item`, `u_wield_item`, `u_wear_item`, `u_drop_item`: "true_eocs", "false_eocs" | { "reason", `string` why it was refused, or `done` }, and the context variables of the EoC |
+| behavior goal: "on_start", "on_turn", "on_end", "on_interrupt", "on_timeout" | { "goal_id", `string` }, { "turns_active", `int` goal-active turns so far }, and in the end hooks { "reason", `string`: `done`, `timeout` or `interrupted` }; see [JSON goals](NPC_BEHAVIOR.md#json-goals) |
 
 
 # Effects

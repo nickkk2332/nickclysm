@@ -389,6 +389,7 @@ bool npc_goal_runtime::holds_against( npc &guy, const decision_category &reactio
         }
         end( guy, npc_goal_reason::interrupted );
         guy.ai_cache.intention = {};
+        report_change( guy );
         return false;
     }
     // only a goal at or above the reaction can keep the NPC from it: ask the tree only when
@@ -411,4 +412,16 @@ bool npc_goal_runtime::outranks( const npc &guy, const decision_category &cat )
 {
     const npc_json_goal *goal = npc_json_goals::find( guy.json_goal->goal );
     return goal != nullptr && !( cat < decision_category( goal->category ) );
+}
+
+void npc_goal_runtime::report_change( npc &guy )
+{
+    npc_goal_state &state = *guy.json_goal;
+    const std::string &now = current_goal( guy );
+    if( now == state.reported ) {
+        return;
+    }
+    std::string old = std::exchange( state.reported, now );
+    get_event_bus().send<event_type::npc_goal_changed>( guy.getID(), std::move( old ),
+            std::string( now ) );
 }

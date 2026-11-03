@@ -158,6 +158,8 @@ class npc_goal_runtime
         static bool holds_against( npc &guy, const decision_category &reaction );
         // the NPC is on a JSON goal of `cat` or of a category before it
         static bool outranks( const npc &guy, const decision_category &cat );
+        // sends npc_goal_changed when the current goal isn't the one last reported
+        static void report_change( npc &guy );
 };
 
 #endif // CATA_SRC_NPC_JSON_GOAL_H

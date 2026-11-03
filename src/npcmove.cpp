@@ -1836,6 +1836,9 @@ void npc::move()
                     // until or timeout; a challenger is judged below
                     if( const std::optional<std::string> why = npc_goal_runtime::finish_reason( *this ) ) {
                         npc_goal_runtime::end( *this, *why );
+                        ai_cache.intention = {};
+                        // reported even when the tree picks it again at once
+                        npc_goal_runtime::report_change( *this );
                         completed_goal = true;
                     }
                 } else if( committed == "return_to_guard_pos" ) {
@@ -1923,6 +1926,7 @@ void npc::move()
             }
             // adopted on every path, including a completion or interrupt this turn
             adopt_goal( new_goal );
+            npc_goal_runtime::report_change( *this );
 
             // Dispatch based on the (possibly committed) goal.
             if( new_goal == "return_to_guard_pos" ) {
@@ -2043,6 +2047,8 @@ void npc::move()
                 // Non-executor needs goal. Legacy address_needs fallback.
                 action = address_needs();
             }
+            // an executor or a goal's own EOCs may have ended the commitment
+            npc_goal_runtime::report_change( *this );
 
             // Debug: executor state for needs goals.
             if( auto dbg_gid = goal_id_for( new_goal ); dbg_gid ) {
@@ -7874,6 +7880,7 @@ void npc::clear_committed_goal()
         abandon_activity();
     }
     ai_cache.intention = {};
+    npc_goal_runtime::report_change( *this );
 }
 
 float npc::current_need_urgency( need_goal_id id ) const
