@@ -242,10 +242,37 @@ TEST_CASE( "loop-b09_weather_temperature_modifier_is_in_degrees", "[audit][weath
     CHECK( loaded_modifier( R"("-500 mC")" ) == Approx( -0.5 ) );
 }
 
+// The weather's temperature modifier was added on every level, so the scarlet storms' chill
+// reached cellars and labs as well. It applies above ground only, indoors as well as out.
+TEST_CASE( "loop-b09_a_storm_chills_the_surface_but_not_the_cellar",
+           "[audit][weather][temperature]" )
+{
+    clear_map( -1, 0 );
+    weather_manager &weather = get_weather();
+    const on_out_of_scope clear_cache( [&weather]() {
+        weather.clear_temp_cache();
+    } );
+    // A new game's first turn leaves out every local modifier
+    restore_on_out_of_scope restore_new_game( g->new_game );
+    g->new_game = false;
+    scoped_weather_override storm( weather_scarlet_storm_5 );
+    weather.clear_temp_cache();
+    REQUIRE( weather.weather_id == weather_scarlet_storm_5 );
+    REQUIRE( !weather.forced_temperature );
+    const double generated_k = units::to_kelvin( weather.temperature );
+    const double underground_k =
+        units::to_kelvin( units::from_celsius( weather.get_cur_weather_gen().base_temperature ) );
+    CHECK( units::to_kelvin( weather.get_temperature( tripoint_bub_ms( 60, 60, 0 ) ) ) ==
+           Approx( generated_k - 30 ).margin( 0.01 ) );
+    CHECK( units::to_kelvin( weather.get_temperature( tripoint_bub_ms( 60, 60, -1 ) ) ) ==
+           Approx( underground_k ).margin( 0.01 ) );
+}
+
 // ---- LOOP-B11 ----
 
 static const ter_str_id ter_t_flat_roof( "t_flat_roof" );
 static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
 static const ter_str_id ter_t_wall( "t_wall" );
 static const ter_str_id ter_t_water_dp( "t_water_dp" );
 static const ter_str_id ter_t_water_sh( "t_water_sh" );

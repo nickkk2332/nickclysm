@@ -14,7 +14,7 @@ Each weather type is a type of weather that occurs, and what causes it. The only
 | `ranged_penalty`     | Penalty to ranged attacks.                                                                       |
 | `sight_penalty`      | Penalty to per-square visibility, applied in transparency map.                                   |
 | `light_modifier`     | modification to ambient light.                                                                   |
-| `temperature_modifier` | additive modifier to ambient temperature above ground, such as `"-20 C"`. A plain number is degrees Celsius. |
+| `temperature_modifier` | additive modifier to ambient temperature, such as `"-20 C"`; a plain number is degrees Celsius. It applies to every tile above ground (z ≥ 0), indoors as well as outdoors; underground levels keep the region's base temperature. |
 | `sound_attn`         | Sound attenuation of a given weather type.                                                       |
 | `dangerous`          | If true, our activity gets interrupted.                                                          |
 | `precip`             | Amount of associated precipitation. Valid values are: none, very_light, light and heavy          |
