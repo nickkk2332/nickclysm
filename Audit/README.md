@@ -545,6 +545,88 @@ Cost: the `npc_decision` benchmark (300 turns of the tree for 20 NPCs) takes 53 
 
 With this batch the full suite passes, 2734 of 2734 test cases with seed 4242 and no errors logged. The 46 new test cases are mainly in `tests/npc_behavior_tree_test.cpp` and `tests/npc_json_goal_test.cpp`, and every mod set still loads with no errors.
 
+**NPC follow-ups (NPC-J04, NPC-J05, NPC-J10) and bug sweep, slice 2.** These were built after section H, in five worktrees: the NPC follow-ups, and four bug batches covering chapters 1 to 5 (EOC and dialogue, math and talkers, events and data loading, game loop and weather). A separate agent reviewed each worktree, and its comments were fixed before merging. The batches built and passed their focused tests on their own, then were merged and run through the full suite once.
+
+For modders (documented in `doc/JSON/EFFECT_ON_CONDITION.md`, `NPCs.md`, `NPC_BEHAVIOR.md` and `FACTIONS.md`):
+- **NPC events.**
+  - New events:
+    - `npc_attitude_changed`, with a `cause`: `effect`, `angered`, `opinion`, `mutiny`, `faction`, `panic`, `theft` or `ai`.
+    - `npc_recruited`, `npc_dismissed` and `npc_mutinies`.
+  - `npc_becomes_hostile` now fires for every way an NPC turns hostile, once until it calms down again, and not at spawn.
+  - A faction's `mutiny_faction` says where mutineers go.
+- **Reading and changing NPCs.**
+  - Math: `npc_personality()` (assignable), `npc_danger()`, `npc_panic()` and `npc_need_urgency()`.
+  - Conditions: `npc_attitude`, `npc_mission`, `npc_on_shift` and `npc_at_post`.
+  - Effects: `npc_set_attitude` and `npc_set_mission`, which go through the same code as the matching dialogue effects.
+  - Factions: `faction_has_relation` and `set_faction_relation`.
+- **AI tuning.** An `npc_class` can set `ai_tuning`: need thresholds, urgencies, starvation, camp meal size and sleep timings. Vanilla classes keep today's values exactly.
+- **EOCs.**
+  - About 20 effects and conditions no longer crash on the wrong kind of talker; they give one debug message instead.
+  - An EOC chain stops at 250 levels deep, with one message.
+  - An EOC queued with no delay from inside a queued EOC runs a turn later.
+  - `failure_topic` responses can be picked.
+  - `u_pickup_items` limits and `u_pick_bodypart` filters work.
+  - The documented object form of `take_control` loads.
+- **Math.**
+  - `%` groups left to right; no shipped JSON changes result.
+  - `time_since('noon')` and `time_until('noon')` are right before midday.
+  - `time()`/`calories()` assignments honour `unit` and `format`.
+  - `val('pos_x/y/z')` assignment moves like a teleport.
+  - `time_until_eoc()` returns the time left.
+- **Events.**
+  - EVENT EOCs no longer fall back to the avatar when the event's character can't be found. For example, a monster hurt by bleeding is now `u`.
+  - `trigger_event` arguments are checked.
+  - Timed map changes happen in the dimension they were made in.
+- **Data and mods.**
+  - `mod_migration` renames work, including chains.
+  - A plain-number weather `temperature_modifier` means °C.
+  - When a world loads with a broken mod list (a missing dependency, a conflict or the wrong order), a prompt offers to fix it, load anyway or go back, as the owner chose.
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| NPC-J04 | fixed | `c1e9b5fa`, `6ba4f89e`, `3b3f2823` | `tests/npc_ai_events_test.cpp` |
+| NPC-J05 | fixed | `e58bc280` (section H), `e0be4807`, `dbaf7c8b` | `tests/npc_ai_eoc_test.cpp` |
+| NPC-J10 | partial | `28437d7e` | `tests/npc_ai_tuning_test.cpp`. Still open: custom needs (the need set is a fixed enum), and the embark urgency, noise-wake window and temperature predicate |
+| EOC-B06 to EOC-B15 | fixed | `8c0da604` to `ff0b0985`, follow-ups `dae7c28f` to `db21dfb9` | `tests/audit_eoc_dialogue_test.cpp` (EOC-B09's UI path and EOC-B10's hotkey read are checked by reading) |
+| MATH-B03 to MATH-B11, LOOP-B10 | fixed | `eb2fd836` to `94250384`, follow-ups `242c90f2` to `a4106430` | `tests/audit_math_talkers_test.cpp` |
+| MATH-B12 | already fixed | by LOOP-J01 (`a17a8639`, `e1b3f7ef`) | existing `loop-j01_eoc_weather_overrides_hold_until_they_run_out` |
+| EVT-B03 to EVT-B10 | fixed | `6c203ba4` to `cbe83093`, follow-ups `3218e2c6`, `8c7b137f`, `5cc75dd7`, `94ea0bb4` | `tests/audit_events_sweep_test.cpp` (EVT-B06 needs a full game setup and is checked by reading) |
+| DATA-B04, DATA-B06, DATA-B07, DATA-B08 | fixed | `ef1af991`, `70395ba2`, `5e336317`, `42771b3b`, follow-ups `28d1c58b`, `bbc9087d`, `423cafa9`, `bb3e39f4` | `tests/audit_data_sweep_test.cpp` |
+| DATA-B05 | partial | `108c2b82` | `tests/audit_data_sweep_test.cpp`. Still open: mutation types and the charge/temperature removal blacklists still carry over between worlds in one session (the fix needs widely included headers; no shipped content shows it) |
+| DATA-B09 | fixed | `3cbe8ccc`, `f67fe1f3` | `tests/audit_data_sweep_test.cpp` |
+| LOOP-B05, LOOP-B12 | already fixed | by EVT-B01 (`90c08ef9`) and MAP-B03 | existing tests |
+| LOOP-B06 to LOOP-B09, LOOP-B13 to LOOP-B15 | fixed | `12247a06` to `d27488aa`, follow-ups `858c62d4` to `e37c37f7` | `tests/audit_loop_sweep_test.cpp` (LOOP-B07 is a menu and is checked by reading) |
+| LOOP-B11 | partial | `6fcccdc6` | `tests/audit_loop_sweep_test.cpp`. Still open: the avatar's water landing after knockback (needs design: which water, swim cost, map shift) |
+
+Gameplay changes players will notice:
+- **Seasons for water and maple sap** were 81 days early.
+  - Water is now warmest in early August and coldest in early February, so swimming at a default spring start is much colder: about 40 °F instead of 66 °F.
+  - Maple sap runs from late February to early May.
+- **Scarlet storms** now chill the surface by 2 to 30 °C. Their values had been read in a unit that made them do almost nothing. Underground is unaffected.
+- **Weather is consistent:** the same time and place give the same weather, and only live weather updates turn the wind. Wind direction now lasts hours instead of changing almost every update. Weather keeps working while you're in a basement or underwater.
+- **Alarms.**
+  - "Set alarm for dawn" sets the alarm for dawn.
+  - The motion alarm goes off at most once a turn, only for unfriendly monsters that moved or appeared in range.
+- **Saves.**
+  - A failed save no longer leaves the character file and the world out of step.
+  - A failed trip to another dimension keeps your vehicle, passengers, items and NPCs. A tow line is left unhitched.
+  - Mortar shells survive a save.
+  - Lake and open-air areas keep partial constructions and spawns.
+- **Dialogue.**
+  - "Go back" in an NPC's opening topic stays in the conversation.
+  - Responses with a `failure_topic` can be picked: for example, the Old Guard's "You don't have enough." now goes back instead of being greyed out.
+- **NPCs.**
+  - A new character no longer starts with the previous one's memorial.
+  - The memorial logs "became hostile" exactly as before.
+  - Knocked-back monsters drown in the deep water they cross, not the shallow water they started in.
+- **Teleports.** A teleport that is refused (`u_teleport`, spells, `val('pos_*')`) changes nothing: you keep your seat, mount and grabs.
+- **Mod content updated** to keep its behavior under the new rules:
+  - Xedra's six paraclesian spell selectors, its brownie blink and the haunting spawn no longer recurse.
+  - Magiclysm's and MindOverMatter's item-count EOCs no longer recurse.
+  - Three MindOverMatter and Xedra damage EOCs need an attacker.
+
+With these batches the full suite passes, 2834 of 2834 test cases with seed 4242 and no errors logged, and every mod set still loads with no errors. The 100 new test cases are mainly in `tests/npc_ai_*_test.cpp` and `tests/audit_{eoc_dialogue,math_talkers,events_sweep,data_sweep,loop_sweep}_test.cpp`. The tests of the changed mod content are hidden and run with those mods loaded (`--mods=no_npc_food,xedra_evolved,mindovermatter,magiclysm "[xedra_evolved],[mindovermatter]"`); they pass.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. After the third round (modding round 1 and bug sweep 1), all 228 `[audit]` test cases pass and the full suite passes: 2506 of 2506 with seed 4242, with no errors logged. Every mod set still loads with no errors. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
