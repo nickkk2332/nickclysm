@@ -136,3 +136,69 @@ TEST_CASE( "loop-b06_maple_sap_runs_in_late_winter_and_early_spring", "[audit][m
     // Ten days into winter (around Dec 31) is not
     CHECK( sap_made_in_the_day_before( season * 3 + 10_days ) == 0 );
 }
+
+// ---- LOOP-B08 ----
+
+static const bionic_id bio_alarm( "bio_alarm" );
+
+static const efftype_id effect_pet( "pet" );
+
+// The power the motion alarm takes over the monsters' share of one turn
+static units::energy alarm_power_used_in_one_turn()
+{
+    avatar &u = get_avatar();
+    const units::energy before = u.get_power_level();
+    monmove();
+    return before - u.get_power_level();
+}
+
+// The motion alarm went off once for every monster near you each turn, pets and creatures
+// that never move included, so a dog at your side woke you every turn.
+TEST_CASE( "loop-b08_motion_alarm_goes_off_once_a_turn_for_strangers_that_move",
+           "[audit][game_loop]" )
+{
+    clear_map();
+    clear_avatar();
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    set_time_to_day();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms center( 60, 60, 0 );
+    u.setpos( here, center );
+    u.set_max_power_level( 100_kJ );
+    u.set_power_level( 100_kJ );
+    give_and_activate_bionic( u, bio_alarm );
+    u.recalculate_enchantment_cache();
+    REQUIRE( u.enchantment_cache->modify_value( enchant_vals::mod::MOTION_ALARM, 0 ) == 5 );
+    const units::energy one_alarm = bio_alarm->power_trigger;
+    REQUIRE( one_alarm > 0_J );
+    u.set_power_level( 100_kJ );
+
+    SECTION( "two strangers walking up set it off once" ) {
+        monster &east = spawn_test_monster( "mon_zombie", center + tripoint_rel_ms( 4, 0, 0 ) );
+        monster &west = spawn_test_monster( "mon_zombie", center + tripoint_rel_ms( -4, 0, 0 ) );
+        const tripoint_abs_ms east_before = east.pos_abs();
+        const tripoint_abs_ms west_before = west.pos_abs();
+        const units::energy used = alarm_power_used_in_one_turn();
+        REQUIRE( east.pos_abs() != east_before );
+        REQUIRE( west.pos_abs() != west_before );
+        CHECK( used == one_alarm );
+    }
+
+    // A mount is always one of your pets, so this covers riding too
+    SECTION( "a pet walking around does not" ) {
+        monster &dog = spawn_test_monster( "mon_dog", center + tripoint_rel_ms( 3, 0, 0 ) );
+        dog.friendly = -1;
+        dog.add_effect( effect_pet, 1_turns, true );
+        REQUIRE( dog.is_pet() );
+        CHECK( alarm_power_used_in_one_turn() == 0_J );
+    }
+
+    SECTION( "a creature that stays put does not" ) {
+        spawn_test_monster( "mon_test_speed_desc_base_immobile", center + tripoint_rel_ms( 2, 0, 0 ) );
+        CHECK( alarm_power_used_in_one_turn() == 0_J );
+    }
+
+    clear_map();
+    clear_avatar();
+}

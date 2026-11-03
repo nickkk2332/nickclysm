@@ -324,13 +324,15 @@ npc_turn_result process_npc_turn( map &m, npc &guy )
     return result;
 }
 
-namespace
-{
 void monmove()
 {
     g->cleanup_dead();
     map &m = get_map();
     avatar &u = get_avatar();
+    // The motion alarm goes off at most once a turn, for a stranger that moved within range
+    const int motion_alarm_range = u.enchantment_cache->modify_value(
+                                       enchant_vals::mod::MOTION_ALARM, 0 );
+    bool motion_detected = false;
 
     for( monster &critter : g->all_monsters() ) {
         if( !m.inbounds( critter.pos_abs() ) ) {
@@ -375,6 +377,7 @@ void monmove()
             critter.try_biosignature();
             critter.try_reproduce();
         }
+        const tripoint_abs_ms pos_before_moving = critter.pos_abs();
         while( critter.get_moves() > 0 && !critter.is_dead() && !critter.has_effect( effect_ridden ) ) {
             critter.made_footstep = false;
             // Controlled critters don't make their own plans
@@ -390,22 +393,27 @@ void monmove()
             m.creature_in_field( critter );
         }
 
-        if( !critter.is_dead() && !critter.is_hallucination() &&
-            rl_dist( u.pos_abs(), critter.pos_abs() ) < u.enchantment_cache->modify_value(
-                enchant_vals::mod::MOTION_ALARM, 0 ) ) {
-            if( u.has_active_bionic( bio_alarm ) ) {
-                u.mod_power_level( -bio_alarm->power_trigger );
-                add_msg( m_warning, _( "Your motion alarm goes off!" ) );
-                g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
-                                                    _( "Your motion alarm goes off!" ) );
-            } else {
-                add_msg( m_warning, _( "You suddenly feel alerted!" ) );
-                g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
-                                                    _( "Your instincts warn you for danger!" ) );
-            }
-            if( u.has_effect( effect_sleep ) ) {
-                u.wake_up();
-            }
+        // Pets (a mount is always one) and creatures that stayed put don't set it off
+        if( !motion_detected && !critter.is_dead() && !critter.is_hallucination() &&
+            critter.friendly == 0 && critter.pos_abs() != pos_before_moving &&
+            rl_dist( u.pos_abs(), critter.pos_abs() ) < motion_alarm_range ) {
+            motion_detected = true;
+        }
+    }
+
+    if( motion_detected ) {
+        if( u.has_active_bionic( bio_alarm ) ) {
+            u.mod_power_level( -bio_alarm->power_trigger );
+            add_msg( m_warning, _( "Your motion alarm goes off!" ) );
+            g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
+                                                _( "Your motion alarm goes off!" ) );
+        } else {
+            add_msg( m_warning, _( "You suddenly feel alerted!" ) );
+            g->cancel_activity_or_ignore_query( distraction_type::motion_alarm,
+                                                _( "Your instincts warn you for danger!" ) );
+        }
+        if( u.has_effect( effect_sleep ) ) {
+            u.wake_up();
         }
     }
 
@@ -423,6 +431,8 @@ void monmove()
     g->cleanup_dead();
 }
 
+namespace
+{
 void overmap_npc_move()
 {
     avatar &u = get_avatar();
