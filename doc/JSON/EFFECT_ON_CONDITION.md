@@ -3061,8 +3061,8 @@ Opens a menu that allow to pick items from any point directly into the inventory
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_pickup_items" / "npc_pickup_items" | **mandatory** | [variable object](#variable-object) | location variable of the center of pickup |
-| "max_mass" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max weight of a single item you try to pick up, in grams |
-| "max_volume" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max volume of a single item you try to pick up, in milliliters |
+| "max_mass" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max total weight of the items picked up this way, in grams; picking up stops at the first item that would go over it |
+| "max_volume" | optional | int or [variable object](#variable-object) | default -1 (unlimited), max total volume of the items picked up this way, in milliliters; picking up stops at the first item that would go over it |
 | "extra_moves_per_item" | optional | int or [variable object](#variable-object) | additional time penalty for picking up items via this effect, in moves. Multiplied by the distance between the character that picks up and the item |
 
 ##### Valid talkers:

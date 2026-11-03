@@ -334,3 +334,15 @@ TEST_CASE( "eoc-b10_response_flags_follow_their_responses", "[audit][npc_talk]" 
     CHECK( selectable["*Not now: Fails with a topic."] );
     CHECK( next_topic["*Not now: Fails with a topic."] == "TALK_AUDIT_B10_FAILED" );
 }
+
+// EOC-B11: max_mass was read as units::from_gram( has_float( "max_mass" ) ), a limit of 1 mg,
+// and never marked as read; none of the three numbers took the documented variable objects.
+TEST_CASE( "eoc-b11_pickup_items_reads_its_limits", "[audit][eoc]" )
+{
+    const std::string messages = capture_debugmsg_during( []() {
+        load_effect( R"({ "effect": { "u_pickup_items": { "u_val": "audit_b11_loc" }, "max_mass": 500,
+            "max_volume": { "global_val": "audit_b11_volume" },
+            "extra_moves_per_item": { "math": [ "1 + 1" ] } } })" );
+    } );
+    CHECK( messages.empty() );
+}

@@ -4,6 +4,7 @@
 #include <climits>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <exception>
 #include <filesystem>
@@ -9685,23 +9686,19 @@ talk_effect_fun_t::func f_pickup_items( const JsonObject &jo, std::string_view m
                                         std::string_view, bool is_npc )
 {
     var_info target_var = read_var_info( jo.get_object( member ) );
-    int extra_moves_per_item = 0;
-    units::volume max_volume = -1_ml;
-    units::mass max_mass = -1_gram;
-    if( jo.has_int( "extra_moves_per_item" ) ) {
-        extra_moves_per_item = jo.get_int( "extra_moves_per_item" );
-    }
-    if( jo.has_float( "max_volume" ) ) {
-        max_volume =  units::from_milliliter( jo.get_float( "max_volume" ) );
-    }
-    if( jo.has_float( "max_mass" ) ) {
-        max_mass = units::from_gram( jo.has_float( "max_mass" ) );
-    }
+    // A limit below 0 means none
+    const dbl_or_var extra_moves_per_item = get_dbl_or_var( jo, "extra_moves_per_item", false, 0 );
+    const dbl_or_var max_volume = get_dbl_or_var( jo, "max_volume", false, -1 );
+    const dbl_or_var max_mass = get_dbl_or_var( jo, "max_mass", false, -1 );
     return [is_npc, target_var, extra_moves_per_item, max_volume, max_mass]( dialogue const & d ) {
         tripoint_abs_ms target_pos_abs = read_var_value( target_var, d ).tripoint();
         tripoint_bub_ms target_pos = get_map().get_bub( target_pos_abs );
         Character *c = d.actor( is_npc )->get_character();
-        Pickup::pick_info info = Pickup::pick_info( extra_moves_per_item, max_volume, max_mass );
+        const int volume_ml = max_volume.evaluate( d );
+        const std::int64_t mass_g = max_mass.evaluate( d );
+        Pickup::pick_info info = Pickup::pick_info( extra_moves_per_item.evaluate( d ),
+                                 volume_ml < 0 ? -1_ml : units::from_milliliter( volume_ml ),
+                                 mass_g < 0 ? -1_gram : units::from_gram( mass_g ) );
         if( c ) {
             ( *c ).pick_up( game_menus::inv::pickup( {target_pos}, {}, info ) );
         }
