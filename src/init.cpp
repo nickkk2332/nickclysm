@@ -92,6 +92,7 @@
 #include "mutation.h"
 #include "npc.h"
 #include "npc_class.h"
+#include "npc_decision_category.h"
 #include "omdata.h"
 #include "options.h"
 #include "overlay_ordering.h"
@@ -606,6 +607,7 @@ void DynamicDataLoader::initialize()
     add( "npc_class", &npc_class::load_npc_class );
     add( "talk_topic", &load_talk_topic );
     add( "behavior", &behavior::load_behavior );
+    add( "npc_decision_category", &npc_decision_category::load_category );
 
     add( "MONSTER_FACTION", &monfactions::load_monster_faction );
 
@@ -795,6 +797,7 @@ void DynamicDataLoader::unload_data()
     ascii_art::reset();
     bash_damage_profile::reset();
     behavior::reset();
+    npc_decision_category::reset();
     body_part_type::reset();
     butchery_requirements::reset();
     sub_body_part_type::reset();
@@ -1024,6 +1027,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Mapgen weights" ), &calculate_mapgen_weights },
             { _( "Mapgen parameters" ), &overmap_specials::finalize_mapgen_parameters },
             { _( "Behaviors" ), &behavior::finalize },
+            { _( "NPC decision categories" ), &npc_decision_category::finalize_all },
             {
                 _( "Monster types" ), []()
                 {
@@ -1165,6 +1169,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Gates" ), &gates::check },
             { _( "NPC classes" ), &npc_class::check_consistency },
             { _( "Behaviors" ), &behavior::check_consistency },
+            { _( "NPC decision categories" ), &npc_decision_category::check_consistency },
             { _( "Mission types" ), &mission_type::check_consistency },
             {
                 _( "Item actions" ), []()

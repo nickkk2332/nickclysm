@@ -1,0 +1,21 @@
+[
+  {
+    "type": "npc_decision_category",
+    "id": "test_goal_top",
+    "//": "NPC goal tests (tests/npc_json_goal_test.cpp): a category ahead of combat.",
+    "before": "combat"
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "test_goal_early",
+    "//": "NPC goal tests: a category ahead of needs, with a hysteresis bonus of its own.",
+    "before": "needs",
+    "hysteresis": 0.5
+  },
+  {
+    "type": "npc_decision_category",
+    "id": "test_goal_late",
+    "//": "NPC goal tests: a category after free_time, so after needs and orders too.",
+    "after": "free_time"
+  }
+]
