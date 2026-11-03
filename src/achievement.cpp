@@ -642,11 +642,6 @@ void achievement_state::serialize( JsonOut &jsout ) const
     jsout.member_as_string( "completion", completion );
     jsout.member( "last_state_change", last_state_change );
     jsout.member( "final_values", final_values );
-    // Only written when false, so that saves without debug menu use stay readable by
-    // builds that don't know this member
-    if( !achievements_enabled ) {
-        jsout.member( "achievements_enabled", achievements_enabled );
-    }
     jsout.end_object();
 }
 
@@ -655,9 +650,6 @@ void achievement_state::deserialize( const JsonObject &jo )
     jo.read( "completion", completion );
     jo.read( "last_state_change", last_state_change );
     jo.read( "final_values", final_values );
-    // Older saves don't say; treat their achievements as earned while enabled, as before
-    achievements_enabled = true;
-    jo.read( "achievements_enabled", achievements_enabled );
 }
 
 achievement_tracker::achievement_tracker( const achievement &a, achievements_tracker &tracker,
@@ -810,10 +802,12 @@ void achievements_tracker::report_achievement( const achievement *a, achievement
     achievement_state{
         comp,
         calendar::turn,
-        tracker_it->second.current_values(),
-        is_enabled()
+        tracker_it->second.current_values()
     }
     );
+    if( comp == achievement_completion::completed && !is_enabled() ) {
+        completed_while_disabled_.insert( a->id );
+    }
     trackers_.erase( tracker_it );
     if( comp == achievement_completion::completed ) {
         achievement_attained_callback_( a, is_enabled() );
@@ -871,7 +865,8 @@ void achievements_tracker::write_json_achievements(
         // unlock anything for other games.  Arcade mode is given from the debug menu on
         // purpose, so it is kept.
         if( kv.second.completion == achievement_completion::completed &&
-            ( kv.second.achievements_enabled || kv.first == achievement_achievement_arcade_mode ) ) {
+            ( !completed_while_disabled_.count( kv.first ) ||
+              kv.first == achievement_achievement_arcade_mode ) ) {
             ach_ids.push_back( kv.first );
         }
     }
@@ -905,6 +900,7 @@ void achievements_tracker::clear()
     trackers_.clear();
     initial_achievements_.clear();
     achievements_status_.clear();
+    completed_while_disabled_.clear();
 }
 
 void achievements_tracker::notify( const cata::event &e )
@@ -924,6 +920,12 @@ void achievements_tracker::serialize( JsonOut &jsout ) const
     jsout.member( "enabled", enabled_ );
     jsout.member( "initial_achievements", initial_achievements_ );
     jsout.member( "achievements_status", achievements_status_ );
+    // Only written when there are some, so that games without debug menu use stay readable
+    // by builds that don't know this member.  It is a single member for the whole tracker:
+    // memorial files, shared by every build, hold the tracker too.
+    if( !completed_while_disabled_.empty() ) {
+        jsout.member( "completed_while_disabled", completed_while_disabled_ );
+    }
     jsout.end_object();
 }
 
@@ -934,6 +936,9 @@ void achievements_tracker::deserialize( const JsonObject &jo )
     }
     jo.read( "initial_achievements", initial_achievements_ );
     jo.read( "achievements_status", achievements_status_ );
+    // Older saves don't say: their achievements count as earned while enabled, as before
+    completed_while_disabled_.clear();
+    jo.read( "completed_while_disabled", completed_while_disabled_ );
 
     init_watchers();
 }

@@ -149,11 +149,6 @@ struct achievement_state {
     // The values for each requirement at the time of completion or failure
     std::vector<cata_variant> final_values;
 
-    // Whether achievements were enabled when it became that state.  Completions made
-    // while they were disabled (after debug menu use) are not written to the
-    // achievements folder.
-    bool achievements_enabled = true;
-
     std::string ui_text( const achievement * ) const;
 
     void serialize( JsonOut & ) const;
@@ -245,6 +240,9 @@ class achievements_tracker : public event_subscriber
         // NOLINTNEXTLINE(cata-serialize)
         std::function<void( const achievement *, bool )> achievement_failed_callback_;
         std::unordered_set<achievement_id> initial_achievements_;
+        // Achievements completed while achievements were disabled (after debug menu use).
+        // They are not written to the achievements folder.
+        std::unordered_set<achievement_id> completed_while_disabled_;
 
         // Class invariant: each valid achievement has exactly one of a watcher
         // (if it's pending) or a status (if it's completed or failed).

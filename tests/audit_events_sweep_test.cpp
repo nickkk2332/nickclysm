@@ -44,6 +44,7 @@
 
 static const achievement_id achievement_achievement_arcade_mode( "achievement_arcade_mode" );
 static const achievement_id achievement_achievement_kill_zombie( "achievement_kill_zombie" );
+static const achievement_id achievement_conduct_zero_kills( "conduct_zero_kills" );
 static const event_statistic_id event_statistic_audit_evt_b08_unique_z( "audit_evt_b08_unique_z" );
 static const event_statistic_id event_statistic_max_move_z( "max_move_z" );
 static const event_statistic_id event_statistic_min_move_z( "min_move_z" );
@@ -251,6 +252,11 @@ TEST_CASE( "evt-b07_achievements_earned_while_disabled_are_not_written",
         b.subscribe( &a );
         start_and_kill_a_zombie( b, a, true );
         CHECK( written_achievements( a ).count( achievement_achievement_kill_zombie.str() ) );
+        // and the save holds nothing more than older builds read
+        std::ostringstream os;
+        JsonOut jsout( os );
+        a.serialize( jsout );
+        CHECK( os.str().find( "completed_while_disabled" ) == std::string::npos );
     }
 
     SECTION( "earned while disabled" ) {
@@ -259,7 +265,9 @@ TEST_CASE( "evt-b07_achievements_earned_while_disabled_are_not_written",
         b.subscribe( &s );
         achievements_tracker a( s, ignore, ignore, true );
         b.subscribe( &a );
+        // the kill also fails the pacifist conduct
         start_and_kill_a_zombie( b, a, false );
+        REQUIRE( a.is_completed( achievement_conduct_zero_kills ) == achievement_completion::failed );
         // given from the debug menu on purpose
         a.report_achievement( &achievement_achievement_arcade_mode.obj(),
                               achievement_completion::completed );
@@ -280,6 +288,19 @@ TEST_CASE( "evt-b07_achievements_earned_while_disabled_are_not_written",
         written = written_achievements( loaded );
         CHECK_FALSE( written.count( achievement_achievement_kill_zombie.str() ) );
         CHECK( written.count( achievement_achievement_arcade_mode.str() ) );
+
+        // One member for the whole tracker, so an older build reading the save (or a memorial
+        // file) reports one unknown member, not one per achievement; and it holds completions
+        // only, not the failed conduct
+        const JsonObject jo = json_loader::from_string( os.str() );
+        jo.allow_omitted_members();
+        std::set<std::string> listed;
+        for( const std::string id : jo.get_array( "completed_while_disabled" ) ) {
+            listed.insert( id );
+        }
+        CHECK( listed.count( achievement_achievement_kill_zombie.str() ) );
+        CHECK( listed.count( achievement_achievement_arcade_mode.str() ) );
+        CHECK_FALSE( listed.count( achievement_conduct_zero_kills.str() ) );
     }
 }
 
