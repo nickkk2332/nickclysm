@@ -358,14 +358,10 @@ TEST_CASE( "data-b07_failed_decompression_leaves_the_world_as_it_was", "[audit][
 // then crashed instead of failing.
 TEST_CASE( "data-b08_zzip_stack_that_cannot_open_fails_cleanly", "[audit][zzip]" )
 {
-    const cata_path dir = PATH_INFO::savedir_path() / "audit data-b08";
-    const cata_path stack_dir = dir / "stack";
+    const audit_scratch_folder dir( "data-b08" );
+    const cata_path stack_dir = dir.path / "stack";
     // a folder where the stack's newest zzip goes: it can't be opened
     REQUIRE( assure_dir_exist( stack_dir / "stack.hot.zzip" ) );
-    on_out_of_scope cleanup( [&]() {
-        std::error_code ec;
-        std::filesystem::remove_all( dir.get_unrelative_path(), ec );
-    } );
 
     std::shared_ptr<zzip_stack> z = zzip_stack::load( stack_dir.get_unrelative_path() );
     REQUIRE( z );
@@ -375,7 +371,7 @@ TEST_CASE( "data-b08_zzip_stack_that_cannot_open_fails_cleanly", "[audit][zzip]"
     CHECK( z->get_file( file ).empty() );
     CHECK_FALSE( z->compact( 0.0 ) );
     CHECK_FALSE( zzip_stack::extract_to_folder( stack_dir.get_unrelative_path(),
-                 ( dir / "out" ).get_unrelative_path() ) );
+                 ( dir.path / "out" ).get_unrelative_path() ) );
 }
 
 // DATA-B09: dependencies were listed in depth-first pre-order, reversed, which isn't a valid
