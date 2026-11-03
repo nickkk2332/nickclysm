@@ -6833,6 +6833,8 @@ Store `vitrified_farm_ground`. When `vitrified_farm_escape_key` is called, the l
 #### `alter_timed_events`
 All effects, that has this event as a `key`, would be triggered, if they did not yet.  Usually used with `mapgen_update` or `revert_location` with `"time_in_future": "infinite"`
 
+A delayed change to the map (`mapgen_update`, `revert_location`, `u_transform_radius` with `time_in_future`) happens in the dimension it was made in.  If the player is in another dimension when it is due, it waits until they are back.
+
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "alter_timed_events" | **mandatory** | string or [variable object](#variable-object) | id of the event, that you can call outside of EoC to trigger map update.  Key should be [alter_timed_events](#alter_timed_events) |

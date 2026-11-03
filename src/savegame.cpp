@@ -1899,6 +1899,9 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
         if( jo.has_object( "explosion" ) ) {
             jo.read( "explosion", added.expl_data );
         }
+        // Not written for the main dimension, nor by older builds
+        added.dimension = dimension_world_default;
+        jo.read( "dimension", added.dimension );
     }
 }
 
@@ -1995,6 +1998,9 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
         jsout.member( "type", elem.type );
         jsout.member( "when", elem.when );
         jsout.member( "key", elem.key );
+        if( elem.dimension != dimension_world_default ) {
+            jsout.member( "dimension", elem.dimension );
+        }
         if( elem.type == timed_event_type::EXPLOSION ) {
             // read back by explosion_data::deserialize
             const explosion_data &ex = elem.expl_data;

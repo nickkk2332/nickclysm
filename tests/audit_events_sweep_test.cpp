@@ -34,6 +34,7 @@
 #include "player_helpers.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
+#include "submap.h"
 #include "timed_event.h"
 #include "type_id.h"
 
@@ -360,4 +361,60 @@ TEST_CASE( "evt-b08_unique_value_watched_and_computed_agree", "[audit][stats]" )
     move_on_z( b2, 5 );
     CHECK( loaded.value_of( stat ) == cata_variant() );
     CHECK( loaded_watcher.value == cata_variant() );
+}
+
+// EVT-B09: REVERT_SUBMAP used the submap without checking that there was one.  Here there is
+// none: nothing was ever generated this far away.
+TEST_CASE( "evt-b09_revert_of_a_submap_that_is_not_there", "[audit][timed_event]" )
+{
+    timed_events_restorer restore;
+    const tripoint_abs_ms far_away = get_avatar().pos_abs() + tripoint_rel_ms( 2400, 2400, 0 );
+    get_timed_events().add( timed_event_type::REVERT_SUBMAP, calendar::turn, -1, far_away, 0, "",
+                            submap(), "audit_evt_b09" );
+    get_timed_events().process();
+    CHECK_FALSE( get_timed_events().queued( timed_event_type::REVERT_SUBMAP ) );
+}
+
+// EVT-B09: timed events at a location didn't know their dimension, so after dimension travel
+// they changed the same spot in the wrong dimension.  They now wait until the player is back.
+TEST_CASE( "evt-b09_map_events_wait_for_their_dimension", "[audit][timed_event]" )
+{
+    timed_events_restorer restore;
+    const dimension_id here = g->get_dimension_prefix();
+    const dimension_id elsewhere( "audit_evt_b09_elsewhere" );
+    const tripoint_abs_ms far_away = get_avatar().pos_abs() + tripoint_rel_ms( 2400, 2400, 0 );
+    get_timed_events().add( timed_event_type::REVERT_SUBMAP, calendar::turn, -1, far_away, 0, "",
+                            submap(), "audit_evt_b09" );
+    timed_event *revert = get_timed_events().get( timed_event_type::REVERT_SUBMAP,
+                          "audit_evt_b09" );
+    REQUIRE( revert != nullptr );
+    CHECK( revert->dimension == here );
+
+    // queued in another dimension: it waits, also through a save and load
+    revert->dimension = elsewhere;
+    get_timed_events().process();
+    load_timed_events( saved_timed_events() );
+    revert = get_timed_events().get( timed_event_type::REVERT_SUBMAP, "audit_evt_b09" );
+    REQUIRE( revert != nullptr );
+    CHECK( revert->dimension == elsewhere );
+
+    // back in its dimension, it happens
+    revert->dimension = here;
+    get_timed_events().process();
+    CHECK_FALSE( get_timed_events().queued( timed_event_type::REVERT_SUBMAP ) );
+}
+
+// EVT-B09: events from saves before this have no dimension: they belong to the main one
+TEST_CASE( "evt-b09_timed_event_from_an_older_save_is_in_the_main_dimension",
+           "[audit][timed_event]" )
+{
+    timed_events_restorer restore;
+    load_timed_events( string_format(
+                           R"([{"faction":-1,"map_point":[0,0,0],"map_square":[0,0,0],"strength":-1,)"
+                           R"("string_id":"","type":%d,"when":%d,"key":"","revert":"t_null"}])",
+                           static_cast<int>( timed_event_type::REVERT_SUBMAP ),
+                           to_turns<int>( calendar::turn - calendar::turn_zero ) + 600 ) );
+    const timed_event *revert = get_timed_events().get( timed_event_type::REVERT_SUBMAP );
+    REQUIRE( revert != nullptr );
+    CHECK( revert->dimension == dimension_id( "default" ) );
 }

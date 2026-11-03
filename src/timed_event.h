@@ -10,6 +10,7 @@
 #include "explosion.h"
 #include "point.h"
 #include "submap.h"
+#include "type_id.h"
 
 class JsonArray;
 class JsonOut;
@@ -56,6 +57,8 @@ struct timed_event {
     std::string key;
     /** specifically for EXPLOSION event */
     explosion_data expl_data;
+    /** The dimension the event was queued in; events at a location happen only there */
+    dimension_id dimension;
 
     submap revert;
     timed_event( timed_event_type e_t, const time_point &w, int f_id, tripoint_abs_ms p, int s,
