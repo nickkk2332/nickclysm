@@ -19,7 +19,6 @@
 #include "debug.h"
 #include "event_subscriber.h"
 #include "item_location.h"
-#include "point.h"
 #include "talker.h"  // IWYU pragma: keep
 #include "vehicle.h"
 
@@ -128,13 +127,29 @@ bool is_integer_in( const std::string &v, long long min, long long max )
     return res.ec == std::errc() && res.ptr == end && value >= min && value <= max;
 }
 
-template<typename Point>
-bool is_point( const std::string &v )
+// "(x,y)" or "(x,y,z)", as point::to_string and tripoint::to_string write them.  Reading a
+// point with >> doesn't fail on all malformed input ("1,2" reads as nothing), so this sets
+// the fail flag on anything else.
+bool is_point( const std::string &v, int coordinates )
 {
     std::istringstream is( v );
     is.imbue( std::locale::classic() );
-    Point p;
-    is >> p;
+    const auto expect = [&is]( char wanted ) {
+        char c = 0;
+        if( !is.get( c ) || c != wanted ) {
+            is.setstate( std::ios::failbit );
+        }
+    };
+    expect( '(' );
+    for( int i = 0; i < coordinates && !is.fail(); ++i ) {
+        int coordinate = 0;
+        is >> coordinate;
+        expect( i + 1 < coordinates ? ',' : ')' );
+    }
+    // and nothing after
+    if( !is.fail() && is.peek() != std::char_traits<char>::eof() ) {
+        is.setstate( std::ios::failbit );
+    }
     return !is.fail();
 }
 
@@ -157,9 +172,9 @@ bool dyn_arg_is_valid( cata_variant_type type, const std::string &v )
             return is_integer_in( v, std::numeric_limits<long long>::min(),
                                   std::numeric_limits<long long>::max() );
         case cata_variant_type::point:
-            return is_point<point>( v );
+            return is_point( v, 2 );
         case cata_variant_type::tripoint:
-            return is_point<tripoint>( v );
+            return is_point( v, 3 );
         case cata_variant_type::debug_menu_index:
         case cata_variant_type::mutagen_technique:
             return cata_variant::from_string( type, std::string( v ) ).is_valid();

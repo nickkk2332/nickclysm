@@ -36,6 +36,7 @@
 #include "monster.h"
 #include "path_info.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "submap.h"
@@ -528,6 +529,29 @@ TEST_CASE( "evt-b10_dynamic_events_refuse_values_their_fields_cannot_hold", "[au
     const cata::event e = make_dyn_reporting( event_type::character_kills_monster,
     { "Bob", "mon_zombie", "0" }, report );
     CHECK( e.type() == event_type::num_event_types );
+}
+
+// EVT-B10: a point is written "(x,y,z)"; reading one with >> doesn't fail on everything
+// else, so the check reads it strictly
+TEST_CASE( "evt-b10_dynamic_events_refuse_malformed_points", "[audit][event]" )
+{
+    std::string report;
+    // avatar_enters_omt: pos (tripoint), oter_id, overmap_special
+    cata::event fine = make_dyn_reporting( event_type::avatar_enters_omt, { "(1,-2,0)", "field", "" },
+                                           report );
+    CHECK( report.empty() );
+    REQUIRE( fine.type() == event_type::avatar_enters_omt );
+    CHECK( fine.get<tripoint>( "pos" ) == tripoint( 1, -2, 0 ) );
+
+    for( const std::string pos : {
+             "1,-2,0", "(1,-2)", "(1,-2,0", "(a,b,c)", "(1,-2,0)x", "(1;-2;0)", ""
+         } ) {
+        CAPTURE( pos );
+        const cata::event e = make_dyn_reporting( event_type::avatar_enters_omt,
+        { pos, "field", "" }, report );
+        CHECK( e.type() == event_type::num_event_types );
+        CHECK( report.find( "Invalid value" ) != std::string::npos );
+    }
 }
 
 // EVT-B10: numbers were passed with six digits, so 1000000 became "1e+06" and read as 1
