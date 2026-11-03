@@ -282,11 +282,18 @@ static void process_eocs( queued_eocs &eoc_queue, std::vector<effect_on_conditio
             eocs_to_queue.clear();
         } };
 
+    // Take what is due before running any of it: an EOC queued during the pass with no delay,
+    // such as one that queues itself again, waits for the next pass instead of making this one
+    // endless.
+    std::vector<queued_eocs::storage_iter> due;
     while( !eoc_queue.empty() &&
            eoc_queue.top().time <= calendar::turn ) {
-        queued_eocs::storage_iter it = eoc_queue.queue.top();
-        queued_eoc &top = *it;
+        due.push_back( eoc_queue.queue.top() );
         eoc_queue.queue.pop();
+    }
+
+    for( const queued_eocs::storage_iter &it : due ) {
+        queued_eoc &top = *it;
 
         dialogue nested_d{ d };
         for( const auto &val : top.context ) {
