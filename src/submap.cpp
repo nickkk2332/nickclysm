@@ -513,6 +513,8 @@ ter_id submap::get_original_ter( const point_sm_ms &p ) const
 
 void submap::set_original_ter( const point_sm_ms &p, const ter_id &t )
 {
+    // A uniform submap is saved as its terrain alone
+    ensure_nonuniform();
     original_terrain[p] = t;
 }
 

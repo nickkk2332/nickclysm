@@ -7046,6 +7046,8 @@ void map::add_spawn(
     if( MonsterGroupManager::monster_is_blacklisted( type ) ) {
         return;
     }
+    // A uniform submap is saved as its terrain alone
+    place_on_submap->ensure_nonuniform();
     place_on_submap->spawns.emplace_back( type, count, offset, faction_id, mission_id, friendly, name,
                                           data );
 }
