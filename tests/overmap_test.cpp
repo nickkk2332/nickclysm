@@ -38,6 +38,7 @@
 #include "output.h"
 #include "overmap.h"
 #include "overmap_location.h"
+#include "overmap_test_helper.h"
 #include "overmap_types.h"
 #include "overmapbuffer.h"
 #include "point.h"
@@ -60,20 +61,6 @@ static const overmap_special_id overmap_special_Cabin( "Cabin" );
 static const overmap_special_id overmap_special_Lab( "Lab" );
 
 static const region_settings_id region_settings_default( "default" );
-
-class overmap_test_helper
-{
-    public:
-        static void set_highway_connections(
-            overmap &om,
-            const std::array<tripoint_om_omt, 4> &conns ) {
-            om.highway_connections = conns;
-        }
-        static const std::array<tripoint_om_omt, 4> &get_highway_connections(
-            const overmap &om ) {
-            return om.highway_connections;
-        }
-};
 
 static std::vector<oter_flags> all_oter_flags()
 {

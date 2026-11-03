@@ -45,6 +45,7 @@
 #include "npc.h"
 #include "omdata.h"
 #include "overmap.h"
+#include "overmap_test_helper.h"
 #include "overmapbuffer.h"
 #include "pickup.h"
 #include "player_helpers.h"
@@ -256,6 +257,10 @@ TEST_CASE( "eoc-b08_near_om_location_reads_each_tiles_own_arguments", "[audit][e
     on_out_of_scope restore( [&]() {
         args->reset();
         overmap_buffer.ter_set( shelter, old_shelter );
+        const overmap_with_local_coords placed = overmap_buffer.get_om_global( shelter );
+        overmap_test_helper::forget_special_at( *placed.om, placed.local );
+        CHECK_FALSE( overmap_buffer.overmap_special_at( shelter ).has_value() );
+        CHECK( overmap_buffer.mapgen_args( shelter ) == nullptr );
     } );
 
     // Someone standing next to it
