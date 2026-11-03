@@ -832,3 +832,28 @@ TEST_CASE( "eoc-b11_pickup_limits_hold_past_the_bulk_reset", "[audit][eoc]" )
     CHECK( u.amount_of( itype_test_sheet_metal_small ) == 2 );
     CHECK( here.i_at( spot ).size() == 1 );
 }
+
+// take_control's documented object form, { "take_control": { "true_eocs": ..., "false_eocs": ... } },
+// read its lists from beside the object instead of inside it: they were ignored, and the object
+// was reported as unread data.
+TEST_CASE( "eoc_take_control_object_form_reads_its_lists", "[audit][eoc]" )
+{
+    clear_map();
+    avatar &u = get_avatar();
+    monster &zed = spawn_test_monster( "mon_zombie", u.pos_bub() + point( 3, 0 ) );
+    global_variables &globals = get_globals();
+    on_out_of_scope restore( [&globals]() {
+        globals.remove_global_value( "audit_b13_false_eocs" );
+        clear_creatures();
+    } );
+    globals.remove_global_value( "audit_b13_false_eocs" );
+    const std::string messages = capture_debugmsg_during( [&]() {
+        const talk_effect_t take_control = load_effect(
+                                               R"({ "effect": { "take_control": { "false_eocs": [ "EOC_AUDIT_B13_MARK" ] } } })" );
+        // Only the avatar takes control, so a monster gets the false_eocs
+        dialogue d( get_talker_for( zed ), get_talker_for( u ) );
+        take_control.apply( d );
+    } );
+    CHECK( messages.empty() );
+    CHECK( global_number( "audit_b13_false_eocs" ) == 1 );
+}

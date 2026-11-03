@@ -6377,11 +6377,21 @@ talk_effect_fun_t::func f_open_dialogue( const JsonObject &jo, std::string_view 
     };
 }
 
-talk_effect_fun_t::func f_take_control( const JsonObject &jo, std::string_view,
+talk_effect_fun_t::func f_take_control( const JsonObject &jo, std::string_view member,
                                         std::string_view src )
 {
-    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
-    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    std::vector<effect_on_condition_id> true_eocs;
+    std::vector<effect_on_condition_id> false_eocs;
+    if( !member.empty() && jo.has_object( member ) ) {
+        // { "take_control": { "true_eocs": [ ... ], "false_eocs": [ ... ] } }
+        const JsonObject inner = jo.get_object( member );
+        true_eocs = load_eoc_vector( inner, "true_eocs", src );
+        false_eocs = load_eoc_vector( inner, "false_eocs", src );
+    } else {
+        // The plain "take_control" effect, with the lists beside it
+        true_eocs = load_eoc_vector( jo, "true_eocs", src );
+        false_eocs = load_eoc_vector( jo, "false_eocs", src );
+    }
     return [true_eocs, false_eocs]( dialogue const & d ) {
         const Character *alpha = d.actor( false )->get_character();
         if( alpha == nullptr || !alpha->is_avatar() ) { //only take control if the avatar is alpha
