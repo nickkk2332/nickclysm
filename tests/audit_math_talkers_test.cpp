@@ -20,6 +20,7 @@
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
+#include "grapple.h"
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
@@ -31,6 +32,7 @@
 #include "math_parser.h"
 #include "math_parser_type.h"
 #include "monster.h"
+#include "npc.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
@@ -432,3 +434,137 @@ TEST_CASE( "math-b11_val_pos_moves_like_a_teleport", "[audit][math_parser]" )
     }
 }
 
+static const efftype_id effect_riding( "riding" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
+static const ter_str_id ter_t_rock( "t_rock" );
+
+// MATH-B11 follow-up: teleport_to_point let go of holds and got off the vehicle before it checked
+// the spot, and for a spot outside the bubble moved the bubble (dropping the mount) first, so a
+// refused move still changed those.
+TEST_CASE( "math-b11_a_refused_move_changes_nothing", "[audit][math_parser]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    clear_vehicles();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_abs_sm bubble = here.get_abs_sub();
+    const on_out_of_scope restore_bubble( [bubble]() {
+        avatar &you = get_avatar();
+        map &here = get_map();
+        grapple::release_all( you );
+        you.remove_effect( effect_riding );
+        you.mounted_creature = nullptr;
+        if( you.in_vehicle ) {
+            here.unboard_vehicle( you.pos_bub() );
+        }
+        you.controlling_vehicle = false;
+        clear_vehicles();
+        clear_creatures();
+        here.load( bubble, false );
+        you.setpos( here, tripoint_bub_ms( 60, 60, 0 ) );
+    } );
+    dialogue d( get_talker_for( u ), nullptr );
+
+    SECTION( "driving, into the rock below" ) {
+        vehicle *veh = here.add_vehicle( vehicle_prototype_none, u.pos_bub(), 0_degrees, 0,
+                                         veh_spawn_status::UNDAMAGED );
+        REQUIRE( veh != nullptr );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) >= 0 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_seat ) >= 0 );
+        here.add_vehicle_to_cache( veh );
+        here.board_vehicle( u.pos_bub(), &u );
+        u.controlling_vehicle = true;
+        REQUIRE( u.in_vehicle );
+        REQUIRE( here.impassable( u.pos_bub() + tripoint::below ) );
+        const tripoint_abs_ms start = u.pos_abs();
+
+        eval_math( d, "u_val('pos_z') -= 1" );
+        CHECK( u.pos_abs() == start );
+        CHECK( u.in_vehicle );
+        CHECK( u.controlling_vehicle );
+        CHECK( veh->get_riders().size() == 1 );
+    }
+
+    SECTION( "holding a monster, onto its tile" ) {
+        monster &mon = spawn_test_monster( "mon_zombie", u.pos_bub() + tripoint::east );
+        REQUIRE( grapple::start_hold( u, mon, 20, bodypart_str_id::NULL_ID().id() ) );
+        REQUIRE( u.grabbed_creature() == &mon );
+        const tripoint_abs_ms start = u.pos_abs();
+
+        eval_math( d, "u_val('pos_x') += 1" );
+        CHECK( u.pos_abs() == start );
+        CHECK( u.grabbed_creature() == &mon );
+        CHECK( u.is_grabbing_creature() );
+    }
+
+    SECTION( "mounted, at a wall outside the bubble" ) {
+        monster &horse = spawn_test_monster( "mon_horse", u.pos_bub() + tripoint::west );
+        u.mount_creature( horse );
+        REQUIRE( u.is_mounted() );
+        const monster *const mount = u.mounted_creature.get();
+        const tripoint_abs_ms start = u.pos_abs();
+        const tripoint_abs_ms far = start + tripoint::east * 200;
+        REQUIRE_FALSE( here.inbounds( here.get_bub( far ) ) );
+        // Make the far spot solid, and put it back afterwards.
+        tinymap far_map;
+        far_map.load( project_to<coords::omt>( far ), false );
+        const tripoint_omt_ms far_at = far_map.get_omt( far );
+        const ter_id far_ter = far_map.ter( far_at );
+        const furn_id far_furn = far_map.furn( far_at );
+        far_map.ter_set( far_at, ter_t_rock.id() );
+        const on_out_of_scope restore_far( [far, far_ter, far_furn]() {
+            tinymap m;
+            m.load( project_to<coords::omt>( far ), false );
+            m.ter_set( m.get_omt( far ), far_ter );
+            m.furn_set( m.get_omt( far ), far_furn );
+        } );
+
+        // (mounting may have shifted the map already)
+        const tripoint_abs_sm mounted_bubble = here.get_abs_sub();
+        eval_math( d, "u_val('pos_x') += 200" );
+        CHECK( u.pos_abs() == start );
+        CHECK( here.get_abs_sub() == mounted_bubble );
+        CHECK( u.is_mounted() );
+        CHECK( u.mounted_creature.get() == mount );
+    }
+}
+
+// MATH-B11 follow-up: the plain setpos this used to be made a character fall at once over open
+// air; a teleport leaves it hanging until its own turn (or for good, for an NPC).
+TEST_CASE( "math-b11_a_creature_moved_over_open_air_falls", "[audit][math_parser]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    const on_out_of_scope cleanup( []() {
+        clear_npcs();
+        clear_creatures();
+        clear_map_without_vision();
+    } );
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms hole = u.pos_bub() + tripoint::east * 8;
+    here.ter_set( hole, ter_t_open_air );
+    here.ter_set( hole + tripoint::below, ter_t_floor );
+    here.invalidate_map_cache( 0 );
+    here.build_map_cache( 0, true );
+    REQUIRE( here.is_open_air( hole ) );
+    const tripoint_abs_ms landing = here.get_abs( hole + tripoint::below );
+
+    SECTION( "an NPC" ) {
+        npc &guy = spawn_npc( ( hole + tripoint::west * 3 ).xy(), "test_talker" );
+        REQUIRE( guy.pos_bub() == hole + tripoint::west * 3 );
+        dialogue d( get_talker_for( u ), get_talker_for( guy ) );
+        eval_math( d, "n_val('pos_x') += 3" );
+        CHECK( guy.pos_abs() == landing );
+    }
+
+    SECTION( "a monster" ) {
+        monster &mon = spawn_test_monster( "mon_zombie", hole + tripoint::west * 3 );
+        dialogue d( get_talker_for( u ), get_talker_for( mon ) );
+        eval_math( d, "n_val('pos_x') += 3" );
+        CHECK( mon.pos_abs() == landing );
+    }
+}

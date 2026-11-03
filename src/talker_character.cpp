@@ -184,10 +184,13 @@ void talker_character::set_pos( tripoint_bub_ms new_pos )
 }
 
 // val('pos_x') and the like: moves as u_teleport does, so the map follows the avatar, a rider
-// gets off, and an occupied or solid spot (or a dimensional anchor) stops the move
+// gets off, and an occupied or solid spot (or a dimensional anchor) stops the move. Over open
+// air it falls at once, as the plain setpos this used to be did.
 void talker_character::set_pos( tripoint_abs_ms new_pos )
 {
-    teleport::teleport_to_point( *me_chr, get_map().get_bub( new_pos ), true, false, false );
+    if( teleport::teleport_to_point( *me_chr, get_map().get_bub( new_pos ), true, false, false ) ) {
+        me_chr->gravity_check();
+    }
 }
 
 void talker_character::set_trauma( int value )
