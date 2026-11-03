@@ -15,16 +15,19 @@
 #include "character_id.h"
 #include "coordinates.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "diary.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_statistics.h"
+#include "event_subscriber.h"
 #include "explosion.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
 #include "json.h"
+#include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "map_helpers.h"
@@ -35,6 +38,7 @@
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "submap.h"
+#include "talker.h"
 #include "timed_event.h"
 #include "type_id.h"
 
@@ -417,4 +421,89 @@ TEST_CASE( "evt-b09_timed_event_from_an_older_save_is_in_the_main_dimension",
     const timed_event *revert = get_timed_events().get( timed_event_type::REVERT_SUBMAP );
     REQUIRE( revert != nullptr );
     CHECK( revert->dimension == dimension_id( "default" ) );
+}
+
+namespace
+{
+talk_effect_t load_audit_effect( const std::string &json )
+{
+    const JsonObject jo = json_loader::from_string( json );
+    return talk_effect_t( jo, "effect", "audit_events_sweep_test" );
+}
+
+// Gets an event made from strings, as trigger_event does, and what was reported
+cata::event make_dyn_reporting( event_type type, std::vector<std::string> args,
+                                std::string &report )
+{
+    cata::event e;
+    report = capture_debugmsg_during( [&]() {
+        e = cata::event::make_dyn( type, args );
+    } );
+    return e;
+}
+} // namespace
+
+// EVT-B10: trigger_event stored its arguments without checking them; a value its field
+// can't hold threw out of the game loop (std::stoi) when the event was read, after the
+// statistics had saved it.
+TEST_CASE( "evt-b10_dynamic_events_refuse_values_their_fields_cannot_hold", "[audit][event]" )
+{
+    std::string report;
+    // avatar_moves: mount, terrain, movement_mode, underwater (bool), z (int)
+    cata::event fine = make_dyn_reporting( event_type::avatar_moves,
+    { "", "t_dirt", "walk", "1", "-3" }, report );
+    CHECK( report.empty() );
+    REQUIRE( fine.type() == event_type::avatar_moves );
+    CHECK( fine.get<int>( "z" ) == -3 );
+    CHECK( fine.get<bool>( "underwater" ) );
+
+    const std::vector<std::vector<std::string>> bad_args = {
+        { "", "t_dirt", "walk", "true", "0" },   // bool
+        { "", "t_dirt", "walk", "0", "high" },   // int
+        { "", "t_dirt", "walk", "0", "1e+06" },  // int
+        { "", "t_dirt", "walk", "0", "1.5" },    // int
+        { "", "audit_no_such_terrain", "walk", "0", "0" } // id
+    };
+    for( const std::vector<std::string> &args : bad_args ) {
+        CAPTURE( args );
+        const cata::event e = make_dyn_reporting( event_type::avatar_moves, args, report );
+        CHECK( e.type() == event_type::num_event_types );
+        CHECK( report.find( "Invalid value" ) != std::string::npos );
+    }
+    // character_kills_monster: killer (character_id), victim_type, exp
+    const cata::event e = make_dyn_reporting( event_type::character_kills_monster,
+    { "Bob", "mon_zombie", "0" }, report );
+    CHECK( e.type() == event_type::num_event_types );
+}
+
+// EVT-B10: numbers were passed with six digits, so 1000000 became "1e+06" and read as 1
+TEST_CASE( "evt-b10_trigger_event_passes_numbers_in_full", "[audit][event]" )
+{
+    struct event_catcher : event_subscriber {
+        std::vector<cata::event> events;
+        using event_subscriber::notify;
+        void notify( const cata::event &e ) override {
+            events.push_back( e );
+        }
+    } catcher;
+    get_event_bus().subscribe( &catcher );
+    // npc_goal_changed isn't kept by the statistics, so this leaves no trace there
+    const talk_effect_t effect = load_audit_effect(
+                                     R"({ "effect": { "trigger_event": "npc_goal_changed", "args": [ 1000000, "old", "new" ] } })" );
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    effect.apply( d );
+    get_event_bus().unsubscribe( &catcher );
+    REQUIRE( catcher.events.size() == 1 );
+    CHECK( catcher.events[0].get<character_id>( "npc" ).get_value() == 1000000 );
+}
+
+// EVT-B10: only the game starts, loads, saves and ends games and awards achievements;
+// trigger_event faking these broke statistics and achievements, or tripped an assertion.
+TEST_CASE( "evt-b10_trigger_event_refuses_engine_only_events", "[audit][event]" )
+{
+    CHECK_THROWS_AS( load_audit_effect(
+                         R"({ "effect": { "trigger_event": "game_start", "args": [ "audit" ] } })" ),
+                     JsonError );
+    CHECK_NOTHROW( load_audit_effect(
+                       R"({ "effect": { "trigger_event": "u_var_changed", "args": [ "a", "b" ] } })" ) );
 }

@@ -2,10 +2,15 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstddef>
+#include <limits>
+#include <locale>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <system_error>
 #include <type_traits>
 
 #include "calendar.h"
@@ -14,6 +19,7 @@
 #include "debug.h"
 #include "event_subscriber.h"
 #include "item_location.h"
+#include "point.h"
 #include "talker.h"  // IWYU pragma: keep
 #include "vehicle.h"
 
@@ -114,6 +120,55 @@ void event_bus::send_with_talker( vehicle *alpha,  Creature *beta, const cata::e
 }
 namespace
 {
+bool is_integer_in( const std::string &v, long long min, long long max )
+{
+    long long value = 0;
+    const char *const end = v.data() + v.size();
+    const std::from_chars_result res = std::from_chars( v.data(), end, value );
+    return res.ec == std::errc() && res.ptr == end && value >= min && value <= max;
+}
+
+template<typename Point>
+bool is_point( const std::string &v )
+{
+    std::istringstream is( v );
+    is.imbue( std::locale::classic() );
+    Point p;
+    is >> p;
+    return !is.fail();
+}
+
+// Whether make_dyn can store this argument as a value of this type.  The event's readers
+// (statistics, the memorial log, EVENT EOCs) parse it later, often more than once, and
+// can't recover from a value that isn't one.
+bool dyn_arg_is_valid( cata_variant_type type, const std::string &v )
+{
+    switch( type ) {
+        case cata_variant_type::void_:
+            return v.empty();
+        case cata_variant_type::string:
+            return true;
+        case cata_variant_type::bool_:
+            return v == "0" || v == "1";
+        case cata_variant_type::int_:
+        case cata_variant_type::character_id:
+            return is_integer_in( v, std::numeric_limits<int>::min(), std::numeric_limits<int>::max() );
+        case cata_variant_type::chrono_seconds:
+            return is_integer_in( v, std::numeric_limits<long long>::min(),
+                                  std::numeric_limits<long long>::max() );
+        case cata_variant_type::point:
+            return is_point<point>( v );
+        case cata_variant_type::tripoint:
+            return is_point<tripoint>( v );
+        case cata_variant_type::debug_menu_index:
+        case cata_variant_type::mutagen_technique:
+            return cata_variant::from_string( type, std::string( v ) ).is_valid();
+        default:
+            // An id: an existing one, or empty for none
+            return v.empty() || cata_variant::from_string( type, std::string( v ) ).is_valid();
+    }
+}
+
 template<event_type Type, typename IndexSequence>
 struct make_dyn_helper;
 
@@ -122,6 +177,14 @@ struct make_dyn_helper<Type, std::index_sequence<I...>> {
     using Spec = cata::event_detail::event_spec<Type>;
 
     cata::event operator()( time_point time, std::vector<std::string> &args ) {
+        for( size_t i = 0; i < args.size(); ++i ) {
+            if( !dyn_arg_is_valid( Spec::fields[i].second, args[i] ) ) {
+                debugmsg( R"(Invalid value "%s" for field "%s" of event type "%s", which takes a %s)",
+                          args[i], Spec::fields[i].first, io::enum_to_string( Type ),
+                          io::enum_to_string( Spec::fields[i].second ) );
+                return {}; // event_bus::send() can reject a null event
+            }
+        }
         return cata::event(
                    Type,
                    time,

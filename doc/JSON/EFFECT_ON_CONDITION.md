@@ -2237,6 +2237,8 @@ EVENT EOCs trigger on in game events specified in the event_type enum in `event.
 ## Event Context Vars:
 Every event EOC passes context vars with each of their key value pairs that the event has in C++.  They are all converted to strings when made context variables but their original types are included for reference below.  At some point this documentation may go out of sync, The up to date info for each event can be found in event.h
 
+The `trigger_event` effect sends one of these events, with `args`, one value per field in the order of `event.h`.  Each value must fit its field: a whole number for `int` and `character_id`, 0 or 1 for `bool`, an existing id (or an empty string) for an id.  An event with a value that doesn't fit isn't sent, and shows an error.  `game_avatar_new`, `game_load`, `game_over`, `game_save`, `game_start` and `player_gets_achievement` can only be sent by the game: an EOC that triggers one of them fails to load.
+
 ## Event EOC Types:
 
 | EVENT              | Description | Context Variables | Talker(alpha/beta) |
