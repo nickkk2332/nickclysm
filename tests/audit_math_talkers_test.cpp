@@ -7,6 +7,8 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "clzones.h"
+#include "computer.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "dialogue.h"
@@ -14,6 +16,8 @@
 #include "faction.h"
 #include "game.h"
 #include "global_vars.h"
+#include "item.h"
+#include "item_location.h"
 #include "line.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -214,4 +218,37 @@ TEST_CASE( "math-b08_modulo_groups_left_to_right", "[audit][math_parser]" )
     CHECK( eval_math( d, "2 * 10 % 4" ) == Approx( 0 ) );
     CHECK( eval_math( d, "10 % 4 + 1" ) == Approx( 3 ) );
     CHECK( eval_math( d, "10 % 2 ^ 3" ) == Approx( 2 ) );
+}
+
+static const faction_id faction_your_followers( "your_followers" );
+
+static const itype_id itype_test_rock( "test_rock" );
+
+static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
+
+// MATH-B09: item and computer talkers gave the avatar's overmap tile, and zone talkers the
+// default {0,0,0}, instead of their own.
+TEST_CASE( "math-b09_talkers_report_their_own_overmap_tile", "[audit][math_parser]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms away = u.pos_bub() + tripoint::east * 30 + tripoint::south * 30;
+    REQUIRE( project_to<coords::omt>( here.get_abs( away ) ) != u.pos_abs_omt() );
+    const on_out_of_scope cleanup( [away]() {
+        get_map().i_clear( away );
+    } );
+
+    item_location rock = here.add_item_or_charges_ret_loc( away, item( itype_test_rock ) );
+    REQUIRE( rock );
+    CHECK( get_talker_for( rock )->pos_abs_omt() == project_to<coords::omt>( here.get_abs( away ) ) );
+
+    computer terminal( "audit terminal", 0, here.get_abs( away ) );
+    CHECK( get_talker_for( terminal )->pos_abs_omt() ==
+           project_to<coords::omt>( here.get_abs( away ) ) );
+
+    zone_data zone( "audit zone", zone_type_LOOT_UNSORTED, faction_your_followers, false, true,
+                    here.get_abs( away ), here.get_abs( away + tripoint::east ) );
+    CHECK( get_talker_for( zone )->pos_abs_omt() == project_to<coords::omt>( here.get_abs( away ) ) );
 }

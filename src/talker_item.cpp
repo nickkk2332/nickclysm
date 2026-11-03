@@ -73,7 +73,7 @@ tripoint_abs_ms talker_item_const::pos_abs() const
 
 tripoint_abs_omt talker_item_const::pos_abs_omt() const
 {
-    return get_player_character().pos_abs_omt();
+    return project_to<coords::omt>( pos_abs() );
 }
 
 diag_value const *talker_item_const::maybe_get_value( const std::string &var_name ) const
