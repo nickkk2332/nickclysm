@@ -203,3 +203,15 @@ TEST_CASE( "math-b07_characters_nearby_radius_and_kwargs", "[audit][math_parser]
     CHECK( eval_math( by_avatar, "u_characters_nearby('radius': 30, 'allow_hallucinations': 1)" ) ==
            1 );
 }
+
+// MATH-B08: '%' was right-associative, so an incoming '*', '/' or '%' didn't pop it.
+TEST_CASE( "math-b08_modulo_groups_left_to_right", "[audit][math_parser]" )
+{
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    CHECK( eval_math( d, "10 % 4 * 2" ) == Approx( 4 ) );
+    CHECK( eval_math( d, "20 % 6 % 4" ) == Approx( 2 ) );
+    CHECK( eval_math( d, "17 % 10 / 2" ) == Approx( 3.5 ) );
+    CHECK( eval_math( d, "2 * 10 % 4" ) == Approx( 0 ) );
+    CHECK( eval_math( d, "10 % 4 + 1" ) == Approx( 3 ) );
+    CHECK( eval_math( d, "10 % 2 ^ 3" ) == Approx( 2 ) );
+}

@@ -1343,6 +1343,8 @@ The expression can be split into any number of strings in order to get neat line
 
 The assignment `operators` `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `++`, and `--` can only be used at the top level. In this case, `lhs` must be a single [assignment target](#assignment-target). The `rhs` expression is evaluated and stored in the assignment target from `lhs`.
 
+`*`, `/` and `%` (remainder) bind tighter than `+` and `-`, and operators of the same kind are worked out left to right: `10 % 4 * 2` is `( 10 % 4 ) * 2`, which is 4, and `20 % 6 % 4` is 2. `^` binds tighter still and goes right to left: `2 ^ 3 ^ 2` is `2 ^ ( 3 ^ 2 )`.
+
 #### Variables
 Tokens that aren't numbers, [constants](#constants), [functions](#math-functions), or mathematical symbols are treated as dialogue variables. They are scoped by their name so `myvar` is a variable in the global scope, `u_myvar` is scoped on the alpha talker, `n_myvar` is scoped on the beta talker, and `_var` is a context variable, `v_var` is a [var_val](#var_val).
 
