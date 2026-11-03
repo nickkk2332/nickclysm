@@ -1,4 +1,4 @@
-name: "Experimental Release"
+name: "nickclysm Release"
 concurrency: release
 on:
   push:
@@ -39,8 +39,8 @@ jobs:
       - name: Generate environmental variables
         id: generate_env_vars
         run: |
-          echo "tag_name=cdda-experimental-${STEPS_GET_TIMESTAMP_OUTPUTS_TIME}" >> $GITHUB_OUTPUT
-          echo "release_name=Cataclysm-DDA experimental build ${STEPS_GET_TIMESTAMP_OUTPUTS_TIME}" >> $GITHUB_OUTPUT
+          echo "tag_name=nickclysm-experimental-${STEPS_GET_TIMESTAMP_OUTPUTS_TIME}" >> $GITHUB_OUTPUT
+          echo "release_name=nickclysm experimental build ${STEPS_GET_TIMESTAMP_OUTPUTS_TIME}" >> $GITHUB_OUTPUT
         env:
           STEPS_GET_TIMESTAMP_OUTPUTS_TIME: ${{ steps.get-timestamp.outputs.time }}
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -85,9 +85,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           NEEDS_RELEASE_OUTPUTS_TIMESTAMP: ${{ needs.release.outputs.timestamp }}
         run: |
-          archive="cdda-translations-${NEEDS_RELEASE_OUTPUTS_TIMESTAMP}.tar.gz"
+          archive="nickclysm-translations-${NEEDS_RELEASE_OUTPUTS_TIMESTAMP}.tar.gz"
           (cd translations && tar --sort=name --owner=0 --group=0 --numeric-owner -czf "../${archive}" -- *)
-          gh release upload "cdda-experimental-${NEEDS_RELEASE_OUTPUTS_TIMESTAMP}" "${archive}"
+          gh release upload "nickclysm-experimental-${NEEDS_RELEASE_OUTPUTS_TIMESTAMP}" "${archive}"
 
   # Compile GLSL -> spv/dxil/msl once on Linux and share with every tiles
   # platform job. Runtime variant_pass picks the format matching its GPU
@@ -115,14 +115,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows Tiles x64 MSVC
-            artifact: windows-with-graphics-x64
-            arch: x64
-            os: windows-2022
-            ext: zip
-            content: application/zip
-            tiles: 1
-            sound: 0
           - name: Windows Tiles Sounds x64 MSVC
             artifact: windows-with-graphics-and-sounds-x64
             arch: x64
@@ -131,63 +123,73 @@ jobs:
             content: application/zip
             tiles: 1
             sound: 1
-          - name: Linux Tiles x64
-            os: ubuntu-24.04
-            android: none
-            libbacktrace: 1
-            tiles: 1
-            sound: 0
-            artifact: linux-with-graphics-x64
-            ext: tar.gz
-            content: application/gzip
-          - name: Linux Tiles Sounds x64
-            os: ubuntu-24.04
-            android: none
-            libbacktrace: 1
-            tiles: 1
-            sound: 1
-            artifact: linux-with-graphics-and-sounds-x64
-            ext: tar.gz
-            content: application/gzip
-          - name: Linux Curses x64
-            os: ubuntu-24.04
-            android: none
-            libbacktrace: 1
-            tiles: 0
-            sound: 0
-            artifact: linux-terminal-only-x64
-            ext: tar.gz
-            content: application/gzip
-          - name: macOS Curses Universal Binary (x64 and arm64)
-            os: macos-15
-            tiles: 0
-            sound: 0
-            artifact: osx-terminal-only-universal
-            ext: dmg
-            content: application/x-apple-diskimage
-          - name: macOS Tiles Universal Binary (x64 and arm64)
-            os: macos-15
-            tiles: 1
-            sound: 1
-            artifact: osx-with-graphics-universal
-            ext: dmg
-            content: application/x-apple-diskimage
-          - name: Android x64
-            os: ubuntu-latest
-            tiles: 1
-            sound: 1
-            android: arm64
-            artifact: android-x64
-            ext: apk
-            content: application/apk
-          - name: Android x32
-            os: ubuntu-latest
-            tiles: 1
-            sound: 1
-            android: arm32
-            artifact: android-x32
-            ext: apk
-            content: application/apk 
+          # nickclysm builds Windows with graphics and sound only. The other upstream
+          # platforms are kept below, commented out; Android also needs signing secrets.
+          #- name: Windows Tiles x64 MSVC
+          #  artifact: windows-with-graphics-x64
+          #  arch: x64
+          #  os: windows-2022
+          #  ext: zip
+          #  content: application/zip
+          #  tiles: 1
+          #  sound: 0
+          #- name: Linux Tiles x64
+          #  os: ubuntu-24.04
+          #  android: none
+          #  libbacktrace: 1
+          #  tiles: 1
+          #  sound: 0
+          #  artifact: linux-with-graphics-x64
+          #  ext: tar.gz
+          #  content: application/gzip
+          #- name: Linux Tiles Sounds x64
+          #  os: ubuntu-24.04
+          #  android: none
+          #  libbacktrace: 1
+          #  tiles: 1
+          #  sound: 1
+          #  artifact: linux-with-graphics-and-sounds-x64
+          #  ext: tar.gz
+          #  content: application/gzip
+          #- name: Linux Curses x64
+          #  os: ubuntu-24.04
+          #  android: none
+          #  libbacktrace: 1
+          #  tiles: 0
+          #  sound: 0
+          #  artifact: linux-terminal-only-x64
+          #  ext: tar.gz
+          #  content: application/gzip
+          #- name: macOS Curses Universal Binary (x64 and arm64)
+          #  os: macos-15
+          #  tiles: 0
+          #  sound: 0
+          #  artifact: osx-terminal-only-universal
+          #  ext: dmg
+          #  content: application/x-apple-diskimage
+          #- name: macOS Tiles Universal Binary (x64 and arm64)
+          #  os: macos-15
+          #  tiles: 1
+          #  sound: 1
+          #  artifact: osx-with-graphics-universal
+          #  ext: dmg
+          #  content: application/x-apple-diskimage
+          #- name: Android x64
+          #  os: ubuntu-latest
+          #  tiles: 1
+          #  sound: 1
+          #  android: arm64
+          #  artifact: android-x64
+          #  ext: apk
+          #  content: application/apk
+          #- name: Android x32
+          #  os: ubuntu-latest
+          #  tiles: 1
+          #  sound: 1
+          #  android: arm32
+          #  artifact: android-x32
+          #  ext: apk
+          #  content: application/apk 
           #- name: WebAssembly Bundle
           #  os: ubuntu-latest
           #  artifact: wasm
@@ -481,13 +483,13 @@ jobs:
             export LD_LIBRARY_PATH="$RUNNER_WORKSPACE/sdl3_prefix/lib:$RUNNER_WORKSPACE/sdl3_prefix/lib/x86_64-linux-gnu"
           fi
           make COMPILER=clang++-18 -j$((`nproc`+0)) TILES=${{ matrix.tiles }} SOUND=${{ matrix.sound }} RELEASE=1 LOCALIZE=1 LANGUAGES=all BACKTRACE=1 LIBBACKTRACE=${{ matrix.libbacktrace }} WARN_STALE_DATA=1 PCH=0 bindist
-          mv cataclysmdda-0.J.tar.gz cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.tar.gz
+          mv cataclysmdda-0.J.tar.gz nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.tar.gz
       - name: Build CDDA (WebAssembly)
         if: matrix.wasm && success()
         run: |
           ./build-scripts/build-emscripten.sh
           ./build-scripts/prepare-web.sh
-          (cd build && zip ../cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.${{ matrix.ext }} *)
+          (cd build && zip ../nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.${{ matrix.ext }} *)
       - name: Build CDDA (windows msvc)
         if: runner.os == 'Windows' && matrix.tiles == 1
         env:
@@ -497,12 +499,12 @@ jobs:
         run: |
           msbuild -m -p:Configuration=Release -p:Platform=${{ matrix.arch }} "-target:Cataclysm-vcpkg-static;JsonFormatter-vcpkg-static;zzip" msvc-full-features\Cataclysm-vcpkg-static.sln
           .\build-scripts\windist.ps1
-          mv cataclysmdda-0.J.zip cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.zip
+          mv cataclysmdda-0.J.zip nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.zip
       - name: Build CDDA (osx, curses)
         if: runner.os == 'macOS' && matrix.tiles != 1
         run: |
           make -j3 TILES=${{ matrix.tiles }} SOUND=${{ matrix.sound }} RELEASE=1 LOCALIZE=1 LANGUAGES=all BACKTRACE=0 PCH=0 USE_HOME_DIR=1 UNIVERSAL_BINARY=1 WARN_STALE_DATA=1 dmgdist
-          mv Cataclysm.dmg cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.dmg
+          mv Cataclysm.dmg nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.dmg
       - name: Build CDDA (osx, tiles)
         if: runner.os == 'macOS' && matrix.tiles == 1
         env:
@@ -519,7 +521,7 @@ jobs:
               echo "ERROR: libmpg123 dylib missing from app bundle Resources" >&2
               exit 1
           fi
-          mv Cataclysm.dmg cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.dmg
+          mv Cataclysm.dmg nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.dmg
       - name: Set up JDK (android)
         if: runner.os == 'Linux' && matrix.android != 'none'
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
@@ -544,11 +546,11 @@ jobs:
           if [ ${{ matrix.android }} = arm64 ]
           then
                ./gradlew -Pj=$((`nproc`+0)) -Pabi_arm_32=false assembleExperimentalRelease
-               mv ./app/build/outputs/apk/experimental/release/*.apk ../cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.apk
+               mv ./app/build/outputs/apk/experimental/release/*.apk ../nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.apk
           elif [ ${{ matrix.android }} = arm32 ]
           then
                ./gradlew -Pj=$((`nproc`+0)) -Pabi_arm_64=false assembleExperimentalRelease
-               mv ./app/build/outputs/apk/experimental/release/*.apk ../cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.apk 
+               mv ./app/build/outputs/apk/experimental/release/*.apk ../nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.apk 
           fi
       - run: |
-          gh release upload cdda-experimental-${{ needs.release.outputs.timestamp }} cdda-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.${{ matrix.ext }}
+          gh release upload nickclysm-experimental-${{ needs.release.outputs.timestamp }} nickclysm-${{ matrix.artifact }}-${{ needs.release.outputs.timestamp }}.${{ matrix.ext }}
