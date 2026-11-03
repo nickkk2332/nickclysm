@@ -1131,3 +1131,39 @@ TEST_CASE( "npc_json_goal_timeout_counts_from_its_start", "[npc][npc_goal]" )
     CHECK( global_number( "test_goal_end_turns" ) == 1 );
     CHECK( calendar::turn - started == 12_turns );
 }
+
+// the worked example of doc/JSON/NPC_BEHAVIOR.md, from data/mods/TEST_DATA/npc_goals_fetch_crowbar.json
+TEST_CASE( "npc_json_goal_doc_example_fetches_a_crowbar", "[npc][npc_goal][errand]" )
+{
+    npc &guy = goal_npc();
+    goal_test_tree tree( "test_goal_fetch_crowbar_tree" );
+    guy.wear_item( item( itype_backpack ), false );
+    map &here = get_map();
+    const bool crowbar_there = GENERATE( true, false );
+    CAPTURE( crowbar_there );
+    if( crowbar_there ) {
+        here.add_item( goal_origin + tripoint( 6, 2, 0 ), item( itype_crowbar ) );
+    }
+    adopt( guy, "fetch_crowbar" );
+    const int turns = run_npc_turns( guy, 60, []( const npc & n ) {
+        return !n.json_goal->active();
+    } );
+    CAPTURE( turns );
+    CHECK_FALSE( guy.json_goal->active() );
+    const auto carries_crowbar = []( const npc & n ) {
+        return n.has_item_with( []( const item & it ) {
+            return it.typeId() == itype_crowbar;
+        } );
+    };
+    if( crowbar_there ) {
+        CHECK( carries_crowbar( guy ) );
+        CHECK( guy.get_value( "fetch_crowbar_back" ).dbl() == 1.0 );
+    } else {
+        CHECK_FALSE( carries_crowbar( guy ) );
+        CHECK( guy.get_value( "fetch_crowbar_failed_at" ).dbl() > 0.0 );
+    }
+    // carrying one, or having failed today, it doesn't go again
+    run_npc_turns( guy, 3 );
+    CHECK_FALSE( guy.json_goal->active() );
+    CHECK( guy.get_committed_goal() != "fetch_crowbar" );
+}

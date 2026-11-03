@@ -383,7 +383,7 @@ A mod adds a category before or after one that exists:
 
 Several categories placed after the same one keep their load order. A category can be placed relative to another mod category too; a loop, or a neighbour that doesn't exist, is a load error.
 
-To move a built-in goal, `delete` it from its category and `extend` another with it. The C++ code still acts on the built-in categories by id (`combat`, `needs` and so on), so they must exist; reorder them rather than deleting them.
+To move a built-in goal, `delete` it from its category and `extend` another with it. Every built-in goal needs a category: one that no category lists is a load error (a mod that redefines `needs` without `copy-from` and without its `goals` would leave the needs out). The C++ rules of a built-in goal follow the goal, not its category: `fight` and `flee` last only while the tree picks them, two needs weigh their urgencies with margins, `start_fire` doesn't displace a need that has an executor, wherever they are. Moving one changes only its rank. The C++ code also acts on the built-in categories by id (`combat`, `needs` and so on), so they must exist; reorder them rather than deleting them.
 
 ### Interruption
 
@@ -395,9 +395,13 @@ Each turn the NPC compares the goal the tree picks (the challenger) with the goa
 
 The committed goal's score is its own node's score this turn, so give a JSON goal's leaf its score. A JSON goal whose node's conditions no longer hold scores 0, so any goal of its category with a score takes over.
 
+A JSON goal with an `until` or a `timeout` runs until one of them ends it, or something takes over: its node's conditions only decide when it's taken up. A goal with neither lasts while its node applies: once its node's conditions no longer hold and the tree picks something else, it ends as `interrupted`.
+
 The obligations that hold back a built-in need (walking with the player, a guard post, an order to go somewhere) aren't judged for JSON goals: their categories are. A walk a JSON goal sends the NPC on is an order like any [`u_walk_to`](EFFECT_ON_CONDITION.md#u_walk_to-npc_walk_to) walk, though: while the NPC walks it, needs that would take it elsewhere wait until they're urgent.
 
-Reactions to danger are decided before the tree: fighting or fleeing a threat (and escaping an explosion) count as `combat`, investigating a sound as `investigate`, using an inhaler during an asthma attack as `needs`. A JSON goal of a later category ends as interrupted when one comes; a JSON goal of the same category or an earlier one keeps the NPC on it, and the reaction waits. A JSON goal in a category before `combat` is taken up even in a fight, when the tree picks it.
+Reactions to danger are decided before the tree: fighting or fleeing a threat (and escaping an explosion) count as `combat`, investigating a sound as `investigate`, using an inhaler during an asthma attack as `needs`. A JSON goal of a later category ends as interrupted when one comes; a JSON goal of the same category or an earlier one keeps the NPC on it, and the reaction waits, with none of its side effects (combat CBMs and items stay off, a sound's spot isn't remembered). A JSON goal in a category before `combat` is taken up even in a fight, when the tree picks it and it would win against what the NPC is committed to.
+
+Activities that skip the decision tree (eating, harvesting, foraging, lighting a fire) pause a JSON goal: neither `on_turn` nor `until` nor `timeout` is looked at while they last. The timeout counts from the goal's start all the same, so a goal past its time ends as soon as the activity does.
 
 ## JSON goals
 
@@ -449,15 +453,17 @@ EoCs may be ids or inline EoCs. They run with the NPC as `u`, and so does `until
 
 If they gave it nothing and spent no moves, the NPC waits out the turn. A goal never stalls the game. `on_turn` runs once a turn, however often the NPC moves in it.
 
-**The goal's walk.** A walk keeps the context values of the EoC that sent it, so a walk from the goal's EoCs carries its `goal_id`; so does one sent from that walk's own `true_eocs`. Such a walk is the goal at work: the tree sees it as a walk the NPC was ordered on (`goto_ordered_position`), but that doesn't take over from the goal, whatever the goal's category. When the goal ends, its walk is dropped without its EoCs. An activity the goal started goes on unless an end hook stops it (`u_cancel_activity`).
+**The goal's walk.** A walk keeps the context values of the EoC that sent it, so a walk from the goal's EoCs carries its `goal_id`; so does one sent from that walk's own `true_eocs`. Such a walk is the goal at work: the tree sees it as a walk the NPC was ordered on (`goto_ordered_position`), but that doesn't take over from the goal, whatever the goal's category. When the goal ends, its walk is dropped without its EoCs; a goal that ends during its walk (`until`, `timeout`) isn't taken up again in that turn, and the next turn only when the tree picks it. An activity the goal started goes on unless an end hook stops it (`u_cancel_activity`).
 
 **Saves.** The goal, when it started and its turn count are saved with the NPC. After a load the NPC is on the goal again without `on_start` running; its walk comes back with the save too.
+
+**Overriding a goal's node.** A mod that redefines the node with `copy-from` and gives neither `goal` nor `category` keeps its goal and changes only what it gives, such as its conditions or score. Giving `goal` again replaces the goal.
 
 **Load errors.** A goal with a built-in goal's id, a goal object without `category`, a goal defined by two nodes, an unknown category, one goal given two categories (by two nodes, or by a node and a category's `goals`), a `timeout` of 0, an EoC that doesn't exist.
 
 ### Worked example: fetching a crowbar
 
-A camp NPC with free time goes for a crowbar lying within 10 tiles, picks it up and comes back to where it stood. It uses the [errand effects](EFFECT_ON_CONDITION.md#u_walk_to-npc_walk_to): `u_map_run_item_eocs` finds the crowbar, `u_pickup_item` with `"walk": true` walks to it and takes it, and `u_walk_to` brings the NPC back.
+An NPC with nothing better to do goes for a crowbar lying within 10 tiles, picks it up and comes back to where it stood. It uses the [errand effects](EFFECT_ON_CONDITION.md#u_walk_to-npc_walk_to): `u_map_run_item_eocs` finds the crowbar, `u_pickup_item` with `"walk": true` walks to it and takes it, and `u_walk_to` brings the NPC back. If there's no crowbar to get, or it takes too long, the NPC gives up for a day.
 
 ```jsonc
 [
@@ -466,23 +472,33 @@ A camp NPC with free time goes for a crowbar lying within 10 tiles, picks it up 
     "id": "npc_fetch_crowbar",
     "category": "free_time",
     "conditions": [
-      { "predicate": "npc_is_camp_idle" },
       {
         "predicate": "condition",
-        "condition": { "and": [ { "not": { "u_has_item": "crowbar" } }, { "math": [ "u_fetch_crowbar_failed != 1" ] } ] }
+        "condition": {
+          "and": [
+            { "not": { "u_has_item": "crowbar" } },
+            {
+              "or": [
+                { "math": [ "u_fetch_crowbar_failed_at == 0" ] },
+                { "math": [ "time('now') - u_fetch_crowbar_failed_at > time('1 d')" ] }
+              ]
+            }
+          ]
+        }
       }
     ],
-    "score": "npc_free_time_urgency",
+    "score": { "math": [ "0.3" ] },
     "goal": {
       "id": "fetch_crowbar",
       "on_start": [ "EOC_FETCH_CROWBAR_START" ],
       "until": {
         "or": [
           { "and": [ { "u_has_item": "crowbar" }, { "math": [ "u_fetch_crowbar_back == 1" ] } ] },
-          { "math": [ "u_fetch_crowbar_failed == 1" ] }
+          { "math": [ "u_fetch_crowbar_lost == 1" ] }
         ]
       },
       "timeout": "30 minutes",
+      "on_timeout": [ "EOC_FETCH_CROWBAR_LOST" ],
       "on_end": [ "EOC_FETCH_CROWBAR_END" ]
     }
   },
@@ -491,6 +507,7 @@ A camp NPC with free time goes for a crowbar lying within 10 tiles, picks it up 
     "id": "EOC_FETCH_CROWBAR_START",
     "effect": [
       { "math": [ "u_fetch_crowbar_back = 0" ] },
+      { "math": [ "u_fetch_crowbar_lost = 0" ] },
       { "u_location_variable": { "u_val": "fetch_crowbar_home" } },
       {
         "u_map_run_item_eocs": "random",
@@ -504,7 +521,7 @@ A camp NPC with free time goes for a crowbar lying within 10 tiles, picks it up 
                 "u_pickup_item": "npc",
                 "walk": true,
                 "true_eocs": [ "EOC_FETCH_CROWBAR_RETURN" ],
-                "false_eocs": [ { "id": "EOC_FETCH_CROWBAR_LOST", "effect": [ { "math": [ "u_fetch_crowbar_failed = 1" ] } ] } ]
+                "false_eocs": [ "EOC_FETCH_CROWBAR_LOST" ]
               }
             ]
           }
@@ -525,25 +542,44 @@ A camp NPC with free time goes for a crowbar lying within 10 tiles, picks it up 
   },
   {
     "type": "effect_on_condition",
+    "id": "EOC_FETCH_CROWBAR_LOST",
+    "effect": [ { "math": [ "u_fetch_crowbar_lost = 1" ] }, { "math": [ "u_fetch_crowbar_failed_at = time('now')" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
     "id": "EOC_FETCH_CROWBAR_END",
     "effect": [
       {
-        "if": { "compare_string": [ "done", { "context_val": "reason" } ] },
+        "if": { "u_has_item": "crowbar" },
         "then": { "u_message": "<u_name> is back with a crowbar.", "type": "good" },
-        "else": { "u_message": "<u_name> gives up on the crowbar: <context_val:reason>." }
+        "else": { "u_message": "<u_name> gives up on the crowbar (<context_val:reason>)." }
       }
     ]
   }
 ]
 ```
 
+The node goes into the tree with `copy-from` and `extend` (see [Editing the tree](#editing-the-tree)):
+
+```jsonc
+{
+  "type": "behavior",
+  "id": "npc_priorities",
+  "copy-from": "npc_priorities",
+  "extend": { "children": [ "npc_fetch_crowbar" ] }
+}
+```
+
 How it runs:
 
-1. The node is a child of the free-time part of the tree (add it to `npc_priorities` with `extend`). When the tree picks it and nothing of an earlier category is committed, the NPC takes up `fetch_crowbar` and `on_start` runs: it remembers where the NPC stands and sends it for the nearest crowbar.
+1. In `npc_priorities` the node competes by score with the other priorities, here at 0.3. When the tree picks it and nothing of an earlier category is committed, the NPC takes up `fetch_crowbar` and `on_start` runs: it remembers where the NPC stands and sends it for the nearest crowbar.
 2. Each turn the NPC walks its pickup walk. The walk carries `goal_id`, so it is the goal's own: the tree's `goto_ordered_position` doesn't take over.
 3. Next to the crowbar, the pickup takes it and its `true_eocs` send the NPC home with `u_walk_to`, again as the goal's walk.
 4. Home, the walk's `true_eocs` set `u_fetch_crowbar_back`. Next turn `until` holds, the goal ends as `done` and `on_end` says so. Carrying a crowbar, the NPC no longer meets the node's conditions, so the tree doesn't pick the goal again.
-5. Thirst on the way (`needs` comes before `free_time`) or a zombie (`combat`) interrupts the errand: the goal's walk is dropped and `on_end` runs with `reason` `interrupted`. No crowbar within reach, or none it can get to, ends it at once through `u_fetch_crowbar_failed`.
+5. No crowbar within reach, one it can't get to, or 30 minutes gone: `EOC_FETCH_CROWBAR_LOST` sets `u_fetch_crowbar_failed_at`, the goal ends, and the node's conditions keep the NPC from trying again for a day.
+6. Thirst on the way (`needs` comes before `free_time`) or a zombie (`combat`) interrupts the errand: the goal's walk is dropped and `on_end` runs with `reason` `interrupted`.
+
+The example is in `data/mods/TEST_DATA/npc_goals_fetch_crowbar.json` (without the `npc_priorities` extension), and `tests/npc_json_goal_test.cpp` runs it.
 
 ## Reading goals from EOCs
 
@@ -563,7 +599,7 @@ What an NPC is doing can be read in any EoC. The current goal is the one the NPC
 { "math": [ "npc_goal_turns() > 100" ] }
 ```
 
-`npc_goal_changed` fires every time the goal an NPC is committed to changes, built-in goals included, with these fields; its EoCs run with the NPC as `u`:
+`npc_goal_changed` fires every time the goal an NPC is committed to changes, built-in goals included, with these fields; its EoCs run with the NPC as `u`. It isn't kept for statistics, scores or achievements, which would grow the save with every NPC's changes:
 
 | Field | Type |
 | --- | --- |
@@ -588,7 +624,7 @@ The debug menu's **Console…** has an **NPC decision** section in its **Creatur
 
 - the tree, depth first: each node's conditions, true or false, whether the node is running, succeeded or failed, its score, and for a leaf its goal and category. The path to the goal the tree picks is highlighted;
 - the categories, first to last, with their hysteresis;
-- the goal the NPC is committed to, its category, score and turns, the goal the tree picks, and why the committed goal stays or what takes over: an earlier category, the scores against the hysteresis bonus, `until` or the timeout.
+- the goal the NPC is committed to, its category, score and turns, the goal the tree picks, and why the committed goal stays or what takes over: an earlier category, the scores against the hysteresis bonus, `until`, the timeout, its node no longer applying, its own walk. It's the decision `npc::move()` makes, worked out by the same code.
 
 With the debug log filter for NPC needs on (`DF_NPC_NEEDS`), the log also says when an NPC starts a JSON goal and when and why one ends.
 

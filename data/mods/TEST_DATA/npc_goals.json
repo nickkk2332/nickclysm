@@ -255,6 +255,13 @@
     "goal": { "id": "test_goal_doomed", "on_interrupt": [ "EOC_TEST_GOAL_DIE" ], "on_end": [ "EOC_TEST_GOAL_END" ] }
   },
   {
+    "type": "behavior",
+    "id": "test_goal_fetch_crowbar_tree",
+    "//": "NPC goal tests: the worked example of doc/JSON/NPC_BEHAVIOR.md (npc_goals_fetch_crowbar.json) on its own.",
+    "strategy": "fallback",
+    "children": [ "npc_fetch_crowbar" ]
+  },
+  {
     "type": "effect_on_condition",
     "id": "EOC_TEST_GOAL_START",
     "//": "NPC goal tests: an on_start hook.  Counts its runs and records the goal_id.",
