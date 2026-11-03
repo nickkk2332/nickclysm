@@ -12,6 +12,7 @@
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enums.h"
@@ -30,8 +31,11 @@
 #include "math_parser.h"
 #include "math_parser_type.h"
 #include "monster.h"
+#include "overmap.h"
+#include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "string_formatter.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
@@ -319,6 +323,46 @@ TEST_CASE( "math-b10_a_dead_item_talker_does_not_crash_later_effects", "[audit][
     load_effect( R"({ "effect": { "npc_set_random_fault_of_type": "mechanical_damage" } })" ).apply(
         d );
     CHECK_FALSE( rock );
+}
+
+// MATH-B10 with MATH-B09: the position of an item that is gone was the empty location's, which
+// complained and gave INT_MIN, so npc_at_om_location and the like looked at an overmap there.
+TEST_CASE( "math-b10_a_dead_item_has_no_position", "[audit][math_parser][eoc]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    map &here = get_map();
+    avatar &u = get_avatar();
+    const tripoint_bub_ms at = u.pos_bub() + tripoint::east;
+    item_location rock = here.add_item_or_charges_ret_loc( at, item( itype_test_rock ) );
+    REQUIRE( rock );
+    dialogue d( get_talker_for( u ), get_talker_for( rock ) );
+    const std::string here_omt( oter_no_dir_or_connections( overmap_buffer.ter( u.pos_abs_omt() ) ) );
+    const conditional_t::func at_om = load_condition( string_format(
+                                          R"({ "condition": { "npc_at_om_location": "%s" } })", here_omt ) );
+    const conditional_t::func near_om = load_condition( string_format(
+                                            R"({ "condition": { "npc_near_om_location": "%s", "range": 1 } })", here_omt ) );
+    const conditional_t::func safe = load_condition( R"({ "condition": "npc_at_safe_space" })" );
+    REQUIRE( at_om( d ) );
+    REQUIRE( near_om( d ) );
+    REQUIRE( eval_math( d, "n_val('pos_x')" ) == here.get_abs( at ).x() );
+
+    load_effect( R"({ "effect": [ "npc_die" ] })" ).apply( d );
+    REQUIRE_FALSE( rock );
+    const std::string dmsg = capture_debugmsg_during( [&]() {
+        CHECK_FALSE( at_om( d ) );
+        CHECK_FALSE( near_om( d ) );
+        CHECK_FALSE( safe( d ) );
+        CHECK( d.actor( true )->pos_abs() == tripoint_abs_ms::invalid );
+        for( const std::string axis : {
+                 "x", "y", "z"
+             } ) {
+            CHECK_THROWS_AS( eval_math( d, "n_val('pos_" + axis + "')" ), math::runtime_error );
+        }
+        // An assignment to it does nothing.
+        load_effect( R"({ "effect": { "math": [ "n_val('pos_z') = 1" ] } })" ).apply( d );
+    } );
+    CHECK( dmsg.empty() );
 }
 
 static const vpart_id vpart_frame( "frame" );

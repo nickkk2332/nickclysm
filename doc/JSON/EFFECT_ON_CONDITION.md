@@ -6359,7 +6359,7 @@ You pick `first` and `center` locations and store it, then mirror them to create
 
 #### `u_die`, `npc_die`
 Alpha or beta talker will instantly die.
-If the target is an item, it will be deleted. Later effects of the same EOC (and later EOCs of the same `use_action`) still have the deleted item as that talker: it has no name or values, conditions about it are false, changing it does nothing, and math functions that need an item (`damage_level()`, `gun_damage()`, `melee_damage()`, `vitamin()` and the like) report an error.
+If the target is an item, it will be deleted. Later effects of the same EOC (and later EOCs of the same `use_action`) still have the deleted item as that talker, so `npc_is_item` is still true, but it has no name, values or place: conditions such as `npc_has_flag`, `npc_has_ammo`, `npc_is_rotten`, `npc_at_om_location`, `npc_near_om_location` and `npc_at_safe_space` are false, changing it does nothing, and math that needs the item or its position (`damage_level()`, `gun_damage()`, `melee_damage()`, `vitamin()`, `val('pos_x')`, `val('pos_y')`, `val('pos_z')`) reports an error.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
