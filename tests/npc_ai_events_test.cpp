@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -255,6 +256,23 @@ TEST_CASE( "npc_mutinies_to_its_factions_mutiny_faction", "[npc][npc_ai_hooks][e
     guy.mutiny();
     CHECK( guy.get_fac_id() == faction_test_npc_ai_deserters );
     CHECK( global_string( "test_ai_mutiny_to" ) == "test_npc_ai_deserters" );
+
+    // a follower that is angered mutinies; the faction it joins isn't angered for it
+    make_follower();
+    const faction *deserters = g->faction_manager_ptr->get( faction_test_npc_ai_deserters );
+    const int deserters_like = deserters->likes_u;
+    guy.op_of_u.fear = -10;
+    guy.make_angry();
+    CHECK( guy.get_fac_id() == faction_test_npc_ai_deserters );
+    CHECK( guy.get_attitude() == NPCATT_KILL );
+    CHECK( deserters->likes_u == deserters_like );
+    // a stranger's faction is, as before
+    guy.set_fac( faction_test_npc_ai_hawks );
+    guy.set_attitude( NPCATT_NULL );
+    const faction *hawks = g->faction_manager_ptr->get( faction_test_npc_ai_hawks );
+    const int hawks_like = hawks->likes_u;
+    guy.make_angry();
+    CHECK( hawks->likes_u == std::min( -15, hawks_like - 5 ) );
 
     // read from the JSON, amf where it says nothing
     CHECK( g->faction_manager_ptr->get( faction_test_npc_ai_hawks )->mutiny_faction ==

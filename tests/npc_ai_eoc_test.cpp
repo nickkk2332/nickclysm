@@ -1,8 +1,10 @@
 #include <string>
 #include <utility>
 
+#include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "behavior.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "character_oracle.h"
 #include "dialogue.h"
@@ -28,6 +30,7 @@
 
 static const efftype_id effect_npc_flee_player( "npc_flee_player" );
 
+static const faction_id faction_amf( "amf" );
 static const faction_id faction_tacoma_commune( "tacoma_commune" );
 static const faction_id faction_test_npc_ai_doves( "test_npc_ai_doves" );
 static const faction_id faction_test_npc_ai_hawks( "test_npc_ai_hawks" );
@@ -368,4 +371,70 @@ TEST_CASE( "npc_set_mission_goes_through_the_talk_effects", "[npc][npc_ai_hooks]
     CHECK_THROWS_AS( load_effect( R"([ { "npc_set_mission": "TRAVELLING" } ])" ), JsonError );
     CHECK_THROWS_AS( load_effect( R"([ { "npc_set_mission": "ACTIVITY" } ])" ), JsonError );
     CHECK_THROWS_AS( load_effect( R"([ { "npc_set_mission": "LEGACY_1" } ])" ), JsonError );
+}
+
+// A follower that turns on the avatar, or runs from it, leaves its faction first: it mutinies,
+// as an angered follower does.  A friendly attitude keeps it a follower.
+TEST_CASE( "npc_set_attitude_makes_a_follower_mutiny_first", "[npc][npc_ai_hooks][eoc]" )
+{
+    const ai_hooks_world world;
+    npc &guy = hooks_npc();
+    const auto make_follower = [&guy]() {
+        guy.set_fac( faction_your_followers );
+        guy.set_attitude( NPCATT_FOLLOW );
+        g->add_npc_follower( guy.getID() );
+        REQUIRE( guy.is_player_ally() );
+    };
+    dialogue d( get_talker_for( get_avatar() ), get_talker_for( guy ) );
+
+    for( const char *attitude : {
+             "NPCATT_KILL", "NPCATT_MUG", "NPCATT_WAIT_FOR_LEAVE", "NPCATT_FLEE"
+         } ) {
+        CAPTURE( attitude );
+        make_follower();
+        npc_event_recorder rec;
+        run_effect( std::string( R"([ { "npc_set_attitude": ")" ) + attitude + R"(" } ])", d );
+        CHECK_FALSE( guy.is_player_ally() );
+        CHECK( guy.get_fac_id() == faction_amf );
+        CHECK( get_avatar().follower_ids.count( guy.getID() ) == 0 );
+        CHECK( rec.of( event_type::npc_dismissed ).size() == 1 );
+        CHECK( rec.of( event_type::npc_mutinies ).size() == 1 );
+        CHECK( guy.get_attitude() != NPCATT_NULL );
+    }
+    CHECK( guy.get_attitude() == NPCATT_FLEE_TEMP );
+
+    make_follower();
+    run_effect( R"([ { "npc_set_attitude": "NPCATT_WAIT" } ])", d );
+    CHECK( guy.is_player_ally() );
+    CHECK( guy.get_attitude() == NPCATT_WAIT );
+    guy.set_fac( faction_tacoma_commune );
+}
+
+// An activity the avatar gave the NPC ends before its mission or attitude changes, as
+// assign_guard ends it, so the NPC doesn't go back to the activity's mission afterwards.
+TEST_CASE( "npc_set_mission_and_attitude_end_an_activity_first", "[npc][npc_ai_hooks][eoc]" )
+{
+    const ai_hooks_world world;
+    npc &guy = hooks_npc();
+    const auto give_activity = [&guy]() {
+        guy.assign_activity( wait_activity_actor( 1_hours ) );
+        guy.set_mission( NPC_MISSION_ACTIVITY );
+        guy.set_attitude( NPCATT_ACTIVITY );
+        REQUIRE( guy.has_player_activity() );
+    };
+    dialogue d( get_talker_for( get_avatar() ), get_talker_for( guy ) );
+
+    give_activity();
+    run_effect( R"([ { "npc_set_mission": "GUARD" } ])", d );
+    CHECK_FALSE( guy.activity );
+    CHECK( guy.mission == NPC_MISSION_GUARD );
+    CHECK( guy.previous_mission != NPC_MISSION_ACTIVITY );
+    CHECK( guy.get_attitude() == NPCATT_NULL );
+
+    give_activity();
+    run_effect( R"([ { "npc_set_attitude": "NPCATT_TALK" } ])", d );
+    CHECK_FALSE( guy.activity );
+    CHECK( guy.get_attitude() == NPCATT_TALK );
+    // the mission from before the activity
+    CHECK( guy.mission == NPC_MISSION_GUARD );
 }

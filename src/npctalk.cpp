@@ -8490,6 +8490,17 @@ talk_effect_fun_t::func f_set_attitude( const JsonObject &jo, std::string_view m
             debugmsg( "u_set_attitude: %s isn't an attitude it can set", id );
             return;
         }
+        // an activity the avatar gave it ends first, as assign_guard ends it
+        if( guy->has_player_activity() ) {
+            guy->revert_after_activity();
+        }
+        // one of the avatar's followers that turns on it or runs from it leaves the avatar's
+        // faction first, as an angered follower does
+        const attitude_group group = guy->get_attitude_group( *att );
+        if( guy->is_player_ally() &&
+            ( group == attitude_group::hostile || group == attitude_group::fearful ) ) {
+            guy->mutiny();
+        }
         switch( *att ) {
             case NPCATT_KILL:
                 talk_function::hostile( *guy );
@@ -8545,6 +8556,11 @@ talk_effect_fun_t::func f_set_mission( const JsonObject &jo, std::string_view me
         if( !m ) {
             debugmsg( "u_set_mission: %s isn't a mission it can set", id );
             return;
+        }
+        // an activity the avatar gave it ends first, as assign_guard ends it, so the mission
+        // it goes back to afterwards isn't the activity's
+        if( guy->has_player_activity() ) {
+            guy->revert_after_activity();
         }
         switch( *m ) {
             case NPC_MISSION_GUARD:

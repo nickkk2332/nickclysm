@@ -5488,6 +5488,8 @@ Changes how an NPC treats the avatar, through the dialogue effect for that attit
 | `NPCATT_FOLLOW` | `follow_only`: it follows the avatar without joining its faction, and drops its mission, post and walk. The effect `follow` recruits |
 | others | the attitude, set as it is |
 
+On one of the avatar's followers, a hostile or fleeing attitude (`NPCATT_KILL`, `NPCATT_MUG`, `NPCATT_WAIT_FOR_LEAVE`, `NPCATT_FLEE`, `NPCATT_FLEE_TEMP`) makes it mutiny first, as an angered follower does: it leaves the follower list and the avatar's faction for its faction's [`mutiny_faction`](FACTIONS.md) (`npc_dismissed`, `npc_mutinies`), then takes the attitude. An activity the avatar gave the NPC ends first, as `assign_guard` ends it: its mission and attitude go back to what they were before it.
+
 Every change triggers [`npc_attitude_changed`](#npc-attitude-events) with the cause `effect`. A talker that isn't an NPC, or no talker, is left as it is.
 
 | Syntax | Optionality | Value  | Info |
@@ -5515,7 +5517,7 @@ Gives an NPC a standing mission, through the dialogue effect for it where there 
 | `CAMP_RESIDENT` | `return_to_camp_duties`, for an NPC with an assigned camp; one without is left as it is |
 | `GUARD_PATROL`, `SHOPKEEP`, `SHELTER` | the mission, and a post where it stands, as `assign_guard` gives an NPC that isn't a follower |
 
-A talker that isn't an NPC, or no talker, is left as it is.
+An activity the avatar gave the NPC ends first, as `assign_guard` ends it, so the NPC doesn't go back to the activity's mission later. A talker that isn't an NPC, or no talker, is left as it is.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |

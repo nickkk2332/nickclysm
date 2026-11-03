@@ -2057,12 +2057,14 @@ void npc::make_angry()
     const npc_attitude_cause cause( npc_attitude_cause::angered );
 
     // player allies that become angry should stop being player allies
-    if( is_player_ally() ) {
+    const bool mutinied = is_player_ally();
+    if( mutinied ) {
         mutiny();
     }
 
-    // Make associated faction, if any, angry at the player too.
-    if( my_fac && !my_fac->lone_wolf_faction && my_fac->id != faction_amf ) {
+    // Make associated faction, if any, angry at the player too: not the one a mutineer just
+    // joined, which the mutiny chose, not the NPC
+    if( !mutinied && my_fac && !my_fac->lone_wolf_faction && my_fac->id != faction_amf ) {
         my_fac->likes_u = std::min( -15, my_fac->likes_u - 5 );
         my_fac->respects_u = std::min( -15, my_fac->respects_u - 5 );
         my_fac->trusts_u = std::min( -15, my_fac->trusts_u - 5 );

@@ -1034,7 +1034,7 @@ Effect | Description
 `bionic_install` | The NPC installs a bionic from your character's inventory onto your character, using very high skill, and charging you according to the operation's difficulty.
 `bionic_remove` | The NPC removes a bionic from your character, using very high skill, and charging you according to the operation's difficulty.
 `repair_bionic_limbs` | The NPC repairs all bionic and partially bionic limbs, charging you at a rate of 20x the number of HP required to fully heal.
-`u_set_attitude, npc_set_attitude: `string or [variable object](#variable-object) | Change the NPC's attitude toward the avatar, through `hostile`, `flee`, `follow_only` and the like where one fits. See [EOC effects](EFFECT_ON_CONDITION.md#u_set_attitude-npc_set_attitude).
+`u_set_attitude, npc_set_attitude: `string or [variable object](#variable-object) | Change the NPC's attitude toward the avatar, through `hostile`, `flee`, `follow_only` and the like where one fits; a follower turned hostile or fleeing mutinies first. See [EOC effects](EFFECT_ON_CONDITION.md#u_set_attitude-npc_set_attitude).
 `u_set_mission, npc_set_mission: `string or [variable object](#variable-object) | Give the NPC a standing mission, through `assign_guard`, `stop_guard` or `return_to_camp_duties` where one fits.
 `npc_class_change: `string or [variable object](#variable-object) | Change the NPC's class to the new value.
 `npc_faction_change: `string or [variable object](#variable-object) | Change the NPC's faction membership to the new value.
