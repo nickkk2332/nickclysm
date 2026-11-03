@@ -123,36 +123,37 @@ int event_multiset::total( const std::string &field, const cata::event::data_typ
     return total;
 }
 
+// Both are 0 when there are no events, and otherwise the smallest (largest) value seen
 int event_multiset::minimum( const std::string &field ) const
 {
-    int minimum = 0;
+    std::optional<int> minimum;
     for( const auto &pair : summaries_ ) {
         auto it = pair.first.find( field );
         if( it == pair.first.end() ) {
             continue;
         }
         const int potential = it->second.get<cata_variant_type::int_>();
-        if( potential < minimum ) {
+        if( !minimum || potential < *minimum ) {
             minimum = potential;
         }
     }
-    return minimum;
+    return minimum.value_or( 0 );
 }
 
 int event_multiset::maximum( const std::string &field ) const
 {
-    int maximum = 0;
+    std::optional<int> maximum;
     for( const auto &pair : summaries_ ) {
         auto it = pair.first.find( field );
         if( it == pair.first.end() ) {
             continue;
         }
         const int potential = it->second.get<cata_variant_type::int_>();
-        if( potential > maximum ) {
+        if( !maximum || potential > *maximum ) {
             maximum = potential;
         }
     }
-    return maximum;
+    return maximum.value_or( 0 );
 }
 
 namespace

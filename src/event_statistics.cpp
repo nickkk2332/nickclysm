@@ -929,13 +929,18 @@ struct event_statistic_maximum : event_statistic_field_summary<true> {
         state( const event_statistic_maximum *s, stats_tracker &stats ) :
             stat( s ),
             value( s->value( stats ) ),
-            value_int( value.get<int>() ) {
+            value_int( value.get<int>() ),
+            any_events( !s->source->get( stats ).counts().empty() ) {
             stat->source->add_watcher( stats, this );
         }
 
         void event_added( const cata::event &e, stats_tracker &stats ) override {
-            const int new_value = std::max( e.get<int>( stat->field ), value_int );
-            if( new_value != value_int ) {
+            // The first event sets the value: 0 is only the value of no events
+            const int event_value = e.get<int>( stat->field );
+            const int new_value = any_events ? std::max( event_value, value_int ) : event_value;
+            const bool first = !any_events;
+            any_events = true;
+            if( first || new_value != value_int ) {
                 value_int = new_value;
                 value = cata_variant( value_int );
                 stats.stat_value_changed( stat->id, cata_variant( value ) );
@@ -944,6 +949,7 @@ struct event_statistic_maximum : event_statistic_field_summary<true> {
 
         void events_reset( const event_multiset &new_set, stats_tracker &stats ) override {
             value_int = new_set.maximum( stat->field );
+            any_events = !new_set.counts().empty();
             value = cata_variant( value_int );
             stats.stat_value_changed( stat->id, cata_variant( value ) );
         }
@@ -955,6 +961,7 @@ struct event_statistic_maximum : event_statistic_field_summary<true> {
         const event_statistic_maximum *stat;
         cata_variant value;
         int value_int;
+        bool any_events;
     };
 
     std::unique_ptr<stats_tracker_state> watch( stats_tracker &stats ) const override {
@@ -982,13 +989,18 @@ struct event_statistic_minimum : event_statistic_field_summary<true> {
         state( const event_statistic_minimum *s, stats_tracker &stats ) :
             stat( s ),
             value( s->value( stats ) ),
-            value_int( value.get<int>() ) {
+            value_int( value.get<int>() ),
+            any_events( !s->source->get( stats ).counts().empty() ) {
             stat->source->add_watcher( stats, this );
         }
 
         void event_added( const cata::event &e, stats_tracker &stats ) override {
-            const int new_value = std::min( e.get<int>( stat->field ), value_int );
-            if( new_value != value_int ) {
+            // The first event sets the value: 0 is only the value of no events
+            const int event_value = e.get<int>( stat->field );
+            const int new_value = any_events ? std::min( event_value, value_int ) : event_value;
+            const bool first = !any_events;
+            any_events = true;
+            if( first || new_value != value_int ) {
                 value_int = new_value;
                 value = cata_variant( value_int );
                 stats.stat_value_changed( stat->id, cata_variant( value ) );
@@ -997,6 +1009,7 @@ struct event_statistic_minimum : event_statistic_field_summary<true> {
 
         void events_reset( const event_multiset &new_set, stats_tracker &stats ) override {
             value_int = new_set.minimum( stat->field );
+            any_events = !new_set.counts().empty();
             value = cata_variant( value_int );
             stats.stat_value_changed( stat->id, cata_variant( value ) );
         }
@@ -1008,6 +1021,7 @@ struct event_statistic_minimum : event_statistic_field_summary<true> {
         const event_statistic_minimum *stat;
         cata_variant value;
         int value_int;
+        bool any_events;
     };
 
     std::unique_ptr<stats_tracker_state> watch( stats_tracker &stats ) const override {
@@ -1053,16 +1067,23 @@ struct event_statistic_unique_value : event_statistic_field_summary<false> {
             stat->source->add_watcher( stats, this );
         }
 
+        // As value(): there is a value while all the events are the same, however many
+        // there are
         void init( stats_tracker &stats ) {
-            count = stat->source->get( stats ).count();
+            const event_multiset events = stat->source->get( stats );
+            const event_multiset::summaries_type &summaries = events.counts();
+            distinct = summaries.size();
+            only_data = distinct == 1 ? summaries.begin()->first : cata::event::data_type();
             value = stat->value( stats );
         }
 
         void event_added( const cata::event &e, stats_tracker &stats ) override {
-            ++count;
-            if( count == 1 ) {
+            if( distinct == 0 ) {
+                distinct = 1;
+                only_data = e.data();
                 value = e.get_variant_or_void( stat->field );
-            } else if( count == 2 ) {
+            } else if( distinct == 1 && e.data() != only_data ) {
+                distinct = 2;
                 value = cata_variant();
             } else {
                 return;
@@ -1080,7 +1101,9 @@ struct event_statistic_unique_value : event_statistic_field_summary<false> {
         }
 
         const event_statistic_unique_value *stat;
-        int count = 0;
+        // Number of different events seen, counted up to 2
+        size_t distinct = 0;
+        cata::event::data_type only_data;
         cata_variant value;
     };
 

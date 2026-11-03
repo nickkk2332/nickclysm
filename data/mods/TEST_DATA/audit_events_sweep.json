@@ -16,5 +16,13 @@
     "required_event": "character_casts_spell",
     "condition": { "math": [ "audit_evt_b03 == 1" ] },
     "effect": [ { "math": [ "u_audit_evt_b03_cast = 1" ] } ]
+  },
+  {
+    "id": "audit_evt_b08_unique_z",
+    "type": "event_statistic",
+    "stat_type": "unique_value",
+    "event_type": "avatar_moves",
+    "field": "z",
+    "description": { "str_sp": "EVT-B08 test: the one z level moved on" }
   }
 ]

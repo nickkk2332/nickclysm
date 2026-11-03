@@ -10,6 +10,7 @@
 #include "cata_path.h"
 #include "cata_scope_helpers.h"
 #include "cata_utility.h"
+#include "cata_variant.h"
 #include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
@@ -17,6 +18,7 @@
 #include "diary.h"
 #include "event.h"
 #include "event_bus.h"
+#include "event_statistics.h"
 #include "explosion.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
@@ -37,7 +39,11 @@
 
 static const achievement_id achievement_achievement_arcade_mode( "achievement_arcade_mode" );
 static const achievement_id achievement_achievement_kill_zombie( "achievement_kill_zombie" );
+static const event_statistic_id event_statistic_audit_evt_b08_unique_z( "audit_evt_b08_unique_z" );
+static const event_statistic_id event_statistic_max_move_z( "max_move_z" );
+static const event_statistic_id event_statistic_min_move_z( "min_move_z" );
 static const itype_id itype_nail( "nail" );
+static const move_mode_id move_mode_walk( "walk" );
 static const mtype_id mon_zombie( "mon_zombie" );
 static const spell_id spell_test_fake_spell( "test_fake_spell" );
 
@@ -270,4 +276,88 @@ TEST_CASE( "evt-b07_achievements_earned_while_disabled_are_not_written",
         CHECK_FALSE( written.count( achievement_achievement_kill_zombie.str() ) );
         CHECK( written.count( achievement_achievement_arcade_mode.str() ) );
     }
+}
+
+namespace
+{
+struct audit_stat_watcher : stat_watcher {
+    void new_value( const cata_variant &v, stats_tracker & ) override {
+        value = v;
+    }
+    cata_variant value;
+};
+
+void move_on_z( event_bus &b, int z )
+{
+    b.send<event_type::avatar_moves>( mtype_id::NULL_ID(), ter_str_id::NULL_ID(), move_mode_walk,
+                                      false, z );
+}
+} // namespace
+
+// EVT-B08: minimum and maximum started from 0, so a minimum of positive values (or a maximum
+// of negative ones) read 0.
+TEST_CASE( "evt-b08_minimum_and_maximum_start_from_the_first_event", "[audit][stats]" )
+{
+    stats_tracker s;
+    event_bus b;
+    b.subscribe( &s );
+    audit_stat_watcher min_watcher;
+    audit_stat_watcher max_watcher;
+    min_watcher.value = s.add_watcher( event_statistic_min_move_z, &min_watcher );
+    max_watcher.value = s.add_watcher( event_statistic_max_move_z, &max_watcher );
+    // with no events they are 0
+    CHECK( s.value_of( event_statistic_min_move_z ) == cata_variant( 0 ) );
+    CHECK( min_watcher.value == cata_variant( 0 ) );
+
+    SECTION( "above ground" ) {
+        move_on_z( b, 3 );
+        move_on_z( b, 5 );
+        CHECK( s.get_events( event_type::avatar_moves ).minimum( "z" ) == 3 );
+        CHECK( s.value_of( event_statistic_min_move_z ) == cata_variant( 3 ) );
+        CHECK( min_watcher.value == cata_variant( 3 ) );
+        CHECK( max_watcher.value == cata_variant( 5 ) );
+    }
+    SECTION( "below ground" ) {
+        move_on_z( b, -2 );
+        move_on_z( b, -4 );
+        CHECK( s.get_events( event_type::avatar_moves ).maximum( "z" ) == -2 );
+        CHECK( s.value_of( event_statistic_max_move_z ) == cata_variant( -2 ) );
+        CHECK( max_watcher.value == cata_variant( -2 ) );
+        CHECK( min_watcher.value == cata_variant( -4 ) );
+    }
+}
+
+// EVT-B08: unique_value has a value while every event is the same.  The watched value (used
+// by achievements) counted events instead, so it disagreed after two identical events, and
+// after a load it no longer changed.
+TEST_CASE( "evt-b08_unique_value_watched_and_computed_agree", "[audit][stats]" )
+{
+    const event_statistic_id &stat = event_statistic_audit_evt_b08_unique_z;
+    stats_tracker s;
+    event_bus b;
+    b.subscribe( &s );
+    audit_stat_watcher watcher;
+    watcher.value = s.add_watcher( stat, &watcher );
+    CHECK( watcher.value == cata_variant() );
+
+    move_on_z( b, 2 );
+    move_on_z( b, 2 );
+    CHECK( s.value_of( stat ) == cata_variant( 2 ) );
+    CHECK( watcher.value == cata_variant( 2 ) );
+
+    // a save and load, then a different event
+    std::ostringstream os;
+    JsonOut jsout( os );
+    s.serialize( jsout );
+    stats_tracker loaded;
+    loaded.deserialize( json_loader::from_string( os.str() ).get_object() );
+    event_bus b2;
+    b2.subscribe( &loaded );
+    audit_stat_watcher loaded_watcher;
+    loaded_watcher.value = loaded.add_watcher( stat, &loaded_watcher );
+    CHECK( loaded_watcher.value == cata_variant( 2 ) );
+
+    move_on_z( b2, 5 );
+    CHECK( loaded.value_of( stat ) == cata_variant() );
+    CHECK( loaded_watcher.value == cata_variant() );
 }
