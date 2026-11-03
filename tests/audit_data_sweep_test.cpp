@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -30,6 +31,7 @@
 #include "type_id.h"
 #include "worldfactory.h"
 #include "zzip.h"
+#include "zzip_stack.h"
 
 static const construction_str_id construction_test_constr_door_frame( "test_constr_door_frame" );
 static const end_screen_id
@@ -235,4 +237,29 @@ TEST_CASE( "data-b07_failed_compression_leaves_the_world_as_it_was", "[audit][zz
         CHECK( file_exist( dim_map ) );
         CHECK( file_exist( root_map ) );
     } );
+}
+
+// DATA-B08: when one of a zzip_stack's zzips can't be opened (locked by another program, a
+// full disk), its accessors dereferenced an empty optional.  Saving or loading map memory
+// then crashed instead of failing.
+TEST_CASE( "data-b08_zzip_stack_that_cannot_open_fails_cleanly", "[audit][zzip]" )
+{
+    const cata_path dir = PATH_INFO::savedir_path() / "audit data-b08";
+    const cata_path stack_dir = dir / "stack";
+    // a folder where the stack's newest zzip goes: it can't be opened
+    REQUIRE( assure_dir_exist( stack_dir / "stack.hot.zzip" ) );
+    on_out_of_scope cleanup( [&]() {
+        std::error_code ec;
+        std::filesystem::remove_all( dir.get_unrelative_path(), ec );
+    } );
+
+    std::shared_ptr<zzip_stack> z = zzip_stack::load( stack_dir.get_unrelative_path() );
+    REQUIRE( z );
+    const std::filesystem::path file = std::filesystem::u8path( "audit.txt" );
+    CHECK_FALSE( z->add_file( file, "audit" ) );
+    CHECK_FALSE( z->has_file( file ) );
+    CHECK( z->get_file( file ).empty() );
+    CHECK_FALSE( z->compact( 0.0 ) );
+    CHECK_FALSE( zzip_stack::extract_to_folder( stack_dir.get_unrelative_path(),
+                 ( dir / "out" ).get_unrelative_path() ) );
 }

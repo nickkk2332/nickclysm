@@ -129,9 +129,11 @@ class zzip_stack
                                        std::filesystem::path const &dictionary = {} );
 
     private:
-        zzip &hot() const;
-        zzip &warm() const;
-        zzip &cold() const;
+        // These return nullptr when the zzip can't be opened (locked by another program,
+        // disk full...).
+        zzip *hot() const;
+        zzip *warm() const;
+        zzip *cold() const;
 
         std::filesystem::path path_;
         std::filesystem::path dictionary_;
@@ -151,7 +153,7 @@ class zzip_stack
 
         static std::filesystem::path filename_of_temp( std::filesystem::path const &folder,
                 file_temp temp );
-        zzip &zzip_of_temp( file_temp temp ) const;
+        zzip *zzip_of_temp( file_temp temp ) const;
         std::optional<zzip> load_temp( file_temp temp ) const;
 };
 
