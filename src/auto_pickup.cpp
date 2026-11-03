@@ -87,26 +87,73 @@ static rule_state get_autopickup_rule( const item *pickup_item )
 }
 
 /**
+ * Whether auto pickup takes the given item out of the whitelisted container it is in.
+ * Liquids and gases stay in: the container is taken with them, or not at all.
+ *
+ * @param entry item in the container.
+ * @param rigid_container whether all the container's pockets are rigid.
+ */
+static bool autopickup_ejects( const item &entry, bool rigid_container )
+{
+    if( entry.made_of_from_type( phase_id::LIQUID ) || entry.made_of_from_type( phase_id::GAS ) ) {
+        return false;
+    }
+    const rule_state ap_rule = get_autopickup_rule( &entry );
+    // rigid containers want to keep as much items as possible so drop only blacklisted items
+    // non-rigid containers want to drop as much items as possible so keep only whitelisted items
+    return rigid_container ? ap_rule == rule_state::BLACKLISTED : ap_rule != rule_state::WHITELISTED;
+}
+
+/**
  * Drop all items from the given container that match special auto pickup rules.
  * The items will be removed from the container and dropped in the designated location.
+ * A sealed container is left as it is: auto pickup never breaks a seal.
  *
  * @param from container to drop items from.
  * @param where location on the map to drop items to.
  */
 static void empty_autopickup_target( item_location what, tripoint_bub_ms where )
 {
+    if( what->any_pockets_sealed() ) {
+        return;
+    }
     bool is_rigid = what->all_pockets_rigid();
     for( item *entry : what->all_items_top() ) {
-        const rule_state ap_rule = get_autopickup_rule( entry );
-        // rigid containers want to keep as much items as possible so drop only blacklisted items
-        // non-rigid containers want to drop as much items as possible so keep only whitelisted items
-        if( is_rigid ? ap_rule == rule_state::BLACKLISTED : ap_rule != rule_state::WHITELISTED ) {
+        if( autopickup_ejects( *entry, is_rigid ) ) {
             item nitem( *entry );
             what.remove_item( *entry );
             // drop the items on the same tile the container is on
             get_map().add_item( where, nitem );
         }
     }
+}
+
+/**
+ * Whether auto pickup would take the given container once empty_autopickup_target has turned
+ * it out: it is then within the auto pickup limits, and the avatar can carry and stash it.
+ * The container is only turned out when it is then taken.
+ *
+ * @param what whitelisted container.
+ */
+static bool would_take_emptied_autopickup_target( const item &what )
+{
+    item emptied( what );
+    if( !emptied.any_pockets_sealed() ) {
+        const bool is_rigid = emptied.all_pockets_rigid();
+        std::vector<const item *> ejected;
+        for( const item *entry : emptied.all_items_top() ) {
+            if( autopickup_ejects( *entry, is_rigid ) ) {
+                ejected.push_back( entry );
+            }
+        }
+        emptied.get_contents().remove_items_if( [&ejected]( item & entry ) {
+            return std::find( ejected.begin(), ejected.end(), &entry ) != ejected.end();
+        } );
+        emptied.on_contents_changed();
+    }
+    Character &player = get_player_character();
+    return within_autopickup_limits( &emptied ) && player.can_pickWeight_partial( emptied, false ) &&
+           player.can_stash_partial( emptied, false );
 }
 
 /**
@@ -174,6 +221,10 @@ static std::vector<item_location> get_autopickup_items( item_location &from )
             any_whitelisted = true;
             if( !force_pick_container ) {
                 if( item_entry->is_container() ) {
+                    if( !would_take_emptied_autopickup_target( *item_entry ) ) {
+                        pick_all_items = false;
+                        continue;
+                    }
                     // whitelisted containers should exclude contained blacklisted items
                     empty_autopickup_target( item_location( from, item_entry ), from.pos_bub( here ) );
                 } else if( item_entry->made_of_from_type( phase_id::LIQUID ) ) {
@@ -283,10 +334,12 @@ drop_locations auto_pickup::select_items(
         // before checking contents check if item is on pickup list
         if( pickup_state == rule_state::WHITELISTED ) {
             if( item_entry->is_container() ) {
+                // decide on the container as it would be taken before turning anything out
+                if( !would_take_emptied_autopickup_target( *item_entry ) ) {
+                    continue;
+                }
                 empty_autopickup_target( item_location( map_location, item_entry ), location );
-            }
-            // skip if the container is still above the limit after emptying it
-            if( !within_autopickup_limits( item_entry ) ) {
+            } else if( !within_autopickup_limits( item_entry ) ) {
                 continue;
             }
             int it_count = 0; // TODO: factor in auto pickup max_quantity here

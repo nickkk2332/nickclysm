@@ -37,12 +37,18 @@ static const itype_id itype_audit_inv_b04_sack( "audit_inv_b04_sack" );
 static const itype_id itype_audit_inv_b05_cold_bag( "audit_inv_b05_cold_bag" );
 static const itype_id itype_audit_inv_b05_cool_box( "audit_inv_b05_cool_box" );
 static const itype_id itype_audit_inv_b05_two_pocket_rig( "audit_inv_b05_two_pocket_rig" );
+static const itype_id itype_backpack( "backpack" );
+static const itype_id itype_can_medium( "can_medium" );
+static const itype_id itype_can_tuna( "can_tuna" );
 static const itype_id itype_gas_charger_on( "gas_charger_on" );
 static const itype_id itype_gasfilter_med( "gasfilter_med" );
+static const itype_id itype_meat_canned( "meat_canned" );
 static const itype_id itype_pebble( "pebble" );
 static const itype_id itype_propane( "propane" );
 static const itype_id itype_small_propane_tank( "small_propane_tank" );
 static const itype_id itype_test_apple( "test_apple" );
+static const itype_id itype_water_clean( "water_clean" );
+static const itype_id itype_waterskin( "waterskin" );
 
 namespace
 {
@@ -225,5 +231,136 @@ TEST_CASE( "inv-b05_active_item_pocket_chain_holds_only_enclosing_pockets",
         REQUIRE( apple != nullptr );
         CHECK( apple->pocket_chain.size() == 2 );
         CHECK( apple->spoil_multiplier() == Approx( bag_mult ) );
+    }
+}
+
+namespace
+{
+
+// Clears the avatar's auto pickup rules when it goes out of scope.
+struct autopickup_rules_cleanup {
+    ~autopickup_rules_cleanup() {
+        auto_pickup::player_settings &rules = get_auto_pickup();
+        rules.clear_character_rules();
+        // rebuilds the rule cache
+        rules.check_item( "" );
+    }
+};
+
+// Resets the avatar when it goes out of scope.
+struct avatar_cleanup {
+    ~avatar_cleanup() {
+        clear_avatar();
+    }
+};
+
+} // namespace
+
+static void add_autopickup_rule( const item &what, bool include )
+{
+    auto_pickup::player_settings &rules = get_auto_pickup();
+    rules.add_rule( &what, include );
+    REQUIRE( rules.check_item( what ) ==
+             ( include ? rule_state::WHITELISTED : rule_state::BLACKLISTED ) );
+}
+
+// INV-B06: auto pickup turned a whitelisted container out (everything not whitelisted from a
+// soft one, liquids included) while selecting it, before the auto pickup limits and the check
+// that the avatar could carry and stash it.  It ignored seals, poured out liquids, and could
+// leave the emptied container behind.
+TEST_CASE( "inv-b06_autopickup_leaves_containers_whole_unless_it_takes_them",
+           "[audit][autopickup]" )
+{
+    clear_avatar();
+    clear_map();
+    const avatar_cleanup reset_avatar;
+    const autopickup_rules_cleanup reset_rules;
+    const override_option auto_pickup( "AUTO_PICKUP", "true" );
+    const override_option adjacent( "AUTO_PICKUP_ADJACENT", "false" );
+    const override_option owned( "AUTO_PICKUP_OWNED", "false" );
+    const override_option weight_limit( "AUTO_PICKUP_WEIGHT_LIMIT", "0" );
+
+    avatar &they = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms ground = they.pos_bub();
+    const tile_items_cleanup cleanup{ ground };
+
+    SECTION( "liquid stays in a whitelisted soft container, which is taken with it" ) {
+        const override_option volume_limit( "AUTO_PICKUP_VOLUME_LIMIT", "0" );
+        REQUIRE( they.wear_item( item( itype_backpack ), false ).has_value() );
+        item skin( itype_waterskin );
+        REQUIRE( skin.fill_with( item( itype_water_clean ), 4 ) == 4 );
+        const item &placed = here.add_item( ground, skin );
+        add_autopickup_rule( placed, true );
+
+        Pickup::autopickup( ground );
+        process_activity( they );
+
+        CHECK( here.i_at( ground ).empty() );
+        CHECK( they.charges_of( itype_water_clean ) == 4 );
+    }
+
+    SECTION( "a whitelisted sealed container is taken whole and stays sealed" ) {
+        const override_option volume_limit( "AUTO_PICKUP_VOLUME_LIMIT", "0" );
+        REQUIRE( they.wear_item( item( itype_backpack ), false ).has_value() );
+        const item tuna( itype_can_tuna );
+        item can( itype_can_medium );
+        can.force_insert_item( tuna, pocket_type::CONTAINER );
+        can.force_insert_item( item( itype_meat_canned ), pocket_type::CONTAINER );
+        can.seal();
+        REQUIRE( can.all_pockets_sealed() );
+        const item &placed = here.add_item( ground, can );
+        add_autopickup_rule( placed, true );
+        add_autopickup_rule( tuna, false );
+
+        Pickup::autopickup( ground );
+        process_activity( they );
+
+        CHECK( here.i_at( ground ).empty() );
+        const std::vector<item *> cans = they.items_with( []( const item & it ) {
+            return it.typeId() == itype_can_medium;
+        } );
+        REQUIRE( cans.size() == 1 );
+        CHECK( cans.front()->all_pockets_sealed() );
+        CHECK( cans.front()->all_items_top().size() == 2 );
+    }
+
+    SECTION( "a container over the auto pickup limits is left as it was" ) {
+        // 50 ml: the empty sack alone is bigger
+        const override_option volume_limit( "AUTO_PICKUP_VOLUME_LIMIT", "1" );
+        REQUIRE( they.wear_item( item( itype_backpack ), false ).has_value() );
+        item sack( itype_audit_inv_b04_sack );
+        REQUIRE( sack.put_in( item( itype_pebble, calendar::turn, 1 ),
+                              pocket_type::CONTAINER ).success() );
+        const item &placed = here.add_item( ground, sack );
+        REQUIRE( placed.volume() > 50_ml );
+        add_autopickup_rule( placed, true );
+
+        Pickup::autopickup( ground );
+        process_activity( they );
+
+        REQUIRE( here.i_at( ground ).size() == 1 );
+        const item &left = *here.i_at( ground ).begin();
+        CHECK( left.typeId() == itype_audit_inv_b04_sack );
+        CHECK( left.all_items_top().size() == 1 );
+    }
+
+    SECTION( "a container the avatar can't stash is left as it was" ) {
+        const override_option volume_limit( "AUTO_PICKUP_VOLUME_LIMIT", "0" );
+        // no worn containers: nothing can be stashed
+        item sack( itype_audit_inv_b04_sack );
+        REQUIRE( sack.put_in( item( itype_pebble, calendar::turn, 1 ),
+                              pocket_type::CONTAINER ).success() );
+        const item &placed = here.add_item( ground, sack );
+        REQUIRE_FALSE( they.can_stash_partial( placed, false ) );
+        add_autopickup_rule( placed, true );
+
+        Pickup::autopickup( ground );
+        process_activity( they );
+
+        REQUIRE( here.i_at( ground ).size() == 1 );
+        const item &left = *here.i_at( ground ).begin();
+        CHECK( left.typeId() == itype_audit_inv_b04_sack );
+        CHECK( left.all_items_top().size() == 1 );
     }
 }
