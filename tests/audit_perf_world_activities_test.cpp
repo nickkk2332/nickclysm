@@ -120,7 +120,8 @@ TEST_CASE( "act-p02_farm_check_of_a_tile_to_till_samples_no_weather", "[audit][a
 }
 
 // ACT-P02: within a farm scan, the temperatures warm_enough_to_plant checks are sampled once
-// per overmap tile and seed, and give the same answer.
+// per overmap tile and seed, and give the same answer. Since LOOP-B13 sampling the weather uses
+// no random numbers, so the engine check below only shows the memo adds none either.
 TEST_CASE( "act-p02_planting_memo_samples_the_weather_once_per_overmap_tile",
            "[audit][activity]" )
 {
@@ -144,8 +145,4 @@ TEST_CASE( "act-p02_planting_memo_samples_the_weather_once_per_overmap_tile",
         CHECK( at_second.success() == uncached.success() );
         CHECK( std::string( at_second.c_str() ) == std::string( uncached.c_str() ) );
     }
-    // out of the scope, each call samples again
-    const cata_default_random_engine before = rng_get_engine();
-    warm_enough_to_plant( second, itype_seed_buckwheat );
-    CHECK( rng_get_engine() != before );
 }

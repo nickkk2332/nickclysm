@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <ostream>
@@ -90,6 +91,75 @@ struct weather_gen_common {
     unsigned modSEED = 0u;
     season_type season = season_type::SPRING;
 };
+} // namespace
+
+namespace
+{
+// splitmix64's finaliser: every bit of the input reaches every bit of the output
+uint64_t mix_bits( uint64_t z )
+{
+    z += 0x9e3779b97f4a7c15ULL;
+    z = ( z ^ ( z >> 30 ) ) * 0xbf58476d1ce4e5b9ULL;
+    z = ( z ^ ( z >> 27 ) ) * 0x94d049bb133111ebULL;
+    return z ^ ( z >> 31 );
+}
+
+// Uniform draws in [0, 1) that depend only on the seed, the map square and the turn, so the
+// generator gives the same wind every time it is asked about the same time and place.
+class wind_draws
+{
+    public:
+        wind_draws( unsigned seed, const tripoint_abs_ms &location, const time_point &t ) {
+            const point_abs_omt omt = project_to<coords::omt>( location.xy() );
+            state = mix_bits( seed );
+            state = mix_bits( state ^ static_cast<uint32_t>( omt.x() ) );
+            state = mix_bits( state ^ static_cast<uint32_t>( omt.y() ) );
+            state = mix_bits( state ^ static_cast<uint64_t>( to_turn<int64_t>( t ) ) );
+        }
+        double next() {
+            state = mix_bits( state );
+            // The top 53 bits, as a fraction of 2^53
+            return static_cast<double>( state >> 11 ) / 9007199254740992.0;
+        }
+    private:
+        uint64_t state = 0;
+};
+
+// How often the wind blows from each of the 16 compass points, by season
+std::array<int, 16> wind_direction_weights( const season_type season )
+{
+    //TODO: Unhardcode?
+    switch( season ) {
+        case SPRING:
+            return { { 3, 3, 5, 8, 11, 10, 5, 2, 5, 6, 6, 5, 8, 10, 8, 6 } };
+        case SUMMER:
+            return { { 3, 4, 4, 8, 8, 9, 8, 3, 7, 8, 10, 7, 7, 7, 5, 3 } };
+        case AUTUMN:
+            return { { 4, 6, 6, 7, 6, 5, 4, 3, 5, 6, 8, 8, 10, 10, 8, 5 } };
+        case WINTER:
+            return { { 5, 3, 2, 3, 2, 2, 2, 2, 4, 6, 10, 8, 12, 19, 13, 9 } };
+        default:
+            return { { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+    }
+}
+
+// The compass point (0 to 15) a draw in [0, 1) picks, with the season's chances
+int wind_direction_from_draw( const season_type season, const double draw )
+{
+    const std::array<int, 16> weights = wind_direction_weights( season );
+    int total = 0;
+    for( const int w : weights ) {
+        total += w;
+    }
+    double left = draw * total;
+    for( size_t i = 0; i < weights.size(); i++ ) {
+        left -= weights[i];
+        if( left < 0 ) {
+            return static_cast<int>( i );
+        }
+    }
+    return static_cast<int>( weights.size() ) - 1;
+}
 } // namespace
 
 // The parts of weather_gen_common that depend on the place.
@@ -261,26 +331,29 @@ w_point weather_generator::get_weather( const tripoint_abs_ms &location, const t
         raw_noise_4d( x, y, z, modSEED + 211 ) *
         15 * ( -seasonality + 2 );
 
-    // Wind power
+    // Wind power. Its random parts come from the seed, place and time, so asking about the same
+    // time and place again gives the same wind, and asking changes nothing.
+    wind_draws draw( seed, location, real_t );
+    const double variation_draw = draw.next();
+    const double gust_draw = draw.next();
+    const double peaks_draw = draw.next();
+    const double direction_draw = draw.next();
     const double variation = base_wind_season_variation == 0 ? 0 :
-                             cyf * base_wind_season_variation * rng_float( 0, 2 );
-    W = std::max( 0, static_cast<int>( base_wind * rng( 1, 2 ) / std::pow( ( P + W ) / 1014.78, rng( 9,
-                                       base_wind_distrib_peaks ) ) + variation ) );
+                             cyf * base_wind_season_variation * 2.0 * variation_draw;
+    // As rng( 1, 2 ) and rng( 9, base_wind_distrib_peaks ) were, which swaps a reversed range
+    const int gust = gust_draw < 0.5 ? 1 : 2;
+    const int peaks_low = std::min( 9, base_wind_distrib_peaks );
+    const int peaks_high = std::max( 9, base_wind_distrib_peaks );
+    const int peaks = peaks_low + std::min( peaks_high - peaks_low,
+                                            static_cast<int>( peaks_draw * ( peaks_high - peaks_low + 1 ) ) );
+    W = std::max( 0, static_cast<int>( base_wind * gust / std::pow( ( P + W ) / 1014.78,
+                                       peaks ) + variation ) );
 
-    // Initial static variable
-    if( current_winddir == 1000 ) {
-        current_winddir = get_wind_direction( season );
-        current_winddir = convert_winddir( current_winddir );
-    } else {
-        // When wind strength is low, wind direction is more variable
-        bool changedir = one_in( W * 2160 );
-        if( changedir ) {
-            current_winddir = get_wind_direction( season );
-            current_winddir = convert_winddir( current_winddir );
-        }
-    }
+    // The direction this time and place brings. The live wind keeps its own direction and only
+    // takes this one now and then, in weather_manager::update_weather().
+    const int winddir = convert_winddir( wind_direction_from_draw( season, direction_draw ) );
     std::string wind_desc = get_wind_desc( W );
-    return w_point{ T, H, P, W, wind_desc, current_winddir, t, location };
+    return w_point{ T, H, P, W, wind_desc, winddir, t, location };
 }
 
 weather_type_id weather_generator::get_weather_conditions( const tripoint_abs_ms &location,
@@ -328,24 +401,7 @@ weather_type_id weather_generator::get_weather_conditions( const w_point &w ) co
 
 int weather_generator::get_wind_direction( const season_type season ) const
 {
-    cata_default_random_engine &wind_dir_gen = rng_get_engine();
-    // Assign chance to angle direction
-    if( season == SPRING ) {
-        //TODO: Unhardcode?
-        std::discrete_distribution<int> distribution {3, 3, 5, 8, 11, 10, 5, 2, 5, 6, 6, 5, 8, 10, 8, 6};
-        return distribution( wind_dir_gen );
-    } else if( season == SUMMER ) {
-        std::discrete_distribution<int> distribution {3, 4, 4, 8, 8, 9, 8, 3, 7, 8, 10, 7, 7, 7, 5, 3};
-        return distribution( wind_dir_gen );
-    } else if( season == AUTUMN ) {
-        std::discrete_distribution<int> distribution {4, 6, 6, 7, 6, 5, 4, 3, 5, 6, 8, 8, 10, 10, 8, 5};
-        return distribution( wind_dir_gen );
-    } else if( season == WINTER ) {
-        std::discrete_distribution<int> distribution {5, 3, 2, 3, 2, 2, 2, 2, 4, 6, 10, 8, 12, 19, 13, 9};
-        return distribution( wind_dir_gen );
-    } else {
-        return 0;
-    }
+    return wind_direction_from_draw( season, rng_float( 0, 1 ) );
 }
 
 int weather_generator::convert_winddir( const int inputdir ) const

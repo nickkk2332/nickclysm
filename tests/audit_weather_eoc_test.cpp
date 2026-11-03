@@ -135,9 +135,9 @@ TEST_CASE( "loop-j01_eoc_weather_overrides_hold_until_they_run_out", "[audit][we
         CHECK( weather.windspeed == static_cast<int>( generated_weather_seeded().windpower ) );
         CHECK( weather.winddirection == 90 );
 
-        rng_set_engine_seed( wind_seed );
         run_weather_eoc( effect_on_condition_EOC_TEST_CLEAR_WEATHER );
-        CHECK( weather.winddirection == generated_weather_seeded().winddirection );
+        // Back to the live wind's own direction (LOOP-B13)
+        CHECK( weather.winddirection == weather_generator::current_winddir );
     }
 
     SECTION( "wind assigned without a duration lasts until the weather changes" ) {

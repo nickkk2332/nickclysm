@@ -1142,6 +1142,13 @@ void weather_manager::update_weather()
         const weather_generator &weather_gen = get_cur_weather_gen();
         w = weather_gen.get_weather( player_character.pos_abs(), calendar::turn,
                                      g->get_seed() );
+        // The live wind keeps blowing from where it did, and takes the generated direction now
+        // and then: more often the weaker it is, and whenever it falls still
+        int &live_direction = weather_generator::current_winddir;
+        if( live_direction == 1000 || one_in( static_cast<int>( w.windpower ) * 2160 ) ) {
+            live_direction = w.winddirection;
+        }
+        w.winddirection = live_direction;
         // Before picking the weather type, so a forced cold or wind shows in it
         apply_eoc_overrides( w );
         weather_type_id old_weather = weather_id;

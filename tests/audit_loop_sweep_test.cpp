@@ -297,3 +297,30 @@ TEST_CASE( "loop-b11_knockback_checks_the_tiles_the_target_moves_through", "[aud
 
     clear_map( -1, 1 );
 }
+
+// ---- LOOP-B13 ----
+
+// get_weather rolled the wind with the game's random numbers, so asking twice about the same
+// time and place gave different wind (and so rain storms and fog could come and go), and every
+// question could turn the live wind.
+TEST_CASE( "loop-b13_generated_weather_depends_only_on_time_place_and_seed", "[audit][weather]" )
+{
+    const weather_generator &wgen = get_weather().get_cur_weather_gen();
+    REQUIRE( wgen.base_wind > 0 );
+    restore_on_out_of_scope restore_direction( weather_generator::current_winddir );
+    weather_generator::current_winddir = 90;
+    const tripoint_abs_ms where = get_avatar().pos_abs();
+    const unsigned seed = 1234;
+    int different = 0;
+    for( int i = 0; i < 300; ++i ) {
+        const time_point when = calendar::turn_zero + 7_hours * i + 13_minutes * ( i % 5 );
+        const w_point first = wgen.get_weather( where, when, seed );
+        const w_point again = wgen.get_weather( where, when, seed );
+        if( first.windpower != again.windpower || first.winddirection != again.winddirection ) {
+            different++;
+        }
+    }
+    CHECK( different == 0 );
+    // Asking about any time leaves the live wind's direction alone
+    CHECK( weather_generator::current_winddir == 90 );
+}
