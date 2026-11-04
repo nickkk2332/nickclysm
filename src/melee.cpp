@@ -809,7 +809,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     }
 
     melee::melee_stats.attack_count += 1;
-    int hit_spread = t.deal_melee_attack( this, hit_roll() );
+    int hit_spread = t.deal_melee_attack( this, melee::hit_roll_against( t, [this] {
+        return hit_roll();
+    } ) );
     if( !t.is_avatar() ) {
         // TODO: Per-NPC tracking? Right now monster hit by either npc or player will draw aggro...
         t.add_effect( effect_hit_by_player, 10_minutes ); // Flag as attacked by us for AI
@@ -1448,10 +1450,8 @@ float Character::dodge_roll() const
         return 999999.0f;
     }
 
-    if( has_flag( json_flag_HARDTOHIT ) ) {
-        // two chances at rng!
-        return std::max( get_dodge(), get_dodge() ) * 5;
-    }
+    // HARDTOHIT is rolled on the attacker's side (melee::hit_roll_against): there's no
+    // randomness here to roll twice
     return get_dodge() * 5;
 }
 
@@ -2611,7 +2611,9 @@ void Character::perform_special_attacks( Creature &t, dealt_damage_instance &dea
         }
 
         // TODO: Make this hit roll use unarmed skill, not weapon skill + weapon to_hit
-        int hit_spread = t.deal_melee_attack( this, hit_roll() * 0.8 );
+        int hit_spread = t.deal_melee_attack( this, melee::hit_roll_against( t, [this] {
+            return hit_roll() * 0.8f;
+        } ) );
         if( hit_spread >= 0 ) {
             weakpoint_attack attack;
             t.deal_melee_hit( this, hit_spread, false, att.damage, dealt_dam, attack );
@@ -3239,7 +3241,9 @@ void avatar::disarm( npc &target )
     };
 
     // roll your melee and target's dodge skills to check if grab/smash attack succeeds
-    int hitspread = target.deal_melee_attack( this, hit_roll() );
+    int hitspread = target.deal_melee_attack( this, melee::hit_roll_against( target, [this] {
+        return hit_roll();
+    } ) );
     if( hitspread < 0 ) {
         add_msg( _( "You lunge for the %s, but miss!" ), it->tname() );
         item weap = get_wielded_item() ? *get_wielded_item() : null_item_reference();
@@ -3343,6 +3347,15 @@ void avatar::steal( npc &target )
 float melee::melee_hit_range( float accuracy )
 {
     return normal_roll( accuracy * 5, 25.0f );
+}
+
+float melee::hit_roll_against( const Creature &target, const std::function<float()> &roll )
+{
+    const float first = roll();
+    if( !target.has_flag( json_flag_HARDTOHIT ) ) {
+        return first;
+    }
+    return std::min( first, roll() );
 }
 
 melee_statistic_data melee::get_stats()

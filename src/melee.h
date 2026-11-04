@@ -59,6 +59,11 @@ namespace melee
 {
 
 float melee_hit_range( float accuracy );
+/**
+ * An attacker's hit roll against @p target, made with @p roll. Against a HARDTOHIT target the
+ * attacker rolls twice and keeps the worse roll.
+ */
+float hit_roll_against( const Creature &target, const std::function<float()> &roll );
 melee_statistic_data get_stats();
 void clear_stats();
 int blocking_ability( const item &shield );

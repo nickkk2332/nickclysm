@@ -49,6 +49,7 @@ static const move_mode_id move_mode_prone( "prone" );
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_unarmed( "unarmed" );
 
+static const trait_id trait_TEST_CMBT_HARDTOHIT( "TEST_CMBT_HARDTOHIT" );
 static const trait_id trait_TEST_CMBT_HASTE( "TEST_CMBT_HASTE" );
 static const trait_id trait_TEST_CMBT_PSEUDOPOD( "TEST_CMBT_PSEUDOPOD" );
 
@@ -318,6 +319,42 @@ TEST_CASE( "cmbt-b10_refused_attack_rolls_nothing", "[audit][melee]" )
         CHECK_FALSE( you.melee_attack( guy, true ) );
         CHECK( guy.get_dodges_left() == dodges );
     }
+}
+
+// The share of the avatar's blows that land on an NPC that can't dodge
+static double hit_rate( avatar &you, npc &target )
+{
+    constexpr int attacks = 2000;
+    melee::clear_stats();
+    for( int i = 0; i < attacks; ++i ) {
+        ready( you, target );
+        target.set_all_parts_hp_to_max();
+        you.melee_attack( target, false );
+    }
+    const melee_statistic_data stats = melee::get_stats();
+    REQUIRE( stats.attack_count == attacks );
+    return static_cast<double>( stats.hit_count ) / attacks;
+}
+
+// CMBT-B12: HARDTOHIT took the better of two dodge rolls, but the dodge roll has no randomness,
+// so the flag did nothing against melee. The attacker now rolls to hit twice and keeps the worse.
+TEST_CASE( "cmbt-b12_hardtohit_makes_melee_attackers_roll_twice", "[audit][melee]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    npc &target = spawn_npc( ( you.pos_bub() + tripoint::east ).xy(), "test_talker" );
+    target.remove_weapon();
+    // No practice: the attacker's skill stays the same throughout
+    target.times_combatted_player = 1000;
+
+    const double plain = hit_rate( you, target );
+    target.set_mutation( trait_TEST_CMBT_HARDTOHIT );
+    const double hard = hit_rate( you, target );
+    CAPTURE( plain, hard );
+    REQUIRE( plain > 0.3 );
+    REQUIRE( plain < 0.95 );
+    // Both rolls must hit, so the chance is squared
+    CHECK( hard == Approx( plain * plain ).margin( 0.05 ) );
 }
 
 // CMBT-B16: the accuracy bonus of a martial-art buff ignored its stacks, and every buff bonus was

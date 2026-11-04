@@ -408,7 +408,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```GLIDE``` You can glide from ledges without the use of wings, as if by magic.
 - ```GLIDING``` You are in the process of gliding.
 - ```HANDS_CANNOT_USE_FIREARMS``` Your hands (or paws, tentacles, etc) are incapable of operating a firearm
-- ```HARDTOHIT``` Whenever something attacks you, RNG gets rolled twice, and you get the better result.
+- ```HARDTOHIT``` Whenever something attacks you, RNG gets rolled twice, and you get the better result.  In melee (and for grabs) the attacker rolls to hit twice and keeps the worse roll; a projectile's aim is rolled twice and the worse shot kept.
 - ```HEATSINK``` You are resistant to extreme heat.
 - ```HEAT_IMMUNE``` Immune to very hot temperatures and fire damage.
 - ```HERITAGE``` Turns a mutation with this flag light cyan on the list.  Currently used in mods for mutations that indicate non-human ancestry.

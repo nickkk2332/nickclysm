@@ -41,6 +41,15 @@
     "extend": { "flags": [ "UNBREAKABLE_MELEE" ] }
   },
   {
+    "//": "CMBT-B12 fixture.",
+    "type": "mutation",
+    "id": "TEST_CMBT_HARDTOHIT",
+    "name": { "str": "Test Hard To Hit" },
+    "points": 0,
+    "description": "Test mutation: attackers roll to hit twice and keep the worse roll.",
+    "flags": [ "HARDTOHIT" ]
+  },
+  {
     "//": "CMBT-B10 fixture: attacks so fast that a heavy enough item is too unwieldy to swing.",
     "type": "mutation",
     "id": "TEST_CMBT_HASTE",
