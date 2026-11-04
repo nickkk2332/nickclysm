@@ -1180,6 +1180,7 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::npc_recruited:
         case event_type::npc_dismissed:
         case event_type::npc_mutinies:
+        case event_type::mod_setting_changed:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

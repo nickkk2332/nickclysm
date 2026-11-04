@@ -364,6 +364,7 @@
     "looks_like": "pot",
     "symbol": ")",
     "color": "light_green",
+    "extend": { "qualities": [ [ "HOTPLATE", 2 ] ] },
     "use_action": [ "HOTPLATE" ],
     "flags": [ "ALLOWS_REMOTE_USE" ]
   },
@@ -882,7 +883,7 @@
     "color": "green",
     "sub": "hotplate_induction",
     "charges_per_use": 25,
-    "qualities": [ [ "COOK", 2 ], [ "BOIL", 2 ], [ "CONTAIN", 1 ] ],
+    "qualities": [ [ "COOK", 2 ], [ "BOIL", 2 ], [ "CONTAIN", 1 ], [ "HOTPLATE", 2 ] ],
     "use_action": [ "HOTPLATE", "HEAT_FOOD" ],
     "pocket_data": [
       {

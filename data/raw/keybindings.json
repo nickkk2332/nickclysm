@@ -1334,6 +1334,18 @@
   },
   {
     "type": "keybinding",
+    "id": "MOD_SETTINGS",
+    "category": "WORLDGEN_CONFIRM_DIALOG",
+    "name": "View the settings of the world's mods",
+    "bindings": [
+      { "input_method": "keyboard_any", "key": "o" },
+      { "input_method": "keyboard_char", "key": "O" },
+      { "input_method": "keyboard_code", "key": "o", "mod": [ "shift" ] },
+      { "input_method": "gamepad", "key": "L_RADIAL_W" }
+    ]
+  },
+  {
+    "type": "keybinding",
     "id": "FINALIZE",
     "category": "WORLDGEN_CONFIRM_DIALOG",
     "name": "Finalize world creation",

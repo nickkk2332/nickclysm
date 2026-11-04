@@ -110,6 +110,8 @@ struct func_diag {
 
     eval_f fe;
     ass_f fa;
+    // checks the literal params when the function is assigned to (dialogue_func::fca)
+    dialogue_func::fc_t fca = nullptr;
     char scope;
     mutable std::vector<diag_value> params;
     mutable diag_kwargs kwargs;

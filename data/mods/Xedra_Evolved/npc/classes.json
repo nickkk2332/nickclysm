@@ -7,7 +7,7 @@
     "common": false,
     "worn_override": "default_zombie_death_drops",
     "traits": [
-      { "group": "BG_survival_story_RECONSTRUCTED" },
+      { "group": "BG_survival_story_UNIVERSAL" },
       { "group": "NPC_starting_traits" },
       { "group": "Appearance_demographics" },
       [ "DREAMLESS", 100 ],

@@ -59,6 +59,7 @@
 #include "messages.h"
 #include "math_parser_diag_value.h"
 #include "mission.h"
+#include "mod_setting.h"
 #include "monster.h"
 #include "monstergenerator.h"
 #include "mtype.h"
@@ -2860,6 +2861,86 @@ conditional_t::func f_npc_goal_category( const JsonObject &jo, std::string_view 
     };
 }
 
+// The mod setting a condition reads; a literal id is checked once everything has loaded
+void check_mod_setting_id( const JsonValue &jv, const str_or_var &id, const std::string &context,
+                           const std::vector<mod_setting::kind_t> &kinds, const std::string &what,
+                           const std::optional<std::string> &choice = std::nullopt )
+{
+    if( !id.is_constant() ) {
+        return;
+    }
+    const std::string where = jv.get_root_source_path();
+    effect_on_conditions::add_load_check( [name = id.constant(), where, context, kinds, what,
+         choice]() {
+        const mod_setting_id setting( name );
+        if( !setting.is_valid() ) {
+            debugmsg( "No mod defines the setting \"%s\" (used by %s in %s)", name, context, where );
+            return;
+        }
+        if( std::find( kinds.begin(), kinds.end(), setting->kind ) == kinds.end() ) {
+            debugmsg( "%s needs %s, and mod setting \"%s\" is %s (in %s)", context, what, name,
+                      setting->kind_name(), where );
+            return;
+        }
+        if( choice && setting->kind == mod_setting::kind_t::choice &&
+            setting->choice_index( *choice ) < 0 ) {
+            debugmsg( "\"%s\" isn't a choice of mod setting \"%s\" (used by %s in %s)", *choice, name,
+                      context, where );
+        }
+    } );
+}
+
+// mod_setting_on: a switch mod setting is on
+conditional_t::func f_mod_setting_on( const JsonObject &jo, std::string_view member )
+{
+    const str_or_var id = get_str_or_var( jo.get_member( member ), member, true );
+    check_mod_setting_id( jo.get_member( member ), id, "mod_setting_on",
+    { mod_setting::kind_t::boolean }, "a switch (\"kind\": \"bool\")" );
+    return [id]( const_dialogue const & d ) {
+        const mod_setting_id setting( id.evaluate( d ) );
+        if( !setting.is_valid() ) {
+            debugmsg( "mod_setting_on: no mod defines the setting \"%s\".  %s", setting.str(),
+                      d.get_callstack() );
+            return false;
+        }
+        if( setting->kind != mod_setting::kind_t::boolean ) {
+            debugmsg( "mod_setting_on: mod setting \"%s\" is %s, not a switch.  %s", setting.str(),
+                      setting->kind_name(), d.get_callstack() );
+            return false;
+        }
+        return std::get<bool>( mod_settings::get( *setting ) );
+    };
+}
+
+// mod_setting_is: [ setting, value ]: a choice or text mod setting is this value
+conditional_t::func f_mod_setting_is( const JsonObject &jo, std::string_view member )
+{
+    const JsonArray arr = jo.get_array( member );
+    if( arr.size() != 2 ) {
+        jo.throw_error_at( member, string_format( "%s takes [ setting, value ]", member ) );
+    }
+    const str_or_var id = get_str_or_var( arr[0], member );
+    const str_or_var value = get_str_or_var( arr[1], member );
+    check_mod_setting_id( arr[0], id, "mod_setting_is",
+    { mod_setting::kind_t::choice, mod_setting::kind_t::text }, "a choice or text",
+    value.is_constant() ? std::optional<std::string>( value.constant() ) : std::nullopt );
+    return [id, value]( const_dialogue const & d ) {
+        const mod_setting_id setting( id.evaluate( d ) );
+        if( !setting.is_valid() ) {
+            debugmsg( "mod_setting_is: no mod defines the setting \"%s\".  %s", setting.str(),
+                      d.get_callstack() );
+            return false;
+        }
+        if( setting->kind != mod_setting::kind_t::choice &&
+            setting->kind != mod_setting::kind_t::text ) {
+            debugmsg( "mod_setting_is: mod setting \"%s\" is %s, not a choice or text.  %s",
+                      setting.str(), setting->kind_name(), d.get_callstack() );
+            return false;
+        }
+        return std::get<std::string>( mod_settings::get( *setting ) ) == value.evaluate( d );
+    };
+}
+
 conditional_t::func f_is_rotten( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
@@ -2897,6 +2978,27 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
         str_or_var option = get_str_or_var( jo.get_member( "option" ), "option" );
         return [option, ret_func]( const_dialogue const & d ) {
             return ret_func( get_option<std::string>( option.evaluate( d ) ) );
+        };
+    } else if( mutator == "mod_setting" ) {
+        // a mod setting's value as text: the text, the choice id, "true" or "false", the number
+        str_or_var id = get_str_or_var( jo.get_member( "id" ), "id" );
+        if( id.is_constant() ) {
+            const std::string where = jo.get_member( "id" ).get_root_source_path();
+            effect_on_conditions::add_load_check( [name = id.constant(), where]() {
+                if( !mod_setting_id( name ).is_valid() ) {
+                    debugmsg( "No mod defines the setting \"%s\" (used by the mod_setting mutator in %s)",
+                              name, where );
+                }
+            } );
+        }
+        return [id, ret_func]( const_dialogue const & d ) {
+            const mod_setting_id setting( id.evaluate( d ) );
+            if( !setting.is_valid() ) {
+                debugmsg( "mod_setting mutator: no mod defines the setting \"%s\".  %s", setting.str(),
+                          d.get_callstack() );
+                return ret_func( std::string() );
+            }
+            return ret_func( setting->as_text( mod_settings::get( *setting ) ) );
         };
     } else if( mutator == "valid_technique" ) {
         std::vector<str_or_var> blacklist;
@@ -3336,6 +3438,8 @@ parsers = {
     {"u_mission", "npc_mission", jarg::member, &conditional_fun::f_npc_mission },
     {"faction_has_relation", jarg::array, &conditional_fun::f_faction_has_relation },
     {"npc_goal_category", jarg::member, &conditional_fun::f_npc_goal_category },
+    {"mod_setting_on", jarg::member, &conditional_fun::f_mod_setting_on },
+    {"mod_setting_is", jarg::array, &conditional_fun::f_mod_setting_is },
     {"is_weather", jarg::member, &conditional_fun::f_is_weather },
     {"map_terrain_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },
     {"map_furniture_with_flag", jarg::member, &conditional_fun::f_map_ter_furn_with_flag },

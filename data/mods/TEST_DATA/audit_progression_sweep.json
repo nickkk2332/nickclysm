@@ -1,0 +1,121 @@
+[
+  {
+    "type": "profession",
+    "id": "test_prog_b04_profession",
+    "name": "PROG-B04 test profession",
+    "description": "Starts with a CBM its hobby also lists.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ "CBM_Interface" ],
+    "CBMs": [ "bio_carbon" ]
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b04_hobby",
+    "name": "PROG-B04 test hobby",
+    "description": "Lists a CBM the character may already have, then another.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "CBMs": [ "bio_carbon", "bio_armor_eyes" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_b05_profession",
+    "name": "PROG-B05 test profession",
+    "description": "Teaches a recipe whose id is not its result.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "recipes": [ "tent_kit_from_broken" ]
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b05_hobby",
+    "name": "PROG-B05 test hobby",
+    "description": "Teaches a recipe whose id is not its result.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "recipes": [ "large_tent_kit_from_broken" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_b07_profession",
+    "name": "PROG-B07 test profession",
+    "description": "A mild caffeine habit.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "addictions": [ { "intensity": 10, "type": "caffeine" } ]
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b07_hobby",
+    "name": "PROG-B07 test hobby",
+    "description": "A strong caffeine habit.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "addictions": [ { "intensity": 30, "type": "caffeine" } ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_b08_hobby_trait",
+    "name": "PROG-B08 Hobby Trait",
+    "points": 0,
+    "description": "Comes with test_prog_b08_hobby.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_b08_forbidden_trait",
+    "name": "PROG-B08 Forbidden Trait",
+    "points": 0,
+    "description": "test_prog_b08_profession forbids it.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b08_hobby",
+    "name": "PROG-B08 test hobby",
+    "description": "A hobby test_prog_b08_profession excludes.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ "test_prog_b08_hobby_trait" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_b08_profession",
+    "name": "PROG-B08 test profession",
+    "description": "Excludes a hobby, one of the default background hobbies, and a trait.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "hobbies": [ "test_prog_b08_hobby", "driving_license" ],
+    "whitelist_hobbies": false,
+    "forbidden_traits": [ "test_prog_b08_forbidden_trait" ]
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_b10_circle_a",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-B10 Circle A" },
+    "description": "Requires test_prog_b10_circle_b, which requires it.",
+    "can_learn": true,
+    "time_to_learn": "1 h",
+    "required_proficiencies": [ "test_prog_b10_circle_b" ]
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_b10_circle_b",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-B10 Circle B" },
+    "description": "Requires test_prog_b10_circle_a, which requires it.",
+    "can_learn": true,
+    "time_to_learn": "1 h",
+    "required_proficiencies": [ "test_prog_b10_circle_a" ]
+  }
+]

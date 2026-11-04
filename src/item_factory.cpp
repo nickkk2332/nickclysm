@@ -3911,6 +3911,11 @@ void islot_tool::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "charge_factor", charge_factor, positive, 1 );
     optional( jo, was_loaded, "turns_per_charge", turns_per_charge, not_negative, 0 );
     optional( jo, was_loaded, "fuel_efficiency", fuel_efficiency, numeric_bound_reader{-1.0f}, -1.0f );
+    // -1 (the default) burns no fuel; a fuel burner with no efficiency would divide by zero
+    if( fuel_efficiency > -1.0f && fuel_efficiency <= 0.0f ) {
+        jo.throw_error_at( "fuel_efficiency",
+                           "fuel_efficiency must be above 0, or -1 for an item that burns no fuel" );
+    }
     optional( jo, was_loaded, "power_draw", power_draw, units_bound_reader<units::power> { 0_W }, 0_W );
     optional( jo, was_loaded, "revert_msg", revert_msg );
     optional( jo, was_loaded, "sub", subtype );

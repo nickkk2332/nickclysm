@@ -75,6 +75,10 @@ class addiction
 
 std::string add_type_legacy_conv( std::string const &v );
 
+// Adds an addiction to a list that holds one entry per type: an entry of the same type takes the
+// higher intensity and the longer satiation instead (PROG-B07).
+void merge_addiction( std::vector<addiction> &addictions, const addiction &add );
+
 // Minimum intensity before effects are seen
 constexpr int MIN_ADDICTION_LEVEL = 3;
 constexpr int MAX_ADDICTION_LEVEL = 20;

@@ -1087,11 +1087,13 @@ bool trapfunc::pit( const tripoint_bub_ms &p, Creature *c, item * )
         c->add_msg_player_or_npc( m_bad, _( "You fall in a pit!" ), _( "<npcname> falls in a pit!" ) );
     }
 
+    Character *you = c->as_character();
+    // Wings slow the fall into the pit; ask before the pit holds you (CHAR-B05)
+    const bool glides_in = you != nullptr && you->can_fly();
     c->add_effect( effect_in_pit, 1_turns, true );
     monster *z = c->as_monster();
-    Character *you = c->as_character();
     if( you != nullptr ) {
-        if( you->can_fly() ) {
+        if( glides_in ) {
             if( did_see ) {
                 you->add_msg_player_or_npc( _( "You spread your wings to slow your fall." ),
                                             _( "<npcname> spreads their wings to slow their fall." ) );
@@ -1147,11 +1149,13 @@ bool trapfunc::pit_spikes( const tripoint_bub_ms &p, Creature *c, item * )
                                   _( "<npcname> falls in a spiked pit!" ) );
     }
 
+    Character *you = c->as_character();
+    // Wings slow the fall into the pit; ask before the pit holds you (CHAR-B05)
+    const bool glides_in = you != nullptr && you->can_fly();
     c->add_effect( effect_in_pit, 1_turns, true );
     monster *z = c->as_monster();
-    Character *you = c->as_character();
     if( you != nullptr ) {
-        if( you->can_fly() ) {
+        if( glides_in ) {
             // Gliding bullshit allows maneuvering to avoid spikes
             if( did_see ) {
                 you->add_msg_player_or_npc( _( "You spread your wings to slow your fall." ),
@@ -1236,11 +1240,13 @@ bool trapfunc::pit_glass( const tripoint_bub_ms &p, Creature *c, item * )
                                   _( "<npcname> falls in pit filled with glass shards!" ) );
     }
 
+    Character *you = c->as_character();
+    // Wings slow the fall into the pit; ask before the pit holds you (CHAR-B05)
+    const bool glides_in = you != nullptr && you->can_fly();
     c->add_effect( effect_in_pit, 1_turns, true );
     monster *z = c->as_monster();
-    Character *you = c->as_character();
     if( you != nullptr ) {
-        if( you->can_fly() ) {
+        if( glides_in ) {
             if( did_see ) {
                 you->add_msg_player_or_npc( _( "You spread your wings to slow your fall." ),
                                             _( "<npcname> spreads their wings to slow their fall." ) );

@@ -181,6 +181,14 @@ faction_id _fac_id( Character &you )
 }
 } // namespace
 
+// A log another character is already cutting into planks stays theirs: it stays on its tile until
+// the cut is done (chop_planks_activity_actor), marked with their name.
+static bool log_free_to_cut( const item &it, const Character &you )
+{
+    return it.typeId() == itype_log &&
+           ( !it.has_var( "activity_var" ) || it.get_var( "activity_var" ) == you.name );
+}
+
 static bool is_valid_study_book( const item &it, const Character &you,
                                  const std::set<skill_id> *skill_prefs )
 {
@@ -2494,7 +2502,7 @@ activity_reason_info multi_chop_planks_activity_actor::multi_activity_can_do( Ch
     map &here = get_map();
     //are there even any logs there?
     for( item &i : here.i_at( src_loc ) ) {
-        if( i.typeId() == itype_log ) {
+        if( log_free_to_cut( i, you ) ) {
             // do we have an axe?
             if( you.has_unreserved_quality( qual_AXE, 1 ) ) {
                 return activity_reason_info::ok( do_activity_reason::NEEDS_CHOPPING );
@@ -3650,11 +3658,14 @@ static bool chop_plank_activity( Character &you, const tripoint_bub_ms &src_loc 
     }
     map &here = get_map();
     for( item &i : here.i_at( src_loc ) ) {
-        if( i.typeId() == itype_log ) {
-            here.i_rem( src_loc, &i );
+        if( log_free_to_cut( i, you ) ) {
             int moves = to_moves<int>( 20_minutes );
             you.add_msg_if_player( _( "You cut the log into planks." ) );
-            you.assign_activity( chop_planks_activity_actor( moves ) );
+            // the log stays until the cut is done, marked as this character's until then
+            i.set_var( "activity_var", you.name );
+            const item_location log( map_cursor( src_loc ), &i );
+            you.may_activity_occupancy_after_end_items_loc.push_back( log );
+            you.assign_activity( chop_planks_activity_actor( moves, log ) );
             you.activity.placement = here.get_abs( src_loc );
             return true;
         }

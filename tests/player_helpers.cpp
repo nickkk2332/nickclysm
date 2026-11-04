@@ -99,6 +99,7 @@ void clear_character( Character &dummy, bool skip_nutrition )
     dummy.tally_organic_size();
     dummy.mutation_category_level.clear();
     dummy.clear_bionics();
+    dummy.set_power_level( 0_kJ );
 
     // Clear stomach and then eat a nutritious meal to normalize stomach
     // contents (needs to happen before clear_morale).

@@ -228,6 +228,7 @@ Use the `Home` key to return to the top.
 - [Field types](#field-types)
   - [Emits](#emits)
   - [Immunity data](#immunity-data)
+- [Mod settings](#mod-settings)
 - [Option sliders](#option-sliders)
   - [Option sliders - Fields](#option-sliders---fields)
   - [Option sliders - Levels](#option-sliders---levels)
@@ -1335,8 +1336,8 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `occupied_bodyparts`         | (_optional_) A list of body parts occupied by this bionic, and the number of bionic slots it take on those parts.
 | `replaced_bodyparts`         | (_optional_) A list of body parts completely replaced by this bionic. Accepts an array of bodypart ids.  When removing a bionic, any dependent bionic with an occupied_bodyparts entry matching a replaced_bodyparts entry will also be removed.
 | `capacity`                   | (_optional_) Amount of power storage added by this bionic.  Strings can be used "1 kJ"/"1000 J"/"1000000 mJ" (default: `0`)
-| `fuel_options`               | (_optional_) A list of materials that this bionic can use to produce bionic power.
-| `is_remote_fueled`           | (_optional_) If true this bionic allows you to plug your power banks to an external power source (solar backpack, UPS, vehicle etc) via a cable. (default: `false`)
+| `fuel_options`               | (_optional_) A list of materials that this bionic can use to produce bionic power.  While the bionic is on and bionic power is below its safe-fuel threshold, it burns one unit of fuel a turn, from the first `BIONIC_FUEL_SOURCE` item holding any of them.
+| `is_remote_fueled`           | (_optional_) If true this bionic allows you to plug your power banks to an external power source (solar backpack, UPS, vehicle etc) via a cable.  Each turn it draws from one connected source, e.g. one unit of charge from the first plugged-in UPS that has any. (default: `false`)
 | `fuel_capacity`              | (_optional_) Volume of fuel this bionic can store.
 | `fuel_efficiency`            | (_optional_) Fraction of fuel energy converted into power. (default: `0`)
 | `passive_fuel_efficiency`    | (_optional_) Fraction of fuel energy passively converted into power while the bionic is off. Currently only used with `muscle` fuel (walking and pedaling). (default: `0`)
@@ -1350,9 +1351,9 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `processed_eocs`             | (_optional_) List of effect_on_conditions that attempt to activate each turn this CBM is active.  A passive CBM (one that can't be activated from the bionics menu) runs them every turn while it is installed, like a passive mutation.
 | `deactivated_eocs`           | (_optional_) List of effect_on_conditions that attempt to activate when this CBM is successfully deactivated.  All three lists get the context variable `this` (the bionic id), so one EOC can serve several CBMs; EOCs can read and switch a CBM's state with `u_has_active_bionic`, `u_activate_bionic` and `u_deactivate_bionic` (see EFFECT_ON_CONDITION.md).
 | `enchantments`               | (_optional_) List of enchantments applied by this CBM (see MAGIC.md for instructions on enchantment. NB: enchantments are not necessarily magic.) Values can either be the enchantment's id or an inline definition of the enchantment.
-| `learned_spells`             | (_optional_) Map of {spell:level} you gain when installing this CBM, and lose when you uninstall this CBM. Spell classes are automatically gained.
-| `learned_proficiencies`      | (_optional_) Array of proficiency ids you gain when installing this CBM, and lose when uninstalling
-| `installation_requirement`   | (_optional_) Requirement id pointing to a requirement defining the tools and components necessary to install this CBM.
+| `learned_spells`             | (_optional_) Map of {spell:level} you gain when installing this CBM, and lose when you uninstall this CBM. Spell classes are automatically gained.  Uninstalling only takes away spells this CBM taught: one you knew before installing it, or that another installed CBM also teaches, stays.  A spell you knew at a lower level keeps the level the CBM raised it to.  Spells taught by its `included_bionics` go with it too.
+| `learned_proficiencies`      | (_optional_) Array of proficiency ids you gain when installing this CBM, and lose when uninstalling.  As with `learned_spells`, only proficiencies this CBM taught are lost, and practice you had put into one before the CBM taught it comes back.  CBMs installed in older saves did not record what they taught, so they take away everything they list (unless another installed CBM teaches it).
+| `installation_requirement`   | (_optional_) Requirement id pointing to a requirement defining the tools and components necessary to install this CBM.  A CBM with one can be installed by the character on themselves; that still needs free bionic slots (`occupied_bodyparts`) and a body the CBM suits (`mutation_conflicts`, `required_bionic`, `replaced_bodyparts`), as with an autodoc, and asks before removing `canceled_mutations`.
 | `dupes_allowed`              | (_optional_) Boolean to determine if multiple copies of this bionic can be installed.  Defaults to false.
 | `cant_remove_reason`         | (_optional_) String message to be displayed as the reason it can't be uninstalled.  Having any value other than `""` as this will prevent unistalling the bionic. Formatting includes two `%s` for example: `The Telescopic Lenses are part of %1$s eyes now. Removing them would leave %2$s blind.`  (default: `""`)
 | `social_modifiers`           | (_optional_) Json object with optional members: persuade, lie, and intimidate which add or subtract that amount from those types of social checks
@@ -2028,7 +2029,7 @@ The following properties (mandatory, except if noted otherwise) are supported:
     "points": 0,                                               // Point cost of profession. Positive values cost points and negative values grant points. Has no effect as of 0.G
     "starting_trauma": 250,                                    // (optional, integer) A counter for how much trauma the character has been exposed to. Values are clamped to the range [0-1000].
     "starting_cash": 500000,                                   // (optional) Int value for the starting bank balance.
-    "npc_background": "BG_survival_story_LAB",                 // (optional) BG_trait_group ID, provides list of background stories. (see BG_trait_groups.json)
+    "npc_background": "BG_survival_story_LAB",                 // (optional) BG_trait_group ID, provides list of background stories. (see BG_trait_groups.json).  Loading reports an ID that isn't a trait group, and any trait group naming a trait or group that doesn't exist
 	"chargen_allow_npc": false,                                // (optional) when false, removes this profession as an option for generated NPCs (default: true)
     "addictions": [ { "intensity": 10, "type": "nicotine" } ], // (optional) Array of addictions. Requires "type" as the string ID of the addiction (see JSON_FLAGS.md) and "intensity"
     "skills": [ { "name": "archery", "level": 2 } ],           // (optional) Array of starting skills. Requires "name" as the string ID of the skill (see skills.json) and "level", which is a value added to the skill level after character creation
@@ -2066,7 +2067,7 @@ The following properties (mandatory, except if noted otherwise) are supported:
       { "id": "summon_undead", "level": 5 },
       { "id": "necrotic_gaze", "level": 1 }
     ],
-    "recipes": [ "beartrap" ]                                  // (optional) Array of starting recipe IDs the character knows upon creation
+    "recipes": [ "beartrap" ]                                  // (optional) Array of starting recipe IDs the character knows upon creation. A recipe's ID is its result, followed by "_" and its "variant" if it has one, then "_" and its "id_suffix" if it has one; a recipe without a result uses its "id"
   },
 ```
 
@@ -2098,6 +2099,8 @@ Items the player starts with when selecting this profession.  One can specify di
 
 (optional) Boolean.  If false, `hobbies` will instead be a list of hobbies that this profession _cannot_ choose from.  Defaults to true.
 
+Choosing a profession in the character creator drops the hobbies it doesn't allow (with the traits only they gave) and the traits in its `forbidden_traits`, with a message for each; finishing the character checks this again.  The default background hobbies (see [Profession groups](#profession-groups)) leave out those the profession doesn't allow.
+
 
 ### Hobbies
 
@@ -2113,11 +2116,11 @@ Note: hobby fields derive from those used in professions.  The following is a no
     "name": "Driving License",                                 // String, in-game name
     "description": "Description goes here",                    // In-game description
     "points": 0,                                               // Point cost of profession. Positive values cost points and negative values grant points. Has no effect as of 0.G
-    "skills": [                                                // (optional) Array of starting skills, added on top of the profession starting skills
+    "skills": [                                                // (optional) Array of starting skills.  A hobby's level is a minimum, not added on top: the character starts with the higher of it and the levels bought plus the profession's
       { "level": 2, "name": "driving" }
     ],
     "proficiencies": [ "prof_driver" ],                        // (optional) Array of starting proficiencies
-    "addictions": [ { "intensity": 40, "type": "opiate" } ],   // (optional) Array of addictions, added on top of the profession starting addictions
+    "addictions": [ { "intensity": 40, "type": "opiate" } ],   // (optional) Array of addictions, added to the profession starting addictions; an addiction of a type the profession or another hobby also gives takes the higher intensity
     "traits": [ "LOVES_BOOKS" ],                               // (optional) Array of starting traits/mutations
     "CBMs": [ "bio_adrenaline" ],                              // (optional) Array of starting implanted CMBs
     "spells": [ { "id": "create_atomic_light", "level": 5 } ]  // (optional) Array of starting spell IDs the character knows upon creation
@@ -2145,7 +2148,7 @@ Thus, it is listed here for reference and modding purposes only.
   }
 ```
 
-The array of hobbies (listed as professions) is whitelisted to all characters.  Thus, if one wants to start with no hobbies, the list has to be set as:
+The array of hobbies (listed as professions) is whitelisted to all characters, except those the character's profession doesn't allow.  Thus, if one wants to start with no hobbies, the list has to be set as:
 
 ```jsonc
     "professions": [  ]
@@ -4695,7 +4698,13 @@ Immunity data can be provided at the field level or at the effect level based on
 },
 ```
 
+# Mod settings
+
+A mod offers players settings, a switch, a number, a choice or a line of text, with `mod_setting` objects. Players pick them at world creation and in the in-game options menu, each world keeps its own values, and EOCs read them. `WORLD_OPTION` changes the default of a built-in world option. See [MOD_SETTINGS.md](MOD_SETTINGS.md).
+
 # Option sliders
+
+A mod's sliders show at world creation too; see [MOD_SETTINGS.md](MOD_SETTINGS.md#world-options-world_option-and-option_slider).
 
 ```jsonc
 {

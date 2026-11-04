@@ -13,6 +13,7 @@
 
 #include "cata_path.h"
 #include "memory_fast.h"
+#include "type_id.h"
 
 class JsonObject;
 class JsonValue;
@@ -159,6 +160,23 @@ class DynamicDataLoader
         /*@{*/
         void load_mod_interaction_files_from_path( const cata_path &path, const std::string &src );
         /*@}*/
+        /**
+         * The files load_mod_data_from_path reads for @p path, in order: every .json file
+         * except those in mod_interactions folders, or @p path itself if it's a file.
+         */
+        static std::vector<cata_path> mod_data_files( const cata_path &path );
+        /**
+         * The files load_mod_interaction_files_from_path reads in the mod_interactions folder
+         * @p path when the mods @p mods are loaded, in order, with the mod each is for.
+         */
+        static std::vector<std::pair<mod_id, cata_path>> mod_interaction_files(
+                    const cata_path &path, const std::vector<mod_id> &mods );
+        /**
+         * Calls @p f for each object a data file holds: the object @p jsin, or each object of
+         * the array @p jsin.  Throws JsonError for anything else.
+         */
+        static void for_each_object( const JsonValue &jsin,
+                                     const std::function<void( const JsonObject & )> &f );
         /**
          * Deletes and unloads all the data previously loaded with
          * @ref load_data_from_path

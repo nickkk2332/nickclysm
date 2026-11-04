@@ -334,9 +334,13 @@ void weakpoint_effect::load( const JsonObject &jo )
     optional( jo, false, "permanent", permanent );
     optional( jo, false, "message", message );
     optional( jo, false, "instant_death_chance", instant_death_chance, pair_reader<int> {} );
-    optional( jo, false, "duration", duration, pair_reader<time_duration> {} );
+    // Without a default, optional() resets a missing range to ( 0, 0 ): a duration of nothing,
+    // and only a hit that deals no damage. A missing range keeps the constructor's.
+    optional( jo, false, "duration", duration, pair_reader<time_duration> {},
+              std::make_pair( 1_seconds, 1_seconds ) );
     optional( jo, false, "intensity", intensity, pair_reader<int> {} );
-    optional( jo, false, "damage_required", damage_required, pair_reader<float> {} );
+    optional( jo, false, "damage_required", damage_required, pair_reader<float> {},
+              std::make_pair( 0.0f, 100.0f ) );
 }
 
 weakpoint_attack::weakpoint_attack()  :
@@ -707,6 +711,13 @@ void weakpoints::finalize()
         finalize_damage_map( w.damage_mult, false, 1.0f );
         finalize_damage_map( w.crit_mult, false, 1.0f );
     }
+    // select_weakpoint() favors the first weak points of the list more as skill rises, so the
+    // list runs from the rarest up, as load() sorts it. Merging sets (add_from_set) appends and
+    // replaces in place, so a monster's merged list is sorted again here.
+    std::stable_sort( weakpoint_list.begin(), weakpoint_list.end(),
+    []( const weakpoint & a, const weakpoint & b ) {
+        return a.coverage < b.coverage;
+    } );
 }
 
 void weakpoints::remove( const JsonArray &ja )

@@ -173,9 +173,8 @@ bool Character::has_trait_flag( const json_character_flag &b ) const
             trait_flag_cache[b] = true;
             return true;
         } else if( mut_data.activated ) {
-            Character &player = get_player_character();
-            if( ( mut_data.active_flags.count( b ) > 0 && player.has_active_mutation( mut ) ) ||
-                ( mut_data.inactive_flags.count( b ) > 0 && !player.has_active_mutation( mut ) ) ) {
+            if( ( mut_data.active_flags.count( b ) > 0 && has_active_mutation( mut ) ) ||
+                ( mut_data.inactive_flags.count( b ) > 0 && !has_active_mutation( mut ) ) ) {
                 trait_flag_cache[b] = true;
                 return true;
             }
@@ -195,9 +194,8 @@ int Character::count_trait_flag( const json_character_flag &b ) const
         if( mut_data.flags.count( b ) > 0 ) {
             ret++;
         } else if( mut_data.activated ) {
-            Character &player = get_player_character();
-            if( ( mut_data.active_flags.count( b ) > 0 && player.has_active_mutation( mut ) ) ||
-                ( mut_data.inactive_flags.count( b ) > 0 && !player.has_active_mutation( mut ) ) ) {
+            if( ( mut_data.active_flags.count( b ) > 0 && has_active_mutation( mut ) ) ||
+                ( mut_data.inactive_flags.count( b ) > 0 && !has_active_mutation( mut ) ) ) {
                 ret++;
             }
         }
@@ -876,11 +874,18 @@ void Character::activate_cached_mutation( const trait_id &mut )
 {
     map &here = get_map();
 
+    const auto owned = cached_mutations.find( mut );
+    if( owned == cached_mutations.end() ) {
+        // Switching on a trait the character lacks would make one up (u_activate_trait).
+        add_msg_debug( debugmode::DF_MUTATION, "%s can't activate %s: they don't have it",
+                       disp_name(), mut.str() );
+        return;
+    }
     const mutation_branch &mdata = mut.obj();
     // Only use this reference until the enchantment recalculation and activation EOCs below:
     // they can add or remove mutations (an activation EOC may even run u_lose_trait on this
     // one), which would leave it dangling.  After that point, use set_powered() instead.
-    trait_data &tdata = cached_mutations[mut];
+    trait_data &tdata = owned->second;
     const auto set_powered = [this, &mut]( const bool powered ) {
         const auto it = cached_mutations.find( mut );
         if( it != cached_mutations.end() ) {
@@ -1089,7 +1094,15 @@ void Character::activate_cached_mutation( const trait_id &mut )
 
 void Character::deactivate_mutation( const trait_id &mut )
 {
-    cached_mutations[mut].powered = false;
+    const auto owned = cached_mutations.find( mut );
+    if( owned == cached_mutations.end() ) {
+        // Switching off a trait the character lacks would make one up, and its transform
+        // would grant the target (u_deactivate_trait).
+        add_msg_debug( debugmode::DF_MUTATION, "%s can't deactivate %s: they don't have it",
+                       disp_name(), mut.str() );
+        return;
+    }
+    owned->second.powered = false;
     // Keep the permanent copy in sync, it is saved and copied back on activation.
     const auto my_it = my_mutations.find( mut );
     if( my_it != my_mutations.end() ) {
@@ -1539,6 +1552,7 @@ bool Character::mutation_selector( const std::vector<trait_id> &prospective_trai
 
     // Only allow traits with fulfilled prerequisites
     std::vector<trait_id> traits;
+    const std::vector<bionic_id> installed_bionics = get_bionics();
     for( trait_id trait : prospective_traits ) {
         const mutation_branch &mdata = trait.obj();
 
@@ -1585,11 +1599,12 @@ bool Character::mutation_selector( const std::vector<trait_id> &prospective_trai
             continue;
         }
 
-        // Check bionic conflicts
-        for( const bionic_id &bid : get_bionics() ) {
-            if( bid->mutation_conflicts.count( trait ) != 0 ) {
-                continue;
-            }
+        // Leave out traits an installed bionic conflicts with
+        if( std::any_of( installed_bionics.begin(), installed_bionics.end(),
+        [&trait]( const bionic_id & bid ) {
+        return bid->mutation_conflicts.count( trait ) != 0;
+        } ) ) {
+            continue;
         }
 
         // std::find function returns false on duplicate entry

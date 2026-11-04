@@ -1940,6 +1940,14 @@ units::energy item::energy_consume( units::energy qty, map *here, const tripoint
 
     const units::energy wanted_energy = qty;
 
+    // A fuel burner first uses what is left over from burning a whole unit of fuel earlier, so
+    // a small draw burns no more fuel than it needs.
+    if( fuel_efficiency >= 0 && energy > 0_J ) {
+        const units::energy stored = std::min( energy, qty );
+        energy -= stored;
+        qty -= stored;
+    }
+
     // Consume battery(ammo) and other fuel (if allowed)
     if( is_battery() || fuel_efficiency >= 0 ) {
         int consumed_kj = contents.ammo_consume( units::to_kilojoule( qty ), here, pos, fuel_efficiency );

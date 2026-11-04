@@ -179,6 +179,7 @@
         "effects": [
           {
             "instant_death_chance": 100,
+            "damage_required": [ 1, 100 ],
             "message": "With a clean attack to the head, %s drops dead like a puppet with strings cut."
           }
         ]

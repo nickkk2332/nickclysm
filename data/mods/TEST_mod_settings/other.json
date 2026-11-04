@@ -1,0 +1,8 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "test_pre_not_read",
+    "//": "No setting here: world creation skips the file without parsing it.",
+    "effect": [ { "u_message": "never loaded" } ]
+  }
+]

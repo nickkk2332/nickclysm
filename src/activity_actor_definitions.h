@@ -3581,7 +3581,9 @@ class chop_planks_activity_actor : public activity_actor
 {
     public:
         chop_planks_activity_actor() = default;
-        explicit chop_planks_activity_actor( int moves ) : moves( moves ) {}
+        // The log, if given, is used up when the cut is done.
+        explicit chop_planks_activity_actor( int moves, const item_location &log = item_location() ) :
+            moves( moves ), target_log( log ), uses_log( static_cast<bool>( log ) ) {}
 
         const activity_id &get_type() const override {
             static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
@@ -3601,6 +3603,9 @@ class chop_planks_activity_actor : public activity_actor
 
     private:
         int moves;
+        item_location target_log;
+        // there was a log to cut: no planks if it is gone by the end
+        bool uses_log = false;
 };
 
 class chop_tree_activity_actor : public activity_actor

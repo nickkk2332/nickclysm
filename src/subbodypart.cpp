@@ -1,5 +1,6 @@
 #include "subbodypart.h"
 
+#include <algorithm>
 #include <unordered_map>
 #include <vector>
 
@@ -95,10 +96,13 @@ void sub_body_part_type::load( const JsonObject &jo, std::string_view )
 void sub_body_part_type::reset()
 {
     sub_body_part_factory.reset();
+    // Or the parts of a world loaded earlier stay listed (CHAR-B07)
+    combined_similar_sub_bodyparts.clear();
 }
 
 void sub_body_part_type::finalize_all()
 {
+    combined_similar_sub_bodyparts.clear();
     sub_body_part_factory.finalize();
 }
 
@@ -106,10 +110,16 @@ void sub_body_part_type::finalize()
 {
     // populate combined_similar_bodyparts
     if( similar_bodypart.has_value() ) {
+        const auto add_similar = []( std::vector<sub_bodypart_str_id> &similar,
+        const sub_bodypart_str_id & sbp ) {
+            if( std::find( similar.begin(), similar.end(), sbp ) == similar.end() ) {
+                similar.emplace_back( sbp );
+            }
+        };
         // `head` is similar to `head_dragonfly`
-        combined_similar_sub_bodyparts[similar_bodypart.value()].emplace_back( id );
+        add_similar( combined_similar_sub_bodyparts[similar_bodypart.value()], id );
         // `head_dragonfly` is similar to `head`
-        combined_similar_sub_bodyparts[id].emplace_back( similar_bodypart.value() );
+        add_similar( combined_similar_sub_bodyparts[id], similar_bodypart.value() );
     }
 }
 

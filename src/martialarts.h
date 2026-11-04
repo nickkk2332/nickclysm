@@ -444,17 +444,18 @@ class ma_buff
         // apply static bonuses to a Character
         void apply_character( Character &u ) const;
 
-        // returns the stat bonus for the on-hit stat (for rolls)
-        int block_effectiveness_bonus( const Character &u ) const;
-        int hit_bonus( const Character &u ) const;
-        int critical_hit_chance_bonus( const Character &u ) const;
-        int dodge_bonus( const Character &u ) const;
-        int speed_bonus( const Character &u ) const;
-        int block_bonus( const Character &u ) const;
-        int arpen_bonus( const Character &u, const damage_type_id &dt ) const;
+        // returns the stat bonus for the on-hit stat (for rolls), per stack, with its fraction:
+        // the Character::mabuff_* totals drop it only after adding up every buff and stack
+        float block_effectiveness_bonus( const Character &u ) const;
+        float hit_bonus( const Character &u ) const;
+        float critical_hit_chance_bonus( const Character &u ) const;
+        float dodge_bonus( const Character &u ) const;
+        float speed_bonus( const Character &u ) const;
+        float block_bonus( const Character &u ) const;
+        float arpen_bonus( const Character &u, const damage_type_id &dt ) const;
 
         // returns the armor bonus for various armor stats (equivalent to armor)
-        int armor_bonus( const Character &guy, const damage_type_id &dt ) const;
+        float armor_bonus( const Character &guy, const damage_type_id &dt ) const;
 
         // returns the stat bonus for the various damage stats (for rolls)
         float damage_bonus( const Character &u, const damage_type_id &dt ) const;

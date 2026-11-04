@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "active_item_cache.h"
 #include "ammo.h"
 #include "body_part_set.h"
 #include "bodypart.h"
@@ -277,6 +278,7 @@ void item_pocket::restack()
         // Restack magazine contents in a way that preserves order of items
         for( auto iter = contents.begin(); iter != contents.end(); ) {
             if( !iter->count_by_charges() ) {
+                ++iter;
                 continue;
             }
 
@@ -322,6 +324,7 @@ item *item_pocket::restack( /*const*/ item *it )
         // Restack magazine contents in a way that preserves order of items
         for( auto iter = contents.begin(); iter != contents.end(); ) {
             if( !iter->count_by_charges() ) {
+                ++iter;
                 continue;
             }
 
@@ -413,7 +416,8 @@ bool item_pocket::better_pocket( const item_pocket &rhs, const item &it, bool ne
         return !rhs.data->get_flag_restrictions().empty();
     }
 
-    if( it.is_comestible() && it.get_comestible()->spoils != 0_seconds ) {
+    if( it.is_comestible() && it.get_comestible()->spoils != 0_seconds &&
+        rhs.spoil_multiplier() != spoil_multiplier() ) {
         // a lower spoil multiplier is better
         return rhs.spoil_multiplier() < spoil_multiplier();
     }
@@ -2065,8 +2069,9 @@ void item_pocket::process( map &here, Character *carrier, const tripoint_bub_ms 
 {
     for( auto iter = contents.begin(); iter != contents.end(); ) {
         if( iter->process( here, carrier, pos, insulation, flag,
-                           // spoil multipliers on pockets are not additive or multiplicative, they choose the best
-                           std::min( spoil_multiplier_parent, spoil_multiplier() ),
+                           // spoil multipliers on pockets are not additive or multiplicative: the
+                           // best one below 1 counts, or else the worst one above 1
+                           combine_spoil_multipliers( spoil_multiplier_parent, spoil_multiplier() ),
                            watertight_container || can_contain_liquid( false ) ) ) {
             iter->spill_contents( pos );
             iter = contents.erase( iter );

@@ -121,7 +121,7 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "vitamin_cost"                              // Category vitamin cost of gaining this trait (default: 100)
   "visibility": 0,                            // Visibility of the trait for purposes of NPC interaction (default: 0).
   "ugliness": 0,                              // Ugliness of the trait for purposes of NPC interaction (default: 0).
-  "provided_qualities": { "BUTCHER": 4, "HAMMER": 1 }, // Tool qualities that are granted by this mutation
+  "provided_qualities": { "BUTCHER": 4, "HAMMER": 1 }, // Tool qualities that are granted by this mutation, at these levels; each mutation counts as one tool with them
   "bodytemp_modifiers": [ 100, 150 ],           // Range of additional bodytemp units (these units are described in 'weather.h'.  First value is used if the person is already overheated, second one if it's not.
   "initial_ma_styles": [ "style_crane" ],     // (optional) A list of IDs of martial art styles of which the player can choose one when starting a game.
   "mixed_effect": false,                      // Whether the trait has both positive and negative effects.  This is purely declarative and is only used for the user interface (default: false).
@@ -215,7 +215,8 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "sleepiness": true,                            // If true, activated mutation increases sleepiness by cost (default: false).
   "mana": true,                               // If true, activated mutation consumes `cost` mana. (default: false).
   "stamina": true,                               // If true, activated mutation consumes `cost` stamina. (default: false).
-  "active_flags": [ "BLIND" ],                // activation of the mutation apply this flag on your character
+  "active_flags": [ "BLIND" ],                // while the mutation is active, the character who has it (avatar or NPC) gets this flag
+  "inactive_flags": [ "DEAF" ],               // while the mutation is inactive, the character who has it (avatar or NPC) gets this flag
   "allowed_items": [ "ALLOWS_TAIL" ],         // you can wear items with this flag with this mutation, bypassing restricts_gear restriction
   "integrated_armor": [ "integrated_fur" ],   // this item is worn on your character forever, until you get rid of this mutation
   "ranged_mutation": {                        // activation of the mutation allow you to shoot a fake gun

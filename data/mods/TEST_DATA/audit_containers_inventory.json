@@ -1,0 +1,157 @@
+[
+  {
+    "id": "audit_inv_b02_filter_rack",
+    "type": "ITEM",
+    "name": { "str": "TEST filter rack" },
+    "description": "A rack with a magazine pocket that takes gas filters by flag, with no ammo restriction (INV-B02).",
+    "weight": "200 g",
+    "volume": "500 ml",
+    "material": [ "plastic" ],
+    "symbol": "[",
+    "color": "dark_gray",
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "flag_restriction": [ "GASFILTER_MED" ] } ]
+  },
+  {
+    "id": "audit_inv_b03_fuel_burner",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "TEST fuel burner" },
+    "description": "A fuel-burning generator with its own propane magazine and half efficiency (INV-B03).",
+    "weight": "1 kg",
+    "volume": "1 L",
+    "material": [ "steel" ],
+    "symbol": ";",
+    "color": "light_gray",
+    "fuel_efficiency": 0.5,
+    "pocket_data": [
+      {
+        "pocket_type": "MAGAZINE",
+        "airtight": true,
+        "watertight": true,
+        "rigid": true,
+        "ammo_restriction": { "propane": 100 }
+      }
+    ],
+    "tool_ammo": [ "propane" ]
+  },
+  {
+    "id": "audit_inv_b04_sack",
+    "type": "ITEM",
+    "name": { "str": "TEST soft sack" },
+    "description": "A soft sack that holds 1 L (INV-B04).",
+    "weight": "50 g",
+    "volume": "100 ml",
+    "material": [ "cotton" ],
+    "symbol": ")",
+    "color": "white",
+    "pocket_data": [ { "pocket_type": "CONTAINER", "max_contains_volume": "1 L", "max_contains_weight": "10 kg", "moves": 100 } ]
+  },
+  {
+    "id": "audit_inv_b04_brick",
+    "type": "ITEM",
+    "name": { "str": "TEST filler brick" },
+    "description": "Takes up 750 ml (INV-B04).",
+    "weight": "1 kg",
+    "volume": "750 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "red"
+  },
+  {
+    "id": "audit_inv_b05_two_pocket_rig",
+    "type": "ITEM",
+    "name": { "str": "TEST two-pocket rig" },
+    "description": "A cooled pocket for gas filters only, and a plain pocket (INV-B05).",
+    "weight": "500 g",
+    "volume": "1 L",
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "color": "green",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "max_contains_volume": "1 L",
+        "max_contains_weight": "5 kg",
+        "spoil_multiplier": 0.5,
+        "flag_restriction": [ "GASFILTER_MED" ],
+        "moves": 100
+      },
+      { "pocket_type": "CONTAINER", "max_contains_volume": "1 L", "max_contains_weight": "5 kg", "moves": 100 }
+    ]
+  },
+  {
+    "id": "audit_inv_b05_cold_bag",
+    "type": "ITEM",
+    "name": { "str": "TEST cold bag" },
+    "description": "A soft bag with a spoil multiplier of 0.5 (INV-B05).",
+    "weight": "200 g",
+    "volume": "500 ml",
+    "material": [ "cotton" ],
+    "symbol": ")",
+    "color": "blue",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "max_contains_volume": "3 L",
+        "max_contains_weight": "5 kg",
+        "spoil_multiplier": 0.5,
+        "moves": 100
+      }
+    ]
+  },
+  {
+    "id": "audit_inv_b05_cool_box",
+    "type": "ITEM",
+    "name": { "str": "TEST cool box" },
+    "description": "A small box with a spoil multiplier of 0.8 (INV-B05).",
+    "weight": "200 g",
+    "volume": "750 ml",
+    "material": [ "plastic" ],
+    "symbol": ")",
+    "color": "light_blue",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "rigid": true,
+        "max_contains_volume": "500 ml",
+        "max_contains_weight": "2 kg",
+        "spoil_multiplier": 0.8,
+        "moves": 100
+      }
+    ]
+  },
+  {
+    "id": "audit_inv_b05_rotting_bag",
+    "type": "ITEM",
+    "name": { "str": "TEST rotting bag" },
+    "description": "A soft bag with a spoil multiplier of 1.5, like Magiclysm's bags of holding (INV-B05).",
+    "weight": "200 g",
+    "volume": "500 ml",
+    "material": [ "cotton" ],
+    "symbol": ")",
+    "color": "brown",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "max_contains_volume": "3 L",
+        "max_contains_weight": "5 kg",
+        "spoil_multiplier": 1.5,
+        "moves": 100
+      }
+    ]
+  },
+  {
+    "id": "audit_inv_b06_pouch",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "name": { "str": "TEST small pouch" },
+    "description": "A worn pouch with room for one empty soft sack, not two (INV-B06).",
+    "weight": "50 g",
+    "volume": "200 ml",
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "color": "brown",
+    "armor": [ { "covers": [ "torso" ], "coverage": 5, "encumbrance": 0 } ],
+    "pocket_data": [ { "pocket_type": "CONTAINER", "max_contains_volume": "150 ml", "max_contains_weight": "2 kg", "moves": 100 } ]
+  }
+]

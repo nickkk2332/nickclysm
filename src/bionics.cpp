@@ -69,6 +69,7 @@
 #include "pimpl.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "proficiency.h"
 #include "projectile.h"
 #include "requirements.h"
 #include "ret_val.h"
@@ -1577,7 +1578,8 @@ void Character::burn_fuel( bionic &bio )
                                        _( "<npcname>'s %s runs out of fuel." ),
                                        bio.info().name );
             }
-
+            // One unit from one source per turn: only this unit's energy is credited.
+            break;
         }
     }
 
@@ -1999,7 +2001,7 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
                               adjusted_skill ) );
     const int fail_type = std::min( 5, failure_level );
 
-    bool u_see = sees( here, patient );
+    const bool u_see = get_player_view().sees( here, patient );
 
     if( u_see || patient.is_avatar() ) {
         if( fail_type <= 0 ) {
@@ -2027,7 +2029,7 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
     std::set<bodypart_id> bp_hurt;
     switch( fail_type ) {
         case 1:
-            if( !has_flag( json_flag_PAIN_IMMUNE ) ) {
+            if( !patient.has_flag( json_flag_PAIN_IMMUNE ) ) {
                 patient.add_msg_if_player( m_bad, _( "It really hurts!" ) );
                 patient.mod_pain( rng( 10, 30 ) );
             }
@@ -2035,13 +2037,13 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
 
         case 2:
         case 3:
-            for( const bodypart_id &bp : get_all_body_parts() ) {
-                if( has_effect( effect_under_operation, bp.id() ) ) {
+            for( const bodypart_id &bp : patient.get_all_body_parts() ) {
+                if( patient.has_effect( effect_under_operation, bp.id() ) ) {
                     if( bp_hurt.count( bp->main_part ) > 0 ) {
                         continue;
                     }
                     bp_hurt.emplace( bp->main_part );
-                    patient.apply_damage( this, bp, rng( failure_level, failure_level * 2 ), true );
+                    patient.apply_damage( &installer, bp, rng( failure_level, failure_level * 2 ), true );
                     if( u_see ) {
                         patient.add_msg_player_or_npc( m_bad, _( "Your %s is damaged." ), _( "<npcname>'s %s is damaged." ),
                                                        body_part_name_accusative( bp ) );
@@ -2052,15 +2054,15 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
 
         case 4:
         case 5:
-            for( const bodypart_id &bp : get_all_body_parts() ) {
-                if( has_effect( effect_under_operation, bp.id() ) ) {
+            for( const bodypart_id &bp : patient.get_all_body_parts() ) {
+                if( patient.has_effect( effect_under_operation, bp.id() ) ) {
                     if( bp_hurt.count( bp->main_part ) > 0 ) {
                         continue;
                     }
                     bp_hurt.emplace( bp->main_part );
 
-                    patient.apply_damage( this, bp, rng( 25, 50 ), true );
-                    roll_critical_bionics_failure( bp );
+                    patient.apply_damage( &installer, bp, rng( 25, 50 ), true );
+                    patient.roll_critical_bionics_failure( bp );
 
                     if( u_see ) {
                         patient.add_msg_player_or_npc( m_bad, _( "Your %s is severely damaged." ),
@@ -2209,17 +2211,17 @@ int Character::bionics_pl_skill( bool autodoc, int skill_level ) const
 
 int bionic_success_chance( bool autodoc, int skill_level, int difficulty, const Character &target )
 {
+    // Sure-handed installers: what matters is who operates, not whether the player could.
+    if( target.has_trait( trait_DEBUG_BIONICS ) ||
+        target.has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
+        return 100;
+    }
     return bionic_manip_cos( target.bionics_adjusted_skill( autodoc, skill_level ), difficulty );
 }
 
 // bionic manipulation chance of success
 int bionic_manip_cos( float adjusted_skill, int bionic_difficulty )
 {
-    if( get_player_character().has_trait( trait_DEBUG_BIONICS ) ||
-        get_player_character().has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
-        return 100;
-    }
-
     int chance_of_success = 0;
     // we will base chance_of_success on a ratio of skill and difficulty
     // when skill=difficulty, this gives us 1.  skill < difficulty gives a fraction.
@@ -2376,7 +2378,7 @@ void Character::perform_uninstall( const bionic &bio, int difficulty, int succes
         // until bionics can be flagged as non-removable
         add_msg_player_or_npc( m_neutral, _( "Your parts are jiggled back into their familiar places." ),
                                _( "<npcname>'s parts are jiggled back into their familiar places." ) );
-        add_msg( m_good, _( "Successfully removed %s." ), bio.id.obj().name );
+        add_msg_if_player_sees( *this, m_good, _( "Successfully removed %s." ), bio.id.obj().name );
         const bionic_id bio_id = bio.id;
         remove_bionic( bio );
         // remove dependent bionics
@@ -2403,8 +2405,8 @@ void Character::perform_uninstall( const bionic &bio, int difficulty, int succes
             if( !find_bionic_by_uid( dependent.get_uid() ) ) {
                 continue;
             }
-            add_msg( m_neutral, _( "%s removed with %s." ), dependent.id->name.translated(),
-                     bio_id->name.translated() );
+            add_msg_if_player_sees( *this, m_neutral, _( "%s removed with %s." ),
+                                    dependent.id->name.translated(), bio_id->name.translated() );
             get_event_bus().send<event_type::removes_cbm>( getID(), dependent.id );
             remove_bionic( dependent );
             for( const trait_id &mid : dependent.id->give_mut_on_removal ) {
@@ -2454,9 +2456,6 @@ void Character::perform_uninstall( const bionic &bio, int difficulty, int succes
 bool Character::uninstall_bionic( const bionic &bio, monster &installer, Character &patient,
                                   float adjusted_skill )
 {
-    map &here = get_map();
-
-    viewer &player_view = get_player_view();
     if( installer.ammo[itype_anesthetic] <= 0 ) {
         add_msg_if_player_sees( installer, _( "The %s's anesthesia kit looks empty." ), installer.name() );
         return false;
@@ -2496,28 +2495,17 @@ bool Character::uninstall_bionic( const bionic &bio, monster &installer, Charact
     }
 
     if( success > 0 ) {
-
-        if( patient.is_avatar() ) {
-            add_msg( m_neutral, _( "Your parts are jiggled back into their familiar places." ) );
-            add_msg( m_mixed, _( "Successfully removed %s." ), bio.info().name );
-        } else if( patient.is_npc() && player_view.sees( here, patient ) ) {
-            add_msg( m_neutral, _( "%s's parts are jiggled back into their familiar places." ),
-                     patient.disp_name() );
-            add_msg( m_mixed, _( "Successfully removed %s." ), bio.info().name );
-        }
-
-        item cbm( itype_burnt_out_bionic );
-        if( item::type_is_defined( bio.info().itype() ) ) {
-            cbm = bionic_to_uninstall;
-        }
-        patient.remove_bionic( bio );
-        cbm.set_flag( flag_FILTHY );
-        cbm.set_flag( flag_NO_STERILE );
-        cbm.set_flag( flag_NO_PACKED );
-        cbm.set_fault( fault_bionic_salvaged );
-        here.add_item( patient.pos_bub(), cbm );
+        // As after any other removal: the removal event, CBMs on a replaced body part,
+        // give_mut_on_removal and the salvaged CBM. The skill only matters for a failure.
+        patient.perform_uninstall( bio, difficulty, success, 0 );
     } else {
-        bionics_uninstall_failure( installer, patient, difficulty, success, adjusted_skill );
+        get_event_bus().send<event_type::fails_to_remove_cbm>( patient.getID(), bio.id );
+        // The parts being cut into are the ones a failure hurts.
+        for( const std::pair<const bodypart_str_id, size_t> &elem : bio.id->occupied_bodyparts ) {
+            patient.add_effect( effect_under_operation, duration, elem.first.id(), true, difficulty );
+        }
+        patient.bionics_uninstall_failure( installer, patient, difficulty, success, adjusted_skill );
+        patient.remove_effect( effect_under_operation );
     }
 
     return false;
@@ -2588,49 +2576,25 @@ ret_val<void> Character::is_installable( const item *it, const bool by_autodoc )
     return ret_val<void>::make_success( std::string() );
 }
 
-bool Character::can_install_bionics( const itype &type, Character &installer, bool autodoc,
-                                     int skill_level ) const
+// Whoever installs it, the patient must agree to lose the traits the CBM removes and have
+// free bionic slots for it.
+static bool patient_can_take_bionic( const Character &patient, const bionic_id &bioid )
 {
-    if( !type.bionic ) {
-        debugmsg( "Tried to install NULL bionic" );
-        return false;
-    }
-    if( has_trait( trait_DEBUG_BIONICS ) || has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
-        return true;
-    }
-    if( is_mounted() ) {
-        return false;
-    }
-    if( has_flag( json_flag_NO_CBM_INSTALLATION ) ) {
-        return false;
-    }
-
-    const bionic_id &bioid = type.bionic->id;
-    const int difficult = type.bionic->difficulty;
-
-    // if we're doing self install
-    if( !autodoc && installer.is_avatar() ) {
-        return installer.has_enough_anesth( type ) &&
-               installer.has_installation_requirement( bioid );
-    }
-
-    int chance_of_success = bionic_success_chance( autodoc, skill_level, difficult, installer );
-
     std::vector<std::string> conflicting_muts;
     for( const trait_id &mid : bioid->canceled_mutations ) {
-        if( has_trait( mid ) ) {
-            conflicting_muts.push_back( mutation_name( mid ) );
+        if( patient.has_trait( mid ) ) {
+            conflicting_muts.push_back( patient.mutation_name( mid ) );
         }
     }
 
     if( !conflicting_muts.empty() &&
-        !query_yn(
+        !patient.query_yn(
             _( "Installing this bionic will remove the conflicting traits: %s.  Continue anyway?" ),
             enumerate_as_string( conflicting_muts ) ) ) {
         return false;
     }
 
-    const std::map<bodypart_id, int> &issues = bionic_installation_issues( bioid );
+    const std::map<bodypart_id, int> &issues = patient.bionic_installation_issues( bioid );
     // show all requirements which are not satisfied
     if( !issues.empty() ) {
         std::string detailed_info;
@@ -2641,6 +2605,46 @@ bool Character::can_install_bionics( const itype &type, Character &installer, bo
                                             elem.second );
         }
         popup( _( "Not enough space for bionic installation!%s" ), detailed_info );
+        return false;
+    }
+    return true;
+}
+
+bool Character::can_install_bionics( const itype &type, Character &installer, bool autodoc,
+                                     int skill_level ) const
+{
+    if( !type.bionic ) {
+        debugmsg( "Tried to install NULL bionic" );
+        return false;
+    }
+    if( has_trait( trait_DEBUG_BIONICS ) ) {
+        return true;
+    }
+
+    const bionic_id &bioid = type.bionic->id;
+    const int difficult = type.bionic->difficulty;
+
+    // Needing no help to install CBMs doesn't make room for them.
+    if( has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
+        return patient_can_take_bionic( *this, bioid );
+    }
+    if( is_mounted() ) {
+        return false;
+    }
+    if( has_flag( json_flag_NO_CBM_INSTALLATION ) ) {
+        return false;
+    }
+
+    // if we're doing self install
+    if( !autodoc && installer.is_avatar() ) {
+        return installer.has_enough_anesth( type ) &&
+               installer.has_installation_requirement( bioid ) &&
+               patient_can_take_bionic( *this, bioid );
+    }
+
+    int chance_of_success = bionic_success_chance( autodoc, skill_level, difficult, installer );
+
+    if( !patient_can_take_bionic( *this, bioid ) ) {
         return false;
     }
 
@@ -2722,6 +2726,55 @@ bool Character::install_bionics( const itype &type, Character &installer, bool a
     return true;
 }
 
+// A bionic records in its tags which spells and proficiencies it taught when installed, so
+// that removing it takes back only those. Bionics installed before this was recorded lack
+// the first tag and are taken to have taught everything they list.
+static const std::string bionic_tag_grants_recorded( "cbm_grants_recorded" );
+
+static std::string granted_spell_tag( const spell_id &taught )
+{
+    return "cbm_granted_spell:" + taught.str();
+}
+
+static std::string granted_proficiency_tag( const proficiency_id &taught )
+{
+    return "cbm_granted_proficiency:" + taught.str();
+}
+
+// Takes from a bionic about to be upgraded what it taught that the upgrade teaches too, so
+// removing it doesn't take those back; returns the tags to put on the upgrade.
+static std::vector<std::string> take_grants_shared_with( bionic &base, const bionic_id &upgrade )
+{
+    if( !base.has_flag( bionic_tag_grants_recorded ) ) {
+        // Spell out what an older bionic is taken to have taught.
+        base.set_flag( bionic_tag_grants_recorded );
+        for( const std::pair<const spell_id, int> &spell_pair : base.id->learned_spells ) {
+            base.set_flag( granted_spell_tag( spell_pair.first ) );
+        }
+        for( const proficiency_id &taught : base.id->proficiencies ) {
+            base.set_flag( granted_proficiency_tag( taught ) );
+        }
+    }
+    std::vector<std::string> shared;
+    for( const std::pair<const spell_id, int> &spell_pair : base.id->learned_spells ) {
+        const std::string tag = granted_spell_tag( spell_pair.first );
+        if( base.has_flag( tag ) && upgrade->learned_spells.count( spell_pair.first ) > 0 ) {
+            base.remove_flag( tag );
+            shared.push_back( tag );
+        }
+    }
+    for( const proficiency_id &taught : base.id->proficiencies ) {
+        const std::string tag = granted_proficiency_tag( taught );
+        if( base.has_flag( tag ) &&
+            std::find( upgrade->proficiencies.begin(), upgrade->proficiencies.end(),
+                       taught ) != upgrade->proficiencies.end() ) {
+            base.remove_flag( tag );
+            shared.push_back( tag );
+        }
+    }
+    return shared;
+}
+
 void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int difficulty,
                                  int success, int pl_skill, const std::string &installer_name,
                                  const std::vector<trait_id> &trait_to_rem, const tripoint_bub_ms &patient_pos )
@@ -2731,9 +2784,13 @@ void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int
 
     if( success > 0 ) {
         get_event_bus().send<event_type::installs_cbm>( getID(), bid );
+        // Spells and proficiencies the upgrade takes over from the bionic it replaces, so they
+        // aren't forgotten and taught again (losing a spell's experience).
+        std::vector<std::string> taken_over;
         if( upbio_uid ) {
             if( std::optional<bionic *> upbio = find_bionic_by_uid( upbio_uid ) ) {
                 const std::string bio_name = ( *upbio )->id->name.translated();
+                taken_over = take_grants_shared_with( **upbio, bid );
                 remove_bionic( **upbio );
                 //~ %1$s - name of the bionic to be upgraded (inferior), %2$s - name of the upgraded bionic (superior).
                 add_msg( m_good, _( "Successfully upgraded %1$s to %2$s." ), bio_name, bid.obj().name );
@@ -2745,7 +2802,12 @@ void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int
             add_msg( m_good, _( "Successfully installed %s." ), bid.obj().name );
         }
 
-        add_bionic( bid );
+        const bionic_uid added_uid = add_bionic( bid );
+        if( const std::optional<bionic *> added = find_bionic_by_uid( added_uid ) ) {
+            for( const std::string &tag : taken_over ) {
+                ( *added )->set_flag( tag );
+            }
+        }
 
         for( const trait_id &tid : trait_to_rem ) {
             if( has_trait( tid ) ) {
@@ -3000,6 +3062,7 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
         add_bionic( inc_bid, bio_uid, suppress_debug );
     }
 
+    std::vector<std::string> grants = { bionic_tag_grants_recorded };
     for( const std::pair<const spell_id, int> &spell_pair : b->learned_spells ) {
         const spell_id learned_spell = spell_pair.first;
         if( learned_spell->spell_class != trait_NONE ) {
@@ -3014,6 +3077,9 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
         }
         if( !magic->knows_spell( learned_spell ) ) {
             magic->learn_spell( learned_spell, *this, true );
+            if( magic->knows_spell( learned_spell ) ) {
+                grants.push_back( granted_spell_tag( learned_spell ) );
+            }
         }
         spell &known_spell = magic->get_spell( learned_spell );
         // spells you learn from installing a bionic upgrade spells you know if they are the same
@@ -3023,7 +3089,18 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
     }
 
     for( const proficiency_id &learned : b->proficiencies ) {
-        add_proficiency( learned );
+        if( !has_proficiency( learned ) ) {
+            add_proficiency( learned );
+            if( has_proficiency( learned ) ) {
+                grants.push_back( granted_proficiency_tag( learned ) );
+            }
+        }
+    }
+    // Look the bionic up again: installing the included bionics may have moved it.
+    if( const std::optional<bionic *> added = find_bionic_by_uid( bio_uid ) ) {
+        for( const std::string &tag : grants ) {
+            ( *added )->set_flag( tag );
+        }
     }
 
     for( const itype_id &pseudo : b->passive_pseudo_items ) {
@@ -3101,30 +3178,59 @@ void Character::remove_bionic( const bionic &bio )
     }
 
     bionic_collection new_my_bionics;
-    // any spells you should not forget due to still having a bionic installed that has it.
-    std::set<spell_id> cbm_spells;
+    // The bionic and the ones included with it.
+    std::vector<bionic> removed_bionics;
     for( bionic &i : *my_bionics ) {
         // Linked bionics: if either is removed, the other is removed as well.
         if( i.get_uid() == bio_uid || i.get_parent_uid() == bio_uid ) {
+            removed_bionics.push_back( i );
             continue;
-        }
-
-        for( const std::pair<const spell_id, int> &spell_pair : i.id->learned_spells ) {
-            cbm_spells.emplace( spell_pair.first );
         }
 
         new_my_bionics.push_back( i );
     }
 
-    // any spells you learn from installing a bionic you forget.
-    for( const std::pair<const spell_id, int> &spell_pair : bio.id->learned_spells ) {
-        if( cbm_spells.count( spell_pair.first ) == 0 ) {
-            magic->forget_spell( spell_pair.first );
+    // Take back the spells and proficiencies the removed bionics taught. One that another
+    // installed bionic also teaches stays, and that bionic now counts as having taught it.
+    for( const bionic &removed : removed_bionics ) {
+        const bool recorded = removed.has_flag( bionic_tag_grants_recorded );
+        for( const std::pair<const spell_id, int> &spell_pair : removed.id->learned_spells ) {
+            const spell_id &taught = spell_pair.first;
+            const std::string tag = granted_spell_tag( taught );
+            if( ( recorded && !removed.has_flag( tag ) ) || !magic->knows_spell( taught ) ) {
+                continue;
+            }
+            const auto keeper = std::find_if( new_my_bionics.begin(), new_my_bionics.end(),
+            [&taught]( const bionic & other ) {
+                return other.id->learned_spells.count( taught ) > 0;
+            } );
+            if( keeper != new_my_bionics.end() ) {
+                keeper->set_flag( tag );
+            } else {
+                magic->forget_spell( taught );
+            }
         }
-    }
-
-    for( const proficiency_id &lost : bio.id->proficiencies ) {
-        lose_proficiency( lost );
+        for( const proficiency_id &taught : removed.id->proficiencies ) {
+            const std::string tag = granted_proficiency_tag( taught );
+            if( ( recorded && !removed.has_flag( tag ) ) || !has_proficiency( taught ) ) {
+                continue;
+            }
+            const auto keeper = std::find_if( new_my_bionics.begin(), new_my_bionics.end(),
+            [&taught]( const bionic & other ) {
+                return std::find( other.id->proficiencies.begin(), other.id->proficiencies.end(),
+                                  taught ) != other.id->proficiencies.end();
+            } );
+            if( keeper != new_my_bionics.end() ) {
+                keeper->set_flag( tag );
+                continue;
+            }
+            // Practice put into it before the bionic completed it comes back.
+            const time_duration practiced = get_proficiency_practiced_time( taught );
+            lose_proficiency( taught );
+            if( practiced < taught->time_to_learn() ) {
+                set_proficiency_practiced_time( taught, to_turns<int>( practiced ) );
+            }
+        }
     }
 
     for( const itype_id &popped_armor : bio.id->passive_pseudo_items ) {
@@ -3171,6 +3277,8 @@ void Character::clear_bionics()
     while( !my_bionics->empty() ) {
         remove_bionic( my_bionics->front() );
     }
+    // Cut the power level to what is left, even when there was no bionic to remove.
+    update_bionic_power_capacity();
 }
 
 void reset_bionics()
@@ -3589,18 +3697,22 @@ std::vector<item *> Character::get_bionic_fuels( const bionic_id &bio )
         if( !it->has_flag( flag_BIONIC_FUEL_SOURCE ) ) {
             continue;
         }
+        // List each source once, however many of the bionic's fuels it holds.
         for( const material_id &mat : bio->fuel_opts ) {
-            if( it->ammo_remaining( ) && it->first_ammo().made_of( mat ) ) {
-                // Ammo from magazines
-                stored_fuels.emplace_back( it.get_item() );
-            } else {
+            // Ammo from magazines
+            bool holds_fuel = it->ammo_remaining( ) && it->first_ammo().made_of( mat );
+            if( !holds_fuel ) {
                 for( item *cit : it->all_items_top() ) {
                     // Fuel from containers
                     if( cit->made_of( mat ) ) {
-                        stored_fuels.emplace_back( it.get_item() );
+                        holds_fuel = true;
                         break;
                     }
                 }
+            }
+            if( holds_fuel ) {
+                stored_fuels.emplace_back( it.get_item() );
+                break;
             }
         }
     }

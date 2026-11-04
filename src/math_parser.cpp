@@ -831,6 +831,7 @@ void math_exp::math_exp_impl::new_func()
                 _validate_unused_kwargs( v.df, kwargs );
                 output.emplace( std::in_place_type_t<func_diag>(), v.df->fe, v.df->fa, v.scope,
                                 params, kwargs );
+                std::get<func_diag>( output.top().data ).fca = v.df->fca;
                 if( v.df->fc != nullptr ) {
                     v.df->fc( std::get<func_diag>( output.top().data ).params );
                 }
@@ -974,6 +975,10 @@ void math_exp::math_exp_impl::new_oper()
             parse_position = op.pos;
             if( !is_assign_target( lhs ) ) {
                 throw math::syntax_error( "lhs of assignment operator must be an assign target" );
+            }
+            if( func_diag const *target = std::get_if<func_diag>( &lhs.data );
+                target != nullptr && target->fca != nullptr ) {
+                target->fca( target->params );
             }
             if( !output.empty() || !arity.empty() ) {
                 throw math::syntax_error( "misplaced assignment operator" );
