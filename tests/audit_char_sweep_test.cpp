@@ -8,6 +8,7 @@
 #include "item.h"
 #include "map_helpers.h"
 #include "player_helpers.h"
+#include "skill.h"
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
@@ -121,4 +122,40 @@ TEST_CASE( "char-b05_can_fly_with_no_carrying_capacity", "[audit][character]" )
     you.wield( rock );
     REQUIRE( you.weight_carried() > 0_gram );
     CHECK_FALSE( you.can_fly() );
+}
+
+// ---- CHAR-B06 ----
+
+static const skill_id skill_dodge( "dodge" );
+
+// The fall damage multiplier dropped 4% for each point of DEX / 2 + dodge (times the limbs'
+// landing score) and was clamped at 0, which a character reached at 25 points (DEX 18 and
+// dodge 8 with Feline Eyes, or DEX 30 and dodge 10 where a mod raises the DEX cap): falls from
+// any height did nothing.  Dexterity and dodge now cut the damage to 10% at most.
+TEST_CASE( "char-b06_no_dexterity_or_dodge_makes_falls_harmless", "[audit][character]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &you = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+
+    SECTION( "an ordinary survivor is unchanged" ) {
+        REQUIRE( you.get_dex() == 8 );
+        REQUIRE( static_cast<int>( you.get_skill_level( skill_dodge ) ) == 0 );
+        CHECK( you.fall_damage_mod() == Approx( 0.84f ) );
+    }
+    SECTION( "an acrobat still gets hurt by a long fall" ) {
+        restore_on_out_of_scope restore_max_dex( character_max_dex );
+        character_max_dex = 30;
+        you.set_dex_base( 30 );
+        you.set_skill_level( skill_dodge, 10 );
+        REQUIRE( you.get_dex() == 30 );
+        REQUIRE( static_cast<int>( you.get_skill_level( skill_dodge ) ) == 10 );
+        CHECK( you.fall_damage_mod() == Approx( 0.1f ) );
+        // One story still makes a perfect landing, three don't.
+        CHECK( you.impact( 30, you.pos_bub() ) == 0 );
+        CHECK( you.impact( 90, you.pos_bub() ) > 0 );
+    }
 }

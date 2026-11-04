@@ -8081,8 +8081,9 @@ float Character::fall_damage_mod() const
     dex_dodge *= get_modifier( character_modifier_limb_fall_mod );
     // But prevent it from increasing damage
     dex_dodge = std::max( 0.0f, dex_dodge ); // 0
-    // 100% damage at 0, 75% at 10, 50% at 20 and so on
-    ret *= ( 100.0f - ( dex_dodge * 4.0f ) ) / 100.0f;
+    // 100% damage at 0, 60% at 10, 20% at 20, and never under 10%: only FEATHER_FALL and
+    // FALL_DAMAGE enchantments make a fall harmless (CHAR-B06)
+    ret *= std::max( 0.1f, ( 100.0f - ( dex_dodge * 4.0f ) ) / 100.0f );
 
     if( has_proficiency( proficiency_prof_parkour ) ) {
         ret *= 2.0f / 3.0f;
