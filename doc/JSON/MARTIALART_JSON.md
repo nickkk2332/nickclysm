@@ -158,7 +158,7 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
     "forbidden_buffs_any": [ "mma_buff_hylian_static2", "mma_buff_hylian_static3" ],   // This effect is forbidden if any of the named buffs are applied
     "forbidden_buffs_all": [ "mma_buff_tiger_claw_onmove" ],   // This effect is forbidden if all of the named buffs are applied
     "weapon_categories_allowed": [ "BLADES", "KNIVES" ], // Restrict buff to only these categories of weapons. If omitted, all weapon categories are allowed
-    "max_stacks": 8,                     // Maximum number of stacks on the buff. Buff bonuses are multiplied by current buff intensity
+    "max_stacks": 8,                     // Maximum number of stacks on the buff. Buff bonuses are multiplied by current buff intensity: a stacking accuracy (`hit`) buff gives its bonus per stack
     "bonus_blocks": 1,                   // Extra blocks per turn
     "bonus_dodges": 1,                   // Extra dodges per turn
     "free_dodges": 1,                    // Dodges per turn that won't consume stamina. Can be higher than actual amount of dodges, but won't add more dodges.
