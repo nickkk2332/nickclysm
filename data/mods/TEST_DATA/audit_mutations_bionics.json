@@ -264,6 +264,29 @@
     "included": true
   },
   {
+    "//": "MUT-B10 fixture: a bionic that test_bio_mutb10_upgrade upgrades; both teach the same.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_base",
+    "name": { "str": "Test Teacher Mk I" },
+    "description": "Test CBM that an upgrade replaces.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: the upgrade of test_bio_mutb10_base.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_upgrade",
+    "name": { "str": "Test Teacher Mk II" },
+    "description": "Test CBM upgrading the Mk I.",
+    "upgraded_bionic": "test_bio_mutb10_base",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
     "//": "MUT-B10 fixture: a profession teaching what its starting CBM teaches.",
     "type": "profession",
     "id": "test_mutb10_profession",

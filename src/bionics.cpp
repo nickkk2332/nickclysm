@@ -2726,6 +2726,55 @@ bool Character::install_bionics( const itype &type, Character &installer, bool a
     return true;
 }
 
+// A bionic records in its tags which spells and proficiencies it taught when installed, so
+// that removing it takes back only those. Bionics installed before this was recorded lack
+// the first tag and are taken to have taught everything they list.
+static const std::string bionic_tag_grants_recorded( "cbm_grants_recorded" );
+
+static std::string granted_spell_tag( const spell_id &taught )
+{
+    return "cbm_granted_spell:" + taught.str();
+}
+
+static std::string granted_proficiency_tag( const proficiency_id &taught )
+{
+    return "cbm_granted_proficiency:" + taught.str();
+}
+
+// Takes from a bionic about to be upgraded what it taught that the upgrade teaches too, so
+// removing it doesn't take those back; returns the tags to put on the upgrade.
+static std::vector<std::string> take_grants_shared_with( bionic &base, const bionic_id &upgrade )
+{
+    if( !base.has_flag( bionic_tag_grants_recorded ) ) {
+        // Spell out what an older bionic is taken to have taught.
+        base.set_flag( bionic_tag_grants_recorded );
+        for( const std::pair<const spell_id, int> &spell_pair : base.id->learned_spells ) {
+            base.set_flag( granted_spell_tag( spell_pair.first ) );
+        }
+        for( const proficiency_id &taught : base.id->proficiencies ) {
+            base.set_flag( granted_proficiency_tag( taught ) );
+        }
+    }
+    std::vector<std::string> shared;
+    for( const std::pair<const spell_id, int> &spell_pair : base.id->learned_spells ) {
+        const std::string tag = granted_spell_tag( spell_pair.first );
+        if( base.has_flag( tag ) && upgrade->learned_spells.count( spell_pair.first ) > 0 ) {
+            base.remove_flag( tag );
+            shared.push_back( tag );
+        }
+    }
+    for( const proficiency_id &taught : base.id->proficiencies ) {
+        const std::string tag = granted_proficiency_tag( taught );
+        if( base.has_flag( tag ) &&
+            std::find( upgrade->proficiencies.begin(), upgrade->proficiencies.end(),
+                       taught ) != upgrade->proficiencies.end() ) {
+            base.remove_flag( tag );
+            shared.push_back( tag );
+        }
+    }
+    return shared;
+}
+
 void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int difficulty,
                                  int success, int pl_skill, const std::string &installer_name,
                                  const std::vector<trait_id> &trait_to_rem, const tripoint_bub_ms &patient_pos )
@@ -2735,9 +2784,13 @@ void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int
 
     if( success > 0 ) {
         get_event_bus().send<event_type::installs_cbm>( getID(), bid );
+        // Spells and proficiencies the upgrade takes over from the bionic it replaces, so they
+        // aren't forgotten and taught again (losing a spell's experience).
+        std::vector<std::string> taken_over;
         if( upbio_uid ) {
             if( std::optional<bionic *> upbio = find_bionic_by_uid( upbio_uid ) ) {
                 const std::string bio_name = ( *upbio )->id->name.translated();
+                taken_over = take_grants_shared_with( **upbio, bid );
                 remove_bionic( **upbio );
                 //~ %1$s - name of the bionic to be upgraded (inferior), %2$s - name of the upgraded bionic (superior).
                 add_msg( m_good, _( "Successfully upgraded %1$s to %2$s." ), bio_name, bid.obj().name );
@@ -2749,7 +2802,12 @@ void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int
             add_msg( m_good, _( "Successfully installed %s." ), bid.obj().name );
         }
 
-        add_bionic( bid );
+        const bionic_uid added_uid = add_bionic( bid );
+        if( const std::optional<bionic *> added = find_bionic_by_uid( added_uid ) ) {
+            for( const std::string &tag : taken_over ) {
+                ( *added )->set_flag( tag );
+            }
+        }
 
         for( const trait_id &tid : trait_to_rem ) {
             if( has_trait( tid ) ) {
@@ -2973,21 +3031,6 @@ int Character::get_total_bionics_slots( const bodypart_id &bp ) const
 int Character::get_free_bionics_slots( const bodypart_id &bp ) const
 {
     return get_total_bionics_slots( bp ) - get_used_bionics_slots( bp );
-}
-
-// A bionic records in its tags which spells and proficiencies it taught when installed, so
-// that removing it takes back only those. Bionics installed before this was recorded lack
-// the first tag and are taken to have taught everything they list.
-static const std::string bionic_tag_grants_recorded( "cbm_grants_recorded" );
-
-static std::string granted_spell_tag( const spell_id &taught )
-{
-    return "cbm_granted_spell:" + taught.str();
-}
-
-static std::string granted_proficiency_tag( const proficiency_id &taught )
-{
-    return "cbm_granted_proficiency:" + taught.str();
 }
 
 bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,

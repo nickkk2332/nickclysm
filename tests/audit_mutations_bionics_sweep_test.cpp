@@ -312,10 +312,12 @@ TEST_CASE( "mut-b08_self_install_asks_before_removing_traits", "[audit][bionics]
     clear_avatar();
 }
 
+static const bionic_id test_bio_mutb10_base( "test_bio_mutb10_base" );
 static const bionic_id test_bio_mutb10_child( "test_bio_mutb10_child" );
 static const bionic_id test_bio_mutb10_parent( "test_bio_mutb10_parent" );
 static const bionic_id test_bio_mutb10_teacher( "test_bio_mutb10_teacher" );
 static const bionic_id test_bio_mutb10_teacher_b( "test_bio_mutb10_teacher_b" );
+static const bionic_id test_bio_mutb10_upgrade( "test_bio_mutb10_upgrade" );
 
 static const npc_class_id npc_class_test_mutb10_class( "test_mutb10_class" );
 
@@ -449,6 +451,39 @@ TEST_CASE( "mut-b10_starting_cbms_do_not_claim_what_the_background_teaches",
         recruit.randomize( npc_class_test_mutb10_class );
         check_background_outlives_starting_cbm( recruit );
     }
+}
+
+// MUT-B10: an upgrade removed the CBM it replaces before installing itself, so a spell both
+// teach was forgotten and taught again, losing its experience.
+TEST_CASE( "mut-b10_upgrade_takes_over_what_the_base_cbm_taught",
+           "[audit][bionics][cbm][proficiency][magic]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    const bionic_uid base_uid = you.add_bionic( test_bio_mutb10_base );
+    SECTION( "base CBM that recorded what it taught" ) {
+    }
+    SECTION( "base CBM installed before that was recorded" ) {
+        ( *you.find_bionic_by_uid( base_uid ) )->remove_flag( "cbm_grants_recorded" );
+    }
+    REQUIRE( you.has_proficiency( proficiency_prof_lockpicking ) );
+    REQUIRE( you.magic->knows_spell( spell_test_spell_pew ) );
+    you.magic->get_spell( spell_test_spell_pew ).set_level( you, 6 );
+    const int experience = you.magic->get_spell( spell_test_spell_pew ).xp();
+
+    you.perform_install( test_bio_mutb10_upgrade, base_uid, 0, 1, 0, "NOT_MED", {},
+                         you.pos_bub() );
+    REQUIRE_FALSE( you.has_bionic( test_bio_mutb10_base ) );
+    REQUIRE( you.has_bionic( test_bio_mutb10_upgrade ) );
+    CHECK( you.has_proficiency( proficiency_prof_lockpicking ) );
+    REQUIRE( you.magic->knows_spell( spell_test_spell_pew ) );
+    CHECK( you.magic->get_spell( spell_test_spell_pew ).xp() == experience );
+
+    // The upgrade now counts as having taught them.
+    remove_bionic_of_type( you, test_bio_mutb10_upgrade );
+    CHECK_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
+    CHECK_FALSE( you.magic->knows_spell( spell_test_spell_pew ) );
+    clear_avatar();
 }
 
 static const bionic_id test_bio_mutb11_arm( "test_bio_mutb11_arm" );
