@@ -11,6 +11,7 @@
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
 #include "enums.h"
@@ -29,6 +30,7 @@
 #include "ret_val.h"
 #include "type_id.h"
 #include "units.h"
+#include "weather.h"
 
 static const itype_id itype_audit_inv_b02_filter_rack( "audit_inv_b02_filter_rack" );
 static const itype_id itype_audit_inv_b03_fuel_burner( "audit_inv_b03_fuel_burner" );
@@ -36,6 +38,7 @@ static const itype_id itype_audit_inv_b04_brick( "audit_inv_b04_brick" );
 static const itype_id itype_audit_inv_b04_sack( "audit_inv_b04_sack" );
 static const itype_id itype_audit_inv_b05_cold_bag( "audit_inv_b05_cold_bag" );
 static const itype_id itype_audit_inv_b05_cool_box( "audit_inv_b05_cool_box" );
+static const itype_id itype_audit_inv_b05_rotting_bag( "audit_inv_b05_rotting_bag" );
 static const itype_id itype_audit_inv_b05_two_pocket_rig( "audit_inv_b05_two_pocket_rig" );
 static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_can_medium( "can_medium" );
@@ -279,6 +282,63 @@ TEST_CASE( "inv-b05_active_item_pocket_chain_holds_only_enclosing_pockets",
         REQUIRE( apple != nullptr );
         CHECK( apple->pocket_chain.size() == 2 );
         CHECK( apple->spoil_multiplier() == Approx( bag_mult ) );
+    }
+
+    SECTION( "a pocket above 1 hastens rot when no pocket preserves" ) {
+        item bag( itype_audit_inv_b05_rotting_bag );
+        REQUIRE( bag.get_standard_pockets().front()->spoil_multiplier() == Approx( 1.5f ) );
+        REQUIRE( bag.put_in( item( itype_test_apple ), pocket_type::CONTAINER ).success() );
+        active_item_cache cache;
+        REQUIRE( cache.add( bag, point_rel_ms::zero ) );
+        const std::vector<item_reference> refs = cache.get();
+        const item_reference *apple = find_apple_reference( refs );
+        REQUIRE( apple != nullptr );
+        CHECK( apple->spoil_multiplier() == Approx( 1.5f ) );
+    }
+
+    SECTION( "a pocket that preserves wins over one that hastens rot" ) {
+        item box( itype_audit_inv_b05_cool_box );
+        REQUIRE( box.put_in( item( itype_test_apple ), pocket_type::CONTAINER ).success() );
+        item bag( itype_audit_inv_b05_rotting_bag );
+        REQUIRE( bag.put_in( box, pocket_type::CONTAINER ).success() );
+        const float box_mult = box.get_standard_pockets().front()->spoil_multiplier();
+        active_item_cache cache;
+        REQUIRE( cache.add( bag, point_rel_ms::zero ) );
+        const std::vector<item_reference> refs = cache.get();
+        const item_reference *apple = find_apple_reference( refs );
+        REQUIRE( apple != nullptr );
+        CHECK( apple->spoil_multiplier() == Approx( box_mult ) );
+    }
+
+    SECTION( "the same rule holds for a carried item" ) {
+        CHECK( combine_spoil_multipliers( 1.0f, 1.5f ) == Approx( 1.5f ) );
+        CHECK( combine_spoil_multipliers( 1.5f, 0.8f ) == Approx( 0.8f ) );
+        CHECK( combine_spoil_multipliers( 0.8f, 1.5f ) == Approx( 0.8f ) );
+        CHECK( combine_spoil_multipliers( 0.5f, 0.8f ) == Approx( 0.5f ) );
+
+        // an apple in the rotting bag rots half again as fast as one in a plain sack
+        restore_on_out_of_scope restore_turn( calendar::turn );
+        restore_on_out_of_scope restore_temperature( get_weather().forced_temperature );
+        get_weather().forced_temperature = units::from_celsius( 20 );
+        if( calendar::turn <= calendar::start_of_cataclysm ) {
+            calendar::turn = calendar::start_of_cataclysm + 1_minutes;
+        }
+        item fast( itype_audit_inv_b05_rotting_bag );
+        item plain( itype_audit_inv_b04_sack );
+        REQUIRE( plain.get_standard_pockets().front()->spoil_multiplier() == 1.0f );
+        const std::vector<item *> bags = { &fast, &plain };
+        for( item *bag : bags ) {
+            REQUIRE( bag->put_in( item( itype_test_apple ), pocket_type::CONTAINER ).success() );
+            bag->process( get_map(), nullptr, tripoint_bub_ms::zero );
+        }
+        calendar::turn += 2_hours;
+        for( item *bag : bags ) {
+            bag->process( get_map(), nullptr, tripoint_bub_ms::zero );
+        }
+        const time_duration plain_rot = plain.all_items_top().front()->get_rot();
+        REQUIRE( plain_rot > 0_turns );
+        CHECK( to_turns<double>( fast.all_items_top().front()->get_rot() ) ==
+               Approx( 1.5 * to_turns<double>( plain_rot ) ).epsilon( 0.02 ) );
     }
 }
 

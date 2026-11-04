@@ -11,13 +11,21 @@
 #include "iuse.h"
 #include "safe_reference.h"
 
+float combine_spoil_multipliers( float so_far, float pocket )
+{
+    if( so_far < 1.0f || pocket < 1.0f ) {
+        return std::min( so_far, pocket );
+    }
+    return std::max( so_far, pocket );
+}
+
 float item_reference::spoil_multiplier() const
 {
-    // The best pocket counts, as for a carried item (item_pocket::process)
+    // as for a carried item (item_pocket::process)
     return std::accumulate(
                pocket_chain.begin(), pocket_chain.end(), 1.0F,
     []( float a, item_pocket const * pk ) {
-        return std::min( a, pk->spoil_multiplier() );
+        return combine_spoil_multipliers( a, pk->spoil_multiplier() );
     } );
 }
 

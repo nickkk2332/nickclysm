@@ -119,5 +119,25 @@
         "moves": 100
       }
     ]
+  },
+  {
+    "id": "audit_inv_b05_rotting_bag",
+    "type": "ITEM",
+    "name": { "str": "TEST rotting bag" },
+    "description": "A soft bag with a spoil multiplier of 1.5, like Magiclysm's bags of holding (INV-B05).",
+    "weight": "200 g",
+    "volume": "500 ml",
+    "material": [ "cotton" ],
+    "symbol": ")",
+    "color": "brown",
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "max_contains_volume": "3 L",
+        "max_contains_weight": "5 kg",
+        "spoil_multiplier": 1.5,
+        "moves": 100
+      }
+    ]
   }
 ]

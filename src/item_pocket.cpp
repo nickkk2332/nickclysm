@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "active_item_cache.h"
 #include "ammo.h"
 #include "body_part_set.h"
 #include "bodypart.h"
@@ -2068,8 +2069,9 @@ void item_pocket::process( map &here, Character *carrier, const tripoint_bub_ms 
 {
     for( auto iter = contents.begin(); iter != contents.end(); ) {
         if( iter->process( here, carrier, pos, insulation, flag,
-                           // spoil multipliers on pockets are not additive or multiplicative, they choose the best
-                           std::min( spoil_multiplier_parent, spoil_multiplier() ),
+                           // spoil multipliers on pockets are not additive or multiplicative: the
+                           // best one below 1 counts, or else the worst one above 1
+                           combine_spoil_multipliers( spoil_multiplier_parent, spoil_multiplier() ),
                            watertight_container || can_contain_liquid( false ) ) ) {
             iter->spill_contents( pos );
             iter = contents.erase( iter );

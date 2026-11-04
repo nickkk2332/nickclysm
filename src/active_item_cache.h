@@ -14,6 +14,14 @@
 
 class item;
 
+/**
+ * The spoil multiplier of an item in nested pockets, from the multiplier so far (1 with no
+ * pocket yet) and the next pocket's.  When either is below 1 the lowest wins: the pocket that
+ * preserves best counts.  Otherwise the highest does, so a pocket above 1 (a mod's bag that
+ * hastens rot) still counts.  Used for carried items and for items on the map or in vehicles.
+ */
+float combine_spoil_multipliers( float so_far, float pocket );
+
 // A struct used to uniquely identify an item within a submap or vehicle.
 struct item_reference {
     point_rel_ms location;
