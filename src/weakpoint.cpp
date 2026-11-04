@@ -707,6 +707,13 @@ void weakpoints::finalize()
         finalize_damage_map( w.damage_mult, false, 1.0f );
         finalize_damage_map( w.crit_mult, false, 1.0f );
     }
+    // select_weakpoint() favors the first weak points of the list more as skill rises, so the
+    // list runs from the rarest up, as load() sorts it. Merging sets (add_from_set) appends and
+    // replaces in place, so a monster's merged list is sorted again here.
+    std::stable_sort( weakpoint_list.begin(), weakpoint_list.end(),
+    []( const weakpoint & a, const weakpoint & b ) {
+        return a.coverage < b.coverage;
+    } );
 }
 
 void weakpoints::remove( const JsonArray &ja )

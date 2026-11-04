@@ -500,6 +500,8 @@ In the example above, the `"humanoid"` weakpoint set is applied as a base, then 
 
 Weakpoints only match if they share the same id, so it's important to define the weakpoint's id field if you plan to overwrite previous weakpoints.
 
+The order of the sets doesn't decide which weak point is rolled first. Once the sets and the inline weakpoints are merged, the list is sorted by `coverage`, rarest first. Skill raises the chance of hitting the weak points at the front of the list, so a skilled attacker finds the rare ones (eyes, brain) more often.
+
 ## "families"
 (array of objects or strings, optional)
 

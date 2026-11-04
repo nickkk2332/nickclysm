@@ -1,6 +1,9 @@
+#include <algorithm>
+#include <cstddef>
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
@@ -21,6 +24,8 @@
 #include "melee.h"
 #include "messages.h"
 #include "monster.h"
+#include "monstergenerator.h"
+#include "mtype.h"
 #include "npc.h"
 #include "player_helpers.h"
 #include "point.h"
@@ -28,6 +33,7 @@
 #include "units.h"
 #include "vehicle.h"
 #include "veh_type.h"
+#include "weakpoint.h"
 
 // Regression tests for the combat chapter of the engine audit (Audit/18-combat.md).
 
@@ -54,6 +60,8 @@ static const matec_id test_tm_disarm( "test_tm_disarm" );
 static const matec_id test_tm_take( "test_tm_take" );
 
 static const move_mode_id move_mode_prone( "prone" );
+
+static const mtype_id mon_zombie_dog( "mon_zombie_dog" );
 
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_unarmed( "unarmed" );
@@ -176,6 +184,37 @@ static double num_var( const Creature &c, const std::string &key )
 {
     const diag_value *val = c.maybe_get_value( key );
     return val == nullptr ? 0.0 : val->dbl();
+}
+
+// CMBT-B04: weakpoints::select_weakpoint boosts the earlier weak points of the list with skill,
+// so the list must run from the rarest up. Monster finalization merged weakpoint sets without
+// sorting, so the eye of a zombie dog ("wps_eyes" last) got rarer as skill rose.
+TEST_CASE( "cmbt-b04_monster_weakpoints_sorted_by_coverage", "[audit][weakpoint]" )
+{
+    const auto by_coverage = []( const weakpoint & a, const weakpoint & b ) {
+        return a.coverage < b.coverage;
+    };
+    std::vector<std::string> unsorted;
+    for( const mtype &type : MonsterGenerator::generator().get_all_mtypes() ) {
+        const std::vector<weakpoint> &list = type.weakpoints.weakpoint_list;
+        if( !std::is_sorted( list.begin(), list.end(), by_coverage ) ) {
+            unsorted.push_back( type.id.str() );
+        }
+    }
+    CAPTURE( unsorted.size() );
+    CAPTURE( unsorted.empty() ? std::string() : unsorted.front() );
+    CHECK( unsorted.empty() );
+
+    // The eye (1%) of "wps_eyes", the last set, comes before the head (3%) of the first
+    const std::vector<weakpoint> &dog = mon_zombie_dog->weakpoints.weakpoint_list;
+    const auto index_of = [&dog]( const std::string & id ) {
+        return std::find_if( dog.begin(), dog.end(), [&id]( const weakpoint & wp ) {
+            return wp.id == id;
+        } ) - dog.begin();
+    };
+    REQUIRE( index_of( "eye" ) < static_cast<std::ptrdiff_t>( dog.size() ) );
+    REQUIRE( index_of( "head" ) < static_cast<std::ptrdiff_t>( dog.size() ) );
+    CHECK( index_of( "eye" ) < index_of( "head" ) );
 }
 
 // CMBT-B06: the vehicle's speed, in hundredths of a mph, came off the hit roll as is, so any
