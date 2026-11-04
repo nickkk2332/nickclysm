@@ -31,6 +31,10 @@
 
 // Regression tests for the combat chapter of the engine audit (Audit/18-combat.md).
 
+static const efftype_id effect_hit_by_player( "hit_by_player" );
+static const efftype_id effect_pet( "pet" );
+
+static const itype_id itype_spear_wood( "spear_wood" );
 static const itype_id itype_test_cmbt_club( "test_cmbt_club" );
 
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
@@ -189,6 +193,30 @@ TEST_CASE( "cmbt-b07_prone_pseudopod_damage_multiplier", "[audit][melee]" )
     CAPTURE( plain, pseudopod );
     // 0.8 against 0.3
     CHECK( pseudopod > 2.0 * plain );
+}
+
+// CMBT-B08: Character::reach_attack asked "Your attack may cause accidental injury, continue?"
+// whoever attacked, so an NPC spearing past the player's pet asked the player, and a "no" (or
+// the test UI) called the NPC's attack off for free. Only the avatar is asked now.
+TEST_CASE( "cmbt-b08_npc_reach_attack_through_a_pet_asks_nobody", "[audit][melee][npc_attack]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    const tripoint_bub_ms npc_pos = you.pos_bub() + tripoint( -2, 0, 0 );
+    npc &guy = spawn_npc( npc_pos.xy(), "test_talker" );
+    guy.remove_weapon();
+    item spear( itype_spear_wood );
+    REQUIRE( guy.wield( spear ) );
+    // Unskilled: whatever stands in the way takes the blow
+    guy.set_skill_level( skill_melee, 0 );
+    monster &pet = spawn_test_monster( "mon_test_cmbt_post", you.pos_bub() + tripoint::west );
+    pet.friendly = -1;
+    pet.add_effect( effect_pet, 1_turns, true );
+
+    guy.set_moves( 100 );
+    guy.reach_attack( you.pos_bub() );
+    CHECK( guy.get_moves() < 100 );
+    CHECK( pet.has_effect( effect_hit_by_player ) );
 }
 
 // CMBT-B16: the accuracy bonus of a martial-art buff ignored its stacks, and every buff bonus was

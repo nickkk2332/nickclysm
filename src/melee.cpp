@@ -1213,9 +1213,11 @@ void Character::reach_attack( const tripoint_bub_ms &p, int forced_movecost )
         if( inter != nullptr &&
             !x_in_y( ( target_size * target_size + 1 ) * skill,
                      ( inter->get_size() * inter->get_size() + 1 ) * 10 ) ) {
-            // Even if we miss here, low roll means weapon is pushed away or something like that
-            if( inter->has_effect( effect_pet ) || ( inter->is_npc() &&
-                    inter->as_npc()->is_friendly( get_player_character() ) ) ) {
+            // Even if we miss here, low roll means weapon is pushed away or something like that.
+            // Only the avatar is asked. An NPC already holds back for its own friends (npc_attack)
+            // and takes whoever is in the way.
+            if( is_avatar() && ( inter->has_effect( effect_pet ) || ( inter->is_npc() &&
+                                 inter->as_npc()->is_friendly( get_player_character() ) ) ) ) {
                 if( query_yn( _( "Your attack may cause accidental injury, continue?" ) ) ) {
                     critter = inter;
                     break;
