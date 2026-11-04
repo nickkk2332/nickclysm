@@ -1293,35 +1293,35 @@ void ma_buff::apply_character( Character &u ) const
     u.mod_free_dodges( free_dodges );
 }
 
-int ma_buff::hit_bonus( const Character &u ) const
+float ma_buff::hit_bonus( const Character &u ) const
 {
     return bonuses.get_flat( u, affected_stat::HIT );
 }
-int ma_buff::critical_hit_chance_bonus( const Character &u ) const
+float ma_buff::critical_hit_chance_bonus( const Character &u ) const
 {
     return bonuses.get_flat( u, affected_stat::CRITICAL_HIT_CHANCE );
 }
-int ma_buff::dodge_bonus( const Character &u ) const
+float ma_buff::dodge_bonus( const Character &u ) const
 {
     return bonuses.get_flat( u, affected_stat::DODGE );
 }
-int ma_buff::block_bonus( const Character &u ) const
+float ma_buff::block_bonus( const Character &u ) const
 {
     return bonuses.get_flat( u, affected_stat::BLOCK );
 }
-int ma_buff::arpen_bonus( const Character &u, const damage_type_id &dt ) const
+float ma_buff::arpen_bonus( const Character &u, const damage_type_id &dt ) const
 {
     return bonuses.get_flat( u, affected_stat::ARMOR_PENETRATION, dt );
 }
-int ma_buff::block_effectiveness_bonus( const Character &u ) const
+float ma_buff::block_effectiveness_bonus( const Character &u ) const
 {
     return bonuses.get_flat( u, affected_stat::BLOCK_EFFECTIVENESS );
 }
-int ma_buff::speed_bonus( const Character &u ) const
+float ma_buff::speed_bonus( const Character &u ) const
 {
     return bonuses.get_flat( u, affected_stat::SPEED );
 }
-int ma_buff::armor_bonus( const Character &guy, const damage_type_id &dt ) const
+float ma_buff::armor_bonus( const Character &guy, const damage_type_id &dt ) const
 {
     return bonuses.get_flat( guy, affected_stat::ARMOR, dt );
 }
@@ -2274,8 +2274,8 @@ static bool search_ma_buff_effect( const C &container, F f )
 float Character::mabuff_tohit_bonus() const
 {
     float ret = 0.0f;
-    accumulate_ma_buff_effects( *effects, [&ret, this]( const ma_buff & b, const effect & ) {
-        ret += b.hit_bonus( *this );
+    accumulate_ma_buff_effects( *effects, [&ret, this]( const ma_buff & b, const effect & d ) {
+        ret += d.get_intensity() * b.hit_bonus( *this );
     } );
     return ret;
 }
@@ -2295,45 +2295,47 @@ float Character::mabuff_dodge_bonus() const
     } );
     return ret;
 }
+// The whole-number totals add up every buff and stack with their fractions, and drop the
+// fraction once, at the end
 int Character::mabuff_block_bonus() const
 {
-    int ret = 0;
+    float ret = 0.0f;
     accumulate_ma_buff_effects( *effects, [&ret, this]( const ma_buff & b, const effect & d ) {
         ret += d.get_intensity() * b.block_bonus( *this );
     } );
-    return ret;
+    return static_cast<int>( ret );
 }
 int Character::mabuff_block_effectiveness_bonus( ) const
 {
-    int ret = 0;
+    float ret = 0.0f;
     accumulate_ma_buff_effects( *effects, [&ret, this]( const ma_buff & b, const effect & d ) {
         ret += d.get_intensity() * b.block_effectiveness_bonus( *this );
     } );
-    return ret;
+    return static_cast<int>( ret );
 }
 int Character::mabuff_speed_bonus() const
 {
-    int ret = 0;
+    float ret = 0.0f;
     accumulate_ma_buff_effects( *effects, [&ret, this]( const ma_buff & b, const effect & d ) {
         ret += d.get_intensity() * b.speed_bonus( *this );
     } );
-    return ret;
+    return static_cast<int>( ret );
 }
 int Character::mabuff_arpen_bonus( const damage_type_id &type ) const
 {
-    int ret = 0;
+    float ret = 0.0f;
     accumulate_ma_buff_effects( *effects, [&ret, type, this]( const ma_buff & b, const effect & d ) {
         ret += d.get_intensity() * b.arpen_bonus( *this, type );
     } );
-    return ret;
+    return static_cast<int>( ret );
 }
 int Character::mabuff_armor_bonus( const damage_type_id &type ) const
 {
-    int ret = 0;
+    float ret = 0.0f;
     accumulate_ma_buff_effects( *effects, [&ret, type, this]( const ma_buff & b, const effect & d ) {
         ret += d.get_intensity() * b.armor_bonus( *this, type );
     } );
-    return ret;
+    return static_cast<int>( ret );
 }
 float Character::mabuff_damage_mult( const damage_type_id &type ) const
 {
@@ -2347,19 +2349,19 @@ float Character::mabuff_damage_mult( const damage_type_id &type ) const
 }
 int Character::mabuff_damage_bonus( const damage_type_id &type ) const
 {
-    int ret = 0;
+    float ret = 0.0f;
     accumulate_ma_buff_effects( *effects, [&ret, type, this]( const ma_buff & b, const effect & d ) {
         ret += d.get_intensity() * b.damage_bonus( *this, type );
     } );
-    return ret;
+    return static_cast<int>( ret );
 }
 int Character::mabuff_attack_cost_penalty() const
 {
-    int ret = 0;
+    float ret = 0.0f;
     accumulate_ma_buff_effects( *effects, [&ret, this]( const ma_buff & b, const effect & d ) {
         ret += d.get_intensity() * b.bonuses.get_flat( *this, affected_stat::MOVE_COST );
     } );
-    return ret;
+    return static_cast<int>( ret );
 }
 float Character::mabuff_attack_cost_mult() const
 {

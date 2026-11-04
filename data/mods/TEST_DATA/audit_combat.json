@@ -1,0 +1,22 @@
+[
+  {
+    "//": "CMBT-B16 fixture: a buff that stacks three times, with fractional bonuses.",
+    "type": "martial_art",
+    "id": "test_style_cmbt_buffs",
+    "name": { "str": "Test Stacking Buff Style" },
+    "description": "Test martial art with a stacking buff.",
+    "initiate": [ "You get ready to stack.", "%s gets ready to stack." ],
+    "onhit_buffs": [
+      {
+        "id": "test_buff_cmbt_stacking",
+        "name": "Test Stack",
+        "description": "Per stack: +1.5 accuracy, +0.8 dodge, +0.6 block.",
+        "unarmed_allowed": true,
+        "melee_allowed": true,
+        "buff_duration": 10,
+        "max_stacks": 3,
+        "flat_bonuses": [ { "stat": "hit", "scale": 1.5 }, { "stat": "dodge", "scale": 0.8 }, { "stat": "block", "scale": 0.6 } ]
+      }
+    ]
+  }
+]

@@ -441,6 +441,8 @@ Field            | Description
 * Tokens of "useless" type will not cause an error, but will not have any effect.  For example, `speed` in a technique will have no effect (`movecost` should be used for techniques).
 * Multiplicative bonuses only support `damage` and `movecost`.
 * Flat bonuses are applied after multiplicative bonuses.
+* On a buff, every flat bonus, `hit` included, is multiplied by the buff's stacks (its intensity).
+* Fractions count.  `hit`, `dodge` and `crit_chance` keep theirs.  The other stats are whole numbers: the bonuses of all active buffs and stacks are added up first, and the fraction of the total is dropped (toward zero).  For example, a buff giving `block` 0.6 per stack gives 1 block at three stacks (1.8).
 
 
 ### Examples
