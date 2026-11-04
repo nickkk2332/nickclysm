@@ -1849,6 +1849,18 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
     return valid_aoe_technique( t, technique, dummy_targets );
 }
 
+// Whether an area technique also strikes this creature, as the attacker sees it (not as the
+// avatar does): a monster not on the attacker's side, or a person hostile to the attacker
+static bool is_aoe_victim( const Character &attacker, const Creature &target, const Creature *c )
+{
+    if( c == nullptr || c == &attacker || c == &target ) {
+        return false;
+    }
+    const Creature::Attitude att = attacker.attitude_to( *c );
+    return c->is_monster() ? att != Creature::Attitude::FRIENDLY :
+           att == Creature::Attitude::HOSTILE;
+}
+
 bool Character::valid_aoe_technique( Creature const &t, const ma_technique &technique,
                                      std::vector<Creature *> &targets ) const
 {
@@ -1878,22 +1890,13 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
         tripoint_bub_ms left = pos + tripoint_rel_ms( offset_a[lookup], offset_b[lookup], 0 );
         tripoint_bub_ms right = pos + tripoint_rel_ms( offset_b[lookup], -offset_a[lookup], 0 );
 
-        monster *const mon_l = creatures.creature_at<monster>( left );
-        if( mon_l && mon_l->friendly == 0 ) {
-            targets.push_back( mon_l );
-        }
-        monster *const mon_r = creatures.creature_at<monster>( right );
-        if( mon_r && mon_r->friendly == 0 ) {
-            targets.push_back( mon_r );
-        }
-
-        npc *const npc_l = creatures.creature_at<npc>( left );
-        npc *const npc_r = creatures.creature_at<npc>( right );
-        if( npc_l && npc_l->is_enemy() ) {
-            targets.push_back( npc_l );
-        }
-        if( npc_r && npc_r->is_enemy() ) {
-            targets.push_back( npc_r );
+        for( const tripoint_bub_ms &p : {
+                 left, right
+             } ) {
+            Creature *const c = creatures.creature_at<Creature>( p );
+            if( is_aoe_victim( *this, t, c ) ) {
+                targets.push_back( c );
+            }
         }
         if( !targets.empty() ) {
             return true;
@@ -1908,30 +1911,13 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
         tripoint_bub_ms target_pos = t_pos + ( t.pos_bub() - pos_bub() );
         tripoint_bub_ms right = t_pos + tripoint_rel_ms( offset_b[lookup], -offset_b[lookup], 0 );
 
-        monster *const mon_l = creatures.creature_at<monster>( left );
-        monster *const mon_t = creatures.creature_at<monster>( target_pos );
-        monster *const mon_r = creatures.creature_at<monster>( right );
-        if( mon_l && mon_l->friendly == 0 ) {
-            targets.push_back( mon_l );
-        }
-        if( mon_t && mon_t->friendly == 0 ) {
-            targets.push_back( mon_t );
-        }
-        if( mon_r && mon_r->friendly == 0 ) {
-            targets.push_back( mon_r );
-        }
-
-        npc *const npc_l = creatures.creature_at<npc>( left );
-        npc *const npc_t = creatures.creature_at<npc>( target_pos );
-        npc *const npc_r = creatures.creature_at<npc>( right );
-        if( npc_l && npc_l->is_enemy() ) {
-            targets.push_back( npc_l );
-        }
-        if( npc_t && npc_t->is_enemy() ) {
-            targets.push_back( npc_t );
-        }
-        if( npc_r && npc_r->is_enemy() ) {
-            targets.push_back( npc_r );
+        for( const tripoint_bub_ms &p : {
+                 left, target_pos, right
+             } ) {
+            Creature *const c = creatures.creature_at<Creature>( p );
+            if( is_aoe_victim( *this, t, c ) ) {
+                targets.push_back( c );
+            }
         }
         if( !targets.empty() ) {
             return true;
@@ -1943,13 +1929,9 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
             if( tmp == t_pos ) {
                 continue;
             }
-            monster *const mon = creatures.creature_at<monster>( tmp );
-            if( mon && mon->friendly == 0 ) {
-                targets.push_back( mon );
-            }
-            npc *const np = creatures.creature_at<npc>( tmp );
-            if( np && np->is_enemy() ) {
-                targets.push_back( np );
+            Creature *const c = creatures.creature_at<Creature>( tmp );
+            if( is_aoe_victim( *this, t, c ) ) {
+                targets.push_back( c );
             }
         }
         //don't trigger circle for fewer than 2 targets
@@ -2296,11 +2278,17 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         //hit the targets in the lists (all candidates if wide or burst, or just the unlucky sod if deep)
         int count_hit = 0;
         for( Creature *const c : targets ) {
+            // melee_attack() doesn't say whether the blow landed: the hit statistics do
+            const int hits_before = melee::melee_stats.hit_count;
             melee_attack( *c, false );
+            if( melee::melee_stats.hit_count > hits_before ) {
+                count_hit++;
+            }
         }
 
-        t.add_msg_if_player( m_good, n_gettext( "%d enemy hit!", "%d enemies hit!", count_hit ),
-                             count_hit );
+        // The tally is the attacker's
+        add_msg_if_player( m_good, n_gettext( "%d enemy hit!", "%d enemies hit!", count_hit ),
+                           count_hit );
         // Extra attacks are free of charge (otherwise AoE attacks would SUCK)
         moves = temp_moves;
         set_stamina( temp_stamina );

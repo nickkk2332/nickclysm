@@ -34,6 +34,8 @@
 static const efftype_id effect_hit_by_player( "hit_by_player" );
 static const efftype_id effect_pet( "pet" );
 
+static const faction_id faction_your_followers( "your_followers" );
+
 static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_glaive( "glaive" );
 static const itype_id itype_spear_wood( "spear_wood" );
@@ -45,6 +47,7 @@ static const itype_id itype_test_cmbt_unwieldy( "test_cmbt_unwieldy" );
 
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
 
+static const matec_id test_cmbt_wide( "test_cmbt_wide" );
 static const matec_id test_tm_disarm( "test_tm_disarm" );
 static const matec_id test_tm_take( "test_tm_take" );
 
@@ -343,6 +346,47 @@ TEST_CASE( "cmbt-b10_refused_attack_rolls_nothing", "[audit][melee]" )
         you.set_moves( 100 );
         CHECK_FALSE( you.melee_attack( guy, true ) );
         CHECK( guy.get_dodges_left() == dodges );
+    }
+}
+
+// CMBT-B11: area techniques picked their extra victims as the avatar sees them (hostile to the
+// player), whoever attacked, and the tally ("%d enemies hit!") always said 0 and went to the
+// target. They now pick the attacker's enemies and tell the attacker.
+TEST_CASE( "cmbt-b11_aoe_technique_targets_the_attackers_enemies", "[audit][melee][technique]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    const tripoint_bub_ms pos = you.pos_bub();
+
+    SECTION( "a hostile NPC's wide strike hits the player's side, not its own" ) {
+        // The NPC strikes east at the avatar; its sweep covers the tiles north and south of it
+        npc &guy = spawn_npc( ( pos + tripoint::west ).xy(), "test_talker" );
+        npc &follower = spawn_npc( ( pos + tripoint::south ).xy(), "test_talker" );
+        npc &buddy = spawn_npc( ( pos + tripoint::north ).xy(), "test_talker" );
+        guy.set_attitude( NPCATT_KILL );
+        buddy.set_attitude( NPCATT_KILL );
+        follower.set_fac( faction_your_followers );
+        follower.set_attitude( NPCATT_FOLLOW );
+        REQUIRE( guy.attitude_to( follower ) == Creature::Attitude::HOSTILE );
+        REQUIRE( guy.attitude_to( buddy ) != Creature::Attitude::HOSTILE );
+        guy.remove_weapon();
+        make_fighter( guy );
+
+        land_technique( guy, you, test_cmbt_wide );
+        CHECK( follower.has_effect( effect_hit_by_player ) );
+        CHECK_FALSE( buddy.has_effect( effect_hit_by_player ) );
+        // The tally is the attacker's: the player, struck, isn't told "0 enemies hit!"
+        CHECK_FALSE( has_message_containing( "enemies hit!" ) );
+        CHECK_FALSE( has_message_containing( "enemy hit!" ) );
+    }
+    SECTION( "the player's wide strike counts what it hit" ) {
+        monster &front = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::east );
+        monster &side = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::south_east );
+        make_fighter( you );
+        land_technique( you, front, test_cmbt_wide );
+        CHECK( side.has_effect( effect_hit_by_player ) );
+        CHECK( melee::get_stats().hit_count == 2 );
+        CHECK( has_message_containing( "1 enemy hit!" ) );
     }
 }
 

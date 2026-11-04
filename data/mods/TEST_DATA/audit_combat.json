@@ -149,6 +149,17 @@
     "melee_damage": { "bash": 1 }
   },
   {
+    "//": "CMBT-B11 fixture.",
+    "type": "technique",
+    "id": "test_cmbt_wide",
+    "name": "Test Wide Strike",
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "aoe": "wide",
+    "messages": [ "You test-sweep %s", "<npcname> test-sweeps %s" ],
+    "attack_vectors": [ "vector_punch", "vector_null" ]
+  },
+  {
     "//": "CMBT-B15 fixtures: a revolver, and two rounds that differ only in dispersion.  Within the gun's own dispersion, scaled, the 7 of the wild round rounds away.",
     "type": "ammunition_type",
     "id": "test_cmbt_round",
