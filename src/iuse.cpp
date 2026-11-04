@@ -4283,8 +4283,13 @@ std::optional<int> iuse::lumber( Character *p, item *it, const tripoint_bub_ms &
     map &here = get_map();
     // Check if player is standing on any lumber
     for( item &i : here.i_at( p->pos_bub() ) ) {
-        if( i.typeId() == itype_log ) {
-            start_cutting_log( *p, item_location( map_cursor( p->pos_bub() ), &i ) );
+        // a log another character is cutting stays theirs, as in zone plank cutting
+        if( i.typeId() == itype_log &&
+            ( !i.has_var( "activity_var" ) || i.get_var( "activity_var" ) == p->name ) ) {
+            i.set_var( "activity_var", p->name );
+            const item_location log( map_cursor( p->pos_bub() ), &i );
+            p->may_activity_occupancy_after_end_items_loc.push_back( log );
+            start_cutting_log( *p, log );
             return 1;
         }
     }

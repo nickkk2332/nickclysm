@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "activity_actor_definitions.h"
+#include "activity_handlers.h"
 #include "activity_type.h"
 #include "avatar.h"
 #include "calendar.h"
@@ -23,6 +25,7 @@
 #include "mapdata.h"
 #include "messages.h"
 #include "morale_types.h"
+#include "npc.h"
 #include "omdata.h"
 #include "overmapbuffer.h"
 #include "player_activity.h"
@@ -34,6 +37,7 @@ static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
 static const activity_id ACT_FISH( "ACT_FISH" );
 
 static const itype_id itype_2x4( "2x4" );
+static const itype_id itype_ax( "ax" );
 static const itype_id itype_audit_use_b08_rune( "audit_use_b08_rune" );
 static const itype_id itype_blindfold( "blindfold" );
 static const itype_id itype_blindfold_up( "blindfold_up" );
@@ -66,6 +70,13 @@ struct avatar_and_tile_cleanup {
     ~avatar_and_tile_cleanup() {
         get_map().i_clear( pos );
         clear_avatar();
+    }
+};
+
+// Removes the NPCs when it goes out of scope.
+struct npc_cleanup {
+    ~npc_cleanup() {
+        clear_npcs();
     }
 };
 
@@ -118,6 +129,41 @@ TEST_CASE( "use-b06_cutting_planks_keeps_the_log_until_the_cut_is_done", "[audit
         CHECK( count_on_tile( pos, itype_2x4 ) == 0 );
         CHECK( count_on_tile( pos, itype_splinter ) == 0 );
     }
+}
+
+// USE-B06 follow-up: zone plank cutting leaves the log on its tile while it is cut, so a second
+// character working the same tile must not take the log the first one is cutting.
+TEST_CASE( "use-b06_two_characters_cut_different_logs_on_one_tile", "[audit][iuse][activity]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &they = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms pile = they.pos_bub() + tripoint_rel_ms::north;
+    const avatar_and_tile_cleanup cleanup{ pile };
+    const npc_cleanup remove_npcs;
+    npc &guy = spawn_npc( ( they.pos_bub() + tripoint_rel_ms::north_east ).xy(), "thug" );
+    for( Character *who : std::vector<Character *> { &they, &guy } ) {
+        who->set_wielded_item( item( itype_ax ) );
+    }
+    for( int i = 0; i < 3; ++i ) {
+        here.add_item( pile, item( itype_log ) );
+    }
+    REQUIRE( count_on_tile( pile, itype_log ) == 3 );
+
+    multi_chop_planks_activity_actor zone_job;
+    for( Character *who : std::vector<Character *> { &they, &guy } ) {
+        CAPTURE( who->name );
+        REQUIRE( zone_job.multi_activity_can_do( *who, pile ).can_do );
+        const activity_reason_info ok( do_activity_reason::NEEDS_CHOPPING, true );
+        zone_job.multi_activity_do( *who, ok, here.get_abs( pile ), pile );
+        REQUIRE( who->has_activity( ACT_CHOP_PLANKS ) );
+    }
+
+    process_activity( they );
+    process_activity( guy );
+    // each cut its own log
+    CHECK( count_on_tile( pile, itype_log ) == 1 );
 }
 
 // USE-B07 (data part): the HOTPLATE action heats with the item itself only if it has the
