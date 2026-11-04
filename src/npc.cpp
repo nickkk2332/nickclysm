@@ -2987,26 +2987,8 @@ bool npc::is_travelling() const
 
 Creature::Attitude npc::attitude_to( const Creature &other ) const
 {
-    const auto same_as = []( const Creature * lhs, const Creature * rhs ) {
-        return &lhs == &rhs;
-    };
-
-    for( const weak_ptr_fast<Creature> &buddy : ai_cache.friends ) {
-        if( same_as( &other, buddy.lock().get() ) ) {
-            return Creature::Attitude::FRIENDLY;
-        }
-    }
-    for( const weak_ptr_fast<Creature> &enemy : ai_cache.hostile_guys ) {
-        if( same_as( &other, enemy.lock().get() ) ) {
-            return Creature::Attitude::HOSTILE;
-        }
-    }
-    for( const weak_ptr_fast<Creature> &neutral : ai_cache.neutral_guys ) {
-        if( same_as( &other, neutral.lock().get() ) ) {
-            return Creature::Attitude::NEUTRAL;
-        }
-    }
-
+    // Not looked up in ai_cache: its lists are filled loosely (every NPC that isn't neutral goes
+    // in hostile_guys), so they would answer wrongly, and the lookup never matched anyway.
     if( other.is_npc() || other.is_avatar() ) {
         const Character &guy = dynamic_cast<const Character &>( other );
         // check faction relationships first

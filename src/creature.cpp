@@ -1633,7 +1633,8 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
     apply_damage( source, bp, total_damage );
 
     if( wkpt != nullptr ) {
-        wkpt->apply_effects( *this, total_damage, attack );
+        // attack_copy: a melee attack only gets its attacker here
+        wkpt->apply_effects( *this, total_damage, attack_copy );
         add_msg_debug( debugmode::DF_WEAKPOINTS, "applying weakpoint: %s", wkpt->id );
     }
 

@@ -2248,7 +2248,9 @@ bool monster::melee_attack( Creature &target, float accuracy )
         return false;
     }
 
-    const int monster_hit_roll = melee::melee_hit_range( accuracy );
+    const int monster_hit_roll = melee::hit_roll_against( target, [accuracy] {
+        return melee::melee_hit_range( accuracy );
+    } );
     int hitspread = target.deal_melee_attack( this, monster_hit_roll );
     if( type->melee_dice == 0 ) {
         // We don't hit, so just return

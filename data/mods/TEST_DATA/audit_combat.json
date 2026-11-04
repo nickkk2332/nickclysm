@@ -1,0 +1,309 @@
+[
+  {
+    "//": "CMBT fixtures: a target that never moves, dodges or fights back, and takes a long beating.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_post",
+    "name": { "str": "combat test post", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests.", "//~": "NO_I18N" },
+    "looks_like": "mon_thing",
+    "default_faction": "zombie",
+    "species": [ "ZOMBIE" ],
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 10000,
+    "speed": 100,
+    "material": [ "flesh" ],
+    "symbol": "P",
+    "color": "white",
+    "aggression": 100,
+    "morale": 100,
+    "melee_skill": 0,
+    "dodge": 0,
+    "harvest": "exempt",
+    "death_function": { "corpse_type": "NO_CORPSE", "message": "The %s falls apart." },
+    "flags": [ "IMMOBILE", "SEES", "NOT_HALLUCINATION" ]
+  },
+  {
+    "//": "CMBT-B13 fixture: a target that dodges every blow.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_dodger",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "combat test dodger", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests that is never hit.", "//~": "NO_I18N" },
+    "dodge": 100,
+    "delete": { "flags": [ "IMMOBILE" ] }
+  },
+  {
+    "//": "CMBT-B14 fixture: every blow lands on a weak point whose EOC records its alpha.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_weakpoint",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "combat test weak point", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests with one weak point.", "//~": "NO_I18N" },
+    "weakpoints": [
+      {
+        "id": "test_cmbt_wp",
+        "name": "test spot",
+        "coverage": 100,
+        "effects": [
+          {
+            "effect_on_conditions": [ "EOC_TEST_CMBT_WP_ALPHA" ],
+            "message": "The %s's test spot is struck!",
+            "damage_required": [ 0, 100 ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "//": "CMBT-B14 fixture: every blow lands on a weak point that kills outright.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_weakpoint_deadly",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "combat test deadly weak point", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests that dies to any hit.", "//~": "NO_I18N" },
+    "weakpoints": [
+      {
+        "id": "test_cmbt_wp_deadly",
+        "name": "test heart",
+        "coverage": 100,
+        "effects": [ { "instant_death_chance": [ 100, 100 ], "damage_required": [ 0, 100 ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CMBT_WP_ALPHA",
+    "effect": [ { "math": [ "u_test_cmbt_wp_alpha += 1" ] } ]
+  },
+  {
+    "//": "Weak point defaults fixture: an effect with no duration and no damage_required.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_wp_defaults",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "combat test plain weak point", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests with a weak point that relies on the defaults.", "//~": "NO_I18N" },
+    "weakpoints": [
+      {
+        "id": "test_cmbt_wp_plain",
+        "name": "plain spot",
+        "coverage": 100,
+        "effects": [ { "effect": "test_cmbt_mark", "effect_on_conditions": [ "EOC_TEST_CMBT_WP_DEFAULTS" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_cmbt_mark",
+    "name": [ { "str": "Test Mark", "//~": "NO_I18N" } ],
+    "desc": [ { "str": "Left by a weak point, for tests.", "//~": "NO_I18N" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CMBT_WP_DEFAULTS",
+    "effect": [ { "math": [ "u_test_cmbt_wp_defaults += 1" ] } ]
+  },
+  {
+    "//": "CMBT-B07 fixture.",
+    "type": "mutation",
+    "id": "TEST_CMBT_PSEUDOPOD",
+    "name": { "str": "Test Pseudopods" },
+    "points": 0,
+    "description": "Test mutation: limbs that care little about being prone.",
+    "flags": [ "PSEUDOPOD_GRASP" ]
+  },
+  {
+    "//": "CMBT-B07 fixture: a club that doesn't wear, so every run swings the same weapon.",
+    "id": "test_cmbt_club",
+    "type": "ITEM",
+    "copy-from": "club_wooden",
+    "name": { "str": "test unbreakable club" },
+    "extend": { "flags": [ "UNBREAKABLE_MELEE" ] }
+  },
+  {
+    "//": "CMBT-B12 fixture.",
+    "type": "mutation",
+    "id": "TEST_CMBT_HARDTOHIT",
+    "name": { "str": "Test Hard To Hit" },
+    "points": 0,
+    "description": "Test mutation: attackers roll to hit twice and keep the worse roll.",
+    "flags": [ "HARDTOHIT" ]
+  },
+  {
+    "//": "CMBT-B13 fixture: casts a spell that counts its casts on the attacker.",
+    "type": "mutation",
+    "id": "TEST_CMBT_HIT_YOU",
+    "name": { "str": "Test Hit You" },
+    "points": 0,
+    "description": "Test mutation whose enchantment casts a spell on every melee hit.",
+    "enchantments": [ { "hit_you_effect": [ { "id": "test_cmbt_hit_you_spell", "hit_self": true } ] } ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_cmbt_hit_you_spell",
+    "name": { "str": "Test Hit You Count", "//~": "NO_I18N" },
+    "description": { "str": "Counts the casts on the caster.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_CMBT_HIT_YOU",
+    "shape": "blast"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CMBT_HIT_YOU",
+    "effect": [ { "math": [ "u_test_cmbt_hit_you += 1" ] } ]
+  },
+  {
+    "//": "CMBT-B10 fixture: attacks so fast that a heavy enough item is too unwieldy to swing.",
+    "type": "mutation",
+    "id": "TEST_CMBT_HASTE",
+    "name": { "str": "Test Haste" },
+    "points": 0,
+    "description": "Test mutation that cuts melee attack time to a hundredth.",
+    "enchantments": [ { "values": [ { "value": "ATTACK_SPEED", "multiply": -0.99 } ] } ]
+  },
+  {
+    "//": "CMBT-B10 fixture.",
+    "id": "test_cmbt_unwieldy",
+    "type": "ITEM",
+    "name": { "str": "test unwieldy weight" },
+    "description": "A very heavy weight for combat tests.",
+    "weight": "100 kg",
+    "volume": "1 L",
+    "material": [ "steel" ],
+    "symbol": "*",
+    "color": "light_gray",
+    "melee_damage": { "bash": 1 }
+  },
+  {
+    "//": "CMBT-B11 fixture.",
+    "type": "technique",
+    "id": "test_cmbt_wide",
+    "name": "Test Wide Strike",
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "aoe": "wide",
+    "messages": [ "You test-sweep %s", "<npcname> test-sweeps %s" ],
+    "attack_vectors": [ "vector_punch", "vector_null" ]
+  },
+  {
+    "//": "CMBT-B17 fixture.",
+    "type": "technique",
+    "id": "test_cmbt_impale",
+    "name": "Test Impale",
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "aoe": "impale",
+    "messages": [ "You test-impale %s", "<npcname> test-impales %s" ],
+    "attack_vectors": [ "vector_punch", "vector_null" ]
+  },
+  {
+    "//": "CMBT-B15 fixtures: a revolver, and two rounds that differ only in dispersion.  Within the gun's own dispersion, scaled, the 7 of the wild round rounds away.",
+    "type": "ammunition_type",
+    "id": "test_cmbt_round",
+    "name": "test combat round",
+    "default": "test_cmbt_round_plain"
+  },
+  {
+    "id": "test_cmbt_round_plain",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "copy-from": "test_9mm_ammo",
+    "name": { "str": "test plain round" },
+    "ammo_type": "test_cmbt_round",
+    "dispersion": 0
+  },
+  {
+    "id": "test_cmbt_round_wild",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "copy-from": "test_cmbt_round_plain",
+    "name": { "str": "test wild round" },
+    "dispersion": 7
+  },
+  {
+    "id": "test_cmbt_revolver",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "name": { "str": "test combat revolver" },
+    "description": "A revolver for combat tests.",
+    "weight": "600 g",
+    "volume": "500 ml",
+    "material": [ "steel" ],
+    "symbol": "(",
+    "color": "dark_gray",
+    "ammo": [ "test_cmbt_round" ],
+    "ranged_damage": { "damage_type": "bullet", "amount": 0 },
+    "dispersion": 15,
+    "durability": 8,
+    "skill": "pistol",
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "test_cmbt_round": 6 } } ],
+    "melee_damage": { "bash": 4 }
+  },
+  {
+    "//": "CMBT-B17 fixture: rounds with no casing, like Xedra Evolved's oxygen, in a gun that ejects casings into itself.",
+    "id": "test_cmbt_round_caseless",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "test caseless round" },
+    "description": "A round with no casing, for combat tests.",
+    "weight": "7 g",
+    "volume": "250 ml",
+    "material": [ "brass", "powder" ],
+    "symbol": "=",
+    "color": "yellow",
+    "count": 50,
+    "stack_size": 50,
+    "ammo_type": "test_cmbt_round",
+    "range": 14,
+    "damage": { "damage_type": "bullet", "amount": 26 },
+    "dispersion": 0,
+    "recoil": 500
+  },
+  {
+    "id": "test_cmbt_eject_revolver",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "copy-from": "test_cmbt_revolver",
+    "name": { "str": "test casing-ejecting revolver" },
+    "extend": { "flags": [ "RELOAD_EJECT" ] }
+  },
+  {
+    "type": "technique",
+    "id": "test_cmbt_loaded_strike",
+    "name": "Test Loaded Strike",
+    "melee_allowed": true,
+    "needs_ammo": true,
+    "messages": [ "You test-fire into %s", "<npcname> test-fires into %s" ],
+    "attack_vectors": [ "vector_null" ]
+  },
+  {
+    "//": "CMBT-B16 fixture: a buff that stacks three times, with fractional bonuses.",
+    "type": "martial_art",
+    "id": "test_style_cmbt_buffs",
+    "name": { "str": "Test Stacking Buff Style" },
+    "description": "Test martial art with a stacking buff.",
+    "initiate": [ "You get ready to stack.", "%s gets ready to stack." ],
+    "onhit_buffs": [
+      {
+        "id": "test_buff_cmbt_stacking",
+        "name": "Test Stack",
+        "description": "Per stack: +1.5 accuracy, +0.8 dodge, +0.6 block.",
+        "unarmed_allowed": true,
+        "melee_allowed": true,
+        "buff_duration": 10,
+        "max_stacks": 3,
+        "flat_bonuses": [ { "stat": "hit", "scale": 1.5 }, { "stat": "dodge", "scale": 0.8 }, { "stat": "block", "scale": 0.6 } ]
+      }
+    ]
+  },
+  {
+    "//": "CMBT-B11 fixture: a style whose only technique is a dodge counter.",
+    "type": "martial_art",
+    "id": "test_style_cmbt_dodge_counter",
+    "name": { "str": "Test Dodge Counter Style" },
+    "description": "Test martial art that answers every dodge with a counter.",
+    "initiate": [ "You get ready to counter.", "%s gets ready to counter." ],
+    "techniques": [ "test_tm_dodge_counter" ]
+  }
+]

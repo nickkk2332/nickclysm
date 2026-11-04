@@ -40,6 +40,7 @@
 #include "math_parser_jmath.h"
 #include "mattack_actors.h"
 #include "mattack_common.h"
+#include "melee.h"
 #include "messages.h"
 #include "monster.h"
 #include "mtype.h"
@@ -781,7 +782,9 @@ bool grapple::attempt_grab( Character &grabber, Creature &target, std::optional<
             }
         }
         const int hitspread = z->deal_melee_attack( &grabber,
-                              static_cast<int>( grabber.hit_roll() + accuracy_penalty ) );
+        static_cast<int>( melee::hit_roll_against( *z, [&grabber, accuracy_penalty] {
+            return grabber.hit_roll() + accuracy_penalty;
+        } ) ) );
         if( hitspread < 0 && !tolerate ) {
             grabber.add_msg_player_or_npc(
                 m_warning, _( "You reach for %s, but fail to make contact!" ),
@@ -826,7 +829,9 @@ bool grapple::attempt_grab( Character &grabber, Creature &target, std::optional<
     npc *const guy = target.as_npc();
     if( !tolerate ) {
         const int hitspread = target.deal_melee_attack( &grabber,
-                              static_cast<int>( grabber.hit_roll() ) );
+        static_cast<int>( melee::hit_roll_against( target, [&grabber] {
+            return grabber.hit_roll();
+        } ) ) );
         if( hitspread < 0 ) {
             grabber.add_msg_player_or_npc(
                 m_warning, _( "You reach for %s, but fail to make contact!" ),

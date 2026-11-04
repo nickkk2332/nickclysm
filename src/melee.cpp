@@ -430,7 +430,8 @@ float Character::hit_roll() const
         if( boarded_vehicle.player_in_control( here, *this ) ) {
             hit -= 10;
         }
-        hit -= std::abs( boarded_vehicle.forward_velocity() );
+        // The vehicle's velocity is in hundredths of a mph: 1 accuracy per mph
+        hit -= std::abs( boarded_vehicle.forward_velocity() ) / 100.0f;
     }
 
     hit *= get_modifier( character_modifier_melee_attack_roll_mod );
@@ -726,6 +727,18 @@ static std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> attack_techni
     return no_technique_attack();
 }
 
+namespace
+{
+// The latest melee attack to finish, and whether it hit. melee_attack() only says whether an
+// attack was made, and a counter-attack it provokes is a melee attack that finishes first.
+struct finished_attack {
+    const Character *attacker = nullptr;
+    const Creature *target = nullptr;
+    bool hit = false;
+};
+finished_attack last_finished_attack;
+} // namespace
+
 bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                                        const technique_choice &preset,
                                        bool allow_unarmed, int forced_movecost )
@@ -771,8 +784,52 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
     recalculate_enchantment_cache();
 
+    item_location cur_weapon = allow_unarmed ? used_weapon() : get_wielded_item();
+    item cur_weap = cur_weapon ? *cur_weapon : null_item_reference();
+
+    int move_cost = attack_speed( cur_weap );
+
+    // An attack refused or called off here happens before the hit roll, so the target doesn't
+    // dodge, react or learn it was attacked. A mech's arm attacks instead of the rider's weapon.
+    if( is_mounted() && mounted_creature->has_flag( mon_flag_RIDEABLE_MECH ) ) {
+        if( !mounted_creature->check_mech_powered() ) {
+            add_msg( m_bad, _( "The %s has dead batteries and will not move its arms." ),
+                     mounted_creature->get_name() );
+            return false;
+        }
+    } else {
+        if( cur_weap.attack_time( *this ) > move_cost * 20 ) {
+            add_msg( m_bad, _( "This weapon is too unwieldy to attack with!" ) );
+            return false;
+        }
+
+        if( is_avatar() && move_cost > 300 && calendar::turn > melee_warning_turn ) {
+            const std::string &action = query_popup()
+                                        .context( "CANCEL_ACTIVITY_OR_IGNORE_QUERY" )
+                                        .message( _( "<color_light_red>Attacking with your %1$s will take a long time.  "
+                                                  "Are you sure you want to continue?</color>" ),
+                                                  cur_weap.display_name() )
+                                        .option( "YES" )
+                                        .option( "NO" )
+                                        .option( "IGNORE" )
+                                        .query()
+                                        .action;
+
+            if( action == "NO" ) {
+                return false;
+            }
+            if( action == "IGNORE" ) {
+                if( melee_warning_turn == calendar::turn_zero || melee_warning_turn <= calendar::turn ) {
+                    melee_warning_turn = calendar::turn + 50_turns;
+                }
+            }
+        }
+    }
+
     melee::melee_stats.attack_count += 1;
-    int hit_spread = t.deal_melee_attack( this, hit_roll() );
+    int hit_spread = t.deal_melee_attack( this, melee::hit_roll_against( t, [this] {
+        return hit_roll();
+    } ) );
     if( !t.is_avatar() ) {
         // TODO: Per-NPC tracking? Right now monster hit by either npc or player will draw aggro...
         t.add_effect( effect_hit_by_player, 10_minutes ); // Flag as attacked by us for AI
@@ -780,11 +837,6 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     if( is_mounted() ) {
         auto *mons = mounted_creature.get();
         if( mons->has_flag( mon_flag_RIDEABLE_MECH ) ) {
-            if( !mons->check_mech_powered() ) {
-                add_msg( m_bad, _( "The %s has dead batteries and will not move its arms." ),
-                         mons->get_name() );
-                return false;
-            }
             if( mons->type->has_special_attack( "SMASH" ) && one_in( 3 ) ) {
                 add_msg( m_info, _( "The %s hisses as its hydraulic arm pumps forward!" ),
                          mons->get_name() );
@@ -800,38 +852,6 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
     // Fighting is hard work
     set_activity_level( melee_exertion_level() );
-
-    item_location cur_weapon = allow_unarmed ? used_weapon() : get_wielded_item();
-    item cur_weap = cur_weapon ? *cur_weapon : null_item_reference();
-
-    int move_cost = attack_speed( cur_weap );
-
-    if( cur_weap.attack_time( *this ) > move_cost * 20 ) {
-        add_msg( m_bad, _( "This weapon is too unwieldy to attack with!" ) );
-        return false;
-    }
-
-    if( is_avatar() && move_cost > 300 && calendar::turn > melee_warning_turn ) {
-        const std::string &action = query_popup()
-                                    .context( "CANCEL_ACTIVITY_OR_IGNORE_QUERY" )
-                                    .message( _( "<color_light_red>Attacking with your %1$s will take a long time.  "
-                                              "Are you sure you want to continue?</color>" ),
-                                              cur_weap.display_name() )
-                                    .option( "YES" )
-                                    .option( "NO" )
-                                    .option( "IGNORE" )
-                                    .query()
-                                    .action;
-
-        if( action == "NO" ) {
-            return false;
-        }
-        if( action == "IGNORE" ) {
-            if( melee_warning_turn == calendar::turn_zero || melee_warning_turn <= calendar::turn ) {
-                melee_warning_turn = calendar::turn + 50_turns;
-            }
-        }
-    }
 
     const bool hits = hit_spread >= 0;
 
@@ -964,8 +984,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         if( is_on_ground() )  {
             if( has_flag( json_flag_PSEUDOPOD_GRASP ) ) {
                 d.mult_damage( 0.8 );
+            } else {
+                d.mult_damage( 0.3 );
             }
-            d.mult_damage( 0.3 );
         } else if( is_crouching() && ( !has_effect( effect_natural_stance ) && !unarmed_attack() ) &&
                    !has_flag( json_flag_PSEUDOPOD_GRASP ) ) {
             d.mult_damage( 0.8 );
@@ -1017,6 +1038,8 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
             if( !t.is_hallucination() ) {
                 // on-hit effects for martial arts, after the hit so they see the damage dealt
                 martial_arts_data->ma_onhit_effects( *this, ma_ctx );
+                // enchantments' hit_you_effect: on a hit only, as for monsters
+                did_hit( t );
             }
 
             // Make a rather quiet sound, to alert any nearby monsters
@@ -1100,11 +1123,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     martial_arts_data->ma_onattack_effects( *this, ma_ctx );
     // some things (shattering weapons) can harm the attacking creature.
     check_dead_state( &here );
-    did_hit( t );
     if( t.as_character() ) {
         dealt_projectile_attack dp = dealt_projectile_attack();
         t.as_character()->on_hit( &here, this, bodypart_str_id::NULL_ID().id(), 0.0f, &dp );
     }
+    last_finished_attack = { this, &t, hits };
     return true;
 }
 
@@ -1211,9 +1234,11 @@ void Character::reach_attack( const tripoint_bub_ms &p, int forced_movecost )
         if( inter != nullptr &&
             !x_in_y( ( target_size * target_size + 1 ) * skill,
                      ( inter->get_size() * inter->get_size() + 1 ) * 10 ) ) {
-            // Even if we miss here, low roll means weapon is pushed away or something like that
-            if( inter->has_effect( effect_pet ) || ( inter->is_npc() &&
-                    inter->as_npc()->is_friendly( get_player_character() ) ) ) {
+            // Even if we miss here, low roll means weapon is pushed away or something like that.
+            // Only the avatar is asked. An NPC already holds back for its own friends (npc_attack)
+            // and takes whoever is in the way.
+            if( is_avatar() && ( inter->has_effect( effect_pet ) || ( inter->is_npc() &&
+                                 inter->as_npc()->is_friendly( get_player_character() ) ) ) ) {
                 if( query_yn( _( "Your attack may cause accidental injury, continue?" ) ) ) {
                     critter = inter;
                     break;
@@ -1440,10 +1465,8 @@ float Character::dodge_roll() const
         return 999999.0f;
     }
 
-    if( has_flag( json_flag_HARDTOHIT ) ) {
-        // two chances at rng!
-        return std::max( get_dodge(), get_dodge() ) * 5;
-    }
+    // HARDTOHIT is rolled on the attacker's side (melee::hit_roll_against): there's no
+    // randomness here to roll twice
     return get_dodge() * 5;
 }
 
@@ -1680,6 +1703,15 @@ std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
     return chosen;
 }
 
+// Whether the target holds a weapon that can't leave its hands, which no disarm can take: a
+// bionic weapon, handcuffs, or any other NO_UNWIELD or INTEGRATED item
+static bool weapon_stuck_in_hand( const Creature &t )
+{
+    const Character *const you = t.as_character();
+    return you != nullptr && you->is_armed() &&
+           !you->can_drop( *you->get_wielded_item() ).success();
+}
+
 // One code path for the automatic choice and the manual technique menu: each check returns the
 // reason the technique can't be used. Keep the order: with query.roll, a negative weighting is
 // rolled only once every other check but the requirements and the attack vector has passed.
@@ -1780,11 +1812,11 @@ technique_rejection Character::check_technique( const matec_id &tec_id, Creature
     // TODO: these are the stat requirements for tec_disarm
     // dice(   get_dex() +    get_skill_level("unarmed"),  8) >
     // dice(p->get_dex() + p->get_skill_level("melee"),   10))
-    if( tec_id->disarms && !t.has_weapon() ) {
+    if( tec_id->disarms && ( !t.has_weapon() || weapon_stuck_in_hand( t ) ) ) {
         return reject( technique_rejection::target_unarmed );
     }
 
-    if( tec_id->take_weapon && ( has_weapon() || !t.has_weapon() ) ) {
+    if( tec_id->take_weapon && ( has_weapon() || !t.has_weapon() || weapon_stuck_in_hand( t ) ) ) {
         return reject( has_weapon() ? technique_rejection::hands_full :
                        technique_rejection::target_unarmed );
     }
@@ -1831,6 +1863,34 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
     return valid_aoe_technique( t, technique, dummy_targets );
 }
 
+// Whether an area technique also strikes this creature, as the attacker sees it (not as the
+// avatar does): a monster not on the attacker's side, or a person hostile to the attacker
+static bool is_aoe_victim( const Character &attacker, const Creature &target, const Creature *c )
+{
+    if( c == nullptr || c == &attacker || c == &target ) {
+        return false;
+    }
+    const Creature::Attitude att = attacker.attitude_to( *c );
+    return c->is_monster() ? att != Creature::Attitude::FRIENDLY :
+           att == Creature::Attitude::HOSTILE;
+}
+
+// Adds the creatures on a tile that an area technique also strikes. A rider shares its mount's
+// tile, and creature_at<Creature>() finds only the mount.
+static void add_aoe_victims( const Character &attacker, const Creature &target,
+                             const tripoint_bub_ms &p, std::vector<Creature *> &targets )
+{
+    creature_tracker &creatures = get_creature_tracker();
+    Creature *const c = creatures.creature_at<Creature>( p );
+    if( is_aoe_victim( attacker, target, c ) ) {
+        targets.push_back( c );
+    }
+    Character *const rider = creatures.creature_at<Character>( p );
+    if( rider != c && is_aoe_victim( attacker, target, rider ) ) {
+        targets.push_back( rider );
+    }
+}
+
 bool Character::valid_aoe_technique( Creature const &t, const ma_technique &technique,
                                      std::vector<Creature *> &targets ) const
 {
@@ -1852,7 +1912,6 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
     int dx = std::max( -1, std::min( 1, t_pos.x() - pos.x() ) );
     int lookup = dy + 1 + 3 * ( dx + 1 );
 
-    creature_tracker &creatures = get_creature_tracker();
     //wide hits all targets adjacent to the attacker and the target
     if( technique.aoe == "wide" ) {
         //check if either (or both) of the squares next to our target contain a possible victim
@@ -1860,22 +1919,10 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
         tripoint_bub_ms left = pos + tripoint_rel_ms( offset_a[lookup], offset_b[lookup], 0 );
         tripoint_bub_ms right = pos + tripoint_rel_ms( offset_b[lookup], -offset_a[lookup], 0 );
 
-        monster *const mon_l = creatures.creature_at<monster>( left );
-        if( mon_l && mon_l->friendly == 0 ) {
-            targets.push_back( mon_l );
-        }
-        monster *const mon_r = creatures.creature_at<monster>( right );
-        if( mon_r && mon_r->friendly == 0 ) {
-            targets.push_back( mon_r );
-        }
-
-        npc *const npc_l = creatures.creature_at<npc>( left );
-        npc *const npc_r = creatures.creature_at<npc>( right );
-        if( npc_l && npc_l->is_enemy() ) {
-            targets.push_back( npc_l );
-        }
-        if( npc_r && npc_r->is_enemy() ) {
-            targets.push_back( npc_r );
+        for( const tripoint_bub_ms &p : {
+                 left, right
+             } ) {
+            add_aoe_victims( *this, t, p, targets );
         }
         if( !targets.empty() ) {
             return true;
@@ -1886,34 +1933,15 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
         // Impale hits the target and a single target behind them
         // Check if the square cardinally behind our target, or to the left / right,
         // contains a possible target.
+        // Left and right turn from the attack's direction as in "wide"
         tripoint_bub_ms left = t_pos + tripoint_rel_ms( offset_a[lookup], offset_b[lookup], 0 );
         tripoint_bub_ms target_pos = t_pos + ( t.pos_bub() - pos_bub() );
-        tripoint_bub_ms right = t_pos + tripoint_rel_ms( offset_b[lookup], -offset_b[lookup], 0 );
+        tripoint_bub_ms right = t_pos + tripoint_rel_ms( offset_b[lookup], -offset_a[lookup], 0 );
 
-        monster *const mon_l = creatures.creature_at<monster>( left );
-        monster *const mon_t = creatures.creature_at<monster>( target_pos );
-        monster *const mon_r = creatures.creature_at<monster>( right );
-        if( mon_l && mon_l->friendly == 0 ) {
-            targets.push_back( mon_l );
-        }
-        if( mon_t && mon_t->friendly == 0 ) {
-            targets.push_back( mon_t );
-        }
-        if( mon_r && mon_r->friendly == 0 ) {
-            targets.push_back( mon_r );
-        }
-
-        npc *const npc_l = creatures.creature_at<npc>( left );
-        npc *const npc_t = creatures.creature_at<npc>( target_pos );
-        npc *const npc_r = creatures.creature_at<npc>( right );
-        if( npc_l && npc_l->is_enemy() ) {
-            targets.push_back( npc_l );
-        }
-        if( npc_t && npc_t->is_enemy() ) {
-            targets.push_back( npc_t );
-        }
-        if( npc_r && npc_r->is_enemy() ) {
-            targets.push_back( npc_r );
+        for( const tripoint_bub_ms &p : {
+                 left, target_pos, right
+             } ) {
+            add_aoe_victims( *this, t, p, targets );
         }
         if( !targets.empty() ) {
             return true;
@@ -1925,14 +1953,7 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
             if( tmp == t_pos ) {
                 continue;
             }
-            monster *const mon = creatures.creature_at<monster>( tmp );
-            if( mon && mon->friendly == 0 ) {
-                targets.push_back( mon );
-            }
-            npc *const np = creatures.creature_at<npc>( tmp );
-            if( np && np->is_enemy() ) {
-                targets.push_back( np );
-            }
+            add_aoe_victims( *this, t, tmp, targets );
         }
         //don't trigger circle for fewer than 2 targets
         if( targets.size() < 2 ) {
@@ -2105,16 +2126,18 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         }
     }
 
-    if( technique.needs_ammo ) {
+    // A forced technique isn't checked first: the attacker may be unarmed, or out of ammo
+    if( technique.needs_ammo && cur_weapon && !cur_weapon->ammo_current().is_null() ) {
         const itype_id current_ammo = cur_weapon.get_item()->ammo_current();
         // if the weapon needs ammo we now expend it
         cur_weapon.get_item()->consume_one_shot( get_map(), pos, this );
         // thing going off should be as loud as the ammo
         sounds::sound( pos, current_ammo->ammo->loudness, sounds::sound_t::combat, _( "Crack!" ),
                        true );
-        const itype_id casing = *current_ammo->ammo->casing;
-        if( cur_weapon.get_item()->has_flag( flag_RELOAD_EJECT ) ) {
-            cur_weapon.get_item()->force_insert_item( item( casing ).set_flag( flag_CASING ),
+        // Caseless rounds (oxygen, say) leave no casing
+        const std::optional<itype_id> &casing = current_ammo->ammo->casing;
+        if( casing && cur_weapon.get_item()->has_flag( flag_RELOAD_EJECT ) ) {
+            cur_weapon.get_item()->force_insert_item( item( *casing ).set_flag( flag_CASING ),
                     pocket_type::MAGAZINE );
             cur_weapon.get_item()->on_contents_changed();
         }
@@ -2229,8 +2252,10 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
 
     Character *you = dynamic_cast<Character *>( &t );
 
+    // A forced technique (an EOC's u_attack, a counter) isn't checked first: a weapon stuck in
+    // the hand stays there
     if( technique.take_weapon && !has_weapon() && you != nullptr && you->is_armed() &&
-        !you->is_hallucination() ) {
+        !you->is_hallucination() && !weapon_stuck_in_hand( *you ) ) {
         if( you->is_avatar() ) {
             add_msg_if_npc( _( "<npcname> disarms you and takes your weapon!" ) );
         } else {
@@ -2241,7 +2266,8 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         wield( you->get_wielded_item() );
     }
 
-    if( technique.disarms && you != nullptr && you->is_armed() && !you->is_hallucination() ) {
+    if( technique.disarms && you != nullptr && you->is_armed() && !you->is_hallucination() &&
+        !weapon_stuck_in_hand( *you ) ) {
         item weap = you->remove_weapon();
         here.add_item_or_charges( you->pos_bub(), weap );
         if( you->is_avatar() ) {
@@ -2263,10 +2289,13 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         std::vector<Creature *> targets;
 
         valid_aoe_technique( t, technique, targets );
+        // A forced technique isn't checked first: there may be no one else to strike
+        if( targets.empty() ) {
+            return;
+        }
 
         //hit only one valid target (pierce through doesn't spread out)
         if( technique.aoe == "impale" ) {
-            // TODO: what if targets is empty
             Creature *const v = random_entry( targets );
             targets.clear();
             targets.push_back( v );
@@ -2275,11 +2304,23 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         //hit the targets in the lists (all candidates if wide or burst, or just the unlucky sod if deep)
         int count_hit = 0;
         for( Creature *const c : targets ) {
-            melee_attack( *c, false );
+            // Whether this blow landed, not a counter-attack it provoked
+            last_finished_attack = finished_attack();
+            if( technique.aoe == "impale" ) {
+                // Behind the target, out of the reach melee_attack() insists on
+                melee_attack_abstract( *c, false, technique_choice() );
+            } else {
+                melee_attack( *c, false );
+            }
+            if( last_finished_attack.attacker == this && last_finished_attack.target == c &&
+                last_finished_attack.hit ) {
+                count_hit++;
+            }
         }
 
-        t.add_msg_if_player( m_good, n_gettext( "%d enemy hit!", "%d enemies hit!", count_hit ),
-                             count_hit );
+        // The tally is the attacker's
+        add_msg_if_player( m_good, n_gettext( "%d enemy hit!", "%d enemies hit!", count_hit ),
+                           count_hit );
         // Extra attacks are free of charge (otherwise AoE attacks would SUCK)
         moves = temp_moves;
         set_stamina( temp_stamina );
@@ -2591,7 +2632,9 @@ void Character::perform_special_attacks( Creature &t, dealt_damage_instance &dea
         }
 
         // TODO: Make this hit roll use unarmed skill, not weapon skill + weapon to_hit
-        int hit_spread = t.deal_melee_attack( this, hit_roll() * 0.8 );
+        int hit_spread = t.deal_melee_attack( this, melee::hit_roll_against( t, [this] {
+            return hit_roll() * 0.8f;
+        } ) );
         if( hit_spread >= 0 ) {
             weakpoint_attack attack;
             t.deal_melee_hit( this, hit_spread, false, att.damage, dealt_dam, attack );
@@ -3167,7 +3210,7 @@ double Character::melee_value( const item &weap ) const
         my_value *= 1.0f + 0.5f * ( std::sqrt( reach ) - 1.0f );
     }
     // value polearms less to account for the trickiness of keeping the right range
-    if( weapon.has_flag( flag_POLEARM ) ) {
+    if( weap.has_flag( flag_POLEARM ) ) {
         my_value *= 0.8;
     }
 
@@ -3219,7 +3262,9 @@ void avatar::disarm( npc &target )
     };
 
     // roll your melee and target's dodge skills to check if grab/smash attack succeeds
-    int hitspread = target.deal_melee_attack( this, hit_roll() );
+    int hitspread = target.deal_melee_attack( this, melee::hit_roll_against( target, [this] {
+        return hit_roll();
+    } ) );
     if( hitspread < 0 ) {
         add_msg( _( "You lunge for the %s, but miss!" ), it->tname() );
         item weap = get_wielded_item() ? *get_wielded_item() : null_item_reference();
@@ -3323,6 +3368,15 @@ void avatar::steal( npc &target )
 float melee::melee_hit_range( float accuracy )
 {
     return normal_roll( accuracy * 5, 25.0f );
+}
+
+float melee::hit_roll_against( const Creature &target, const std::function<float()> &roll )
+{
+    const float first = roll();
+    if( !target.has_flag( json_flag_HARDTOHIT ) ) {
+        return first;
+    }
+    return std::min( first, roll() );
 }
 
 melee_statistic_data melee::get_stats()
