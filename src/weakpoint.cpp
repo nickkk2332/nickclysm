@@ -334,9 +334,13 @@ void weakpoint_effect::load( const JsonObject &jo )
     optional( jo, false, "permanent", permanent );
     optional( jo, false, "message", message );
     optional( jo, false, "instant_death_chance", instant_death_chance, pair_reader<int> {} );
-    optional( jo, false, "duration", duration, pair_reader<time_duration> {} );
+    // Without a default, optional() resets a missing range to ( 0, 0 ): a duration of nothing,
+    // and only a hit that deals no damage. A missing range keeps the constructor's.
+    optional( jo, false, "duration", duration, pair_reader<time_duration> {},
+              std::make_pair( 1_seconds, 1_seconds ) );
     optional( jo, false, "intensity", intensity, pair_reader<int> {} );
-    optional( jo, false, "damage_required", damage_required, pair_reader<float> {} );
+    optional( jo, false, "damage_required", damage_required, pair_reader<float> {},
+              std::make_pair( 0.0f, 100.0f ) );
 }
 
 weakpoint_attack::weakpoint_attack()  :

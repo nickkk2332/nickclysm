@@ -9,6 +9,7 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "character_martial_arts.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "faction.h"
@@ -39,6 +40,7 @@
 
 static const efftype_id effect_hit_by_player( "hit_by_player" );
 static const efftype_id effect_pet( "pet" );
+static const efftype_id effect_test_cmbt_mark( "test_cmbt_mark" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
@@ -61,6 +63,7 @@ static const matec_id test_tm_take( "test_tm_take" );
 
 static const move_mode_id move_mode_prone( "prone" );
 
+static const mtype_id mon_zombie( "mon_zombie" );
 static const mtype_id mon_zombie_dog( "mon_zombie_dog" );
 
 static const skill_id skill_melee( "melee" );
@@ -513,6 +516,41 @@ TEST_CASE( "cmbt-b14_melee_weakpoint_effects_know_the_attacker", "[audit][melee]
         REQUIRE( mon.is_dead() );
         CHECK( mon.get_killer() == &you );
     }
+}
+
+// Weak point effects (review of CMBT-B14): a missing "damage_required" or "duration" was read as
+// ( 0, 0 ), not the defaults, so such an effect went off only on a hit that dealt no damage, and
+// lasted no time.
+TEST_CASE( "cmbt-weakpoint-defaults_effect_without_ranges_fires_and_lasts", "[audit][weakpoint]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    make_fighter( you );
+    monster &mon = spawn_test_monster( "mon_test_cmbt_wp_defaults", you.pos_bub() + tripoint::east );
+    land_blow( you, mon );
+    CHECK( num_var( you, "test_cmbt_wp_defaults" ) == 1 );
+    CHECK( mon.get_effect_dur( effect_test_cmbt_mark ) == 1_seconds );
+}
+
+// The brain's instant death needs a hit that does some damage (1% of the monster's HP).
+TEST_CASE( "cmbt-weakpoint-defaults_brain_needs_a_damaging_hit", "[audit][weakpoint]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    monster &zed = spawn_test_monster( "mon_zombie", you.pos_bub() + tripoint::east );
+    const std::vector<weakpoint> &list = mon_zombie->weakpoints.weakpoint_list;
+    const auto brain = std::find_if( list.begin(), list.end(), []( const weakpoint & wp ) {
+        return wp.id == "brain";
+    } );
+    REQUIRE( brain != list.end() );
+    weakpoint_attack attack;
+    attack.source = &you;
+    attack.target = &zed;
+
+    brain->apply_effects( zed, 0, attack );
+    CHECK_FALSE( zed.is_dead() );
+    brain->apply_effects( zed, zed.get_hp_max() / 2, attack );
+    CHECK( zed.is_dead() );
 }
 
 // CMBT-B15: NPC weapon scoring counted a loaded gun's rounds twice (in gun_damage() and again
