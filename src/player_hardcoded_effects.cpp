@@ -284,13 +284,40 @@ static void eff_fun_bleed( Character &u, effect &it )
         }
     }
 }
+// When the hallucination was last taken or topped up, and when it was then due to end
+static constexpr const char *hallu_dose_start_var = "hallu_dose_start";
+static constexpr const char *hallu_dose_end_var = "hallu_dose_end";
+
+// The turn the current dose of a hallucination began: when the effect started, or when it was
+// last topped up, which pushes its end out by more than a turn.
+static int hallu_dose_start( Character &u, const effect &it )
+{
+    const int now = to_turn<int>( calendar::turn );
+    const int end = now + to_turns<int>( it.get_duration() );
+    int start = to_turn<int>( it.get_start_time() );
+    const diag_value *known_start = u.maybe_get_value( hallu_dose_start_var );
+    const diag_value *known_end = u.maybe_get_value( hallu_dose_end_var );
+    // Values from an earlier hallucination began before this one
+    if( known_start != nullptr && known_end != nullptr && known_start->is_dbl() &&
+        known_end->is_dbl() && known_start->dbl() >= start ) {
+        start = static_cast<int>( known_start->dbl() );
+        // A turn is only the order the effect was added and processed in
+        if( end > known_end->dbl() + 1 ) {
+            start = now;
+        }
+    }
+    u.set_value( hallu_dose_start_var, start );
+    u.set_value( hallu_dose_end_var, end );
+    return start;
+}
+
 static void eff_fun_hallu( Character &u, effect &it )
 {
-    // The stages are fractions of the dose, the time taken so far plus the time left, as they
-    // were of the 6-hour dose they were written for, so a shorter dose goes through them all
-    // (HLTH-B11).
+    // The stages are fractions of the dose, as they were of the 6-hour dose they were written
+    // for, so a shorter dose goes through them all: the time since it was taken or last topped
+    // up, plus the time left. A top-up starts them over (HLTH-B11).
     const int dur = to_turns<int>( it.get_duration() );
-    const int dose = to_turns<int>( calendar::turn - it.get_start_time() ) + dur;
+    const int dose = to_turn<int>( calendar::turn ) - hallu_dose_start( u, it ) + dur;
     const int noticeTime = dose * 95 / 100;
     const int comeupTime = dose * 9 / 10;
     const int peakTime = dose * 8 / 10;

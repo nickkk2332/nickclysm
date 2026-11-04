@@ -606,7 +606,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.
 - ```FLUMED``` Adds disease `took_flumed`.
 - ```FLUSLEEP``` Adds disease `took_flumed` and increases sleepiness.
 - ```FUNGICIDE``` Kills fungus and spores. Removes diseases `fungus` and `spores`.
-- ```HALLU``` Adds disease `hallu`.  Its stages are fractions of the dose (the time taken so far plus the time left): you feel strange with 95% of it left, then come up (nausea), see visuals from 80% left, get stat penalties and hallucinations until 30% left, and come down.  A `hallu` of any duration goes through them all.
+- ```HALLU``` Adds disease `hallu`.  Its stages are fractions of the dose, the time since it was taken or last topped up plus the time left: you feel strange with 95% of it left, then come up (nausea), see visuals from 80% left, get stat penalties and hallucinations until 30% left, and come down.  A `hallu` of any duration goes through them all.  Adding more while it lasts (pushing its end out by more than a turn) starts the stages over from that moment; adding a turn at a time, as an enchantment's `ench_effects` does, doesn't.
 - ```HONEYCOMB``` Spawns wax.
 - ```INHALER``` Removes disease `asthma`.
 - ```IODINE``` Adds disease `iodine`.

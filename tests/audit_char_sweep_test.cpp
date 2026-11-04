@@ -378,6 +378,23 @@ TEST_CASE( "hlth-b11_a_short_hallucination_goes_through_its_stages", "[audit][ef
         hallucinate( you, 5_minutes, 2_minutes );
         CHECK( you.per_bonus_hardcoded == -2 );
     }
+    SECTION( "topped up before it ends" ) {
+        // As Xedra Evolved's fae blood does: 30 minutes more every 29 minutes. Measured from
+        // when the effect began, the dose kept growing and the symptoms ended after the first.
+        you.add_effect( effect_hallu, 30_minutes );
+        for( int top_up = 0; top_up < 3; ++top_up ) {
+            calendar::turn += 29_minutes;
+            you.get_effect( effect_hallu ).set_duration( 1_minutes );
+            you.process_effects();
+            you.add_effect( effect_hallu, 30_minutes );
+            you.process_effects();
+        }
+        // 20 minutes after the last top-up, 11 of its 31 minutes are left
+        calendar::turn += 20_minutes;
+        you.get_effect( effect_hallu ).set_duration( 11_minutes );
+        you.process_effects();
+        CHECK( you.per_bonus_hardcoded == -2 );
+    }
     SECTION( "six hours, as before" ) {
         hallucinate( you, 6_hours, 288_minutes );
         CHECK( you.has_effect( effect_visuals ) );
