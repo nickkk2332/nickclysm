@@ -262,5 +262,32 @@
     "learned_proficiencies": [ "prof_lockpicking" ],
     "learned_spells": { "test_spell_pew": 2 },
     "included": true
+  },
+  {
+    "//": "MUT-B11 fixture: what removing test_bio_mutb11_arm leaves behind.",
+    "type": "mutation",
+    "id": "TEST_MUTB11_SCAR",
+    "name": { "str": "Test Surgery Scar" },
+    "points": 0,
+    "description": "Test trait left by removing a test CBM."
+  },
+  {
+    "//": "MUT-B11 fixture: an arm CBM that leaves a trait when removed.",
+    "type": "bionic",
+    "id": "test_bio_mutb11_arm",
+    "name": { "str": "Test Arm Implant" },
+    "description": "Test CBM in the left arm.",
+    "occupied_bodyparts": [ [ "arm_l", 1 ] ],
+    "give_mut_on_removal": [ "TEST_MUTB11_SCAR" ]
+  },
+  {
+    "//": "MUT-B11 fixture: item for test_bio_mutb11_arm.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb11_arm",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Arm Implant CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
   }
 ]

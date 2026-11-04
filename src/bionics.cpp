@@ -2001,7 +2001,7 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
                               adjusted_skill ) );
     const int fail_type = std::min( 5, failure_level );
 
-    bool u_see = sees( here, patient );
+    const bool u_see = get_player_view().sees( here, patient );
 
     if( u_see || patient.is_avatar() ) {
         if( fail_type <= 0 ) {
@@ -2029,7 +2029,7 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
     std::set<bodypart_id> bp_hurt;
     switch( fail_type ) {
         case 1:
-            if( !has_flag( json_flag_PAIN_IMMUNE ) ) {
+            if( !patient.has_flag( json_flag_PAIN_IMMUNE ) ) {
                 patient.add_msg_if_player( m_bad, _( "It really hurts!" ) );
                 patient.mod_pain( rng( 10, 30 ) );
             }
@@ -2037,13 +2037,13 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
 
         case 2:
         case 3:
-            for( const bodypart_id &bp : get_all_body_parts() ) {
-                if( has_effect( effect_under_operation, bp.id() ) ) {
+            for( const bodypart_id &bp : patient.get_all_body_parts() ) {
+                if( patient.has_effect( effect_under_operation, bp.id() ) ) {
                     if( bp_hurt.count( bp->main_part ) > 0 ) {
                         continue;
                     }
                     bp_hurt.emplace( bp->main_part );
-                    patient.apply_damage( this, bp, rng( failure_level, failure_level * 2 ), true );
+                    patient.apply_damage( &installer, bp, rng( failure_level, failure_level * 2 ), true );
                     if( u_see ) {
                         patient.add_msg_player_or_npc( m_bad, _( "Your %s is damaged." ), _( "<npcname>'s %s is damaged." ),
                                                        body_part_name_accusative( bp ) );
@@ -2054,15 +2054,15 @@ void Character::bionics_uninstall_failure( monster &installer, Character &patien
 
         case 4:
         case 5:
-            for( const bodypart_id &bp : get_all_body_parts() ) {
-                if( has_effect( effect_under_operation, bp.id() ) ) {
+            for( const bodypart_id &bp : patient.get_all_body_parts() ) {
+                if( patient.has_effect( effect_under_operation, bp.id() ) ) {
                     if( bp_hurt.count( bp->main_part ) > 0 ) {
                         continue;
                     }
                     bp_hurt.emplace( bp->main_part );
 
-                    patient.apply_damage( this, bp, rng( 25, 50 ), true );
-                    roll_critical_bionics_failure( bp );
+                    patient.apply_damage( &installer, bp, rng( 25, 50 ), true );
+                    patient.roll_critical_bionics_failure( bp );
 
                     if( u_see ) {
                         patient.add_msg_player_or_npc( m_bad, _( "Your %s is severely damaged." ),
@@ -2456,9 +2456,6 @@ void Character::perform_uninstall( const bionic &bio, int difficulty, int succes
 bool Character::uninstall_bionic( const bionic &bio, monster &installer, Character &patient,
                                   float adjusted_skill )
 {
-    map &here = get_map();
-
-    viewer &player_view = get_player_view();
     if( installer.ammo[itype_anesthetic] <= 0 ) {
         add_msg_if_player_sees( installer, _( "The %s's anesthesia kit looks empty." ), installer.name() );
         return false;
@@ -2498,28 +2495,16 @@ bool Character::uninstall_bionic( const bionic &bio, monster &installer, Charact
     }
 
     if( success > 0 ) {
-
-        if( patient.is_avatar() ) {
-            add_msg( m_neutral, _( "Your parts are jiggled back into their familiar places." ) );
-            add_msg( m_mixed, _( "Successfully removed %s." ), bio.info().name );
-        } else if( patient.is_npc() && player_view.sees( here, patient ) ) {
-            add_msg( m_neutral, _( "%s's parts are jiggled back into their familiar places." ),
-                     patient.disp_name() );
-            add_msg( m_mixed, _( "Successfully removed %s." ), bio.info().name );
-        }
-
-        item cbm( itype_burnt_out_bionic );
-        if( item::type_is_defined( bio.info().itype() ) ) {
-            cbm = bionic_to_uninstall;
-        }
-        patient.remove_bionic( bio );
-        cbm.set_flag( flag_FILTHY );
-        cbm.set_flag( flag_NO_STERILE );
-        cbm.set_flag( flag_NO_PACKED );
-        cbm.set_fault( fault_bionic_salvaged );
-        here.add_item( patient.pos_bub(), cbm );
+        // As after any other removal: the removal event, CBMs on a replaced body part,
+        // give_mut_on_removal and the salvaged CBM. The skill only matters for a failure.
+        patient.perform_uninstall( bio, difficulty, success, 0 );
     } else {
-        bionics_uninstall_failure( installer, patient, difficulty, success, adjusted_skill );
+        // The parts being cut into are the ones a failure hurts.
+        for( const std::pair<const bodypart_str_id, size_t> &elem : bio.id->occupied_bodyparts ) {
+            patient.add_effect( effect_under_operation, duration, elem.first.id(), true, difficulty );
+        }
+        patient.bionics_uninstall_failure( installer, patient, difficulty, success, adjusted_skill );
+        patient.remove_effect( effect_under_operation );
     }
 
     return false;

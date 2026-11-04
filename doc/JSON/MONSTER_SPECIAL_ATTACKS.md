@@ -140,6 +140,7 @@ These special attacks are mostly hardcoded in C++ and are generally not configur
 - ```LUNGE``` Performs a jumping attack from some distance away, which can inflict `downed` to the target.
 - ```MON_LEECH_EVOLUTION``` Evolves a leech plant into a leech blossom if no other blossoms are in sight.
 - ```NONE``` No special attack.
+- ```OPERATE``` Nurse bot surgery: grabs a character with CBMs, drags them onto a nearby autodoc couch and, using a charge of its `anesthetic` ammo, removes one of their CBMs at random.  A success works like any other removal (the salvaged CBM drops, CBMs on a replaced body part come out too, `give_mut_on_removal` traits are given); a bad failure hurts the patient and damages the body parts the CBM occupies.
 - ```PAID_BOT```  For creature with the `PAY_BOT` flag, removes the ally status when the pet effect runs out.
 - ```PARA_STING``` Shoots a paralyzing dart at the player.
 - ```PARROT``` Parrots the speech defined in `speech.json`, picks one of the lines randomly.  `speaker` points to a monster id.

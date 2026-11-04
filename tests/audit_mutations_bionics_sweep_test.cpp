@@ -395,3 +395,70 @@ TEST_CASE( "mut-b10_removing_a_cbm_takes_back_what_its_included_bionics_taught",
     CHECK_FALSE( you.magic->knows_spell( spell_test_spell_pew ) );
     clear_avatar();
 }
+
+static const bionic_id test_bio_mutb11_arm( "test_bio_mutb11_arm" );
+
+static const efftype_id effect_under_operation( "under_operation" );
+
+static const itype_id itype_anesthetic( "anesthetic" );
+
+static const mtype_id mon_nursebot_defective( "mon_nursebot_defective" );
+
+static const trait_id trait_TEST_MUTB11_SCAR( "TEST_MUTB11_SCAR" );
+
+// MUT-B11: a nurse bot's failed removal ran its consequences on the avatar instead of the
+// patient, with no part under operation, so they did nothing.
+TEST_CASE( "mut-b11_nurse_bot_failed_removal_hurts_the_patient", "[audit][bionics]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms spot = you.pos_bub() + point::east;
+    standard_npc patient( "Patient", spot );
+    patient.add_bionic( test_bio_mutb11_arm );
+    monster bot( mon_nursebot_defective );
+    bot.ammo[itype_anesthetic] = 1;
+    const bionic &cbm = **patient.find_bionic_by_type( test_bio_mutb11_arm );
+    const int arm_hp = patient.get_part_hp_cur( body_part_arm_l );
+    const int your_hp = you.get_hp();
+
+    // With almost no skill the removal fails as badly as it can.
+    SECTION( "called on the patient" ) {
+        patient.uninstall_bionic( cbm, bot, patient, 0.01f );
+    }
+    SECTION( "called on the avatar, as the nurse bot did" ) {
+        you.uninstall_bionic( cbm, bot, patient, 0.01f );
+    }
+    CHECK( patient.has_bionic( test_bio_mutb11_arm ) );
+    CHECK( patient.get_part_hp_cur( body_part_arm_l ) < arm_hp );
+    CHECK_FALSE( patient.has_effect( effect_under_operation ) );
+    CHECK( you.get_hp() == your_hp );
+    CHECK( you.get_pain() == 0 );
+    here.i_clear( spot );
+    clear_avatar();
+}
+
+// MUT-B11: a nurse bot's successful removal only took the bionic out, skipping what
+// removing one normally does, such as giving its give_mut_on_removal traits.
+TEST_CASE( "mut-b11_nurse_bot_removal_does_the_usual_cleanup", "[audit][bionics]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms spot = you.pos_bub() + point::east;
+    standard_npc patient( "Patient", spot );
+    patient.add_bionic( test_bio_mutb11_arm );
+    monster bot( mon_nursebot_defective );
+
+    // This much skill nearly always succeeds, and a failure does no harm.
+    for( int tries = 0; tries < 10 && patient.has_bionic( test_bio_mutb11_arm ); ++tries ) {
+        bot.ammo[itype_anesthetic] = 1;
+        patient.uninstall_bionic( **patient.find_bionic_by_type( test_bio_mutb11_arm ), bot, patient,
+                                  10000.0f );
+    }
+    REQUIRE_FALSE( patient.has_bionic( test_bio_mutb11_arm ) );
+    CHECK( patient.has_trait( trait_TEST_MUTB11_SCAR ) );
+    CHECK_FALSE( patient.has_effect( effect_under_operation ) );
+    here.i_clear( spot );
+    clear_avatar();
+}
