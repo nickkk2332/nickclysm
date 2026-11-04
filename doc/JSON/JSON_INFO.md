@@ -2066,7 +2066,7 @@ The following properties (mandatory, except if noted otherwise) are supported:
       { "id": "summon_undead", "level": 5 },
       { "id": "necrotic_gaze", "level": 1 }
     ],
-    "recipes": [ "beartrap" ]                                  // (optional) Array of starting recipe IDs the character knows upon creation. A recipe's ID is its result, followed by "_" and its "id_suffix" if it has one, or the "id" of a recipe without a result
+    "recipes": [ "beartrap" ]                                  // (optional) Array of starting recipe IDs the character knows upon creation. A recipe's ID is its result, followed by "_" and its "variant" if it has one, then "_" and its "id_suffix" if it has one; a recipe without a result uses its "id"
   },
 ```
 
