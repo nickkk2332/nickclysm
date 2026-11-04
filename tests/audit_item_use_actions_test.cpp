@@ -18,6 +18,7 @@
 #include "iuse_actor.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_iterator.h"
 #include "map_selector.h"
 #include "mapdata.h"
 #include "messages.h"
@@ -47,6 +48,8 @@ static const itype_id itype_tshirt( "tshirt" );
 static const morale_type morale_perm_constrained( "morale_perm_constrained" );
 
 static const oter_str_id oter_field( "field" );
+static const oter_str_id oter_fishing_pond_0_0( "fishing_pond_0_0" );
+static const oter_str_id oter_river_center( "river_center" );
 
 static const quality_id qual_HOTPLATE( "HOTPLATE" );
 
@@ -193,55 +196,99 @@ TEST_CASE( "use-b09_transforming_worn_armor_updates_its_coverage_for_morale",
 namespace
 {
 
-// Puts a tile's terrain and its overmap tile's terrain back when it goes out of scope.
-struct terrain_restore {
-    tripoint_bub_ms pos;
-    ter_id ter;
-    tripoint_abs_omt omt;
-    oter_id oter;
-    ~terrain_restore() {
-        get_map().ter_set( pos, ter );
-        overmap_buffer.ter_set( omt, oter );
+// Paints still water and sets overmap terrain, and puts everything back when it goes out of
+// scope.
+struct water_painter {
+    std::vector<std::pair<tripoint_bub_ms, ter_id>> tiles;
+    std::vector<std::pair<tripoint_abs_omt, oter_id>> omts;
+
+    // Still water over the given rectangle, under the given overmap terrain.
+    void paint( const tripoint_bub_ms &from, const tripoint_bub_ms &to, const oter_str_id &oter ) {
+        map &here = get_map();
+        for( const tripoint_bub_ms &p : tripoint_range<tripoint_bub_ms>( from, to ) ) {
+            const tripoint_abs_omt omt = project_to<coords::omt>( here.get_abs( p ) );
+            bool known = false;
+            for( const std::pair<tripoint_abs_omt, oter_id> &o : omts ) {
+                known |= o.first == omt;
+            }
+            if( !known ) {
+                omts.emplace_back( omt, overmap_buffer.ter( omt ) );
+                overmap_buffer.ter_set( omt, oter.id() );
+            }
+            tiles.emplace_back( p, here.ter( p ) );
+            here.ter_set( p, ter_t_water_sh );
+        }
+    }
+    ~water_painter() {
+        map &here = get_map();
+        for( const std::pair<tripoint_bub_ms, ter_id> &t : tiles ) {
+            here.ter_set( t.first, t.second );
+        }
+        for( const std::pair<tripoint_abs_omt, oter_id> &o : omts ) {
+            overmap_buffer.ter_set( o.first, o.second );
+        }
     }
 };
 
-} // namespace
-
-// USE-B10: good_fishing_spot() rejected still water with no fish nearby only inside a river
-// overmap tile, where water has a current, so the check almost never fired: a pond, swamp or
-// cave pool with no fish was always a good spot.
-TEST_CASE( "use-b10_still_water_with_no_fish_is_a_poor_fishing_spot", "[audit][iuse]" )
+// Casts a line from the avatar's tile; whether that started fishing, and whether the "poor
+// spot" message was given.
+std::pair<bool, bool> try_fishing( avatar &they )
 {
-    clear_avatar();
-    clear_map();
-    avatar &they = get_avatar();
-    map &here = get_map();
-    const tripoint_bub_ms water = they.pos_bub() + tripoint_rel_ms::east;
-    const avatar_and_tile_cleanup cleanup{ water };
-
-    // An overmap tile that is no river, lake or ocean
-    const tripoint_abs_omt omt = project_to<coords::omt>( here.get_abs( water ) );
-    const terrain_restore restore{ water, here.ter( water ), omt, overmap_buffer.ter( omt ) };
-    overmap_buffer.ter_set( omt, oter_field.id() );
-    here.ter_set( water, ter_t_water_sh );
-    REQUIRE( here.has_flag( ter_furn_flag::TFLAG_FISHABLE, water ) );
-    REQUIRE_FALSE( here.has_flag( ter_furn_flag::TFLAG_CURRENT, water ) );
-
     item rod( itype_fishing_rod_basic );
     Messages::clear_messages();
     const std::optional<int> used = iuse::fishing_rod( &they, &rod, they.pos_bub() );
     const bool fishing = they.has_activity( ACT_FISH );
     they.cancel_activity();
-
-    CHECK_FALSE( used.has_value() );
-    CHECK_FALSE( fishing );
+    CHECK( used.has_value() == fishing );
     bool doubted = false;
     for( const std::pair<std::string, std::string> &msg :
          Messages::recent_messages( Messages::size() ) ) {
         doubted |= msg.second.find( "You doubt you will have much luck" ) != std::string::npos;
     }
-    CHECK( doubted );
     Messages::clear_messages();
+    return { fishing, doubted };
+}
+
+} // namespace
+
+// USE-B10: good_fishing_spot() meant to turn away isolated little pools with no fish, but tested
+// for a river overmap tile, where water has a current, so it never did.  The pools are now told
+// apart by size: a body of still water big enough to hide fish (the fishing activity and fish
+// traps fall back on hidden fish) is fine with no fish in sight; a puddle is not.
+TEST_CASE( "use-b10_still_water_with_no_fish_is_a_poor_fishing_spot", "[audit][iuse]" )
+{
+    clear_avatar();
+    clear_map();
+    avatar &they = get_avatar();
+    const tripoint_bub_ms east = they.pos_bub() + tripoint_rel_ms::east;
+    const avatar_and_tile_cleanup cleanup{ east };
+    water_painter water;
+
+    SECTION( "the city fishing pond with no fish in sight is fine" ) {
+        // 10 by 10 tiles of still water east of the avatar
+        water.paint( east + tripoint_rel_ms( 0, -5, 0 ), east + tripoint_rel_ms( 9, 4, 0 ),
+                     oter_fishing_pond_0_0 );
+        REQUIRE_FALSE( get_map().has_flag( ter_furn_flag::TFLAG_CURRENT, east ) );
+        const std::pair<bool, bool> result = try_fishing( they );
+        CHECK( result.first );
+        CHECK_FALSE( result.second );
+    }
+
+    SECTION( "a puddle with no fish is a poor spot" ) {
+        // 3 by 3 tiles, beside the avatar
+        water.paint( east + tripoint_rel_ms( 0, -1, 0 ), east + tripoint_rel_ms( 2, 1, 0 ),
+                     oter_field );
+        const std::pair<bool, bool> result = try_fishing( they );
+        CHECK_FALSE( result.first );
+        CHECK( result.second );
+    }
+
+    SECTION( "still water in a river overmap tile is fine whatever its size" ) {
+        water.paint( east, east, oter_river_center );
+        const std::pair<bool, bool> result = try_fishing( they );
+        CHECK( result.first );
+        CHECK_FALSE( result.second );
+    }
 }
 
 // USE-B11: salvage rounded each remembered basic component down on its own.  A crafted item

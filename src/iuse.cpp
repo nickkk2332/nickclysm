@@ -1404,26 +1404,32 @@ std::optional<int> iuse::remove_all_mods( Character *p, item *, const tripoint_b
     return 0;
 }
 
+// The fewest connected tiles of still water that can hide fish nobody has seen.  Every natural
+// pond in mapgen has 25 or more (a meadow or horse farm pond, a spring, park and fishing ponds,
+// the pond overmap tiles); fountains, garden ponds, golf course hazards, swamp pools and puddles
+// in ruins have fewer than 20.
+static constexpr size_t min_hidden_fish_water = 20;
+
 // Callers tell the player when it isn't.
 static bool good_fishing_spot( const tripoint_bub_ms &pos )
 {
-    std::unordered_set<tripoint_bub_ms> fishable_locations = g->get_fishable_locations_bub(
-                MAX_VIEW_DISTANCE, pos );
-    std::vector<monster *> fishables = g->get_fishable_monsters( fishable_locations );
     map &here = get_map();
-    // isolated little body of water with no definite fish population
+    // Running water, and rivers, lakes and oceans, always hold fish.
+    if( here.has_flag( ter_furn_flag::TFLAG_CURRENT, pos ) ) {
+        return true;
+    }
     const oter_id &cur_omt =
         overmap_buffer.ter( coords::project_to<coords::omt>( here.get_abs( pos ) ) );
-    if( fishables.empty() && !here.has_flag( ter_furn_flag::TFLAG_CURRENT, pos ) &&
-        // this is a ridiculous way to find a good fishing spot, but I'm just trying
-        // to do oceans right now.  Maybe is_water_body() would be better?
-        // if you find this comment still here and it's later than 2025, LOL.
-        !is_ot_match( "river_", cur_omt, ot_match_type::contains ) &&
-        !cur_omt->is_lake() && !cur_omt->is_ocean() &&
-        !cur_omt->is_lake_shore() && !cur_omt->is_ocean_shore() ) {
-        return false;
+    if( cur_omt->is_river() || cur_omt->is_lake() || cur_omt->is_ocean() ||
+        cur_omt->is_lake_shore() || cur_omt->is_ocean_shore() ) {
+        return true;
     }
-    return true;
+    std::unordered_set<tripoint_bub_ms> fishable_locations = g->get_fishable_locations_bub(
+                MAX_VIEW_DISTANCE, pos );
+    // Fish you can see, or a body of water big enough to hide some (the fishing activity and
+    // fish traps fall back on hidden fish).  An isolated little pool with neither has none.
+    return !g->get_fishable_monsters( fishable_locations ).empty() ||
+           fishable_locations.size() >= min_hidden_fish_water;
 }
 
 static void poor_fishing_spot_message( Character &p )
