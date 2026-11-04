@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "debug.h"
 #include "flexbuffer_json.h"
@@ -385,17 +387,38 @@ void proficiency_set::set_time_practiced( const proficiency_id &practicing,
     current.practiced = amount;
 }
 
+// prof and its prerequisites, theirs first, each once: a circle of prerequisites ends where it
+// comes back round instead of recursing until the stack runs out (PROG-B10)
+static void prerequisites_first( const proficiency_id &prof, std::set<proficiency_id> &seen,
+                                 std::vector<proficiency_id> &order )
+{
+    if( !seen.insert( prof ).second ) {
+        return;
+    }
+    for( const proficiency_id &req : prof->required_proficiencies() ) {
+        prerequisites_first( req, seen, order );
+    }
+    order.push_back( prof );
+}
+
 void proficiency_set::learn( const proficiency_id &learned, bool recursive )
 {
-    for( const proficiency_id &req : learned->required_proficiencies() ) {
-        if( !has_learned( req ) && !recursive ) {
-            return;
-        } else if( recursive ) {
-            learn( req, recursive );
+    std::vector<proficiency_id> to_learn;
+    if( recursive ) {
+        std::set<proficiency_id> seen;
+        prerequisites_first( learned, seen, to_learn );
+    } else {
+        for( const proficiency_id &req : learned->required_proficiencies() ) {
+            if( !has_learned( req ) ) {
+                return;
+            }
         }
+        to_learn.push_back( learned );
     }
-    // A prerequisite learned this way may have been in progress
-    direct_learn( learned );
+    for( const proficiency_id &prof : to_learn ) {
+        // A prerequisite learned this way may have been in progress
+        direct_learn( prof );
+    }
 }
 
 // All the proficiencies in subjects that require one of the proficiencies in requirements

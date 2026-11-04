@@ -97,5 +97,25 @@
     "hobbies": [ "test_prog_b08_hobby", "driving_license" ],
     "whitelist_hobbies": false,
     "forbidden_traits": [ "test_prog_b08_forbidden_trait" ]
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_b10_circle_a",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-B10 Circle A" },
+    "description": "Requires test_prog_b10_circle_b, which requires it.",
+    "can_learn": true,
+    "time_to_learn": "1 h",
+    "required_proficiencies": [ "test_prog_b10_circle_b" ]
+  },
+  {
+    "type": "proficiency",
+    "id": "test_prog_b10_circle_b",
+    "category": "prof_test_category",
+    "name": { "str": "PROG-B10 Circle B" },
+    "description": "Requires test_prog_b10_circle_a, which requires it.",
+    "can_learn": true,
+    "time_to_learn": "1 h",
+    "required_proficiencies": [ "test_prog_b10_circle_a" ]
   }
 ]

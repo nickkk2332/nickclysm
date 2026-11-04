@@ -351,6 +351,35 @@ TEST_CASE( "prog-b10_eoc_direct_100_percent_learns_the_proficiency", "[audit][pr
     }
 }
 
+static const proficiency_id proficiency_test_prog_b10_circle_a( "test_prog_b10_circle_a" );
+static const proficiency_id proficiency_test_prog_b10_circle_b( "test_prog_b10_circle_b" );
+
+// Learning a proficiency with its prerequisites recursed through them with nothing to stop a
+// circle, so two proficiencies that required each other overflowed the stack.
+TEST_CASE( "prog-b10_a_circle_of_prerequisites_is_learned_once_round", "[audit][proficiency]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    REQUIRE( proficiency_test_prog_b10_circle_a->required_proficiencies().count(
+                 proficiency_test_prog_b10_circle_b ) == 1 );
+    REQUIRE( proficiency_test_prog_b10_circle_b->required_proficiencies().count(
+                 proficiency_test_prog_b10_circle_a ) == 1 );
+
+    SECTION( "set to 100% from an EOC" ) {
+        dialogue d( get_talker_for( u ), nullptr );
+        eval_math( d,
+                   "u_proficiency('test_prog_b10_circle_a', 'format': 'percent', 'direct': true) = 100" );
+    }
+    SECTION( "granted with its prerequisites" ) {
+        u.add_proficiency( proficiency_test_prog_b10_circle_a, false, true );
+    }
+    CHECK( u.has_proficiency( proficiency_test_prog_b10_circle_a ) );
+    CHECK( u.has_proficiency( proficiency_test_prog_b10_circle_b ) );
+}
+
 // ---- PROG-B11 ----
 
 static const trait_group::Trait_group_tag
