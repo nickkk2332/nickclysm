@@ -264,6 +264,30 @@
     "included": true
   },
   {
+    "//": "MUT-B10 fixture: a profession teaching what its starting CBM teaches.",
+    "type": "profession",
+    "id": "test_mutb10_profession",
+    "name": "CBM teacher test profession",
+    "description": "A profession whose starting CBM teaches what the profession does.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ "CBM_Interface" ],
+    "CBMs": [ "test_bio_mutb10_teacher" ],
+    "proficiencies": [ "prof_lockpicking" ],
+    "spells": [ { "id": "test_spell_pew", "level": 3 } ]
+  },
+  {
+    "//": "MUT-B10 fixture: an NPC class teaching what its bionic teaches.",
+    "type": "npc_class",
+    "id": "test_mutb10_class",
+    "name": { "str": "CBM teacher tester" },
+    "job_description": "I test which CBM taught what.",
+    "common": false,
+    "bionics": [ { "id": "test_bio_mutb10_teacher", "chance": 100 } ],
+    "proficiencies": [ "prof_lockpicking" ],
+    "spells": [ { "id": "test_spell_pew", "level": 3 } ]
+  },
+  {
     "//": "MUT-B11 fixture: what removing test_bio_mutb11_arm leaves behind.",
     "type": "mutation",
     "id": "TEST_MUTB11_SCAR",

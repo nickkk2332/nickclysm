@@ -317,6 +317,10 @@ static const bionic_id test_bio_mutb10_parent( "test_bio_mutb10_parent" );
 static const bionic_id test_bio_mutb10_teacher( "test_bio_mutb10_teacher" );
 static const bionic_id test_bio_mutb10_teacher_b( "test_bio_mutb10_teacher_b" );
 
+static const npc_class_id npc_class_test_mutb10_class( "test_mutb10_class" );
+
+static const profession_id profession_test_mutb10_profession( "test_mutb10_profession" );
+
 static const proficiency_id proficiency_prof_lockpicking( "prof_lockpicking" );
 
 static const spell_id spell_test_spell_pew( "test_spell_pew" );
@@ -413,6 +417,38 @@ TEST_CASE( "mut-b10_removing_a_cbm_takes_back_what_its_included_bionics_taught",
     CHECK_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
     CHECK_FALSE( you.magic->knows_spell( spell_test_spell_pew ) );
     clear_avatar();
+}
+
+// Checks that removing the starting CBM leaves what the character's background taught.
+static void check_background_outlives_starting_cbm( Character &who )
+{
+    REQUIRE( who.has_bionic( test_bio_mutb10_teacher ) );
+    REQUIRE( who.has_proficiency( proficiency_prof_lockpicking ) );
+    REQUIRE( who.magic->knows_spell( spell_test_spell_pew ) );
+    REQUIRE( who.magic->get_spell( spell_test_spell_pew ).get_level() == 3 );
+
+    remove_bionic_of_type( who, test_bio_mutb10_teacher );
+    CHECK( who.has_proficiency( proficiency_prof_lockpicking ) );
+    REQUIRE( who.magic->knows_spell( spell_test_spell_pew ) );
+    CHECK( who.magic->get_spell( spell_test_spell_pew ).get_level() == 3 );
+}
+
+// MUT-B10: a new character's CBMs went in before the proficiencies and spells of their
+// profession, hobbies or NPC class, so the CBMs counted those as their own.
+TEST_CASE( "mut-b10_starting_cbms_do_not_claim_what_the_background_teaches",
+           "[audit][bionics][cbm][proficiency][magic]" )
+{
+    SECTION( "a new character's profession" ) {
+        standard_npc recruit( "Recruit" );
+        recruit.prof = &profession_test_mutb10_profession.obj();
+        recruit.initialize( false );
+        check_background_outlives_starting_cbm( recruit );
+    }
+    SECTION( "a new NPC's class" ) {
+        npc recruit;
+        recruit.randomize( npc_class_test_mutb10_class );
+        check_background_outlives_starting_cbm( recruit );
+    }
 }
 
 static const bionic_id test_bio_mutb11_arm( "test_bio_mutb11_arm" );
