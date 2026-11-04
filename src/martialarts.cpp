@@ -1621,6 +1621,12 @@ void ma_event_context::activate( Character &u,
         if( !weapon.is_empty() ) {
             d.set_value( "weapon", weapon.str() );
         }
+        if( weapon_uid > 0 ) {
+            d.set_value( "weapon_uid", std::to_string( weapon_uid ) );
+        }
+        if( !style.is_empty() ) {
+            d.set_value( "style", style.str() );
+        }
         if( !technique.is_empty() ) {
             d.set_value( "technique", technique.str() );
         }

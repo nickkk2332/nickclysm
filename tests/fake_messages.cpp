@@ -5,7 +5,11 @@
 
 #include "calendar.h"
 #include "coords_fwd.h"
+#include "flexbuffer_json.h"
+#include "json.h"
+#include "message_log.h"
 #include "messages.h"
+#include "options.h"
 
 class Creature;
 class JsonObject;
@@ -26,11 +30,11 @@ class window;
  * event of a test failure.
  */
 
-static std::vector<std::pair<std::string, std::string>> messages;
+static message_log messages;
 
-std::vector<std::pair<std::string, std::string>> Messages::recent_messages( size_t )
+std::vector<std::pair<std::string, std::string>> Messages::recent_messages( size_t count )
 {
-    return messages;
+    return messages.recent( count == 0 ? messages.messages.size() : count );
 }
 bool Messages::has_debug_filter( debugmode::debug_filter )
 {
@@ -39,7 +43,7 @@ bool Messages::has_debug_filter( debugmode::debug_filter )
 void Messages::add_msg( std::string m )
 {
     if( !m.empty() ) {
-        messages.emplace_back( to_string_time_of_day( calendar::turn ), std::move( m ) );
+        messages.messages.emplace_back( std::move( m ), m_neutral );
     }
 }
 void Messages::add_msg( const game_message_params &, std::string m )
@@ -53,7 +57,7 @@ void Messages::clear_messages()
 void Messages::deactivate() {}
 size_t Messages::size()
 {
-    return messages.size();
+    return messages.messages.size();
 }
 bool Messages::has_undisplayed_messages()
 {
@@ -61,8 +65,19 @@ bool Messages::has_undisplayed_messages()
 }
 void Messages::display_messages() {}
 void Messages::display_messages( const catacurses::window &, int, int, int, int ) {}
-void Messages::serialize( JsonOut & ) {}
-void Messages::deserialize( const JsonObject & ) {}
+void Messages::serialize( JsonOut &out )
+{
+    out.member( "player_messages" );
+    messages.serialize( out );
+}
+void Messages::deserialize( const JsonObject &obj )
+{
+    if( obj.has_member( "player_messages" ) ) {
+        messages.deserialize( obj.get_object( "player_messages" ) );
+    } else {
+        messages.clear();
+    }
+}
 void add_msg( std::string m )
 {
     Messages::add_msg( std::move( m ) );
@@ -86,4 +101,17 @@ void add_msg_if_player_sees( const tripoint_bub_ms &, const game_message_params 
 void add_msg_if_player_sees( const Creature &, const game_message_params &, std::string m )
 {
     Messages::add_msg( std::move( m ) );
+}
+
+Messages::owned_message_result Messages::add_owned( const std::string &owner,
+        const std::string &anchor,
+        std::string text, const std::string &separator )
+{
+    return messages.add_owned( owner, anchor, std::move( text ), separator,
+                               static_cast<size_t>( get_option<int>( "MESSAGE_LIMIT" ) ) );
+}
+
+std::vector<std::pair<std::string, std::string>> Messages::recent_messages_compact( size_t count )
+{
+    return messages.recent( count, true );
 }

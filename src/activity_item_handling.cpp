@@ -565,7 +565,7 @@ std::vector<item_location> drop_on_map( Character &you, item_drop_reason reason,
     for( const item &it : items ) {
         // Use ret_loc variant so the item_location tracks the actual position,
         // which may differ from 'where' if the tile overflowed to an adjacent one.
-        item_location dropped_loc = here->add_item_or_charges_ret_loc( where, it );
+        item_location dropped_loc = here->add_item_or_charges_ret_loc( where, it, true, &you );
         if( dropped_loc.get_item() ) {
             craft_relocated( dropped_loc );
             items_dropped.push_back( std::move( dropped_loc ) );

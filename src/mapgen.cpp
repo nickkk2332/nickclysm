@@ -2087,8 +2087,7 @@ class jmapgen_npc : public jmapgen_piece
                 return;
             }
             tripoint_bub_ms const dst( x.get(), y.get(), dat.zlevel() + z.get() );
-            // TODO: Make place_npc 3D aware.
-            character_id npc_id = dat.m.place_npc( dst.xy(), chosen_id );
+            character_id npc_id = dat.m.place_npc( dst, chosen_id );
             if( reality_bubble().inbounds( dat.m.get_abs( dst ) ) ) {
                 dat.m.queue_main_cleanup();
             }
@@ -6887,10 +6886,15 @@ void map::place_vending( const tripoint_bub_ms &p, const item_group_id &type, bo
 
 character_id map::place_npc( const point_bub_ms &p, const string_id<npc_template> &type )
 {
+    return place_npc( tripoint_bub_ms( p, abs_sub.z() ), type );
+}
+
+character_id map::place_npc( const tripoint_bub_ms &p, const string_id<npc_template> &type )
+{
     shared_ptr_fast<npc> temp = make_shared_fast<npc>();
     temp->normalize();
     temp->load_npc_template( type );
-    temp->spawn_at_precise( get_abs( { p, abs_sub.z() } ) );
+    temp->spawn_at_precise( get_abs( p ) );
     temp->toggle_trait( trait_NPC_STATIC_NPC );
     overmap_buffer.insert_npc( temp );
     return temp->getID();

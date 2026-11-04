@@ -1608,7 +1608,9 @@ void overmap::move_hordes()
             if( get_map().inbounds( viable_candidates.front() ) ) {
                 monster *placed_monster = nullptr;
                 if( mon->second.monster_data ) {
-                    placed_monster = g->place_critter_around( make_shared_fast<monster>( *mon->second.monster_data ),
+                    auto restored = make_shared_fast<monster>( *mon->second.monster_data );
+                    restored->restore_persistent_id( mon->second.monster_data->persistent_id() );
+                    placed_monster = g->place_critter_around( restored,
                                      get_map().get_bub( viable_candidates.front() ), 1 );
                 } else {
                     placed_monster = g->place_critter_around( mon->second.type_id->id,

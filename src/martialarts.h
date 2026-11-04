@@ -3,6 +3,7 @@
 #define CATA_SRC_MARTIALARTS_H
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <set>
@@ -116,6 +117,9 @@ struct ma_event_context {
     Creature *opponent = nullptr;
     // `weapon`: id of the weapon used for the attack ("null" when unarmed)
     itype_id weapon;
+    // Stable item identity and selected style, captured by the melee attack adapter.
+    int64_t weapon_uid = 0;
+    matype_id style;
     // `technique`: id of the technique used for the attack ("tec_none" when none)
     matec_id technique;
     // `bp`: body part hit; the target's for attack events, the user's own for defensive events

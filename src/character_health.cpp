@@ -39,6 +39,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_runtime.h"
 #include "field_type.h"
 #include "flag.h"
 #include "fungal_effects.h"
@@ -2762,6 +2763,12 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
         mod_part_hp_cur( part_to_damage, - dam_to_bodypart );
     }
 
+    if( g ) {
+        if( source == nullptr ) {
+            source = g->executions().secondary_damage_source();
+        }
+        g->executions().notify_damage( *this, dam_to_bodypart );
+    }
     if( source ) {
         cata::event e = cata::event::make<event_type::character_takes_damage>( getID(), dam_to_bodypart,
                         part_to_damage.id(), pain );
@@ -3051,6 +3058,10 @@ void Character::hurtall( int dam, Creature *source, bool disturb /*= true*/ )
         return;
     }
 
+    if( source == nullptr && g ) {
+        source = g->executions().secondary_damage_source();
+    }
+
     // Low pain: damage is spread all over the body, so not as painful as 6 hits in one part
     int pain = mod_pain( dam );
 
@@ -3059,6 +3070,10 @@ void Character::hurtall( int dam, Creature *source, bool disturb /*= true*/ )
         // Don't use apply_damage here or it will annoy the player with 6 queries
         const int dam_to_bodypart = std::min( dam, get_part_hp_cur( bp ) );
         mod_part_hp_cur( bp, - dam_to_bodypart );
+
+        if( g ) {
+            g->executions().notify_damage( *this, dam_to_bodypart );
+        }
 
         if( source ) {
             cata::event e = cata::event::make<event_type::character_takes_damage>( getID(), dam_to_bodypart,

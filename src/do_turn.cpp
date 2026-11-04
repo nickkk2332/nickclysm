@@ -22,6 +22,7 @@
 #include "bionics.h"
 #include "cached_options.h"
 #include "calendar.h"
+#include "execution_runtime.h"
 #ifdef TILES
 #include "cata_imgui.h"
 #endif
@@ -293,6 +294,7 @@ npc_turn_result process_npc_turn( map &m, npc &guy )
         const int moves = guy.get_moves();
         const bool has_destination = guy.has_destination_activity();
         guy.move();
+        g->executions().drain_starts();
         if( moves == guy.get_moves() ) {
             // Count every time we exit npc::move() without spending any moves.
             real_count++;
@@ -386,6 +388,10 @@ void monmove()
         }
         while( critter.get_moves() > 0 && !critter.is_dead() && !critter.has_effect( effect_ridden ) ) {
             critter.made_footstep = false;
+            if( g->executions().controls( critter ) ) {
+                critter.set_moves( 0 );
+                break;
+            }
             // Controlled critters don't make their own plans
             if( !critter.has_effect( effect_controlled ) ) {
                 // Formulate a path to follow
@@ -395,6 +401,7 @@ void monmove()
                 break;
             }
             critter.move(); // Move one square, possibly hit u
+            g->executions().drain_starts();
             critter.process_triggers();
             m.creature_in_field( critter );
         }
@@ -588,6 +595,7 @@ bool game::do_turn()
     }
 
     timed_event_manager &timed_events = get_timed_events();
+    executions().process();
     timed_events.process();
     get_item_wakeups().process( calendar::turn );
     if( calendar::once_every( 1_hours ) ) {
@@ -697,6 +705,7 @@ bool game::do_turn()
                     u.action_taken();
                 }
 
+                executions().drain_starts();
                 if( is_game_over() ) {
                     return turn_handler::cleanup_at_end();
                 }

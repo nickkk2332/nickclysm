@@ -25,6 +25,16 @@ class window;
 namespace Messages
 {
 
+struct owned_message_result {
+    std::string group;
+    std::string segment;
+    bool appended = false;
+};
+
+owned_message_result add_owned( const std::string &owner, const std::string &anchor,
+                                std::string text, const std::string &separator = " " );
+std::vector<std::pair<std::string, std::string>> recent_messages_compact( size_t count );
+
 std::vector<std::pair<std::string, std::string>> recent_messages( size_t count );
 bool has_debug_filter( debugmode::debug_filter type );
 void add_msg( std::string msg );

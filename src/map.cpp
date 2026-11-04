@@ -3394,8 +3394,6 @@ void map::drop_items( const tripoint_bub_ms &p )
         double damage = sqrt( impact_energy );
         damage_total += damage;
 
-        add_item_or_charges( below, i );
-
         // Bash creature standing below
         if( creature_below ) {
             // creature's dodge modifier
@@ -3441,9 +3439,17 @@ void map::drop_items( const tripoint_bub_ms &p )
 
         // Bash items at bottom since currently bash_items only bash glass items
         // FIXME: Hardcoded damage type!
-        int chance = static_cast<int>( 200 * i.resist( damage_bash, true ) / damage + 1 );
-        if( one_in( chance ) ) {
-            i.inc_damage();
+        bool destroyed = false;
+        if( damage > 0.0 ) {
+            const double chance = 200.0 * i.resist( damage_bash, true ) / damage + 1.0;
+            if( one_in( static_cast<int>( std::clamp( chance, 1.0, static_cast<double>( INT_MAX ) ) ) ) ) {
+                destroyed = i.inc_damage();
+            }
+        }
+        if( destroyed ) {
+            i.spill_contents( this, below );
+        } else {
+            add_item_or_charges( below, i );
         }
     }
 
@@ -6047,11 +6053,11 @@ units::volume map::free_volume( const tripoint_bub_ms &p )
 }
 
 item_location map::add_item_or_charges_ret_loc( const tripoint_bub_ms &pos, item obj,
-        bool overflow )
+        bool overflow, Character *dropper )
 {
     int copies = 1;
     std::pair<item *, tripoint_bub_ms> ret = _add_item_or_charges( pos, std::move( obj ), copies,
-            overflow );
+            overflow, dropper );
     if( ret.first != nullptr && !ret.first->is_null() ) {
         return item_location{ map_cursor{ get_abs( ret.second ) }, ret.first };
     }
@@ -6059,17 +6065,18 @@ item_location map::add_item_or_charges_ret_loc( const tripoint_bub_ms &pos, item
     return {};
 }
 
-item &map::add_item_or_charges( const tripoint_bub_ms &pos, item obj, bool overflow )
+item &map::add_item_or_charges( const tripoint_bub_ms &pos, item obj, bool overflow,
+                                Character *dropper )
 {
     int copies = 1;
-    return *_add_item_or_charges( pos, std::move( obj ), copies, overflow ).first;
+    return *_add_item_or_charges( pos, std::move( obj ), copies, overflow, dropper ).first;
 }
 
 // clang-tidy is confused and thinks obj can be made into a const reference, but it can't
 // on_drop is not a const function
 // NOLINTNEXTLINE(performance-unnecessary-value-param)
 std::pair<item *, tripoint_bub_ms> map::_add_item_or_charges( const tripoint_bub_ms &pos, item obj,
-        int &copies_remaining, bool overflow )
+        int &copies_remaining, bool overflow, Character *dropper )
 {
     // Checks if item would not be destroyed if added to this tile
     auto valid_tile = [&]( const tripoint_bub_ms & e ) {
@@ -6135,7 +6142,7 @@ std::pair<item *, tripoint_bub_ms> map::_add_item_or_charges( const tripoint_bub
         copies_to_add_here > 0 ) {
         // Pass map into on_drop, because this map may not be the global map object (in mapgen, for instance).
         if( obj.made_of( phase_id::LIQUID ) || !obj.has_flag( flag_DROP_ACTION_ONLY_IF_LIQUID ) ) {
-            if( obj.on_drop( pos, *this ) ) {
+            if( obj.on_drop( pos, *this, dropper ) ) {
                 return { &null_item_reference(), tripoint_bub_ms::invalid };
             }
         }
@@ -6163,7 +6170,7 @@ std::pair<item *, tripoint_bub_ms> map::_add_item_or_charges( const tripoint_bub
                 continue;
             }
             if( obj.made_of( phase_id::LIQUID ) || !obj.has_flag( flag_DROP_ACTION_ONLY_IF_LIQUID ) ) {
-                if( obj.on_drop( e, *this ) ) {
+                if( obj.on_drop( e, *this, dropper ) ) {
                     return first_added ? first_added.value() : std::make_pair( &null_item_reference(),
                             tripoint_bub_ms::invalid );
                 }
@@ -6186,9 +6193,9 @@ std::pair<item *, tripoint_bub_ms> map::_add_item_or_charges( const tripoint_bub
 }
 
 item &map::add_item_or_charges( const tripoint_bub_ms &pos, item obj, int &copies_remaining,
-                                bool overflow )
+                                bool overflow, Character *dropper )
 {
-    return *_add_item_or_charges( pos, std::move( obj ), copies_remaining, overflow ).first;
+    return *_add_item_or_charges( pos, std::move( obj ), copies_remaining, overflow, dropper ).first;
 }
 
 float map::item_category_spawn_rate( const item &itm )

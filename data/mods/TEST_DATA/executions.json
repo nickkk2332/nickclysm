@@ -1,0 +1,408 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_START",
+    "effect": [ { "math": [ "exec_starts += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_TICK",
+    "effect": [ { "math": [ "exec_ticks += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_COMPLETE",
+    "effect": [ { "math": [ "exec_completes += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_INTERRUPT",
+    "effect": [ { "math": [ "exec_interrupts += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_END",
+    "effect": [ { "math": [ "exec_ends += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_ENTRY",
+    "effect": [ { "math": [ "exec_entries += 1" ] }, { "math": [ "_counter += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_ACCEPTED",
+    "effect": [
+      { "math": [ "exec_accepted += 1" ] },
+      { "copy_var": { "context_val": "execution_instance" }, "target_var": { "global_val": "exec_last_id" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_REFUSED",
+    "effect": [ { "math": [ "exec_refused += 1" ] } ]
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_clock",
+    "name": "Execution clock test",
+    "revision": 1,
+    "max_ticks": 12,
+    "locals": { "counter": 0 },
+    "on_start": [ "EOC_TEST_EXEC_START" ],
+    "on_tick": [ "EOC_TEST_EXEC_TICK" ],
+    "on_complete": [ "EOC_TEST_EXEC_COMPLETE" ],
+    "on_interrupt": [ "EOC_TEST_EXEC_INTERRUPT" ],
+    "on_end": [ "EOC_TEST_EXEC_END" ],
+    "start": "entry",
+    "steps": {
+      "entry": { "action": { "op": "eoc", "eocs": [ "EOC_TEST_EXEC_ENTRY" ] }, "next": { "step": "done", "after_ticks": [ 2, 4 ] } },
+      "done": { "end": "finished" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_weapon",
+    "copy-from": "test_exec_clock",
+    "require_weapon": true
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_timeout",
+    "copy-from": "test_exec_clock",
+    "max_ticks": 1
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_free",
+    "copy-from": "test_exec_clock",
+    "control": { "actor": "free", "target": "free" }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_local",
+    "copy-from": "test_exec_free",
+    "steps": {
+      "entry": { "action": { "op": "eoc", "eocs": [ "EOC_TEST_EXEC_ENTRY" ] }, "next": { "step": "done", "after_ticks": 1 } },
+      "done": { "action": { "op": "eoc", "eocs": [ "EOC_TEST_EXEC_ENTRY" ] }, "end": "finished" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_loop",
+    "copy-from": "test_exec_clock",
+    "max_step_entries": 70,
+    "steps": { "entry": { "next": "entry" } }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_pool",
+    "copy-from": "test_exec_clock",
+    "steps": {
+      "entry": {
+        "repeat": { "count": 2, "interval_ticks": 1, "first_after_ticks": 1 },
+        "action": {
+          "op": "message",
+          "pool": {
+            "avoid_immediate_repeat": true,
+            "entries": [ { "text": "<target_name> coughs." }, { "text": "<target_name> sways." } ]
+          }
+        },
+        "end": "spoken"
+      }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_fall",
+    "on_end": [ "EOC_TEST_EXEC_END" ],
+    "name": "Wounded stagger",
+    "revision": 1,
+    "required_roles": [ "actor", "target" ],
+    "control": { "actor": "free", "target": "scripted" },
+    "max_ticks": 12,
+    "max_step_entries": 32,
+    "max_distance": 12,
+    "interruptions": { "external_damage": "interrupt", "displacement": "interrupt" },
+    "start": "stagger",
+    "steps": {
+      "stagger": {
+        "action": {
+          "op": "move",
+          "role": "target",
+          "direction": "backward",
+          "tiles": [ 1, 4 ],
+          "ticks_per_tile": 1,
+          "first_step_after_ticks": 1,
+          "stop_before_unsupported": true,
+          "collision": "stop",
+          "store_result": "stagger"
+        },
+        "next": "edge"
+      },
+      "edge": {
+        "next": {
+          "if": { "execution_can_fall": { "role": "target", "direction": "backward" } },
+          "then": { "chance": 1.0, "then": "tumble", "else": "wait" },
+          "else": "wait"
+        }
+      },
+      "tumble": {
+        "action": {
+          "op": "move",
+          "role": "target",
+          "direction": "backward",
+          "tiles": 1,
+          "first_step_after_ticks": 0,
+          "stop_before_unsupported": false,
+          "narration": { "on_moved": { "text": "<target_name> tumbles backward into open air!", "audience": "visible_action" } },
+          "store_result": "tumble"
+        },
+        "next": { "result": "tumble", "cases": { "moved": "resolve" }, "otherwise": "wait" }
+      },
+      "wait": { "action": { "op": "message", "text": "<target_name> stops, swaying." }, "next": "wounded_beats" },
+      "wounded_beats": {
+        "repeat": { "count": 2, "interval_ticks": 1, "first_after_ticks": 1 },
+        "action": {
+          "op": "message",
+          "pool": {
+            "avoid_immediate_repeat": true,
+            "entries": [
+              { "text": "<target_name> coughs up blood and grasps weakly at the knife." },
+              { "text": "<target_name> stares at <actor_name>, wide-eyed." },
+              { "text": "<target_name>'s jaw moves silently." }
+            ]
+          }
+        },
+        "next": "resolve"
+      },
+      "resolve": { "end": "wound_sequence_resolved" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_stay",
+    "name": "Wounded stagger",
+    "revision": 1,
+    "required_roles": [ "actor", "target" ],
+    "control": { "actor": "free", "target": "scripted" },
+    "max_ticks": 12,
+    "max_step_entries": 32,
+    "max_distance": 12,
+    "interruptions": { "external_damage": "interrupt", "displacement": "interrupt" },
+    "start": "stagger",
+    "steps": {
+      "stagger": {
+        "action": {
+          "op": "move",
+          "role": "target",
+          "direction": "backward",
+          "tiles": [ 1, 4 ],
+          "ticks_per_tile": 1,
+          "first_step_after_ticks": 1,
+          "stop_before_unsupported": true,
+          "collision": "stop",
+          "store_result": "stagger"
+        },
+        "next": "edge"
+      },
+      "edge": {
+        "next": {
+          "if": { "execution_can_fall": { "role": "target", "direction": "backward" } },
+          "then": { "chance": 0.0, "then": "tumble", "else": "wait" },
+          "else": "wait"
+        }
+      },
+      "tumble": {
+        "action": {
+          "op": "move",
+          "role": "target",
+          "direction": "backward",
+          "tiles": 1,
+          "first_step_after_ticks": 0,
+          "stop_before_unsupported": false,
+          "narration": { "on_moved": { "text": "<target_name> tumbles backward into open air!", "audience": "visible_action" } },
+          "store_result": "tumble"
+        },
+        "next": { "result": "tumble", "cases": { "moved": "resolve" }, "otherwise": "wait" }
+      },
+      "wait": { "action": { "op": "message", "text": "<target_name> stops, swaying." }, "next": "wounded_beats" },
+      "wounded_beats": {
+        "repeat": { "count": 2, "interval_ticks": 1, "first_after_ticks": 1 },
+        "action": {
+          "op": "message",
+          "pool": {
+            "avoid_immediate_repeat": true,
+            "entries": [
+              { "text": "<target_name> coughs up blood and grasps weakly at the knife." },
+              { "text": "<target_name> stares at <actor_name>, wide-eyed." },
+              { "text": "<target_name>'s jaw moves silently." }
+            ]
+          }
+        },
+        "next": "resolve"
+      },
+      "resolve": { "end": "wound_sequence_resolved" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_step",
+    "copy-from": "test_exec_clock",
+    "steps": {
+      "entry": { "action": { "op": "move", "tiles": 4, "first_step_after_ticks": 1, "store_result": "motion" }, "next": "done" },
+      "done": { "end": "moved" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_strike",
+    "copy-from": "test_exec_clock",
+    "steps": {
+      "entry": {
+        "action": { "op": "damage", "damage_type": "pure", "amount": 5, "bodypart": "torso", "store_result": "strike" },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "struck" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_effect",
+    "copy-from": "test_exec_clock",
+    "steps": {
+      "entry": {
+        "action": { "op": "effect", "effect": "stunned", "duration_ticks": 2, "store_result": "effect" },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "affected" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_weighted",
+    "copy-from": "test_exec_clock",
+    "steps": {
+      "entry": {
+        "next": {
+          "weighted": [
+            { "weight": 1, "to": { "step": "left", "after_ticks": [ 1, 3 ] } },
+            { "weight": 2, "to": { "step": "right", "after_ticks": [ 1, 3 ] } }
+          ]
+        }
+      },
+      "left": { "end": "left" },
+      "right": { "end": "right" }
+    }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_CANCEL_SELF",
+    "effect": [ { "cancel_execution": { "context_val": "execution_instance" } } ]
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_cancel_self",
+    "copy-from": "test_exec_clock",
+    "on_start": [ "EOC_TEST_EXEC_CANCEL_SELF" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_REENTRANT",
+    "effect": [ { "start_execution": "test_exec_free" } ]
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_reentrant",
+    "copy-from": "test_exec_free",
+    "on_start": [ "EOC_TEST_EXEC_REENTRANT" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_POST_HIT",
+    "effect": [
+      {
+        "start_execution": "test_exec_clock",
+        "true_eocs": [ "EOC_TEST_EXEC_ACCEPTED" ],
+        "false_eocs": [ "EOC_TEST_EXEC_REFUSED" ]
+      }
+    ]
+  },
+  {
+    "type": "technique",
+    "id": "test_exec_post_hit",
+    "name": "Execution trigger test",
+    "melee_allowed": true,
+    "attack_vectors": [ "vector_null" ],
+    "post_hit_eocs": [ "EOC_TEST_EXEC_POST_HIT" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_BAD_LOCAL",
+    "effect": { "set_string_var": "wrong type", "target_var": { "context_val": "counter" } }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_bad_local",
+    "copy-from": "test_exec_clock",
+    "start": "bad",
+    "steps": { "bad": { "action": { "op": "eoc", "eocs": [ "EOC_TEST_EXEC_BAD_LOCAL" ] }, "end": "unreachable" } }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_narration",
+    "name": "Narration test",
+    "control": { "actor": "free", "target": "free" },
+    "start": "open",
+    "steps": {
+      "open": {
+        "action": { "op": "message", "entry": "wounded", "text": "<target_name> staggers." },
+        "next": { "step": "beats", "after_ticks": 1 }
+      },
+      "beats": {
+        "repeat": { "count": 2, "interval_ticks": 1, "first_after_ticks": 0 },
+        "action": {
+          "op": "message",
+          "entry": "continuation",
+          "append_to": "wounded",
+          "pool": {
+            "avoid_immediate_repeat": true,
+            "entries": [ { "text": "<target_name> coughs." }, { "text": "<target_name>'s jaw moves silently." } ]
+          }
+        },
+        "end": "narrated"
+      }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_narration_senses",
+    "name": "Perceived narration",
+    "control": { "actor": "free", "target": "free" },
+    "start": "say",
+    "steps": {
+      "say": {
+        "action": {
+          "op": "message",
+          "entry": "perceived",
+          "audience": "visible_or_audible",
+          "volume": 30,
+          "text": "<target_name> stares at <actor_name>.",
+          "audible_text": "You hear <target_name> coughing."
+        },
+        "end": "spoken"
+      }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_narration_audible",
+    "copy-from": "test_exec_narration_senses",
+    "steps": {
+      "say": {
+        "action": { "op": "message", "audience": "audible", "volume": 30, "text": "You hear <target_name> gasp." },
+        "end": "heard"
+      }
+    }
+  }
+]

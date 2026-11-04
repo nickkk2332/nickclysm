@@ -111,6 +111,8 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
 | `ongrabbed_eocs` | the grabber | `grab_strength`, `grab_part` |
 
 - `weapon`: string, id of the weapon used for the attack, `null` when unarmed.
+- `weapon_uid`: decimal string identity of the actual melee weapon, when armed. It is captured before hit callbacks; replacing the weapon with the same type does not preserve this identity.
+- `style`: string, selected martial-art style at the beginning of the melee attack. These two snapshots are also supplied to technique `post_hit_eocs`, and can be used when starting [executions](EXECUTIONS.md).
 - `technique`: string, id of the technique used for the attack, `tec_none` when none.
 - `bp`: string, body part hit. For attack events it is the target's; for `ongethit_eocs` it is your own body part about to be hit, and for `onblock_eocs` the body part that takes the blocked hit.
 - `damage`: number. For attack events, the damage the hit dealt after armor. For `ongethit_eocs`, the incoming damage before blocking and armor; for `onblock_eocs`, the damage left after the block, before armor.

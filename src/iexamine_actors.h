@@ -87,6 +87,8 @@ class eoc_examine_actor : public iexamine_actor
 
         void load( const JsonObject &jo, const std::string &src ) override;
         void call( Character &you, const tripoint_bub_ms &examp ) const override;
+        void call_with_context( Character &you, const tripoint_bub_ms &examp,
+                                const map_data_common_t &data ) const override;
         void finalize() const override;
 
         std::unique_ptr<iexamine_actor> clone() const override;

@@ -94,6 +94,7 @@ class static_popup;
 class stats_tracker;
 class timed_event_manager;
 class item_wakeup_manager;
+class execution_manager;
 class ui_adaptor;
 class uilist;
 class vehicle;
@@ -723,6 +724,9 @@ class game
         void reset_light_level();
         character_id assign_npc_id();
         int64_t assign_item_uid();
+        int64_t assign_monster_uid();
+        void reserve_monster_uid( int64_t uid );
+        execution_manager &executions();
         // Keeps the uids assign_item_uid hands out above one in use, e.g. read from a save
         void reserve_item_uid( int64_t uid );
         Creature *is_hostile_nearby();
@@ -1191,6 +1195,7 @@ class game
         pimpl<scent_map> scent_ptr; // NOLINT(cata-serialize)
         pimpl<timed_event_manager> timed_event_manager_ptr; // NOLINT(cata-serialize)
         pimpl<item_wakeup_manager> item_wakeup_manager_ptr;
+        pimpl<execution_manager> execution_manager_ptr;
         pimpl<event_bus> event_bus_ptr; // NOLINT(cata-serialize)
         pimpl<stats_tracker> stats_tracker_ptr;
         pimpl<achievements_tracker> achievements_tracker_ptr;
@@ -1303,6 +1308,7 @@ class game
         character_id next_npc_id; // NOLINT(cata-serialize)
         int next_mission_id = 0; // NOLINT(cata-serialize)
         int64_t next_item_uid = 1; // NOLINT(cata-serialize)
+        int64_t next_monster_uid = 1; // NOLINT(cata-serialize)
 
         std::chrono::seconds time_played_at_last_load; // NOLINT(cata-serialize)
         // NOLINTNEXTLINE(cata-serialize)

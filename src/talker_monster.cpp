@@ -303,7 +303,7 @@ void talker_monster::attack_target( Creature &t, bool allow_special,
 dealt_damage_instance talker_monster::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam ) const
 {
-    return source->deal_damage( source, bp, dam );
+    return me_mon->deal_damage( source, bp, dam );
 }
 
 std::vector<std::string> talker_monster_const::get_topics( bool ) const

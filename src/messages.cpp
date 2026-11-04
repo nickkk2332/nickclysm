@@ -23,6 +23,7 @@
 #include "input_context.h"
 #include "json.h"
 #include "map.h"
+#include "message_log.h"
 #include "options.h"
 #include "output.h"
 #include "panels.h"
@@ -45,90 +46,10 @@ static const efftype_id effect_weed_high( "weed_high" );
 namespace
 {
 
-struct game_message {
-    std::string       message;
-    time_point timestamp_in_turns = calendar::turn_zero;
-    int               timestamp_in_user_actions = 0; // NOLINT(cata-serialize)
-    int               count = 1;
-    // number of times this message has been seen while it was in cooldown.
-    unsigned cooldown_seen = 1; // NOLINT(cata-serialize)
-    // hide the message, because at some point it was in cooldown period.
-    bool cooldown_hidden = false; // NOLINT(cata-serialize)
-    game_message_type type = m_neutral;
-
-    game_message() = default;
-    game_message( std::string &&msg, game_message_type const t ) :
-        message( std::move( msg ) ),
-        timestamp_in_turns( calendar::turn ),
-        timestamp_in_user_actions( g->get_user_action_counter() ),
-        type( t ) {
-    }
-
-    const time_point &turn() const {
-        return timestamp_in_turns;
-    }
-
-    std::string get_with_count() const {
-        if( count <= 1 ) {
-            return message;
-        }
-        //~ Message %s on the message log was repeated %d times, e.g. "You hear a whack! x 12"
-        return string_format( _( "%s x %d" ), message, count );
-    }
-
-    /** Get whether or not a message should not be displayed (hidden) in the side bar because it's in a cooldown period.
-     * @returns `true` if the message should **not** be displayed, `false` otherwise.
-     */
-    bool is_in_cooldown() const {
-        return cooldown_hidden;
-    }
-
-    bool is_new( const time_point &current ) const {
-        return turn() >= current;
-    }
-
-    bool is_recent( const time_point &current ) const {
-        return turn() + 5_turns >= current;
-    }
-
-    nc_color get_color( const time_point &current ) const {
-        if( is_new( current ) ) {
-            // color for new messages
-            return msgtype_to_color( type, false );
-
-        } else if( is_recent( current ) ) {
-            // color for slightly old messages
-            return msgtype_to_color( type, true );
-        }
-
-        // color for old messages
-        return c_dark_gray;
-    }
-
-    void deserialize( const JsonObject &obj ) {
-        obj.read( "turn", timestamp_in_turns );
-        message = obj.get_string( "message" );
-        count = obj.get_int( "count" );
-        type = static_cast<game_message_type>( obj.get_int( "type" ) );
-    }
-
-    void serialize( JsonOut &jsout ) const {
-        jsout.start_object();
-        jsout.member( "turn", timestamp_in_turns );
-        jsout.member( "message", message );
-        jsout.member( "count", count );
-        jsout.member( "type", static_cast<int>( type ) );
-        jsout.end_object();
-    }
-};
-
-class messages_impl
+class messages_impl : public message_log
 {
     public:
-        std::deque<game_message> messages;   // Messages to be printed
         std::vector<game_message> cooldown_templates; // Message cooldown
-        time_point curmes = calendar::turn_zero; // The last-seen message.
-        bool active = true;
 
         bool has_undisplayed_messages() const {
             return !messages.empty() && messages.back().turn() > curmes;
@@ -149,7 +70,8 @@ class messages_impl
                 return false;
             }
 
-            if( m.type != last_msg.type || m.message != last_msg.message ) {
+            if( !m.group.empty() || !last_msg.group.empty() ||
+                m.type != last_msg.type || m.message != last_msg.message ) {
                 return false;
             }
 
@@ -359,23 +281,6 @@ class messages_impl
             }
         }
 
-        std::vector<std::pair<std::string, std::string>> recent_messages( size_t count ) const {
-            count = std::min( count, messages.size() );
-
-            std::vector<std::pair<std::string, std::string>> result;
-            result.reserve( count );
-
-            const int offset = static_cast<std::ptrdiff_t>( messages.size() - count );
-
-            std::transform( begin( messages ) + offset, end( messages ), back_inserter( result ),
-            []( const game_message & msg ) {
-                return std::make_pair( to_string_time_of_day( msg.timestamp_in_turns ),
-                                       msg.get_with_count() );
-            } );
-
-            return result;
-        }
-
         /** Refresh the cooldown timers, removing elapsed ones and making new ones if needed.
          * @param message The current message that needs to be checked.
          * @param flags Flags pertaining to the message.
@@ -433,7 +338,19 @@ bool message_exceeds_ttl( const game_message &message )
 
 std::vector<std::pair<std::string, std::string>> Messages::recent_messages( const size_t count )
 {
-    return player_messages.recent_messages( count );
+    return player_messages.recent( count );
+}
+
+std::vector<std::pair<std::string, std::string>> Messages::recent_messages_compact( size_t count )
+{
+    return player_messages.recent( count, true );
+}
+
+Messages::owned_message_result Messages::add_owned( const std::string &owner,
+        const std::string &anchor, std::string text, const std::string &separator )
+{
+    return player_messages.add_owned( owner, anchor, std::move( text ), separator,
+                                      static_cast<size_t>( get_option<int>( "MESSAGE_LIMIT" ) ) );
 }
 
 bool Messages::has_debug_filter( debugmode::debug_filter type )
@@ -444,21 +361,17 @@ bool Messages::has_debug_filter( debugmode::debug_filter type )
 void Messages::serialize( JsonOut &json )
 {
     json.member( "player_messages" );
-    json.start_object();
-    json.member( "messages", player_messages.messages );
-    json.member( "curmes", player_messages.curmes );
-    json.end_object();
+    player_messages.serialize( json );
 }
 
 void Messages::deserialize( const JsonObject &json )
 {
     if( !json.has_member( "player_messages" ) ) {
+        player_messages.clear();
         return;
     }
 
-    JsonObject obj = json.get_object( "player_messages" );
-    obj.read( "messages", player_messages.messages );
-    obj.read( "curmes", player_messages.curmes );
+    player_messages.deserialize( json.get_object( "player_messages" ) );
 }
 
 void Messages::add_msg( std::string msg )
@@ -473,8 +386,7 @@ void Messages::add_msg( const game_message_params &params, std::string msg )
 
 void Messages::clear_messages()
 {
-    player_messages.messages.clear();
-    player_messages.active = true;
+    player_messages.clear();
 }
 
 void Messages::deactivate()
@@ -935,16 +847,18 @@ void Messages::display_messages( const catacurses::window &ipk_target, const int
         return;
     }
 
+    const auto compact = player_messages.compact_messages( std::max( bottom - top + 1, 0 ) );
+    const int history_size = static_cast<int>( compact.size() );
     const int maxlength = right - left;
     int line = log_from_top ? top : bottom;
 
     if( log_from_top ) {
-        for( int i = size() - 1; i >= 0; --i ) {
+        for( int i = history_size - 1; i >= 0; --i ) {
             if( line > bottom ) {
                 break;
             }
 
-            const game_message &m = player_messages.messages[i];
+            const game_message &m = compact[i];
             if( message_exceeds_ttl( m ) ) {
                 break;
             }
@@ -967,12 +881,12 @@ void Messages::display_messages( const catacurses::window &ipk_target, const int
             }
         }
     } else {
-        for( int i = size() - 1; i >= 0; --i ) {
+        for( int i = history_size - 1; i >= 0; --i ) {
             if( line < top ) {
                 break;
             }
 
-            const game_message &m = player_messages.messages[i];
+            const game_message &m = compact[i];
             if( message_exceeds_ttl( m ) ) {
                 break;
             }

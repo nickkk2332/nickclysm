@@ -214,7 +214,7 @@ void Character::handle_contents_changed( const std::vector<item_location> &conta
             item it_copy( *loc );
             loc.remove_item();
             // target item of `loc` is invalidated and should not be used from now on
-            m.add_item_or_charges( pos_bub(), it_copy );
+            m.add_item_or_charges( pos_bub(), it_copy, true, this );
         }
     }
 }
@@ -465,7 +465,7 @@ item_location Character::i_add( item it, bool /* should_stack */, const item *av
         if( !allow_wield || !wield( it ) ) {
             if( allow_drop ) {
                 return item_location( map_cursor( pos_abs() ), &get_map().add_item_or_charges( pos_bub(),
-                                      it ) );
+                                      it, true, this ) );
             } else {
                 return added;
             }
@@ -498,7 +498,7 @@ item_location Character::i_add( item it, int &copies_remaining,
             added = added ? added : item_location( *this, &weapon );
         }
         if( allow_drop && copies_remaining > 0 ) {
-            item &map_added = get_map().add_item_or_charges( pos_bub(), it, copies_remaining );
+            item &map_added = get_map().add_item_or_charges( pos_bub(), it, copies_remaining, true, this );
             added = added ? added : item_location( map_cursor( pos_abs() ), &map_added );
         }
     }
@@ -526,7 +526,7 @@ ret_val<item_location> Character::i_add_or_fill( item &it, bool should_stack, co
             if( !allow_wield || !wield( it ) ) {
                 if( allow_drop ) {
                     loc = item_location( map_cursor( pos_abs() ), &get_map().add_item_or_charges( pos_bub(),
-                                         it ) );
+                                         it, true, this ) );
                 }
             } else {
                 loc = item_location( *this, &weapon );
@@ -593,7 +593,7 @@ bool Character::i_add_or_drop( item &it, int qty, const item *avoid,
     for( int i = 0; i < qty; ++i ) {
         drop |= !can_pickWeight( it, false ) || !can_pickVolume( it );
         if( drop ) {
-            retval &= !here.add_item_or_charges( pos_bub(), it ).is_null();
+            retval &= !here.add_item_or_charges( pos_bub(), it, true, this ).is_null();
             if( !retval ) {
                 // No need to loop now, we already knew that there isn't enough room for the item.
                 break;
@@ -615,7 +615,7 @@ bool Character::i_drop_at( item &it, int qty )
     bool retval = true;
     map &here = get_map();
     for( int i = 0; i < qty; ++i ) {
-        retval &= !here.add_item_or_charges( pos_bub(), it ).is_null();
+        retval &= !here.add_item_or_charges( pos_bub(), it, true, this ).is_null();
     }
 
     return retval;

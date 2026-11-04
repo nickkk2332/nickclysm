@@ -35,6 +35,7 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "errand.h"
+#include "execution_runtime.h"
 #include "faction.h"
 #include "field.h"
 #include "flag.h"
@@ -1543,6 +1544,40 @@ conditional_t::func f_is_warm( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
         return d.const_actor( is_npc )->is_warm();
+    };
+}
+
+conditional_t::func f_in_execution( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        if( !d.has_actor( is_npc ) ) {
+            return false;
+        }
+        const Creature *who = d.const_actor( is_npc )->get_const_creature();
+        return who && g->executions().contains( *who );
+    };
+}
+
+conditional_t::func f_execution_can_fall( const JsonObject &jo, std::string_view member )
+{
+    const JsonObject args = jo.get_object( member );
+    const std::string role = args.get_string( "role", "target" );
+    if( role != "actor" && role != "target" ) {
+        args.throw_error_at( "role", "expected actor or target" );
+    }
+    if( args.get_string( "direction", "backward" ) != "backward" ) {
+        args.throw_error_at( "direction", "only the captured backward direction is supported" );
+    }
+    return [role]( const_dialogue const & d ) {
+        const diag_value *value = d.maybe_get_value( "execution_instance" );
+        if( !value ) {
+            return false;
+        }
+        try {
+            return g->executions().can_fall( std::stoll( value->str() ), role );
+        } catch( const std::exception & ) {
+            return false;
+        }
     };
 }
 
@@ -3206,6 +3241,7 @@ template double eoc_math::act( const_dialogue const &d ) const;
 static const
 std::vector<condition_parser>
 parsers = {
+    {"execution_can_fall", jarg::object, &conditional_fun::f_execution_can_fall },
     {"u_has_any_trait", "npc_has_any_trait", jarg::array, &conditional_fun::f_has_any_trait },
     {"u_has_trait", "npc_has_trait", jarg::member, &conditional_fun::f_has_trait },
     {"u_has_active_trait", "npc_has_active_trait", jarg::member, &conditional_fun::f_has_active_trait },
@@ -3384,6 +3420,7 @@ parsers_simple = {
     {"u_is_alive", "npc_is_alive", &conditional_fun::f_is_alive },
     {"u_is_warm", "npc_is_warm", &conditional_fun::f_is_warm },
     {"u_exists", "npc_exists", &conditional_fun::f_exists },
+    {"u_in_execution", "npc_in_execution", &conditional_fun::f_in_execution },
     {"u_is_avatar", "npc_is_avatar", &conditional_fun::f_is_avatar },
     {"u_is_npc", "npc_is_npc", &conditional_fun::f_is_npc },
     {"u_is_character", "npc_is_character", &conditional_fun::f_is_character },

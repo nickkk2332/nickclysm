@@ -1367,7 +1367,7 @@ void map_extra::load( const JsonObject &jo, std::string_view )
         }
     }
     if( was_loaded && jo.has_member( "delete" ) ) {
-        JsonObject joe = jo.get_object( "extend" );
+        JsonObject joe = jo.get_object( "delete" );
         for( auto &flag : joe.get_string_array( "flags" ) ) {
             flags_.erase( flag );
         }

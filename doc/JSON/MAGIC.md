@@ -189,7 +189,7 @@ Effect                 | Description
 `banishment`           | Kills any `MONSTER` in the aoe up to damage hp.  Any overflow hp is taken from the caster; if it's more than the caster's hp the spell fails.
 `bash`                 | Bashes the terrain at the target.  Uses damage() as the strength of the bash.
 `charm_monster`        | Charms a monster that has less hp than damage() for approximately duration().
-`dash`                 | Dashes forward up to range and hits targets in a cone at the target.
+`dash`                 | Moves the caster along the target trajectory and hits targets in a cone from the location actually reached. Supports avatars, NPCs and monsters, uses their normal movement rules, and stops at blockers or when movement effects displace the caster. A self-target does nothing.
 `directed_push`        | Pushes `valid_targets` in aoe away from the target location, with a distance of damage().  Negative values pull instead.
 `effect_on_condition`  | Runs the `effect_on_condition` from `effect_str` on all valid targets.  The EOC will be centered on the player, with the NPC as caster and a context val location variable `spell_location` for the target primarily useful if the target isn't a creature.  The context vals `spell_id`, `spell_level`, `spell_damage`, `spell_dot`, `spell_duration` (in turns), `spell_aoe`, `spell_range` and `spell_damage_type` hold the values computed for this cast (for a `RANDOM_AOE` spell, `spell_aoe` is its own roll and may differ from the area actually hit), so one EOC can scale with the spell, e.g. `{ "u_add_effect": "burning", "duration": { "context_val": "spell_duration" } }` or `{ "math": [ "_spell_damage / 2" ] }`.
 `emit`                 | Causes an `emit` at the target.
@@ -354,7 +354,7 @@ Flag                       | Description
 `NO_LEGS`                  | Legs do not affect casting time.
 `NO_PROJECTILE`            | The "projectile" portion of the spell phases through walls, the epicenter of the spell effect is exactly where you target it, with no regards to obstacles.
 `TOUCH_REQUIRED`           | The spell requires a successful attack roll to affect the target. `Melee` is used at range 1 and `marksmanship` at longer ranges.
-`NON_MAGICAL`              | Ignores spell resistance when calculating damage mitigation and cannot be blocked by the NO_SPELLCASTING character flag.
+`NON_MAGICAL`              | Ignores spell resistance when calculating damage mitigation and cannot be blocked by the NO_SPELLCASTING character flag. Normal casting still checks energy, components, caster conditions, verbal requirements, other magic-type restrictions and CANNOT_ATTACK; this flag does not make an ability free or unconditionally usable.
 `PAIN_NORESIST`            | Pain altering spells can't be resisted (like with the deadened trait).
 `PERCENTAGE_DAMAGE`        | The spell deals damage based on the target's current hp.  This means that the spell can't directly kill the target. For characters (NPC or Avatar) damage applies to all body parts (damage 10 would deal 10% damage for each limb). If affected_body_parts is specified, deal percentage damage only to this body parts. Works with both attacks and DOTs
 `PERMANENT`                | Items or creatures spawned with this spell do not disappear and die as normal.  Items can only be permanent at maximum spell level; creatures can be permanent at any spell level.

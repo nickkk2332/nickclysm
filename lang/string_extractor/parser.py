@@ -19,6 +19,7 @@ from .parsers.effect_type import parse_effect_type
 from .parsers.enchant import parse_enchant
 from .parsers.end_screen import parse_end_screen
 from .parsers.event_statistic import parse_event_statistic
+from .parsers.execution import parse_execution
 from .parsers.faction import parse_faction
 from .parsers.faction_mission import parse_faction_mission
 from .parsers.fault import parse_fault
@@ -138,6 +139,7 @@ parsers = {
     "dream": parse_dream,
     "disease_type": dummy_parser,
     "effect_on_condition": parse_effect_on_condition,
+    "execution": parse_execution,
     "effect_type": parse_effect_type,
     "effect_migration": dummy_parser,
     "emit": dummy_parser,

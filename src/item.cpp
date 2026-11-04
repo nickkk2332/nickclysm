@@ -30,6 +30,7 @@
 #include "craft_command.h"
 #include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect.h" // for weed_msg
 #include "enum_bitset.h"
 #include "enums.h"
@@ -44,6 +45,7 @@
 #include "item_category.h"
 #include "item_factory.h"
 #include "item_group.h"
+#include "item_location.h"
 #include "item_tname.h"
 #include "item_transformation.h"
 #include "item_wakeup.h"
@@ -4874,7 +4876,10 @@ bool item::process_internal( map &here, Character *carrier, const tripoint_bub_m
         }
 
         for( const emit_id &e : type->emits ) {
-            here.emit_field( pos, e );
+            item_location source = carrier ? item_location( *carrier, this ) :
+                                   item_location( map_cursor( &here, pos ), this );
+            const dialogue context( get_talker_for( source ), carrier ? get_talker_for( carrier ) : nullptr );
+            here.emit_field( pos, e, 1.0f, context );
         }
 
         if( requires_tags_processing ) {
@@ -5233,7 +5238,7 @@ bool item::on_drop( const tripoint_bub_ms &pos )
     return on_drop( pos, get_map() );
 }
 
-bool item::on_drop( const tripoint_bub_ms &pos, map &m )
+bool item::on_drop( const tripoint_bub_ms &pos, map &m, Character *dropper )
 {
     // dropping liquids, even currently frozen ones, on the ground makes them
     // dirty
@@ -5242,9 +5247,7 @@ bool item::on_drop( const tripoint_bub_ms &pos, map &m )
         set_flag( flag_DIRTY );
     }
 
-    avatar &player_character = get_avatar();
-
-    return type->drop_action && type->drop_action.call( &player_character, *this, &m, pos );
+    return type->drop_action && type->drop_action.call( dropper, *this, &m, pos ).value_or( 0 ) > 0;
 }
 
 bool item::is_upgrade() const

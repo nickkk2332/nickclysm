@@ -4349,12 +4349,15 @@ void emit_actor::load( const JsonObject &obj, const std::string & )
 }
 
 
-std::optional<int> emit_actor::use( Character *, item &it, map *here,
+std::optional<int> emit_actor::use( Character *p, item &it, map *here,
                                     const tripoint_bub_ms &pos ) const
 {
     const float scaling = scale_qty ? it.charges : 1.0f;
+    item_location source = p && p->has_item( it ) ? item_location( *p, &it ) :
+                           item_location( map_cursor( here, pos ), &it );
+    const dialogue context( get_talker_for( source ), p ? get_talker_for( p ) : nullptr );
     for( const auto &e : emits ) {
-        here->emit_field( pos, e, scaling );
+        here->emit_field( pos, e, scaling, context );
     }
 
     return 1;
@@ -6119,6 +6122,7 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
     if( here == nullptr ) {
         here = &get_map();
     }
+    const bool was_carried = p && p->has_item( it );
     Character *char_ptr = nullptr;
     item_location loc;
     if( p ) {
@@ -6127,7 +6131,8 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
         } else if( npc *n = p->as_npc() ) {
             char_ptr = n;
         }
-        loc = item_location( *p->as_character(), &it );
+        loc = was_carried ? item_location( *p, &it ) :
+              item_location( map_cursor( here, pos ), &it );
     } else {
         loc = item_location( map_cursor( here, pos ), &it );
     }
@@ -6151,8 +6156,8 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
         return 0;
     }
     const int charges = request.charges.value_or( consume ? 1 : 0 );
-    // Prevents crash from trying to spend charges with the item removed (only compares addresses)
-    if( charges > 0 && p && !p->has_item( it ) ) {
+    // The EOC may have destroyed a ground item or removed an item from its carrier.
+    if( charges > 0 && ( !loc || ( was_carried && !p->has_item( it ) ) ) ) {
         return 0;
     }
     return charges;

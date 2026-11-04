@@ -295,10 +295,24 @@ std::unique_ptr<iexamine_actor> cardreader_examine_actor::clone() const
 
 void eoc_examine_actor::call( Character &you, const tripoint_bub_ms &examp ) const
 {
+    const map &here = get_map();
+    const map_data_common_t &data = here.has_furn( examp ) ?
+                                    static_cast<const map_data_common_t &>( here.furn( examp ).obj() ) :
+                                    static_cast<const map_data_common_t &>( here.ter( examp ).obj() );
+    call_with_context( you, examp, data );
+}
+
+void eoc_examine_actor::call_with_context( Character &you, const tripoint_bub_ms &examp,
+        const map_data_common_t &data ) const
+{
     map &here = get_map();
+    const bool furniture = &data == &here.furn( examp ).obj();
 
     dialogue d( get_talker_for( you ), nullptr );
-    d.set_value( "this", here.furn( examp ).id().str() );
+    d.set_value( "this", furniture ? here.furn( examp ).id().str() : here.ter( examp ).id().str() );
+    d.set_value( "terrain", here.ter( examp ).id().str() );
+    d.set_value( "furniture", here.furn( examp ).id().str() );
+    d.set_value( "examined_layer", furniture ? "furniture" : "terrain" );
     d.set_value( "pos", here.get_abs( examp ) );
     for( const effect_on_condition_id &eoc : eocs ) {
         eoc->activate( d );

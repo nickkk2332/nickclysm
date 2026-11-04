@@ -46,6 +46,9 @@ using sub_bodypart_str_id = string_id<sub_body_part_type>;
 struct bodygraph;
 using bodygraph_id = string_id<bodygraph>;
 
+struct execution_definition;
+using execution_id = string_id<execution_definition>;
+
 struct character_modifier;
 using character_modifier_id = string_id<character_modifier>;
 

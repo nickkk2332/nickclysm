@@ -727,7 +727,6 @@ std::vector<cata::clone_ptr<iexamine_actor>> map_data_common_t::get_examine() co
 
 void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) const
 {
-
     if( examine_actor.empty() && examine_func.empty() ) {
         return;
     }
@@ -735,7 +734,7 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
     // skip uilist query if only 1 option
     if( examine_actor.size() + examine_func.size() == 1 ) {
         if( examine_actor.size() == 1 ) {
-            examine_actor.front()->call( you, examp );
+            examine_actor.front()->call_with_context( you, examp, *this );
         } else {
             examine_func.front().examine( you, examp );
         }
@@ -746,7 +745,7 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
     // TODO, but i have no idea how to approach it for generic use cases
     if( you.is_npc() ) {
         if( examine_actor.size() > 0 ) {
-            examine_actor.front()->call( you, examp );
+            examine_actor.front()->call_with_context( you, examp, *this );
         } else {
             examine_func.front().examine( you, examp );
         }
@@ -778,7 +777,7 @@ void map_data_common_t::examine( Character &you, const tripoint_bub_ms &examp ) 
         examine_func[i].examine( you, examp );
     } else {
         const int i = selector.ret - examine_func.size();
-        examine_actor[i]->call( you, examp );
+        examine_actor[i]->call_with_context( you, examp, *this );
     }
 }
 
