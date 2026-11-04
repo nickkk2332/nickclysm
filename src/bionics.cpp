@@ -2211,17 +2211,17 @@ int Character::bionics_pl_skill( bool autodoc, int skill_level ) const
 
 int bionic_success_chance( bool autodoc, int skill_level, int difficulty, const Character &target )
 {
+    // Sure-handed installers: what matters is who operates, not whether the player could.
+    if( target.has_trait( trait_DEBUG_BIONICS ) ||
+        target.has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
+        return 100;
+    }
     return bionic_manip_cos( target.bionics_adjusted_skill( autodoc, skill_level ), difficulty );
 }
 
 // bionic manipulation chance of success
 int bionic_manip_cos( float adjusted_skill, int bionic_difficulty )
 {
-    if( get_player_character().has_trait( trait_DEBUG_BIONICS ) ||
-        get_player_character().has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
-        return 100;
-    }
-
     int chance_of_success = 0;
     // we will base chance_of_success on a ratio of skill and difficulty
     // when skill=difficulty, this gives us 1.  skill < difficulty gives a fraction.

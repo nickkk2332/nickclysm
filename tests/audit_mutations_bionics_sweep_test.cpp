@@ -312,6 +312,27 @@ TEST_CASE( "mut-b08_self_install_asks_before_removing_traits", "[audit][bionics]
     clear_avatar();
 }
 
+// MANUAL_CBM_INSTALLATION on the player made every CBM operation succeed, whoever did it:
+// nurse bots and NPC surgeons included.
+TEST_CASE( "mut-b08_manual_installation_only_helps_whoever_has_it",
+           "[audit][bionics][cbm]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    standard_npc surgeon( "Surgeon" );
+    you.set_mutation( trait_TEST_MUTB08_MANUAL );
+    const int difficulty = 10;
+
+    CHECK( bionic_success_chance( false, -1, difficulty, you ) == 100 );
+    CHECK( bionic_success_chance( false, -1, difficulty, surgeon ) < 100 );
+    // What a nurse bot uses, with the skill it has.
+    CHECK( bionic_manip_cos( 37.0f, difficulty ) < 100 );
+
+    surgeon.set_mutation( trait_TEST_MUTB08_MANUAL );
+    CHECK( bionic_success_chance( false, -1, difficulty, surgeon ) == 100 );
+    clear_avatar();
+}
+
 static const bionic_id test_bio_mutb10_base( "test_bio_mutb10_base" );
 static const bionic_id test_bio_mutb10_child( "test_bio_mutb10_child" );
 static const bionic_id test_bio_mutb10_parent( "test_bio_mutb10_parent" );
