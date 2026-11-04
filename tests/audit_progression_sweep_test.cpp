@@ -8,7 +8,9 @@
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "debug.h"
+#include "item.h"
 #include "player_helpers.h"
+#include "proficiency.h"
 #include "profession.h"
 #include "recipe.h"
 #include "type_id.h"
@@ -97,4 +99,41 @@ TEST_CASE( "prog-b05_starting_recipes_are_the_recipes_listed", "[audit][chargen]
 
     CHECK( u.knows_recipe( &recipe_tent_kit_from_broken.obj() ) );
     CHECK( u.knows_recipe( &recipe_large_tent_kit_from_broken.obj() ) );
+}
+
+// ---- PROG-B06 ----
+
+static const itype_id itype_fun_survival( "fun_survival" );
+
+static const proficiency_id proficiency_prof_knapping( "prof_knapping" );
+static const proficiency_id proficiency_prof_knapping_speed( "prof_knapping_speed" );
+
+// Book bonuses counted prerequisites again at every level of add() and every +=: Through the
+// Lens gives Knapping 0.15 directly and 0.15 through Speed Knapping, which requires it, yet
+// with the book in hand Knapping got several copies, worth about 0.28.
+TEST_CASE( "prog-b06_a_book_counts_a_proficiency_once", "[audit][proficiency]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    REQUIRE( proficiency_prof_knapping_speed->required_proficiencies().count(
+                 proficiency_prof_knapping ) == 1 );
+    const item book( itype_fun_survival );
+
+    const book_proficiency_bonuses own = book.get_book_proficiency_bonuses();
+    CHECK( own.fail_factor( proficiency_prof_knapping ) == Approx( 0.15f ) );
+    CHECK( own.time_factor( proficiency_prof_knapping ) == Approx( 0.15f ) );
+    CHECK( own.fail_factor( proficiency_prof_knapping_speed ) == Approx( 0.15f ) );
+
+    book_proficiency_bonuses summed;
+    summed += own;
+    CHECK( summed.fail_factor( proficiency_prof_knapping ) == Approx( 0.15f ) );
+
+    item in_hand( itype_fun_survival );
+    u.wield( in_hand );
+    const book_proficiency_bonuses nearby = u.book_bonuses_nearby();
+    CHECK( nearby.fail_factor( proficiency_prof_knapping ) == Approx( 0.15f ) );
+    CHECK( nearby.fail_factor( proficiency_prof_knapping_speed ) == Approx( 0.15f ) );
 }

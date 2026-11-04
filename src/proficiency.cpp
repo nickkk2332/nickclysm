@@ -617,14 +617,26 @@ void book_proficiency_bonuses::add( const book_proficiency_bonus &bonus )
 void book_proficiency_bonuses::add( const book_proficiency_bonus &bonus,
                                     std::set<proficiency_id> &already_included )
 {
-    bonuses.push_back( bonus );
+    // A book gives a proficiency one bonus, the best of those it lists or passes down to it
+    // from a proficiency that requires it (PROG-B06).
+    already_included.emplace( bonus.id );
+    auto found = std::find_if( bonuses.begin(), bonuses.end(),
+    [&bonus]( const book_proficiency_bonus & held ) {
+        return held.id == bonus.id;
+    } );
+    if( found == bonuses.end() ) {
+        bonuses.push_back( bonus );
+    } else {
+        found->fail_factor = std::max( found->fail_factor, bonus.fail_factor );
+        found->time_factor = std::max( found->time_factor, bonus.time_factor );
+    }
     if( bonus.include_prereqs ) {
         for( const proficiency_id &prereqs : bonus.id->required_proficiencies() ) {
+            // The set ends a circle of prerequisites
             if( !already_included.count( prereqs ) ) {
-                already_included.emplace( prereqs );
                 book_proficiency_bonus inherited_bonus = bonus;
                 inherited_bonus.id = prereqs;
-                add( inherited_bonus );
+                add( inherited_bonus, already_included );
             }
         }
     }
@@ -633,9 +645,8 @@ void book_proficiency_bonuses::add( const book_proficiency_bonus &bonus,
 book_proficiency_bonuses &book_proficiency_bonuses::operator+=( const book_proficiency_bonuses
         &rhs )
 {
-    for( const book_proficiency_bonus &bonus : rhs.bonuses ) {
-        add( bonus );
-    }
+    // Those are already expanded, and another book's bonuses compound with these
+    bonuses.insert( bonuses.end(), rhs.bonuses.begin(), rhs.bonuses.end() );
     return *this;
 }
 
