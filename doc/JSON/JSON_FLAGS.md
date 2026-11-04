@@ -431,6 +431,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```MAGICAL_MIND_PROTECTION``` Your mind is protected by magic from being attacked, such as from a flaming eye's stare.
 - ```MA_BASIC_FALLBACK``` Your basic attacks are fallbacks: techniques with `"fallback": true` (the base punch, kick and headbutt) are used only when no other technique is possible, and the base techniques follow the grappling rules (headbutt only in a grapple, either way round; no kicks while you hold someone).  Without this flag a fallback technique is an ordinary technique.  A martial art usually grants it through a static buff (see [MARTIALART_JSON.md](MARTIALART_JSON.md#fallback-and-basic-techniques)).
 - ```MEND_ALL``` You need no splint to heal broken bones.
+- ```MANUAL_CBM_INSTALLATION``` You can install any CBM on yourself, at once and without anesthetic or its `installation_requirement`.  The CBM still needs free bionic slots and a body it suits, and you are asked before it removes any traits.
 - ```MUSCLE_VEH_BOOST``` Something, such as buzzing insect wings, is speeding you up when you use a muscle-powered vehicle.
 - ```MYCUS_IMMUNE``` Critter is immune to fungal hase field (`fd_fungal_haze`)
 - ```MYOPIC``` You are nearsighted: vision range is severely reduced without glasses.

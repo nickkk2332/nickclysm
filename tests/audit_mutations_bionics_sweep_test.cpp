@@ -222,3 +222,73 @@ TEST_CASE( "mut-b09_source_holding_two_fuels_is_listed_once", "[audit][bionics]"
     CHECK( hopper->all_items_top().size() == 1 );
     clear_avatar();
 }
+
+static const bionic_id test_bio_mutb08_big( "test_bio_mutb08_big" );
+
+static const itype_id itype_hammer( "hammer" );
+static const itype_id itype_test_bio_mutb08_cancels( "test_bio_mutb08_cancels" );
+static const itype_id itype_test_bio_mutb08_conflict( "test_bio_mutb08_conflict" );
+static const itype_id itype_test_bio_mutb08_small( "test_bio_mutb08_small" );
+
+static const trait_id trait_NOPAIN( "NOPAIN" );
+static const trait_id trait_TEST_MUTB08_MANUAL( "TEST_MUTB08_MANUAL" );
+static const trait_id trait_TEST_MUTB08_TRAIT( "TEST_MUTB08_TRAIT" );
+
+// The MUT-B08 test CBMs need a hammer to self-install, and Deadened stands in for anesthetic.
+static void prepare_self_install( avatar &you )
+{
+    you.set_mutation( trait_NOPAIN );
+    you.set_wielded_item( item( itype_hammer ) );
+    you.invalidate_crafting_inventory();
+}
+
+// MUT-B08: a CBM you installed yourself skipped the bionic slot limit, the body compatibility
+// checks and the question about traits the CBM removes. So did any install for a patient
+// with MANUAL_CBM_INSTALLATION.
+TEST_CASE( "mut-b08_self_installed_cbm_needs_free_slots", "[audit][bionics][cbm]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    prepare_self_install( you );
+    const item small( itype_test_bio_mutb08_small );
+
+    SECTION( "self-install" ) {
+    }
+    SECTION( "self-install without help (MANUAL_CBM_INSTALLATION)" ) {
+        you.set_mutation( trait_TEST_MUTB08_MANUAL );
+    }
+    REQUIRE( you.can_install_bionics( *small.type, you, false ) );
+    you.add_bionic( test_bio_mutb08_big );
+    REQUIRE_FALSE( you.bionic_installation_issues( small.type->bionic->id ).empty() );
+    CHECK_FALSE( you.can_install_bionics( *small.type, you, false ) );
+    clear_avatar();
+}
+
+TEST_CASE( "mut-b08_self_installed_cbm_must_suit_the_body", "[audit][bionics][cbm]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    prepare_self_install( you );
+    const item cbm( itype_test_bio_mutb08_conflict );
+    const use_function *install = cbm.type->get_use( "install_bionic" );
+    REQUIRE( install != nullptr );
+    REQUIRE( install->can_call( you, cbm, you.pos_bub() ).success() );
+
+    you.set_mutation( trait_TEST_MUTB08_TRAIT );
+    CHECK_FALSE( install->can_call( you, cbm, you.pos_bub() ).success() );
+    clear_avatar();
+}
+
+// Tests answer every query_yn with no, so being asked shows up as a refused install.
+TEST_CASE( "mut-b08_self_install_asks_before_removing_traits", "[audit][bionics][cbm]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    prepare_self_install( you );
+    const item cbm( itype_test_bio_mutb08_cancels );
+    REQUIRE( you.can_install_bionics( *cbm.type, you, false ) );
+
+    you.set_mutation( trait_TEST_MUTB08_TRAIT );
+    CHECK_FALSE( you.can_install_bionics( *cbm.type, you, false ) );
+    clear_avatar();
+}

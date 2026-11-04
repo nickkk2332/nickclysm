@@ -2589,49 +2589,25 @@ ret_val<void> Character::is_installable( const item *it, const bool by_autodoc )
     return ret_val<void>::make_success( std::string() );
 }
 
-bool Character::can_install_bionics( const itype &type, Character &installer, bool autodoc,
-                                     int skill_level ) const
+// Whoever installs it, the patient must agree to lose the traits the CBM removes and have
+// free bionic slots for it.
+static bool patient_can_take_bionic( const Character &patient, const bionic_id &bioid )
 {
-    if( !type.bionic ) {
-        debugmsg( "Tried to install NULL bionic" );
-        return false;
-    }
-    if( has_trait( trait_DEBUG_BIONICS ) || has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
-        return true;
-    }
-    if( is_mounted() ) {
-        return false;
-    }
-    if( has_flag( json_flag_NO_CBM_INSTALLATION ) ) {
-        return false;
-    }
-
-    const bionic_id &bioid = type.bionic->id;
-    const int difficult = type.bionic->difficulty;
-
-    // if we're doing self install
-    if( !autodoc && installer.is_avatar() ) {
-        return installer.has_enough_anesth( type ) &&
-               installer.has_installation_requirement( bioid );
-    }
-
-    int chance_of_success = bionic_success_chance( autodoc, skill_level, difficult, installer );
-
     std::vector<std::string> conflicting_muts;
     for( const trait_id &mid : bioid->canceled_mutations ) {
-        if( has_trait( mid ) ) {
-            conflicting_muts.push_back( mutation_name( mid ) );
+        if( patient.has_trait( mid ) ) {
+            conflicting_muts.push_back( patient.mutation_name( mid ) );
         }
     }
 
     if( !conflicting_muts.empty() &&
-        !query_yn(
+        !patient.query_yn(
             _( "Installing this bionic will remove the conflicting traits: %s.  Continue anyway?" ),
             enumerate_as_string( conflicting_muts ) ) ) {
         return false;
     }
 
-    const std::map<bodypart_id, int> &issues = bionic_installation_issues( bioid );
+    const std::map<bodypart_id, int> &issues = patient.bionic_installation_issues( bioid );
     // show all requirements which are not satisfied
     if( !issues.empty() ) {
         std::string detailed_info;
@@ -2642,6 +2618,46 @@ bool Character::can_install_bionics( const itype &type, Character &installer, bo
                                             elem.second );
         }
         popup( _( "Not enough space for bionic installation!%s" ), detailed_info );
+        return false;
+    }
+    return true;
+}
+
+bool Character::can_install_bionics( const itype &type, Character &installer, bool autodoc,
+                                     int skill_level ) const
+{
+    if( !type.bionic ) {
+        debugmsg( "Tried to install NULL bionic" );
+        return false;
+    }
+    if( has_trait( trait_DEBUG_BIONICS ) ) {
+        return true;
+    }
+
+    const bionic_id &bioid = type.bionic->id;
+    const int difficult = type.bionic->difficulty;
+
+    // Needing no help to install CBMs doesn't make room for them.
+    if( has_flag( json_flag_MANUAL_CBM_INSTALLATION ) ) {
+        return patient_can_take_bionic( *this, bioid );
+    }
+    if( is_mounted() ) {
+        return false;
+    }
+    if( has_flag( json_flag_NO_CBM_INSTALLATION ) ) {
+        return false;
+    }
+
+    // if we're doing self install
+    if( !autodoc && installer.is_avatar() ) {
+        return installer.has_enough_anesth( type ) &&
+               installer.has_installation_requirement( bioid ) &&
+               patient_can_take_bionic( *this, bioid );
+    }
+
+    int chance_of_success = bionic_success_chance( autodoc, skill_level, difficult, installer );
+
+    if( !patient_can_take_bionic( *this, bioid ) ) {
         return false;
     }
 

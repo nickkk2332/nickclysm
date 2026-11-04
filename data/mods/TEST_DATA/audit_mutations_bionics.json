@@ -119,5 +119,106 @@
     "passive_pseudo_items": [ "test_mutb09_hopper" ],
     "included": true,
     "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B08 fixture: a trait some test CBMs conflict with or remove.",
+    "type": "mutation",
+    "id": "TEST_MUTB08_TRAIT",
+    "name": { "str": "Test CBM Obstacle" },
+    "points": 0,
+    "description": "Test trait that some test CBMs conflict with or remove."
+  },
+  {
+    "//": "MUT-B08 fixture: install CBMs without help, like Xedra's Cybernetic Integration.",
+    "type": "mutation",
+    "id": "TEST_MUTB08_MANUAL",
+    "name": { "str": "Test Manual Installation" },
+    "points": 0,
+    "description": "Test trait that lets its owner install CBMs without help.",
+    "flags": [ "MANUAL_CBM_INSTALLATION" ]
+  },
+  {
+    "//": "MUT-B08 fixture: what self-installing the test CBMs takes.",
+    "type": "requirement",
+    "id": "test_mutb08_install",
+    "tools": [ [ [ "hammer", -1 ] ] ]
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM taking most of the torso's slots.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_big",
+    "name": { "str": "Test Big Core" },
+    "description": "Test CBM that takes most of the torso's bionic slots.",
+    "occupied_bodyparts": [ [ "torso", 60 ] ],
+    "installation_requirement": "test_mutb08_install"
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM that fits alone but not next to test_bio_mutb08_big.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_small",
+    "name": { "str": "Test Small Core" },
+    "description": "Test CBM that does not fit next to the big one.",
+    "occupied_bodyparts": [ [ "torso", 30 ] ],
+    "installation_requirement": "test_mutb08_install"
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM that TEST_MUTB08_TRAIT rules out.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_conflict",
+    "name": { "str": "Test Picky Core" },
+    "description": "Test CBM that a test trait rules out.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "installation_requirement": "test_mutb08_install",
+    "mutation_conflicts": [ "TEST_MUTB08_TRAIT" ]
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM that removes TEST_MUTB08_TRAIT.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_cancels",
+    "name": { "str": "Test Replacing Core" },
+    "description": "Test CBM that removes a test trait.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "installation_requirement": "test_mutb08_install",
+    "canceled_mutations": [ "TEST_MUTB08_TRAIT" ]
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_big.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_big",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Big Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_small.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_small",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Small Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_conflict.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_conflict",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Picky Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_cancels.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_cancels",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Replacing Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
   }
 ]
