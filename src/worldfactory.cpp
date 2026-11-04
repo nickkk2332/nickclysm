@@ -369,9 +369,13 @@ bool WORLD::save() const
             }
         }
 
-        // the mod settings that differ from their default, as an element of their own
+        // The mod settings that differ from their default, as an element of their own.  The
+        // element has a "name" and a "value", as every option has: a build without mod
+        // settings reads it as an option it doesn't know, and skips it.
         if( !mod_settings.empty() ) {
             jout.start_object();
+            jout.member( "name", "__mod_settings" );
+            jout.member( "value", "" );
             jout.member( "mod_settings", mod_settings );
             jout.end_object();
         }

@@ -81,9 +81,11 @@ A world keeps its values in its `worldoptions.json`, in an element of their own:
 ```jsonc
 [
   { "info": "...", "default": "...", "name": "SPAWN_DENSITY", "value": "1.00" },
-  { "mod_settings": { "magiclysm_mana_regen": 2.5, "my_mod_difficulty": "hard" } }
+  { "name": "__mod_settings", "value": "", "mod_settings": { "magiclysm_mana_regen": 2.5, "my_mod_difficulty": "hard" } }
 ]
 ```
+
+The element has a `name` and a `value` like every option, so a build without mod settings reads it as an option it doesn't know and skips it. Such a build drops it when it saves the world's options, and the settings go back to their defaults.
 
 - **Only values that differ from the default are stored.** A mod that changes a default later changes it for every world that never set the setting.
 - **A mod added to an existing world** brings its defaults. Its `changeable_in_game` settings can then be set on the in-game page.

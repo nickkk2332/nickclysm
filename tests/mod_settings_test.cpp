@@ -317,10 +317,11 @@ TEST_CASE( "mod_setting_writes_need_eoc_writable", "[mod_settings]" )
 TEST_CASE( "mod_settings_saved_with_the_world_without_defaults", "[mod_settings]" )
 {
     WORLD world( "mod settings test world" );
-    REQUIRE_FALSE( dir_exist( world.folder_path().get_unrelative_path() ) );
+    // before the check, so a run that stopped half way leaves nothing to the next
     on_out_of_scope remove_world( [&world]() {
         std::filesystem::remove_all( world.folder_path().get_unrelative_path() );
     } );
+    REQUIRE_FALSE( dir_exist( world.folder_path().get_unrelative_path() ) );
 
     std::vector<const mod_setting *> settings;
     for( const mod_setting &s : mod_settings::get_all() ) {
@@ -342,6 +343,8 @@ TEST_CASE( "mod_settings_saved_with_the_world_without_defaults", "[mod_settings]
     CHECK( world.mod_settings.all().size() == 4 );
     CHECK( world.mod_settings.find( "test_ms_number" ) == nullptr );
     CHECK( world.mod_settings.find( "test_ms_fixed" ) == nullptr );
+    // a world option the settings' element sits among
+    world.WORLD_OPTIONS["SPAWN_DENSITY"].setValue( 0.5f );
 
     REQUIRE( world.save() );
     const std::string saved = read_entire_file( ( world.folder_path() /
@@ -361,7 +364,26 @@ TEST_CASE( "mod_settings_saved_with_the_world_without_defaults", "[mod_settings]
     REQUIRE( removed != nullptr );
     CHECK( std::get<double>( *removed ) == Approx( 7.0 ) );
     // and the world options still load around them
-    CHECK( reloaded.WORLD_OPTIONS.count( "SPAWN_DENSITY" ) == 1 );
+    CHECK( reloaded.WORLD_OPTIONS["SPAWN_DENSITY"].value_as<float>() == Approx( 0.5 ) );
+
+    // A build without mod settings reads every element as an option, with a "name" and a
+    // "value", and skips an option it doesn't know.  The settings' element must be one, or
+    // that build throws, resets every world option and saves over the file.
+    const JsonValue file = json_loader::from_path( world.folder_path() / PATH_INFO::worldoptions() );
+    int settings_elements = 0;
+    for( JsonObject jo : file.get_array() ) {
+        jo.allow_omitted_members();
+        const std::string name = get_options().migrateOptionName( jo.get_string( "name" ) );
+        const std::string value = get_options().migrateOptionValue( jo.get_string( "name" ),
+                                  jo.get_string( "value" ) );
+        if( jo.has_object( "mod_settings" ) ) {
+            ++settings_elements;
+            CHECK( name == "__mod_settings" );
+            CHECK( value.empty() );
+            CHECK_FALSE( get_options().has_option( name ) );
+        }
+    }
+    CHECK( settings_elements == 1 );
 
     // a world with no settings changed writes nothing for them
     world.mod_settings.clear();
