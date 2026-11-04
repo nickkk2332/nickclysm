@@ -75,7 +75,7 @@ std::string format_number( double x, int digits )
     return out.str();
 }
 
-// Line breaks and other control characters become spaces
+// Line breaks (U+2028, U+2029 and U+0085 among them) and other control characters become spaces
 std::string one_line( const std::string &text )
 {
     std::string ret;
@@ -83,6 +83,19 @@ std::string one_line( const std::string &text )
     for( size_t i = 0; i < text.size(); ++i ) {
         const unsigned char ch = static_cast<unsigned char>( text[i] );
         if( ch == '\r' && i + 1 < text.size() && text[i + 1] == '\n' ) {
+            continue;
+        }
+        // U+0085 is C2 85; U+2028 and U+2029 are E2 80 A8 and E2 80 A9
+        if( ch == 0xc2 && i + 1 < text.size() && static_cast<unsigned char>( text[i + 1] ) == 0x85 ) {
+            ret += ' ';
+            i += 1;
+            continue;
+        }
+        if( ch == 0xe2 && i + 2 < text.size() && static_cast<unsigned char>( text[i + 1] ) == 0x80 &&
+            ( static_cast<unsigned char>( text[i + 2] ) == 0xa8 ||
+              static_cast<unsigned char>( text[i + 2] ) == 0xa9 ) ) {
+            ret += ' ';
+            i += 2;
             continue;
         }
         ret += ch < 0x20 || ch == 0x7f ? ' ' : text[i];
@@ -194,6 +207,8 @@ void mod_setting_values::serialize( JsonOut &jsout ) const
 
 void mod_setting_values::deserialize( const JsonObject &jo )
 {
+    // members that aren't a single value are dropped, not reported
+    jo.allow_omitted_members();
     values.clear();
     for( const JsonMember &member : jo ) {
         if( member.test_bool() ) {

@@ -221,6 +221,8 @@ TEST_CASE( "mod_setting_load_errors", "[mod_settings]" )
         CHECK_THROWS_AS( load_setting( R"({ "type": "mod_setting", "id": "test_bad", "name": "x",
             "kind": "text", "default": "two\nlines" })", "test_mod_a" ), JsonError );
         CHECK_THROWS_AS( load_setting( R"({ "type": "mod_setting", "id": "test_bad", "name": "x",
+            "kind": "text", "default": "two\u2028lines" })", "test_mod_a" ), JsonError );
+        CHECK_THROWS_AS( load_setting( R"({ "type": "mod_setting", "id": "test_bad", "name": "x",
             "kind": "text", "max_length": 3, "default": "four" })", "test_mod_a" ), JsonError );
     }
     SECTION( "the kind is one of four" ) {
@@ -700,6 +702,9 @@ TEST_CASE( "mod_setting_writes_are_clamped_snapped_and_checked", "[mod_settings]
         CHECK( utf8_to_utf32( setting_text( mod_setting_test_ms_text ) ).size() == 200 );
         run_effect( R"({ "set_mod_setting": "test_ms_text", "value": "two\nlines\r\nhere" })" );
         CHECK( setting_text( mod_setting_test_ms_text ) == "two lines here" );
+        // Unicode's line and paragraph separators and next line too
+        run_effect( R"({ "set_mod_setting": "test_ms_text", "value": "a\u2028b\u2029c\u0085d" })" );
+        CHECK( setting_text( mod_setting_test_ms_text ) == "a b c d" );
         // a number becomes text
         run_effect( R"({ "set_mod_setting": "test_ms_text", "value": 7 })" );
         CHECK( setting_text( mod_setting_test_ms_text ) == "7" );
@@ -773,6 +778,43 @@ TEST_CASE( "world_option_changes_a_default", "[mod_settings][options]" )
         CHECK( get_option<float>( "SPAWN_DENSITY" ) == Approx( before ) );
         CHECK( options["SPAWN_DENSITY"].getDefaultText().find( "3.00" ) != std::string::npos );
     }
+}
+
+TEST_CASE( "mod_settings_stored_values_of_the_wrong_type", "[mod_settings]" )
+{
+    world_settings_restorer restore_settings;
+    mod_setting_values &values = world_generator->active_world->mod_settings;
+    // as a world's options file might have them, from another version of the mod or an editor
+    const JsonObject jo = json_loader::from_string( R"({
+        "test_ms_number": "lots",
+        "test_ms_switch": 1,
+        "test_ms_fixed": "no",
+        "test_ms_choice": [ "rare" ],
+        "test_ms_text": { "str": "hidden" },
+        "test_ms_array_a": null
+    })" );
+    values.deserialize( jo );
+
+    // what isn't a single value isn't kept
+    CHECK( values.find( "test_ms_choice" ) == nullptr );
+    CHECK( values.find( "test_ms_text" ) == nullptr );
+    CHECK( values.find( "test_ms_array_a" ) == nullptr );
+    CHECK( setting_text( mod_setting_test_ms_choice ) == "normal" );
+    CHECK( setting_text( mod_setting_test_ms_text ) == "hello" );
+    // the rest stay as they are, and read as the setting allows
+    REQUIRE( values.find( "test_ms_number" ) != nullptr );
+    CHECK( std::get<std::string>( *values.find( "test_ms_number" ) ) == "lots" );
+    // text for a number: its default
+    CHECK( setting_number( mod_setting_test_ms_number ) == Approx( 1.0 ) );
+    // a number for a switch: on, as 1
+    CHECK( setting_number( mod_setting_test_ms_switch ) == 1 );
+    CHECK( check_condition( R"({ "mod_setting_on": "test_ms_switch" })" ) );
+    // text that isn't true or false: its default
+    CHECK( setting_number( mod_setting_test_ms_fixed ) == 1 );
+    math_exp exp;
+    REQUIRE( exp.parse( "mod_setting('test_ms_number') + mod_setting('test_ms_switch')" ) );
+    const dialogue d = avatar_dialogue();
+    CHECK( exp.eval( d ) == Approx( 2.0 ) );
 }
 
 TEST_CASE( "mod_setting_arrow_keys_step_in_the_settings_own_numbers", "[mod_settings]" )

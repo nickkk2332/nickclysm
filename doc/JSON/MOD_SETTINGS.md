@@ -126,7 +126,7 @@ What a setting does with a value:
 
 - a number is clamped to `min` to `max` and snapped to the nearest step
 - a choice that isn't one of the setting's is refused: the setting keeps its value, with an error
-- text is kept to one line (line breaks become spaces) and cut to `max_length` characters. It's never read as JSON or as an id.
+- text is kept to one line (line breaks, U+2028, U+2029, U+0085 and other control characters become spaces) and cut to `max_length` characters. It's never read as JSON or as an id.
 
 Changing a setting that isn't `eoc_writable` is a load error when the setting is written out in the EOC, and an error when it runs (the setting keeps its value) when a variable names it. So is a value written out that the setting would refuse.
 
