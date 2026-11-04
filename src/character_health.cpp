@@ -40,6 +40,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_runtime.h"
+#include "execution_combat.h"
 #include "field_type.h"
 #include "flag.h"
 #include "fungal_effects.h"
@@ -2718,6 +2719,7 @@ bool Character::is_bleeding( const bodypart_id bp ) const
 void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
                               const bool bypass_med )
 {
+    const execution_combat::damage_barrier execution_damage;
     if( is_dead_state() || has_effect( effect_incorporeal ) ||
         has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         // don't do any more damage if we're already dead
@@ -2763,6 +2765,7 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
         mod_part_hp_cur( part_to_damage, - dam_to_bodypart );
     }
 
+    execution_combat::record_hp_loss( *this, dam_to_bodypart );
     if( g ) {
         if( source == nullptr ) {
             source = g->executions().secondary_damage_source();
@@ -2872,6 +2875,7 @@ void Character::apply_random_wound_from_damage( bodypart_id bp, const dealt_dama
 dealt_damage_instance Character::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &d, const weakpoint_attack &attack, const weakpoint & )
 {
+    const execution_combat::damage_barrier execution_damage;
     const map &here = get_map();
 
     if( has_effect( effect_incorporeal ) || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
@@ -3053,6 +3057,7 @@ void Character::healall( int dam )
 
 void Character::hurtall( int dam, Creature *source, bool disturb /*= true*/ )
 {
+    const execution_combat::damage_barrier execution_damage;
     if( is_dead_state() || has_effect( effect_incorporeal ) ||
         dam <= 0 || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         return;

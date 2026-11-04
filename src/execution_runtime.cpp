@@ -20,6 +20,8 @@
 #include "effect_source.h"
 #include "execution.h"
 #include "execution_activity_actor.h"
+#include "execution_combat.h"
+#include "execution_trigger_state.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -255,6 +257,7 @@ struct execution_manager::impl {
     bool stopping = false;
     int64_t owned_action = 0;
     bool gravity_action = false;
+    execution_trigger_state triggers;
 
     dialogue context( execution_instance &scene, const shared_ptr_fast<Creature> &actor,
                       const shared_ptr_fast<Creature> &target ) const {
@@ -730,6 +733,44 @@ execution_manager::~execution_manager() = default;
 execution_start_result execution_manager::start( const execution_id &definition, const dialogue &d,
         std::optional<uint64_t> seed )
 {
+    return start_impl( definition, d, seed, false );
+}
+
+std::string execution_manager::check_start( const execution_id &definition, const dialogue &d )
+{
+    return start_impl( definition, d, std::nullopt, true ).reason;
+}
+
+bool execution_manager::processing_actions() const
+{
+    return data->processing || data->stopping || data->triggers.is_selecting();
+}
+
+uint64_t execution_manager::next_attack_id()
+{
+    return data->triggers.allocate_contact();
+}
+
+void execution_manager::on_attack_resolved( const execution_combat::attack_snapshot &snapshot )
+{
+    if( data->processing || data->stopping ) {
+        return;
+    }
+    const execution_trigger_report report = data->triggers.consider( *this, snapshot );
+    if( report.instance != 0 ) {
+        data->instances.at( report.instance ).backward = snapshot.direction;
+    }
+}
+
+std::optional<execution_trigger_report> execution_manager::last_trigger_report() const
+{
+    return data->triggers.inspect();
+}
+
+execution_start_result execution_manager::start_impl( const execution_id &definition,
+        const dialogue &d,
+        std::optional<uint64_t> seed, bool check_only )
+{
     if( data->stopping ) {
         return { 0, "world_transition" };
     }
@@ -833,7 +874,6 @@ execution_start_result execution_manager::start( const execution_id &definition,
     if( data->next_id == std::numeric_limits<int64_t>::max() ) {
         return { 0, "instance_budget" };
     }
-    scene.view.id = data->next_id++;
     scene.view.definition = definition;
     scene.view.state = "pending";
     scene.view.step = def.start;
@@ -861,6 +901,10 @@ execution_start_result execution_manager::start( const execution_id &definition,
     if( scene.view.context.size() > 256 ) {
         return { 0, "instance_budget" };
     }
+    if( check_only ) {
+        return { 0, "eligible" };
+    }
+    scene.view.id = data->next_id++;
     scene.random_state = seed ? *seed : ( static_cast<uint64_t>( rng( 0, INT_MAX ) ) << 32 |
                                           static_cast<uint64_t>( rng( 0, INT_MAX ) ) );
     scene.random_state ^= static_cast<uint64_t>( scene.view.id );
@@ -918,6 +962,7 @@ void execution_manager::clear()
         }
     }
     data->instances.clear();
+    data->triggers.clear();
 }
 
 void execution_manager::drain_starts()
@@ -1147,11 +1192,12 @@ void execution_narration_segment::deserialize( const JsonObject &obj )
 
 void execution_manager::serialize( JsonOut &jsout ) const
 {
-    if( data->processing ) {
+    if( processing_actions() ) {
         throw JsonError( "Cannot save an execution inside a partially committed action" );
     }
     jsout.start_object();
     jsout.member( "next_id", data->next_id );
+    jsout.member( "triggers", data->triggers );
     jsout.member( "instances" );
     jsout.start_array();
     for( const auto &entry : data->instances ) {
@@ -1207,6 +1253,8 @@ void execution_manager::deserialize( const JsonObject &jo )
     // The game cleared the old session before restoring actors/activities. Do not erase
     // the just-restored avatar activity while reading its matching runtime record.
     data->instances.clear();
+    data->triggers.clear();
+    jo.read( "triggers", data->triggers );
     int64_t saved_next = 1;
     jo.read( "next_id", saved_next );
     if( saved_next <= 0 || saved_next == std::numeric_limits<int64_t>::max() ) {

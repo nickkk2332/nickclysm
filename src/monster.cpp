@@ -34,6 +34,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_runtime.h"
+#include "execution_combat.h"
 #include "explosion.h"
 #include "faction.h"
 #include "field.h"
@@ -2249,6 +2250,8 @@ bool monster::melee_attack( Creature &target, float accuracy )
         return false;
     }
 
+    execution_combat::attack_scope execution_contact( *this, target,
+            execution_combat::channel::monster_melee );
     const int monster_hit_roll = melee::hit_roll_against( target, [accuracy] {
         return melee::melee_hit_range( accuracy );
     } );
@@ -2283,8 +2286,10 @@ bool monster::melee_attack( Creature &target, float accuracy )
     dealt_damage_instance dealt_dam;
 
     if( hitspread >= 0 ) {
+        const execution_combat::primary_hit_scope primary( execution_contact );
         target.deal_melee_hit( this, hitspread, false, damage, dealt_dam );
     }
+    execution_contact.resolve( hitspread >= 0, std::nullopt, dealt_dam );
 
     const int total_dealt = dealt_dam.total_damage();
     if( hitspread < 0 ) {
@@ -2446,6 +2451,7 @@ void monster::deal_projectile_attack( map *here, Creature *source, dealt_project
                                       const double &missed_by, bool print_messages,
                                       const weakpoint_attack &wp_attack )
 {
+    const execution_combat::damage_barrier execution_damage;
     const projectile &proj = attack.proj;
     const auto &effects = proj.proj_effects;
 
@@ -2512,6 +2518,7 @@ void monster::set_hp( const int hp )
 void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
                             const bool /*bypass_med*/ )
 {
+    const execution_combat::damage_barrier execution_damage;
     if( is_dead_state() || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         return;
     }
@@ -2523,7 +2530,9 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
     }
     // Ensure we can try to get at what hit us.
     reset_pathfinding_cd();
+    const int hp_before = hp;
     hp -= dam;
+    execution_combat::record_hp_loss( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
 
     cata::event e = cata::event::make<event_type::monster_takes_damage>( dam, hp < 1 );
     // The monster is the alpha talker, also when nothing hurt it (bleeding, fire, a fall)

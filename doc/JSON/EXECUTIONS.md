@@ -4,8 +4,9 @@ An execution is a saved sequence of actions on two particular living creatures. 
 describe a stagger, a brief clash, or an interrupted takedown. Completion does not imply
 death. One tick is one game turn (one second), regardless of participant speed.
 
-The current implementation supports explicit EOC starts, bounded step graphs, native movement
-and falling, damage/effects, and owned visible/audible narration. The broader design in
+The current implementation supports EOC starts and automatic living-actor melee rules,
+bounded step graphs, native movement and falling, damage/effects, and owned visible/audible
+narration. The broader design in
 [the execution plans](../../Audit/plans/executions/README.md) includes later features;
 those proposed schemas are not a list of currently supported JSON.
 
@@ -44,11 +45,108 @@ Cancellation is requested immediately and settled at a safe boundary. Its dialog
 through the normal activity cancellation UI. `u_in_execution` and `npc_in_execution`
 test participation, including free roles and pending requests.
 
-For weapon/style content, use existing martial-art/technique EOCs and their resolved
-hit context. The optional `executions_demo` mod adds a combat knife whose technique
-requests the sample after a nonfatal critical hit against a humanoid. Existing core
-weapons acquire no new automatic trigger. There is no universal indexed execution
-trigger table yet.
+Existing martial-art/technique EOCs can still request scenes directly. Alternatively,
+use the indexed rules below. The optional `executions_demo` mod supplies an automatic
+rule for its demonstration knife and critical technique against humanoids. Existing
+core weapons acquire no new automatic trigger.
+
+## Automatic melee rules
+
+```json
+{
+  "type": "execution_trigger",
+  "id": "example_knife_stagger",
+  "execution": "execution_knife_stagger",
+  "event": "attack_resolved",
+  "priority": 10,
+  "weight": 1,
+  "chance": 0.25,
+  "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+  "match": {
+    "channels": [ "character_melee" ],
+    "weapons": [ "knife_combat" ],
+    "critical": true,
+    "hp_loss": { "minimum": 1 },
+    "damage": [ { "type": "stab", "minimum": 1 } ]
+  },
+  "condition": { "npc_bodytype": "human" }
+}
+```
+
+`execution` is required. Defaults are `attack_resolved`, priority 0, weight 1, chance
+1, no cooldown, both melee channels, and `hit: true`. `copy-from` is supported;
+provided filter lists replace inherited lists, while omitted filters remain inherited.
+Lists contain 1–64 nonempty identifiers. Multiple values within a list are alternatives;
+different filters must all pass. An omitted filter imposes no restriction.
+
+| Match member | Values |
+| --- | --- |
+| `channels` | `character_melee`, `monster_melee`, or `melee` for both |
+| `source_kind`, `target_kind` | Lists of `avatar`, `npc`, `monster` |
+| `source_monsters`, `target_monsters` | Monster type IDs |
+| `weapons`, `weapon_categories`, `weapon_skills` | Original attack item IDs, categories, or skill IDs; unarmed character attacks use weapon `null` and skill `unarmed` |
+| `styles`, `techniques` | Selected martial-art and technique IDs |
+| `body_parts`, `weakpoints` | Actual body-part ID and stable weakpoint ID; weakpoints use IDs from the victim's definition, never translated names |
+| `terrains`, `furniture` | IDs at the victim's tile when primary damage processing begins |
+| `hit`, `critical` | Booleans; `critical` is absent for standard monster attacks, so neither critical filter matches those attacks |
+| `hp_loss` | Inclusive `{ "minimum": 0, "maximum": 2147483647 }` range for primary applied HP loss |
+| `damage` | Up to 64 distinct `{ "type": "stab", "minimum": 0, "maximum": 2147483647 }` ranges for reported post-armor damage |
+| `fatal_state` | Only `alive`; already fatal/dead participants are refused |
+
+Unknown match fields, unsupported channels/events, reversed ranges, and invalid limits
+are load errors. Referenced content IDs are checked during consistency validation.
+Weakpoint IDs are local to monster definitions and have no global ID registry.
+
+The two damage concepts intentionally differ. `damage` is the native primary hit's
+reported per-type result; `hp_loss` is its positive HP write, measured before damage-event
+callbacks. Overkill, HP caps and damage-distribution policies can make them differ.
+Neither includes separate mutation attacks, retaliation, extra damage, or healing from
+callbacks. On a resolved hit, an unreported damage type has value zero. On a miss,
+damage, HP loss, body part and critical facts are unavailable rather than invented zeros.
+
+Rules run after native combat callbacks and death checks return. The participants must
+still be alive and loaded; a removed or dead actor is never replaced. Character melee
+captures the original item UID before defensive callbacks, then the chosen style and
+technique before technique effects. It preserves those facts if a callback switches the
+weapon. A scene with `require_weapon` refuses an item lost before queueing. Impact
+positions and attack direction remain snapshots even if later callbacks move actors.
+Scene control and movement start from their actual positions at queue time.
+
+Selection considers indexed candidates by descending priority. Each matching, available,
+off-cooldown rule checks the normal start requirements and its optional dialogue
+`condition`, then rolls its chance once. Conditions may inspect the supplied hit facts;
+keep them free of interactive queries. If any rules pass at a priority, one is chosen
+by weight, and lower priorities are skipped. If all fail, selection tries the next tier.
+At most one automatic scene is queued per primary contact. A final start refusal does
+not fall through to another rule and does not charge a cooldown. Manual EOC requests
+retain their existing behavior and ownership rules.
+
+Cooldown scopes are `actor`, `target`, `actor_target_pair`, and `world`, with dimension
+and rule ID included in every key. Durations are integer game turns, at most 31,536,000.
+They start on accepted queueing and survive scene completion and save/load. Cancelling
+an accepted scene does not refund its cooldown. Priority is bounded to ±1,000,000,
+weights to 1–1,000,000, and chances to finite numbers from 0 to 1. Zero/one chances and
+single-candidate weight choices need no selection RNG draw; accepted scene creation
+still seeds its saved RNG normally.
+
+Supported producers are ordinary character primary melee (avatar/NPC, including a
+resolved reach contact) and standard monster primary melee. Nested/counter attacks,
+mutation contacts, direct damage and projectile callbacks inside the wrapped damage
+handlers, and execution-scripted attacks cannot become new automatic roots. Mech
+delegation, rider redirects, monster specials that bypass standard melee, projectiles/throws, spells,
+environmental damage, and pending-fatal scenes have no automatic producer in this
+milestone. Projectile/fatal rule definitions are rejected. This is not a universal
+combat-event/causality API.
+
+For engine tooling, `execution_manager::last_trigger_report()` returns the latest
+contact ID, indexed candidate count, selected rule/queued handle, and up to 64 candidate
+reasons without rerolling or reevaluating. Reasons include `filtered`, `condition`,
+`chance_failed`, `cooldown`, `participant_busy`, `weapon_lost`, `not_selected`, and
+`duplicate_contact`. There is no inspector UI or EOC binding for this report yet.
+There are at most 2,048 rules and 4,096 saved cooldown keys. The last 128 processed
+contact IDs suppress duplicate in-session submissions; this bounded cache and the
+latest report are not saved. The monotonic contact counter is saved. Loading scenes
+does not reemit combat contacts or rerun trigger selection.
 
 ## Definition
 
@@ -329,5 +427,5 @@ narration each retain 128 segments. Native message-history limits still apply.
 The reference content is [knife_stagger.json](../../data/json/executions/knife_stagger.json).
 It rolls 1–4 backward tiles, stops before a ledge, tries a 50% native tumble, or emits
 two wounded beats. It can end with survival. Fatal-hit reservation, explicit knockout
-physiology, indexed automatic triggers, offscreen simulation, a dedicated transcript
+physiology, additional automatic combat producers, offscreen simulation, a dedicated transcript
 inspector UI, and additional typed physical actions remain later milestones.

@@ -35,6 +35,7 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect.h"
+#include "execution_combat.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
@@ -827,6 +828,10 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     }
 
     melee::melee_stats.attack_count += 1;
+    execution_combat::attack_scope execution_contact( *this, t,
+            execution_combat::channel::character_melee );
+    execution_contact.set_weapon( cur_weapon ? &*cur_weapon : nullptr,
+                                  martial_arts_data->selected_style().str(), "tec_none" );
     int hit_spread = t.deal_melee_attack( this, melee::hit_roll_against( t, [this] {
         return hit_roll();
     } ) );
@@ -883,6 +888,8 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     ma_ctx.style = martial_arts_data->selected_style();
     ma_ctx.hit = hits;
     if( !hits ) {
+        execution_contact.set_technique( ma_ctx.style.str(), "tec_none" );
+        execution_contact.resolve( false, std::nullopt, dealt_damage_instance() );
         int stumble_pen = stumble( *this, cur_weapon );
         sfx::generate_melee_sound( cur_weap, pos_bub(), t.pos_bub(), false, false );
 
@@ -1001,6 +1008,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         ma_ctx.bp = target_bp.id();
         ma_ctx.crit = critical_hit;
         ma_ctx.damage = 0.0;
+        execution_contact.set_technique( ma_ctx.style.str(), technique.id.str() );
 
         // Handles effects as well; not done in melee_affect_*
         if( technique.id != tec_none ) {
@@ -1035,7 +1043,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
             }
             weakpoint_attack attack;
             attack.weapon = &cur_weap;
-            t.deal_melee_hit( this, hit_spread, critical_hit, d, dealt_dam, attack, &target_bp );
+            {
+                const execution_combat::primary_hit_scope primary( execution_contact );
+                t.deal_melee_hit( this, hit_spread, critical_hit, d, dealt_dam, attack, &target_bp );
+            }
+            execution_contact.resolve( true, critical_hit, dealt_dam );
             ma_ctx.damage = dealt_dam.total_damage();
             ma_ctx.bp = dealt_dam.bp_hit.id();
             if( !t.is_hallucination() ) {
