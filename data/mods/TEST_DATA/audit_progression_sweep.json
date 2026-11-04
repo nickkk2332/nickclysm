@@ -1,0 +1,22 @@
+[
+  {
+    "type": "profession",
+    "id": "test_prog_b04_profession",
+    "name": "PROG-B04 test profession",
+    "description": "Starts with a CBM its hobby also lists.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ "CBM_Interface" ],
+    "CBMs": [ "bio_carbon" ]
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b04_hobby",
+    "name": "PROG-B04 test hobby",
+    "description": "Lists a CBM the character may already have, then another.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "CBMs": [ "bio_carbon", "bio_armor_eyes" ]
+  }
+]

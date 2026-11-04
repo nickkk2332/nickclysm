@@ -876,11 +876,12 @@ void Character::set_bionics_from_hobbies()
 {
     for( const profession *profession : hobbies ) {
         for( const bionic_id &bio : profession->CBMs() ) {
+            // Skip only this one: the hobby's other CBMs, and later hobbies', still go in
+            // (PROG-B04)
             if( has_bionic( bio ) && !bio->dupes_allowed ) {
-                return;
-            } else {
-                add_bionic( bio );
+                continue;
             }
+            add_bionic( bio );
         }
     }
 }
@@ -945,7 +946,9 @@ void Character::initialize( bool learn_recipes )
     }
 
     for( const bionic_id &bio : prof->CBMs() ) {
-        add_bionic( bio );
+        if( !has_bionic( bio ) || bio->dupes_allowed ) {
+            add_bionic( bio );
+        }
     }
 
     set_bionics_from_hobbies();
