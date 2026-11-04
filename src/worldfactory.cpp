@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "cata_utility.h"
+#include "cata_scope_helpers.h"
 #include "catacharset.h"
 #include "char_validity_check.h"
 #include "color.h"
@@ -125,6 +126,7 @@ void WORLD::add_save( const save_t &name )
 worldfactory::worldfactory()
     : active_world( nullptr )
     , mman_ui( *mman )
+    , mod_preview( std::make_unique<mod_settings_preview>() )
 {
     // prepare tab display order
     tabs.emplace_back(
@@ -134,6 +136,10 @@ worldfactory::worldfactory()
     tabs.emplace_back(
     [this]( const catacurses::window & win, WORLD * w, bool b ) {
         return show_worldgen_tab_options( win, w, b );
+    } );
+    tabs.emplace_back(
+    [this]( const catacurses::window & win, WORLD * w, bool b ) {
+        return show_worldgen_tab_mod_settings( win, w, b );
     } );
 }
 
@@ -188,6 +194,11 @@ WORLD *worldfactory::make_new_world( bool show_prompt, const std::string &world_
     }
 
     if( show_prompt ) {
+        // what the mods picked so far define for world creation
+        refresh_mod_settings( *retworld );
+        on_out_of_scope forget( [this]() {
+            forget_mod_settings();
+        } );
         if( world_to_copy.empty() ) {
             if( show_worldgen_basic( retworld.get() ) < 0 ) {
                 return nullptr;
@@ -265,8 +276,8 @@ int worldfactory::show_worldgen_advanced( WORLD *world )
             std::optional<std::string> ret = prompt_world_name( _( "Choose a new name for this world." ),
                                              world->world_name );
             if( !ret.has_value() ) {
-                // return to settings tab
-                curtab = 1;
+                // return to the last tab
+                curtab = static_cast<int>( numtabs ) - 1;
             } else if( ret.value().empty() ) {
                 // no name entered
                 if( query_yn( _( "World name is empty.  Randomize the name?" ) ) ) {
@@ -771,6 +782,51 @@ int worldfactory::show_worldgen_tab_options( const catacurses::window &, WORLD *
     }
 
     return 0;
+}
+
+int worldfactory::show_worldgen_tab_mod_settings( const catacurses::window &, WORLD *world,
+        bool with_tabs )
+{
+    mod_settings_editor editor( mod_preview->all_settings(), world->mod_settings );
+    const std::string action = get_options().show_mod_settings( editor, with_tabs );
+    if( action == "FIRST_TAB" ) {
+        return -2;
+    } else if( action == "PREV_TAB" ) {
+        return -1;
+    } else if( action == "NEXT_TAB" ) {
+        return 1;
+    } else if( action == "QUIT" ) {
+        return -999;
+    }
+    return 0;
+}
+
+void worldfactory::refresh_mod_settings( WORLD &world )
+{
+    if( !mod_reader ) {
+        mod_reader = std::make_unique<mod_settings_reader>();
+    }
+    mod_settings_preview after = mod_reader->read( world.active_mod_order );
+    // each problem once, though the mod list changes again
+    static std::set<std::string> reported;
+    for( const std::string &error : after.errors ) {
+        if( reported.insert( error ).second ) {
+            debugmsg( "%s", error );
+        }
+    }
+    update_world_mod_settings( world, *mod_preview, after );
+    *mod_preview = std::move( after );
+}
+
+const mod_settings_preview &worldfactory::get_mod_settings_preview() const
+{
+    return *mod_preview;
+}
+
+void worldfactory::forget_mod_settings()
+{
+    mod_reader.reset();
+    *mod_preview = mod_settings_preview();
 }
 
 std::map<int, inclusive_rectangle<point>> worldfactory::draw_mod_list( const catacurses::window &w,
@@ -1477,6 +1533,8 @@ int worldfactory::show_worldgen_tab_modselection( const catacurses::window &win,
         }
         // end RESOLVE INPUTS
     }
+    // the settings tab and the world options follow the new mod list
+    refresh_mod_settings( *world );
     return tab_output;
 }
 
@@ -1549,6 +1607,7 @@ int worldfactory::show_worldgen_basic( WORLD *world )
     ctxt.register_action( "HELP_KEYBINDINGS" );
     ctxt.register_action( "PICK_MODS" );
     ctxt.register_action( "ADVANCED_SETTINGS" );
+    ctxt.register_action( "MOD_SETTINGS" );
     ctxt.register_action( "FINALIZE" );
     ctxt.register_action( "RANDOMIZE" );
     ctxt.register_action( "RESET" );
@@ -1581,19 +1640,39 @@ int worldfactory::show_worldgen_basic( WORLD *world )
 
     std::map<int, inclusive_rectangle<point>> btn_map;
     std::map<int, inclusive_rectangle<point>> slider_inc_map;
-    std::vector<option_slider_id> wg_sliders; // option sliders
+    // option sliders: core's, and those of the picked mods, which change with them
+    std::vector<const option_slider *> wg_sliders;
+    std::vector<option_slider_id> wg_slider_ids;
     std::vector<int> wg_slevels; // current slider levels
+    std::vector<int> wg_slvl_default; // default slider levels
     std::string worldname = world->world_name;
     int sel_opt = 0;
     int top_opt = 0;
 
-    for( const option_slider &osl : option_slider::get_all() ) {
-        if( osl.context() == "WORLDGEN" ) {
-            wg_sliders.emplace_back( osl.id );
-            wg_slevels.emplace_back( osl.default_level() );
+    // after the mod list changed: a slider still there keeps its level
+    const auto load_sliders = [&]() {
+        const std::vector<const option_slider *> sliders =
+            preview_sliders( get_mod_settings_preview(), "WORLDGEN" );
+        std::vector<option_slider_id> ids;
+        std::vector<int> levels;
+        wg_slvl_default.clear();
+        for( const option_slider *osl : sliders ) {
+            int level = osl->default_level();
+            for( size_t i = 0; i < wg_slider_ids.size(); ++i ) {
+                if( wg_slider_ids[i] == osl->id ) {
+                    level = clamp<int>( wg_slevels[i], 0, osl->count() - 1 );
+                }
+            }
+            ids.push_back( osl->id );
+            levels.push_back( level );
+            wg_slvl_default.push_back( osl->default_level() );
         }
-    }
-    const std::vector<int> wg_slvl_default = wg_slevels; // save default slider levels
+        wg_sliders = sliders;
+        wg_slider_ids = ids;
+        wg_slevels = levels;
+        sel_opt = clamp<int>( sel_opt, 0, wg_sliders.size() + 3 );
+    };
+    load_sliders();
 
     ui.on_redraw( [&]( const ui_adaptor & ) {
         slider_inc_map.clear();
@@ -1729,6 +1808,15 @@ int worldfactory::show_worldgen_basic( WORLD *world )
                          inclusive_rectangle<point>(
                              point( 2, win_height - 3 ),
                              point( 2 + utf8_width( sctxt, true ), win_height - 3 ) ) );
+        const int mod_settings_x = 2 + utf8_width( sctxt, true ) + 4;
+        sctxt = string_format( _( "[<color_yellow>%s</color>] - Mod settings" ),
+                               ctxt.get_desc( "MOD_SETTINGS", 1U ) );
+        print_colored_text( w_confirmation, point( mod_settings_x, win_height - 3 ), dummy,
+                            c_light_gray, sctxt );
+        btn_map.emplace( static_cast<int>( wg_sliders.size() + 6 ),
+                         inclusive_rectangle<point>(
+                             point( mod_settings_x, win_height - 3 ),
+                             point( mod_settings_x + utf8_width( sctxt, true ), win_height - 3 ) ) );
         sctxt = string_format( _( "[<color_yellow>%s</color>] - Open mod manager" ),
                                ctxt.get_desc( "PICK_MODS", 1U ) );
         print_colored_text( w_confirmation, point( 2, win_height - 2 ), dummy, c_light_gray, sctxt );
@@ -1758,6 +1846,8 @@ int worldfactory::show_worldgen_basic( WORLD *world )
                         action = "ADVANCED_SETTINGS";
                     } else if( sel_opt == static_cast<int>( wg_sliders.size() + 5 ) ) {
                         action = "PICK_MODS";
+                    } else if( sel_opt == static_cast<int>( wg_sliders.size() + 6 ) ) {
+                        action = "MOD_SETTINGS";
                     } else {
                         action = "CONFIRM";
                         run_for_point_in<int, point>( slider_inc_map, *coord,
@@ -1830,6 +1920,9 @@ int worldfactory::show_worldgen_basic( WORLD *world )
                 world->WORLD_OPTIONS = get_options().get_world_defaults();
                 world->world_saves.clear();
                 world->active_mod_order = world_generator->get_mod_manager().get_default_mods();
+                world->mod_settings.clear();
+                refresh_mod_settings( *world );
+                load_sliders();
                 wg_slevels = wg_slvl_default;
                 custom_opts = false;
             } else if( sel_opt == static_cast<int>( wg_sliders.size() + 3 ) ) {
@@ -1845,6 +1938,8 @@ int worldfactory::show_worldgen_basic( WORLD *world )
                 if( custom_opts && query_yn( _( "Currently using customized advanced options.  "
                                                 "Reset world options to defaults?" ) ) ) {
                     world->WORLD_OPTIONS = get_options().get_world_defaults();
+                    get_options().apply_world_option_defaults( world->WORLD_OPTIONS,
+                            get_mod_settings_preview().world_option_defaults );
                     wg_slevels = wg_slvl_default;
                     custom_opts = false;
                     continue;
@@ -1863,6 +1958,10 @@ int worldfactory::show_worldgen_basic( WORLD *world )
             }
         } else if( action == "PICK_MODS" ) {
             show_worldgen_tab_modselection( w_confirmation, world, false );
+            load_sliders();
+            recalc_startpos = true;
+        } else if( action == "MOD_SETTINGS" ) {
+            show_worldgen_tab_mod_settings( w_confirmation, world, false );
         } else if( action == "ADVANCED_SETTINGS" ) {
             options_manager::options_container WOPTIONS_OLD = world->WORLD_OPTIONS;
             show_worldgen_tab_options( w_confirmation, world, false );
@@ -1951,7 +2050,8 @@ std::map<size_t, inclusive_rectangle<point>> worldfactory::draw_worldgen_tabs(
 
     static const std::vector<std::string> tab_strings {
         translate_marker( "World Mods" ),
-        translate_marker( "World Options" )
+        translate_marker( "World Options" ),
+        translate_marker( "Mod Settings" )
     };
 
     std::vector<std::string> tab_strings_translated( tab_strings );

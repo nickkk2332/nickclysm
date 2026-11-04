@@ -9,6 +9,7 @@
 
 #include "cached_options.h"
 #include "calendar.h"
+#include "cata_scope_helpers.h"
 #include "cata_utility.h"
 #include "catacharset.h"
 #include "color.h"
@@ -3627,6 +3628,87 @@ struct string_col {
 
 std::string options_manager::show( bool ingame, const bool world_options_only, bool with_tabs )
 {
+    if( world_generator->active_world == nullptr ) {
+        ingame = false;
+    }
+    // in game, the settings of the loaded mods get a page
+    std::optional<mod_settings_editor> mod_settings;
+    if( ingame && !world_options_only ) {
+        mod_settings.emplace();
+        if( mod_settings->empty() ) {
+            mod_settings.reset();
+        }
+    }
+    return show_menu( ingame, world_options_only, with_tabs,
+                      mod_settings ? &*mod_settings : nullptr, false );
+}
+
+std::string options_manager::show_mod_settings( mod_settings_editor &editor, bool with_tabs )
+{
+    return show_menu( false, true, with_tabs, &editor, true );
+}
+
+std::string options_manager::show_menu( bool ingame, const bool world_options_only,
+                                        bool with_tabs, mod_settings_editor *mod_settings, const bool mod_settings_only )
+{
+    // The mod settings page, its options and its groups (one per mod, and per group in it) exist
+    // while the menu is open
+    options_container MOD_OPTIONS;
+    std::map<std::string, const mod_setting *> mod_setting_of;
+    int iModPage = -1;
+    const size_t pages_before = pages_.size();
+    const size_t groups_before = groups_.size();
+    on_out_of_scope remove_mod_page( [&]() {
+        pages_.erase( pages_.begin() + pages_before, pages_.end() );
+        groups_.erase( groups_.begin() + groups_before, groups_.end() );
+    } );
+    // a setting's value as its option has it, and the other way
+    const auto mod_value = []( const cOpt & opt ) -> mod_setting_value {
+        if( opt.sType == "bool" )
+        {
+            return opt.bSet;
+        } else if( opt.sType == "float" )
+        {
+            return static_cast<double>( opt.fSet );
+        }
+        return opt.sSet;
+    };
+    const auto set_mod_value = []( cOpt & opt, const mod_setting_value & value ) {
+        if( const bool *b = std::get_if<bool>( &value ) ) {
+            opt.bSet = *b;
+        } else if( const double *d = std::get_if<double>( &value ) ) {
+            opt.fSet = static_cast<float>( *d );
+        } else {
+            opt.sSet = std::get<std::string>( value );
+        }
+    };
+    if( mod_settings != nullptr ) {
+        Page page( "mod_settings", to_translation( "Mod settings" ) );
+        if( mod_settings->empty() ) {
+            // something to stand on
+            const std::string id = "mod_settings:none";
+            groups_.emplace_back( id, to_translation( "No mod picked for this world has settings." ),
+                                  translation() );
+            page.items_.emplace_back( ItemType::GroupHeader, id, id );
+        }
+        int section_num = 0;
+        for( const mod_settings::section &sec : mod_settings->sections() ) {
+            const std::string id = string_format( "mod_settings:%d", section_num++ );
+            groups_.emplace_back( id, no_translation( sec.title() ), translation() );
+            page.items_.emplace_back( ItemType::GroupHeader, id, id );
+            for( const mod_setting *setting : sec.settings ) {
+                cOpt opt = mod_setting_option( *setting, mod_settings->locked_reason( *setting ) );
+                set_mod_value( opt, mod_settings->get( *setting ) );
+                MOD_OPTIONS[setting->id.str()] = opt;
+                mod_setting_of[setting->id.str()] = setting;
+                page.items_.emplace_back( ItemType::Option, setting->id.str(), id );
+            }
+        }
+        pages_.push_back( page );
+        iModPage = static_cast<int>( pages_.size() ) - 1;
+    }
+    const options_container MOD_OPTIONS_OLD = MOD_OPTIONS;
+
     const int iWorldOptPage = std::find_if( pages_.begin(), pages_.end(), [&]( const Page & p ) {
         return p.id_ == "world_default";
     } ) - pages_.begin();
@@ -3642,8 +3724,19 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
     if( world_generator->active_world == nullptr ) {
         ingame = false;
     }
+    // the options a page shows
+    const auto options_of_page = [&]( int page ) -> options_container & {
+        if( page == iModPage )
+        {
+            return MOD_OPTIONS;
+        }
+        return ( ingame || world_options_only ) && page == iWorldOptPage ? ACTIVE_WORLD_OPTIONS :
+        OPTIONS;
+    };
 
-    size_t sel_worldgen_tab = 1;
+    // the world creation tab this menu is
+    const size_t own_worldgen_tab = mod_settings_only ? 2 : 1;
+    size_t sel_worldgen_tab = own_worldgen_tab;
     std::map<size_t, inclusive_rectangle<point>> worldgen_tab_map;
     std::map<int, inclusive_rectangle<point>> opt_tab_map;
     std::map<int, inclusive_rectangle<point>> opt_line_map;
@@ -3651,15 +3744,15 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
     vert_lines.insert( 4 );
     vert_lines.insert( 60 );
 
-    int iCurrentPage = world_options_only ? iWorldOptPage : 0;
+    int iCurrentPage = mod_settings_only ? iModPage : world_options_only ? iWorldOptPage : 0;
     int iCurrentLine = 0;
     int iStartPos = 0;
 
     std::unordered_map<std::string, bool> groups_state;
     groups_state.emplace( "", true ); // Non-existent group
     for( const Group &g : groups_ ) {
-        // Start collapsed
-        groups_state.emplace( g.id_, false );
+        // Start collapsed, but for mod settings
+        groups_state.emplace( g.id_, string_starts_with( g.id_, "mod_settings:" ) );
     }
 
     input_context ctxt( "OPTIONS" );
@@ -3753,9 +3846,7 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
                                world_options_only );
         draw_borders_internal( w_options_header, vert_lines );
 
-        options_manager::options_container &cOPTIONS = ( ingame || world_options_only ) &&
-                iCurrentPage == iWorldOptPage ?
-                ACTIVE_WORLD_OPTIONS : OPTIONS;
+        options_manager::options_container &cOPTIONS = options_of_page( iCurrentPage );
 
         const Page &page = pages_[iCurrentPage];
         const std::vector<PageItem> &page_items = page.items_;
@@ -3773,8 +3864,8 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
                 case ItemType::BlankLine:
                     return groups_state[it.group];
                 case ItemType::Option:
-                    return groups_state[it.group]
-                    && !get_options().get_option( it.data ).is_hidden();
+                    return groups_state[it.group] && ( iCurrentPage == iModPage
+                                                       || !get_options().get_option( it.data ).is_hidden() );
                 default:
                     cata_fatal( "invalid ItemType" );
             }
@@ -3808,13 +3899,14 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
                     const cOpt &opt = cOPTIONS.find( it.data )->second;
                     const bool hasPrerequisite = opt.hasPrerequisite();
                     const bool hasPrerequisiteFulfilled = opt.checkPrerequisite();
+                    const bool locked = !opt.getLockedReason().empty();
 
                     std::string name_prefix = it.group.empty() ? "" : IN_GROUP_PREFIX;
-                    string_col name( name_prefix + opt.getMenuText(), !hasPrerequisite ||
-                                     hasPrerequisiteFulfilled ? c_white : c_light_gray );
+                    string_col name( name_prefix + opt.getMenuText(), !locked && ( !hasPrerequisite ||
+                                     hasPrerequisiteFulfilled ) ? c_white : c_light_gray );
 
                     nc_color cLineColor;
-                    if( hasPrerequisite && !hasPrerequisiteFulfilled ) {
+                    if( locked || ( hasPrerequisite && !hasPrerequisiteFulfilled ) ) {
                         cLineColor = c_light_gray;
                     } else if( opt.getValue() == "false" || opt.getValue() == "disabled" || opt.getValue() == "off" ) {
                         cLineColor = c_light_red;
@@ -3915,6 +4007,13 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
 
         const PageItem &curr_item = page_items[iCurrentLine];
         std::string tooltip = curr_item.fmt_tooltip( curr_item.group, cOPTIONS );
+        if( curr_item.type == ItemType::Option ) {
+            // why a mod setting is read-only here
+            const std::string &locked = cOPTIONS.find( curr_item.data )->second.getLockedReason();
+            if( !locked.empty() ) {
+                tooltip += "  " + colorize( locked, c_light_red );
+            }
+        }
         fold_and_print( w_options_tooltip, point::zero, iMinScreenWidth - 2, c_white, tooltip );
 
         if( ingame && iCurrentPage == iWorldOptPage ) {
@@ -3934,9 +4033,7 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
         Page &page = pages_[iCurrentPage];
         auto &page_items = page.items_;
 
-        options_manager::options_container &cOPTIONS = ( ingame || world_options_only ) &&
-                iCurrentPage == iWorldOptPage ?
-                ACTIVE_WORLD_OPTIONS : OPTIONS;
+        options_manager::options_container &cOPTIONS = options_of_page( iCurrentPage );
 
         std::string action = ctxt.handle_input();
 
@@ -3948,6 +4045,31 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
 
         const auto on_select_option = [&]() {
             cOpt &current_opt = cOPTIONS[curr_item.data];
+
+            if( !current_opt.getLockedReason().empty() ) {
+                popup( current_opt.getLockedReason() );
+                return;
+            }
+            if( iCurrentPage == iModPage ) {
+                const mod_setting &setting = *mod_setting_of.at( curr_item.data );
+                if( action == "CONFIRM" && current_opt.sType == "float" ) {
+                    number_input_popup<float> popup( 0, current_opt.fSet );
+                    popup.set_label( current_opt.getMenuText() );
+                    current_opt.fSet = popup.query();
+                } else if( action == "LEFT" ) {
+                    current_opt.setPrev();
+                } else {
+                    current_opt.setNext();
+                }
+                // as the setting keeps it: clamped and snapped to the step, text on one line
+                const mod_setting_value value = setting.validate( mod_value( current_opt ) ).value_or(
+                                                    mod_settings->get( setting ) );
+                set_mod_value( current_opt, value );
+                if( mod_settings_only ) {
+                    mod_settings->set( setting, value );
+                }
+                return;
+            }
 
 #if defined(LOCALIZE)
             if( current_opt.getName() == "USE_LANG" ) {
@@ -4003,8 +4125,8 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
                 case ItemType::GroupHeader:
                     return true;
                 case ItemType::Option:
-                    return groups_state[curr_item.group]
-                    && !get_options().get_option( curr_item.data ).is_hidden();
+                    return groups_state[curr_item.group] && ( iCurrentPage == iModPage
+                            || !get_options().get_option( curr_item.data ).is_hidden() );
                 default:
                     cata_fatal( "invalid ItemType" );
             }
@@ -4012,7 +4134,7 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
 
         if( action == "MOUSE_MOVE" || action == "SELECT" ) {
             bool found_opt = false;
-            sel_worldgen_tab = 1;
+            sel_worldgen_tab = own_worldgen_tab;
             std::optional<point> coord = ctxt.get_coordinates_text( w_options_border );
             if( world_options_only && with_tabs && coord.has_value() ) {
                 // worldgen tabs
@@ -4020,8 +4142,11 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
                 [&sel_worldgen_tab]( const std::pair<size_t, inclusive_rectangle<point>> &p ) {
                     sel_worldgen_tab = p.first;
                 } ) > 0;
-                if( found_opt && action == "SELECT" && sel_worldgen_tab != 1 ) {
-                    return sel_worldgen_tab == 0 ? "PREV_TAB" : "NEXT_TAB";
+                if( found_opt && action == "SELECT" && sel_worldgen_tab != own_worldgen_tab ) {
+                    if( sel_worldgen_tab > own_worldgen_tab ) {
+                        return "NEXT_TAB";
+                    }
+                    return own_worldgen_tab - sel_worldgen_tab >= 2 ? "FIRST_TAB" : "PREV_TAB";
                 }
             }
             coord = ctxt.get_coordinates_text( w_options_header );
@@ -4182,6 +4307,16 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
             world_options_changed = true;
         }
     }
+    // in game, mod settings change when the changes are saved, sending their events
+    std::vector<std::string> mod_settings_changed;
+    if( mod_settings != nullptr && !mod_settings_only ) {
+        for( const auto &iter : MOD_OPTIONS_OLD ) {
+            if( iter.second != MOD_OPTIONS[iter.first] ) {
+                options_changed = true;
+                mod_settings_changed.push_back( iter.first );
+            }
+        }
+    }
 
     if( options_changed ) {
         if( query_yn( _( "Save changes?" ) ) ) {
@@ -4191,7 +4326,10 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
             refresh_display();
 
             save();
-            if( ingame && world_options_changed ) {
+            for( const std::string &id : mod_settings_changed ) {
+                mod_settings->set( *mod_setting_of.at( id ), mod_value( MOD_OPTIONS[id] ) );
+            }
+            if( ingame && ( world_options_changed || !mod_settings_changed.empty() ) ) {
                 world_generator->active_world->WORLD_OPTIONS = ACTIVE_WORLD_OPTIONS;
                 world_generator->active_world->save();
             }
