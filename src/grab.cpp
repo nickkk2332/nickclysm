@@ -6,6 +6,7 @@
 #include "avatar.h"
 #include "cata_assert.h"
 #include "debug.h"
+#include "grab.h"
 #include "map.h"
 #include "messages.h"
 #include "monster.h"
@@ -31,8 +32,11 @@ bool game::grabbed_veh_move_helper( const tripoint_rel_ms &dp, bool stairs_move 
 
 bool game::grabbed_veh_move_stairs( const tripoint_rel_ms &dp )
 {
-    map &here = get_map();
-    avatar &you = get_avatar();
+    return drag_vehicle_across_stairs( get_map(), get_avatar(), dp );
+}
+
+bool drag_vehicle_across_stairs( map &here, avatar &you, const tripoint_rel_ms &dp )
+{
     tripoint_rel_ms new_dp = dp; // FIXME. We should be passed a copy not a reference.
     const optional_vpart_position grabbed_vehicle_vp = here.veh_at( you.pos_bub(
                 here ) + you.grab_point );
@@ -43,14 +47,26 @@ bool game::grabbed_veh_move_stairs( const tripoint_rel_ms &dp )
     if( !grabbed_vehicle ) {
         return false;
     }
+    // The rules of dragging it apply here too (CHAR-B10)
+    if( monster *mon = grabbed_vehicle->get_harnessed_animal( here ) ) {
+        add_msg( m_info, _( "You cannot move this vehicle whilst your %s is harnessed!" ),
+                 mon->get_name() );
+        you.grab( object_type::NONE );
+        return false;
+    }
 
     grabbed_vehicle->invalidate_mass();
     const int max_str_req = grabbed_vehicle->total_mass( here ) / 10_kilogram;
     int str = you.get_arm_str();
     const bool going_up_stairs = dp.z() > 0;
-    if( str < max_str_req && going_up_stairs ) {
+    // Nothing rolls on stairs: it's carried, down as well as up
+    if( str < max_str_req ) {
         you.grab( object_type::NONE );
-        add_msg( _( "You fail to lift the %s up the stairs." ), grabbed_vehicle->disp_name() );
+        if( going_up_stairs ) {
+            add_msg( _( "You fail to lift the %s up the stairs." ), grabbed_vehicle->disp_name() );
+        } else {
+            add_msg( _( "You fail to lower the %s down the stairs." ), grabbed_vehicle->disp_name() );
+        }
         return false;
     }
 
@@ -119,9 +135,33 @@ bool game::grabbed_veh_move_stairs( const tripoint_rel_ms &dp )
     // Needs to adjust dp to account for vehicle size. e.g. we don't want to put a 1x3 bike right next to us, it'll clip through us!
     // Also we need to change rotation of the vehicle so it always faces away from our current pos. (allowing a degree of choice in how you push/pull something up stairs
     // But we can't turn it while down there, and we can't turn it after putting it up? (I think??)
+
+    // displace_vehicle() puts the parts where their projected mounts say, which may be left
+    // over from an earlier move: it keeps the layout it has.
+    grabbed_vehicle->precalc_mounts( 1, grabbed_vehicle->pivot_rotation[0],
+                                     grabbed_vehicle->pivot_anchor[0] );
+    // The tiles it takes on the new level must be free, as when dragging it.
+    for( const vpart_reference &vp : grabbed_vehicle->get_all_parts_with_fakes() ) {
+        const vehicle_part &part = vp.part();
+        if( part.removed ) {
+            continue;
+        }
+        const tripoint_bub_ms landing = grabbed_vehicle->pos_bub( here ) + part.precalc[1] + new_dp;
+        const veh_collision coll = grabbed_vehicle->part_collision( here,
+                                   static_cast<int>( vp.part_index() ), here.get_abs( landing ), true, false );
+        if( coll.type != veh_coll_nothing ) {
+            add_msg( _( "The %1$s collides with %2$s." ), grabbed_vehicle->name, coll.target_name );
+            you.grab( object_type::NONE );
+            return false;
+        }
+    }
+
     here.displace_vehicle( *grabbed_vehicle, new_dp );
     // TODO: Vehicle should angle away.
     here.rebuild_vehicle_level_caches();
+    // As dragging it costs, with nothing rolling
+    you.mod_moves( -to_moves<int>( 4_seconds ) * max_str_req / std::max( 1, str ) );
+    you.burn_energy_all( -200 * max_str_req / std::max( 1, str ) );
 
     // FIXME? Update our grab position instead?
     you.grab( object_type::NONE );

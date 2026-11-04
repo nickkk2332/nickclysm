@@ -10,14 +10,21 @@
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
+#include "grab.h"
 #include "item.h"
+#include "map.h"
 #include "map_helpers.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "skill.h"
 #include "subbodypart.h"
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
+#include "veh_type.h"
+#include "vehicle.h"
+#include "vpart_position.h"
+#include "vpart_range.h"
 
 // ---- CHAR-B05 ----
 
@@ -229,5 +236,97 @@ TEST_CASE( "char-b08_escaping_an_impeding_effect_on_a_limb", "[audit][character]
         you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_leg_r, true, 1 );
         you.try_remove_impeding_effect();
         CHECK_FALSE( you.has_effect( effect_test_char_b08_impeding ) );
+    }
+}
+
+// ---- CHAR-B10 ----
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_wall( "t_wall" );
+
+static const vproto_id vehicle_prototype_hospital_bed_small( "hospital_bed_small" );
+
+static vehicle *empty_vehicle_at( map &here, const vproto_id &type, const tripoint_bub_ms &p )
+{
+    vehicle *veh = here.add_vehicle( type, p, 0_degrees, 0, veh_spawn_status::UNDAMAGED );
+    REQUIRE( veh != nullptr );
+    for( const vpart_reference &vp : veh->get_all_parts() ) {
+        veh->get_items( vp.part() ).clear();
+    }
+    veh->invalidate_mass();
+    return veh;
+}
+
+// Taking the stairs while holding a vehicle put the vehicle beside the avatar on the new level
+// with none of the checks dragging makes: it went into walls, furniture, vehicles or
+// creatures, cost no moves or stamina, ignored a harnessed animal, and anyone could take any
+// vehicle down the stairs.
+TEST_CASE( "char-b10_a_vehicle_taken_across_stairs_is_dragged_by_the_rules",
+           "[audit][vehicle][grab]" )
+{
+    clear_avatar();
+    clear_map( -2, 1 );
+    clear_vehicles();
+    map &here = get_map();
+    avatar &you = get_avatar();
+    on_out_of_scope restore( [&here]() {
+        get_avatar().grab( object_type::NONE );
+        clear_vehicles( &here );
+        clear_map( -2, 1 );
+        clear_avatar();
+    } );
+    // The direction the player picks after taking the stairs
+    const tripoint_rel_ms east( 1, 0, 0 );
+
+    SECTION( "up the stairs" ) {
+        // The avatar has just come up to the upper floor; the bed is still below.
+        const tripoint_bub_ms top( 60, 60, 1 );
+        for( const tripoint_bub_ms &p : here.points_in_radius( top, 2 ) ) {
+            here.ter_set( p, ter_t_floor );
+        }
+        you.setpos( here, top );
+        const tripoint_rel_ms grab_point( 1, 0, -1 );
+        const vehicle *bed = empty_vehicle_at( here, vehicle_prototype_hospital_bed_small,
+                                               top + grab_point );
+        REQUIRE( bed->total_mass( here ) >= 10_kilogram );
+        here.rebuild_vehicle_level_caches();
+        you.grab( object_type::VEHICLE, grab_point );
+        // As game::vertical_move works it out: from the bed to the tile the player picked
+        const tripoint_rel_ms dp = -grab_point + east;
+
+        SECTION( "a wall in the way blocks it" ) {
+            here.ter_set( top + east, ter_t_wall );
+            CHECK_FALSE( drag_vehicle_across_stairs( here, you, dp ) );
+            CHECK( here.veh_at( top + grab_point ) );
+            CHECK_FALSE( here.veh_at( top + east ) );
+        }
+        SECTION( "it takes moves and stamina" ) {
+            you.set_moves( 100 );
+            const int stamina = you.get_stamina();
+            CHECK( drag_vehicle_across_stairs( here, you, dp ) );
+            CHECK( here.veh_at( top + east ) );
+            CHECK( you.get_moves() < 100 );
+            CHECK( you.get_stamina() < stamina );
+        }
+    }
+    SECTION( "down the stairs" ) {
+        // The avatar has just come down; the bed is still on the floor above.
+        const tripoint_bub_ms bottom( 60, 60, 0 );
+        const tripoint_rel_ms grab_point( 1, 0, 1 );
+        here.ter_set( bottom + grab_point, ter_t_floor );
+        you.setpos( here, bottom );
+        vehicle *bed = empty_vehicle_at( here, vehicle_prototype_hospital_bed_small,
+                                         bottom + grab_point );
+        here.rebuild_vehicle_level_caches();
+        you.grab( object_type::VEHICLE, grab_point );
+        const tripoint_rel_ms dp = -grab_point + east;
+        const int str_req = bed->total_mass( here ) / 10_kilogram;
+        REQUIRE( str_req >= 2 );
+        you.set_str_base( str_req - 1 );
+        REQUIRE( you.get_arm_str() < str_req );
+
+        CHECK_FALSE( drag_vehicle_across_stairs( here, you, dp ) );
+        CHECK( here.veh_at( bottom + grab_point ) );
+        CHECK_FALSE( here.veh_at( bottom + east ) );
     }
 }
