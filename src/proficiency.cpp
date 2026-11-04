@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "debug.h"
 #include "flexbuffer_json.h"
@@ -371,7 +373,9 @@ void proficiency_set::set_time_practiced( const proficiency_id &practicing,
                 ++it;
             }
         }
-        learn( practicing );
+        // With its prerequisites: on its own it would be learned only if they were known, and
+        // the progress just erased would be lost (PROG-B10)
+        learn( practicing, true );
         return;
     } else if( known.count( practicing ) ) {
         remove( practicing );
@@ -383,16 +387,38 @@ void proficiency_set::set_time_practiced( const proficiency_id &practicing,
     current.practiced = amount;
 }
 
+// prof and its prerequisites, theirs first, each once: a circle of prerequisites ends where it
+// comes back round instead of recursing until the stack runs out (PROG-B10)
+static void prerequisites_first( const proficiency_id &prof, std::set<proficiency_id> &seen,
+                                 std::vector<proficiency_id> &order )
+{
+    if( !seen.insert( prof ).second ) {
+        return;
+    }
+    for( const proficiency_id &req : prof->required_proficiencies() ) {
+        prerequisites_first( req, seen, order );
+    }
+    order.push_back( prof );
+}
+
 void proficiency_set::learn( const proficiency_id &learned, bool recursive )
 {
-    for( const proficiency_id &req : learned->required_proficiencies() ) {
-        if( !has_learned( req ) && !recursive ) {
-            return;
-        } else if( recursive ) {
-            learn( req, recursive );
+    std::vector<proficiency_id> to_learn;
+    if( recursive ) {
+        std::set<proficiency_id> seen;
+        prerequisites_first( learned, seen, to_learn );
+    } else {
+        for( const proficiency_id &req : learned->required_proficiencies() ) {
+            if( !has_learned( req ) ) {
+                return;
+            }
         }
+        to_learn.push_back( learned );
     }
-    known.insert( learned );
+    for( const proficiency_id &prof : to_learn ) {
+        // A prerequisite learned this way may have been in progress
+        direct_learn( prof );
+    }
 }
 
 // All the proficiencies in subjects that require one of the proficiencies in requirements
@@ -617,14 +643,26 @@ void book_proficiency_bonuses::add( const book_proficiency_bonus &bonus )
 void book_proficiency_bonuses::add( const book_proficiency_bonus &bonus,
                                     std::set<proficiency_id> &already_included )
 {
-    bonuses.push_back( bonus );
+    // A book gives a proficiency one bonus, the best of those it lists or passes down to it
+    // from a proficiency that requires it (PROG-B06).
+    already_included.emplace( bonus.id );
+    auto found = std::find_if( bonuses.begin(), bonuses.end(),
+    [&bonus]( const book_proficiency_bonus & held ) {
+        return held.id == bonus.id;
+    } );
+    if( found == bonuses.end() ) {
+        bonuses.push_back( bonus );
+    } else {
+        found->fail_factor = std::max( found->fail_factor, bonus.fail_factor );
+        found->time_factor = std::max( found->time_factor, bonus.time_factor );
+    }
     if( bonus.include_prereqs ) {
         for( const proficiency_id &prereqs : bonus.id->required_proficiencies() ) {
+            // The set ends a circle of prerequisites
             if( !already_included.count( prereqs ) ) {
-                already_included.emplace( prereqs );
                 book_proficiency_bonus inherited_bonus = bonus;
                 inherited_bonus.id = prereqs;
-                add( inherited_bonus );
+                add( inherited_bonus, already_included );
             }
         }
     }
@@ -633,9 +671,8 @@ void book_proficiency_bonuses::add( const book_proficiency_bonus &bonus,
 book_proficiency_bonuses &book_proficiency_bonuses::operator+=( const book_proficiency_bonuses
         &rhs )
 {
-    for( const book_proficiency_bonus &bonus : rhs.bonuses ) {
-        add( bonus );
-    }
+    // Those are already expanded, and another book's bonuses compound with these
+    bonuses.insert( bonuses.end(), rhs.bonuses.begin(), rhs.bonuses.end() );
     return *this;
 }
 

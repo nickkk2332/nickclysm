@@ -2029,7 +2029,7 @@ The following properties (mandatory, except if noted otherwise) are supported:
     "points": 0,                                               // Point cost of profession. Positive values cost points and negative values grant points. Has no effect as of 0.G
     "starting_trauma": 250,                                    // (optional, integer) A counter for how much trauma the character has been exposed to. Values are clamped to the range [0-1000].
     "starting_cash": 500000,                                   // (optional) Int value for the starting bank balance.
-    "npc_background": "BG_survival_story_LAB",                 // (optional) BG_trait_group ID, provides list of background stories. (see BG_trait_groups.json)
+    "npc_background": "BG_survival_story_LAB",                 // (optional) BG_trait_group ID, provides list of background stories. (see BG_trait_groups.json).  Loading reports an ID that isn't a trait group, and any trait group naming a trait or group that doesn't exist
 	"chargen_allow_npc": false,                                // (optional) when false, removes this profession as an option for generated NPCs (default: true)
     "addictions": [ { "intensity": 10, "type": "nicotine" } ], // (optional) Array of addictions. Requires "type" as the string ID of the addiction (see JSON_FLAGS.md) and "intensity"
     "skills": [ { "name": "archery", "level": 2 } ],           // (optional) Array of starting skills. Requires "name" as the string ID of the skill (see skills.json) and "level", which is a value added to the skill level after character creation
@@ -2067,7 +2067,7 @@ The following properties (mandatory, except if noted otherwise) are supported:
       { "id": "summon_undead", "level": 5 },
       { "id": "necrotic_gaze", "level": 1 }
     ],
-    "recipes": [ "beartrap" ]                                  // (optional) Array of starting recipe IDs the character knows upon creation
+    "recipes": [ "beartrap" ]                                  // (optional) Array of starting recipe IDs the character knows upon creation. A recipe's ID is its result, followed by "_" and its "variant" if it has one, then "_" and its "id_suffix" if it has one; a recipe without a result uses its "id"
   },
 ```
 
@@ -2099,6 +2099,8 @@ Items the player starts with when selecting this profession.  One can specify di
 
 (optional) Boolean.  If false, `hobbies` will instead be a list of hobbies that this profession _cannot_ choose from.  Defaults to true.
 
+Choosing a profession in the character creator drops the hobbies it doesn't allow (with the traits only they gave) and the traits in its `forbidden_traits`, with a message for each; finishing the character checks this again.  The default background hobbies (see [Profession groups](#profession-groups)) leave out those the profession doesn't allow.
+
 
 ### Hobbies
 
@@ -2114,11 +2116,11 @@ Note: hobby fields derive from those used in professions.  The following is a no
     "name": "Driving License",                                 // String, in-game name
     "description": "Description goes here",                    // In-game description
     "points": 0,                                               // Point cost of profession. Positive values cost points and negative values grant points. Has no effect as of 0.G
-    "skills": [                                                // (optional) Array of starting skills, added on top of the profession starting skills
+    "skills": [                                                // (optional) Array of starting skills.  A hobby's level is a minimum, not added on top: the character starts with the higher of it and the levels bought plus the profession's
       { "level": 2, "name": "driving" }
     ],
     "proficiencies": [ "prof_driver" ],                        // (optional) Array of starting proficiencies
-    "addictions": [ { "intensity": 40, "type": "opiate" } ],   // (optional) Array of addictions, added on top of the profession starting addictions
+    "addictions": [ { "intensity": 40, "type": "opiate" } ],   // (optional) Array of addictions, added to the profession starting addictions; an addiction of a type the profession or another hobby also gives takes the higher intensity
     "traits": [ "LOVES_BOOKS" ],                               // (optional) Array of starting traits/mutations
     "CBMs": [ "bio_adrenaline" ],                              // (optional) Array of starting implanted CMBs
     "spells": [ { "id": "create_atomic_light", "level": 5 } ]  // (optional) Array of starting spell IDs the character knows upon creation
@@ -2146,7 +2148,7 @@ Thus, it is listed here for reference and modding purposes only.
   }
 ```
 
-The array of hobbies (listed as professions) is whitelisted to all characters.  Thus, if one wants to start with no hobbies, the list has to be set as:
+The array of hobbies (listed as professions) is whitelisted to all characters, except those the character's profession doesn't allow.  Thus, if one wants to start with no hobbies, the list has to be set as:
 
 ```jsonc
     "professions": [  ]

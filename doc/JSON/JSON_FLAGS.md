@@ -338,7 +338,7 @@ Some armor flags, such as `WATCH` and `ALARMCLOCK` are compatible with other ite
 - ```NON_FLESH_LIMB``` The bodypart is immune to a number of effects like poisoning or infection.
 - ```NONSTANDARD_BLOCK``` This limb is different enough that martial arts' arm/leg blocks aren't applicable - blocking with this limb is unlocked by reaching the MA's `nonstandard_block` level, unless the limb also has `ALWAYS_BLOCK`.  Either block flag is **required** for non-arm / non-leg limbs to be eligible to block.
 - ```PARTIAL_BIONIC_LIMB``` This limb is at least in part mechanical.
-- ```WINGS_2``` You can slow your fall, effectively reducing the height of falls by 2 levels, and ignore pit-like traps if two instances of the flag are present.
+- ```WINGS_2``` You can slow your fall, effectively reducing the height of falls by 2 levels, and ignore pit-like traps if two instances of the flag are present.  Nothing may hold you in place for that (downed, webbed, snared, caught in a bear trap, crushed, grabbed, in a pit or under an `EFFECT_IMPEDING` effect), and you may not be stunned; asking doesn't make you struggle against what holds you.
 - ```WING_ARMS``` Counts as a wing for `Character::can_fly` if two instances of the flag are present.
 
 
@@ -606,7 +606,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.
 - ```FLUMED``` Adds disease `took_flumed`.
 - ```FLUSLEEP``` Adds disease `took_flumed` and increases sleepiness.
 - ```FUNGICIDE``` Kills fungus and spores. Removes diseases `fungus` and `spores`.
-- ```HALLU``` Adds disease `hallu`.
+- ```HALLU``` Adds disease `hallu`.  Its stages are fractions of the dose, the time since it was taken or last topped up plus the time left: you feel strange with 95% of it left, then come up (nausea), see visuals from 80% left, get stat penalties and hallucinations until 30% left, and come down.  A `hallu` of any duration goes through them all.  Adding more while it lasts (pushing its end out by more than a turn) starts the stages over from that moment; adding a turn at a time, as an enchantment's `ench_effects` does, doesn't.
 - ```HONEYCOMB``` Spawns wax.
 - ```INHALER``` Removes disease `asthma`.
 - ```IODINE``` Adds disease `iodine`.
@@ -631,7 +631,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.
 These are checked by hardcode for monsters (introducing new flags will require C++ changes), but for characters are considered "character flags", meaning new ones can be implemented in JSON alone.  See also [Character flags](#character)
 
 - ```DISABLE_FLIGHT``` Monsters affected by an effect with this flag will never count as flying (even if they have the `FLIES` flag).
-- ```EFFECT_IMPEDING``` Character affected by an effect with this flag can't move until they break free from the effect.  Breaking free requires a strength check: `x_in_y( STR * limb lifting score * limb grip score, 6 * get_effect_int( eff_id )`.
+- ```EFFECT_IMPEDING``` Character affected by an effect with this flag can't move until they break free from the effect.  Breaking free requires a strength check: `x_in_y( STR * limb lifting score * limb grip score, 6 * intensity )`.  An effect on several body parts takes a check for each, at the intensity it has there, and breaking free of it on one leaves it on the others.
 - ```EFFECT_LIMB_DISABLE_CONDITIONAL_FLAGS``` Effect disables any conditional flags the limb has.
 - ```EFFECT_LIMB_SCORE_MOD``` Effect with a limb score component to be used in Character::get_limb_score.  See [EFFECTS_JSON.md](EFFECTS_JSON.md) for the exact function of limb score modifiers and [JSON_INFO.md](JSON_INFO.md#limb-scores) for the effects of the scores.
 - ```EFFECT_LIMB_SCORE_MOD_LOCAL``` Same as `EFFECT_LIMB_SCORE_MOD`, but limb score is modified only if effect is applied to body part, that has said score; effect, that apply -50% vision debuff, won't have effect if applied to leg with this flag.

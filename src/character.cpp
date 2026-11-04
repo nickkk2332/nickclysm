@@ -181,6 +181,7 @@ static const damage_type_id damage_stab( "stab" );
 static const effect_on_condition_id effect_on_condition_add_effect( "add_effect" );
 
 static const efftype_id effect_adrenaline( "adrenaline" );
+static const efftype_id effect_beartrap( "beartrap" );
 static const efftype_id effect_bite( "bite" );
 static const efftype_id effect_bleed( "bleed" );
 static const efftype_id effect_blind( "blind" );
@@ -192,6 +193,7 @@ static const efftype_id effect_contacts( "contacts" );
 static const efftype_id effect_controlled( "controlled" );
 static const efftype_id effect_corroding( "corroding" );
 static const efftype_id effect_cramped_space( "cramped_space" );
+static const efftype_id effect_crushed( "crushed" );
 static const efftype_id effect_darkness( "darkness" );
 static const efftype_id effect_deaf( "deaf" );
 static const efftype_id effect_dermatik( "dermatik" );
@@ -202,9 +204,11 @@ static const efftype_id effect_fungus( "fungus" );
 static const efftype_id effect_glowing( "glowing" );
 static const efftype_id effect_glowy_led( "glowy_led" );
 static const efftype_id effect_harnessed( "harnessed" );
+static const efftype_id effect_heavysnare( "heavysnare" );
 static const efftype_id effect_in_pit( "in_pit" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_infected( "infected" );
+static const efftype_id effect_lightsnare( "lightsnare" );
 static const efftype_id effect_masked_scent( "masked_scent" );
 static const efftype_id effect_mech_recon_vision( "mech_recon_vision" );
 static const efftype_id effect_melatonin( "melatonin" );
@@ -223,6 +227,7 @@ static const efftype_id effect_subaquatic_sonar( "subaquatic_sonar" );
 static const efftype_id effect_tapeworm( "tapeworm" );
 static const efftype_id effect_tied( "tied" );
 static const efftype_id effect_transition_contacts( "transition_contacts" );
+static const efftype_id effect_webbed( "webbed" );
 static const efftype_id effect_winded( "winded" );
 
 static const fault_id fault_bionic_salvaged( "fault_bionic_salvaged" );
@@ -8094,8 +8099,10 @@ float Character::fall_damage_mod() const
     dex_dodge *= get_modifier( character_modifier_limb_fall_mod );
     // But prevent it from increasing damage
     dex_dodge = std::max( 0.0f, dex_dodge ); // 0
-    // 100% damage at 0, 75% at 10, 50% at 20 and so on
-    ret *= ( 100.0f - ( dex_dodge * 4.0f ) ) / 100.0f;
+    // 100% damage at 0, 60% at 10, 20% at 20, and never under 10% (6.7% with parkour below):
+    // only FEATHER_FALL and FALL_DAMAGE enchantments make every fall harmless. Under 1/6, a
+    // one-story fall is still a perfect landing (see impact()) (CHAR-B06)
+    ret *= std::max( 0.1f, ( 100.0f - ( dex_dodge * 4.0f ) ) / 100.0f );
 
     if( has_proficiency( proficiency_prof_parkour ) ) {
         ret *= 2.0f / 3.0f;
@@ -8272,9 +8279,21 @@ int Character::impact( const int force, const tripoint_bub_ms &p )
     return total_dealt;
 }
 
+// Whether something holds the character where they are: what move_effects() makes them struggle
+// against, read without rolling any escape.
+static bool held_in_place( const Character &you )
+{
+    return you.has_effect( effect_downed ) || you.has_effect( effect_webbed ) ||
+           you.has_effect( effect_lightsnare ) || you.has_effect( effect_heavysnare ) ||
+           you.has_effect( effect_beartrap ) || you.has_effect( effect_crushed ) ||
+           you.has_effect_with_flag( flag_EFFECT_IMPEDING ) || you.has_effect( effect_in_pit ) ||
+           you.has_flag( json_flag_GRAB );
+}
+
 bool Character::can_fly()
 {
-    if( !move_effects( false ) || has_effect( effect_stunned ) ) {
+    // Only asks: breaking free takes a move of its own (CHAR-B05)
+    if( held_in_place( *this ) || has_effect( effect_stunned ) ) {
         return false;
     }
     // GLIDE is for artifacts or things like jetpacks that don't care if you're tired or hurt.
@@ -8284,10 +8303,8 @@ bool Character::can_fly()
     if( ( count_flag( json_flag_WINGS_2 ) >= 2 || count_flag( json_flag_WING_ARMS ) >= 2 ) &&
         !worn_with_flag( json_flag_NO_WING_GLIDING ) ) {
 
-        if( 100 * weight_carried() / weight_capacity() > 50 ) {
-            return false;
-        }
-        return true;
+        // The capacity can be 0
+        return weight_carried() * 2 <= weight_capacity();
     }
     return false;
 }

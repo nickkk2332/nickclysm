@@ -559,13 +559,16 @@ Books can be defined like this:
   { 
     "proficiency": "prof_fermenting", // id of proficiency
     "time_factor": 0.1,               // slowdown for using this book proficiency - slowdown from lack of proficiency is multiplied on this value, so for `0.75`, if recipe adds 10 hours for lack of proficiency,  with book it would be [ 10 * ( 1 - 0.75 ) = ] 2.5 hours; multiple books stacks, but in logarithmic way, meaning having more books of the same proficiency is better than having one book, but never would be better than learning the proficiency
-    "fail_factor": 0.25               // works same as `time_factor`
+    "fail_factor": 0.25,              // works same as `time_factor`
+    "include_prereqs": true           // (default true) the bonus also applies to the proficiency's prerequisites, and theirs
   },
   { "proficiency": "prof_brewing", "time_factor": 0.25, "fail_factor": 0.5 },
   { "proficiency": "prof_winemaking", "time_factor": 0.1, "fail_factor": 0.25 }
 ],
 
 ```
+A book gives each proficiency one bonus: if it lists a proficiency more than once, directly or as a prerequisite of others it lists, the best `time_factor` and the best `fail_factor` count.  Different books compound; copies of one book don't.
+
 It is possible to omit the `max_level` field if the book you're creating contains only recipes and it's not supposed to level up any skill. In this case the `skill` field will just refer to the skill required to learn the recipes.
 
 Since many book names are proper names, it's often necessary to explicitly specify

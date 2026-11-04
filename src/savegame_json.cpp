@@ -1034,7 +1034,15 @@ void Character::load( const JsonObject &data )
         requirement_data::save_requirement( fetch_reqs, req_id );
     }
 
-    data.read( "addictions", addictions );
+    std::vector<addiction> saved_addictions;
+    if( data.read( "addictions", saved_addictions ) ) {
+        // Characters made before PROG-B07 can have two entries of a type, of which only the
+        // first was ever sated
+        addictions.clear();
+        for( const addiction &add : saved_addictions ) {
+            merge_addiction( addictions, add );
+        }
+    }
 
     for( bionic &bio : *my_bionics ) {
         // Assign UID if missing before applying other migrations
