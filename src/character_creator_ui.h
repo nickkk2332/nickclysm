@@ -56,6 +56,10 @@ class character_creator_callback : public uilist_callback
         void refresh( uilist *menu ) override;
 };
 
+// The skills tab's entry for a skill: the levels bought, plus what the profession and hobbies
+// add to them.
+std::string get_skill_entry_text( skill_id selected_skill, const avatar &u );
+
 // never serialized, just to keep state in one place
 struct character_creator_uistate {
 

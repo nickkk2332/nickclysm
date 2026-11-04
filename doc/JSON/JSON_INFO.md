@@ -2115,7 +2115,7 @@ Note: hobby fields derive from those used in professions.  The following is a no
     "name": "Driving License",                                 // String, in-game name
     "description": "Description goes here",                    // In-game description
     "points": 0,                                               // Point cost of profession. Positive values cost points and negative values grant points. Has no effect as of 0.G
-    "skills": [                                                // (optional) Array of starting skills, added on top of the profession starting skills
+    "skills": [                                                // (optional) Array of starting skills.  A hobby's level is a minimum, not added on top: the character starts with the higher of it and the levels bought plus the profession's
       { "level": 2, "name": "driving" }
     ],
     "proficiencies": [ "prof_driver" ],                        // (optional) Array of starting proficiencies

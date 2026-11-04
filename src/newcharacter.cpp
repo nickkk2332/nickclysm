@@ -169,7 +169,7 @@ static std::string get_character_stat_name( int selected_stat_index )
                                           static_cast<character_stat>( selected_stat_index ) ) ) );
 }
 
-static std::string get_skill_entry_text( const skill_id selected_skill, const avatar &u )
+std::string get_skill_entry_text( const skill_id selected_skill, const avatar &u )
 {
     int prof_skill_level = 0;
     for( auto &prof_skill : u.prof->skills() ) {
@@ -178,25 +178,29 @@ static std::string get_skill_entry_text( const skill_id selected_skill, const av
             break;
         }
     }
+    int hobby_skill_level = 0;
     for( const profession *hobby : u.hobbies ) {
         for( auto &hobby_skill : hobby->skills() ) {
             if( hobby_skill.first == selected_skill ) {
-                prof_skill_level = std::max( prof_skill_level, hobby_skill.second );
+                hobby_skill_level = std::max( hobby_skill_level, hobby_skill.second );
                 break;
             }
         }
     }
 
     const int my_skill = u.get_skill_level( selected_skill );
-    auto green_if_positive = [&my_skill, &prof_skill_level]( const std::string & text ) {
-        if( my_skill + prof_skill_level > 0 ) {
+    // A hobby's level is a floor under the levels bought and the profession's, not more on top:
+    // what the character starts with, as initialize() and the summary have it (PROG-B09)
+    const int bonus = std::max( my_skill + prof_skill_level, hobby_skill_level ) - my_skill;
+    auto green_if_positive = [&my_skill, &bonus]( const std::string & text ) {
+        if( my_skill + bonus > 0 ) {
             return colorize( text, c_green );
         }
         return text;
     };
-    std::string skill_entry_text = prof_skill_level == 0 ?
+    std::string skill_entry_text = bonus == 0 ?
                                    string_format( "%s (%d)", selected_skill->name(), my_skill ) :
-                                   string_format( "%s (%d + %d)", selected_skill->name(), my_skill, prof_skill_level );
+                                   string_format( "%s (%d + %d)", selected_skill->name(), my_skill, bonus );
 
     return green_if_positive( skill_entry_text );
 }

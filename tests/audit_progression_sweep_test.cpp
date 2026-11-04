@@ -14,10 +14,13 @@
 #include "item.h"
 #include "json.h"
 #include "json_loader.h"
+#include "output.h"
 #include "player_helpers.h"
 #include "proficiency.h"
 #include "profession.h"
 #include "recipe.h"
+#include "skill.h"
+#include "string_formatter.h"
 #include "type_id.h"
 
 // ---- PROG-B04 ----
@@ -271,4 +274,36 @@ TEST_CASE( "prog-b08_the_default_background_leaves_out_excluded_hobbies", "[audi
 
     CHECK( u.hobbies.count( &profession_driving_license.obj() ) == 0 );
     CHECK( u.hobbies.count( &profession_computer_literate.obj() ) == 1 );
+}
+
+// ---- PROG-B09 ----
+
+static const skill_id skill_driving( "driving" );
+
+// The skills tab added the hobby's level to the levels bought, but a hobby's skill is a floor:
+// the character starts with the higher of bought + profession and the hobby's level.  The tab
+// showed "Driving (2 + 2)" for a character that started with Driving 2.
+TEST_CASE( "prog-b09_the_skills_tab_shows_the_level_the_character_starts_with",
+           "[audit][chargen]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    const profession &license = profession_driving_license.obj();
+    const profession::StartingSkillList license_skills = license.skills();
+    REQUIRE( std::count( license_skills.begin(), license_skills.end(),
+                         profession::StartingSkill( skill_driving, 2 ) ) == 1 );
+    u.hobbies.insert( &license );
+    const std::string name = skill_driving->name();
+    const auto entry_for = [&u]( int bought ) {
+        u.set_skill_level( skill_driving, bought );
+        return remove_color_tags( get_skill_entry_text( skill_driving, u ) );
+    };
+
+    CHECK( entry_for( 0 ) == string_format( "%s (0 + 2)", name ) );
+    CHECK( entry_for( 1 ) == string_format( "%s (1 + 1)", name ) );
+    CHECK( entry_for( 2 ) == string_format( "%s (2)", name ) );
+    CHECK( entry_for( 3 ) == string_format( "%s (3)", name ) );
 }
