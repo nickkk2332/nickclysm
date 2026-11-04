@@ -841,6 +841,11 @@ void mutation_branch::check_consistency()
         ::check_consistency( mdata.replacements, mid, "replacements" );
         ::check_consistency( mdata.additions, mid, "additions" );
     }
+    // Trait groups, inline ones included: an unknown trait or nested group would otherwise
+    // show only when the group is rolled (PROG-B11)
+    for( const auto &group : trait_groups ) {
+        group.second->check_consistency();
+    }
 }
 
 nc_color mutation_branch::get_display_color() const
