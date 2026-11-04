@@ -2,6 +2,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "bodypart.h"
@@ -410,21 +411,28 @@ void Character::try_remove_webs()
 
 void Character::try_remove_impeding_effect()
 {
+    // One roll per body part the effect is on, at that instance's intensity, and a success frees
+    // only that part. Removing it ends the effect, so walk a copy (CHAR-B08).
+    std::vector<std::tuple<efftype_id, bodypart_id, int>> impeding;
     for( const effect &eff : get_effects_with_flag( flag_EFFECT_IMPEDING ) ) {
-        const efftype_id &eff_id = eff.get_id();
+        impeding.emplace_back( eff.get_id(), eff.get_bp(), eff.get_intensity() );
+    }
+    for( const auto &[eff_id, eff_bp, intensity] : impeding ) {
+        if( !has_effect( eff_id, eff_bp ) ) {
+            continue;
+        }
         if( is_mounted() ) {
             auto *mon = mounted_creature.get();
-            if( x_in_y( mon->type->melee_dice * mon->type->melee_sides,
-                        6 * get_effect_int( eff_id ) ) ) {
+            if( x_in_y( mon->type->melee_dice * mon->type->melee_sides, 6 * intensity ) ) {
                 add_msg( _( "The %s breaks free!" ), mon->get_name() );
                 mon->remove_effect( eff_id );
-                remove_effect( eff_id );
+                remove_effect( eff_id, eff_bp );
             }
             /** @EFFECT_STR increases chance to escape webs */
-        } else if( can_escape_trap( 6 * get_effect_int( eff_id ) ) ) {
+        } else if( can_escape_trap( 6 * intensity ) ) {
             add_msg_player_or_npc( m_good, _( "You free yourself!" ),
                                    _( "<npcname> frees themselves!" ) );
-            remove_effect( eff_id );
+            remove_effect( eff_id, eff_bp );
         } else {
             add_msg_if_player( _( "You try to free yourself, but can't!" ) );
         }

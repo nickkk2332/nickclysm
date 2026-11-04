@@ -196,3 +196,38 @@ TEST_CASE( "char-b07_similar_sub_body_part_lists_are_rebuilt_not_appended", "[au
         CHECK( std::set<sub_bodypart_str_id>( after.begin(), after.end() ).size() == after.size() );
     }
 }
+
+// ---- CHAR-B08 ----
+
+static const efftype_id effect_test_char_b08_impeding( "test_char_b08_impeding" );
+
+// try_remove_impeding_effect() took the difficulty from the whole-body instance of the effect,
+// which a limb's effect doesn't have, so every escape from one succeeded; and a success removed
+// the effect from every body part while the loop still walked them.
+TEST_CASE( "char-b08_escaping_an_impeding_effect_on_a_limb", "[audit][character][effect]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    you.set_str_base( 10 );
+    // Difficulty 6 per intensity: an intensity 1 hold always breaks, an intensity 1000 one
+    // practically never does.
+    you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_arm_l, true, 1 );
+    you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_arm_r, true, 1000 );
+    REQUIRE( you.get_effect_int( effect_test_char_b08_impeding, body_part_arm_r ) == 1000 );
+
+    you.try_remove_impeding_effect();
+
+    CHECK_FALSE( you.has_effect( effect_test_char_b08_impeding, body_part_arm_l ) );
+    CHECK( you.has_effect( effect_test_char_b08_impeding, body_part_arm_r ) );
+
+    SECTION( "two weak holds both break" ) {
+        you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_leg_l, true, 1 );
+        you.remove_effect( effect_test_char_b08_impeding, body_part_arm_r );
+        you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_leg_r, true, 1 );
+        you.try_remove_impeding_effect();
+        CHECK_FALSE( you.has_effect( effect_test_char_b08_impeding ) );
+    }
+}

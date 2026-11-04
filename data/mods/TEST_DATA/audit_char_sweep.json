@@ -31,5 +31,13 @@
     "purifiable": false,
     "valid": false,
     "enchantments": [ { "values": [ { "value": "CARRY_WEIGHT", "multiply": -1 } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_char_b08_impeding",
+    "name": [ "Test Impeded" ],
+    "desc": [ "CHAR-B08: an impeding effect that can sit on a limb." ],
+    "max_intensity": 1000,
+    "flags": [ "EFFECT_IMPEDING" ]
   }
 ]
