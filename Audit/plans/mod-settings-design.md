@@ -1,7 +1,8 @@
 # Design: mod settings (DATA-J01)
 
-**Status:** first decisions made with the owner on 2026-11-03 (below). Not built yet. The
-remaining open points are listed at the end.
+**Status:** built (all four phases), on the decisions made with the owner on 2026-11-03
+(below). The three open points at the end were accepted as proposed. The doc for mod authors is
+[doc/JSON/MOD_SETTINGS.md](../../doc/JSON/MOD_SETTINGS.md).
 
 ## The problem today
 
@@ -100,7 +101,7 @@ The doc gets a short "replacing an EOC settings menu" section: declare `mod_sett
 
 The menus need a display, so tests cover the data behind them, not the screens.
 
-## Open points (proposed defaults; the owner can change them)
+## Open points (proposed defaults, accepted as proposed)
 
 1. **Existing `WORLD_OPTION`.** Proposed: give it the shape `{ "name", "default" }`, so a mod can change the default of a built-in world option, such as spawn density, instead of forcing it on. It is unused today, so nothing breaks.
 2. **Core's `option_slider` (world-generation sliders).** Proposed: mods can add their own `option_slider` through the same pre-read. These are ordinary world options, so a mod's slider changes built-in options, not mod settings.

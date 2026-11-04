@@ -27,3 +27,7 @@ External options that are frequently checked can be cached as variables by decla
 ### Hack for migrating menu options
 In the case when a menu option is migrated to an external option, it is desirable to have already-adjusted world or global options take precedence over the new external option.
 In this case, leave the hard-coded definition of the option in place in options.cpp, but add the COPT_HIDE flag to the definition to hide it from the menu.  If it is a "world_default" type entry, leave it defined as such.  Then add a redundant entry to data/core/external_options.json with the addition of the "stub": true member, which indicates to the loading code that this entry should not override already-set values.
+
+## Options from mods
+
+Mods don't add menu options. A mod offers players its own settings with `mod_setting`, and changes the default of a world option with `WORLD_OPTION` (`{ "type": "WORLD_OPTION", "name": "SPAWN_DENSITY", "default": 2 }`): a world created with the mod starts with that value unless the player picked another. An `option_slider` from a mod shows at world creation too. See [MOD_SETTINGS.md](MOD_SETTINGS.md).

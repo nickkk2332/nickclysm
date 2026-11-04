@@ -228,6 +228,7 @@ Use the `Home` key to return to the top.
 - [Field types](#field-types)
   - [Emits](#emits)
   - [Immunity data](#immunity-data)
+- [Mod settings](#mod-settings)
 - [Option sliders](#option-sliders)
   - [Option sliders - Fields](#option-sliders---fields)
   - [Option sliders - Levels](#option-sliders---levels)
@@ -4695,7 +4696,13 @@ Immunity data can be provided at the field level or at the effect level based on
 },
 ```
 
+# Mod settings
+
+A mod offers players settings, a switch, a number, a choice or a line of text, with `mod_setting` objects. Players pick them at world creation and in the in-game options menu, each world keeps its own values, and EOCs read them. `WORLD_OPTION` changes the default of a built-in world option. See [MOD_SETTINGS.md](MOD_SETTINGS.md).
+
 # Option sliders
+
+A mod's sliders show at world creation too; see [MOD_SETTINGS.md](MOD_SETTINGS.md#world-options-world_option-and-option_slider).
 
 ```jsonc
 {
