@@ -627,6 +627,73 @@ Gameplay changes players will notice:
 
 With these batches the full suite passes, 2834 of 2834 test cases with seed 4242 and no errors logged, and every mod set still loads with no errors. The 100 new test cases are mainly in `tests/npc_ai_*_test.cpp` and `tests/audit_{eoc_dialogue,math_talkers,events_sweep,data_sweep,loop_sweep}_test.cpp`. The tests of the changed mod content are hidden and run with those mods loaded (`--mods=no_npc_food,xedra_evolved,mindovermatter,magiclysm "[xedra_evolved],[mindovermatter]"`); they pass.
 
+**Mod settings (DATA-J01) and bug sweep, slice 3.** Mod settings were built from the design in [plans/mod-settings-design.md](plans/mod-settings-design.md). The owner made its four main decisions and accepted its three proposed defaults. The sweep took the 51 medium bugs left in chapters 12 to 18 (inventory, item use, character, health, progression, mutations and bionics, combat), in four batches. All five were built in their own worktrees. A separate agent reviewed each, and the review fixes went in before one merge and one full suite.
+
+For modders, mod settings are documented in the new `doc/JSON/MOD_SETTINGS.md`:
+- **Declaring a setting.** A `mod_setting` is an on/off switch, a number with min, max and step, a choice from a list, or one line of text. It is stored per world in `worldoptions.json`; only values that differ from the default are kept, and older builds skip them safely.
+- **Where players change them.** World creation has a "Mod settings" tab per mod. Settings marked `changeable_in_game` can also be changed on an in-game options page; changes made in game are saved with the game.
+- **Using them from EOCs.**
+  - Math: `mod_setting('id')`.
+  - Conditions: `mod_setting_on` and `mod_setting_is`.
+  - Effect: `set_mod_setting`. EOCs may write only settings marked `eoc_writable`.
+  - Event: `mod_setting_changed`.
+- **Changing built-in world options.** `WORLD_OPTION` now changes a built-in world option's default: an option the player set keeps its value, and copying a world keeps choices. Mods can add their own `option_slider`s.
+- **Loading.** World creation reads only the selected mods' settings (about 0.2 s for the base game's data the first time, 0.02 s after). A `mod_setting` in `data/core` or in a world's own mods folder is a load error.
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| DATA-J01 | fixed | `09292ab7` to `a856569b`, follow-ups `c740b900` to `21a3c996` | `tests/mod_settings_test.cpp` (the menus need a display; the data behind them is tested) |
+| INV-B02 to INV-B06, INV-B08, INV-B09 | fixed | `33fcfd60` to `a13640bc`, follow-ups `f787c1b0`, `402e7eb6`, `98a55f2b` | `tests/audit_containers_inventory_test.cpp` |
+| INV-B07 | already fixed | — | an item's quality includes its contents, so a pipe in a backpack counts |
+| USE-B05 to USE-B07, USE-B09 to USE-B11 | fixed | `b2add1ad` to `2ac75c2c`, follow-ups `873961e2`, `a6d42c22`, `a615c6bd`, `03455f41` | `tests/audit_item_use_actions_test.cpp` (USE-B05 is a menu; checked by reading) |
+| USE-B08 | partial | `a11ea763` | Still open: `"consume": true` removes a plain item only when it is single-use (always removing it would consume Sky Island's warp beacon twice) |
+| CHAR-B05 to CHAR-B08, CHAR-B10, HLTH-B11 | fixed | `e92cd5d2` to `b25844ab`, follow-ups `b721a3c3`, `f1be6837`, `4bf70127` | `tests/audit_char_sweep_test.cpp` |
+| CHAR-B09 | already fixed | by the grappling port; follow-up `0b3b3d74` covers a grabber directly above or below | `grapple_monster_grab_at_range_is_not_an_orphan`, `tests/audit_char_sweep_test.cpp` |
+| PROG-B04 to PROG-B11 | fixed | `a206241a` to `ab86dc0b`, follow-ups `0ce1d2ae`, `0bf913d6` | `tests/audit_progression_sweep_test.cpp` (PROG-B08's popups checked by reading) |
+| MUT-B06 to MUT-B09, MUT-B11, MUT-B12 | fixed | `6a14aab0` to `83e9c0b9`, follow-ups `178141ee` to `e11c1867` | `tests/audit_mutations_bionics_sweep_test.cpp` (MUT-B12 is a menu; checked by reading) |
+| MUT-B10 | partial | `cdc146af`, `aa81f2c6`, `c8896f6f` | Still open: a spell known before a CBM raised it keeps the raised level (needs saved per-bionic XP) |
+| CMBT-B04, CMBT-B06 to CMBT-B12, CMBT-B14 to CMBT-B17 | fixed | `0b68fd71` to `ea35a4ad`, `e018a3ae`, follow-ups `08d4845b` to `c0c49dff` | `tests/audit_combat_test.cpp` |
+| CMBT-B05 | already fixed | by the grappling port (`165f6fc8`) | `knockback_follow_steps_into_the_tile` |
+| CMBT-B13 | partial | `4f35c8ee` | Still open: guns and thrown weapons never fire `hit_you_effect` (the docs only promise melee) |
+
+The owner signed off on the balance changes: CMBT-B04, CMBT-B12, CMBT-B16 and the weak-point defaults.
+
+Gameplay changes players will notice:
+- **Combat.**
+  - Weak points are found as intended: skilled attacks hit eyes, heads and vitals more often. At skill 10, thrown damage against zombies rises 16–33%.
+  - Weak-point effects work as written. The brain's instant kill needs a damaging hit. Stinger effects and about 150 stagger, knockdown and blind effects actually happen.
+  - HARDTOHIT works in melee (roll twice, keep the worse). Stacking martial-art accuracy buffs give their bonus per stack; Zui Quan's and Silat's dodge buffs get much stronger.
+  - Melee from a moving vehicle loses 1 accuracy per mph, not 100.
+  - NPC sweeps can hit the player and followers.
+  - Disarms can't take bionic blades or handcuffs, and impale no longer crashes.
+- **Character.**
+  - Falls are never harmless at high DEX and dodge, except with feather fall or an enchantment.
+  - Short hallucination doses (LSD, the taint stare) go through their stages.
+  - Dragging a vehicle over stairs follows the dragging rules.
+  - Character creation: switching profession drops excluded hobbies and traits, the skills tab shows real starting levels, and duplicate addictions merge.
+  - Lab mutant NPCs and Aftershock's afterlife backstories now load.
+- **Bionics.**
+  - Self-installed CBMs need slots and a suitable body.
+  - Removing a CBM keeps what you knew before.
+  - Fuel bionics draw one source per turn.
+  - Nurse-bot failures can hurt, and kill, the patient.
+- **Items.**
+  - The gas UPS burns about 7.5× less propane.
+  - Stoves are charged once; the kerosene cooker, soda can stove and several mod stoves heat food on their own.
+  - Auto pickup never opens sealed packs or spills liquids.
+  - Salvage gives back crafted items' materials.
+  - Cancelling a plank cut keeps the log.
+  - Small isolated pools refuse fishing, ponds don't.
+  - Magiclysm's bags of holding hasten rot again.
+
+Merging the five branches surfaced two interactions, fixed in `65e62c13` and `b76d5258`:
+- **Proficiency practice.** PROG-B10's learn-with-prerequisites cleared practice in progress, while MUT-B10 restores practice when a CBM is removed. Now only a learn with prerequisites clears it.
+- **Polearm DPS test.** CMBT-B15 lowered NPCs' rating of polearms to the intended 0.8, so `expected_weapon_dps` takes the new values for 17 polearms.
+
+Two older tests were updated to the new behavior: the plank log stays until the cut is done, and a test weight was given a realistic volume.
+
+With this batch the full suite passes, 2923 of 2923 test cases with seed 4242 and no errors logged, and every mod set still loads with no errors. The 89 new test cases are mainly in `tests/mod_settings_test.cpp`, `tests/audit_containers_inventory_test.cpp`, `tests/audit_item_use_actions_test.cpp`, `tests/audit_char_sweep_test.cpp`, `tests/audit_progression_sweep_test.cpp`, `tests/audit_mutations_bionics_sweep_test.cpp` and `tests/audit_combat_test.cpp`.
+
 **Verification.** Each fix was compile-checked with the project's `-Werror` flags and reviewed by a separate agent. The game and test suite were then built (`make TILES=0 RELEASE=1 PCH=0`) and run. All 35 `[audit]` test cases pass. The 31 from the first round all fail or crash on a build with their fix reverted, so they really catch the bugs; the 4 for ITEM-B02 and EVT-B02 were checked by review. The full suite passed then: 2313 of 2313 test cases with `--rng-seed 4242`.
 
 After groups 4 and 5, the round 2 performance fixes and the 48 remaining bugs, all 88 `[audit]` test cases pass and the full suite passes: 2366 of 2366 test cases with `--rng-seed 4242` and with `--rng-seed 777`. After the PR review fixes that followed (a use-after-free in zone lookups from ACT-P01, save-load errors not aborting the load, stale crafting caches after a trade, John Bailey never leaving the refugee center), the suite passes again: 2366 of 2366 with seed 4242. After the second round of remaining high-severity findings, all 109 `[audit]` test cases pass and the full suite passes: 2387 of 2387 with seed 4242. Every mod set loads as before. After the third round (modding round 1 and bug sweep 1), all 228 `[audit]` test cases pass and the full suite passes: 2506 of 2506 with seed 4242, with no errors logged. Every mod set still loads with no errors. The newer audit tests were written to fail on the old code, but unlike the first round they were not each re-run against a reverted build.
