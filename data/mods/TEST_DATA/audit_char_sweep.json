@@ -1,0 +1,35 @@
+[
+  {
+    "type": "mutation",
+    "id": "test_char_b05_wing_left",
+    "name": "Test Left Wing",
+    "points": 0,
+    "description": "CHAR-B05: one of a pair of wings to glide with.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "flags": [ "WINGS_2" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_char_b05_wing_right",
+    "name": "Test Right Wing",
+    "points": 0,
+    "description": "CHAR-B05: one of a pair of wings to glide with.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "flags": [ "WINGS_2" ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_char_b05_no_carry",
+    "name": "Test No Carrying Capacity",
+    "points": 0,
+    "description": "CHAR-B05: brings the carrying capacity to 0.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false,
+    "enchantments": [ { "values": [ { "value": "CARRY_WEIGHT", "multiply": -1 } ] } ]
+  }
+]
