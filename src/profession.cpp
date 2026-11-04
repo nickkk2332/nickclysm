@@ -521,6 +521,11 @@ void profession::check_definition() const
             debugmsg( "recipe %s for profession %s does not exist", rec.str(), id.str() );
         }
     }
+    // Or it shows only when an NPC with this profession is made (PROG-B11)
+    if( mutation_branch::get_group( _starting_npc_background ) == nullptr ) {
+        debugmsg( "npc_background %s for profession %s is not a trait group",
+                  _starting_npc_background.str(), id.str() );
+    }
     for( const string_id<profession> &hobby : _hobby_exclusion ) {
         if( !hobby.is_valid() ) {
             debugmsg( "hobby %s for profession %s does not exist", hobby.str(), id.str() );

@@ -23,6 +23,7 @@
 #include "recipe.h"
 #include "skill.h"
 #include "string_formatter.h"
+#include "trait_group.h"
 #include "type_id.h"
 
 // ---- PROG-B04 ----
@@ -348,4 +349,39 @@ TEST_CASE( "prog-b10_eoc_direct_100_percent_learns_the_proficiency", "[audit][pr
         CHECK( u.has_proficiency( proficiency_prof_knapping ) );
         CHECK( u.get_proficiency_practice( proficiency_prof_knapping ) == Approx( 1.0f ) );
     }
+}
+
+// ---- PROG-B11 ----
+
+static const trait_group::Trait_group_tag
+Trait_group_BG_survival_story_UNIVERSAL( "BG_survival_story_UNIVERSAL" );
+
+static const trait_group::Trait_group_tag no_such_group( "test_prog_b11_no_such_group" );
+
+// A nested trait group entry reported "unknown" when its group was valid, and nothing when it
+// wasn't.
+TEST_CASE( "prog-b11_a_nested_trait_group_is_checked_the_right_way_round", "[audit][mutation]" )
+{
+    const Trait_group_creator valid( Trait_group_BG_survival_story_UNIVERSAL, 100 );
+    CHECK( capture_debugmsg_during( [&valid]() {
+        valid.check_consistency();
+    } ).empty() );
+
+    const Trait_group_creator unknown( no_such_group, 100 );
+    CHECK_FALSE( capture_debugmsg_during( [&unknown]() {
+        unknown.check_consistency();
+    } ).empty() );
+}
+
+// Creating from an unknown nested group left its id on the recursion list, so the parent
+// popped the wrong id and a later entry naming the parent was reported as recursion.
+TEST_CASE( "prog-b11_an_unknown_nested_group_leaves_the_recursion_list_as_it_was",
+           "[audit][mutation]" )
+{
+    const Trait_group_creator unknown( no_such_group, 100 );
+    Trait_creation_data::RecursionList rec;
+    capture_debugmsg_during( [&unknown, &rec]() {
+        unknown.create( rec );
+    } );
+    CHECK( rec.empty() );
 }
