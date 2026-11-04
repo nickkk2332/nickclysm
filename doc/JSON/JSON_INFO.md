@@ -2098,6 +2098,8 @@ Items the player starts with when selecting this profession.  One can specify di
 
 (optional) Boolean.  If false, `hobbies` will instead be a list of hobbies that this profession _cannot_ choose from.  Defaults to true.
 
+Choosing a profession in the character creator drops the hobbies it doesn't allow (with the traits only they gave) and the traits in its `forbidden_traits`, with a message for each; finishing the character checks this again.  The default background hobbies (see [Profession groups](#profession-groups)) leave out those the profession doesn't allow.
+
 
 ### Hobbies
 
@@ -2145,7 +2147,7 @@ Thus, it is listed here for reference and modding purposes only.
   }
 ```
 
-The array of hobbies (listed as professions) is whitelisted to all characters.  Thus, if one wants to start with no hobbies, the list has to be set as:
+The array of hobbies (listed as professions) is whitelisted to all characters, except those the character's profession doesn't allow.  Thus, if one wants to start with no hobbies, the list has to be set as:
 
 ```jsonc
     "professions": [  ]

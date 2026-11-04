@@ -2074,6 +2074,45 @@ void draw_starting_city( const avatar &you )
     }
 }
 
+std::vector<std::string> drop_what_profession_excludes( avatar &u )
+{
+    // Choosing a profession, or a template, could leave these behind, and an excluded hobby isn't
+    // listed, so it couldn't be deselected (PROG-B08).
+    std::vector<std::string> dropped;
+    std::vector<const profession *> excluded;
+    for( const profession *hobby : u.hobbies ) {
+        if( !u.prof->allows_hobby( hobby->ident() ) ) {
+            excluded.push_back( hobby );
+        }
+    }
+    for( const profession *hobby : excluded ) {
+        u.hobbies.erase( hobby );
+        // As deselecting it does: its traits go, unless the profession or another hobby has them
+        for( const trait_and_var &cur : hobby->get_locked_traits() ) {
+            bool kept = u.prof->is_locked_trait( cur.trait );
+            for( const profession *other : u.hobbies ) {
+                kept = kept || other->is_locked_trait( cur.trait );
+            }
+            if( !kept && u.has_trait( cur.trait ) ) {
+                u.toggle_trait_deps( cur.trait );
+            }
+        }
+        dropped.push_back( string_format(
+                               _( "Your background %1$s has been removed since the %2$s can't take it." ),
+                               hobby->gender_appropriate_name( u.male ),
+                               u.prof->gender_appropriate_name( u.male ) ) );
+    }
+    for( const trait_id &trait : u.get_mutations() ) {
+        if( u.prof->is_forbidden_trait( trait ) && u.has_trait( trait ) ) {
+            dropped.push_back( string_format(
+                                   _( "Your trait %1$s has been removed since the %2$s can't have it." ),
+                                   u.mutation_name( trait ), u.prof->gender_appropriate_name( u.male ) ) );
+            u.toggle_trait_deps( trait );
+        }
+    }
+    return dropped;
+}
+
 } // namespace char_creation
 
 std::vector<trait_id> Character::get_base_traits() const
@@ -2278,7 +2317,10 @@ void Character::add_default_background()
     for( const profession_group &prof_grp : profession_group::get_all() ) {
         if( prof_grp.get_id() == profession_group_adult_basic_background ) {
             for( const profession_id &hobb : prof_grp.get_professions() ) {
-                hobbies.insert( &hobb.obj() );
+                // Not those the profession excludes (PROG-B08)
+                if( prof == nullptr || prof->allows_hobby( hobb ) ) {
+                    hobbies.insert( &hobb.obj() );
+                }
             }
         }
     }
@@ -3481,6 +3523,17 @@ bool character_creator_ui::handle_action( const std::string &action )
         }
     } else if( action == "NEXT_TAB" ) {
         if( cc_uistate.selected_tab == CHARCREATOR_SUMMARY ) {
+            // A template can hold what its profession now excludes: show what changed first
+            const std::vector<std::string> dropped = char_creation::drop_what_profession_excludes( you );
+            for( const std::string &msg : dropped ) {
+                popup( msg );
+            }
+            if( !dropped.empty() ) {
+                cc_uistate.recalc_hobbies_taken = true;
+                cc_uistate.recalc_traits = true;
+                cc_uistate.recalc_rating = true;
+                return true;
+            }
             bool is_overpowered = false;
 
             std::string query = _( "Are you finished creating your character?" );
@@ -3727,8 +3780,12 @@ void character_creator_callback::confirm( uilist *menu )
             // Add traits for the new profession (and perhaps scenario, if, for example,
             // both the scenario and old profession require the same trait)
             u.add_traits();
+            for( const std::string &dropped : char_creation::drop_what_profession_excludes( u ) ) {
+                popup( dropped );
+            }
 
             cc_uistate.recalc_hobbies = true;
+            cc_uistate.recalc_hobbies_taken = true;
             cc_uistate.recalc_traits = true;
             cc_uistate.cached_profession_inventory.clear();
             break;

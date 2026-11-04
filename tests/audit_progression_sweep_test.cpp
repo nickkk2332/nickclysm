@@ -9,6 +9,7 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_creator_ui.h"
 #include "debug.h"
 #include "item.h"
 #include "json.h"
@@ -203,4 +204,71 @@ TEST_CASE( "prog-b07_a_save_with_duplicate_addictions_loads_them_merged", "[audi
     CHECK( loaded.addiction_level( addiction_caffeine ) == 30 );
     REQUIRE( !loaded.addictions.empty() );
     CHECK( loaded.addictions.front().sated == 2_hours );
+}
+
+// ---- PROG-B08 ----
+
+static const profession_id profession_computer_literate( "computer_literate" );
+static const profession_id profession_driving_license( "driving_license" );
+static const profession_id profession_test_prog_b08_hobby( "test_prog_b08_hobby" );
+static const profession_id profession_test_prog_b08_profession( "test_prog_b08_profession" );
+
+static const trait_id trait_test_prog_b08_forbidden_trait( "test_prog_b08_forbidden_trait" );
+static const trait_id trait_test_prog_b08_hobby_trait( "test_prog_b08_hobby_trait" );
+
+// Picking another profession in the character creator kept the hobbies and traits the new
+// profession excludes, and the excluded hobby dropped out of the list, so it couldn't be
+// deselected either: its traits, spells and point cost stayed.
+TEST_CASE( "prog-b08_a_new_profession_drops_the_hobbies_and_traits_it_excludes",
+           "[audit][chargen]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    const profession &hobby = profession_test_prog_b08_hobby.obj();
+    // As choosing the hobby in the creator does
+    u.hobbies.insert( &hobby );
+    u.toggle_trait_deps( trait_test_prog_b08_hobby_trait );
+    u.toggle_trait_deps( trait_test_prog_b08_forbidden_trait );
+    REQUIRE( u.has_trait( trait_test_prog_b08_hobby_trait ) );
+    REQUIRE( u.has_trait( trait_test_prog_b08_forbidden_trait ) );
+
+    SECTION( "a profession that excludes them" ) {
+        u.prof = &profession_test_prog_b08_profession.obj();
+        REQUIRE_FALSE( u.prof->allows_hobby( hobby.ident() ) );
+        REQUIRE( u.prof->is_forbidden_trait( trait_test_prog_b08_forbidden_trait ) );
+
+        const std::vector<std::string> dropped = char_creation::drop_what_profession_excludes( u );
+
+        CHECK( dropped.size() == 2 );
+        CHECK( u.hobbies.empty() );
+        CHECK_FALSE( u.has_trait( trait_test_prog_b08_hobby_trait ) );
+        CHECK_FALSE( u.has_trait( trait_test_prog_b08_forbidden_trait ) );
+    }
+    SECTION( "a profession that allows them" ) {
+        u.prof = profession::generic();
+        CHECK( char_creation::drop_what_profession_excludes( u ).empty() );
+        CHECK( u.hobbies.count( &hobby ) == 1 );
+        CHECK( u.has_trait( trait_test_prog_b08_hobby_trait ) );
+        CHECK( u.has_trait( trait_test_prog_b08_forbidden_trait ) );
+    }
+}
+
+// The default background hobbies were added whatever the profession allowed.
+TEST_CASE( "prog-b08_the_default_background_leaves_out_excluded_hobbies", "[audit][chargen]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    u.prof = &profession_test_prog_b08_profession.obj();
+    REQUIRE_FALSE( u.prof->allows_hobby( profession_driving_license ) );
+
+    u.add_default_background();
+
+    CHECK( u.hobbies.count( &profession_driving_license.obj() ) == 0 );
+    CHECK( u.hobbies.count( &profession_computer_literate.obj() ) == 1 );
 }

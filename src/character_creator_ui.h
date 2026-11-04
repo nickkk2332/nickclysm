@@ -1,4 +1,6 @@
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "cata_imgui.h"
@@ -193,6 +195,10 @@ void draw_time_game_start();
 void draw_location( const avatar &you );
 void draw_starting_city( const avatar &you );
 std::string get_gender_string( bool male );
+
+// Drops the hobbies the character's profession excludes, with the traits only they gave, and
+// the traits it forbids. Returns a message for each.
+std::vector<std::string> drop_what_profession_excludes( avatar &u );
 
 const mutation_variant *variant_trait_selection_menu( const trait_id &cur_trait );
 

@@ -56,5 +56,46 @@
     "points": 0,
     "chargen_allow_npc": false,
     "addictions": [ { "intensity": 30, "type": "caffeine" } ]
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_b08_hobby_trait",
+    "name": "PROG-B08 Hobby Trait",
+    "points": 0,
+    "description": "Comes with test_prog_b08_hobby.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false
+  },
+  {
+    "type": "mutation",
+    "id": "test_prog_b08_forbidden_trait",
+    "name": "PROG-B08 Forbidden Trait",
+    "points": 0,
+    "description": "test_prog_b08_profession forbids it.",
+    "starting_trait": false,
+    "purifiable": false,
+    "valid": false
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b08_hobby",
+    "name": "PROG-B08 test hobby",
+    "description": "A hobby test_prog_b08_profession excludes.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ "test_prog_b08_hobby_trait" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_b08_profession",
+    "name": "PROG-B08 test profession",
+    "description": "Excludes a hobby, one of the default background hobbies, and a trait.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "hobbies": [ "test_prog_b08_hobby", "driving_license" ],
+    "whitelist_hobbies": false,
+    "forbidden_traits": [ "test_prog_b08_forbidden_trait" ]
   }
 ]
