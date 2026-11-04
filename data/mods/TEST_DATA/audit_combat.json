@@ -169,7 +169,7 @@
     "name": { "str": "test unwieldy weight" },
     "description": "A very heavy weight for combat tests.",
     "weight": "100 kg",
-    "volume": "1 L",
+    "volume": "15 L",
     "material": [ "steel" ],
     "symbol": "*",
     "color": "light_gray",

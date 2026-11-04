@@ -9779,7 +9779,8 @@ TEST_CASE( "worker_closing_a_door_on_the_way_keeps_its_task", "[npc][behavior]" 
         CHECK_FALSE( guy.has_destination() );
         CHECK( square_dist( guy.pos_bub(), wood ) <= 1 );
         CHECK( guy.activity.id() == ACT_CHOP_PLANKS );
-        CHECK_FALSE( log_at_wood() );
+        // the log stays on its tile, claimed, until the cut is done (USE-B06)
+        CHECK( log_at_wood() );
         CHECK( std::none_of( guy.backlog.begin(), guy.backlog.end(), []( const player_activity & a ) {
             return a.id() == ACT_CLOSE_TILE;
         } ) );

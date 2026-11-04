@@ -416,8 +416,10 @@ void proficiency_set::learn( const proficiency_id &learned, bool recursive )
         to_learn.push_back( learned );
     }
     for( const proficiency_id &prof : to_learn ) {
-        // A prerequisite learned this way may have been in progress
-        direct_learn( prof );
+        // Progress already made stays recorded, so it comes back if the proficiency is lost again
+        // (MUT-B10: a CBM that taught it is removed); a known proficiency reads as fully
+        // practiced either way.
+        known.insert( prof );
     }
 }
 
@@ -516,6 +518,9 @@ bool proficiency_set::has_prereqs( const proficiency_id &query ) const
 
 float proficiency_set::pct_practiced( const proficiency_id &query ) const
 {
+    if( has_learned( query ) ) {
+        return 1.0f;
+    }
     for( const learning_proficiency &prof : learning ) {
         if( prof.id == query ) {
             return prof.practiced / query->time_to_learn();
@@ -529,6 +534,9 @@ float proficiency_set::pct_practiced( const proficiency_id &query ) const
 
 time_duration proficiency_set::pct_practiced_time( const proficiency_id &query ) const
 {
+    if( has_learned( query ) ) {
+        return query->time_to_learn();
+    }
     for( const learning_proficiency &prof : learning ) {
         if( prof.id == query ) {
             return prof.practiced;
