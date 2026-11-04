@@ -1,0 +1,103 @@
+[
+  {
+    "type": "mod_setting",
+    "id": "test_ms_switch",
+    "name": "Test switch",
+    "description": "A switch for tests/mod_settings_test.cpp.",
+    "kind": "bool",
+    "default": false,
+    "eoc_writable": true
+  },
+  {
+    "type": "mod_setting",
+    "id": "test_ms_number",
+    "name": "Test number",
+    "description": "A number for tests/mod_settings_test.cpp.",
+    "kind": "number",
+    "default": 1,
+    "min": 0.25,
+    "max": 4,
+    "step": 0.25,
+    "eoc_writable": true,
+    "group": "Numbers"
+  },
+  {
+    "type": "mod_setting",
+    "id": "test_ms_choice",
+    "name": "Test choice",
+    "kind": "choice",
+    "default": "normal",
+    "choices": [ { "id": "rare", "name": "Rare" }, { "id": "normal", "name": "Normal" }, { "id": "common", "name": "Common" } ],
+    "eoc_writable": true
+  },
+  {
+    "type": "mod_setting",
+    "id": "test_ms_text",
+    "name": "Test text",
+    "kind": "text",
+    "default": "hello",
+    "eoc_writable": true
+  },
+  {
+    "type": "mod_setting",
+    "id": "test_ms_fixed",
+    "name": "Test fixed switch",
+    "description": "Chosen at world creation; neither the in-game menu nor EOCs change it.",
+    "kind": "bool",
+    "default": true,
+    "changeable_in_game": false
+  },
+  {
+    "type": "mod_setting",
+    "id": [ "test_ms_array_a", "test_ms_array_b" ],
+    "//": "Two settings from one object, as generic_factory allows.",
+    "name": "Test array switch",
+    "kind": "bool",
+    "group": "Arrays"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "test_ms_reads",
+    "//": "Reads each kind of setting; loading it checks the literal ids.",
+    "condition": {
+      "and": [
+        { "mod_setting_on": "test_ms_fixed" },
+        { "mod_setting_is": [ "test_ms_choice", "normal" ] },
+        { "mod_setting_is": [ "test_ms_text", "hello" ] },
+        { "math": [ "mod_setting('test_ms_number') == 1" ] },
+        { "math": [ "mod_setting('test_ms_switch') == 0" ] }
+      ]
+    },
+    "effect": [
+      {
+        "set_string_var": { "mutator": "mod_setting", "id": "test_ms_text" },
+        "target_var": { "global_val": "test_ms_text_copy" }
+      },
+      { "math": [ "test_ms_choice_index", "=", "mod_setting('test_ms_choice')" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "test_ms_writes",
+    "effect": [
+      { "set_mod_setting": "test_ms_switch", "value": true },
+      { "set_mod_setting": "test_ms_choice", "value": "rare" },
+      { "set_mod_setting": "test_ms_text", "value": "changed" },
+      { "math": [ "mod_setting('test_ms_number')", "=", "3.5" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "test_ms_on_change",
+    "eoc_type": "EVENT",
+    "required_event": "mod_setting_changed",
+    "//": "Only while tests/mod_settings_test.cpp listens.",
+    "condition": { "math": [ "test_ms_listen == 1" ] },
+    "effect": [
+      { "math": [ "test_ms_changes", "+=", "1" ] },
+      { "copy_var": { "context_val": "id" }, "target_var": { "global_val": "test_ms_changed_id" } },
+      { "copy_var": { "context_val": "old_value" }, "target_var": { "global_val": "test_ms_changed_old" } },
+      { "copy_var": { "context_val": "new_value" }, "target_var": { "global_val": "test_ms_changed_new" } }
+    ]
+  }
+]

@@ -737,6 +737,19 @@ True if the world has Sky Island loaded
 { "mod_is_loaded": "sky_island" }
 ```
 
+### `mod_setting_on`, `mod_setting_is`
+- `mod_setting_on`: string or [variable object](#variable-object), a switch [mod setting](MOD_SETTINGS.md); true if it's on
+- `mod_setting_is`: array of two strings or [variable objects](#variable-object), `[ setting, value ]`, a choice or text mod setting; true if it's that choice id or that text
+- a setting written out that no mod defines, or of the wrong kind, or a choice it doesn't have, is a load error. Needs no talker. Numbers are read with the math function `mod_setting()`
+
+#### Examples
+```jsonc
+{ "mod_setting_on": "my_mod_hard_mode" }
+```
+```jsonc
+{ "mod_setting_is": [ "my_mod_difficulty", "hard" ] }
+```
+
 Check if two variables are `yes`
 ```jsonc
 "compare_string": [ "yes", { "context_val": "some_context_should_be_yes" }, { "context_val": "some_another_context_also_should_be_yes" } ]
@@ -2416,6 +2429,7 @@ The `trigger_event` effect sends one of these events, with `args`, one value per
 | learns_martial_art | |  { "character", `character_id` },<br/> { "martial_art", `matype_id` }, | character / NONE |
 | loses_addiction | | { "character", `character_id` },<br/> { "add_type", `addiction_id` }, | character / NONE |
 | loses_mutation | |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
+| mod_setting_changed | Triggers when a [mod setting](MOD_SETTINGS.md) of the world changes in game, in the options menu or by an EOC; setting a value it already has doesn't. The values are text: the number (`"2.50"`), `true` or `false`, the choice id, the text. Statistics don't keep it. The order when several change, and when an EOC answering it changes a setting: [MOD_SETTINGS.md](MOD_SETTINGS.md#reacting-to-changes) | { "id", `string` },<br/> { "old_value", `string` },<br/> { "new_value", `string` }, | avatar / NONE |
 | npc_attitude_changed | Triggers whenever an NPC's attitude changes, whatever changes it: an effect, the avatar, the NPC's own decisions, including each switch of a hostile NPC between fleeing and fighting. `cause` says what; see [NPC attitude events](#npc-attitude-events). Not for the attitude an NPC is made with, nor for NPCs that aren't real (a template's, a hallucination). Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "old_attitude", `string` }, an attitude id such as `NPCATT_KILL`<br/> { "new_attitude", `string` },<br/> { "cause", `string` }, | NPC / NONE |
 | npc_becomes_hostile | Triggers when an NPC grows more hostile than it was last reported: as it turns hostile (`NPCATT_MUG`, `NPCATT_WAIT_FOR_LEAVE` or `NPCATT_KILL`) from a neutral or friendly attitude, and once more if it then sets out to kill (`NPCATT_KILL`). Fleeing (`NPCATT_FLEE_TEMP`) doesn't calm it down, so a hostile NPC that keeps running and coming back is reported once; a neutral or friendly attitude does. It goes out after the change's `npc_attitude_changed`, if the NPC is still hostile then, whatever changed it ([NPC attitude events](#npc-attitude-events)). The memorial's "became hostile" comes from the `hostile` effect alone, as before. The `cause` field is new: a `trigger_event` for this event needs three arguments | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "cause", `string` }, | NPC / NONE |
 | npc_dismissed | Triggers when an NPC leaves the avatar's follower list alive: the `leave` effect, a mutiny. It goes out as the NPC leaves the list, before the rest of what dismisses it (its new faction, its attitude). A follower that dies doesn't trigger it (`character_dies` does), nor one whose body the avatar takes over | { "npc", `character_id` },<br/> { "npc_name", `string` }, | NPC / NONE |
@@ -4747,6 +4761,26 @@ Get the user input
 }
 ```
 
+
+#### `set_mod_setting`
+Changes a [mod setting](MOD_SETTINGS.md) of the world. Only a setting marked `eoc_writable` can be changed: one written out that isn't, or that no mod defines, is a load error, and one named by a variable is an error when it runs. A number is clamped to its range and snapped to its step, an unknown choice is refused with an error, and text is kept to one line of at most `max_length` characters. A change sends the event `mod_setting_changed`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_mod_setting" | **mandatory** | string or [variable object](#variable-object) | the setting |
+| "value" | **mandatory** | `true`/`false`, number, string, [variable object](#variable-object) or `{ "math": [...] }` | the new value: a switch takes `true` or `false` (or a number, 0 being off), a number a number, a choice its id (or its index), text a string (a number becomes its text) |
+
+##### Valid talkers:
+
+No talker is needed.
+
+##### Examples
+```jsonc
+{ "set_mod_setting": "my_mod_difficulty", "value": "hard" }
+```
+```jsonc
+{ "set_mod_setting": "magiclysm_mana_regen", "value": { "math": [ "mod_setting('magiclysm_mana_regen') * 2" ] } }
+```
 
 #### `set_condition`
 Create a context value with condition, that you can pass down the next topic or EoC, using `get_condition`. Used, if you need to have dozens of EoCs, and you don't want to copy-paste it's conditions every time (also it's easier to maintain or edit one condition, comparing to two dozens)

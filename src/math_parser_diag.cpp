@@ -49,6 +49,7 @@
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "mod_manager.h"
+#include "mod_setting.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -148,6 +149,78 @@ double option_eval( const_dialogue const &d, char /* scope */,
                     std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
     return get_option<float>( params[0].str( d ), true );
+}
+
+// A literal id must name a loaded mod setting, one math can read as a number
+const mod_setting *literal_mod_setting( std::vector<diag_value> const &params )
+{
+    if( !params[0].is_str() ) {
+        return nullptr;
+    }
+    const mod_setting_id id( params[0].str() );
+    if( !id.is_valid() ) {
+        throw math::syntax_error( R"(mod_setting(): no mod defines the setting "%s")", id.str() );
+    }
+    if( id->kind == mod_setting::kind_t::text ) {
+        throw math::syntax_error(
+            R"(mod_setting(): "%s" is text, which isn't a number.  Read it with mod_setting_is or the mod_setting string mutator)",
+            id.str() );
+    }
+    return &*id;
+}
+
+void mod_setting_check( std::vector<diag_value> const &params )
+{
+    literal_mod_setting( params );
+}
+
+void mod_setting_assign_check( std::vector<diag_value> const &params )
+{
+    const mod_setting *setting = literal_mod_setting( params );
+    if( setting != nullptr && !setting->eoc_writable ) {
+        throw math::syntax_error(
+            R"(mod_setting(): EOCs can't change "%s": its mod_setting doesn't set "eoc_writable")",
+            setting->id.str() );
+    }
+}
+
+const mod_setting &runtime_mod_setting( const_dialogue const &d,
+                                        std::vector<diag_value> const &params )
+{
+    const mod_setting_id id( params[0].str( d ) );
+    if( !id.is_valid() ) {
+        throw math::runtime_error( R"(mod_setting(): no mod defines the setting "%s")", id.str() );
+    }
+    return *id;
+}
+
+// mod_setting('id'): a number; a switch is 0 or 1, a choice its index (doc/JSON/MOD_SETTINGS.md)
+double mod_setting_eval( const_dialogue const &d, char /* scope */,
+                         std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const mod_setting &setting = runtime_mod_setting( d, params );
+    const std::optional<double> value = setting.as_number( mod_settings::get( setting ) );
+    if( !value ) {
+        throw math::runtime_error( R"(mod_setting(): "%s" is text, which isn't a number)",
+                                   setting.id.str() );
+    }
+    return *value;
+}
+
+// mod_setting('id') = v: clamped and snapped to the step; a choice by index
+void mod_setting_ass( double val, dialogue &d, char /* scope */,
+                      std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const mod_setting &setting = runtime_mod_setting( d, params );
+    if( !setting.eoc_writable ) {
+        throw math::runtime_error(
+            R"(mod_setting(): EOCs can't change "%s": its mod_setting doesn't set "eoc_writable")",
+            setting.id.str() );
+    }
+    const std::string error = mod_settings::set( setting, val );
+    if( !error.empty() ) {
+        throw math::runtime_error( "mod_setting(): %s", error );
+    }
 }
 
 double event_statistic_eval( const_dialogue const &d, char /* scope */,
@@ -2732,6 +2805,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "item_rad", { "un", 1, item_rad_eval, {}, { "aggregate" } } },
     { "melee_damage", { "un", 1, melee_damage_eval } },
     { "mod_load_order", { "g", 1, mod_order_eval } },
+    { "mod_setting", { "g", 1, mod_setting_eval, mod_setting_ass, {}, mod_setting_check, mod_setting_assign_check } },
     { "monsters_nearby", { "ung", -1, monsters_nearby_eval, {}, { "radius", "attitude", "location" } } },
     { "mon_species_nearby", { "ung", -1, monster_species_nearby_eval, {}, { "radius", "attitude", "location" } } },
     { "mon_groups_nearby", { "ung", -1, monster_groups_nearby_eval, {}, { "radius", "attitude", "location" } } },

@@ -53,6 +53,7 @@ if ! lang/extract_json_strings.py \
         -i data/mods/railroads \
         -i data/mods/Limb_WIP \
         -x data/mods/TEST_DATA \
+        -x data/mods/TEST_mod_settings \
         -x data/mods/Standard_Combat_Tests \
         -x data/json/debug \
         -X data/json/effects_on_condition/example_eocs.json \

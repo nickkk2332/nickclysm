@@ -70,6 +70,7 @@
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mod_manager.h"
+#include "mod_setting.h"
 #include "options.h"
 #include "output.h"
 #include "overmapbuffer.h"
@@ -934,6 +935,19 @@ bool game::save()
             }
             if( !save_external_options_record() ) {
                 DebugLog( D_WARNING, DC_ALL ) << "game::save: external options record not written";
+            }
+            // Mod settings changed in game (options menu, EOCs) are written to the world's
+            // options now, as of this save.  The game is saved without them if that fails, so
+            // the player has to know.
+            if( mod_settings::have_unsaved_changes() ) {
+                const std::optional<bool> forced = save_fault::forced_result( "mod_settings" );
+                if( !( forced ? *forced : mod_settings::save_with_game() ) ) {
+                    popup( _( "The game was saved, but its mod settings weren't: %s couldn't be "
+                              "written.  Their changes since the last save will be lost unless a "
+                              "later save writes them." ),
+                           ( world_generator->active_world->folder_path() /
+                             PATH_INFO::worldoptions() ).generic_u8string() );
+                }
             }
             world_generator->last_world_name = world_generator->active_world->world_name;
             world_generator->last_character_name = u.name;

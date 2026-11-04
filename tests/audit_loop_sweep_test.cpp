@@ -21,6 +21,7 @@
 #include "creature_tracker.h"
 #include "debug.h"
 #include "do_turn.h"
+#include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "item.h"
@@ -33,6 +34,7 @@
 #include "map_helpers_tests.h"
 #include "map_selector.h"
 #include "mapbuffer.h"
+#include "mod_setting.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
@@ -49,9 +51,12 @@
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "weather.h"
+#include "worldfactory.h"
 #include "weather_gen.h"
 #include "weather_type.h"
 #include "worldfactory.h"
+
+static const mod_setting_id mod_setting_test_ms_switch( "test_ms_switch" );
 
 // ---- LOOP-B06 ----
 
@@ -562,6 +567,58 @@ TEST_CASE( "loop-b14_achievements_and_the_options_record_do_not_stop_a_save",
         CHECK( save_step_started( "achievements" ) );
     }
     CHECK( submaps_in_memory() == submaps );
+}
+
+// Mod settings changed in game (options menu, EOCs) are written to the world's options by the
+// game save, as of it (doc/JSON/MOD_SETTINGS.md).  Until then the file keeps the values of the
+// last save, whatever else saves it, so a game quit without saving doesn't keep them.
+TEST_CASE( "mod_settings_changed_in_game_are_saved_with_the_game", "[mod_settings][savegame]" )
+{
+    restore_on_out_of_scope restore_dirty( g->save_is_dirty );
+    g->save_is_dirty = false;
+    keep_save_files keep_files;
+    WORLD &world = *world_generator->active_world;
+    const mod_setting_values values = world.mod_settings;
+    const bool was_unsaved = mod_settings::have_unsaved_changes();
+    on_out_of_scope restore_settings( [&world, &values, was_unsaved]() {
+        world.mod_settings = values;
+        if( !was_unsaved ) {
+            mod_settings::mark_saved();
+        }
+    } );
+    const auto on_disk = [&world]() {
+        return read_entire_file( ( world.folder_path() /
+                                   PATH_INFO::worldoptions() ).get_unrelative_path() );
+    };
+    world.mod_settings.clear();
+    mod_settings::mark_saved();
+    REQUIRE( world.save() );
+    REQUIRE( on_disk().find( "test_ms_switch" ) == std::string::npos );
+
+    REQUIRE( mod_settings::set( *mod_setting_test_ms_switch, true ).empty() );
+    CHECK( mod_settings::have_unsaved_changes() );
+    // the options menu saves the world when world options change: the file keeps the last save's
+    REQUIRE( world.save() );
+    CHECK( on_disk().find( "test_ms_switch" ) == std::string::npos );
+
+    const std::set<std::string> skipped = {
+        "master", "player", "dimension", "maps", "achievements", "options_record"
+    };
+    {
+        // the game is saved when they can't be written; they wait for the next save
+        save_steps steps( { "mod_settings" }, skipped );
+        CHECK( g->save() );
+        CHECK( save_step_started( "mod_settings" ) );
+    }
+    CHECK( mod_settings::have_unsaved_changes() );
+    CHECK( on_disk().find( "test_ms_switch" ) == std::string::npos );
+    {
+        save_steps steps( {}, skipped );
+        CHECK( g->save() );
+        CHECK( save_step_started( "mod_settings" ) );
+    }
+    CHECK_FALSE( mod_settings::have_unsaved_changes() );
+    CHECK( on_disk().find( "\"test_ms_switch\":true" ) != std::string::npos );
 }
 
 static const dimension_id dimension_scarlet( "scarlet" );
