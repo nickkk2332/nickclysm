@@ -19,5 +19,48 @@
     "active": true,
     "active_flags": [ "TEST_MUTB06_ON" ],
     "inactive_flags": [ "TEST_MUTB06_OFF" ]
+  },
+  {
+    "//": "MUT-B07 fixture: an activated trait whose EOCs count its activations and deactivations.",
+    "type": "mutation",
+    "id": "TEST_MUTB07_TOGGLE",
+    "name": { "str": "Test Counted Toggle" },
+    "points": 0,
+    "description": "Test trait that counts how often it is switched on and off.",
+    "active": true,
+    "activated_is_setup": true,
+    "activated_eocs": [ { "id": "EOC_TEST_MUTB07_ON", "effect": [ { "math": [ "u_mutb07_on += 1" ] } ] } ],
+    "deactivated_eocs": [ { "id": "EOC_TEST_MUTB07_OFF", "effect": [ { "math": [ "u_mutb07_off += 1" ] } ] } ]
+  },
+  {
+    "//": "MUT-B07 fixture: an activated form trait that switching turns into TEST_MUTB07_FORM_ALT.",
+    "type": "mutation",
+    "id": "TEST_MUTB07_FORM",
+    "name": { "str": "Test Form" },
+    "points": 0,
+    "description": "Test trait that turns into another form when switched.",
+    "active": true,
+    "transform": { "target": "TEST_MUTB07_FORM_ALT", "msg_transform": "You change form.", "active": false, "moves": 0 }
+  },
+  {
+    "//": "MUT-B07 fixture: the form TEST_MUTB07_FORM turns into.",
+    "type": "mutation",
+    "id": "TEST_MUTB07_FORM_ALT",
+    "name": { "str": "Test Other Form" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait that TEST_MUTB07_FORM turns into."
+  },
+  {
+    "//": "MUT-B07 fixture: switch TEST_MUTB07_TOGGLE on, as mods do from EOCs.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTB07_ACTIVATE",
+    "effect": [ { "u_activate_trait": "TEST_MUTB07_TOGGLE" } ]
+  },
+  {
+    "//": "MUT-B07 fixture: switch both test traits off without checking for them first.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTB07_DEACTIVATE",
+    "effect": [ { "u_deactivate_trait": "TEST_MUTB07_TOGGLE" }, { "u_deactivate_trait": "TEST_MUTB07_FORM" } ]
   }
 ]

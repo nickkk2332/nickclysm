@@ -69,3 +69,70 @@ TEST_CASE( "mut-b06_active_flags_follow_the_characters_own_trait_state",
     }
     clear_avatar();
 }
+
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_MUTB07_ACTIVATE( "EOC_TEST_MUTB07_ACTIVATE" );
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_MUTB07_DEACTIVATE( "EOC_TEST_MUTB07_DEACTIVATE" );
+
+static const trait_id trait_TEST_MUTB07_FORM( "TEST_MUTB07_FORM" );
+static const trait_id trait_TEST_MUTB07_FORM_ALT( "TEST_MUTB07_FORM_ALT" );
+static const trait_id trait_TEST_MUTB07_TOGGLE( "TEST_MUTB07_TOGGLE" );
+
+// A numeric character variable as math sees it (unset reads as 0).
+static double char_var( const Character &you, const std::string &name )
+{
+    const diag_value *val = you.maybe_get_value( name );
+    return val == nullptr ? 0.0 : val->dbl();
+}
+
+// MUT-B07: switching a trait the character lacked on or off made a cache entry for it, so
+// has_trait() reported it. Activation also paid for it and ran its EOCs; deactivation ran
+// its EOCs and its transform, which granted the transform's target.
+TEST_CASE( "mut-b07_switching_a_trait_you_lack_does_nothing", "[audit][mutation][eoc]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    REQUIRE_FALSE( you.has_trait( trait_TEST_MUTB07_TOGGLE ) );
+    REQUIRE_FALSE( you.has_trait( trait_TEST_MUTB07_FORM ) );
+    REQUIRE_FALSE( you.has_trait( trait_TEST_MUTB07_FORM_ALT ) );
+
+    SECTION( "from code" ) {
+        you.activate_mutation( trait_TEST_MUTB07_TOGGLE );
+        you.deactivate_mutation( trait_TEST_MUTB07_TOGGLE );
+        you.deactivate_mutation( trait_TEST_MUTB07_FORM );
+    }
+    SECTION( "from EOCs" ) {
+        dialogue d( get_talker_for( you ), nullptr );
+        effect_on_condition_EOC_TEST_MUTB07_ACTIVATE->activate( d );
+        effect_on_condition_EOC_TEST_MUTB07_DEACTIVATE->activate( d );
+    }
+    CHECK_FALSE( you.has_trait( trait_TEST_MUTB07_TOGGLE ) );
+    CHECK_FALSE( you.has_active_mutation( trait_TEST_MUTB07_TOGGLE ) );
+    CHECK_FALSE( you.has_trait( trait_TEST_MUTB07_FORM ) );
+    CHECK_FALSE( you.has_trait( trait_TEST_MUTB07_FORM_ALT ) );
+    CHECK( char_var( you, "mutb07_on" ) == 0 );
+    CHECK( char_var( you, "mutb07_off" ) == 0 );
+    clear_avatar();
+}
+
+TEST_CASE( "mut-b07_switching_a_trait_you_have_still_works", "[audit][mutation][eoc]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    you.set_mutation( trait_TEST_MUTB07_TOGGLE );
+    you.set_mutation( trait_TEST_MUTB07_FORM );
+    dialogue d( get_talker_for( you ), nullptr );
+
+    effect_on_condition_EOC_TEST_MUTB07_ACTIVATE->activate( d );
+    CHECK( you.has_active_mutation( trait_TEST_MUTB07_TOGGLE ) );
+    CHECK( char_var( you, "mutb07_on" ) == 1 );
+
+    effect_on_condition_EOC_TEST_MUTB07_DEACTIVATE->activate( d );
+    CHECK( you.has_trait( trait_TEST_MUTB07_TOGGLE ) );
+    CHECK_FALSE( you.has_active_mutation( trait_TEST_MUTB07_TOGGLE ) );
+    CHECK( char_var( you, "mutb07_off" ) == 1 );
+    CHECK_FALSE( you.has_trait( trait_TEST_MUTB07_FORM ) );
+    CHECK( you.has_trait( trait_TEST_MUTB07_FORM_ALT ) );
+    clear_avatar();
+}
