@@ -819,6 +819,7 @@ Things to note:
 - If an item has more than one material that can be salvaged, it will give resources corresponding to all of its materials. However, **if the item is partially a material that cannot be salvaged, that material will be ignored, and no resources from it will be given**
 - It is the only listed here method of taking an item apart which cannot be done through the ``disassemble`` option or menu
 - It does not work with charges well. Multiple charge-based item will be treated as a singular bigger item for the purpose of salvaging. **100 charge-based items weighing 1g equals to 1 normal item weighing 100g**
+- A crafted item that remembers its components gives back the basic materials it was made from (a component made of a salvageable material and salvaged into itself, such as a cotton patchwork), counting charges.  Low Fabrication, a failed dexterity roll and damage each cost a share of the yield.  Each material's amount is rounded down once, after adding up all its sources
 
 ## Choosing the method
 

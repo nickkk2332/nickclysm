@@ -20,6 +20,8 @@ class JsonArray;
 class JsonObject;
 class JsonOut;
 class cata_path;
+class mod_settings_editor;
+struct mod_setting;
 
 class options_manager
 {
@@ -107,6 +109,15 @@ class options_manager
                 const std::string &getDefaultValue() const {
                     return sDefault;
                 }
+                /// Gives the option a new default, as setValue( std::string ) takes a value.
+                /// The value stays.
+                void setDefault( const std::string &sDefaultIn );
+                /// Whether the value is the default
+                bool isDefault() const;
+                /// Why the option can't be changed in this menu, translated; "" when it can
+                const std::string &getLockedReason() const {
+                    return sLockedReason;
+                }
 
                 int getItemPos( const std::string &sSearch ) const;
                 std::vector<id_and_option> getItems() const;
@@ -171,6 +182,10 @@ class options_manager
 
                 copt_hide_t hide;
 
+                // Why the option can't be changed in this menu (a mod setting fixed once the
+                // world exists); empty when it can
+                std::string sLockedReason;
+
                 COPT_VALUE_TYPE eType;
 
                 //sType == "string"
@@ -197,6 +212,8 @@ class options_manager
                 float fMax = 0.0f;
                 float fDefault = 0.0f;
                 float fStep = 0.0f;
+                // decimals shown
+                int iPrecision = 2;
 
                 template<typename T>
                 std::optional<T> _convert() const;
@@ -237,6 +254,28 @@ class options_manager
         options_container get_raw_options();
 
         void set_world_options( options_container *options );
+
+        /**
+         * Shows the settings of @p editor alone, as world creation's "Mod Settings" tab does.
+         * Changes go to the editor as they're made.  Returns how the menu was left: "QUIT",
+         * "PREV_TAB", "NEXT_TAB", or "FIRST_TAB" (a click on the first world creation tab).
+         */
+        std::string show_mod_settings( mod_settings_editor &editor, bool with_tabs = true );
+
+        /**
+         * Why @p value, as cOpt::setValue( std::string ) takes it, isn't a value of the world
+         * option @p name; "" when it is.
+         */
+        std::string world_option_value_error( const std::string &name,
+                                              const std::string &value ) const;
+
+        /**
+         * Gives each option of @p world the default @p defaults has for it (option name to a
+         * value as cOpt::setValue( std::string ) takes it), or else its built-in default.  An
+         * option at its old default moves to the new one; one set to anything else keeps it.
+         */
+        void apply_world_option_defaults( options_container &world,
+                                          const std::map<std::string, std::string> &defaults ) const;
 
         /** Check if an option exists? */
         bool has_option( const std::string &name ) const;
@@ -290,6 +329,16 @@ class options_manager
     private:
         options_container options;
         std::optional<options_container *> world_options; // NOLINT(cata-serialize)
+
+        /**
+         * The options menu.  @p mod_settings adds a page for them; @p mod_settings_only shows
+         * that page alone, as world creation does.
+         */
+        std::string show_menu( bool ingame, bool world_options_only, bool with_tabs,
+                               mod_settings_editor *mod_settings, bool mod_settings_only );
+        /** The option a mod settings menu shows for @p setting */
+        static cOpt mod_setting_option( const mod_setting &setting,
+                                        const std::string &locked_reason );
 
         /** Option group. */
         class Group

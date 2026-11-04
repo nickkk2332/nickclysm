@@ -44,6 +44,7 @@ from .parsers.mutation import parse_mutation
 from .parsers.nested_category import parse_nested_category
 from .parsers.npc import parse_npc
 from .parsers.npc_class import parse_npc_class
+from .parsers.mod_setting import parse_mod_setting
 from .parsers.option_slider import parse_option_slider
 from .parsers.oter_vision import parse_oter_vision
 from .parsers.overmap_terrain import parse_overmap_terrain
@@ -188,6 +189,7 @@ parsers = {
     "monster_flag": dummy_parser,
     "monster_whitelist": dummy_parser,
     "monstergroup": dummy_parser,
+    "mod_setting": parse_mod_setting,
     "mood_face": dummy_parser,
     "morale_type": parse_morale_type,
     "movement_mode": parse_movement_mode,
@@ -289,6 +291,7 @@ parsers = {
     "weather_type": parse_weather_type,
     "weather_generator": dummy_parser,
     "widget": parse_widget,
+    "world_option": dummy_parser,
     "wound": parse_wound,
     "wound_fix": parse_wound_fix,
 }

@@ -173,12 +173,12 @@ Trait_list Trait_group_creator::create( RecursionList &rec ) const
         debugmsg( "recursion in trait creation list %s", id.c_str() );
         return result;
     }
-    rec.push_back( id );
-
     if( !id.is_valid() ) {
         debugmsg( "unknown trait creation list %s", id.c_str() );
         return result;
     }
+    // Only now: an id left on the list would make the parent pop the wrong one (PROG-B11)
+    rec.push_back( id );
     const auto tcd = mutation_branch::get_group( id );
 
     Trait_list tmplist = tcd->create( rec );
@@ -190,7 +190,7 @@ Trait_list Trait_group_creator::create( RecursionList &rec ) const
 
 void Trait_group_creator::check_consistency() const
 {
-    if( id.is_valid() ) {
+    if( !id.is_valid() ) {
         debugmsg( "trait group id %s is unknown", id.c_str() );
     }
 }

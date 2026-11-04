@@ -1,0 +1,16 @@
+[
+  {
+    "type": "mod_setting",
+    "id": "test_ms_number",
+    "copy-from": "test_ms_number",
+    "//": "Read only with test_data: another mod's setting changed with copy-from.",
+    "default": 2
+  },
+  {
+    "type": "mod_setting",
+    "id": "test_pre_with_test_data",
+    "name": "Pre-read setting for test_data",
+    "kind": "text",
+    "default": "both mods"
+  }
+]

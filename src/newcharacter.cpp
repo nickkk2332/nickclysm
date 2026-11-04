@@ -169,7 +169,7 @@ static std::string get_character_stat_name( int selected_stat_index )
                                           static_cast<character_stat>( selected_stat_index ) ) ) );
 }
 
-static std::string get_skill_entry_text( const skill_id selected_skill, const avatar &u )
+std::string get_skill_entry_text( const skill_id selected_skill, const avatar &u )
 {
     int prof_skill_level = 0;
     for( auto &prof_skill : u.prof->skills() ) {
@@ -178,25 +178,29 @@ static std::string get_skill_entry_text( const skill_id selected_skill, const av
             break;
         }
     }
+    int hobby_skill_level = 0;
     for( const profession *hobby : u.hobbies ) {
         for( auto &hobby_skill : hobby->skills() ) {
             if( hobby_skill.first == selected_skill ) {
-                prof_skill_level = std::max( prof_skill_level, hobby_skill.second );
+                hobby_skill_level = std::max( hobby_skill_level, hobby_skill.second );
                 break;
             }
         }
     }
 
     const int my_skill = u.get_skill_level( selected_skill );
-    auto green_if_positive = [&my_skill, &prof_skill_level]( const std::string & text ) {
-        if( my_skill + prof_skill_level > 0 ) {
+    // A hobby's level is a floor under the levels bought and the profession's, not more on top:
+    // what the character starts with, as initialize() and the summary have it (PROG-B09)
+    const int bonus = std::max( my_skill + prof_skill_level, hobby_skill_level ) - my_skill;
+    auto green_if_positive = [&my_skill, &bonus]( const std::string & text ) {
+        if( my_skill + bonus > 0 ) {
             return colorize( text, c_green );
         }
         return text;
     };
-    std::string skill_entry_text = prof_skill_level == 0 ?
+    std::string skill_entry_text = bonus == 0 ?
                                    string_format( "%s (%d)", selected_skill->name(), my_skill ) :
-                                   string_format( "%s (%d + %d)", selected_skill->name(), my_skill, prof_skill_level );
+                                   string_format( "%s (%d + %d)", selected_skill->name(), my_skill, bonus );
 
     return green_if_positive( skill_entry_text );
 }
@@ -852,8 +856,10 @@ void Character::set_recipes_from_hobbies()
 {
     for( const profession *profession : hobbies ) {
         for( const recipe_id &recipeID : profession->recipes() ) {
-            const recipe &r = recipe_dictionary::get_craft( recipeID->result() );
-            learn_recipe( &r );
+            // The recipe listed, not whichever one is named after its result (PROG-B05)
+            if( recipeID.is_valid() ) {
+                learn_recipe( &recipeID.obj() );
+            }
         }
     }
 }
@@ -876,11 +882,12 @@ void Character::set_bionics_from_hobbies()
 {
     for( const profession *profession : hobbies ) {
         for( const bionic_id &bio : profession->CBMs() ) {
+            // Skip only this one: the hobby's other CBMs, and later hobbies', still go in
+            // (PROG-B04)
             if( has_bionic( bio ) && !bio->dupes_allowed ) {
-                return;
-            } else {
-                add_bionic( bio );
+                continue;
             }
+            add_bionic( bio );
         }
     }
 }
@@ -932,25 +939,18 @@ void Character::initialize( bool learn_recipes )
         }
     }
 
+    // One entry per type, or only the first would ever be sated (PROG-B07)
     std::vector<addiction> prof_addictions = prof->addictions();
     for( const addiction &iter : prof_addictions ) {
-        addictions.push_back( iter );
+        merge_addiction( addictions, iter );
     }
 
     for( const profession *profession : hobbies ) {
         std::vector<addiction> hobby_addictions = profession->addictions();
         for( const addiction &iter : hobby_addictions ) {
-            addictions.push_back( iter );
+            merge_addiction( addictions, iter );
         }
     }
-
-    for( const bionic_id &bio : prof->CBMs() ) {
-        add_bionic( bio );
-    }
-
-    set_bionics_from_hobbies();
-    // Adjust current energy level to maximum
-    set_power_level( get_max_power_level() );
 
     // Add profession proficiencies
     for( const proficiency_id &pri : prof->proficiencies() ) {
@@ -960,8 +960,9 @@ void Character::initialize( bool learn_recipes )
 
     // Add profession recipes
     for( const recipe_id &id : prof->recipes() ) {
-        const recipe &r = recipe_dictionary::get_craft( id->result() );
-        learn_recipe( &r );
+        if( id.is_valid() ) {
+            learn_recipe( &id.obj() );
+        }
     }
 
     prof->learn_spells( *this );
@@ -976,6 +977,18 @@ void Character::initialize( bool learn_recipes )
 
     // Add hobby recipes
     set_recipes_from_hobbies();
+
+    // CBMs come after the proficiencies and spells, so they don't count those as their own
+    // and take them away when removed.
+    for( const bionic_id &bio : prof->CBMs() ) {
+        if( !has_bionic( bio ) || bio->dupes_allowed ) {
+            add_bionic( bio );
+        }
+    }
+
+    set_bionics_from_hobbies();
+    // Adjust current energy level to maximum
+    set_power_level( get_max_power_level() );
 
     // Activate some mutations right from the start.
     for( const trait_id &mut : get_mutations() ) {
@@ -2067,6 +2080,45 @@ void draw_starting_city( const avatar &you )
     }
 }
 
+std::vector<std::string> drop_what_profession_excludes( avatar &u )
+{
+    // Choosing a profession, or a template, could leave these behind, and an excluded hobby isn't
+    // listed, so it couldn't be deselected (PROG-B08).
+    std::vector<std::string> dropped;
+    std::vector<const profession *> excluded;
+    for( const profession *hobby : u.hobbies ) {
+        if( !u.prof->allows_hobby( hobby->ident() ) ) {
+            excluded.push_back( hobby );
+        }
+    }
+    for( const profession *hobby : excluded ) {
+        u.hobbies.erase( hobby );
+        // As deselecting it does: its traits go, unless the profession or another hobby has them
+        for( const trait_and_var &cur : hobby->get_locked_traits() ) {
+            bool kept = u.prof->is_locked_trait( cur.trait );
+            for( const profession *other : u.hobbies ) {
+                kept = kept || other->is_locked_trait( cur.trait );
+            }
+            if( !kept && u.has_trait( cur.trait ) ) {
+                u.toggle_trait_deps( cur.trait );
+            }
+        }
+        dropped.push_back( string_format(
+                               _( "Your background %1$s has been removed since the %2$s can't take it." ),
+                               hobby->gender_appropriate_name( u.male ),
+                               u.prof->gender_appropriate_name( u.male ) ) );
+    }
+    for( const trait_id &trait : u.get_mutations() ) {
+        if( u.prof->is_forbidden_trait( trait ) && u.has_trait( trait ) ) {
+            dropped.push_back( string_format(
+                                   _( "Your trait %1$s has been removed since the %2$s can't have it." ),
+                                   u.mutation_name( trait ), u.prof->gender_appropriate_name( u.male ) ) );
+            u.toggle_trait_deps( trait );
+        }
+    }
+    return dropped;
+}
+
 } // namespace char_creation
 
 std::vector<trait_id> Character::get_base_traits() const
@@ -2271,7 +2323,10 @@ void Character::add_default_background()
     for( const profession_group &prof_grp : profession_group::get_all() ) {
         if( prof_grp.get_id() == profession_group_adult_basic_background ) {
             for( const profession_id &hobb : prof_grp.get_professions() ) {
-                hobbies.insert( &hobb.obj() );
+                // Not those the profession excludes (PROG-B08)
+                if( prof == nullptr || prof->allows_hobby( hobb ) ) {
+                    hobbies.insert( &hobb.obj() );
+                }
             }
         }
     }
@@ -3474,6 +3529,17 @@ bool character_creator_ui::handle_action( const std::string &action )
         }
     } else if( action == "NEXT_TAB" ) {
         if( cc_uistate.selected_tab == CHARCREATOR_SUMMARY ) {
+            // A template can hold what its profession now excludes: show what changed first
+            const std::vector<std::string> dropped = char_creation::drop_what_profession_excludes( you );
+            for( const std::string &msg : dropped ) {
+                popup( msg );
+            }
+            if( !dropped.empty() ) {
+                cc_uistate.recalc_hobbies_taken = true;
+                cc_uistate.recalc_traits = true;
+                cc_uistate.recalc_rating = true;
+                return true;
+            }
             bool is_overpowered = false;
 
             std::string query = _( "Are you finished creating your character?" );
@@ -3720,8 +3786,12 @@ void character_creator_callback::confirm( uilist *menu )
             // Add traits for the new profession (and perhaps scenario, if, for example,
             // both the scenario and old profession require the same trait)
             u.add_traits();
+            for( const std::string &dropped : char_creation::drop_what_profession_excludes( u ) ) {
+                popup( dropped );
+            }
 
             cc_uistate.recalc_hobbies = true;
+            cc_uistate.recalc_hobbies_taken = true;
             cc_uistate.recalc_traits = true;
             cc_uistate.cached_profession_inventory.clear();
             break;

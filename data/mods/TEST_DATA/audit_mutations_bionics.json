@@ -1,0 +1,340 @@
+[
+  {
+    "//": "MUT-B06 fixture: flag a character gets while TEST_MUTB06_TOGGLE is on.",
+    "type": "json_flag",
+    "id": "TEST_MUTB06_ON"
+  },
+  {
+    "//": "MUT-B06 fixture: flag a character gets while TEST_MUTB06_TOGGLE is off.",
+    "type": "json_flag",
+    "id": "TEST_MUTB06_OFF"
+  },
+  {
+    "//": "MUT-B06 fixture: an activated trait with a flag for each state.",
+    "type": "mutation",
+    "id": "TEST_MUTB06_TOGGLE",
+    "name": { "str": "Test Flag Toggle" },
+    "points": 0,
+    "description": "Test trait that flags its owner one way when on and another when off.",
+    "active": true,
+    "active_flags": [ "TEST_MUTB06_ON" ],
+    "inactive_flags": [ "TEST_MUTB06_OFF" ]
+  },
+  {
+    "//": "MUT-B07 fixture: an activated trait whose EOCs count its activations and deactivations.",
+    "type": "mutation",
+    "id": "TEST_MUTB07_TOGGLE",
+    "name": { "str": "Test Counted Toggle" },
+    "points": 0,
+    "description": "Test trait that counts how often it is switched on and off.",
+    "active": true,
+    "activated_is_setup": true,
+    "activated_eocs": [ { "id": "EOC_TEST_MUTB07_ON", "effect": [ { "math": [ "u_mutb07_on += 1" ] } ] } ],
+    "deactivated_eocs": [ { "id": "EOC_TEST_MUTB07_OFF", "effect": [ { "math": [ "u_mutb07_off += 1" ] } ] } ]
+  },
+  {
+    "//": "MUT-B07 fixture: an activated form trait that switching turns into TEST_MUTB07_FORM_ALT.",
+    "type": "mutation",
+    "id": "TEST_MUTB07_FORM",
+    "name": { "str": "Test Form" },
+    "points": 0,
+    "description": "Test trait that turns into another form when switched.",
+    "active": true,
+    "transform": { "target": "TEST_MUTB07_FORM_ALT", "msg_transform": "You change form.", "active": false, "moves": 0 }
+  },
+  {
+    "//": "MUT-B07 fixture: the form TEST_MUTB07_FORM turns into.",
+    "type": "mutation",
+    "id": "TEST_MUTB07_FORM_ALT",
+    "name": { "str": "Test Other Form" },
+    "points": 0,
+    "valid": false,
+    "description": "Test trait that TEST_MUTB07_FORM turns into."
+  },
+  {
+    "//": "MUT-B07 fixture: switch TEST_MUTB07_TOGGLE on, as mods do from EOCs.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTB07_ACTIVATE",
+    "effect": [ { "u_activate_trait": "TEST_MUTB07_TOGGLE" } ]
+  },
+  {
+    "//": "MUT-B07 fixture: switch both test traits off without checking for them first.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_MUTB07_DEACTIVATE",
+    "effect": [ { "u_deactivate_trait": "TEST_MUTB07_TOGGLE" }, { "u_deactivate_trait": "TEST_MUTB07_FORM" } ]
+  },
+  {
+    "//": "MUT-B09 fixture: a second internal gasoline tank the gasoline fuel cell can draw from.",
+    "type": "ITEM",
+    "id": "test_mutb09_gasoline_tank",
+    "copy-from": "internal_gasoline_tank",
+    "name": { "str": "spare internal gasoline tank" }
+  },
+  {
+    "//": "MUT-B09 fixture: a bionic that only adds a second gasoline tank.",
+    "type": "bionic",
+    "id": "test_bio_mutb09_spare_tank",
+    "name": { "str": "Spare Gasoline Tank" },
+    "description": "Test bionic that adds a second internal gasoline tank.",
+    "passive_pseudo_items": [ "test_mutb09_gasoline_tank" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B09 fixture: an unrestricted fuel hopper.",
+    "type": "ITEM",
+    "subtypes": [ "TOOL", "ARMOR" ],
+    "id": "test_mutb09_hopper",
+    "category": "container",
+    "name": { "str": "internal fuel hopper" },
+    "description": "Fuel hopper, in your chest.",
+    "volume": "11 L",
+    "weight": "1 g",
+    "price": "0 cent",
+    "material": [ "plastic" ],
+    "symbol": "(",
+    "color": "magenta",
+    "flags": [ "INTEGRATED", "UNBREAKABLE", "PERSONAL", "NO_REPAIR", "ALLOWS_NATURAL_ATTACKS", "BIONIC_FUEL_SOURCE" ],
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "rigid": true,
+        "max_contains_volume": "10 L",
+        "max_item_volume": "10 L",
+        "max_contains_weight": "20 kg",
+        "max_item_length": "100 cm"
+      }
+    ]
+  },
+  {
+    "//": "MUT-B09 fixture: a burner fueled by wood or paper, so a picture (paper and wood) matches both fuels.",
+    "type": "bionic",
+    "id": "test_bio_mutb09_mixed_burner",
+    "name": { "str": "Mixed Fuel Burner" },
+    "description": "Test bionic that burns wood or paper.",
+    "fuel_options": [ "wood", "paper" ],
+    "fuel_efficiency": 0.25,
+    "time": "1 s",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_POWER_SOURCE" ],
+    "passive_pseudo_items": [ "test_mutb09_hopper" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B08 fixture: a trait some test CBMs conflict with or remove.",
+    "type": "mutation",
+    "id": "TEST_MUTB08_TRAIT",
+    "name": { "str": "Test CBM Obstacle" },
+    "points": 0,
+    "description": "Test trait that some test CBMs conflict with or remove."
+  },
+  {
+    "//": "MUT-B08 fixture: install CBMs without help, like Xedra's Cybernetic Integration.",
+    "type": "mutation",
+    "id": "TEST_MUTB08_MANUAL",
+    "name": { "str": "Test Manual Installation" },
+    "points": 0,
+    "description": "Test trait that lets its owner install CBMs without help.",
+    "flags": [ "MANUAL_CBM_INSTALLATION" ]
+  },
+  {
+    "//": "MUT-B08 fixture: what self-installing the test CBMs takes.",
+    "type": "requirement",
+    "id": "test_mutb08_install",
+    "tools": [ [ [ "hammer", -1 ] ] ]
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM taking most of the torso's slots.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_big",
+    "name": { "str": "Test Big Core" },
+    "description": "Test CBM that takes most of the torso's bionic slots.",
+    "occupied_bodyparts": [ [ "torso", 60 ] ],
+    "installation_requirement": "test_mutb08_install"
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM that fits alone but not next to test_bio_mutb08_big.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_small",
+    "name": { "str": "Test Small Core" },
+    "description": "Test CBM that does not fit next to the big one.",
+    "occupied_bodyparts": [ [ "torso", 30 ] ],
+    "installation_requirement": "test_mutb08_install"
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM that TEST_MUTB08_TRAIT rules out.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_conflict",
+    "name": { "str": "Test Picky Core" },
+    "description": "Test CBM that a test trait rules out.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "installation_requirement": "test_mutb08_install",
+    "mutation_conflicts": [ "TEST_MUTB08_TRAIT" ]
+  },
+  {
+    "//": "MUT-B08 fixture: a self-installable CBM that removes TEST_MUTB08_TRAIT.",
+    "type": "bionic",
+    "id": "test_bio_mutb08_cancels",
+    "name": { "str": "Test Replacing Core" },
+    "description": "Test CBM that removes a test trait.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "installation_requirement": "test_mutb08_install",
+    "canceled_mutations": [ "TEST_MUTB08_TRAIT" ]
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_big.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_big",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Big Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_small.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_small",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Small Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_conflict.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_conflict",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Picky Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
+  },
+  {
+    "//": "MUT-B08 fixture: item for test_bio_mutb08_cancels.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb08_cancels",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Replacing Core CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 0
+  },
+  {
+    "//": "MUT-B10 fixture: a CBM teaching a proficiency and a spell.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_teacher",
+    "name": { "str": "Test Teacher" },
+    "description": "Test CBM that teaches lockpicking and a spell.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: a second CBM teaching the same proficiency and spell.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_teacher_b",
+    "name": { "str": "Test Second Teacher" },
+    "description": "Test CBM that teaches the same as the first one.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: a CBM whose included bionic does the teaching.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_parent",
+    "name": { "str": "Test Teacher Housing" },
+    "description": "Test CBM that comes with a teaching bionic.",
+    "included_bionics": [ "test_bio_mutb10_child" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: the teaching bionic included with test_bio_mutb10_parent.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_child",
+    "name": { "str": "Test Included Teacher" },
+    "description": "Test bionic that teaches lockpicking and a spell.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true
+  },
+  {
+    "//": "MUT-B10 fixture: a bionic that test_bio_mutb10_upgrade upgrades; both teach the same.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_base",
+    "name": { "str": "Test Teacher Mk I" },
+    "description": "Test CBM that an upgrade replaces.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: the upgrade of test_bio_mutb10_base.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_upgrade",
+    "name": { "str": "Test Teacher Mk II" },
+    "description": "Test CBM upgrading the Mk I.",
+    "upgraded_bionic": "test_bio_mutb10_base",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: a profession teaching what its starting CBM teaches.",
+    "type": "profession",
+    "id": "test_mutb10_profession",
+    "name": "CBM teacher test profession",
+    "description": "A profession whose starting CBM teaches what the profession does.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "traits": [ "CBM_Interface" ],
+    "CBMs": [ "test_bio_mutb10_teacher" ],
+    "proficiencies": [ "prof_lockpicking" ],
+    "spells": [ { "id": "test_spell_pew", "level": 3 } ]
+  },
+  {
+    "//": "MUT-B10 fixture: an NPC class teaching what its bionic teaches.",
+    "type": "npc_class",
+    "id": "test_mutb10_class",
+    "name": { "str": "CBM teacher tester" },
+    "job_description": "I test which CBM taught what.",
+    "common": false,
+    "bionics": [ { "id": "test_bio_mutb10_teacher", "chance": 100 } ],
+    "proficiencies": [ "prof_lockpicking" ],
+    "spells": [ { "id": "test_spell_pew", "level": 3 } ]
+  },
+  {
+    "//": "MUT-B11 fixture: what removing test_bio_mutb11_arm leaves behind.",
+    "type": "mutation",
+    "id": "TEST_MUTB11_SCAR",
+    "name": { "str": "Test Surgery Scar" },
+    "points": 0,
+    "description": "Test trait left by removing a test CBM."
+  },
+  {
+    "//": "MUT-B11 fixture: an arm CBM that leaves a trait when removed.",
+    "type": "bionic",
+    "id": "test_bio_mutb11_arm",
+    "name": { "str": "Test Arm Implant" },
+    "description": "Test CBM in the left arm.",
+    "occupied_bodyparts": [ [ "arm_l", 1 ] ],
+    "give_mut_on_removal": [ "TEST_MUTB11_SCAR" ]
+  },
+  {
+    "//": "MUT-B11 fixture: item for test_bio_mutb11_arm.",
+    "type": "ITEM",
+    "subtypes": [ "BIONIC_ITEM" ],
+    "id": "test_bio_mutb11_arm",
+    "copy-from": "bionic_general",
+    "name": { "str": "Test Arm Implant CBM" },
+    "description": "Test CBM item.",
+    "difficulty": 2
+  }
+]

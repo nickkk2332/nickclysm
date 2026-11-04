@@ -1608,8 +1608,7 @@ void monster::nursebot_operate( Character *dragged_foe )
                           static_cast<float>( 77 ) / static_cast<float>( 10.0 ) );
 
             dragged_foe->cancel_activity();
-            get_player_character().uninstall_bionic( real_target, *this, *dragged_foe,
-                    adjusted_skill );
+            dragged_foe->uninstall_bionic( real_target, *this, *dragged_foe, adjusted_skill );
 
             // Remove target grab
             for( const effect &eff :

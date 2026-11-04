@@ -1325,14 +1325,14 @@ ret_val<int> item_location::max_charges_by_parent_recursive( const item &it ) co
         //Weight multiplier of zero means parent containers are no longer affected so stop keeping track
         if( weight_multiplier > 0 ) {
             //Calculate effective remaining weight for current parent
-            units::mass temp_weight = weight_capacity() / weight_multiplier;
+            units::mass temp_weight = current_location.weight_capacity() / weight_multiplier;
             //Find the most restrictive weight to determine maximum charges
             max_weight = std::min( max_weight, temp_weight );
         }
         //Volume multiplier of zero means parent containers are no longer affected so stop keeping track
         if( volume_multiplier > 0 ) {
             //Calculate effective remaining volume for current parent
-            units::volume temp_volume = volume_capacity() / volume_multiplier;
+            units::volume temp_volume = current_location.volume_capacity() / volume_multiplier;
             //Find the most restrictive volume to determine maximum charges
             max_volume = std::min( max_volume, temp_volume );
         }

@@ -10628,6 +10628,14 @@ void chop_planks_activity_actor::do_turn( player_activity &act, Character & )
 
 void chop_planks_activity_actor::finish( player_activity &act, Character &who )
 {
+    if( uses_log ) {
+        if( !target_log ) {
+            who.add_msg_if_player( m_bad, _( "The log you were cutting is gone." ) );
+            act.set_to_null();
+            return;
+        }
+        target_log.remove_item();
+    }
     const int max_planks = 10;
     /** @EFFECT_FABRICATION increases number of planks cut from a log */
     int planks = normal_roll( 2 + who.get_skill_level( skill_fabrication ), 1 );
@@ -10657,6 +10665,8 @@ void chop_planks_activity_actor::serialize( JsonOut &jsout ) const
     jsout.start_object();
 
     jsout.member( "moves", moves );
+    jsout.member( "log", target_log );
+    jsout.member( "uses_log", uses_log );
 
     jsout.end_object();
 }
@@ -10668,6 +10678,8 @@ std::unique_ptr<activity_actor> chop_planks_activity_actor::deserialize( JsonVal
     JsonObject data = jsin.get_object();
 
     data.read( "moves", actor.moves );
+    data.read( "log", actor.target_log );
+    data.read( "uses_log", actor.uses_log );
 
     return actor.clone();
 }

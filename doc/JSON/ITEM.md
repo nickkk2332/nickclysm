@@ -559,13 +559,16 @@ Books can be defined like this:
   { 
     "proficiency": "prof_fermenting", // id of proficiency
     "time_factor": 0.1,               // slowdown for using this book proficiency - slowdown from lack of proficiency is multiplied on this value, so for `0.75`, if recipe adds 10 hours for lack of proficiency,  with book it would be [ 10 * ( 1 - 0.75 ) = ] 2.5 hours; multiple books stacks, but in logarithmic way, meaning having more books of the same proficiency is better than having one book, but never would be better than learning the proficiency
-    "fail_factor": 0.25               // works same as `time_factor`
+    "fail_factor": 0.25,              // works same as `time_factor`
+    "include_prereqs": true           // (default true) the bonus also applies to the proficiency's prerequisites, and theirs
   },
   { "proficiency": "prof_brewing", "time_factor": 0.25, "fail_factor": 0.5 },
   { "proficiency": "prof_winemaking", "time_factor": 0.1, "fail_factor": 0.25 }
 ],
 
 ```
+A book gives each proficiency one bonus: if it lists a proficiency more than once, directly or as a prerequisite of others it lists, the best `time_factor` and the best `fail_factor` count.  Different books compound; copies of one book don't.
+
 It is possible to omit the `max_level` field if the book you're creating contains only recipes and it's not supposed to level up any skill. In this case the `skill` field will just refer to the skill required to learn the recipes.
 
 Since many book names are proper names, it's often necessary to explicitly specify
@@ -727,7 +730,7 @@ Any Item can be a container. To add the ability to contain things to an item, yo
     "max_item_volume": "0 ml",              // Maximum volume of item that can fit through the opening into this pocket.  For example, a 2-liter bottle has a "17 ml" opening.
     "max_item_length": "0 mm",              // Maximum length of items that can fit in this pocket, by their longest_side.  Default is the diagonal opening length assuming volume is a cube (cube_root(vol)*square_root(2))
     "min_item_length": "0 mm",              // Minimum length of the item that can fit int this pocket
-    "spoil_multiplier": 1.0,                // How putting an item in this pocket affects spoilage.  Less than 1.0 and the item will be preserved longer; 0.0 will preserve indefinitely.
+    "spoil_multiplier": 1.0,                // How putting an item in this pocket affects spoilage.  Less than 1.0 and the item will be preserved longer; 0.0 will preserve indefinitely.  Above 1.0 it spoils faster.  In nested pockets, if any multiplier is below 1.0 the lowest counts; otherwise the highest does.  This holds whether the item is carried, on the ground or in a vehicle.
     "weight_multiplier": 1.0,               // The items in this pocket magically weigh less inside than outside.  Nothing in vanilla should have a weight_multiplier.
     "volume_multiplier": 1.0,               // The items in this pocket have less volume inside than outside.  Can be used for containers that'd help in organizing specific contents, such as cardboard rolls for duct tape.
     "volume_encumber_modifier": 1,          // Default 1. How much this pocket contributes to enumbrance compared to an average item; Works same as volume_encumber_modifier from armor data, see JSON_INFO.md#armor-portion-data
@@ -989,7 +992,7 @@ Gun mods can be defined like this:
   "balance": "neutral"                       
 }
 "turns_per_charge": 20, // Charges consumed over time, deprecated in favor of power_draw
-"fuel_efficiency": 0.2, // When combined with being a UPS this item will burn fuel for its given energy value to produce energy with the efficiency provided. Needs to be > 0 for this to work
+"fuel_efficiency": 0.2, // When combined with being a UPS this item will burn fuel for its given energy value to produce energy with the efficiency provided, whether the fuel is in its own magazine pocket or in a magazine (such as a propane tank) in its magazine well.  It only does so while carried: lying nearby, a fuel-burning UPS gives no power.  Must be above 0 (a load error otherwise); leave it out, or set -1, for an item that burns no fuel
 "use_action": [ "firestarter" ], // Action performed when tool is used, see special definition below
 "qualities": [ [ "SCREW", 1 ] ], // Inherent item qualities like hammering, sawing, screwing (see tool_qualities.json)
 // Qualities also accept object format: { "id": "SEW", "level": 2, "speed": 0.3 }
@@ -1523,7 +1526,7 @@ The contents of `use_action` fields can either be a string indicating a built-in
 },
 "use_action": {
   "type": "effect_on_conditions",          // Activate effect_on_conditions
-  "consume": true,                         // defaults false: whether the iuse function should return 1 and attempt to consume the item
+  "consume": true,                         // defaults false: whether using it spends one use: charges_per_use charges of its ammo, or the item itself if it is SINGLE_USE.  Any other item stays; an EOC that should use it up removes it (u_consume_item)
   "need_worn": true,          // (optional) If the item has to be worn to activate the EoC
   "need_wielding": true,      // (optional) If the item has to be wielded to activate the EoC
   "condition": { "not": "is_day" }, // (optional) dialogue condition that must be true to activate; u is the user, npc is the item

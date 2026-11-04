@@ -12,6 +12,7 @@
 #include <string_view>
 
 #include "cuboid_rectangle.h"
+#include "mod_setting_values.h"
 #include "options.h"
 #include "pimpl.h"
 #include "type_id.h"
@@ -20,6 +21,8 @@ enum class special_game_type;
 
 class JsonArray;
 class JsonObject;
+class mod_settings_reader;
+struct mod_settings_preview;
 
 constexpr std::string_view zzip_overmap_directory = "overmaps";
 constexpr std::string_view zzip_suffix = ".zzip";
@@ -70,6 +73,8 @@ struct WORLD {
          * should be loaded for this world.
          */
         std::vector<mod_id> active_mod_order;
+        /** The mod settings' values (doc/JSON/MOD_SETTINGS.md), saved in worldoptions.json */
+        mod_setting_values mod_settings;
         std::string timestamp;
 
         WORLD();
@@ -152,6 +157,14 @@ class worldfactory
 
         const std::map<std::string, std::unique_ptr<WORLD>> &get_all_worlds() const;
 
+        /**
+         * Re-reads the settings of @p world's mods after its mod list changed at world
+         * creation, and brings the world in line (update_world_mod_settings).
+         */
+        void refresh_mod_settings( WORLD &world );
+        /** What the mods of the world being created define, as last read */
+        const mod_settings_preview &get_mod_settings_preview() const;
+
     private:
         std::map<std::string, std::unique_ptr<WORLD>> all_worlds;
 
@@ -160,6 +173,10 @@ class worldfactory
         std::string pick_random_name();
         int show_worldgen_tab_options( const catacurses::window &win, WORLD *world, bool with_tabs );
         int show_worldgen_tab_modselection( const catacurses::window &win, WORLD *world, bool with_tabs );
+        int show_worldgen_tab_mod_settings( const catacurses::window &win, WORLD *world,
+                                            bool with_tabs );
+        /** Ends world creation's reading of mod settings */
+        void forget_mod_settings();
         int show_worldgen_basic( WORLD *world );
         int show_worldgen_advanced( WORLD *world );
 
@@ -174,6 +191,9 @@ class worldfactory
 
         pimpl<mod_manager> mman;
         pimpl<mod_ui> mman_ui;
+
+        std::unique_ptr<mod_settings_reader> mod_reader;
+        std::unique_ptr<mod_settings_preview> mod_preview;
 
         using worldgen_display = std::function<int ( const catacurses::window &, WORLD *, bool )>;
 

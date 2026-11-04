@@ -87,26 +87,98 @@ static rule_state get_autopickup_rule( const item *pickup_item )
 }
 
 /**
+ * Whether auto pickup takes the given item out of the whitelisted container it is in.
+ * Liquids and gases stay in: the container is taken with them, or not at all.
+ *
+ * @param entry item in the container.
+ * @param rigid_container whether all the container's pockets are rigid.
+ */
+static bool autopickup_ejects( const item &entry, bool rigid_container )
+{
+    if( entry.made_of_from_type( phase_id::LIQUID ) || entry.made_of_from_type( phase_id::GAS ) ) {
+        return false;
+    }
+    const rule_state ap_rule = get_autopickup_rule( &entry );
+    // rigid containers want to keep as much items as possible so drop only blacklisted items
+    // non-rigid containers want to drop as much items as possible so keep only whitelisted items
+    return rigid_container ? ap_rule == rule_state::BLACKLISTED : ap_rule != rule_state::WHITELISTED;
+}
+
+/**
  * Drop all items from the given container that match special auto pickup rules.
  * The items will be removed from the container and dropped in the designated location.
+ * A sealed container is left as it is: auto pickup never breaks a seal.
  *
  * @param from container to drop items from.
  * @param where location on the map to drop items to.
  */
 static void empty_autopickup_target( item_location what, tripoint_bub_ms where )
 {
+    if( what->any_pockets_sealed() ) {
+        return;
+    }
     bool is_rigid = what->all_pockets_rigid();
     for( item *entry : what->all_items_top() ) {
-        const rule_state ap_rule = get_autopickup_rule( entry );
-        // rigid containers want to keep as much items as possible so drop only blacklisted items
-        // non-rigid containers want to drop as much items as possible so keep only whitelisted items
-        if( is_rigid ? ap_rule == rule_state::BLACKLISTED : ap_rule != rule_state::WHITELISTED ) {
+        if( autopickup_ejects( *entry, is_rigid ) ) {
             item nitem( *entry );
             what.remove_item( *entry );
             // drop the items on the same tile the container is on
             get_map().add_item( where, nitem );
         }
     }
+}
+
+namespace
+{
+/**
+ * What one auto pickup selection has chosen so far, so that each container is checked for room
+ * together with everything chosen before it.
+ */
+struct autopickup_plan {
+    units::mass weight = 0_gram;
+    units::volume volume = 0_ml;
+
+    void add( const item &it ) {
+        weight += it.weight();
+        volume += it.volume();
+    }
+};
+} // namespace
+
+/**
+ * Whether auto pickup would take the given container once empty_autopickup_target has turned
+ * it out: it is then within the auto pickup limits, and the avatar can carry it and stash it
+ * along with what the selection has chosen so far.  The container is only turned out when it
+ * is then taken; if so, its room is added to the plan.
+ *
+ * @param what whitelisted container.
+ * @param plan what the selection has chosen so far.
+ */
+static bool would_take_emptied_autopickup_target( const item &what, autopickup_plan &plan )
+{
+    item emptied( what );
+    if( !emptied.any_pockets_sealed() ) {
+        const bool is_rigid = emptied.all_pockets_rigid();
+        std::vector<const item *> ejected;
+        for( const item *entry : emptied.all_items_top() ) {
+            if( autopickup_ejects( *entry, is_rigid ) ) {
+                ejected.push_back( entry );
+            }
+        }
+        emptied.get_contents().remove_items_if( [&ejected]( item & entry ) {
+            return std::find( ejected.begin(), ejected.end(), &entry ) != ejected.end();
+        } );
+        emptied.on_contents_changed();
+    }
+    Character &player = get_player_character();
+    // free_space() is the room left in all pockets together, an upper bound for what fits
+    if( !within_autopickup_limits( &emptied ) || !player.can_stash_partial( emptied, false ) ||
+        player.weight_carried() + plan.weight + emptied.weight() > player.max_pickup_capacity() ||
+        plan.volume + emptied.volume() > player.free_space() ) {
+        return false;
+    }
+    plan.add( emptied );
+    return true;
 }
 
 /**
@@ -136,9 +208,11 @@ static void empty_autopickup_target( item_location what, tripoint_bub_ms where )
  * - the parent container is non-rigid and the item is not whitelisted.
  *
  * @param from item to search for items to auto pickup from.
+ * @param plan what the selection has chosen before this container.
  * @return sequence of items to auto pickup from given container.
  */
-static std::vector<item_location> get_autopickup_items( item_location &from )
+static std::vector<item_location> get_autopickup_items( item_location &from,
+        autopickup_plan plan )
 {
     map &here = get_map();
 
@@ -174,6 +248,10 @@ static std::vector<item_location> get_autopickup_items( item_location &from )
             any_whitelisted = true;
             if( !force_pick_container ) {
                 if( item_entry->is_container() ) {
+                    if( !would_take_emptied_autopickup_target( *item_entry, plan ) ) {
+                        pick_all_items = false;
+                        continue;
+                    }
                     // whitelisted containers should exclude contained blacklisted items
                     empty_autopickup_target( item_location( from, item_entry ), from.pos_bub( here ) );
                 } else if( item_entry->made_of_from_type( phase_id::LIQUID ) ) {
@@ -188,7 +266,7 @@ static std::vector<item_location> get_autopickup_items( item_location &from )
                    !item_entry->is_container_empty() ) {
             // get pickup list from nested item container
             item_location location = item_location( from, item_entry );
-            std::vector<item_location> result_nested = get_autopickup_items( location );
+            std::vector<item_location> result_nested = get_autopickup_items( location, plan );
 
             // container with content was NOT marked for pickup
             if( result_nested.size() != 1 || result_nested[0] != location ) {
@@ -250,6 +328,7 @@ drop_locations auto_pickup::select_items(
     itype_id picking_up_last_itype_id = itype_id::NULL_ID();
     drop_locations result;
     const map_cursor map_location = map_cursor( location );
+    autopickup_plan plan;
 
     // iterate over all item stacks found in location
     for( const item_stack::iterator &stack : from ) {
@@ -283,11 +362,17 @@ drop_locations auto_pickup::select_items(
         // before checking contents check if item is on pickup list
         if( pickup_state == rule_state::WHITELISTED ) {
             if( item_entry->is_container() ) {
+                // decide on the container as it would be taken before turning anything out
+                if( !would_take_emptied_autopickup_target( *item_entry, plan ) ) {
+                    // skipped for its contents or for room: the next one of its type may fit
+                    picking_up_itype_id = true;
+                    continue;
+                }
                 empty_autopickup_target( item_location( map_location, item_entry ), location );
-            }
-            // skip if the container is still above the limit after emptying it
-            if( !within_autopickup_limits( item_entry ) ) {
+            } else if( !within_autopickup_limits( item_entry ) ) {
                 continue;
+            } else {
+                plan.add( *item_entry );
             }
             int it_count = 0; // TODO: factor in auto pickup max_quantity here
             item_location it_location = item_location( map_location, item_entry );
@@ -296,8 +381,9 @@ drop_locations auto_pickup::select_items(
         } else if( is_container || item_entry->ammo_capacity( ammo_battery ) ) {
             picking_up_itype_id = true; // Always check containers or tools with batteries
             item_location container_location = item_location( map_location, item_entry );
-            for( const item_location &add_item : get_autopickup_items( container_location ) ) {
+            for( const item_location &add_item : get_autopickup_items( container_location, plan ) ) {
                 int it_count = 0; // TODO: factor in auto pickup max_quantity here
+                plan.add( *add_item );
                 result.emplace_back( std::make_pair( add_item, it_count ) );
             }
         }

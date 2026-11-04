@@ -22,7 +22,6 @@
       { "group": "NC_MUTANT_INSECT" },
       { "group": "NC_MUTANT_SPIDER" },
       { "group": "NC_MUTANT_BEAST" },
-      { "group": "NC_MUTANT_MEDICAL" },
       { "group": "NC_MUTANT_CHIROPTERAN" }
     ]
   },
@@ -85,7 +84,7 @@
       { "trait": "NIGHTVISION" },
       { "trait": "STRONG_LEGS" },
       { "trait": "CHITIN2" },
-      { "trait": "ASOCIAL" }
+      { "trait": "ASOCIAL1" }
     ]
   },
   {
@@ -363,7 +362,7 @@
       { "trait": "WHISKERS_RAT" },
       { "trait": "PAWS" },
       { "trait": "CLAWS_RAT" },
-      { "trait": "POISRESISTANT" },
+      { "trait": "POISRESIST" },
       { "trait": "NIGHTVISION" },
       { "trait": "DISRESISTANT" },
       { "trait": "SLEEPY" },
@@ -416,10 +415,4 @@
       { "trait": "UGLY" }
     ]
   }
-]
-
-
-
-
-
 ]

@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "character.h"
@@ -415,4 +416,16 @@ std::string add_type_legacy_conv( std::string const &v )
         return "marloss_y";
     }
     return {};
+}
+
+void merge_addiction( std::vector<addiction> &addictions, const addiction &add )
+{
+    for( addiction &held : addictions ) {
+        if( held.type == add.type ) {
+            held.intensity = std::max( held.intensity, add.intensity );
+            held.sated = std::max( held.sated, add.sated );
+            return;
+        }
+    }
+    addictions.push_back( add );
 }

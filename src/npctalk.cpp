@@ -111,6 +111,7 @@
 #include "melee.h"
 #include "messages.h"
 #include "mission.h"
+#include "mod_setting.h"
 #include "monfaction.h"
 #include "mongroup.h"
 #include "monster.h"
@@ -6994,6 +6995,81 @@ talk_effect_fun_t::func f_set_string_var( const JsonObject &jo, std::string_view
     };
 }
 
+// set_mod_setting: an eoc_writable mod setting takes "value" (doc/JSON/MOD_SETTINGS.md)
+talk_effect_fun_t::func f_set_mod_setting( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    const str_or_var id = get_str_or_var( jo.get_member( member ), member, true );
+    // a number given to a text setting becomes its text
+    const auto as_setting_value = []( const mod_setting & setting, const mod_setting_value & v ) {
+        if( setting.kind == mod_setting::kind_t::text && std::holds_alternative<double>( v ) ) {
+            return mod_setting_value( diag_value( std::get<double>( v ) ).to_string() );
+        }
+        return v;
+    };
+    // a switch can be given as true or false; anything else as a value or variable
+    std::optional<bool> switch_value;
+    diag_value_or_var value;
+    if( jo.has_bool( "value" ) ) {
+        switch_value = jo.get_bool( "value" );
+    } else {
+        mandatory( jo, false, "value", value );
+    }
+    if( id.is_constant() ) {
+        // a literal id that isn't writable, or a literal value it can't take, is a load error
+        const std::string where = jo.get_member( member ).get_root_source_path();
+        std::optional<mod_setting_value> literal;
+        if( switch_value ) {
+            literal = *switch_value;
+        } else if( value.is_constant() && value.constant().is_dbl() ) {
+            literal = value.constant().dbl();
+        } else if( value.is_constant() && value.constant().is_str() ) {
+            literal = value.constant().str();
+        }
+        effect_on_conditions::add_load_check( [name = id.constant(), where, literal, as_setting_value]() {
+            const mod_setting_id setting( name );
+            if( !setting.is_valid() ) {
+                debugmsg( "No mod defines the setting \"%s\" (used by set_mod_setting in %s)", name, where );
+                return;
+            }
+            if( !setting->eoc_writable ) {
+                debugmsg( "set_mod_setting: EOCs can't change \"%s\": its mod_setting doesn't set "
+                          "\"eoc_writable\" (in %s)", name, where );
+                return;
+            }
+            std::string error;
+            if( literal && !setting->validate( as_setting_value( *setting, *literal ), &error ) ) {
+                debugmsg( "set_mod_setting: %s (in %s)", error, where );
+            }
+        } );
+    }
+    return [id, switch_value, value, as_setting_value]( dialogue & d ) {
+        const mod_setting_id setting( id.evaluate( d ) );
+        if( !setting.is_valid() ) {
+            debugmsg( "set_mod_setting: no mod defines the setting \"%s\".  %s", setting.str(),
+                      d.get_callstack() );
+            return;
+        }
+        if( !setting->eoc_writable ) {
+            debugmsg( "set_mod_setting: EOCs can't change \"%s\": its mod_setting doesn't set "
+                      "\"eoc_writable\".  %s", setting.str(), d.get_callstack() );
+            return;
+        }
+        mod_setting_value new_value = false;
+        if( switch_value ) {
+            new_value = *switch_value;
+        } else {
+            const diag_value v = value.evaluate( d );
+            new_value = v.is_dbl() ? mod_setting_value( v.dbl() ) : mod_setting_value( v.to_string() );
+        }
+        const std::string error = mod_settings::set( *setting, as_setting_value( *setting,
+                                  new_value ) );
+        if( !error.empty() ) {
+            debugmsg( "set_mod_setting: %s.  %s", error, d.get_callstack() );
+        }
+    };
+}
+
 talk_effect_fun_t::func f_set_condition( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -10515,6 +10591,7 @@ parsers = {
     { "give_equipment", jarg::object, &talk_effect_fun::f_give_equipment },
     { "set_string_var", jarg::member | jarg::array, &talk_effect_fun::f_set_string_var },
     { "set_condition", jarg::member, &talk_effect_fun::f_set_condition },
+    { "set_mod_setting", jarg::member, &talk_effect_fun::f_set_mod_setting },
     { "set_item_category_spawn_rates", jarg::member | jarg::array, &talk_effect_fun::f_set_item_category_spawn_rates },
     { "open_dialogue", jarg::member, &talk_effect_fun::f_open_dialogue },
     { "take_control", jarg::member, &talk_effect_fun::f_take_control },

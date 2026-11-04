@@ -158,7 +158,7 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
     "forbidden_buffs_any": [ "mma_buff_hylian_static2", "mma_buff_hylian_static3" ],   // This effect is forbidden if any of the named buffs are applied
     "forbidden_buffs_all": [ "mma_buff_tiger_claw_onmove" ],   // This effect is forbidden if all of the named buffs are applied
     "weapon_categories_allowed": [ "BLADES", "KNIVES" ], // Restrict buff to only these categories of weapons. If omitted, all weapon categories are allowed
-    "max_stacks": 8,                     // Maximum number of stacks on the buff. Buff bonuses are multiplied by current buff intensity
+    "max_stacks": 8,                     // Maximum number of stacks on the buff. Buff bonuses are multiplied by current buff intensity: a stacking accuracy (`hit`) buff gives its bonus per stack
     "bonus_blocks": 1,                   // Extra blocks per turn
     "bonus_dodges": 1,                   // Extra dodges per turn
     "free_dodges": 1,                    // Dodges per turn that won't consume stamina. Can be higher than actual amount of dodges, but won't add more dodges.
@@ -292,10 +292,10 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "stun_dur": 2,                         // Duration that target is stunned for
   "down_dur": 2,                         // Duration that target is downed for
   "side_switch": true,                   // Technique moves the target behind user
-  "disarms": true,                       // This technique can disarm the opponent, triggers only against armed NPCs or monsters with the "WIELDED_WEAPON" flag
-  "take_weapon": true,                   // Technique will disarm and equip target's weapon if hands are free
+  "disarms": true,                       // This technique can disarm the opponent, triggers only against armed NPCs or monsters with the "WIELDED_WEAPON" flag.  A weapon that can't leave the hands (NO_UNWIELD or INTEGRATED: a bionic weapon, handcuffs) is never taken, even by a forced technique
+  "take_weapon": true,                   // Technique will disarm and equip target's weapon if hands are free (same exceptions as "disarms")
   "grab_break": true,                    // This technique may break a grab against the user
-  "aoe": "spin",                         // This technique has an area-of-effect. Doesn't proc against solo targets. Options are `aoe` (attacks adjacent nearby enemies), `impale` (hits target and one enemy behind it), and `wide` (hits enemies in an arc near the target)
+  "aoe": "spin",                         // This technique has an area-of-effect. Doesn't proc against solo targets. Options are `aoe` (attacks adjacent nearby enemies), `impale` (hits target and one enemy behind it: on the tile straight behind, or one of the two beside that tile), and `wide` (hits enemies in an arc near the target).  Enemies are the attacker's: monsters not on its side, and people hostile to it (an NPC's sweep hits the player and the player's allies, not its own friends).  The attacker is told how many extra enemies it hit
   "block_counter": true,                 // This technique may automatically counterattack on a successful block
   "dodge_counter": true,                 // This technique may automatically counterattack on a successful dodge
   "grab_counter": true,                  // This technique may automatically counterattack when something gets a hold on you. See Grab counters
@@ -441,6 +441,8 @@ Field            | Description
 * Tokens of "useless" type will not cause an error, but will not have any effect.  For example, `speed` in a technique will have no effect (`movecost` should be used for techniques).
 * Multiplicative bonuses only support `damage` and `movecost`.
 * Flat bonuses are applied after multiplicative bonuses.
+* On a buff, every flat bonus, `hit` included, is multiplied by the buff's stacks (its intensity).
+* Fractions count.  `hit`, `dodge` and `crit_chance` keep theirs.  The other stats are whole numbers: the bonuses of all active buffs and stacks are added up first, and the fraction of the total is dropped (toward zero).  For example, a buff giving `block` 0.6 per stack gives 1 block at three stacks (1.8).
 
 
 ### Examples
