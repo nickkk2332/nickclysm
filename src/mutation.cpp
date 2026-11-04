@@ -1552,6 +1552,7 @@ bool Character::mutation_selector( const std::vector<trait_id> &prospective_trai
 
     // Only allow traits with fulfilled prerequisites
     std::vector<trait_id> traits;
+    const std::vector<bionic_id> installed_bionics = get_bionics();
     for( trait_id trait : prospective_traits ) {
         const mutation_branch &mdata = trait.obj();
 
@@ -1598,11 +1599,12 @@ bool Character::mutation_selector( const std::vector<trait_id> &prospective_trai
             continue;
         }
 
-        // Check bionic conflicts
-        for( const bionic_id &bid : get_bionics() ) {
-            if( bid->mutation_conflicts.count( trait ) != 0 ) {
-                continue;
-            }
+        // Leave out traits an installed bionic conflicts with
+        if( std::any_of( installed_bionics.begin(), installed_bionics.end(),
+        [&trait]( const bionic_id & bid ) {
+        return bid->mutation_conflicts.count( trait ) != 0;
+        } ) ) {
+            continue;
         }
 
         // std::find function returns false on duplicate entry

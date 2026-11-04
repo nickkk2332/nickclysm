@@ -429,7 +429,7 @@
   {
     "type": "EXTERNAL_OPTION",
     "name": "SHOW_MUTATION_SELECTOR",
-    "//": "When mutating, displays a menu which allows players to pick from a list of possible mutations.",
+    "//": "When mutating, displays a menu which allows players to pick from a list of possible mutations.  Mutations that conflict with an installed CBM are left out.",
     "stype": "bool",
     "value": false
   },
