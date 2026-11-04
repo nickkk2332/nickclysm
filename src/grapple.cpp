@@ -145,9 +145,9 @@ monster *grapple::monster_grabber( const Creature &victim, const bodypart_id &bp
             continue;
         }
         // Grab attacks reach past the adjacent tiles, and pulls and drags can end a z-level
-        // away (CHAR-B09).
+        // away, even straight above or below (CHAR-B09).
         const int dist = rl_dist( mon_pos.xy(), victim_pos.xy() );
-        if( dist < 1 || dist > std::max( 1, monster_grab_reach( mon ) ) ) {
+        if( dist > std::max( 1, monster_grab_reach( mon ) ) ) {
             continue;
         }
         const bool targets_victim = mon.attack_target() == &victim;

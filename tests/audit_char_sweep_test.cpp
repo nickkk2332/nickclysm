@@ -12,9 +12,12 @@
 #include "coordinates.h"
 #include "effect.h"
 #include "grab.h"
+#include "grapple.h"
 #include "item.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_helpers_tests.h"
+#include "monster.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "skill.h"
@@ -240,9 +243,41 @@ TEST_CASE( "char-b08_escaping_an_impeding_effect_on_a_limb", "[audit][character]
     }
 }
 
-// ---- CHAR-B10 ----
+// ---- CHAR-B09 ----
+
+static const efftype_id effect_grabbed( "grabbed" );
 
 static const ter_str_id ter_t_floor( "t_floor" );
+
+// The grabber search took in monsters a level up or down, but skipped any at distance 0, so a
+// monster holding you from straight above or below was not found and its grab was dropped as
+// an orphan.
+TEST_CASE( "char-b09_a_grabber_straight_above_is_not_an_orphan", "[audit][grab]" )
+{
+    clear_avatar();
+    clear_map( -2, 1 );
+    clear_creatures();
+    avatar &you = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_creatures();
+        clear_map( -2, 1 );
+        clear_avatar();
+    } );
+    const tripoint_bub_ms above = you.pos_bub() + tripoint::above;
+    get_map().ter_set( above, ter_t_floor );
+    monster &zombie = spawn_test_monster( "mon_zombie", above );
+    zombie.add_grab( body_part_arm_l );
+    you.add_effect( effect_grabbed, 1_days, body_part_arm_l, true, 10 );
+
+    // An attack only removes orphan grabs.
+    you.try_remove_grab( true );
+
+    CHECK( grapple::monster_grabber( you, body_part_arm_l.id() ) == &zombie );
+    CHECK( you.has_effect( effect_grabbed, body_part_arm_l ) );
+}
+
+// ---- CHAR-B10 ----
+
 static const ter_str_id ter_t_wall( "t_wall" );
 
 static const vproto_id vehicle_prototype_hospital_bed_small( "hospital_bed_small" );
