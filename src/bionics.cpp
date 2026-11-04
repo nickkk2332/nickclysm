@@ -69,6 +69,7 @@
 #include "pimpl.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "proficiency.h"
 #include "projectile.h"
 #include "requirements.h"
 #include "ret_val.h"
@@ -2988,6 +2989,21 @@ int Character::get_free_bionics_slots( const bodypart_id &bp ) const
     return get_total_bionics_slots( bp ) - get_used_bionics_slots( bp );
 }
 
+// A bionic records in its tags which spells and proficiencies it taught when installed, so
+// that removing it takes back only those. Bionics installed before this was recorded lack
+// the first tag and are taken to have taught everything they list.
+static const std::string bionic_tag_grants_recorded( "cbm_grants_recorded" );
+
+static std::string granted_spell_tag( const spell_id &taught )
+{
+    return "cbm_granted_spell:" + taught.str();
+}
+
+static std::string granted_proficiency_tag( const proficiency_id &taught )
+{
+    return "cbm_granted_proficiency:" + taught.str();
+}
+
 bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
                                   bool suppress_debug )
 {
@@ -3017,6 +3033,7 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
         add_bionic( inc_bid, bio_uid, suppress_debug );
     }
 
+    std::vector<std::string> grants = { bionic_tag_grants_recorded };
     for( const std::pair<const spell_id, int> &spell_pair : b->learned_spells ) {
         const spell_id learned_spell = spell_pair.first;
         if( learned_spell->spell_class != trait_NONE ) {
@@ -3031,6 +3048,9 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
         }
         if( !magic->knows_spell( learned_spell ) ) {
             magic->learn_spell( learned_spell, *this, true );
+            if( magic->knows_spell( learned_spell ) ) {
+                grants.push_back( granted_spell_tag( learned_spell ) );
+            }
         }
         spell &known_spell = magic->get_spell( learned_spell );
         // spells you learn from installing a bionic upgrade spells you know if they are the same
@@ -3040,7 +3060,18 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
     }
 
     for( const proficiency_id &learned : b->proficiencies ) {
-        add_proficiency( learned );
+        if( !has_proficiency( learned ) ) {
+            add_proficiency( learned );
+            if( has_proficiency( learned ) ) {
+                grants.push_back( granted_proficiency_tag( learned ) );
+            }
+        }
+    }
+    // Look the bionic up again: installing the included bionics may have moved it.
+    if( const std::optional<bionic *> added = find_bionic_by_uid( bio_uid ) ) {
+        for( const std::string &tag : grants ) {
+            ( *added )->set_flag( tag );
+        }
     }
 
     for( const itype_id &pseudo : b->passive_pseudo_items ) {
@@ -3118,30 +3149,59 @@ void Character::remove_bionic( const bionic &bio )
     }
 
     bionic_collection new_my_bionics;
-    // any spells you should not forget due to still having a bionic installed that has it.
-    std::set<spell_id> cbm_spells;
+    // The bionic and the ones included with it.
+    std::vector<bionic> removed_bionics;
     for( bionic &i : *my_bionics ) {
         // Linked bionics: if either is removed, the other is removed as well.
         if( i.get_uid() == bio_uid || i.get_parent_uid() == bio_uid ) {
+            removed_bionics.push_back( i );
             continue;
-        }
-
-        for( const std::pair<const spell_id, int> &spell_pair : i.id->learned_spells ) {
-            cbm_spells.emplace( spell_pair.first );
         }
 
         new_my_bionics.push_back( i );
     }
 
-    // any spells you learn from installing a bionic you forget.
-    for( const std::pair<const spell_id, int> &spell_pair : bio.id->learned_spells ) {
-        if( cbm_spells.count( spell_pair.first ) == 0 ) {
-            magic->forget_spell( spell_pair.first );
+    // Take back the spells and proficiencies the removed bionics taught. One that another
+    // installed bionic also teaches stays, and that bionic now counts as having taught it.
+    for( const bionic &removed : removed_bionics ) {
+        const bool recorded = removed.has_flag( bionic_tag_grants_recorded );
+        for( const std::pair<const spell_id, int> &spell_pair : removed.id->learned_spells ) {
+            const spell_id &taught = spell_pair.first;
+            const std::string tag = granted_spell_tag( taught );
+            if( ( recorded && !removed.has_flag( tag ) ) || !magic->knows_spell( taught ) ) {
+                continue;
+            }
+            const auto keeper = std::find_if( new_my_bionics.begin(), new_my_bionics.end(),
+            [&taught]( const bionic & other ) {
+                return other.id->learned_spells.count( taught ) > 0;
+            } );
+            if( keeper != new_my_bionics.end() ) {
+                keeper->set_flag( tag );
+            } else {
+                magic->forget_spell( taught );
+            }
         }
-    }
-
-    for( const proficiency_id &lost : bio.id->proficiencies ) {
-        lose_proficiency( lost );
+        for( const proficiency_id &taught : removed.id->proficiencies ) {
+            const std::string tag = granted_proficiency_tag( taught );
+            if( ( recorded && !removed.has_flag( tag ) ) || !has_proficiency( taught ) ) {
+                continue;
+            }
+            const auto keeper = std::find_if( new_my_bionics.begin(), new_my_bionics.end(),
+            [&taught]( const bionic & other ) {
+                return std::find( other.id->proficiencies.begin(), other.id->proficiencies.end(),
+                                  taught ) != other.id->proficiencies.end();
+            } );
+            if( keeper != new_my_bionics.end() ) {
+                keeper->set_flag( tag );
+                continue;
+            }
+            // Practice put into it before the bionic completed it comes back.
+            const time_duration practiced = get_proficiency_practiced_time( taught );
+            lose_proficiency( taught );
+            if( practiced < taught->time_to_learn() ) {
+                set_proficiency_practiced_time( taught, to_turns<int>( practiced ) );
+            }
+        }
     }
 
     for( const itype_id &popped_armor : bio.id->passive_pseudo_items ) {

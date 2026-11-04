@@ -220,5 +220,47 @@
     "name": { "str": "Test Replacing Core CBM" },
     "description": "Test CBM item.",
     "difficulty": 0
+  },
+  {
+    "//": "MUT-B10 fixture: a CBM teaching a proficiency and a spell.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_teacher",
+    "name": { "str": "Test Teacher" },
+    "description": "Test CBM that teaches lockpicking and a spell.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: a second CBM teaching the same proficiency and spell.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_teacher_b",
+    "name": { "str": "Test Second Teacher" },
+    "description": "Test CBM that teaches the same as the first one.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: a CBM whose included bionic does the teaching.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_parent",
+    "name": { "str": "Test Teacher Housing" },
+    "description": "Test CBM that comes with a teaching bionic.",
+    "included_bionics": [ "test_bio_mutb10_child" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B10 fixture: the teaching bionic included with test_bio_mutb10_parent.",
+    "type": "bionic",
+    "id": "test_bio_mutb10_child",
+    "name": { "str": "Test Included Teacher" },
+    "description": "Test bionic that teaches lockpicking and a spell.",
+    "learned_proficiencies": [ "prof_lockpicking" ],
+    "learned_spells": { "test_spell_pew": 2 },
+    "included": true
   }
 ]

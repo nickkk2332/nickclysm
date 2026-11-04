@@ -292,3 +292,106 @@ TEST_CASE( "mut-b08_self_install_asks_before_removing_traits", "[audit][bionics]
     CHECK_FALSE( you.can_install_bionics( *cbm.type, you, false ) );
     clear_avatar();
 }
+
+static const bionic_id test_bio_mutb10_child( "test_bio_mutb10_child" );
+static const bionic_id test_bio_mutb10_parent( "test_bio_mutb10_parent" );
+static const bionic_id test_bio_mutb10_teacher( "test_bio_mutb10_teacher" );
+static const bionic_id test_bio_mutb10_teacher_b( "test_bio_mutb10_teacher_b" );
+
+static const proficiency_id proficiency_prof_lockpicking( "prof_lockpicking" );
+
+static const spell_id spell_test_spell_pew( "test_spell_pew" );
+
+static void remove_bionic_of_type( Character &you, const bionic_id &bid )
+{
+    const std::optional<bionic *> bio = you.find_bionic_by_type( bid );
+    REQUIRE( bio );
+    you.remove_bionic( **bio );
+    REQUIRE_FALSE( you.has_bionic( bid ) );
+}
+
+// MUT-B10: removing a CBM took away every proficiency it lists and every spell it lists
+// that no other CBM lists, including ones the character had before installing it.
+TEST_CASE( "mut-b10_removing_a_cbm_keeps_what_it_did_not_teach",
+           "[audit][bionics][cbm][proficiency][magic]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+
+    SECTION( "known before the CBM" ) {
+        you.add_proficiency( proficiency_prof_lockpicking );
+        you.magic->learn_spell( spell_test_spell_pew, you, true );
+        you.magic->get_spell( spell_test_spell_pew ).set_level( you, 5 );
+        you.add_bionic( test_bio_mutb10_teacher );
+        remove_bionic_of_type( you, test_bio_mutb10_teacher );
+        CHECK( you.has_proficiency( proficiency_prof_lockpicking ) );
+        REQUIRE( you.magic->knows_spell( spell_test_spell_pew ) );
+        CHECK( you.magic->get_spell( spell_test_spell_pew ).get_level() == 5 );
+    }
+    SECTION( "taught by the first of two CBMs, which is removed first" ) {
+        you.add_bionic( test_bio_mutb10_teacher );
+        you.add_bionic( test_bio_mutb10_teacher_b );
+        remove_bionic_of_type( you, test_bio_mutb10_teacher );
+        CHECK( you.has_proficiency( proficiency_prof_lockpicking ) );
+        CHECK( you.magic->knows_spell( spell_test_spell_pew ) );
+        remove_bionic_of_type( you, test_bio_mutb10_teacher_b );
+        CHECK_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
+        CHECK_FALSE( you.magic->knows_spell( spell_test_spell_pew ) );
+    }
+    SECTION( "taught by the first of two CBMs, which is removed last" ) {
+        you.add_bionic( test_bio_mutb10_teacher );
+        you.add_bionic( test_bio_mutb10_teacher_b );
+        remove_bionic_of_type( you, test_bio_mutb10_teacher_b );
+        CHECK( you.has_proficiency( proficiency_prof_lockpicking ) );
+        CHECK( you.magic->knows_spell( spell_test_spell_pew ) );
+        remove_bionic_of_type( you, test_bio_mutb10_teacher );
+        CHECK_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
+        CHECK_FALSE( you.magic->knows_spell( spell_test_spell_pew ) );
+    }
+    SECTION( "installed before CBMs recorded what they taught" ) {
+        // Such a CBM is assumed to have taught everything it lists, as before.
+        you.add_proficiency( proficiency_prof_lockpicking );
+        const bionic_uid uid = you.add_bionic( test_bio_mutb10_teacher );
+        ( *you.find_bionic_by_uid( uid ) )->remove_flag( "cbm_grants_recorded" );
+        remove_bionic_of_type( you, test_bio_mutb10_teacher );
+        CHECK_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
+        CHECK_FALSE( you.magic->knows_spell( spell_test_spell_pew ) );
+    }
+    clear_avatar();
+}
+
+// MUT-B10: a proficiency a CBM completed lost the character's own practice with it.
+TEST_CASE( "mut-b10_removing_a_cbm_gives_back_proficiency_practice",
+           "[audit][bionics][cbm][proficiency]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    you.set_proficiency_practiced_time( proficiency_prof_lockpicking, to_turns<int>( 1_hours ) );
+    REQUIRE_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
+    REQUIRE( you.get_proficiency_practiced_time( proficiency_prof_lockpicking ) == 1_hours );
+
+    you.add_bionic( test_bio_mutb10_teacher );
+    REQUIRE( you.has_proficiency( proficiency_prof_lockpicking ) );
+    remove_bionic_of_type( you, test_bio_mutb10_teacher );
+    CHECK_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
+    CHECK( you.get_proficiency_practiced_time( proficiency_prof_lockpicking ) == 1_hours );
+    clear_avatar();
+}
+
+// MUT-B10: the proficiencies and spells of a CBM's included bionics stayed after removing it.
+TEST_CASE( "mut-b10_removing_a_cbm_takes_back_what_its_included_bionics_taught",
+           "[audit][bionics][cbm][proficiency][magic]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    you.add_bionic( test_bio_mutb10_parent );
+    REQUIRE( you.has_bionic( test_bio_mutb10_child ) );
+    REQUIRE( you.has_proficiency( proficiency_prof_lockpicking ) );
+    REQUIRE( you.magic->knows_spell( spell_test_spell_pew ) );
+
+    remove_bionic_of_type( you, test_bio_mutb10_parent );
+    REQUIRE_FALSE( you.has_bionic( test_bio_mutb10_child ) );
+    CHECK_FALSE( you.has_proficiency( proficiency_prof_lockpicking ) );
+    CHECK_FALSE( you.magic->knows_spell( spell_test_spell_pew ) );
+    clear_avatar();
+}
