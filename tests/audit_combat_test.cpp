@@ -35,8 +35,12 @@ static const efftype_id effect_hit_by_player( "hit_by_player" );
 static const efftype_id effect_pet( "pet" );
 
 static const itype_id itype_club_wooden( "club_wooden" );
+static const itype_id itype_glaive( "glaive" );
 static const itype_id itype_spear_wood( "spear_wood" );
 static const itype_id itype_test_cmbt_club( "test_cmbt_club" );
+static const itype_id itype_test_cmbt_revolver( "test_cmbt_revolver" );
+static const itype_id itype_test_cmbt_round_plain( "test_cmbt_round_plain" );
+static const itype_id itype_test_cmbt_round_wild( "test_cmbt_round_wild" );
 static const itype_id itype_test_cmbt_unwieldy( "test_cmbt_unwieldy" );
 
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
@@ -423,6 +427,49 @@ TEST_CASE( "cmbt-b14_melee_weakpoint_effects_know_the_attacker", "[audit][melee]
         land_blow( you, mon );
         REQUIRE( mon.is_dead() );
         CHECK( mon.get_killer() == &you );
+    }
+}
+
+// CMBT-B15: NPC weapon scoring counted a loaded gun's rounds twice (in gun_damage() and again
+// from the ammo), counted the ammo's dispersion twice, and gave the polearm penalty to every
+// candidate when the NPC held a polearm, and to none otherwise.
+TEST_CASE( "cmbt-b15_npc_weapon_values_count_each_thing_once", "[audit][npc_attack][ranged]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+
+    SECTION( "a loaded gun is worth what an empty one is, with the same rounds" ) {
+        item loaded( itype_test_cmbt_revolver );
+        loaded.ammo_set( itype_test_cmbt_round_plain );
+        REQUIRE( loaded.ammo_remaining() > 0 );
+        const item empty( itype_test_cmbt_revolver );
+        REQUIRE( empty.ammo_remaining() == 0 );
+        REQUIRE( empty.ammo_default() == itype_test_cmbt_round_plain );
+        CHECK( you.gun_value( loaded ) == Approx( you.gun_value( empty ) ) );
+    }
+    SECTION( "the rounds' dispersion counts once, scaled with the gun's" ) {
+        // 15 + 0 and 15 + 7, divided by 18, both round to 1
+        item plain( itype_test_cmbt_revolver );
+        plain.ammo_set( itype_test_cmbt_round_plain );
+        item wild( itype_test_cmbt_revolver );
+        wild.ammo_set( itype_test_cmbt_round_wild );
+        REQUIRE( plain.gun_dispersion() == wild.gun_dispersion() );
+        CHECK( you.gun_value( plain ) == Approx( you.gun_value( wild ) ) );
+    }
+    SECTION( "the polearm penalty goes to a polearm, whatever is held" ) {
+        const item club( itype_club_wooden );
+        const item glaive( itype_glaive );
+        REQUIRE( glaive.has_flag( flag_POLEARM ) );
+        const double club_value = you.melee_value( club );
+        const double glaive_value = you.melee_value( glaive );
+        item held( itype_glaive );
+        REQUIRE( you.wield( held ) );
+        CHECK( you.melee_value( club ) == Approx( club_value ) );
+        CHECK( you.melee_value( glaive ) == Approx( glaive_value ) );
+        you.remove_weapon();
+        item stick( itype_club_wooden );
+        REQUIRE( you.wield( stick ) );
+        CHECK( you.melee_value( glaive ) == Approx( glaive_value ) );
     }
 }
 

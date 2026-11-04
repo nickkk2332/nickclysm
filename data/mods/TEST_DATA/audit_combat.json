@@ -149,6 +149,49 @@
     "melee_damage": { "bash": 1 }
   },
   {
+    "//": "CMBT-B15 fixtures: a revolver, and two rounds that differ only in dispersion.  Within the gun's own dispersion, scaled, the 7 of the wild round rounds away.",
+    "type": "ammunition_type",
+    "id": "test_cmbt_round",
+    "name": "test combat round",
+    "default": "test_cmbt_round_plain"
+  },
+  {
+    "id": "test_cmbt_round_plain",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "copy-from": "test_9mm_ammo",
+    "name": { "str": "test plain round" },
+    "ammo_type": "test_cmbt_round",
+    "dispersion": 0
+  },
+  {
+    "id": "test_cmbt_round_wild",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "copy-from": "test_cmbt_round_plain",
+    "name": { "str": "test wild round" },
+    "dispersion": 7
+  },
+  {
+    "id": "test_cmbt_revolver",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "name": { "str": "test combat revolver" },
+    "description": "A revolver for combat tests.",
+    "weight": "600 g",
+    "volume": "500 ml",
+    "material": [ "steel" ],
+    "symbol": "(",
+    "color": "dark_gray",
+    "ammo": [ "test_cmbt_round" ],
+    "ranged_damage": { "damage_type": "bullet", "amount": 0 },
+    "dispersion": 15,
+    "durability": 8,
+    "skill": "pistol",
+    "pocket_data": [ { "pocket_type": "MAGAZINE", "rigid": true, "ammo_restriction": { "test_cmbt_round": 6 } } ],
+    "melee_damage": { "bash": 4 }
+  },
+  {
     "//": "CMBT-B16 fixture: a buff that stacks three times, with fractional bonuses.",
     "type": "martial_art",
     "id": "test_style_cmbt_buffs",

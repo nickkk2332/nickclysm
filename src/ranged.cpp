@@ -2795,18 +2795,15 @@ double Character::gun_value( const item &weap, int ammo ) const
                               item::find_type( ammo_type ) :
                               nullptr;
 
-    damage_instance gun_damage = weap.gun_damage();
+    // The gun with these rounds, counted once: gun_damage() would add the rounds it holds
+    damage_instance gun_damage = def_ammo_i != nullptr && def_ammo_i->ammo ?
+                                 weap.gun_damage( ammo_type ) : weap.gun_damage( false );
     item tmp = weap;
     if( tmp.is_magazine() || tmp.magazine_current() || tmp.magazine_default() ) {
         tmp.ammo_set( ammo_type );
     }
+    // With the rounds loaded, this includes their dispersion
     int total_dispersion = get_weapon_dispersion( tmp ).max() + tmp.sight_dispersion( *this ).second;
-
-    if( def_ammo_i != nullptr && def_ammo_i->ammo ) {
-        const islot_ammo &def_ammo = *def_ammo_i->ammo;
-        gun_damage.add( def_ammo.damage );
-        total_dispersion += def_ammo.dispersion;
-    }
 
     float damage_factor = gun_damage.total_damage();
     if( damage_factor > 0 && !gun_damage.empty() ) {
