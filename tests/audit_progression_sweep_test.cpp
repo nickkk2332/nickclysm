@@ -11,9 +11,11 @@
 #include "character.h"
 #include "character_creator_ui.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "item.h"
 #include "json.h"
 #include "json_loader.h"
+#include "math_parser.h"
 #include "output.h"
 #include "player_helpers.h"
 #include "proficiency.h"
@@ -306,4 +308,44 @@ TEST_CASE( "prog-b09_the_skills_tab_shows_the_level_the_character_starts_with",
     CHECK( entry_for( 1 ) == string_format( "%s (1 + 1)", name ) );
     CHECK( entry_for( 2 ) == string_format( "%s (2)", name ) );
     CHECK( entry_for( 3 ) == string_format( "%s (3)", name ) );
+}
+
+// ---- PROG-B10 ----
+
+static double eval_math( dialogue &d, const std::string &expr )
+{
+    math_exp exp;
+    REQUIRE( exp.parse( expr ) );
+    return exp.eval( d );
+}
+
+// Setting a proficiency to 100% directly from an EOC erased its progress and then learned it
+// only if the character knew its prerequisites, so without them the character ended up with
+// neither the proficiency nor the progress.  It now learns the prerequisites too, and one that
+// was in progress keeps no progress entry beside being known.
+TEST_CASE( "prog-b10_eoc_direct_100_percent_learns_the_proficiency", "[audit][proficiency]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    dialogue d( get_talker_for( u ), nullptr );
+    REQUIRE_FALSE( u.has_proficiency( proficiency_prof_knapping ) );
+
+    eval_math( d, "u_proficiency('prof_knapping_speed', 'format': 'percent', 'direct': true) = 50" );
+    CHECK( u.get_proficiency_practice( proficiency_prof_knapping_speed ) == Approx( 0.5f ) );
+
+    SECTION( "without its prerequisite" ) {
+        eval_math( d, "u_proficiency('prof_knapping_speed', 'format': 'percent', 'direct': true) = 100" );
+        CHECK( u.has_proficiency( proficiency_prof_knapping_speed ) );
+        CHECK( u.has_proficiency( proficiency_prof_knapping ) );
+    }
+    SECTION( "with its prerequisite half learned" ) {
+        eval_math( d, "u_proficiency('prof_knapping', 'format': 'percent', 'direct': true) = 50" );
+        eval_math( d, "u_proficiency('prof_knapping_speed', 'format': 'percent', 'direct': true) = 100" );
+        CHECK( u.has_proficiency( proficiency_prof_knapping_speed ) );
+        CHECK( u.has_proficiency( proficiency_prof_knapping ) );
+        CHECK( u.get_proficiency_practice( proficiency_prof_knapping ) == Approx( 1.0f ) );
+    }
 }

@@ -371,7 +371,9 @@ void proficiency_set::set_time_practiced( const proficiency_id &practicing,
                 ++it;
             }
         }
-        learn( practicing );
+        // With its prerequisites: on its own it would be learned only if they were known, and
+        // the progress just erased would be lost (PROG-B10)
+        learn( practicing, true );
         return;
     } else if( known.count( practicing ) ) {
         remove( practicing );
@@ -392,7 +394,8 @@ void proficiency_set::learn( const proficiency_id &learned, bool recursive )
             learn( req, recursive );
         }
     }
-    known.insert( learned );
+    // A prerequisite learned this way may have been in progress
+    direct_learn( learned );
 }
 
 // All the proficiencies in subjects that require one of the proficiencies in requirements
