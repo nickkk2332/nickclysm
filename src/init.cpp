@@ -81,6 +81,7 @@
 #include "math_parser_jmath.h"
 #include "mission.h"
 #include "mod_manager.h"
+#include "mod_setting.h"
 #include "mod_tileset.h"
 #include "monfaction.h"
 #include "mongroup.h"
@@ -410,6 +411,7 @@ void DynamicDataLoader::initialize()
     // Add to this as needed with new StaticFunctionAccessors or new ClassFunctionAccessors for new applicable types
     // Static Function Access
     add( "WORLD_OPTION", &load_world_option );
+    add( "mod_setting", &mod_settings::load );
     add( "EXTERNAL_OPTION", &load_external_option );
     add( "option_slider", &option_slider::load_option_sliders );
     add( "json_flag", &json_flag::load_all );
@@ -875,6 +877,7 @@ void DynamicDataLoader::unload_data()
     npc_class::reset_npc_classes();
     npc_template::reset();
     option_slider::reset();
+    mod_settings::reset();
     overmap_connections::reset();
     overmap_land_use_codes::reset();
     overmap_locations::reset();
@@ -986,6 +989,7 @@ void DynamicDataLoader::finalize_loaded_data()
     const std::vector<named_entry> entries = {{
             { _( "Flags" ), &json_flag::finalize_all },
             { _( "Option sliders" ), &option_slider::finalize_all },
+            { _( "Mod settings" ), &mod_settings::finalize_all },
             { _( "Addictions" ), &add_type::finalize_all },
             { _( "ASCII Art" ), &ascii_art::finalize_all },
             { _( "Bash damage profiles" ), &bash_damage_profile::finalize_all },
@@ -1134,6 +1138,7 @@ void DynamicDataLoader::check_consistency()
     const std::vector<named_entry> entries = {{
             { _( "Flags" ), &json_flag::check_consistency },
             { _( "Option sliders" ), &option_slider::check_consistency },
+            { _( "Mod settings" ), &mod_settings::check_consistency },
             {
                 _( "Crafting requirements" ), []()
                 {

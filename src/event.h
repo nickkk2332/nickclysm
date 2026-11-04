@@ -147,6 +147,7 @@ enum class event_type : int {
     npc_recruited,
     npc_dismissed,
     npc_mutinies,
+    mod_setting_changed,
     num_event_types // last
 };
 
@@ -214,7 +215,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 123,
+static_assert( static_cast<int>( event_type::num_event_types ) == 124,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -992,6 +993,18 @@ struct event_spec<event_type::npc_mutinies> {
             { "npc_name", cata_variant_type::string },
             { "old_faction", cata_variant_type::faction_id },
             { "new_faction", cata_variant_type::faction_id },
+        }
+    };
+};
+
+// a mod setting changed in game, in the options menu or by an EOC; the values as text: "true" or
+// "false", the number, the choice id, the text (doc/JSON/MOD_SETTINGS.md)
+template<>
+struct event_spec<event_type::mod_setting_changed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "id", cata_variant_type::string },
+            { "old_value", cata_variant_type::string },
+            { "new_value", cata_variant_type::string },
         }
     };
 };

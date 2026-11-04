@@ -40,9 +40,9 @@ struct dialogue_func {
     using kwargs_t = std::vector<std::string_view>;
 
     dialogue_func( std::string_view sc_, int n_, fe_t fe_, fa_t fa_ = {}, kwargs_t kw_ = {},
-                   fc_t fc_ = {} )
+                   fc_t fc_ = {}, fc_t fca_ = {} )
         : scopes( sc_ ), num_params( n_ ), fe( fe_ ), fa( fa_ ), kwargs( std::move( kw_ ) ),
-          fc( fc_ )
+          fc( fc_ ), fca( fca_ )
     {}
     std::string_view scopes;
     int num_params{};
@@ -53,6 +53,8 @@ struct dialogue_func {
     kwargs_t kwargs;
 
     fc_t fc;
+    // Like fc, for when the function is the target of an assignment
+    fc_t fca;
 };
 using pdiag_func = dialogue_func const *;
 

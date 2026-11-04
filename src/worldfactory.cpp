@@ -25,6 +25,7 @@
 #include "json.h"
 #include "json_loader.h"
 #include "mod_manager.h"
+#include "mod_setting.h"
 #include "output.h"
 #include "path_info.h"
 #include "point.h"
@@ -100,6 +101,7 @@ void WORLD::COPY_WORLD( const WORLD *world_to_copy )
     world_name = world_to_copy->world_name + "_copy";
     WORLD_OPTIONS = world_to_copy->WORLD_OPTIONS;
     active_mod_order = world_to_copy->active_mod_order;
+    mod_settings = world_to_copy->mod_settings;
     is_compressed = world_to_copy->is_compressed;
 }
 
@@ -354,6 +356,13 @@ bool WORLD::save() const
 
                 jout.end_object();
             }
+        }
+
+        // the mod settings that differ from their default, as an element of their own
+        if( !mod_settings.empty() ) {
+            jout.start_object();
+            jout.member( "mod_settings", mod_settings );
+            jout.end_object();
         }
 
         jout.end_array();
@@ -2059,6 +2068,10 @@ void WORLD::load_options( const JsonArray &options_json )
 
     for( JsonObject jo : options_json ) {
         jo.allow_omitted_members();
+        if( jo.has_object( "mod_settings" ) ) {
+            mod_settings.deserialize( jo.get_object( "mod_settings" ) );
+            continue;
+        }
         const std::string name = opts.migrateOptionName( jo.get_string( "name" ) );
         const std::string value = opts.migrateOptionValue( jo.get_string( "name" ),
                                   jo.get_string( "value" ) );
@@ -2072,6 +2085,7 @@ void WORLD::load_options( const JsonArray &options_json )
 bool WORLD::load_options()
 {
     WORLD_OPTIONS = get_options().get_world_defaults();
+    mod_settings.clear();
 
     const cata_path path = folder_path() / PATH_INFO::worldoptions();
     return read_from_file_optional_json( path, [this]( const JsonValue & jsin ) {
@@ -2081,13 +2095,18 @@ bool WORLD::load_options()
 
 void load_world_option( const JsonObject &jo )
 {
-    JsonArray arr = jo.get_array( "options" );
-    if( arr.empty() ) {
-        jo.throw_error_at( "options", "no options specified" );
+    // A new world takes the default when its mods are picked (refresh_mod_settings).  Loading
+    // the mod changes the default of the loaded world's option, never its value.
+    const std::pair<std::string, std::string> option = read_world_option( jo );
+    WORLD *world = world_generator ? world_generator->active_world : nullptr;
+    if( world == nullptr ) {
+        return;
     }
-    for( const std::string line : arr ) {
-        get_options().get_option( line ).setValue( "true" );
+    if( world->WORLD_OPTIONS.count( option.first ) == 0 ) {
+        const options_manager::options_container defaults = get_options().get_world_defaults();
+        world->WORLD_OPTIONS[option.first] = defaults.at( option.first );
     }
+    world->WORLD_OPTIONS[option.first].setDefault( option.second );
 }
 
 //load external option from json

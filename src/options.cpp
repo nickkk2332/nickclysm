@@ -25,6 +25,7 @@
 #include "lang_stats.h"
 #include "line.h"
 #include "mapsharing.h"
+#include "mod_setting.h"
 #include "output.h"
 #include "path_info.h"
 #include "point.h"
@@ -767,7 +768,7 @@ std::string options_manager::cOpt::getValue( bool classis_locale ) const
     } else if( sType == "float" ) {
         std::ostringstream ssTemp;
         ssTemp.imbue( classis_locale ? std::locale::classic() : std::locale() );
-        ssTemp.precision( 2 );
+        ssTemp.precision( iPrecision );
         ssTemp.setf( std::ios::fixed, std::ios::floatfield );
         ssTemp << fSet;
         return ssTemp.str();
@@ -904,10 +905,47 @@ std::string options_manager::cOpt::getDefaultText( const bool bTranslated ) cons
         }
 
     } else if( sType == "float" ) {
-        return string_format( _( "Default: %.2f - Min: %.2f, Max: %.2f" ), fDefault, fMin, fMax );
+        if( iPrecision == 2 ) {
+            return string_format( _( "Default: %.2f - Min: %.2f, Max: %.2f" ), fDefault, fMin, fMax );
+        }
+        const auto text = [this]( float f ) {
+            std::ostringstream ssTemp;
+            ssTemp.imbue( std::locale() );
+            ssTemp.precision( iPrecision );
+            ssTemp.setf( std::ios::fixed, std::ios::floatfield );
+            ssTemp << f;
+            return ssTemp.str();
+        };
+        //~ An option's default value and range
+        return string_format( _( "Default: %s - Min: %s, Max: %s" ), text( fDefault ), text( fMin ),
+                              text( fMax ) );
     }
 
     return "";
+}
+
+void options_manager::cOpt::setDefault( const std::string &sDefaultIn )
+{
+    cOpt parsed = *this;
+    parsed.setValue( sDefaultIn );
+    sDefault = parsed.sSet;
+    bDefault = parsed.bSet;
+    iDefault = parsed.iSet;
+    fDefault = parsed.fSet;
+}
+
+bool options_manager::cOpt::isDefault() const
+{
+    if( sType == "string_select" || sType == "string_input" ) {
+        return sSet == sDefault;
+    } else if( sType == "bool" ) {
+        return bSet == bDefault;
+    } else if( sType == "int" || sType == "int_map" ) {
+        return iSet == iDefault;
+    } else if( sType == "float" ) {
+        return fSet == fDefault;
+    }
+    return true;
 }
 
 int options_manager::cOpt::getItemPos( const std::string &sSearch ) const
@@ -4432,6 +4470,132 @@ void options_manager::set_world_options( options_container *options )
     } else {
         world_options = options;
     }
+}
+
+std::string options_manager::world_option_value_error( const std::string &name,
+        const std::string &value ) const
+{
+    const auto found = options.find( name );
+    if( found == options.end() ) {
+        return string_format( "there's no option \"%s\"", name );
+    }
+    const cOpt &opt = found->second;
+    if( opt.getPage() != "world_default" ) {
+        return string_format( "\"%s\" isn't a world option", name );
+    }
+    if( opt.sType == "bool" ) {
+        if( value != "true" && value != "false" ) {
+            return string_format( "\"%s\" is true or false", name );
+        }
+    } else if( opt.sType == "int" || opt.sType == "int_map" ) {
+        const ret_val<int> val = try_parse_integer<int>( value, false );
+        if( !val.success() ) {
+            return string_format( "\"%s\" is a whole number", name );
+        }
+        if( opt.sType == "int" && ( val.value() < opt.iMin || val.value() > opt.iMax ) ) {
+            return string_format( "%d isn't between %d and %d", val.value(), opt.iMin, opt.iMax );
+        }
+        if( opt.sType == "int_map" && !opt.findInt( val.value() ) ) {
+            return string_format( "%d isn't one of the values of \"%s\"", val.value(), name );
+        }
+    } else if( opt.sType == "float" ) {
+        std::istringstream ssTemp( value );
+        ssTemp.imbue( std::locale::classic() );
+        float val = 0.0f;
+        ssTemp >> val;
+        if( !ssTemp ) {
+            return string_format( "\"%s\" is a number", name );
+        }
+        if( val < opt.fMin || val > opt.fMax ) {
+            return string_format( "%g isn't between %g and %g", val, opt.fMin, opt.fMax );
+        }
+    } else if( opt.sType == "string_select" ) {
+        if( opt.getItemPos( value ) == -1 ) {
+            return string_format( "\"%s\" isn't one of the values of \"%s\"", value, name );
+        }
+    } else if( opt.sType == "string_input" ) {
+        if( opt.iMaxLength > 0 && static_cast<int>( value.size() ) > opt.iMaxLength ) {
+            return string_format( "\"%s\" takes at most %d characters", name, opt.iMaxLength );
+        }
+    } else {
+        return string_format( "\"%s\" can't be set", name );
+    }
+    return "";
+}
+
+void options_manager::apply_world_option_defaults( options_container &world,
+        const std::map<std::string, std::string> &defaults ) const
+{
+    for( auto &[name, opt] : world ) {
+        const auto builtin = options.find( name );
+        if( builtin == options.end() ) {
+            continue;
+        }
+        const bool at_default = opt.isDefault();
+        const auto changed = defaults.find( name );
+        if( changed != defaults.end() ) {
+            opt.setDefault( changed->second );
+        } else {
+            opt.sDefault = builtin->second.sDefault;
+            opt.bDefault = builtin->second.bDefault;
+            opt.iDefault = builtin->second.iDefault;
+            opt.fDefault = builtin->second.fDefault;
+        }
+        if( at_default ) {
+            opt.sSet = opt.sDefault;
+            opt.bSet = opt.bDefault;
+            opt.iSet = opt.iDefault;
+            opt.fSet = opt.fDefault;
+        }
+    }
+}
+
+options_manager::cOpt options_manager::mod_setting_option( const mod_setting &setting,
+        const std::string &locked_reason )
+{
+    cOpt opt;
+    opt.sName = setting.id.str();
+    opt.sPage = "mod_settings";
+    opt.sMenuText = setting.name;
+    opt.sTooltip = setting.description;
+    opt.hide = COPT_NO_HIDE;
+    opt.sLockedReason = locked_reason;
+    switch( setting.kind ) {
+        case mod_setting::kind_t::boolean:
+            opt.sType = "bool";
+            opt.bDefault = std::get<bool>( setting.default_value );
+            opt.bSet = opt.bDefault;
+            break;
+        case mod_setting::kind_t::number: {
+            opt.sType = "float";
+            opt.fMin = static_cast<float>( setting.min );
+            opt.fMax = static_cast<float>( setting.max );
+            opt.fStep = static_cast<float>( setting.step );
+            opt.fDefault = static_cast<float>( std::get<double>( setting.default_value ) );
+            opt.fSet = opt.fDefault;
+            // as many decimals as the setting's numbers have
+            const std::string text = setting.as_text( setting.default_value );
+            const size_t point = text.find( '.' );
+            opt.iPrecision = point == std::string::npos ? 0 : static_cast<int>( text.size() - point - 1 );
+            break;
+        }
+        case mod_setting::kind_t::choice:
+            opt.sType = "string_select";
+            for( const mod_setting::choice_t &c : setting.choices ) {
+                opt.vItems.emplace_back( c.id, c.name );
+            }
+            opt.sDefault = std::get<std::string>( setting.default_value );
+            opt.sSet = opt.sDefault;
+            break;
+        case mod_setting::kind_t::text:
+            opt.sType = "string_input";
+            opt.iMaxLength = setting.max_length;
+            opt.sDefault = std::get<std::string>( setting.default_value );
+            opt.sSet = opt.sDefault;
+            break;
+    }
+    opt.eType = get_value_type( opt.sType );
+    return opt;
 }
 
 void options_manager::update_global_locale()

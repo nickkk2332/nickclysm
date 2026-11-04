@@ -70,6 +70,7 @@
 #include "memorial_logger.h"
 #include "messages.h"
 #include "mod_manager.h"
+#include "mod_setting.h"
 #include "options.h"
 #include "output.h"
 #include "overmapbuffer.h"
@@ -934,6 +935,15 @@ bool game::save()
             }
             if( !save_external_options_record() ) {
                 DebugLog( D_WARNING, DC_ALL ) << "game::save: external options record not written";
+            }
+            // mod settings an EOC changed are kept with the world's options, as of this save
+            if( mod_settings::have_unsaved_changes() ) {
+                if( world_generator->active_world->save() ) {
+                    mod_settings::mark_saved();
+                } else {
+                    debugmsg( "The mod settings of world %s weren't saved",
+                              world_generator->active_world->world_name );
+                }
             }
             world_generator->last_world_name = world_generator->active_world->world_name;
             world_generator->last_character_name = u.name;
