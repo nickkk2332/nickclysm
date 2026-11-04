@@ -1025,6 +1025,8 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
             if( !t.is_hallucination() ) {
                 // on-hit effects for martial arts, after the hit so they see the damage dealt
                 martial_arts_data->ma_onhit_effects( *this, ma_ctx );
+                // enchantments' hit_you_effect: on a hit only, as for monsters
+                did_hit( t );
             }
 
             // Make a rather quiet sound, to alert any nearby monsters
@@ -1108,7 +1110,6 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     martial_arts_data->ma_onattack_effects( *this, ma_ctx );
     // some things (shattering weapons) can harm the attacking creature.
     check_dead_state( &here );
-    did_hit( t );
     if( t.as_character() ) {
         dealt_projectile_attack dp = dealt_projectile_attack();
         t.as_character()->on_hit( &here, this, bodypart_str_id::NULL_ID().id(), 0.0f, &dp );

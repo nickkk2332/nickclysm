@@ -24,6 +24,16 @@
     "flags": [ "IMMOBILE", "SEES", "NOT_HALLUCINATION" ]
   },
   {
+    "//": "CMBT-B13 fixture: a target that dodges every blow.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_dodger",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "combat test dodger", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests that is never hit.", "//~": "NO_I18N" },
+    "dodge": 100,
+    "delete": { "flags": [ "IMMOBILE" ] }
+  },
+  {
     "//": "CMBT-B07 fixture.",
     "type": "mutation",
     "id": "TEST_CMBT_PSEUDOPOD",
@@ -48,6 +58,30 @@
     "points": 0,
     "description": "Test mutation: attackers roll to hit twice and keep the worse roll.",
     "flags": [ "HARDTOHIT" ]
+  },
+  {
+    "//": "CMBT-B13 fixture: casts a spell that counts its casts on the attacker.",
+    "type": "mutation",
+    "id": "TEST_CMBT_HIT_YOU",
+    "name": { "str": "Test Hit You" },
+    "points": 0,
+    "description": "Test mutation whose enchantment casts a spell on every melee hit.",
+    "enchantments": [ { "hit_you_effect": [ { "id": "test_cmbt_hit_you_spell", "hit_self": true } ] } ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_cmbt_hit_you_spell",
+    "name": { "str": "Test Hit You Count", "//~": "NO_I18N" },
+    "description": { "str": "Counts the casts on the caster.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_CMBT_HIT_YOU",
+    "shape": "blast"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CMBT_HIT_YOU",
+    "effect": [ { "math": [ "u_test_cmbt_hit_you += 1" ] } ]
   },
   {
     "//": "CMBT-B10 fixture: attacks so fast that a heavy enough item is too unwieldy to swing.",

@@ -51,6 +51,7 @@ static const skill_id skill_unarmed( "unarmed" );
 
 static const trait_id trait_TEST_CMBT_HARDTOHIT( "TEST_CMBT_HARDTOHIT" );
 static const trait_id trait_TEST_CMBT_HASTE( "TEST_CMBT_HASTE" );
+static const trait_id trait_TEST_CMBT_HIT_YOU( "TEST_CMBT_HIT_YOU" );
 static const trait_id trait_TEST_CMBT_PSEUDOPOD( "TEST_CMBT_PSEUDOPOD" );
 
 static const vproto_id vehicle_prototype_bicycle( "bicycle" );
@@ -137,6 +138,20 @@ static void land_technique( Character &attacker, Creature &target, const matec_i
     FAIL( "the technique never landed" );
 }
 
+// Attacks without techniques until a blow lands
+static void land_blow( Character &attacker, Creature &target )
+{
+    for( int tries = 0; tries < 50; ++tries ) {
+        melee::clear_stats();
+        ready( attacker, target );
+        attacker.melee_attack( target, false );
+        if( melee::get_stats().hit_count > 0 ) {
+            return;
+        }
+    }
+    FAIL( "no blow landed" );
+}
+
 static bool has_message_containing( const std::string &text )
 {
     for( const std::pair<std::string, std::string> &msg :
@@ -146,6 +161,12 @@ static bool has_message_containing( const std::string &text )
         }
     }
     return false;
+}
+
+static double num_var( const Creature &c, const std::string &key )
+{
+    const diag_value *val = c.maybe_get_value( key );
+    return val == nullptr ? 0.0 : val->dbl();
 }
 
 // CMBT-B06: the vehicle's speed, in hundredths of a mph, came off the hit roll as is, so any
@@ -355,6 +376,31 @@ TEST_CASE( "cmbt-b12_hardtohit_makes_melee_attackers_roll_twice", "[audit][melee
     REQUIRE( plain < 0.95 );
     // Both rolls must hit, so the chance is squared
     CHECK( hard == Approx( plain * plain ).margin( 0.05 ) );
+}
+
+// CMBT-B13: an enchantment's hit_you_effect went off after every swing, misses included.
+TEST_CASE( "cmbt-b13_hit_you_effect_only_on_a_hit", "[audit][melee]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    you.set_mutation( trait_TEST_CMBT_HIT_YOU );
+    you.recalculate_enchantment_cache();
+
+    SECTION( "a miss casts nothing" ) {
+        monster &dodger = spawn_test_monster( "mon_test_cmbt_dodger", you.pos_bub() + tripoint::east );
+        for( int i = 0; i < 10; ++i ) {
+            ready( you, dodger );
+            you.melee_attack( dodger, false );
+        }
+        REQUIRE( melee::get_stats().attack_count == 10 );
+        REQUIRE( melee::get_stats().hit_count == 0 );
+        CHECK( num_var( you, "test_cmbt_hit_you" ) == 0 );
+    }
+    SECTION( "a hit casts the spell" ) {
+        monster &post = spawn_test_monster( "mon_test_cmbt_post", you.pos_bub() + tripoint::east );
+        land_blow( you, post );
+        CHECK( num_var( you, "test_cmbt_hit_you" ) == 1 );
+    }
 }
 
 // CMBT-B16: the accuracy bonus of a martial-art buff ignored its stacks, and every buff bonus was
