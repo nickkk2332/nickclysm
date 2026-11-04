@@ -1207,7 +1207,7 @@ std::string ma_technique::rejection_text( technique_rejection why ) const
         case technique_rejection::needs_ammo:
             return _( "needs a loaded weapon" );
         case technique_rejection::target_unarmed:
-            return _( "target has no weapon" );
+            return _( "target has no weapon to take" );
         case technique_rejection::hands_full:
             return _( "needs empty hands" );
         case technique_rejection::no_aoe_targets:

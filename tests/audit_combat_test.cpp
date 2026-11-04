@@ -34,10 +34,14 @@
 static const efftype_id effect_hit_by_player( "hit_by_player" );
 static const efftype_id effect_pet( "pet" );
 
+static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_spear_wood( "spear_wood" );
 static const itype_id itype_test_cmbt_club( "test_cmbt_club" );
 
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
+
+static const matec_id test_tm_disarm( "test_tm_disarm" );
+static const matec_id test_tm_take( "test_tm_take" );
 
 static const move_mode_id move_mode_prone( "prone" );
 
@@ -113,6 +117,32 @@ static void ready( Character &who, Creature &target )
         // No dodging: the blow lands or misses on the attacker's roll alone
         c->set_dodges_left( 0 );
     }
+}
+
+// Attacks with a forced technique until a blow lands (a technique acts only on a hit). The melee
+// statistics then describe that one attack, with whatever the technique added to it.
+static void land_technique( Character &attacker, Creature &target, const matec_id &tec )
+{
+    for( int tries = 0; tries < 50; ++tries ) {
+        melee::clear_stats();
+        ready( attacker, target );
+        attacker.melee_attack_abstract( target, false, tec );
+        if( melee::get_stats().hit_count > 0 ) {
+            return;
+        }
+    }
+    FAIL( "the technique never landed" );
+}
+
+static bool has_message_containing( const std::string &text )
+{
+    for( const std::pair<std::string, std::string> &msg :
+         Messages::recent_messages( Messages::size() ) ) {
+        if( msg.second.find( text ) != std::string::npos ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // CMBT-B06: the vehicle's speed, in hundredths of a mph, came off the hit roll as is, so any
@@ -217,6 +247,42 @@ TEST_CASE( "cmbt-b08_npc_reach_attack_through_a_pet_asks_nobody", "[audit][melee
     guy.reach_attack( you.pos_bub() );
     CHECK( guy.get_moves() < 100 );
     CHECK( pet.has_effect( effect_hit_by_player ) );
+}
+
+// CMBT-B09: a disarm took any weapon, so an NPC's disarm dropped a deployed bionic blade or
+// freed someone from handcuffs (both NO_UNWIELD).
+TEST_CASE( "cmbt-b09_disarm_cannot_take_a_weapon_stuck_in_hand", "[audit][melee][martial_arts]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    npc &guy = spawn_npc( ( you.pos_bub() + tripoint::east ).xy(), "test_talker" );
+    guy.remove_weapon();
+    make_fighter( guy );
+    item club( itype_club_wooden );
+    REQUIRE( you.wield( club ) );
+
+    SECTION( "a weapon that can leave the hands is knocked away" ) {
+        land_technique( guy, you, test_tm_disarm );
+        CHECK_FALSE( you.is_armed() );
+    }
+    SECTION( "a NO_UNWIELD weapon stays put" ) {
+        you.get_wielded_item()->set_flag( flag_NO_UNWIELD );
+        technique_query query;
+        query.roll = false;
+        CHECK( guy.check_technique( test_tm_disarm, you, guy.used_weapon(), query ) ==
+               technique_rejection::target_unarmed );
+        CHECK( guy.check_technique( test_tm_take, you, guy.used_weapon(), query ) ==
+               technique_rejection::target_unarmed );
+        // Forced, as by an EOC: the blow lands, the weapon stays
+        land_technique( guy, you, test_tm_disarm );
+        CHECK( you.is_armed() );
+        land_technique( guy, you, test_tm_take );
+        CHECK( you.is_armed() );
+        CHECK_FALSE( guy.is_armed() );
+        // "<npcname> disarms you!", "<npcname> disarms you and takes your weapon!"
+        CHECK_FALSE( has_message_containing( "disarms you!" ) );
+        CHECK_FALSE( has_message_containing( "takes your weapon" ) );
+    }
 }
 
 // CMBT-B16: the accuracy bonus of a martial-art buff ignored its stacks, and every buff bonus was

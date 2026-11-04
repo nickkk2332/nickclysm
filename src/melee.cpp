@@ -1684,6 +1684,15 @@ std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
     return chosen;
 }
 
+// Whether the target holds a weapon that can't leave its hands, which no disarm can take: a
+// bionic weapon, handcuffs, or any other NO_UNWIELD or INTEGRATED item
+static bool weapon_stuck_in_hand( const Creature &t )
+{
+    const Character *const you = t.as_character();
+    return you != nullptr && you->is_armed() &&
+           !you->can_drop( *you->get_wielded_item() ).success();
+}
+
 // One code path for the automatic choice and the manual technique menu: each check returns the
 // reason the technique can't be used. Keep the order: with query.roll, a negative weighting is
 // rolled only once every other check but the requirements and the attack vector has passed.
@@ -1784,11 +1793,11 @@ technique_rejection Character::check_technique( const matec_id &tec_id, Creature
     // TODO: these are the stat requirements for tec_disarm
     // dice(   get_dex() +    get_skill_level("unarmed"),  8) >
     // dice(p->get_dex() + p->get_skill_level("melee"),   10))
-    if( tec_id->disarms && !t.has_weapon() ) {
+    if( tec_id->disarms && ( !t.has_weapon() || weapon_stuck_in_hand( t ) ) ) {
         return reject( technique_rejection::target_unarmed );
     }
 
-    if( tec_id->take_weapon && ( has_weapon() || !t.has_weapon() ) ) {
+    if( tec_id->take_weapon && ( has_weapon() || !t.has_weapon() || weapon_stuck_in_hand( t ) ) ) {
         return reject( has_weapon() ? technique_rejection::hands_full :
                        technique_rejection::target_unarmed );
     }
@@ -2233,8 +2242,10 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
 
     Character *you = dynamic_cast<Character *>( &t );
 
+    // A forced technique (an EOC's u_attack, a counter) isn't checked first: a weapon stuck in
+    // the hand stays there
     if( technique.take_weapon && !has_weapon() && you != nullptr && you->is_armed() &&
-        !you->is_hallucination() ) {
+        !you->is_hallucination() && !weapon_stuck_in_hand( *you ) ) {
         if( you->is_avatar() ) {
             add_msg_if_npc( _( "<npcname> disarms you and takes your weapon!" ) );
         } else {
@@ -2245,7 +2256,8 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         wield( you->get_wielded_item() );
     }
 
-    if( technique.disarms && you != nullptr && you->is_armed() && !you->is_hallucination() ) {
+    if( technique.disarms && you != nullptr && you->is_armed() && !you->is_hallucination() &&
+        !weapon_stuck_in_hand( *you ) ) {
         item weap = you->remove_weapon();
         here.add_item_or_charges( you->pos_bub(), weap );
         if( you->is_avatar() ) {

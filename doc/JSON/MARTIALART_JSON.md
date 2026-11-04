@@ -292,8 +292,8 @@ Techniques are special attacks performed while using a given MA style.  These ar
   "stun_dur": 2,                         // Duration that target is stunned for
   "down_dur": 2,                         // Duration that target is downed for
   "side_switch": true,                   // Technique moves the target behind user
-  "disarms": true,                       // This technique can disarm the opponent, triggers only against armed NPCs or monsters with the "WIELDED_WEAPON" flag
-  "take_weapon": true,                   // Technique will disarm and equip target's weapon if hands are free
+  "disarms": true,                       // This technique can disarm the opponent, triggers only against armed NPCs or monsters with the "WIELDED_WEAPON" flag.  A weapon that can't leave the hands (NO_UNWIELD or INTEGRATED: a bionic weapon, handcuffs) is never taken, even by a forced technique
+  "take_weapon": true,                   // Technique will disarm and equip target's weapon if hands are free (same exceptions as "disarms")
   "grab_break": true,                    // This technique may break a grab against the user
   "aoe": "spin",                         // This technique has an area-of-effect. Doesn't proc against solo targets. Options are `aoe` (attacks adjacent nearby enemies), `impale` (hits target and one enemy behind it), and `wide` (hits enemies in an arc near the target)
   "block_counter": true,                 // This technique may automatically counterattack on a successful block
