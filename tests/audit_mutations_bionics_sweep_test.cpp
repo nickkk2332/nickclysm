@@ -136,3 +136,89 @@ TEST_CASE( "mut-b07_switching_a_trait_you_have_still_works", "[audit][mutation][
     CHECK( you.has_trait( trait_TEST_MUTB07_FORM_ALT ) );
     clear_avatar();
 }
+
+static const bionic_id bio_fuel_cell_gasoline( "bio_fuel_cell_gasoline" );
+static const bionic_id bio_power_storage( "bio_power_storage" );
+static const bionic_id test_bio_mutb09_mixed_burner( "test_bio_mutb09_mixed_burner" );
+static const bionic_id test_bio_mutb09_spare_tank( "test_bio_mutb09_spare_tank" );
+
+static const itype_id itype_gasoline( "gasoline" );
+static const itype_id itype_home_picture( "home_picture" );
+static const itype_id itype_internal_gasoline_tank( "internal_gasoline_tank" );
+static const itype_id itype_test_mutb09_gasoline_tank( "test_mutb09_gasoline_tank" );
+static const itype_id itype_test_mutb09_hopper( "test_mutb09_hopper" );
+
+static item_location worn_item_of_type( Character &you, const itype_id &type )
+{
+    for( const item_location &loc : you.top_items_loc() ) {
+        if( loc->typeId() == type ) {
+            return loc;
+        }
+    }
+    return item_location();
+}
+
+static void give_power_storage( Character &you )
+{
+    for( int i = 0; i < 5; ++i ) {
+        you.add_bionic( bio_power_storage );
+    }
+    REQUIRE( !you.has_power() );
+    REQUIRE( you.has_max_power() );
+}
+
+// MUT-B09: burn_fuel() took a unit of fuel from every source a bionic could reach each turn
+// but credited only the last one.
+TEST_CASE( "mut-b09_fuel_bionic_burns_from_one_source_per_turn", "[audit][bionics]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    give_power_storage( you );
+    const bionic_uid cell_uid = you.add_bionic( bio_fuel_cell_gasoline );
+    you.add_bionic( test_bio_mutb09_spare_tank );
+    item_location own_tank = worn_item_of_type( you, itype_internal_gasoline_tank );
+    item_location spare_tank = worn_item_of_type( you, itype_test_mutb09_gasoline_tank );
+    REQUIRE( own_tank );
+    REQUIRE( spare_tank );
+    const std::array<item_location *, 2> tanks = { &own_tank, &spare_tank };
+    for( item_location *tank : tanks ) {
+        item gasoline( itype_gasoline );
+        gasoline.charges = 2;
+        ( *tank )->put_in( gasoline, pocket_type::CONTAINER );
+        REQUIRE( ( *tank )->only_item().charges == 2 );
+    }
+    bionic &cell = **you.find_bionic_by_uid( cell_uid );
+    REQUIRE( you.get_bionic_fuels( cell.id ).size() == 2 );
+    REQUIRE( you.activate_bionic( cell ) );
+
+    you.suffer();
+    // One unit of gasoline gives this cell 8550 J.
+    CHECK( units::to_joule( you.get_power_level() ) == 8550 );
+    CHECK( own_tank->only_item().charges + spare_tank->only_item().charges == 3 );
+    clear_avatar();
+}
+
+// MUT-B09: get_bionic_fuels() listed a source once for each of the bionic's fuels it held, so
+// burn_fuel() drew from it that many times.
+TEST_CASE( "mut-b09_source_holding_two_fuels_is_listed_once", "[audit][bionics]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    give_power_storage( you );
+    const bionic_uid burner_uid = you.add_bionic( test_bio_mutb09_mixed_burner );
+    item_location hopper = worn_item_of_type( you, itype_test_mutb09_hopper );
+    REQUIRE( hopper );
+    // A picture is made of paper and wood, both of them fuel for this burner.
+    for( int i = 0; i < 2; ++i ) {
+        hopper->put_in( item( itype_home_picture ), pocket_type::CONTAINER );
+    }
+    REQUIRE( hopper->all_items_top().size() == 2 );
+    bionic &burner = **you.find_bionic_by_uid( burner_uid );
+    burner.set_safe_fuel_thresh( -1.0f );
+
+    CHECK( you.get_bionic_fuels( burner.id ).size() == 1 );
+    REQUIRE( you.activate_bionic( burner ) );
+    you.suffer();
+    CHECK( hopper->all_items_top().size() == 1 );
+    clear_avatar();
+}

@@ -62,5 +62,62 @@
     "type": "effect_on_condition",
     "id": "EOC_TEST_MUTB07_DEACTIVATE",
     "effect": [ { "u_deactivate_trait": "TEST_MUTB07_TOGGLE" }, { "u_deactivate_trait": "TEST_MUTB07_FORM" } ]
+  },
+  {
+    "//": "MUT-B09 fixture: a second internal gasoline tank the gasoline fuel cell can draw from.",
+    "type": "ITEM",
+    "id": "test_mutb09_gasoline_tank",
+    "copy-from": "internal_gasoline_tank",
+    "name": { "str": "spare internal gasoline tank" }
+  },
+  {
+    "//": "MUT-B09 fixture: a bionic that only adds a second gasoline tank.",
+    "type": "bionic",
+    "id": "test_bio_mutb09_spare_tank",
+    "name": { "str": "Spare Gasoline Tank" },
+    "description": "Test bionic that adds a second internal gasoline tank.",
+    "passive_pseudo_items": [ "test_mutb09_gasoline_tank" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "MUT-B09 fixture: an unrestricted fuel hopper.",
+    "type": "ITEM",
+    "subtypes": [ "TOOL", "ARMOR" ],
+    "id": "test_mutb09_hopper",
+    "category": "container",
+    "name": { "str": "internal fuel hopper" },
+    "description": "Fuel hopper, in your chest.",
+    "volume": "11 L",
+    "weight": "1 g",
+    "price": "0 cent",
+    "material": [ "plastic" ],
+    "symbol": "(",
+    "color": "magenta",
+    "flags": [ "INTEGRATED", "UNBREAKABLE", "PERSONAL", "NO_REPAIR", "ALLOWS_NATURAL_ATTACKS", "BIONIC_FUEL_SOURCE" ],
+    "pocket_data": [
+      {
+        "pocket_type": "CONTAINER",
+        "rigid": true,
+        "max_contains_volume": "10 L",
+        "max_item_volume": "10 L",
+        "max_contains_weight": "20 kg",
+        "max_item_length": "100 cm"
+      }
+    ]
+  },
+  {
+    "//": "MUT-B09 fixture: a burner fueled by wood or paper, so a picture (paper and wood) matches both fuels.",
+    "type": "bionic",
+    "id": "test_bio_mutb09_mixed_burner",
+    "name": { "str": "Mixed Fuel Burner" },
+    "description": "Test bionic that burns wood or paper.",
+    "fuel_options": [ "wood", "paper" ],
+    "fuel_efficiency": 0.25,
+    "time": "1 s",
+    "flags": [ "BIONIC_TOGGLED", "BIONIC_POWER_SOURCE" ],
+    "passive_pseudo_items": [ "test_mutb09_hopper" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
   }
 ]

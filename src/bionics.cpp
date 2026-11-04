@@ -1577,7 +1577,8 @@ void Character::burn_fuel( bionic &bio )
                                        _( "<npcname>'s %s runs out of fuel." ),
                                        bio.info().name );
             }
-
+            // One unit from one source per turn: only this unit's energy is credited.
+            break;
         }
     }
 
@@ -3589,18 +3590,22 @@ std::vector<item *> Character::get_bionic_fuels( const bionic_id &bio )
         if( !it->has_flag( flag_BIONIC_FUEL_SOURCE ) ) {
             continue;
         }
+        // List each source once, however many of the bionic's fuels it holds.
         for( const material_id &mat : bio->fuel_opts ) {
-            if( it->ammo_remaining( ) && it->first_ammo().made_of( mat ) ) {
-                // Ammo from magazines
-                stored_fuels.emplace_back( it.get_item() );
-            } else {
+            // Ammo from magazines
+            bool holds_fuel = it->ammo_remaining( ) && it->first_ammo().made_of( mat );
+            if( !holds_fuel ) {
                 for( item *cit : it->all_items_top() ) {
                     // Fuel from containers
                     if( cit->made_of( mat ) ) {
-                        stored_fuels.emplace_back( it.get_item() );
+                        holds_fuel = true;
                         break;
                     }
                 }
+            }
+            if( holds_fuel ) {
+                stored_fuels.emplace_back( it.get_item() );
+                break;
             }
         }
     }

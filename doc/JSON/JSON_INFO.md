@@ -1335,7 +1335,7 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `occupied_bodyparts`         | (_optional_) A list of body parts occupied by this bionic, and the number of bionic slots it take on those parts.
 | `replaced_bodyparts`         | (_optional_) A list of body parts completely replaced by this bionic. Accepts an array of bodypart ids.  When removing a bionic, any dependent bionic with an occupied_bodyparts entry matching a replaced_bodyparts entry will also be removed.
 | `capacity`                   | (_optional_) Amount of power storage added by this bionic.  Strings can be used "1 kJ"/"1000 J"/"1000000 mJ" (default: `0`)
-| `fuel_options`               | (_optional_) A list of materials that this bionic can use to produce bionic power.
+| `fuel_options`               | (_optional_) A list of materials that this bionic can use to produce bionic power.  Each turn it burns one unit of fuel, from the first `BIONIC_FUEL_SOURCE` item (or plugged-in UPS) holding any of them.
 | `is_remote_fueled`           | (_optional_) If true this bionic allows you to plug your power banks to an external power source (solar backpack, UPS, vehicle etc) via a cable. (default: `false`)
 | `fuel_capacity`              | (_optional_) Volume of fuel this bionic can store.
 | `fuel_efficiency`            | (_optional_) Fraction of fuel energy converted into power. (default: `0`)
