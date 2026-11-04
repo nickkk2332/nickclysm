@@ -4,6 +4,7 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -185,15 +186,46 @@ struct mod_settings_preview {
 };
 
 /**
+ * The world options a player chose while creating a world, which WORLD_OPTION defaults leave
+ * alone.  An option counts as chosen when the player changed it during world creation (World
+ * Options tab, slider), or when world creation started with a value of its own: for a new world,
+ * one the main menu's World Defaults set apart from the built-in default; for a copy, one that
+ * differs from what the copied world's mods give it.
+ */
+class world_option_choices
+{
+    public:
+        explicit world_option_choices( bool copy = false ) : copy( copy ) {}
+        /**
+         * Gives @p options the defaults @p defaults has for them (option name to a value as
+         * cOpt::setValue( std::string ) takes it), or else the built-in ones, and moves the
+         * options not chosen to them.
+         */
+        void apply( options_manager::options_container &options,
+                    const std::map<std::string, std::string> &defaults );
+        bool chosen( const std::string &option ) const {
+            return chosen_.count( option ) > 0;
+        }
+    private:
+        bool copy;
+        bool started = false;
+        std::set<std::string> chosen_;
+        // the value world creation last gave each option
+        options_manager::options_container given;
+};
+
+/**
  * Reads the mod_setting, option_slider and WORLD_OPTION objects of mods, for world creation.
  * Walks the files the loader would load for those mods, but parses only the ones that mention
- * one of those types, and remembers which they are: reading again after the mod list changed
- * costs little.
+ * one of those types.  Which files those are is remembered for the whole game (by path, time and
+ * size), and which belong to each mod for the reader's life: reading again costs little.
  */
 class mod_settings_reader
 {
     public:
         mod_settings_preview read( const std::vector<mod_id> &mods );
+        // the world options chosen in the world creation this reader serves
+        world_option_choices option_choices;
     private:
         struct mod_files {
             std::vector<cata_path> data;
@@ -210,10 +242,14 @@ mod_settings_preview pre_read_mod_settings( const std::vector<mod_id> &mods );
 /**
  * Brings a world being created in line with a new mod list: drops the values of the settings
  * @p before has and @p after doesn't (their mod was deselected), keeps the others, and gives the
- * world options the WORLD_OPTION defaults of @p after.
+ * world options the WORLD_OPTION defaults of @p after, leaving those @p choices says the player
+ * chose (without @p choices, those that differ from their default).
  */
 void update_world_mod_settings( WORLD &world, const mod_settings_preview &before,
-                                const mod_settings_preview &after );
+                                const mod_settings_preview &after, world_option_choices *choices = nullptr );
+
+/** Why world creation can't show @p slider (too few levels, levels that don't check out); "" */
+std::string world_creation_slider_error( const option_slider &slider );
 
 /**
  * The option sliders world creation shows for @p context: core's, with those @p preview's mods

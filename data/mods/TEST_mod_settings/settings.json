@@ -29,6 +29,21 @@
     ]
   },
   {
+    "type": "mod_setting",
+    "id": [ "test_pre_array_a", "test_pre_array_b" ],
+    "name": "Pre-read array",
+    "kind": "choice",
+    "choices": [ { "id": "one", "name": "One" }, { "id": "two", "name": "Two" } ]
+  },
+  {
+    "type": "option_slider",
+    "id": "test_pre_bad_slider",
+    "context": "WORLDGEN",
+    "name": "Pre-read slider with one level",
+    "//": "World creation can't show a slider with one level: the pre-read drops it with an error.",
+    "levels": [ { "level": 0, "name": "Only", "options": [ { "option": "ITEM_SPAWNRATE", "type": "float", "val": 1 } ] } ]
+  },
+  {
     "type": "WORLD_OPTION",
     "name": "SPAWN_DENSITY",
     "default": 2

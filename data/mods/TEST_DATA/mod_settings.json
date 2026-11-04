@@ -48,6 +48,14 @@
     "changeable_in_game": false
   },
   {
+    "type": "mod_setting",
+    "id": [ "test_ms_array_a", "test_ms_array_b" ],
+    "//": "Two settings from one object, as generic_factory allows.",
+    "name": "Test array switch",
+    "kind": "bool",
+    "group": "Arrays"
+  },
+  {
     "type": "effect_on_condition",
     "id": "test_ms_reads",
     "//": "Reads each kind of setting; loading it checks the literal ids.",

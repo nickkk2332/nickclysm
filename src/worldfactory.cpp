@@ -165,10 +165,31 @@ WORLD *worldfactory::add_world( std::unique_ptr<WORLD> retworld )
     return ( all_worlds[ retworld->world_name ] = std::move( retworld ) ).get();
 }
 
+// Reports the problems world creation found in mods' settings, each once in a game
+static void report_mod_settings_errors( const mod_settings_preview &preview )
+{
+    static std::set<std::string> reported;
+    for( const std::string &error : preview.errors ) {
+        if( reported.insert( error ).second ) {
+            debugmsg( "%s", error );
+        }
+    }
+}
+
+// A world made without the world creation screens (Play Now, the tutorial, tests) still takes
+// its mods' WORLD_OPTION defaults
+static void apply_mod_world_options( WORLD &world )
+{
+    const mod_settings_preview preview = pre_read_mod_settings( world.active_mod_order );
+    report_mod_settings_errors( preview );
+    update_world_mod_settings( world, mod_settings_preview(), preview );
+}
+
 WORLD *worldfactory::make_new_world( const std::vector<mod_id> &mods )
 {
     std::unique_ptr<WORLD> retworld = std::make_unique<WORLD>();
     retworld->active_mod_order = mods;
+    apply_mod_world_options( *retworld );
     retworld->create_timestamp();
     return add_world( std::move( retworld ) );
 }
@@ -180,6 +201,7 @@ WORLD *worldfactory::make_new_world( const std::string &name, const std::vector<
     }
     std::unique_ptr<WORLD> retworld = std::make_unique<WORLD>( name );
     retworld->active_mod_order = mods;
+    apply_mod_world_options( *retworld );
     retworld->create_timestamp();
     return add_world( std::move( retworld ) );
 }
@@ -194,7 +216,9 @@ WORLD *worldfactory::make_new_world( bool show_prompt, const std::string &world_
     }
 
     if( show_prompt ) {
-        // what the mods picked so far define for world creation
+        // what the mods picked so far define for world creation; a copy's options are its own
+        mod_reader = std::make_unique<mod_settings_reader>();
+        mod_reader->option_choices = world_option_choices( !world_to_copy.empty() );
         refresh_mod_settings( *retworld );
         on_out_of_scope forget( [this]() {
             forget_mod_settings();
@@ -206,6 +230,8 @@ WORLD *worldfactory::make_new_world( bool show_prompt, const std::string &world_
         } else if( show_worldgen_advanced( retworld.get() ) < 0 ) {
             return nullptr;
         }
+    } else {
+        apply_mod_world_options( *retworld );
     }
 
     for( const mod_id &checked_mod : retworld->active_mod_order ) {
@@ -316,6 +342,7 @@ WORLD *worldfactory::make_new_world( special_game_type special_type )
     special_world->world_name = worldname;
 
     special_world->WORLD_OPTIONS["WORLD_END"].setValue( "delete" );
+    apply_mod_world_options( *special_world );
 
     special_world->create_timestamp();
 
@@ -813,14 +840,8 @@ void worldfactory::refresh_mod_settings( WORLD &world )
         mod_reader = std::make_unique<mod_settings_reader>();
     }
     mod_settings_preview after = mod_reader->read( world.active_mod_order );
-    // each problem once, though the mod list changes again
-    static std::set<std::string> reported;
-    for( const std::string &error : after.errors ) {
-        if( reported.insert( error ).second ) {
-            debugmsg( "%s", error );
-        }
-    }
-    update_world_mod_settings( world, *mod_preview, after );
+    report_mod_settings_errors( after );
+    update_world_mod_settings( world, *mod_preview, after, &mod_reader->option_choices );
     *mod_preview = std::move( after );
 }
 
@@ -1927,6 +1948,10 @@ int worldfactory::show_worldgen_basic( WORLD *world )
                 world->world_saves.clear();
                 world->active_mod_order = world_generator->get_mod_manager().get_default_mods();
                 world->mod_settings.clear();
+                // a fresh start: no option is the player's yet
+                if( mod_reader ) {
+                    mod_reader->option_choices = world_option_choices();
+                }
                 refresh_mod_settings( *world );
                 load_sliders();
                 wg_slevels = wg_slvl_default;
@@ -1944,8 +1969,11 @@ int worldfactory::show_worldgen_basic( WORLD *world )
                 if( custom_opts && query_yn( _( "Currently using customized advanced options.  "
                                                 "Reset world options to defaults?" ) ) ) {
                     world->WORLD_OPTIONS = get_options().get_world_defaults();
-                    get_options().apply_world_option_defaults( world->WORLD_OPTIONS,
-                            get_mod_settings_preview().world_option_defaults );
+                    if( mod_reader ) {
+                        mod_reader->option_choices = world_option_choices();
+                        mod_reader->option_choices.apply( world->WORLD_OPTIONS,
+                                                          get_mod_settings_preview().world_option_defaults );
+                    }
                     wg_slevels = wg_slvl_default;
                     custom_opts = false;
                     continue;

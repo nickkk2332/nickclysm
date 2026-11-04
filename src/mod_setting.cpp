@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <locale>
 #include <set>
 #include <sstream>
+#include <system_error>
 #include <unordered_map>
 #include <variant>
 
@@ -498,13 +501,30 @@ mod_setting_value mod_setting::stepped( const mod_setting_value &value, int dire
 
 void mod_settings::load( const JsonObject &jo, const std::string &src )
 {
+    // World creation reads settings from the mods in a world's mod list only
+    if( src == "core" || src == "custom" ) {
+        jo.throw_error( string_format(
+                            "a mod_setting belongs in a mod: world creation reads settings only from the mods "
+                            "in the world's mod list, not from %s (doc/JSON/MOD_SETTINGS.md)",
+                            src == "core" ? "data/core" : "the world's own mods folder" ) );
+    }
     // An id another mod defined can only be changed with copy-from, as other types are
-    if( jo.has_string( "id" ) && !jo.has_member( "copy-from" ) ) {
-        const mod_setting_id id( jo.get_string( "id" ) );
-        if( mod_setting_factory.is_valid( id ) ) {
-            jo.throw_error_at( "id", string_format(
-                                   "mod setting \"%s\" is already defined by %s.  To change it, use \"copy-from\": \"%s\"",
-                                   id.str(), id->owner().str(), id.str() ) );
+    if( !jo.has_member( "copy-from" ) ) {
+        std::vector<std::string> ids;
+        if( jo.has_string( "id" ) ) {
+            ids.push_back( jo.get_string( "id" ) );
+        } else if( jo.has_array( "id" ) ) {
+            for( const std::string id : jo.get_array( "id" ) ) {
+                ids.push_back( id );
+            }
+        }
+        for( const std::string &id_str : ids ) {
+            const mod_setting_id id( id_str );
+            if( mod_setting_factory.is_valid( id ) ) {
+                jo.throw_error_at( "id", string_format(
+                                       "mod setting \"%s\" is already defined by %s.  To change it, use \"copy-from\": \"%s\"",
+                                       id.str(), id->owner().str(), id.str() ) );
+            }
         }
     }
     mod_setting_factory.load( jo, src );
@@ -720,13 +740,36 @@ std::vector<const mod_setting *> mod_settings_preview::all_settings() const
 namespace
 {
 // Whether a data file can hold an object read for world creation.  Reading the text is much
-// cheaper than parsing it, and most files hold none.
+// cheaper than parsing it, and most files hold none.  The answer is kept for the whole game, by
+// path, modification time and size.  Measured on dda (3,337 files, 46 MB) with the files in the
+// OS cache: 0.17 s the first time, about 0.02 s after that.
 bool may_hold_settings( const cata_path &file )
 {
-    const std::string text = read_entire_file( file.get_unrelative_path() );
-    return text.find( "mod_setting" ) != std::string::npos ||
-           text.find( "option_slider" ) != std::string::npos ||
-           text.find( "WORLD_OPTION" ) != std::string::npos;
+    struct scan {
+        std::filesystem::file_time_type time;
+        std::uintmax_t size;
+        bool may_hold;
+    };
+    static std::unordered_map<std::string, scan> scanned;
+    const std::filesystem::path path = file.get_unrelative_path();
+    std::error_code ec;
+    const std::filesystem::file_time_type time = std::filesystem::last_write_time( path, ec );
+    const std::uintmax_t size = ec ? 0 : std::filesystem::file_size( path, ec );
+    const std::string key = path.generic_u8string();
+    if( !ec ) {
+        const auto found = scanned.find( key );
+        if( found != scanned.end() && found->second.time == time && found->second.size == size ) {
+            return found->second.may_hold;
+        }
+    }
+    const std::string text = read_entire_file( path );
+    const bool may_hold = text.find( "mod_setting" ) != std::string::npos ||
+                          text.find( "option_slider" ) != std::string::npos ||
+                          text.find( "WORLD_OPTION" ) != std::string::npos;
+    if( !ec ) {
+        scanned[key] = { time, size, may_hold };
+    }
+    return may_hold;
 }
 
 // Reads the objects of a preview from the files of the selected mods, as the loader would load
@@ -828,29 +871,45 @@ class preview_builder
                 setting_abstracts[abstract_id] = def;
                 return;
             }
-            const std::string id = jo.get_string( "id" );
-            mod_setting *existing = find_setting( id );
-            if( existing != nullptr && !jo.has_member( "copy-from" ) ) {
-                jo.throw_error_at( "id", string_format(
-                                       "mod setting \"%s\" is already defined by %s.  To change it, use \"copy-from\": \"%s\"",
-                                       id, existing->owner().str(), id ) );
+            // one id, or several sharing the object, as generic_factory reads them
+            for( const std::string &id : ids_of( jo ) ) {
+                mod_setting one = def;
+                mod_setting *existing = find_setting( id );
+                if( existing != nullptr && !jo.has_member( "copy-from" ) ) {
+                    jo.throw_error_at( "id", string_format(
+                                           "mod setting \"%s\" is already defined by %s.  To change it, use \"copy-from\": \"%s\"",
+                                           id, existing->owner().str(), id ) );
+                }
+                if( existing != nullptr && !existing->src.empty() &&
+                    existing->src.back().second.str() == src ) {
+                    jo.throw_error_at( "id", string_format(
+                                           "%s (mod setting) has two definitions from the same source (%s)!", id, src ) );
+                }
+                if( one.id.str() != id ) {
+                    one.src.clear();
+                }
+                one.id = mod_setting_id( id );
+                one.src.emplace_back( one.id, mod_id( src ) );
+                one.load( jo, src );
+                if( existing != nullptr ) {
+                    *existing = one;
+                } else {
+                    preview.settings.push_back( one );
+                }
             }
-            if( existing != nullptr && !existing->src.empty() &&
-                existing->src.back().second.str() == src ) {
-                jo.throw_error_at( "id", string_format(
-                                       "%s (mod setting) has two definitions from the same source (%s)!", id, src ) );
-            }
-            if( def.id.str() != id ) {
-                def.src.clear();
-            }
-            def.id = mod_setting_id( id );
-            def.src.emplace_back( def.id, mod_id( src ) );
-            def.load( jo, src );
-            if( existing != nullptr ) {
-                *existing = def;
+        }
+
+        // The "id" of an object: a string, or an array of them
+        static std::vector<std::string> ids_of( const JsonObject &jo ) {
+            std::vector<std::string> ids;
+            if( jo.has_array( "id" ) ) {
+                for( const std::string id : jo.get_array( "id" ) ) {
+                    ids.push_back( id );
+                }
             } else {
-                preview.settings.push_back( def );
+                ids.push_back( jo.get_string( "id" ) );
             }
+            return ids;
         }
 
         void read_slider( const JsonObject &jo, const std::string &src ) {
@@ -873,17 +932,42 @@ class preview_builder
                 }
                 def.was_loaded = true;
             }
-            def.id = option_slider_id( jo.get_string( "id" ) );
-            def.load( jo, src );
-            def.finalize();
-            const auto existing = std::find_if( preview.sliders.begin(), preview.sliders.end(),
-            [&def]( const option_slider & s ) {
-                return s.id == def.id;
-            } );
-            if( existing != preview.sliders.end() ) {
-                *existing = def;
-            } else {
-                preview.sliders.push_back( def );
+            // the level numbers, which check() wants to be 0 to the number of levels - 1, each once
+            std::vector<int> levels;
+            if( jo.has_array( "levels" ) ) {
+                for( const JsonObject level : jo.get_array( "levels" ) ) {
+                    level.allow_omitted_members();
+                    levels.push_back( level.get_int( "level", -1 ) );
+                }
+            }
+            for( const std::string &id : ids_of( jo ) ) {
+                option_slider one = def;
+                one.id = option_slider_id( id );
+                one.load( jo, src );
+                one.finalize();
+                std::string error = world_creation_slider_error( one );
+                std::sort( levels.begin(), levels.end() );
+                for( size_t i = 0; i < levels.size() && error.empty(); ++i ) {
+                    if( levels[i] != static_cast<int>( i ) ) {
+                        error = string_format( "its levels must be numbered 0 to %d, each once",
+                                               static_cast<int>( levels.size() ) - 1 );
+                    }
+                }
+                if( !error.empty() ) {
+                    // core's slider, if it replaces one, stays
+                    preview.errors.push_back( string_format(
+                                                  "option slider \"%s\" (from %s) isn't shown at world creation: %s", id, src, error ) );
+                    continue;
+                }
+                const auto existing = std::find_if( preview.sliders.begin(), preview.sliders.end(),
+                [&one]( const option_slider & s ) {
+                    return s.id == one.id;
+                } );
+                if( existing != preview.sliders.end() ) {
+                    *existing = one;
+                } else {
+                    preview.sliders.push_back( one );
+                }
             }
         }
 };
@@ -943,15 +1027,80 @@ mod_settings_preview pre_read_mod_settings( const std::vector<mod_id> &mods )
     return mod_settings_reader().read( mods );
 }
 
+namespace
+{
+// An option's value as cOpt::setValue( std::string ) takes it back, exactly
+std::string exact_value( const options_manager::cOpt &opt )
+{
+    const std::string type = opt.getType();
+    if( type == "float" ) {
+        std::ostringstream out;
+        out.imbue( std::locale::classic() );
+        out.precision( 9 );
+        out << opt.value_as<float>();
+        return out.str();
+    } else if( type == "int" || type == "int_map" ) {
+        return std::to_string( opt.value_as<int>() );
+    }
+    // "true" or "false", or the string
+    return opt.getValue( true );
+}
+} // namespace
+
+void world_option_choices::apply( options_manager::options_container &options,
+                                  const std::map<std::string, std::string> &defaults )
+{
+    options_manager &opts = get_options();
+    // what each option moves to: the mods' default, or else the built-in one
+    options_manager::options_container targets = opts.get_world_defaults();
+    for( auto &entry : targets ) {
+        // at its default, so that giving it its default moves it there
+        entry.second.setDefault( exact_value( entry.second ) );
+    }
+    opts.apply_world_option_defaults( targets, defaults );
+
+    const options_manager::options_container before = options;
+    // the defaults the options show; the values are settled below
+    opts.apply_world_option_defaults( options, defaults );
+    for( auto &[name, opt] : options ) {
+        const auto target = targets.find( name );
+        const auto was = before.find( name );
+        if( target == targets.end() || was == before.end() ) {
+            continue;
+        }
+        bool is_chosen = chosen( name );
+        if( !is_chosen ) {
+            const auto last = given.find( name );
+            if( last != given.end() ) {
+                // the player changed it since world creation last moved it
+                is_chosen = was->second != last->second;
+            } else if( !started ) {
+                // world creation starting with a value of its own
+                is_chosen = copy ? was->second != target->second : !was->second.isDefault();
+            }
+        }
+        if( is_chosen ) {
+            chosen_.insert( name );
+            opt.setValue( exact_value( was->second ) );
+        } else {
+            opt.setValue( exact_value( target->second ) );
+            given[name] = opt;
+        }
+    }
+    started = true;
+}
+
 void update_world_mod_settings( WORLD &world, const mod_settings_preview &before,
-                                const mod_settings_preview &after )
+                                const mod_settings_preview &after, world_option_choices *choices )
 {
     for( const mod_setting &s : before.settings ) {
         if( after.find( s.id.str() ) == nullptr ) {
             world.mod_settings.erase( s.id.str() );
         }
     }
-    get_options().apply_world_option_defaults( world.WORLD_OPTIONS, after.world_option_defaults );
+    world_option_choices fresh;
+    ( choices != nullptr ? *choices : fresh ).apply( world.WORLD_OPTIONS,
+            after.world_option_defaults );
 }
 
 std::vector<const option_slider *> preview_sliders( const mod_settings_preview &preview,
@@ -980,6 +1129,19 @@ std::vector<const option_slider *> preview_sliders( const mod_settings_preview &
         }
     }
     return ret;
+}
+
+std::string world_creation_slider_error( const option_slider &slider )
+{
+    // the world creation screen divides by the levels after the first, and picks among them
+    if( slider.count() < 2 ) {
+        return string_format( "it has %d level(s), and a slider needs at least two", slider.count() );
+    }
+    if( slider.default_level() < 0 || slider.default_level() >= slider.count() ) {
+        return string_format( "its default level %d isn't one of its levels, 0 to %d",
+                              slider.default_level(), slider.count() - 1 );
+    }
+    return "";
 }
 
 std::pair<std::string, std::string> read_world_option( const JsonObject &jo )

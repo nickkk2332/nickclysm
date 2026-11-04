@@ -26,6 +26,7 @@
 #include "options.h"
 #include "path_info.h"
 #include "stats_tracker.h"
+#include "string_formatter.h"
 #include "talker.h"
 #include "type_id.h"
 #include "worldfactory.h"
@@ -229,6 +230,14 @@ TEST_CASE( "mod_setting_load_errors", "[mod_settings]" )
     SECTION( "another mod changes a setting only with copy-from" ) {
         CHECK_THROWS_AS( load_setting( R"({ "type": "mod_setting", "id": "test_ms_switch",
             "name": "x", "kind": "bool" })", "test_mod_a" ), JsonError );
+        CHECK_THROWS_AS( load_setting( R"({ "type": "mod_setting", "id": [ "test_bad", "test_ms_switch" ],
+            "name": "x", "kind": "bool" })", "test_mod_a" ), JsonError );
+    }
+    SECTION( "settings belong in mods, not in data/core or a world's own mods folder" ) {
+        CHECK_THROWS_AS( load_setting( R"({ "type": "mod_setting", "id": "test_bad", "name": "x",
+            "kind": "bool" })", "core" ), JsonError );
+        CHECK_THROWS_AS( load_setting( R"({ "type": "mod_setting", "id": "test_bad", "name": "x",
+            "kind": "bool" })", "custom" ), JsonError );
     }
     // none of them was added
     CHECK_FALSE( mod_setting_id( "test_bad" ).is_valid() );
@@ -451,13 +460,19 @@ TEST_CASE( "mod_settings_pre_read_finds_the_selected_mods_settings", "[mod_setti
             test_data_ids.insert( s.id.str() );
         }
     }
-    REQUIRE( test_data_ids.size() == 5 );
+    REQUIRE( test_data_ids.size() == 7 );
+    // the test mod's; two come from one object with an array of ids
+    const std::set<std::string> test_mod_ids = {
+        "test_pre_switch", "test_pre_number", "test_pre_array_a", "test_pre_array_b"
+    };
 
     SECTION( "no mods, or only core content: nothing" ) {
         const mod_settings_preview none = pre_read_mod_settings( {} );
         CHECK( none.settings.empty() );
         const mod_settings_preview dda = pre_read_mod_settings( { MOD_INFORMATION_dda } );
         CHECK( dda.settings.empty() );
+        // again: the files are known by now
+        CHECK( pre_read_mod_settings( { MOD_INFORMATION_dda } ).settings.empty() );
         CHECK( dda.world_option_defaults.empty() );
         CHECK( dda.errors.empty() );
     }
@@ -476,8 +491,11 @@ TEST_CASE( "mod_settings_pre_read_finds_the_selected_mods_settings", "[mod_setti
     SECTION( "the test mod alone: its settings, slider and WORLD_OPTION, nothing of test_data" ) {
         const mod_settings_preview preview =
             pre_read_mod_settings( { MOD_INFORMATION_test_mod_settings } );
-        CHECK( preview.errors.empty() );
-        CHECK( ids_of( preview ) == std::set<std::string> { "test_pre_switch", "test_pre_number" } );
+        // the slider world creation can't show
+        REQUIRE( preview.errors.size() == 1 );
+        CHECK( preview.errors[0].find( "\"test_pre_bad_slider\"" ) != std::string::npos );
+        CHECK( ids_of( preview ) == test_mod_ids );
+        // a slider with one level isn't kept
         REQUIRE( preview.sliders.size() == 1 );
         CHECK( preview.sliders[0].id.str() == "test_pre_slider" );
         CHECK( preview.sliders[0].count() == 2 );
@@ -497,9 +515,10 @@ TEST_CASE( "mod_settings_pre_read_finds_the_selected_mods_settings", "[mod_setti
         const mod_settings_preview preview = pre_read_mod_settings( {
             MOD_INFORMATION_test_data, MOD_INFORMATION_test_mod_settings
         } );
-        CHECK( preview.errors.empty() );
+        CHECK( preview.errors.size() == 1 );
         std::set<std::string> expected = test_data_ids;
-        expected.insert( { "test_pre_switch", "test_pre_number", "test_pre_with_test_data" } );
+        expected.insert( test_mod_ids.begin(), test_mod_ids.end() );
+        expected.insert( "test_pre_with_test_data" );
         CHECK( ids_of( preview ) == expected );
         // changed by copy-from, still test_data's
         const mod_setting *number = preview.find( "test_ms_number" );
@@ -516,8 +535,7 @@ TEST_CASE( "mod_settings_pre_read_finds_the_selected_mods_settings", "[mod_setti
         const std::set<std::string> first = ids_of( reader.read( {
             MOD_INFORMATION_test_data, MOD_INFORMATION_test_mod_settings
         } ) );
-        CHECK( ids_of( reader.read( { MOD_INFORMATION_test_mod_settings } ) ) ==
-               std::set<std::string> { "test_pre_switch", "test_pre_number" } );
+        CHECK( ids_of( reader.read( { MOD_INFORMATION_test_mod_settings } ) ) == test_mod_ids );
         CHECK( ids_of( reader.read( {
             MOD_INFORMATION_test_data, MOD_INFORMATION_test_mod_settings
         } ) ) == first );
@@ -557,16 +575,18 @@ TEST_CASE( "mod_settings_kept_across_mod_list_changes", "[mod_settings]" )
     SECTION( "the settings tab shows them per mod, then per group" ) {
         const std::vector<mod_settings::section> sections =
             mod_settings::make_sections( both.all_settings() );
-        REQUIRE( sections.size() == 4 );
+        REQUIRE( sections.size() == 5 );
         CHECK( sections[0].mod == MOD_INFORMATION_test_data );
         CHECK( sections[0].group.empty() );
         CHECK( sections[0].settings.size() == 4 );
         CHECK( sections[1].mod == MOD_INFORMATION_test_data );
         CHECK( sections[1].group.translated() == "Numbers" );
         CHECK( sections[1].title() == "TESTING DATA: Numbers" );
-        CHECK( sections[2].mod == MOD_INFORMATION_test_mod_settings );
-        CHECK( sections[2].group.empty() );
-        CHECK( sections[3].group.translated() == "Group A" );
+        CHECK( sections[2].group.translated() == "Arrays" );
+        CHECK( sections[2].settings.size() == 2 );
+        CHECK( sections[3].mod == MOD_INFORMATION_test_mod_settings );
+        CHECK( sections[3].group.empty() );
+        CHECK( sections[4].group.translated() == "Group A" );
     }
     SECTION( "in game, a setting fixed once the world exists is shown locked" ) {
         mod_settings_editor in_game;
@@ -797,4 +817,137 @@ TEST_CASE( "mod_setting_arrow_keys_step_in_the_settings_own_numbers", "[mod_sett
     const mod_setting toggle = setting_from( R"({ "name": "x", "kind": "bool" })" );
     CHECK( std::get<bool>( toggle.stepped( false, 1 ) ) );
     CHECK_FALSE( std::get<bool>( toggle.stepped( true, -1 ) ) );
+}
+
+TEST_CASE( "world_option_defaults_leave_the_players_choices", "[mod_settings][options]" )
+{
+    const mod_settings_preview none;
+    const mod_settings_preview test_mod = pre_read_mod_settings( { MOD_INFORMATION_test_mod_settings } );
+    REQUIRE( test_mod.world_option_defaults.count( "SPAWN_DENSITY" ) == 1 );
+    const auto density = []( WORLD & world ) {
+        return world.WORLD_OPTIONS["SPAWN_DENSITY"].value_as<float>();
+    };
+    WORLD world( "mod settings test world" );
+    REQUIRE( world.WORLD_OPTIONS["SPAWN_DENSITY"].isDefault() );
+    const float builtin = density( world );
+    REQUIRE( builtin != Approx( 2.0 ) );
+
+    SECTION( "a value nobody chose follows the mods" ) {
+        world_option_choices choices;
+        update_world_mod_settings( world, none, none, &choices );
+        update_world_mod_settings( world, none, test_mod, &choices );
+        CHECK( density( world ) == Approx( 2.0 ) );
+        update_world_mod_settings( world, test_mod, none, &choices );
+        CHECK( density( world ) == Approx( builtin ) );
+        CHECK_FALSE( choices.chosen( "SPAWN_DENSITY" ) );
+    }
+    SECTION( "the mod's own value, picked before the mod, survives deselecting it" ) {
+        world_option_choices choices;
+        update_world_mod_settings( world, none, none, &choices );
+        world.WORLD_OPTIONS["SPAWN_DENSITY"].setValue( 2.0f );
+        update_world_mod_settings( world, none, test_mod, &choices );
+        CHECK( density( world ) == Approx( 2.0 ) );
+        // at the new default, but the player's
+        update_world_mod_settings( world, test_mod, none, &choices );
+        CHECK( density( world ) == Approx( 2.0 ) );
+        CHECK( choices.chosen( "SPAWN_DENSITY" ) );
+    }
+    SECTION( "a value changed after the mod set it stays" ) {
+        world_option_choices choices;
+        update_world_mod_settings( world, none, test_mod, &choices );
+        world.WORLD_OPTIONS["SPAWN_DENSITY"].setValue( 3.0f );
+        update_world_mod_settings( world, test_mod, none, &choices );
+        CHECK( density( world ) == Approx( 3.0 ) );
+    }
+    SECTION( "a copy keeps its world's values, but those its mods gave" ) {
+        // the player of the copied world set the option back to the built-in value
+        WORLD original( "mod settings test world" );
+        WORLD copy( "mod settings test world" );
+        copy.COPY_WORLD( &original );
+        world_option_choices copied( true );
+        update_world_mod_settings( copy, none, test_mod, &copied );
+        CHECK( density( copy ) == Approx( builtin ) );
+        update_world_mod_settings( copy, test_mod, none, &copied );
+        CHECK( density( copy ) == Approx( builtin ) );
+        // the copied world had the mod's value: it follows the mods
+        original.WORLD_OPTIONS["SPAWN_DENSITY"].setValue( 2.0f );
+        WORLD second( "mod settings test world" );
+        second.COPY_WORLD( &original );
+        world_option_choices copied_again( true );
+        update_world_mod_settings( second, none, test_mod, &copied_again );
+        CHECK( density( second ) == Approx( 2.0 ) );
+        update_world_mod_settings( second, test_mod, none, &copied_again );
+        CHECK( density( second ) == Approx( builtin ) );
+    }
+}
+
+TEST_CASE( "worlds_made_without_the_creation_screens_take_world_option_defaults",
+           "[mod_settings][options]" )
+{
+    const std::string name = "mod settings made world";
+    on_out_of_scope remove_world( [&name]() {
+        if( world_generator->has_world( name ) ) {
+            world_generator->delete_world( name, true );
+        }
+    } );
+    REQUIRE_FALSE( world_generator->has_world( name ) );
+    WORLD *made = nullptr;
+    // the slider of the test mod that world creation can't show is reported, once in a game
+    capture_debugmsg_during( [&]() {
+        made = world_generator->make_new_world( name, { MOD_INFORMATION_test_mod_settings } );
+    } );
+    REQUIRE( made != nullptr );
+    CHECK( made->WORLD_OPTIONS["SPAWN_DENSITY"].value_as<float>() == Approx( 2.0 ) );
+    // the active world is still the test world
+    CHECK( world_generator->active_world != made );
+}
+
+TEST_CASE( "mod_settings_pre_read_agrees_with_the_load", "[mod_settings]" )
+{
+    // what world creation would read for the test world's mods, against what the game loaded
+    const mod_settings_preview preview =
+        pre_read_mod_settings( world_generator->active_world->active_mod_order );
+    CHECK( preview.errors.empty() );
+    REQUIRE( preview.settings.size() == mod_settings::get_all().size() );
+    for( const mod_setting &loaded : mod_settings::get_all() ) {
+        CAPTURE( loaded.id.str() );
+        const mod_setting *read = preview.find( loaded.id.str() );
+        REQUIRE( read != nullptr );
+        CHECK( read->owner() == loaded.owner() );
+        CHECK( read->kind == loaded.kind );
+        CHECK( read->default_value == loaded.default_value );
+        CHECK( read->min == loaded.min );
+        CHECK( read->max == loaded.max );
+        CHECK( read->step == loaded.step );
+        CHECK( read->max_length == loaded.max_length );
+        CHECK( read->changeable_in_game == loaded.changeable_in_game );
+        CHECK( read->eoc_writable == loaded.eoc_writable );
+        CHECK( read->name.translated() == loaded.name.translated() );
+        CHECK( read->group.translated() == loaded.group.translated() );
+        REQUIRE( read->choices.size() == loaded.choices.size() );
+        for( size_t i = 0; i < loaded.choices.size(); ++i ) {
+            CHECK( read->choices[i].id == loaded.choices[i].id );
+        }
+    }
+}
+
+TEST_CASE( "world_creation_shows_only_sliders_it_can", "[mod_settings][options]" )
+{
+    const auto slider_from = []( const std::string & levels, int default_level ) {
+        option_slider slider;
+        const JsonObject jo = json_loader::from_string( string_format(
+                                  R"({ "name": "x", "default": %d, "levels": [ %s ] })", default_level, levels ) );
+        slider.load( jo, "test" );
+        slider.finalize();
+        return slider;
+    };
+    const std::string level0 =
+        R"({ "level": 0, "name": "a", "options": [ { "option": "ITEM_SPAWNRATE", "type": "float", "val": 1 } ] })";
+    const std::string level1 =
+        R"({ "level": 1, "name": "b", "options": [ { "option": "ITEM_SPAWNRATE", "type": "float", "val": 2 } ] })";
+    // no levels: nothing to pick from; one: the screen divides by the levels after the first
+    CHECK_FALSE( world_creation_slider_error( slider_from( "", 0 ) ).empty() );
+    CHECK_FALSE( world_creation_slider_error( slider_from( level0, 0 ) ).empty() );
+    CHECK_FALSE( world_creation_slider_error( slider_from( level0 + "," + level1, 2 ) ).empty() );
+    CHECK( world_creation_slider_error( slider_from( level0 + "," + level1, 1 ) ).empty() );
 }

@@ -35,7 +35,7 @@ EOCs read every setting, and change the ones their mod lets them.
 
 | Field | | Meaning |
 | --- | --- | --- |
-| `id` | mandatory | Unique across all mods. Start it with your mod's id, so two mods don't pick the same one. |
+| `id` | mandatory | Unique across all mods. Start it with your mod's id, so two mods don't pick the same one. An array of ids defines a setting for each, as with other types. |
 | `name` | mandatory | The label the menus show; translated. |
 | `description` | optional | The tooltip the menus show; translated. |
 | `kind` | mandatory | `bool` (an on/off switch), `number`, `choice` or `text`. |
@@ -56,8 +56,9 @@ A setting is checked when it loads, and any of these is a load error:
 - text whose `default` is more than one line or longer than `max_length`, or a `max_length` over 200
 - the members of another kind: `min` on a switch is an unknown member
 - an `id` another mod already defines, without `copy-from` (next section)
+- a `mod_setting` in `data/core` or in a world's own `mods` folder
 
-Settings belong in mods: world creation reads them from the mods a world uses (`data/core` has none).
+Settings belong in the mods of a world's mod list, because world creation reads them from those mods alone: a setting anywhere else couldn't be picked when the world is created, so it's a load error.
 
 ## Overriding another mod's setting
 
@@ -167,8 +168,16 @@ Mod settings are new values for mods. A mod can also change the built-in world o
   { "type": "WORLD_OPTION", "name": "SPAWN_DENSITY", "default": 2 }
   ```
 
-  `name` is a world option ([OPTIONS.md](OPTIONS.md)); `default` is a value it takes: `true` or `false`, a number in its range, or one of its values as a string. Anything else is a load error. A world created with the mod starts with that value, unless the player set the option to something else in the main menu's world defaults or at world creation; taking the mod out of the list there puts the built-in default back. An existing world keeps its value: loading the mod changes only the default its options menu shows. The old shape, `{ "options": [ ... ] }`, which forced options on, is a load error.
-- **`option_slider`** with `"context": "WORLDGEN"`: a slider on the first screen of world creation ([JSON_INFO.md](JSON_INFO.md#option-sliders)). A mod's slider is shown after core's, and one with the id of core's replaces it. Its levels set ordinary world options, not mod settings.
+  `name` is a world option ([OPTIONS.md](OPTIONS.md)); `default` is a value it takes: `true` or `false`, a number in its range, or one of its values as a string. Anything else is a load error. The old shape, `{ "options": [ ... ] }`, which forced options on, is a load error too.
+
+  A world created with the mod starts with that value, on every way a world is created: the world creation screens, Play Now, the tutorial. An option the player chose keeps the player's value. When the mod list changes at world creation, the options not chosen move to the new list's defaults (with no mod giving one, the built-in default), and the chosen ones stay. An option counts as chosen:
+
+  - when the player changed it during world creation: on the World Options tab, or with a slider on the first screen
+  - for a new world, when world creation starts with a value apart from the built-in default: one the main menu's world defaults set
+  - for a copied world, when it starts with a value apart from the default its mods give it
+
+  "Reset" on the first screen starts over, as for a new world. An existing world keeps its values: loading the mod changes only the default its options menu shows.
+- **`option_slider`** with `"context": "WORLDGEN"`: a slider on the first screen of world creation ([JSON_INFO.md](JSON_INFO.md#option-sliders)). A mod's slider is shown after core's, and one with the id of core's replaces it. Its levels set ordinary world options, not mod settings. World creation needs at least two levels, numbered 0 to the number of levels - 1, and a `default` among them: a slider that isn't is left out with an error, and core's, if it would have replaced it, stays.
 
 ## Replacing an EOC settings menu
 
