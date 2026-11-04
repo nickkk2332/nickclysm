@@ -62,8 +62,16 @@ changes. These limits are documented and enforced instead of promising the full 
 - JSON/C++ formatting, translation extraction, documentation links, and
   `git diff --check` pass.
 
+Integration with master `5510d452bc` passes a fresh headless engine build and the
+real-message regression suite: **67 cases, 1,518 assertions**, seed `41723`, without
+initialization or test errors. Carried/ground/vehicle item discovery is preserved;
+unattached items in drop callbacks retain the supplied destination as their fallback
+location. This covers avatar/NPC drops, thrown items, and consumed-drop callbacks.
+
 To run the focused cases from the repository root:
 
 ```sh
-./tests/cata_test '[executions]' --mods dda,test_data,executions_demo --rng-seed 41723
+./tests/cata_test '[executions]' --mods dda,executions_demo --rng-seed 41723
 ```
+
+The test runner adds `test_data` automatically.

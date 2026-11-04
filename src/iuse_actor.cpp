@@ -6040,8 +6040,9 @@ ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const ite
         // The talkers only read the character and the item; item_location needs mutable ones.
         Character &who = const_cast<Character &>( p );
         item &used = const_cast<item &>( it );
-        const item_location loc = try_form_loc( who, here, pos, used ).value_or( item_location( who,
-                                  &used ) );
+        map *use_map = here ? here : &get_map();
+        const item_location loc = try_form_loc( who, use_map, pos, used ).value_or(
+                                      item_location( map_cursor( use_map, pos ), &used ) );
         const const_dialogue d( get_const_talker_for( p ), get_const_talker_for( loc ) );
         if( !condition( d ) ) {
             if( failure_message.empty() ) {
@@ -6152,8 +6153,10 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
         } else if( npc *n = p->as_npc() ) {
             char_ptr = n;
         }
-        // where the item is: carried, or on the map or in a vehicle (ALLOWS_REMOTE_USE)
-        loc = try_form_loc( *p, here, pos, it ).value_or( item_location( *p, &it ) );
+        // Find carried, ground and vehicle items. A drop callback can run before its
+        // temporary item is inserted into the map; its fallback still belongs at pos.
+        loc = try_form_loc( *p, here, pos, it ).value_or(
+                  item_location( map_cursor( here, pos ), &it ) );
     } else {
         loc = item_location( map_cursor( here, pos ), &it );
     }
