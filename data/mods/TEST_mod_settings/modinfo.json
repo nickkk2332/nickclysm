@@ -1,0 +1,12 @@
+[
+  {
+    "type": "MOD_INFO",
+    "id": "test_mod_settings",
+    "name": "TESTING MOD SETTINGS",
+    "description": "Mod settings, an option slider and a WORLD_OPTION that tests/mod_settings_test.cpp reads the way world creation does.  Never loaded in full.",
+    "category": "content",
+    "//": "Not really obsolete!  Marked as such to keep it out of the mod list",
+    "obsolete": true,
+    "dependencies": [ "dda" ]
+  }
+]

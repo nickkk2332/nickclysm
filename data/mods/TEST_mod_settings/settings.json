@@ -1,0 +1,42 @@
+[
+  {
+    "type": "mod_setting",
+    "id": "test_pre_switch",
+    "name": "Pre-read switch",
+    "kind": "bool",
+    "default": false
+  },
+  {
+    "type": "mod_setting",
+    "id": "test_pre_number",
+    "name": "Pre-read number",
+    "kind": "number",
+    "default": 10,
+    "min": 0,
+    "max": 100,
+    "step": 5,
+    "group": "Group A"
+  },
+  {
+    "type": "option_slider",
+    "id": "test_pre_slider",
+    "context": "WORLDGEN",
+    "name": "Pre-read slider",
+    "default": 0,
+    "levels": [
+      { "level": 0, "name": "Low", "options": [ { "option": "ITEM_SPAWNRATE", "type": "float", "val": 0.5 } ] },
+      { "level": 1, "name": "High", "options": [ { "option": "ITEM_SPAWNRATE", "type": "float", "val": 2 } ] }
+    ]
+  },
+  {
+    "type": "WORLD_OPTION",
+    "name": "SPAWN_DENSITY",
+    "default": 2
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "test_pre_skipped",
+    "//": "World creation reads only the mod_setting, option_slider and WORLD_OPTION objects.",
+    "effect": [ { "u_message": "never loaded" } ]
+  }
+]
