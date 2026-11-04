@@ -952,16 +952,6 @@ void Character::initialize( bool learn_recipes )
         }
     }
 
-    for( const bionic_id &bio : prof->CBMs() ) {
-        if( !has_bionic( bio ) || bio->dupes_allowed ) {
-            add_bionic( bio );
-        }
-    }
-
-    set_bionics_from_hobbies();
-    // Adjust current energy level to maximum
-    set_power_level( get_max_power_level() );
-
     // Add profession proficiencies
     for( const proficiency_id &pri : prof->proficiencies() ) {
         // Recursive, so a proficiency listed before its prerequisites is still granted.
@@ -987,6 +977,18 @@ void Character::initialize( bool learn_recipes )
 
     // Add hobby recipes
     set_recipes_from_hobbies();
+
+    // CBMs come after the proficiencies and spells, so they don't count those as their own
+    // and take them away when removed.
+    for( const bionic_id &bio : prof->CBMs() ) {
+        if( !has_bionic( bio ) || bio->dupes_allowed ) {
+            add_bionic( bio );
+        }
+    }
+
+    set_bionics_from_hobbies();
+    // Adjust current energy level to maximum
+    set_power_level( get_max_power_level() );
 
     // Activate some mutations right from the start.
     for( const trait_id &mut : get_mutations() ) {

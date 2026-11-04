@@ -215,7 +215,8 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "sleepiness": true,                            // If true, activated mutation increases sleepiness by cost (default: false).
   "mana": true,                               // If true, activated mutation consumes `cost` mana. (default: false).
   "stamina": true,                               // If true, activated mutation consumes `cost` stamina. (default: false).
-  "active_flags": [ "BLIND" ],                // activation of the mutation apply this flag on your character
+  "active_flags": [ "BLIND" ],                // while the mutation is active, the character who has it (avatar or NPC) gets this flag
+  "inactive_flags": [ "DEAF" ],               // while the mutation is inactive, the character who has it (avatar or NPC) gets this flag
   "allowed_items": [ "ALLOWS_TAIL" ],         // you can wear items with this flag with this mutation, bypassing restricts_gear restriction
   "integrated_armor": [ "integrated_fur" ],   // this item is worn on your character forever, until you get rid of this mutation
   "ranged_mutation": {                        // activation of the mutation allow you to shoot a fake gun

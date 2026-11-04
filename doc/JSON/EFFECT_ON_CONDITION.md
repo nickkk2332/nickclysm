@@ -4457,7 +4457,7 @@ Removes `infection`, `downed` and `winded` effects from player:
 ```
 
 #### `u_activate_trait`, `npc_activate_trait`
-Your character or the NPC will activate the trait.
+Your character or the NPC will activate the trait.  Does nothing if they don't have the trait.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -4482,7 +4482,7 @@ Deactivate trait, which contained in `this` context value:
 
 
 #### `u_deactivate_trait`, `npc_deactivate_trait`
-Your character or the NPC will deactivate the trait.
+Your character or the NPC will deactivate the trait.  Does nothing if they don't have the trait, so it is safe to switch off every form a character might be in.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |

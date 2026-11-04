@@ -826,11 +826,13 @@ void npc::randomize( const npc_class_id &type, const npc_template_id &tem_id )
             mutate_category( mr.first );
         }
     }
-    // Add bionics
+    // Pick bionics; they are installed after the proficiencies and spells, so they don't
+    // count those as their own and take them away when removed.
+    std::vector<bionic_id> picked_bionics;
     for( const auto &bl : myclass->bionic_list ) {
         int chance = bl.second;
         if( rng( 0, 100 ) <= chance ) {
-            add_bionic( bl.first );
+            picked_bionics.push_back( bl.first );
         }
     }
     // Add proficiencies
@@ -842,7 +844,6 @@ void npc::randomize( const npc_class_id &type, const npc_template_id &tem_id )
         set_skills_from_hobbies( true ); // Only trains skills that are still at 0 at this point
         set_proficiencies_from_hobbies();
         set_recipes_from_hobbies();
-        set_bionics_from_hobbies(); // Just in case, for mods
     }
 
     // Add martial arts
@@ -854,6 +855,14 @@ void npc::randomize( const npc_class_id &type, const npc_template_id &tem_id )
         while( sp.get_level() < spell_pair.second && !sp.is_max_level( *this ) ) {
             sp.gain_level( *this );
         }
+    }
+
+    // Add bionics
+    for( const bionic_id &bio : picked_bionics ) {
+        add_bionic( bio );
+    }
+    if( myclass->is_common() ) {
+        set_bionics_from_hobbies(); // Just in case, for mods
     }
 
     // Add eocs

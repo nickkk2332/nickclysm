@@ -4665,6 +4665,15 @@ ret_val<void> install_bionic_actor::can_use( const Character &p, const item &it,
         }
     }
 
+    // The checks the autodoc makes on the patient's body: conflicting traits, body parts
+    // that take no CBMs, a required bionic, body parts another CBM already replaced.
+    if( !p.has_trait( trait_DEBUG_BIONICS ) ) {
+        const ret_val<void> installable = p.is_installable( &it, false );
+        if( !installable.success() ) {
+            return installable;
+        }
+    }
+
     return ret_val<void>::make_success();
 }
 
