@@ -2378,7 +2378,7 @@ void Character::perform_uninstall( const bionic &bio, int difficulty, int succes
         // until bionics can be flagged as non-removable
         add_msg_player_or_npc( m_neutral, _( "Your parts are jiggled back into their familiar places." ),
                                _( "<npcname>'s parts are jiggled back into their familiar places." ) );
-        add_msg( m_good, _( "Successfully removed %s." ), bio.id.obj().name );
+        add_msg_if_player_sees( *this, m_good, _( "Successfully removed %s." ), bio.id.obj().name );
         const bionic_id bio_id = bio.id;
         remove_bionic( bio );
         // remove dependent bionics
@@ -2405,8 +2405,8 @@ void Character::perform_uninstall( const bionic &bio, int difficulty, int succes
             if( !find_bionic_by_uid( dependent.get_uid() ) ) {
                 continue;
             }
-            add_msg( m_neutral, _( "%s removed with %s." ), dependent.id->name.translated(),
-                     bio_id->name.translated() );
+            add_msg_if_player_sees( *this, m_neutral, _( "%s removed with %s." ),
+                                    dependent.id->name.translated(), bio_id->name.translated() );
             get_event_bus().send<event_type::removes_cbm>( getID(), dependent.id );
             remove_bionic( dependent );
             for( const trait_id &mid : dependent.id->give_mut_on_removal ) {
@@ -2499,6 +2499,7 @@ bool Character::uninstall_bionic( const bionic &bio, monster &installer, Charact
         // give_mut_on_removal and the salvaged CBM. The skill only matters for a failure.
         patient.perform_uninstall( bio, difficulty, success, 0 );
     } else {
+        get_event_bus().send<event_type::fails_to_remove_cbm>( patient.getID(), bio.id );
         // The parts being cut into are the ones a failure hurts.
         for( const std::pair<const bodypart_str_id, size_t> &elem : bio.id->occupied_bodyparts ) {
             patient.add_effect( effect_under_operation, duration, elem.first.id(), true, difficulty );

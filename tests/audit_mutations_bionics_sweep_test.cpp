@@ -11,6 +11,9 @@
 #include "coordinates.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "event.h"
+#include "event_bus.h"
+#include "event_subscriber.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
@@ -422,6 +425,28 @@ static const mtype_id mon_nursebot_defective( "mon_nursebot_defective" );
 
 static const trait_id trait_TEST_MUTB11_SCAR( "TEST_MUTB11_SCAR" );
 
+// Records the CBM removal events sent while it lives.
+struct cbm_removal_events : public event_subscriber {
+    cbm_removal_events() {
+        get_event_bus().subscribe( this );
+    }
+    ~cbm_removal_events() override {
+        get_event_bus().unsubscribe( this );
+    }
+    cbm_removal_events( const cbm_removal_events & ) = delete;
+    cbm_removal_events &operator=( const cbm_removal_events & ) = delete;
+    using event_subscriber::notify;
+    void notify( const cata::event &e ) override {
+        if( e.type() == event_type::removes_cbm ) {
+            ++removed;
+        } else if( e.type() == event_type::fails_to_remove_cbm ) {
+            ++failed;
+        }
+    }
+    int removed = 0;
+    int failed = 0;
+};
+
 // MUT-B11: a nurse bot's failed removal ran its consequences on the avatar instead of the
 // patient, with no part under operation, so they did nothing.
 TEST_CASE( "mut-b11_nurse_bot_failed_removal_hurts_the_patient", "[audit][bionics]" )
@@ -437,14 +462,12 @@ TEST_CASE( "mut-b11_nurse_bot_failed_removal_hurts_the_patient", "[audit][bionic
     const bionic &cbm = **patient.find_bionic_by_type( test_bio_mutb11_arm );
     const int arm_hp = patient.get_part_hp_cur( body_part_arm_l );
     const int your_hp = you.get_hp();
+    cbm_removal_events events;
 
     // With almost no skill the removal fails as badly as it can.
-    SECTION( "called on the patient" ) {
-        patient.uninstall_bionic( cbm, bot, patient, 0.01f );
-    }
-    SECTION( "called on the avatar, as the nurse bot did" ) {
-        you.uninstall_bionic( cbm, bot, patient, 0.01f );
-    }
+    patient.uninstall_bionic( cbm, bot, patient, 0.01f );
+    CHECK( events.failed == 1 );
+    CHECK( events.removed == 0 );
     CHECK( patient.has_bionic( test_bio_mutb11_arm ) );
     CHECK( patient.get_part_hp_cur( body_part_arm_l ) < arm_hp );
     CHECK_FALSE( patient.has_effect( effect_under_operation ) );
@@ -465,6 +488,7 @@ TEST_CASE( "mut-b11_nurse_bot_removal_does_the_usual_cleanup", "[audit][bionics]
     standard_npc patient( "Patient", spot );
     patient.add_bionic( test_bio_mutb11_arm );
     monster bot( mon_nursebot_defective );
+    cbm_removal_events events;
 
     // This much skill nearly always succeeds, and a failure does no harm.
     for( int tries = 0; tries < 10 && patient.has_bionic( test_bio_mutb11_arm ); ++tries ) {
@@ -473,6 +497,7 @@ TEST_CASE( "mut-b11_nurse_bot_removal_does_the_usual_cleanup", "[audit][bionics]
                                   10000.0f );
     }
     REQUIRE_FALSE( patient.has_bionic( test_bio_mutb11_arm ) );
+    CHECK( events.removed == 1 );
     CHECK( patient.has_trait( trait_TEST_MUTB11_SCAR ) );
     CHECK_FALSE( patient.has_effect( effect_under_operation ) );
     here.i_clear( spot );
