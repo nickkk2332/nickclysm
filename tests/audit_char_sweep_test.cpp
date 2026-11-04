@@ -220,11 +220,11 @@ TEST_CASE( "char-b08_escaping_an_impeding_effect_on_a_limb", "[audit][character]
         clear_avatar();
     } );
     you.set_str_base( 10 );
-    // Difficulty 6 per intensity: an intensity 1 hold always breaks, an intensity 1000 one
-    // practically never does.
+    // Difficulty 6 per intensity: an intensity 1 hold always breaks, and one of intensity 1e8
+    // breaks once in 60 million tries.
     you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_arm_l, true, 1 );
-    you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_arm_r, true, 1000 );
-    REQUIRE( you.get_effect_int( effect_test_char_b08_impeding, body_part_arm_r ) == 1000 );
+    you.add_effect( effect_test_char_b08_impeding, 1_hours, body_part_arm_r, true, 100000000 );
+    REQUIRE( you.get_effect_int( effect_test_char_b08_impeding, body_part_arm_r ) == 100000000 );
 
     you.try_remove_impeding_effect();
 
