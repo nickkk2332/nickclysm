@@ -18,5 +18,24 @@
     "points": 0,
     "chargen_allow_npc": false,
     "CBMs": [ "bio_carbon", "bio_armor_eyes" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_b05_profession",
+    "name": "PROG-B05 test profession",
+    "description": "Teaches a recipe whose id is not its result.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "recipes": [ "tent_kit_from_broken" ]
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b05_hobby",
+    "name": "PROG-B05 test hobby",
+    "description": "Teaches a recipe whose id is not its result.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "recipes": [ "large_tent_kit_from_broken" ]
   }
 ]

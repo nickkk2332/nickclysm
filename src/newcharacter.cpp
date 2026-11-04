@@ -852,8 +852,10 @@ void Character::set_recipes_from_hobbies()
 {
     for( const profession *profession : hobbies ) {
         for( const recipe_id &recipeID : profession->recipes() ) {
-            const recipe &r = recipe_dictionary::get_craft( recipeID->result() );
-            learn_recipe( &r );
+            // The recipe listed, not whichever one is named after its result (PROG-B05)
+            if( recipeID.is_valid() ) {
+                learn_recipe( &recipeID.obj() );
+            }
         }
     }
 }
@@ -963,8 +965,9 @@ void Character::initialize( bool learn_recipes )
 
     // Add profession recipes
     for( const recipe_id &id : prof->recipes() ) {
-        const recipe &r = recipe_dictionary::get_craft( id->result() );
-        learn_recipe( &r );
+        if( id.is_valid() ) {
+            learn_recipe( &id.obj() );
+        }
     }
 
     prof->learn_spells( *this );

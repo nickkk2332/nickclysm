@@ -516,6 +516,11 @@ void profession::check_definition() const
             debugmsg( "starting pet %s for profession %s does not exist", elem.c_str(), id.c_str() );
         }
     }
+    for( const recipe_id &rec : _starting_recipes ) {
+        if( !rec.is_valid() ) {
+            debugmsg( "recipe %s for profession %s does not exist", rec.str(), id.str() );
+        }
+    }
     for( const string_id<profession> &hobby : _hobby_exclusion ) {
         if( !hobby.is_valid() ) {
             debugmsg( "hobby %s for profession %s does not exist", hobby.str(), id.str() );

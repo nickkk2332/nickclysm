@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "player_helpers.h"
 #include "profession.h"
+#include "recipe.h"
 #include "type_id.h"
 
 // ---- PROG-B04 ----
@@ -66,4 +67,34 @@ TEST_CASE( "prog-b04_a_profession_cbm_already_installed_is_not_installed_again",
     CHECK( errors.empty() );
     CHECK( installed_count( u, bio_carbon ) == 1 );
     CHECK( u.has_bionic( bio_armor_eyes ) );
+}
+
+// ---- PROG-B05 ----
+
+static const profession_id profession_test_prog_b05_hobby( "test_prog_b05_hobby" );
+static const profession_id profession_test_prog_b05_profession( "test_prog_b05_profession" );
+
+static const recipe_id recipe_large_tent_kit_from_broken( "large_tent_kit_from_broken" );
+static const recipe_id recipe_tent_kit_from_broken( "tent_kit_from_broken" );
+
+// Profession and hobby recipes were looked up by their result item, so a recipe with an
+// id_suffix taught the plain recipe for that item instead, and one with no result taught
+// nothing.
+TEST_CASE( "prog-b05_starting_recipes_are_the_recipes_listed", "[audit][chargen]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        clear_avatar();
+    } );
+    REQUIRE( recipe_tent_kit_from_broken->result().str() == "tent_kit" );
+    REQUIRE( recipe_large_tent_kit_from_broken->result().str() == "large_tent_kit" );
+    u.prof = &profession_test_prog_b05_profession.obj();
+    u.hobbies.insert( &profession_test_prog_b05_hobby.obj() );
+
+    Character &you = u;
+    you.initialize( false );
+
+    CHECK( u.knows_recipe( &recipe_tent_kit_from_broken.obj() ) );
+    CHECK( u.knows_recipe( &recipe_large_tent_kit_from_broken.obj() ) );
 }
