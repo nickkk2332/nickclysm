@@ -37,6 +37,7 @@ static const efftype_id effect_pet( "pet" );
 static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_spear_wood( "spear_wood" );
 static const itype_id itype_test_cmbt_club( "test_cmbt_club" );
+static const itype_id itype_test_cmbt_unwieldy( "test_cmbt_unwieldy" );
 
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
 
@@ -48,6 +49,7 @@ static const move_mode_id move_mode_prone( "prone" );
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_unarmed( "unarmed" );
 
+static const trait_id trait_TEST_CMBT_HASTE( "TEST_CMBT_HASTE" );
 static const trait_id trait_TEST_CMBT_PSEUDOPOD( "TEST_CMBT_PSEUDOPOD" );
 
 static const vproto_id vehicle_prototype_bicycle( "bicycle" );
@@ -282,6 +284,39 @@ TEST_CASE( "cmbt-b09_disarm_cannot_take_a_weapon_stuck_in_hand", "[audit][melee]
         // "<npcname> disarms you!", "<npcname> disarms you and takes your weapon!"
         CHECK_FALSE( has_message_containing( "disarms you!" ) );
         CHECK_FALSE( has_message_containing( "takes your weapon" ) );
+    }
+}
+
+// CMBT-B10: the hit roll came before the "too unwieldy" refusal (and the avatar's "this will take
+// a long time" prompt), so an attack that never happened still used up the target's dodge, set
+// off its dodge reactions and marked it as attacked.
+TEST_CASE( "cmbt-b10_refused_attack_rolls_nothing", "[audit][melee]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    you.set_mutation( trait_TEST_CMBT_HASTE );
+    you.recalculate_enchantment_cache();
+    item weight( itype_test_cmbt_unwieldy );
+    REQUIRE( you.wield( weight ) );
+    const item &held = *you.get_wielded_item();
+    REQUIRE( held.attack_time( you ) > you.attack_speed( held ) * 20 );
+
+    SECTION( "a monster isn't marked as attacked" ) {
+        monster &post = spawn_test_monster( "mon_test_cmbt_post", you.pos_bub() + tripoint::east );
+        you.set_moves( 100 );
+        CHECK_FALSE( you.melee_attack( post, true ) );
+        CHECK_FALSE( post.has_effect( effect_hit_by_player ) );
+        CHECK( melee::get_stats().attack_count == 0 );
+        CHECK( you.get_moves() == 100 );
+    }
+    SECTION( "an NPC keeps its dodge" ) {
+        npc &guy = spawn_npc( ( you.pos_bub() + tripoint::east ).xy(), "test_talker" );
+        guy.set_dodges_left( guy.get_num_dodges() );
+        const int dodges = guy.get_dodges_left();
+        REQUIRE( dodges > 0 );
+        you.set_moves( 100 );
+        CHECK_FALSE( you.melee_attack( guy, true ) );
+        CHECK( guy.get_dodges_left() == dodges );
     }
 }
 

@@ -772,6 +772,42 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
     recalculate_enchantment_cache();
 
+    item_location cur_weapon = allow_unarmed ? used_weapon() : get_wielded_item();
+    item cur_weap = cur_weapon ? *cur_weapon : null_item_reference();
+
+    int move_cost = attack_speed( cur_weap );
+
+    // An attack refused or called off here happens before the hit roll, so the target doesn't
+    // dodge, react or learn it was attacked. A mech's arm attacks instead of the rider's weapon.
+    if( !( is_mounted() && mounted_creature->has_flag( mon_flag_RIDEABLE_MECH ) ) ) {
+        if( cur_weap.attack_time( *this ) > move_cost * 20 ) {
+            add_msg( m_bad, _( "This weapon is too unwieldy to attack with!" ) );
+            return false;
+        }
+
+        if( is_avatar() && move_cost > 300 && calendar::turn > melee_warning_turn ) {
+            const std::string &action = query_popup()
+                                        .context( "CANCEL_ACTIVITY_OR_IGNORE_QUERY" )
+                                        .message( _( "<color_light_red>Attacking with your %1$s will take a long time.  "
+                                                  "Are you sure you want to continue?</color>" ),
+                                                  cur_weap.display_name() )
+                                        .option( "YES" )
+                                        .option( "NO" )
+                                        .option( "IGNORE" )
+                                        .query()
+                                        .action;
+
+            if( action == "NO" ) {
+                return false;
+            }
+            if( action == "IGNORE" ) {
+                if( melee_warning_turn == calendar::turn_zero || melee_warning_turn <= calendar::turn ) {
+                    melee_warning_turn = calendar::turn + 50_turns;
+                }
+            }
+        }
+    }
+
     melee::melee_stats.attack_count += 1;
     int hit_spread = t.deal_melee_attack( this, hit_roll() );
     if( !t.is_avatar() ) {
@@ -801,38 +837,6 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
     // Fighting is hard work
     set_activity_level( melee_exertion_level() );
-
-    item_location cur_weapon = allow_unarmed ? used_weapon() : get_wielded_item();
-    item cur_weap = cur_weapon ? *cur_weapon : null_item_reference();
-
-    int move_cost = attack_speed( cur_weap );
-
-    if( cur_weap.attack_time( *this ) > move_cost * 20 ) {
-        add_msg( m_bad, _( "This weapon is too unwieldy to attack with!" ) );
-        return false;
-    }
-
-    if( is_avatar() && move_cost > 300 && calendar::turn > melee_warning_turn ) {
-        const std::string &action = query_popup()
-                                    .context( "CANCEL_ACTIVITY_OR_IGNORE_QUERY" )
-                                    .message( _( "<color_light_red>Attacking with your %1$s will take a long time.  "
-                                              "Are you sure you want to continue?</color>" ),
-                                              cur_weap.display_name() )
-                                    .option( "YES" )
-                                    .option( "NO" )
-                                    .option( "IGNORE" )
-                                    .query()
-                                    .action;
-
-        if( action == "NO" ) {
-            return false;
-        }
-        if( action == "IGNORE" ) {
-            if( melee_warning_turn == calendar::turn_zero || melee_warning_turn <= calendar::turn ) {
-                melee_warning_turn = calendar::turn + 50_turns;
-            }
-        }
-    }
 
     const bool hits = hit_spread >= 0;
 

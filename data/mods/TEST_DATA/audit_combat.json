@@ -41,6 +41,28 @@
     "extend": { "flags": [ "UNBREAKABLE_MELEE" ] }
   },
   {
+    "//": "CMBT-B10 fixture: attacks so fast that a heavy enough item is too unwieldy to swing.",
+    "type": "mutation",
+    "id": "TEST_CMBT_HASTE",
+    "name": { "str": "Test Haste" },
+    "points": 0,
+    "description": "Test mutation that cuts melee attack time to a hundredth.",
+    "enchantments": [ { "values": [ { "value": "ATTACK_SPEED", "multiply": -0.99 } ] } ]
+  },
+  {
+    "//": "CMBT-B10 fixture.",
+    "id": "test_cmbt_unwieldy",
+    "type": "ITEM",
+    "name": { "str": "test unwieldy weight" },
+    "description": "A very heavy weight for combat tests.",
+    "weight": "100 kg",
+    "volume": "1 L",
+    "material": [ "steel" ],
+    "symbol": "*",
+    "color": "light_gray",
+    "melee_damage": { "bash": 1 }
+  },
+  {
     "//": "CMBT-B16 fixture: a buff that stacks three times, with fractional bonuses.",
     "type": "martial_art",
     "id": "test_style_cmbt_buffs",
