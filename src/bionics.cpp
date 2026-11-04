@@ -3233,6 +3233,8 @@ void Character::clear_bionics()
     while( !my_bionics->empty() ) {
         remove_bionic( my_bionics->front() );
     }
+    // Cut the power level to what is left, even when there was no bionic to remove.
+    update_bionic_power_capacity();
 }
 
 void reset_bionics()
