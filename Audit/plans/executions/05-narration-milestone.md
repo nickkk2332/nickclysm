@@ -54,5 +54,7 @@ are not claimed by this milestone.
 The focused suite can be run from the repository root with a normal test build:
 
 ```sh
-./tests/cata_test '[executions]' --mods dda,test_data,executions_demo --rng-seed 41723
+./tests/cata_test '[executions]' --mods dda,executions_demo --rng-seed 41723
 ```
+
+The test runner adds `test_data` automatically.

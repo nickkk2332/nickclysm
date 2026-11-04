@@ -63,5 +63,7 @@ changes. These limits are documented and enforced instead of promising the full 
 To run the focused cases from the repository root:
 
 ```sh
-./tests/cata_test '[executions]' --mods dda,test_data,executions_demo --rng-seed 41723
+./tests/cata_test '[executions]' --mods dda,executions_demo --rng-seed 41723
 ```
+
+The test runner adds `test_data` automatically.
