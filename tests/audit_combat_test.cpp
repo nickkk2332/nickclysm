@@ -31,7 +31,16 @@
 
 // Regression tests for the combat chapter of the engine audit (Audit/18-combat.md).
 
+static const itype_id itype_test_cmbt_club( "test_cmbt_club" );
+
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
+
+static const move_mode_id move_mode_prone( "prone" );
+
+static const skill_id skill_melee( "melee" );
+static const skill_id skill_unarmed( "unarmed" );
+
+static const trait_id trait_TEST_CMBT_PSEUDOPOD( "TEST_CMBT_PSEUDOPOD" );
 
 static const vproto_id vehicle_prototype_bicycle( "bicycle" );
 
@@ -81,6 +90,27 @@ struct combat_scene {
 };
 } // namespace
 
+// Steady hands: blows land on a creature that doesn't dodge.
+static void make_fighter( Character &who )
+{
+    who.set_str_base( 12 );
+    who.set_dex_base( 20 );
+    who.set_skill_level( skill_melee, 10 );
+    who.set_skill_level( skill_unarmed, 10 );
+    who.set_stamina( who.get_stamina_max() );
+    who.set_moves( 100 );
+}
+
+static void ready( Character &who, Creature &target )
+{
+    who.set_moves( 100 );
+    who.set_stamina( who.get_stamina_max() );
+    if( Character *const c = target.as_character() ) {
+        // No dodging: the blow lands or misses on the attacker's roll alone
+        c->set_dodges_left( 0 );
+    }
+}
+
 // CMBT-B06: the vehicle's speed, in hundredths of a mph, came off the hit roll as is, so any
 // swing from a moving vehicle missed. It now costs 1 accuracy per mph.
 TEST_CASE( "cmbt-b06_moving_vehicle_melee_penalty_in_mph", "[audit][melee]" )
@@ -111,6 +141,54 @@ TEST_CASE( "cmbt-b06_moving_vehicle_melee_penalty_in_mph", "[audit][melee]" )
     CAPTURE( still, moving );
     // 5 accuracy, 5 points of hit roll each
     CHECK( still - moving == Approx( 25.0 ).margin( 8.0 ) );
+}
+
+// Damage per landed blow on a sturdy post, lying prone
+static double prone_damage_per_hit( avatar &you, monster &post )
+{
+    constexpr int attacks = 300;
+    int total = 0;
+    int hits = 0;
+    for( int i = 0; i < attacks; ++i ) {
+        ready( you, post );
+        const int before = post.get_hp();
+        you.melee_attack( post, false );
+        const int dealt = before - post.get_hp();
+        if( dealt > 0 ) {
+            total += dealt;
+            ++hits;
+        }
+        post.set_hp( post.get_hp_max() );
+    }
+    REQUIRE( hits > attacks / 2 );
+    return static_cast<double>( total ) / hits;
+}
+
+// CMBT-B07: a missing else gave prone PSEUDOPOD_GRASP attackers both multipliers, 0.8 then 0.3,
+// so they hit for 0.24x, less than anyone else on the ground (0.3x). They now get 0.8x.
+TEST_CASE( "cmbt-b07_prone_pseudopod_damage_multiplier", "[audit][melee]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    make_fighter( you );
+    you.set_str_base( 20 );
+    // Unbreakable: worn down, a club does less damage, and the second run would swing a worse one
+    item club( itype_test_cmbt_club );
+    REQUIRE( you.wield( club ) );
+    you.set_movement_mode( move_mode_prone );
+    REQUIRE( you.is_on_ground() );
+    monster &post = spawn_test_monster( "mon_test_cmbt_post", you.pos_bub() + tripoint::east );
+    // No practice: the attacker's skill stays the same throughout
+    post.times_combatted_player = 1000;
+
+    const double plain = prone_damage_per_hit( you, post );
+    you.set_mutation( trait_TEST_CMBT_PSEUDOPOD );
+    you.set_movement_mode( move_mode_prone );
+    REQUIRE( you.is_on_ground() );
+    const double pseudopod = prone_damage_per_hit( you, post );
+    CAPTURE( plain, pseudopod );
+    // 0.8 against 0.3
+    CHECK( pseudopod > 2.0 * plain );
 }
 
 // CMBT-B16: the accuracy bonus of a martial-art buff ignored its stacks, and every buff bonus was

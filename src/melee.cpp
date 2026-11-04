@@ -965,8 +965,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         if( is_on_ground() )  {
             if( has_flag( json_flag_PSEUDOPOD_GRASP ) ) {
                 d.mult_damage( 0.8 );
+            } else {
+                d.mult_damage( 0.3 );
             }
-            d.mult_damage( 0.3 );
         } else if( is_crouching() && ( !has_effect( effect_natural_stance ) && !unarmed_attack() ) &&
                    !has_flag( json_flag_PSEUDOPOD_GRASP ) ) {
             d.mult_damage( 0.8 );

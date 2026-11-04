@@ -1,5 +1,46 @@
 [
   {
+    "//": "CMBT fixtures: a target that never moves, dodges or fights back, and takes a long beating.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_post",
+    "name": { "str": "combat test post", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests.", "//~": "NO_I18N" },
+    "looks_like": "mon_thing",
+    "default_faction": "zombie",
+    "species": [ "ZOMBIE" ],
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 10000,
+    "speed": 100,
+    "material": [ "flesh" ],
+    "symbol": "P",
+    "color": "white",
+    "aggression": 100,
+    "morale": 100,
+    "melee_skill": 0,
+    "dodge": 0,
+    "harvest": "exempt",
+    "death_function": { "corpse_type": "NO_CORPSE", "message": "The %s falls apart." },
+    "flags": [ "IMMOBILE", "SEES", "NOT_HALLUCINATION" ]
+  },
+  {
+    "//": "CMBT-B07 fixture.",
+    "type": "mutation",
+    "id": "TEST_CMBT_PSEUDOPOD",
+    "name": { "str": "Test Pseudopods" },
+    "points": 0,
+    "description": "Test mutation: limbs that care little about being prone.",
+    "flags": [ "PSEUDOPOD_GRASP" ]
+  },
+  {
+    "//": "CMBT-B07 fixture: a club that doesn't wear, so every run swings the same weapon.",
+    "id": "test_cmbt_club",
+    "type": "ITEM",
+    "copy-from": "club_wooden",
+    "name": { "str": "test unbreakable club" },
+    "extend": { "flags": [ "UNBREAKABLE_MELEE" ] }
+  },
+  {
     "//": "CMBT-B16 fixture: a buff that stacks three times, with fractional bonuses.",
     "type": "martial_art",
     "id": "test_style_cmbt_buffs",
