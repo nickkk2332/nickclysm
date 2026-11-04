@@ -40,6 +40,7 @@ static const itype_id itype_audit_inv_b05_cold_bag( "audit_inv_b05_cold_bag" );
 static const itype_id itype_audit_inv_b05_cool_box( "audit_inv_b05_cool_box" );
 static const itype_id itype_audit_inv_b05_rotting_bag( "audit_inv_b05_rotting_bag" );
 static const itype_id itype_audit_inv_b05_two_pocket_rig( "audit_inv_b05_two_pocket_rig" );
+static const itype_id itype_audit_inv_b06_pouch( "audit_inv_b06_pouch" );
 static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_can_medium( "can_medium" );
 static const itype_id itype_can_tuna( "can_tuna" );
@@ -463,6 +464,61 @@ TEST_CASE( "inv-b06_autopickup_leaves_containers_whole_unless_it_takes_them",
         const item &left = *here.i_at( ground ).begin();
         CHECK( left.typeId() == itype_audit_inv_b04_sack );
         CHECK( left.all_items_top().size() == 1 );
+    }
+
+    SECTION( "a container skipped for room doesn't hide the next one of its type" ) {
+        // 500 ml: the sack with a brick is too big, the empty one is not
+        const override_option volume_limit( "AUTO_PICKUP_VOLUME_LIMIT", "10" );
+        REQUIRE( they.wear_item( item( itype_backpack ), false ).has_value() );
+        item full( itype_audit_inv_b04_sack );
+        const item brick( itype_audit_inv_b04_brick );
+        REQUIRE( full.put_in( brick, pocket_type::CONTAINER ).success() );
+        const item &first = here.add_item( ground, full );
+        const item &second = here.add_item( ground, item( itype_audit_inv_b04_sack ) );
+        REQUIRE( first.volume() > 500_ml );
+        REQUIRE( second.volume() <= 500_ml );
+        add_autopickup_rule( first, true );
+        add_autopickup_rule( second, true );
+        // so that it stays in its sack
+        add_autopickup_rule( brick, true );
+
+        Pickup::autopickup( ground );
+        process_activity( they );
+
+        REQUIRE( here.i_at( ground ).size() == 1 );
+        CHECK( here.i_at( ground ).begin()->all_items_top().size() == 1 );
+        CHECK( they.items_with( []( const item & it ) {
+            return it.typeId() == itype_audit_inv_b04_sack;
+        } ).size() == 1 );
+    }
+
+    SECTION( "two containers that each fit, but not together, are not both turned out" ) {
+        const override_option volume_limit( "AUTO_PICKUP_VOLUME_LIMIT", "0" );
+        // room for one empty sack, not two
+        REQUIRE( they.wear_item( item( itype_audit_inv_b06_pouch ), false ).has_value() );
+        item sack( itype_audit_inv_b04_sack );
+        REQUIRE( sack.put_in( item( itype_pebble, calendar::turn, 1 ),
+                              pocket_type::CONTAINER ).success() );
+        const item &first = here.add_item( ground, sack );
+        const item &second = here.add_item( ground, sack );
+        add_autopickup_rule( first, true );
+        add_autopickup_rule( second, true );
+
+        Pickup::autopickup( ground );
+        process_activity( they );
+
+        CHECK( they.items_with( []( const item & it ) {
+            return it.typeId() == itype_audit_inv_b04_sack;
+        } ).size() == 1 );
+        // the one left keeps its pebble; only the one taken was turned out
+        int sacks_left = 0;
+        for( const item &it : here.i_at( ground ) ) {
+            if( it.typeId() == itype_audit_inv_b04_sack ) {
+                ++sacks_left;
+                CHECK( it.all_items_top().size() == 1 );
+            }
+        }
+        CHECK( sacks_left == 1 );
     }
 }
 

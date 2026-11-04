@@ -139,5 +139,19 @@
         "moves": 100
       }
     ]
+  },
+  {
+    "id": "audit_inv_b06_pouch",
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "name": { "str": "TEST small pouch" },
+    "description": "A worn pouch with room for one empty soft sack, not two (INV-B06).",
+    "weight": "50 g",
+    "volume": "200 ml",
+    "material": [ "cotton" ],
+    "symbol": "[",
+    "color": "brown",
+    "armor": [ { "covers": [ "torso" ], "coverage": 5, "encumbrance": 0 } ],
+    "pocket_data": [ { "pocket_type": "CONTAINER", "max_contains_volume": "150 ml", "max_contains_weight": "2 kg", "moves": 100 } ]
   }
 ]
