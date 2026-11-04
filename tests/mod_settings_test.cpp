@@ -754,3 +754,47 @@ TEST_CASE( "world_option_changes_a_default", "[mod_settings][options]" )
         CHECK( options["SPAWN_DENSITY"].getDefaultText().find( "3.00" ) != std::string::npos );
     }
 }
+
+TEST_CASE( "mod_setting_arrow_keys_step_in_the_settings_own_numbers", "[mod_settings]" )
+{
+    const auto setting_from = []( const std::string & json ) {
+        mod_setting setting;
+        const JsonObject jo = json_loader::from_string( json );
+        setting.load( jo, "test" );
+        return setting;
+    };
+    const auto number = []( const mod_setting_value & v ) {
+        return std::get<double>( v );
+    };
+
+    // in float, 0.6 and a step of 0.1 went past 0.7, and the menu wrapped to 0
+    const mod_setting tenths = setting_from(
+                                   R"({ "name": "x", "kind": "number", "min": 0, "max": 0.7, "step": 0.1 })" );
+    CHECK( number( tenths.stepped( 0.6, 1 ) ) == 0.7 );
+    CHECK( number( tenths.stepped( 0.7, 1 ) ) == 0.0 );
+    CHECK( number( tenths.stepped( 0.0, -1 ) ) == 0.7 );
+    // every value on the way up, then around
+    mod_setting_value v = 0.0;
+    for( int i = 1; i <= 7; ++i ) {
+        v = tenths.stepped( v, 1 );
+        CHECK( number( v ) == Approx( i * 0.1 ) );
+    }
+    CHECK( number( tenths.stepped( v, 1 ) ) == 0.0 );
+
+    // a max off the steps: the last step is the highest one under it
+    const mod_setting threes = setting_from(
+                                   R"({ "name": "x", "kind": "number", "min": 0, "max": 10, "step": 3 })" );
+    CHECK( number( threes.stepped( 6.0, 1 ) ) == 9.0 );
+    CHECK( number( threes.stepped( 9.0, 1 ) ) == 0.0 );
+    CHECK( number( threes.stepped( 0.0, -1 ) ) == 9.0 );
+
+    const mod_setting choice = setting_from( R"({ "name": "x", "kind": "choice",
+        "choices": [ { "id": "a", "name": "A" }, { "id": "b", "name": "B" }, { "id": "c", "name": "C" } ] })" );
+    CHECK( std::get<std::string>( choice.stepped( std::string( "a" ), 1 ) ) == "b" );
+    CHECK( std::get<std::string>( choice.stepped( std::string( "c" ), 1 ) ) == "a" );
+    CHECK( std::get<std::string>( choice.stepped( std::string( "a" ), -1 ) ) == "c" );
+
+    const mod_setting toggle = setting_from( R"({ "name": "x", "kind": "bool" })" );
+    CHECK( std::get<bool>( toggle.stepped( false, 1 ) ) );
+    CHECK_FALSE( std::get<bool>( toggle.stepped( true, -1 ) ) );
+}

@@ -28,8 +28,9 @@
 namespace
 {
 generic_factory<mod_setting> mod_setting_factory( "mod setting" );
-// a setting changed since the game was last saved
-bool unsaved_changes = false;
+// The active world's values as of the last game save, while it has changes since: what its
+// options file keeps until the next game save writes the changes
+std::optional<mod_setting_values> saved_values;
 
 const std::vector<std::pair<std::string, mod_setting::kind_t>> &kind_names()
 {
@@ -468,6 +469,31 @@ std::string mod_setting::as_text( const mod_setting_value &value ) const
     return std::get<std::string>( v );
 }
 
+mod_setting_value mod_setting::stepped( const mod_setting_value &value, int direction ) const
+{
+    const mod_setting_value current = sanitize( value );
+    switch( kind ) {
+        case kind_t::boolean:
+            return !std::get<bool>( current );
+        case kind_t::number: {
+            // in steps from min, in double, so the last step reaches max
+            const double max_steps = std::floor( ( max - min ) / step + 1e-9 );
+            const double steps = std::round( ( std::get<double>( current ) - min ) / step ) + direction;
+            const double wrapped = steps > max_steps ? 0.0 : steps < 0.0 ? max_steps : steps;
+            return sanitize( min + wrapped * step );
+        }
+        case kind_t::choice: {
+            const int count = static_cast<int>( choices.size() );
+            const int index = ( choice_index( std::get<std::string>( current ) ) + direction + count ) %
+                              count;
+            return choices[index].id;
+        }
+        case kind_t::text:
+            return current;
+    }
+    return current;
+}
+
 // mod_settings
 
 void mod_settings::load( const JsonObject &jo, const std::string &src )
@@ -497,17 +523,40 @@ void mod_settings::check_consistency()
 void mod_settings::reset()
 {
     mod_setting_factory.reset();
-    unsaved_changes = false;
+    saved_values.reset();
 }
 
 bool mod_settings::have_unsaved_changes()
 {
-    return unsaved_changes;
+    return saved_values.has_value();
 }
 
 void mod_settings::mark_saved()
 {
-    unsaved_changes = false;
+    saved_values.reset();
+}
+
+const mod_setting_values &mod_settings::values_to_save( const WORLD &world )
+{
+    if( saved_values && &world == active_world() ) {
+        return *saved_values;
+    }
+    return world.mod_settings;
+}
+
+bool mod_settings::save_with_game()
+{
+    WORLD *world = active_world();
+    if( world == nullptr || !saved_values ) {
+        return true;
+    }
+    std::optional<mod_setting_values> before = std::move( saved_values );
+    saved_values.reset();
+    if( world->save() ) {
+        return true;
+    }
+    saved_values = std::move( before );
+    return false;
 }
 
 const std::vector<mod_setting> &mod_settings::get_all()
@@ -534,9 +583,17 @@ std::string mod_settings::set( const mod_setting &setting, const mod_setting_val
         return error;
     }
     const mod_setting_value old = get( setting );
-    store( world->mod_settings, setting, *valid );
+    mod_setting_values after = world->mod_settings;
+    store( after, setting, *valid );
+    if( after != world->mod_settings ) {
+        // the first change since the last game save: the file keeps what was saved
+        if( !saved_values ) {
+            saved_values = world->mod_settings;
+        }
+        world->mod_settings = std::move( after );
+    }
+    // the world's values are set before the event, so its EOCs read the new one
     if( !same_value( old, *valid, setting.step ) ) {
-        unsaved_changes = true;
         get_event_bus().send<event_type::mod_setting_changed>( setting.id.str(),
                 setting.as_text( old ), setting.as_text( *valid ) );
     }

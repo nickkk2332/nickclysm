@@ -3655,6 +3655,9 @@ std::string options_manager::show_menu( bool ingame, const bool world_options_on
     // while the menu is open
     options_container MOD_OPTIONS;
     std::map<std::string, const mod_setting *> mod_setting_of;
+    // the settings' values, exactly (their options show them), and the order the page lists them in
+    std::map<std::string, mod_setting_value> MOD_VALUES;
+    std::vector<std::string> mod_setting_order;
     int iModPage = -1;
     const size_t pages_before = pages_.size();
     const size_t groups_before = groups_.size();
@@ -3662,17 +3665,7 @@ std::string options_manager::show_menu( bool ingame, const bool world_options_on
         pages_.erase( pages_.begin() + pages_before, pages_.end() );
         groups_.erase( groups_.begin() + groups_before, groups_.end() );
     } );
-    // a setting's value as its option has it, and the other way
-    const auto mod_value = []( const cOpt & opt ) -> mod_setting_value {
-        if( opt.sType == "bool" )
-        {
-            return opt.bSet;
-        } else if( opt.sType == "float" )
-        {
-            return static_cast<double>( opt.fSet );
-        }
-        return opt.sSet;
-    };
+    // shows a setting's value in its option
     const auto set_mod_value = []( cOpt & opt, const mod_setting_value & value ) {
         if( const bool *b = std::get_if<bool>( &value ) ) {
             opt.bSet = *b;
@@ -3698,16 +3691,18 @@ std::string options_manager::show_menu( bool ingame, const bool world_options_on
             page.items_.emplace_back( ItemType::GroupHeader, id, id );
             for( const mod_setting *setting : sec.settings ) {
                 cOpt opt = mod_setting_option( *setting, mod_settings->locked_reason( *setting ) );
-                set_mod_value( opt, mod_settings->get( *setting ) );
+                MOD_VALUES[setting->id.str()] = mod_settings->get( *setting );
+                set_mod_value( opt, MOD_VALUES[setting->id.str()] );
                 MOD_OPTIONS[setting->id.str()] = opt;
                 mod_setting_of[setting->id.str()] = setting;
+                mod_setting_order.push_back( setting->id.str() );
                 page.items_.emplace_back( ItemType::Option, setting->id.str(), id );
             }
         }
         pages_.push_back( page );
         iModPage = static_cast<int>( pages_.size() ) - 1;
     }
-    const options_container MOD_OPTIONS_OLD = MOD_OPTIONS;
+    const std::map<std::string, mod_setting_value> MOD_VALUES_OLD = MOD_VALUES;
 
     const int iWorldOptPage = std::find_if( pages_.begin(), pages_.end(), [&]( const Page & p ) {
         return p.id_ == "world_default";
@@ -4052,18 +4047,23 @@ std::string options_manager::show_menu( bool ingame, const bool world_options_on
             }
             if( iCurrentPage == iModPage ) {
                 const mod_setting &setting = *mod_setting_of.at( curr_item.data );
-                if( action == "CONFIRM" && current_opt.sType == "float" ) {
+                mod_setting_value &value = MOD_VALUES.at( curr_item.data );
+                const mod_setting_value before = value;
+                if( action == "CONFIRM" && setting.kind == mod_setting::kind_t::number ) {
                     number_input_popup<float> popup( 0, current_opt.fSet );
                     popup.set_label( current_opt.getMenuText() );
-                    current_opt.fSet = popup.query();
-                } else if( action == "LEFT" ) {
-                    current_opt.setPrev();
-                } else {
+                    value = static_cast<double>( popup.query() );
+                } else if( action == "CONFIRM" && setting.kind == mod_setting::kind_t::text ) {
+                    // edits the text
                     current_opt.setNext();
+                    value = current_opt.sSet;
+                } else {
+                    // a switch, a choice, or a number's arrow keys: a step from the setting's
+                    // own value, not from the float the option shows
+                    value = setting.stepped( value, action == "LEFT" ? -1 : 1 );
                 }
                 // as the setting keeps it: clamped and snapped to the step, text on one line
-                const mod_setting_value value = setting.validate( mod_value( current_opt ) ).value_or(
-                                                    mod_settings->get( setting ) );
+                value = setting.validate( value ).value_or( before );
                 set_mod_value( current_opt, value );
                 if( mod_settings_only ) {
                     mod_settings->set( setting, value );
@@ -4307,13 +4307,13 @@ std::string options_manager::show_menu( bool ingame, const bool world_options_on
             world_options_changed = true;
         }
     }
-    // in game, mod settings change when the changes are saved, sending their events
+    // in game, mod settings change when the changes are saved, in the order the page lists them
     std::vector<std::string> mod_settings_changed;
     if( mod_settings != nullptr && !mod_settings_only ) {
-        for( const auto &iter : MOD_OPTIONS_OLD ) {
-            if( iter.second != MOD_OPTIONS[iter.first] ) {
+        for( const std::string &id : mod_setting_order ) {
+            if( MOD_VALUES.at( id ) != MOD_VALUES_OLD.at( id ) ) {
                 options_changed = true;
-                mod_settings_changed.push_back( iter.first );
+                mod_settings_changed.push_back( id );
             }
         }
     }
@@ -4326,10 +4326,13 @@ std::string options_manager::show_menu( bool ingame, const bool world_options_on
             refresh_display();
 
             save();
+            // each sends mod_setting_changed, whose EOCs run before the next one is set.  They're
+            // saved with the game, like the changes EOCs make: the world's options file keeps the
+            // values of the last game save, whatever saves it before then.
             for( const std::string &id : mod_settings_changed ) {
-                mod_settings->set( *mod_setting_of.at( id ), mod_value( MOD_OPTIONS[id] ) );
+                mod_settings->set( *mod_setting_of.at( id ), MOD_VALUES.at( id ) );
             }
-            if( ingame && ( world_options_changed || !mod_settings_changed.empty() ) ) {
+            if( ingame && world_options_changed ) {
                 world_generator->active_world->WORLD_OPTIONS = ACTIVE_WORLD_OPTIONS;
                 world_generator->active_world->save();
             }

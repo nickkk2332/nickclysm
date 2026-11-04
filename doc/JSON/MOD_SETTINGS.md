@@ -71,8 +71,8 @@ A definition of an id that's already defined, without `copy-from`, is a load err
 
 ## Where players set them
 
-- **World creation.** Once mods are picked, world creation reads just the `mod_setting`, `option_slider` and `WORLD_OPTION` objects of those mods, from the files the loader would read for them (their `mod_interactions` folders included), without loading anything else. A file that mentions none of those types isn't even parsed, so this stays quick. The "Mod Settings" tab lists the settings per mod, with each mod's groups as sub-headings; on the first screen of world creation it's behind "[o] - Mod settings". Changing the mod list reads them again: values picked for mods still in the list stay, those of a mod taken out go.
-- **In game.** The options menu has a "Mod settings" page, laid out the same way, when a loaded mod has settings. Settings that aren't `changeable_in_game` show greyed out, with a tooltip saying why. Changes apply when the menu's changes are saved, and are saved with the world's options at once, as world options are.
+- **World creation.** Once mods are picked, world creation reads just the `mod_setting`, `option_slider` and `WORLD_OPTION` objects of those mods, from the files the loader would read for them (their `mod_interactions` folders included), without loading anything else. A file that mentions none of those types isn't parsed, and which files those are is remembered for the rest of the game, by the files' paths, times and sizes. Measured on dda (3,337 files, 46 MB, in the OS's file cache): 0.17 s the first time a game reads them, about 0.02 s after. The "Mod Settings" tab lists the settings per mod, with each mod's groups as sub-headings; on the first screen of world creation it's behind "[o] - Mod settings". Changing the mod list reads them again: values picked for mods still in the list stay, those of a mod taken out go. The arrow keys step a number by its `step` from its current value, past either end to the other.
+- **In game.** The options menu has a "Mod settings" page, laid out the same way, when a loaded mod has settings. Settings that aren't `changeable_in_game` show greyed out, with a tooltip saying why. Changes apply when the menu's changes are saved, and are saved with the game, like those EOCs make ([below](#how-a-world-keeps-them)).
 
 ## How a world keeps them
 
@@ -90,8 +90,8 @@ The element has a `name` and a `value` like every option, so a build without mod
 - **Only values that differ from the default are stored.** A mod that changes a default later changes it for every world that never set the setting.
 - **A mod added to an existing world** brings its defaults. Its `changeable_in_game` settings can then be set on the in-game page.
 - **A removed mod's values stay** in the file, ignored, so adding the mod back brings them back.
-- **A value the setting no longer allows** (the mod narrowed the range, dropped a choice, changed the kind) reads as the setting allows: a number clamped and snapped to the step, anything else as the default.
-- Values that EOCs change are saved with the game. Values the in-game menu changes are saved when the menu saves.
+- **A value the setting no longer allows** (the mod narrowed the range, dropped a choice, changed the kind) reads as the setting allows: a number clamped and snapped to the step, a number for a switch as on unless it's 0, anything else as the default. A value that isn't a single value (an array, an object) is dropped when the file is read.
+- **Changes made in game are saved with the game.** The in-game menu and EOCs change the settings at once, but the world's `worldoptions.json` keeps the values of the last game save until the next one writes them, whatever else saves the file in between (the options menu does, when world options change). A game quit without saving keeps neither the changes nor what EOCs did about them. If the game save can't write them, the game is still saved and a popup says the settings weren't; the next save tries again. Values picked at world creation are written when the world is created.
 
 ## Reading settings
 
@@ -139,6 +139,12 @@ A change of value in game, from the options menu or an EOC, sends the event `mod
 | `old_value`, `new_value` | the values as text, as the `mod_setting` mutator gives them: the number (`"2.50"`), `true` or `false`, the choice id, the text |
 
 The avatar is `u`. Statistics, scores and achievements don't keep this event.
+
+When it fires:
+
+- The event goes out as the setting changes, after the world has the new value, so `mod_setting('id')` in its EOCs reads the new value.
+- The options menu applies its changes when they're saved, one setting at a time in the order the page lists them; each setting's EVENT EOCs run before the next setting changes.
+- An EOC that changes a setting in answer to the event sends a new event at once, inside the first one, before the EOCs after it run. An EOC that changes back the setting it's answering for, or two settings that keep changing each other, can go on without end: change other settings, or check `old_value` first.
 
 ```jsonc
 {

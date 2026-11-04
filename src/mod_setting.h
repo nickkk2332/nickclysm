@@ -83,6 +83,12 @@ struct mod_setting {
     std::optional<double> as_number( const mod_setting_value &value ) const;
     /** The value as text: "true" or "false", the number, the choice id, or the text */
     std::string as_text( const mod_setting_value &value ) const;
+    /**
+     * @p value one step on, as the menus' arrow keys move it, @p direction 1 or -1: a switch
+     * flipped, a choice the next or previous one, a number one step from its value, past either
+     * end to the other.  Text stays.
+     */
+    mod_setting_value stepped( const mod_setting_value &value, int direction ) const;
 };
 
 namespace mod_settings
@@ -101,11 +107,16 @@ mod_setting_value get( const mod_setting &setting );
  */
 std::string set( const mod_setting &setting, const mod_setting_value &value );
 /**
- * Whether a setting changed since the world's options were last saved with the game: the game
- * save writes them then, as the options menu does when it saves.
+ * Whether a setting of the active world changed in game (options menu, EOC) since the game was
+ * last saved.  The game save writes them (save_with_game); until then the world's options file
+ * keeps the values of the last save, whatever else saves it.
  */
 bool have_unsaved_changes();
 void mark_saved();
+/** The values WORLD::save writes for @p world: for the active world, those of the last game save */
+const mod_setting_values &values_to_save( const WORLD &world );
+/** Writes the active world's options with its current values; false when that failed */
+bool save_with_game();
 
 /** The settings of one mod, and of one group in it, as the menus show them */
 struct section {
