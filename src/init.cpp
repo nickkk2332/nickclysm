@@ -702,19 +702,8 @@ void DynamicDataLoader::load_mod_data_from_path( const cata_path &path, const st
     // the first loaded mode might provide a vehicle that uses that frame
     // But not the other way round.
 
-    std::vector<cata_path> files;
-    // if give path is a directory
-    if( dir_exist( path.get_unrelative_path() ) ) {
-        const std::vector<cata_path> dir_files = get_files_from_path_with_path_exclusion( ".json",
-                "mod_interactions", path, true, true );
-        files.insert( files.end(), dir_files.begin(), dir_files.end() );
-        // if given path is an individual file
-    } else if( file_exist( path.get_unrelative_path() ) ) {
-        files.emplace_back( path );
-    }
-
     // iterate over each file
-    for( const cata_path &file : files ) {
+    for( const cata_path &file : mod_data_files( path ) ) {
         try {
             // parse it
             JsonValue jsin = json_loader::from_path( file );
@@ -725,13 +714,24 @@ void DynamicDataLoader::load_mod_data_from_path( const cata_path &path, const st
     }
 }
 
-void DynamicDataLoader::load_mod_interaction_files_from_path( const cata_path &path,
-        const std::string &src )
+std::vector<cata_path> DynamicDataLoader::mod_data_files( const cata_path &path )
 {
-    cata_assert( !finalized &&
-                 "Can't load additional data after finalization.  Must be unloaded first." );
+    std::vector<cata_path> files;
+    // if give path is a directory
+    if( dir_exist( path.get_unrelative_path() ) ) {
+        const std::vector<cata_path> dir_files = get_files_from_path_with_path_exclusion( ".json",
+                "mod_interactions", path, true, true );
+        files.insert( files.end(), dir_files.begin(), dir_files.end() );
+        // if given path is an individual file
+    } else if( file_exist( path.get_unrelative_path() ) ) {
+        files.emplace_back( path );
+    }
+    return files;
+}
 
-    std::vector<mod_id> &loaded_mods = world_generator->active_world->active_mod_order;
+std::vector<std::pair<mod_id, cata_path>> DynamicDataLoader::mod_interaction_files(
+        const cata_path &path, const std::vector<mod_id> &mods )
+{
     std::multimap<mod_id, cata_path> files;
 
     if( dir_exist( path.get_unrelative_path() ) ) {
@@ -741,8 +741,7 @@ void DynamicDataLoader::load_mod_interaction_files_from_path( const cata_path &p
 
         for( const cata_path &f : interaction_folders ) {
             const mod_id associated_mod = mod_id( f.get_unrelative_path().filename().string() );
-            bool is_mod_loaded = std::find( loaded_mods.begin(), loaded_mods.end(),
-                                            associated_mod ) != loaded_mods.end();
+            bool is_mod_loaded = std::find( mods.begin(), mods.end(), associated_mod ) != mods.end();
 
             if( is_mod_loaded ) {
                 const std::vector<cata_path> interaction_files = get_files_from_path( ".json", f, true, true );
@@ -752,8 +751,18 @@ void DynamicDataLoader::load_mod_interaction_files_from_path( const cata_path &p
             }
         }
     }
+    return std::vector<std::pair<mod_id, cata_path>>( files.begin(), files.end() );
+}
+
+void DynamicDataLoader::load_mod_interaction_files_from_path( const cata_path &path,
+        const std::string &src )
+{
+    cata_assert( !finalized &&
+                 "Can't load additional data after finalization.  Must be unloaded first." );
+
+    const std::vector<mod_id> &loaded_mods = world_generator->active_world->active_mod_order;
     // iterate over each file
-    for( const std::pair<const mod_id, cata_path> &file : files ) {
+    for( const std::pair<mod_id, cata_path> &file : mod_interaction_files( path, loaded_mods ) ) {
         try {
             // parse it
             JsonValue jsin = json_loader::from_path( file.second );
@@ -764,23 +773,31 @@ void DynamicDataLoader::load_mod_interaction_files_from_path( const cata_path &p
     }
 }
 
-void DynamicDataLoader::load_all_from_json( const JsonValue &jsin, const std::string &src,
-        const cata_path &base_path, const cata_path &full_path )
+void DynamicDataLoader::for_each_object( const JsonValue &jsin,
+        const std::function<void( const JsonObject & )> &f )
 {
     if( jsin.test_object() ) {
-        // find type and dispatch single object
-        JsonObject jo = jsin.get_object();
-        load_object( jo, src, base_path, full_path );
+        // a single object
+        f( jsin.get_object() );
     } else if( jsin.test_array() ) {
         JsonArray ja = jsin.get_array();
-        // find type and dispatch each object until array close
+        // each object until array close
         for( JsonObject jo : ja ) {
-            load_object( jo, src, base_path, full_path );
+            f( jo );
         }
     } else {
         // not an object or an array?
         jsin.throw_error( "expected object or array" );
     }
+}
+
+void DynamicDataLoader::load_all_from_json( const JsonValue &jsin, const std::string &src,
+        const cata_path &base_path, const cata_path &full_path )
+{
+    // find type and dispatch each object
+    for_each_object( jsin, [&]( const JsonObject & jo ) {
+        load_object( jo, src, base_path, full_path );
+    } );
     inp_mngr.pump_events();
 }
 
