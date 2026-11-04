@@ -430,7 +430,8 @@ float Character::hit_roll() const
         if( boarded_vehicle.player_in_control( here, *this ) ) {
             hit -= 10;
         }
-        hit -= std::abs( boarded_vehicle.forward_velocity() );
+        // The vehicle's velocity is in hundredths of a mph: 1 accuracy per mph
+        hit -= std::abs( boarded_vehicle.forward_velocity() ) / 100.0f;
     }
 
     hit *= get_modifier( character_modifier_melee_attack_roll_mod );

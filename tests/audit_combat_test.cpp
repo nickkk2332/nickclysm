@@ -33,6 +33,8 @@
 
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
 
+static const vproto_id vehicle_prototype_bicycle( "bicycle" );
+
 namespace
 {
 // Clears the scene before a test and again after it, so nothing these tests spawn or change
@@ -78,6 +80,38 @@ struct combat_scene {
     }
 };
 } // namespace
+
+// CMBT-B06: the vehicle's speed, in hundredths of a mph, came off the hit roll as is, so any
+// swing from a moving vehicle missed. It now costs 1 accuracy per mph.
+TEST_CASE( "cmbt-b06_moving_vehicle_melee_penalty_in_mph", "[audit][melee]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    map &here = get_map();
+    vehicle *bike = here.add_vehicle( vehicle_prototype_bicycle, you.pos_bub( here ), 0_degrees,
+                                      0, veh_spawn_status::UNDAMAGED );
+    REQUIRE( bike != nullptr );
+    REQUIRE( here.veh_at( you.pos_bub( here ) ) );
+
+    const auto mean_hit_roll = [&you]() {
+        constexpr int trials = 2000;
+        double sum = 0.0;
+        for( int i = 0; i < trials; ++i ) {
+            sum += you.hit_roll();
+        }
+        return sum / trials;
+    };
+    bike->velocity = 0;
+    const double still = mean_hit_roll();
+    // 5 mph
+    bike->velocity = 500;
+    REQUIRE( bike->forward_velocity() == Approx( 500.0f ) );
+    const double moving = mean_hit_roll();
+    bike->velocity = 0;
+    CAPTURE( still, moving );
+    // 5 accuracy, 5 points of hit roll each
+    CHECK( still - moving == Approx( 25.0 ).margin( 8.0 ) );
+}
 
 // CMBT-B16: the accuracy bonus of a martial-art buff ignored its stacks, and every buff bonus was
 // cut to a whole number before the stacks were counted.
