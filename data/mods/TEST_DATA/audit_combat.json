@@ -241,6 +241,43 @@
     "melee_damage": { "bash": 4 }
   },
   {
+    "//": "CMBT-B17 fixture: rounds with no casing, like Xedra Evolved's oxygen, in a gun that ejects casings into itself.",
+    "id": "test_cmbt_round_caseless",
+    "type": "ITEM",
+    "subtypes": [ "AMMO" ],
+    "name": { "str": "test caseless round" },
+    "description": "A round with no casing, for combat tests.",
+    "weight": "7 g",
+    "volume": "250 ml",
+    "material": [ "brass", "powder" ],
+    "symbol": "=",
+    "color": "yellow",
+    "count": 50,
+    "stack_size": 50,
+    "ammo_type": "test_cmbt_round",
+    "range": 14,
+    "damage": { "damage_type": "bullet", "amount": 26 },
+    "dispersion": 0,
+    "recoil": 500
+  },
+  {
+    "id": "test_cmbt_eject_revolver",
+    "type": "ITEM",
+    "subtypes": [ "GUN" ],
+    "copy-from": "test_cmbt_revolver",
+    "name": { "str": "test casing-ejecting revolver" },
+    "extend": { "flags": [ "RELOAD_EJECT" ] }
+  },
+  {
+    "type": "technique",
+    "id": "test_cmbt_loaded_strike",
+    "name": "Test Loaded Strike",
+    "melee_allowed": true,
+    "needs_ammo": true,
+    "messages": [ "You test-fire into %s", "<npcname> test-fires into %s" ],
+    "attack_vectors": [ "vector_null" ]
+  },
+  {
     "//": "CMBT-B16 fixture: a buff that stacks three times, with fractional bonuses.",
     "type": "martial_art",
     "id": "test_style_cmbt_buffs",

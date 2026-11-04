@@ -2114,9 +2114,10 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         // thing going off should be as loud as the ammo
         sounds::sound( pos, current_ammo->ammo->loudness, sounds::sound_t::combat, _( "Crack!" ),
                        true );
-        const itype_id casing = *current_ammo->ammo->casing;
-        if( cur_weapon.get_item()->has_flag( flag_RELOAD_EJECT ) ) {
-            cur_weapon.get_item()->force_insert_item( item( casing ).set_flag( flag_CASING ),
+        // Caseless rounds (oxygen, say) leave no casing
+        const std::optional<itype_id> &casing = current_ammo->ammo->casing;
+        if( casing && cur_weapon.get_item()->has_flag( flag_RELOAD_EJECT ) ) {
+            cur_weapon.get_item()->force_insert_item( item( *casing ).set_flag( flag_CASING ),
                     pocket_type::MAGAZINE );
             cur_weapon.get_item()->on_contents_changed();
         }

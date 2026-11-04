@@ -48,7 +48,9 @@ static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_glaive( "glaive" );
 static const itype_id itype_spear_wood( "spear_wood" );
 static const itype_id itype_test_cmbt_club( "test_cmbt_club" );
+static const itype_id itype_test_cmbt_eject_revolver( "test_cmbt_eject_revolver" );
 static const itype_id itype_test_cmbt_revolver( "test_cmbt_revolver" );
+static const itype_id itype_test_cmbt_round_caseless( "test_cmbt_round_caseless" );
 static const itype_id itype_test_cmbt_round_plain( "test_cmbt_round_plain" );
 static const itype_id itype_test_cmbt_round_wild( "test_cmbt_round_wild" );
 static const itype_id itype_test_cmbt_unwieldy( "test_cmbt_unwieldy" );
@@ -56,6 +58,7 @@ static const itype_id itype_test_cmbt_unwieldy( "test_cmbt_unwieldy" );
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
 
 static const matec_id test_cmbt_impale( "test_cmbt_impale" );
+static const matec_id test_cmbt_loaded_strike( "test_cmbt_loaded_strike" );
 static const matec_id test_cmbt_wide( "test_cmbt_wide" );
 static const matec_id test_tm_ammo( "test_tm_ammo" );
 static const matec_id test_tm_disarm( "test_tm_disarm" );
@@ -679,5 +682,31 @@ TEST_CASE( "cmbt-b17_forced_techniques_with_nothing_to_use", "[audit][melee][tec
         REQUIRE_FALSE( you.is_armed() );
         land_technique( you, post, test_tm_ammo );
         CHECK( melee::get_stats().attack_count == 1 );
+    }
+}
+
+// CMBT-B17, review: a technique that needs ammo read the casing of the round it fired even when
+// the round has none, such as Xedra Evolved's oxygen for its inventor's fists.
+TEST_CASE( "cmbt-b17-caseless_needs_ammo_technique_with_caseless_rounds",
+           "[audit][melee][technique]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    make_fighter( you );
+    item gun( itype_test_cmbt_eject_revolver );
+    gun.ammo_set( itype_test_cmbt_round_caseless );
+    REQUIRE( you.wield( gun ) );
+    const item_location held = you.get_wielded_item();
+    REQUIRE( held->has_flag( flag_RELOAD_EJECT ) );
+    const int rounds = held->ammo_remaining();
+    REQUIRE( rounds > 0 );
+    monster &post = spawn_test_monster( "mon_test_cmbt_post", you.pos_bub() + tripoint::north );
+
+    // A strike with the gun itself (a technique struck with a fist uses no weapon's ammo)
+    land_technique( you, post, test_cmbt_loaded_strike );
+    CHECK( held->ammo_remaining() == rounds - 1 );
+    // Only rounds in the gun: no casing was made up for the caseless one
+    for( const item *it : held->all_items_top() ) {
+        CHECK( it->typeId() == itype_test_cmbt_round_caseless );
     }
 }
