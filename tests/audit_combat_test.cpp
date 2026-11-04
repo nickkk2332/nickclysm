@@ -551,8 +551,9 @@ TEST_CASE( "cmbt-b12_hardtohit_makes_melee_attackers_roll_twice", "[audit][melee
     CAPTURE( plain, hard );
     REQUIRE( plain > 0.3 );
     REQUIRE( plain < 0.95 );
-    // Both rolls must hit, so the chance is squared
-    CHECK( hard == Approx( plain * plain ).margin( 0.05 ) );
+    // Both rolls must hit, so the chance is squared. 2000 attacks a side give a standard error
+    // near 0.018; without the second roll the gap is about 0.22.
+    CHECK( hard == Approx( plain * plain ).margin( 0.1 ) );
 }
 
 // CMBT-B13: an enchantment's hit_you_effect went off after every swing, misses included.
