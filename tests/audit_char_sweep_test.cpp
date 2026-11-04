@@ -10,6 +10,7 @@
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
+#include "effect.h"
 #include "grab.h"
 #include "item.h"
 #include "map.h"
@@ -328,5 +329,63 @@ TEST_CASE( "char-b10_a_vehicle_taken_across_stairs_is_dragged_by_the_rules",
         CHECK_FALSE( drag_vehicle_across_stairs( here, you, dp ) );
         CHECK( here.veh_at( bottom + grab_point ) );
         CHECK_FALSE( here.veh_at( bottom + east ) );
+    }
+}
+
+// ---- HLTH-B11 ----
+
+static const efftype_id effect_hallu( "hallu" );
+static const efftype_id effect_visuals( "visuals" );
+
+// Runs the avatar's effects for the turn when a hallucination of the given length has the
+// given time left.
+static void hallucinate( avatar &you, const time_duration &dose, const time_duration &left )
+{
+    you.remove_effect( effect_hallu );
+    you.remove_effect( effect_visuals );
+    you.add_effect( effect_hallu, dose );
+    calendar::turn += dose - left;
+    you.get_effect( effect_hallu ).set_duration( left );
+    you.process_effects();
+}
+
+// The hallucination stages were timed for a 6-hour dose: visuals began with exactly 4.8 h left
+// and the symptoms ran from 4.8 h to 1.8 h left, so a dose under 1.8 h, like LSD's hour, a
+// stare's half hour or sleep deprivation's minutes, did nothing.  The stages are now fractions
+// of the dose.
+TEST_CASE( "hlth-b11_a_short_hallucination_goes_through_its_stages", "[audit][effect]" )
+{
+    clear_avatar();
+    avatar &you = get_avatar();
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    on_out_of_scope restore( []() {
+        clear_avatar();
+        clear_creatures();
+    } );
+
+    SECTION( "an hour" ) {
+        hallucinate( you, 1_hours, 48_minutes );
+        CHECK( you.has_effect( effect_visuals ) );
+        hallucinate( you, 1_hours, 30_minutes );
+        CHECK( you.per_bonus_hardcoded == -2 );
+        CHECK( you.dex_bonus_hardcoded == -2 );
+        hallucinate( you, 1_hours, 10_minutes );
+        CHECK( you.per_bonus_hardcoded == 0 );
+    }
+    SECTION( "five minutes" ) {
+        hallucinate( you, 5_minutes, 4_minutes );
+        CHECK( you.has_effect( effect_visuals ) );
+        hallucinate( you, 5_minutes, 2_minutes );
+        CHECK( you.per_bonus_hardcoded == -2 );
+    }
+    SECTION( "six hours, as before" ) {
+        hallucinate( you, 6_hours, 288_minutes );
+        CHECK( you.has_effect( effect_visuals ) );
+        hallucinate( you, 6_hours, 289_minutes );
+        CHECK_FALSE( you.has_effect( effect_visuals ) );
+        hallucinate( you, 6_hours, 3_hours );
+        CHECK( you.per_bonus_hardcoded == -2 );
+        hallucinate( you, 6_hours, 100_minutes );
+        CHECK( you.per_bonus_hardcoded == 0 );
     }
 }

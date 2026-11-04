@@ -286,14 +286,15 @@ static void eff_fun_bleed( Character &u, effect &it )
 }
 static void eff_fun_hallu( Character &u, effect &it )
 {
-    // TODO: Redo this to allow for variable durations
-    // Time intervals are drawn from the old ones based on 3600 (6-hour) duration.
-    constexpr int maxDuration = 21600;
-    constexpr int comeupTime = static_cast<int>( maxDuration * 0.9 );
-    constexpr int noticeTime = static_cast<int>( comeupTime + ( maxDuration - comeupTime ) / 2 );
-    constexpr int peakTime = static_cast<int>( maxDuration * 0.8 );
-    constexpr int comedownTime = static_cast<int>( maxDuration * 0.3 );
+    // The stages are fractions of the dose, the time taken so far plus the time left, as they
+    // were of the 6-hour dose they were written for, so a shorter dose goes through them all
+    // (HLTH-B11).
     const int dur = to_turns<int>( it.get_duration() );
+    const int dose = to_turns<int>( calendar::turn - it.get_start_time() ) + dur;
+    const int noticeTime = dose * 95 / 100;
+    const int comeupTime = dose * 9 / 10;
+    const int peakTime = dose * 8 / 10;
+    const int comedownTime = dose * 3 / 10;
     // Baseline
     if( dur == noticeTime ) {
         u.add_msg_if_player( m_warning, _( "You feel a little strange." ) );
