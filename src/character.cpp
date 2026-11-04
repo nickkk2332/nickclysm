@@ -5923,6 +5923,20 @@ const
     return best_weapon;
 }
 
+// What a fuel-burning UPS can give: its fuel's energy at its efficiency, as consume_ups burns
+// it, and what it has left over from burning a whole unit earlier (item::energy_consume).
+static units::energy fuel_burner_energy( const item &ups )
+{
+    units::energy ret = ups.energy;
+    const itype_id fuel = ups.ammo_current();
+    if( !fuel.is_null() ) {
+        const double per_unit = static_cast<double>( units::to_millijoule( item( fuel ).fuel_energy() ) );
+        ret += units::from_millijoule( static_cast<std::int64_t>( per_unit * ups.ammo_remaining() *
+                                       ups.type->tool->fuel_efficiency ) );
+    }
+    return ret;
+}
+
 units::energy Character::available_ups() const
 {
     units::energy available_charges = 0_kJ;
@@ -5944,7 +5958,11 @@ units::energy Character::available_ups() const
     }
 
     cache_visit_items_with( flag_IS_UPS, [&available_charges]( const item_location & it ) {
-        available_charges += units::from_kilojoule( static_cast<std::int64_t>( it->ammo_remaining( ) ) );
+        if( it->is_tool() && it->type->tool->fuel_efficiency >= 0 ) {
+            available_charges += fuel_burner_energy( *it );
+        } else {
+            available_charges += units::from_kilojoule( static_cast<std::int64_t>( it->ammo_remaining( ) ) );
+        }
     } );
 
     return available_charges;

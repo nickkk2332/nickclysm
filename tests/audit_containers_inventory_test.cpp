@@ -66,6 +66,13 @@ struct tile_items_cleanup {
     }
 };
 
+// Resets the avatar when it goes out of scope.
+struct avatar_cleanup {
+    ~avatar_cleanup() {
+        clear_avatar();
+    }
+};
+
 } // namespace
 
 // INV-B02: both restack() overloads skipped an item that isn't counted by charges in a
@@ -135,6 +142,42 @@ TEST_CASE( "inv-b03_fuel_burning_ups_burns_at_its_efficiency", "[audit][item]" )
         CHECK( burner.ammo_remaining() == 0 );
         got += burner.energy_consume( request, pos, nullptr, efficiency );
         CHECK( units::to_kilojoule( got ) <= unit_kj );
+    }
+
+    SECTION( "a small draw uses what is left over before burning more" ) {
+        item burner( itype_audit_inv_b03_fuel_burner );
+        const float efficiency = burner.type->tool->fuel_efficiency;
+        burner.ammo_set( itype_propane, 2 );
+        REQUIRE( burner.ammo_remaining() == 2 );
+        const double unit_kj = units::to_kilojoule( per_unit ) * efficiency;
+        // two draws that one unit covers
+        const units::energy request = units::from_kilojoule( std::max<std::int64_t>( 1,
+                                      static_cast<std::int64_t>( unit_kj * 0.4 ) ) );
+        CHECK( burner.energy_consume( request, pos, nullptr, efficiency ) == request );
+        CHECK( burner.ammo_remaining() == 1 );
+        CHECK( burner.energy_consume( request, pos, nullptr, efficiency ) == request );
+        CHECK( burner.ammo_remaining() == 1 );
+    }
+
+    SECTION( "a carried gas-powered UPS offers its fuel's energy" ) {
+        clear_avatar();
+        const avatar_cleanup reset_avatar;
+        avatar &they = get_avatar();
+        REQUIRE( they.wear_item( item( itype_backpack ), false ).has_value() );
+        item charger( itype_gas_charger_on );
+        const float efficiency = charger.type->tool->fuel_efficiency;
+        item tank( itype_small_propane_tank );
+        tank.ammo_set( itype_propane, 10 );
+        REQUIRE( charger.put_in( tank, pocket_type::MAGAZINE_WELL ).success() );
+        REQUIRE( they.i_add( charger ) );
+        REQUIRE( they.available_ups() > 0_J );
+
+        // more than one kJ for each of its ten units of propane
+        const double fuel_kj = units::to_kilojoule( per_unit ) * efficiency * 10;
+        REQUIRE( fuel_kj > 20 );
+        CHECK( units::to_kilojoule( they.available_ups() ) == Approx( fuel_kj ).margin( 1 ) );
+        const units::energy wanted = 20_kJ;
+        CHECK( they.consume_ups( wanted ) == wanted );
     }
 }
 
@@ -249,13 +292,6 @@ struct autopickup_rules_cleanup {
         rules.clear_character_rules();
         // rebuilds the rule cache
         rules.check_item( "" );
-    }
-};
-
-// Resets the avatar when it goes out of scope.
-struct avatar_cleanup {
-    ~avatar_cleanup() {
-        clear_avatar();
     }
 };
 

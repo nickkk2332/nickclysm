@@ -989,7 +989,7 @@ Gun mods can be defined like this:
   "balance": "neutral"                       
 }
 "turns_per_charge": 20, // Charges consumed over time, deprecated in favor of power_draw
-"fuel_efficiency": 0.2, // When combined with being a UPS this item will burn fuel for its given energy value to produce energy with the efficiency provided, whether the fuel is in its own magazine pocket or in a magazine (such as a propane tank) in its magazine well. Needs to be > 0 for this to work
+"fuel_efficiency": 0.2, // When combined with being a UPS this item will burn fuel for its given energy value to produce energy with the efficiency provided, whether the fuel is in its own magazine pocket or in a magazine (such as a propane tank) in its magazine well.  It only does so while carried: lying nearby, a fuel-burning UPS gives no power.  Must be above 0 (a load error otherwise); leave it out, or set -1, for an item that burns no fuel
 "use_action": [ "firestarter" ], // Action performed when tool is used, see special definition below
 "qualities": [ [ "SCREW", 1 ] ], // Inherent item qualities like hammering, sawing, screwing (see tool_qualities.json)
 // Qualities also accept object format: { "id": "SEW", "level": 2, "speed": 0.3 }
