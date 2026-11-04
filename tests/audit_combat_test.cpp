@@ -47,7 +47,9 @@ static const itype_id itype_test_cmbt_unwieldy( "test_cmbt_unwieldy" );
 
 static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
 
+static const matec_id test_cmbt_impale( "test_cmbt_impale" );
 static const matec_id test_cmbt_wide( "test_cmbt_wide" );
+static const matec_id test_tm_ammo( "test_tm_ammo" );
 static const matec_id test_tm_disarm( "test_tm_disarm" );
 static const matec_id test_tm_take( "test_tm_take" );
 
@@ -542,5 +544,63 @@ TEST_CASE( "cmbt-b16_martial_art_buff_bonuses_stack_with_fractions", "[audit][ma
         CHECK( you.mabuff_dodge_bonus() == Approx( 2.4f ) );
         // 1.8
         CHECK( you.mabuff_block_bonus() == 1 );
+    }
+}
+
+// CMBT-B17: "impale" looked two tiles away for its second victim, then attacked it with
+// melee_attack(), which refuses anything out of reach, so nothing behind the target was ever
+// struck; its "right" tile was miscomputed (beside the attacker, or the target itself); and with
+// no one to strike, a forced impale dereferenced a null pointer.
+TEST_CASE( "cmbt-b17_impale_strikes_the_creature_behind", "[audit][melee][technique]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    make_fighter( you );
+    const tripoint_bub_ms pos = you.pos_bub();
+
+    SECTION( "east: the creature behind the target is struck" ) {
+        monster &front = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::east );
+        monster &behind = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint( 2, 0, 0 ) );
+        land_technique( you, front, test_cmbt_impale );
+        CHECK( behind.has_effect( effect_hit_by_player ) );
+        CHECK( melee::get_stats().attack_count == 2 );
+        CHECK( has_message_containing( "1 enemy hit!" ) );
+    }
+    SECTION( "north: a creature beside the attacker is not struck" ) {
+        monster &front = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::north );
+        monster &beside = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::west );
+        land_technique( you, front, test_cmbt_impale );
+        CHECK_FALSE( beside.has_effect( effect_hit_by_player ) );
+        CHECK( melee::get_stats().attack_count == 1 );
+    }
+    SECTION( "north-east: the target isn't struck twice" ) {
+        monster &front = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::north_east );
+        land_technique( you, front, test_cmbt_impale );
+        CHECK( melee::get_stats().attack_count == 1 );
+    }
+    SECTION( "north-east: the creature beyond the corner is struck" ) {
+        monster &front = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::north_east );
+        monster &beyond = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint( 1, -2, 0 ) );
+        land_technique( you, front, test_cmbt_impale );
+        CHECK( beyond.has_effect( effect_hit_by_player ) );
+        CHECK( melee::get_stats().attack_count == 2 );
+    }
+}
+
+TEST_CASE( "cmbt-b17_forced_techniques_with_nothing_to_use", "[audit][melee][technique]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    make_fighter( you );
+    monster &post = spawn_test_monster( "mon_test_cmbt_post", you.pos_bub() + tripoint::north );
+
+    SECTION( "an impale with no one behind the target" ) {
+        land_technique( you, post, test_cmbt_impale );
+        CHECK( melee::get_stats().attack_count == 1 );
+    }
+    SECTION( "a technique that needs ammo, unarmed" ) {
+        REQUIRE_FALSE( you.is_armed() );
+        land_technique( you, post, test_tm_ammo );
+        CHECK( melee::get_stats().attack_count == 1 );
     }
 }

@@ -1907,9 +1907,10 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
         // Impale hits the target and a single target behind them
         // Check if the square cardinally behind our target, or to the left / right,
         // contains a possible target.
+        // Left and right turn from the attack's direction as in "wide"
         tripoint_bub_ms left = t_pos + tripoint_rel_ms( offset_a[lookup], offset_b[lookup], 0 );
         tripoint_bub_ms target_pos = t_pos + ( t.pos_bub() - pos_bub() );
-        tripoint_bub_ms right = t_pos + tripoint_rel_ms( offset_b[lookup], -offset_b[lookup], 0 );
+        tripoint_bub_ms right = t_pos + tripoint_rel_ms( offset_b[lookup], -offset_a[lookup], 0 );
 
         for( const tripoint_bub_ms &p : {
                  left, target_pos, right
@@ -2105,7 +2106,8 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         }
     }
 
-    if( technique.needs_ammo ) {
+    // A forced technique isn't checked first: the attacker may be unarmed, or out of ammo
+    if( technique.needs_ammo && cur_weapon && !cur_weapon->ammo_current().is_null() ) {
         const itype_id current_ammo = cur_weapon.get_item()->ammo_current();
         // if the weapon needs ammo we now expend it
         cur_weapon.get_item()->consume_one_shot( get_map(), pos, this );
@@ -2266,10 +2268,13 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         std::vector<Creature *> targets;
 
         valid_aoe_technique( t, technique, targets );
+        // A forced technique isn't checked first: there may be no one else to strike
+        if( targets.empty() ) {
+            return;
+        }
 
         //hit only one valid target (pierce through doesn't spread out)
         if( technique.aoe == "impale" ) {
-            // TODO: what if targets is empty
             Creature *const v = random_entry( targets );
             targets.clear();
             targets.push_back( v );
@@ -2280,7 +2285,12 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         for( Creature *const c : targets ) {
             // melee_attack() doesn't say whether the blow landed: the hit statistics do
             const int hits_before = melee::melee_stats.hit_count;
-            melee_attack( *c, false );
+            if( technique.aoe == "impale" ) {
+                // Behind the target, out of the reach melee_attack() insists on
+                melee_attack_abstract( *c, false, technique_choice() );
+            } else {
+                melee_attack( *c, false );
+            }
             if( melee::melee_stats.hit_count > hits_before ) {
                 count_hit++;
             }
