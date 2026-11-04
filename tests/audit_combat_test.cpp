@@ -399,6 +399,30 @@ TEST_CASE( "cmbt-b10_refused_attack_rolls_nothing", "[audit][melee]" )
     }
 }
 
+// CMBT-B10, review: the rider of a mech with dead batteries still made the hit roll (using up the
+// target's dodge, setting off its reactions) before being told the arms won't move.
+TEST_CASE( "cmbt-b10-mech_dead_mech_attack_rolls_nothing", "[audit][melee]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    monster &mech = spawn_test_monster( "mon_mech_recon", you.pos_bub() + tripoint::south );
+    mech.battery_item.reset();
+    REQUIRE_FALSE( mech.check_mech_powered() );
+    npc &rider = spawn_npc( ( you.pos_bub() + tripoint( 3, 3, 0 ) ).xy(), "test_talker" );
+    rider.mount_creature( mech );
+    REQUIRE( rider.is_mounted() );
+    REQUIRE( rider.pos_bub() == mech.pos_bub() );
+
+    you.set_dodges_left( you.get_num_dodges() );
+    const int dodges = you.get_dodges_left();
+    REQUIRE( dodges > 0 );
+    rider.set_moves( 100 );
+    CHECK_FALSE( rider.melee_attack( you, true ) );
+    CHECK( you.get_dodges_left() == dodges );
+    CHECK( melee::get_stats().attack_count == 0 );
+    CHECK( has_message_containing( "dead batteries" ) );
+}
+
 // CMBT-B11: area techniques picked their extra victims as the avatar sees them (hostile to the
 // player), whoever attacked, and the tally ("%d enemies hit!") always said 0 and went to the
 // target. They now pick the attacker's enemies and tell the attacker.

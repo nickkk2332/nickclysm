@@ -791,7 +791,13 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
     // An attack refused or called off here happens before the hit roll, so the target doesn't
     // dodge, react or learn it was attacked. A mech's arm attacks instead of the rider's weapon.
-    if( !( is_mounted() && mounted_creature->has_flag( mon_flag_RIDEABLE_MECH ) ) ) {
+    if( is_mounted() && mounted_creature->has_flag( mon_flag_RIDEABLE_MECH ) ) {
+        if( !mounted_creature->check_mech_powered() ) {
+            add_msg( m_bad, _( "The %s has dead batteries and will not move its arms." ),
+                     mounted_creature->get_name() );
+            return false;
+        }
+    } else {
         if( cur_weap.attack_time( *this ) > move_cost * 20 ) {
             add_msg( m_bad, _( "This weapon is too unwieldy to attack with!" ) );
             return false;
@@ -831,11 +837,6 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     if( is_mounted() ) {
         auto *mons = mounted_creature.get();
         if( mons->has_flag( mon_flag_RIDEABLE_MECH ) ) {
-            if( !mons->check_mech_powered() ) {
-                add_msg( m_bad, _( "The %s has dead batteries and will not move its arms." ),
-                         mons->get_name() );
-                return false;
-            }
             if( mons->type->has_special_attack( "SMASH" ) && one_in( 3 ) ) {
                 add_msg( m_info, _( "The %s hisses as its hydraulic arm pumps forward!" ),
                          mons->get_name() );
