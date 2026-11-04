@@ -158,11 +158,13 @@ static item_location worn_item_of_type( Character &you, const itype_id &type )
     return item_location();
 }
 
+// clear_avatar() leaves the power level alone, so start from none and leave none behind.
 static void give_power_storage( Character &you )
 {
     for( int i = 0; i < 5; ++i ) {
         you.add_bionic( bio_power_storage );
     }
+    you.set_power_level( 0_kJ );
     REQUIRE( !you.has_power() );
     REQUIRE( you.has_max_power() );
 }
@@ -195,6 +197,7 @@ TEST_CASE( "mut-b09_fuel_bionic_burns_from_one_source_per_turn", "[audit][bionic
     // One unit of gasoline gives this cell 8550 J.
     CHECK( units::to_joule( you.get_power_level() ) == 8550 );
     CHECK( own_tank->only_item().charges + spare_tank->only_item().charges == 3 );
+    you.set_power_level( 0_kJ );
     clear_avatar();
 }
 
@@ -220,6 +223,7 @@ TEST_CASE( "mut-b09_source_holding_two_fuels_is_listed_once", "[audit][bionics]"
     REQUIRE( you.activate_bionic( burner ) );
     you.suffer();
     CHECK( hopper->all_items_top().size() == 1 );
+    you.set_power_level( 0_kJ );
     clear_avatar();
 }
 
