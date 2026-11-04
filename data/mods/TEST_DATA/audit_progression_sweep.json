@@ -37,5 +37,24 @@
     "points": 0,
     "chargen_allow_npc": false,
     "recipes": [ "large_tent_kit_from_broken" ]
+  },
+  {
+    "type": "profession",
+    "id": "test_prog_b07_profession",
+    "name": "PROG-B07 test profession",
+    "description": "A mild caffeine habit.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "addictions": [ { "intensity": 10, "type": "caffeine" } ]
+  },
+  {
+    "type": "profession",
+    "subtype": "hobby",
+    "id": "test_prog_b07_hobby",
+    "name": "PROG-B07 test hobby",
+    "description": "A strong caffeine habit.",
+    "points": 0,
+    "chargen_allow_npc": false,
+    "addictions": [ { "intensity": 30, "type": "caffeine" } ]
   }
 ]

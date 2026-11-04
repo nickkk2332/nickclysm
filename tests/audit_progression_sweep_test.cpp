@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "addiction.h"
 #include "avatar.h"
 #include "bionics.h"
 #include "cata_catch.h"
@@ -9,6 +11,8 @@
 #include "character.h"
 #include "debug.h"
 #include "item.h"
+#include "json.h"
+#include "json_loader.h"
 #include "player_helpers.h"
 #include "proficiency.h"
 #include "profession.h"
@@ -136,4 +140,67 @@ TEST_CASE( "prog-b06_a_book_counts_a_proficiency_once", "[audit][proficiency]" )
     const book_proficiency_bonuses nearby = u.book_bonuses_nearby();
     CHECK( nearby.fail_factor( proficiency_prof_knapping ) == Approx( 0.15f ) );
     CHECK( nearby.fail_factor( proficiency_prof_knapping_speed ) == Approx( 0.15f ) );
+}
+
+// ---- PROG-B07 ----
+
+static const addiction_id addiction_caffeine( "caffeine" );
+
+static const profession_id profession_test_prog_b07_hobby( "test_prog_b07_hobby" );
+static const profession_id profession_test_prog_b07_profession( "test_prog_b07_profession" );
+
+static int addictions_of( const Character &you, const addiction_id &type )
+{
+    return static_cast<int>( std::count_if( you.addictions.begin(), you.addictions.end(),
+    [&type]( const addiction & add ) {
+        return add.type == type;
+    } ) );
+}
+
+// The profession's and each hobby's addictions were all appended, so two of one type became
+// two entries: only the first was ever sated, and the other stayed in withdrawal for good.
+TEST_CASE( "prog-b07_profession_and_hobby_addictions_of_a_type_merge", "[audit][chargen]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        get_avatar().addictions.clear();
+        clear_avatar();
+    } );
+    u.addictions.clear();
+    u.prof = &profession_test_prog_b07_profession.obj();
+    u.hobbies.insert( &profession_test_prog_b07_hobby.obj() );
+
+    Character &you = u;
+    you.initialize( false );
+
+    CHECK( addictions_of( u, addiction_caffeine ) == 1 );
+    CHECK( u.addiction_level( addiction_caffeine ) == 30 );
+}
+
+// Characters made before the fix have both entries in their save; loading merges them.
+TEST_CASE( "prog-b07_a_save_with_duplicate_addictions_loads_them_merged", "[audit][chargen]" )
+{
+    clear_avatar();
+    avatar &u = get_avatar();
+    on_out_of_scope restore( []() {
+        get_avatar().addictions.clear();
+        clear_avatar();
+    } );
+    addiction sated( addiction_caffeine, 10 );
+    sated.sated = 2_hours;
+    addiction withdrawn( addiction_caffeine, 30 );
+    withdrawn.sated = -3_days;
+    u.addictions = { sated, withdrawn };
+
+    std::ostringstream os;
+    JsonOut jsout( os );
+    u.serialize( jsout );
+    avatar loaded;
+    loaded.deserialize( json_loader::from_string( os.str() ).get_object() );
+
+    CHECK( addictions_of( loaded, addiction_caffeine ) == 1 );
+    CHECK( loaded.addiction_level( addiction_caffeine ) == 30 );
+    REQUIRE( !loaded.addictions.empty() );
+    CHECK( loaded.addictions.front().sated == 2_hours );
 }

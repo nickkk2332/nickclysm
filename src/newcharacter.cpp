@@ -935,15 +935,16 @@ void Character::initialize( bool learn_recipes )
         }
     }
 
+    // One entry per type, or only the first would ever be sated (PROG-B07)
     std::vector<addiction> prof_addictions = prof->addictions();
     for( const addiction &iter : prof_addictions ) {
-        addictions.push_back( iter );
+        merge_addiction( addictions, iter );
     }
 
     for( const profession *profession : hobbies ) {
         std::vector<addiction> hobby_addictions = profession->addictions();
         for( const addiction &iter : hobby_addictions ) {
-            addictions.push_back( iter );
+            merge_addiction( addictions, iter );
         }
     }
 

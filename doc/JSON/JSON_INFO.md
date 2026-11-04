@@ -2117,7 +2117,7 @@ Note: hobby fields derive from those used in professions.  The following is a no
       { "level": 2, "name": "driving" }
     ],
     "proficiencies": [ "prof_driver" ],                        // (optional) Array of starting proficiencies
-    "addictions": [ { "intensity": 40, "type": "opiate" } ],   // (optional) Array of addictions, added on top of the profession starting addictions
+    "addictions": [ { "intensity": 40, "type": "opiate" } ],   // (optional) Array of addictions, added to the profession starting addictions; an addiction of a type the profession or another hobby also gives takes the higher intensity
     "traits": [ "LOVES_BOOKS" ],                               // (optional) Array of starting traits/mutations
     "CBMs": [ "bio_adrenaline" ],                              // (optional) Array of starting implanted CMBs
     "spells": [ { "id": "create_atomic_light", "level": 5 } ]  // (optional) Array of starting spell IDs the character knows upon creation
