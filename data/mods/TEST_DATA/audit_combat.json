@@ -34,6 +34,49 @@
     "delete": { "flags": [ "IMMOBILE" ] }
   },
   {
+    "//": "CMBT-B14 fixture: every blow lands on a weak point whose EOC records its alpha.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_weakpoint",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "combat test weak point", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests with one weak point.", "//~": "NO_I18N" },
+    "weakpoints": [
+      {
+        "id": "test_cmbt_wp",
+        "name": "test spot",
+        "coverage": 100,
+        "effects": [
+          {
+            "effect_on_conditions": [ "EOC_TEST_CMBT_WP_ALPHA" ],
+            "message": "The %s's test spot is struck!",
+            "damage_required": [ 0, 100 ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "//": "CMBT-B14 fixture: every blow lands on a weak point that kills outright.",
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_weakpoint_deadly",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "combat test deadly weak point", "//~": "NO_I18N" },
+    "description": { "str": "A target for combat tests that dies to any hit.", "//~": "NO_I18N" },
+    "weakpoints": [
+      {
+        "id": "test_cmbt_wp_deadly",
+        "name": "test heart",
+        "coverage": 100,
+        "effects": [ { "instant_death_chance": [ 100, 100 ], "damage_required": [ 0, 100 ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CMBT_WP_ALPHA",
+    "effect": [ { "math": [ "u_test_cmbt_wp_alpha += 1" ] } ]
+  },
+  {
     "//": "CMBT-B07 fixture.",
     "type": "mutation",
     "id": "TEST_CMBT_PSEUDOPOD",

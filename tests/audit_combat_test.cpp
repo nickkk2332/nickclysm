@@ -403,6 +403,29 @@ TEST_CASE( "cmbt-b13_hit_you_effect_only_on_a_hit", "[audit][melee]" )
     }
 }
 
+// CMBT-B14: melee weak point effects got the attack without its attacker, so their EOCs ran
+// without an alpha talker and an instant kill credited nobody.
+TEST_CASE( "cmbt-b14_melee_weakpoint_effects_know_the_attacker", "[audit][melee][weakpoint]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    make_fighter( you );
+
+    SECTION( "the weak point's EOC runs with the attacker as alpha" ) {
+        monster &mon = spawn_test_monster( "mon_test_cmbt_weakpoint", you.pos_bub() + tripoint::east );
+        land_blow( you, mon );
+        CHECK( num_var( you, "test_cmbt_wp_alpha" ) == 1 );
+        CHECK( num_var( mon, "test_cmbt_wp_alpha" ) == 0 );
+    }
+    SECTION( "an instant kill is credited to the attacker" ) {
+        monster &mon = spawn_test_monster( "mon_test_cmbt_weakpoint_deadly",
+                                           you.pos_bub() + tripoint::east, false );
+        land_blow( you, mon );
+        REQUIRE( mon.is_dead() );
+        CHECK( mon.get_killer() == &you );
+    }
+}
+
 // CMBT-B16: the accuracy bonus of a martial-art buff ignored its stacks, and every buff bonus was
 // cut to a whole number before the stacks were counted.
 TEST_CASE( "cmbt-b16_martial_art_buff_bonuses_stack_with_fractions", "[audit][martial_arts]" )
