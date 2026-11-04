@@ -529,10 +529,13 @@ void bp_qualities_provided::load( const JsonObject &jo )
 void body_part_type::reset()
 {
     body_part_factory.reset();
+    // Or the parts of a world loaded earlier stay listed (CHAR-B07)
+    combined_similar_bodyparts.clear();
 }
 
 void body_part_type::finalize_all()
 {
+    combined_similar_bodyparts.clear();
     body_part_factory.finalize();
 }
 
@@ -565,10 +568,16 @@ void body_part_type::finalize()
 
     // populate combined_similar_bodyparts
     if( similar_bodypart.has_value() ) {
+        const auto add_similar = []( std::vector<bodypart_str_id> &similar,
+        const bodypart_str_id & bp ) {
+            if( std::find( similar.begin(), similar.end(), bp ) == similar.end() ) {
+                similar.emplace_back( bp );
+            }
+        };
         // `head` is similar to `head_dragonfly`
-        combined_similar_bodyparts[similar_bodypart.value()].emplace_back( id );
+        add_similar( combined_similar_bodyparts[similar_bodypart.value()], id );
         // `head_dragonfly` is similar to `head`
-        combined_similar_bodyparts[id].emplace_back( similar_bodypart.value() );
+        add_similar( combined_similar_bodyparts[id], similar_bodypart.value() );
     }
 
 }

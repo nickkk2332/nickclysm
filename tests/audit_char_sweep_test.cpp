@@ -1,5 +1,10 @@
+#include <algorithm>
+#include <map>
+#include <set>
+#include <vector>
 
 #include "avatar.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
@@ -9,6 +14,7 @@
 #include "map_helpers.h"
 #include "player_helpers.h"
 #include "skill.h"
+#include "subbodypart.h"
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
@@ -157,5 +163,36 @@ TEST_CASE( "char-b06_no_dexterity_or_dodge_makes_falls_harmless", "[audit][chara
         // One story still makes a perfect landing, three don't.
         CHECK( you.impact( 30, you.pos_bub() ) == 0 );
         CHECK( you.impact( 90, you.pos_bub() ) > 0 );
+    }
+}
+
+// ---- CHAR-B07 ----
+
+// The lists of similar (sub) body parts were static maps that finalize() appended to and that
+// reset() never cleared, so each data reload repeated their entries, and a modded world's parts
+// stayed listed after loading a world without the mod.
+TEST_CASE( "char-b07_similar_sub_body_part_lists_are_rebuilt_not_appended", "[audit][bodypart]" )
+{
+    std::map<sub_bodypart_str_id, std::vector<sub_bodypart_str_id>> before;
+    for( const body_part_type &bp : body_part_type::get_all() ) {
+        for( const sub_bodypart_str_id &sbp : bp.sub_parts ) {
+            before[sbp] = sbp->get_all_combined_similar_sub_bodyparts();
+        }
+    }
+    REQUIRE( std::any_of( before.begin(), before.end(),
+    []( const std::pair<const sub_bodypart_str_id, std::vector<sub_bodypart_str_id>> &entry ) {
+        return !entry.second.empty();
+    } ) );
+
+    // A reload finalizes them again.
+    sub_body_part_type::finalize_all();
+
+    for( const std::pair<const sub_bodypart_str_id, std::vector<sub_bodypart_str_id>> &entry :
+         before ) {
+        CAPTURE( entry.first.str() );
+        const std::vector<sub_bodypart_str_id> after =
+            entry.first->get_all_combined_similar_sub_bodyparts();
+        CHECK( after == entry.second );
+        CHECK( std::set<sub_bodypart_str_id>( after.begin(), after.end() ).size() == after.size() );
     }
 }
