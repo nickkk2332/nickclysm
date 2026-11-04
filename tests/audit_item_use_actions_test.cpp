@@ -52,7 +52,7 @@ static const itype_id itype_tshirt( "tshirt" );
 static const morale_type morale_perm_constrained( "morale_perm_constrained" );
 
 static const oter_str_id oter_field( "field" );
-static const oter_str_id oter_fishing_pond_0_0( "fishing_pond_0_0" );
+static const oter_str_id oter_fishing_pond_0_0_north( "fishing_pond_0_0_north" );
 static const oter_str_id oter_river_center( "river_center" );
 
 static const quality_id qual_HOTPLATE( "HOTPLATE" );
@@ -313,7 +313,7 @@ TEST_CASE( "use-b10_still_water_with_no_fish_is_a_poor_fishing_spot", "[audit][i
     SECTION( "the city fishing pond with no fish in sight is fine" ) {
         // 10 by 10 tiles of still water east of the avatar
         water.paint( east + tripoint_rel_ms( 0, -5, 0 ), east + tripoint_rel_ms( 9, 4, 0 ),
-                     oter_fishing_pond_0_0 );
+                     oter_fishing_pond_0_0_north );
         REQUIRE_FALSE( get_map().has_flag( ter_furn_flag::TFLAG_CURRENT, east ) );
         const std::pair<bool, bool> result = try_fishing( they );
         CHECK( result.first );
