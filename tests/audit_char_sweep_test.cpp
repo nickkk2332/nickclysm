@@ -305,11 +305,15 @@ TEST_CASE( "char-b10_a_vehicle_taken_across_stairs_is_dragged_by_the_rules",
     clear_vehicles();
     map &here = get_map();
     avatar &you = get_avatar();
-    on_out_of_scope restore( [&here]() {
-        get_avatar().grab( object_type::NONE );
+    // The sections move the avatar to another level
+    const tripoint_abs_ms start = you.pos_abs();
+    on_out_of_scope restore( [&here, start]() {
+        avatar &you = get_avatar();
+        you.grab( object_type::NONE );
         clear_vehicles( &here );
         clear_map( -2, 1 );
         clear_avatar();
+        you.setpos( start );
     } );
     // The direction the player picks after taking the stairs
     const tripoint_rel_ms east( 1, 0, 0 );
