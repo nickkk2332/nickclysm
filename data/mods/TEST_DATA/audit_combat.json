@@ -296,5 +296,14 @@
         "flat_bonuses": [ { "stat": "hit", "scale": 1.5 }, { "stat": "dodge", "scale": 0.8 }, { "stat": "block", "scale": 0.6 } ]
       }
     ]
+  },
+  {
+    "//": "CMBT-B11 fixture: a style whose only technique is a dodge counter.",
+    "type": "martial_art",
+    "id": "test_style_cmbt_dodge_counter",
+    "name": { "str": "Test Dodge Counter Style" },
+    "description": "Test martial art that answers every dodge with a counter.",
+    "initiate": [ "You get ready to counter.", "%s gets ready to counter." ],
+    "techniques": [ "test_tm_dodge_counter" ]
   }
 ]

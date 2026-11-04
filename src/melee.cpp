@@ -727,6 +727,18 @@ static std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> attack_techni
     return no_technique_attack();
 }
 
+namespace
+{
+// The latest melee attack to finish, and whether it hit. melee_attack() only says whether an
+// attack was made, and a counter-attack it provokes is a melee attack that finishes first.
+struct finished_attack {
+    const Character *attacker = nullptr;
+    const Creature *target = nullptr;
+    bool hit = false;
+};
+finished_attack last_finished_attack;
+} // namespace
+
 bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                                        const technique_choice &preset,
                                        bool allow_unarmed, int forced_movecost )
@@ -1114,6 +1126,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         dealt_projectile_attack dp = dealt_projectile_attack();
         t.as_character()->on_hit( &here, this, bodypart_str_id::NULL_ID().id(), 0.0f, &dp );
     }
+    last_finished_attack = { this, &t, hits };
     return true;
 }
 
@@ -1861,6 +1874,22 @@ static bool is_aoe_victim( const Character &attacker, const Creature &target, co
            att == Creature::Attitude::HOSTILE;
 }
 
+// Adds the creatures on a tile that an area technique also strikes. A rider shares its mount's
+// tile, and creature_at<Creature>() finds only the mount.
+static void add_aoe_victims( const Character &attacker, const Creature &target,
+                             const tripoint_bub_ms &p, std::vector<Creature *> &targets )
+{
+    creature_tracker &creatures = get_creature_tracker();
+    Creature *const c = creatures.creature_at<Creature>( p );
+    if( is_aoe_victim( attacker, target, c ) ) {
+        targets.push_back( c );
+    }
+    Character *const rider = creatures.creature_at<Character>( p );
+    if( rider != c && is_aoe_victim( attacker, target, rider ) ) {
+        targets.push_back( rider );
+    }
+}
+
 bool Character::valid_aoe_technique( Creature const &t, const ma_technique &technique,
                                      std::vector<Creature *> &targets ) const
 {
@@ -1882,7 +1911,6 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
     int dx = std::max( -1, std::min( 1, t_pos.x() - pos.x() ) );
     int lookup = dy + 1 + 3 * ( dx + 1 );
 
-    creature_tracker &creatures = get_creature_tracker();
     //wide hits all targets adjacent to the attacker and the target
     if( technique.aoe == "wide" ) {
         //check if either (or both) of the squares next to our target contain a possible victim
@@ -1893,10 +1921,7 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
         for( const tripoint_bub_ms &p : {
                  left, right
              } ) {
-            Creature *const c = creatures.creature_at<Creature>( p );
-            if( is_aoe_victim( *this, t, c ) ) {
-                targets.push_back( c );
-            }
+            add_aoe_victims( *this, t, p, targets );
         }
         if( !targets.empty() ) {
             return true;
@@ -1915,10 +1940,7 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
         for( const tripoint_bub_ms &p : {
                  left, target_pos, right
              } ) {
-            Creature *const c = creatures.creature_at<Creature>( p );
-            if( is_aoe_victim( *this, t, c ) ) {
-                targets.push_back( c );
-            }
+            add_aoe_victims( *this, t, p, targets );
         }
         if( !targets.empty() ) {
             return true;
@@ -1930,10 +1952,7 @@ bool Character::valid_aoe_technique( Creature const &t, const ma_technique &tech
             if( tmp == t_pos ) {
                 continue;
             }
-            Creature *const c = creatures.creature_at<Creature>( tmp );
-            if( is_aoe_victim( *this, t, c ) ) {
-                targets.push_back( c );
-            }
+            add_aoe_victims( *this, t, tmp, targets );
         }
         //don't trigger circle for fewer than 2 targets
         if( targets.size() < 2 ) {
@@ -2284,15 +2303,16 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
         //hit the targets in the lists (all candidates if wide or burst, or just the unlucky sod if deep)
         int count_hit = 0;
         for( Creature *const c : targets ) {
-            // melee_attack() doesn't say whether the blow landed: the hit statistics do
-            const int hits_before = melee::melee_stats.hit_count;
+            // Whether this blow landed, not a counter-attack it provoked
+            last_finished_attack = finished_attack();
             if( technique.aoe == "impale" ) {
                 // Behind the target, out of the reach melee_attack() insists on
                 melee_attack_abstract( *c, false, technique_choice() );
             } else {
                 melee_attack( *c, false );
             }
-            if( melee::melee_stats.hit_count > hits_before ) {
+            if( last_finished_attack.attacker == this && last_finished_attack.target == c &&
+                last_finished_attack.hit ) {
                 count_hit++;
             }
         }

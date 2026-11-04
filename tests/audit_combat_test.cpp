@@ -64,11 +64,14 @@ static const matec_id test_tm_ammo( "test_tm_ammo" );
 static const matec_id test_tm_disarm( "test_tm_disarm" );
 static const matec_id test_tm_take( "test_tm_take" );
 
+static const matype_id test_style_cmbt_dodge_counter( "test_style_cmbt_dodge_counter" );
+
 static const move_mode_id move_mode_prone( "prone" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 static const mtype_id mon_zombie_dog( "mon_zombie_dog" );
 
+static const skill_id skill_dodge( "dodge" );
 static const skill_id skill_melee( "melee" );
 static const skill_id skill_unarmed( "unarmed" );
 
@@ -435,6 +438,61 @@ TEST_CASE( "cmbt-b11_aoe_technique_targets_the_attackers_enemies", "[audit][mele
         CHECK( melee::get_stats().hit_count == 2 );
         CHECK( has_message_containing( "1 enemy hit!" ) );
     }
+}
+
+// CMBT-B11, review: creature_at<Creature>() finds a mount, not its rider, so a sweep never struck
+// a hostile rider.
+TEST_CASE( "cmbt-b11-riders_sweep_strikes_a_mounted_rider", "[audit][melee][technique]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    make_fighter( you );
+    const tripoint_bub_ms pos = you.pos_bub();
+    monster &front = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::east );
+    monster &horse = spawn_test_monster( "mon_horse", pos + tripoint::south_east );
+    npc &rider = spawn_npc( ( pos + tripoint( 3, 3, 0 ) ).xy(), "test_talker" );
+    rider.set_attitude( NPCATT_KILL );
+    rider.mount_creature( horse );
+    REQUIRE( rider.is_mounted() );
+    REQUIRE( rider.pos_bub() == horse.pos_bub() );
+
+    land_technique( you, front, test_cmbt_wide );
+    CHECK( rider.has_effect( effect_hit_by_player ) );
+}
+
+// CMBT-B11, review: the tally counted every melee hit made during the sweep, so a dodge counter
+// that landed on the attacker counted as an enemy hit.
+TEST_CASE( "cmbt-b11-counters_tally_counts_only_the_attackers_hits", "[audit][melee][technique]" )
+{
+    combat_scene scene;
+    avatar &you = get_avatar();
+    const tripoint_bub_ms pos = you.pos_bub();
+    monster &front = spawn_test_monster( "mon_test_cmbt_post", pos + tripoint::east );
+    // Beside the sweep: nimble enough to dodge the unskilled avatar, and it counters every dodge
+    npc &guy = spawn_npc( ( pos + tripoint::south_east ).xy(), "test_talker" );
+    guy.set_attitude( NPCATT_KILL );
+    guy.remove_weapon();
+    make_fighter( guy );
+    guy.set_skill_level( skill_dodge, 10 );
+    guy.martial_arts_data->add_martialart( test_style_cmbt_dodge_counter );
+    guy.martial_arts_data->set_style( test_style_cmbt_dodge_counter, false );
+
+    bool countered = false;
+    for( int tries = 0; tries < 20 && !countered; ++tries ) {
+        Messages::clear_messages();
+        guy.set_dodges_left( guy.get_num_dodges() );
+        guy.set_stamina( guy.get_stamina_max() );
+        guy.set_moves( 100 );
+        guy.set_all_parts_hp_to_max();
+        // The counter lands
+        you.set_dodges_left( 0 );
+        you.set_all_parts_hp_to_max();
+        land_technique( you, front, test_cmbt_wide );
+        countered = has_message_containing( "tm-dodge-counters" );
+    }
+    REQUIRE( countered );
+    CHECK( has_message_containing( "0 enemies hit!" ) );
+    CHECK_FALSE( has_message_containing( "1 enemy hit!" ) );
 }
 
 // The share of the avatar's blows that land on an NPC that can't dodge
