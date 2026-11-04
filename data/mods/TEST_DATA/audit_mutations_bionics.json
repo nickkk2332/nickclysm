@@ -1,0 +1,23 @@
+[
+  {
+    "//": "MUT-B06 fixture: flag a character gets while TEST_MUTB06_TOGGLE is on.",
+    "type": "json_flag",
+    "id": "TEST_MUTB06_ON"
+  },
+  {
+    "//": "MUT-B06 fixture: flag a character gets while TEST_MUTB06_TOGGLE is off.",
+    "type": "json_flag",
+    "id": "TEST_MUTB06_OFF"
+  },
+  {
+    "//": "MUT-B06 fixture: an activated trait with a flag for each state.",
+    "type": "mutation",
+    "id": "TEST_MUTB06_TOGGLE",
+    "name": { "str": "Test Flag Toggle" },
+    "points": 0,
+    "description": "Test trait that flags its owner one way when on and another when off.",
+    "active": true,
+    "active_flags": [ "TEST_MUTB06_ON" ],
+    "inactive_flags": [ "TEST_MUTB06_OFF" ]
+  }
+]
