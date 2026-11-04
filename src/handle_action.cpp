@@ -53,6 +53,7 @@
 #include "grapple.h"
 #include "gun_mode.h"
 #include "help.h"
+#include "incapacitation.h"
 #include "input_context.h"
 #include "input_enums.h"
 #include "input_popup.h"
@@ -3225,6 +3226,10 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
 
 bool game::handle_action()
 {
+    if( uquit != QUIT_WATCH && incapacitation::unconscious( get_avatar() ) ) {
+        incapacitation::suppress_moves( get_avatar() );
+        return false;
+    }
     map &here = get_map();
 
     std::string action;

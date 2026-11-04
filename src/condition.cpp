@@ -45,6 +45,7 @@
 #include "generic_factory.h"
 #include "global_vars.h"
 #include "grapple.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_category.h"
 #include "item_location.h"
@@ -1545,6 +1546,28 @@ conditional_t::func f_is_warm( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
         return d.const_actor( is_npc )->is_warm();
+    };
+}
+
+conditional_t::func f_is_knocked_out( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        if( !d.has_actor( is_npc ) ) {
+            return false;
+        }
+        const Creature *who = d.const_actor( is_npc )->get_const_creature();
+        return who && incapacitation::unconscious( *who );
+    };
+}
+
+conditional_t::func f_can_be_knocked_out( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        if( !d.has_actor( is_npc ) ) {
+            return false;
+        }
+        const Creature *who = d.const_actor( is_npc )->get_const_creature();
+        return who && incapacitation::eligibility( *who ) == "eligible";
     };
 }
 
@@ -3525,6 +3548,8 @@ parsers_simple = {
     {"u_is_warm", "npc_is_warm", &conditional_fun::f_is_warm },
     {"u_exists", "npc_exists", &conditional_fun::f_exists },
     {"u_in_execution", "npc_in_execution", &conditional_fun::f_in_execution },
+    {"u_is_knocked_out", "npc_is_knocked_out", &conditional_fun::f_is_knocked_out },
+    {"u_can_be_knocked_out", "npc_can_be_knocked_out", &conditional_fun::f_can_be_knocked_out },
     {"u_is_avatar", "npc_is_avatar", &conditional_fun::f_is_avatar },
     {"u_is_npc", "npc_is_npc", &conditional_fun::f_is_npc },
     {"u_is_character", "npc_is_character", &conditional_fun::f_is_character },

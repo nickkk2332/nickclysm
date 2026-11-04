@@ -46,8 +46,9 @@ cache to 128 IDs. The definition budget includes array IDs and deferred definiti
 Contact IDs advance across saves; loading does not replay contacts.
 These limits keep state bounded without claiming an unlimited event history.
 
-Real knockout/incapacity, fatal reservation/finalization, more physical actions,
-and a transcript/trigger inspector remain separate milestones.
+Real knockout/incapacity is delivered by the [knockout follow-up](07-knockouts.md).
+Fatal reservation/finalization, more physical actions, and a transcript/trigger
+inspector remain separate milestones.
 
 ## Validation
 

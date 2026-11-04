@@ -1,0 +1,47 @@
+[
+  {
+    "type": "ITEM",
+    "id": "execution_demo_sap",
+    "copy-from": "blackjack",
+    "name": { "str": "execution demonstration sap" },
+    "description": "A sap configured to demonstrate a rare knockout after a critical head hit or an overpowering blow against a weaker character."
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_critical_knockout_trigger",
+    "execution": "execution_critical_knockout",
+    "priority": 20,
+    "chance": 0.25,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "character_melee" ],
+      "weapons": [ "execution_demo_sap" ],
+      "critical": true,
+      "body_parts": [ "head" ],
+      "hp_loss": { "minimum": 1 }
+    },
+    "condition": "npc_can_be_knocked_out"
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_strength_takedown_trigger",
+    "execution": "execution_strength_takedown",
+    "priority": 10,
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "character_melee" ],
+      "weapons": [ "execution_demo_sap" ],
+      "target_kind": [ "avatar", "npc" ],
+      "hp_loss": { "minimum": 1 }
+    },
+    "condition": {
+      "and": [
+        "u_is_character",
+        "npc_is_character",
+        "npc_can_be_knocked_out",
+        { "math": [ "u_val('strength') >= n_val('strength') + 4" ] }
+      ]
+    }
+  }
+]

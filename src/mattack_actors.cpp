@@ -29,6 +29,7 @@
 #include "game.h"
 #include "generic_factory.h"
 #include "gun_mode.h"
+#include "incapacitation.h"
 #include "input.h"
 #include "item.h"
 #include "item_factory.h"
@@ -149,6 +150,9 @@ std::unique_ptr<mattack_actor> leap_actor::clone() const
 
 bool leap_actor::call( monster &z ) const
 {
+    if( incapacitation::unconscious( z ) ) {
+        return false;
+    }
     if( !z.has_dest() || !z.can_act() || !z.move_effects( false ) ) {
         add_msg_debug( debugmode::DF_MATTACK, "Monster has no destination or can't act" );
         return false;
@@ -304,6 +308,9 @@ void mon_eoc_actor::load_internal( const JsonObject &obj, const std::string & )
 
 bool mon_eoc_actor::call( monster &mon ) const
 {
+    if( incapacitation::unconscious( mon ) ) {
+        return false;
+    }
     map &here = get_map();
     Creature *target = ( allow_no_target ) ? nullptr : mon.attack_target();
 
@@ -367,6 +374,9 @@ void mon_spellcasting_actor::load_internal( const JsonObject &obj, const std::st
 
 bool mon_spellcasting_actor::call( monster &mon ) const
 {
+    if( incapacitation::unconscious( mon ) ) {
+        return false;
+    }
     if( !mon.can_act() ) {
         return false;
     }
@@ -909,6 +919,9 @@ std::vector<bodypart_id> melee_actor::pick_bodyparts_hit( const Creature *target
 
 bool melee_actor::call( monster &z ) const
 {
+    if( incapacitation::unconscious( z ) ) {
+        return false;
+    }
     map &here = get_map();
 
     Creature *target = find_target( z );
@@ -1409,6 +1422,9 @@ int gun_actor::get_max_range()  const
 
 bool gun_actor::call( monster &z ) const
 {
+    if( incapacitation::unconscious( z ) ) {
+        return false;
+    }
     map &here = get_map();
 
     Creature *target;
@@ -1618,6 +1634,9 @@ void polymorph_special::load_internal( const JsonObject &jo, const std::string &
 
 bool polymorph_special::call( monster &z ) const
 {
+    if( incapacitation::unconscious( z ) ) {
+        return false;
+    }
     const int old_speed = z.get_speed_base();
     const int old_hp = z.get_hp();
     const int old_anger = z.anger;

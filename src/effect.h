@@ -280,6 +280,7 @@ class effect
             clamp_duration();
             apply_int_dur_factor();
             clamp_intensity();
+            initialize_calendar_deadline();
         }
         effect( const effect & ) = default;
         effect &operator=( const effect & ) = default;
@@ -313,6 +314,8 @@ class effect
 
         /** Returns the remaining duration of an effect. */
         time_duration get_duration() const;
+        /** Calendar deadlines expire across saves/unloads and do not count action speed. */
+        bool has_calendar_deadline() const;
         /** Returns the maximum duration of an effect. */
         time_duration get_max_duration() const;
         /** Sets the duration, capping at max duration. */
@@ -457,6 +460,7 @@ class effect
         void deserialize( const JsonObject &jo );
 
     protected:
+        void initialize_calendar_deadline();
         const effect_type *eff_type;
         time_duration duration;
         bodypart_str_id bp;
@@ -464,6 +468,8 @@ class effect
         int intensity;
         time_point start_time;
         effect_source source;
+        // Currently used only by knocked_out. Other effects keep their existing timers.
+        std::optional<time_point> expires_at;
 
 };
 

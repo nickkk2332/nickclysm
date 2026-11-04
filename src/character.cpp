@@ -54,6 +54,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "grapple.h"
+#include "incapacitation.h"
 #include "input_context.h"
 #include "input_enums.h"
 #include "item_location.h"
@@ -1451,7 +1452,8 @@ int Character::swim_speed() const
 
 bool Character::is_on_ground() const
 {
-    return ( !enough_working_legs() && !weapon.has_flag( flag_CRUTCHES ) ) ||
+    return incapacitation::unconscious( *this ) || ( !enough_working_legs() &&
+            !weapon.has_flag( flag_CRUTCHES ) ) ||
            has_effect( effect_downed ) || is_prone();
 }
 
@@ -1961,6 +1963,9 @@ float Character::get_melee() const
 
 bool Character::uncanny_dodge()
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     map &here = get_map();
 
     bool is_u = is_avatar();
@@ -2358,7 +2363,9 @@ void Character::process_turn()
     suffer();
     recalc_speed_bonus();
     //
-    if( !has_effect( effect_ridden ) ) {
+    if( incapacitation::unconscious( *this ) ) {
+        incapacitation::suppress_moves( *this );
+    } else if( !has_effect( effect_ridden ) ) {
         moves += get_speed();
     }
     // NPCs currently don't make any use of their scent, pointless to calculate it
@@ -5668,8 +5675,14 @@ void Character::resume_backlog_activity()
 
 void Character::process_activity()
 {
-    while( get_moves() > 0 && activity ) {
+    while( get_moves() > 0 && activity && !incapacitation::unconscious( *this ) ) {
         activity.do_turn( *this );
+    }
+    if( incapacitation::unconscious( *this ) ) {
+        if( !activity.is_null() && activity.id() != activity_id( "ACT_EXECUTION" ) ) {
+            cancel_activity();
+        }
+        incapacitation::suppress_moves( *this );
     }
 }
 
@@ -6158,6 +6171,19 @@ void Character::use_fire( const int quantity )
 void Character::on_effect_int_change( const efftype_id &eid, int intensity,
                                       const bodypart_id &bp )
 {
+    if( eid.str() == "knocked_out" ) {
+        // Whole-effect removal notifies us before erasing the map entry.
+        if( intensity == 0 && has_effect( eid, bp ) ) {
+            get_effect( eid, bp ).set_duration( 0_turns );
+        }
+        recalc_sight_limits();
+        incapacitation::suppress_moves( *this );
+        if( incapacitation::unconscious( *this ) ) {
+            blocks_left = 0;
+            set_dodges_left( 0 );
+            set_free_dodges_left( 0 );
+        }
+    }
     // Adrenaline can reduce perceived pain (or increase it when you enter comedown).
     // See @ref get_perceived_pain()
     if( eid == effect_adrenaline ) {

@@ -44,6 +44,7 @@
 #include "grapple.h"
 #include "harvest.h"
 #include "imgui/imgui.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_contents.h"
 #include "item_factory.h"
@@ -1388,12 +1389,14 @@ bool monster::has_flag( const flag_id &f ) const
 
 bool monster::can_see() const
 {
-    return has_flag( mon_flag_SEES ) && !effect_cache[VISION_IMPAIRED];
+    return !incapacitation::unconscious( *this ) && has_flag( mon_flag_SEES ) &&
+           !effect_cache[VISION_IMPAIRED];
 }
 
 bool monster::can_hear() const
 {
-    return has_flag( mon_flag_HEARS ) && !has_effect( effect_deaf );
+    return !incapacitation::unconscious( *this ) && has_flag( mon_flag_HEARS ) &&
+           !has_effect( effect_deaf );
 }
 
 bool monster::can_submerge() const
@@ -1449,7 +1452,8 @@ int monster::dig_skill() const
 
 bool monster::flies() const
 {
-    return has_flag( mon_flag_FLIES ) && !has_effect_with_flag( json_flag_DISABLE_FLIGHT );
+    return !incapacitation::unconscious( *this ) && has_flag( mon_flag_FLIES ) &&
+           !has_effect_with_flag( json_flag_DISABLE_FLIGHT );
 }
 
 bool monster::climbs() const
@@ -1518,7 +1522,7 @@ int monster::get_swim_mod() const
 
 bool monster::can_act() const
 {
-    return moves > 0 &&
+    return !incapacitation::unconscious( *this ) && moves > 0 &&
            ( effects->empty() ||
              ( !has_effect( effect_stunned ) && !has_effect( effect_psi_stunned ) &&
                !has_effect( effect_downed ) && !has_effect( effect_webbed ) ) );
@@ -2030,7 +2034,7 @@ bool monster::is_underwater() const
 bool monster::is_on_ground() const
 {
     // TODO: actually make this work
-    return false;
+    return incapacitation::unconscious( *this );
 }
 
 bool monster::has_weapon() const
@@ -2056,6 +2060,9 @@ bool monster::is_elec_immune() const
 
 bool monster::is_immune_effect( const efftype_id &effect ) const
 {
+    if( effect.str() == "knocked_out" ) {
+        return !incapacitation::supported_physiology( *this ) || incapacitation::immune( *this );
+    }
     if( effect == effect_onfire ) {
         return is_immune_damage( damage_heat ) ||
                made_of( phase_id::LIQUID ) ||
@@ -2232,6 +2239,9 @@ bool monster::melee_attack( Creature &target )
 
 bool monster::melee_attack( Creature &target, float accuracy )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     map &here = get_map();
     // Note: currently this method must consume move even if attack hasn't actually happen
     // otherwise infinite loop will happen
@@ -2533,6 +2543,7 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
     const int hp_before = hp;
     hp -= dam;
     execution_combat::record_hp_loss( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
+    incapacitation::wake_on_damage( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
 
     cata::event e = cata::event::make<event_type::monster_takes_damage>( dam, hp < 1 );
     // The monster is the alpha talker, also when nothing hurt it (bleeding, fire, a fall)
@@ -2569,6 +2580,9 @@ bool monster::movement_impaired()
 
 bool monster::move_effects( bool )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     // This function is relatively expensive, we want that cached
     // IMPORTANT: If adding any new effects here, make SURE to
     // add them to hardcoded_movement_impairing in effect.cpp
@@ -2893,6 +2907,9 @@ float monster::stability_roll() const
 
 float monster::get_dodge() const
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return 0;
+    }
     if( has_effect( effect_downed ) || has_flag( json_flag_CANNOT_MOVE ) ) {
         return 0.0f;
     }

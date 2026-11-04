@@ -1,0 +1,71 @@
+[
+  {
+    "type": "execution",
+    "id": "execution_critical_knockout",
+    "name": "Critical knockout",
+    "revision": 1,
+    "control": { "actor": "free", "target": "free" },
+    "max_ticks": 4,
+    "start": "apply",
+    "steps": {
+      "apply": {
+        "action": {
+          "op": "incapacitate",
+          "state": "unconscious",
+          "source": "actor",
+          "duration_ticks": [ 10, 30 ],
+          "wake_on_damage": true,
+          "store_result": "knockout"
+        },
+        "next": { "result": "knockout", "cases": { "applied": "announce" }, "otherwise": "resisted" }
+      },
+      "announce": {
+        "action": { "op": "message", "entry": "knockout", "text": "<target_name> crumples, unconscious." },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "knockout_applied" },
+      "resisted": { "end": "knockout_refused" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "execution_strength_takedown",
+    "copy-from": "execution_critical_knockout",
+    "name": "Overpowering takedown",
+    "start": "qualify",
+    "steps": {
+      "apply": {
+        "action": {
+          "op": "incapacitate",
+          "state": "unconscious",
+          "source": "actor",
+          "duration_ticks": [ 10, 30 ],
+          "wake_on_damage": true,
+          "store_result": "knockout"
+        },
+        "next": { "result": "knockout", "cases": { "applied": "announce" }, "otherwise": "resisted" }
+      },
+      "announce": {
+        "action": { "op": "message", "entry": "knockout", "text": "<actor_name> overwhelms <target_name>, who collapses unconscious." },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "knockout_applied" },
+      "resisted": { "end": "knockout_refused" },
+      "qualify": {
+        "next": {
+          "if": {
+            "and": [
+              "u_is_character",
+              "npc_is_character",
+              "npc_can_be_knocked_out",
+              { "math": [ "u_val('strength') >= n_val('strength') + 4" ] }
+            ]
+          },
+          "then": "apply",
+          "else": "ineligible"
+        }
+      },
+      "ineligible": { "end": "strength_requirement_failed" }
+    }
+  }
+]

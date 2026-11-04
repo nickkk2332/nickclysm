@@ -43,6 +43,7 @@
 #include "game_constants.h"
 #include "grapple.h"
 #include "gun_mode.h"
+#include "incapacitation.h"
 #include "input.h"
 #include "input_context.h"
 #include "input_enums.h"
@@ -1146,6 +1147,9 @@ int Character::fire_gun( const tripoint_bub_ms &target, int shots )
 int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, item &gun,
                          item_location ammo )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return 0;
+    }
     if( !gun.is_gun() ) {
         debugmsg( "%s tried to fire non-gun (%s).", get_name(), gun.tname() );
         return 0;
@@ -1659,6 +1663,9 @@ int Character::thrown_item_total_damage_raw( const item &thrown ) const
 dealt_projectile_attack Character::throw_item( const tripoint_bub_ms &target, const item &to_throw,
         const std::optional<tripoint_bub_ms> &blind_throw_from_pos )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return dealt_projectile_attack();
+    }
     // Copy the item, we may alter it before throwing
     item thrown = to_throw;
     thrown.set_var( "last_act_by_char_id", getID().get_value() );

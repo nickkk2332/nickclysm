@@ -5,7 +5,7 @@ describe a stagger, a brief clash, or an interrupted takedown. Completion does n
 death. One tick is one game turn (one second), regardless of participant speed.
 
 The current implementation supports EOC starts and automatic living-actor melee rules,
-bounded step graphs, native movement and falling, damage/effects, and owned visible/audible
+bounded step graphs, native movement and falling, knockouts, damage/effects, and owned visible/audible
 narration. The broader design in
 [the execution plans](../../Audit/plans/executions/README.md) includes later features;
 those proposed schemas are not a list of currently supported JSON.
@@ -262,6 +262,79 @@ All actions accept `role` (`target` by default, or `actor`) and optional `store_
 | `eoc` | Nonempty `eocs` array. Existing EOCs can manipulate terrain, furniture, items, and other world state. These effects retain their existing limitations and narration rules. |
 | `effect` | Required `effect` ID; `duration_ticks`: 1; `intensity`: 1. Applies the existing native effect. |
 | `damage` | Required `damage_type`; `amount`: 0; `bodypart`: `torso`. Uses ordinary damage handling and armor; reported actual HP change can differ from the amount. |
+| `incapacitate` | Physiological knockout with a separate saved recovery timer. See the knockout contract below. |
+
+### Knockouts and recovery
+
+```json
+{
+  "op": "incapacitate",
+  "state": "unconscious",
+  "role": "target",
+  "source": "actor",
+  "duration_ticks": [ 10, 30 ],
+  "respect_immunity": true,
+  "wake_on_damage": true,
+  "store_result": "knockout"
+}
+```
+
+This applies the native `knocked_out` state. The supported state is `unconscious`;
+duration defaults to 10 game turns and accepts an inclusive range from 1 to 3,600.
+The source defaults to the opposite role and uses native effect attribution:
+character identity/faction or monster faction. Immunity is always respected; requesting
+`respect_immunity: false` is a load error. The scene samples its duration once per
+action occurrence using its saved RNG.
+
+Branch on `execution_result_knockout` (or your chosen result name):
+
+| Result | Meaning |
+| --- | --- |
+| `applied` | The target is knocked out. |
+| `immune` | An immunity flag, effect blocker, or inability to gain effects prevented it. |
+| `unsupported` | Unsupported physiology or context: mounting/riding, being in a vehicle, actively grabbing another creature, or an operation activity. |
+| `already_incapacitated` | A knockout, ordinary sleep, or anesthesia already applies. No timer or wake policy is replaced. |
+| `unavailable` | The required target is missing, dead, fake, or a hallucination. |
+| `interrupted` | A native callback undid the knockout before the action finished. |
+
+Characters are supported. Monsters default to flesh animals without electronic or
+headless flags and outside the zombie/nether species. `KNOCKOUT_VULNERABLE` explicitly
+opts another monster physiology in. `KNOCKOUT_IMMUNE` takes precedence over that opt-in.
+Both flags are registered for monster definitions and for character/effect flags.
+These checks do not infer knockout immunity from inability to sleep.
+
+Knockout suppresses subsequent voluntary movement, melee/ranged attacks, casting,
+activities, blocking/dodging, and ordinary vision and hearing. It does not undo an atomic action already
+in progress. Ordinary work is cancelled; an execution's own avatar activity remains
+under its manager's control. Positive moves are not banked for recovery. Knocked-out
+actors remain alive, occupy their tiles, and still take damage; native gravity and
+environmental effects continue. There is no corpse, kill reward, or on-kill event from
+the knockout itself.
+
+`wake_on_damage: true` wakes on positive applied HP loss, before damage-event callbacks.
+Healing, zero damage, sound, alarms, and ordinary `wake_up` do not clear the state.
+False selects a deeper knockout that lasts until its deadline or explicit removal;
+damage and death still work normally. Removing `knocked_out` through an EOC ends it.
+Ordinary sleep and anesthesia retain their own independent rules.
+
+The deadline and depth are saved with the native effect, independently of any scene.
+Completing, cancelling, or clearing the execution does not wake the target. The timer
+uses game time across save/load and unloading, so actor speed, repeated effect pumps,
+effect pausing, and NPC catch-up do not extend or double-decrement it. Saving and
+information screens remain available while the avatar is unconscious.
+
+The read-only conditions `u_is_knocked_out` / `npc_is_knocked_out` test this exact state
+and observe expiry immediately. They do not classify ordinary sleep as a knockout.
+`u_can_be_knocked_out` / `npc_can_be_knocked_out` check current admission without rolls
+or effects. Missing and non-creature roles return false. `execution_incapacitation_ticks`
+records the sampled duration; `execution_unconscious` records the state at action return.
+
+[knockout.json](../../data/json/executions/knockout.json) supplies a critical-knockout
+scene and a takedown requiring a real character strength advantage of at least four.
+The optional demo sap adds critical-head-hit and strength rules; ordinary weapons
+acquire no automatic knockout rule.
+
+### Message pools
 
 A message pool looks like:
 
@@ -426,6 +499,6 @@ narration each retain 128 segments. Native message-history limits still apply.
 
 The reference content is [knife_stagger.json](../../data/json/executions/knife_stagger.json).
 It rolls 1–4 backward tiles, stops before a ledge, tries a 50% native tumble, or emits
-two wounded beats. It can end with survival. Fatal-hit reservation, explicit knockout
-physiology, additional automatic combat producers, offscreen simulation, a dedicated transcript
+two wounded beats. It can end with survival. Fatal-hit reservation,
+additional automatic combat producers, offscreen scene simulation, a dedicated transcript
 inspector UI, and additional typed physical actions remain later milestones.

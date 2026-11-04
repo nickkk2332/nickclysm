@@ -25,6 +25,7 @@
 #include "flag.h"
 #include "flexbuffer_json.h"
 #include "game.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_location.h"
 #include "json.h"
@@ -552,7 +553,9 @@ struct execution_manager::impl {
             return;
         }
         const auto target = hold( role_ref( scene, action.role ) );
-        const auto source = hold( action.role == "actor" ? scene.target : scene.actor );
+        const auto source = hold( action.type == execution_action::kind::incapacitate ?
+                                  role_ref( scene, action.source ) :
+                                  action.role == "actor" ? scene.target : scene.actor );
         if( !target ) {
             result( scene, action, "unavailable" );
             return;
@@ -561,6 +564,13 @@ struct execution_manager::impl {
             target->add_effect( effect_source( source.get() ), action.effect,
                                 time_duration::from_turns( action.duration ), false, action.intensity );
             result( scene, action, target->has_effect( action.effect ) ? "applied" : "immune" );
+        } else if( action.type == execution_action::kind::incapacitate ) {
+            const int duration = scene.roll( action.incapacity_duration.min, action.incapacity_duration.max );
+            const std::string status = incapacitation::apply( *target, source.get(),
+                                       time_duration::from_turns( duration ), action.wake_on_damage );
+            scene.view.context["execution_incapacitation_ticks"] = diag_value{ duration };
+            scene.view.context["execution_unconscious"] = diag_value{ incapacitation::unconscious( *target ) ? 1 : 0 };
+            result( scene, action, status );
         } else if( action.type == execution_action::kind::damage ) {
             const bodypart_id bp = target->as_character() ? action.bodypart.id() : bodypart_id();
             const int before = target->get_hp( bp );

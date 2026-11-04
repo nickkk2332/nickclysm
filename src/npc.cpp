@@ -3691,6 +3691,9 @@ void npc::on_load( map *here )
         for( auto &elem : *effects ) {
             for( auto &_effect_it : elem.second ) {
                 effect &e = _effect_it.second;
+                if( e.has_calendar_deadline() ) {
+                    continue;
+                }
                 const time_duration &time_left = e.get_duration();
                 if( time_left > 1_turns ) {
                     if( time_left < elapsed_dur ) {

@@ -42,6 +42,7 @@
 #include "game.h"
 #include "game_constants.h"
 #include "grapple.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_location.h"
 #include "level_cache.h"
@@ -493,7 +494,9 @@ void Creature::process_turn()
     process_turn_no_moves();
 
     // add an appropriate number of moves
-    if( !has_effect( effect_ridden ) ) {
+    if( incapacitation::unconscious( *this ) ) {
+        incapacitation::suppress_moves( *this );
+    } else if( !has_effect( effect_ridden ) ) {
         moves += get_speed();
     }
 }
@@ -607,6 +610,10 @@ bool Creature::sees( const map &here, const Creature &critter ) const
     // Creatures always see themselves (simplifies drawing).
     if( &critter == this ) {
         return true;
+    }
+
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
     }
 
     if( std::abs( posz() - critter.posz() ) > fov_3d_z_range ) {
@@ -779,6 +786,9 @@ bool Creature::sees( const map &here, const Creature &critter ) const
 bool Creature::sees( const map &here, const tripoint_bub_ms &t, bool is_avatar,
                      int range_mod ) const
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     if( std::abs( posz() - t.z() ) > fov_3d_z_range ) {
         return false;
     }
@@ -1835,6 +1845,9 @@ bool Creature::attack_air( const tripoint_bub_ms &p )
 
 bool Creature::dodge_check( float hit_roll, bool force_try, float )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     // If successfully uncanny dodged, no need to calculate dodge chance
     if( uncanny_dodge() ) {
         return true;
@@ -1972,7 +1985,10 @@ void Creature::add_effect( const effect_source &source, const efftype_id &eff_id
     if( matching_map != effects->end() ) {
         auto &bodyparts = matching_map->second;
         auto found_effect = bodyparts.find( bp );
-        if( found_effect != bodyparts.end() ) {
+        // An expired knockout may still await cleanup after damage or clock expiry.
+        // Replace it through the new-effect path below, without erasing a live iterator.
+        if( found_effect != bodyparts.end() &&
+            !( eff_id.str() == "knocked_out" && found_effect->second.get_duration() <= 0_turns ) ) {
             found = true;
             effect &e = found_effect->second;
             const int prev_int = e.get_intensity();
@@ -2260,6 +2276,7 @@ void Creature::process_effects()
         for( auto &_it : elem.second ) {
             // Do not freeze the effect with the FREEZE_EFFECTS flag.
             if( has_flag( json_flag_FREEZE_EFFECTS ) &&
+                !_it.second.has_calendar_deadline() &&
                 !_it.second.has_flag( json_flag_FREEZE_EFFECTS ) ) {
                 continue;
             }
@@ -2390,7 +2407,8 @@ void Creature::set_moves( int nmoves )
 
 bool Creature::in_sleep_state() const
 {
-    return has_effect( effect_sleep ) || has_effect( effect_lying_down ) ||
+    return incapacitation::unconscious( *this ) ||
+           has_effect( effect_sleep ) || has_effect( effect_lying_down ) ||
            has_effect( effect_npc_suspend );
 }
 

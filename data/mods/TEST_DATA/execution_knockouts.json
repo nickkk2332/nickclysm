@@ -1,0 +1,98 @@
+[
+  {
+    "type": "effect_type",
+    "id": "test_knockout_uncanny",
+    "flags": [ "UNCANNY_DODGE" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_knockout_immune",
+    "max_duration": "1 h",
+    "flags": [ "KNOCKOUT_IMMUNE" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_knockout_vulnerable",
+    "max_duration": "1 h",
+    "flags": [ "KNOCKOUT_VULNERABLE" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_execution_knockout_animal",
+    "copy-from": "mon_dog",
+    "name": { "str_sp": "knockout test animal" },
+    "description": "Tests physiological knockout behavior.",
+    "hp": 10000,
+    "melee_skill": 50,
+    "melee_dice": 1,
+    "melee_dice_sides": 1,
+    "melee_damage": [ { "damage_type": "pure", "amount": 3 } ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_execution_knockout_immune",
+    "copy-from": "mon_execution_knockout_animal",
+    "extend": { "flags": [ "KNOCKOUT_IMMUNE" ] }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_knockout",
+    "name": "Knockout test",
+    "control": { "actor": "free", "target": "held" },
+    "max_ticks": 5,
+    "start": "apply",
+    "steps": {
+      "apply": {
+        "action": {
+          "op": "incapacitate",
+          "state": "unconscious",
+          "duration_ticks": [ 10, 30 ],
+          "wake_on_damage": true,
+          "store_result": "ko"
+        },
+        "next": { "result": "ko", "cases": { "applied": "announce" }, "otherwise": "refused" }
+      },
+      "announce": {
+        "action": { "op": "message", "text": "<target_name> crumples, unconscious." },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "knockout_applied" },
+      "refused": { "end": "knockout_refused" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_knockout_deep",
+    "copy-from": "test_exec_knockout",
+    "steps": {
+      "apply": {
+        "action": { "op": "incapacitate", "duration_ticks": 20, "wake_on_damage": false, "store_result": "ko" },
+        "end": "knocked_out"
+      }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_knockout_avatar",
+    "copy-from": "test_exec_knockout",
+    "control": { "actor": "held", "target": "free" },
+    "steps": {
+      "apply": {
+        "action": { "op": "incapacitate", "role": "actor", "source": "target", "duration_ticks": 20, "store_result": "ko" },
+        "end": "knocked_out"
+      }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_knockout_repeat",
+    "copy-from": "test_exec_knockout",
+    "steps": {
+      "apply": {
+        "repeat": { "count": 2, "interval_ticks": 1, "first_after_ticks": 0 },
+        "action": { "op": "incapacitate", "duration_ticks": 20, "store_result": "ko" },
+        "end": "knocked_out"
+      }
+    }
+  }
+]

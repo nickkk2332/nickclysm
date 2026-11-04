@@ -21,6 +21,7 @@
 #include "flexbuffer_json.h"
 #include "game_constants.h"
 #include "generic_factory.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_group.h"
 #include "magic.h"
@@ -1283,7 +1284,7 @@ class mattack_hardcoded_wrapper : public mattack_actor
 
         ~mattack_hardcoded_wrapper() override = default;
         bool call( monster &m ) const override {
-            return cpp_function( &m );
+            return !incapacitation::unconscious( m ) && cpp_function( &m );
         }
         std::unique_ptr<mattack_actor> clone() const override {
             return std::make_unique<mattack_hardcoded_wrapper>( *this );

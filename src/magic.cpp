@@ -34,6 +34,7 @@
 #include "game_constants.h"
 #include "generic_factory.h"
 #include "imgui/imgui.h"
+#include "incapacitation.h"
 #include "input_context.h"
 #include "input_enums.h"
 #include "inventory.h"
@@ -1286,6 +1287,9 @@ bool spell::is_spell_class( const trait_id &mid ) const
 
 bool spell::can_cast( const Character &guy ) const
 {
+    if( incapacitation::unconscious( guy ) ) {
+        return false;
+    }
     if( guy.has_flag( json_flag_CANNOT_ATTACK ) ) {
         return false;
     }
