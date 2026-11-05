@@ -53,6 +53,8 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_combat.h"
+#include "execution_runtime.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "gamemode.h"
@@ -892,6 +894,10 @@ bool game::save_external_options_record()
 
 bool game::save()
 {
+    if( u.death_finalizing() || executions().processing_actions() ||
+        execution_combat::attack_in_progress() ) {
+        return false;
+    }
     if( save_is_dirty ) {
         popup( _( "The game is in an unsupported state after using debug tools and cannot be saved." ) );
         return false;

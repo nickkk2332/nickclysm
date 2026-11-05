@@ -4,8 +4,9 @@ The supported schema is documented in [EXECUTIONS.md](../../../doc/JSON/EXECUTIO
 
 This milestone reserves final death resolution for a selected NPC/monster primary
 melee hit. It preserves the actual fatal injury while the saved sequence performs
-its short graph. Avatar fatal deferral, other combat producers and a medical injury
-model remain separate work.
+its short graph. [Avatar fatal deferral](09-avatar-fatal-deferral.md) extends that
+contract with its own player opt-in and lifecycle. Other combat producers and a
+medical injury model remain separate work.
 
 ## Admission and ordering
 

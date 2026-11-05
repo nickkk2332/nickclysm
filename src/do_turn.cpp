@@ -23,6 +23,7 @@
 #include "cached_options.h"
 #include "calendar.h"
 #include "execution_runtime.h"
+#include "execution_fatal.h"
 #ifdef TILES
 #include "cata_imgui.h"
 #endif
@@ -516,10 +517,13 @@ void overmap_npc_move()
 
 void game::handle_progress_ui()
 {
+    if( test_mode ) {
+        return;
+    }
     avatar &u = get_avatar();
 
     // Keep saves and information screens accessible without granting physical actions.
-    if( incapacitation::unconscious( u ) && !test_mode ) {
+    if( ( incapacitation::unconscious( u ) || execution_fatal::pending( u ) ) && !test_mode ) {
         input_context ctxt = get_default_mode_input_context();
         const std::string action = ctxt.handle_input( 0 );
         if( action == "save" ) {
@@ -528,6 +532,8 @@ void game::handle_progress_ui()
             }
         } else if( action == "quicksave" ) {
             quicksave();
+        } else if( action == "pause" && execution_fatal::pending( u ) ) {
+            executions().settle_fatal( u, "player_cancelled" );
         } else if( action == "player_data" ) {
             u.disp_info( true );
         } else if( action == "messages" ) {
@@ -550,7 +556,12 @@ void game::handle_progress_ui()
     bool wait_redraw = false;
     std::string wait_message;
     time_duration wait_refresh_rate;
-    if( incapacitation::unconscious( u ) ) {
+    if( execution_fatal::pending( u ) ) {
+        wait_redraw = true;
+        wait_message = _( "You are mortally wounded…" );
+        wait_message += string_format( _( "\n%s to skip" ), press_x( ACTION_PAUSE ) );
+        wait_refresh_rate = 1_turns;
+    } else if( incapacitation::unconscious( u ) ) {
         wait_redraw = true;
         wait_message = _( "You are unconscious…" );
         wait_refresh_rate = 1_turns;
@@ -636,6 +647,9 @@ bool game::do_turn()
 
     timed_event_manager &timed_events = get_timed_events();
     executions().process();
+    if( get_avatar().death_finalized() && is_game_over() ) {
+        return turn_handler::cleanup_at_end();
+    }
     timed_events.process();
     get_item_wakeups().process( calendar::turn );
     if( calendar::once_every( 1_hours ) ) {
@@ -712,7 +726,8 @@ bool game::do_turn()
     }
 
     // avatar processes human input through handle_action()
-    if( ( !u.has_effect( effect_sleep ) && !incapacitation::unconscious( u ) ) ||
+    if( ( !u.has_effect( effect_sleep ) && !incapacitation::unconscious( u ) &&
+          !execution_fatal::pending( u ) ) ||
         uquit == QUIT_WATCH ) {
         if( u.get_moves() > 0 || uquit == QUIT_WATCH ) {
             while( u.get_moves() > 0 || uquit == QUIT_WATCH ) {

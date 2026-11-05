@@ -1119,10 +1119,11 @@ class game
         // If loc is empty then use all the items in character inventory including bionics.
         void item_action_menu( item_location loc = item_location() ); // Displays item action menu
 
-        bool is_game_over();     // Returns true if the player quit or died
         void bury_screen() const;// Bury a dead character (record their last words)
         void death_screen();     // Display our stats, "GAME OVER BOO HOO"
     public:
+        /** Native death/prevention and game-over presentation at a safe loop boundary. */
+        bool is_game_over();
         /**
          * If there is a robot (that can be disabled), query the player
          * and try to disable it.

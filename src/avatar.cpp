@@ -34,6 +34,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -148,6 +149,10 @@ avatar &avatar::operator=( avatar && ) = default;
 
 void avatar::control_npc( npc &np, const bool debug )
 {
+    if( death_finalizing_ || death_finalized_ || execution_fatal::pending( *this ) ||
+        execution_fatal::pending( np ) ) {
+        return;
+    }
     if( !np.is_player_ally() ) {
         debugmsg( "control_npc() called on non-allied npc %s", np.name );
         return;
@@ -166,6 +171,7 @@ void avatar::control_npc( npc &np, const bool debug )
     swap_character( get_shadow_npc() );
     // the avatar character is no longer a follower NPC; a change of bodies recruits and
     // dismisses no one
+    reset_death_state();
     remove_npc_follower_quietly( getID() );
     // the previous avatar character is now a follower
     add_npc_follower_quietly( np.getID() );

@@ -59,8 +59,9 @@ weapons do not acquire automatic knockout rules.
 
 The new action supports finite gameplay unconsciousness, not a medical injury model.
 The [fatal melee follow-up](08-fatal-hits.md) delivers NPC/monster fatal reservation
-and native finalization. More automatic combat producers, avatar fatal deferral,
-richer physical actions and the dedicated inspector remain later work. Scripted world effects and
+and native finalization; [avatar deferral](09-avatar-fatal-deferral.md) adds the player
+lifecycle. More automatic combat producers, richer physical actions and the dedicated
+inspector remain later work. Scripted world effects and
 forced displacement remain available; they are not voluntary actor decisions.
 
 ## Validation

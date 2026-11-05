@@ -1,0 +1,9 @@
+[
+  {
+    "type": "execution",
+    "id": "execution_avatar_fatal_knife_stagger",
+    "copy-from": "execution_fatal_knife_stagger",
+    "name": "Last wounded steps",
+    "allow_avatar_fatal_target": true
+  }
+]

@@ -1,0 +1,93 @@
+[
+  {
+    "type": "execution",
+    "id": "test_exec_avatar_fatal_hold",
+    "copy-from": "test_exec_fatal_hold",
+    "name": "Player fatal reservation test",
+    "allow_avatar_fatal_target": true
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_avatar_fatal_walk",
+    "copy-from": "test_exec_fatal_walk",
+    "name": "Player fatal movement test",
+    "allow_avatar_fatal_target": true
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_avatar_fatal_fall",
+    "copy-from": "test_exec_fatal_fall",
+    "name": "Player fatal landing test",
+    "allow_avatar_fatal_target": true
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_avatar_fatal_timeout",
+    "copy-from": "test_exec_fatal_timeout",
+    "name": "Player fatal deadline test",
+    "allow_avatar_fatal_target": true
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_avatar_fatal_hold",
+    "event": "fatal_hit",
+    "execution": "test_exec_avatar_fatal_hold",
+    "match": { "target_kind": [ "avatar" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_case", "default": "" }, "hold" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_avatar_fatal_walk",
+    "event": "fatal_hit",
+    "execution": "test_exec_avatar_fatal_walk",
+    "match": { "target_kind": [ "avatar" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_case", "default": "" }, "walk" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_avatar_fatal_fall",
+    "event": "fatal_hit",
+    "execution": "test_exec_avatar_fatal_fall",
+    "match": { "target_kind": [ "avatar" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_case", "default": "" }, "fall" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_avatar_fatal_timeout",
+    "event": "fatal_hit",
+    "execution": "test_exec_avatar_fatal_timeout",
+    "match": { "target_kind": [ "avatar" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_case", "default": "" }, "timeout" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_avatar_fatal_no_opt_in",
+    "event": "fatal_hit",
+    "execution": "test_exec_fatal_hold",
+    "match": { "target_kind": [ "avatar" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_case", "default": "" }, "no_opt_in" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_avatar_fatal_zero",
+    "event": "fatal_hit",
+    "execution": "test_exec_avatar_fatal_hold",
+    "chance": 0,
+    "match": { "target_kind": [ "avatar" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_case", "default": "" }, "zero" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AVATAR_FATAL_EARLY_PREVENTION",
+    "eoc_type": "PREVENT_DEATH",
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_prevent", "default": "" }, "early" ] },
+    "effect": [ { "math": [ "exec_avatar_preventions += 1" ] }, "u_prevent_death" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AVATAR_FATAL_LATE_PREVENTION",
+    "eoc_type": "AVATAR_DEATH",
+    "condition": { "compare_string": [ { "global_val": "exec_avatar_prevent", "default": "" }, "late" ] },
+    "effect": [ { "math": [ "exec_avatar_preventions += 1" ] }, "u_prevent_death" ]
+  }
+]

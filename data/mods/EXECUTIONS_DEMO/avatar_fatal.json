@@ -1,0 +1,17 @@
+[
+  {
+    "type": "execution_trigger",
+    "id": "demo_avatar_fatal_knife_trigger",
+    "event": "fatal_hit",
+    "execution": "execution_avatar_fatal_knife_stagger",
+    "chance": 0.2,
+    "cooldown": { "ticks": 30, "scope": "actor" },
+    "match": {
+      "channels": [ "character_melee" ],
+      "weapons": [ "execution_demo_fatal_knife" ],
+      "source_kind": [ "npc" ],
+      "target_kind": [ "avatar" ],
+      "hp_loss": { "minimum": 1 }
+    }
+  }
+]

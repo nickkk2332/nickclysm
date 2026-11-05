@@ -82,6 +82,9 @@ bool character_has_item_with_var_val( const Character &they, const std::string &
 
 void clear_character( Character &dummy, bool skip_nutrition )
 {
+    if( avatar *player = dummy.as_avatar() ) {
+        player->reset_death_state();
+    }
     map &here = get_map();
 
     dummy.set_body();

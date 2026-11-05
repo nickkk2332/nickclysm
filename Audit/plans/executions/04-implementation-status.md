@@ -34,8 +34,9 @@ Still to develop:
   living-melee slice, committed primary damage snapshots and arbitration are now in
   the [automatic-trigger follow-up](06-automatic-triggers.md).
 - Phase 6's NPC/monster fatal primary-melee reservation and native finalization are
-  delivered by the [fatal melee follow-up](08-fatal-hits.md); avatar fatal deferral
-  and further combat producers remain. Real knockout/incapacity is delivered by the
+  delivered by the [fatal melee follow-up](08-fatal-hits.md), with the player lifecycle
+  in [avatar deferral](09-avatar-fatal-deferral.md). Further combat producers remain.
+  Real knockout/incapacity is delivered by the
   [knockout follow-up](07-knockouts.md).
 - Phase 4's owned appendable narration and auditory audiences are now delivered in the
   [narration follow-up](05-narration-milestone.md); the dedicated transcript inspector UI remains.

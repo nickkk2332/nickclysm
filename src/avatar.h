@@ -136,6 +136,20 @@ class avatar : public Character
             return this;
         }
 
+        void die( map *here, Creature *killer ) override;
+        void prevent_death() override;
+        /** Run native prevention/events once; presentation waits for the game loop. */
+        bool finalize_death( Creature *killer );
+        bool death_finalized() const {
+            return death_finalized_;
+        }
+        bool death_finalizing() const {
+            return death_finalizing_;
+        }
+        void place_final_corpse( map &here );
+        /** New character/body or a genuine rescue, never a cinematic HP adjustment. */
+        void reset_death_state();
+
         mfaction_id get_monster_faction() const override;
 
         void witness_thievery( item * ) override {}
@@ -461,6 +475,12 @@ class avatar : public Character
         time_duration time_since_relocated() const;
 
     private:
+        friend class game;
+        enum class death_presentation : unsigned char { pending, presented, watching, corpse_placed };
+        bool death_committed_ = false;
+        bool death_finalized_ = false;
+        death_presentation death_presentation_ = death_presentation::pending;
+        bool death_finalizing_ = false; // NOLINT(cata-serialize)
         void on_move( const tripoint_abs_ms &old_pos ) override;
         // where the avatar has stood around since relocated_at; not serialized
         std::optional<tripoint_abs_ms> relocation_anchor;

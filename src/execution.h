@@ -96,6 +96,7 @@ struct execution_definition {
     bool interrupt_displacement = true;
     bool require_weapon = false;
     bool allow_fatal_target = false;
+    bool allow_avatar_fatal_target = false;
     std::string start;
     global_variables::impl_t locals;
     std::map<std::string, execution_step> steps;
