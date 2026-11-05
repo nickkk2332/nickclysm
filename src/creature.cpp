@@ -27,6 +27,7 @@
 #include "creature_tracker.h"
 #include "cursesdef.h"
 #include "damage.h"
+#include "damage_transaction.h"
 #include "debug.h"
 #include "effect.h"
 #include "enum_traits.h"
@@ -1648,6 +1649,15 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
     damage_instance d = dam; // copy, since we will mutate in absorb_hit
 
     dealt_damage_instance dealt_dams;
+    damage_packet_scope transaction( source, *this, bp, d, [&]() {
+        return execution_damage.context();
+    } );
+    if( !transaction.before_armor( d ) || transaction.blocked( d ) ) {
+        transaction.finish( d );
+        return dealt_dams;
+    }
+    const std::optional<damage_instance> before_armor = transaction.enabled() ?
+            std::make_optional( d ) : std::nullopt;
     weakpoint_attack attack_copy = attack;
     if( attack.accuracy == -1.0 ) {
         attack_copy.source = source;
@@ -1658,6 +1668,10 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
     dealt_dams.wp_hit = wkpt == nullptr ? "" : wkpt->get_name();
     if( wkpt ) {
         execution_damage.set_weakpoint( wkpt->id );
+    }
+    if( !transaction.after_armor( d ) || transaction.blocked( d ) ) {
+        transaction.finish( d );
+        return dealt_dams;
     }
 
     // Add up all the damage units dealt
@@ -1671,7 +1685,11 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         }
     }
     // get eocs for all damage effects
-    d.ondamage_effects( source, this, dam, bp.id() );
+    d.ondamage_effects( source, this, before_armor ? *before_armor : dam, bp.id() );
+    if( !transaction.valid() ) {
+        transaction.finish( d );
+        return dealt_damage_instance();
+    }
 
     if( total_base_damage < total_damage ) {
         // Only deal more HP than remains if damage not including crit multipliers is higher.
@@ -1680,16 +1698,23 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
     if( !bp->has_flag( json_flag_BIONIC_LIMB ) ) {
         mod_pain( total_pain, bp );
     }
+    if( !transaction.valid() ) {
+        transaction.finish( d );
+        return dealt_damage_instance();
+    }
 
+    transaction.arm_hp_capture();
     execution_damage.arm_hp_capture( bp, dealt_dams );
     apply_damage( source, bp, total_damage );
     execution_damage.disarm_hp_capture();
+    transaction.disarm_hp_capture();
 
     if( wkpt != nullptr ) {
         // attack_copy: a melee attack only gets its attacker here
         wkpt->apply_effects( *this, total_damage, attack_copy );
         add_msg_debug( debugmode::DF_WEAKPOINTS, "applying weakpoint: %s", wkpt->id );
     }
+    transaction.finish( d );
 
     return dealt_dams;
 }

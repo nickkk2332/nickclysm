@@ -38,7 +38,7 @@ retain their existing policies.
 | `interrupt_damage` | `true`; actual positive caster HP loss cancels pending/winding requests. Damaging only the target does not cancel a charge. |
 | `interrupt_displacement` | `true`; moving the caster from its request origin interrupts. With `false`, range and obstruction still use the current position. |
 | `move_cost` | `100`, integer 0–1,000,000, committed once at release. Can create normal action debt. |
-| `energy_cost` | `{ "resource": "none", "amount": 0 }`. Also supports `mana` and `stamina`, integer amount 0–1,000,000. Nonzero Character resource costs refuse monsters as `unsupported_resource`. No avatar fallback. |
+| `energy_cost` | `{ "resource": "none", "amount": 0 }`. Also supports `mana` and `stamina`, integer amount 0–1,000,000. Nonzero Character resource costs refuse monsters as `unsupported_resource`. NPC mana is supported; NPC stamina costs also refuse because native NPC stamina is synthetic. No avatar fallback. |
 | `allow_effect_only` | `false`. Explicit permission for the separate free-effect invocation described below. |
 | `spell` | `{ "id": "spell_id", "level": 0 }`; fixed level 0–100, converted to spell XP once on admission. Calls the real caster's `cast_all_effects`. |
 | `eocs` | Nonempty release command list; mutually exclusive with `spell`. Uses the ability's caster/target convention. Each command resolves participants again; losing a required participant before a later command stops the remainder. |
@@ -49,6 +49,12 @@ Admission checks the ability's native eligibility and fixed costs. The spell
 adapter additionally checks the spell's caster and target conditions during real
 release. Queries do not run these potentially stateful conditions or evaluate
 spell formulas. The native spell effect keeps its own filtering and formulas.
+
+Explicit mana costs debit the current pool directly for avatars and NPCs;
+stamina costs use the avatar's real pool. NPC stamina is synthetic in the native
+engine, so nonzero NPC stamina costs refuse with `unsupported_resource`. Debug
+fatigue exemptions do not waive a declared avatar power cost, and payment does
+not clamp away unspent resources above a changed maximum.
 
 The ability owns timing and payment. Its spell adapter does **not** learn the
 spell, award XP, roll native casting failure, consume native components, spend the
@@ -244,3 +250,10 @@ This foundation does not add general custom resource pools, cooldown groups,
 hold/release input charging, sustained powers, owned buffs/summons/areas,
 pre-damage shields, redirects, persistent beams or an ability-selection AI.
 Those require the later [powers expansion stages](../../Audit/powers/05-expansion-plan.md).
+
+## Typed damage defenses
+
+Native typed damage released by an ability can encounter opt-in
+[damage rules](DAMAGE_TRANSACTIONS.md), including exact-capacity shields and
+reflection. Packet reports retain explicitly bound ability context, while
+ability contact observations continue to report the native primary HP result.

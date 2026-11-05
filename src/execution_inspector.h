@@ -7,12 +7,14 @@
 struct execution_inspection;
 struct execution_trigger_report;
 struct ability_view;
+struct damage_transaction_view;
 
 namespace execution_inspector
 {
 std::string format_scene( const execution_inspection &scene );
 std::string format_trigger( const execution_trigger_report &report );
 std::string format_ability( const ability_view &ability );
+std::string format_damage( const damage_transaction_view &damage );
 void show();
 } // namespace execution_inspector
 

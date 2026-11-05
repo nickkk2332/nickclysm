@@ -1,0 +1,252 @@
+[
+  {
+    "type": "effect_type",
+    "id": "test_damage_shield",
+    "name": [ "shield fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_shield",
+    "required_effect": "test_damage_shield",
+    "actions": [ { "operation": "absorb", "resource": "mana" } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_pre",
+    "name": [ "pre fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_pre",
+    "required_effect": "test_damage_pre",
+    "actions": [ { "operation": "absorb", "resource": "mana" } ],
+    "stage": "before_armor"
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_shell",
+    "name": [ "shell fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_shell",
+    "required_effect": "test_damage_shell",
+    "actions": [ { "operation": "absorb", "resource": "none", "maximum": 7 } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_stamina",
+    "name": [ "stamina fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_stamina",
+    "required_effect": "test_damage_stamina",
+    "actions": [ { "operation": "absorb", "resource": "stamina", "cost_per_damage": 2 } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_convert",
+    "name": [ "convert fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_convert",
+    "required_effect": "test_damage_convert",
+    "actions": [ { "operation": "convert", "from": "bash", "to": "cut" } ],
+    "stage": "before_armor"
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_order_a",
+    "name": [ "order_a fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_order_a",
+    "required_effect": "test_damage_order_a",
+    "actions": [ { "operation": "scale", "value": 0.5 } ],
+    "priority": 20
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_order_b",
+    "name": [ "order_b fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_order_b",
+    "required_effect": "test_damage_order_b",
+    "actions": [ { "operation": "cap", "value": 8 } ],
+    "priority": 10
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_typed",
+    "name": [ "typed fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_typed",
+    "required_effect": "test_damage_typed",
+    "actions": [ { "operation": "absorb", "resource": "mana" } ],
+    "damage_types": [ "cut" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_reflect",
+    "name": [ "reflect fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_reflect",
+    "required_effect": "test_damage_reflect",
+    "actions": [ { "operation": "reflect", "value": 0.5 } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_paid_reflect",
+    "name": [ "paid_reflect fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_paid_reflect",
+    "required_effect": "test_damage_paid_reflect",
+    "actions": [ { "operation": "reflect", "value": 1, "resource": "mana", "cost_per_damage": 2 } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_spell",
+    "name": [ "spell fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_spell",
+    "required_effect": "test_damage_spell",
+    "actions": [ { "operation": "cancel" } ],
+    "spells": [ "test_ability_spell" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_mutate",
+    "name": [ "mutate fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_mutate",
+    "required_effect": "test_damage_mutate",
+    "mutate": [
+      {
+        "id": "EOC_TEST_DAMAGE_MUTATE",
+        "effect": [
+          { "math": [ "_damage_scale = 0.5" ] },
+          { "math": [ "_damage_limit = 8" ] },
+          { "math": [ "_damage_hp_loss = 900" ] },
+          { "math": [ "damage_mutations += 1" ] }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_invalid",
+    "name": [ "invalid fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_invalid",
+    "required_effect": "test_damage_invalid",
+    "mutate": [ { "id": "EOC_TEST_DAMAGE_INVALID", "effect": [ { "math": [ "_damage_scale = 101" ] } ] } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_nested",
+    "name": [ "nested fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_nested",
+    "required_effect": "test_damage_nested",
+    "mutate": [
+      {
+        "id": "EOC_TEST_DAMAGE_NESTED",
+        "effect": [
+          { "deal_damage_packet": { "target": "u", "source": "none", "damage": [ { "damage_type": "pure", "amount": 1 } ] } },
+          { "math": [ "_damage_limit = 8" ] }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_callback",
+    "name": [ "callback fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_callback",
+    "required_effect": "test_damage_callback",
+    "mutate": [
+      {
+        "id": "EOC_TEST_DAMAGE_CALLBACK",
+        "effect": [ { "u_deal_damage": "pure", "amount": 1, "bodypart": "torso", "source": "none" } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_damage_observe",
+    "name": [ "observe fixture" ],
+    "desc": [ "Enables a damage rule fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_damage_observe",
+    "required_effect": "test_damage_observe",
+    "stage": "committed",
+    "on_resolved": [
+      {
+        "id": "EOC_TEST_DAMAGE_OBSERVE",
+        "effect": [ { "math": [ "damage_observed_hp += _damage_hp_loss" ] }, { "math": [ "u_damage_observed += 1" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_damage_armor",
+    "copy-from": "mon_execution_expanded_victim",
+    "name": { "str_sp": "damage armor fixture" },
+    "armor": { "bash": 10, "cut": 20 }
+  }
+]

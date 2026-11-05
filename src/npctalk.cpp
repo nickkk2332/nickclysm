@@ -67,6 +67,7 @@
 #include "event_bus.h"
 #include "execution_runtime.h"
 #include "ability_runtime.h"
+#include "damage_transaction.h"
 #include "explosion.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -9416,6 +9417,94 @@ talk_effect_fun_t::func f_give_equipment( const JsonObject &jo, std::string_view
 }
 
 
+talk_effect_fun_t::func f_deal_damage_packet( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    const JsonObject args = jo.get_object( member );
+    const std::string receiver = args.get_string( "target", "npc" );
+    const std::string source_role = args.get_string( "source", "u" );
+    const std::string instigator_role = args.get_string( "instigator", source_role );
+    for( const auto &role : {
+             source_role, instigator_role
+         } ) {
+        if( role != "u" && role != "npc" && role != "none" ) {
+            args.throw_error( "source and instigator must be u, npc or none" );
+        }
+    }
+    if( receiver != "u" && receiver != "npc" ) {
+        args.throw_error_at( "target", "expected u or npc" );
+    }
+    damage_instance packet;
+    args.read( "damage", packet, true );
+    if( packet.damage_units.size() > 32 ) {
+        args.throw_error_at( "damage", "at most 32 damage components" );
+    }
+    str_or_var bodypart;
+    optional( args, false, "bodypart", bodypart, "torso" );
+    str_or_var cause;
+    optional( args, false, "cause", cause, "eoc" );
+    const dbl_or_var multiplier = get_dbl_or_var( args, "multiplier", false, 1.0 );
+    return [receiver, source_role, instigator_role, packet, bodypart, cause,
+              multiplier]( dialogue & d ) {
+        const auto actor = [&]( const std::string & role ) -> Creature * {
+            return role == "none" || !d.has_actor( role == "npc" ) ? nullptr :
+            d.actor( role == "npc" )->get_creature();
+        };
+        Creature *target = actor( receiver );
+        Creature *source = actor( source_role );
+        Creature *instigator = actor( instigator_role );
+        d.set_value( "damage_transaction", "0" );
+        d.set_value( "damage_packet_hp_loss", 0.0 );
+        d.set_value( "damage_packet_absorbed", 0.0 );
+        d.set_value( "damage_packet_reflected", 0.0 );
+        const auto target_hold = target ? g->shared_from( *target ) : nullptr;
+        const auto source_hold = source ? g->shared_from( *source ) : nullptr;
+        const auto instigator_hold = instigator ? g->shared_from( *instigator ) : nullptr;
+        if( !target_hold || target->is_dead_state() || target->is_fake() || target->is_hallucination() ||
+            ( source_role != "none" && ( !source_hold || source->is_fake() || source->is_hallucination() ) ) ||
+            ( instigator_role != "none" && ( !instigator_hold || instigator->is_fake() ||
+                                             instigator->is_hallucination() ) ) ) {
+            d.set_value( "reason", "participant_unavailable" );
+            return;
+        }
+        const creature_ref target_ref = creature_ref::bind( *target );
+        const creature_ref source_ref = source ? creature_ref::bind( *source ) : creature_ref();
+        const creature_ref instigator_ref = instigator ? creature_ref::bind( *instigator ) : creature_ref();
+        const bodypart_str_id part( bodypart.evaluate( d ) );
+        if( !part.is_valid() || ( target->as_character() &&
+                                  !target->as_character()->has_part( part.id() ) ) ) {
+            d.set_value( "reason", "invalid_bodypart" );
+            return;
+        }
+        const bodypart_id bp = part.id();
+        const double scale = multiplier.evaluate( d );
+        if( !std::isfinite( scale ) || scale < 0 || scale > 100 ) {
+            d.set_value( "reason", "invalid_multiplier" );
+            return;
+        }
+        damage_instance adjusted = packet;
+        adjusted.mult_damage( scale, true );
+        global_variables::impl_t facts = d.get_context();
+        facts["damage_cause"] = diag_value{ cause.evaluate( d ) };
+        if( target_ref.resolve() != target ||
+            ( source && source_ref.resolve_loaded() != source ) ||
+            ( instigator && instigator_ref.resolve_loaded() != instigator ) ) {
+            d.set_value( "reason", "participant_unavailable" );
+            return;
+        }
+        const damage_context_scope scope( std::move( facts ), true, instigator_ref );
+        target->deal_damage( source, bp, adjusted );
+        const auto result = scope.result();
+        d.set_value( "reason", result ? result->reason : "not_dispatched" );
+        if( result ) {
+            d.set_value( "damage_transaction", std::to_string( result->id ) );
+            d.set_value( "damage_packet_hp_loss", result->hp_loss );
+            d.set_value( "damage_packet_absorbed", result->absorbed );
+            d.set_value( "damage_packet_reflected", result->reflected );
+        }
+    };
+}
+
 talk_effect_fun_t::func f_deal_damage( const JsonObject &jo, std::string_view member,
                                        std::string_view, bool is_npc )
 {
@@ -10662,6 +10751,7 @@ parsers = {
     { "u_remove_item_with", "npc_remove_item_with", jarg::member, &talk_effect_fun::f_remove_item_with },
     { "u_bulk_trade_accept", "npc_bulk_trade_accept", jarg::member, &talk_effect_fun::f_bulk_trade_accept },
     { "u_deal_damage", "npc_deal_damage", jarg::member, &talk_effect_fun::f_deal_damage },
+    { "deal_damage_packet", jarg::object, &talk_effect_fun::f_deal_damage_packet },
     { "u_bulk_donate", "npc_bulk_donate", jarg::member, &talk_effect_fun::f_bulk_trade_accept },
     { "u_cast_spell", "npc_cast_spell", jarg::member, &talk_effect_fun::f_cast_spell },
     { "start_execution", jarg::member, &talk_effect_fun::f_start_execution },

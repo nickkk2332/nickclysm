@@ -12,6 +12,7 @@
 #include "creature.h"
 #include "creature_tracker.h"
 #include "dialogue.h"
+#include "damage_transaction.h"
 #include "effect_on_condition.h"
 #include "execution_combat.h"
 #include "execution_runtime.h"
@@ -80,7 +81,7 @@ std::string resource_check( const Creature &caster, const std::string &resource,
         return {};
     }
     const Character *person = caster.as_character();
-    if( !person ) {
+    if( !person || ( resource == "stamina" && person->is_npc() ) ) {
         return "unsupported_resource";
     }
     const int available = resource == "mana" ? person->magic->available_mana() : person->get_stamina();
@@ -151,6 +152,7 @@ std::string native_check( const ability_request &request, tripoint_abs_ms &desti
 } // namespace
 
 struct ability_manager::impl {
+    damage_transaction_manager damage;
     std::map<int64_t, ability_instance> instances;
     std::map<int64_t, int> root_requests;
     int64_t next_id = 1;
@@ -331,9 +333,9 @@ struct ability_manager::impl {
             if( instance.energy_cost > 0 ) {
                 Character &person = *caster->as_character();
                 if( instance.energy == "mana" ) {
-                    person.magic->mod_mana( person, -instance.energy_cost );
+                    person.magic->set_mana( person.magic->available_mana() - instance.energy_cost );
                 } else {
-                    person.mod_stamina( -instance.energy_cost );
+                    person.set_stamina( person.get_stamina() - instance.energy_cost );
                 }
             }
         }
@@ -453,6 +455,11 @@ struct ability_manager::impl {
 
 ability_manager::ability_manager() : data( std::make_unique<impl>() ) {}
 ability_manager::~ability_manager() = default;
+
+damage_transaction_manager &ability_manager::damage_transactions()
+{
+    return data->damage;
+}
 
 std::string ability_manager::check( const ability_request &request ) const
 {
@@ -605,14 +612,14 @@ void ability_manager::cancel_all( const std::string &reason )
     for( auto &entry : data->instances ) {
         cancel( entry.first, reason );
     }
-    if( !data->pumping ) {
+    if( !processing() ) {
         drain_starts();
     }
 }
 
 void ability_manager::clear()
 {
-    if( data->pumping ) {
+    if( processing() ) {
         cancel_all( "cleared" );
         return;
     }
@@ -621,6 +628,7 @@ void ability_manager::clear()
     }
     data->instances.clear();
     data->root_requests.clear();
+    data->damage.clear();
     data->restoring = false;
 }
 
@@ -653,6 +661,7 @@ void ability_manager::reset_for_load()
 void ability_manager::end_restore()
 {
     data->restoring = false;
+    data->damage.release_settled_sources();
 }
 
 bool ability_manager::restoring() const
@@ -662,12 +671,12 @@ bool ability_manager::restoring() const
 
 bool ability_manager::processing() const
 {
-    return data->pumping;
+    return data->pumping || data->damage.processing();
 }
 
 void ability_manager::drain_starts()
 {
-    if( data->pumping || data->restoring || g->executions().processing_actions() ||
+    if( processing() || data->restoring || g->executions().processing_actions() ||
         execution_combat::attack_in_progress() ) {
         return;
     }
@@ -835,6 +844,7 @@ void ability_manager::serialize( JsonOut &jsout ) const
     }
     jsout.start_object();
     jsout.member( "next_id", data->next_id );
+    jsout.member( "damage_transactions", data->damage );
     jsout.member( "roots" );
     jsout.start_array();
     for( const auto &entry : data->root_requests ) {
@@ -890,6 +900,8 @@ void ability_manager::deserialize( const JsonObject &jo )
     // Do not clear the avatar activity just restored by game loading.
     data->instances.clear();
     data->root_requests.clear();
+    data->damage.clear();
+    jo.read( "damage_transactions", data->damage );
     int64_t next = 1;
     jo.read( "next_id", next, true );
     if( next <= 0 || next >= std::numeric_limits<int64_t>::max() ) {

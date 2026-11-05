@@ -698,6 +698,11 @@ void damage_scope::set_weakpoint( const std::string &id )
     }
 }
 
+global_variables::impl_t damage_scope::context() const
+{
+    return owner ? owner->facts.context() : global_variables::impl_t();
+}
+
 void damage_scope::arm_hp_capture( bodypart_id bp, const dealt_damage_instance &dealt )
 {
     capture_hp = true;
