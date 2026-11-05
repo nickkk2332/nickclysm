@@ -29,6 +29,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "field.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
@@ -1287,7 +1288,7 @@ bool spell::is_spell_class( const trait_id &mid ) const
 
 bool spell::can_cast( const Character &guy ) const
 {
-    if( incapacitation::unconscious( guy ) ) {
+    if( incapacitation::unconscious( guy ) || execution_fatal::pending( guy ) ) {
         return false;
     }
     if( guy.has_flag( json_flag_CANNOT_ATTACK ) ) {

@@ -34,6 +34,10 @@ struct creature_ref {
 
     static creature_ref bind( const Creature &who );
     Creature *resolve() const;
+    /** Loaded identity including raw fatal health, excluding finalized death. */
+    Creature *resolve_loaded() const;
+    /** Living identities plus an explicitly reserved execution victim. */
+    Creature *resolve_for_execution() const;
     bool operator==( const creature_ref &other ) const;
     void serialize( JsonOut &jsout ) const;
     void deserialize( const JsonObject &jo );

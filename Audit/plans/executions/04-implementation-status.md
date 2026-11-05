@@ -24,23 +24,27 @@ Delivered:
 The reference scene samples 1–4 backward tiles, respects obstacles/support, and offers a
 50% ledge tumble with native gravity or two wounded message beats. It permits survival;
 authored outcome labels and actual death are separate. Sequence damage never temporarily
-sets HP to one or restores a corpse. A triggering fatal hit is refused after native death
-processing, rather than being retroactively converted into a delayed death scene.
+sets HP to one or restores a corpse. Manual starts still refuse fatal actors. The
+[fatal melee follow-up](08-fatal-hits.md) can reserve NPC/monster death at the supported
+primary HP write, before native finalization, and resume that ownership across saves.
 
 Still to develop:
 
 - Phase 0's full producer matrix and shared combat causality. The first indexed
   living-melee slice, committed primary damage snapshots and arbitration are now in
   the [automatic-trigger follow-up](06-automatic-triggers.md).
-- Phase 6 fatal reservation/finalization, with its native combat/death integration.
-  Real knockout/incapacity is delivered by the [knockout follow-up](07-knockouts.md).
+- Phase 6's NPC/monster fatal primary-melee reservation and native finalization are
+  delivered by the [fatal melee follow-up](08-fatal-hits.md); avatar fatal deferral
+  and further combat producers remain. Real knockout/incapacity is delivered by the
+  [knockout follow-up](07-knockouts.md).
 - Phase 4's owned appendable narration and auditory audiences are now delivered in the
   [narration follow-up](05-narration-milestone.md); the dedicated transcript inspector UI remains.
 - More physical actions, richer policies, per-action secondary attribution beyond the
   implemented native fall scope, and broad gameplay/tooling demonstrations.
 
-Current constraints are deliberate: two living loaded participants, EOC requests or
-the [supported automatic melee producers](06-automatic-triggers.md),
+Current constraints are deliberate: two loaded participants, living manual starts or
+the [supported automatic melee producers](06-automatic-triggers.md) with explicit
+[fatal admission](08-fatal-hits.md),
 no offscreen catchup, no save from inside an in-progress action, at most 64 active scenes,
 and bounded graphs. Damage interruption includes periodic environmental/bleeding HP loss.
 Revision changes interrupt incompatible instances; authors must bump revisions for graph

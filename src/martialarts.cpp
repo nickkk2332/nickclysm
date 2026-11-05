@@ -26,6 +26,7 @@
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
 #include "generic_factory.h"
@@ -1644,6 +1645,9 @@ void ma_event_context::activate( Character &u,
         }
         if( killed ) {
             d.set_value( "killed", *killed ? 1.0 : 0.0 );
+        }
+        if( opponent ) {
+            d.set_value( "death_pending", execution_fatal::pending( *opponent ) ? 1.0 : 0.0 );
         }
         if( grab_strength ) {
             d.set_value( "grab_strength", *grab_strength );

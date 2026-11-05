@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "avatar.h"
+#include "cata_scope_helpers.h"
 #include "creature.h"
 #include "damage.h"
 #include "execution_runtime.h"
@@ -28,6 +29,7 @@ thread_local melee_hit_scope *current_hit = nullptr;
 thread_local attack_scope *pending_damage = nullptr;
 thread_local damage_scope *current_damage = nullptr;
 thread_local int damage_depth = 0;
+thread_local const Creature *fatal_commit_target = nullptr;
 
 std::string kind( const Creature &who )
 {
@@ -61,6 +63,8 @@ global_variables::impl_t attack_snapshot::context() const
     };
     put( "attack_contact_id", std::to_string( id ) );
     put( "attack_channel", channel_name( producer ) );
+    put( "attack_event", fatal ? "fatal_hit" : "attack_resolved" );
+    put( "attack_fatal", fatal ? 1.0 : 0.0 );
     put( "attack_source_kind", source_kind );
     put( "attack_target_kind", target_kind );
     put( "attack_actor_position", actor_position );
@@ -150,6 +154,11 @@ attack_scope::attack_scope( Creature &actor, Creature &target, channel producer 
 attack_scope::~attack_scope() noexcept( false )
 {
     current_attack = previous;
+    if( fatal_instance != 0 && g ) {
+        g->executions().release_fatal_attack( fatal_instance,
+                                              resolved && exceptions == 0 && std::uncaught_exceptions() == 0 );
+        return;
+    }
     if( enabled && resolved && exceptions == 0 && std::uncaught_exceptions() == 0 ) {
         g->executions().on_attack_resolved( facts );
     }
@@ -178,6 +187,13 @@ void attack_scope::set_technique( const std::string &style, const std::string &t
     if( enabled ) {
         facts.style = style;
         facts.technique = technique;
+    }
+}
+
+void attack_scope::set_critical( bool critical )
+{
+    if( enabled ) {
+        facts.critical = critical;
     }
 }
 
@@ -259,9 +275,18 @@ void damage_scope::set_weakpoint( const std::string &id )
     }
 }
 
-void damage_scope::arm_hp_capture()
+void damage_scope::arm_hp_capture( bodypart_id bp, const dealt_damage_instance &dealt )
 {
     capture_hp = owner != nullptr;
+    if( owner ) {
+        owner->facts.hit = true;
+        if( bp ) {
+            owner->facts.bodypart = bp.id().str();
+        }
+        for( const auto &entry : dealt.dealt_dams ) {
+            owner->facts.damage[entry.first.str()] = std::max( 0, entry.second );
+        }
+    }
 }
 
 void damage_scope::disarm_hp_capture()
@@ -275,7 +300,35 @@ void record_hp_loss( const Creature &target, int amount )
         current_damage->owner->target_hold.get() == &target ) {
         current_damage->capture_hp = false;
         current_damage->owner->facts.hp_loss = std::max( 0, amount );
+        if( amount > 0 && target.is_dead_state() && g &&
+            current_damage->owner->fatal_instance == 0 ) {
+            attack_snapshot facts = current_damage->owner->facts;
+            facts.fatal = true;
+            const Creature *previous = std::exchange( fatal_commit_target, &target );
+            const on_out_of_scope restore( [&]() {
+                fatal_commit_target = previous;
+            } );
+            current_damage->owner->fatal_instance = g->executions().on_fatal_hit( facts );
+            if( current_damage->owner->fatal_instance == 0 ) {
+                const auto report = g->executions().last_trigger_report();
+                if( report && report->attack == facts.id ) {
+                    // This contact already had its fatal-stage arbitration. Preserve its refusal
+                    // report rather than republishing the same contact as a living hit afterward.
+                    current_damage->owner->enabled = false;
+                }
+            }
+        }
     }
+}
+
+bool attack_in_progress()
+{
+    return current_attack != nullptr || damage_depth != 0;
+}
+
+bool at_fatal_commit( const Creature &target )
+{
+    return fatal_commit_target == &target;
 }
 
 primary_hit_scope::primary_hit_scope( attack_scope &contact ) : owner( contact ),

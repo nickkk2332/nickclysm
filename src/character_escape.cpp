@@ -16,6 +16,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "flag.h"
 #include "grapple.h"
 #include "incapacitation.h"
@@ -442,7 +443,7 @@ void Character::try_remove_impeding_effect()
 
 bool Character::move_effects( bool attacking )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     if( has_effect( effect_downed ) ) {

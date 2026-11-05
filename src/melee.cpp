@@ -41,6 +41,8 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
+#include "execution_runtime.h"
 #include "flag.h"
 #include "game.h"
 #include "game_constants.h"
@@ -613,7 +615,7 @@ bool Character::melee_attack( Creature &t, bool allow_special, const matec_id &f
 bool Character::melee_attack( Creature &t, bool allow_special, const technique_choice &choice,
                               bool allow_unarmed, int forced_movecost )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     if( has_flag( json_flag_CANNOT_ATTACK ) ) {
@@ -748,7 +750,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                                        const technique_choice &preset,
                                        bool allow_unarmed, int forced_movecost )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     map &here = get_map();
@@ -1051,6 +1053,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
             weakpoint_attack attack;
             attack.weapon = &cur_weap;
             {
+                execution_contact.set_critical( critical_hit );
                 const execution_combat::primary_hit_scope primary( execution_contact );
                 t.deal_melee_hit( this, hit_spread, critical_hit, d, dealt_dam, attack, &target_bp );
             }
@@ -1108,9 +1111,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         }
 
         t.check_dead_state( &here );
-        ma_ctx.killed = t.is_dead_state();
+        ma_ctx.killed = t.is_dead_state() && !execution_fatal::pending( t );
 
-        if( t.is_dead_state() ) {
+        if( execution_fatal::pending( t ) ) {
+            g->executions().defer_kill( t, ma_ctx );
+        } else if( t.is_dead_state() ) {
             // trigger martial arts on-kill effects
             martial_arts_data->ma_onkill_effects( *this, ma_ctx );
         }
@@ -1480,7 +1485,7 @@ float Character::get_dodge() const
 
 float Character::dodge_roll() const
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return 0.0f;
     }
     // if your character has evasion then try rolling that first

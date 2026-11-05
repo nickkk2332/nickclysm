@@ -34,6 +34,8 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_combat.h"
+#include "execution_fatal.h"
+#include "execution_runtime.h"
 #include "explosion.h"
 #include "field.h"
 #include "field_type.h"
@@ -226,6 +228,9 @@ tripoint_bub_ms Creature::pos_bub( const map &here ) const
 
 void Creature::setpos( map &here, const tripoint_bub_ms &p, bool check_gravity/* = true*/ )
 {
+    if( here.get_abs( p ) != pos_abs() && !execution_fatal::before_motion( *this ) ) {
+        return;
+    }
     const tripoint_abs_ms old_loc = pos_abs();
     set_pos_abs_only( here.get_abs( p ) );
     on_move( old_loc );
@@ -236,6 +241,9 @@ void Creature::setpos( map &here, const tripoint_bub_ms &p, bool check_gravity/*
 
 void Creature::setpos( const tripoint_abs_ms &p, bool check_gravity/* = true*/ )
 {
+    if( p != pos_abs() && !execution_fatal::before_motion( *this ) ) {
+        return;
+    }
     const tripoint_abs_ms old_loc = pos_abs();
     set_pos_abs_only( p );
     on_move( old_loc );
@@ -318,11 +326,17 @@ void Creature::move_to( const tripoint_abs_ms &loc )
 
 void Creature::set_pos_bub_only( const map &here, const tripoint_bub_ms &p )
 {
+    if( here.get_abs( p ) != location && !execution_fatal::before_motion( *this ) ) {
+        return;
+    }
     location = here.get_abs( p );
 }
 
 void Creature::set_pos_abs_only( const tripoint_abs_ms &loc )
 {
+    if( loc != location && !execution_fatal::before_motion( *this ) ) {
+        return;
+    }
     location = loc;
 }
 
@@ -475,7 +489,7 @@ void Creature::reset_bonuses()
 void Creature::process_turn_no_moves()
 {
     decrement_summon_timer();
-    if( is_dead_state() ) {
+    if( is_dead_state() && !execution_fatal::pending( *this ) ) {
         return;
     }
     reset_bonuses();
@@ -494,7 +508,7 @@ void Creature::process_turn()
     process_turn_no_moves();
 
     // add an appropriate number of moves
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         incapacitation::suppress_moves( *this );
     } else if( !has_effect( effect_ridden ) ) {
         moves += get_speed();
@@ -612,7 +626,7 @@ bool Creature::sees( const map &here, const Creature &critter ) const
         return true;
     }
 
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
 
@@ -786,7 +800,7 @@ bool Creature::sees( const map &here, const Creature &critter ) const
 bool Creature::sees( const map &here, const tripoint_bub_ms &t, bool is_avatar,
                      int range_mod ) const
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     if( std::abs( posz() - t.z() ) > fov_3d_z_range ) {
@@ -1507,7 +1521,9 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
 
     viewer &player_view = get_player_view();
     Character *guy = as_character();
-    if( !magic ) {
+    const bool responsive = !incapacitation::unconscious( *this ) &&
+                            !execution_fatal::pending( *this );
+    if( !magic && responsive ) {
         double range_dodge_chance = enchantment_cache->modify_value( enchant_vals::mod::RANGE_DODGE,
                                     1.0f ) - 1.0f;
         if( x_in_y( range_dodge_chance, 1.0f ) ) {
@@ -1517,7 +1533,7 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
         }
     }
 
-    const bool can_dodge = !magic && attack.proj.speed < 20 &&
+    const bool can_dodge = !magic && responsive && attack.proj.speed < 20 &&
                            ( !guy || guy->can_try_dodge().success() );
     double goodhit = can_dodge ?
                      accuracy_projectile_attack( attack.proj.speed, missed_by ) :
@@ -1610,7 +1626,9 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam, const weakpoint_attack &attack, const weakpoint &wp )
 {
     execution_combat::damage_scope execution_damage( source, *this );
-    if( is_dead_state() || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
+    execution_fatal::before_damage( *this, dam.total_damage() > 0 );
+    if( ( is_dead_state() && !( g && g->executions().owns_fatal_gravity( *this ) ) ) ||
+        has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         return dealt_damage_instance();
     }
     int total_damage = 0;
@@ -1652,7 +1670,7 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         mod_pain( total_pain, bp );
     }
 
-    execution_damage.arm_hp_capture();
+    execution_damage.arm_hp_capture( bp, dealt_dams );
     apply_damage( source, bp, total_damage );
     execution_damage.disarm_hp_capture();
 
@@ -1845,7 +1863,7 @@ bool Creature::attack_air( const tripoint_bub_ms &p )
 
 bool Creature::dodge_check( float hit_roll, bool force_try, float )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     // If successfully uncanny dodged, no need to calculate dodge chance
@@ -2407,7 +2425,7 @@ void Creature::set_moves( int nmoves )
 
 bool Creature::in_sleep_state() const
 {
-    return incapacitation::unconscious( *this ) ||
+    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) ||
            has_effect( effect_sleep ) || has_effect( effect_lying_down ) ||
            has_effect( effect_npc_suspend );
 }
@@ -2912,12 +2930,18 @@ void Creature::set_all_parts_hp_cur( const int set )
     for( std::pair<const bodypart_str_id, bodypart> &elem : body ) {
         elem.second.set_hp_cur( set );
     }
+    if( Character *person = as_character() ) {
+        person->invalidate_dead_state_cache();
+    }
 }
 
 void Creature::set_all_parts_hp_to_max()
 {
     for( std::pair<const bodypart_str_id, bodypart> &elem : body ) {
         elem.second.set_hp_to_max();
+    }
+    if( Character *person = as_character() ) {
+        person->invalidate_dead_state_cache();
     }
 }
 
@@ -3559,7 +3583,7 @@ void Creature::process_damage_over_time()
 
 void Creature::check_dead_state( map *here )
 {
-    if( is_dead_state() ) {
+    if( is_dead_state() && !execution_fatal::pending( *this ) ) {
         die( here, killer );
     }
 }

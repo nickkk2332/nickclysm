@@ -256,6 +256,8 @@ using terminating_effect = struct terminating_effect_t {
 
 class Creature : public viewer
 {
+        // Reserved-injury settlement validates retained identity and clears stale killers on rescue.
+        friend class execution_manager;
     public:
         ~Creature() override;
 

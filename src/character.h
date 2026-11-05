@@ -1339,6 +1339,10 @@ class Character : public Creature, public visitable
 
         /** Returns true if the player should be dead */
         bool is_dead_state() const override;
+        /** Bulk body writers do not pass through the per-part Character setters. */
+        void invalidate_dead_state_cache() {
+            cached_dead_state.reset();
+        }
 
     private:
         double evaluate_weapon_internal( const item &maybe_weapon, bool can_use_gun,

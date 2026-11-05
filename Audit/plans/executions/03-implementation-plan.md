@@ -1,6 +1,6 @@
 # Implementation sequence and validation plan
 
-**Delivery status:** the living-participant milestone covers portions of phases 0–3 and 7; the [narration milestone](05-narration-milestone.md) delivers phase 4's append, hearing, history, and presentation controls. [First-milestone status](04-implementation-status.md) records the runtime foundation. The [automatic melee milestone](06-automatic-triggers.md) delivers phase 5's initial living-melee slice; [physiological knockouts](07-knockouts.md) deliver the incapacity portion of phase 3. Further combat producers, fatal handling (phase 6), and the dedicated inspector remain further work.
+**Delivery status:** the living-participant milestone covers portions of phases 0–3 and 7; the [narration milestone](05-narration-milestone.md) delivers phase 4's append, hearing, history, and presentation controls. [First-milestone status](04-implementation-status.md) records the runtime foundation. The [automatic melee milestone](06-automatic-triggers.md) delivers phase 5's initial living-melee slice; [physiological knockouts](07-knockouts.md) deliver the incapacity portion of phase 3. The [fatal melee milestone](08-fatal-hits.md) delivers phase 6 for NPC/monster victims at supported primary-melee boundaries. Further combat producers, avatar fatal deferral, richer physical actions and the dedicated inspector remain further work.
 
 ## Proposed code boundaries
 

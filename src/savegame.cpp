@@ -16,6 +16,7 @@
 #include "basecamp.h"
 #include "cata_io.h"
 #include "cata_path.h"
+#include "cata_scope_helpers.h"
 #include "city.h"
 #include "colony.h"
 #include "coordinates.h"
@@ -253,7 +254,10 @@ void game::unserialize( std::string fin )
 
 void game::unserialize_impl( const JsonObject &data )
 {
-    executions().clear();
+    executions().reset_for_load();
+    const on_out_of_scope end_execution_restore( [&]() {
+        executions().end_restore();
+    } );
     int tmpturn = 0;
     int tmpcalstart = 0;
     int tmprun = 0;
@@ -291,6 +295,8 @@ void game::unserialize_impl( const JsonObject &data )
 
     calendar::turn = time_point( tmpturn );
     calendar::start_of_cataclysm = time_point( tmpcalstart );
+    // Install reservations before map/NPC loading can run native cleanup or physics.
+    data.read( "executions", executions() );
 
     if( !data.read( "game_start", calendar::start_of_game ) ) {
         calendar::start_of_game = calendar::start_of_cataclysm;
@@ -317,7 +323,6 @@ void game::unserialize_impl( const JsonObject &data )
     data.read( "kill_tracker", *kill_tracker_ptr );
 
     data.read( "player", u );
-    data.read( "executions", executions() );
     data.read( "inactive_global_effect_on_condition_vector",
                inactive_global_effect_on_condition_vector );
     //load queued_eocs

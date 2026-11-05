@@ -136,9 +136,11 @@ bool execution_trigger_range::contains( int value ) const
 void execution_trigger::load( const JsonObject &jo, std::string_view )
 {
     mandatory( jo, was_loaded, "execution", execution );
-    if( jo.get_string( "event", "attack_resolved" ) != "attack_resolved" ) {
-        jo.throw_error_at( "event", "only living-actor attack_resolved rules are supported" );
+    const std::string event = jo.get_string( "event", fatal ? "fatal_hit" : "attack_resolved" );
+    if( event != "attack_resolved" && event != "fatal_hit" ) {
+        jo.throw_error_at( "event", "expected attack_resolved or fatal_hit" );
     }
+    fatal = event == "fatal_hit";
     priority = integer( jo, "priority", priority, -1000000, 1000000 );
     weight = integer( jo, "weight", weight, 1, 1000000 );
     chance = jo.get_float( "chance", chance );
@@ -213,8 +215,9 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
         if( match.has_member( "critical" ) ) {
             critical = match.get_bool( "critical" );
         }
-        if( match.get_string( "fatal_state", "alive" ) != "alive" ) {
-            match.throw_error_at( "fatal_state", "pending fatal actors are not supported" );
+        if( match.get_string( "fatal_state", fatal ? "fatal" : "alive" ) !=
+            ( fatal ? "fatal" : "alive" ) ) {
+            match.throw_error_at( "fatal_state", "fatal_state must agree with the trigger event" );
         }
         if( match.has_member( "hp_loss" ) ) {
             hp_loss = range( match.get_object( "hp_loss" ) );
@@ -238,6 +241,10 @@ void execution_trigger::check() const
 {
     if( !execution.is_valid() ) {
         debugmsg( "Execution trigger %s references unknown execution %s", id.str(), execution.str() );
+    }
+    if( fatal && execution.is_valid() && !execution->allow_fatal_target ) {
+        debugmsg( "Fatal execution trigger %s requires allow_fatal_target on %s", id.str(),
+                  execution.str() );
     }
     const auto check_ids = [&]( const auto & values, const auto & make_id ) {
         for( const std::string &value : values ) {
@@ -285,7 +292,7 @@ void execution_trigger::check() const
 
 std::string execution_trigger::matches( const execution_combat::attack_snapshot &s ) const
 {
-    if( !channels.count( s.producer ) || hit != s.hit ||
+    if( fatal != s.fatal || !channels.count( s.producer ) || hit != s.hit ||
         !accepts( source_kinds, s.source_kind ) || !accepts( target_kinds, s.target_kind ) ||
         !accepts( source_monsters, s.source_monster ) || !accepts( target_monsters, s.target_monster ) ||
         !accepts( weapons, s.weapon ) || !accepts( weapon_skills, s.weapon_skill ) ||

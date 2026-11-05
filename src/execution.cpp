@@ -306,6 +306,7 @@ void execution_definition::load( const JsonObject &jo, std::string_view source )
     max_step_entries = read_integer( jo, "max_step_entries", max_step_entries, 1, 256 );
     max_distance = read_integer( jo, "max_distance", max_distance, 1, 60 );
     require_weapon = jo.get_bool( "require_weapon", require_weapon );
+    allow_fatal_target = jo.get_bool( "allow_fatal_target", allow_fatal_target );
     if( jo.has_member( "required_roles" ) ) {
         const std::set<std::string> roles = jo.get_tags<std::string>( "required_roles" );
         if( roles != std::set<std::string> { "actor", "target" } ) {
@@ -328,6 +329,10 @@ void execution_definition::load( const JsonObject &jo, std::string_view source )
         };
         interrupt_damage = read_policy( "external_damage", interrupt_damage );
         interrupt_displacement = read_policy( "displacement", interrupt_displacement );
+    }
+    if( allow_fatal_target && ( max_ticks > 30 || control_target == execution_control::free ) ) {
+        jo.throw_error_at( "allow_fatal_target",
+                           "fatal scenes require target control and at most 30 ticks" );
     }
     if( jo.has_object( "locals" ) ) {
         locals.clear();
@@ -462,4 +467,9 @@ void executions::reset()
 void executions::check()
 {
     factory.check();
+}
+
+void executions::finalize()
+{
+    factory.finalize();
 }

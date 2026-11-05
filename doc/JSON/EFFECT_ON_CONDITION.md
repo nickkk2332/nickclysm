@@ -6642,6 +6642,11 @@ beta talker dies without a message and without a corpse
 ```
 
 #### `u_prevent_death`, `npc_prevent_death`
+
+Execution authors can query `u_death_pending` / `npc_death_pending` while an NPC or
+monster's fatal injury is reserved by a scene. These read-only conditions never
+replace missing talkers with the avatar. [Fatal execution rules](EXECUTIONS.md#fatal-hit-rules)
+describe reservation and normal death/prevention ordering.
 You or NPC will be prevented from death. Intended for use in EoCs has `NPC_DEATH` or `EVENT(character_dies)` type (Take care that u will be the dying npc in these events).
 
 ##### Valid talkers:

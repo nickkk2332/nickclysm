@@ -35,6 +35,7 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "errand.h"
+#include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "faction.h"
 #include "field.h"
@@ -1546,6 +1547,15 @@ conditional_t::func f_is_warm( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
         return d.const_actor( is_npc )->is_warm();
+    };
+}
+
+conditional_t::func f_death_pending( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        const Creature *who = d.has_actor( is_npc ) ? d.const_actor( is_npc )->get_const_creature() :
+                              nullptr;
+        return who && execution_fatal::pending( *who );
     };
 }
 
@@ -3549,6 +3559,7 @@ parsers_simple = {
     {"u_exists", "npc_exists", &conditional_fun::f_exists },
     {"u_in_execution", "npc_in_execution", &conditional_fun::f_in_execution },
     {"u_is_knocked_out", "npc_is_knocked_out", &conditional_fun::f_is_knocked_out },
+    {"u_death_pending", "npc_death_pending", &conditional_fun::f_death_pending },
     {"u_can_be_knocked_out", "npc_can_be_knocked_out", &conditional_fun::f_can_be_knocked_out },
     {"u_is_avatar", "npc_is_avatar", &conditional_fun::f_is_avatar },
     {"u_is_npc", "npc_is_npc", &conditional_fun::f_is_npc },

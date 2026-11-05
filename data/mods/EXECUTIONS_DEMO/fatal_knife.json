@@ -1,0 +1,23 @@
+[
+  {
+    "type": "ITEM",
+    "id": "execution_demo_fatal_knife",
+    "copy-from": "knife_combat",
+    "name": { "str": "fatal execution demonstration knife" },
+    "description": "A combat knife configured for a rare mortal-wound sequence after a lethal primary melee hit."
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_fatal_knife_trigger",
+    "event": "fatal_hit",
+    "execution": "execution_fatal_knife_stagger",
+    "chance": 0.2,
+    "cooldown": { "ticks": 30, "scope": "actor" },
+    "match": {
+      "channels": [ "character_melee" ],
+      "weapons": [ "execution_demo_fatal_knife" ],
+      "target_kind": [ "npc", "monster" ],
+      "hp_loss": { "minimum": 1 }
+    }
+  }
+]

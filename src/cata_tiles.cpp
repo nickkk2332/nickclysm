@@ -41,6 +41,7 @@
 #include "dialogue.h"
 #include "enum_conversions.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "field.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
@@ -1069,8 +1070,10 @@ void cata_tiles::draw( const point &dest, const tripoint_bub_ms &center, int wid
         for( const shared_ptr_fast<monster> &mon : get_creature_tracker().get_monsters_list() ) {
             note_creature( *mon );
         }
-        for( const npc &guy : g->all_npcs() ) {
-            note_creature( guy );
+        for( const auto &guy : get_creature_tracker().get_npcs_list() ) {
+            if( !guy->is_dead() || execution_fatal::pending( *guy ) ) {
+                note_creature( *guy );
+            }
         }
         note_creature( you );
     }

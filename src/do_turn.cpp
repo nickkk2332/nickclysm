@@ -115,6 +115,8 @@ bool cleanup_at_end()
 {
     avatar &u = get_avatar();
     if( g->uquit == QUIT_DIED || g->uquit == QUIT_SUICIDE ) {
+        g->executions().cancel_all( "game_over" );
+        g->cleanup_dead();
         // Put (non-hallucinations) into the overmap so they are not lost.
         for( monster &critter : g->all_monsters() ) {
             g->despawn_monster( critter );
