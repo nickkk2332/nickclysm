@@ -67,6 +67,7 @@ void damage_rule::load( const JsonObject &jo, std::string_view source )
     }
     jo.read( "required_effect", required_effect );
     jo.read( "required_application", required_application );
+    jo.read( "required_area", required_area );
     jo.read( "defender_kinds", defender_kinds );
     jo.read( "source_kinds", source_kinds );
     jo.read( "damage_types", damage_types );
@@ -133,6 +134,9 @@ void damage_rule::load( const JsonObject &jo, std::string_view source )
 
 void damage_rule::check() const
 {
+    if( !required_area.is_empty() && ( !required_area.is_valid() || required_area->kind != "area" ) ) {
+        debugmsg( "Damage rule %s has invalid required_area", id.str() );
+    }
     if( !required_application.is_empty() && !required_application.is_valid() ) {
         debugmsg( "Damage rule %s has invalid application %s", id.str(), required_application.str() );
     }
@@ -207,7 +211,9 @@ bool damage_rules::may_intercept( const Creature &defender )
     for( const damage_rule *rule : sorted_rules ) {
         if( ( rule->required_effect.is_empty() || defender.has_effect( rule->required_effect ) ) &&
             ( rule->required_application.is_empty() ||
-              get_powers().application_value( defender, rule->required_application ) > 0 ) ) {
+              get_powers().application_value( defender, rule->required_application ) > 0 ) &&
+            ( rule->required_area.is_empty() ||
+              get_projections().area_value( defender, rule->required_area ) > 0 ) ) {
             return true;
         }
     }

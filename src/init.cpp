@@ -53,6 +53,7 @@
 #include "execution_runtime.h"
 #include "ability_runtime.h"
 #include "power_actor.h"
+#include "power_projection.h"
 #include "damage_rule.h"
 #include "power.h"
 #include "faction.h"
@@ -438,6 +439,7 @@ void DynamicDataLoader::initialize()
     add( "power_cooldown", &powers::load_cooldown );
     add( "power_application", &powers::load_application );
     add( "power_summon", &power_summons::load );
+    add( "power_projection", &power_projections::load );
     add( "execution_trigger", &execution_triggers::load );
     add( "field_type", &field_types::load );
     add( "field_type_migration", &field_type_migrations::load );

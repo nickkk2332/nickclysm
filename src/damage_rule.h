@@ -12,6 +12,7 @@
 #include "dialogue_helpers.h"
 #include "type_id.h"
 #include "power.h"
+#include "power_projection.h"
 
 class Creature;
 class JsonObject;
@@ -36,6 +37,7 @@ struct damage_rule {
     int priority = 0;
     efftype_id required_effect;
     power_application_id required_application;
+    power_projection_id required_area;
     std::set<std::string> defender_kinds;
     std::set<std::string> source_kinds;
     std::set<damage_type_id> damage_types;

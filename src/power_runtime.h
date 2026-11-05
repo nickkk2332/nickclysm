@@ -122,6 +122,7 @@ class power_manager
         double application_value( const Creature &target, const power_application_id &application,
                                   bool magnitude = false, const std::optional<creature_ref> &owner = std::nullopt,
                                   const std::string &tag = "" ) const;
+        bool owns_application( int64_t id, const creature_ref &owner ) const;
         void notify_damage( const Creature &who, int amount );
         void retire_actor( const Creature &who );
         void drain_starts();

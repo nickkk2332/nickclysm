@@ -7654,3 +7654,10 @@ Combination of values work as `and`, no matter how they are arranged. This two n
 `power_fling`, `spawn_power_summon`, `command_power_summon`,
 `dismiss_power_summons` and `use_best_ability` are documented with role, payment,
 result and lifecycle contracts in [POWER_ACTORS.md](POWER_ACTORS.md).
+
+### Persistent power projections
+
+`create_power_projection`, `end_power_projection` and `dispel_power_projections`
+manage saved travelling bolts, charged beams and independent areas. See
+[power projections](POWER_PROJECTIONS.md) for real actor roles, exact string
+handles, costs, safe-boundary hooks, contests and area membership queries.

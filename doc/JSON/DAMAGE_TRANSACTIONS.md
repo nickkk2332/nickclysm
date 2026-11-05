@@ -197,3 +197,12 @@ can spend a named [custom resource](POWER_OWNERSHIP.md). Application queries
 compose independent source magnitudes; available resources exclude managed
 windup reservations. This adds owned runtime contributions and shared
 accounting without changing the documented armor/HP boundary.
+
+## Area-backed defenses
+
+A rule may set `required_area` to a `power_projection` ID of kind `area`. The
+rule participates only while a live matching area affects the damaged actor,
+using current geometry and relationship rather than a stale membership list.
+`u_power_area('my_ward', 'field': 'strength')` sums independent capacities;
+combine it with an absorb maximum to author overlapping defenses. See
+[power projections](POWER_PROJECTIONS.md) for lifecycle and limits.

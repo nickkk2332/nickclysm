@@ -1,0 +1,223 @@
+[
+  {
+    "type": "power_projection",
+    "id": "power_demo_travelling_bolt",
+    "name": "travelling force bolt",
+    "kind": "projectile",
+    "range": 10,
+    "speed": 1,
+    "strength": 20,
+    "duration_ticks": 20,
+    "damage": [ { "damage_type": "bash", "amount": 20 } ]
+  },
+  {
+    "type": "power_projection",
+    "id": "power_demo_clash_beam",
+    "name": "contestable heat beam",
+    "kind": "beam",
+    "range": 10,
+    "strength": 30,
+    "charge_ticks": 2,
+    "duration_ticks": 8,
+    "interrupt_damage": true,
+    "interrupt_displacement": true,
+    "damage": [ { "damage_type": "heat", "amount": 12 } ],
+    "upkeep": { "resource": "power_demo_focus_pool", "amount": 2 },
+    "on_start": [
+      {
+        "id": "EOC_POWER_DEMO_BEAM_START",
+        "effect": [ { "u_make_sound": "gathers a line of searing light!", "volume": 8, "type": "combat" } ]
+      }
+    ],
+    "on_clash": [
+      {
+        "id": "EOC_POWER_DEMO_BEAM_CLASH",
+        "effect": [ { "u_make_sound": "meets an opposing force!", "volume": 12, "type": "combat" } ]
+      }
+    ]
+  },
+  {
+    "type": "power_projection",
+    "id": "power_demo_projection_aura",
+    "name": "protective domain",
+    "kind": "area",
+    "radius": 2,
+    "range": 5,
+    "follow_owner": true,
+    "strength": 4,
+    "duration_ticks": 60,
+    "affects": "friendly",
+    "tags": [ "power_demo_domain" ],
+    "upkeep": { "resource": "power_demo_focus_pool", "amount": 2 }
+  },
+  {
+    "type": "power_projection",
+    "id": "power_demo_projection_barrier",
+    "name": "intercepting bubble",
+    "kind": "area",
+    "radius": 1,
+    "range": 5,
+    "follow_owner": true,
+    "strength": 40,
+    "duration_ticks": 10,
+    "affects": "friendly",
+    "intercepts": true,
+    "start_cost": { "resource": "power_demo_focus_pool", "amount": 10 }
+  },
+  {
+    "type": "damage_rule",
+    "id": "power_demo_domain_ward",
+    "required_area": "power_demo_projection_aura",
+    "actions": [
+      {
+        "operation": "absorb",
+        "resource": "none",
+        "maximum": { "math": [ "u_power_area('power_demo_projection_aura', 'field': 'strength')" ] }
+      }
+    ]
+  },
+  {
+    "type": "ability",
+    "id": "power_demo_bolt_projection_cast",
+    "name": "bolt projection",
+    "windup_ticks": 0,
+    "range": 10,
+    "move_cost": 100,
+    "energy_cost": { "resource": "power_demo_focus_pool", "amount": 5 },
+    "cooldown": "power_demo_force_group",
+    "ai": { "intent": "harm", "relation": "hostile", "priority": 10, "magnitude": 20 },
+    "eocs": [
+      {
+        "id": "EOC_POWER_DEMO_CREATE_BOLT",
+        "effect": [ { "create_power_projection": { "id": "power_demo_travelling_bolt" } } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_USE_BOLT",
+    "effect": [
+      { "request_ability": { "id": "power_demo_bolt_projection_cast", "targeted": true } },
+      {
+        "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+        "then": [ { "math": [ "_cancel = 1" ] }, { "u_message": "You do not begin that power." } ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_bolt_projection_focus",
+    "name": { "str": "bolt projection focus", "str_pl": "bolt projection foci" },
+    "description": "Select a creature within ten tiles.  A force bolt travels one tile each second, stopping at walls, bodies or opposing powers.  It spends five focus and a shared strike charge.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_USE_BOLT" ] }
+  },
+  {
+    "type": "ability",
+    "id": "power_demo_beam_projection_cast",
+    "name": "beam projection",
+    "windup_ticks": 0,
+    "range": 10,
+    "move_cost": 100,
+    "energy_cost": { "resource": "power_demo_focus_pool", "amount": 5 },
+    "cooldown": "power_demo_force_group",
+    "ai": { "intent": "harm", "relation": "hostile", "min_range": 2, "priority": 20, "magnitude": 30 },
+    "eocs": [
+      { "id": "EOC_POWER_DEMO_CREATE_BEAM", "effect": [ { "create_power_projection": { "id": "power_demo_clash_beam" } } ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_USE_BEAM",
+    "effect": [
+      { "request_ability": { "id": "power_demo_beam_projection_cast", "targeted": true } },
+      {
+        "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+        "then": [ { "math": [ "_cancel = 1" ] }, { "u_message": "You do not begin that power." } ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_beam_projection_focus",
+    "name": { "str": "beam projection focus", "str_pl": "beam projection foci" },
+    "description": "Select a creature within ten tiles.  A visible beam charges for two seconds and then pulses.  Damage or displacement interrupts it; opposing beams can clash and intercepting bubbles can stop it.  It spends five focus, a shared charge and two focus per active pulse.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_USE_BEAM" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_TOGGLE_DOMAIN",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_projection('power_demo_projection_aura')", ">", "0" ] },
+        "then": [ { "dispel_power_projections": { "id": "power_demo_projection_aura" } } ],
+        "else": [ { "create_power_projection": { "id": "power_demo_projection_aura", "target": "u" } } ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_domain_projection_focus",
+    "name": { "str": "domain projection focus", "str_pl": "domain projection foci" },
+    "description": "Activate to maintain a protective domain around you for one minute, or end your own domain.  Friendly creatures inside gain four points of absorption per hit from each overlapping source.  Upkeep costs two focus each second.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_TOGGLE_DOMAIN" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_TOGGLE_INTERCEPTOR",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_projection('power_demo_projection_barrier')", ">", "0" ] },
+        "then": [ { "dispel_power_projections": { "id": "power_demo_projection_barrier" } } ],
+        "else": [ { "create_power_projection": { "id": "power_demo_projection_barrier", "target": "u" } } ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_interceptor_projection_focus",
+    "name": { "str": "interceptor projection focus", "str_pl": "interceptor projection foci" },
+    "description": "Activate to raise an intercepting bubble for ten seconds, or end your own bubble.  It contests new travelling power projectiles and beams with forty strength; native bullets retain their ordinary ballistics.  Raising it costs ten focus.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_TOGGLE_INTERCEPTOR" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_CHOOSE_BEAM",
+    "effect": [ { "use_best_ability": { "abilities": [ "power_demo_beam_projection_cast", "power_demo_bolt_projection_cast" ] } } ]
+  },
+  {
+    "type": "monster_attack",
+    "attack_type": "eoc",
+    "id": "power_demo_request_beam",
+    "range": 10,
+    "cooldown": 10,
+    "eoc": [ "EOC_POWER_DEMO_CHOOSE_BEAM" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_power_demo_beam_caster",
+    "copy-from": "mon_power_demo_brawler",
+    "name": { "str": "beam clash caster" },
+    "description": "A demonstration opponent that launches persistent force bolts or visibly charges a contestable heat beam.  Interrupt the charge, raise an intercepting bubble, or meet its beam with your own.",
+    "special_attacks": [ [ "power_demo_request_beam", 10 ] ]
+  }
+]

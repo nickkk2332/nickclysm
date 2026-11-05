@@ -111,6 +111,7 @@
 #include "damage_transaction.h"
 #include "power_runtime.h"
 #include "power_motion.h"
+#include "power_projection.h"
 #include "faction.h"
 #include "fault.h"
 #include "field.h"
@@ -3657,6 +3658,26 @@ void game::draw_ter( const tripoint_bub_ms &center, const bool looking, const bo
     ter_view_p = center;
 
     here.draw( w_terrain, tripoint_bub_ms( center ) );
+
+    for( const auto &tile : get_projections().tiles() ) {
+        const auto point = here.get_bub( tile.position );
+        if( point.z() != center.z() || !u.sees( here, point ) ||
+            here.field_at( point ).displayed_field_type() != fd_null ) {
+            continue;
+        }
+#if defined(TILES)
+        if( is_draw_tiles_mode() ) {
+            tilecontext->init_draw_field_override( point, field_type_str_id( tile.charging ||
+                                                   tile.kind == "area" ? "fd_dazzling" : "fd_electricity" ).id() );
+            tilecontext->set_draw_cache_dirty();
+            continue;
+        }
+#endif
+        const char symbol = tile.charging ? '+' : tile.kind == "projectile" ? '*' : tile.kind == "beam" ?
+                            '|' : '.';
+        mvwputch( w_terrain, point.xy().raw() - center.xy().raw() + point_rel_ms( POSX, POSY ).raw(),
+                  tile.charging ? c_yellow : tile.kind == "area" ? c_light_blue : c_light_cyan, symbol );
+    }
 
     if( draw_sounds ) {
         draw_footsteps( w_terrain, tripoint_rel_ms( -center.x(), -center.y(), center.z() ) + point( POSX,

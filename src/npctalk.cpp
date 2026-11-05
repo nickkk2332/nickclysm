@@ -69,6 +69,7 @@
 #include "ability_runtime.h"
 #include "damage_transaction.h"
 #include "power_eoc.h"
+#include "projection_eoc.h"
 #include "explosion.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -10757,6 +10758,9 @@ parsers = {
     { "u_cast_spell", "npc_cast_spell", jarg::member, &talk_effect_fun::f_cast_spell },
     { "start_execution", jarg::member, &talk_effect_fun::f_start_execution },
     { "request_ability", jarg::object, &talk_effect_fun::f_request_ability },
+    { "create_power_projection", jarg::object, &projection_eoc::create },
+    { "end_power_projection", jarg::member, &projection_eoc::end },
+    { "dispel_power_projections", jarg::object, &projection_eoc::dispel },
     { "power_fling", jarg::object, &power_eoc::fling },
     { "spawn_power_summon", jarg::object, &power_eoc::summon },
     { "command_power_summon", jarg::object, &power_eoc::summon_command },

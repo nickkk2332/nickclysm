@@ -271,3 +271,7 @@ actions. Effect-only invocations retain their explicitly permitted free policy.
 
 See [POWER_ACTORS.md](POWER_ACTORS.md) for optional `ai` metadata, pure queries,
 `use_best_ability`, attributed native flings and commanded familiar bonds.
+
+[Persistent power projections](POWER_PROJECTIONS.md) add saved travelling bolts,
+charged beams, intercepting areas and independent aura membership as opt-in EOC
+payloads. Ability payment and projection start/upkeep costs are separate.

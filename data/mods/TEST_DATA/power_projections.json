@@ -1,0 +1,158 @@
+[
+  {
+    "type": "power_projection",
+    "id": "test_projection_bolt",
+    "name": "Projectile fixture",
+    "kind": "projectile",
+    "range": 10,
+    "speed": 1,
+    "strength": 20,
+    "affects": "all",
+    "damage": [ { "damage_type": "pure", "amount": 20 } ],
+    "on_hit": [ { "id": "EOC_TEST_PROJECTION_HIT", "effect": [ { "math": [ "projection_hits", "+=", "1" ] } ] } ],
+    "on_end": [ { "id": "EOC_TEST_PROJECTION_END", "effect": [ { "math": [ "projection_ends", "+=", "1" ] } ] } ],
+    "on_start": [ { "id": "EOC_TEST_PROJECTION_START", "effect": [ { "math": [ "projection_starts", "+=", "1" ] } ] } ],
+    "on_release": [ { "id": "EOC_TEST_PROJECTION_RELEASE", "effect": [ { "math": [ "projection_releases", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_homing",
+    "copy-from": "test_projection_bolt",
+    "name": "Homing projectile fixture",
+    "track_target": true
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_fast",
+    "copy-from": "test_projection_bolt",
+    "name": "Fast projectile fixture",
+    "speed": 10
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_beam",
+    "copy-from": "test_projection_bolt",
+    "name": "Beam fixture",
+    "kind": "beam",
+    "charge_ticks": 2,
+    "interrupt_damage": true,
+    "damage": [ { "damage_type": "pure", "amount": 10 } ],
+    "on_clash": [ { "id": "EOC_TEST_PROJECTION_CLASH", "effect": [ { "math": [ "projection_clashes", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_ready_beam",
+    "copy-from": "test_projection_beam",
+    "name": "Active beam fixture",
+    "charge_ticks": 0
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_area",
+    "name": "Area fixture",
+    "kind": "area",
+    "range": 10,
+    "radius": 2,
+    "strength": 5,
+    "duration_ticks": 30,
+    "affects": "hostile",
+    "on_enter": [ { "id": "EOC_TEST_PROJECTION_ENTER", "effect": [ { "math": [ "projection_enters", "+=", "1" ] } ] } ],
+    "on_stay": [ { "id": "EOC_TEST_PROJECTION_STAY", "effect": [ { "math": [ "projection_stays", "+=", "1" ] } ] } ],
+    "on_exit": [ { "id": "EOC_TEST_PROJECTION_EXIT", "effect": [ { "math": [ "projection_exits", "+=", "1" ] } ] } ],
+    "on_end": [ { "id": "EOC_TEST_PROJECTION_AREA_END", "effect": [ { "math": [ "projection_ends", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_moving",
+    "copy-from": "test_projection_area",
+    "name": "Moving area fixture",
+    "follow_owner": true
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_harm_area",
+    "copy-from": "test_projection_area",
+    "name": "Damaging area fixture",
+    "damage": [ { "damage_type": "pure", "amount": 7 } ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_barrier",
+    "copy-from": "test_projection_area",
+    "name": "Interceptor fixture",
+    "radius": 0,
+    "strength": 20,
+    "affects": "all",
+    "intercepts": true,
+    "on_clash": [ { "id": "EOC_TEST_PROJECTION_BARRIER_CLASH", "effect": [ { "math": [ "projection_clashes", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_ward",
+    "copy-from": "test_projection_area",
+    "name": "Protective area fixture",
+    "affects": "all"
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_projection_ward",
+    "required_area": "test_projection_ward",
+    "actions": [
+      {
+        "operation": "absorb",
+        "resource": "none",
+        "maximum": { "math": [ "u_power_area('test_projection_ward', 'field': 'strength')" ] }
+      }
+    ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_paid",
+    "copy-from": "test_projection_ready_beam",
+    "name": "Paid beam fixture",
+    "start_cost": { "resource": "test_power_focus", "amount": 5 },
+    "upkeep": { "resource": "test_power_focus", "amount": 5 }
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_recursive",
+    "copy-from": "test_projection_area",
+    "name": "Recursive area fixture",
+    "radius": 0,
+    "max_per_owner": 128,
+    "on_enter": [
+      {
+        "id": "EOC_TEST_PROJECTION_RECURSIVE",
+        "effect": [ { "create_power_projection": { "id": "test_projection_recursive" } } ]
+      }
+    ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_callback",
+    "copy-from": "test_projection_area",
+    "name": "Callback area fixture",
+    "on_enter": [
+      {
+        "id": "EOC_TEST_PROJECTION_CALLBACK",
+        "effect": [ { "npc_deal_damage": "pure", "amount": 1, "bodypart": "torso", "source": "u" } ]
+      }
+    ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_child_bolt",
+    "copy-from": "test_projection_bolt",
+    "name": "Child projectile fixture",
+    "on_hit": [ { "id": "EOC_TEST_PROJECTION_CHILD", "effect": [ { "create_power_projection": { "id": "test_projection_area" } } ] } ]
+  },
+  {
+    "type": "power_projection",
+    "id": "test_projection_terminal",
+    "copy-from": "test_projection_area",
+    "name": "Terminal recreation fixture",
+    "on_end": [
+      { "id": "EOC_TEST_PROJECTION_TERMINAL", "effect": [ { "create_power_projection": { "id": "test_projection_area" } } ] }
+    ]
+  }
+]
