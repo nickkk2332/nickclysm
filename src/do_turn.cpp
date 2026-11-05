@@ -23,6 +23,7 @@
 #include "cached_options.h"
 #include "calendar.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "execution_fatal.h"
 #ifdef TILES
 #include "cata_imgui.h"
@@ -116,7 +117,7 @@ bool cleanup_at_end()
 {
     avatar &u = get_avatar();
     if( g->uquit == QUIT_DIED || g->uquit == QUIT_SUICIDE ) {
-        g->executions().cancel_all( "game_over" );
+        g->abilities().cancel_for_world_transition( "game_over" );
         g->cleanup_dead();
         // Put (non-hallucinations) into the overmap so they are not lost.
         for( monster &critter : g->all_monsters() ) {
@@ -300,6 +301,7 @@ npc_turn_result process_npc_turn( map &m, npc &guy )
         const bool has_destination = guy.has_destination_activity();
         guy.move();
         g->executions().drain_starts();
+        g->abilities().drain_starts();
         if( moves == guy.get_moves() ) {
             // Count every time we exit npc::move() without spending any moves.
             real_count++;
@@ -398,7 +400,7 @@ void monmove()
         }
         while( critter.get_moves() > 0 && !critter.is_dead() && !critter.has_effect( effect_ridden ) ) {
             critter.made_footstep = false;
-            if( g->executions().controls( critter ) ) {
+            if( g->executions().controls( critter ) || g->abilities().controls( critter ) ) {
                 critter.set_moves( 0 );
                 break;
             }
@@ -412,6 +414,7 @@ void monmove()
             }
             critter.move(); // Move one square, possibly hit u
             g->executions().drain_starts();
+            g->abilities().drain_starts();
             critter.process_triggers();
             m.creature_in_field( critter );
         }
@@ -647,6 +650,7 @@ bool game::do_turn()
 
     timed_event_manager &timed_events = get_timed_events();
     executions().process();
+    abilities().process();
     if( get_avatar().death_finalized() && is_game_over() ) {
         return turn_handler::cleanup_at_end();
     }
@@ -762,6 +766,7 @@ bool game::do_turn()
                 }
 
                 executions().drain_starts();
+                abilities().drain_starts();
                 if( is_game_over() ) {
                     return turn_handler::cleanup_at_end();
                 }

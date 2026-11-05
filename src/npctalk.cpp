@@ -66,6 +66,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -6491,6 +6492,93 @@ talk_effect_fun_t::func f_signal_hordes( const JsonObject &jo, std::string_view 
     };
 }
 
+talk_effect_fun_t::func f_request_ability( const JsonObject &jo, std::string_view member,
+        std::string_view source )
+{
+    const JsonObject args = jo.get_object( member );
+    const str_or_var id = get_str_or_var( args.get_member( "id" ), "id" );
+    const std::string mode = args.get_string( "invocation", "action" );
+    if( mode != "action" && mode != "effect_only" ) {
+        args.throw_error_at( "invocation", "expected action or effect_only" );
+    }
+    const bool targeted = args.get_bool( "targeted", false );
+    std::optional<var_info> loc;
+    optional( args, false, "loc", loc );
+    if( targeted && loc ) {
+        args.throw_error( "targeted and loc are mutually exclusive" );
+    }
+    const auto success = load_eoc_vector( jo, "true_eocs", source );
+    const auto failure = load_eoc_vector( jo, "false_eocs", source );
+    return [id, mode, targeted, loc, success, failure]( dialogue & d ) {
+        ability_request request;
+        request.ability = ability_id( id.evaluate( d ) );
+        request.invocation = mode == "action" ? ability_invocation::action :
+                             ability_invocation::effect_only;
+        request.context = d.get_context();
+        Creature *caster = d.has_actor( false ) ? d.actor( false )->get_creature() : nullptr;
+        if( caster ) {
+            request.caster = creature_ref::bind( *caster );
+        }
+        if( d.has_actor( true ) ) {
+            if( Creature *target = d.actor( true )->get_creature() ) {
+                request.target = creature_ref::bind( *target );
+            }
+            if( const item_location *location = d.const_actor( true )->get_const_item() ) {
+                if( const item *source_item = location->get_item() ) {
+                    request.context["ability_source_item"] = diag_value{ source_item->typeId().str() };
+                    request.context["ability_source_item_uid"] = diag_value{ std::to_string( source_item->uid().get_value() ) };
+                }
+            }
+        }
+        if( loc ) {
+            request.point = read_var_value( *loc, d ).tripoint();
+        }
+        ability_admission result;
+        if( targeted ) {
+            if( !caster || !caster->is_avatar() ) {
+                result.reason = "interactive_target_requires_avatar";
+            } else if( !request.ability.is_valid() ) {
+                result.reason = "invalid_ability";
+            } else if( const auto chosen = g->look_around() ) {
+                request.point = get_map().get_abs( *chosen );
+                if( Creature *target = get_creature_tracker().creature_at<Creature>( *chosen ) ) {
+                    request.target = creature_ref::bind( *target );
+                } else {
+                    request.target = creature_ref();
+                }
+                result = g->abilities().request( request );
+            } else {
+                result.reason = "target_cancelled";
+            }
+        } else {
+            result = g->abilities().request( request );
+        }
+        d.set_value( "ability_instance", std::to_string( result.id ) );
+        d.set_value( "reason", result.reason );
+        run_eoc_vector( result.accepted() ? success : failure, d );
+    };
+}
+
+talk_effect_fun_t::func f_cancel_ability( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    const str_or_var id = get_str_or_var( jo.get_member( member ), member );
+    return [id]( dialogue & d ) {
+        bool cancelled = false;
+        try {
+            size_t consumed = 0;
+            const std::string value = id.evaluate( d );
+            const int64_t parsed = std::stoll( value, &consumed );
+            if( consumed == value.size() ) {
+                cancelled = g->abilities().cancel( parsed );
+            }
+        } catch( const std::invalid_argument & ) {
+        } catch( const std::out_of_range & ) {
+        }
+        d.set_value( "reason", cancelled ? "cancelled" : "not_found" );
+    };
+}
+
 talk_effect_fun_t::func f_start_execution( const JsonObject &jo, std::string_view member,
         std::string_view source )
 {
@@ -10577,6 +10665,8 @@ parsers = {
     { "u_bulk_donate", "npc_bulk_donate", jarg::member, &talk_effect_fun::f_bulk_trade_accept },
     { "u_cast_spell", "npc_cast_spell", jarg::member, &talk_effect_fun::f_cast_spell },
     { "start_execution", jarg::member, &talk_effect_fun::f_start_execution },
+    { "request_ability", jarg::object, &talk_effect_fun::f_request_ability },
+    { "cancel_ability", jarg::member, &talk_effect_fun::f_cancel_ability },
     { "cancel_execution", jarg::member, &talk_effect_fun::f_cancel_execution },
     { "u_map_run_eocs", "npc_map_run_eocs", jarg::member, &talk_effect_fun::f_map_run_eocs },
     { "u_map_run_item_eocs", "npc_map_run_item_eocs", jarg::member, &talk_effect_fun::f_map_run_item_eocs },

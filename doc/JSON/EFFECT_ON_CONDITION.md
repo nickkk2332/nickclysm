@@ -2515,6 +2515,24 @@ Other EOCs have some variables as well that they have access to, they are as fol
 
 ## General
 
+#### `request_ability`, `cancel_ability`
+
+`{ "request_ability": { "id": "ability_id" } }` requests an opt-in saved ability
+with alpha as caster and beta as creature target. Optional `targeted: true`
+selects an avatar target interactively; `loc` supplies a point variable instead.
+It writes string `ability_instance` and `reason`; outer `true_eocs` / `false_eocs`
+report admission, while definition hooks report eventual release/interruption.
+`invocation: "effect_only"` requires explicit definition permission and skips
+ability windup/payment. `{ "cancel_ability": { "context_val": "ability_instance" } }`
+cancels uncommitted work. Conditions `u_in_ability` / `npc_in_ability` query an
+active full-action control claim. See [ABILITIES.md](ABILITIES.md) for the full
+schema, payment/actor conventions, context, saves, diagnostics and examples.
+
+`{ "can_request_ability": { "id": "ability_id" } }` queries native eligibility
+without opening targeting UI, running hooks/spell conditions or sampling windup.
+It accepts the same `invocation` and `loc` inputs; spell-specific conditions remain
+release-time checks.
+
 #### `start_execution`, `cancel_execution`
 
 `{ "start_execution": "execution_id" }` queues a saved execution with alpha as actor

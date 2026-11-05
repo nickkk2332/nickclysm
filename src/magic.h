@@ -177,6 +177,8 @@ struct fake_spell {
 
     // gets the spell with an additional override for minimum level (default 0)
     spell get_spell( const Creature &caster, int min_level_override = 0 ) const;
+    spell get_spell_with_context( const Creature &caster, int min_level_override,
+                                  const spell &parent ) const;
     spell get_spell() const;
 
     bool is_valid() const;

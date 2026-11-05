@@ -60,6 +60,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_activity_actor.h"
+#include "ability_activity_actor.h"
 #include "faction.h"
 #include "fault.h"
 #include "field_type.h"
@@ -15765,6 +15766,7 @@ deserialize_functions = {
     { ACT_E_FILE, &efile_activity_actor::deserialize },
     { ACT_EBOOKSAVE, &ebooksave_activity_actor::deserialize },
     { activity_id( "ACT_EXECUTION" ), &execution_activity_actor::deserialize },
+    { activity_id( "ACT_ABILITY" ), &ability_activity_actor::deserialize },
     { ACT_FERTILIZE_PLANT, &fertilize_plant_activity_actor::deserialize },
     { ACT_FETCH_REQUIRED, &fetch_required_activity_actor::deserialize },
     { ACT_FIELD_DRESS, &butchery_activity_actor::deserialize },

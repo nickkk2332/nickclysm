@@ -35,6 +35,7 @@
 #include "event_bus.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "execution_combat.h"
 #include "explosion.h"
 #include "faction.h"
@@ -2549,6 +2550,7 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
     }
     if( g ) {
         g->executions().notify_damage( *this, dam );
+        g->abilities().notify_damage( *this, dam );
     }
     // Ensure we can try to get at what hit us.
     reset_pathfinding_cd();

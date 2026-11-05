@@ -51,6 +51,7 @@
 #include "execution.h"
 #include "execution_trigger.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "faction.h"
 #include "faction_camp.h"
 #include "fault.h"
@@ -428,6 +429,7 @@ void DynamicDataLoader::initialize()
     add( "relic_procgen_data", &relic_procgen_data::load_relic_procgen_data );
     add( "effect_on_condition", &effect_on_conditions::load );
     add( "execution", &executions::load );
+    add( "ability", &abilities::load );
     add( "execution_trigger", &execution_triggers::load );
     add( "field_type", &field_types::load );
     add( "field_type_migration", &field_type_migrations::load );
@@ -849,9 +851,11 @@ void DynamicDataLoader::unload_data()
     event_statistic::reset();
     effect_on_conditions::reset();
     executions::reset();
+    abilities::reset();
     execution_triggers::reset();
     if( g ) {
         g->executions().clear();
+        g->abilities().clear();
     }
     event_transformation::reset();
     faction_mission::reset();
@@ -1000,6 +1004,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Flags" ), &json_flag::finalize_all },
             { _( "Option sliders" ), &option_slider::finalize_all },
             { _( "Executions" ), &executions::finalize },
+            { _( "Abilities" ), &abilities::finalize },
             { _( "Execution triggers" ), &execution_triggers::finalize },
             { _( "Mod settings" ), &mod_settings::finalize_all },
             { _( "Addictions" ), &add_type::finalize_all },
@@ -1232,6 +1237,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Magic types" ), &magic_type::check_consistency },
             { _( "Spells" ), &spell_type::check_consistency },
             { _( "Executions" ), &executions::check },
+            { _( "Abilities" ), &abilities::check },
             { _( "Execution triggers" ), &execution_triggers::check },
             { _( "Spell migration" ), &spell_migration::check },
             { _( "Transformations" ), &event_transformation::check_consistency },

@@ -37,6 +37,7 @@
 #include "errand.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "faction.h"
 #include "field.h"
 #include "flag.h"
@@ -1578,6 +1579,54 @@ conditional_t::func f_can_be_knocked_out( bool is_npc )
         }
         const Creature *who = d.const_actor( is_npc )->get_const_creature();
         return who && incapacitation::eligibility( *who ) == "eligible";
+    };
+}
+
+conditional_t::func f_can_request_ability( const JsonObject &jo, std::string_view member )
+{
+    const JsonObject args = jo.get_object( member );
+    const str_or_var id = get_str_or_var( args.get_member( "id" ), "id" );
+    const std::string mode = args.get_string( "invocation", "action" );
+    if( mode != "action" && mode != "effect_only" ) {
+        args.throw_error_at( "invocation", "expected action or effect_only" );
+    }
+    std::optional<var_info> loc;
+    optional( args, false, "loc", loc );
+    return [id, mode, loc]( const_dialogue const & d ) {
+        ability_request request;
+        request.ability = ability_id( id.evaluate( d ) );
+        request.invocation = mode == "action" ? ability_invocation::action :
+                             ability_invocation::effect_only;
+        request.context = d.get_context();
+        if( d.has_actor( false ) ) {
+            if( const Creature *caster = d.const_actor( false )->get_const_creature() ) {
+                if( !g->shared_from( *caster ) ) {
+                    return false;
+                }
+                request.caster = creature_ref::bind( *caster );
+            }
+        }
+        if( d.has_actor( true ) ) {
+            if( const Creature *target = d.const_actor( true )->get_const_creature() ) {
+                if( !g->shared_from( *target ) ) {
+                    return false;
+                }
+                request.target = creature_ref::bind( *target );
+            }
+        }
+        if( loc ) {
+            request.point = read_var_value( *loc, d ).tripoint();
+        }
+        return g->abilities().check( request ).empty();
+    };
+}
+
+conditional_t::func f_in_ability( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        const Creature *who = d.has_actor( is_npc ) ?
+                              d.const_actor( is_npc )->get_const_creature() : nullptr;
+        return who && g->abilities().controls( *who );
     };
 }
 
@@ -3377,6 +3426,7 @@ static const
 std::vector<condition_parser>
 parsers = {
     {"execution_can_fall", jarg::object, &conditional_fun::f_execution_can_fall },
+    {"can_request_ability", jarg::object, &conditional_fun::f_can_request_ability },
     {"u_has_any_trait", "npc_has_any_trait", jarg::array, &conditional_fun::f_has_any_trait },
     {"u_has_trait", "npc_has_trait", jarg::member, &conditional_fun::f_has_trait },
     {"u_has_active_trait", "npc_has_active_trait", jarg::member, &conditional_fun::f_has_active_trait },
@@ -3558,6 +3608,7 @@ parsers_simple = {
     {"u_is_warm", "npc_is_warm", &conditional_fun::f_is_warm },
     {"u_exists", "npc_exists", &conditional_fun::f_exists },
     {"u_in_execution", "npc_in_execution", &conditional_fun::f_in_execution },
+    {"u_in_ability", "npc_in_ability", &conditional_fun::f_in_ability },
     {"u_is_knocked_out", "npc_is_knocked_out", &conditional_fun::f_is_knocked_out },
     {"u_death_pending", "npc_death_pending", &conditional_fun::f_death_pending },
     {"u_can_be_knocked_out", "npc_can_be_knocked_out", &conditional_fun::f_can_be_knocked_out },

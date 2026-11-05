@@ -41,6 +41,7 @@
 #include "event_bus.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "execution_combat.h"
 #include "field_type.h"
 #include "flag.h"
@@ -2780,6 +2781,7 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
             source = g->executions().secondary_damage_source( this );
         }
         g->executions().notify_damage( *this, dam_to_bodypart );
+        g->abilities().notify_damage( *this, dam_to_bodypart );
     }
     if( source ) {
         cata::event e = cata::event::make<event_type::character_takes_damage>( getID(), dam_to_bodypart,
@@ -3089,6 +3091,7 @@ void Character::hurtall( int dam, Creature *source, bool disturb /*= true*/ )
 
         if( g ) {
             g->executions().notify_damage( *this, dam_to_bodypart );
+            g->abilities().notify_damage( *this, dam_to_bodypart );
         }
 
         if( source ) {

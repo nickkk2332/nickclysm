@@ -39,6 +39,9 @@
 
 ## Spells
 
+For an opt-in shared player/NPC/monster windup, interruption, payment and result
+contract around existing spell effects, see [Ability lifecycle](ABILITIES.md).
+
 Spells in Cataclysm: Dark Days Ahead consist in actions performed by a character or item, that result on a target or targets receiving an event.
 
 This can be anything from the humble fireball spell or the simple heal, to granting states, mutations, summoning items and vehicles, spawning monsters, exploding monsters, applying auras, crowd-controlling, blinking, transforming terrain, adding or subtracting stats, granting or removing `effect_type`s, and more.
