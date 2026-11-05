@@ -82,11 +82,13 @@ different filters must all pass. An omitted filter imposes no restriction.
 
 | Match member | Values |
 | --- | --- |
-| `channels` | `character_melee`, `monster_melee`, `melee` for both melee channels, or explicitly opted-in `projectile` |
+| `channels` | `character_melee`, `monster_melee`, `melee` for both original melee channels; explicit `projectile`, `thrown`, `spell`, `monster_special` |
 | `source_kind`, `target_kind` | Lists of `avatar`, `npc`, `monster` |
 | `source_monsters`, `target_monsters` | Monster type IDs |
 | `weapons`, `weapon_categories`, `weapon_skills` | Original attack item IDs, categories, or skill IDs; unarmed character attacks use weapon `null` and skill `unarmed` |
 | `ammunition` | Actual fired ammunition item IDs, when available; projectile rules only have ammunition facts |
+| `spells` | Exact primary spell IDs on the `spell` channel |
+| `monster_attacks` | Exact configured JSON melee/bite attack IDs on `monster_special` |
 | `styles`, `techniques` | Selected martial-art and technique IDs |
 | `body_parts`, `weakpoints` | Actual body-part ID and stable weakpoint ID; weakpoints use IDs from the victim's definition, never translated names |
 | `terrains`, `furniture` | IDs at the victim's tile when primary damage processing begins |
@@ -132,22 +134,23 @@ single-candidate weight choices need no selection RNG draw; accepted scene creat
 still seeds its saved RNG normally.
 
 Supported producers are ordinary character primary melee (avatar/NPC, including a
-resolved reach contact), standard monster primary melee, and the nonfatal handheld
-[projectile producer](#projectile-rules). Nested/counter attacks, mutation contacts,
-secondary projectiles and execution-scripted attacks cannot become new automatic roots.
-Mech delegation, rider redirects, monster specials that bypass standard melee, thrown
-items, spells and environmental damage still need additional producers. Fatal rules
-use only the supported primary-melee paths at the earlier boundary below. This is not
-a universal combat-event/causality API.
+resolved reach contact), standard monster primary melee, handheld
+[projectiles](#projectile-rules), and explicit [thrown, spell and JSON monster-special
+channels](#additional-trigger-channels). Supported primary HP commits can also use
+fatal rules. Nested/counter attacks, mutation contacts, secondary projectiles and
+execution-scripted attacks cannot become new automatic roots. Mech delegation,
+rider redirects, turrets, arbitrary built-in monster specials and environmental
+damage still need their own adapters and participant policies.
 
 For engine tooling, `execution_manager::last_trigger_report()` returns the latest
 contact ID, indexed candidate count, selected rule/queued handle, and up to 64 candidate
 reasons without rerolling or reevaluating. Reasons include `filtered`, `condition`,
 `chance_failed`, `cooldown`, `participant_busy`, `weapon_lost`, `not_selected`, and
-`duplicate_contact`. There is no inspector UI or EOC binding for this report yet.
+`duplicate_contact`, and `lower_priority_not_evaluated`. The [read-only inspector](#execution-inspector)
+shows these recorded decisions; there is no EOC binding for reports.
 There are at most 2,048 rules and 4,096 saved cooldown keys. The last 128 processed
 contact IDs suppress duplicate in-session submissions; this bounded cache and the
-latest report are not saved. The monotonic contact counter is saved. Loading scenes
+latest 32 reports are not saved. The monotonic contact counter is saved. Loading scenes
 does not reemit combat contacts or rerun trigger selection.
 
 ## Projectile rules
@@ -247,6 +250,88 @@ prevention, death events, kill credit and corpse placement.
 [Core fatal projectile content](../../data/json/executions/fatal_projectile.json)
 contains separate NPC/monster and player definitions. The demo pistol/bow add
 explicit fatal rules. Ordinary production weapons acquire no rule.
+
+## Additional trigger channels
+
+These are explicit opt-ins. Omitted `channels` and the `melee` alias still select
+only the original two melee producers. Each new channel supports
+`attack_resolved` and `fatal_hit`, with the existing fatal-target/player opt-ins.
+New-channel `hit: false` rules are rejected, including inherited rules.
+
+| Channel | Native boundary and available extra facts |
+| --- | --- |
+| `thrown` | Loaded avatar/NPC `Character::throw_item`, including blind throws. `weapons` matches the original thrown item's type; `weapon_uid`, categories, `weapon_skill: "throw"` and actual `projectile_origin` are captured. The item can already be detached from inventory. Ammunition/style/technique are absent. Mounted throws are outside this adapter. |
+| `spell` | A real loaded avatar, NPC or monster's primary `cast_all_effects` / `cast_spell_effect` attack effect. `spells` matches its ID; context adds `spell` and `spell_level`. Area attacks have independent victims. Ordinary magical projectile hits and direct split/percentage body-part damage use their actual native damage packets. No wielded weapon or style is inferred. |
+| `monster_special` | JSON `melee_actor` special attacks, including its bite subclass. `monster_attacks` matches the actor's exact configured ID; context adds `monster_attack`. Native body-part selection, mitigation, HP loss, costs, post-hit effects and EOCs remain in place. No technique, weapon or critical fact is invented. |
+
+For example:
+
+```json
+{
+  "type": "execution_trigger",
+  "id": "example_arcane_impact",
+  "execution": "execution_projectile_stagger",
+  "chance": 0.1,
+  "match": { "channels": [ "spell" ], "spells": [ "my_arcane_bolt" ], "hp_loss": { "minimum": 1 } }
+}
+```
+
+Living reactions use the first direct packet per victim per complete native
+action/effect, within a 64-victim budget. Repeated spell projectiles, multiple limbs
+and repeated special hits do not aggregate damage or multiply chances. A later
+lethal packet has one fatal admission opportunity using its own facts; subsequent
+harm can settle it immediately. Native extra spell effects and spells/attacks
+created by callbacks are children, rather than independent automatic roots.
+`EXTRA_EFFECTS_FIRST` retains that rule. A `WONDER` cast with only extra spells has
+no eligible primary damage packet.
+
+`require_weapon` still requires the bound original item to be wielded. Thrown
+reactions normally leave it false; the runtime does not bind or reclaim the landed
+item as an execution-owned object.
+
+Graphs do not start inside partial throws, cast effects or JSON melee specials.
+Fatal ownership is selected at the primary HP write, while readiness and living
+selection wait until the native action/effect returns. Exceptions discard
+unpublished living contacts and settle accepted fatal injuries. Save attempts
+inside these boundaries are refused. Native resource payment outside the spell
+effect wrapper keeps its existing caller ordering; this adapter does not promise
+a universal post-resource spell-cast event.
+
+Healing, damage over time, source-less/fake casts, direct unwrapped effect helper
+calls, deferred environmental damage, arbitrary built-in monster attacks and
+secondary native projectile flights are outside these channels. Missing facts
+remain absent. `monster_attacks` IDs are local/configured strings and cannot all
+be validated against a global registry; `spells` IDs are validated normally.
+
+The optional [demo content](../../data/mods/EXECUTIONS_DEMO/additional_triggers.json)
+provides a throwing knife, direct spell and a manually spawnable brawler, with rare
+living/fatal rules for NPC/monster victims. Production content gains no rules.
+
+## Execution inspector
+
+Open **Debug → Info → Inspect executions**, or search for **Execution inspector**
+in the debug console's Data actions. It lists active/recent scenes and the latest
+32 trigger contacts. Detail views scroll and wrap long values.
+
+Scenes show definition/revision, state, step/action, due tick, participant UIDs and
+dimensions, loaded/visible states, positions, HP, moves, requested control and
+active claims, movement progress, local results/context, fatal readiness/deadline,
+pending cancellation, terminal reasons, owned narration and transcript.
+The latest 128 graph choices show occurrence/step, range, selected value and
+whether RNG was sampled. Fixed ranges are identified without consuming RNG.
+Draw logs are saved with active scenes; legacy saves may omit them.
+
+Contacts show captured facts, indexed candidate count, up to 64 recorded decisions,
+priorities, weights, chance values and actual draws, selected rule/instance, and
+the weighted draw when needed. Lower tiers skipped after selection are explicitly
+marked as unevaluated. Reports are transient, bounded session diagnostics; cooldowns
+and the contact counter keep their existing saved behavior.
+
+Inspection never evaluates EOC conditions again, consumes randomness, starts or
+advances scenes, changes cooldowns, or emits debug-use gameplay events. Opening
+this inspector does not disable achievements. There are no live advance, preview,
+cancel or edit controls. The view is privileged debug information about bound
+participants; it is not an in-world player perception interface.
 
 ## Fatal-hit rules
 
@@ -783,5 +868,6 @@ narration each retain 128 segments. Native message-history limits still apply.
 
 The reference content is [knife_stagger.json](../../data/json/executions/knife_stagger.json).
 It rolls 1–4 backward tiles, stops before a ledge, tries a 50% native tumble, or emits
-two wounded beats. It can end with survival. Additional automatic combat producers, offscreen scene simulation, a dedicated transcript
-inspector UI, and additional typed physical actions remain later milestones.
+two wounded beats. It can end with survival. Further native producer families,
+source-less participant policies, offscreen scene simulation, editing/sandbox
+preview tooling and additional typed physical actions remain later milestones.

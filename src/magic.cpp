@@ -30,6 +30,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_fatal.h"
+#include "execution_combat.h"
 #include "field.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
@@ -2399,6 +2400,7 @@ void spell::cast_spell_effect( const tripoint_bub_ms &target ) const
     // a temporary caster: never record it as an attacker or killer
     fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
+    const execution_combat::effect_scope execution_effect( fake_avatar, *this, true );
 
     get_event_bus().send<event_type::character_casts_spell>( character_id( -1 ),
             this->id(), this->spell_class(),
@@ -2409,6 +2411,7 @@ void spell::cast_spell_effect( const tripoint_bub_ms &target ) const
 
 void spell::cast_spell_effect( Creature &source, const tripoint_bub_ms &target ) const
 {
+    const execution_combat::effect_scope execution_effect( source, *this, true );
     Character *caster = source.as_character();
     if( caster ) {
         character_id c_id = caster->getID();
@@ -2430,6 +2433,7 @@ void spell::cast_all_effects( const tripoint_bub_ms &target ) const
     // a temporary caster: never record it as an attacker or killer
     fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
+    const execution_combat::effect_scope execution_cast( fake_avatar, *this, false );
 
     if( has_flag( spell_flag::WONDER ) ) {
         const auto iter = type->additional_spells.begin();
@@ -2460,6 +2464,7 @@ void spell::cast_all_effects( const tripoint_bub_ms &target ) const
 
 void spell::cast_all_effects( Creature &source, const tripoint_bub_ms &target ) const
 {
+    const execution_combat::effect_scope execution_cast( source, *this, false );
     if( has_flag( spell_flag::WONDER ) ) {
         const auto iter = type->additional_spells.begin();
         for( int num_spells = std::abs( damage( source ) ); num_spells > 0; num_spells-- ) {

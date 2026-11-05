@@ -27,6 +27,7 @@ class execution_trigger_state
         bool is_selecting() const;
         uint64_t allocate_contact();
         std::optional<execution_trigger_report> inspect() const;
+        std::vector<execution_trigger_report> history() const;
         void clear();
         void serialize( JsonOut &out ) const;
         void deserialize( const JsonObject &obj );
@@ -34,6 +35,7 @@ class execution_trigger_state
         std::map<std::string, time_point> cooldowns;
         std::deque<uint64_t> recent;
         std::optional<execution_trigger_report> last;
+        std::deque<execution_trigger_report> reports;
         bool selecting = false;
         uint64_t next_contact = 1;
         time_point next_sweep = calendar::before_time_starts;

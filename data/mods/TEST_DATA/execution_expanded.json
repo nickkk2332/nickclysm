@@ -1,0 +1,244 @@
+[
+  {
+    "type": "ITEM",
+    "id": "execution_expanded_throw",
+    "copy-from": "knife_combat",
+    "name": { "str": "execution throw fixture" },
+    "description": "Native throw producer fixture."
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_execution_expanded_victim",
+    "copy-from": "mon_execution_trigger_test",
+    "name": { "str_sp": "execution expanded victim" },
+    "bleed_rate": 0
+  },
+  {
+    "type": "monster_attack",
+    "attack_type": "melee",
+    "id": "execution_expanded_special",
+    "cooldown": 1,
+    "move_cost": 100,
+    "damage_max_instance": [ { "damage_type": "pure", "amount": 12 } ],
+    "min_mul": 1,
+    "max_mul": 1,
+    "dodgeable": false,
+    "uncanny_dodgeable": false,
+    "blockable": false,
+    "body_part_types": [ [ "torso", 1 ] ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_execution_expanded_attacker",
+    "copy-from": "mon_execution_expanded_victim",
+    "name": { "str_sp": "execution expanded attacker" },
+    "special_attacks": [ [ "execution_expanded_special", 1 ] ]
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell",
+    "name": "Execution spell fixture",
+    "description": "Native spell producer fixture.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile", "ally", "self" ],
+    "flags": [ "SILENT", "NO_HANDS" ],
+    "damage_type": "pure",
+    "min_damage": 12,
+    "max_damage": 12,
+    "min_range": 20,
+    "max_range": 20,
+    "min_aoe": 0,
+    "max_aoe": 0,
+    "min_accuracy": 100,
+    "max_accuracy": 100,
+    "max_level": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell_area",
+    "copy-from": "execution_expanded_spell",
+    "min_aoe": 1,
+    "max_aoe": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell_split",
+    "copy-from": "execution_expanded_spell",
+    "flags": [ "SILENT", "NO_HANDS", "SPLIT_DAMAGE" ],
+    "min_damage": 60,
+    "max_damage": 60
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell_percentage",
+    "copy-from": "execution_expanded_spell",
+    "flags": [ "SILENT", "NO_HANDS", "PERCENTAGE_DAMAGE" ],
+    "min_damage": 10,
+    "max_damage": 10
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell_extra",
+    "copy-from": "execution_expanded_spell",
+    "extra_effects": [ { "id": "execution_expanded_spell" } ]
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_expanded_hold",
+    "copy-from": "test_exec_projectile_hold"
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_expanded_fatal",
+    "copy-from": "test_exec_projectile_fatal_hold"
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_expanded_thrown_living",
+    "execution": "test_exec_expanded_hold",
+    "event": "attack_resolved",
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "living" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_expanded_thrown_fatal",
+    "execution": "test_exec_expanded_fatal",
+    "event": "fatal_hit",
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "fatal" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_expanded_spell_living",
+    "execution": "test_exec_expanded_hold",
+    "event": "attack_resolved",
+    "match": {
+      "channels": [ "spell" ],
+      "spells": [
+        "execution_expanded_spell",
+        "execution_expanded_spell_area",
+        "execution_expanded_spell_split",
+        "execution_expanded_spell_percentage",
+        "execution_expanded_spell_extra",
+        "execution_expanded_spell_multi",
+        "execution_expanded_spell_extra_first",
+        "execution_expanded_spell_wonder"
+      ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "living" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_expanded_spell_fatal",
+    "execution": "test_exec_expanded_fatal",
+    "event": "fatal_hit",
+    "match": {
+      "channels": [ "spell" ],
+      "spells": [
+        "execution_expanded_spell",
+        "execution_expanded_spell_area",
+        "execution_expanded_spell_split",
+        "execution_expanded_spell_percentage",
+        "execution_expanded_spell_extra",
+        "execution_expanded_spell_multi",
+        "execution_expanded_spell_extra_first",
+        "execution_expanded_spell_wonder"
+      ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "fatal" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_expanded_monster_special_living",
+    "execution": "test_exec_expanded_hold",
+    "event": "attack_resolved",
+    "match": { "channels": [ "monster_special" ], "monster_attacks": [ "execution_expanded_special" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "living" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_expanded_monster_special_fatal",
+    "execution": "test_exec_expanded_fatal",
+    "event": "fatal_hit",
+    "match": { "channels": [ "monster_special" ], "monster_attacks": [ "execution_expanded_special" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "fatal" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_inspect_chance_0",
+    "execution": "test_exec_expanded_hold",
+    "priority": 50,
+    "chance": 0.65,
+    "weight": 1,
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "chance" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_inspect_chance_1",
+    "execution": "test_exec_expanded_hold",
+    "priority": 50,
+    "chance": 0.65,
+    "weight": 3,
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "chance" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_inspect_weight_0",
+    "execution": "test_exec_expanded_hold",
+    "priority": 50,
+    "chance": 1,
+    "weight": 1,
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "weight" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_inspect_weight_1",
+    "execution": "test_exec_expanded_hold",
+    "priority": 50,
+    "chance": 1,
+    "weight": 3,
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "weight" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_inspect_zero",
+    "execution": "test_exec_expanded_hold",
+    "priority": 50,
+    "chance": 0,
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "chance" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_inspect_fallback",
+    "execution": "test_exec_expanded_hold",
+    "priority": -1,
+    "chance": 1,
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_expanded_throw" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_expanded_case", "default": "" }, "chance" ] }
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell_multi",
+    "copy-from": "execution_expanded_spell",
+    "multiple_projectiles": 3
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell_extra_first",
+    "copy-from": "execution_expanded_spell_extra",
+    "flags": [ "SILENT", "NO_HANDS", "EXTRA_EFFECTS_FIRST" ]
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_expanded_spell_wonder",
+    "copy-from": "execution_expanded_spell_extra",
+    "flags": [ "SILENT", "NO_HANDS", "WONDER" ]
+  }
+]

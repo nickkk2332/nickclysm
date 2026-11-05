@@ -1,6 +1,6 @@
 # Executions: implementation design
 
-**Status:** the living-participant runtime, [owned appendable/audible narration](05-narration-milestone.md), [automatic primary-melee rules](06-automatic-triggers.md), [physiological knockouts](07-knockouts.md), [NPC/monster fatal melee scenes](08-fatal-hits.md), [avatar fatal deferral](09-avatar-fatal-deferral.md), [nonfatal projectile triggers](10-projectile-triggers.md), and [fatal projectiles, physical actions and clashes](11-fatal-projectiles-physical-clashes.md) are implemented. See [first-milestone status](04-implementation-status.md) and the supported [JSON contract](../../../doc/JSON/EXECUTIONS.md). The documents below retain the broader design and future proposals; their proposed schemas must not be assumed implemented. Original source inspection was pinned to Nickclysm `b32c9baea25f62478228c6a91cbbf9f356e4e8a3`.
+**Status:** the living-participant runtime, [owned appendable/audible narration](05-narration-milestone.md), [automatic primary-melee rules](06-automatic-triggers.md), [physiological knockouts](07-knockouts.md), [NPC/monster fatal melee scenes](08-fatal-hits.md), [avatar fatal deferral](09-avatar-fatal-deferral.md), [nonfatal projectile triggers](10-projectile-triggers.md), [fatal projectiles, physical actions and clashes](11-fatal-projectiles-physical-clashes.md) and [the inspector/additional trigger channels](12-inspector-and-additional-triggers.md) are implemented. See [first-milestone status](04-implementation-status.md) and the supported [JSON contract](../../../doc/JSON/EXECUTIONS.md). The documents below retain the broader design and future proposals; their proposed schemas must not be assumed implemented. Original source inspection was pinned to Nickclysm `b32c9baea25f62478228c6a91cbbf9f356e4e8a3`.
 
 An **execution** is a short, stateful sequence of authored beats that can act on creatures and the world. Its name includes finishing moves, but its outcome can be survival, unconsciousness, escape, interruption, a completed exchange, or death. A sequence should be able to describe a brutal takedown, an unlucky stumble, or a rare cinematic clash using the same machinery.
 
@@ -17,6 +17,7 @@ The implementation should be a small saved state machine with EOC integration, t
 | [09-avatar-fatal-deferral.md](09-avatar-fatal-deferral.md) | Player control, prevention, saved death state and game-over handoff |
 | [10-projectile-triggers.md](10-projectile-triggers.md) | Nonfatal handheld firing, first-hit arbitration, context and producer exclusions |
 | [11-fatal-projectiles-physical-clashes.md](11-fatal-projectiles-physical-clashes.md) | Fatal firing admission, physical verbs, attribution and cinematic clash content |
+| [12-inspector-and-additional-triggers.md](12-inspector-and-additional-triggers.md) | Read-only scene/trigger inspection, recorded choices, throws, spells and JSON melee specials |
 
 ## Decisions proposed for the first implementation
 

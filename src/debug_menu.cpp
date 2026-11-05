@@ -70,6 +70,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_inspector.h"
 #include "faction.h"
 #include "filesystem.h"
 #include "game.h"
@@ -215,6 +216,7 @@ std::string enum_to_string<debug_menu::debug_menu_index>( debug_menu::debug_menu
         case debug_menu::debug_menu_index::SPAWN_OM_NPC: return "SPAWN_OM_NPC";
         case debug_menu::debug_menu_index::SPAWN_MON: return "SPAWN_MON";
         case debug_menu::debug_menu_index::GAME_STATE: return "GAME_STATE";
+        case debug_menu::debug_menu_index::EXECUTION_INSPECTOR: return "EXECUTION_INSPECTOR";
         case debug_menu::debug_menu_index::KILL_AREA: return "KILL_AREA";
         case debug_menu::debug_menu_index::KILL_NPCS: return "KILL_NPCS";
         case debug_menu::debug_menu_index::MUTATE: return "MUTATE";
@@ -983,6 +985,7 @@ static int info_uilist()
         { uilist_entry( debug_menu_index::GAME_REPORT, true, 'r', _( "Generate game report" ) ) },
         { uilist_entry( debug_menu_index::GAME_MIN_ARCHIVE, true, '!', _( "Generate minimized save archive" ) ) },
         { uilist_entry( debug_menu_index::GAME_STATE, true, 'g', _( "Check game state" ) ) },
+        { uilist_entry( debug_menu_index::EXECUTION_INSPECTOR, true, 'X', _( "Inspect executions" ) ) },
         { uilist_entry( debug_menu_index::DISPLAY_HORDES, true, 'h', _( "Display hordes" ) ) },
         { uilist_entry( debug_menu_index::TEST_IT_GROUP, true, 'i', _( "Test item group" ) ) },
         { uilist_entry( debug_menu_index::SHOW_SOUND, true, 'c', _( "Show sound clustering" ) ) },
@@ -4799,6 +4802,15 @@ const std::vector<debug_action_entry> &all_actions()
 
         // Overlays
         {
+            debug_menu_index::EXECUTION_INSPECTOR, translate_marker( "Execution inspector" ), "execution trigger scene inspector", "Data", []()
+            {
+                execution_inspector::show();
+            },
+            translate_marker( "Inspect execution scenes and recorded trigger decisions without advancing the world" ), true
+        },
+
+        // Overlays
+        {
             debug_menu_index::DISPLAY_HORDES, translate_marker( "Display hordes" ), "display horde", "Overlays", []()
             {
                 ui::omap::display_hordes();
@@ -5068,6 +5080,12 @@ const debug_action_entry *find_action( debug_menu_index id )
 
 void execute_action( debug_menu_index action )
 {
+    if( action == debug_menu_index::EXECUTION_INSPECTOR ) {
+        // A read-only inspector must not disable achievements, send gameplay
+        // debug events (which can run EOCs), or invalidate simulation caches.
+        execution_inspector::show();
+        return;
+    }
     achievements_tracker &achievements = get_achievements();
     static const std::unordered_set<debug_menu_index> non_cheaty_options = {
         debug_menu_index::ENABLE_ACHIEVEMENTS

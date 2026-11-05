@@ -40,9 +40,9 @@ Still to develop:
   Real knockout/incapacity is delivered by the
   [knockout follow-up](07-knockouts.md).
 - Phase 4's owned appendable narration and auditory audiences are now delivered in the
-  [narration follow-up](05-narration-milestone.md); the dedicated transcript inspector UI remains.
+  [narration follow-up](05-narration-milestone.md); the [read-only inspector](12-inspector-and-additional-triggers.md) is now delivered.
 - [Fatal projectile admission, shove/fling/native melee and the clash example](11-fatal-projectiles-physical-clashes.md) are delivered. Broader physical policies,
-  remaining combat producers and authoring/tooling demonstrations remain.
+  [throws, spell attacks and JSON melee specials plus the inspector](12-inspector-and-additional-triggers.md) are also delivered. Remaining producer families, broader authoring tools and sandbox preview remain.
 
 Current constraints are deliberate: two loaded participants, living manual starts or
 the supported automatic [melee](06-automatic-triggers.md) and

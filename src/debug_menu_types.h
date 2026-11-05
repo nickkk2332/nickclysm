@@ -118,6 +118,7 @@ enum class debug_menu_index : int {
     WISHPROFICIENCY,
     RELOAD_GPU_SHADERS,
     SHADER_TINT_SELF_TEST,
+    EXECUTION_INSPECTOR,
     last
 };
 

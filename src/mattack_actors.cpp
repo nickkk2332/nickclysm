@@ -26,6 +26,7 @@
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "execution_fatal.h"
+#include "execution_combat.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "generic_factory.h"
@@ -923,12 +924,14 @@ bool melee_actor::call( monster &z ) const
     if( incapacitation::unconscious( z ) || execution_fatal::pending( z ) ) {
         return false;
     }
+    const execution_combat::effect_scope execution_special( z, id );
     map &here = get_map();
 
     Creature *target = find_target( z );
     if( target == nullptr ) {
         return false;
     }
+    const auto execution_target_body = g->shared_from( *target );
 
     if( z.is_underwater() && !target->is_underwater() &&
         here.has_flag_ter_or_furn( ter_furn_flag::TFLAG_SWIM_UNDER, z.pos_bub() ) ) {
@@ -1129,7 +1132,15 @@ bool melee_actor::call( monster &z ) const
     dealt_damage_instance dealt_damage;
     for( bodypart_id &bp_id : bodyparts_hit ) {
         // Take damage
-        dealt_damage += target->deal_damage( &z, bp_id, damage );
+        execution_combat::effect_hit_scope execution_hit( *target, &z );
+        dealt_damage_instance packet;
+        {
+            const auto primary = execution_hit.capture_damage();
+            packet = target->deal_damage( &z, bp_id, damage );
+        }
+        packet.bp_hit = bp_id;
+        execution_hit.resolve( packet );
+        dealt_damage += packet;
         dealt_damage.bp_hit = bp_id;
         // On hit effects
         target->on_hit( &here, &z, bp_id );

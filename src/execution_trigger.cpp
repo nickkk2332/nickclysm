@@ -15,6 +15,7 @@
 #include "generic_factory.h"
 #include "json.h"
 #include "mapdata.h"
+#include "magic.h"
 #include "martialarts.h"
 #include "mtype.h"
 #include "skill.h"
@@ -28,6 +29,8 @@ struct channel_index {
     std::vector<const execution_trigger *> common;
     std::map<std::string, std::vector<const execution_trigger *>> weapons;
     std::map<std::string, std::vector<const execution_trigger *>> ammunition;
+    std::map<std::string, std::vector<const execution_trigger *>> spells;
+    std::map<std::string, std::vector<const execution_trigger *>> monster_attacks;
     std::map<std::string, std::vector<const execution_trigger *>> source_monsters;
     std::map<std::string, std::vector<const execution_trigger *>> target_monsters;
     std::map<std::string, std::vector<const execution_trigger *>> styles;
@@ -36,7 +39,7 @@ struct channel_index {
     bool empty = true;
     bool fatal = false;
 };
-std::array<channel_index, 3> indexes;
+std::array<channel_index, static_cast<size_t>( execution_combat::channel::count )> indexes;
 bool dirty = true;
 
 void rebuild()
@@ -59,6 +62,10 @@ void rebuild()
                 add( rule.weapons, index.weapons );
             } else if( !rule.ammunition.empty() ) {
                 add( rule.ammunition, index.ammunition );
+            } else if( !rule.spells.empty() ) {
+                add( rule.spells, index.spells );
+            } else if( !rule.monster_attacks.empty() ) {
+                add( rule.monster_attacks, index.monster_attacks );
             } else if( !rule.source_monsters.empty() ) {
                 add( rule.source_monsters, index.source_monsters );
             } else if( !rule.target_monsters.empty() ) {
@@ -168,7 +175,8 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
         const JsonObject match = jo.get_object( "match" );
         const std::set<std::string> allowed = { "channels", "source_kind", "target_kind", "source_monsters",
                                                 "target_monsters", "weapons", "ammunition", "weapon_categories", "weapon_skills", "styles", "techniques",
-                                                "body_parts", "weakpoints", "terrains", "furniture", "hit", "critical", "hp_loss", "damage", "fatal_state"
+                                                "body_parts", "weakpoints", "terrains", "furniture", "hit", "critical", "hp_loss", "damage", "fatal_state",
+                                                "spells", "monster_attacks"
                                               };
         for( const JsonMember member : match ) {
             if( !allowed.count( member.name() ) ) {
@@ -192,8 +200,18 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
                 if( channel == "projectile" ) {
                     channels.insert( execution_combat::channel::projectile );
                 }
+                if( channel == "thrown" ) {
+                    channels.insert( execution_combat::channel::thrown );
+                }
+                if( channel == "spell" ) {
+                    channels.insert( execution_combat::channel::spell );
+                }
+                if( channel == "monster_special" ) {
+                    channels.insert( execution_combat::channel::monster_special );
+                }
                 if( channel != "melee" && channel != "character_melee" && channel != "monster_melee" &&
-                    channel != "projectile" ) {
+                    channel != "projectile" && channel != "thrown" && channel != "spell" &&
+                    channel != "monster_special" ) {
                     match.throw_error_at( "channels", "unsupported combat producer" );
                 }
             }
@@ -213,6 +231,8 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
         read( "target_monsters", target_monsters );
         read( "weapons", weapons );
         read( "ammunition", ammunition );
+        read( "spells", spells );
+        read( "monster_attacks", monster_attacks );
         read( "weapon_categories", weapon_categories );
         read( "weapon_skills", weapon_skills );
         read( "styles", styles );
@@ -242,8 +262,11 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
             }
         }
     }
-    if( channels.count( execution_combat::channel::projectile ) && !hit ) {
-        jo.throw_error( "projectile rules support direct hits only" );
+    if( !hit && ( channels.count( execution_combat::channel::projectile ) ||
+                  channels.count( execution_combat::channel::thrown ) ||
+                  channels.count( execution_combat::channel::spell ) ||
+                  channels.count( execution_combat::channel::monster_special ) ) ) {
+        jo.throw_error( "projectile, thrown, spell and monster_special rules support direct hits only" );
     }
     if( jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", condition, false );
@@ -277,6 +300,9 @@ void execution_trigger::check() const
     } );
     check_ids( ammunition, []( const std::string & s ) {
         return itype_id( s );
+    } );
+    check_ids( spells, []( const std::string & s ) {
+        return spell_id( s );
     } );
     check_ids( weapon_categories, []( const std::string & s ) {
         return weapon_category_id( s );
@@ -312,6 +338,7 @@ std::string execution_trigger::matches( const execution_combat::attack_snapshot 
         !accepts( source_kinds, s.source_kind ) || !accepts( target_kinds, s.target_kind ) ||
         !accepts( source_monsters, s.source_monster ) || !accepts( target_monsters, s.target_monster ) ||
         !accepts( weapons, s.weapon ) || !accepts( ammunition, s.ammunition ) ||
+        !accepts( spells, s.spell_id ) || !accepts( monster_attacks, s.monster_attack ) ||
         !accepts( weapon_skills, s.weapon_skill ) ||
         !accepts( styles, s.style ) || !accepts( techniques, s.technique ) ||
         !accepts( bodyparts, s.bodypart ) || !accepts( weakpoints, s.weakpoint ) ||
@@ -396,6 +423,9 @@ void execution_triggers::check()
 
 bool execution_triggers::has_rules( execution_combat::channel channel )
 {
+    if( static_cast<size_t>( channel ) >= indexes.size() ) {
+        return false;
+    }
     if( dirty ) {
         rebuild();
     }
@@ -404,6 +434,9 @@ bool execution_triggers::has_rules( execution_combat::channel channel )
 
 bool execution_triggers::has_fatal_rules( execution_combat::channel channel )
 {
+    if( static_cast<size_t>( channel ) >= indexes.size() ) {
+        return false;
+    }
     if( dirty ) {
         rebuild();
     }
@@ -413,6 +446,9 @@ bool execution_triggers::has_fatal_rules( execution_combat::channel channel )
 std::vector<const execution_trigger *> execution_triggers::candidates(
     const execution_combat::attack_snapshot &s )
 {
+    if( static_cast<size_t>( s.producer ) >= indexes.size() ) {
+        return {};
+    }
     if( dirty ) {
         rebuild();
     }
@@ -428,6 +464,8 @@ std::vector<const execution_trigger *> execution_triggers::candidates(
     };
     add( index.weapons, s.weapon );
     add( index.ammunition, s.ammunition );
+    add( index.spells, s.spell_id );
+    add( index.monster_attacks, s.monster_attack );
     add( index.source_monsters, s.source_monster );
     add( index.target_monsters, s.target_monster );
     add( index.styles, s.style );

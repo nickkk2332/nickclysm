@@ -293,9 +293,10 @@ TEST_CASE( "execution_trigger_arbitration_is_prioritized_bounded_and_deduplicate
         const auto result = submit( s );
         CHECK( result.selected == "test_exec_trigger_lower_passed" );
         CHECK( rejected_for( result, "chance_failed" ) );
-        CHECK_FALSE( std::any_of( result.candidates.begin(), result.candidates.end(),
+        CHECK( std::any_of( result.candidates.begin(), result.candidates.end(),
         []( const execution_trigger_candidate & entry ) {
-            return entry.rule == "test_exec_trigger_lowest";
+            return entry.rule == "test_exec_trigger_lowest" &&
+                   entry.reason == "lower_priority_not_evaluated" && !entry.roll;
         } ) );
     }
     SECTION( "a duplicate contact cannot queue another scene or consume RNG" ) {
@@ -678,7 +679,7 @@ TEST_CASE( "execution_trigger_definitions_reject_unsupported_producers_and_inval
 {
     const std::string field = GENERATE(
                                   R"("event":"unsupported_event")",
-                                  R"("match":{"channels":["spell"]})",
+                                  R"("match":{"channels":["explosion"]})",
                                   R"("match":{"fatal_state":"pending"})",
                                   R"("match":{"crit":true})",
                                   R"("match":{"weapons":[]})",
