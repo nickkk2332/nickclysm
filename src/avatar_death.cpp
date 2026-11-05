@@ -1,4 +1,5 @@
 #include "avatar.h"
+#include "power_runtime.h"
 
 #include "cata_scope_helpers.h"
 #include "creature_ref.h"
@@ -105,6 +106,7 @@ bool avatar::finalize_death( Creature *source )
     // Final callbacks cannot reopen prevention or replay native death through reentry.
     validate_source();
     death_finalized_ = true;
+    get_powers().retire_actor( *this );
     if( Creature *killer = get_killer(); killer && killer->as_character() ) {
         get_event_bus().send<event_type::character_kills_character>(
             killer->as_character()->getID(), getID(), get_name(), "" );

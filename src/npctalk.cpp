@@ -68,6 +68,7 @@
 #include "execution_runtime.h"
 #include "ability_runtime.h"
 #include "damage_transaction.h"
+#include "power_eoc.h"
 #include "explosion.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -10756,6 +10757,11 @@ parsers = {
     { "u_cast_spell", "npc_cast_spell", jarg::member, &talk_effect_fun::f_cast_spell },
     { "start_execution", jarg::member, &talk_effect_fun::f_start_execution },
     { "request_ability", jarg::object, &talk_effect_fun::f_request_ability },
+    { "apply_power_application", jarg::object, &power_eoc::apply },
+    { "end_power_application", jarg::member, &power_eoc::end },
+    { "dispel_power_applications", jarg::object, &power_eoc::dispel },
+    { "modify_power_resource", jarg::object, &power_eoc::resource },
+    { "recover_power_charge", jarg::object, &power_eoc::charge },
     { "cancel_ability", jarg::member, &talk_effect_fun::f_cancel_ability },
     { "cancel_execution", jarg::member, &talk_effect_fun::f_cancel_execution },
     { "u_map_run_eocs", "npc_map_run_eocs", jarg::member, &talk_effect_fun::f_map_run_eocs },

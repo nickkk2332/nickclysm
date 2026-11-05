@@ -9,6 +9,7 @@
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "power_runtime.h"
 
 namespace
 {
@@ -65,6 +66,7 @@ void damage_rule::load( const JsonObject &jo, std::string_view source )
         jo.throw_error_at( "priority", "priority must be between -1000000 and 1000000" );
     }
     jo.read( "required_effect", required_effect );
+    jo.read( "required_application", required_application );
     jo.read( "defender_kinds", defender_kinds );
     jo.read( "source_kinds", source_kinds );
     jo.read( "damage_types", damage_types );
@@ -91,7 +93,7 @@ void damage_rule::load( const JsonObject &jo, std::string_view source )
                 if( out.operation == "reflect" ) {
                     out.resource = action.get_string( "resource", "none" );
                     out.cost_per_damage = action.get_int( "cost_per_damage", 1 );
-                    if( ( out.resource != "mana" && out.resource != "stamina" && out.resource != "none" ) ||
+                    if( out.resource.empty() ||
                         out.cost_per_damage < 1 || out.cost_per_damage > 1000000 ) {
                         action.throw_error( "invalid reflection resource or cost" );
                     }
@@ -106,8 +108,8 @@ void damage_rule::load( const JsonObject &jo, std::string_view source )
             } else if( out.operation == "absorb" ) {
                 out.resource = action.get_string( "resource" );
                 out.cost_per_damage = action.get_int( "cost_per_damage", 1 );
-                if( out.resource != "mana" && out.resource != "stamina" && out.resource != "none" ) {
-                    action.throw_error_at( "resource", "supported resources: mana, stamina, none" );
+                if( out.resource.empty() ) {
+                    action.throw_error_at( "resource", "resource cannot be empty" );
                 }
                 if( out.cost_per_damage < 1 || out.cost_per_damage > 1000000 ) {
                     action.throw_error_at( "cost_per_damage", "cost must be between 1 and 1000000" );
@@ -131,6 +133,9 @@ void damage_rule::load( const JsonObject &jo, std::string_view source )
 
 void damage_rule::check() const
 {
+    if( !required_application.is_empty() && !required_application.is_valid() ) {
+        debugmsg( "Damage rule %s has invalid application %s", id.str(), required_application.str() );
+    }
     if( !required_effect.is_empty() && !required_effect.is_valid() ) {
         debugmsg( "Damage rule %s has invalid effect %s", id.str(), required_effect.str() );
     }
@@ -150,6 +155,9 @@ void damage_rule::check() const
         }
     }
     for( const auto &action : actions ) {
+        if( !powers::valid_resource( action.resource ) ) {
+            debugmsg( "Damage rule %s has invalid resource %s", id.str(), action.resource );
+        }
         if( action.operation == "convert" && ( !action.from.is_valid() || !action.to.is_valid() ) ) {
             debugmsg( "Damage rule %s has an invalid conversion", id.str() );
         }
@@ -197,7 +205,9 @@ void damage_rules::check()
 bool damage_rules::may_intercept( const Creature &defender )
 {
     for( const damage_rule *rule : sorted_rules ) {
-        if( rule->required_effect.is_empty() || defender.has_effect( rule->required_effect ) ) {
+        if( ( rule->required_effect.is_empty() || defender.has_effect( rule->required_effect ) ) &&
+            ( rule->required_application.is_empty() ||
+              get_powers().application_value( defender, rule->required_application ) > 0 ) ) {
             return true;
         }
     }

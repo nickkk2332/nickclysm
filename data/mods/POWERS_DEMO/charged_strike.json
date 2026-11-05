@@ -30,7 +30,10 @@
         "id": "EOC_POWER_DEMO_TELEGRAPH",
         "effect": [ { "u_make_sound": "gathers force for a heavy strike!", "volume": 8, "type": "combat" } ]
       }
-    ]
+    ],
+    "energy_cost": { "resource": "power_demo_focus_pool", "amount": 10 },
+    "reserve_energy": true,
+    "cooldown": "power_demo_force_group"
   },
   {
     "type": "effect_on_condition",
@@ -52,7 +55,7 @@
     "type": "ITEM",
     "id": "power_demo_focus",
     "name": { "str": "charged strike focus", "str_pl": "charged strike foci" },
-    "description": "Activate and select a creature within five tiles.  You charge for two or three seconds before striking.  Damage, displacement or unconsciousness can interrupt you.  Open the execution and ability inspector to see the request and payment.",
+    "description": "Activate and select a creature within five tiles.  You charge for two or three seconds before striking, reserving ten focus until release.  Damage, displacement or unconsciousness can interrupt you.  Two shared charges recharge one at a time, every five seconds.  Open the execution and ability inspector to see payment, resource claims and charge recovery.",
     "weight": "10 g",
     "volume": "10 ml",
     "material": [ "stone" ],

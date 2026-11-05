@@ -9,6 +9,7 @@
 #include "ability_runtime.h"
 #include "cursesdef.h"
 #include "damage_transaction.h"
+#include "power_runtime.h"
 #include "execution_runtime.h"
 #include "game.h"
 #include "output.h"
@@ -114,7 +115,9 @@ std::string execution_inspector::format_ability( const ability_view &v )
         << "\ndue: " << to_turns<int>( v.due - calendar::turn_zero )
         << "\nsampled windup ticks: " << v.windup_ticks << "\nspell level: " << v.spell_level
         << "\ncosts committed: " << v.costs_committed << "\npaid moves: " << v.paid_moves
-        << "\npaid energy: " << v.paid_energy << "\neffect completed: " << v.effect_completed
+        << "\npaid energy: " << v.paid_energy
+        << "\nenergy reserved: " << v.energy_reserved << "\ncooldown group: " << v.cooldown.str()
+        << "\npaid charges: " << v.paid_charges << "\neffect completed: " << v.effect_completed
         << "\ncontacts truncated: " << v.contacts_truncated << "\n\nRequest context and locals\n";
     values( out, v.context );
     out << "\nObserved primary native contacts\n";
@@ -170,10 +173,69 @@ std::string execution_inspector::format_damage( const damage_transaction_view &v
     return out.str();
 }
 
+std::string execution_inspector::format_application( const power_application_view &v )
+{
+    std::ostringstream out;
+    out << "Application #" << v.id << " / " << v.application.str()
+        << "\nstate: " << v.state << "\nreason: " << v.reason
+        << "\nroot: " << v.root << " / parent: " << v.parent << " / depth: " << v.depth
+        << "\nowner UID: " << v.owner.id << " / " << v.owner.dimension.str()
+        << "\ntarget UID: " << v.target.id << " / " << v.target.dimension.str()
+        << "\nmagnitude: " << v.magnitude << "\norigin: " << v.origin.to_string()
+        << "\nstarted: " << to_turn<int>( v.started ) << "\nexpires: " << to_turn<int>( v.expires )
+        << "\nnext tick: " << to_turn<int>( v.next_tick ) << "\ntick count: " << v.tick_count
+        << "\npaid start: " << v.paid_start << "\npaid upkeep: " << v.paid_upkeep
+        << "\n\nCaptured context and owned locals\n";
+    values( out, v.context );
+    return out.str();
+}
+
+std::string execution_inspector::format_power_accounts( const power_manager &powers )
+{
+    std::ostringstream out;
+    out << "Custom pools (projected at current world time; read-only)\n";
+    for( const auto &p : powers.inspect_pools() ) {
+        out << p.actor.id << " / " << p.actor.dimension.str() << " / " << p.resource
+            << ": total=" << p.balance.total << " / available=" << p.balance.available()
+            << " / reserved=" << p.balance.reserved << " / capacity=" << p.balance.capacity
+            << " / reason=" << p.balance.reason << '\n';
+    }
+    out << "\nAbility reservations (claims, not payment)\n";
+    for( const auto &r : powers.inspect_reservations() ) {
+        out << "ability #" << r.token << " / actor=" << r.actor.id << " / " << r.resource
+            << " / amount=" << r.amount << '\n';
+    }
+    out << "\nCooldown groups and sequential charge recharge\n";
+    for( const auto &c : powers.inspect_cooldowns() ) {
+        out << c.actor.id << " / " << c.actor.dimension.str() << " / " << c.group.str()
+            << ": charges=" << c.charges << '/' << c.capacity << " / cooldown=" << c.cooldown_remaining
+            << " / next charge=" << c.recharge_remaining << " / reason=" << c.reason << '\n';
+    }
+    out << "\nLatest 64 accounting operations (no hook reevaluation)\n";
+    for( const auto &change : powers.history() ) {
+        out << to_turn<int>( change.when ) << " / actor=" << change.actor.id << " / " << change.kind
+            << " / " << change.name << " / " << change.cause << ": " << change.before << " -> "
+            << change.after << " / token=" << change.token << '\n';
+    }
+    return out.str();
+}
+
 void execution_inspector::show()
 {
     while( true ) {
         std::vector<std::pair<std::string, std::string>> rows;
+        const power_manager &powers = get_powers();
+        for( const auto &application : powers.inspect_applications() ) {
+            rows.emplace_back( string_format( _( "Application #%lld: %s [%s] %s" ), application.id,
+                                              application.application.str(), application.state, application.reason ),
+                               format_application( application ) );
+        }
+        if( !powers.inspect_pools().empty() || !powers.inspect_reservations().empty() ||
+            !powers.inspect_cooldowns().empty() || !powers.history().empty() ) {
+            rows.emplace_back( _( "Power resources, reservations and cooldowns" ),
+                               format_power_accounts( powers ) );
+        }
+
         for( const auto &damage : get_damage_transactions().inspect_all() ) {
             rows.emplace_back( string_format( _( "Damage #%lld: %s (%s)" ), damage.id,
                                               damage.state, damage.reason ), format_damage( damage ) );
@@ -194,9 +256,10 @@ void execution_inspector::show()
         uilist menu;
         menu.title = _( "Execution and powers inspector (read-only)" );
         menu.text =
-            _( "Active/recent damage, abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
+            _( "Active/recent applications, resources, damage, abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
         if( rows.empty() ) {
-            menu.addentry( -1, false, -1, _( "No recorded damage, abilities, execution scenes or contacts." ) );
+            menu.addentry( -1, false, -1,
+                           _( "No recorded powers, damage, abilities, execution scenes or contacts." ) );
         }
         for( size_t n = 0; n < rows.size(); ++n ) {
             menu.addentry( static_cast<int>( n ), true, -1, rows[n].first );

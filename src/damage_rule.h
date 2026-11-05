@@ -11,6 +11,7 @@
 
 #include "dialogue_helpers.h"
 #include "type_id.h"
+#include "power.h"
 
 class Creature;
 class JsonObject;
@@ -34,6 +35,7 @@ struct damage_rule {
     std::string stage = "after_armor";
     int priority = 0;
     efftype_id required_effect;
+    power_application_id required_application;
     std::set<std::string> defender_kinds;
     std::set<std::string> source_kinds;
     std::set<damage_type_id> damage_types;

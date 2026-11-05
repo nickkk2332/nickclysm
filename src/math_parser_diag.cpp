@@ -59,6 +59,7 @@
 #include "pimpl.h"
 #include "point.h"
 #include "proficiency.h"
+#include "power_math.h"
 #include "stats_tracker.h"
 #include "stomach.h"
 #include "talker.h"
@@ -2825,6 +2826,9 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "quality", { "un", 1, quality_eval, {}, { "strict" } } },
     { "skill", { "un", 1, skill_eval, skill_ass } },
     { "skill_exp", { "un", 1, skill_exp_eval, skill_exp_ass, { "format" } } },
+    { "power_resource", { "un", 1, power_math::resource, {}, { "field" } } },
+    { "power_cooldown", { "un", 1, power_math::cooldown, {}, { "field" } } },
+    { "power_application", { "un", 1, power_math::application, {}, { "field", "owner", "tag" } } },
     { "special_cooldown", { "un", 1, special_cooldown_eval, special_cooldown_ass } },
     { "spell_count", { "un", 0, spell_count_eval, {}, { "school" } } },
     { "spell_difficulty", { "un", 1, spell_difficulty_eval, {}, { "baseline" } } },

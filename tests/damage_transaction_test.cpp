@@ -660,7 +660,7 @@ TEST_CASE( "damage_rule_schema_rejects_unknown_stages_unbounded_free_shields_and
                                  R"({"actions":[{"operation":"absorb","resource":"none"}]})",
                                  R"({"stage":"committed","actions":[{"operation":"cancel"}]})",
                                  R"({"actions":[{"operation":"convert","from":"bash","to":"cut"}]})",
-                                 R"({"actions":[{"operation":"absorb","resource":"avatar_mana"}]})" );
+                                 R"({"actions":[{"operation":"absorb","resource":""}]})" );
     damage_rule candidate;
     CHECK_THROWS_AS( candidate.load( json_loader::from_string( json ), "test_data" ), JsonError );
 }

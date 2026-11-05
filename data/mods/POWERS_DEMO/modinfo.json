@@ -3,7 +3,7 @@
     "type": "MOD_INFO",
     "id": "powers_demo",
     "name": "Powers demonstration",
-    "description": "An interruptible charged force strike and a mana shield with exact absorption and overflow.",
+    "description": "Charged force strikes, exact mana shields, and independent sustained wards and mirrors with shared resources and rechargeable charges.",
     "category": "content",
     "dependencies": [ "dda" ]
   }

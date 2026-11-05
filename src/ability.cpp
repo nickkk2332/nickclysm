@@ -79,9 +79,12 @@ void ability_definition::load( const JsonObject &jo, std::string_view source )
         energy = cost.get_string( "resource" );
         energy_cost = bounded( cost, "amount", 0, 0, 1000000 );
     }
-    if( energy != "none" && energy != "mana" && energy != "stamina" ) {
-        jo.throw_error_at( "energy_cost", "supported resources: none, mana, stamina" );
+    if( energy.empty() ) {
+        jo.throw_error_at( "energy_cost", "resource cannot be empty" );
     }
+    reserve_energy = jo.get_bool( "reserve_energy", reserve_energy );
+    jo.read( "cooldown", cooldown );
+    charge_cost = bounded( jo, "charge_cost", charge_cost, 1, 1000 );
     if( energy == "none" && energy_cost != 0 ) {
         jo.throw_error_at( "energy_cost", "none cannot carry a nonzero cost" );
     }
@@ -114,6 +117,12 @@ void ability_definition::load( const JsonObject &jo, std::string_view source )
 
 void ability_definition::check() const
 {
+    if( !powers::valid_resource( energy ) ) {
+        debugmsg( "Ability %s has invalid resource %s", id.str(), energy );
+    }
+    if( !cooldown.is_empty() && ( !cooldown.is_valid() || charge_cost > cooldown->max_charges ) ) {
+        debugmsg( "Ability %s has an invalid cooldown or charge cost", id.str() );
+    }
     if( !spell.is_empty() && !spell.is_valid() ) {
         debugmsg( "Ability %s has invalid spell %s", id.str(), spell.str() );
     }
