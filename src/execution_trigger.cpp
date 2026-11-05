@@ -34,6 +34,7 @@ struct channel_index {
     std::map<std::string, std::vector<const execution_trigger *>> categories;
     std::map<std::string, std::vector<const execution_trigger *>> techniques;
     bool empty = true;
+    bool fatal = false;
 };
 std::array<channel_index, 3> indexes;
 bool dirty = true;
@@ -48,6 +49,7 @@ void rebuild()
         for( execution_combat::channel channel : rule.channels ) {
             channel_index &index = indexes[static_cast<size_t>( channel )];
             index.empty = false;
+            index.fatal = index.fatal || rule.fatal;
             const auto add = [&]( const auto & keys, auto & buckets ) {
                 for( const std::string &key : keys ) {
                     buckets[key].push_back( &rule );
@@ -240,8 +242,8 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
             }
         }
     }
-    if( channels.count( execution_combat::channel::projectile ) && ( fatal || !hit ) ) {
-        jo.throw_error( "projectile rules support living direct hits only" );
+    if( channels.count( execution_combat::channel::projectile ) && !hit ) {
+        jo.throw_error( "projectile rules support direct hits only" );
     }
     if( jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", condition, false );
@@ -398,6 +400,14 @@ bool execution_triggers::has_rules( execution_combat::channel channel )
         rebuild();
     }
     return !indexes[static_cast<size_t>( channel )].empty;
+}
+
+bool execution_triggers::has_fatal_rules( execution_combat::channel channel )
+{
+    if( dirty ) {
+        rebuild();
+    }
+    return indexes[static_cast<size_t>( channel )].fatal;
 }
 
 std::vector<const execution_trigger *> execution_triggers::candidates(

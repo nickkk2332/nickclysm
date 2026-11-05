@@ -34,6 +34,7 @@
 #include "line.h"
 #include "map.h"
 #include "mapdata.h"
+#include "magic_enchantment.h"
 #include "martialarts.h"
 #include "memory_fast.h"
 #include "messages.h"
@@ -64,6 +65,7 @@ struct execution_instance {
     tripoint_abs_ms expected_actor;
     tripoint_abs_ms expected_target;
     tripoint_rel_ms backward;
+    tripoint_rel_ms action_direction = tripoint_rel_ms::zero;
     time_point started = calendar::turn;
     time_point last_tick = calendar::turn;
     uint64_t random_state = 0;
@@ -270,7 +272,13 @@ struct execution_manager::impl {
     bool restoring = false;
     int64_t owned_action = 0;
     bool gravity_action = false;
+    std::string gravity_source_role = "actor";
     bool motion_action = false;
+    bool physical_action = false;
+    bool physical_flight_claimed = false;
+    std::string physical_source_role;
+    const Creature *physical_source = nullptr;
+    const Creature *physical_target = nullptr;
     execution_trigger_state triggers;
 
     dialogue context( execution_instance &scene, const shared_ptr_fast<Creature> &actor,
@@ -546,12 +554,48 @@ struct execution_manager::impl {
         const auto who = hold( role_ref( scene, action.role ) );
         // Native damage events can remove the initiator. Keep attribution pointers
         // alive until traps, gravity, fields, and death processing have all returned.
-        const auto actor = hold( scene.actor );
+        const auto actor = hold( action.type == execution_action::kind::shove ?
+                                 role_ref( scene, action.source ) : scene.actor );
         if( !who || !actor ) {
             result( scene, action, "unavailable" );
             return true;
         }
-        const tripoint_rel_ms offset = direction_for( scene, action );
+        if( action.type == execution_action::kind::shove && scene.moved == 0 ) {
+            if( restrained( *actor ) || actor->is_fake() || who->is_fake() ||
+                actor->is_hallucination() || who->is_hallucination() ) {
+                result( scene, action, "unsupported" );
+                return true;
+            }
+            if( who->is_dead_state() || actor->is_dead_state() ) {
+                result( scene, action, "fatal_target" );
+                return true;
+            }
+            if( incapacitation::unconscious( *actor ) || actor->has_effect( efftype_id( "sleep" ) ) ||
+                actor->has_effect( efftype_id( "narcosis" ) ) ) {
+                result( scene, action, "incapacitated" );
+                return true;
+            }
+            if( who->pos_abs().z() != actor->pos_abs().z() ||
+                rl_dist( who->pos_abs(), actor->pos_abs() ) != 1 ) {
+                result( scene, action, "out_of_range" );
+                return true;
+            }
+            scene.action_direction = tripoint_rel_ms(
+                                         sgn( who->pos_abs().x() - actor->pos_abs().x() ),
+                                         sgn( who->pos_abs().y() - actor->pos_abs().y() ), 0 );
+            if( Character *person = who->as_character() ) {
+                const float resistance = std::clamp( person->calculate_by_enchantment(
+                        0.0, enchant_vals::mod::KNOCKBACK_RESIST ), 0.0, 1.0 );
+                scene.remaining = static_cast<int>( scene.remaining * ( 1.0f - resistance ) );
+                scene.view.context["execution_resistance"] = diag_value{ resistance };
+                if( scene.remaining == 0 ) {
+                    result( scene, action, "resisted" );
+                    return true;
+                }
+            }
+        }
+        const tripoint_rel_ms offset = action.type == execution_action::kind::shove ?
+                                       scene.action_direction : direction_for( scene, action );
         const tripoint_abs_ms before = who->pos_abs();
         map &here = get_map();
         const tripoint_bub_ms destination = who->pos_bub( here ) + offset;
@@ -596,6 +640,7 @@ struct execution_manager::impl {
             role_ref( scene, action.role ).resolve_for_execution() == who.get() ) {
             // Scope attribution only to native gravity/impact, not to unrelated environmental damage.
             gravity_action = true;
+            gravity_source_role = action.type == execution_action::kind::shove ? action.source : "actor";
             who->gravity_check( &here );
             gravity_action = false;
             if( !who->is_dead_state() ) {
@@ -637,6 +682,95 @@ struct execution_manager::impl {
         return false;
     }
 
+    void physical( execution_instance &scene, const execution_action &action ) {
+        const bool attacking = action.type == execution_action::kind::melee;
+        const std::string source_role = attacking ? action.role : action.source;
+        const std::string target_role = attacking ?
+                                        ( action.role == "actor" ? "target" : "actor" ) : action.role;
+        const auto source = hold( role_ref( scene, source_role ) );
+        const auto target = hold( role_ref( scene, target_role ) );
+        if( !source || !target ) {
+            result( scene, action, "unavailable" );
+            return;
+        }
+        if( source->is_dead_state() || target->is_dead_state() ) {
+            result( scene, action, "fatal_target" );
+            return;
+        }
+        if( source->is_fake() || target->is_fake() || source->is_hallucination() ||
+            target->is_hallucination() || restrained( *source ) || restrained( *target ) ) {
+            result( scene, action, "unsupported" );
+            return;
+        }
+        if( incapacitation::unconscious( *source ) || source->has_effect( efftype_id( "sleep" ) ) ||
+            source->has_effect( efftype_id( "narcosis" ) ) ) {
+            result( scene, action, "incapacitated" );
+            return;
+        }
+        if( source->pos_abs().z() != target->pos_abs().z() ||
+            rl_dist( source->pos_abs(), target->pos_abs() ) != 1 ) {
+            result( scene, action, "out_of_range" );
+            return;
+        }
+        const tripoint_abs_ms before = target->pos_abs();
+        const int hp = target->get_hp();
+        if( attacking ) {
+            bool attempted = false;
+            const int moves = source->get_moves();
+            if( Character *person = source->as_character() ) {
+                attempted = person->melee_attack( *target, false, matec_id( "tec_none" ) );
+            } else if( monster *mon = source->as_monster(); mon && mon->sees( get_map(), *target ) ) {
+                attempted = mon->melee_attack( *target );
+            }
+            scene.view.context["execution_attack_moves"] = diag_value{ moves - source->get_moves() };
+            result( scene, action, attempted ? "attacked" : "refused" );
+        } else {
+            if( target->has_flag( json_character_flag( "CANNOT_MOVE" ) ) ||
+                ( target->as_monster() && target->as_monster()->has_flag( mon_flag_IMMOBILE ) ) ) {
+                result( scene, action, "unsupported" );
+                return;
+            }
+            const int velocity = scene.roll( action.velocity.min, action.velocity.max );
+            const tripoint_rel_ms axis( sgn( before.x() - source->pos_abs().x() ),
+                                        sgn( before.y() - source->pos_abs().y() ), 0 );
+            if( !get_map().inbounds( target->pos_bub() + axis * ( velocity / 10 ) ) ) {
+                result( scene, action, "out_of_bounds" );
+                return;
+            }
+            const on_out_of_scope release_physics( [&]() {
+                physical_action = false;
+                physical_flight_claimed = false;
+                physical_source = physical_target = nullptr;
+                physical_source_role.clear();
+            } );
+            physical_action = true;
+            physical_flight_claimed = false;
+            physical_source = source.get();
+            physical_target = target.get();
+            physical_source_role = source_role;
+            scene.view.context["execution_velocity"] = diag_value{ velocity };
+            fling_options options;
+            options.hit_characters = action.hit_characters;
+            const bool accepted = g->fling_creature( target.get(), coord_to_angle( source->pos_bub(),
+                                  target->pos_bub() ), velocity, action.controlled_landing, false, options );
+            const bool moved = target->pos_abs() != before;
+            result( scene, action, !g->executions().physical_action_valid() && !target->is_dead_state() ?
+                    "interrupted" : moved ? "moved" : accepted ? "blocked" : "resisted" );
+        }
+        scene.view.context["execution_hp_change"] = diag_value{ target->get_hp() - hp };
+        scene.view.context["execution_position"] = diag_value{ target->pos_abs() };
+        scene.view.context["execution_distance"] = diag_value{ rl_dist( before, target->pos_abs() ) };
+        scene.view.context["execution_fell"] = diag_value{ target->pos_abs().z() < before.z() ? 1 : 0 };
+        target->check_dead_state( &get_map() );
+        if( target_role == "target" ) {
+            scene.target_dead = target->is_dead_state() && !execution_fatal::pending( *target );
+        }
+        refresh_positions( scene );
+        if( scene.cancel_reason.empty() ) {
+            scene.cancel_reason = invalid( scene, false );
+        }
+    }
+
     void immediate( execution_instance &scene, const execution_action &action ) {
         if( action.type == execution_action::kind::none ) {
             return;
@@ -668,6 +802,11 @@ struct execution_manager::impl {
         if( action.type == execution_action::kind::eoc ) {
             callbacks( scene, action.eocs );
             result( scene, action, "dispatched" );
+            return;
+        }
+        if( action.type == execution_action::kind::fling ||
+            action.type == execution_action::kind::melee ) {
+            physical( scene, action );
             return;
         }
         const auto target = hold( role_ref( scene, action.role ) );
@@ -764,10 +903,13 @@ struct execution_manager::impl {
                 }
                 scene.entered = true;
                 scene.occurrences = 0;
-                scene.requested = scene.remaining = step.action.type == execution_action::kind::move ?
+                const bool moving = step.action.type == execution_action::kind::move ||
+                                    step.action.type == execution_action::kind::shove;
+                scene.requested = scene.remaining = moving ?
                                                     scene.roll( step.action.tiles.min, step.action.tiles.max ) : 0;
                 scene.moved = 0;
-                const int first = step.action.type == execution_action::kind::move ?
+                scene.action_direction = tripoint_rel_ms::zero;
+                const int first = moving ?
                                   step.action.first_after : step.repeats ? step.first_after : 0;
                 scene.view.due = calendar::turn + time_duration::from_turns( first );
                 if( scene.view.due > calendar::turn ) {
@@ -775,7 +917,8 @@ struct execution_manager::impl {
                 }
             }
             owned_action = scene.view.id;
-            if( step.action.type == execution_action::kind::move ) {
+            if( step.action.type == execution_action::kind::move ||
+                step.action.type == execution_action::kind::shove ) {
                 const bool complete = move( scene, step.action );
                 owned_action = 0;
                 if( !scene.active() ) {
@@ -1567,13 +1710,49 @@ void execution_manager::notify_damage( const Creature &who, int amount )
     }
 }
 
-Creature *execution_manager::secondary_damage_source() const
+Creature *execution_manager::secondary_damage_source( const Creature *receiver ) const
 {
+    if( data->physical_action && execution_combat::is_impact_damage( receiver ) ) {
+        return physical_instigator();
+    }
     if( !data->gravity_action || data->owned_action == 0 ) {
         return nullptr;
     }
     const auto it = data->instances.find( data->owned_action );
-    return it == data->instances.end() ? nullptr : it->second.actor.resolve();
+    return it == data->instances.end() ? nullptr :
+           role_ref( it->second, data->gravity_source_role ).resolve();
+}
+
+Creature *execution_manager::physical_instigator() const
+{
+    const auto it = data->instances.find( data->owned_action );
+    if( !data->physical_action || it == data->instances.end() ) {
+        return nullptr;
+    }
+    Creature *who = role_ref( it->second, data->physical_source_role ).resolve();
+    return who == data->physical_source ? who : nullptr;
+}
+
+bool execution_manager::claim_physical_flight( const Creature &target )
+{
+    if( !data->physical_action || data->physical_flight_claimed ||
+        data->physical_target != &target || !physical_action_valid() ) {
+        return false;
+    }
+    data->physical_flight_claimed = true;
+    return true;
+}
+
+bool execution_manager::physical_action_valid() const
+{
+    if( !data->physical_action ) {
+        return true;
+    }
+    const auto it = data->instances.find( data->owned_action );
+    return it != data->instances.end() && it->second.active() &&
+           it->second.cancel_reason.empty() && physical_instigator() &&
+           ( it->second.actor.resolve() == data->physical_target ||
+             it->second.target.resolve() == data->physical_target );
 }
 
 std::optional<execution_view> execution_manager::inspect( int64_t id ) const
@@ -1666,6 +1845,7 @@ void execution_manager::serialize( JsonOut &jsout ) const
         jsout.member( "requested", scene.requested );
         jsout.member( "remaining", scene.remaining );
         jsout.member( "moved", scene.moved );
+        jsout.member( "action_direction", scene.action_direction );
         jsout.member( "cancel_reason", scene.cancel_reason );
         jsout.member( "results", scene.results );
         jsout.member( "message_choices", scene.message_choices );
@@ -1774,6 +1954,7 @@ void execution_manager::deserialize( const JsonObject &jo )
         saved.read( "requested", scene.requested );
         saved.read( "remaining", scene.remaining );
         saved.read( "moved", scene.moved );
+        saved.read( "action_direction", scene.action_direction );
         saved.read( "cancel_reason", scene.cancel_reason );
         saved.read( "results", scene.results );
         saved.read( "message_choices", scene.message_choices );
@@ -1795,6 +1976,11 @@ void execution_manager::deserialize( const JsonObject &jo )
                 scene.remaining < 0 || scene.remaining > scene.requested || scene.moved < 0 ||
                 scene.moved > scene.requested || scene.backward.x() < -1 || scene.backward.x() > 1 ||
                 scene.backward.y() < -1 || scene.backward.y() > 1 || scene.backward.z() != 0 ||
+                scene.action_direction.x() < -1 || scene.action_direction.x() > 1 ||
+                scene.action_direction.y() < -1 || scene.action_direction.y() > 1 ||
+                scene.action_direction.z() != 0 ||
+                ( scene.entered && step.action.type == execution_action::kind::shove &&
+                  scene.moved > 0 && scene.action_direction == tripoint_rel_ms::zero ) ||
                 ( scene.view.state == "pending" && ( scene.entered || scene.entries != 0 ) ) ||
                 scene.view.transcript.size() > 128 || scene.view.context.size() > 256 ||
                 scene.message_anchors.size() > 64 || scene.narration.size() > 128 ) {

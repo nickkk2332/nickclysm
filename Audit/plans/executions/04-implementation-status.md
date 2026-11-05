@@ -41,12 +41,13 @@ Still to develop:
   [knockout follow-up](07-knockouts.md).
 - Phase 4's owned appendable narration and auditory audiences are now delivered in the
   [narration follow-up](05-narration-milestone.md); the dedicated transcript inspector UI remains.
-- More physical actions, richer policies, per-action secondary attribution beyond the
-  implemented native fall scope, and broad gameplay/tooling demonstrations.
+- [Fatal projectile admission, shove/fling/native melee and the clash example](11-fatal-projectiles-physical-clashes.md) are delivered. Broader physical policies,
+  remaining combat producers and authoring/tooling demonstrations remain.
 
 Current constraints are deliberate: two loaded participants, living manual starts or
-the [supported automatic melee producers](06-automatic-triggers.md) with explicit
-[fatal admission](08-fatal-hits.md),
+the supported automatic [melee](06-automatic-triggers.md) and
+[handheld projectile](10-projectile-triggers.md) producers with explicit
+[fatal admission](11-fatal-projectiles-physical-clashes.md),
 no offscreen catchup, no save from inside an in-progress action, at most 64 active scenes,
 and bounded graphs. Damage interruption includes periodic environmental/bleeding HP loss.
 Revision changes interrupt incompatible instances; authors must bump revisions for graph

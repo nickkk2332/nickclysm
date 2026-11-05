@@ -105,7 +105,10 @@ class execution_manager
         bool owns_avatar_activity( int64_t id ) const;
         bool can_fall( int64_t id, const std::string &role ) const;
         void notify_damage( const Creature &who, int amount );
-        Creature *secondary_damage_source() const;
+        Creature *secondary_damage_source( const Creature *receiver = nullptr ) const;
+        bool claim_physical_flight( const Creature &target );
+        bool physical_action_valid() const;
+        Creature *physical_instigator() const;
         std::optional<execution_view> inspect( int64_t id ) const;
         std::vector<execution_narration_segment> narration( int64_t id ) const;
         void serialize( JsonOut &jsout ) const;

@@ -36,6 +36,8 @@ thread_local const Creature *fatal_commit_target = nullptr;
 thread_local projectile_fire_scope *current_fire = nullptr;
 thread_local projectile_flight_scope *current_flight = nullptr;
 thread_local projectile_target_scope *current_projectile_target = nullptr;
+thread_local physical_flight_scope *current_physical_flight = nullptr;
+thread_local impact_scope *current_impact = nullptr;
 
 std::string kind( const Creature &who )
 {
@@ -57,6 +59,47 @@ void capture_location( attack_snapshot &s, const Creature &actor, const Creature
 }
 } // namespace
 
+physical_flight_scope::physical_flight_scope( const Creature &target, bool owned ) :
+    previous( current_physical_flight ), target( target )
+{
+    current_physical_flight = owned ? this : nullptr;
+}
+
+physical_flight_scope::~physical_flight_scope()
+{
+    current_physical_flight = previous;
+}
+
+impact_scope::impact_scope( const Creature &target ) :
+    previous( current_impact ), target( target ), baseline_damage( current_damage ),
+    baseline_depth( damage_depth )
+{
+    current_impact = !previous && current_physical_flight &&
+                     &current_physical_flight->target == &target ? this : nullptr;
+}
+
+impact_scope::~impact_scope()
+{
+    current_impact = previous;
+}
+
+bool is_impact_damage( const Creature *target )
+{
+    if( !current_impact || &current_impact->target != target ) {
+        return false;
+    }
+    if( current_damage == current_impact->baseline_damage ) {
+        return damage_depth == current_impact->baseline_depth + 1;
+    }
+    // Character::deal_damage has an additional outer barrier before the common
+    // Creature damage scope. Attribute at that scope's entry, before callbacks;
+    // nested damage has a different parent scope and cannot borrow this source.
+    const int entry_depth = current_impact->baseline_depth + ( target->as_character() ? 2 : 1 );
+    return current_damage && current_damage->previous == current_impact->baseline_damage &&
+           ( damage_depth == entry_depth ||
+             ( damage_depth == entry_depth + 1 && current_damage->capture_hp ) );
+}
+
 std::string channel_name( channel producer )
 {
     switch( producer ) {
@@ -72,14 +115,18 @@ std::string channel_name( channel producer )
 
 struct projectile_fire_scope::impl {
     struct held_contact {
+        creature_ref identity;
         attack_snapshot facts;
         shared_ptr_fast<Creature> target;
+        bool fatal_attempted = false;
+        bool fatal_arbitrated = false;
+        int64_t fatal_instance = 0;
+        bool fatal_resolved = false;
     };
     shared_ptr_fast<Creature> actor;
     creature_ref identity;
     const dealt_projectile_attack *expected_flight = nullptr;
     attack_snapshot round;
-    std::vector<creature_ref> seen;
     std::vector<held_contact> contacts;
 };
 
@@ -111,12 +158,24 @@ projectile_fire_scope::projectile_fire_scope( Character &actor, map &here, const
 projectile_fire_scope::~projectile_fire_scope() noexcept( false )
 {
     current_fire = previous;
-    if( !data || exceptions != 0 || std::uncaught_exceptions() != 0 ) {
+    if( !data ) {
+        return;
+    }
+    const bool completed = exceptions == 0 && std::uncaught_exceptions() == 0;
+    // A fatal owner remains unready until all rounds, callbacks, ammo use and recoil finish.
+    // Exceptional exits must settle injuries too, without running graph actions or UI.
+    for( const impl::held_contact &contact : data->contacts ) {
+        if( contact.fatal_instance ) {
+            g->executions().release_fatal_attack( contact.fatal_instance,
+                                                  completed && contact.fatal_resolved );
+        }
+    }
+    if( !completed ) {
         return;
     }
     // Retain all original bodies through native ranged events and rule callbacks.
     for( const impl::held_contact &contact : data->contacts ) {
-        if( !contact.facts.fatal ) {
+        if( !contact.fatal_arbitrated && contact.facts.id != 0 && !contact.facts.fatal ) {
             g->executions().on_attack_resolved( contact.facts );
         }
     }
@@ -288,19 +347,33 @@ attack_scope::attack_scope( Creature &actor, Creature &target, channel producer,
 attack_scope::~attack_scope() noexcept( false )
 {
     current_attack = previous;
+    if( facts.producer == channel::projectile ) {
+        if( current_fire && current_fire->data ) {
+            for( auto &contact : current_fire->data->contacts ) {
+                if( contact.identity == facts.target ) {
+                    const bool completed = resolved && exceptions == 0 && std::uncaught_exceptions() == 0;
+                    if( fatal_instance ) {
+                        contact.fatal_resolved = completed;
+                        if( !completed ) {
+                            g->executions().release_fatal_attack( fatal_instance, false );
+                        }
+                    }
+                    if( enabled && completed && contact.facts.id == 0 ) {
+                        contact.facts = facts;
+                    }
+                    break;
+                }
+            }
+        }
+        return;
+    }
     if( fatal_instance != 0 && g ) {
         g->executions().release_fatal_attack( fatal_instance,
                                               resolved && exceptions == 0 && std::uncaught_exceptions() == 0 );
         return;
     }
     if( enabled && resolved && exceptions == 0 && std::uncaught_exceptions() == 0 ) {
-        if( facts.producer == channel::projectile ) {
-            if( current_fire && current_fire->data ) {
-                current_fire->data->contacts.push_back( { facts, target_hold } );
-            }
-        } else {
-            g->executions().on_attack_resolved( facts );
-        }
+        g->executions().on_attack_resolved( facts );
     }
 }
 
@@ -406,8 +479,14 @@ projectile_hit_scope::projectile_hit_scope( Creature &target, Creature *source,
     }
     auto &state = *current_fire->data;
     const creature_ref identity = creature_ref::bind( target );
-    if( state.seen.size() >= 64 || std::find( state.seen.begin(), state.seen.end(), identity ) !=
-        state.seen.end() ) {
+    const auto previous = std::find_if( state.contacts.begin(), state.contacts.end(),
+    [&]( const auto & candidate ) {
+        return candidate.identity == identity;
+    } );
+    const bool first = previous == state.contacts.end();
+    if( ( first && state.contacts.size() >= 64 ) ||
+        ( !first && ( previous->fatal_attempted ||
+                      !execution_triggers::has_fatal_rules( channel::projectile ) ) ) ) {
         return;
     }
     contact.reset( new attack_scope( *source, target, channel::projectile, true ) );
@@ -415,7 +494,12 @@ projectile_hit_scope::projectile_hit_scope( Creature &target, Creature *source,
         return;
     }
     current_projectile_target->consumed = true;
-    state.seen.push_back( identity );
+    if( first ) {
+        projectile_fire_scope::impl::held_contact held;
+        held.identity = identity;
+        held.target = contact->target_hold;
+        state.contacts.push_back( std::move( held ) );
+    }
     contact->facts.weapon = state.round.weapon;
     contact->facts.weapon_uid = state.round.weapon_uid;
     contact->facts.weapon_skill = state.round.weapon_skill;
@@ -473,7 +557,7 @@ void damage_scope::set_weakpoint( const std::string &id )
 
 void damage_scope::arm_hp_capture( bodypart_id bp, const dealt_damage_instance &dealt )
 {
-    capture_hp = owner != nullptr;
+    capture_hp = true;
     if( owner ) {
         owner->facts.hit = true;
         if( bp ) {
@@ -492,32 +576,56 @@ void damage_scope::disarm_hp_capture()
 
 void record_hp_loss( const Creature &target, int amount )
 {
-    if( current_damage && current_damage->capture_hp && current_damage->owner &&
-        current_damage->owner->target_hold.get() == &target ) {
+    if( current_damage && current_damage->capture_hp ) {
         current_damage->capture_hp = false;
+        if( !current_damage->owner || current_damage->owner->target_hold.get() != &target ) {
+            return;
+        }
         current_damage->owner->facts.hp_loss = std::max( 0, amount );
         if( current_damage->owner->facts.producer == channel::projectile ) {
-            // This milestone never reserves a fatal projectile injury, including later rescues.
             current_damage->owner->facts.fatal = amount > 0 && target.is_dead_state();
-            return;
         }
         if( amount > 0 && target.is_dead_state() && g &&
             current_damage->owner->fatal_instance == 0 ) {
-            attack_snapshot facts = current_damage->owner->facts;
-            facts.fatal = true;
-            const Creature *previous = std::exchange( fatal_commit_target, &target );
-            const on_out_of_scope restore( [&]() {
-                fatal_commit_target = previous;
-            } );
-            current_damage->owner->fatal_instance = g->executions().on_fatal_hit( facts );
-            if( current_damage->owner->fatal_instance == 0 ) {
-                const auto report = g->executions().last_trigger_report();
-                if( report && report->attack == facts.id ) {
-                    // This contact already had its fatal-stage arbitration. Preserve its refusal
-                    // report rather than republishing the same contact as a living hit afterward.
-                    current_damage->owner->enabled = false;
-                }
+            current_damage->owner->reserve_fatal( target );
+        }
+    }
+}
+
+void attack_scope::reserve_fatal( const Creature &target )
+{
+    projectile_fire_scope::impl::held_contact *projectile_contact = nullptr;
+    if( facts.producer == channel::projectile ) {
+        if( !current_fire || !current_fire->data ) {
+            return;
+        }
+        for( auto &contact : current_fire->data->contacts ) {
+            if( contact.identity == facts.target ) {
+                projectile_contact = &contact;
+                break;
             }
+        }
+        if( !projectile_contact || projectile_contact->fatal_attempted ) {
+            return;
+        }
+        projectile_contact->fatal_attempted = true;
+    }
+    attack_snapshot fatal = facts;
+    fatal.fatal = true;
+    const Creature *previous = std::exchange( fatal_commit_target, &target );
+    const on_out_of_scope restore( [&]() {
+        fatal_commit_target = previous;
+    } );
+    fatal_instance = g->executions().on_fatal_hit( fatal );
+    if( projectile_contact ) {
+        projectile_contact->fatal_instance = fatal_instance;
+        const auto report = g->executions().last_trigger_report();
+        projectile_contact->fatal_arbitrated = report && report->attack == facts.id;
+    }
+    if( fatal_instance == 0 ) {
+        const auto report = g->executions().last_trigger_report();
+        if( report && report->attack == facts.id ) {
+            enabled = false; // Preserve the fatal-stage refusal; do not republish as a living hit.
         }
     }
 }

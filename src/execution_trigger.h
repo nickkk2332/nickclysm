@@ -70,6 +70,7 @@ void reset();
 void finalize();
 void check();
 bool has_rules( execution_combat::channel channel );
+bool has_fatal_rules( execution_combat::channel channel );
 std::vector<const execution_trigger *> candidates( const execution_combat::attack_snapshot
         &snapshot );
 } // namespace execution_triggers

@@ -1634,6 +1634,9 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam, const weakpoint_attack &attack, const weakpoint &wp )
 {
     execution_combat::damage_scope execution_damage( source, *this );
+    if( !source && g ) {
+        source = g->executions().secondary_damage_source( this );
+    }
     execution_fatal::before_damage( *this, dam.total_damage() > 0 );
     if( ( is_dead_state() && !( g && g->executions().owns_fatal_gravity( *this ) ) ) ||
         has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {

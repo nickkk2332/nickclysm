@@ -659,12 +659,11 @@ TEST_CASE( "projectile_execution_bounds_a_firing_actions_victim_candidates",
     CHECK( get_globals().get_global_value( "exec_projectile_starts" ).dbl() == 64 );
 }
 
-TEST_CASE( "projectile_execution_schema_rejects_misses_fatal_events_and_inherited_loopholes",
+TEST_CASE( "projectile_execution_schema_supports_fatal_events_and_rejects_inherited_misses",
            "[executions][projectile_execution][json]" )
 {
     execution_trigger rule;
     const std::string field = GENERATE(
-                                  R"("event":"fatal_hit","match":{"channels":["projectile"]})",
                                   R"("match":{"channels":["projectile"],"hit":false})",
                                   R"("match":{"channels":["projectile"],"ammunition":[]})" );
     CHECK_THROWS_AS( rule.load( json_loader::from_string(
@@ -674,6 +673,10 @@ TEST_CASE( "projectile_execution_schema_rejects_misses_fatal_events_and_inherite
                         R"({"execution":"test_exec_projectile_hold","match":{"channels":["projectile"]}})" ),
                     "tests" );
     inherited.was_loaded = true;
-    CHECK_THROWS_AS( inherited.load( json_loader::from_string( R"({"event":"fatal_hit"})" ), "tests" ),
+    CHECK_NOTHROW( inherited.load( json_loader::from_string(
+                                       R"({"execution":"test_exec_fatal_hold","event":"fatal_hit"})" ), "tests" ) );
+    CHECK( inherited.fatal );
+    CHECK_THROWS_AS( inherited.load( json_loader::from_string( R"({"match":{"hit":false}})" ),
+                                     "tests" ),
                      JsonError );
 }

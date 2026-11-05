@@ -1,5 +1,7 @@
 # Nonfatal projectile execution triggers
 
+**Follow-up:** [fatal projectile admission and physical/clash actions](11-fatal-projectiles-physical-clashes.md) are now implemented. The original milestone record below retains its nonfatal scope.
+
 The supported contract is [Projectile rules](../../../doc/JSON/EXECUTIONS.md#projectile-rules).
 This extends [automatic melee triggers](06-automatic-triggers.md) using the existing
 saved runtime and native projectile damage path. Fatal projectile deferral remains

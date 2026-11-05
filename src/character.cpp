@@ -46,6 +46,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_combat.h"
 #include "execution_fatal.h"
 #include "faction.h"
 #include "fault.h"
@@ -8147,6 +8148,7 @@ float Character::fall_damage_mod() const
 // force is maximum damage to hp before scaling
 int Character::impact( const int force, const tripoint_bub_ms &p )
 {
+    const execution_combat::impact_scope execution_impact( *this );
     // Falls over ~30m are fatal more often than not
     // But that would be quite a lot considering 21 z-levels in game
     // so let's assume 1 z-level is comparable to 30 force

@@ -1,0 +1,52 @@
+[
+  {
+    "type": "execution",
+    "id": "test_exec_physical_shove",
+    "name": "Physical shove fixture",
+    "control": { "actor": "free", "target": "scripted" },
+    "max_ticks": 12,
+    "max_distance": 60,
+    "start": "act",
+    "steps": {
+      "act": { "action": { "op": "shove", "tiles": 3, "first_step_after_ticks": 0, "store_result": "physical" }, "end": "finished" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_physical_fling",
+    "name": "Physical fling fixture",
+    "control": { "actor": "free", "target": "scripted" },
+    "max_ticks": 12,
+    "max_distance": 60,
+    "start": "act",
+    "steps": { "act": { "action": { "op": "fling", "velocity": 40, "store_result": "physical" }, "end": "finished" } }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_physical_counter",
+    "name": "Physical counter fixture",
+    "control": { "actor": "scripted", "target": "scripted" },
+    "max_ticks": 12,
+    "max_distance": 60,
+    "start": "act",
+    "steps": { "act": { "action": { "op": "melee", "role": "target", "store_result": "physical" }, "end": "finished" } }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_clash_separate",
+    "copy-from": "execution_cinematic_clash",
+    "start": "push"
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_clash_counter",
+    "copy-from": "execution_cinematic_clash",
+    "start": "counter"
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_clash_throw",
+    "copy-from": "execution_cinematic_clash",
+    "start": "throw"
+  }
+]

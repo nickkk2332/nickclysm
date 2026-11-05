@@ -35,7 +35,8 @@ adds nonfatal handheld firing. Throws, spells, environmental damage,
 monster specials that bypass standard melee, and mounted delegation/rider redirects
 need additional adapters and causality contracts. The [fatal melee follow-up](08-fatal-hits.md)
 adds a separate commit-time stage for NPC/monster fatal victims on these primary-melee
-producers. Fatal projectile rules and unsupported events remain rejected.
+producers. The [fatal projectile follow-up](11-fatal-projectiles-physical-clashes.md)
+adds commit-time handheld firing admission. Unsupported events remain rejected.
 
 The one-contact guarantee applies to automatic rules. An author can still explicitly
 queue independent free-role scenes through EOCs. Existing ownership requirements
@@ -50,7 +51,8 @@ These limits keep state bounded without claiming an unlimited event history.
 
 Real knockout/incapacity is delivered by the [knockout follow-up](07-knockouts.md).
 Fatal primary-melee reservation/finalization is delivered by the fatal follow-ups.
-Fatal projectile reservation, more physical actions, and a transcript/trigger
+The fatal projectile/physical follow-up also supplies shove, fling and native melee.
+Additional physical verbs and a transcript/trigger
 inspector remain separate milestones.
 
 ## Validation

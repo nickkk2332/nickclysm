@@ -1,0 +1,125 @@
+[
+  {
+    "type": "ITEM",
+    "id": "execution_projectile_fatal_test_gun",
+    "copy-from": "execution_projectile_test_gun",
+    "name": { "str": "fatal projectile test gun" },
+    "description": "Tests the native fatal projectile commit boundary."
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_projectile_fatal_test_bow",
+    "copy-from": "execution_projectile_test_bow",
+    "name": { "str": "fatal projectile test bow" },
+    "description": "Tests the native fatal projectile commit boundary."
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_projectile_fatal_test_shotgun",
+    "copy-from": "execution_projectile_test_shotgun",
+    "name": { "str": "fatal projectile test shotgun" },
+    "description": "Tests the native fatal projectile commit boundary."
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_projectile_fatal_hold",
+    "copy-from": "test_exec_fatal_hold",
+    "allow_avatar_fatal_target": true,
+    "max_distance": 60
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_projectile_fatal_no_avatar",
+    "copy-from": "test_exec_projectile_fatal_hold",
+    "allow_avatar_fatal_target": false
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_projectile_fatal_timeout",
+    "copy-from": "test_exec_projectile_fatal_hold",
+    "max_ticks": 2
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_projectile_fatal_walk",
+    "copy-from": "test_exec_fatal_walk",
+    "allow_avatar_fatal_target": true,
+    "max_distance": 60
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_fatal_hold_trigger",
+    "event": "fatal_hit",
+    "execution": "test_exec_projectile_fatal_hold",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [
+        "execution_projectile_fatal_test_gun",
+        "execution_projectile_fatal_test_bow",
+        "execution_projectile_fatal_test_shotgun"
+      ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_fatal_case", "default": "" }, "hold" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_fatal_zero_trigger",
+    "event": "fatal_hit",
+    "execution": "test_exec_projectile_fatal_hold",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [
+        "execution_projectile_fatal_test_gun",
+        "execution_projectile_fatal_test_bow",
+        "execution_projectile_fatal_test_shotgun"
+      ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_fatal_case", "default": "" }, "zero" ] },
+    "chance": 0
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_fatal_no_avatar_trigger",
+    "event": "fatal_hit",
+    "execution": "test_exec_projectile_fatal_no_avatar",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [
+        "execution_projectile_fatal_test_gun",
+        "execution_projectile_fatal_test_bow",
+        "execution_projectile_fatal_test_shotgun"
+      ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_fatal_case", "default": "" }, "no_avatar" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_fatal_timeout_trigger",
+    "event": "fatal_hit",
+    "execution": "test_exec_projectile_fatal_timeout",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [
+        "execution_projectile_fatal_test_gun",
+        "execution_projectile_fatal_test_bow",
+        "execution_projectile_fatal_test_shotgun"
+      ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_fatal_case", "default": "" }, "timeout" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_fatal_walk_trigger",
+    "event": "fatal_hit",
+    "execution": "test_exec_projectile_fatal_walk",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [
+        "execution_projectile_fatal_test_gun",
+        "execution_projectile_fatal_test_bow",
+        "execution_projectile_fatal_test_shotgun"
+      ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_fatal_case", "default": "" }, "walk" ] }
+  }
+]
