@@ -82,10 +82,11 @@ different filters must all pass. An omitted filter imposes no restriction.
 
 | Match member | Values |
 | --- | --- |
-| `channels` | `character_melee`, `monster_melee`, or `melee` for both |
+| `channels` | `character_melee`, `monster_melee`, `melee` for both melee channels, or explicitly opted-in `projectile` |
 | `source_kind`, `target_kind` | Lists of `avatar`, `npc`, `monster` |
 | `source_monsters`, `target_monsters` | Monster type IDs |
 | `weapons`, `weapon_categories`, `weapon_skills` | Original attack item IDs, categories, or skill IDs; unarmed character attacks use weapon `null` and skill `unarmed` |
+| `ammunition` | Actual fired ammunition item IDs, when available; projectile rules only have ammunition facts |
 | `styles`, `techniques` | Selected martial-art and technique IDs |
 | `body_parts`, `weakpoints` | Actual body-part ID and stable weakpoint ID; weakpoints use IDs from the victim's definition, never translated names |
 | `terrains`, `furniture` | IDs at the victim's tile when primary damage processing begins |
@@ -131,14 +132,13 @@ single-candidate weight choices need no selection RNG draw; accepted scene creat
 still seeds its saved RNG normally.
 
 Supported producers are ordinary character primary melee (avatar/NPC, including a
-resolved reach contact) and standard monster primary melee. Nested/counter attacks,
-mutation contacts, direct damage and projectile callbacks inside the wrapped damage
-handlers, and execution-scripted attacks cannot become new automatic roots. Mech
-delegation, rider redirects, monster specials that bypass standard melee, projectiles/throws, spells,
-and environmental damage have no automatic producer in this
-milestone. Projectile rule definitions are rejected. Fatal rules use the same supported
-primary melee paths at the earlier boundary below. This is not a universal
-combat-event/causality API.
+resolved reach contact), standard monster primary melee, and the nonfatal handheld
+[projectile producer](#projectile-rules). Nested/counter attacks, mutation contacts,
+secondary projectiles and execution-scripted attacks cannot become new automatic roots.
+Mech delegation, rider redirects, monster specials that bypass standard melee, thrown
+items, spells and environmental damage still need additional producers. Fatal rules
+use only the supported primary-melee paths at the earlier boundary below. This is not
+a universal combat-event/causality API.
 
 For engine tooling, `execution_manager::last_trigger_report()` returns the latest
 contact ID, indexed candidate count, selected rule/queued handle, and up to 64 candidate
@@ -149,6 +149,69 @@ There are at most 2,048 rules and 4,096 saved cooldown keys. The last 128 proces
 contact IDs suppress duplicate in-session submissions; this bounded cache and the
 latest report are not saved. The monotonic contact counter is saved. Loading scenes
 does not reemit combat contacts or rerun trigger selection.
+
+## Projectile rules
+
+Use `"channels": [ "projectile" ]` with `event: "attack_resolved"` to match direct
+nonfatal gun, bow and crossbow hits from a loaded avatar or NPC. Omitted channels and
+`melee` retain their previous melee-only meanings. Projectile `fatal_hit` and
+`hit: false` rules are load errors, including when inherited through `copy-from`.
+
+```json
+{
+  "type": "execution_trigger",
+  "id": "example_projectile_reaction",
+  "event": "attack_resolved",
+  "execution": "execution_projectile_stagger",
+  "chance": 0.1,
+  "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+  "match": {
+    "channels": [ "projectile" ],
+    "weapons": [ "glock_19" ],
+    "ammunition": [ "9mm" ],
+    "hp_loss": { "minimum": 1 }
+  }
+}
+```
+
+One native firing action offers **one contact per victim**, using its first direct
+hit. A burst can hit several victims; pellets, later rounds and later body parts do
+not replace that victim's first hit or roll additional chances. A first hit stopped
+by armor can have zero HP loss even if a later pellet damages the victim. Add an
+`hp_loss` minimum when damage is required. Dodges and misses produce no contact.
+The producer retains at most 64 victim candidates per firing action, in native hit
+order; additional victims receive normal damage without automatic selection.
+
+Selection waits until the complete native firing action returns, including all
+rounds, ammo use, recoil, ranged events and synchronous effects. No scene executes
+between pellets or rounds. Participants must still be alive and loaded. A fatal
+primary hit is excluded even if a callback rescues it; a victim killed by a later
+round cannot start a living scene. This producer never reserves projectile death.
+Future queued effects remain ordinary world events and can interrupt scenes normally.
+
+Snapshots include the original firing item UID/type/categories, gun skill, actual
+ammunition type when present, native critical flag, hit body part where available,
+stable monster weakpoint ID, primary damage/HP loss and impact terrain/furniture.
+Styles and techniques are absent. Context adds `ammunition` and `projectile_origin`
+(the absolute native flight origin); `weapon_skill` is the gun's ranged skill.
+The horizontal backward direction uses that flight origin, preserving the impact
+axis even when a callback moves the shooter. A scene starts at participants' actual
+current positions and still enforces its own distance, weapon and control requirements.
+
+Eligibility requires the actual wielded gun and main reality map. Handheld guns,
+bows and crossbows use the same producer. Mounted/delegated firing, vehicle turrets,
+underbarrel gunmod firing, direct generic projectile calls, thrown items, magical
+projectiles, shrapnel, secondary bounce flights and rider-redirection contacts are
+outside this adapter. A primary shot from bouncing ammunition can qualify; its
+secondary flights cannot. Defensive reactions, damage/event callbacks and authored
+scene attacks cannot create new automatic roots during firing or native flight.
+Saves and scene pumping inside those boundaries are refused/deferred.
+
+[Core stagger content](../../data/json/executions/projectile.json) takes one or two
+checked backward steps and stops before unsupported terrain. The optional demo mod
+adds a pistol and bow with rare stagger rules and qualifying critical-head knockout
+rules. Production weapons gain no automatic rule. Existing native incapacity and
+its immunities determine whether a knockout actually applies.
 
 ## Fatal-hit rules
 
@@ -629,6 +692,6 @@ narration each retain 128 segments. Native message-history limits still apply.
 
 The reference content is [knife_stagger.json](../../data/json/executions/knife_stagger.json).
 It rolls 1–4 backward tiles, stops before a ledge, tries a 50% native tumble, or emits
-two wounded beats. It can end with survival. Fatal-hit reservation,
+two wounded beats. It can end with survival. Fatal projectile reservation,
 additional automatic combat producers, offscreen scene simulation, a dedicated transcript
 inspector UI, and additional typed physical actions remain later milestones.

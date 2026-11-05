@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -14,12 +15,15 @@
 #include "memory_fast.h"
 
 class Creature;
+class Character;
 class item;
+class map;
 struct dealt_damage_instance;
+struct dealt_projectile_attack;
 
 namespace execution_combat
 {
-enum class channel { character_melee, monster_melee };
+enum class channel { character_melee, monster_melee, projectile };
 
 /** Facts from one native primary contact; absent facts are not fabricated. */
 struct attack_snapshot {
@@ -35,6 +39,8 @@ struct attack_snapshot {
     std::optional<int64_t> weapon_uid;
     std::set<std::string> weapon_categories;
     std::optional<std::string> weapon_skill;
+    std::optional<std::string> ammunition;
+    std::optional<tripoint_abs_ms> projectile_origin;
     std::optional<std::string> style;
     std::optional<std::string> technique;
     bool hit = false;
@@ -57,6 +63,59 @@ class melee_hit_scope;
 class direct_damage_scope;
 class damage_scope;
 class primary_hit_scope;
+class projectile_hit_scope;
+
+/** One handheld firing action: first direct contact per victim, published after the burst. */
+class projectile_fire_scope
+{
+    public:
+        projectile_fire_scope( Character &actor, map &here, const item &gun );
+        ~projectile_fire_scope() noexcept( false );
+        projectile_fire_scope( const projectile_fire_scope & ) = delete;
+        projectile_fire_scope &operator=( const projectile_fire_scope & ) = delete;
+        void begin_round( const item &gun, const dealt_projectile_attack &attack );
+    private:
+        friend class attack_scope;
+        friend class projectile_flight_scope;
+        friend class projectile_hit_scope;
+        struct impl;
+        std::unique_ptr<impl> data;
+        projectile_fire_scope *previous = nullptr;
+        int exceptions = 0;
+};
+
+/** Only the outer native flight belongs to a firing action; bounces/children do not. */
+class projectile_flight_scope
+{
+    public:
+        projectile_flight_scope( const dealt_projectile_attack &attack, map *here,
+                                 Creature *source, const tripoint_bub_ms &origin );
+        ~projectile_flight_scope();
+        projectile_flight_scope( const projectile_flight_scope & ) = delete;
+        projectile_flight_scope &operator=( const projectile_flight_scope & ) = delete;
+    private:
+        friend class projectile_hit_scope;
+        projectile_flight_scope *previous = nullptr;
+        projectile_fire_scope *owner = nullptr;
+        const dealt_projectile_attack *attack = nullptr;
+        map *here = nullptr;
+        tripoint_abs_ms origin;
+};
+
+/** Native ballistics grants one primary hit to this exact target, before virtual dispatch. */
+class projectile_target_scope
+{
+    public:
+        explicit projectile_target_scope( const Creature &target );
+        ~projectile_target_scope();
+        projectile_target_scope( const projectile_target_scope & ) = delete;
+        projectile_target_scope &operator=( const projectile_target_scope & ) = delete;
+    private:
+        friend class projectile_hit_scope;
+        projectile_target_scope *previous = nullptr;
+        const Creature &target;
+        bool consumed = false;
+};
 
 /** Root attacks publish after all native callbacks return. Child attacks are suppressed. */
 class attack_scope
@@ -77,7 +136,9 @@ class attack_scope
         friend class direct_damage_scope;
         friend class damage_scope;
         friend class primary_hit_scope;
+        friend class projectile_hit_scope;
         friend void record_hp_loss( const Creature &, int );
+        attack_scope( Creature &actor, Creature &target, channel producer, bool projectile_primary );
         attack_scope *previous = nullptr;
         bool enabled = false;
         bool resolved = false;
@@ -125,7 +186,24 @@ class direct_damage_scope
         direct_damage_scope( const direct_damage_scope & ) = delete;
         direct_damage_scope &operator=( const direct_damage_scope & ) = delete;
     private:
+        friend class projectile_hit_scope;
+        explicit direct_damage_scope( attack_scope *owner );
         attack_scope *previous = nullptr;
+};
+
+/** Captures the selected native projectile hit, excluding its callbacks and effects. */
+class projectile_hit_scope
+{
+    public:
+        projectile_hit_scope( Creature &target, Creature *source,
+                              const dealt_projectile_attack &attack, map *here, bool critical );
+        ~projectile_hit_scope() noexcept( false );
+        projectile_hit_scope( const projectile_hit_scope & ) = delete;
+        projectile_hit_scope &operator=( const projectile_hit_scope & ) = delete;
+        direct_damage_scope capture_damage();
+        void resolve( const dealt_damage_instance &dealt );
+    private:
+        std::unique_ptr<attack_scope> contact;
 };
 
 /** Damage nesting is also a barrier for melee spawned by projectile/spell callbacks. */

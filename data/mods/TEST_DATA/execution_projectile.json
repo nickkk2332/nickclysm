@@ -1,0 +1,124 @@
+[
+  {
+    "type": "ITEM",
+    "id": "execution_projectile_test_gun",
+    "copy-from": "glock_19",
+    "name": { "str": "execution projectile test gun" },
+    "description": "Native projectile execution regression fixture.",
+    "extend": { "flags": [ "NEVER_JAMS" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_projectile_test_bow",
+    "copy-from": "shortbow",
+    "name": { "str": "execution projectile test bow" },
+    "description": "Native projectile execution regression fixture.",
+    "extend": { "flags": [ "NEVER_JAMS" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_projectile_test_shotgun",
+    "copy-from": "remington_870",
+    "name": { "str": "execution projectile test shotgun" },
+    "description": "Native projectile execution regression fixture.",
+    "extend": { "flags": [ "NEVER_JAMS" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_projectile_test_round",
+    "copy-from": "9mm",
+    "name": { "str": "execution projectile test cartridge" },
+    "description": "An identifiable round for projectile context filtering."
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_PROJECTILE_START",
+    "effect": [ { "math": [ "exec_projectile_starts += 1" ] } ]
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_projectile_hold",
+    "name": "Projectile context fixture",
+    "control": { "actor": "free", "target": "free" },
+    "max_distance": 60,
+    "max_ticks": 10,
+    "on_start": [ "EOC_TEST_EXEC_PROJECTILE_START" ],
+    "start": "wait",
+    "steps": { "wait": { "next": { "step": "done", "after_ticks": [ 1, 3 ] } }, "done": { "end": "complete" } }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_projectile_weapon",
+    "copy-from": "test_exec_projectile_hold",
+    "require_weapon": true
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_basic",
+    "execution": "test_exec_projectile_hold",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_projectile_test_gun", "execution_projectile_test_bow", "execution_projectile_test_shotgun" ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_case", "default": "" }, "basic" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_zero",
+    "execution": "test_exec_projectile_hold",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_projectile_test_gun", "execution_projectile_test_bow", "execution_projectile_test_shotgun" ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_case", "default": "" }, "zero" ] },
+    "chance": 0
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_weapon",
+    "execution": "test_exec_projectile_weapon",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_projectile_test_gun", "execution_projectile_test_bow", "execution_projectile_test_shotgun" ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_case", "default": "" }, "weapon" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_stagger",
+    "execution": "execution_projectile_stagger",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_projectile_test_gun", "execution_projectile_test_bow", "execution_projectile_test_shotgun" ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_case", "default": "" }, "stagger" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_knockout",
+    "execution": "execution_critical_knockout",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_projectile_test_gun", "execution_projectile_test_bow", "execution_projectile_test_shotgun" ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_case", "default": "" }, "knockout" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_cooldown",
+    "execution": "test_exec_projectile_hold",
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_projectile_test_gun", "execution_projectile_test_bow", "execution_projectile_test_shotgun" ]
+    },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_case", "default": "" }, "cooldown" ] },
+    "cooldown": { "ticks": 20, "scope": "actor_target_pair" }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_projectile_ammunition",
+    "execution": "test_exec_projectile_hold",
+    "match": { "channels": [ "projectile" ], "ammunition": [ "execution_projectile_test_round" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_projectile_case", "default": "" }, "ammunition" ] }
+  }
+]

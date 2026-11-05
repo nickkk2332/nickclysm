@@ -3,7 +3,7 @@
     "type": "MOD_INFO",
     "id": "executions_demo",
     "name": "Executions demonstration",
-    "description": "A demonstration knife with a living-target stagger sequence.  Fatal hits retain ordinary death handling.",
+    "description": "Demonstration weapons for stagger scenes, knockouts, projectile reactions and opted-in fatal melee executions.",
     "category": "content",
     "dependencies": [ "dda" ]
   }

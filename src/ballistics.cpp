@@ -19,6 +19,7 @@
 #include "crafting.h"
 #include "creature.h"
 #include "creature_tracker.h"
+#include "execution_combat.h"
 #include "damage.h"
 #include "debug.h"
 #include "dispersion.h"
@@ -576,6 +577,7 @@ static void fly_pellets_together( const pellet_shot &shot, const int count )
                 pass_over();
                 return;
             }
+            const execution_combat::projectile_target_scope execution_target( *critter );
             critter->deal_projectile_attack( here, shot.null_source ? nullptr : shot.origin, attack,
                                              cur_missed_by, shot.print_messages, shot.wp_attack );
 
@@ -809,6 +811,7 @@ void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_
                         const dispersion_sources &dispersion, Creature *origin, const vehicle *in_veh,
                         const weakpoint_attack &wp_attack )
 {
+    const execution_combat::projectile_flight_scope execution_flight( attack, here, origin, source );
     const bool do_animation = get_option<bool>( "ANIMATION_PROJECTILES" );
 
     double range = rl_dist( source, target_arg );
@@ -1149,6 +1152,7 @@ void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_
                     origin->check_avoid_friendly_fire() ) {
                     continue;
                 }
+                const execution_combat::projectile_target_scope execution_target( *critter );
                 critter->deal_projectile_attack( here, null_source ? nullptr : origin, attack, cur_missed_by,
                                                  print_messages, wp_attack );
 

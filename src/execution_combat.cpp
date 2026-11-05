@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <exception>
 #include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "cata_scope_helpers.h"
@@ -12,12 +13,14 @@
 #include "execution_trigger.h"
 #include "game.h"
 #include "item.h"
+#include "item_location.h"
 #include "itype.h"
 #include "line.h"
 #include "map.h"
 #include "mapdata.h"
 #include "monster.h"
 #include "mtype.h"
+#include "projectile.h"
 #include "skill.h"
 
 namespace execution_combat
@@ -30,6 +33,9 @@ thread_local attack_scope *pending_damage = nullptr;
 thread_local damage_scope *current_damage = nullptr;
 thread_local int damage_depth = 0;
 thread_local const Creature *fatal_commit_target = nullptr;
+thread_local projectile_fire_scope *current_fire = nullptr;
+thread_local projectile_flight_scope *current_flight = nullptr;
+thread_local projectile_target_scope *current_projectile_target = nullptr;
 
 std::string kind( const Creature &who )
 {
@@ -40,8 +46,9 @@ void capture_location( attack_snapshot &s, const Creature &actor, const Creature
 {
     s.actor_position = actor.pos_abs();
     s.target_position = target.pos_abs();
-    s.direction = tripoint_rel_ms( sgn( s.target_position.x() - s.actor_position.x() ),
-                                   sgn( s.target_position.y() - s.actor_position.y() ), 0 );
+    const tripoint_abs_ms origin = s.projectile_origin.value_or( s.actor_position );
+    s.direction = tripoint_rel_ms( sgn( s.target_position.x() - origin.x() ),
+                                   sgn( s.target_position.y() - origin.y() ), 0 );
     const map &here = get_map();
     if( here.inbounds( target.pos_bub( here ) ) ) {
         s.terrain = here.ter( target.pos_bub( here ) ).id().str();
@@ -52,7 +59,116 @@ void capture_location( attack_snapshot &s, const Creature &actor, const Creature
 
 std::string channel_name( channel producer )
 {
-    return producer == channel::character_melee ? "character_melee" : "monster_melee";
+    switch( producer ) {
+        case channel::character_melee:
+            return "character_melee";
+        case channel::monster_melee:
+            return "monster_melee";
+        case channel::projectile:
+            return "projectile";
+    }
+    return "";
+}
+
+struct projectile_fire_scope::impl {
+    struct held_contact {
+        attack_snapshot facts;
+        shared_ptr_fast<Creature> target;
+    };
+    shared_ptr_fast<Creature> actor;
+    creature_ref identity;
+    const dealt_projectile_attack *expected_flight = nullptr;
+    attack_snapshot round;
+    std::vector<creature_ref> seen;
+    std::vector<held_contact> contacts;
+};
+
+projectile_fire_scope::projectile_fire_scope( Character &actor, map &here, const item &gun ) :
+    previous( current_fire ), exceptions( std::uncaught_exceptions() )
+{
+    current_fire = this;
+    const on_out_of_scope restore_on_exception( [&]() {
+        if( std::uncaught_exceptions() > exceptions ) {
+            current_fire = previous;
+        }
+    } );
+    if( previous || current_flight || current_attack || damage_depth != 0 || !g ||
+        &here != &get_map() || g->executions().processing_actions() ||
+        !execution_triggers::has_rules( channel::projectile ) || actor.is_fake() ||
+        actor.is_hallucination() || actor.is_mounted() ||
+        actor.get_wielded_item().get_item() != &gun ||
+        creature_ref::bind( actor ).resolve() != &actor ) {
+        return;
+    }
+    const auto source = g->shared_from( actor );
+    if( source ) {
+        data = std::make_unique<impl>();
+        data->actor = source;
+        data->identity = creature_ref::bind( actor );
+    }
+}
+
+projectile_fire_scope::~projectile_fire_scope() noexcept( false )
+{
+    current_fire = previous;
+    if( !data || exceptions != 0 || std::uncaught_exceptions() != 0 ) {
+        return;
+    }
+    // Retain all original bodies through native ranged events and rule callbacks.
+    for( const impl::held_contact &contact : data->contacts ) {
+        if( !contact.facts.fatal ) {
+            g->executions().on_attack_resolved( contact.facts );
+        }
+    }
+}
+
+void projectile_fire_scope::begin_round( const item &gun, const dealt_projectile_attack &attack )
+{
+    if( !data ) {
+        return;
+    }
+    data->round = attack_snapshot();
+    data->expected_flight = &attack;
+    data->round.weapon = gun.typeId().str();
+    data->round.weapon_uid = gun.uid().get_value();
+    data->round.weapon_skill = gun.gun_skill().str();
+    if( !gun.ammo_current().is_null() ) {
+        data->round.ammunition = gun.ammo_current().str();
+    }
+    for( const weapon_category_id &category : gun.type->weapon_category ) {
+        data->round.weapon_categories.insert( category.str() );
+    }
+}
+
+projectile_flight_scope::projectile_flight_scope( const dealt_projectile_attack &attack,
+        map *here, Creature *source, const tripoint_bub_ms &origin ) :
+    previous( current_flight ), attack( &attack ), here( here )
+{
+    current_flight = this;
+    if( !previous && !current_attack && damage_depth == 0 && current_fire &&
+        current_fire->data && current_fire->data->actor.get() == source &&
+        current_fire->data->identity.resolve() == source &&
+        current_fire->data->expected_flight == &attack && here == &get_map() ) {
+        owner = current_fire;
+        owner->data->expected_flight = nullptr;
+        this->origin = here->get_abs( origin );
+    }
+}
+
+projectile_flight_scope::~projectile_flight_scope()
+{
+    current_flight = previous;
+}
+
+projectile_target_scope::projectile_target_scope( const Creature &target ) :
+    previous( current_projectile_target ), target( target )
+{
+    current_projectile_target = this;
+}
+
+projectile_target_scope::~projectile_target_scope()
+{
+    current_projectile_target = previous;
 }
 
 global_variables::impl_t attack_snapshot::context() const
@@ -84,6 +200,12 @@ global_variables::impl_t attack_snapshot::context() const
     }
     if( weapon_skill ) {
         put( "weapon_skill", *weapon_skill );
+    }
+    if( ammunition ) {
+        put( "ammunition", *ammunition );
+    }
+    if( projectile_origin ) {
+        put( "projectile_origin", *projectile_origin );
     }
     if( style ) {
         put( "style", *style );
@@ -119,10 +241,22 @@ global_variables::impl_t attack_snapshot::context() const
 }
 
 attack_scope::attack_scope( Creature &actor, Creature &target, channel producer ) :
+    attack_scope( actor, target, producer, false )
+{
+}
+
+attack_scope::attack_scope( Creature &actor, Creature &target, channel producer,
+                            bool projectile_primary ) :
     previous( current_attack ), exceptions( std::uncaught_exceptions() )
 {
     current_attack = this;
-    if( previous || damage_depth != 0 || !g || g->executions().processing_actions() ||
+    const on_out_of_scope restore_on_exception( [&]() {
+        if( std::uncaught_exceptions() > exceptions ) {
+            current_attack = previous;
+        }
+    } );
+    if( previous || ( !projectile_primary && ( damage_depth != 0 || current_fire || current_flight ||
+                      producer == channel::projectile ) ) || !g || g->executions().processing_actions() ||
         !execution_triggers::has_rules( producer ) || actor.is_hallucination() ||
         target.is_hallucination() ) {
         return;
@@ -160,7 +294,13 @@ attack_scope::~attack_scope() noexcept( false )
         return;
     }
     if( enabled && resolved && exceptions == 0 && std::uncaught_exceptions() == 0 ) {
-        g->executions().on_attack_resolved( facts );
+        if( facts.producer == channel::projectile ) {
+            if( current_fire && current_fire->data ) {
+                current_fire->data->contacts.push_back( { facts, target_hold } );
+            }
+        } else {
+            g->executions().on_attack_resolved( facts );
+        }
     }
 }
 
@@ -247,6 +387,62 @@ direct_damage_scope::~direct_damage_scope()
     pending_damage = previous;
 }
 
+direct_damage_scope::direct_damage_scope( attack_scope *owner ) : previous( pending_damage )
+{
+    pending_damage = owner && owner->enabled && current_attack == owner ? owner : nullptr;
+}
+
+projectile_hit_scope::projectile_hit_scope( Creature &target, Creature *source,
+        const dealt_projectile_attack &attack, map *here, bool critical )
+{
+    if( !current_flight || !current_flight->owner ||
+        current_flight->owner != current_fire || current_flight->attack != &attack ||
+        current_flight->here != here || current_attack || !current_projectile_target ||
+        current_projectile_target->consumed || &current_projectile_target->target != &target ||
+        current_fire->data->identity.resolve() != source || attack.shrapnel ||
+        attack.proj.proj_effects.count( ammo_effect_str_id( "MAGIC" ) ) ||
+        current_fire->data->actor.get() != source ) {
+        return;
+    }
+    auto &state = *current_fire->data;
+    const creature_ref identity = creature_ref::bind( target );
+    if( state.seen.size() >= 64 || std::find( state.seen.begin(), state.seen.end(), identity ) !=
+        state.seen.end() ) {
+        return;
+    }
+    contact.reset( new attack_scope( *source, target, channel::projectile, true ) );
+    if( !contact->enabled ) {
+        return;
+    }
+    current_projectile_target->consumed = true;
+    state.seen.push_back( identity );
+    contact->facts.weapon = state.round.weapon;
+    contact->facts.weapon_uid = state.round.weapon_uid;
+    contact->facts.weapon_skill = state.round.weapon_skill;
+    contact->facts.weapon_categories = state.round.weapon_categories;
+    contact->facts.ammunition = state.round.ammunition;
+    contact->facts.projectile_origin = current_flight->origin;
+    contact->set_critical( critical );
+    capture_location( contact->facts, *source, target );
+}
+
+projectile_hit_scope::~projectile_hit_scope() noexcept( false )
+{
+    delete contact.release();
+}
+
+direct_damage_scope projectile_hit_scope::capture_damage()
+{
+    return direct_damage_scope( contact.get() );
+}
+
+void projectile_hit_scope::resolve( const dealt_damage_instance &dealt )
+{
+    if( contact ) {
+        contact->resolve( true, contact->facts.critical, dealt );
+    }
+}
+
 damage_scope::damage_scope( const Creature *source, const Creature &target ) :
     previous( current_damage ), owner( std::exchange( pending_damage, nullptr ) )
 {
@@ -300,6 +496,11 @@ void record_hp_loss( const Creature &target, int amount )
         current_damage->owner->target_hold.get() == &target ) {
         current_damage->capture_hp = false;
         current_damage->owner->facts.hp_loss = std::max( 0, amount );
+        if( current_damage->owner->facts.producer == channel::projectile ) {
+            // This milestone never reserves a fatal projectile injury, including later rescues.
+            current_damage->owner->facts.fatal = amount > 0 && target.is_dead_state();
+            return;
+        }
         if( amount > 0 && target.is_dead_state() && g &&
             current_damage->owner->fatal_instance == 0 ) {
             attack_snapshot facts = current_damage->owner->facts;
@@ -323,7 +524,7 @@ void record_hp_loss( const Creature &target, int amount )
 
 bool attack_in_progress()
 {
-    return current_attack != nullptr || damage_depth != 0;
+    return current_attack != nullptr || damage_depth != 0 || current_fire || current_flight;
 }
 
 bool at_fatal_commit( const Creature &target )

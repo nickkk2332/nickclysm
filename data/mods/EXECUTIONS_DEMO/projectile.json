@@ -1,0 +1,44 @@
+[
+  {
+    "type": "ITEM",
+    "id": "execution_demo_pistol",
+    "copy-from": "glock_19",
+    "name": { "str": "execution demonstration pistol" },
+    "description": "Configured to demonstrate rare nonfatal projectile reactions and qualifying critical knockouts."
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_demo_bow",
+    "copy-from": "shortbow",
+    "name": { "str": "execution demonstration bow" },
+    "description": "Configured to demonstrate rare nonfatal projectile reactions and qualifying critical knockouts."
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_projectile_knockout",
+    "execution": "execution_critical_knockout",
+    "priority": 20,
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_demo_pistol", "execution_demo_bow" ],
+      "critical": true,
+      "body_parts": [ "head" ],
+      "hp_loss": { "minimum": 1 }
+    },
+    "condition": "npc_can_be_knocked_out"
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_projectile_stagger",
+    "execution": "execution_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_demo_pistol", "execution_demo_bow" ],
+      "hp_loss": { "minimum": 1 }
+    }
+  }
+]

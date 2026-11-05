@@ -38,6 +38,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_fatal.h"
+#include "execution_combat.h"
 #include "explosion.h"
 #include "flag.h"
 #include "game.h"
@@ -1188,6 +1189,8 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         return 0;
     }
 
+    execution_combat::projectile_fire_scope execution_fire( *this, here, gun );
+
     short times_shot_target = 0;
     Creature *maybe_target = get_creature_tracker().creature_at( here.get_abs( target ) );
     if( maybe_target && maybe_target->as_monster() ) {
@@ -1267,6 +1270,7 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
         dispersion_sources dispersion = total_gun_dispersion( gun, recoil_total(), proj.shot_spread );
 
         dealt_projectile_attack shot;
+        execution_fire.begin_round( gun, shot );
         projectile_attack( shot, proj, &here, pos_bub( here ), aim, dispersion, this, in_veh, wp_attack );
         if( !shot.targets_hit.empty() ) {
             hits++;

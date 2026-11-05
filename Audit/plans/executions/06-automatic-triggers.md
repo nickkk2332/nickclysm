@@ -30,11 +30,12 @@ Delivered behavior:
 ## Deliberate limits
 
 This closes the first indexed living-melee slice of Phase 0/Phase 5, rather than the
-full combat-producer matrix. Projectiles/throws, spells, environmental damage,
+full combat-producer matrix. The [projectile follow-up](10-projectile-triggers.md)
+adds nonfatal handheld firing. Throws, spells, environmental damage,
 monster specials that bypass standard melee, and mounted delegation/rider redirects
 need additional adapters and causality contracts. The [fatal melee follow-up](08-fatal-hits.md)
 adds a separate commit-time stage for NPC/monster fatal victims on these primary-melee
-producers. Projectile rules and unsupported events remain rejected.
+producers. Fatal projectile rules and unsupported events remain rejected.
 
 The one-contact guarantee applies to automatic rules. An author can still explicitly
 queue independent free-role scenes through EOCs. Existing ownership requirements
@@ -48,7 +49,8 @@ Contact IDs advance across saves; loading does not replay contacts.
 These limits keep state bounded without claiming an unlimited event history.
 
 Real knockout/incapacity is delivered by the [knockout follow-up](07-knockouts.md).
-Fatal reservation/finalization, more physical actions, and a transcript/trigger
+Fatal primary-melee reservation/finalization is delivered by the fatal follow-ups.
+Fatal projectile reservation, more physical actions, and a transcript/trigger
 inspector remain separate milestones.
 
 ## Validation

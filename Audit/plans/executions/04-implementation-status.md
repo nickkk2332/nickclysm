@@ -32,7 +32,8 @@ Still to develop:
 
 - Phase 0's full producer matrix and shared combat causality. The first indexed
   living-melee slice, committed primary damage snapshots and arbitration are now in
-  the [automatic-trigger follow-up](06-automatic-triggers.md).
+  the [automatic-trigger follow-up](06-automatic-triggers.md), followed by
+  [nonfatal handheld projectile triggers](10-projectile-triggers.md).
 - Phase 6's NPC/monster fatal primary-melee reservation and native finalization are
   delivered by the [fatal melee follow-up](08-fatal-hits.md), with the player lifecycle
   in [avatar deferral](09-avatar-fatal-deferral.md). Further combat producers remain.

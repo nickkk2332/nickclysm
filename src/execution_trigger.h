@@ -42,6 +42,7 @@ struct execution_trigger {
     std::set<std::string> source_monsters;
     std::set<std::string> target_monsters;
     std::set<std::string> weapons;
+    std::set<std::string> ammunition;
     std::set<std::string> weapon_categories;
     std::set<std::string> weapon_skills;
     std::set<std::string> styles;
