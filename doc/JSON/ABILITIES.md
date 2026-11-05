@@ -266,3 +266,8 @@ Energy costs may name [custom power resources](POWER_OWNERSHIP.md). Optional
 `reserve_energy` claims the declared budget during windup; `cooldown` and
 `charge_cost` select a shared rechargeable group. These policies apply to full
 actions. Effect-only invocations retain their explicitly permitted free policy.
+
+## Movement, summons and AI intent
+
+See [POWER_ACTORS.md](POWER_ACTORS.md) for optional `ai` metadata, pure queries,
+`use_best_ability`, attributed native flings and commanded familiar bonds.

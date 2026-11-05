@@ -1,5 +1,7 @@
 // Monster movement code; essentially, the AI
-#include "monster.h" // IWYU pragma: associated
+#include "monster.h"
+#include "ability_runtime.h"
+#include "power_actor.h" // IWYU pragma: associated
 
 #include <algorithm>
 #include <cfloat>
@@ -571,6 +573,9 @@ bool monster::mating_angry() const
 
 void monster::plan()
 {
+    if( get_power_actors().plan( *this ) ) {
+        return;
+    }
     monster_plan mon_plan( *this );
 
     map &here = get_map();
@@ -1003,10 +1008,14 @@ void monster::move()
         incapacitation::suppress_moves( *this );
         return;
     }
-    if( g->executions().controls( *this ) ) {
+    if( g->executions().controls( *this ) || g->abilities().controls( *this ) ) {
         set_moves( 0 );
         return;
     }
+    if( get_power_actors().take_turn( *this ) ) {
+        return;
+    }
+    const bool commanded = get_power_actors().owner_of( *this ).has_value();
     map &here = get_map();
 
     add_msg_debug( debugmode::DF_MONMOVE,
@@ -1149,7 +1158,9 @@ void monster::move()
         }
     }
     // Set attitude to attitude to our current target
-    monster_attitude current_attitude = attitude( nullptr );
+    // An explicit bond order supplies a destination even for passive species.
+    // Native per-creature allegiance still decides whom it may actually attack.
+    monster_attitude current_attitude = commanded ? MATT_ATTACK : attitude( nullptr );
     if( !is_wandering() ) {
         if( get_dest() == player_character.pos_abs() ) {
             current_attitude = attitude( &player_character );
@@ -1162,7 +1173,7 @@ void monster::move()
         }
     }
 
-    if( is_pet_follow() || ( friendly != 0 && has_effect( effect_led_by_leash ) ) ) {
+    if( !commanded && ( is_pet_follow() || ( friendly != 0 && has_effect( effect_led_by_leash ) ) ) ) {
         const int dist = rl_dist( pos_abs(), get_dest() );
         if( ( dist <= 1 || ( dist <= 2 && !has_effect( effect_led_by_leash ) &&
                              sees( here, player_character ) ) ) &&
@@ -1172,11 +1183,11 @@ void monster::move()
             stumble_voluntary();
             return;
         }
-    } else if( ( current_attitude == MATT_IGNORE && patrol_route.empty() ) ||
-               ( ( current_attitude == MATT_FOLLOW ||
-                   ( has_flag( mon_flag_KEEP_DISTANCE ) &&
-                     !( current_attitude == MATT_FLEE ) ) ) &&
-                 rl_dist( pos_abs(), get_dest() ) <= type->tracking_distance ) ) {
+    } else if( !commanded && ( ( current_attitude == MATT_IGNORE && patrol_route.empty() ) ||
+                               ( ( current_attitude == MATT_FOLLOW ||
+                                   ( has_flag( mon_flag_KEEP_DISTANCE ) &&
+                                     !( current_attitude == MATT_FLEE ) ) ) &&
+                                 rl_dist( pos_abs(), get_dest() ) <= type->tracking_distance ) ) ) {
         moves = 0;
         stumble_voluntary();
         return;

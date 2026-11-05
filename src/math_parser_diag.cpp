@@ -2826,6 +2826,8 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "quality", { "un", 1, quality_eval, {}, { "strict" } } },
     { "skill", { "un", 1, skill_eval, skill_ass } },
     { "skill_exp", { "un", 1, skill_exp_eval, skill_exp_ass, { "format" } } },
+    { "ability_query", { "un", 1, power_math::ability, {}, { "field" } } },
+    { "power_summons", { "un", 1, power_math::summon } },
     { "power_resource", { "un", 1, power_math::resource, {}, { "field" } } },
     { "power_cooldown", { "un", 1, power_math::cooldown, {}, { "field" } } },
     { "power_application", { "un", 1, power_math::application, {}, { "field", "owner", "tag" } } },

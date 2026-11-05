@@ -1,4 +1,5 @@
 #include "execution_runtime.h"
+#include "power_motion.h"
 #include "ability_runtime.h"
 
 #include <algorithm>
@@ -1767,6 +1768,10 @@ void execution_manager::notify_damage( const Creature &who, int amount )
 
 Creature *execution_manager::secondary_damage_source( const Creature *receiver ) const
 {
+    if( receiver && power_motion::active( *receiver ) &&
+        execution_combat::is_impact_damage( receiver ) ) {
+        return power_motion::instigator( receiver );
+    }
     if( data->physical_action && execution_combat::is_impact_damage( receiver ) ) {
         return physical_instigator();
     }

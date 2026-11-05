@@ -1,4 +1,5 @@
 #include "power_runtime.h"
+#include "power_actor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -795,6 +796,7 @@ void power_manager::notify_damage( const Creature &who, int amount )
 
 void power_manager::retire_actor( const Creature &who )
 {
+    get_power_actors().retire_actor( who );
     if( !execution_fatal::finalized( who ) ) {
         return;
     }

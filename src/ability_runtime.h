@@ -17,6 +17,7 @@
 class Creature;
 class damage_transaction_manager;
 class power_manager;
+class power_actor_manager;
 class JsonObject;
 class JsonOut;
 struct dialogue;
@@ -106,6 +107,7 @@ class ability_manager
         bool processing() const;
         damage_transaction_manager &damage_transactions();
         power_manager &powers();
+        power_actor_manager &power_actors();
         void drain_starts();
         void process();
         bool controls( const Creature &who ) const;

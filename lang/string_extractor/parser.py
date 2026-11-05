@@ -149,6 +149,7 @@ parsers = {
     "power_resource": parse_power,
     "power_cooldown": parse_power,
     "power_application": parse_power,
+    "power_summon": parse_power,
     "execution_trigger": parse_effect_on_condition,
     "effect_type": parse_effect_type,
     "effect_migration": dummy_parser,

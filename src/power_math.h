@@ -12,6 +12,10 @@ double cooldown( const const_dialogue &d, char scope, const std::vector<diag_val
                  const diag_kwargs &kwargs );
 double application( const const_dialogue &d, char scope, const std::vector<diag_value> &params,
                     const diag_kwargs &kwargs );
+double ability( const const_dialogue &d, char scope, const std::vector<diag_value> &params,
+                const diag_kwargs &kwargs );
+double summon( const const_dialogue &d, char scope, const std::vector<diag_value> &params,
+               const diag_kwargs &kwargs );
 } // namespace power_math
 
 #endif // CATA_SRC_POWER_MATH_H

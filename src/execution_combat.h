@@ -71,7 +71,7 @@ class projectile_hit_scope;
 class effect_hit_scope;
 class effect_scope;
 
-/** Only the native flight claimed by an authored fling may attribute its impacts. */
+/** Execution-owned native flight; power flights use the same narrow impact barrier. */
 class physical_flight_scope
 {
     public:

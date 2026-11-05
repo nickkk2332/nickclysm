@@ -1,0 +1,93 @@
+[
+  {
+    "type": "ability",
+    "id": "test_ai_fling",
+    "name": "AI fling fixture",
+    "windup_ticks": 0,
+    "range": 1,
+    "move_cost": 100,
+    "energy_cost": { "resource": "test_power_focus", "amount": 5 },
+    "cooldown": "test_power_group",
+    "ai": { "intent": "control", "relation": "hostile", "priority": 20, "magnitude": 10 },
+    "eocs": [ { "id": "EOC_TEST_AI_FLING", "effect": [ { "power_fling": { "velocity": 40 } } ] } ]
+  },
+  {
+    "type": "ability",
+    "id": "test_ai_ranged",
+    "copy-from": "test_ability_strike",
+    "name": "AI ranged fixture",
+    "ai": { "intent": "harm", "relation": "hostile", "min_range": 2, "priority": 10, "magnitude": 20 }
+  },
+  {
+    "type": "ability",
+    "id": "test_ai_safe",
+    "copy-from": "test_ai_ranged",
+    "name": "AI area fixture",
+    "ai": { "intent": "harm", "relation": "hostile", "safe_radius": 1, "magnitude": 20 }
+  },
+  {
+    "type": "ability",
+    "id": "test_ai_tie",
+    "copy-from": "test_ai_ranged",
+    "name": "AI tie fixture"
+  },
+  {
+    "type": "ability",
+    "id": "test_ai_heal",
+    "copy-from": "test_ability_instant",
+    "name": "AI heal fixture",
+    "target": "self",
+    "ai": { "intent": "heal", "relation": "self", "magnitude": 20 }
+  },
+  {
+    "type": "power_summon",
+    "id": "test_power_familiar",
+    "name": "Familiar fixture",
+    "monster": "mon_execution_expanded_victim",
+    "duration_ticks": 30,
+    "max_per_owner": 2,
+    "range": 5,
+    "leash": 10,
+    "abilities": [ "test_ai_fling", "test_ai_ranged" ],
+    "on_spawn": [ { "id": "EOC_TEST_FAMILIAR_SPAWN", "effect": [ { "math": [ "power_familiar_spawns", "+=", "1" ] } ] } ],
+    "on_command": [ { "id": "EOC_TEST_FAMILIAR_COMMAND", "effect": [ { "math": [ "power_familiar_commands", "+=", "1" ] } ] } ],
+    "on_end": [ { "id": "EOC_TEST_FAMILIAR_END", "effect": [ { "math": [ "power_familiar_ends", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "power_summon",
+    "id": "test_power_familiar_self_dismiss",
+    "copy-from": "test_power_familiar",
+    "name": "Self dismissing familiar",
+    "on_spawn": [
+      {
+        "id": "EOC_TEST_FAMILIAR_DISMISS",
+        "effect": [ { "command_power_summon": { "bond": { "context_val": "power_bond" }, "command": "dismiss" } } ]
+      }
+    ]
+  },
+  {
+    "type": "power_summon",
+    "id": "test_power_familiar_recursive",
+    "copy-from": "test_power_familiar",
+    "name": "Recursive familiar fixture",
+    "on_spawn": [ { "id": "EOC_TEST_FAMILIAR_RECURSIVE", "effect": [ { "spawn_power_summon": { "id": "test_power_familiar" } } ] } ]
+  },
+  {
+    "type": "power_summon",
+    "id": "test_power_familiar_callbacks",
+    "copy-from": "test_power_familiar",
+    "name": "Callback familiar fixture",
+    "on_spawn": [
+      {
+        "id": "EOC_TEST_FAMILIAR_CALLBACK_SPAWN",
+        "effect": [ { "npc_deal_damage": "pure", "amount": 1, "bodypart": "torso", "source": "u" } ]
+      }
+    ],
+    "on_command": [
+      {
+        "id": "EOC_TEST_FAMILIAR_CALLBACK_COMMAND",
+        "effect": [ { "npc_deal_damage": "pure", "amount": 1, "bodypart": "torso", "source": "u" } ]
+      }
+    ]
+  }
+]

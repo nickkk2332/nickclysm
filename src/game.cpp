@@ -110,6 +110,7 @@
 #include "ability_runtime.h"
 #include "damage_transaction.h"
 #include "power_runtime.h"
+#include "power_motion.h"
 #include "faction.h"
 #include "fault.h"
 #include "field.h"
@@ -9311,6 +9312,44 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         debugmsg( "game::fling_creature invoked on null target" );
         return false;
     }
+    power_motion_result *receipt = options.motion;
+    const auto body = receipt ? shared_from( *c ) : nullptr;
+    const auto source_body = receipt && receipt->instigator.resolve() ?
+                             shared_from( *receipt->instigator.resolve() ) : nullptr;
+    const power_motion::flight_scope power_flight( *c, receipt );
+    const int initial_hp = c->get_hp();
+    if( receipt ) {
+        receipt->origin = receipt->destination = c->pos_abs();
+        receipt->path.push_back( c->pos_abs() );
+        receipt->remaining_velocity = flvel;
+    }
+    const on_out_of_scope finish_receipt( [&]() {
+        if( receipt ) {
+            receipt->destination = c->pos_abs();
+            if( receipt->path.back() != receipt->destination ) {
+                receipt->path.push_back( receipt->destination );
+            }
+            receipt->hp_loss = std::max( 0, initial_hp - c->get_hp() );
+            receipt->remaining_velocity = std::max( 0.0f, flvel );
+            receipt->fell = receipt->destination.z() < receipt->origin.z();
+            if( c->is_dead_state() ) {
+                receipt->reason = "target_dead";
+            }
+        }
+    } );
+    auto map_frame = get_map().get_abs( tripoint_bub_ms::zero );
+    const auto valid_motion = [&]( const tripoint_abs_ms & expected ) {
+        if( !receipt ) {
+            return true;
+        }
+        if( receipt->target.resolve_loaded() != c ||
+            receipt->instigator.resolve() != source_body.get() || !source_body ||
+            c->pos_abs() != expected || get_map().get_abs( tripoint_bub_ms::zero ) != map_frame ) {
+            receipt->reason = "interrupted";
+            return false;
+        }
+        return true;
+    };
     const bool execution_fling = executions().claim_physical_flight( *c );
     const execution_combat::physical_flight_scope execution_flight( *c, execution_fling );
 
@@ -9331,7 +9370,8 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         return false;
     }
 
-    if( c->has_flag( json_flag_CANNOT_MOVE ) ) {
+    if( c->has_flag( json_flag_CANNOT_MOVE ) ||
+        ( receipt && c->as_monster() && c->as_monster()->has_flag( mon_flag_IMMOBILE ) ) ) {
         // cannot fling creatures that cannot move.
         return false;
     }
@@ -9395,7 +9435,8 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     tripoint_bub_ms pt = pos;
     creature_tracker &creatures = get_creature_tracker();
     while( range > 0 ) {
-        if( execution_fling && !executions().physical_action_valid() ) {
+        if( !valid_motion( c->pos_abs() ) ||
+            ( execution_fling && !executions().physical_action_valid() ) ) {
             return true;
         }
         c->underwater = false;
@@ -9405,9 +9446,27 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         tdir.advance();
         pt.x() = pos.x() + tdir.dx();
         pt.y() = pos.y() + tdir.dy();
-        if( execution_fling && !here.inbounds( pt ) ) {
-            return true;
+        if( ( execution_fling || receipt ) && !here.inbounds( pt ) ) {
+            if( receipt ) {
+                receipt->reason = "out_of_bounds";
+            }
+            break;
         }
+        const tripoint_abs_ms expected = c->pos_abs();
+        power_motion_impact contact;
+        contact.position = here.get_abs( pt );
+        const int hp_before = c->get_hp();
+        shared_ptr_fast<Creature> collider;
+        int collider_hp = 0;
+        const on_out_of_scope capture_contact( [&]() {
+            if( receipt && !contact.kind.empty() ) {
+                contact.moved_hp_loss = std::max( 0, hp_before - c->get_hp() );
+                if( collider ) {
+                    contact.collider_hp_loss = std::max( 0, collider_hp - collider->get_hp() );
+                }
+                receipt->impacts.push_back( contact );
+            }
+        } );
         float force = 0.0f;
 
         monster *const mon_ptr = creatures.creature_at<monster>( pt );
@@ -9416,18 +9475,30 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             monster &critter = *mon_ptr;
             const auto collision_body = shared_from( critter );
             const creature_ref collision_identity = creature_ref::bind( critter );
+            contact.kind = "monster";
+            contact.collider = collision_identity;
+            collider = collision_body;
+            collider_hp = critter.get_hp();
             // Approximate critter's "stopping power" with its max hp
             force = std::min<float>( 1.5f * critter.type->hp, flvel );
+            contact.force = force;
             const int damage = rng( force, force * 2.0f ) / 6;
             c->impact( damage, pt );
-            if( execution_fling && ( !executions().physical_action_valid() ||
-                                     collision_identity.resolve() != &critter ) ) {
+            if( receipt && ( collision_identity.resolve() != &critter ||
+                             critter.pos_abs() != contact.position ) ) {
+                receipt->reason = "interrupted";
+                return true;
+            }
+            if( !valid_motion( expected ) ||
+                ( execution_fling && ( !executions().physical_action_valid() ||
+                                       collision_identity.resolve() != &critter ) ) ) {
                 return true;
             }
             // Multiply zed damage by 6 because no body parts
             const int zed_damage = std::max( 0,
                                              ( damage - critter.get_armor_type( damage_bash, bodypart_id( "torso" ) ) ) * 6 );
-            critter.apply_damage( execution_fling ? executions().physical_instigator() : c,
+            critter.apply_damage( receipt ? receipt->instigator.resolve() :
+                                  execution_fling ? executions().physical_instigator() : c,
                                   bodypart_id( "torso" ), zed_damage );
             critter.check_dead_state( &here );
             if( !critter.is_dead() ) {
@@ -9437,38 +9508,53 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                    blocker != nullptr && blocker != c ) {
             const auto collision_body = shared_from( *blocker );
             const creature_ref collision_identity = creature_ref::bind( *blocker );
+            contact.kind = "character";
+            contact.collider = collision_identity;
+            collider = collision_body;
+            collider_hp = blocker->get_hp();
             // Another character stops the flight like a wall would, so the flung
             // creature never ends up sharing a tile with them.
             if( !options.hit_characters ) {
                 force = flvel;
+                contact.force = force;
                 const int damage = rng( force, force * 2.0f ) / 9;
                 c->impact( damage, pt );
-                if( execution_fling && !executions().physical_action_valid() ) {
+                if( !valid_motion( expected ) ||
+                    ( execution_fling && !executions().physical_action_valid() ) ) {
                     return true;
                 }
             } else if( flvel >= 30.0f ) {
                 // TLG: the character's size decides how much it stops the flight, and the speed
                 // of the flight how much the character is hurt.
                 force = std::min<float>( static_cast<int>( blocker->get_size() ) * 30.0f, flvel );
+                contact.force = force;
                 const int damage = rng( force, force * 2.0f ) / 6;
                 //~ %1$s: the flung creature, %2$s: the character it hits
                 add_msg_if_player_sees( pt, _( "%1$s collides with %2$s!" ), c->disp_name( true ),
                                         blocker->disp_name() );
                 c->impact( damage, pt );
                 const bodypart_id torso( "torso" );
-                if( execution_fling && ( !executions().physical_action_valid() ||
-                                         collision_identity.resolve() != blocker ) ) {
+                if( receipt && ( collision_identity.resolve() != blocker ||
+                                 blocker->pos_abs() != contact.position ) ) {
+                    receipt->reason = "interrupted";
+                    return true;
+                }
+                if( !valid_motion( expected ) ||
+                    ( execution_fling && ( !executions().physical_action_valid() ||
+                                           collision_identity.resolve() != blocker ) ) ) {
                     return true;
                 }
                 const int blocker_armor = blocker->get_armor_type( damage_bash, torso );
                 const int blocker_damage = std::max( 0, rng( flvel, flvel * 2.0f ) / 6 -
                                                      blocker_armor );
-                blocker->apply_damage( execution_fling ? executions().physical_instigator() : c,
+                blocker->apply_damage( receipt ? receipt->instigator.resolve() :
+                                       execution_fling ? executions().physical_instigator() : c,
                                        torso, blocker_damage );
                 blocker->check_dead_state( &here );
             }
             thru = false;
         } else if( here.impassable( pt ) ) {
+            contact.kind = here.veh_at( pt ).obstacle_at_part() ? "vehicle" : "terrain";
             if( !here.veh_at( pt ).obstacle_at_part() ) {
                 force = std::min<float>( here.bash_strength( pt ), flvel );
             } else {
@@ -9477,18 +9563,24 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                 // but to keep the target flying after it
                 force = flvel - 1;
             }
+            contact.force = force;
             const int damage = rng( force, force * 2.0f ) / 9;
             c->impact( damage, pt );
+            if( !valid_motion( expected ) ) {
+                return true;
+            }
             if( here.is_bashable( pt ) ) {
                 // Only go through if we successfully make the tile passable
                 here.bash( pt, flvel );
                 thru = here.passable( pt );
+                contact.broken = thru;
             } else {
                 thru = false;
             }
         }
 
-        if( execution_fling && !executions().physical_action_valid() ) {
+        if( !valid_motion( expected ) ||
+            ( execution_fling && !executions().physical_action_valid() ) ) {
             return true;
         }
         // If the critter dies during flinging, moving it around causes debugmsgs
@@ -9516,6 +9608,10 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             // The next step and the landing start from wherever the creature is now.
             // update_map invalidates all bubble coordinates if it shifts the map.
             pos = c->pos_bub( here );
+            map_frame = here.get_abs( tripoint_bub_ms::zero );
+            if( receipt && receipt->path.back() != c->pos_abs() ) {
+                receipt->path.push_back( c->pos_abs() );
+            }
         } else {
             // Don't zero flvel - count this as slamming both the obstacle and the ground
             // although at lower velocity
@@ -9530,6 +9626,9 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         }
     }
 
+    if( receipt ) {
+        receipt->landed = true;
+    }
     // Fall down to the ground - always on the last reached tile
     c->remove_effect( effect_airborne );
     if( !here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, pos ) ) {
@@ -9542,9 +9641,21 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                 force = std::max( force / 2 - 5, 0 );
             }
             if( force > 0 ) {
+                const int hp = c->get_hp();
+                const auto landing_position = c->pos_abs();
                 int dmg = c->impact( force, pos );
+                if( receipt ) {
+                    receipt->impacts.push_back( { here.get_abs( pos ), "landing", {},
+                                                  static_cast<float>( force ), std::max( 0, hp - c->get_hp() ), 0, false } );
+                }
+                if( !valid_motion( landing_position ) ) {
+                    return true;
+                }
                 // TODO: Make landing damage the floor
                 here.bash( pos, dmg / 4, false, false, false );
+                if( !valid_motion( landing_position ) ) {
+                    return true;
+                }
             }
         }
         if( c->is_dead_state() ) {
@@ -9557,7 +9668,12 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             // Nothing underneath: drop to what's below, and land there. The avatar's fall
             // (vertical_move) already applies the traps where it lands.
             const tripoint_abs_ms before_fall = c->pos_abs();
+            const int hp_before_fall = c->get_hp();
             c->gravity_check();
+            if( receipt && c->pos_abs() != before_fall ) {
+                receipt->impacts.push_back( { c->pos_abs(), "fall", {}, 0,
+                                              std::max( 0, hp_before_fall - c->get_hp() ), 0, false } );
+            }
             if( !c->is_avatar() && !c->is_dead_state() && c->pos_abs() != before_fall ) {
                 here.creature_on_trap( *c, false );
             }

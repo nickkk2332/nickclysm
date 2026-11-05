@@ -3,7 +3,7 @@
     "type": "MOD_INFO",
     "id": "powers_demo",
     "name": "Powers demonstration",
-    "description": "Charged force strikes, exact mana shields, and independent sustained wards and mirrors with shared resources and rechargeable charges.",
+    "description": "Charged strikes, attributed throws, commanded familiars, exact shields, and independent sustained wards and mirrors with shared resources and rechargeable charges.",
     "category": "content",
     "dependencies": [ "dda" ]
   }
