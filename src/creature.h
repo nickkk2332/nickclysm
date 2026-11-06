@@ -4,6 +4,7 @@
 
 #include <array>
 #include <climits>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <map>

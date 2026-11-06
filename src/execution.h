@@ -7,10 +7,12 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
-#include "translation.h"
 #include "global_vars.h"
+#include "translation.h"
 #include "type_id.h"
 
 class JsonObject;

@@ -9,14 +9,20 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
-#include "execution_combat.h"
 #include "type_id.h"
 
 class JsonObject;
+namespace execution_combat
+{
+enum class channel;
+struct attack_snapshot;
+}  // namespace execution_combat
 struct const_dialogue;
 struct execution_trigger;
+
 using execution_trigger_id = string_id<execution_trigger>;
 
 struct execution_trigger_range {

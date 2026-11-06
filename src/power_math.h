@@ -2,7 +2,11 @@
 #ifndef CATA_SRC_POWER_MATH_H
 #define CATA_SRC_POWER_MATH_H
 
-#include "math_parser_diag.h"
+#include <vector>
+
+struct const_dialogue;
+struct diag_kwargs;
+struct diag_value;
 
 namespace power_math
 {

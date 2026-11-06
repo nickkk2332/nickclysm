@@ -19,11 +19,11 @@
 #include "crafting.h"
 #include "creature.h"
 #include "creature_tracker.h"
-#include "execution_combat.h"
 #include "damage.h"
 #include "debug.h"
 #include "dispersion.h"
 #include "enums.h"
+#include "execution_combat.h"
 #include "explosion.h"
 #include "field.h"
 #include "game.h"
@@ -47,6 +47,7 @@
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vpart_position.h"
 
 static const ammo_effect_str_id ammo_effect_ACT_ON_RANGED_HIT( "ACT_ON_RANGED_HIT" );

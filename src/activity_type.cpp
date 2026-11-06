@@ -1,6 +1,7 @@
 #include "activity_type.h"
 
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -11,6 +12,7 @@
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "sounds.h"
 #include "string_formatter.h"

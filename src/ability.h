@@ -4,16 +4,18 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "translation.h"
-#include "power.h"
-#include "type_id.h"
 #include "global_vars.h"
+#include "power.h"
+#include "translation.h"
+#include "type_id.h"
 
 class JsonObject;
 struct ability_definition;
+
 using ability_id = string_id<ability_definition>;
 
 /** Opt-in action policy around existing effect implementations. */

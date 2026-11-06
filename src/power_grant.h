@@ -9,16 +9,18 @@
 #include <utility>
 #include <vector>
 
-#include "creature_ref.h"
 #include "coords_fwd.h"
+#include "creature_ref.h"
 #include "power.h"
+#include "type_id.h"
 
 class Creature;
-class map;
-class item;
 class JsonObject;
 class JsonOut;
+class item;
+class map;
 struct power_application_view;
+
 struct power_grant_view {
     int64_t application = 0;
     power_application_id definition;
@@ -55,6 +57,7 @@ class power_grant_manager
         void deserialize( const JsonObject &jo );
     private:
         struct impl;
+
         std::unique_ptr<impl> data;
         friend class power_grant_item_scope;
 };
