@@ -89,6 +89,7 @@
 #include "ranged.h"
 #include "rng.h"
 #include "safemode_ui.h"
+#include "talker.h"
 #if defined(TILES)
 #include "sdl_gamepad.h"
 #endif

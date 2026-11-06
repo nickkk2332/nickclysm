@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -13,10 +14,10 @@
 #include "behavior.h"
 #include "calendar.h"
 #include "character.h"
-#include "errand.h"
 #include "character_oracle.h"
-#include "debug.h"
 #include "coordinates.h"
+#include "debug.h"
+#include "errand.h"
 #include "map.h"
 #include "messages.h"
 #include "npc.h"

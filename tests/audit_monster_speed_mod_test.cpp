@@ -3,12 +3,12 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
-#include "creature.h"
 #include "magic_enchantment.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "monster.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "type_id.h"
 
 // "base_mods": { "speed_mod": [ -80 ] }, no other effect on monsters

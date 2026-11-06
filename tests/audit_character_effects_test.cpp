@@ -1,3 +1,7 @@
+#include <cstddef>
+#include <map>
+#include <string>
+
 #include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"

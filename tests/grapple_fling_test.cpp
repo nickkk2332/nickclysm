@@ -1,4 +1,4 @@
-#include <memory>
+#include <string>
 
 #include "avatar.h"
 #include "cata_catch.h"
@@ -6,7 +6,6 @@
 #include "creature.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
-#include "game.h"
 #include "global_vars.h"
 #include "magic.h"
 #include "map.h"
@@ -17,7 +16,6 @@
 #include "options_helpers.h"
 #include "player_helpers.h"
 #include "point.h"
-#include "talker.h"
 #include "type_id.h"
 
 // The throw engine without grappling (game::fling_creature, from Cataclysm: The Last

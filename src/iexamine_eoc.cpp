@@ -1,5 +1,7 @@
 #include "iexamine_eoc.h"
 
+#include <cstddef>
+#include <list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,12 +14,14 @@
 #include "game.h"
 #include "gates.h"
 #include "iexamine.h"
-#include "line.h"
 #include "map.h"
 #include "mapdata.h"
+#include "player_activity.h"
+#include "point.h"
 #include "string_formatter.h"
 #include "translations.h"
 #include "trap.h"
+#include "type_id.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 

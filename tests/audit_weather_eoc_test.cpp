@@ -1,4 +1,6 @@
 #include <cstddef>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -8,6 +10,7 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
@@ -15,8 +18,9 @@
 #include "game.h"
 #include "global_vars.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
+#include "math_parser_diag_value.h"
+#include "overmap_ui.h"
 #include "pimpl.h"
 #include "player_helpers.h"
 #include "rng.h"

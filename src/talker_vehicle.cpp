@@ -1,5 +1,7 @@
 #include <cmath>
 #include <map>
+#include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -9,7 +11,6 @@
 #include "effect.h"
 #include "effect_source.h"
 #include "game.h"
-#include "line.h"
 #include "map.h"
 #include "math_parser_diag_value.h"
 #include "talker_vehicle.h"

@@ -1,15 +1,17 @@
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "avatar.h"
 #include "bodypart.h"
 #include "cata_catch.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "creature.h"
-#include "dialogue.h"
 #include "debug.h"
-#include "effect.h"
+#include "dialogue.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
-#include "game.h"
 #include "global_vars.h"
 #include "item.h"
 #include "json_loader.h"
@@ -17,13 +19,15 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
-#include "veh_type.h"
 #include "vehicle.h"
 
 static const itype_id itype_rock( "rock" );

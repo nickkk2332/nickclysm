@@ -1,35 +1,40 @@
 #include <list>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
 
-#include "activity_item_handling.h"
+#include "activity_handlers.h"
 #include "avatar.h"
 #include "ballistics.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "damage.h"
 #include "dialogue.h"
 #include "dispersion.h"
-#include "field_type.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
-#include "item_location.h"
 #include "itype.h"
+#include "iuse.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
 #include "player_helpers.h"
-#include "point.h"
 #include "pocket_type.h"
+#include "point.h"
 #include "projectile.h"
-#include "talker.h"
+#include "ret_val.h"
 #include "type_id.h"
+
+class Character;
 
 static const ammo_effect_str_id ammo_effect_NO_OVERSHOOT( "NO_OVERSHOOT" );
 

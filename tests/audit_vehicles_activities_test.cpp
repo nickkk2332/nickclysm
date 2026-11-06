@@ -1,4 +1,5 @@
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "activity_actor_definitions.h"

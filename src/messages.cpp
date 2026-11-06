@@ -7,7 +7,6 @@
 #include <iterator>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <unordered_set>
 
 #include "cached_options.h"

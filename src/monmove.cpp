@@ -1,24 +1,28 @@
 // Monster movement code; essentially, the AI
-#include "monster.h"
-#include "ability_runtime.h"
 #include "power_actor.h" // IWYU pragma: associated
 
 #include <algorithm>
+#include <bitset>
 #include <cfloat>
 #include <climits>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <list>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 
+#include "ability_runtime.h"
 #include "behavior.h"
 #include "bionics.h"
+#include "bodypart.h"
 #include "cata_assert.h"
 #include "cata_utility.h"
 #include "character.h"
+#include "character_id.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
@@ -38,9 +42,11 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "mattack_common.h"
+#include "memory_fast.h"
 #include "messages.h"
 #include "monfaction.h"
 #include "mongroup.h"
+#include "monster.h"
 #include "monster_oracle.h"
 #include "mtype.h"
 #include "npc.h"

@@ -1,5 +1,6 @@
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "advanced_inv.h"
 #include "advanced_inv_area.h"

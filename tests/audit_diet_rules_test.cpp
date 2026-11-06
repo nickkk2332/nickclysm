@@ -1,4 +1,5 @@
 #include <string>
+#include <utility>
 
 #include "avatar.h"
 #include "cata_catch.h"

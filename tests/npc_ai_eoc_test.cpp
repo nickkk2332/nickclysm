@@ -1,12 +1,20 @@
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "behavior.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "character_id.h"
 #include "character_oracle.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "dialogue.h"
 #include "event.h"
 #include "faction.h"
@@ -20,6 +28,7 @@
 #include "npc.h"
 #include "npc_ai_hooks_helpers.h"
 #include "npc_class.h"
+#include "pimpl.h"
 #include "point.h"
 #include "talker.h"
 #include "type_id.h"

@@ -6,22 +6,23 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "behavior_oracle.h"
 #include "bodypart.h"
 #include "calendar.h"
-#include "cata_variant.h"
 #include "cata_compiler_support.h"
 #include "cata_utility.h"
+#include "cata_variant.h"
 #include "character.h"
 #include "character_id.h"
 #include "character_oracle.h"
@@ -37,7 +38,6 @@
 #include "enums.h"
 #include "faction.h"
 #include "field.h"
-#include "flag.h"
 #include "game.h"
 #include "input_popup.h"
 #include "item.h"
@@ -58,8 +58,8 @@
 #include "options.h"
 #include "pimpl.h"
 #include "point.h"
-#include "proficiency.h"
 #include "power_math.h"
+#include "proficiency.h"
 #include "stats_tracker.h"
 #include "stomach.h"
 #include "talker.h"

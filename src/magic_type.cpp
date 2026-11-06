@@ -6,7 +6,6 @@
 #include "generic_factory.h"
 #include "json.h"
 #include "math_parser_jmath.h"
-#include "vitamin.h"
 
 // LOADING
 // magic_type

@@ -55,6 +55,7 @@
 #include "sounds.h"
 #include "string_formatter.h"
 #include "temp_crafting_inventory.h"
+#include "translation.h"
 #include "translations.h"
 #include "uilist.h"
 #include "units.h"

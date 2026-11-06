@@ -1,9 +1,10 @@
 #include "effect.h"
-#include "effect_grant_state.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
+#include <iterator>
 #include <list>
 #include <map>
 #include <optional>
@@ -15,6 +16,7 @@
 #include "character.h"
 #include "color.h"
 #include "debug.h"
+#include "effect_grant_state.h"
 #include "effect_source.h"
 #include "enums.h"
 #include "event.h"
@@ -34,6 +36,7 @@
 #include "units.h"
 
 enum class cata_variant_type : int;
+struct mutation_branch;
 
 static const efftype_id effect_bandaged( "bandaged" );
 static const efftype_id effect_beartrap( "beartrap" );

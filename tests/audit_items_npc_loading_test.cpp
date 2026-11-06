@@ -1,3 +1,5 @@
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "activity_actor_definitions.h"
@@ -5,7 +7,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "clzones.h"
 #include "condition.h"
 #include "coordinates.h"
@@ -22,6 +23,8 @@
 #include "npc.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "talker.h"
+#include "translation.h"
 #include "type_id.h"
 #include "units.h"
 

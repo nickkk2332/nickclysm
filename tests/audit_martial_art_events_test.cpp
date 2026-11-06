@@ -14,8 +14,10 @@
 #include "map_helpers_tests.h"
 #include "math_parser_diag_value.h"
 #include "monster.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "ret_val.h"
 #include "type_id.h"
 
 static const damage_type_id damage_bash( "bash" );

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <limits>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <stdexcept>

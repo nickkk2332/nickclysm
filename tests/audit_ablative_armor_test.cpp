@@ -1,6 +1,8 @@
 #include <initializer_list>
 #include <list>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "bodypart.h"
 #include "cata_catch.h"

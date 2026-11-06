@@ -1,5 +1,6 @@
 #include <map>
 #include <optional>
+#include <string>
 
 #include "avatar.h"
 #include "avatar_action.h"

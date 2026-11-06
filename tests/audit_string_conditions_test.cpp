@@ -1,14 +1,15 @@
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "avatar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "condition.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "player_helpers.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const trait_id trait_NIGHTVISION( "NIGHTVISION" );

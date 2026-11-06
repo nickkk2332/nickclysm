@@ -1,11 +1,13 @@
 #include "errand.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
 #include <set>
+#include <unordered_map>
 #include <utility>
 
 #include "activity_handlers.h"
@@ -18,7 +20,9 @@
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "flag.h"
+#include "flexbuffer_json.h"
 #include "item.h"
+#include "item_uid.h"
 #include "json.h"
 #include "line.h"
 #include "map.h"

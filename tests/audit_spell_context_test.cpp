@@ -1,9 +1,13 @@
+#include <string>
+
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "coordinates.h"
 #include "global_vars.h"
 #include "magic.h"
 #include "map_helpers.h"
+#include "math_parser_diag_value.h"
 #include "player_helpers.h"
 #include "type_id.h"
 

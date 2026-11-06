@@ -1,3 +1,6 @@
+#include <memory>
+#include <string>
+
 #include "avatar.h"
 #include "cata_catch.h"
 #include "coordinates.h"

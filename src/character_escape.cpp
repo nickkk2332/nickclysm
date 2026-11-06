@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "bodypart.h"
@@ -11,7 +12,7 @@
 #include "character_attire.h"
 #include "character_martial_arts.h"
 #include "coordinates.h"
-#include "creature_tracker.h"
+#include "creature.h"
 #include "damage.h"
 #include "debug.h"
 #include "effect.h"
@@ -23,7 +24,6 @@
 #include "item.h"
 #include "item_pocket.h"
 #include "map.h"
-#include "map_iterator.h"
 #include "martialarts.h"
 #include "messages.h"
 #include "monster.h"
@@ -31,7 +31,6 @@
 #include "npc.h"
 #include "output.h"
 #include "pimpl.h"
-#include "point.h"
 #include "rng.h"
 #include "translation.h"
 #include "translations.h"

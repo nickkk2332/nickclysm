@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,7 @@
 #include "clzones.h"
 #include "coordinates.h"
 #include "crafting_enums.h"
+#include "flexbuffer_json.h"
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
@@ -22,7 +24,7 @@
 #include "planting_memo.h"
 #include "player_activity.h"
 #include "player_helpers.h"
-#include "recipe.h"
+#include "point.h"
 #include "ret_val.h"
 #include "type_id.h"
 #include "weather.h"
