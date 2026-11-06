@@ -23,6 +23,8 @@
 #include "creature_tracker.h"
 #include "debug.h"
 #include "execution_runtime.h"
+#include "execution_combat.h"
+#include "ability_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "hash_utils.h"
@@ -149,6 +151,7 @@ void game::serialize_json( std::ostream &fout )
 
     json.member( "player", u );
     json.member( "executions", executions() );
+    json.member( "abilities", abilities() );
     json.member( "inactive_global_effect_on_condition_vector",
                  inactive_global_effect_on_condition_vector );
 
@@ -254,9 +257,14 @@ void game::unserialize( std::string fin )
 
 void game::unserialize_impl( const JsonObject &data )
 {
+    if( abilities().processing() || execution_combat::attack_in_progress() ) {
+        throw JsonError( "Cannot replace a session inside an ability or combat action" );
+    }
     executions().reset_for_load();
+    abilities().reset_for_load();
     const on_out_of_scope end_execution_restore( [&]() {
         executions().end_restore();
+        abilities().end_restore();
     } );
     int tmpturn = 0;
     int tmpcalstart = 0;
@@ -297,6 +305,7 @@ void game::unserialize_impl( const JsonObject &data )
     calendar::start_of_cataclysm = time_point( tmpcalstart );
     // Install reservations before map/NPC loading can run native cleanup or physics.
     data.read( "executions", executions() );
+    data.read( "abilities", abilities() );
 
     if( !data.read( "game_start", calendar::start_of_game ) ) {
         calendar::start_of_game = calendar::start_of_cataclysm;

@@ -107,6 +107,7 @@
 #include "execution_fatal.h"
 #include "execution_combat.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "faction.h"
 #include "fault.h"
 #include "field.h"
@@ -731,6 +732,8 @@ void game::setup()
     // Setup replaces a session; it must not finalize old injuries into the new map/checkpoint.
     executions().reset_for_load();
     executions().end_restore();
+    abilities().reset_for_load();
+    abilities().end_restore();
     uquit = QUIT_NO;   // We haven't quit the game
     bVMonsterLookFire = true;
 
@@ -2940,7 +2943,8 @@ bool game::try_get_right_click_action( action_id &act, const tripoint_bub_ms &mo
 bool game::is_game_over()
 {
     map &here = get_map();
-    if( u.death_finalizing() || executions().restoring() || executions().processing_actions() ||
+    if( u.death_finalizing() || abilities().restoring() || abilities().processing() ||
+        executions().restoring() || executions().processing_actions() ||
         execution_combat::attack_in_progress() ) {
         return false;
     }
@@ -3792,6 +3796,11 @@ character_id game::assign_npc_id()
     character_id ret = next_npc_id;
     ++next_npc_id;
     return ret;
+}
+
+ability_manager &game::abilities()
+{
+    return *ability_manager_ptr;
 }
 
 execution_manager &game::executions()
@@ -10086,7 +10095,8 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     // A dimension snapshot has no scene owners. Settle their fatal injuries before writing it,
     // even if saving refuses travel. Saving still precedes unboarding/unloading; ordinary
     // scene cancellation stays below.
-    if( !executions().prepare_world_transition() ) {
+    if( abilities().processing() || abilities().restoring() ||
+        !executions().prepare_world_transition() ) {
         return false;
     }
     if( player.death_finalized() || player.is_dead_state() ) {
@@ -10096,7 +10106,7 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     if( !save_dimension_data() || !save_maps() ) {
         return false;
     }
-    executions().cancel_all( "dimension_changed" );
+    abilities().cancel_for_world_transition( "dimension_changed" );
     veh = travelling_vehicle.get();
     std::vector<npc *> live_travellers;
     for( const auto &person : retained_travellers ) {

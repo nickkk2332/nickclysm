@@ -2,6 +2,8 @@
 
 **Implementation follow-up:** The four concrete correctness observations below have been addressed in the working tree. See [the twelve-fix record](../correctness-fixes.md) for behavior, regression coverage, validation and remaining architectural scope. The original snapshot/evidence below is retained.
 
+The first expansion slice now has an opt-in [shared ability lifecycle](06-ability-lifecycle-milestone.md): saved charged actions, common player/NPC/monster requests, explicit payment, interruption, spell/EOC context and read-only results. See the [authoring contract](../../doc/JSON/ABILITIES.md). The pinned audit below remains the original assessment; later-stage resource, damage and ownership findings remain open.
+
 **Question:** How far can current Nickclysm JSON and EOCs take superhero brawls, archwizards, anime fighters, and similar ability-heavy play? Which additions would remove the most important limits?
 
 **Snapshot:** `b32c9baea25f62478228c6a91cbbf9f356e4e8a3` (`master`, inspected 2026-11-03). This is an audit and a proposed direction, not an implementation. No engine, gameplay JSON, or tests were changed for this report.

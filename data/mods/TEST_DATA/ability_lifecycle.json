@@ -1,0 +1,231 @@
+[
+  {
+    "type": "SPELL",
+    "id": "test_ability_spell",
+    "copy-from": "execution_expanded_spell",
+    "name": "Ability release fixture",
+    "valid_targets": [ "hostile", "ally", "self", "ground" ],
+    "base_energy_cost": 999,
+    "energy_source": "MANA"
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_strike",
+    "name": "Charged strike fixture",
+    "windup_ticks": 2,
+    "range": 5,
+    "move_cost": 80,
+    "spell": { "id": "test_ability_spell", "level": 1 },
+    "on_start": [ { "id": "EOC_TEST_ABILITY_ON_START", "effect": [ { "math": [ "ability_on_start", "+=", "1" ] } ] } ],
+    "on_complete": [ { "id": "EOC_TEST_ABILITY_ON_COMPLETE", "effect": [ { "math": [ "ability_on_complete", "+=", "1" ] } ] } ],
+    "on_interrupt": [ { "id": "EOC_TEST_ABILITY_ON_INTERRUPT", "effect": [ { "math": [ "ability_on_interrupt", "+=", "1" ] } ] } ],
+    "on_end": [ { "id": "EOC_TEST_ABILITY_ON_END", "effect": [ { "math": [ "ability_on_end", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_random",
+    "copy-from": "test_ability_strike",
+    "name": "random ability fixture",
+    "windup_ticks": [ 2, 4 ]
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_stamina",
+    "copy-from": "test_ability_strike",
+    "name": "stamina ability fixture",
+    "energy_cost": { "resource": "stamina", "amount": 25 }
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_mana",
+    "copy-from": "test_ability_strike",
+    "name": "mana ability fixture",
+    "energy_cost": { "resource": "mana", "amount": 20 }
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_free",
+    "copy-from": "test_ability_strike",
+    "name": "free ability fixture",
+    "allow_effect_only": true
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_point",
+    "copy-from": "test_ability_strike",
+    "name": "point ability fixture",
+    "target": "point"
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_self",
+    "copy-from": "test_ability_strike",
+    "name": "self ability fixture",
+    "target": "self"
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_instant",
+    "copy-from": "test_ability_strike",
+    "name": "instant ability fixture",
+    "windup_ticks": 0
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_uninterruptible",
+    "copy-from": "test_ability_strike",
+    "name": "uninterruptible ability fixture",
+    "interrupt_damage": false,
+    "interrupt_displacement": false
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_before_cancel",
+    "copy-from": "test_ability_strike",
+    "name": "before_cancel ability fixture",
+    "before_release": [ { "id": "EOC_TEST_ABILITY_CANCEL", "effect": [ { "cancel_ability": { "context_val": "ability_instance" } } ] } ]
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_before_kill",
+    "copy-from": "test_ability_strike",
+    "name": "before_kill ability fixture",
+    "before_release": [
+      {
+        "id": "EOC_TEST_ABILITY_KILL",
+        "effect": [ { "npc_deal_damage": "pure", "amount": 100000, "bodypart": "torso", "source": "u" } ]
+      }
+    ]
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_eoc",
+    "copy-from": "test_ability_strike",
+    "name": "eoc ability fixture",
+    "eocs": [
+      {
+        "id": "EOC_TEST_ABILITY_RELEASE",
+        "effect": [ { "npc_deal_damage": "pure", "amount": 12, "bodypart": "torso", "source": "u" } ]
+      }
+    ]
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_recursive",
+    "copy-from": "test_ability_strike",
+    "name": "recursive ability fixture",
+    "windup_ticks": 0,
+    "move_cost": 0,
+    "eocs": [ { "id": "EOC_TEST_ABILITY_RECURSIVE", "effect": [ { "request_ability": { "id": "test_ability_recursive" } } ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ABILITY_REQUEST",
+    "effect": [ { "request_ability": { "id": "test_ability_strike" } } ]
+  },
+  {
+    "type": "monster_attack",
+    "attack_type": "eoc",
+    "id": "test_ability_monster_request",
+    "range": 5,
+    "eoc": [ "EOC_TEST_ABILITY_REQUEST" ],
+    "cooldown": 10
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_ability_caster",
+    "copy-from": "mon_execution_expanded_attacker",
+    "name": { "str_sp": "ability caster fixture" },
+    "special_attacks": [ [ "test_ability_monster_request", 10 ] ],
+    "default_faction": "zombie",
+    "aggression": 100,
+    "morale": 100
+  },
+  {
+    "type": "ITEM",
+    "id": "test_ability_token",
+    "name": { "str": "ability token fixture" },
+    "description": "Requests a point ability through the native item EOC path.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "symbol": "*",
+    "color": "white",
+    "material": [ "stone" ],
+    "use_action": {
+      "type": "effect_on_conditions",
+      "effect_on_conditions": [
+        {
+          "id": "EOC_TEST_ABILITY_ITEM",
+          "effect": [ { "request_ability": { "id": "test_ability_point", "loc": { "context_val": "use_location" } } } ]
+        }
+      ]
+    }
+  },
+  {
+    "type": "SPELL",
+    "id": "test_ability_formula_spell",
+    "copy-from": "test_ability_spell",
+    "min_damage": { "math": [ "_power_amount" ] },
+    "max_damage": { "math": [ "_power_amount" ] }
+  },
+  {
+    "type": "SPELL",
+    "id": "test_ability_context_spell",
+    "copy-from": "test_ability_spell",
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_ABILITY_SPELL_CONTEXT"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_ABILITY_SPELL_CONTEXT",
+    "effect": [
+      { "math": [ "ability_spell_context += _power_amount" ] },
+      { "math": [ "ability_spell_paid += _ability_paid_moves" ] },
+      { "math": [ "u_ability_target_seen += 1" ] },
+      { "math": [ "n_ability_caster_seen += 1" ] },
+      { "math": [ "ability_spell_level_sum += _spell_level" ] }
+    ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_ability_extra_context_spell",
+    "copy-from": "test_ability_context_spell",
+    "extra_effects": [ { "id": "test_ability_child_context_spell", "min_level": 2 } ]
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_formula",
+    "copy-from": "test_ability_strike",
+    "spell": { "id": "test_ability_formula_spell", "level": 1 }
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_spell_context",
+    "copy-from": "test_ability_strike",
+    "spell": { "id": "test_ability_extra_context_spell", "level": 1 }
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_area",
+    "copy-from": "test_ability_strike",
+    "spell": { "id": "execution_expanded_spell_area", "level": 1 }
+  },
+  {
+    "type": "SPELL",
+    "id": "test_ability_child_context_spell",
+    "copy-from": "test_ability_context_spell",
+    "max_level": { "math": [ "_child_level_limit" ] }
+  },
+  {
+    "type": "ability",
+    "id": "test_ability_transition",
+    "copy-from": "test_ability_strike",
+    "on_end": [ { "id": "EOC_TEST_ABILITY_TRANSITION", "effect": [ { "start_execution": "test_ability_transition_execution" } ] } ]
+  },
+  {
+    "type": "execution",
+    "id": "test_ability_transition_execution",
+    "copy-from": "test_exec_clock",
+    "on_end": [ { "id": "EOC_TEST_ABILITY_TRANSITION_BACK", "effect": [ { "request_ability": { "id": "test_ability_strike" } } ] } ]
+  }
+]

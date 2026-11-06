@@ -31,6 +31,7 @@
 #include "dialogue.h"
 #include "dialogue_helpers.h"
 #include "effect_on_condition.h"
+#include "spell_cast_context.h"
 #include "enums.h"
 #include "explosion.h"
 #include "execution_combat.h"
@@ -2529,11 +2530,13 @@ void spell_effect::effect_on_condition( const spell &sp, Creature &caster,
         Creature *victim = creatures.creature_at<Creature>( potential_target );
         if( victim && ( sp.is_valid_target( spell_target::ally ) ||
                         sp.is_valid_target( spell_target::hostile ) || sp.is_valid_target( spell_target::self ) ) ) {
-            d = dialogue( get_talker_for( victim ), get_talker_for( caster ) );
+            d = dialogue( get_talker_for( victim ), get_talker_for( caster ), {}, spell_cast_context::get(
+                              sp ) );
         } else if( sp.is_valid_target( spell_target::vehicle ) && veh ) {
-            d = dialogue( get_talker_for( veh.value().vehicle() ), get_talker_for( caster ) );
+            d = dialogue( get_talker_for( veh.value().vehicle() ), get_talker_for( caster ), {},
+                          spell_cast_context::get( sp ) );
         } else {
-            d = dialogue( nullptr, get_talker_for( caster ) );
+            d = dialogue( nullptr, get_talker_for( caster ), {}, spell_cast_context::get( sp ) );
         }
         const tripoint_abs_ms target_abs = here.get_abs( potential_target );
         write_var_value( var_type::context, "spell_location", &d, target_abs );

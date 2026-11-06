@@ -1,4 +1,5 @@
 #include "magic.h"
+#include "spell_cast_context.h"
 
 #include <algorithm>
 #include <cmath>
@@ -791,7 +792,7 @@ skill_id spell::skill() const
 
 int spell::field_intensity( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return std::min( static_cast<int>( type->max_field_intensity.evaluate( d ) ),
                      static_cast<int>( type->min_field_intensity.evaluate( d ) + std::round( get_effective_level() *
                                        type->field_intensity_increment.evaluate( d ) ) ) );
@@ -799,7 +800,7 @@ int spell::field_intensity( const Creature &caster ) const
 
 double spell::bash_scaling( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const double leveled_scaling = type->min_bash_scaling.evaluate( d ) +  get_effective_level() *
                                    type->bash_scaling_increment.evaluate( d );
     if( has_flag( spell_flag::RANDOM_DAMAGE ) ) {
@@ -823,7 +824,7 @@ float spell::get_eoc_damage_multiplier() const
 
 int spell::min_leveled_damage( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->min_damage.evaluate( d ) + std::round( get_effective_level() *
             type->damage_increment.evaluate(
                 d ) );
@@ -851,7 +852,7 @@ static int enchanted_spell_value( const spell &sp, const Creature &caster,
 
 int spell::damage( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const int leveled_damage = min_leveled_damage( caster );
     const auto max_damage = [&]() {
         return static_cast<int>( type->max_damage.evaluate( d ) );
@@ -884,7 +885,7 @@ int spell::damage( const Creature &caster ) const
 static float spell_armor_penetration( const spell &sp, const Creature &caster )
 {
     const spell_type &type = sp.id().obj();
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( sp ) );
     const float min_pierce = type.min_pierce.evaluate( d );
     const float max_pierce = type.max_pierce.evaluate( d );
     const float leveled_pierce = min_pierce + sp.get_effective_level() *
@@ -896,14 +897,14 @@ static float spell_armor_penetration( const spell &sp, const Creature &caster )
 
 int spell::min_leveled_accuracy( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->min_accuracy.evaluate( d ) + std::round( get_effective_level() *
             type->accuracy_increment.evaluate( d ) );
 }
 
 int spell::accuracy( Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const int leveled_accuracy = min_leveled_accuracy( caster );
     if( type->min_accuracy.evaluate( d ) >= 0 ||
         type->max_accuracy.evaluate( d ) >= type->min_accuracy.evaluate( d ) ) {
@@ -915,14 +916,14 @@ int spell::accuracy( Creature &caster ) const
 
 double spell::min_leveled_dot( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->min_dot.evaluate( d ) + std::round( get_effective_level() *
             type->dot_increment.evaluate( d ) );
 }
 
 double spell::damage_dot( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const double leveled_dot = min_leveled_dot( caster );
     if( type->min_dot.evaluate( d ) >= 0.0 ||
         type->max_dot.evaluate( d ) >= type->min_dot.evaluate( d ) ) {
@@ -946,7 +947,7 @@ damage_over_time_data spell::damage_over_time( const std::vector<bodypart_id> &b
 std::string spell::damage_string( const Character &caster ) const
 {
     std::string damage_string;
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     if( has_flag( spell_flag::RANDOM_DAMAGE ) ) {
         damage_string = string_format( "%d-%d", min_leveled_damage( caster ),
                                        static_cast<int>( type->max_damage.evaluate( d ) ) );
@@ -1022,14 +1023,14 @@ std::optional<tripoint_bub_ms> spell::select_target( Creature *source )
 
 int spell::min_leveled_aoe( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->min_aoe.evaluate( d ) + std::round( get_effective_level() *
             type->aoe_increment.evaluate( d ) );
 }
 
 int spell::aoe( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const int leveled_aoe = min_leveled_aoe( caster );
     int return_value;
 
@@ -1062,7 +1063,7 @@ std::set<tripoint_bub_ms> spell::effect_area( const tripoint_bub_ms &source,
 bool spell::in_aoe( const tripoint_bub_ms &source, const tripoint_bub_ms &target,
                     const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     if( has_flag( spell_flag::RANDOM_AOE ) ) {
         return rl_dist( source, target ) <= type->max_aoe.evaluate( d );
     } else {
@@ -1072,7 +1073,7 @@ bool spell::in_aoe( const tripoint_bub_ms &source, const tripoint_bub_ms &target
 
 std::string spell::aoe_string( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     if( has_flag( spell_flag::RANDOM_AOE ) ) {
         return string_format( "%d-%d", min_leveled_aoe( caster ),
                               static_cast<int>( type->max_aoe.evaluate( d ) ) );
@@ -1083,7 +1084,7 @@ std::string spell::aoe_string( const Creature &caster ) const
 
 int spell::range( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const int leveled_range = type->min_range.evaluate( d ) + std::round( get_effective_level() *
                               type->range_increment.evaluate( d ) );
     float range;
@@ -1137,14 +1138,14 @@ std::vector<tripoint_bub_ms> spell::targetable_locations( const Character &sourc
 
 int spell::min_leveled_duration( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->min_duration.evaluate( d ) + std::round( get_effective_level() *
             type->duration_increment.evaluate( d ) );
 }
 
 int spell::duration( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const int leveled_duration = min_leveled_duration( caster );
     int return_value;
     if( has_flag( spell_flag::RANDOM_DURATION ) ) {
@@ -1165,7 +1166,7 @@ int spell::duration( const Creature &caster ) const
 
 std::string spell::duration_string( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     if( has_flag( spell_flag::RANDOM_DURATION ) ) {
         return string_format( "%s - %s", moves_to_string( min_leveled_duration( caster ) ),
                               moves_to_string( type->max_duration.evaluate( d ) ) );
@@ -1206,7 +1207,7 @@ void spell::set_level( const Character &guy, int nlevel )
 
 bool spell::is_max_level( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return get_level() >= type->max_level.evaluate( d );
 }
 
@@ -1220,14 +1221,14 @@ bool spell::can_learn( const Character &guy ) const
 
 int spell::get_amount_of_projectiles( const Creature &guy ) const
 {
-    const_dialogue d( get_const_talker_for( guy ), nullptr );
+    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->multiple_projectiles.evaluate( d );
 }
 
 int spell::energy_cost( const Character &guy ) const
 {
     int cost;
-    const_dialogue d( get_const_talker_for( guy ), nullptr );
+    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
     if( type->base_energy_cost.evaluate( d ) < type->final_energy_cost.evaluate( d ) ) {
         cost = std::min( static_cast<int>( type->final_energy_cost.evaluate( d ) ),
                          static_cast<int>( std::round( type->base_energy_cost.evaluate( d ) +
@@ -1386,7 +1387,7 @@ int spell_type::get_difficulty( const Creature &caster ) const
 
 int spell::get_difficulty( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->difficulty.evaluate( d ) + temp_difficulty_adjustment;
 }
 
@@ -1399,7 +1400,7 @@ int spell::casting_time( const Character &guy, bool ignore_encumb ) const
 {
     // casting time in moves
     int casting_time = 0;
-    const_dialogue d( get_const_talker_for( guy ), nullptr );
+    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
     if( type->base_casting_time.evaluate( d ) < type->final_casting_time.evaluate( d ) ) {
         casting_time = std::min( static_cast<int>( type->final_casting_time.evaluate( d ) ),
                                  static_cast<int>( std::round( type->base_casting_time.evaluate( d ) +
@@ -1524,7 +1525,7 @@ float spell::spell_fail( const Character &guy ) const
 
     float fail_chance = 0;
     if( has_type_fail_chance ) {
-        const_dialogue d( get_const_talker_for( guy ), nullptr );
+        const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
         d.set_value( "spell_id", id().str() );
         fail_chance = type->magic_type.value()->failure_chance_formula_id.value()->eval( d );
     } else if( is_psi ) {
@@ -1689,7 +1690,7 @@ void spell::create_field( const tripoint_bub_ms &at, Creature &caster ) const
     if( !type->field ) {
         return;
     }
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     const int intensity = field_intensity( caster ) + rng( -type->field_intensity_variance.evaluate(
                               d ) * field_intensity( caster ),
                           type->field_intensity_variance.evaluate( d ) * field_intensity( caster ) );
@@ -1766,7 +1767,8 @@ bool spell::is_valid_target( spell_target t ) const
 bool spell::valid_target_condition( const Creature &caster, const vehicle &veh ) const
 {
     if( type->has_target_condition ) {
-        const_dialogue d( get_const_talker_for( caster ), get_talker_for( veh ) );
+        const_dialogue d( get_const_talker_for( caster ), get_talker_for( veh ), {},
+                          spell_cast_context::get( *this ) );
         return type->target_condition( d );
     } else {
         return true;
@@ -1776,7 +1778,8 @@ bool spell::valid_target_condition( const Creature &caster, const vehicle &veh )
 bool spell::valid_target_condition( const Creature &caster, const Creature &target ) const
 {
     if( type->has_target_condition ) {
-        const_dialogue d( get_const_talker_for( caster ), get_const_talker_for( target ) );
+        const_dialogue d( get_const_talker_for( caster ), get_const_talker_for( target ), {},
+                          spell_cast_context::get( *this ) );
         return type->target_condition( d );
     } else {
         return true;
@@ -1786,7 +1789,7 @@ bool spell::valid_target_condition( const Creature &caster, const Creature &targ
 bool spell::valid_caster_condition( const Creature &caster ) const
 {
     if( type->has_caster_condition ) {
-        const_dialogue d( get_const_talker_for( caster ), nullptr );
+        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
         return type->caster_condition( d );
     } else {
         return true;
@@ -1995,7 +1998,7 @@ std::optional<jmath_func_id> spell_type::overall_exp_for_level_formula_id() cons
 double spell::get_failure_cost_percent( Creature &caster ) const
 {
     if( type->magic_type.has_value() ) {
-        const_dialogue d( get_const_talker_for( caster ), nullptr );
+        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
         return type->magic_type.value()->failure_cost_percent.evaluate( d );
     } else {
         return 0.0f;
@@ -2005,7 +2008,7 @@ double spell::get_failure_cost_percent( Creature &caster ) const
 double spell::get_failure_exp_percent( Creature &caster ) const
 {
     if( type->magic_type.has_value() ) {
-        const_dialogue d( get_const_talker_for( caster ), nullptr );
+        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
         return type->magic_type.value()->failure_exp_percent.evaluate( d );
     } else {
         return 0.2f;
@@ -2134,7 +2137,7 @@ int spell::get_effective_level() const
 
 int spell::get_max_level( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
     return type->max_level.evaluate( d );
 }
 
@@ -2243,7 +2246,7 @@ float spell::exp_modifier( const Character &guy ) const
 int spell::casting_exp( const Character &guy ) const
 {
     if( type->magic_type.has_value() && type->magic_type.value()->casting_xp_formula_id.has_value() ) {
-        const_dialogue d( get_const_talker_for( guy ), nullptr );
+        const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
         d.set_value( "spell_id", id().str() );
         return std::round( type->magic_type.value()->casting_xp_formula_id.value()->eval( d ) );
     } else {
@@ -2443,7 +2446,9 @@ void spell::cast_all_effects( const tripoint_bub_ms &target ) const
                 return;
             }
             const int rand_spell = rng( 0, type->additional_spells.size() - 1 );
-            spell sp = ( iter + rand_spell )->get_spell( fake_avatar, get_effective_level() );
+            spell sp = ( iter + rand_spell )->get_spell_with_context( fake_avatar, get_effective_level(),
+                       *this );
+            const spell_cast_context child_context( sp, spell_cast_context::get( *this ) );
 
             // This spell flag makes it so the message of the spell that's cast using this spell will be sent.
             // if a message is added to the casting spell, it will be sent as well.
@@ -2473,7 +2478,8 @@ void spell::cast_all_effects( Creature &source, const tripoint_bub_ms &target ) 
                 return;
             }
             const int rand_spell = rng( 0, type->additional_spells.size() - 1 );
-            spell sp = ( iter + rand_spell )->get_spell( source, get_effective_level() );
+            spell sp = ( iter + rand_spell )->get_spell_with_context( source, get_effective_level(), *this );
+            const spell_cast_context child_context( sp, spell_cast_context::get( *this ) );
             const bool _self = ( iter + rand_spell )->self;
 
             // This spell flag makes it so the message of the spell that's cast using this spell will be sent.
@@ -2513,7 +2519,8 @@ void spell::cast_extra_spell_effects( const tripoint_bub_ms &target ) const
     fake_avatar.set_fake( true );
     fake_avatar.setpos( here, target );
     for( const fake_spell &extra_spell : type->additional_spells ) {
-        spell sp = extra_spell.get_spell( fake_avatar, get_effective_level() );
+        spell sp = extra_spell.get_spell_with_context( fake_avatar, get_effective_level(), *this );
+        const spell_cast_context child_context( sp, spell_cast_context::get( *this ) );
         sp.cast_all_effects( target );
     }
 }
@@ -2521,7 +2528,8 @@ void spell::cast_extra_spell_effects( const tripoint_bub_ms &target ) const
 void spell::cast_extra_spell_effects( Creature &source, const tripoint_bub_ms &target ) const
 {
     for( const fake_spell &extra_spell : type->additional_spells ) {
-        spell sp = extra_spell.get_spell( source, get_effective_level() );
+        spell sp = extra_spell.get_spell_with_context( source, get_effective_level(), *this );
+        const spell_cast_context child_context( sp, spell_cast_context::get( *this ) );
         if( sp.has_flag( spell_flag::RANDOM_TARGET ) ) {
             if( const std::optional<tripoint_bub_ms> new_target = sp.random_valid_target( source,
                     extra_spell.self ? source.pos_bub() : target ) ) {
@@ -4001,14 +4009,16 @@ void fake_spell::deserialize( const JsonObject &data )
     load( data );
 }
 
-spell fake_spell::get_spell( const Creature &caster, int min_level_override ) const
+static spell make_context_spell( const fake_spell &definition, const Creature &caster,
+                                 int min_level_override, const global_variables::impl_t &context )
 {
-    spell sp( id );
+    spell sp( definition.id );
+    const spell_cast_context scope( sp, context );
     // the max level this spell will be. can be optionally limited
     int spell_max_level = sp.get_max_level( caster );
-    int spell_limiter = max_level ? *max_level : spell_max_level;
+    int spell_limiter = definition.max_level ? *definition.max_level : spell_max_level;
     // level is the minimum level the fake_spell will output
-    min_level_override = std::max( min_level_override, level );
+    min_level_override = std::max( min_level_override, definition.level );
     if( min_level_override > spell_limiter ) {
         // this override is for min level, and does not override max level
         if( spell_limiter <= 0 ) {
@@ -4020,14 +4030,25 @@ spell fake_spell::get_spell( const Creature &caster, int min_level_override ) co
     // make sure max level is not lower then min level
     spell_limiter = std::max( min_level_override, spell_limiter );
     // the "level" of the fake spell is the goal, but needs to be clamped to min and max
-    int level_of_spell = clamp( level, min_level_override, spell_limiter );
-    if( level > spell_limiter ) {
-        debugmsg( "ERROR: fake spell %s has higher min_level than max_level", id.c_str() );
+    int level_of_spell = clamp( definition.level, min_level_override, spell_limiter );
+    if( definition.level > spell_limiter ) {
+        debugmsg( "ERROR: fake spell %s has higher min_level than max_level", definition.id.c_str() );
         return sp;
     }
     sp.set_exp( sp.exp_for_level( level_of_spell ) );
 
     return sp;
+}
+
+spell fake_spell::get_spell( const Creature &caster, int min_level_override ) const
+{
+    return make_context_spell( *this, caster, min_level_override, {} );
+}
+
+spell fake_spell::get_spell_with_context( const Creature &caster, int min_level_override,
+        const spell &parent ) const
+{
+    return make_context_spell( *this, caster, min_level_override, spell_cast_context::get( parent ) );
 }
 
 // intended for spells without casters

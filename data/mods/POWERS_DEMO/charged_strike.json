@@ -1,0 +1,83 @@
+[
+  {
+    "type": "SPELL",
+    "id": "power_demo_force_impact",
+    "name": "Charged force impact",
+    "description": "The effect released by the demonstration ability.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile", "ally" ],
+    "flags": [ "SILENT", "NO_HANDS" ],
+    "damage_type": "bash",
+    "min_damage": 25,
+    "max_damage": 25,
+    "min_range": 5,
+    "max_range": 5,
+    "min_aoe": 0,
+    "max_aoe": 0,
+    "max_level": 1
+  },
+  {
+    "type": "ability",
+    "id": "power_demo_charged_strike",
+    "name": "Charged force strike",
+    "windup_ticks": [ 2, 3 ],
+    "range": 5,
+    "move_cost": 100,
+    "spell": { "id": "power_demo_force_impact", "level": 1 },
+    "on_start": [
+      {
+        "id": "EOC_POWER_DEMO_TELEGRAPH",
+        "effect": [ { "u_make_sound": "gathers force for a heavy strike!", "volume": 8, "type": "combat" } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_REQUEST",
+    "effect": [ { "request_ability": { "id": "power_demo_charged_strike" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_PLAYER",
+    "effect": [
+      { "request_ability": { "id": "power_demo_charged_strike", "targeted": true } },
+      {
+        "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+        "then": [ { "math": [ "_cancel = 1" ] }, { "u_message": "You do not begin a charged strike." } ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_focus",
+    "name": { "str": "charged strike focus", "str_pl": "charged strike foci" },
+    "description": "Activate and select a creature within five tiles.  You charge for two or three seconds before striking.  Damage, displacement or unconsciousness can interrupt you.  Open the execution and ability inspector to see the request and payment.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_blue",
+    "use_action": {
+      "type": "effect_on_conditions",
+      "menu_text": "Charge a force strike",
+      "effect_on_conditions": [ "EOC_POWER_DEMO_PLAYER" ]
+    }
+  },
+  {
+    "type": "monster_attack",
+    "attack_type": "eoc",
+    "id": "power_demo_request_strike",
+    "range": 5,
+    "cooldown": 10,
+    "eoc": [ "EOC_POWER_DEMO_REQUEST" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_power_demo_brawler",
+    "copy-from": "mon_zombie",
+    "name": { "str": "charged strike brawler" },
+    "description": "A demonstration brawler that telegraphs a charged force strike.  Its charge can be interrupted.",
+    "special_attacks": [ [ "power_demo_request_strike", 10 ] ]
+  }
+]

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "calendar.h"
+#include "ability_runtime.h"
 #include "cursesdef.h"
 #include "execution_runtime.h"
 #include "game.h"
@@ -26,7 +27,7 @@ void values( std::ostream &out, const global_variables::impl_t &entries )
 void show_detail( const std::string &text )
 {
     uilist menu;
-    menu.title = _( "Execution details (read-only)" );
+    menu.title = _( "Runtime details (read-only)" );
     for( const std::string &line : foldstring( text, std::max( 20, TERMX - 6 ) ) ) {
         menu.addentry( -1, true, -1, line.empty() ? " " : line );
     }
@@ -97,10 +98,40 @@ std::string execution_inspector::format_trigger( const execution_trigger_report 
     return out.str();
 }
 
+std::string execution_inspector::format_ability( const ability_view &v )
+{
+    std::ostringstream out;
+    out << "Ability #" << v.id << " / " << v.ability.str()
+        << "\nstate: " << v.state << "\nreason: " << v.reason
+        << "\nroot: " << v.root << " / parent: " << v.parent << " / depth: " << v.depth
+        << "\ninvocation: " << ( v.invocation == ability_invocation::action ? "action" : "effect_only" )
+        << "\ncaster UID: " << v.caster.id << " / " << v.caster.dimension.str()
+        << "\ntarget UID: " << v.target.id << " / " << v.target.dimension.str()
+        << "\norigin: " << v.origin.to_string() << "\nselected: " << v.selected.to_string()
+        << "\nreleased at: " << ( v.released_at ? v.released_at->to_string() : "not released" )
+        << "\nstarted: " << to_turns<int>( v.started - calendar::turn_zero )
+        << "\ndue: " << to_turns<int>( v.due - calendar::turn_zero )
+        << "\nsampled windup ticks: " << v.windup_ticks << "\nspell level: " << v.spell_level
+        << "\ncosts committed: " << v.costs_committed << "\npaid moves: " << v.paid_moves
+        << "\npaid energy: " << v.paid_energy << "\neffect completed: " << v.effect_completed
+        << "\ncontacts truncated: " << v.contacts_truncated << "\n\nRequest context and locals\n";
+    values( out, v.context );
+    out << "\nObserved primary native contacts\n";
+    for( const auto &contact : v.contacts ) {
+        out << "target UID: " << contact.target.id << " / " << contact.target.dimension.str() << '\n';
+        values( out, contact.facts );
+    }
+    return out.str();
+}
+
 void execution_inspector::show()
 {
     while( true ) {
         std::vector<std::pair<std::string, std::string>> rows;
+        for( const auto &ability : g->abilities().inspect_all() ) {
+            rows.emplace_back( string_format( _( "Ability #%lld: %s [%s] %s" ), ability.id,
+                                              ability.ability.str(), ability.state, ability.reason ), format_ability( ability ) );
+        }
         for( const auto &scene : g->executions().inspect_all() ) {
             rows.emplace_back( string_format( _( "Scene #%lld: %s [%s] %s" ), scene.view.id,
                                               scene.view.definition.str(), scene.view.state, scene.view.step ), format_scene( scene ) );
@@ -111,11 +142,11 @@ void execution_inspector::show()
                                               it->selected, it->reason ), format_trigger( *it ) );
         }
         uilist menu;
-        menu.title = _( "Execution inspector (read-only)" );
+        menu.title = _( "Execution and ability inspector (read-only)" );
         menu.text =
-            _( "Active/recent scenes and the latest 32 contacts. Inspection does not run conditions, consume randomness, or advance time." );
+            _( "Active/recent abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
         if( rows.empty() ) {
-            menu.addentry( -1, false, -1, _( "No recorded execution scenes or contacts." ) );
+            menu.addentry( -1, false, -1, _( "No recorded abilities, execution scenes or contacts." ) );
         }
         for( size_t n = 0; n < rows.size(); ++n ) {
             menu.addentry( static_cast<int>( n ), true, -1, rows[n].first );

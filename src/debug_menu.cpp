@@ -985,7 +985,7 @@ static int info_uilist()
         { uilist_entry( debug_menu_index::GAME_REPORT, true, 'r', _( "Generate game report" ) ) },
         { uilist_entry( debug_menu_index::GAME_MIN_ARCHIVE, true, '!', _( "Generate minimized save archive" ) ) },
         { uilist_entry( debug_menu_index::GAME_STATE, true, 'g', _( "Check game state" ) ) },
-        { uilist_entry( debug_menu_index::EXECUTION_INSPECTOR, true, 'X', _( "Inspect executions" ) ) },
+        { uilist_entry( debug_menu_index::EXECUTION_INSPECTOR, true, 'X', _( "Inspect executions and abilities" ) ) },
         { uilist_entry( debug_menu_index::DISPLAY_HORDES, true, 'h', _( "Display hordes" ) ) },
         { uilist_entry( debug_menu_index::TEST_IT_GROUP, true, 'i', _( "Test item group" ) ) },
         { uilist_entry( debug_menu_index::SHOW_SOUND, true, 'c', _( "Show sound clustering" ) ) },

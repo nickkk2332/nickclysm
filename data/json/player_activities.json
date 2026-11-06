@@ -1170,6 +1170,17 @@
     "verb": "aiming the artillery"
   },
   {
+    "id": "ACT_ABILITY",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "charging an ability",
+    "rooted": false,
+    "based_on": "neither",
+    "can_resume": false,
+    "refuel_fires": false,
+    "auto_needs": false
+  },
+  {
     "id": "ACT_EXECUTION",
     "type": "activity_type",
     "activity_level": "NO_EXERCISE",

@@ -55,6 +55,7 @@
 #include "event_bus.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "field.h"
@@ -1592,7 +1593,7 @@ void npc::move()
         incapacitation::suppress_moves( *this );
         return;
     }
-    if( g->executions().controls( *this ) ) {
+    if( g->executions().controls( *this ) || g->abilities().controls( *this ) ) {
         set_moves( 0 );
         return;
     }

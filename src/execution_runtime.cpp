@@ -1,4 +1,5 @@
 #include "execution_runtime.h"
+#include "ability_runtime.h"
 
 #include <algorithm>
 #include <climits>
@@ -1111,6 +1112,7 @@ execution_start_result execution_manager::start_fatal( const execution_id &defin
 
 int64_t execution_manager::on_fatal_hit( const execution_combat::attack_snapshot &snapshot )
 {
+    g->abilities().record_contact( snapshot );
     if( data->processing || data->stopping || !snapshot.fatal ) {
         return 0;
     }
@@ -1252,6 +1254,7 @@ uint64_t execution_manager::next_attack_id()
 
 void execution_manager::on_attack_resolved( const execution_combat::attack_snapshot &snapshot )
 {
+    g->abilities().record_contact( snapshot );
     if( data->processing || data->stopping ) {
         return;
     }
@@ -1291,6 +1294,10 @@ execution_start_result execution_manager::start_impl( const execution_id &defini
         return { 0, "invalid_participant" };
     }
     const execution_definition &def = *definition;
+    if( ( needs_control( def, true ) && g->abilities().controls( *actor ) ) ||
+        ( !fatal && needs_control( def, false ) && g->abilities().controls( *target ) ) ) {
+        return { 0, "participant_busy" };
+    }
     if( death_pending( *actor ) || death_pending( *target ) ) {
         return { 0, "fatal_target_busy" };
     }
@@ -1547,7 +1554,8 @@ bool execution_manager::restoring() const
 
 bool execution_manager::prepare_world_transition()
 {
-    if( processing_actions() || execution_combat::attack_in_progress() ) {
+    if( processing_actions() || g->abilities().processing() || g->abilities().restoring() ||
+        execution_combat::attack_in_progress() ) {
         return false;
     }
     data->processing = true;
@@ -1564,7 +1572,7 @@ bool execution_manager::prepare_world_transition()
 
 void execution_manager::drain_starts()
 {
-    if( data->processing ) {
+    if( data->processing || g->abilities().processing() ) {
         return;
     }
     data->processing = true;
@@ -1605,7 +1613,7 @@ void execution_manager::drain_starts()
 
 void execution_manager::process()
 {
-    if( data->processing ) {
+    if( data->processing || g->abilities().processing() ) {
         return;
     }
     drain_starts();
