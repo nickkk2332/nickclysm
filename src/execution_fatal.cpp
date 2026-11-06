@@ -2,6 +2,7 @@
 
 #include <set>
 
+#include "avatar.h"
 #include "creature.h"
 #include "execution_runtime.h"
 #include "game.h"
@@ -20,6 +21,9 @@ bool execution_fatal::pending( const Creature &who )
 
 bool execution_fatal::finalized( const Creature &who )
 {
+    if( const avatar *player = who.as_avatar() ) {
+        return player->death_finalized();
+    }
     if( const monster *mon = who.as_monster() ) {
         return mon->death_finalized();
     }

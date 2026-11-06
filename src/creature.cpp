@@ -626,7 +626,8 @@ bool Creature::sees( const map &here, const Creature &critter ) const
         return true;
     }
 
-    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
+    if( incapacitation::unconscious( *this ) ||
+        ( !is_avatar() && execution_fatal::pending( *this ) ) ) {
         return false;
     }
 
@@ -800,7 +801,8 @@ bool Creature::sees( const map &here, const Creature &critter ) const
 bool Creature::sees( const map &here, const tripoint_bub_ms &t, bool is_avatar,
                      int range_mod ) const
 {
-    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
+    if( incapacitation::unconscious( *this ) ||
+        ( !this->is_avatar() && execution_fatal::pending( *this ) ) ) {
         return false;
     }
     if( std::abs( posz() - t.z() ) > fov_3d_z_range ) {

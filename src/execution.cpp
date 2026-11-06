@@ -308,6 +308,10 @@ void execution_definition::load( const JsonObject &jo, std::string_view source )
     max_distance = read_integer( jo, "max_distance", max_distance, 1, 60 );
     require_weapon = jo.get_bool( "require_weapon", require_weapon );
     allow_fatal_target = jo.get_bool( "allow_fatal_target", allow_fatal_target );
+    allow_avatar_fatal_target = jo.get_bool( "allow_avatar_fatal_target", allow_avatar_fatal_target );
+    if( allow_avatar_fatal_target && !allow_fatal_target ) {
+        jo.throw_error_at( "allow_avatar_fatal_target", "requires allow_fatal_target" );
+    }
     if( jo.has_member( "required_roles" ) ) {
         const std::set<std::string> roles = jo.get_tags<std::string>( "required_roles" );
         if( roles != std::set<std::string> { "actor", "target" } ) {

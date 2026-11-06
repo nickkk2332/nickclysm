@@ -1522,7 +1522,15 @@ void avatar::serialize( JsonOut &json ) const
 
 void avatar::store( JsonOut &json ) const
 {
+    if( death_finalizing_ ) {
+        throw JsonError( "Cannot save an avatar inside death finalization" );
+    }
     Character::store( json );
+    json.member( "death_committed", death_committed_ );
+    json.member( "death_finalized", death_finalized_ );
+    json.member( "corpse_placed", death_presentation_ == death_presentation::corpse_placed );
+    json.member( "death_presented", death_presentation_ != death_presentation::pending );
+    json.member( "deathcam_watching", death_presentation_ == death_presentation::watching );
 
     // player-specific specifics
     if( prof != nullptr ) {
@@ -1616,7 +1624,24 @@ void avatar::deserialize( const JsonObject &data )
 
 void avatar::load( const JsonObject &data )
 {
+    reset_death_state();
     Character::load( data );
+    data.read( "death_committed", death_committed_ );
+    data.read( "death_finalized", death_finalized_ );
+    bool corpse_placed = false;
+    bool death_presented = false;
+    bool deathcam_watching = false;
+    data.read( "corpse_placed", corpse_placed );
+    data.read( "death_presented", death_presented );
+    data.read( "deathcam_watching", deathcam_watching );
+    if( ( death_finalized_ && !death_committed_ ) ||
+        ( ( corpse_placed || death_presented || deathcam_watching ) && !death_finalized_ ) ||
+        ( deathcam_watching && ( corpse_placed || !death_presented ) ) ) {
+        data.throw_error( "invalid avatar death lifecycle" );
+    }
+    death_presentation_ = corpse_placed ? death_presentation::corpse_placed :
+                          deathcam_watching ? death_presentation::watching :
+                          death_presented ? death_presentation::presented : death_presentation::pending;
     // standing where the save left you counts from now
     relocation_anchor = pos_abs();
     relocated_at = calendar::turn;

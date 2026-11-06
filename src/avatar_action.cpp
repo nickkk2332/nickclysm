@@ -23,6 +23,7 @@
 #include "creature_tracker.h"
 #include "debug.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "flag.h"
 #include "game.h"
 #include "game_constants.h"
@@ -30,6 +31,7 @@
 #include "grapple.h"
 #include "gun_mode.h"
 #include "input_context.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_location.h"
 #include "item_pocket.h"
@@ -172,6 +174,10 @@ static bool check_water_affect_items( avatar &you )
 
 bool avatar_action::move( avatar &you, map &m, const tripoint_rel_ms &d )
 {
+    if( incapacitation::unconscious( you ) || execution_fatal::pending( you ) ||
+        you.death_finalized() ) {
+        return false;
+    }
     map &here = get_map();
 
     bool in_shell = you.has_active_mutation( trait_SHELL2 ) ||

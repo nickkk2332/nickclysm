@@ -1,6 +1,6 @@
 # Implementation sequence and validation plan
 
-**Delivery status:** the living-participant milestone covers portions of phases 0–3 and 7; the [narration milestone](05-narration-milestone.md) delivers phase 4's append, hearing, history, and presentation controls. [First-milestone status](04-implementation-status.md) records the runtime foundation. The [automatic melee milestone](06-automatic-triggers.md) delivers phase 5's initial living-melee slice; [physiological knockouts](07-knockouts.md) deliver the incapacity portion of phase 3. The [fatal melee milestone](08-fatal-hits.md) delivers phase 6 for NPC/monster victims at supported primary-melee boundaries. Further combat producers, avatar fatal deferral, richer physical actions and the dedicated inspector remain further work.
+**Delivery status:** the living-participant milestone covers portions of phases 0–3 and 7; the [narration milestone](05-narration-milestone.md) delivers phase 4's append, hearing, history, and presentation controls. [First-milestone status](04-implementation-status.md) records the runtime foundation. The [automatic melee milestone](06-automatic-triggers.md) delivers phase 5's initial living-melee slice; [physiological knockouts](07-knockouts.md) deliver the incapacity portion of phase 3. The [fatal melee milestone](08-fatal-hits.md) delivers phase 6 for NPC/monster victims, and [avatar deferral](09-avatar-fatal-deferral.md) adds the player lifecycle at supported primary-melee boundaries. Further combat producers, richer physical actions and the dedicated inspector remain further work.
 
 ## Proposed code boundaries
 
@@ -134,7 +134,7 @@ Release the reservation before invoking native finalization and guard that relea
 
 Pre-existing death/prevention/reward callbacks must fire under one documented ordering, once for the actual outcome. A selected fatal scene intentionally postpones final kill reporting; ordinary attacks with no selected scene retain their old order. Do not fake early kill events to preserve a cosmetic log line.
 
-Avatar fatal deferral is explicitly outside the first fatal release. Reject that policy clearly and retain normal avatar death/prevention handling. Add it only with its own game-over/body-control tests.
+Avatar fatal deferral is outside the first fatal release. The [avatar follow-up](09-avatar-fatal-deferral.md) adds its separate opt-in, native prevention/finalization guard, game-over handoff and body-control tests.
 
 **Tests:** fatal injury preserved; no HP-to-1 workaround; exactly one corpse/drop/XP/death function; kill-style callback delayed correctly; prevention/rescue; source dies or changes avatar; fatal target blocks occupancy; third-party damage/fire; owned ledge fall; direct finalizer reentry; canceled scene; timeout; save during pending defeat; missing definition/owner; unload/dimension clear; unsupported channel immediately falls back to ordinary death.
 

@@ -1074,7 +1074,8 @@ int Character::get_sleep_deprivation() const
 
 bool Character::is_deaf() const
 {
-    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) ||
+    return ( incapacitation::unconscious( *this ) ||
+             ( !is_avatar() && execution_fatal::pending( *this ) ) ) ||
            get_effect_int( effect_deaf ) > 2 || worn_with_flag( flag_DEAF ) ||
            has_flag( json_flag_DEAF ) || has_effect( effect_narcosis ) ||
            ( has_trait( trait_M_SKIN3 ) &&
@@ -1974,7 +1975,8 @@ bool Character::is_hibernating() const
 
 bool Character::is_blind() const
 {
-    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) ||
+    return ( incapacitation::unconscious( *this ) ||
+             ( !is_avatar() && execution_fatal::pending( *this ) ) ) ||
            worn_with_flag( flag_BLIND ) ||
            has_flag( json_flag_BLIND ) || get_limb_score( limb_score_vision ) <= 0;
 }
@@ -3320,7 +3322,8 @@ float Character::adjust_for_focus( float amount ) const
 
 bool Character::can_hear( const tripoint_bub_ms &source, const int volume ) const
 {
-    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
+    if( incapacitation::unconscious( *this ) ||
+        ( !is_avatar() && execution_fatal::pending( *this ) ) ) {
         return false;
     }
     if( is_deaf() ) {

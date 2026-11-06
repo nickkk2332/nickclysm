@@ -135,7 +135,7 @@ resolved reach contact) and standard monster primary melee. Nested/counter attac
 mutation contacts, direct damage and projectile callbacks inside the wrapped damage
 handlers, and execution-scripted attacks cannot become new automatic roots. Mech
 delegation, rider redirects, monster specials that bypass standard melee, projectiles/throws, spells,
-environmental damage, and avatar fatal deferral have no automatic producer in this
+and environmental damage have no automatic producer in this
 milestone. Projectile rule definitions are rejected. Fatal rules use the same supported
 primary melee paths at the earlier boundary below. This is not a universal
 combat-event/causality API.
@@ -181,8 +181,9 @@ The referenced definition must set `allow_fatal_target: true`, control its targe
 only from supported native producers; it does not make a manual EOC start accept a
 corpse or an arbitrary earlier fatal injury. The actor must be alive and both roles
 must satisfy normal binding, distance, control, weapon and restraint checks.
-The first fatal release supports NPC and monster victims. Avatar fatal hits retain
-ordinary death/prevention and game-over handling.
+NPC and monster victims use that opt-in. A player victim additionally requires
+`allow_avatar_fatal_target: true`; existing definitions do not gain player targets.
+The same character/monster primary-melee producers support this separate opt-in.
 
 At this boundary, filters see the original weapon/style/technique, critical fact
 (character melee only), resolved body part and weakpoint, reported damage types,
@@ -195,8 +196,9 @@ The injury stays real: fatal health is not raised to one, and a finalized actor 
 never revived for narration. A reservation retains occupancy and explicitly permitted
 scene movement while excluding ordinary AI, targeting ranges and voluntary actions,
 including scripted combat dispatch and evasion. Native passive turn processing,
-damage-over-time, inventory processing and fields continue through the manager once
-per game turn. The actor gains no bank of missed actions.
+damage-over-time, inventory processing and fields continue once per game turn. The
+manager supplies the NPC/monster passive turn; the avatar stays on its ordinary
+world-turn path to avoid duplicate processing. The actor gains no bank of missed actions.
 
 Checked flat movement can span multiple beats. A supported owned fall keeps the
 reservation through native landing, then ends the scene and settles death there.
@@ -211,7 +213,7 @@ An arbitrary EOC teleport is not a checked fatal movement action.
 Settlement releases the reservation before native death/prevention processing.
 Corpses, drops, kill rewards, death functions and faction consequences run through
 the native finalizer once. Genuine health restoration can rescue the victim, as can
-normal NPC death prevention. The original retained source is validated; a replacement
+normal NPC or avatar death prevention. The original retained source is validated; a replacement
 avatar/body is never credited. If that identity is unavailable, no replacement source
 is invented. Rescue clears the captured killer pointer. Deferred martial-art on-kill
 hooks use the original style/contact after actual finalization, once, while that
@@ -223,7 +225,7 @@ The actual fatal outcome is `killed`, `rescued`, or `unavailable` in the scene's
 as `execution_authored_outcome`. `execution_target_dead` reflects finalization;
 `death_pending` reflects the target's current reservation. The read-only conditions
 `u_death_pending` / `npc_death_pending` also query that state and return false for
-missing/non-creature talkers and avatar fatal deferral.
+missing/non-creature talkers. They include an opted-in avatar reservation.
 
 Reservations, absolute deadlines and deferred kill context are saved with their
 owners. Load installs them before actor/map processing, then validates actors at the
@@ -235,6 +237,43 @@ old runtime without adding death side effects to the checkpoint being restored.
 [The core fatal knife scene](../../data/json/executions/fatal_knife.json) reuses the
 stagger/ledge/message graph. The optional demo mod adds a separate knife with rare
 fatal rules; production weapons acquire no automatic rules.
+
+### Player fatal scenes
+
+Set both `allow_fatal_target` and `allow_avatar_fatal_target` on a definition and
+match `"target_kind": [ "avatar" ]` in its `fatal_hit` rule. Manual starts still
+refuse fatal targets. Existing distance, restraint, mounted/vehicle and graph bounds
+apply. The game must still be playing, outside deathcam or a completed death.
+
+The accepted injury suppresses player actions immediately. At the safe start boundary,
+prior work and auto-move are canceled and the execution owns the avatar activity.
+The view follows the actual body through checked movement and native landing. The
+avatar retains ordinary sight/hearing for its scene; blindness, deafness and existing
+unconsciousness still apply. Body switching is refused during a pending or finalizing
+player death and after finalization.
+
+The progress UI permits save/quit, quicksave, messages, character information, help
+and zoom. Pause skips the remaining beats and settles the injury. Ending presentation
+does not heal it. Passive effects, fields and third-party harm continue normally.
+
+Settlement runs `PREVENT_DEATH`, `character_dies`, then `AVATAR_DEATH` while the
+player remains fatally injured, stopping if genuine prevention restores life. Only
+an actual death emits kill credit and `avatar_dies`, then the original style's delayed
+kill hook. Reentry cannot repeat native death, and saves inside finalization are refused.
+Execution callbacks remain atomic; prevention scripts that transfer worlds should
+restore health and schedule that transfer for a later safe tick.
+
+The death screen and deathcam choice wait for the ordinary game-over boundary,
+outside combat/scene callbacks. A prevented death shows neither. Corpse placement
+keeps native deathcam timing and is guarded against repeated game-over checks.
+The avatar saves its injury-commit, finalized-death, presentation/deathcam and corpse-placement state, while
+the execution saves its pending owner/deadline. Older avatar saves default those flags
+to false. A restored finalized checkpoint cannot replay death events or add another corpse;
+a saved deathcam resumes watching without repeating the last-words screen.
+
+[The player knife scene](../../data/json/executions/avatar_fatal.json) inherits the
+stagger/ledge graph with the extra opt-in. The demo mod adds a rare NPC knife rule
+against the avatar using the existing fatal demonstration knife.
 
 ## Definition
 
@@ -251,6 +290,7 @@ fatal rules; production weapons acquire no automatic rules.
   "max_distance": 12,
   "require_weapon": false,
   "allow_fatal_target": false,
+  "allow_avatar_fatal_target": false,
   "interruptions": { "external_damage": "interrupt", "displacement": "interrupt" },
   "locals": { "counter": 0, "tone": "grim" },
   "on_start": [],

@@ -105,6 +105,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_fatal.h"
+#include "execution_combat.h"
 #include "execution_runtime.h"
 #include "faction.h"
 #include "fault.h"
@@ -1547,6 +1548,9 @@ static bool cancel_auto_move( Character &you, const std::string &text )
 
 bool game::cancel_activity_or_ignore_query( const distraction_type type, const std::string &text )
 {
+    if( execution_fatal::pending( u ) ) {
+        return false; // The safe execution-start boundary cancels prior work without a prompt.
+    }
     if( u.has_distant_destination() ) {
         if( cancel_auto_move( u, text ) ) {
             return true;
@@ -2935,10 +2939,12 @@ bool game::try_get_right_click_action( action_id &act, const tripoint_bub_ms &mo
 bool game::is_game_over()
 {
     map &here = get_map();
+    if( u.death_finalizing() || executions().restoring() || executions().processing_actions() ||
+        execution_combat::attack_in_progress() ) {
+        return false;
+    }
 
-    // The death events are sent once, below, when the death becomes final. This function runs
-    // several times per turn during deathcam, so it must not send them again for QUIT_WATCH or
-    // QUIT_DIED.
+    // Native finalization and presentation each latch once, including repeated deathcam queries.
     if( uquit == QUIT_WATCH ) {
         // deny player movement and dodging
         u.set_moves( 0 );
@@ -2949,10 +2955,7 @@ bool game::is_game_over()
         return false;
     }
     if( uquit == QUIT_DIED ) {
-        if( u.in_vehicle ) {
-            here.unboard_vehicle( u.pos_bub() );
-        }
-        u.place_corpse( &here );
+        u.place_final_corpse( here );
         return true;
     }
     if( uquit == QUIT_SUICIDE ) {
@@ -2965,52 +2968,51 @@ bool game::is_game_over()
     if( uquit != QUIT_NO ) {
         return true;
     }
-    // is_dead_state() already checks hp_torso && hp_head, no need to for loop it
-    if( u.is_dead_state() ) {
-        effect_on_conditions::prevent_death();
+    if( execution_fatal::pending( u ) ) {
+        u.set_moves( std::min( u.get_moves(), 0 ) );
+        return false;
+    }
+    if( !u.death_finalized() ) {
         if( !u.is_dead_state() ) {
+            u.reset_death_state();
             return false;
         }
-        // Like npc::die, send character_dies before the death is final, so EVENT EOCs can still
-        // use u_prevent_death on the avatar.
-        events().send<event_type::character_dies>( u.getID() );
-        if( !u.is_dead_state() ) {
-            u.clear_killer();
+        if( !u.finalize_death( u.get_killer() ) ) {
             return false;
         }
-        bury_screen();
-        effect_on_conditions::avatar_death();
-        if( !u.is_dead_state() ) {
-            return false;
-        }
-        Creature *player_killer = u.get_killer();
-        if( player_killer != nullptr ) {
-            // Make sure the killer still exists in game
-            player_killer = get_creature_if( [player_killer]( const Creature & c ) {
-                return &c == player_killer;
-            } );
-        }
-        if( player_killer && player_killer->as_character() ) {
-            events().send<event_type::character_kills_character>(
-                player_killer->as_character()->getID(), u.getID(), u.get_name(), "" );
-        }
-        events().send<event_type::avatar_dies>();
+    }
+    if( u.death_presentation_ == avatar::death_presentation::watching ) {
         Messages::deactivate();
-        if( get_option<std::string>( "DEATHCAM" ) == "always" ) {
-            uquit = QUIT_WATCH;
-        } else if( get_option<std::string>( "DEATHCAM" ) == "ask" ) {
-            uquit = query_yn( _( "Watch the last moments of your life…?" ) ) ?
-                    QUIT_WATCH : QUIT_DIED;
-        } else if( get_option<std::string>( "DEATHCAM" ) == "never" ) {
-            uquit = QUIT_DIED;
-        } else {
-            // Something funky happened here, just die.
-            dbg( D_ERROR ) << "no deathcam option given to options, defaulting to QUIT_DIED";
-            uquit = QUIT_DIED;
-        }
+        uquit = QUIT_WATCH;
         return is_game_over();
     }
-    return false;
+    // Native prevention/events have settled. Latch presentation before any blocking UI.
+    uquit = QUIT_DIED;
+    if( u.death_presentation_ == avatar::death_presentation::corpse_placed ) {
+        Messages::deactivate();
+        return true;
+    }
+    u.death_finalizing_ = true;
+    const on_out_of_scope leave_presentation( [&]() {
+        u.death_finalizing_ = false;
+    } );
+    if( u.death_presentation_ == avatar::death_presentation::pending ) {
+        u.death_presentation_ = avatar::death_presentation::presented;
+        if( !test_mode ) {
+            bury_screen();
+        } else {
+            events().send<event_type::game_avatar_death>( u.getID(), u.name, false, "" );
+        }
+    }
+    Messages::deactivate();
+    const std::string deathcam = get_option<std::string>( "DEATHCAM" );
+    if( deathcam == "always" || ( deathcam == "ask" && !test_mode &&
+                                  query_yn( _( "Watch the last moments of your life…?" ) ) ) ) {
+        uquit = QUIT_WATCH;
+        u.death_presentation_ = avatar::death_presentation::watching;
+    }
+    u.death_finalizing_ = false;
+    return is_game_over();
 }
 
 void game::bury_screen() const
@@ -4247,6 +4249,10 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
     creature_tracker &creatures = get_creature_tracker();
     if( !creatures.creature_at( tp ) ) {
         debugmsg( _( "Nothing at (%d,%d,%d) to knockback!" ), tp.x(), tp.y(), tp.z() );
+        return;
+    }
+    if( Creature *target = creatures.creature_at( tp ); execution_fatal::pending( *target ) ) {
+        executions().settle_fatal( *target, "external_motion" );
         return;
     }
     std::size_t force_remaining = traj.size();
@@ -9295,6 +9301,10 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     map &here = get_map();
     tripoint_bub_ms pos = c->pos_bub( here );
 
+    if( execution_fatal::pending( *c ) ) {
+        executions().settle_fatal( *c, "external_motion" );
+        return false;
+    }
     if( c->is_dead_state() ) {
         // Flinging a corpse causes problems, don't enable without testing
         return false;
@@ -10047,6 +10057,9 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     // even if saving refuses travel. Saving still precedes unboarding/unloading; ordinary
     // scene cancellation stays below.
     if( !executions().prepare_world_transition() ) {
+        return false;
+    }
+    if( player.death_finalized() || player.is_dead_state() ) {
         return false;
     }
     cleanup_dead();

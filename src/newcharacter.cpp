@@ -1010,6 +1010,7 @@ void Character::initialize( bool learn_recipes )
 
 void avatar::initialize( character_type type )
 {
+    reset_death_state();
     this->as_character()->initialize();
 
     for( const matype_id &ma : prof->ma_known() ) {

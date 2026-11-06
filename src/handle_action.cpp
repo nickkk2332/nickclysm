@@ -43,6 +43,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "faction.h"
 #include "field.h"
 #include "field_type.h"
@@ -3226,7 +3227,8 @@ bool game::do_regular_action( action_id &act, avatar &player_character,
 
 bool game::handle_action()
 {
-    if( uquit != QUIT_WATCH && incapacitation::unconscious( get_avatar() ) ) {
+    if( uquit != QUIT_WATCH && ( incapacitation::unconscious( get_avatar() ) ||
+                                 execution_fatal::pending( get_avatar() ) || get_avatar().death_finalized() ) ) {
         incapacitation::suppress_moves( get_avatar() );
         return false;
     }
@@ -3376,7 +3378,7 @@ bool game::handle_action()
                 return false;
             }
 
-            if( player_character.is_dead_state() ) {
+            if( player_character.is_dead_state() || player_character.death_finalized() ) {
                 // do not allow mouse actions while dead
                 return false;
             }
@@ -3447,7 +3449,7 @@ bool game::handle_action()
     }
 
     // actions allowed only while alive
-    if( !player_character.is_dead_state() ) {
+    if( !player_character.is_dead_state() && !player_character.death_finalized() ) {
         if( !do_regular_action( act, player_character, mouse_target ) ) {
             return false;
         }
@@ -3461,10 +3463,11 @@ bool game::handle_action()
 
     gamemode->post_action( act );
 
-    player_character.movecounter = ( !player_character.is_dead_state() ? ( before_action_moves -
-                                     player_character.get_moves() ) : 0 );
+    player_character.movecounter = ( !player_character.is_dead_state() &&
+                                     !player_character.death_finalized() ? ( before_action_moves -
+                                             player_character.get_moves() ) : 0 );
     dbg( D_INFO ) << string_format( "%s: [%d] %d - %d = %d", action_ident( act ),
                                     to_turn<int>( calendar::turn ), before_action_moves, player_character.movecounter,
                                     player_character.get_moves() );
-    return !player_character.is_dead_state();
+    return !player_character.is_dead_state() && !player_character.death_finalized();
 }

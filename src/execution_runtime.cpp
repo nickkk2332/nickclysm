@@ -335,7 +335,7 @@ struct execution_manager::impl {
         }
         Creature *actor = scene.actor.resolve_for_execution();
         Creature *target = scene.target.resolve_for_execution();
-        if( scene.fatal_reserved && target && target->is_avatar() ) {
+        if( scene.fatal_reserved && target && target->is_avatar() && !def.allow_avatar_fatal_target ) {
             return "unsupported_fatal_target";
         }
         if( !actor || ( !target && !scene.target_dead ) ) {
@@ -455,11 +455,18 @@ struct execution_manager::impl {
             target->killer = target->is_dead_state() && source && !source->is_fake() ? source.get() : nullptr;
         }
         if( target && target->is_dead_state() && !execution_fatal::finalized( *target ) ) {
-            target->die( &get_map(), source.get() );
+            if( avatar *player = target->as_avatar() ) {
+                player->finalize_death( source.get() );
+            } else {
+                target->die( &get_map(), source.get() );
+            }
         }
         scene.target_dead = target && execution_fatal::finalized( *target );
         if( target && !scene.target_dead ) {
             target->killer = nullptr; // Native NPC prevention may have rescued it inside die().
+            if( avatar *player = target->as_avatar() ) {
+                player->reset_death_state();
+            }
         }
         if( target && !scene.target_dead && target->as_character() ) {
             target->as_character()->recalc_sight_limits();
@@ -614,7 +621,8 @@ struct execution_manager::impl {
             // Native death prevention can rescue a target.
             scene.target_dead = who->is_dead_state() && !scene.fatal_reserved;
         }
-        if( who->is_avatar() && !who->is_dead_state() ) {
+        if( who->is_avatar() && !execution_fatal::finalized( *who ) &&
+            ( !who->is_dead_state() || scene.fatal_reserved ) ) {
             g->update_map( *who->as_character(), before.z() != who->pos_abs().z() );
         }
         who->set_moves( moves_before );
@@ -831,6 +839,22 @@ struct execution_manager::impl {
         }
         const execution_definition &def = *scene.view.definition;
         if( scene.fatal_reserved ) {
+            if( Creature *victim = scene.target.resolve_for_execution(); victim && victim->is_avatar() ) {
+                // Cancel pre-existing work only after the outer attack, with ownership installed.
+                victim->as_avatar()->clear_destination();
+                victim->as_avatar()->view_offset = tripoint_rel_ms::zero;
+                victim->as_avatar()->cancel_activity();
+                if( !scene.active() ) {
+                    return;
+                }
+                const std::string after_cancel = invalid( scene, false );
+                if( !after_cancel.empty() ) {
+                    finish( scene, after_cancel );
+                    return;
+                }
+            }
+        }
+        if( scene.fatal_reserved ) {
             Creature *victim = scene.target.resolve_for_execution();
             if( victim && !victim->is_dead_state() ) {
                 finish( scene, "rescued" );
@@ -928,7 +952,7 @@ void execution_manager::release_fatal_attack( int64_t id, bool successful )
 
 bool execution_manager::death_pending( const Creature &who ) const
 {
-    if( data->fatal_count == 0 || who.is_avatar() ) {
+    if( data->fatal_count == 0 ) {
         return false;
     }
     for( const auto &entry : data->instances ) {
@@ -1080,7 +1104,9 @@ execution_start_result execution_manager::start_impl( const execution_id &defini
     if( death_pending( *actor ) || death_pending( *target ) ) {
         return { 0, "fatal_target_busy" };
     }
-    if( fatal && ( actor->is_fake() || actor->is_hallucination() || target->is_avatar() ||
+    if( fatal && ( actor->is_fake() || actor->is_hallucination() ||
+                   ( target->is_avatar() && ( !def.allow_avatar_fatal_target ||
+                           g->uquit != QUIT_NO ) ) ||
                    target->is_fake() || target->is_hallucination() ||
                    ( actor->as_npc() && actor->as_npc()->marked_for_death ) ||
                    ( target->as_npc() && target->as_npc()->marked_for_death ) ||
@@ -1132,7 +1158,7 @@ execution_start_result execution_manager::start_impl( const execution_id &defini
         const Creature *who = role ? actor : target;
         if( needs_control( def, role ) ) {
             const Character *person = who->as_character();
-            if( person && !person->activity.is_null() ) {
+            if( person && !person->activity.is_null() && !( fatal && !role && who->is_avatar() ) ) {
                 return { 0, "busy" };
             }
             if( restrained( *who ) ) {
@@ -1443,7 +1469,7 @@ void execution_manager::process()
                 data->finish( scene, "rescued" );
                 continue;
             }
-            if( victim ) {
+            if( victim && !victim->is_avatar() ) {
                 // Rebuild transient lifetime holds after loading, before callbacks can remove actors.
                 if( !scene.fatal_target ) {
                     scene.fatal_target = victim;
