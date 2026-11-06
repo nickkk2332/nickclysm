@@ -722,6 +722,37 @@ Getting there needed four test fixes (commits `ae6b8464`, `2d15a016`). Five test
 - With broken legs you stay prone until you choose to stand, and running no longer turns itself back on after running out of stamina (CHAR-B03).
 - NPCs reload mid-fight, fire UPS energy guns, and hold fire when a friend is in the line of fire (NPC-B01).
 
+### Quick EOC/JSON fixes
+
+A round of small fixes from the JSON and EOC chapters: crashes, documented features that silently did nothing, docs that had drifted from the code, and missing EOC reads. The regression tests are in `tests/audit_quick_fixes_{data,eoc,math,world,items}_test.cpp`, with their fixtures in `data/mods/TEST_DATA/audit_quick_fixes_*.json`. Review fixes are in `9c34f451`.
+
+| ID | Status | Commits | Regression test |
+|---|---|---|---|
+| EVT-J01 | fixed | `91724708` | `audit_quick_fixes_data_test.cpp`. The triffid heart's death spell now queues `roots_die` |
+| MAGIC-J04 | fixed | `91724708` | `audit_quick_fixes_data_test.cpp`. `timed_event` names match in any case; unknown names are reported at load |
+| DATA-J03 | fixed | `91724708` | `audit_quick_fixes_data_test.cpp` |
+| CRAFT-J04 | fixed | `91724708` | `audit_quick_fixes_data_test.cpp` |
+| EOC-J02 | fixed | `3fb1f946` | `audit_quick_fixes_eoc_test.cpp`. `run_for_npcs` still covers loaded NPCs only; the docs now say so |
+| ITEM-J01 | fixed | `3fb1f946`, `9c34f451` | `audit_quick_fixes_eoc_test.cpp`. New `u_has_fault`, `u_has_fault_of_type`, `u_remove_fault`, `u_remove_fault_of_type` |
+| INV-J04 | fixed | `3fb1f946`, `9c34f451` | `audit_quick_fixes_eoc_test.cpp` |
+| EVT-J02 | fixed | `3fb1f946` | `audit_quick_fixes_eoc_test.cpp` |
+| EVT-J03 | fixed | `3fb1f946` | `audit_quick_fixes_eoc_test.cpp` compares the doc table with `event.h` |
+| MATH-J01 | fixed | `3fb1f946`, `9c34f451` | `audit_quick_fixes_math_test.cpp`. `spell_difficulty()` stays read-only (the docs point to `spellcasting_adjustment`); `val('weight')`/`val('volume')` were removed from the docs, `weight()`/`volume()` cover them |
+| MATH-J02 | already covered | `3fb1f946` (doc link) | `npc_personality()` from NPC-J05 reads and sets it |
+| MUT-J04 | fixed | `3fb1f946` | `audit_quick_fixes_math_test.cpp` |
+| ACT-J04 | fixed | `3fb1f946` | `audit_quick_fixes_math_test.cpp`. New `activity_moves_left()` |
+| VINT-J04 | fixed | `3fb1f946` | `audit_quick_fixes_math_test.cpp` |
+| LOOP-J02 | partly fixed | `104c5f5b`, `9c34f451` | `audit_quick_fixes_world_test.cpp`. Hooks run on teleports and vehicle travel, with context, and stop after 8 crossings in a row. Still open: starting a game doesn't run the start OMT's `entry_eoc` |
+| OMAP-J02 | fixed | `104c5f5b` | `audit_quick_fixes_world_test.cpp` |
+| LOOP-J03 | fixed | `104c5f5b` | `audit_quick_fixes_world_test.cpp` |
+| VINT-J03 | fixed | `104c5f5b` | `audit_quick_fixes_world_test.cpp` |
+| USE-J03 | fixed | `8b086ee3` | `audit_quick_fixes_items_test.cpp` |
+| USE-J04 | fixed | `8b086ee3` | `audit_quick_fixes_items_test.cpp` (`place_npc` radius); the doc examples were checked by loading them |
+| MONDT-J03 | fixed | `8b086ee3`, `9c34f451` | `audit_quick_fixes_items_test.cpp` |
+| MONDT-J05 | partly fixed | `8b086ee3` | `audit_quick_fixes_items_test.cpp`. The death EOC gets `loc` and `overkill`. Still open: it runs before the corpse exists, and `monster_takes_damage` has no damage type or body part |
+
+**Behaviour changes.** `avatar_enters_omt` EVENT EOCs and OMT entry/exit EOCs now also run when a teleport or a vehicle moves the avatar into another OMT, so content keyed to entering a place (in Aftershock, the smuggler ravine's pirates turn hostile on entry unless you're allowed in) now reacts to driving in too. The triffid heart's death now removes the root walls and sends `destroys_triffid_grove`, as intended. A butchery requirement with too few creature sizes is a load error instead of a crash at the butcher menu.
+
 ## Cross-cutting themes
 
 Many findings in different chapters share a root cause. Fixing the cause once is usually cheaper than fixing each finding on its own, and it stops the same mistake from coming back.
