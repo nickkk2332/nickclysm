@@ -108,6 +108,7 @@
 #include "execution_combat.h"
 #include "execution_runtime.h"
 #include "ability_runtime.h"
+#include "damage_transaction.h"
 #include "faction.h"
 #include "fault.h"
 #include "field.h"
@@ -4224,6 +4225,7 @@ void game::cleanup_dead()
     }
 
     critter_died = false;
+    get_damage_transactions().release_settled_sources();
 }
 
 /* Knockback target at t by force number of tiles in direction from s to t

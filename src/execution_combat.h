@@ -305,6 +305,7 @@ class damage_scope
         void set_weakpoint( const std::string &id );
         void arm_hp_capture( bodypart_id bp, const dealt_damage_instance &dealt );
         void disarm_hp_capture();
+        global_variables::impl_t context() const;
     private:
         friend void record_hp_loss( const Creature &, int );
         friend bool is_impact_damage( const Creature *target );

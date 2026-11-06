@@ -2,8 +2,8 @@
   {
     "type": "MOD_INFO",
     "id": "powers_demo",
-    "name": "Powers lifecycle demonstration",
-    "description": "An interruptible charged force strike shared by player EOCs and a monster special attack.",
+    "name": "Powers demonstration",
+    "description": "An interruptible charged force strike and a mana shield with exact absorption and overflow.",
     "category": "content",
     "dependencies": [ "dda" ]
   }

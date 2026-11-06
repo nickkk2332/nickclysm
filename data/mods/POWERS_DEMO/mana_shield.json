@@ -1,0 +1,47 @@
+[
+  {
+    "type": "effect_type",
+    "id": "power_demo_mana_shield",
+    "name": [ "mana shield" ],
+    "desc": [ "Incoming damage after armor drains mana first.  Each mana absorbs one point; excess damage reaches you." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "power_demo_mana_shield",
+    "required_effect": "power_demo_mana_shield",
+    "defender_kinds": [ "avatar", "npc" ],
+    "stage": "after_armor",
+    "actions": [ { "operation": "absorb", "resource": "mana", "cost_per_damage": 1 } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_MANA_SHIELD",
+    "effect": [
+      {
+        "if": { "u_has_effect": "power_demo_mana_shield" },
+        "then": [ { "u_lose_effect": "power_demo_mana_shield" }, { "u_message": "Your mana shield fades." } ],
+        "else": [
+          { "u_add_effect": "power_demo_mana_shield", "duration": "1 hour" },
+          { "u_message": "A mana shield surrounds you.  Each mana absorbs one point of incoming damage after armor." }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_shield_focus",
+    "name": { "str": "mana shield focus", "str_pl": "mana shield foci" },
+    "description": "Activate to toggle a mana shield for up to one hour.  It spends your existing mana, without granting any.  Ten mana absorbs ten points from a 25-point hit and lets 15 through.  Open the execution and ability inspector to see the packet and payment.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_blue",
+    "use_action": {
+      "type": "effect_on_conditions",
+      "menu_text": "Toggle mana shield",
+      "effect_on_conditions": [ "EOC_POWER_DEMO_MANA_SHIELD" ]
+    }
+  }
+]

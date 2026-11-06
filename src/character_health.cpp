@@ -41,6 +41,7 @@
 #include "event_bus.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
+#include "damage_transaction.h"
 #include "ability_runtime.h"
 #include "execution_combat.h"
 #include "field_type.h"
@@ -2774,6 +2775,7 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
         mod_part_hp_cur( part_to_damage, - dam_to_bodypart );
     }
 
+    record_damage_transaction_hp_loss( *this, dam_to_bodypart );
     execution_combat::record_hp_loss( *this, dam_to_bodypart );
     incapacitation::wake_on_damage( *this, dam_to_bodypart );
     if( g ) {
@@ -2886,6 +2888,7 @@ void Character::apply_random_wound_from_damage( bodypart_id bp, const dealt_dama
 dealt_damage_instance Character::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &d, const weakpoint_attack &attack, const weakpoint & )
 {
+    const damage_participant_guard participants( source, *this );
     const execution_combat::damage_barrier execution_damage;
     const map &here = get_map();
 
@@ -2895,6 +2898,9 @@ dealt_damage_instance Character::deal_damage( Creature *source, bodypart_id bp,
 
     //damage applied here
     dealt_damage_instance dealt_dams = Creature::deal_damage( source, bp, d, attack );
+    if( !participants.valid() ) {
+        return dealt_dams;
+    }
     //block reduction should be by applied this point
     int dam = dealt_dams.total_damage();
 

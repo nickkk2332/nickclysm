@@ -1,5 +1,6 @@
 #include "magic.h"
 #include "spell_cast_context.h"
+#include "damage_transaction.h"
 
 #include <algorithm>
 #include <cmath>
@@ -2414,6 +2415,7 @@ void spell::cast_spell_effect( const tripoint_bub_ms &target ) const
 
 void spell::cast_spell_effect( Creature &source, const tripoint_bub_ms &target ) const
 {
+    damage_context_scope damage_context( {}, false );
     const execution_combat::effect_scope execution_effect( source, *this, true );
     Character *caster = source.as_character();
     if( caster ) {
@@ -2424,6 +2426,10 @@ void spell::cast_spell_effect( Creature &source, const tripoint_bub_ms &target )
                 this->damage( source ) );
     }
 
+    global_variables::impl_t facts = spell_cast_context::get( *this );
+    const bool trace = !facts.empty();
+    facts["damage_spell"] = diag_value{ id().str() };
+    damage_context.set( std::move( facts ), trace );
     type->effect( *this, source, target );
 }
 

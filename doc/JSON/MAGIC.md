@@ -1226,3 +1226,11 @@ Character status value  | Description
   { "incoming_damage_mod": [ { "type": "biological", "multiply": -1.4 } ] } // subtracts 100 percent of incoming biological damage
   { "incoming_damage_mod": [ { "type": "acid", "multiply": 1.4 } ] } // increases incoming acid damage by 140%
 ```
+
+### Typed damage defenses
+
+Spell damage passing through native `deal_damage` can encounter opt-in
+[damage rules](DAMAGE_TRANSACTIONS.md). Rules can filter the real spell ID,
+absorb a mixed packet against available resources, or reflect an attributed
+child packet. Healing, raw HP changes and non-damage spell effects are outside
+this contract.

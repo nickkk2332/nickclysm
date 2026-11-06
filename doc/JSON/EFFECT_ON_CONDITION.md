@@ -4140,6 +4140,13 @@ Removes all wounds from all body parts
   }
 ```
 
+#### `deal_damage_packet`
+
+Dispatch a complete native typed packet with explicit target, source and
+instigator roles. Armor and opt-in defenses apply. See
+[DAMAGE_TRANSACTIONS.md](DAMAGE_TRANSACTIONS.md#explicit-packet-eoc) for the
+schema, actor convention, validation and packet result outputs.
+
 #### `u_deal_damage`, `npc_deal_damage`
 
 Deal damage, the same way melee attack deals damage; it can't be dodged, but it can be mitigated by armor

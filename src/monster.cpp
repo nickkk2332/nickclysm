@@ -35,6 +35,7 @@
 #include "event_bus.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
+#include "damage_transaction.h"
 #include "ability_runtime.h"
 #include "execution_combat.h"
 #include "explosion.h"
@@ -2556,6 +2557,7 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
     reset_pathfinding_cd();
     const int hp_before = hp;
     hp -= dam;
+    record_damage_transaction_hp_loss( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
     execution_combat::record_hp_loss( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
     incapacitation::wake_on_damage( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
 

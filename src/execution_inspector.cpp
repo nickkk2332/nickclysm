@@ -8,6 +8,7 @@
 #include "calendar.h"
 #include "ability_runtime.h"
 #include "cursesdef.h"
+#include "damage_transaction.h"
 #include "execution_runtime.h"
 #include "game.h"
 #include "output.h"
@@ -124,10 +125,59 @@ std::string execution_inspector::format_ability( const ability_view &v )
     return out.str();
 }
 
+std::string execution_inspector::format_damage( const damage_transaction_view &v )
+{
+    std::ostringstream out;
+    out << "Damage #" << v.id << "\nstate: " << v.state << "\nreason: " << v.reason
+        << "\nroot: " << v.root << " / parent: " << v.parent << " / depth: " << v.depth
+        << "\nsource UID: " << v.source.id << " / " << v.source.dimension.str()
+        << "\ninstigator UID: " << v.instigator.id << " / " << v.instigator.dimension.str()
+        << "\noriginal source UID: " << v.original_source.id << " / " << v.original_source.dimension.str()
+        << "\ndefender UID: " << v.defender.id << " / " << v.defender.dimension.str()
+        << "\nbodypart: " << v.bodypart.str() << "\nincoming budget: " << v.incoming
+        << "\narmor evaluated: " << v.armor_evaluated << "\nafter armor budget: " << v.after_armor
+        << "\noutgoing budget: " << v.outgoing << "\nabsorbed: " << v.absorbed
+        << "\nreflected: " << v.reflected << "\nHP committed: " << v.hp_committed
+        << "\nactual HP loss: " << v.hp_loss << "\nrecords truncated: " << v.truncated;
+    const auto packet = [&]( const char *label, const auto & units ) {
+        out << "\n\n" << label << '\n';
+        for( const auto &unit : units ) {
+            out << unit.type.str() << ": amount=" << unit.amount << " / penetration="
+                << unit.armor_penetration << " / armor multiplier=" << unit.armor_multiplier
+                << " / damage multiplier=" << unit.damage_multiplier
+                << " / unconditional multiplier=" << unit.unconditional_multiplier << '\n';
+        }
+    };
+    packet( "Incoming components", v.incoming_components );
+    packet( "After armor components", v.after_armor_components );
+    packet( "Outgoing components", v.outgoing_components );
+    out << "\nRecorded rule decisions (never reevaluated)\n";
+    for( const auto &rule : v.rules ) {
+        out << rule.rule << " / " << rule.stage << ": " << rule.reason << " / "
+            << rule.before << " -> " << rule.after << " / absorbed=" << rule.absorbed
+            << " / reflected=" << rule.reflected;
+        for( const auto &payment : rule.payments ) {
+            out << " / paid " << payment.first << '=' << payment.second;
+        }
+        out << '\n';
+    }
+    out << "\nChildren:";
+    for( const auto child : v.children ) {
+        out << ' ' << child;
+    }
+    out << "\n\nCaptured context\n";
+    values( out, v.context );
+    return out.str();
+}
+
 void execution_inspector::show()
 {
     while( true ) {
         std::vector<std::pair<std::string, std::string>> rows;
+        for( const auto &damage : get_damage_transactions().inspect_all() ) {
+            rows.emplace_back( string_format( _( "Damage #%lld: %s (%s)" ), damage.id,
+                                              damage.state, damage.reason ), format_damage( damage ) );
+        }
         for( const auto &ability : g->abilities().inspect_all() ) {
             rows.emplace_back( string_format( _( "Ability #%lld: %s [%s] %s" ), ability.id,
                                               ability.ability.str(), ability.state, ability.reason ), format_ability( ability ) );
@@ -142,11 +192,11 @@ void execution_inspector::show()
                                               it->selected, it->reason ), format_trigger( *it ) );
         }
         uilist menu;
-        menu.title = _( "Execution and ability inspector (read-only)" );
+        menu.title = _( "Execution and powers inspector (read-only)" );
         menu.text =
-            _( "Active/recent abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
+            _( "Active/recent damage, abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
         if( rows.empty() ) {
-            menu.addentry( -1, false, -1, _( "No recorded abilities, execution scenes or contacts." ) );
+            menu.addentry( -1, false, -1, _( "No recorded damage, abilities, execution scenes or contacts." ) );
         }
         for( size_t n = 0; n < rows.size(); ++n ) {
             menu.addentry( static_cast<int>( n ), true, -1, rows[n].first );

@@ -15,6 +15,7 @@
 #include "global_vars.h"
 
 class Creature;
+class damage_transaction_manager;
 class JsonObject;
 class JsonOut;
 struct dialogue;
@@ -98,6 +99,7 @@ class ability_manager
         void end_restore();
         bool restoring() const;
         bool processing() const;
+        damage_transaction_manager &damage_transactions();
         void drain_starts();
         void process();
         bool controls( const Creature &who ) const;
