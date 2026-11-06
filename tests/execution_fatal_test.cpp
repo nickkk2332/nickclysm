@@ -412,6 +412,45 @@ TEST_CASE( "fatal_execution_uses_real_character_and_monster_melee_producers",
     CHECK( target.get_killer() == source );
 }
 
+// The documented contract: a bleed the hit opens that takes the last HP before the hit's own HP
+// write is ordinary native death, never a fatal execution. Whether a hit bleeds, and whether its
+// first point lands at once, is random, so attack fresh 1-HP victims until one dies that way.
+TEST_CASE( "fatal_execution_is_not_reserved_when_the_hits_own_bleed_kills_first",
+           "[executions][fatal_execution][melee]" )
+{
+    struct fatal_damage : event_subscriber {
+        using event_subscriber::notify;
+        int damage = -1;
+        void notify( const cata::event &e ) override {
+            if( e.type() == event_type::monster_takes_damage && e.get<bool>( "dies" ) ) {
+                damage = e.get<int>( "damage" );
+            }
+        }
+    } observed;
+    get_event_bus().subscribe( &observed );
+    rng_set_engine_seed( 2026 );
+    bool bleed_killed = false;
+    for( int attempt = 0; attempt < 200 && !bleed_killed; ++attempt ) {
+        fatal_world world;
+        Creature &target = victim( "monster" );
+        avatar &you = get_avatar();
+        equip( you );
+        you.set_str_base( 30 );
+        you.set_dex_base( 30 );
+        you.reset_stats();
+        observed.damage = -1;
+        for( int n = 0; n < 20 && !target.is_dead_state(); ++n ) {
+            you.melee_attack_abstract( target, false, tec_none );
+        }
+        REQUIRE( target.is_dead_state() );
+        CAPTURE( attempt, observed.damage );
+        // The stab itself is far stronger than the bleed's one point.
+        bleed_killed = observed.damage == 1;
+        CHECK( execution_fatal::pending( target ) != bleed_killed );
+    }
+    CHECK( bleed_killed );
+}
+
 TEST_CASE( "fatal_execution_checked_movement_retains_collision_and_raw_fatal_health",
            "[executions][fatal_execution][map]" )
 {
