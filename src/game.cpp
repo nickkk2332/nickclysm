@@ -734,6 +734,7 @@ void game::setup()
     next_mission_id = 1;
     next_item_uid = 1;
     next_monster_uid = 1;
+    next_vehicle_uid = 1;
     // Setup replaces a session; it must not finalize old injuries into the new map/checkpoint.
     executions().reset_for_load();
     executions().end_restore();
@@ -3849,6 +3850,22 @@ void game::reserve_monster_uid( int64_t uid )
         throw JsonError( "Invalid saved monster identity" );
     }
     next_monster_uid = std::max( next_monster_uid, uid + 1 );
+}
+
+int64_t game::assign_vehicle_uid()
+{
+    if( next_vehicle_uid <= 0 || next_vehicle_uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Vehicle identity space exhausted" );
+    }
+    return next_vehicle_uid++;
+}
+
+void game::reserve_vehicle_uid( int64_t uid )
+{
+    if( uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Invalid saved vehicle identity" );
+    }
+    next_vehicle_uid = std::max( next_vehicle_uid, uid + 1 );
 }
 
 int64_t game::assign_item_uid()

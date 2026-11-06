@@ -3953,6 +3953,9 @@ void vehicle::deserialize( const JsonObject &data )
     data.read( "moveDir", mdir );
     data.read( "values", values );
     data.read( "chat_topics", chat_topics );
+    int64_t saved_uid = 0;
+    data.read( "vehicle_uid", saved_uid );
+    persistent_uid.load( saved_uid );
     int turn_dir_int;
     data.read( "turn_dir", turn_dir_int );
     turn_dir = units::from_degrees( turn_dir_int );
@@ -4071,6 +4074,9 @@ void vehicle::serialize( JsonOut &json ) const
     json.member( "om_id", om_id );
     json.member( "values", values );
     json.member( "chat_topics", chat_topics );
+    if( persistent_uid.peek() != 0 ) {
+        json.member( "vehicle_uid", persistent_uid.peek() );
+    }
     json.member( "faceDir", std::lround( to_degrees( face.dir() ) ) );
     json.member( "moveDir", std::lround( to_degrees( move.dir() ) ) );
     json.member( "turn_dir", std::lround( to_degrees( turn_dir ) ) );

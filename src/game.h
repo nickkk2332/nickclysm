@@ -730,6 +730,8 @@ class game
         int64_t assign_item_uid();
         int64_t assign_monster_uid();
         void reserve_monster_uid( int64_t uid );
+        int64_t assign_vehicle_uid();
+        void reserve_vehicle_uid( int64_t uid );
         execution_manager &executions();
         ability_manager &abilities();
         // Keeps the uids assign_item_uid hands out above one in use, e.g. read from a save
@@ -1316,6 +1318,7 @@ class game
         int next_mission_id = 0; // NOLINT(cata-serialize)
         int64_t next_item_uid = 1; // NOLINT(cata-serialize)
         int64_t next_monster_uid = 1; // NOLINT(cata-serialize)
+        int64_t next_vehicle_uid = 1; // NOLINT(cata-serialize)
 
         std::chrono::seconds time_played_at_last_load; // NOLINT(cata-serialize)
         // NOLINTNEXTLINE(cata-serialize)
