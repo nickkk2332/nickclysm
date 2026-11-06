@@ -189,3 +189,11 @@ The `powers_demo` mod supplies `power_demo_shield_focus` to toggle an ordinary
 one-hour mana shield, alongside the shared charged force strike. It grants no
 mana. See also [ABILITIES.md](ABILITIES.md) and the
 [implementation record](../../Audit/powers/07-damage-transactions-milestone.md).
+
+## Owned applications and shared budgets
+
+A rule can require an active `required_application`, and absorption/reflection
+can spend a named [custom resource](POWER_OWNERSHIP.md). Application queries
+compose independent source magnitudes; available resources exclude managed
+windup reservations. This adds owned runtime contributions and shared
+accounting without changing the documented armor/HP boundary.

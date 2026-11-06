@@ -6,6 +6,8 @@ The first expansion slice now has an opt-in [shared ability lifecycle](06-abilit
 
 The next slice adds [damage transactions and defenses](07-damage-transactions-milestone.md): ordered typed edits, exact-capacity mana shields, bounded reflection and recorded packet results. See the [damage authoring contract](../../doc/JSON/DAMAGE_TRANSACTIONS.md). Resource ownership and the broader physical/AI expansion remain open.
 
+The third milestone adds [resources, charge groups and owned sustained applications](08-owned-powers-milestone.md), including source-specific dispelling and shared reservation/defense accounting. See the [power ownership contract](../../doc/JSON/POWER_OWNERSHIP.md).
+
 **Question:** How far can current Nickclysm JSON and EOCs take superhero brawls, archwizards, anime fighters, and similar ability-heavy play? Which additions would remove the most important limits?
 
 **Snapshot:** `b32c9baea25f62478228c6a91cbbf9f356e4e8a3` (`master`, inspected 2026-11-03). This is an audit and a proposed direction, not an implementation. No engine, gameplay JSON, or tests were changed for this report.

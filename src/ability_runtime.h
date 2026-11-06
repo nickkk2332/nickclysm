@@ -16,6 +16,7 @@
 
 class Creature;
 class damage_transaction_manager;
+class power_manager;
 class JsonObject;
 class JsonOut;
 struct dialogue;
@@ -70,6 +71,9 @@ struct ability_view {
     bool costs_committed = false;
     int paid_moves = 0;
     int paid_energy = 0;
+    int paid_charges = 0;
+    bool energy_reserved = false;
+    power_cooldown_id cooldown;
     bool effect_completed = false;
     bool contacts_truncated = false;
     std::vector<ability_contact> contacts;
@@ -98,8 +102,10 @@ class ability_manager
         void reset_for_load();
         void end_restore();
         bool restoring() const;
+        bool stopping() const;
         bool processing() const;
         damage_transaction_manager &damage_transactions();
+        power_manager &powers();
         void drain_starts();
         void process();
         bool controls( const Creature &who ) const;

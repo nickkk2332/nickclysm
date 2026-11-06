@@ -11,6 +11,7 @@
 #include "cata_assert.h"
 #include "debug.h"
 #include "execution_fatal.h"
+#include "power_runtime.h"
 #include "flood_fill.h"
 #include "game.h"
 #include "map.h"
@@ -357,6 +358,7 @@ void creature_tracker::remove_dead()
     for( auto iter = monsters_list.begin(); iter != monsters_list.end(); ) {
         monster *const critter = iter->get();
         if( critter->is_dead() && !execution_fatal::pending( *critter ) ) {
+            get_powers().retire_actor( *critter );
             remove_from_location_map( *critter );
             erase_monster_uid( monsters_by_uid, *critter );
             iter = monsters_list.erase( iter );

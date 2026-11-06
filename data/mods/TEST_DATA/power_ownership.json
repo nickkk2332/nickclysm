@@ -1,0 +1,201 @@
+[
+  {
+    "type": "power_resource",
+    "id": "test_power_focus",
+    "name": "focus fixture",
+    "capacity": 100
+  },
+  {
+    "type": "power_resource",
+    "id": "test_power_regen",
+    "name": "regeneration fixture",
+    "capacity": 20,
+    "regen_amount": 3,
+    "regen_ticks": 2
+  },
+  {
+    "type": "power_resource",
+    "id": "test_power_avatar_only",
+    "name": "avatar resource fixture",
+    "capacity": 100,
+    "actor_kinds": [ "avatar" ]
+  },
+  {
+    "type": "power_cooldown",
+    "id": "test_power_group",
+    "name": "charge fixture",
+    "max_charges": 2,
+    "recharge_ticks": 3
+  },
+  {
+    "type": "power_cooldown",
+    "id": "test_power_lock",
+    "name": "cooldown fixture",
+    "max_charges": 2,
+    "recharge_ticks": 5,
+    "cooldown_ticks": 2
+  },
+  {
+    "type": "power_application",
+    "id": "test_power_ward",
+    "name": "owned ward fixture",
+    "magnitude": 7,
+    "upkeep": { "resource": "test_power_focus", "amount": 1 },
+    "tags": [ "ward" ],
+    "locals": { "ticks": 0 },
+    "on_start": [
+      {
+        "id": "EOC_TEST_POWER_START",
+        "effect": [
+          { "math": [ "power_starts += 1" ] },
+          { "math": [ "u_power_owner_seen += 1" ] },
+          { "math": [ "n_power_target_seen += 1" ] }
+        ]
+      }
+    ],
+    "on_tick": [ { "id": "EOC_TEST_POWER_TICK", "effect": [ { "math": [ "power_ticks += 1" ] }, { "math": [ "_ticks += 1" ] } ] } ],
+    "on_end": [ { "id": "EOC_TEST_POWER_END", "effect": [ { "math": [ "power_ends += 1" ] } ] } ]
+  },
+  {
+    "type": "power_application",
+    "id": "test_power_mirror",
+    "copy-from": "test_power_ward",
+    "name": "owned mirror fixture",
+    "magnitude": 0.5,
+    "tags": [ "mirror" ],
+    "upkeep": { "resource": "test_power_focus", "amount": 2 }
+  },
+  {
+    "type": "power_application",
+    "id": "test_power_short",
+    "copy-from": "test_power_ward",
+    "name": "short ward fixture",
+    "duration_ticks": 3,
+    "start_cost": { "resource": "test_power_focus", "amount": 5 }
+  },
+  {
+    "type": "power_application",
+    "id": "test_power_interrupt",
+    "copy-from": "test_power_ward",
+    "name": "concentration fixture",
+    "interrupt_damage": true,
+    "interrupt_incapacitated": true,
+    "interrupt_displacement": true
+  },
+  {
+    "type": "power_application",
+    "id": "test_power_recursive",
+    "copy-from": "test_power_ward",
+    "name": "recursive fixture",
+    "max_per_owner": 128,
+    "on_start": [ { "id": "EOC_TEST_POWER_RECURSIVE", "effect": [ { "apply_power_application": { "id": "test_power_recursive" } } ] } ],
+    "on_end": [
+      {
+        "id": "EOC_TEST_POWER_RECURSIVE_END",
+        "effect": [ { "apply_power_application": { "id": "test_power_recursive" } }, { "math": [ "power_ends += 1" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "power_application",
+    "id": "test_power_hook",
+    "copy-from": "test_power_ward",
+    "name": "callback fixture",
+    "start_cost": { "resource": "test_power_focus", "amount": 5 },
+    "upkeep": { "resource": "test_power_focus", "amount": 2 },
+    "on_tick": [
+      {
+        "id": "EOC_TEST_POWER_DAMAGE_HOOK",
+        "effect": [ { "deal_damage_packet": { "target": "u", "source": "none", "damage": [ { "damage_type": "pure", "amount": 1 } ] } } ]
+      }
+    ]
+  },
+  {
+    "type": "power_application",
+    "id": "test_power_transition",
+    "copy-from": "test_power_ward",
+    "name": "transition fixture",
+    "on_end": [
+      {
+        "id": "EOC_TEST_POWER_TRANSITION_END",
+        "effect": [
+          { "apply_power_application": { "id": "test_power_ward" } },
+          { "request_ability": { "id": "test_ability_strike" } },
+          { "start_execution": "test_ability_transition_execution" }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_power_ward_defense",
+    "required_application": "test_power_ward",
+    "actions": [
+      {
+        "operation": "absorb",
+        "resource": "none",
+        "maximum": { "math": [ "u_power_application('test_power_ward', 'field': 'magnitude')" ] }
+      }
+    ]
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_power_mirror_defense",
+    "required_application": "test_power_mirror",
+    "actions": [ { "operation": "reflect", "value": 0.5 } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_power_resource_shield",
+    "name": [ "resource shield fixture" ],
+    "desc": [ "Enables a resource shield fixture." ],
+    "max_intensity": 1
+  },
+  {
+    "type": "damage_rule",
+    "id": "test_power_resource_shield",
+    "required_effect": "test_power_resource_shield",
+    "actions": [ { "operation": "absorb", "resource": "test_power_focus" } ]
+  },
+  {
+    "type": "ability",
+    "id": "test_power_charged",
+    "copy-from": "test_ability_strike",
+    "name": "resource ability fixture",
+    "interrupt_damage": false,
+    "energy_cost": { "resource": "test_power_focus", "amount": 20 },
+    "reserve_energy": true,
+    "cooldown": "test_power_group"
+  },
+  {
+    "type": "ability",
+    "id": "test_power_mana_reserve",
+    "copy-from": "test_power_charged",
+    "name": "mana reservation fixture",
+    "energy_cost": { "resource": "mana", "amount": 20 }
+  },
+  {
+    "type": "ability",
+    "id": "test_power_instant",
+    "copy-from": "test_power_charged",
+    "name": "charge ability fixture",
+    "windup_ticks": 0,
+    "allow_effect_only": true,
+    "energy_cost": { "resource": "none", "amount": 0 },
+    "reserve_energy": false
+  },
+  {
+    "type": "ability",
+    "id": "test_power_locked",
+    "copy-from": "test_power_instant",
+    "name": "locked ability fixture",
+    "cooldown": "test_power_lock"
+  },
+  {
+    "type": "ability",
+    "id": "test_power_cancel",
+    "copy-from": "test_power_charged",
+    "name": "cancelled reservation fixture",
+    "before_release": [ { "id": "EOC_TEST_POWER_CANCEL", "effect": [ { "cancel_ability": { "context_val": "ability_instance" } } ] } ]
+  }
+]

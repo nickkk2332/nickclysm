@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "translation.h"
+#include "power.h"
 #include "type_id.h"
 #include "global_vars.h"
 
@@ -33,6 +34,9 @@ struct ability_definition {
     int move_cost = 100;
     std::string energy = "none";
     int energy_cost = 0;
+    bool reserve_energy = false;
+    power_cooldown_id cooldown;
+    int charge_cost = 1;
     spell_id spell;
     int spell_level = 0;
     std::vector<effect_on_condition_id> eocs;

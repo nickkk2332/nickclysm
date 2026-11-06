@@ -109,6 +109,7 @@
 #include "execution_runtime.h"
 #include "ability_runtime.h"
 #include "damage_transaction.h"
+#include "power_runtime.h"
 #include "faction.h"
 #include "fault.h"
 #include "field.h"
@@ -4202,6 +4203,7 @@ void game::cleanup_dead()
     for( const auto &n : critter_tracker->active_npc ) {
         if( n->is_dead() && !execution_fatal::pending( *n ) ) {
             n->die( &here, nullptr ); // make sure this has been called to create corpses etc.
+            get_powers().retire_actor( *n );
             npc_is_dead = true;
         }
     }

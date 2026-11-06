@@ -28,6 +28,7 @@
 #include "map.h"
 #include "memory_fast.h"
 #include "player_activity.h"
+#include "power_runtime.h"
 #include "rng.h"
 #include "spell_cast_context.h"
 #include "talker.h"
@@ -48,6 +49,7 @@ struct ability_instance {
     int move_cost = 0;
     int energy_cost = 0;
     std::string energy;
+    int charge_cost = 1;
     std::string cancel_reason;
 
     bool active() const {
@@ -75,17 +77,10 @@ shared_ptr_fast<Creature> hold( const creature_ref &ref )
     return who ? g->shared_from( *who ) : nullptr;
 }
 
-std::string resource_check( const Creature &caster, const std::string &resource, int cost )
+std::string resource_check( const Creature &caster, const std::string &resource, int cost,
+                            int64_t reservation = 0 )
 {
-    if( resource == "none" || cost == 0 ) {
-        return {};
-    }
-    const Character *person = caster.as_character();
-    if( !person || ( resource == "stamina" && person->is_npc() ) ) {
-        return "unsupported_resource";
-    }
-    const int available = resource == "mana" ? person->magic->available_mana() : person->get_stamina();
-    return available >= cost ? "" : "insufficient_energy";
+    return get_powers().check_cost( caster, resource, cost, reservation );
 }
 
 std::string native_check( const ability_request &request, tripoint_abs_ms &destination )
@@ -153,6 +148,7 @@ std::string native_check( const ability_request &request, tripoint_abs_ms &desti
 
 struct ability_manager::impl {
     damage_transaction_manager damage;
+    power_manager powers;
     std::map<int64_t, ability_instance> instances;
     std::map<int64_t, int> root_requests;
     int64_t next_id = 1;
@@ -196,7 +192,13 @@ struct ability_manager::impl {
                     return "caster_busy";
                 }
             }
-            return resource_check( caster, instance.energy, instance.energy_cost );
+            if( v.energy_reserved && !powers.reservation_matches( v.id, v.caster, instance.energy,
+                    instance.energy_cost ) ) {
+                return "reservation_lost";
+            }
+            const std::string cost = resource_check( caster, instance.energy, instance.energy_cost,
+                                     v.energy_reserved ? v.id : 0 );
+            return cost.empty() ? powers.check_charge( caster, v.cooldown, instance.charge_cost ) : cost;
         }
         return {};
     }
@@ -223,6 +225,9 @@ struct ability_manager::impl {
         d.set_value( "ability_costs_committed", v.costs_committed ? 1.0 : 0.0 );
         d.set_value( "ability_paid_moves", v.paid_moves );
         d.set_value( "ability_paid_energy", v.paid_energy );
+        d.set_value( "ability_paid_charges", v.paid_charges );
+        d.set_value( "ability_energy_reserved", v.energy_reserved ? 1.0 : 0.0 );
+        d.set_value( "ability_cooldown", v.cooldown.str() );
         d.set_value( "ability_effect_completed", v.effect_completed ? 1.0 : 0.0 );
         d.set_value( "ability_contact_count", v.contacts.size() );
         return d;
@@ -264,6 +269,8 @@ struct ability_manager::impl {
         if( !instance.active() ) {
             return;
         }
+        powers.release_reservation( instance.view.id );
+        instance.view.energy_reserved = false;
         instance.view.state = reason.empty() ? "completed" : "interrupted";
         instance.view.reason = reason.empty() ? "released" : reason;
         release_activity( instance );
@@ -312,8 +319,9 @@ struct ability_manager::impl {
                 return;
             }
         }
-        // No callbacks between this final validation and the commit. There is no
-        // multi-turn reservation: passive drains can make a windup unaffordable.
+        // No callbacks between this final validation and the commit. Optional
+        // claims coordinate managed consumers; external native drains can still
+        // make a reserved windup unaffordable.
         reason = invalid( instance );
         if( !reason.empty() ) {
             finish( instance, reason );
@@ -326,18 +334,19 @@ struct ability_manager::impl {
         v.state = "releasing";
         release_activity( instance );
         if( v.invocation == ability_invocation::action ) {
+            // All accounting checks precede payment; these operations dispatch
+            // no author callbacks. Reservations, costs and charges commit once.
+            if( !powers.commit( *caster, instance.energy, instance.energy_cost,
+                                v.energy_reserved ? v.id : 0, v.cooldown, instance.charge_cost, "ability_release" ) ) {
+                finish( instance, "accounting_refused" );
+                return;
+            }
+            v.energy_reserved = false;
             v.costs_committed = true;
             v.paid_moves = instance.move_cost;
             v.paid_energy = instance.energy_cost;
+            v.paid_charges = v.cooldown.is_empty() ? 0 : instance.charge_cost;
             caster->mod_moves( -instance.move_cost );
-            if( instance.energy_cost > 0 ) {
-                Character &person = *caster->as_character();
-                if( instance.energy == "mana" ) {
-                    person.magic->set_mana( person.magic->available_mana() - instance.energy_cost );
-                } else {
-                    person.set_stamina( person.get_stamina() - instance.energy_cost );
-                }
-            }
         }
         if( !def.spell.is_empty() ) {
             spell effect( def.spell, instance.spell_xp );
@@ -446,6 +455,8 @@ struct ability_manager::impl {
     void failed( int64_t id ) {
         auto it = instances.find( id );
         if( it != instances.end() ) {
+            powers.release_reservation( id );
+            it->second.view.energy_reserved = false;
             it->second.view.state = "failed";
             it->second.view.reason = "callback_failed";
             release_activity( it->second );
@@ -459,6 +470,11 @@ ability_manager::~ability_manager() = default;
 damage_transaction_manager &ability_manager::damage_transactions()
 {
     return data->damage;
+}
+
+power_manager &ability_manager::powers()
+{
+    return data->powers;
 }
 
 std::string ability_manager::check( const ability_request &request ) const
@@ -495,7 +511,9 @@ std::string ability_manager::check( const ability_request &request ) const
         if( const Character *person = caster.as_character(); person && !person->activity.is_null() ) {
             return "caster_busy";
         }
-        return resource_check( caster, request.ability->energy, request.ability->energy_cost );
+        const auto &def = *request.ability;
+        const std::string cost = resource_check( caster, def.energy, def.energy_cost );
+        return cost.empty() ? data->powers.check_charge( caster, def.cooldown, def.charge_cost ) : cost;
     }
     return {};
 }
@@ -552,7 +570,6 @@ ability_admission ability_manager::request( const ability_request &request )
     if( v.root == 0 ) {
         v.root = v.id;
     }
-    ++data->root_requests[v.root];
     const ability_definition &def = *request.ability;
     v.ability = request.ability;
     v.caster = request.caster;
@@ -565,9 +582,7 @@ ability_admission ability_manager::request( const ability_request &request )
     v.origin = request.caster.resolve()->pos_abs();
     native_check( request, v.selected );
     v.started = calendar::turn;
-    v.windup_ticks = request.invocation == ability_invocation::effect_only ? 0 :
-                     ( def.windup_min == def.windup_max ? def.windup_min : rng( def.windup_min, def.windup_max ) );
-    v.due = v.started + time_duration::from_turns( v.windup_ticks );
+
     v.spell_level = def.spell_level;
     v.context = request.context;
     for( const auto &local : def.locals ) {
@@ -578,12 +593,32 @@ ability_admission ability_manager::request( const ability_request &request )
     instance.move_cost = def.move_cost;
     instance.energy = def.energy;
     instance.energy_cost = def.energy_cost;
+    instance.charge_cost = def.charge_cost;
+    v.cooldown = def.cooldown;
     if( !def.spell.is_empty() ) {
         spell effect( def.spell );
         instance.spell_xp = effect.exp_for_level( def.spell_level );
     }
     const int64_t id = v.id;
+    if( request.invocation == ability_invocation::action && def.reserve_energy &&
+        def.energy_cost > 0 ) {
+        if( !data->powers.reserve( *request.caster.resolve(), def.energy, def.energy_cost, id ) ) {
+            return { 0, "reservation_refused" };
+        }
+        v.energy_reserved = true;
+    }
+    bool stored = false;
+    const on_out_of_scope release_unstored( [&]() {
+        if( !stored ) {
+            data->powers.release_reservation( id );
+        }
+    } );
+    v.windup_ticks = request.invocation == ability_invocation::effect_only ? 0 :
+                     ( def.windup_min == def.windup_max ? def.windup_min : rng( def.windup_min, def.windup_max ) );
+    v.due = v.started + time_duration::from_turns( v.windup_ticks );
+    ++data->root_requests[v.root];
     data->instances.emplace( id, std::move( instance ) );
+    stored = true;
     if( !data->pumping ) {
         data->trim();
     }
@@ -612,6 +647,7 @@ void ability_manager::cancel_all( const std::string &reason )
     for( auto &entry : data->instances ) {
         cancel( entry.first, reason );
     }
+    data->powers.cancel_all( reason );
     if( !processing() ) {
         drain_starts();
     }
@@ -629,6 +665,7 @@ void ability_manager::clear()
     data->instances.clear();
     data->root_requests.clear();
     data->damage.clear();
+    data->powers.clear();
     data->restoring = false;
 }
 
@@ -669,9 +706,14 @@ bool ability_manager::restoring() const
     return data->restoring;
 }
 
+bool ability_manager::stopping() const
+{
+    return data->stopping;
+}
+
 bool ability_manager::processing() const
 {
-    return data->pumping || data->damage.processing();
+    return data->pumping || data->damage.processing() || data->powers.processing();
 }
 
 void ability_manager::drain_starts()
@@ -680,6 +722,7 @@ void ability_manager::drain_starts()
         execution_combat::attack_in_progress() ) {
         return;
     }
+    data->powers.drain_starts();
     data->pumping = true;
     const on_out_of_scope restore( [&]() {
         data->current = 0;
@@ -720,6 +763,7 @@ void ability_manager::process()
         execution_combat::attack_in_progress() ) {
         return;
     }
+    data->powers.process();
     drain_starts();
     data->pumping = true;
     const on_out_of_scope restore( [&]() {
@@ -784,6 +828,7 @@ bool ability_manager::owns_avatar_activity( int64_t id ) const
 
 void ability_manager::notify_damage( const Creature &who, int amount )
 {
+    data->powers.notify_damage( who, amount );
     if( amount <= 0 || data->instances.empty() ) {
         return;
     }
@@ -845,6 +890,7 @@ void ability_manager::serialize( JsonOut &jsout ) const
     jsout.start_object();
     jsout.member( "next_id", data->next_id );
     jsout.member( "damage_transactions", data->damage );
+    jsout.member( "powers", data->powers );
     jsout.member( "roots" );
     jsout.start_array();
     for( const auto &entry : data->root_requests ) {
@@ -884,6 +930,9 @@ void ability_manager::serialize( JsonOut &jsout ) const
         jsout.member( "move_cost", i.move_cost );
         jsout.member( "energy", i.energy );
         jsout.member( "energy_cost", i.energy_cost );
+        jsout.member( "energy_reserved", v.energy_reserved );
+        jsout.member( "cooldown", v.cooldown );
+        jsout.member( "charge_cost", i.charge_cost );
         jsout.member( "cancel_reason", i.cancel_reason );
         jsout.member( "context", v.context );
         jsout.end_object();
@@ -902,6 +951,8 @@ void ability_manager::deserialize( const JsonObject &jo )
     data->root_requests.clear();
     data->damage.clear();
     jo.read( "damage_transactions", data->damage );
+    data->powers.clear();
+    jo.read( "powers", data->powers );
     int64_t next = 1;
     jo.read( "next_id", next, true );
     if( next <= 0 || next >= std::numeric_limits<int64_t>::max() ) {
@@ -946,6 +997,9 @@ void ability_manager::deserialize( const JsonObject &jo )
         saved.read( "move_cost", i.move_cost, true );
         saved.read( "energy", i.energy, true );
         saved.read( "energy_cost", i.energy_cost, true );
+        saved.read( "energy_reserved", v.energy_reserved );
+        saved.read( "cooldown", v.cooldown );
+        saved.read( "charge_cost", i.charge_cost );
         saved.read( "cancel_reason", i.cancel_reason );
         saved.read( "context", v.context );
         if( v.id <= 0 || v.id >= next || v.root <= 0 || v.root > v.id ||
@@ -961,10 +1015,24 @@ void ability_manager::deserialize( const JsonObject &jo )
             i.last_tick < v.started || i.last_tick > calendar::turn || i.last_tick > v.due ||
             i.spell_xp < 0 || v.spell_level < 0 || v.spell_level > 100 ||
             i.move_cost < 0 || i.move_cost > 1000000 || i.energy_cost < 0 || i.energy_cost > 1000000 ||
-            ( i.energy != "none" && i.energy != "mana" && i.energy != "stamina" ) ||
+            i.energy.empty() || i.charge_cost < 1 || i.charge_cost > 1000 ||
             ( i.energy == "none" && i.energy_cost != 0 ) || v.context.size() > 256 ||
             !data->instances.emplace( v.id, std::move( i ) ).second ) {
             saved.throw_error( "invalid or duplicate saved ability" );
         }
     }
+    for( const auto &entry : data->instances ) {
+        const auto &i = entry.second;
+        if( i.view.energy_reserved && ( i.view.invocation != ability_invocation::action ||
+                                        !data->powers.reservation_matches( i.view.id, i.view.caster, i.energy, i.energy_cost ) ) ) {
+            jo.throw_error( "saved ability has an invalid resource reservation" );
+        }
+    }
+    for( const auto &r : data->powers.inspect_reservations() ) {
+        const auto i = data->instances.find( r.token );
+        if( i == data->instances.end() || !i->second.view.energy_reserved ) {
+            jo.throw_error( "saved power reservation has no owning ability" );
+        }
+    }
+
 }

@@ -1,0 +1,128 @@
+[
+  {
+    "type": "power_resource",
+    "id": "power_demo_focus_pool",
+    "name": "focus",
+    "capacity": 100,
+    "regen_amount": 2,
+    "regen_ticks": 1
+  },
+  {
+    "type": "power_cooldown",
+    "id": "power_demo_force_group",
+    "name": "force strike charges",
+    "max_charges": 2,
+    "recharge_ticks": 5,
+    "cooldown_ticks": 1
+  },
+  {
+    "type": "power_application",
+    "id": "power_demo_owned_ward",
+    "name": "force ward",
+    "magnitude": 5,
+    "tags": [ "ward" ],
+    "start_cost": { "resource": "power_demo_focus_pool", "amount": 5 },
+    "upkeep": { "resource": "power_demo_focus_pool", "amount": 1 },
+    "on_start": [ { "id": "EOC_POWER_DEMO_WARD_START", "effect": [ { "u_message": "A force ward settles around you." } ] } ],
+    "on_end": [
+      {
+        "id": "EOC_POWER_DEMO_WARD_END",
+        "effect": [ { "if": { "math": [ "_power_owner_present", ">", "0" ] }, "then": [ { "u_message": "Your force ward ends." } ] } ]
+      }
+    ]
+  },
+  {
+    "type": "power_application",
+    "id": "power_demo_owned_mirror",
+    "name": "force mirror",
+    "tags": [ "mirror" ],
+    "start_cost": { "resource": "power_demo_focus_pool", "amount": 5 },
+    "upkeep": { "resource": "power_demo_focus_pool", "amount": 2 },
+    "on_start": [ { "id": "EOC_POWER_DEMO_MIRROR_START", "effect": [ { "u_message": "A force mirror surrounds you." } ] } ],
+    "on_end": [
+      {
+        "id": "EOC_POWER_DEMO_MIRROR_END",
+        "effect": [ { "if": { "math": [ "_power_owner_present", ">", "0" ] }, "then": [ { "u_message": "Your force mirror ends." } ] } ]
+      }
+    ]
+  },
+  {
+    "type": "damage_rule",
+    "id": "power_demo_owned_ward",
+    "required_application": "power_demo_owned_ward",
+    "priority": 0,
+    "actions": [
+      {
+        "operation": "absorb",
+        "resource": "none",
+        "maximum": { "math": [ "u_power_application('power_demo_owned_ward', 'field': 'magnitude')" ] }
+      }
+    ]
+  },
+  {
+    "type": "damage_rule",
+    "id": "power_demo_owned_mirror",
+    "required_application": "power_demo_owned_mirror",
+    "priority": 10,
+    "actions": [ { "operation": "reflect", "value": 0.5 } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_RECOVER_CHARGE",
+    "effect": [ { "recover_power_charge": { "id": "power_demo_force_group", "amount": 1 } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_TOGGLE_WARD",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_application('power_demo_owned_ward', 'owner': 'u')", ">", "0" ] },
+        "then": [ { "dispel_power_applications": { "id": "power_demo_owned_ward", "owner": "u", "target": "u" } } ],
+        "else": [ { "apply_power_application": { "id": "power_demo_owned_ward" } } ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_ward_focus",
+    "name": { "str": "force ward focus", "str_pl": "force ward foci" },
+    "description": "This focus toggles a force ward.  It costs five focus to start and one per second to maintain, absorbing up to five damage from each hit after armor.  It is independent of your force mirror.  Focus has a capacity of 100 and regenerates two per second once its pool is active.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_blue",
+    "use_action": {
+      "type": "effect_on_conditions",
+      "menu_text": "Toggle force ward",
+      "effect_on_conditions": [ "EOC_POWER_DEMO_TOGGLE_WARD" ]
+    }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_TOGGLE_MIRROR",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_application('power_demo_owned_mirror', 'owner': 'u')", ">", "0" ] },
+        "then": [ { "dispel_power_applications": { "id": "power_demo_owned_mirror", "owner": "u", "target": "u" } } ],
+        "else": [ { "apply_power_application": { "id": "power_demo_owned_mirror" } } ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_mirror_focus",
+    "name": { "str": "force mirror focus", "str_pl": "force mirror foci" },
+    "description": "This focus toggles a force mirror.  It costs five focus to start and two per second to maintain, reflecting half of eligible incoming damage toward a living attacker before your force ward absorbs its share.  It is independent of your force ward.  Focus has a capacity of 100 and regenerates two per second once its pool is active.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_blue",
+    "use_action": {
+      "type": "effect_on_conditions",
+      "menu_text": "Toggle force mirror",
+      "effect_on_conditions": [ "EOC_POWER_DEMO_TOGGLE_MIRROR" ]
+    }
+  }
+]

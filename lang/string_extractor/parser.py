@@ -22,6 +22,7 @@ from .parsers.event_statistic import parse_event_statistic
 from .parsers.execution import parse_execution
 from .parsers.ability import parse_ability
 from .parsers.damage_rule import parse_damage_rule
+from .parsers.power import parse_power
 from .parsers.faction import parse_faction
 from .parsers.faction_mission import parse_faction_mission
 from .parsers.fault import parse_fault
@@ -145,6 +146,9 @@ parsers = {
     "execution": parse_execution,
     "ability": parse_ability,
     "damage_rule": parse_damage_rule,
+    "power_resource": parse_power,
+    "power_cooldown": parse_power,
+    "power_application": parse_power,
     "execution_trigger": parse_effect_on_condition,
     "effect_type": parse_effect_type,
     "effect_migration": dummy_parser,

@@ -690,10 +690,10 @@ TEST_CASE( "ability_loader_rejects_invalid_policy_and_saved_transaction_states",
         CHECK_THROWS_AS( def.load( json_loader::from_string( R"({"name":"invalid","windup_ticks":[3,1]})" ),
                                    "test_data" ), JsonError );
     }
-    SECTION( "unsupported resource" ) {
+    SECTION( "nonzero none cost" ) {
         ability_definition def;
         CHECK_THROWS_AS( def.load( json_loader::from_string(
-                                       R"({"name":"invalid","energy_cost":{"resource":"blood","amount":5}})" ),
+                                       R"({"name":"invalid","energy_cost":{"resource":"none","amount":5}})" ),
                                    "test_data" ), JsonError );
     }
     SECTION( "both release adapters" ) {

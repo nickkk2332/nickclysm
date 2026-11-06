@@ -26,6 +26,7 @@
 #include "magic.h"
 #include "memory_fast.h"
 #include "talker.h"
+#include "power_runtime.h"
 
 namespace
 {
@@ -437,9 +438,11 @@ struct damage_packet_scope::impl {
             d.set_value( "damage_rule_after", result->after );
             d.set_value( "damage_rule_absorbed", result->absorbed );
             d.set_value( "damage_rule_reflected", result->reflected );
-            for( const std::string resource : {
-                     "mana", "stamina"
-                 } ) {
+            std::set<std::string> paid_resources{ "mana", "stamina" };
+            for( const auto &payment : result->payments ) {
+                paid_resources.insert( payment.first );
+            }
+            for( const std::string &resource : paid_resources ) {
                 const auto payment = result->payments.find( resource );
                 d.set_value( "damage_rule_paid_" + resource,
                              payment == result->payments.end() ? 0.0 : static_cast<double>( payment->second ) );
@@ -461,6 +464,8 @@ struct damage_packet_scope::impl {
 
     bool matches( const damage_rule &rule, const damage_instance &packet ) const {
         if( ( !rule.required_effect.is_empty() && !defender->has_effect( rule.required_effect ) ) ||
+            ( !rule.required_application.is_empty() &&
+              get_powers().application_value( *defender, rule.required_application ) == 0 ) ||
             ( !rule.defender_kinds.empty() && !rule.defender_kinds.count( defender_kind ) ) ||
             ( !rule.source_kinds.empty() && !rule.source_kinds.count( source_kind ) ) ||
             ( !rule.bodyparts.empty() && !rule.bodyparts.count( view.bodypart ) ) ) {
@@ -542,29 +547,25 @@ struct damage_packet_scope::impl {
         if( action.resource == "none" ) {
             return wanted;
         }
-        const Character *person = defender->as_character();
-        if( !person || ( action.resource == "stamina" && person->is_npc() ) ) {
-            result.reason = "unsupported_resource";
+        const auto balance = get_powers().balance( *defender, action.resource );
+        if( !balance.reason.empty() ) {
+            result.reason = balance.reason;
             return 0;
         }
-        const int available = action.resource == "mana" ? person->magic->available_mana() :
-                              person->get_stamina();
-        return std::min( wanted, std::max( 0, available ) / action.cost_per_damage );
+        return std::min( wanted, balance.available() / action.cost_per_damage );
     }
 
-    void pay( const damage_rule_action &action, int points, damage_rule_result &result ) {
+    bool pay( const damage_rule_action &action, int points, damage_rule_result &result ) {
         if( points == 0 || action.resource == "none" ) {
-            return;
+            return true;
         }
-        Character &person = *defender->as_character();
         const int paid = points * action.cost_per_damage;
-        if( action.resource == "mana" ) {
-            person.magic->set_mana( person.magic->available_mana() - paid );
-        } else {
-            // Explicit payment does not clamp away unspent capacity.
-            person.set_stamina( person.get_stamina() - paid );
+        if( !get_powers().spend( *defender, action.resource, paid, "damage_defense" ) ) {
+            result.reason = "resource_changed";
+            return false;
         }
         result.payments[action.resource] += paid;
+        return true;
     }
 
     void action( const damage_rule &rule, const damage_rule_action &action,
@@ -606,7 +607,9 @@ struct damage_packet_scope::impl {
                 result.reason = "unrepresentable_edit";
                 return;
             }
-            pay( action, taken, result );
+            if( !pay( action, taken, result ) ) {
+                return;
+            }
             packet = std::move( candidate );
             modified = true;
             if( action.operation == "reflect" ) {

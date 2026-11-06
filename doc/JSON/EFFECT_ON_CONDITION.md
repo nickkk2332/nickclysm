@@ -4140,6 +4140,13 @@ Removes all wounds from all body parts
   }
 ```
 
+#### Power ownership commands
+
+`apply_power_application`, `end_power_application`, `dispel_power_applications`,
+`modify_power_resource` and `recover_power_charge` operate on saved source-aware
+powers and shared accounts. See [POWER_OWNERSHIP.md](POWER_OWNERSHIP.md) for their
+actor roles, exact-handle outputs, validation and lifecycle policies.
+
 #### `deal_damage_packet`
 
 Dispatch a complete native typed packet with explicit target, source and
