@@ -3,7 +3,12 @@
 #define CATA_SRC_EXECUTION_ACTIVITY_ACTOR_H
 
 #include <cstdint>
+#include <memory>
+
 #include "activity_actor.h"
+#include "type_id.h"
+
+class JsonValue;
 
 class execution_activity_actor : public activity_actor
 {

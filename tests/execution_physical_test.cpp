@@ -1,5 +1,7 @@
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -10,7 +12,10 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "creature_ref.h"
+#include "character.h"
+#include "character_id.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "dialogue.h"
@@ -24,22 +29,27 @@
 #include "game.h"
 #include "global_vars.h"
 #include "incapacitation.h"
-#include "item.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "monster.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "options_helpers.h"
 #include "player_activity.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "talker.h"
 #include "type_id.h"
 #include "uistate.h"
+
+static const damage_type_id damage_pure( "pure" );
+
+static const skill_id skill_melee( "melee" );
+static const skill_id skill_unarmed( "unarmed" );
 
 namespace
 {
@@ -88,7 +98,8 @@ Creature &victim( bool character = false )
 int64_t start( const std::string &definition, Creature &actor, Creature &target, uint64_t seed = 7 )
 {
     dialogue context( get_talker_for( actor ), get_talker_for( target ) );
-    const auto result = g->executions().start( execution_id( definition ), context, seed );
+    const execution_start_result result = g->executions().start( execution_id( definition ), context,
+                                          seed );
     INFO( result.reason );
     REQUIRE( result.id != 0 );
     return result.id;
@@ -313,7 +324,7 @@ TEST_CASE( "execution_fling_keeps_explicit_environmental_child_damage_unattribut
                 target.apply_damage( nullptr, bodypart_id( "arm_l" ), 1 );
             } else {
                 target.deal_damage( nullptr, bodypart_id( "arm_l" ),
-                                    damage_instance( damage_type_id( "pure" ), 1 ) );
+                                    damage_instance( damage_pure, 1 ) );
             }
         }
     };
@@ -386,9 +397,18 @@ TEST_CASE( "execution_native_counterattacks_keep_combat_costs_and_do_not_retrigg
     const bool monster = GENERATE( false, true );
     Creature &counter = victim( !monster );
     if( Character *person = counter.as_character() ) {
-        person->set_dex_base( 30 );
-        person->set_skill_level( skill_id( "melee" ), 10 );
+        // The one blow must land and hurt. A fresh thug rolls its weapon, traits and condition
+        // (one came out with strength 0 and dexterity 8), and even a trained fist's hit roll
+        // misses about one time in twenty, so add accuracy well past the roll's spread.
+        const tripoint_bub_ms pos = person->pos_bub();
+        clear_character( *person );
+        person->setpos( get_map(), pos );
+        person->set_str_base( 10 );
+        person->set_dex_base( 20 );
+        person->set_skill_level( skill_melee, 10 );
+        person->set_skill_level( skill_unarmed, 10 );
         person->reset_stats();
+        person->mod_hit_bonus( 30 );
     }
     get_avatar().set_dodges_left( 0 );
     const int hp = get_avatar().get_hp();
@@ -481,7 +501,7 @@ TEST_CASE( "execution_cinematic_clash_resumes_without_rerolling_and_interrupts_o
     const int64_t id = start( "execution_cinematic_clash", get_avatar(), target, 123 );
     g->executions().drain_starts();
     REQUIRE( view( id ).state == "running" );
-    const auto before = view( id );
+    const execution_view before = view( id );
     const std::string runtime = save();
     std::ostringstream actor;
     JsonOut out( actor );

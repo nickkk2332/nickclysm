@@ -2,7 +2,6 @@
 #ifndef CATA_SRC_CHARACTER_ORACLE_H
 #define CATA_SRC_CHARACTER_ORACLE_H
 
-#include <optional>
 #include <string_view>
 
 #include "behavior_oracle.h"

@@ -18,8 +18,12 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <initializer_list>
+#include <list>
+#include <map>
 #include <memory>
 #include <optional>
+#include <ratio>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -32,7 +36,6 @@
 #include "cata_variant.h"
 #include "coordinates.h"
 #include "event.h"
-#include "event_statistics.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "item.h"
@@ -40,18 +43,20 @@
 #include "json_loader.h"
 #include "map_scale_constants.h"
 #include "mapbuffer.h"
-#include "omdata.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
-#include "point.h"
 #include "pocket_type.h"
+#include "point.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "submap.h"
 #include "type_id.h"
 #include "worldfactory.h"
+
+class event_statistic;
 
 static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const itype_id itype_can_beans( "can_beans" );
@@ -74,7 +79,7 @@ constexpr unsigned int scenario_seed = 4242;
 int bench_reps()
 {
     const char *env = std::getenv( "BENCH_REPS" );
-    const int reps = env ? std::atoi( env ) : 5;
+    const int reps = env ? static_cast<int>( std::strtol( env, nullptr, 10 ) ) : 5;
     return std::max( reps, 1 );
 }
 
@@ -89,9 +94,9 @@ void run_scenario( const std::string &name, const std::string &work_description,
     for( int r = -1; r < reps; ++r ) {
         rng_set_engine_seed( scenario_seed );
         setup();
-        const auto start = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
         work();
-        const auto end = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         if( r >= 0 ) {
             samples.push_back( std::chrono::duration<double, std::milli>( end - start ).count() );
         }
@@ -100,7 +105,7 @@ void run_scenario( const std::string &name, const std::string &work_description,
     std::printf( "BENCH %s median_ms=%.2f min_ms=%.2f max_ms=%.2f reps=%d work=\"%s\"\n",
                  name.c_str(), samples[samples.size() / 2], samples.front(), samples.back(), reps,
                  work_description.c_str() );
-    std::fflush( stdout );
+    static_cast<void>( std::fflush( stdout ) );
 }
 
 // The overmap buffer as the test harness sets it up: only the overmap at the origin,

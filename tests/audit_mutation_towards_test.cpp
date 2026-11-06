@@ -1,4 +1,7 @@
+#include <functional>
+#include <memory>
 #include <string>
+#include <unordered_set>
 
 #include "avatar.h"
 #include "cata_catch.h"
@@ -10,8 +13,10 @@
 #include "json_loader.h"
 #include "mutation.h"
 #include "player_helpers.h"
+#include "talker.h"
 #include "type_id.h"
 
+static const mutation_category_id mutation_category_AUDIT_NOT_A_CATEGORY( "AUDIT_NOT_A_CATEGORY" );
 static const mutation_category_id mutation_category_HUMAN( "HUMAN" );
 static const mutation_category_id mutation_category_REMOVAL_TEST( "REMOVAL_TEST" );
 
@@ -148,11 +153,11 @@ TEST_CASE( "mut-j01_unknown_mutation_category_is_reported", "[audit][mutation]" 
 {
     clear_avatar();
     avatar &u = get_avatar();
-    const mutation_category_id bogus( "AUDIT_NOT_A_CATEGORY" );
-    REQUIRE( !mutation_category_is_valid( bogus ) );
+    REQUIRE( !mutation_category_is_valid( mutation_category_AUDIT_NOT_A_CATEGORY ) );
 
-    const std::string get_msg = capture_debugmsg_during( [&bogus]() {
-        const mutation_category_trait &cat = mutation_category_trait::get_category( bogus );
+    const std::string get_msg = capture_debugmsg_during( []() {
+        const mutation_category_trait &cat = mutation_category_trait::get_category(
+                mutation_category_AUDIT_NOT_A_CATEGORY );
         CHECK( cat.vitamin.is_null() );
         CHECK( cat.threshold_mut.is_empty() );
     } );

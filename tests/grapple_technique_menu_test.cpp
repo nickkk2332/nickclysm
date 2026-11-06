@@ -1,10 +1,15 @@
+#include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <map>
+#include <memory>
 #include <optional>
+#include <random>
 #include <set>
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -21,6 +26,9 @@
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "flat_set.h"
+#include "flexbuffer_json.h"
+#include "game_constants.h"
 #include "grapple.h"
 #include "item.h"
 #include "item_location.h"
@@ -41,14 +49,13 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
 
 // The manual technique menu (Phase 9 of the TLG grappling port; the menu idea is from
 // Cataclysm-BN PR #9108). Character::check_technique gives the reason a technique can't be used,
 // for both the automatic choice and the menu.
 
-static const attack_vector_id vector_punch( "vector_punch" );
+static const attack_vector_id attack_vector_vector_punch( "vector_punch" );
 
 static const bionic_id bio_cqb( "bio_cqb" );
 
@@ -372,6 +379,7 @@ static std::optional<technique_pools::entry> reference_evaluate( const Character
     if( !tec_id->aoe.empty() ) {
         // valid_aoe_technique is private: ask check_technique, which gets this far too, about
         // the area, and keep the random numbers out of it
+        // NOLINTNEXTLINE(cata-determinism)
         const cata_default_random_engine saved = rng_get_engine();
         technique_query query;
         query.crit = crit;
@@ -437,6 +445,7 @@ static void same_as_reference( const Character &dude, const Creature &target )
                 const bool block = kind == 3;
                 const std::optional<technique_pools::entry> expected = reference_evaluate(
                             dude, tec, target, dude.used_weapon(), crit, dodge, block );
+                // NOLINTNEXTLINE(cata-determinism)
                 const cata_default_random_engine expected_rng = rng_get_engine();
                 rng_set_engine_seed( seed );
                 const std::optional<technique_pools::entry> got = dude.evaluate_technique( tec,
@@ -567,7 +576,7 @@ class menu_answer
     public:
         using answer_fn =
             std::function<technique_choice( const std::vector<melee::technique_menu_entry> & )>;
-        explicit menu_answer( answer_fn answer ) {
+        explicit menu_answer( const answer_fn &answer ) {
             melee::technique_menu_test_answer = [this, answer](
             const std::vector<melee::technique_menu_entry> &entries ) {
                 calls++;
@@ -764,6 +773,7 @@ TEST_CASE( "grapple_tm_cancelling_the_menu_costs_nothing", "[grapple][martial_ar
     // Attacks, then checks that nothing happened. "Rolls nothing": the random number engine is
     // exactly where it was, so no hit, crit or anything else was rolled.
     const auto cancelled = [&]( const std::function<void()> &attack ) {
+        // NOLINTNEXTLINE(cata-determinism)
         const cata_default_random_engine before = rng_get_engine();
         attack();
         CHECK( rng_get_engine() == before );
@@ -824,6 +834,7 @@ TEST_CASE( "grapple_tm_reach_attack_asks_before_rolling", "[grapple][martial_art
 
     SECTION( "cancelled: nothing rolled or spent" ) {
         menu_answer answer( answer_cancel );
+        // NOLINTNEXTLINE(cata-determinism)
         const cata_default_random_engine before = rng_get_engine();
         you.reach_attack( there );
         CHECK( answer.calls == 1 );
@@ -971,7 +982,7 @@ TEST_CASE( "grapple_tm_forced_technique_gets_attack_vector", "[grapple][martial_
     const std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> strike =
         dude.forced_technique_attack( test_tm_strike );
     CHECK( std::get<0>( strike ) == test_tm_strike );
-    CHECK( std::get<1>( strike ) == vector_punch );
+    CHECK( std::get<1>( strike ) == attack_vector_vector_punch );
     CHECK( !std::get<2>( strike ).is_null() );
     // No technique: no vector
     CHECK( std::get<1>( dude.forced_technique_attack( tec_none ) ).is_null() );

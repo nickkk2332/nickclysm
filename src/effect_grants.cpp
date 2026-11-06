@@ -1,14 +1,24 @@
-#include "effect_grant_state.h"
-
 #include <algorithm>
+#include <cstdint>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "calendar.h"
+#include "effect.h"
+#include "effect_grant_state.h"
+#include "effect_source.h"
 #include "flexbuffer_json.h"
+#include "int_id.h"
 #include "json.h"
 
 void effect::detach_owned()
 {
-    if( owned && !owned.unique() ) {
+    if( owned && owned.use_count() != 1 ) {
         owned = std::make_shared<owned_effect_state>( *owned );
     }
 }
@@ -158,7 +168,7 @@ void effect::deserialize_owned( const JsonObject &jo )
         jo.throw_error( "Invalid owned effect" );
     }
     if( jo.has_object( "native_base" ) ) {
-        const auto base = jo.get_object( "native_base" );
+        const JsonObject base = jo.get_object( "native_base" );
         if( base.has_member( "owned_sources" ) || base.has_member( "native_base" ) ) {
             base.throw_error( "Nested owned effects are not supported" );
         }

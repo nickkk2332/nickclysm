@@ -1,3 +1,5 @@
+#include <functional>
+#include <initializer_list>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -6,6 +8,7 @@
 #include "avatar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "character_id.h"
 #include "city.h"
 #include "coordinates.h"
 #include "debug.h"
@@ -19,11 +22,15 @@
 #include "map_helpers.h"
 #include "mapbuffer.h"
 #include "mapgen_functions.h"
+#include "mapgendata.h"
+#include "math_parser_diag_value.h"
 #include "npc.h"
 #include "omdata.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
+#include "point.h"
+#include "ret_val.h"
 #include "submap.h"
 #include "type_id.h"
 

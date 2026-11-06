@@ -1,19 +1,28 @@
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "character.h"
+#include "character_id.h"
 #include "character_martial_arts.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "dialogue.h"
-#include "effect_on_condition.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
@@ -21,7 +30,6 @@
 #include "execution_combat.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "execution_trigger.h"
 #include "explosion.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -31,28 +39,47 @@
 #include "item_location.h"
 #include "json.h"
 #include "json_loader.h"
-#include "kill_tracker.h"
+#include "magic_enchantment.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
-#include "magic_enchantment.h"
 #include "martialarts.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "projectile.h"
 #include "rng.h"
 #include "talker.h"
 #include "type_id.h"
 #include "weakpoint.h"
 
+static const damage_type_id damage_pure( "pure" );
+
+static const execution_id
+execution_definition_execution_fatal_knife_stagger( "execution_fatal_knife_stagger" );
+static const execution_id execution_definition_test_exec_fatal_hold( "test_exec_fatal_hold" );
+
+static const field_type_str_id field_fd_fire( "fd_fire" );
+
+static const itype_id itype_execution_fatal_test_knife( "execution_fatal_test_knife" );
+
+static const matype_id style_none( "style_none" );
+static const matype_id test_style_execution_fatal( "test_style_execution_fatal" );
+
+static const mtype_id mon_execution_trigger_test( "mon_execution_trigger_test" );
+static const mtype_id mon_zombie( "mon_zombie" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
+
 namespace
 {
-const bodypart_str_id torso( "torso" );
 
 struct fatal_world {
     time_point old_time = calendar::turn;
@@ -88,11 +115,11 @@ Creature &victim( const std::string &kind )
 
 void equip( Character &who )
 {
-    item knife( itype_id( "execution_fatal_test_knife" ) );
+    item knife( itype_execution_fatal_test_knife );
     REQUIRE( who.wield( knife ) );
-    who.martial_arts_data->add_martialart( matype_id( "test_style_execution_fatal" ) );
-    who.martial_arts_data->set_style( matype_id( "test_style_execution_fatal" ), false );
-    REQUIRE( who.martial_arts_data->selected_style() == matype_id( "test_style_execution_fatal" ) );
+    who.martial_arts_data->add_martialart( test_style_execution_fatal );
+    who.martial_arts_data->set_style( test_style_execution_fatal, false );
+    REQUIRE( who.martial_arts_data->selected_style() == test_style_execution_fatal );
 }
 
 execution_view view( int64_t id )
@@ -110,7 +137,7 @@ int64_t pending_id()
     return report->instance;
 }
 
-/** Drive the actual primary melee/HP path with a fixed torso contact. */
+/** Drive the actual primary melee/HP path with a fixed body_part_torso contact. */
 int64_t contact( Creature &source, Creature &target, bool require_reservation = true )
 {
     {
@@ -122,21 +149,21 @@ int64_t contact( Creature &source, Creature &target, bool require_reservation = 
             root.set_critical( true );
         }
         dealt_damage_instance dealt;
-        const bodypart_id bp = torso.id();
+        const bodypart_id bp = body_part_torso.id();
         {
             const execution_combat::primary_hit_scope primary( root );
             target.deal_melee_hit( &source, 1000, true,
-                                   damage_instance( damage_type_id( "pure" ), 1000 ), dealt, {}, &bp );
+                                   damage_instance( damage_pure, 1000 ), dealt, {}, &bp );
         }
         root.resolve( true, source.as_monster() ? std::nullopt : std::optional<bool>( true ), dealt );
         target.check_dead_state( &get_map() );
         if( source.as_character() && execution_fatal::pending( target ) ) {
             ma_event_context ctx;
             ctx.opponent = &target;
-            ctx.weapon = itype_id( "execution_fatal_test_knife" );
-            ctx.style = matype_id( "test_style_execution_fatal" );
-            ctx.technique = matec_id( "tec_none" );
-            ctx.bp = torso;
+            ctx.weapon = itype_execution_fatal_test_knife;
+            ctx.style = test_style_execution_fatal;
+            ctx.technique = tec_none;
+            ctx.bp = body_part_torso;
             ctx.damage = dealt.total_damage();
             ctx.hit = ctx.crit = true;
             ctx.killed = false;
@@ -226,7 +253,7 @@ TEST_CASE( "inherited_core_fatal_knife_executes_the_complete_graph",
            "[executions][fatal_execution][content]" )
 {
     fatal_world world;
-    REQUIRE( execution_id( "execution_fatal_knife_stagger" ).is_valid() );
+    REQUIRE( execution_definition_execution_fatal_knife_stagger.is_valid() );
     get_globals().set_global_value( "exec_fatal_case", "core" );
     Creature &target = victim( "monster" );
     equip( get_avatar() );
@@ -351,6 +378,11 @@ TEST_CASE( "fatal_execution_uses_real_character_and_monster_melee_producers",
     const std::string source_kind = GENERATE( "avatar", "npc", "monster" );
     const std::string target_kind = GENERATE( "npc", "monster" );
     Creature &target = victim( target_kind );
+    if( monster *mon = target.as_monster() ) {
+        // A stab can open a bleed whose first point lands before the primary HP commit; that
+        // death stays ordinary. Keep the victim alive through it so the blow itself is lethal.
+        mon->set_hp( 5 );
+    }
     Creature *source = &get_avatar();
     if( source_kind == "npc" ) {
         source = &spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( 1, 1 ), "thug" );
@@ -368,7 +400,7 @@ TEST_CASE( "fatal_execution_uses_real_character_and_monster_melee_producers",
         if( monster *mon = source->as_monster() ) {
             mon->melee_attack( target, 1000.0f );
         } else {
-            source->as_character()->melee_attack_abstract( target, false, matec_id( "tec_none" ) );
+            source->as_character()->melee_attack_abstract( target, false, tec_none );
         }
     }
     REQUIRE( target.is_dead_state() );
@@ -378,6 +410,45 @@ TEST_CASE( "fatal_execution_uses_real_character_and_monster_melee_producers",
     tick( 3 );
     CHECK( view( id ).outcome == "killed" );
     CHECK( target.get_killer() == source );
+}
+
+// The documented contract: a bleed the hit opens that takes the last HP before the hit's own HP
+// write is ordinary native death, never a fatal execution. Whether a hit bleeds, and whether its
+// first point lands at once, is random, so attack fresh 1-HP victims until one dies that way.
+TEST_CASE( "fatal_execution_is_not_reserved_when_the_hits_own_bleed_kills_first",
+           "[executions][fatal_execution][melee]" )
+{
+    struct fatal_damage : event_subscriber {
+        using event_subscriber::notify;
+        int damage = -1;
+        void notify( const cata::event &e ) override {
+            if( e.type() == event_type::monster_takes_damage && e.get<bool>( "dies" ) ) {
+                damage = e.get<int>( "damage" );
+            }
+        }
+    } observed;
+    get_event_bus().subscribe( &observed );
+    rng_set_engine_seed( 2026 );
+    bool bleed_killed = false;
+    for( int attempt = 0; attempt < 200 && !bleed_killed; ++attempt ) {
+        fatal_world world;
+        Creature &target = victim( "monster" );
+        avatar &you = get_avatar();
+        equip( you );
+        you.set_str_base( 30 );
+        you.set_dex_base( 30 );
+        you.reset_stats();
+        observed.damage = -1;
+        for( int n = 0; n < 20 && !target.is_dead_state(); ++n ) {
+            you.melee_attack_abstract( target, false, tec_none );
+        }
+        REQUIRE( target.is_dead_state() );
+        CAPTURE( attempt, observed.damage );
+        // The stab itself is far stronger than the bleed's one point.
+        bleed_killed = observed.damage == 1;
+        CHECK( execution_fatal::pending( target ) != bleed_killed );
+    }
+    CHECK( bleed_killed );
 }
 
 TEST_CASE( "fatal_execution_checked_movement_retains_collision_and_raw_fatal_health",
@@ -415,9 +486,9 @@ TEST_CASE( "fatal_execution_finalizes_after_owned_native_landing",
     get_avatar().setpos( get_map(), tripoint_bub_ms( 60, 60, 1 ), false );
     const tripoint_bub_ms edge( 62, 60, 1 );
     const tripoint_bub_ms landing( 62, 60, 0 );
-    get_map().ter_set( target.pos_bub(), ter_str_id( "t_floor" ) );
-    get_map().ter_set( edge, ter_str_id( "t_open_air" ) );
-    get_map().ter_set( landing, ter_str_id( "t_floor" ) );
+    get_map().ter_set( target.pos_bub(), ter_t_floor );
+    get_map().ter_set( edge, ter_t_open_air );
+    get_map().ter_set( landing, ter_t_floor );
     equip( get_avatar() );
     const int64_t id = contact( get_avatar(), target );
     g->executions().drain_starts();
@@ -452,12 +523,12 @@ TEST_CASE( "fatal_execution_emergency_paths_settle_the_injury",
     } else if( emergency == "direct_death" ) {
         target.die( &get_map(), nullptr );
     } else if( emergency == "damage" ) {
-        target.apply_damage( nullptr, torso.id(), 1 );
+        target.apply_damage( nullptr, body_part_torso.id(), 1 );
     } else if( emergency == "distributed_damage" ) {
         if( Character *person = target.as_character() ) {
             person->hurtall( 1, nullptr );
         } else {
-            target.deal_damage( nullptr, torso.id(), damage_instance( damage_type_id( "pure" ), 1 ) );
+            target.deal_damage( nullptr, body_part_torso.id(), damage_instance( damage_pure, 1 ) );
         }
     } else if( emergency == "motion" ) {
         target.setpos( get_map(), origin + tripoint_rel_ms::east );
@@ -475,8 +546,8 @@ TEST_CASE( "fatal_execution_emergency_paths_settle_the_injury",
             g->remove_npc( target.as_npc()->getID() );
         }
     } else if( monster *mon = target.as_monster() ) {
-        mon->poly( mtype_id( "mon_zombie" ) );
-        CHECK( mon->type->id == mtype_id( "mon_execution_trigger_test" ) );
+        mon->poly( mon_zombie );
+        CHECK( mon->type->id == mon_execution_trigger_test );
     } else {
         get_creature_tracker().clear_npcs();
     }
@@ -518,7 +589,7 @@ TEST_CASE( "genuine_healing_rescues_a_fatal_execution_and_clears_old_attribution
     const int64_t id = contact( get_avatar(), target );
     g->executions().drain_starts();
     if( monster *mon = target.as_monster() ) {
-        mon->heal_bp( torso.id(), 10000 );
+        mon->heal_bp( body_part_torso.id(), 10000 );
     } else {
         // Ordinary healing cannot mend a destroyed vital part; restore real health explicitly.
         target.as_character()->set_all_parts_hp_cur( 20 );
@@ -574,7 +645,7 @@ TEST_CASE( "fatal_execution_delays_original_style_kill_hooks_until_finalization"
     equip( get_avatar() );
     const int64_t id = contact( get_avatar(), target );
     CHECK( get_globals().get_global_value( "exec_fatal_kills" ).dbl() == 0 );
-    get_avatar().martial_arts_data->set_style( matype_id( "style_none" ), false );
+    get_avatar().martial_arts_data->set_style( style_none, false );
     g->executions().drain_starts();
     tick( 3 );
     CHECK( view( id ).outcome == "killed" );
@@ -665,7 +736,7 @@ TEST_CASE( "fatal_execution_rejected_roll_preserves_immediate_death",
     get_avatar().set_str_base( 30 );
     get_avatar().reset_stats();
     for( int n = 0; n < 20 && !target.is_dead_state(); ++n ) {
-        get_avatar().melee_attack_abstract( target, false, matec_id( "tec_none" ) );
+        get_avatar().melee_attack_abstract( target, false, tec_none );
     }
     REQUIRE( target.is_dead_state() );
     CHECK_FALSE( execution_fatal::pending( target ) );
@@ -682,7 +753,8 @@ TEST_CASE( "fatal_execution_conditions_are_pure_and_avatar_fatal_policy_is_unsup
     equip( get_avatar() );
     contact( get_avatar(), target );
     dialogue d( get_talker_for( get_avatar() ), get_talker_for( target ) );
-    const auto random = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine random = rng_get_engine();
     const std::string saved = save_scene();
     CHECK( conditional_t( "npc_death_pending" )( d ) );
     CHECK_FALSE( conditional_t( "u_death_pending" )( d ) );
@@ -692,7 +764,8 @@ TEST_CASE( "fatal_execution_conditions_are_pure_and_avatar_fatal_policy_is_unsup
     CHECK( save_scene() == saved );
     get_avatar().set_all_parts_hp_cur( 0 );
     dialogue avatar_target( get_talker_for( target ), get_talker_for( get_avatar() ) );
-    CHECK( g->executions().check_fatal_start( execution_id( "test_exec_fatal_hold" ), avatar_target ) !=
+    CHECK( g->executions().check_fatal_start( execution_definition_test_exec_fatal_hold,
+            avatar_target ) !=
            "eligible" );
     CHECK_FALSE( execution_fatal::pending( get_avatar() ) );
 }
@@ -716,7 +789,8 @@ TEST_CASE( "fatal_execution_cannot_spend_actions_or_dodge_through_scripted_dispa
     equip( get_avatar() );
     contact( get_avatar(), target );
     target.set_moves( 1000 );
-    const auto before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     CHECK( target.dodge_roll() == 0 );
     CHECK_FALSE( target.dodge_check( -10000.0f, true, 0.0f ) );
     if( monster *mon = target.as_monster() ) {
@@ -724,7 +798,7 @@ TEST_CASE( "fatal_execution_cannot_spend_actions_or_dodge_through_scripted_dispa
         CHECK_FALSE( mon->can_act() );
     } else {
         CHECK_FALSE( target.as_character()->melee_attack_abstract( get_avatar(), false,
-                     matec_id( "tec_none" ) ) );
+                     tec_none ) );
     }
     CHECK( rng_get_engine() == before );
 }
@@ -738,7 +812,7 @@ TEST_CASE( "fatal_execution_keeps_environmental_damage_active",
     equip( get_avatar() );
     const int64_t id = contact( get_avatar(), target );
     g->executions().drain_starts();
-    get_map().add_field( target.pos_bub(), field_type_str_id( "fd_fire" ).id(), 3 );
+    get_map().add_field( target.pos_bub(), field_fd_fire.id(), 3 );
     tick();
     CHECK( execution_fatal::finalized( target ) );
     CHECK( view( id ).outcome == "killed" );
@@ -763,7 +837,7 @@ TEST_CASE( "fatal_execution_remains_exposed_to_projectiles_and_explosive_hazards
         dealt_projectile_attack attack;
         attack.proj.speed = 1000;
         attack.proj.critical_multiplier = 1.0f;
-        attack.proj.impact = damage_instance( damage_type_id( "pure" ), 10 );
+        attack.proj.impact = damage_instance( damage_pure, 10 );
         target.deal_projectile_attack( &get_map(), nullptr, attack, 0.1, false, weakpoint_attack() );
     } else if( hazard == "shrapnel" ) {
         // No blast: settlement must come from a real fragment contact.
@@ -797,7 +871,7 @@ TEST_CASE( "unconscious_creatures_cannot_use_enchanted_projectile_evasion",
     dealt_projectile_attack attack;
     attack.proj.speed = 1000;
     attack.proj.critical_multiplier = 1.0f;
-    attack.proj.impact = damage_instance( damage_type_id( "pure" ), 10 );
+    attack.proj.impact = damage_instance( damage_pure, 10 );
     target.deal_projectile_attack( &get_map(), nullptr, attack, 0.1, false, weakpoint_attack() );
     CHECK( attack.last_hit_critter == &target );
     CHECK( attack.dealt_dam.total_damage() > 0 );

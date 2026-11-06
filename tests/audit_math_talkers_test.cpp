@@ -1,5 +1,9 @@
 #include <functional>
+#include <initializer_list>
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -24,7 +28,6 @@
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
-#include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
@@ -35,6 +38,7 @@
 #include "npc.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "string_formatter.h"
@@ -43,7 +47,29 @@
 #include "units.h"
 #include "vehicle.h"
 
-static double eval_math( dialogue &d, const std::string &expr )
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_MATH_B05_GLOBAL( "EOC_AUDIT_MATH_B05_GLOBAL" );
+static const effect_on_condition_id
+effect_on_condition_EOC_AUDIT_MATH_B05_LOCAL( "EOC_AUDIT_MATH_B05_LOCAL" );
+
+static const efftype_id effect_riding( "riding" );
+
+static const faction_id faction_your_followers( "your_followers" );
+
+static const itype_id itype_test_rock( "test_rock" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
+static const ter_str_id ter_t_rock( "t_rock" );
+
+static const vpart_id vpart_frame( "frame" );
+static const vpart_id vpart_seat( "seat" );
+
+static const vproto_id vehicle_prototype_none( "none" );
+
+static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
+
+static double eval_math( dialogue &d, const std::string_view expr )
 {
     math_exp exp;
     REQUIRE( exp.parse( expr ) );
@@ -70,7 +96,7 @@ TEST_CASE( "math-b03_faction_functions_reject_unknown_ids", "[audit][math_parser
 
     // A faction that exists still reads and writes.
     g->faction_manager_ptr->create_if_needed();
-    faction *followers = g->faction_manager_ptr->get( faction_id( "your_followers" ) );
+    faction *followers = g->faction_manager_ptr->get( faction_your_followers );
     REQUIRE( followers != nullptr );
     const restore_on_out_of_scope<int> restore_like( followers->likes_u );
     eval_math( d, "faction_like('your_followers') = 7" );
@@ -118,11 +144,6 @@ TEST_CASE( "math-b04_assignments_honour_the_read_kwargs", "[audit][math_parser]"
         CHECK( u.get_stored_kcal() == 1000 );
     }
 }
-
-static const effect_on_condition_id
-effect_on_condition_EOC_AUDIT_MATH_B05_GLOBAL( "EOC_AUDIT_MATH_B05_GLOBAL" );
-static const effect_on_condition_id
-effect_on_condition_EOC_AUDIT_MATH_B05_LOCAL( "EOC_AUDIT_MATH_B05_LOCAL" );
 
 // MATH-B05: time_until_eoc() returned the turn the EOC was queued for, not the time left, found
 // only the first of several queued runs, and couldn't see the EOCs queued on a character.
@@ -236,12 +257,6 @@ TEST_CASE( "math-b08_modulo_groups_left_to_right", "[audit][math_parser]" )
     CHECK( eval_math( d, "10 % 4 + 1" ) == Approx( 3 ) );
     CHECK( eval_math( d, "10 % 2 ^ 3" ) == Approx( 2 ) );
 }
-
-static const faction_id faction_your_followers( "your_followers" );
-
-static const itype_id itype_test_rock( "test_rock" );
-
-static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
 
 // MATH-B09: item and computer talkers gave the avatar's overmap tile, and zone talkers the
 // default {0,0,0}, instead of their own.
@@ -367,11 +382,6 @@ TEST_CASE( "math-b10_a_dead_item_has_no_position", "[audit][math_parser][eoc]" )
     CHECK( dmsg.empty() );
 }
 
-static const vpart_id vpart_frame( "frame" );
-static const vpart_id vpart_seat( "seat" );
-
-static const vproto_id vehicle_prototype_none( "none" );
-
 // MATH-B11: val('pos_x/y/z') assignment called Creature::setpos directly: the map didn't follow
 // the avatar, a rider stayed boarded, a solid spot was entered, and monsters ignored it.
 TEST_CASE( "math-b11_val_pos_moves_like_a_teleport", "[audit][math_parser]" )
@@ -433,12 +443,6 @@ TEST_CASE( "math-b11_val_pos_moves_like_a_teleport", "[audit][math_parser]" )
         CHECK( mon.pos_abs() == mon_start + tripoint::east * 2 );
     }
 }
-
-static const efftype_id effect_riding( "riding" );
-
-static const ter_str_id ter_t_floor( "t_floor" );
-static const ter_str_id ter_t_open_air( "t_open_air" );
-static const ter_str_id ter_t_rock( "t_rock" );
 
 // MATH-B11 follow-up: teleport_to_point let go of holds and got off the vehicle before it checked
 // the spot, and for a spot outside the bubble moved the bubble (dropping the mount) first, so a

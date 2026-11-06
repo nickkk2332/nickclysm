@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <exception>
 #include <functional>
+#include <list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -16,8 +17,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "ability.h"
+#include "ability_runtime.h"
 #include "avatar.h"
 #include "basecamp.h"
 #include "bionics.h"
@@ -27,6 +31,7 @@
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
@@ -37,7 +42,6 @@
 #include "errand.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "ability_runtime.h"
 #include "faction.h"
 #include "field.h"
 #include "flag.h"
@@ -57,10 +61,11 @@
 #include "mapdata.h"
 #include "martialarts.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "math_parser_type.h"
+#include "mattack_common.h"
 #include "memory_fast.h"
 #include "messages.h"
-#include "math_parser_diag_value.h"
 #include "mission.h"
 #include "mod_setting.h"
 #include "monster.h"
@@ -71,12 +76,15 @@
 #include "npc_ai_ids.h"
 #include "npc_decision_category.h"
 #include "npc_json_goal.h"
+#include "omdata.h"
 #include "options.h"
 #include "output.h"
 #include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_activity.h"
+#include "pocket_type.h"
 #include "point.h"
 #include "profession.h"
 #include "recipe_groups.h"
@@ -747,7 +755,7 @@ bool grab_condition_names_other( const JsonObject &jo, std::string_view member, 
     }
     if( value != "any" ) {
         jo.throw_error_at( member, string_format(
-                               "%s must be \"any\" or \"%s\" (the other talker), not \"%s\"",
+                               R"(%s must be "any" or "%s" (the other talker), not "%s")",
                                std::string( member ), other, value ) );
     }
     return false;
@@ -1284,8 +1292,8 @@ conditional_t::func f_overmap_at_point( const JsonObject &jo, std::string_view m
 }
 
 // OMAP-J01: which overmap special a tile belongs to, and how well the player has seen it.
-static tripoint_abs_omt read_omt_or_alpha( const std::optional<var_info> &loc_var,
-        const_dialogue const &d )
+tripoint_abs_omt read_omt_or_alpha( const std::optional<var_info> &loc_var,
+                                    const_dialogue const &d )
 {
     if( loc_var.has_value() ) {
         return project_to<coords::omt>( read_var_value( *loc_var, d ).tripoint() );
@@ -2719,7 +2727,7 @@ conditional_t::func f_can_reach( const JsonObject &jo, std::string_view member, 
 {
     if( !jo.has_object( member ) ) {
         jo.throw_error_at( member, string_format(
-                               "%s takes a location variable, like { \"context_val\": \"spot\" }", std::string( member ) ) );
+                               R"(%s takes a location variable, like { "context_val": "spot" })", std::string( member ) ) );
     }
     const var_info target = read_var_info( jo.get_object( member ) );
     const dbl_or_var range = get_dbl_or_var( jo, "range", false, 0 );
@@ -2801,7 +2809,7 @@ conditional_t::func f_is_walking_to( const JsonObject &jo, std::string_view memb
     if( jo.has_string( member ) ) {
         if( jo.get_string( member ) != "any" ) {
             jo.throw_error_at( member, string_format(
-                                   "%s takes \"any\" or a location variable, like { \"context_val\": \"spot\" }",
+                                   R"(%s takes "any" or a location variable, like { "context_val": "spot" })",
                                    std::string( member ) ) );
         }
     } else if( jo.has_object( member ) ) {
@@ -2840,7 +2848,7 @@ conditional_t::func f_npc_goal( const JsonObject &jo, std::string_view member, b
 }
 
 // the NPC u or npc is, nullptr for none, another kind of talker, or no talker at all
-static const npc *talker_npc( const_dialogue const &d, const bool is_npc )
+const npc *talker_npc( const_dialogue const &d, const bool is_npc )
 {
     return d.has_actor( is_npc ) ? d.const_actor( is_npc )->get_const_npc() : nullptr;
 }
@@ -2977,7 +2985,7 @@ conditional_t::func f_mod_setting_on( const JsonObject &jo, std::string_view mem
 {
     const str_or_var id = get_str_or_var( jo.get_member( member ), member, true );
     check_mod_setting_id( jo.get_member( member ), id, "mod_setting_on",
-    { mod_setting::kind_t::boolean }, "a switch (\"kind\": \"bool\")" );
+    { mod_setting::kind_t::boolean }, R"(a switch ("kind": "bool"))" );
     return [id]( const_dialogue const & d ) {
         const mod_setting_id setting( id.evaluate( d ) );
         if( !setting.is_valid() ) {

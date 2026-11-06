@@ -1,12 +1,15 @@
-#include "power.h"
-
 #include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "bodypart.h"
 #include "debug.h"
 #include "effect.h"
 #include "flexbuffer_json.h"
 #include "itype.h"
+#include "power.h"
+#include "type_id.h"
+#include "value_ptr.h"
 
 bool power_grant_definition::empty() const
 {
@@ -46,7 +49,7 @@ void power_grant_definition::load( const JsonObject &jo )
         }
     }
     if( jo.has_object( "form" ) ) {
-        const auto options = jo.get_object( "form" );
+        const JsonObject options = jo.get_object( "form" );
         const bool inherited = form;
         stow_worn = options.get_bool( "stow_worn", inherited ? stow_worn : true );
         stow_weapon = options.get_bool( "stow_weapon", inherited ? stow_weapon : true );
@@ -61,14 +64,14 @@ void power_grant_definition::load( const JsonObject &jo )
 
 void power_grant_definition::check( const std::string &id ) const
 {
-    for( const auto &grant : effects ) {
+    for( const power_effect_grant &grant : effects ) {
         if( !grant.effect.is_valid() || grant.effect.str() == "knocked_out" ||
             ( grant.bodypart != bodypart_str_id::NULL_ID() && !grant.bodypart.is_valid() ) ||
             ( grant.effect.is_valid() && grant.intensity > effect( &*grant.effect ).get_max_intensity() ) ) {
             debugmsg( "Application %s has invalid effect grant %s", id, grant.effect.str() );
         }
     }
-    for( const auto &grant : equipment ) {
+    for( const power_equipment_grant &grant : equipment ) {
         if( !grant.item.is_valid() || ( grant.slot == "worn" && !grant.item->armor ) ||
             ( grant.item.is_valid() && ( grant.item->count_by_charges() || grant.item->comestible ||
                                          grant.item->gun || grant.item->tool ) ) ) {

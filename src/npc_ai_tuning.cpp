@@ -1,8 +1,10 @@
 #include "npc_ai_tuning.h"
 
 #include <cmath>
+#include <initializer_list>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "character.h"

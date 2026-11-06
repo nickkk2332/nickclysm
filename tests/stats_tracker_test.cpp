@@ -19,6 +19,7 @@
 #include "event_statistics.h"
 #include "event_subscriber.h"
 #include "game.h"
+#include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "map_scale_constants.h"
@@ -82,7 +83,11 @@ TEST_CASE( "stats_tracker_count_events", "[stats]" )
 
     clear_overmaps();
     clear_map_without_vision();
-    tripoint_bub_ms loc = get_player_character().pos_bub() + tripoint::east;
+    // The fresh overmap can generate open air or a ravine under the avatar, which then falls a
+    // level, into the rock clear_map puts there
+    Character &you = get_player_character();
+    you.setpos( get_map(), tripoint_bub_ms( you.pos_bub().xy(), 0 ) );
+    tripoint_bub_ms loc = you.pos_bub() + tripoint::east;
     monster &dummy_monster = spawn_test_monster( "mon_dragon_dummy", loc );
 
     const character_id u_id = get_player_character().getID();

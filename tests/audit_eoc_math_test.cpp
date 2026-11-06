@@ -1,4 +1,8 @@
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "addiction.h"
 #include "avatar.h"
@@ -14,8 +18,10 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const addiction_id addiction_alcohol( "alcohol" );
@@ -107,7 +113,7 @@ TEST_CASE( "eoc-b04_weighted_list_eocs_fractional_and_zero_weights", "[audit][eo
     CHECK( run_weighted_list( R"([ "EOC_mess_pass", [ "EOC_mess_fail", 0 ] ])" ) == 1 );
 }
 
-static double eval_math( dialogue &d, const std::string &expr )
+static double eval_math( dialogue &d, const std::string_view expr )
 {
     math_exp exp;
     REQUIRE( exp.parse( expr ) );

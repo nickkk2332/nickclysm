@@ -1,18 +1,19 @@
 #include <list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
-#include "activity_type.h"
 #include "avatar.h"
-#include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "coordinates.h"
 #include "item.h"
+#include "item_components.h"
 #include "item_factory.h"
 #include "item_location.h"
 #include "itype.h"
@@ -24,11 +25,8 @@
 #include "map_selector.h"
 #include "mapdata.h"
 #include "messages.h"
-#include "morale_types.h"
 #include "npc.h"
-#include "omdata.h"
 #include "overmapbuffer.h"
-#include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
@@ -37,8 +35,8 @@ static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
 static const activity_id ACT_FISH( "ACT_FISH" );
 
 static const itype_id itype_2x4( "2x4" );
-static const itype_id itype_ax( "ax" );
 static const itype_id itype_audit_use_b08_rune( "audit_use_b08_rune" );
+static const itype_id itype_ax( "ax" );
 static const itype_id itype_blindfold( "blindfold" );
 static const itype_id itype_blindfold_up( "blindfold_up" );
 static const itype_id itype_cotton_patchwork( "cotton_patchwork" );

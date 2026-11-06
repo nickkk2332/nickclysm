@@ -15,6 +15,7 @@
 #include "map_selector.h"
 #include "player_activity.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "type_id.h"
 
 static const itype_id itype_knife_combat( "knife_combat" );

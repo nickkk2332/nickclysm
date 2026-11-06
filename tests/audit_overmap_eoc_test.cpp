@@ -1,16 +1,22 @@
+#include <memory>
+#include <optional>
+#include <string>
+
 #include "avatar.h"
 #include "cata_catch.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "global_vars.h"
 #include "map_helpers.h"
-#include "omdata.h"
+#include "math_parser_diag_value.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const effect_on_condition_id

@@ -10,6 +10,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <type_traits>
 
@@ -17,6 +18,7 @@
 #include "cata_variant.h"
 #include "creature.h"
 #include "debug.h"
+#include "enum_conversions.h"
 #include "event_subscriber.h"
 #include "item_location.h"
 #include "talker.h"  // IWYU pragma: keep
@@ -119,10 +121,12 @@ void event_bus::send_with_talker( vehicle *alpha,  Creature *beta, const cata::e
 }
 namespace
 {
-bool is_integer_in( const std::string &v, long long min, long long max )
+bool is_integer_in( const std::string_view v, long long min, long long max )
 {
     long long value = 0;
     const char *const end = v.data() + v.size();
+    // from_chars takes the end explicitly, so no null terminator is needed.
+    // NOLINTNEXTLINE(bugprone-suspicious-stringview-data-usage)
     const std::from_chars_result res = std::from_chars( v.data(), end, value );
     return res.ec == std::errc() && res.ptr == end && value >= min && value <= max;
 }

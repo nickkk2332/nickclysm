@@ -95,6 +95,8 @@ static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const itype_id fuel_type_muscle( "muscle" );
 static const itype_id itype_backpack( "backpack" );
 
+static const jmath_func_id jmath_func_grab_vehicle_pull_chance( "grab_vehicle_pull_chance" );
+
 static const json_character_flag json_flag_BIONIC_LIMB( "BIONIC_LIMB" );
 
 static const skill_id skill_gun( "gun" );
@@ -440,7 +442,7 @@ void grab::load_grab( const JsonObject &jo )
     optional( jo, was_loaded, "respect_seatbelts", respect_seatbelts, true );
     optional( jo, was_loaded, "pull_from_vehicle", pull_from_vehicle, false );
     optional( jo, was_loaded, "vehicle_pull_formula", vehicle_pull_formula,
-              jmath_func_id( "grab_vehicle_pull_chance" ) );
+              jmath_func_grab_vehicle_pull_chance );
     optional( jo, was_loaded, "drag_distance", drag_distance, 0 );
     optional( jo, was_loaded, "drag_deviation", drag_deviation, 0 );
     optional( jo, was_loaded, "drag_grab_break_distance", drag_grab_break_distance, 0 );
@@ -1135,7 +1137,7 @@ bool melee_actor::call( monster &z ) const
         execution_combat::effect_hit_scope execution_hit( *target, &z );
         dealt_damage_instance packet;
         {
-            const auto primary = execution_hit.capture_damage();
+            const execution_combat::direct_damage_scope primary = execution_hit.capture_damage();
             packet = target->deal_damage( &z, bp_id, damage );
         }
         packet.bp_hit = bp_id;

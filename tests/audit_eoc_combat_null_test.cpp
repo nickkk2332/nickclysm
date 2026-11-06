@@ -5,7 +5,6 @@
 
 #include "avatar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "creature_tracker.h"
@@ -13,6 +12,7 @@
 #include "faction.h"
 #include "flexbuffer_json.h"
 #include "game.h"
+#include "item_location.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -20,6 +20,7 @@
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "projectile.h"

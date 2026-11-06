@@ -1,15 +1,16 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "cata_catch.h"
 #include "character.h"
+#include "character_attire.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "game.h"
-#include "gun_mode.h"
 #include "item.h"
 #include "item_location.h"
 #include "map.h"
@@ -20,9 +21,11 @@
 #include "npc.h"
 #include "npc_attack.h"
 #include "options_helpers.h"
+#include "overmap_ui.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "type_id.h"
 #include "units.h"
 

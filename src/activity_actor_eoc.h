@@ -5,14 +5,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
-#include "calendar.h"
 #include "coordinates.h"
 #include "item_location.h"
 #include "type_id.h"
 
 class Character;
 class activity_actor;
+class time_duration;
 
 // Starting activities that have an activity actor from EOCs (u_assign_activity).
 namespace activity_actors
@@ -42,7 +43,7 @@ bool eoc_start_needs_avatar( const activity_id &type );
  * @param duration the effect's "duration", if it has one
  */
 std::unique_ptr<activity_actor> make_for_eoc( const activity_id &type, const Character &who,
-        const std::string &other_name, const std::optional<time_duration> &duration );
+        std::string_view other_name, const std::optional<time_duration> &duration );
 
 /** The targets u_assign_activity gives an activity (see doc/JSON/EFFECT_ON_CONDITION.md). */
 struct eoc_activity_target {

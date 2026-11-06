@@ -12,8 +12,6 @@
 
 class JsonObject;
 class npc_decision_category;
-template<typename T>
-class generic_factory;
 
 using npc_decision_category_id = string_id<npc_decision_category>;
 

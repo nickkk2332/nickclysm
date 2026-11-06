@@ -1,8 +1,13 @@
 #include "creature_ref.h"
 
+#include <list>
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "avatar.h"
+#include "character.h"
+#include "character_id.h"
 #include "creature.h"
 #include "creature_tracker.h"
 #include "execution_fatal.h"

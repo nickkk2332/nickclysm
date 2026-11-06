@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <string>
+#include <vector>
 
 #include "activity_tracker.h"
 #include "addiction.h"
@@ -8,6 +10,7 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "coordinates.h"
 #include "damage.h"
 #include "effect.h"
 #include "effect_source.h"

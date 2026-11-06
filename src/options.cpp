@@ -4657,7 +4657,7 @@ std::string options_manager::world_option_value_error( const std::string &name,
         }
     } else if( opt.sType == "string_select" ) {
         if( opt.getItemPos( value ) == -1 ) {
-            return string_format( "\"%s\" isn't one of the values of \"%s\"", value, name );
+            return string_format( R"("%s" isn't one of the values of "%s")", value, name );
         }
     } else if( opt.sType == "string_input" ) {
         if( opt.iMaxLength > 0 && static_cast<int>( value.size() ) > opt.iMaxLength ) {

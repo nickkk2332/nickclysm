@@ -1,17 +1,21 @@
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "activity_actor_definitions.h"
-#include "activity_type.h"
 #include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "condition.h"
-#include "creature_ref.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "dialogue.h"
@@ -28,6 +32,7 @@
 #include "global_vars.h"
 #include "incapacitation.h"
 #include "item.h"
+#include "item_location.h"
 #include "json.h"
 #include "json_loader.h"
 #include "kill_tracker.h"
@@ -35,25 +40,39 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
-#include "mattack_actors.h"
+#include "math_parser_diag_value.h"
 #include "mattack_common.h"
+#include "memory_fast.h"
 #include "monster.h"
-#include "mtype.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "player_activity.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
 #include "talker.h"
 #include "type_id.h"
 
+static const damage_type_id damage_pure( "pure" );
+
+static const efftype_id effect_knocked_out( "knocked_out" );
+static const efftype_id effect_sleep( "sleep" );
+static const efftype_id effect_stunned( "stunned" );
+static const efftype_id effect_test_knockout_immune( "test_knockout_immune" );
+static const efftype_id effect_test_knockout_uncanny( "test_knockout_uncanny" );
+static const efftype_id effect_test_knockout_vulnerable( "test_knockout_vulnerable" );
+
 static const execution_trigger_id
 execution_trigger_demo_strength_takedown_trigger( "demo_strength_takedown_trigger" );
 
+static const matec_id tec_none( "tec_none" );
+
+static const spell_id spell_test_spell_pew( "test_spell_pew" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
+
 namespace
 {
-const efftype_id effect_knocked_out( "knocked_out" );
-const bodypart_str_id torso( "torso" );
 
 struct knockout_world {
     time_point old_time = calendar::turn;
@@ -93,7 +112,8 @@ execution_view view( int64_t id )
 int64_t start( const std::string &definition, Creature &actor, Creature &target )
 {
     dialogue d( get_talker_for( actor ), get_talker_for( target ) );
-    const auto result = g->executions().start( execution_id( definition ), d, UINT64_C( 41723 ) );
+    const execution_start_result result = g->executions().start( execution_id( definition ), d,
+                                          UINT64_C( 41723 ) );
     REQUIRE( result.reason == "queued" );
     REQUIRE( result.id > 0 );
     g->executions().drain_starts();
@@ -155,8 +175,8 @@ TEST_CASE( "execution_knockouts_outlast_the_scene_without_death_or_rewards",
     CHECK( duration <= 30_turns );
     CHECK( target.in_sleep_state() );
     CHECK( target.is_on_ground() );
-    CHECK_FALSE( target.has_effect( efftype_id( "sleep" ) ) );
-    CHECK_FALSE( target.has_effect( efftype_id( "stunned" ) ) );
+    CHECK_FALSE( target.has_effect( effect_sleep ) );
+    CHECK_FALSE( target.has_effect( effect_stunned ) );
     CHECK( g->executions().controls( target ) );
     tick();
     CHECK( view( id ).state == "completed" );
@@ -232,10 +252,11 @@ TEST_CASE( "knockouts_suppress_native_movement_combat_activities_and_specials",
     const tripoint_abs_ms position = who.pos_abs();
     const int hp = get_avatar().get_hp();
     item invalid_gun;
-    const auto before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     if( Character *person = who.as_character() ) {
         CHECK_FALSE( person->move_effects( false ) );
-        CHECK_FALSE( person->melee_attack_abstract( get_avatar(), false, matec_id( "tec_none" ) ) );
+        CHECK_FALSE( person->melee_attack_abstract( get_avatar(), false, tec_none ) );
         CHECK( person->fire_gun( get_map(), get_avatar().pos_bub(), 1, invalid_gun, {} ) == 0 );
         CHECK( person->get_dodge() == 0 );
         if( npc *n = person->as_npc() ) {
@@ -272,10 +293,10 @@ TEST_CASE( "knockout_wakeup_depends_on_actual_HP_loss_and_authored_depth",
     const bool wake = GENERATE( false, true );
     Creature &who = subject( kind );
     REQUIRE( incapacitation::apply( who, nullptr, 20_turns, wake ) == "applied" );
-    who.deal_damage( nullptr, torso.id(), damage_instance( damage_type_id( "pure" ), 0 ) );
-    who.heal_bp( torso, 1 );
+    who.deal_damage( nullptr, body_part_torso.id(), damage_instance( damage_pure, 0 ) );
+    who.heal_bp( body_part_torso, 1 );
     CHECK( incapacitation::unconscious( who ) );
-    who.apply_damage( nullptr, torso.id(), 1 );
+    who.apply_damage( nullptr, body_part_torso.id(), 1 );
     CHECK( incapacitation::unconscious( who ) == !wake );
     CHECK_FALSE( who.is_dead_state() );
 }
@@ -287,7 +308,8 @@ TEST_CASE( "knockout_prevents_evasion_and_forced_dodges_even_against_a_bad_attac
     const std::string kind = GENERATE( "avatar", "npc", "monster" );
     Creature &who = subject( kind );
     REQUIRE( incapacitation::apply( who, nullptr, 20_turns, false ) == "applied" );
-    const auto before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     CHECK( who.dodge_roll() == 0 );
     CHECK_FALSE( who.dodge_check( -10000.0f, true, 0.0f ) );
     CHECK( rng_get_engine() == before );
@@ -315,7 +337,7 @@ TEST_CASE( "knockout_damage_wakeup_is_visible_to_damage_callbacks",
     } callback;
     callback.who = &who;
     get_event_bus().subscribe( &callback );
-    who.apply_damage( &get_avatar(), torso.id(), 1 );
+    who.apply_damage( &get_avatar(), body_part_torso.id(), 1 );
     CHECK( callback.fired );
     CHECK( callback.awake );
 }
@@ -336,7 +358,7 @@ TEST_CASE( "knockouts_allow_environmental_and_fatal_damage_through_normal_death"
         monster &who = *subject( "monster" ).as_monster();
         const int kills = g->get_kill_tracker().total_kill_count();
         REQUIRE( incapacitation::apply( who, &get_avatar(), 20_turns, false ) == "applied" );
-        who.apply_damage( &get_avatar(), torso.id(), who.get_hp() );
+        who.apply_damage( &get_avatar(), body_part_torso.id(), who.get_hp() );
         who.check_dead_state( &get_map() );
         who.check_dead_state( &get_map() );
         CHECK( who.is_dead_state() );
@@ -351,7 +373,7 @@ TEST_CASE( "knockout_admission_reports_immunity_physiology_and_existing_states",
     knockout_world world;
     SECTION( "explicit character immunity" ) {
         avatar &who = get_avatar();
-        who.add_effect( efftype_id( "test_knockout_immune" ), 1_minutes );
+        who.add_effect( effect_test_knockout_immune, 1_minutes );
         CHECK( incapacitation::apply( who, nullptr, 20_turns, true ) == "immune" );
         CHECK_FALSE( incapacitation::unconscious( who ) );
     }
@@ -362,14 +384,14 @@ TEST_CASE( "knockout_admission_reports_immunity_physiology_and_existing_states",
     }
     SECTION( "transient monster immunity also works alongside native monster flags" ) {
         Creature &who = subject( "monster" );
-        who.add_effect( efftype_id( "test_knockout_immune" ), 1_minutes );
+        who.add_effect( effect_test_knockout_immune, 1_minutes );
         CHECK( incapacitation::apply( who, nullptr, 20_turns, true ) == "immune" );
     }
     SECTION( "unsupported physiologies can explicitly opt in" ) {
         const std::string type = GENERATE( "mon_zombie", "mon_manhack" );
         monster &who = spawn_test_monster( type, get_avatar().pos_bub() + tripoint_rel_ms::east );
         CHECK( incapacitation::apply( who, nullptr, 20_turns, true ) == "unsupported" );
-        who.add_effect( efftype_id( "test_knockout_vulnerable" ), 1_minutes );
+        who.add_effect( effect_test_knockout_vulnerable, 1_minutes );
         CHECK( incapacitation::apply( who, nullptr, 20_turns, true ) == "applied" );
     }
     SECTION( "ordinary sleep stays independent" ) {
@@ -377,7 +399,7 @@ TEST_CASE( "knockout_admission_reports_immunity_physiology_and_existing_states",
         who.fall_asleep( 1_hours );
         CHECK( incapacitation::apply( who, nullptr, 20_turns, false ) == "already_incapacitated" );
         CHECK_FALSE( who.has_effect( effect_knocked_out ) );
-        CHECK( who.has_effect( efftype_id( "sleep" ) ) );
+        CHECK( who.has_effect( effect_sleep ) );
     }
     SECTION( "dead targets are unavailable" ) {
         monster &who = *subject( "monster" ).as_monster();
@@ -423,7 +445,7 @@ TEST_CASE( "a_new_knockout_replaces_an_expired_entry_with_its_own_source_and_dep
         source = &spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( -2, 0 ), "thug" );
     }
     REQUIRE( incapacitation::apply( who, nullptr, 10_turns, true ) == "applied" );
-    who.apply_damage( nullptr, torso.id(), 1 );
+    who.apply_damage( nullptr, body_part_torso.id(), 1 );
     REQUIRE_FALSE( incapacitation::unconscious( who ) );
     REQUIRE( who.has_effect( effect_knocked_out ) );
     REQUIRE( incapacitation::apply( who, source, 20_turns, false ) == "applied" );
@@ -435,7 +457,7 @@ TEST_CASE( "a_new_knockout_replaces_an_expired_entry_with_its_own_source_and_dep
     }
     CHECK( who.get_effect( effect_knocked_out ).get_duration() == 20_turns );
     CHECK( who.get_effect( effect_knocked_out ).get_intensity() == 2 );
-    who.apply_damage( nullptr, torso.id(), 1 );
+    who.apply_damage( nullptr, body_part_torso.id(), 1 );
     CHECK( incapacitation::unconscious( who ) );
 }
 
@@ -520,7 +542,7 @@ TEST_CASE( "knockout_deadlines_and_depth_survive_actor_serialization_and_elapsed
     }
     REQUIRE( incapacitation::unconscious( *restored ) );
     CHECK( restored->get_effect( effect_knocked_out ).get_duration() == 13_turns );
-    restored->apply_damage( nullptr, torso.id(), 1 );
+    restored->apply_damage( nullptr, body_part_torso.id(), 1 );
     CHECK( incapacitation::unconscious( *restored ) );
     calendar::turn += 13_turns;
     CHECK_FALSE( incapacitation::unconscious( *restored ) );
@@ -571,7 +593,8 @@ TEST_CASE( "knockout_conditions_are_read_only_and_never_fall_back_to_the_avatar"
     dialogue d( get_talker_for( who ), get_talker_for( other ) );
     CHECK( conditional_t( "npc_can_be_knocked_out" )( d ) );
     REQUIRE( incapacitation::apply( who, nullptr, 20_turns, false ) == "applied" );
-    const auto before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     const std::string state = save_actor( who );
     CHECK( conditional_t( "u_is_knocked_out" )( d ) );
     CHECK_FALSE( conditional_t( "u_can_be_knocked_out" )( d ) );
@@ -588,11 +611,11 @@ TEST_CASE( "knockouts_prevent_voluntary_spell_casting_until_recovery",
 {
     knockout_world world;
     avatar &who = get_avatar();
-    spell magic( spell_id( "test_spell_pew" ) );
+    spell magic( spell_test_spell_pew );
     REQUIRE( magic.can_cast( who ) );
     REQUIRE( incapacitation::apply( who, nullptr, 10_turns, true ) == "applied" );
     CHECK_FALSE( magic.can_cast( who ) );
-    who.apply_damage( nullptr, torso.id(), 1 );
+    who.apply_damage( nullptr, body_part_torso.id(), 1 );
     CHECK( magic.can_cast( who ) );
 }
 
@@ -601,11 +624,12 @@ TEST_CASE( "knockout_prevents_uncanny_dodge_from_moving_the_unconscious_body",
 {
     knockout_world world;
     avatar &who = get_avatar();
-    who.add_effect( efftype_id( "test_knockout_uncanny" ), 1_minutes );
+    who.add_effect( effect_test_knockout_uncanny, 1_minutes );
     who.set_stamina( who.get_stamina_max() );
     REQUIRE( incapacitation::apply( who, nullptr, 10_turns, true ) == "applied" );
-    const auto position = who.pos_abs();
-    const auto before = rng_get_engine();
+    const tripoint_abs_ms position = who.pos_abs();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     const int stamina = who.get_stamina();
     CHECK_FALSE( who.uncanny_dodge() );
     CHECK( who.pos_abs() == position );
@@ -655,8 +679,8 @@ TEST_CASE( "knockout_disables_flight_while_native_gravity_still_runs",
     map &here = get_map();
     const tripoint_bub_ms above( 62, 60, 1 );
     const tripoint_bub_ms below( 62, 60, 0 );
-    here.ter_set( above, ter_str_id( "t_open_air" ) );
-    here.ter_set( below, ter_str_id( "t_floor" ) );
+    here.ter_set( above, ter_t_open_air );
+    here.ter_set( below, ter_t_floor );
     monster &who = spawn_test_monster( "mon_crow", above );
     who.set_hp( 10000 );
     REQUIRE( who.flies() );
@@ -674,10 +698,10 @@ TEST_CASE( "knockout_calendar_timing_does_not_change_ordinary_effect_decay",
 {
     knockout_world world;
     avatar &who = get_avatar();
-    who.add_effect( efftype_id( "stunned" ), 10_turns );
-    CHECK_FALSE( who.get_effect( efftype_id( "stunned" ) ).has_calendar_deadline() );
+    who.add_effect( effect_stunned, 10_turns );
+    CHECK_FALSE( who.get_effect( effect_stunned ).has_calendar_deadline() );
     who.process_effects();
-    CHECK( who.get_effect( efftype_id( "stunned" ) ).get_duration() == 9_turns );
+    CHECK( who.get_effect( effect_stunned ).get_duration() == 9_turns );
     REQUIRE( incapacitation::apply( who, nullptr, 10_turns, false ) == "applied" );
     effect saved = who.get_effect( effect_knocked_out );
     saved.pause_effect();

@@ -2,7 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <deque>
+#include <cstddef>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <set>
@@ -10,23 +11,23 @@
 
 #include "ability_runtime.h"
 #include "bodypart.h"
-#include "cata_scope_helpers.h"
 #include "character.h"
 #include "creature.h"
-#include "creature_tracker.h"
 #include "damage.h"
 #include "damage_rule.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "json.h"
-#include "magic.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
-#include "talker.h"
+#include "power_projection.h"
 #include "power_runtime.h"
+#include "talker.h"
 
 namespace
 {
@@ -138,7 +139,10 @@ int remove_points( damage_instance &packet, const Creature &defender, const dama
         }
     }
     std::stable_sort( order.begin(), order.end(), [&]( size_t lhs, size_t rhs ) {
-        return packet.damage_units[lhs].type.str() < packet.damage_units[rhs].type.str();
+        // NOLINTBEGIN(cata-use-localized-sorting)
+        return packet.damage_units[lhs].type.str() <
+               packet.damage_units[rhs].type.str();
+        // NOLINTEND(cata-use-localized-sorting)
     } );
     int removed = 0;
     for( const size_t i : order ) {
@@ -187,7 +191,7 @@ thread_local damage_packet_scope *damage_packet_scope::current = nullptr;
 
 damage_context_scope::damage_context_scope( global_variables::impl_t values, bool trace,
         std::optional<creature_ref> instigator ) :
-    values( std::move( values ) ), trace( trace ), instigator( std::move( instigator ) ),
+    values( std::move( values ) ), trace( trace ), instigator( instigator ),
     previous( current )
 {
     current = this;
@@ -549,7 +553,7 @@ struct damage_packet_scope::impl {
         if( action.resource == "none" ) {
             return wanted;
         }
-        const auto balance = get_powers().balance( *defender, action.resource );
+        const power_balance balance = get_powers().balance( *defender, action.resource );
         if( !balance.reason.empty() ) {
             result.reason = balance.reason;
             return 0;
@@ -557,7 +561,7 @@ struct damage_packet_scope::impl {
         return std::min( wanted, balance.available() / action.cost_per_damage );
     }
 
-    bool pay( const damage_rule_action &action, int points, damage_rule_result &result ) {
+    bool pay( const damage_rule_action &action, int points, damage_rule_result &result ) const {
         if( points == 0 || action.resource == "none" ) {
             return true;
         }
@@ -855,7 +859,7 @@ bool damage_packet_scope::after_armor( damage_instance &packet )
     data->view.after_armor = total( packet, *data->defender );
     data->view.armor_evaluated = true;
     data->view.after_armor_components = components( packet );
-    for( const auto &unit : packet ) {
+    for( damage_unit const &unit : packet ) {
         data->original_types.insert( unit.type );
     }
     const bool result = data->stage( "after_armor", packet );

@@ -1,6 +1,8 @@
+#include <initializer_list>
 #include <map>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -16,6 +18,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "messages.h"
 #include "monattack.h"
@@ -161,8 +164,8 @@ TEST_CASE( "monai-b03_absorb_meat_names_meat_and_skips_oversized_meat", "[audit]
     Character &you = get_player_character();
     const tripoint_bub_ms mon_pos( 50, 50, 0 );
     // the tiles around the monster are searched starting north-west, ending south-east
-    const tripoint_bub_ms first_tile = mon_pos + tripoint( -1, -1, 0 );
-    const tripoint_bub_ms last_tile = mon_pos + tripoint( 1, 1, 0 );
+    const tripoint_bub_ms first_tile = mon_pos + tripoint::north_west;
+    const tripoint_bub_ms last_tile = mon_pos + tripoint::south_east;
     you.setpos( here, mon_pos + point( 5, 0 ) );
     // a zombie (62 L) absorbs meat of up to 3 L a piece
     monster &zed = spawn_test_monster( "mon_zombie", mon_pos );

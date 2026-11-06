@@ -1,6 +1,10 @@
 #include <algorithm>
+#include <functional>
+#include <initializer_list>
 #include <map>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -11,21 +15,21 @@
 #include "character.h"
 #include "coordinates.h"
 #include "effect.h"
+#include "enums.h"
 #include "grab.h"
 #include "grapple.h"
 #include "item.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "monster.h"
 #include "player_helpers.h"
 #include "point.h"
-#include "skill.h"
 #include "subbodypart.h"
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
-#include "veh_type.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
@@ -33,14 +37,25 @@
 // ---- CHAR-B05 ----
 
 static const efftype_id effect_downed( "downed" );
+static const efftype_id effect_grabbed( "grabbed" );
+static const efftype_id effect_hallu( "hallu" );
 static const efftype_id effect_in_pit( "in_pit" );
+static const efftype_id effect_test_char_b08_impeding( "test_char_b08_impeding" );
+static const efftype_id effect_visuals( "visuals" );
 static const efftype_id effect_webbed( "webbed" );
 
 static const itype_id itype_rock( "rock" );
 
+static const skill_id skill_dodge( "dodge" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_wall( "t_wall" );
+
 static const trait_id trait_test_char_b05_no_carry( "test_char_b05_no_carry" );
 static const trait_id trait_test_char_b05_wing_left( "test_char_b05_wing_left" );
 static const trait_id trait_test_char_b05_wing_right( "test_char_b05_wing_right" );
+
+static const vproto_id vehicle_prototype_hospital_bed_small( "hospital_bed_small" );
 
 static void give_wings( avatar &you )
 {
@@ -143,8 +158,6 @@ TEST_CASE( "char-b05_can_fly_with_no_carrying_capacity", "[audit][character]" )
 
 // ---- CHAR-B06 ----
 
-static const skill_id skill_dodge( "dodge" );
-
 // The fall damage multiplier dropped 4% for each point of DEX / 2 + dodge (times the limbs'
 // landing score) and was clamped at 0, which a character reached at 25 points (DEX 18 and
 // dodge 8 with Feline Eyes, or DEX 30 and dodge 10 where a mod raises the DEX cap): falls from
@@ -210,8 +223,6 @@ TEST_CASE( "char-b07_similar_sub_body_part_lists_are_rebuilt_not_appended", "[au
 
 // ---- CHAR-B08 ----
 
-static const efftype_id effect_test_char_b08_impeding( "test_char_b08_impeding" );
-
 // try_remove_impeding_effect() took the difficulty from the whole-body instance of the effect,
 // which a limb's effect doesn't have, so every escape from one succeeded; and a success removed
 // the effect from every body part while the loop still walked them.
@@ -245,10 +256,6 @@ TEST_CASE( "char-b08_escaping_an_impeding_effect_on_a_limb", "[audit][character]
 
 // ---- CHAR-B09 ----
 
-static const efftype_id effect_grabbed( "grabbed" );
-
-static const ter_str_id ter_t_floor( "t_floor" );
-
 // The grabber search took in monsters a level up or down, but skipped any at distance 0, so a
 // monster holding you from straight above or below was not found and its grab was dropped as
 // an orphan.
@@ -277,10 +284,6 @@ TEST_CASE( "char-b09_a_grabber_straight_above_is_not_an_orphan", "[audit][grab]"
 }
 
 // ---- CHAR-B10 ----
-
-static const ter_str_id ter_t_wall( "t_wall" );
-
-static const vproto_id vehicle_prototype_hospital_bed_small( "hospital_bed_small" );
 
 static vehicle *empty_vehicle_at( map &here, const vproto_id &type, const tripoint_bub_ms &p )
 {
@@ -372,9 +375,6 @@ TEST_CASE( "char-b10_a_vehicle_taken_across_stairs_is_dragged_by_the_rules",
 }
 
 // ---- HLTH-B11 ----
-
-static const efftype_id effect_hallu( "hallu" );
-static const efftype_id effect_visuals( "visuals" );
 
 // Runs the avatar's effects for the turn when a hallucination of the given length has the
 // given time left.

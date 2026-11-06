@@ -1,15 +1,17 @@
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "avatar.h"
 #include "bodypart.h"
 #include "cata_catch.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "creature.h"
-#include "dialogue.h"
 #include "debug.h"
-#include "effect.h"
+#include "dialogue.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
-#include "game.h"
 #include "global_vars.h"
 #include "item.h"
 #include "json_loader.h"
@@ -17,13 +19,15 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
-#include "veh_type.h"
 #include "vehicle.h"
 
 static const itype_id itype_rock( "rock" );
@@ -77,8 +81,10 @@ TEST_CASE( "powers_damage_keeps_receiver_and_source_separate", "[audit][powers][
         CHECK( victim.get_part_hp_cur( bodypart_id( "torso" ) ) == hp - 8 );
     }
     SECTION( "a monster receiver" ) {
-        monster &victim = spawn_test_monster( "mon_zombie", attacker.pos_bub() + tripoint_rel_ms( 2, 0,
-                                              0 ) );
+        // Its one weakpoint covers it all and changes nothing: a zombie's are rolled at random
+        // and some multiply the damage
+        monster &victim = spawn_test_monster( "mon_execution_trigger_test",
+                                              attacker.pos_bub() + tripoint_rel_ms( 2, 0, 0 ) );
         const int hp = victim.get_hp();
         dialogue d( get_talker_for( attacker ), get_talker_for( victim ) );
         effect.apply( d );

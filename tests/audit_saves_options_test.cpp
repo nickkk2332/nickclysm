@@ -1,3 +1,4 @@
+#include <functional>
 #include <locale>
 #include <memory>
 #include <sstream>
@@ -7,11 +8,11 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "coordinates.h"
-#include "json.h"
+#include "flexbuffer_json.h"
 #include "json_loader.h"
-#include "omdata.h"
 #include "options.h"
 #include "overmap.h"
+#include "point.h"
 #include "type_id.h"
 
 static const oter_str_id oter_forest( "forest" );

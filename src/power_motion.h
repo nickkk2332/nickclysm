@@ -7,6 +7,7 @@
 
 #include "coordinates.h"
 #include "creature_ref.h"
+#include "point.h"
 
 class Creature;
 
@@ -48,7 +49,7 @@ power_motion_result fling( const creature_ref &source, const creature_ref &targe
 class flight_scope
 {
     public:
-        flight_scope( Creature &target, power_motion_result *result );
+        flight_scope( Creature &who, power_motion_result *receipt );
         ~flight_scope();
         flight_scope( const flight_scope & ) = delete;
         flight_scope &operator=( const flight_scope & ) = delete;

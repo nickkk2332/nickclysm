@@ -1,8 +1,8 @@
 #include <memory>
+#include <string>
 
 #include "avatar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "dialogue.h"
 #include "enums.h"
 #include "math_parser.h"

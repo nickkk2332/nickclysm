@@ -3,6 +3,7 @@
 #define CATA_SRC_ABILITY_RUNTIME_H
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -13,15 +14,18 @@
 #include "coordinates.h"
 #include "creature_ref.h"
 #include "global_vars.h"
+#include "point.h"
+#include "power.h"
 
 class Creature;
-class damage_transaction_manager;
-class power_manager;
-class power_actor_manager;
-class power_projection_manager;
 class JsonObject;
 class JsonOut;
+class damage_transaction_manager;
+class power_actor_manager;
+class power_manager;
+class power_projection_manager;
 struct dialogue;
+
 namespace execution_combat
 {
 struct attack_snapshot;
@@ -123,6 +127,7 @@ class ability_manager
 
     private:
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 

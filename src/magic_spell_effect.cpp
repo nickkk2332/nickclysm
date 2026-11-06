@@ -5,14 +5,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <random>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -31,15 +34,14 @@
 #include "dialogue.h"
 #include "dialogue_helpers.h"
 #include "effect_on_condition.h"
-#include "spell_cast_context.h"
 #include "enums.h"
-#include "explosion.h"
 #include "execution_combat.h"
-#include "game_inventory.h"
+#include "explosion.h"
 #include "field.h"
 #include "field_type.h"
 #include "fungal_effects.h"
 #include "game.h"
+#include "game_inventory.h"
 #include "item.h"
 #include "item_group.h"
 #include "kill_tracker.h"
@@ -65,6 +67,7 @@
 #include "projectile.h"
 #include "ret_val.h"
 #include "rng.h"
+#include "spell_cast_context.h"
 #include "string_formatter.h"
 #include "talker.h"
 #include "teleport.h"
@@ -605,12 +608,11 @@ struct spell_area_calculator::impl {
     impl( const spell &sp, const Creature &caster );
 
     int index( const tripoint_bub_ms &p ) const {
-        const int x = p.x() - corner.x();
-        const int y = p.y() - corner.y();
-        if( p.z() != corner.z() || x < 0 || y < 0 || x >= side || y >= side ) {
+        const point p2( p.x() - corner.x(), p.y() - corner.y() );
+        if( p.z() != corner.z() || p2.x < 0 || p2.y < 0 || p2.x >= side || p2.y >= side ) {
             return -1;
         }
-        return x * side + y;
+        return p2.x * side + p2.y;
     }
     tripoint_bub_ms point_at( const int idx ) const {
         return corner + tripoint_rel_ms( idx / side, idx % side, 0 );
@@ -679,6 +681,7 @@ spell_area_calculator::impl::impl( const spell &sp, const Creature &caster ) :
     // calculate_spell_effect_area() works these out for every target. If they draw random
     // numbers, each area can differ, so put the numbers back and leave it to that.
     cata_default_random_engine &engine = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
     const cata_default_random_engine before = engine;
     params.emplace( sp, caster );
     aoe = sp.aoe( caster );
@@ -963,7 +966,7 @@ static void execution_spell_damage( const spell &sp, Creature &caster, Creature 
     execution_combat::effect_hit_scope execution_hit( target, &caster, &sp );
     dealt_damage_instance dealt;
     {
-        const auto primary = execution_hit.capture_damage();
+        const execution_combat::direct_damage_scope primary = execution_hit.capture_damage();
         dealt = target.deal_damage( &caster, bp, damage );
     }
     dealt.bp_hit = bp;

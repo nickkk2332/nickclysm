@@ -1,6 +1,8 @@
 #include "execution_fatal.h"
 
+#include <memory>
 #include <set>
+#include <utility>
 
 #include "avatar.h"
 #include "creature.h"
@@ -12,7 +14,7 @@
 namespace
 {
 thread_local std::set<const Creature *> finalizing;
-}
+} // namespace
 
 bool execution_fatal::pending( const Creature &who )
 {

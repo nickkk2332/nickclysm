@@ -2,7 +2,14 @@
 #ifndef CATA_SRC_ABILITY_AI_H
 #define CATA_SRC_ABILITY_AI_H
 
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ability.h"
 #include "ability_runtime.h"
+
+struct creature_ref;
 
 struct ability_ai_view {
     ability_id ability;
@@ -22,6 +29,6 @@ namespace ability_ai
 ability_ai_view query( const ability_request &request );
 std::optional<ability_request> choose( const std::vector<ability_id> &abilities,
                                        const creature_ref &caster, const creature_ref &target );
-}
+} // namespace ability_ai
 
 #endif // CATA_SRC_ABILITY_AI_H

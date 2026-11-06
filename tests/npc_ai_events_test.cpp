@@ -1,6 +1,12 @@
 #include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -8,6 +14,7 @@
 #include "cata_scope_helpers.h"
 #include "cata_variant.h"
 #include "character_id.h"
+#include "coordinates.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "event.h"
@@ -21,11 +28,12 @@
 #include "npc.h"
 #include "npc_ai_hooks_helpers.h"
 #include "npc_attitude_cause.h"
+#include "npc_opinion.h"
 #include "npc_turn_helpers.h"
 #include "npctalk.h"
+#include "pimpl.h"
 #include "point.h"
 #include "stats_tracker.h"
-#include "talker.h"
 #include "type_id.h"
 
 // NPC-J04: the events an NPC's attitude and allegiance changes fire, whatever changes them

@@ -1,4 +1,5 @@
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -8,28 +9,31 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "clone_ptr.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
-#include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
 #include "item_components.h"
 #include "item_location.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
+#include "map_selector.h"
+#include "math_parser_diag_value.h"
 #include "npc.h"
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
-#include "recipe.h"
 #include "requirements.h"
+#include "ret_val.h"
 #include "skill.h"
 #include "talker.h"
 #include "type_id.h"
@@ -43,23 +47,26 @@ static const activity_id ACT_DISASSEMBLE( "ACT_DISASSEMBLE" );
 static const activity_id ACT_READ( "ACT_READ" );
 static const activity_id ACT_RELOAD( "ACT_RELOAD" );
 static const activity_id ACT_UNLOAD( "ACT_UNLOAD" );
+static const activity_id ACT_WAIT( "ACT_WAIT" );
 static const activity_id ACT_WEAR( "ACT_WEAR" );
+
+static const faction_id faction_free_merchants( "free_merchants" );
 
 static const furn_str_id furn_f_workbench( "f_workbench" );
 
 static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_556( "556" );
 static const itype_id itype_backpack( "backpack" );
+static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const itype_id itype_cudgel( "cudgel" );
 static const itype_id itype_knife_combat( "knife_combat" );
 static const itype_id itype_splinter( "splinter" );
-static const itype_id itype_stick( "stick" );
 static const itype_id itype_stanag30( "stanag30" );
+static const itype_id itype_stick( "stick" );
 static const itype_id itype_test_audit_hook_widget( "test_audit_hook_widget" );
 static const itype_id itype_test_textbook_fabrication( "test_textbook_fabrication" );
 static const itype_id itype_tshirt( "tshirt" );
 static const itype_id itype_water_clean( "water_clean" );
-static const itype_id itype_bottle_plastic( "bottle_plastic" );
 
 static const mtype_id mon_chicken( "mon_chicken" );
 
@@ -206,7 +213,7 @@ TEST_CASE( "act-j02_targeted_activities_are_checked_at_load", "[audit][activity]
     CHECK_NOTHROW( load_effect( R"({ "u_assign_activity": "ACT_WEAR", "target_item": "npc", )"
                                 R"("true_eocs": [ "EOC_TEST_ERRAND_STARTED" ] })" ) );
     CHECK( activity_actors::takes_eoc_target( ACT_READ ) );
-    CHECK_FALSE( activity_actors::takes_eoc_target( activity_id( "ACT_WAIT" ) ) );
+    CHECK_FALSE( activity_actors::takes_eoc_target( ACT_WAIT ) );
 }
 
 TEST_CASE( "act-j02_eoc_reads_a_book", "[audit][activity][errands_ui]" )
@@ -545,7 +552,7 @@ TEST_CASE( "act-j02_eoc_wears_an_item", "[audit][activity][errands_ui]" )
     }
     SECTION( "someone else's shirt is refused" ) {
         item shirt( itype_tshirt );
-        shirt.set_owner( faction_id( "free_merchants" ) );
+        shirt.set_owner( faction_free_merchants );
         item_location loc = on_ground( guy.pos_bub(), shirt );
         assign( R"("ACT_WEAR", "target_item": "npc")", guy, loc );
         CHECK( result() == "refused" );

@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "ability_runtime.h"
 #include "active_item_cache.h"
 #include "activity_actor.h"
 #include "activity_actor_definitions.h"
@@ -55,7 +56,6 @@
 #include "event_bus.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "ability_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "field.h"
@@ -97,7 +97,6 @@
 #include "npc_attack.h"
 #include "npc_attitude_cause.h"
 #include "npc_decision_category.h"
-#include "npc_goal_state.h"
 #include "npc_json_goal.h"
 #include "npc_opinion.h"
 #include "npc_sleep.h"
@@ -115,6 +114,7 @@
 #include "regional_settings.h"
 #include "ret_val.h"
 #include "rng.h"
+#include "safe_reference.h"
 #include "simple_pathfinding.h"
 #include "sleep.h"
 #include "sounds.h"
@@ -297,10 +297,13 @@ static decision_category cascade_action_to_category( npc_action action )
 
 // The reactions to danger, picked before the decision tree.  Which one applies is worked out
 // first, with no side effects, so that a JSON goal that keeps the NPC can stop it running.
+namespace
+{
 enum class danger_reaction : int {
     none, escape_explosion, flee_vehicle, flee_attacker, use_inhaler, fight, investigate,
     ignore_sound
 };
+} // namespace
 
 // what a reaction counts as against a JSON goal; nullopt for none
 static std::optional<decision_category> danger_reaction_category( const danger_reaction r )
@@ -357,7 +360,7 @@ std::vector<bionic_id> npc_weapon_cbms( const Character &guy )
         }
     }
     const auto by_id = []( const bionic_id & a, const bionic_id & b ) {
-        return a.str() < b.str();
+        return a.str() < b.str(); // NOLINT(cata-use-localized-sorting)
     };
     std::sort( guns.begin(), guns.end(), by_id );
     std::sort( melee.begin(), melee.end(), by_id );

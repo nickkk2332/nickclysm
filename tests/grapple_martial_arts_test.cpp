@@ -18,11 +18,11 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "flexbuffer_json.h"
 #include "grapple.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
-#include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -65,6 +65,7 @@ static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const itype_id itype_chain( "chain" );
 static const itype_id itype_club_wooden( "club_wooden" );
 static const itype_id itype_knife_combat( "knife_combat" );
+static const itype_id itype_not_an_item_type( "not_an_item_type" );
 
 static const json_character_flag json_flag_MA_BASIC_FALLBACK( "MA_BASIC_FALLBACK" );
 
@@ -81,6 +82,7 @@ static const matec_id tec_zuiquan_throw( "tec_zuiquan_throw" );
 static const matec_id tech_base_headbutt( "tech_base_headbutt" );
 static const matec_id tech_base_kick( "tech_base_kick" );
 static const matec_id tech_base_punch( "tech_base_punch" );
+static const matec_id test_tech_defensive_fallback( "test_tech_defensive_fallback" );
 static const matec_id test_tech_grapple_basic( "test_tech_grapple_basic" );
 static const matec_id test_tech_grapple_knife( "test_tech_grapple_knife" );
 static const matec_id test_tech_grapple_strike( "test_tech_grapple_strike" );
@@ -92,11 +94,13 @@ static const matype_id style_judo( "style_judo" );
 static const matype_id style_none( "style_none" );
 static const matype_id style_pankration( "style_pankration" );
 static const matype_id style_zui_quan( "style_zui_quan" );
+static const matype_id test_style_bad_grapple_weapons( "test_style_bad_grapple_weapons" );
 static const matype_id test_style_grapple( "test_style_grapple" );
 
 static const skill_id skill_unarmed( "unarmed" );
 
 static const weapon_category_id weapon_category_KNIVES( "KNIVES" );
+static const weapon_category_id weapon_category_NOT_A_WEAPON_CATEGORY( "NOT_A_WEAPON_CATEGORY" );
 
 static constexpr tripoint_bub_ms dude_pos( HALF_MAPSIZE_X, HALF_MAPSIZE_Y, 0 );
 
@@ -584,6 +588,8 @@ TEST_CASE( "grapple_ma_grab_roll_only_against_the_one_holding_you", "[grapple][m
     avatar &you = get_avatar();
     you.setpos( get_map(), dude_pos );
     npc &target = spawn_npc( ( dude_pos + tripoint::east ).xy(), "thug" );
+    // A mod's random trait could change the thug's size, and with it whether a push is allowed.
+    target.clear_mutations();
     monster &next_to_you = spawn_test_monster( "mon_feral_human_pipe",
                            dude_pos + tripoint::west );
     monster &next_to_target = spawn_test_monster( "mon_feral_human_pipe",
@@ -680,9 +686,9 @@ TEST_CASE( "grapple_ma_load_checks", "[grapple][martial_arts]" )
 {
     SECTION( "unknown ids in grapple_weapons are load errors" ) {
         martialart style;
-        style.id = matype_id( "test_style_bad_grapple_weapons" );
-        style.grapple_weapons.categories = { weapon_category_id( "NOT_A_WEAPON_CATEGORY" ) };
-        style.grapple_weapons.items = { itype_id( "not_an_item_type" ) };
+        style.id = test_style_bad_grapple_weapons;
+        style.grapple_weapons.categories = { weapon_category_NOT_A_WEAPON_CATEGORY };
+        style.grapple_weapons.items = { itype_not_an_item_type };
         const std::string msg = capture_debugmsg_during( [&style]() {
             style.check();
         } );
@@ -698,7 +704,7 @@ TEST_CASE( "grapple_ma_load_checks", "[grapple][martial_arts]" )
     }
     SECTION( "fallback on a technique attacks never use is an error" ) {
         ma_technique tech;
-        tech.id = matec_id( "test_tech_defensive_fallback" );
+        tech.id = test_tech_defensive_fallback;
         tech.defensive = true;
         tech.fallback = true;
         CHECK_THAT( capture_debugmsg_during( [&tech]() {

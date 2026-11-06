@@ -1,11 +1,12 @@
+#include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
 #include "enums.h"
 #include "errand.h"

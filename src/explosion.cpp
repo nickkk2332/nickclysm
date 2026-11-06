@@ -14,6 +14,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -715,7 +716,9 @@ void shockwave( const tripoint_bub_ms &p, int radius, int force, int stun, int d
         // Living ranges exclude reservations. Settle defeated bodies before this external
         // motion request; a genuinely rescued resident can then take the ordinary shockwave.
         const auto settle_defeated = [&]( const auto & residents ) {
-            const auto snapshot = residents;
+            // A copy: settling a resident can remove it from the live list.
+            // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
+            const std::decay_t<decltype( residents )> snapshot = residents;
             for( const auto &resident : snapshot ) {
                 if( execution_fatal::pending( *resident ) && resident->posz() == p.z() &&
                     rl_dist( resident->pos_bub(), p ) <= radius ) {

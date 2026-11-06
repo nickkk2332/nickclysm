@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <memory>
@@ -34,13 +35,12 @@
 #include "damage.h"
 #include "debug.h"
 #include "dialogue.h"
-#include "effect.h"
-#include "execution_combat.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_combat.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "flag.h"
@@ -53,6 +53,7 @@
 #include "item_components.h"
 #include "item_contents.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
 #include "line.h"
 #include "localized_comparator.h"
@@ -100,8 +101,7 @@ static const bionic_id bio_cqb( "bio_cqb" );
 static const bionic_id bio_heat_absorb( "bio_heat_absorb" );
 static const bionic_id bio_shock( "bio_shock" );
 
-static const character_modifier_id
-character_modifier_limb_dodge_mod( "limb_dodge_mod" );
+static const character_modifier_id character_modifier_limb_dodge_mod( "limb_dodge_mod" );
 static const character_modifier_id
 character_modifier_melee_attack_roll_mod( "melee_attack_roll_mod" );
 static const character_modifier_id
@@ -3437,6 +3437,7 @@ thread_local int technique_menu_suppression = 0;
 class menu_random_numbers
 {
     public:
+        // NOLINTNEXTLINE(cata-determinism)
         explicit menu_random_numbers( const Creature &target ) : saved( rng_get_engine() ) {
             const tripoint_abs_ms pos = target.pos_abs();
             const unsigned int seed = static_cast<unsigned int>( to_turn<int>( calendar::turn ) ) ^

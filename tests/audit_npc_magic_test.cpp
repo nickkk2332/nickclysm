@@ -1,7 +1,11 @@
+#include <functional>
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "cata_catch.h"
@@ -47,9 +51,9 @@ static const spell_id spell_debug_kill_spell( "debug_kill_spell" );
 static const spell_id spell_spell_corrosive_spray( "spell_corrosive_spray" );
 static const spell_id spell_weaponpod_saw( "weaponpod_saw" );
 
-static const ter_str_id ter_t_wall( "t_wall" );
-
 static const string_id<npc_template> npc_template_test_talker( "test_talker" );
+
+static const ter_str_id ter_t_wall( "t_wall" );
 
 static constexpr tripoint_bub_ms audit_npc_pos{ 50, 50, 0 };
 

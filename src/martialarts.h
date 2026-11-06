@@ -15,7 +15,6 @@
 
 #include "bonuses.h"
 #include "calendar.h"
-#include "enum_traits.h"
 #include "flat_set.h"
 #include "translation.h"
 #include "type_id.h"
@@ -27,11 +26,11 @@ class JsonObject;
 class effect;
 class item;
 class item_location;
+enum class bp_type;
 struct const_dialogue;
-struct dialogue;
 struct itype;
 template <typename T> class generic_factory;
-enum class bp_type;
+template <typename T> struct enum_traits;
 
 const matec_id tec_none( "tec_none" );
 

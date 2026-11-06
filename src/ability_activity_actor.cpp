@@ -1,5 +1,7 @@
 #include "ability_activity_actor.h"
 
+#include <string>
+
 #include "ability_runtime.h"
 #include "character.h"
 #include "flexbuffer_json.h"
@@ -8,10 +10,11 @@
 #include "json.h"
 #include "player_activity.h"
 
+static const activity_id ACT_ABILITY( "ACT_ABILITY" );
+
 const activity_id &ability_activity_actor::get_type() const
 {
-    static const activity_id id( "ACT_ABILITY" );
-    return id;
+    return ACT_ABILITY;
 }
 
 void ability_activity_actor::start( player_activity &act, Character & )

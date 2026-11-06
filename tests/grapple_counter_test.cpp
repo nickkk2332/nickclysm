@@ -1,6 +1,11 @@
 #include <functional>
+#include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <tuple>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -52,7 +57,9 @@ static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const matec_id tec_aikido_grab_counter( "tec_aikido_grab_counter" );
 static const matec_id tec_judo_grab_counter( "tec_judo_grab_counter" );
 static const matec_id tec_krav_maga_grab_counter( "tec_krav_maga_grab_counter" );
+static const matec_id test_tech_aim_nothing( "test_tech_aim_nothing" );
 static const matec_id test_tech_aimed_knockback( "test_tech_aimed_knockback" );
+static const matec_id test_tech_defensive_grab_counter( "test_tech_defensive_grab_counter" );
 static const matec_id test_tech_dodge_or_grab_counter( "test_tech_dodge_or_grab_counter" );
 static const matec_id test_tech_grab_counter( "test_tech_grab_counter" );
 static const matec_id test_tech_knockback_follow( "test_tech_knockback_follow" );
@@ -340,7 +347,7 @@ TEST_CASE( "grab_counter_load_checks", "[grapple][martial_arts]" )
     }
     SECTION( "a defensive grab counter does nothing" ) {
         ma_technique tech;
-        tech.id = matec_id( "test_tech_defensive_grab_counter" );
+        tech.id = test_tech_defensive_grab_counter;
         tech.defensive = true;
         tech.grab_counter = true;
         CHECK_THAT( capture_debugmsg_during( [&tech]() {
@@ -394,7 +401,7 @@ TEST_CASE( "controlled_knockback_load_checks", "[martial_arts]" )
         test_tech_aimed_knockback->check();
     } ).empty() );
     ma_technique tech;
-    tech.id = matec_id( "test_tech_aim_nothing" );
+    tech.id = test_tech_aim_nothing;
     tech.controlled_knockback = true;
     CHECK_THAT( capture_debugmsg_during( [&tech]() {
         tech.check();
@@ -443,9 +450,9 @@ TEST_CASE( "controlled_knockback_is_aimed_in_manual_combat_mode", "[martial_arts
     }
     SECTION( "a shorter aim, diagonally" ) {
         you.manual_combat_mode = true;
-        aim_at = start + tripoint( 1, 1, 0 );
+        aim_at = start + tripoint::south_east;
         hit( choose_in_menu );
-        CHECK( mon.pos_bub() == start + tripoint( 1, 1, 0 ) );
+        CHECK( mon.pos_bub() == start + tripoint::south_east );
     }
     SECTION( "cancelled: knocked back as usual, away from you" ) {
         you.manual_combat_mode = true;

@@ -1,5 +1,4 @@
 #include "debug_menu.h"
-#include "debug_actions_table.h"
 
 #include <algorithm>
 #include <array>
@@ -37,6 +36,7 @@
 #include "calendar.h"
 #include "calendar_ui.h"
 #include "cata_path.h"
+#include "debug_actions_table.h"
 #if defined(TILES)
 #include "cata_shader.h"
 #include "sdl_utils.h"
@@ -136,8 +136,8 @@
 #include "translation.h"
 #include "translations.h"
 #include "type_id.h"
-#include "uilist.h"
 #include "ui_manager.h"
+#include "uilist.h"
 #include "uistate.h"
 #include "units.h"
 #include "units_utility.h"
@@ -148,7 +148,6 @@
 #include "weather.h"
 #include "weather_gen.h"
 #include "weather_type.h"
-#include "weighted_list.h"
 #include "worldfactory.h"
 #include "zzip.h"
 #include "zzip_stack.h"

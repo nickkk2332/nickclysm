@@ -1,15 +1,14 @@
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "avatar.h"
 #include "cata_catch.h"
-#include "character.h"
-#include "creature.h"
+#include "coordinates.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "game.h"
 #include "item.h"
-#include "item_location.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "math_parser_diag_value.h"
@@ -17,6 +16,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "player_helpers.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const effect_on_condition_id

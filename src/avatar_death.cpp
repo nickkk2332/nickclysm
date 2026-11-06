@@ -1,7 +1,12 @@
-#include "avatar.h"
-#include "power_runtime.h"
+#include <functional>
+#include <memory>
+#include <string>
 
+#include "avatar.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_ref.h"
 #include "effect_on_condition.h"
 #include "event.h"
@@ -10,7 +15,12 @@
 #include "execution_runtime.h"
 #include "game.h"
 #include "map.h"
+#include "memory_fast.h"
 #include "player_activity.h"
+#include "power_runtime.h"
+#include "type_id.h"
+
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
 
 void avatar::reset_death_state()
 {
@@ -74,7 +84,7 @@ bool avatar::finalize_death( Creature *source )
     const on_out_of_scope leave( [&]() {
         death_finalizing_ = false;
     } );
-    if( activity.id() == activity_id( "ACT_EXECUTION" ) ) {
+    if( activity.id() == ACT_EXECUTION ) {
         activity.set_to_null();
     }
     validate_source();

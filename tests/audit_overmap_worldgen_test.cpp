@@ -1,9 +1,15 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <functional>
+#include <initializer_list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -12,10 +18,12 @@
 #include "cata_scope_helpers.h"
 #include "city.h"
 #include "coordinates.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "json_loader.h"
 #include "map_helpers.h"
 #include "map_iterator.h"
+#include "map_scale_constants.h"
 #include "mapbuffer.h"
 #include "omdata.h"
 #include "overmap.h"
@@ -27,10 +35,10 @@
 #include "submap.h"
 #include "type_id.h"
 
-static const overmap_connection_id overmap_connection_test_audit_rail( "test_audit_rail" );
-
 static const oter_str_id oter_field( "field" );
 static const oter_str_id oter_test_forest_very_thick( "test_forest_very_thick" );
+
+static const overmap_connection_id overmap_connection_test_audit_rail( "test_audit_rail" );
 
 static const overmap_special_id overmap_special_test_audit_mansion( "test_audit_mansion" );
 static const overmap_special_id overmap_special_test_audit_road_shack( "test_audit_road_shack" );
@@ -402,8 +410,9 @@ TEST_CASE( "omap-b07_manual_voronoi_layout_with_positive_bounds", "[audit][overm
         Region_map &global_placed = overmap_buffer.global_state.placed_regions;
         Region_map saved;
         saved.swap( global_placed );
-        on_out_of_scope restore_placed( [&global_placed, &saved]() {
-            global_placed.swap( saved );
+        // global_placed refers to a global, so the lambda names it directly instead of capturing.
+        on_out_of_scope restore_placed( [&saved]() {
+            overmap_buffer.global_state.placed_regions.swap( saved );
         } );
         global_placed.emplace( tripoint_abs_om( 5, 5, 0 ), region_settings_default );
         hole_region = layout.get_overmap_region( tripoint_abs_om( 6, 6, 0 ) );

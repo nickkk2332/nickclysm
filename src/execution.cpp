@@ -1,6 +1,7 @@
 #include "execution.h"
 
 #include <cmath>
+#include <initializer_list>
 #include <set>
 #include <stdexcept>
 #include <string_view>
@@ -44,7 +45,7 @@ int read_integer( const JsonObject &jo, std::string_view key, int fallback, int 
     return value;
 }
 
-void load_eocs( const JsonObject &jo, std::string_view key, const std::string &source,
+void load_eocs( const JsonObject &jo, std::string_view key, const std::string_view source,
                 std::vector<effect_on_condition_id> &out )
 {
     if( jo.has_member( key ) ) {
@@ -180,7 +181,7 @@ void load_messages( const JsonObject &jo, execution_action &out )
     out.narration = load_narration( jo );
 }
 
-execution_action load_action( const JsonObject &jo, const std::string &source )
+execution_action load_action( const JsonObject &jo, const std::string_view source )
 {
     execution_action out;
     const std::string op = jo.get_string( "op" );

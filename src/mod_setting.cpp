@@ -1,11 +1,14 @@
 #include "mod_setting.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <locale>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <system_error>
@@ -13,7 +16,6 @@
 #include <variant>
 
 #include "catacharset.h"
-#include "debug.h"
 #include "event.h"
 #include "event_bus.h"
 #include "filesystem.h"
@@ -21,7 +23,6 @@
 #include "generic_factory.h"
 #include "init.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "mod_manager.h"
 #include "string_formatter.h"
@@ -76,7 +77,7 @@ std::string format_number( double x, int digits )
 }
 
 // Line breaks (U+2028, U+2029 and U+0085 among them) and other control characters become spaces
-std::string one_line( const std::string &text )
+std::string one_line( const std::string_view text )
 {
     std::string ret;
     ret.reserve( text.size() );
@@ -103,7 +104,7 @@ std::string one_line( const std::string &text )
     return ret;
 }
 
-int character_count( const std::string &text )
+int character_count( const std::string_view text )
 {
     return static_cast<int>( utf8_to_utf32( text ).size() );
 }
@@ -141,7 +142,7 @@ WORLD *active_world()
     return world_generator ? world_generator->active_world : nullptr;
 }
 
-[[noreturn]] void throw_at( const JsonObject &jo, const std::string &member,
+[[noreturn]] void throw_at( const JsonObject &jo, const std::string_view member,
                             const std::string &message )
 {
     if( jo.has_member( member ) ) {
@@ -426,7 +427,7 @@ std::optional<mod_setting_value> mod_setting::validate( const mod_setting_value 
                 if( choice_index( *s ) >= 0 ) {
                     return *s;
                 }
-                return fail( string_format( "\"%s\" isn't a choice of mod setting \"%s\"", *s,
+                return fail( string_format( R"("%s" isn't a choice of mod setting "%s")", *s,
                                             id.str() ) );
             }
             if( const double *d = std::get_if<double>( &value ) ) {
@@ -537,7 +538,7 @@ void mod_settings::load( const JsonObject &jo, const std::string &src )
             const mod_setting_id id( id_str );
             if( mod_setting_factory.is_valid( id ) ) {
                 jo.throw_error_at( "id", string_format(
-                                       "mod setting \"%s\" is already defined by %s.  To change it, use \"copy-from\": \"%s\"",
+                                       R"(mod setting "%s" is already defined by %s.  To change it, use "copy-from": "%s")",
                                        id.str(), id->owner().str(), id.str() ) );
             }
         }
@@ -817,7 +818,7 @@ class preview_builder
                     for( const std::pair<JsonObject, std::string> &w : deferred ) {
                         w.first.allow_omitted_members();
                         preview.errors.push_back( string_format(
-                                                      "%s \"%s\" (from %s) copies from \"%s\", which doesn't exist",
+                                                      R"(%s "%s" (from %s) copies from "%s", which doesn't exist)",
                                                       w.first.get_string( "type" ), w.first.get_string( "id", "" ), w.second,
                                                       w.first.get_string( "copy-from" ) ) );
                     }
@@ -892,7 +893,7 @@ class preview_builder
                 mod_setting *existing = find_setting( id );
                 if( existing != nullptr && !jo.has_member( "copy-from" ) ) {
                     jo.throw_error_at( "id", string_format(
-                                           "mod setting \"%s\" is already defined by %s.  To change it, use \"copy-from\": \"%s\"",
+                                           R"(mod setting "%s" is already defined by %s.  To change it, use "copy-from": "%s")",
                                            id, existing->owner().str(), id ) );
                 }
                 if( existing != nullptr && !existing->src.empty() &&

@@ -1,8 +1,12 @@
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "bodypart.h"
@@ -10,16 +14,17 @@
 #include "cata_catch.h"
 #include "character_martial_arts.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
-#include "debug.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
 #include "execution.h"
-#include "execution_activity_actor.h"
 #include "execution_runtime.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -27,22 +32,24 @@
 #include "horde_entity.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
-#include "martialarts.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "monster.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_activity.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
-#include "veh_type.h"
 #include "vehicle.h"
 
 static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );

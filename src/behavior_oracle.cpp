@@ -150,7 +150,7 @@ std::unordered_map<std::string, std::function<float( const oracle_t *, std::stri
 }
 
 template<typename T>
-bool lists( const std::vector<std::pair<std::string, T>> &list, const std::string &name )
+bool lists( const std::vector<std::pair<std::string, T>> &list, const std::string_view name )
 {
     for( const auto &entry : list ) {
         if( entry.first == name ) {
@@ -174,7 +174,7 @@ std::unordered_set<std::string> predicates_with_argument = { "monster_special_av
 
 std::unordered_set<std::string> scores_with_argument;
 
-oracle_kind predicate_kind( const std::string &name )
+oracle_kind predicate_kind( const std::string_view name )
 {
     if( lists( character_predicates(), name ) ) {
         return oracle_kind::character;
@@ -185,7 +185,7 @@ oracle_kind predicate_kind( const std::string &name )
     return oracle_kind::any;
 }
 
-oracle_kind score_kind( const std::string &name )
+oracle_kind score_kind( const std::string_view name )
 {
     return lists( character_scores(), name ) ? oracle_kind::character : oracle_kind::any;
 }

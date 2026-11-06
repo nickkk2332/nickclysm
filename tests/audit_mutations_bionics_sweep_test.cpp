@@ -1,6 +1,10 @@
 #include <array>
+#include <list>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "bionics.h"
@@ -23,17 +27,68 @@
 #include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
+
+static const bionic_id bio_fuel_cell_gasoline( "bio_fuel_cell_gasoline" );
+static const bionic_id bio_power_storage( "bio_power_storage" );
+static const bionic_id test_bio_mutb08_big( "test_bio_mutb08_big" );
+static const bionic_id test_bio_mutb09_mixed_burner( "test_bio_mutb09_mixed_burner" );
+static const bionic_id test_bio_mutb09_spare_tank( "test_bio_mutb09_spare_tank" );
+static const bionic_id test_bio_mutb10_base( "test_bio_mutb10_base" );
+static const bionic_id test_bio_mutb10_child( "test_bio_mutb10_child" );
+static const bionic_id test_bio_mutb10_parent( "test_bio_mutb10_parent" );
+static const bionic_id test_bio_mutb10_teacher( "test_bio_mutb10_teacher" );
+static const bionic_id test_bio_mutb10_teacher_b( "test_bio_mutb10_teacher_b" );
+static const bionic_id test_bio_mutb10_upgrade( "test_bio_mutb10_upgrade" );
+static const bionic_id test_bio_mutb11_arm( "test_bio_mutb11_arm" );
+
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_MUTB07_ACTIVATE( "EOC_TEST_MUTB07_ACTIVATE" );
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_MUTB07_DEACTIVATE( "EOC_TEST_MUTB07_DEACTIVATE" );
+
+static const efftype_id effect_under_operation( "under_operation" );
+
+static const itype_id itype_anesthetic( "anesthetic" );
+static const itype_id itype_gasoline( "gasoline" );
+static const itype_id itype_hammer( "hammer" );
+static const itype_id itype_home_picture( "home_picture" );
+static const itype_id itype_internal_gasoline_tank( "internal_gasoline_tank" );
+static const itype_id itype_test_bio_mutb08_cancels( "test_bio_mutb08_cancels" );
+static const itype_id itype_test_bio_mutb08_conflict( "test_bio_mutb08_conflict" );
+static const itype_id itype_test_bio_mutb08_small( "test_bio_mutb08_small" );
+static const itype_id itype_test_mutb09_gasoline_tank( "test_mutb09_gasoline_tank" );
+static const itype_id itype_test_mutb09_hopper( "test_mutb09_hopper" );
 
 static const json_character_flag json_flag_TEST_MUTB06_OFF( "TEST_MUTB06_OFF" );
 static const json_character_flag json_flag_TEST_MUTB06_ON( "TEST_MUTB06_ON" );
 
+static const mtype_id mon_nursebot_defective( "mon_nursebot_defective" );
+
+static const npc_class_id test_mutb10_class( "test_mutb10_class" );
+
+static const profession_id profession_test_mutb10_profession( "test_mutb10_profession" );
+
+static const proficiency_id proficiency_prof_lockpicking( "prof_lockpicking" );
+
+static const spell_id spell_test_spell_pew( "test_spell_pew" );
+
+static const trait_id trait_NOPAIN( "NOPAIN" );
 static const trait_id trait_TEST_MUTB06_TOGGLE( "TEST_MUTB06_TOGGLE" );
+static const trait_id trait_TEST_MUTB07_FORM( "TEST_MUTB07_FORM" );
+static const trait_id trait_TEST_MUTB07_FORM_ALT( "TEST_MUTB07_FORM_ALT" );
+static const trait_id trait_TEST_MUTB07_TOGGLE( "TEST_MUTB07_TOGGLE" );
+static const trait_id trait_TEST_MUTB08_MANUAL( "TEST_MUTB08_MANUAL" );
+static const trait_id trait_TEST_MUTB08_TRAIT( "TEST_MUTB08_TRAIT" );
+static const trait_id trait_TEST_MUTB11_SCAR( "TEST_MUTB11_SCAR" );
 
 // MUT-B06: has_trait_flag() and count_trait_flag() read the avatar's activation state for a
 // trait's active_flags and inactive_flags, whoever they were asked about.
@@ -72,15 +127,6 @@ TEST_CASE( "mut-b06_active_flags_follow_the_characters_own_trait_state",
     }
     clear_avatar();
 }
-
-static const effect_on_condition_id
-effect_on_condition_EOC_TEST_MUTB07_ACTIVATE( "EOC_TEST_MUTB07_ACTIVATE" );
-static const effect_on_condition_id
-effect_on_condition_EOC_TEST_MUTB07_DEACTIVATE( "EOC_TEST_MUTB07_DEACTIVATE" );
-
-static const trait_id trait_TEST_MUTB07_FORM( "TEST_MUTB07_FORM" );
-static const trait_id trait_TEST_MUTB07_FORM_ALT( "TEST_MUTB07_FORM_ALT" );
-static const trait_id trait_TEST_MUTB07_TOGGLE( "TEST_MUTB07_TOGGLE" );
 
 // A numeric character variable as math sees it (unset reads as 0).
 static double char_var( const Character &you, const std::string &name )
@@ -139,17 +185,6 @@ TEST_CASE( "mut-b07_switching_a_trait_you_have_still_works", "[audit][mutation][
     CHECK( you.has_trait( trait_TEST_MUTB07_FORM_ALT ) );
     clear_avatar();
 }
-
-static const bionic_id bio_fuel_cell_gasoline( "bio_fuel_cell_gasoline" );
-static const bionic_id bio_power_storage( "bio_power_storage" );
-static const bionic_id test_bio_mutb09_mixed_burner( "test_bio_mutb09_mixed_burner" );
-static const bionic_id test_bio_mutb09_spare_tank( "test_bio_mutb09_spare_tank" );
-
-static const itype_id itype_gasoline( "gasoline" );
-static const itype_id itype_home_picture( "home_picture" );
-static const itype_id itype_internal_gasoline_tank( "internal_gasoline_tank" );
-static const itype_id itype_test_mutb09_gasoline_tank( "test_mutb09_gasoline_tank" );
-static const itype_id itype_test_mutb09_hopper( "test_mutb09_hopper" );
 
 static item_location worn_item_of_type( Character &you, const itype_id &type )
 {
@@ -242,17 +277,6 @@ TEST_CASE( "mut-b09_clear_bionics_cuts_power_to_what_is_left", "[audit][bionics]
     clear_avatar();
 }
 
-static const bionic_id test_bio_mutb08_big( "test_bio_mutb08_big" );
-
-static const itype_id itype_hammer( "hammer" );
-static const itype_id itype_test_bio_mutb08_cancels( "test_bio_mutb08_cancels" );
-static const itype_id itype_test_bio_mutb08_conflict( "test_bio_mutb08_conflict" );
-static const itype_id itype_test_bio_mutb08_small( "test_bio_mutb08_small" );
-
-static const trait_id trait_NOPAIN( "NOPAIN" );
-static const trait_id trait_TEST_MUTB08_MANUAL( "TEST_MUTB08_MANUAL" );
-static const trait_id trait_TEST_MUTB08_TRAIT( "TEST_MUTB08_TRAIT" );
-
 // The MUT-B08 test CBMs need a hammer to self-install, and Deadened stands in for anesthetic.
 static void prepare_self_install( avatar &you )
 {
@@ -332,21 +356,6 @@ TEST_CASE( "mut-b08_manual_installation_only_helps_whoever_has_it",
     CHECK( bionic_success_chance( false, -1, difficulty, surgeon ) == 100 );
     clear_avatar();
 }
-
-static const bionic_id test_bio_mutb10_base( "test_bio_mutb10_base" );
-static const bionic_id test_bio_mutb10_child( "test_bio_mutb10_child" );
-static const bionic_id test_bio_mutb10_parent( "test_bio_mutb10_parent" );
-static const bionic_id test_bio_mutb10_teacher( "test_bio_mutb10_teacher" );
-static const bionic_id test_bio_mutb10_teacher_b( "test_bio_mutb10_teacher_b" );
-static const bionic_id test_bio_mutb10_upgrade( "test_bio_mutb10_upgrade" );
-
-static const npc_class_id npc_class_test_mutb10_class( "test_mutb10_class" );
-
-static const profession_id profession_test_mutb10_profession( "test_mutb10_profession" );
-
-static const proficiency_id proficiency_prof_lockpicking( "prof_lockpicking" );
-
-static const spell_id spell_test_spell_pew( "test_spell_pew" );
 
 static void remove_bionic_of_type( Character &you, const bionic_id &bid )
 {
@@ -469,7 +478,7 @@ TEST_CASE( "mut-b10_starting_cbms_do_not_claim_what_the_background_teaches",
     }
     SECTION( "a new NPC's class" ) {
         npc recruit;
-        recruit.randomize( npc_class_test_mutb10_class );
+        recruit.randomize( test_mutb10_class );
         check_background_outlives_starting_cbm( recruit );
     }
 }
@@ -507,17 +516,9 @@ TEST_CASE( "mut-b10_upgrade_takes_over_what_the_base_cbm_taught",
     clear_avatar();
 }
 
-static const bionic_id test_bio_mutb11_arm( "test_bio_mutb11_arm" );
-
-static const efftype_id effect_under_operation( "under_operation" );
-
-static const itype_id itype_anesthetic( "anesthetic" );
-
-static const mtype_id mon_nursebot_defective( "mon_nursebot_defective" );
-
-static const trait_id trait_TEST_MUTB11_SCAR( "TEST_MUTB11_SCAR" );
-
 // Records the CBM removal events sent while it lives.
+namespace
+{
 struct cbm_removal_events : public event_subscriber {
     cbm_removal_events() {
         get_event_bus().subscribe( this );
@@ -538,6 +539,7 @@ struct cbm_removal_events : public event_subscriber {
     int removed = 0;
     int failed = 0;
 };
+} // namespace
 
 // MUT-B11: a nurse bot's failed removal ran its consequences on the avatar instead of the
 // patient, with no part under operation, so they did nothing.

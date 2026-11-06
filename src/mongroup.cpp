@@ -1,13 +1,16 @@
 #include "mongroup.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_utility.h"
 #include "condition.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "enum_conversions.h"
@@ -535,7 +538,7 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
             }
             // Must stay fractional: difficulty presets use values like 0.75 or 1.5.
             const double upgrade_mult = mon_upgrade_factor > 0 ? mon_upgrade_factor : 1.0;
-            const auto read_scaled_time = [&mon, upgrade_mult]( const std::string & member ) {
+            const auto read_scaled_time = [&mon, upgrade_mult]( const std::string_view member ) {
                 if( !mon.has_member( member ) ) {
                     return 0_turns;
                 }

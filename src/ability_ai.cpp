@@ -1,10 +1,14 @@
 #include "ability_ai.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <memory>
 
+#include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "game.h"
-#include "map.h"
+#include "string_id.h"
 
 bool ability_ai_view::eligible() const
 {
@@ -19,7 +23,7 @@ ability_ai_view ability_ai::query( const ability_request &request )
         out.reason = "invalid_ability";
         return out;
     }
-    const auto &def = *request.ability;
+    const ability_definition &def = *request.ability;
     out.intent = def.ai_intent;
     out.magnitude = def.ai_magnitude;
     out.energy_cost = def.energy_cost;
@@ -49,7 +53,7 @@ ability_ai_view ability_ai::query( const ability_request &request )
         out.reason = "too_close";
         return out;
     }
-    const auto relation = caster.attitude_to( *target );
+    const Creature::Attitude relation = caster.attitude_to( *target );
     if( ( def.ai_relation == "hostile" && ( target == &caster ||
                                             relation != Creature::Attitude::HOSTILE ) ) ||
         ( def.ai_relation == "friendly" && target != &caster &&
@@ -87,9 +91,12 @@ std::optional<ability_request> ability_ai::choose( const std::vector<ability_id>
         request.ability = abilities[i];
         request.caster = caster;
         request.target = request.ability.is_valid() && request.ability->target == "self" ? caster : target;
-        const auto candidate = query( request );
+        const ability_ai_view candidate = query( request );
+        // NOLINTBEGIN(cata-use-localized-sorting)
         if( candidate.eligible() && ( !best || candidate.score > score ||
-                                      ( candidate.score == score && request.ability.str() < best->ability.str() ) ) ) {
+                                      ( candidate.score == score &&
+                                        request.ability.str() < best->ability.str() ) ) ) {
+            // NOLINTEND(cata-use-localized-sorting)
             score = candidate.score;
             best = request;
         }

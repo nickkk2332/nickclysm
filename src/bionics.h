@@ -28,6 +28,7 @@ class Character;
 class JsonObject;
 class JsonOut;
 struct const_dialogue;
+template <typename E> struct enum_traits;
 
 /** When the NPC AI switches a toggled bionic on and off (JSON "npc_use"). */
 enum class bionic_npc_use : int {

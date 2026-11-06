@@ -1,12 +1,21 @@
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "creature_ref.h"
+#include "character.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "event.h"
@@ -25,14 +34,17 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "monster.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "options_helpers.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "projectile.h"
 #include "type_id.h"
+
+static const damage_type_id damage_pure( "pure" );
 
 namespace
 {
@@ -133,9 +145,9 @@ void hit( Character &source, Creature &target, execution_combat::projectile_fire
     execution_combat::projectile_hit_scope contact( target, &source, round, &get_map(), true );
     dealt_damage_instance dealt;
     {
-        const auto capture = contact.capture_damage();
+        const execution_combat::direct_damage_scope capture = contact.capture_damage();
         dealt = target.deal_damage( &source, bodypart_id( "torso" ),
-                                    damage_instance( damage_type_id( "pure" ), amount ) );
+                                    damage_instance( damage_pure, amount ) );
     }
     dealt.bp_hit = bodypart_id( "torso" );
     contact.resolve( dealt );
@@ -261,7 +273,7 @@ TEST_CASE( "fatal_projectile_native_guns_and_bows_complete_firing_before_start",
     if( const auto report = g->executions().last_trigger_report() ) {
         native_diagnostic = report->reason + " / " + report->selected;
         if( report->instance ) {
-            const auto diagnostic = view( report->instance );
+            const execution_view diagnostic = view( report->instance );
             native_diagnostic += " / " + diagnostic.state + " / " + diagnostic.reason;
         }
     }
@@ -444,7 +456,7 @@ TEST_CASE( "fatal_projectile_saved_reservation_preserves_context_deadline_and_st
     const int64_t id = contact( source, target );
     g->executions().drain_starts();
     tick();
-    const auto before = view( id );
+    const execution_view before = view( id );
     std::ostringstream text;
     JsonOut out( text );
     g->executions().serialize( out );

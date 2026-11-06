@@ -16,36 +16,38 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <memory>
+#include <ratio>
 #include <string>
 #include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "explosion.h"
 #include "game.h"
 #include "item.h"
+#include "item_location.h"
 #include "itype.h"
+#include "iuse.h"
 #include "iuse_actor.h"
 #include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "monster.h"
 #include "npc.h"
-#include "npc_attack.h"
 #include "options_helpers.h"
 #include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "rng.h"
 #include "type_id.h"
-#include "weather.h"
 #include "weather_type.h"
 
 static const faction_id faction_your_followers( "your_followers" );
@@ -78,7 +80,7 @@ constexpr unsigned int scenario_seed = 4242;
 int bench_reps()
 {
     const char *env = std::getenv( "BENCH_REPS" );
-    const int reps = env ? std::atoi( env ) : 5;
+    const int reps = env ? static_cast<int>( std::strtol( env, nullptr, 10 ) ) : 5;
     return std::max( reps, 1 );
 }
 
@@ -93,9 +95,9 @@ void run_scenario( const std::string &name, const std::string &work_description,
     for( int r = -1; r < reps; ++r ) {
         rng_set_engine_seed( scenario_seed );
         setup();
-        const auto start = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
         work();
-        const auto end = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         if( r >= 0 ) {
             samples.push_back( std::chrono::duration<double, std::milli>( end - start ).count() );
         }
@@ -104,7 +106,7 @@ void run_scenario( const std::string &name, const std::string &work_description,
     std::printf( "BENCH %s median_ms=%.2f min_ms=%.2f max_ms=%.2f reps=%d work=\"%s\"\n",
                  name.c_str(), samples[samples.size() / 2], samples.front(), samples.back(), reps,
                  work_description.c_str() );
-    std::fflush( stdout );
+    static_cast<void>( std::fflush( stdout ) );
 }
 
 // Fixed, mild weather, so results don't depend on the natural weather at the test map.

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -14,6 +15,8 @@
 #include <utility>
 #include <vector>
 
+#include "ability.h"
+#include "ability_runtime.h"
 #include "achievement.h"
 #include "activity_type.h"
 #include "addiction.h"
@@ -40,6 +43,7 @@
 #include "crafting_gui.h"
 #include "creature.h"
 #include "damage.h"
+#include "damage_rule.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "disease.h"
@@ -49,21 +53,16 @@
 #include "end_screen.h"
 #include "event_statistics.h"
 #include "execution.h"
-#include "execution_trigger.h"
 #include "execution_runtime.h"
-#include "ability_runtime.h"
-#include "power_actor.h"
-#include "power_projection.h"
-#include "damage_rule.h"
-#include "power.h"
+#include "execution_trigger.h"
 #include "faction.h"
 #include "faction_camp.h"
 #include "fault.h"
 #include "field_type.h"
-#include "mapgen_post_process.h"
 #include "filesystem.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
+#include "game.h"
 #include "gates.h"
 #include "global_vars.h"
 #include "harvest.h"
@@ -84,6 +83,7 @@
 #include "map_extras.h"
 #include "mapdata.h"
 #include "mapgen.h"
+#include "mapgen_post_process.h"
 #include "martialarts.h"
 #include "material.h"
 #include "math_parser_jmath.h"
@@ -111,6 +111,9 @@
 #include "overmap_location.h"
 #include "overmap_map_data_cache.h"
 #include "overmap_worldgen.h"
+#include "power.h"
+#include "power_actor.h"
+#include "power_projection.h"
 #include "profession.h"
 #include "profession_group.h"
 #include "proficiency.h"

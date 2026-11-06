@@ -1,5 +1,4 @@
 #include "creature.h"
-#include "power_actor.h"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +24,7 @@
 #include "character_attire.h"
 #include "character_id.h"
 #include "color.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "cursesdef.h"
 #include "damage.h"
@@ -67,6 +67,7 @@
 #include "options.h"
 #include "output.h"
 #include "point.h"
+#include "power_actor.h"
 #include "projectile.h"
 #include "ret_val.h"
 #include "rng.h"
@@ -1602,7 +1603,7 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
     execution_combat::projectile_hit_scope execution_contact( *this, source, attack, here,
             hit_selection.is_crit );
     {
-        const auto primary = execution_contact.capture_damage();
+        const execution_combat::direct_damage_scope primary = execution_contact.capture_damage();
         dealt_dam = deal_damage( source, hit_selection.bp_hit, impact, wp_attack_copy,
                                  hit_selection.wp ? *hit_selection.wp : default_weakpoint );
     }

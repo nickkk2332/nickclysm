@@ -1,4 +1,3 @@
-#include <memory>
 #include <optional>
 #include <string>
 
@@ -17,7 +16,6 @@
 #include "monster.h"
 #include "player_helpers.h"
 #include "point.h"
-#include "talker.h"
 #include "type_id.h"
 
 static const effect_on_condition_id

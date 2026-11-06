@@ -17,11 +17,13 @@
 #include <queue>
 #include <set>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "ability_activity_actor.h"
 #include "action.h"
 #include "activity_actor_definitions.h"
 #include "activity_actor_eoc.h"
@@ -60,7 +62,6 @@
 #include "event.h"
 #include "event_bus.h"
 #include "execution_activity_actor.h"
-#include "ability_activity_actor.h"
 #include "faction.h"
 #include "fault.h"
 #include "field_type.h"
@@ -185,8 +186,8 @@ static const activity_id ACT_DISMEMBER( "ACT_DISMEMBER" );
 static const activity_id ACT_DISSECT( "ACT_DISSECT" );
 static const activity_id ACT_DROP( "ACT_DROP" );
 static const activity_id ACT_EBOOKSAVE( "ACT_EBOOKSAVE" );
-static const activity_id ACT_E_FILE( "ACT_E_FILE" );
 static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
+static const activity_id ACT_E_FILE( "ACT_E_FILE" );
 static const activity_id ACT_FERTILIZE_PLANT( "ACT_FERTILIZE_PLANT" );
 static const activity_id ACT_FETCH_REQUIRED( "ACT_FETCH_REQUIRED" );
 static const activity_id ACT_FIELD_DRESS( "ACT_FIELD_DRESS" );
@@ -15876,7 +15877,7 @@ namespace
 {
 struct eoc_start_args {
     const Character &who;
-    const std::string &other_name;
+    std::string_view other_name;
     const std::optional<time_duration> &duration;
 };
 
@@ -15906,7 +15907,7 @@ std::unique_ptr<activity_actor> build_wait_npc( const eoc_start_args &args )
         return build_wait( args );
     }
     return std::make_unique<wait_npc_activity_actor>( args.duration.value_or(
-                time_duration::from_turns( calendar::INDEFINITELY_LONG ) ), args.other_name );
+                time_duration::from_turns( calendar::INDEFINITELY_LONG ) ), std::string( args.other_name ) );
 }
 
 template<typename Game>
@@ -15973,7 +15974,7 @@ bool eoc_start_needs_avatar( const activity_id &type )
 }
 
 std::unique_ptr<activity_actor> make_for_eoc( const activity_id &type, const Character &who,
-        const std::string &other_name, const std::optional<time_duration> &duration )
+        const std::string_view other_name, const std::optional<time_duration> &duration )
 {
     const auto it = eoc_starters.find( type );
     if( it == eoc_starters.end() || ( eoc_start_needs_avatar( type ) && !who.is_avatar() ) ) {

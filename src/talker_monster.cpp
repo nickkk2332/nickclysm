@@ -1,5 +1,9 @@
 #include "talker_monster.h"
 
+#include <functional>
+#include <map>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "cata_scope_helpers.h"

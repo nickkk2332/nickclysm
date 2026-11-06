@@ -2325,6 +2325,7 @@ ret_val<item *> item_pocket::insert_item_impl( Item &&it, const bool into_bottom
     const bool by_charges = it.count_by_charges();
     // restack conserves total volume/weight, so the inserted item's own
     // contribution is the delta regardless of any merge.
+    // NOLINTNEXTLINE(cert-dcl16-c,readability-uppercase-literal-suffix): a user-defined literal
     const units::volume added_volume = bulk_fill_volume ? it.volume() : 0_ml;
     const units::mass added_weight = bulk_fill_volume ? it.weight() : 0_gram;
 

@@ -1,9 +1,14 @@
+#include <functional>
 #include <map>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
@@ -12,7 +17,6 @@
 #include "item_location.h"
 #include "itype.h"
 #include "iuse.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "magic_type.h"
@@ -28,6 +32,8 @@
 
 static const itype_id itype_match( "match" );
 static const itype_id itype_test_eoc_use_rune( "test_eoc_use_rune" );
+
+static const magic_type_id magic_audit_magic_j03_type( "audit_magic_j03_type" );
 
 static const mongroup_id GROUP_AUDIT_MONDT_J01( "GROUP_AUDIT_MONDT_J01" );
 
@@ -83,6 +89,12 @@ TEST_CASE( "mondt-j01_unknown_spawn_condition_fails_to_load", "[audit][monster]"
 TEST_CASE( "mondt-j01_dialogue_condition_gates_spawn_entry", "[audit][monster]" )
 {
     clear_avatar();
+    // Group entries spawn only once the cataclysm has started, and the test before this one may
+    // have left the clock earlier than that.
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    if( calendar::turn <= calendar::start_of_cataclysm ) {
+        calendar::turn = calendar::start_of_cataclysm + 1_minutes;
+    }
     avatar &u = get_avatar();
     load_audit_group( R"({ "id": "GROUP_AUDIT_MONDT_J01", "default": "mon_null", "monsters": [
         { "monster": "mon_zombie", "weight": 10, "condition": { "u_has_trait": "NIGHTVISION" } }
@@ -111,7 +123,7 @@ TEST_CASE( "mondt-j01_dialogue_condition_gates_spawn_entry", "[audit][monster]" 
     remove_audit_group();
 }
 
-static bool contains( const std::string &haystack, const std::string &needle )
+static bool contains( const std::string_view haystack, const std::string_view needle )
 {
     return haystack.find( needle ) != std::string::npos;
 }
@@ -171,7 +183,7 @@ TEST_CASE( "magic-j03_spell_check_rejects_unknown_references", "[audit][magic]" 
 // formula ids without checking them; the energy vitamin and failure_eocs were never checked.
 TEST_CASE( "magic-j03_magic_type_check_rejects_unknown_references", "[audit][magic]" )
 {
-    if( !magic_type_id( "audit_magic_j03_type" ).is_valid() ) {
+    if( !magic_audit_magic_j03_type.is_valid() ) {
         JsonObject jo = json_loader::from_string( R"({ "id": "audit_magic_j03_type",
             "energy_source": { "type": "VITAMIN", "vitamin": "audit_magic_j03_no_vitamin" },
             "casting_xp_formula_id": "audit_magic_j03_no_formula" })" );

@@ -1,17 +1,18 @@
 #include "power_projection.h"
 
 #include <cmath>
+#include <initializer_list>
 
-#include "bodypart.h"
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "math_parser_diag_value.h"
 
 namespace
 {
 generic_factory<power_projection> definitions( "power projection" );
-int bounded( const JsonObject &jo, const std::string &key, int fallback, int low, int high )
+int bounded( const JsonObject &jo, const std::string_view key, int fallback, int low, int high )
 {
     const int value = jo.get_int( key, fallback );
     if( value < low || value > high ) {
@@ -19,7 +20,7 @@ int bounded( const JsonObject &jo, const std::string &key, int fallback, int low
     }
     return value;
 }
-void hooks( const JsonObject &jo, const std::string &key, const std::string &source,
+void hooks( const JsonObject &jo, const std::string_view key, const std::string_view source,
             std::vector<effect_on_condition_id> &out )
 {
     if( !jo.has_member( key ) ) {
@@ -33,7 +34,7 @@ void hooks( const JsonObject &jo, const std::string &key, const std::string &sou
         out.push_back( effect_on_conditions::load_inline_eoc( value, source ) );
     }
 }
-}
+} // namespace
 template<> const power_projection &power_projection_id::obj() const
 {
     return definitions.obj( *this );
@@ -84,7 +85,7 @@ void power_projection::load( const JsonObject &jo, std::string_view source )
         jo.throw_error_at( "damage", "at most 16 damage components" );
     }
     double total = 0;
-    for( const auto &unit : damage ) {
+    for( damage_unit const &unit : damage ) {
         for( const double value : {
                  unit.amount, unit.res_pen, unit.res_mult, unit.damage_multiplier,
                  unit.unconditional_res_mult, unit.unconditional_damage_mult
@@ -137,7 +138,7 @@ void power_projection::check() const
     if( !bodypart.is_valid() ) {
         debugmsg( "Projection %s has invalid bodypart", id.str() );
     }
-    for( const auto &unit : damage ) {
+    for( const damage_unit &unit : damage ) {
         if( !unit.type.is_valid() ) {
             debugmsg( "Projection %s has invalid damage type", id.str() );
         }

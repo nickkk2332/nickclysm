@@ -36,6 +36,14 @@
     "weakpoints": [ { "id": "exec_stable_wp", "name": "a translated vulnerable spot", "coverage": 100 } ]
   },
   {
+    "type": "MONSTER",
+    "id": "mon_execution_trigger_bloodless",
+    "copy-from": "mon_execution_trigger_test",
+    "name": { "str_sp": "bloodless execution test creature" },
+    "description": "Cannot bleed, so a hit's first damage event is the hit itself.",
+    "bleed_rate": 0
+  },
+  {
     "type": "execution_trigger",
     "id": "test_exec_trigger_basic",
     "execution": "test_exec_free",

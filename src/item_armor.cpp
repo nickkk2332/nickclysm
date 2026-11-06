@@ -1,5 +1,3 @@
-#include "item.h"
-
 #include <algorithm>
 #include <array>
 #include <climits>
@@ -18,6 +16,7 @@
 #include "body_part_set.h"
 #include "bodypart.h"
 #include "character.h"
+#include "character_attire.h"
 #include "character_id.h"
 #include "clothing_mod.h"
 #include "creature.h"
@@ -28,6 +27,7 @@
 #include "fault.h"
 #include "flag.h"
 #include "flat_set.h"
+#include "item.h"
 #include "item_contents.h"
 #include "item_location.h"
 #include "item_pocket.h"

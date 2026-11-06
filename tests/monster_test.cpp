@@ -21,10 +21,12 @@
 #include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
+#include "enums.h"
 #include "creature_tracker.h"
 #include "game.h"
 #include "horde_entity.h"
 #include "item.h"
+#include "level_cache.h"
 #include "line.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -47,6 +49,8 @@
 #include "test_statistics.h"
 #include "trap.h"
 #include "type_id.h"
+#include "units.h"
+#include "vehicle.h"
 
 using move_statistics = statistics<int>;
 
@@ -62,6 +66,8 @@ static const ter_str_id ter_t_fence( "t_fence" );
 static const ter_str_id ter_t_grass( "t_grass" );
 static const ter_str_id ter_t_palisade( "t_palisade" );
 static const ter_str_id ter_t_water_dp( "t_water_dp" );
+
+static const vproto_id vehicle_prototype_bicycle( "bicycle" );
 
 
 static int moves_to_destination( const std::string &monster_type,
@@ -1111,9 +1117,41 @@ static std::function<void()> bubble_restorer()
     return [bubble, avatar_at]() {
         clear_creatures();
         map &here = get_map();
-        here.load( bubble, false );
+        // load() keeps what the vehicle lists hold, so empty them first, as
+        // game::place_player_overmap does, and let it list the bubble's own vehicles again.
+        for( int z = -OVERMAP_DEPTH; z <= OVERMAP_HEIGHT; z++ ) {
+            here.clear_vehicle_list( z );
+        }
+        here.rebuild_vehicle_level_caches();
+        here.load( bubble, true );
         get_avatar().setpos( here, here.get_bub( avatar_at ) );
     };
+}
+
+// The restorer reloads the old bubble.  A vehicle of the bubble a test went to must not stay in
+// the vehicle lists, or map code reads it at grid positions past the bubble's edge: clear_map's
+// item processing did ("Tried to access invalid map position"), and later tests crashed.
+TEST_CASE( "bubble_restorer_leaves_no_vehicle_of_the_far_bubble_listed", "[map][vehicle]" )
+{
+    clear_map_without_vision();
+    map &here = get_map();
+    const tripoint_abs_sm home = here.get_abs_sub();
+    {
+        const on_out_of_scope restore_bubble( bubble_restorer() );
+        g->place_player_overmap( project_to<coords::omt>( home ) + point_rel_omt( 0, 40 ) );
+        REQUIRE( here.get_abs_sub() != home );
+        // Whatever mapgen put there could block the bicycle
+        clear_map_without_vision();
+        REQUIRE( here.add_vehicle( vehicle_prototype_bicycle, tripoint_bub_ms( 30, 30, 0 ),
+                                   0_degrees, 0, veh_spawn_status::UNDAMAGED ) != nullptr );
+    }
+    REQUIRE( here.get_abs_sub() == home );
+    for( int z = -OVERMAP_DEPTH; z <= OVERMAP_HEIGHT; ++z ) {
+        for( const vehicle *veh : here.access_cache( z ).vehicle_list ) {
+            CAPTURE( z, veh->name );
+            CHECK( here.inbounds( veh->pos_abs() ) );
+        }
+    }
 }
 
 TEST_CASE( "monsters_appear_on_map_as_expected", "[monster][map][hordes]" )

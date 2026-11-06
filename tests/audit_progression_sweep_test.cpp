@@ -1,38 +1,74 @@
 #include <algorithm>
+#include <functional>
+#include <memory>
+#include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "addiction.h"
 #include "avatar.h"
-#include "bionics.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_creator_ui.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "flexbuffer_json.h"
 #include "item.h"
 #include "json.h"
 #include "json_loader.h"
 #include "math_parser.h"
 #include "output.h"
 #include "player_helpers.h"
-#include "proficiency.h"
 #include "profession.h"
+#include "proficiency.h"
 #include "recipe.h"
 #include "skill.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "trait_group.h"
 #include "type_id.h"
 
 // ---- PROG-B04 ----
 
+static const addiction_id addiction_caffeine( "caffeine" );
+
 static const bionic_id bio_armor_eyes( "bio_armor_eyes" );
 static const bionic_id bio_carbon( "bio_carbon" );
 
+static const itype_id itype_fun_survival( "fun_survival" );
+
+static const profession_id profession_computer_literate( "computer_literate" );
+static const profession_id profession_driving_license( "driving_license" );
 static const profession_id profession_test_prog_b04_hobby( "test_prog_b04_hobby" );
 static const profession_id profession_test_prog_b04_profession( "test_prog_b04_profession" );
+static const profession_id profession_test_prog_b05_hobby( "test_prog_b05_hobby" );
+static const profession_id profession_test_prog_b05_profession( "test_prog_b05_profession" );
+static const profession_id profession_test_prog_b07_hobby( "test_prog_b07_hobby" );
+static const profession_id profession_test_prog_b07_profession( "test_prog_b07_profession" );
+static const profession_id profession_test_prog_b08_hobby( "test_prog_b08_hobby" );
+static const profession_id profession_test_prog_b08_profession( "test_prog_b08_profession" );
+
+static const proficiency_id proficiency_prof_knapping( "prof_knapping" );
+static const proficiency_id proficiency_prof_knapping_speed( "prof_knapping_speed" );
+static const proficiency_id proficiency_test_prog_b10_circle_a( "test_prog_b10_circle_a" );
+static const proficiency_id proficiency_test_prog_b10_circle_b( "test_prog_b10_circle_b" );
+
+static const recipe_id recipe_large_tent_kit_from_broken( "large_tent_kit_from_broken" );
+static const recipe_id recipe_tent_kit_from_broken( "tent_kit_from_broken" );
+
+static const skill_id skill_driving( "driving" );
+
+static const trait_group::Trait_group_tag
+Trait_group_BG_survival_story_UNIVERSAL( "BG_survival_story_UNIVERSAL" );
+static const trait_group::Trait_group_tag
+Trait_group_test_prog_b11_no_such_group( "test_prog_b11_no_such_group" );
+
+static const trait_id trait_test_prog_b08_forbidden_trait( "test_prog_b08_forbidden_trait" );
+static const trait_id trait_test_prog_b08_hobby_trait( "test_prog_b08_hobby_trait" );
 
 static int installed_count( const Character &you, const bionic_id &bio )
 {
@@ -84,12 +120,6 @@ TEST_CASE( "prog-b04_a_profession_cbm_already_installed_is_not_installed_again",
 
 // ---- PROG-B05 ----
 
-static const profession_id profession_test_prog_b05_hobby( "test_prog_b05_hobby" );
-static const profession_id profession_test_prog_b05_profession( "test_prog_b05_profession" );
-
-static const recipe_id recipe_large_tent_kit_from_broken( "large_tent_kit_from_broken" );
-static const recipe_id recipe_tent_kit_from_broken( "tent_kit_from_broken" );
-
 // Profession and hobby recipes were looked up by their result item, so a recipe with an
 // id_suffix taught the plain recipe for that item instead, and one with no result taught
 // nothing.
@@ -113,11 +143,6 @@ TEST_CASE( "prog-b05_starting_recipes_are_the_recipes_listed", "[audit][chargen]
 }
 
 // ---- PROG-B06 ----
-
-static const itype_id itype_fun_survival( "fun_survival" );
-
-static const proficiency_id proficiency_prof_knapping( "prof_knapping" );
-static const proficiency_id proficiency_prof_knapping_speed( "prof_knapping_speed" );
 
 // Book bonuses counted prerequisites again at every level of add() and every +=: Through the
 // Lens gives Knapping 0.15 directly and 0.15 through Speed Knapping, which requires it, yet
@@ -150,11 +175,6 @@ TEST_CASE( "prog-b06_a_book_counts_a_proficiency_once", "[audit][proficiency]" )
 }
 
 // ---- PROG-B07 ----
-
-static const addiction_id addiction_caffeine( "caffeine" );
-
-static const profession_id profession_test_prog_b07_hobby( "test_prog_b07_hobby" );
-static const profession_id profession_test_prog_b07_profession( "test_prog_b07_profession" );
 
 static int addictions_of( const Character &you, const addiction_id &type )
 {
@@ -213,14 +233,6 @@ TEST_CASE( "prog-b07_a_save_with_duplicate_addictions_loads_them_merged", "[audi
 }
 
 // ---- PROG-B08 ----
-
-static const profession_id profession_computer_literate( "computer_literate" );
-static const profession_id profession_driving_license( "driving_license" );
-static const profession_id profession_test_prog_b08_hobby( "test_prog_b08_hobby" );
-static const profession_id profession_test_prog_b08_profession( "test_prog_b08_profession" );
-
-static const trait_id trait_test_prog_b08_forbidden_trait( "test_prog_b08_forbidden_trait" );
-static const trait_id trait_test_prog_b08_hobby_trait( "test_prog_b08_hobby_trait" );
 
 // Picking another profession in the character creator kept the hobbies and traits the new
 // profession excludes, and the excluded hobby dropped out of the list, so it couldn't be
@@ -281,8 +293,6 @@ TEST_CASE( "prog-b08_the_default_background_leaves_out_excluded_hobbies", "[audi
 
 // ---- PROG-B09 ----
 
-static const skill_id skill_driving( "driving" );
-
 // The skills tab added the hobby's level to the levels bought, but a hobby's skill is a floor:
 // the character starts with the higher of bought + profession and the hobby's level.  The tab
 // showed "Driving (2 + 2)" for a character that started with Driving 2.
@@ -313,7 +323,7 @@ TEST_CASE( "prog-b09_the_skills_tab_shows_the_level_the_character_starts_with",
 
 // ---- PROG-B10 ----
 
-static double eval_math( dialogue &d, const std::string &expr )
+static double eval_math( dialogue &d, const std::string_view expr )
 {
     math_exp exp;
     REQUIRE( exp.parse( expr ) );
@@ -351,9 +361,6 @@ TEST_CASE( "prog-b10_eoc_direct_100_percent_learns_the_proficiency", "[audit][pr
     }
 }
 
-static const proficiency_id proficiency_test_prog_b10_circle_a( "test_prog_b10_circle_a" );
-static const proficiency_id proficiency_test_prog_b10_circle_b( "test_prog_b10_circle_b" );
-
 // Learning a proficiency with its prerequisites recursed through them with nothing to stop a
 // circle, so two proficiencies that required each other overflowed the stack.
 TEST_CASE( "prog-b10_a_circle_of_prerequisites_is_learned_once_round", "[audit][proficiency]" )
@@ -382,11 +389,6 @@ TEST_CASE( "prog-b10_a_circle_of_prerequisites_is_learned_once_round", "[audit][
 
 // ---- PROG-B11 ----
 
-static const trait_group::Trait_group_tag
-Trait_group_BG_survival_story_UNIVERSAL( "BG_survival_story_UNIVERSAL" );
-
-static const trait_group::Trait_group_tag no_such_group( "test_prog_b11_no_such_group" );
-
 // A nested trait group entry reported "unknown" when its group was valid, and nothing when it
 // wasn't.
 TEST_CASE( "prog-b11_a_nested_trait_group_is_checked_the_right_way_round", "[audit][mutation]" )
@@ -396,7 +398,7 @@ TEST_CASE( "prog-b11_a_nested_trait_group_is_checked_the_right_way_round", "[aud
         valid.check_consistency();
     } ).empty() );
 
-    const Trait_group_creator unknown( no_such_group, 100 );
+    const Trait_group_creator unknown( Trait_group_test_prog_b11_no_such_group, 100 );
     CHECK_FALSE( capture_debugmsg_during( [&unknown]() {
         unknown.check_consistency();
     } ).empty() );
@@ -407,7 +409,7 @@ TEST_CASE( "prog-b11_a_nested_trait_group_is_checked_the_right_way_round", "[aud
 TEST_CASE( "prog-b11_an_unknown_nested_group_leaves_the_recursion_list_as_it_was",
            "[audit][mutation]" )
 {
-    const Trait_group_creator unknown( no_such_group, 100 );
+    const Trait_group_creator unknown( Trait_group_test_prog_b11_no_such_group, 100 );
     Trait_creation_data::RecursionList rec;
     capture_debugmsg_during( [&unknown, &rec]() {
         unknown.create( rec );

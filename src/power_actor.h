@@ -6,18 +6,25 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ability.h"
 #include "calendar.h"
+#include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
+#include "point.h"
 #include "power_motion.h"
+#include "translation.h"
+#include "type_id.h"
 
 class JsonObject;
 class JsonOut;
 class monster;
-
 struct power_summon;
+
 using power_summon_id = string_id<power_summon>;
 struct power_summon {
     power_summon_id id;
@@ -43,7 +50,7 @@ void load( const JsonObject &jo, const std::string &source );
 void reset();
 void finalize();
 void check();
-}
+} // namespace power_summons
 
 struct power_summon_view {
     int64_t id = 0;
@@ -71,7 +78,7 @@ class power_actor_manager
         ~power_actor_manager();
         power_summon_admission summon( const power_summon_id &id, const creature_ref &owner,
                                        std::optional<tripoint_abs_ms> point = std::nullopt );
-        std::string command( int64_t id, const creature_ref &owner, const std::string &command,
+        std::string command( int64_t id, const creature_ref &owner, const std::string &order,
                              const creature_ref &target = {}, std::optional<tripoint_abs_ms> point = std::nullopt );
         int dismiss( const creature_ref &owner, const power_summon_id &filter = {} );
         bool end( int64_t id, const std::string &reason );
@@ -91,6 +98,7 @@ class power_actor_manager
         void deserialize( const JsonObject &jo );
     private:
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 power_actor_manager &get_power_actors();

@@ -1,14 +1,21 @@
-#include "character.h"
-
+#include <list>
+#include <map>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "character.h"
 #include "character_attire.h"
 #include "crafting.h"
 #include "event.h"
 #include "event_bus.h"
+#include "game_constants.h"
 #include "item.h"
 #include "item_location.h"
-#include "ranged.h"
+#include "ret_val.h"
+
+enum class side : int;
 
 std::string Character::check_power_stow( bool clothing, bool held ) const
 {

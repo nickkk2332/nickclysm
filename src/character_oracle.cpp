@@ -11,6 +11,7 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
 #include "errand.h"
 #include "item.h"

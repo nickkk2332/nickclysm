@@ -4,6 +4,8 @@
 #include <climits>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,12 +31,11 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
-#include "field_type.h"
 #include "game.h"
-#include "game_constants.h"
 #include "item_location.h"
 #include "line.h"
 #include "map.h"
+#include "map_iterator.h"
 #include "mapdata.h"
 #include "martialarts.h"
 #include "math_parser_jmath.h"
@@ -46,10 +47,10 @@
 #include "mtype.h"
 #include "npc.h"
 #include "options.h"
+#include "pimpl.h"
 #include "point.h"
 #include "rng.h"
 #include "string_formatter.h"
-#include "talker.h"
 #include "text_snippets.h"
 #include "tileray.h"
 #include "translation.h"
@@ -64,6 +65,8 @@ static const bionic_id bio_railgun( "bio_railgun" );
 static const character_modifier_id
 character_modifier_melee_stamina_cost_mod( "melee_stamina_cost_mod" );
 
+static const effect_on_condition_id effect_on_condition_grab_condition( "grab_condition" );
+
 static const efftype_id effect_cramped_space( "cramped_space" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
@@ -73,8 +76,6 @@ static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_ridden( "ridden" );
 static const efftype_id effect_tied( "tied" );
 static const efftype_id effect_winded( "winded" );
-
-static const effect_on_condition_id effect_on_condition_grab_condition( "grab_condition" );
 
 static const flag_id json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const flag_id json_flag_GRAB( "GRAB" );
@@ -86,8 +87,7 @@ static const jmath_func_id jmath_func_grapple_escape_stamina_cost( "grapple_esca
 static const jmath_func_id jmath_func_grapple_grab_strength( "grapple_grab_strength" );
 static const jmath_func_id jmath_func_grapple_min_hold_turns( "grapple_min_hold_turns" );
 static const jmath_func_id jmath_func_grapple_throw_force( "grapple_throw_force" );
-static const jmath_func_id
-jmath_func_grapple_throw_stamina_cost( "grapple_throw_stamina_cost" );
+static const jmath_func_id jmath_func_grapple_throw_stamina_cost( "grapple_throw_stamina_cost" );
 static const jmath_func_id jmath_func_grapple_throw_verb( "grapple_throw_verb" );
 
 static const species_id species_CYBORG( "CYBORG" );
@@ -1279,8 +1279,8 @@ bool grapple::throw_held_creature( Character &thrower, Creature &victim,
     const std::string verb = throw_verb( thrower, victim, force );
     if( railgun ) {
         thrower.mod_power_level( -bio_railgun->power_trigger );
-        //~ %1$s: shove, toss, throw, hurl or launch, %2$s: the creature thrown
         thrower.add_msg_if_player( m_good,
+                                   //~ %1$s: shove, toss, throw, hurl or launch, %2$s: the creature thrown
                                    _( "You feel your magnetic repulsor kick in as you %1$s %2$s!" ),
                                    verb, victim.disp_name() );
     } else {

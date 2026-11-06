@@ -1,6 +1,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <climits>
 #include <cmath>
 #include <cstddef>
@@ -8,6 +9,7 @@
 #include <deque>
 #include <exception>
 #include <filesystem>
+#include <initializer_list>
 #include <iterator>
 #include <list>
 #include <map>
@@ -15,17 +17,22 @@
 #include <optional>
 #include <ostream>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "ability.h"
+#include "ability_runtime.h"
 #include "achievement.h"
 #include "action.h"
-#include "activity_actor_definitions.h"
+#include "activity_actor.h"
 #include "activity_actor_eoc.h"
 #include "auto_pickup.h"
 #include "avatar.h"
@@ -42,6 +49,7 @@
 #include "character_id.h"
 #include "character_martial_arts.h"
 #include "city.h"
+#include "clone_ptr.h"
 #include "clzones.h"
 #include "color.h"
 #include "condition.h"
@@ -49,9 +57,11 @@
 #include "craft_reservation.h"
 #include "crafting_gui.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "current_map.h"
 #include "damage.h"
+#include "damage_transaction.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_chatbin.h"
@@ -59,17 +69,13 @@
 #include "dialogue_imgui.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
-#include "eoc_ui.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "eoc_ui.h"
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "execution_runtime.h"
-#include "ability_runtime.h"
-#include "damage_transaction.h"
-#include "power_eoc.h"
-#include "projection_eoc.h"
 #include "explosion.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -80,6 +86,7 @@
 #include "flexbuffer_json.h"
 #include "fungal_effects.h"
 #include "game.h"
+#include "game_constants.h"
 #include "game_inventory.h"
 #include "generic_factory.h"
 #include "global_vars.h"
@@ -95,6 +102,7 @@
 #include "item_category.h"
 #include "item_group.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
 #include "kill_tracker.h"
 #include "line.h"
@@ -111,13 +119,13 @@
 #include "martialarts.h"
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
-#include "memory_fast.h"
-#include "memorial_logger.h"
 #include "melee.h"
+#include "memorial_logger.h"
+#include "memory_fast.h"
 #include "messages.h"
 #include "mission.h"
 #include "mod_setting.h"
-#include "monfaction.h"
+#include "mod_setting_values.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -129,8 +137,10 @@
 #include "npctalk.h"
 #include "npctalk_rules.h"
 #include "npctrade.h"
+#include "omdata.h"
 #include "options.h"
 #include "output.h"
+#include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
@@ -140,7 +150,9 @@
 #include "pocket_type.h"
 #include "point.h"
 #include "popup.h"
+#include "power_eoc.h"
 #include "proficiency.h"
+#include "projection_eoc.h"
 #include "ranged.h"
 #include "recipe.h"
 #include "recipe_groups.h"
@@ -3832,7 +3844,7 @@ talk_effect_fun_t::func f_lose_bionic( const JsonObject &jo, std::string_view me
 
 // u_activate_bionic / u_deactivate_bionic: switch the first installed bionic of that id that
 // is in the other state, through the same code path as the bionics menu.
-static talk_effect_fun_t::func toggle_bionic_effect( const JsonObject &jo, std::string_view member,
+talk_effect_fun_t::func toggle_bionic_effect( const JsonObject &jo, std::string_view member,
         std::string_view src, bool is_npc, bool activate )
 {
     str_or_var bionic_name = get_str_or_var( jo.get_member( member ), member, true );
@@ -7001,7 +7013,7 @@ talk_effect_fun_t::func f_set_weather( const JsonObject &jo, std::string_view me
     };
 }
 
-static const std::array<std::string_view, 6> weather_override_aspects = { {
+const std::array<std::string_view, 6> weather_override_aspects = { {
         "weather", "temperature", "temperature_offset", "windpower", "wind_direction", "all"
     }
 };
@@ -8781,7 +8793,7 @@ talk_effect_fun_t::func f_set_fac_relation( const JsonObject &jo, std::string_vi
 }
 
 // the attitudes u_set_attitude may give: not the ones that stand for a task in hand
-static std::optional<npc_attitude> settable_attitude( const std::string_view id )
+std::optional<npc_attitude> settable_attitude( const std::string_view id )
 {
     const std::optional<npc_attitude> att = npc_attitude_from_id( id );
     if( !att || *att == NPCATT_ACTIVITY || *att == NPCATT_RECOVER_GOODS ) {
@@ -8849,7 +8861,7 @@ talk_effect_fun_t::func f_set_attitude( const JsonObject &jo, std::string_view m
 
 // the missions u_set_mission may give: not travelling or an activity, which need more than a
 // mission
-static std::optional<npc_mission> settable_mission( const std::string_view id )
+std::optional<npc_mission> settable_mission( const std::string_view id )
 {
     const std::optional<npc_mission> mission = npc_mission_from_id( id );
     if( !mission || *mission == NPC_MISSION_TRAVELLING || *mission == NPC_MISSION_ACTIVITY ) {
@@ -8914,7 +8926,7 @@ talk_effect_fun_t::func f_set_mission( const JsonObject &jo, std::string_view me
 }
 
 // [ faction, other faction, relation ] of set_faction_relation and faction_has_relation
-static std::array<str_or_var, 3> read_faction_relation( const JsonObject &jo,
+std::array<str_or_var, 3> read_faction_relation( const JsonObject &jo,
         const std::string_view member )
 {
     const JsonArray arr = jo.get_array( member );
@@ -9203,7 +9215,7 @@ talk_effect_fun_t::func f_fling( const JsonObject &jo, std::string_view member,
     std::optional<var_info> target_var;
     optional( jobj, false, "target_var", target_var );
     if( direction && target_var ) {
-        jobj.throw_error( "only one of \"direction\" and \"target_var\" can be given" );
+        jobj.throw_error( R"(only one of "direction" and "target_var" can be given)" );
     }
     const bool controlled = jobj.get_bool( "controlled", false );
     const bool intentional = jobj.get_bool( "intentional", false );
@@ -9238,7 +9250,7 @@ void check_other_talker( const JsonObject &jo, std::string_view member, bool is_
     const std::string other = is_npc ? "u" : "npc";
     if( value != other ) {
         jo.throw_error_at( member, string_format(
-                               "%s must be \"%s\" (the other talker), not \"%s\"",
+                               R"(%s must be "%s" (the other talker), not "%s")",
                                std::string( member ), other, value ) );
     }
 }
@@ -9573,8 +9585,8 @@ talk_effect_fun_t::func f_deal_damage( const JsonObject &jo, std::string_view me
 
 // Runs a spawn effect's "spawned_eocs" on one spawned creature, with it as alpha and the
 // talker that spawned it as beta, so the EOC can act on what was spawned.
-static void run_spawned_eocs( const std::vector<effect_on_condition_id> &eocs, Creature &spawned,
-                              const dialogue &d, bool is_npc )
+void run_spawned_eocs( const std::vector<effect_on_condition_id> &eocs, Creature &spawned,
+                       const dialogue &d, bool is_npc )
 {
     if( eocs.empty() ) {
         return;
@@ -9587,7 +9599,7 @@ static void run_spawned_eocs( const std::vector<effect_on_condition_id> &eocs, C
     }
 }
 
-static std::unordered_map<std::string, diag_value_or_var> load_spawn_variables(
+std::unordered_map<std::string, diag_value_or_var> load_spawn_variables(
     const JsonObject &jo, std::string_view member )
 {
     std::unordered_map<std::string, diag_value_or_var> vars;
@@ -10350,7 +10362,7 @@ talk_effect_fun_t::func f_walk_to( const JsonObject &jo, std::string_view member
 {
     if( !jo.has_object( member ) ) {
         jo.throw_error_at( member, string_format(
-                               "%s takes a location variable, like { \"context_val\": \"spot\" }", std::string( member ) ) );
+                               R"(%s takes a location variable, like { "context_val": "spot" })", std::string( member ) ) );
     }
     const var_info target_var = read_var_info( jo.get_object( member ) );
     const dbl_or_var range = get_dbl_or_var( jo, "range", false, 0 );

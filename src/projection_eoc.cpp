@@ -1,12 +1,17 @@
 #include "projection_eoc.h"
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 
 #include "condition.h"
+#include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
@@ -14,14 +19,16 @@
 #include "game.h"
 #include "generic_factory.h"
 #include "map.h"
+#include "math_parser_diag_value.h"
 #include "power_projection.h"
+#include "string_id.h"
 #include "talker.h"
 
 namespace
 {
 std::string role( const JsonObject &jo, const std::string &key, const std::string &fallback )
 {
-    const auto out = jo.get_string( key, fallback );
+    const std::string out = jo.get_string( key, fallback );
     if( out != "u" && out != "npc" ) {
         jo.throw_error_at( key, "expected u or npc" );
     }
@@ -37,7 +44,7 @@ std::optional<int64_t> handle( const std::string &text )
 {
     try {
         size_t used = 0;
-        const auto id = std::stoll( text, &used );
+        const long long id = std::stoll( text, &used );
         if( used == text.size() && id >= 0 ) {
             return id;
         }
@@ -46,14 +53,14 @@ std::optional<int64_t> handle( const std::string &text )
     }
     return std::nullopt;
 }
-}
+} // namespace
 std::function<void( dialogue & )> projection_eoc::create( const JsonObject &jo,
         std::string_view member, std::string_view )
 {
-    const auto args = jo.get_object( member );
-    const auto id = get_str_or_var( args.get_member( "id" ), "id" );
-    const auto owner = role( args, "owner", "u" );
-    const auto target = role( args, "target", "npc" );
+    const JsonObject args = jo.get_object( member );
+    const str_or_var id = get_str_or_var( args.get_member( "id" ), "id" );
+    const std::string owner = role( args, "owner", "u" );
+    const std::string target = role( args, "target", "npc" );
     const bool targeted = args.get_bool( "targeted", false );
     std::optional<var_info> loc;
     optional( args, false, "loc", loc );
@@ -107,7 +114,7 @@ std::function<void( dialogue & )> projection_eoc::create( const JsonObject &jo,
                 request.point = get_map().get_abs( *point );
             }
         }
-        const auto out = get_projections().create( request );
+        const power_projection_admission out = get_projections().create( request );
         d.set_value( "power_projection", std::to_string( out.id ) );
         d.set_value( "reason", out.reason );
     };
@@ -115,7 +122,7 @@ std::function<void( dialogue & )> projection_eoc::create( const JsonObject &jo,
 std::function<void( dialogue & )> projection_eoc::end( const JsonObject &jo,
         std::string_view member, std::string_view )
 {
-    const auto id = get_str_or_var( jo.get_member( member ), member );
+    const str_or_var id = get_str_or_var( jo.get_member( member ), member );
     return [id]( dialogue & d ) {
         const auto value = handle( id.evaluate( d ) );
         const bool ended = value && get_projections().end( *value );
@@ -125,15 +132,15 @@ std::function<void( dialogue & )> projection_eoc::end( const JsonObject &jo,
 std::function<void( dialogue & )> projection_eoc::dispel( const JsonObject &jo,
         std::string_view member, std::string_view )
 {
-    const auto args = jo.get_object( member );
-    const auto owner = role( args, "owner", "u" );
+    const JsonObject args = jo.get_object( member );
+    const std::string owner = role( args, "owner", "u" );
     str_or_var id;
     str_or_var tag;
     optional( args, false, "id", id, "" );
     optional( args, false, "tag", tag, "" );
     return [owner, id, tag]( dialogue & d ) {
-        const auto ref = actor( d, owner );
-        const auto filter = power_projection_id( id.evaluate( d ) );
+        const creature_ref ref = actor( d, owner );
+        const power_projection_id filter = power_projection_id( id.evaluate( d ) );
         const auto tag_filter = tag.evaluate( d );
         const int count = ref.resolve() ? get_projections().dispel( ref, filter, tag_filter ) : 0;
         d.set_value( "power_projections_dispelled", count );

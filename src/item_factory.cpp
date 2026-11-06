@@ -11,6 +11,7 @@
 #include <set>
 #include <stdexcept>
 #include <tuple>
+#include <type_traits>
 #include <unordered_set>
 #include <variant>
 
@@ -48,6 +49,7 @@
 #include "iuse_actor.h"
 #include "mapdata.h"
 #include "material.h"
+#include "math_defines.h"
 #include "math_parser_diag_value.h"
 #include "options.h"
 #include "output.h"
@@ -1924,8 +1926,10 @@ void Item_factory::finalize_item_blacklist()
     // Remove all blacklisted items on the whitelist
     std::set<itype_id> &blacklist = item_blacklist.blacklist;
     // erase through the returned iterator: erasing the element a range-for stands on is UB
-    erase_if( whitelist, [&blacklist]( const itype_id & it ) {
-        return blacklist.count( it ) > 0;
+    // item_blacklist is file-static, so the lambda needs no capture (Clang rejects one for the
+    // reference to it as unneeded).
+    erase_if( whitelist, []( const itype_id & it ) {
+        return item_blacklist.blacklist.count( it ) > 0;
     } );
 
     // Now, populate the blacklist with all the items that aren't whitelists, but only if a whitelist exists.

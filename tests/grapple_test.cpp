@@ -1,9 +1,12 @@
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "avatar_action.h"
@@ -12,10 +15,12 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "dialogue.h"
 #include "effect.h"
+#include "effect_source.h"
 #include "enums.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
@@ -40,7 +45,8 @@
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
-#include "vehicle.h"
+
+class vehicle;
 
 // Grabs started by characters (src/grapple.h), ported from Cataclysm: The Last Generation.
 // Every roll below is either skipped (a tolerated grab, a hold set up directly) or made at
@@ -49,6 +55,8 @@
 static const character_modifier_id
 character_modifier_melee_stamina_cost_mod( "melee_stamina_cost_mod" );
 
+static const efftype_id effect_airborne( "airborne" );
+static const efftype_id effect_beartrap( "beartrap" );
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_incorporeal( "incorporeal" );
@@ -59,10 +67,10 @@ static const efftype_id effect_winded( "winded" );
 
 static const faction_id faction_your_followers( "your_followers" );
 
-static const furn_str_id furn_f_chair( "f_chair" );
-
 static const flag_id json_flag_GRAB( "GRAB" );
 static const flag_id json_flag_GRAB_FILTER( "GRAB_FILTER" );
+
+static const furn_str_id furn_f_chair( "f_chair" );
 
 static const itype_id itype_rock( "rock" );
 
@@ -72,7 +80,11 @@ static const skill_id skill_melee( "melee" );
 static const skill_id skill_throw( "throw" );
 static const skill_id skill_unarmed( "unarmed" );
 
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
 static const ter_str_id ter_t_water_dp( "t_water_dp" );
+
+static const trap_str_id tr_beartrap( "tr_beartrap" );
 
 static const vproto_id vehicle_prototype_bicycle( "bicycle" );
 
@@ -88,10 +100,9 @@ static avatar &setup_grapple_scene()
     return you;
 }
 
-static const bodypart_id &no_part()
+static bodypart_id no_part()
 {
-    static const bodypart_id null_part = bodypart_str_id::NULL_ID().id();
-    return null_part;
+    return bodypart_str_id::NULL_ID().id();
 }
 
 // Whether grabber holds victim, as both sides see it.
@@ -523,6 +534,8 @@ TEST_CASE( "grapple_formulas", "[grapple]" )
 
     SECTION( "stamina the grabber spends per escape attempt" ) {
         npc &guy = spawn_npc( you.pos_bub().xy() + point::east, "thug" );
+        // A mod's random trait could change the thug's size.
+        guy.clear_mutations();
         REQUIRE( guy.get_size() == creature_size::medium );
         // max( 1, 100 - hold ) * ( max( 1, size difference ) + skill ), within 100 to 400
         CHECK( grapple::escape_stamina_cost( you, guy, 20, 3 ) == 320 );
@@ -819,14 +832,6 @@ TEST_CASE( "grapple_holding_a_creature_and_an_object_are_exclusive", "[grapple]"
 }
 
 // Phase 5: throwing, and what game::fling_creature does for it
-
-static const efftype_id effect_airborne( "airborne" );
-static const efftype_id effect_beartrap( "beartrap" );
-
-static const ter_str_id ter_t_floor( "t_floor" );
-static const ter_str_id ter_t_open_air( "t_open_air" );
-
-static const trap_str_id tr_beartrap( "tr_beartrap" );
 
 TEST_CASE( "grapple_a_fling_breaks_holds_both_ways", "[grapple]" )
 {

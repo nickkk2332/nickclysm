@@ -1,29 +1,34 @@
 #include "execution_combat.h"
-#include "power_motion.h"
 
 #include <algorithm>
 #include <exception>
+#include <functional>
 #include <utility>
 #include <vector>
 
-#include "avatar.h"
+#include "bodypart.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
 #include "creature.h"
 #include "damage.h"
+#include "enums.h"
 #include "execution_runtime.h"
 #include "execution_trigger.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
 #include "line.h"
-#include "map.h"
-#include "mapdata.h"
 #include "magic.h"
+#include "map.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "mtype.h"
+#include "power_motion.h"
 #include "projectile.h"
-#include "skill.h"
+
+static const ammo_effect_str_id ammo_effect_MAGIC( "MAGIC" );
 
 namespace execution_combat
 {
@@ -222,7 +227,7 @@ effect_scope::~effect_scope() noexcept( false )
     if( owner && owner->data ) {
         owner->data->effect_active = false;
     }
-    delete action.release();
+    action = nullptr;
 }
 
 effect_target_scope::effect_target_scope( const Creature &target,
@@ -441,7 +446,8 @@ attack_scope::~attack_scope() noexcept( false )
     current_attack = previous;
     if( action_channel( facts.producer ) ) {
         if( current_fire && current_fire->data ) {
-            for( auto &contact : current_fire->data->contacts ) {
+            for( execution_combat::projectile_fire_scope::impl::held_contact &contact :
+                 current_fire->data->contacts ) {
                 if( contact.identity == facts.target ) {
                     const bool completed = resolved && exceptions == 0 && std::uncaught_exceptions() == 0;
                     if( fatal_instance ) {
@@ -571,7 +577,7 @@ projectile_hit_scope::projectile_hit_scope( Creature &target, Creature *source,
                         current_flight->here != here || current_attack || !current_projectile_target ||
                         current_projectile_target->consumed || &current_projectile_target->target != &target ||
                         current_fire->data->identity.resolve() != source || attack.shrapnel ||
-                        attack.proj.proj_effects.count( ammo_effect_str_id( "MAGIC" ) ) ||
+                        attack.proj.proj_effects.count( ammo_effect_MAGIC ) ||
                         current_fire->data->actor.get() != source ) ) {
         return;
     }
@@ -595,7 +601,7 @@ std::unique_ptr<attack_scope> attack_scope::action_hit( Creature &target, Creatu
         current_fire->data->identity.resolve() != source || current_fire->data->actor.get() != source ) {
         return nullptr;
     }
-    auto &state = *current_fire->data;
+    execution_combat::projectile_fire_scope::impl &state = *current_fire->data;
     const creature_ref identity = creature_ref::bind( target );
     const auto previous = std::find_if( state.contacts.begin(), state.contacts.end(),
     [&]( const auto & candidate ) {
@@ -639,7 +645,7 @@ effect_hit_scope::effect_hit_scope( Creature &target, Creature *source, const sp
 
 effect_hit_scope::~effect_hit_scope() noexcept( false )
 {
-    delete contact.release();
+    contact = nullptr;
 }
 
 direct_damage_scope effect_hit_scope::capture_damage()
@@ -656,7 +662,7 @@ void effect_hit_scope::resolve( const dealt_damage_instance &dealt )
 
 projectile_hit_scope::~projectile_hit_scope() noexcept( false )
 {
-    delete contact.release();
+    contact = nullptr;
 }
 
 direct_damage_scope projectile_hit_scope::capture_damage()
@@ -748,7 +754,8 @@ void attack_scope::reserve_fatal( const Creature &target )
         if( !current_fire || !current_fire->data ) {
             return;
         }
-        for( auto &contact : current_fire->data->contacts ) {
+        for( execution_combat::projectile_fire_scope::impl::held_contact &contact :
+             current_fire->data->contacts ) {
             if( contact.identity == facts.target ) {
                 projectile_contact = &contact;
                 break;

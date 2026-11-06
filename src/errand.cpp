@@ -1,11 +1,13 @@
 #include "errand.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
 #include <set>
+#include <unordered_map>
 #include <utility>
 
 #include "activity_handlers.h"
@@ -18,7 +20,9 @@
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "flag.h"
+#include "flexbuffer_json.h"
 #include "item.h"
+#include "item_uid.h"
 #include "json.h"
 #include "line.h"
 #include "map.h"
@@ -698,7 +702,7 @@ item_result drop( Character &who, const item_location &loc )
         return { reason::cannot_drop, loc };
     }
     // the drop activity's cost and steps, done at once
-    item_location source = loc;
+    const item_location &source = loc;
     who.mod_moves( -source.obtain_cost( who ) );
     contents_change_handler handler;
     if( source.has_parent() ) {

@@ -1,7 +1,11 @@
 #include <algorithm>
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "activity_actor_definitions.h"
@@ -16,18 +20,16 @@
 #include "coordinates.h"
 #include "debug.h"
 #include "faction.h"
-#include "faction_camp.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "game_constants.h"
 #include "global_vars.h"
-#include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_scale_constants.h"
+#include "mapgendata.h"
 #include "math_parser_diag_value.h"
-#include "memory_fast.h"
 #include "mission_companion.h"
 #include "npc.h"
 #include "overmapbuffer.h"

@@ -1,9 +1,10 @@
 #include "incapacitation.h"
 
 #include <algorithm>
+#include <functional>
 #include <vector>
 
-#include "activity_type.h"
+#include "calendar.h"
 #include "character.h"
 #include "creature.h"
 #include "effect.h"
@@ -12,11 +13,31 @@
 #include "player_activity.h"
 #include "type_id.h"
 
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
+static const activity_id ACT_OPERATION( "ACT_OPERATION" );
+
+static const efftype_id effect_grabbing( "grabbing" );
+static const efftype_id effect_knocked_out( "knocked_out" );
+static const efftype_id effect_narcosis( "narcosis" );
+static const efftype_id effect_ridden( "ridden" );
+static const efftype_id effect_riding( "riding" );
+static const efftype_id effect_sleep( "sleep" );
+
+static const flag_id json_flag_CANNOT_GAIN_EFFECTS( "CANNOT_GAIN_EFFECTS" );
+static const flag_id json_flag_KNOCKOUT_IMMUNE( "KNOCKOUT_IMMUNE" );
+static const flag_id json_flag_KNOCKOUT_VULNERABLE( "KNOCKOUT_VULNERABLE" );
+
+static const material_id material_flesh( "flesh" );
+
+static const mon_flag_str_id mon_flag_ANIMAL( "ANIMAL" );
+static const mon_flag_str_id mon_flag_ELECTRONIC( "ELECTRONIC" );
+static const mon_flag_str_id mon_flag_NOHEAD( "NOHEAD" );
+
+static const species_id species_NETHER( "NETHER" );
+static const species_id species_ZOMBIE( "ZOMBIE" );
+
 namespace
 {
-const efftype_id effect_knocked_out( "knocked_out" );
-const flag_id flag_knockout_immune( "KNOCKOUT_IMMUNE" );
-const flag_id flag_knockout_vulnerable( "KNOCKOUT_VULNERABLE" );
 
 bool flagged( const Creature &who, const flag_id &flag )
 {
@@ -39,21 +60,21 @@ bool incapacitation::supported_physiology( const Creature &who )
     if( !mon ) {
         return false;
     }
-    if( flagged( who, flag_knockout_vulnerable ) ) {
+    if( flagged( who, json_flag_KNOCKOUT_VULNERABLE ) ) {
         return true;
     }
-    return mon->has_flag( mon_flag_str_id( "ANIMAL" ) ) &&
-           mon->made_of( material_id( "flesh" ) ) &&
-           !mon->has_flag( mon_flag_str_id( "ELECTRONIC" ) ) &&
-           !mon->has_flag( mon_flag_str_id( "NOHEAD" ) ) &&
-           !mon->in_species( species_id( "ZOMBIE" ) ) &&
-           !mon->in_species( species_id( "NETHER" ) );
+    return mon->has_flag( mon_flag_ANIMAL ) &&
+           mon->made_of( material_flesh ) &&
+           !mon->has_flag( mon_flag_ELECTRONIC ) &&
+           !mon->has_flag( mon_flag_NOHEAD ) &&
+           !mon->in_species( species_ZOMBIE ) &&
+           !mon->in_species( species_NETHER );
 }
 
 bool incapacitation::immune( const Creature &who )
 {
-    return flagged( who, flag_knockout_immune ) ||
-           who.has_flag( flag_id( "CANNOT_GAIN_EFFECTS" ) );
+    return flagged( who, json_flag_KNOCKOUT_IMMUNE ) ||
+           who.has_flag( json_flag_CANNOT_GAIN_EFFECTS );
 }
 
 void incapacitation::suppress_moves( Creature &who )
@@ -72,15 +93,15 @@ std::string incapacitation::eligibility( const Creature &target )
     if( !supported_physiology( target ) ) {
         return "unsupported";
     }
-    if( unconscious( target ) || target.has_effect( efftype_id( "sleep" ) ) ||
-        target.has_effect( efftype_id( "narcosis" ) ) ) {
+    if( unconscious( target ) || target.has_effect( effect_sleep ) ||
+        target.has_effect( effect_narcosis ) ) {
         return "already_incapacitated";
     }
     const Character *person = target.as_character();
-    if( target.has_effect( efftype_id( "ridden" ) ) || target.has_effect( efftype_id( "riding" ) ) ||
-        target.has_effect( efftype_id( "grabbing" ) ) ||
+    if( target.has_effect( effect_ridden ) || target.has_effect( effect_riding ) ||
+        target.has_effect( effect_grabbing ) ||
         ( person && ( person->in_vehicle || person->is_mounted() || person->grabbed_creature() ||
-                      person->activity.id() == activity_id( "ACT_OPERATION" ) ) ) ) {
+                      person->activity.id() == ACT_OPERATION ) ) ) {
         return "unsupported";
     }
     if( target.is_immune_effect( effect_knocked_out ) ) {
@@ -112,7 +133,7 @@ std::string incapacitation::apply( Creature &target, const Creature *source,
     }
     if( Character *person = target.as_character() ) {
         // The execution owns its own activity and releases it when the scene settles.
-        if( !person->activity.is_null() && person->activity.id() != activity_id( "ACT_EXECUTION" ) ) {
+        if( !person->activity.is_null() && person->activity.id() != ACT_EXECUTION ) {
             person->cancel_activity();
         }
         person->abort_automove();

@@ -3,6 +3,7 @@
 #define CATA_SRC_POWER_RUNTIME_H
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -11,6 +12,8 @@
 #include "calendar.h"
 #include "coordinates.h"
 #include "creature_ref.h"
+#include "global_vars.h"
+#include "point.h"
 #include "power.h"
 
 class Creature;
@@ -142,6 +145,7 @@ class power_manager
         void deserialize( const JsonObject &jo );
     private:
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 

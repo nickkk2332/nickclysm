@@ -1,3 +1,5 @@
+#include <string>
+
 #include "activity_type.h"
 #include "avatar.h"
 #include "cata_catch.h"
@@ -5,6 +7,7 @@
 #include "game_constants.h"
 #include "global_vars.h"
 #include "map_helpers.h"
+#include "math_parser_diag_value.h"
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "translation.h"

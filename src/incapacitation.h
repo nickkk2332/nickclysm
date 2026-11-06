@@ -4,9 +4,8 @@
 
 #include <string>
 
-#include "calendar.h"
-
 class Creature;
+class time_duration;
 
 /** A physiological state independent of execution ownership and ordinary sleep. */
 namespace incapacitation

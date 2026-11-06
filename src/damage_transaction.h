@@ -4,10 +4,11 @@
 
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "creature_ref.h"
@@ -85,6 +86,7 @@ class damage_transaction_manager
         friend class damage_packet_scope;
         friend class damage_participant_guard;
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 
@@ -99,7 +101,7 @@ class damage_context_scope
         ~damage_context_scope();
         damage_context_scope( const damage_context_scope & ) = delete;
         damage_context_scope &operator=( const damage_context_scope & ) = delete;
-        void set( global_variables::impl_t values, bool trace );
+        void set( global_variables::impl_t next, bool trace );
         std::optional<damage_transaction_view> result() const;
     private:
         friend class damage_packet_scope;
@@ -121,6 +123,7 @@ class damage_participant_guard
         bool valid() const;
     private:
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 
@@ -146,6 +149,7 @@ class damage_packet_scope
         friend void record_damage_transaction_hp_loss( const Creature &, int );
         static bool interested( const Creature &defender );
         struct impl;
+
         std::unique_ptr<impl> data;
         static thread_local damage_packet_scope *current;
 };

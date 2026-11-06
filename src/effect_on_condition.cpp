@@ -276,8 +276,8 @@ static Character *character_holding( const queued_eocs::storage_iter &it, const 
     }
     for( Character *candidate : candidates ) {
         const std::list<queued_eoc> &list = candidate->queued_effect_on_conditions.list;
-        for( auto node = list.begin(); node != list.end(); ++node ) {
-            if( &*node == &*it ) {
+        for( const queued_eoc &node : list ) {
+            if( &node == &*it ) {
                 return candidate;
             }
         }

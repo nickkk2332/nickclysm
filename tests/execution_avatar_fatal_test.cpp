@@ -1,16 +1,27 @@
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "activity_actor_definitions.h"
-#include "activity_type.h"
 #include "avatar.h"
 #include "avatar_action.h"
 #include "bodypart.h"
 #include "calendar.h"
-#include "cata_scope_helpers.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
+#include "character.h"
+#include "character_id.h"
 #include "character_martial_arts.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
@@ -23,7 +34,6 @@
 #include "execution_combat.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "field_type.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
@@ -35,22 +45,45 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "martialarts.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "monster.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "options_helpers.h"
+#include "pimpl.h"
 #include "player_activity.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
-#include "units.h"
 #include "uistate.h"
+#include "units.h"
+#include "weakpoint.h"
+
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
+static const activity_id ACT_WAIT( "ACT_WAIT" );
+
+static const damage_type_id damage_pure( "pure" );
+
+static const dimension_id dimension_world_scarlet( "scarlet" );
+
+static const efftype_id effect_stunned( "stunned" );
+
+static const execution_id
+execution_definition_execution_avatar_fatal_knife_stagger( "execution_avatar_fatal_knife_stagger" );
+static const execution_id
+execution_definition_execution_fatal_knife_stagger( "execution_fatal_knife_stagger" );
+static const execution_id
+execution_definition_test_exec_avatar_fatal_hold( "test_exec_avatar_fatal_hold" );
+
+static const field_type_str_id field_fd_fire( "fd_fire" );
+
+static const itype_id itype_execution_fatal_test_knife( "execution_fatal_test_knife" );
+
+static const matype_id test_style_execution_fatal( "test_style_execution_fatal" );
 
 namespace
 {
-const bodypart_str_id torso( "torso" );
 
 struct avatar_world {
     time_point old_time = calendar::turn;
@@ -88,10 +121,10 @@ Creature &attacker( bool character = false )
         return spawn_test_monster( "mon_execution_fatal_attacker", position );
     }
     npc &person = spawn_npc( position.xy(), "thug" );
-    item knife( itype_id( "execution_fatal_test_knife" ) );
+    item knife( itype_execution_fatal_test_knife );
     REQUIRE( person.wield( knife ) );
-    person.martial_arts_data->add_martialart( matype_id( "test_style_execution_fatal" ) );
-    person.martial_arts_data->set_style( matype_id( "test_style_execution_fatal" ), false );
+    person.martial_arts_data->add_martialart( test_style_execution_fatal );
+    person.martial_arts_data->set_style( test_style_execution_fatal, false );
     person.set_str_base( 30 );
     person.set_dex_base( 30 );
     person.reset_stats();
@@ -117,21 +150,21 @@ int64_t contact( Creature &source, bool accepted = true )
             root.set_critical( true );
         }
         dealt_damage_instance dealt;
-        const bodypart_id bp = torso.id();
+        const bodypart_id bp = body_part_torso.id();
         {
             const execution_combat::primary_hit_scope primary( root );
             target.deal_melee_hit( &source, 1000, true,
-                                   damage_instance( damage_type_id( "pure" ), 1000 ), dealt, {}, &bp );
+                                   damage_instance( damage_pure, 1000 ), dealt, {}, &bp );
         }
         root.resolve( true, source.as_monster() ? std::nullopt : std::optional<bool>( true ), dealt );
         target.check_dead_state( &get_map() );
         if( source.as_character() && execution_fatal::pending( target ) ) {
             ma_event_context ctx;
             ctx.opponent = &target;
-            ctx.weapon = itype_id( "execution_fatal_test_knife" );
-            ctx.style = matype_id( "test_style_execution_fatal" );
-            ctx.technique = matec_id( "tec_none" );
-            ctx.bp = torso;
+            ctx.weapon = itype_execution_fatal_test_knife;
+            ctx.style = test_style_execution_fatal;
+            ctx.technique = tec_none;
+            ctx.bp = body_part_torso;
             ctx.hit = ctx.crit = true;
             ctx.damage = dealt.total_damage();
             ctx.killed = false;
@@ -216,7 +249,7 @@ TEST_CASE( "avatar_fatal_execution_preserves_injury_and_defers_game_over_exactly
     const int arm_hp = target.get_part_hp_cur( bodypart_id( "arm_l" ) );
     const int64_t id = contact( source );
     CHECK( target.is_dead_state() );
-    CHECK( target.get_part_hp_cur( torso.id() ) == 0 );
+    CHECK( target.get_part_hp_cur( body_part_torso.id() ) == 0 );
     CHECK( target.get_part_hp_cur( bodypart_id( "arm_l" ) ) == arm_hp );
     CHECK( execution_fatal::pending( target ) );
     CHECK_FALSE( target.death_finalized() );
@@ -228,7 +261,7 @@ TEST_CASE( "avatar_fatal_execution_preserves_injury_and_defers_game_over_exactly
     CHECK( corpses( position ) == 0 );
     g->executions().drain_starts();
     CHECK( view( id ).state == "running" );
-    CHECK( target.activity.id() == activity_id( "ACT_EXECUTION" ) );
+    CHECK( target.activity.id() == ACT_EXECUTION );
     tick( 2 );
     CHECK_FALSE( g->is_game_over() );
     tick();
@@ -268,7 +301,7 @@ TEST_CASE( "avatar_fatal_execution_uses_real_npc_and_monster_melee",
         if( monster *mon = source.as_monster() ) {
             mon->melee_attack( target, 1000.0f );
         } else {
-            source.as_character()->melee_attack_abstract( target, false, matec_id( "tec_none" ) );
+            source.as_character()->melee_attack_abstract( target, false, tec_none );
         }
     }
     REQUIRE( execution_fatal::pending( target ) );
@@ -321,14 +354,15 @@ TEST_CASE( "avatar_fatal_execution_query_is_pure_and_manual_fatal_starts_stay_fo
     Creature &source = attacker();
     contact( source );
     dialogue d( get_talker_for( get_avatar() ), get_talker_for( source ) );
-    const auto rng = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng = rng_get_engine();
     const std::string scene = save_scene();
     CHECK( conditional_t( "u_death_pending" )( d ) );
     CHECK_FALSE( conditional_t( "npc_death_pending" )( d ) );
     CHECK( rng_get_engine() == rng );
     CHECK( save_scene() == scene );
     dialogue target( get_talker_for( source ), get_talker_for( get_avatar() ) );
-    CHECK( g->executions().check_start( execution_id( "test_exec_avatar_fatal_hold" ), target ) !=
+    CHECK( g->executions().check_start( execution_definition_test_exec_avatar_fatal_hold, target ) !=
            "eligible" );
 }
 
@@ -345,7 +379,7 @@ TEST_CASE( "avatar_fatal_execution_cancels_prior_work_and_blocks_voluntary_actio
     const int64_t id = contact( source );
     g->executions().drain_starts();
     REQUIRE( view( id ).state == "running" );
-    CHECK( target.activity.id() == activity_id( "ACT_EXECUTION" ) );
+    CHECK( target.activity.id() == ACT_EXECUTION );
     CHECK( target.view_offset == tripoint_rel_ms::zero );
     const tripoint_abs_ms position = target.pos_abs();
     const character_id identity = target.getID();
@@ -356,7 +390,7 @@ TEST_CASE( "avatar_fatal_execution_cancels_prior_work_and_blocks_voluntary_actio
     CHECK( replacement.getID() == replacement_id );
     target.set_moves( 1000 );
     CHECK_FALSE( avatar_action::move( target, get_map(), tripoint_rel_ms::north ) );
-    CHECK_FALSE( target.melee_attack_abstract( source, false, matec_id( "tec_none" ) ) );
+    CHECK_FALSE( target.melee_attack_abstract( source, false, tec_none ) );
     CHECK( target.dodge_roll() == 0 );
     target.process_activity();
     CHECK( target.get_moves() <= 0 );
@@ -379,7 +413,6 @@ TEST_CASE( "avatar_fatal_execution_native_turn_processes_passive_effects_once",
     source.set_moves( -10000 );
     contact( source );
     g->executions().drain_starts();
-    const efftype_id effect_stunned( "stunned" );
     target.add_effect( effect_stunned, 5_turns );
     const time_duration before = target.get_effect( effect_stunned ).get_duration();
     calendar::turn += 1_turns;
@@ -434,7 +467,7 @@ TEST_CASE( "avatar_fatal_execution_honors_every_native_prevention_stage_without_
     CHECK( corpses( get_avatar().pos_bub() ) == 0 );
     CHECK( get_globals().get_global_value( "exec_fatal_kills" ).dbl() == 0 );
     if( stage == "event" ) {
-        CHECK( get_avatar().activity.id() == activity_id( "ACT_WAIT" ) );
+        CHECK( get_avatar().activity.id() == ACT_WAIT );
     }
     if( stage != "event" ) {
         CHECK( get_globals().get_global_value( "exec_avatar_preventions" ).dbl() == 1 );
@@ -458,7 +491,7 @@ TEST_CASE( "avatar_fatal_execution_remains_exposed_to_native_environmental_damag
     contact( source );
     g->executions().drain_starts();
     // Apply it through the native turn below, rather than add_field's immediate player hit.
-    get_map().add_field( target.pos_bub(), field_type_str_id( "fd_fire" ).id(), 3, 0_turns, false );
+    get_map().add_field( target.pos_bub(), field_fd_fire.id(), 3, 0_turns, false );
     calendar::turn += 1_turns;
     g->new_game = true;
     CHECK_FALSE( g->do_turn() );
@@ -564,7 +597,7 @@ TEST_CASE( "avatar_fatal_execution_emergencies_settle_without_opening_death_ui_i
     } else if( action == "timeout" ) {
         tick( 3 );
     } else if( action == "damage" ) {
-        get_avatar().apply_damage( nullptr, torso.id(), 1 );
+        get_avatar().apply_damage( nullptr, body_part_torso.id(), 1 );
     } else if( action == "die" ) {
         get_avatar().die( &get_map(), nullptr );
     } else if( action == "motion" ) {
@@ -578,7 +611,7 @@ TEST_CASE( "avatar_fatal_execution_emergencies_settle_without_opening_death_ui_i
     } else if( action == "skip" ) {
         g->executions().settle_fatal( get_avatar(), "player_cancelled" );
     } else if( action == "travel" ) {
-        CHECK_FALSE( g->travel_to_dimension( dimension_id( "scarlet" ), {}, {}, std::nullopt ) );
+        CHECK_FALSE( g->travel_to_dimension( dimension_world_scarlet, {}, {}, std::nullopt ) );
     } else {
         CHECK( g->executions().prepare_world_transition() );
     }
@@ -607,7 +640,7 @@ TEST_CASE( "avatar_fatal_execution_resumes_saved_control_and_does_not_replay_sta
     restore( actor, scene );
     CHECK( execution_fatal::pending( get_avatar() ) );
     CHECK_FALSE( g->is_game_over() );
-    CHECK( get_avatar().activity.id() == activity_id( "ACT_EXECUTION" ) );
+    CHECK( get_avatar().activity.id() == ACT_EXECUTION );
     CHECK( get_globals().get_global_value( "exec_fatal_starts" ).dbl() == 1 );
     tick( 2 );
     CHECK( view( id ).outcome == "killed" );
@@ -736,9 +769,9 @@ TEST_CASE( "avatar_fatal_opt_in_requires_the_fatal_definition_contract",
     CHECK_THROWS_AS( definition.load( json_loader::from_string(
                                           R"({"name":"Invalid player scene","allow_avatar_fatal_target":true,"start":"done","steps":{"done":{"end":"done"}}})" ),
                                       "avatar_fatal_tests" ), JsonError );
-    REQUIRE( execution_id( "execution_avatar_fatal_knife_stagger" ).is_valid() );
-    CHECK( execution_id( "execution_avatar_fatal_knife_stagger" )->allow_avatar_fatal_target );
-    CHECK_FALSE( execution_id( "execution_fatal_knife_stagger" )->allow_avatar_fatal_target );
+    REQUIRE( execution_definition_execution_avatar_fatal_knife_stagger.is_valid() );
+    CHECK( execution_definition_execution_avatar_fatal_knife_stagger->allow_avatar_fatal_target );
+    CHECK_FALSE( execution_definition_execution_fatal_knife_stagger->allow_avatar_fatal_target );
 }
 
 TEST_CASE( "avatar_death_state_loads_legacy_records_and_rejects_inconsistent_flags",

@@ -1,39 +1,49 @@
 #include "ability_runtime.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <map>
+#include <unordered_map>
 #include <utility>
 
 #include "ability_activity_actor.h"
+#include "activity_actor.h"
 #include "avatar.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "clone_ptr.h"
 #include "creature.h"
-#include "creature_tracker.h"
-#include "dialogue.h"
 #include "damage_transaction.h"
+#include "dialogue.h"
 #include "effect_on_condition.h"
 #include "execution_combat.h"
 #include "execution_runtime.h"
-#include "flag.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "incapacitation.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "json.h"
 #include "line.h"
 #include "magic.h"
 #include "map.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "player_activity.h"
-#include "power_runtime.h"
 #include "power_actor.h"
+#include "power_motion.h"
 #include "power_projection.h"
+#include "power_runtime.h"
 #include "rng.h"
 #include "spell_cast_context.h"
 #include "talker.h"
+#include "type_id.h"
+
+static const efftype_id effect_stunned( "stunned" );
+
+static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 
 namespace
 {
@@ -102,8 +112,8 @@ std::string native_check( const ability_request &request, tripoint_abs_ms &desti
     if( !caster || caster->is_fake() || caster->is_hallucination() ) {
         return "caster_unavailable";
     }
-    if( incapacitation::unconscious( *caster ) || caster->has_effect( efftype_id( "stunned" ) ) ||
-        caster->has_flag( json_character_flag( "CANNOT_ATTACK" ) ) ) {
+    if( incapacitation::unconscious( *caster ) || caster->has_effect( effect_stunned ) ||
+        caster->has_flag( json_flag_CANNOT_ATTACK ) ) {
         return "caster_incapacitated";
     }
     const map &here = get_map();
@@ -238,7 +248,7 @@ struct ability_manager::impl {
     }
 
     void callbacks( ability_instance &instance, const std::vector<effect_on_condition_id> &list,
-                    bool terminal = false ) {
+                    bool terminal = false ) const {
         for( const effect_on_condition_id &id : list ) {
             if( !terminal && !invalid( instance ).empty() ) {
                 return;
@@ -525,7 +535,7 @@ std::string ability_manager::check( const ability_request &request ) const
         if( const Character *person = caster.as_character(); person && !person->activity.is_null() ) {
             return "caster_busy";
         }
-        const auto &def = *request.ability;
+        const ability_definition &def = *request.ability;
         const std::string cost = resource_check( caster, def.energy, def.energy_cost );
         return cost.empty() ? data->powers.check_charge( caster, def.cooldown, def.charge_cost ) : cost;
     }
@@ -1057,7 +1067,7 @@ void ability_manager::deserialize( const JsonObject &jo )
             jo.throw_error( "saved ability has an invalid resource reservation" );
         }
     }
-    for( const auto &r : data->powers.inspect_reservations() ) {
+    for( power_reservation_view const &r : data->powers.inspect_reservations() ) {
         const auto i = data->instances.find( r.token );
         if( i == data->instances.end() || !i->second.view.energy_reserved ) {
             jo.throw_error( "saved power reservation has no owning ability" );

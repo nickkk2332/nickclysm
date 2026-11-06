@@ -1,6 +1,4 @@
 #include "magic.h"
-#include "spell_cast_context.h"
-#include "damage_transaction.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +8,7 @@
 #include <memory>
 #include <ostream>
 #include <set>
+#include <unordered_map>
 #include <utility>
 
 #include "avatar.h"
@@ -25,18 +24,20 @@
 #include "creature.h"
 #include "creature_tracker.h"
 #include "damage.h"
+#include "damage_transaction.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
-#include "execution_fatal.h"
 #include "execution_combat.h"
+#include "execution_fatal.h"
 #include "field.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
 #include "generic_factory.h"
+#include "global_vars.h"
 #include "imgui/imgui.h"
 #include "incapacitation.h"
 #include "input_context.h"
@@ -48,6 +49,7 @@
 #include "magic_enchantment.h"
 #include "map.h"
 #include "map_iterator.h"
+#include "math_parser_diag_value.h"
 #include "math_parser_jmath.h"
 #include "messages.h"
 #include "mongroup.h"
@@ -64,6 +66,7 @@
 #include "requirements.h"
 #include "rng.h"
 #include "sounds.h"
+#include "spell_cast_context.h"
 #include "string_formatter.h"
 #include "talker.h"
 #include "temp_crafting_inventory.h"

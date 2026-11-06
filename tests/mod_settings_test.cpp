@@ -1,16 +1,26 @@
+#include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "avatar.h"
 #include "cata_catch.h"
+#include "cata_path.h"
 #include "cata_scope_helpers.h"
+#include "cata_variant.h"
+#include "catacharset.h"
 #include "condition.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "event.h"
 #include "event_bus.h"
@@ -18,34 +28,37 @@
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "mod_setting.h"
+#include "mod_setting_values.h"
 #include "options.h"
 #include "path_info.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "talker.h"
+#include "translation.h"
 #include "type_id.h"
 #include "worldfactory.h"
 
 // DATA-J01: mods offer players settings, kept per world (doc/JSON/MOD_SETTINGS.md).  The menus
 // need a display, so these tests cover the data behind them.
 
+static const effect_on_condition_id effect_on_condition_test_ms_reads( "test_ms_reads" );
+static const effect_on_condition_id effect_on_condition_test_ms_writes( "test_ms_writes" );
+
 static const mod_id MOD_INFORMATION_dda( "dda" );
 static const mod_id MOD_INFORMATION_test_data( "test_data" );
 static const mod_id MOD_INFORMATION_test_mod_settings( "test_mod_settings" );
 
+static const mod_setting_id mod_setting_test_bad( "test_bad" );
 static const mod_setting_id mod_setting_test_ms_choice( "test_ms_choice" );
 static const mod_setting_id mod_setting_test_ms_fixed( "test_ms_fixed" );
 static const mod_setting_id mod_setting_test_ms_number( "test_ms_number" );
 static const mod_setting_id mod_setting_test_ms_switch( "test_ms_switch" );
 static const mod_setting_id mod_setting_test_ms_text( "test_ms_text" );
-
-static const effect_on_condition_id effect_on_condition_test_ms_reads( "test_ms_reads" );
-static const effect_on_condition_id effect_on_condition_test_ms_writes( "test_ms_writes" );
 
 namespace
 {
@@ -242,7 +255,7 @@ TEST_CASE( "mod_setting_load_errors", "[mod_settings]" )
             "kind": "bool" })", "custom" ), JsonError );
     }
     // none of them was added
-    CHECK_FALSE( mod_setting_id( "test_bad" ).is_valid() );
+    CHECK_FALSE( mod_setting_test_bad.is_valid() );
     CHECK( mod_setting_test_ms_switch->name.translated() == "Test switch" );
 
     SECTION( "math rejects unknown ids, and text, which isn't a number" ) {

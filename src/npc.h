@@ -59,7 +59,6 @@ class faction;
 class map;
 class mission;
 class monster;
-class npc_goal_runtime;
 class talker;
 class vehicle;
 

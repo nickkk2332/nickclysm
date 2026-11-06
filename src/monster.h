@@ -6,6 +6,7 @@
 #include <bitset>
 #include <climits>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>

@@ -7,7 +7,10 @@
 #include <algorithm>
 #include <climits>
 #include <cstdint>
+#include <functional>
+#include <initializer_list>
 #include <list>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -16,11 +19,13 @@
 #include "activity_actor_definitions.h"
 #include "butchery.h"
 #include "butchery_requirements.h"
+#include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
 #include "character_martial_arts.h"
 #include "craft_command.h"
 #include "craft_prompts.h"
+#include "creature.h"
 #include "enums.h"
 #include "flag.h"
 #include "game.h"
@@ -29,15 +34,17 @@
 #include "item.h"
 #include "item_pocket.h"
 #include "itype.h"
-#include "line.h"
+#include "iuse.h"
 #include "map.h"
 #include "mapdata.h"
 #include "martialarts.h"
 #include "mtype.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_activity.h"
-#include "proficiency.h"
 #include "pocket_type.h"
+#include "point.h"
+#include "proficiency.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
 #include "requirements.h"
@@ -211,7 +218,7 @@ refusal fields_butcher( const eoc_target_fields &given )
         return std::string( "needs \"target_item\" (the corpse)" );
     }
     if( given.loc || given.recipe ) {
-        return std::string( "takes no target but \"target_item\" and \"butcher_type\"" );
+        return std::string( R"(takes no target but "target_item" and "butcher_type")" );
     }
     return std::nullopt;
 }

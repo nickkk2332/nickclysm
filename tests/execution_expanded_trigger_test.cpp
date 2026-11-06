@@ -1,14 +1,21 @@
 #include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
-#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "creature_tracker.h"
-#include "damage.h"
+#include "character.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
@@ -20,22 +27,31 @@
 #include "game.h"
 #include "global_vars.h"
 #include "item.h"
+#include "item_uid.h"
 #include "json.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "mattack_common.h"
 #include "messages.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "options_helpers.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "projectile.h"
 #include "type_id.h"
+
+static const itype_id itype_execution_expanded_throw( "execution_expanded_throw" );
+
+static const skill_id skill_throw( "throw" );
+
+static const spell_id spell_execution_expanded_spell( "execution_expanded_spell" );
+static const spell_id spell_execution_expanded_spell_area( "execution_expanded_spell_area" );
 
 namespace
 {
@@ -78,14 +94,14 @@ void equip_thrower( Character &source )
     source.set_str_base( 40 );
     source.set_dex_base( 30 );
     source.reset_stats();
-    source.set_skill_level( skill_id( "throw" ), 10 );
+    source.set_skill_level( skill_throw, 10 );
     source.set_moves( 1000 );
 }
 
 void throw_at( Character &source, Creature &target )
 {
     equip_thrower( source );
-    const item knife( itype_id( "execution_expanded_throw" ) );
+    const item knife( itype_execution_expanded_throw );
     source.throw_item( target.pos_bub(), knife );
 }
 
@@ -99,7 +115,7 @@ execution_trigger_report report()
 
 execution_view selected()
 {
-    const auto decision = report();
+    const execution_trigger_report decision = report();
     REQUIRE( decision.instance != 0 );
     const auto scene = g->executions().inspect( decision.instance );
     REQUIRE( scene );
@@ -136,10 +152,10 @@ TEST_CASE( "execution_thrown_native_avatar_and_npc_contacts_keep_original_item_a
     equip_thrower( source );
     Creature &target = victim( source );
     const int hp = target.get_hp();
-    const item knife( itype_id( "execution_expanded_throw" ) );
+    const item knife( itype_execution_expanded_throw );
     const std::string uid = std::to_string( knife.uid().get_value() );
     source.throw_item( target.pos_bub(), knife );
-    const auto scene = selected();
+    const execution_view scene = selected();
     CHECK( scene.state == "pending" );
     CHECK( scene.context.at( "attack_channel" ) == "thrown" );
     CHECK( scene.context.at( "weapon" ) == "execution_expanded_throw" );
@@ -168,10 +184,10 @@ TEST_CASE( "execution_spell_native_casters_capture_exact_effect_without_weapon_f
     }
     Creature &target = victim( *source );
     const int hp = target.get_hp();
-    spell effect( spell_id( "execution_expanded_spell" ), 1 );
+    spell effect( spell_execution_expanded_spell, 1 );
     effect.set_level( get_avatar(), 1 );
     effect.cast_all_effects( *source, target.pos_bub() );
-    const auto scene = selected();
+    const execution_view scene = selected();
     CHECK( scene.context.at( "attack_channel" ) == "spell" );
     CHECK( scene.context.at( "spell" ) == effect.id().str() );
     CHECK( scene.context.at( "spell_level" ).dbl() == 1 );
@@ -189,7 +205,7 @@ TEST_CASE( "execution_spell_aoe_offers_one_packet_for_each_real_victim",
     Creature &first = victim( get_avatar() );
     Creature &second = spawn_test_monster( "mon_execution_expanded_victim",
                                            first.pos_bub() + tripoint_rel_ms( 0, 1, 0 ) );
-    spell effect( spell_id( "execution_expanded_spell_area" ), 1 );
+    spell effect( spell_execution_expanded_spell_area, 1 );
     effect.cast_all_effects( get_avatar(), first.pos_bub() );
     const auto history = g->executions().trigger_history();
     REQUIRE( history.size() == 2 );
@@ -211,7 +227,7 @@ TEST_CASE( "execution_spell_split_percentage_and_multishot_keep_one_first_packet
     const int hp = target.get_hp();
     spell effect( spell_id( "execution_expanded_spell_" + suffix ), 1 );
     effect.cast_all_effects( get_avatar(), target.pos_bub() );
-    const auto scene = selected();
+    const execution_view scene = selected();
     CHECK( g->executions().trigger_history().size() == 1 );
     CHECK( scene.context.at( "hp_loss" ).dbl() > 0 );
     CHECK( scene.context.at( "hp_loss" ).dbl() < hp - target.get_hp() );
@@ -232,7 +248,7 @@ TEST_CASE( "execution_spell_extra_effects_are_children_of_the_original_cast",
         CHECK_FALSE( g->executions().last_trigger_report() );
         return;
     }
-    const auto scene = selected();
+    const execution_view scene = selected();
     CHECK( scene.context.at( "spell" ) == effect.id().str() );
     CHECK( g->executions().trigger_history().size() == 1 );
     CHECK( hp - target.get_hp() > scene.context.at( "hp_loss" ).dbl() );
@@ -243,7 +259,7 @@ TEST_CASE( "execution_spell_cast_event_children_do_not_acquire_an_automatic_root
 {
     expanded_world world;
     Creature &target = victim( get_avatar() );
-    spell effect( spell_id( "execution_expanded_spell" ), 1 );
+    spell effect( spell_execution_expanded_spell, 1 );
     events observed;
     bool child = false;
     observed.callback = [&]( const cata::event & e ) {
@@ -266,7 +282,7 @@ TEST_CASE( "execution_spell_source_less_and_unwrapped_effects_remain_outside_the
     const bool no_source = GENERATE( false, true );
     Creature &target = victim( get_avatar() );
     const int hp = target.get_hp();
-    spell effect( spell_id( "execution_expanded_spell" ), 1 );
+    spell effect( spell_execution_expanded_spell, 1 );
     if( no_source ) {
         effect.cast_all_effects( target.pos_bub() );
     } else {
@@ -286,7 +302,7 @@ TEST_CASE( "execution_json_monster_melee_special_uses_its_own_id_and_primary_dam
     source.set_moves( 1000 );
     const int hp = get_avatar().get_hp();
     REQUIRE( source.type->special_attacks.at( "execution_expanded_special" )->call( source ) );
-    const auto scene = selected();
+    const execution_view scene = selected();
     CHECK( scene.context.at( "attack_channel" ) == "monster_special" );
     CHECK( scene.context.at( "monster_attack" ) == "execution_expanded_special" );
     CHECK( scene.context.at( "bp" ) == "torso" );
@@ -316,11 +332,11 @@ TEST_CASE( "execution_additional_producers_reserve_fatal_primary_commits_and_res
         if( producer == "thrown" ) {
             throw_at( get_avatar(), *target );
         } else {
-            spell effect( spell_id( "execution_expanded_spell" ), 1 );
+            spell effect( spell_execution_expanded_spell, 1 );
             effect.cast_all_effects( get_avatar(), target->pos_bub() );
         }
     }
-    const auto scene = selected();
+    const execution_view scene = selected();
     CHECK( scene.context.at( "attack_channel" ) == producer );
     CHECK( scene.context.at( "attack_event" ) == "fatal_hit" );
     CHECK( execution_fatal::pending( *target ) );
@@ -359,7 +375,7 @@ TEST_CASE( "execution_additional_producer_exception_settles_real_injury_and_unwi
     if( throwing ) {
         CHECK_THROWS_AS( throw_at( get_avatar(), target ), std::runtime_error );
     } else {
-        spell effect( spell_id( "execution_expanded_spell" ), 1 );
+        spell effect( spell_execution_expanded_spell, 1 );
         CHECK_THROWS_AS( effect.cast_all_effects( get_avatar(), target.pos_bub() ), std::runtime_error );
     }
     CHECK( threw );

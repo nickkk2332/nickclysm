@@ -4,11 +4,11 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <ostream>
-#include <random>
 #include <string>
 
 #include "avatar.h"

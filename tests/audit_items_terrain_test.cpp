@@ -1,23 +1,24 @@
 #include <optional>
+#include <set>
 #include <string>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "cata_scope_helpers.h"
 #include "coordinates.h"
 #include "enums.h"
 #include "game_constants.h"
 #include "iexamine.h"
 #include "item.h"
-#include "item_pocket.h"
 #include "item_location.h"
-#include "itype.h"
+#include "item_pocket.h"
+#include "itype.h" // IWYU pragma: keep
 #include "iuse.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
+#include "point.h"
 #include "ret_val.h"
 #include "type_id.h"
 #include "units.h"

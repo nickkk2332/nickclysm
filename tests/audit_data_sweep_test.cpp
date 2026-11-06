@@ -5,9 +5,11 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "cata_catch.h"
@@ -17,16 +19,12 @@
 #include "construction.h"
 #include "coordinates.h"
 #include "dependency_tree.h"
-#include "end_screen.h"
-#include "fault.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
-#include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "mapbuffer.h"
 #include "mod_manager.h"
-#include "omdata.h"
 #include "options_helpers.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
@@ -39,17 +37,37 @@
 #include "zzip_stack.h"
 
 static const construction_str_id construction_test_constr_door_frame( "test_constr_door_frame" );
+
 static const end_screen_id
 end_screen_audit_data_b05_end_screen_child( "audit_data_b05_end_screen_child" );
+
 static const fault_group_id
 fault_group_audit_data_b05_fault_group_child( "audit_data_b05_fault_group_child" );
+
+static const mod_id MOD_INFORMATION_audit_a( "audit_a" );
+static const mod_id MOD_INFORMATION_audit_b( "audit_b" );
+static const mod_id MOD_INFORMATION_audit_c( "audit_c" );
+static const mod_id MOD_INFORMATION_audit_core( "audit_core" );
+static const mod_id MOD_INFORMATION_audit_d( "audit_d" );
+static const mod_id MOD_INFORMATION_audit_data_b04_chain_a( "audit_data_b04_chain_a" );
+static const mod_id MOD_INFORMATION_audit_data_b04_circle_a( "audit_data_b04_circle_a" );
+static const mod_id MOD_INFORMATION_audit_data_b04_circle_b( "audit_data_b04_circle_b" );
+static const mod_id MOD_INFORMATION_audit_data_b04_circle_c( "audit_data_b04_circle_c" );
+static const mod_id MOD_INFORMATION_audit_data_b04_renamed_mod( "audit_data_b04_renamed_mod" );
+static const mod_id MOD_INFORMATION_audit_m( "audit_m" );
+static const mod_id MOD_INFORMATION_audit_not_installed( "audit_not_installed" );
 static const mod_id MOD_INFORMATION_dda( "dda" );
 static const mod_id MOD_INFORMATION_test_data( "test_data" );
-static const mongroup_id GROUP_test_nested_packsize( "test_nested_packsize" );
+
+static const mongroup_id test_nested_packsize( "test_nested_packsize" );
+
 static const mtype_id mon_test_CBM( "mon_test_CBM" );
+
 static const oter_str_id oter_open_air( "open_air" );
+
 static const profession_group_id
 profession_group_audit_data_b05_profession_group_child( "audit_data_b05_profession_group_child" );
+
 static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_open_air( "t_open_air" );
 
@@ -88,7 +106,7 @@ TEST_CASE( "data-b04_mod_migration_renames_the_mod_in_place", "[audit][mods]" )
 {
     const std::vector<mod_id> expected = { MOD_INFORMATION_dda, MOD_INFORMATION_test_data };
     const auto [mods, saved] = checked_mods_list( { MOD_INFORMATION_dda,
-                               mod_id( "audit_data_b04_renamed_mod" )
+                               MOD_INFORMATION_audit_data_b04_renamed_mod
                                                   } );
     CHECK( mods == expected );
     CHECK( saved == expected );
@@ -100,7 +118,7 @@ TEST_CASE( "data-b04_mod_migration_follows_a_rename_of_a_rename", "[audit][mods]
 {
     const std::vector<mod_id> expected = { MOD_INFORMATION_dda, MOD_INFORMATION_test_data };
     const auto [mods, saved] = checked_mods_list( { MOD_INFORMATION_dda,
-                               mod_id( "audit_data_b04_chain_a" )
+                               MOD_INFORMATION_audit_data_b04_chain_a
                                                   } );
     CHECK( mods == expected );
     CHECK( saved == expected );
@@ -109,9 +127,9 @@ TEST_CASE( "data-b04_mod_migration_follows_a_rename_of_a_rename", "[audit][mods]
 // DATA-B04: renames that go round in a circle lead nowhere, and stop
 TEST_CASE( "data-b04_mod_renames_in_a_circle_lead_nowhere", "[audit][mods]" )
 {
-    const mod_id a( "audit_data_b04_circle_a" );
-    const mod_id b( "audit_data_b04_circle_b" );
-    const mod_id c( "audit_data_b04_circle_c" );
+    const mod_id &a = MOD_INFORMATION_audit_data_b04_circle_a;
+    const mod_id &b = MOD_INFORMATION_audit_data_b04_circle_b;
+    const mod_id &c = MOD_INFORMATION_audit_data_b04_circle_c;
     const std::map<mod_id, mod_id> renames = { { a, b }, { b, c }, { c, a } };
     CHECK_FALSE( mod_migrations::renamed_to( a, renames ).has_value() );
     CHECK_FALSE( mod_migrations::renamed_to( b, renames ).has_value() );
@@ -181,7 +199,8 @@ TEST_CASE( "data-b06_uniform_submap_keeps_its_state_through_save_and_load",
         REQUIRE( sm->is_uniform() );
 
         mb.save( true );
-        REQUIRE( mb.begin() == mb.end() );
+        const decltype( mb.begin() ) first_submap = mb.begin();
+        REQUIRE( first_submap == mb.end() );
         submap *loaded = mb.lookup_submap( addr );
         REQUIRE( loaded != nullptr );
         CHECK( loaded->is_uniform() );
@@ -227,7 +246,7 @@ TEST_CASE( "data-b06_spawn_on_a_uniform_submap_leaves_it_uniform", "[audit][mapb
     REQUIRE( sm != nullptr );
     REQUIRE( sm->is_uniform() );
 
-    tm.place_spawns( GROUP_test_nested_packsize, 1, point_omt_ms( 3, 3 ), point_omt_ms( 3, 3 ),
+    tm.place_spawns( test_nested_packsize, 1, point_omt_ms( 3, 3 ), point_omt_ms( 3, 3 ),
                      omt.z(), 1.0f, true );
     REQUIRE_FALSE( sm->spawns.empty() );
     CHECK( sm->is_uniform() );
@@ -416,10 +435,10 @@ TEST_CASE( "data-b08_zzip_stack_that_cannot_open_fails_cleanly", "[audit][zzip]"
 // load order: with M needing A and B, and A needing B, A came before B.
 TEST_CASE( "data-b09_dependencies_come_after_their_own_dependencies", "[audit][mods]" )
 {
-    const mod_id core( "audit_core" );
-    const mod_id a( "audit_a" );
-    const mod_id b( "audit_b" );
-    const mod_id m( "audit_m" );
+    const mod_id &core = MOD_INFORMATION_audit_core;
+    const mod_id &a = MOD_INFORMATION_audit_a;
+    const mod_id &b = MOD_INFORMATION_audit_b;
+    const mod_id &m = MOD_INFORMATION_audit_m;
     dependency_tree tree;
     tree.init( { { core, {} }, { b, { core } }, { a, { core, b } }, { m, { core, a, b } } } );
 
@@ -469,17 +488,17 @@ bool has_problem( const mod_list_check &check, mod_list_problem::kind what, cons
 // are what the player is asked about.
 TEST_CASE( "data-b09_world_mod_list_is_checked", "[audit][mods]" )
 {
+    const mod_id &core = MOD_INFORMATION_audit_core;
+    const mod_id &a = MOD_INFORMATION_audit_a;
+    const mod_id &b = MOD_INFORMATION_audit_b;
+    const mod_id &c = MOD_INFORMATION_audit_c;
     using kind = mod_list_problem::kind;
-    const mod_id core( "audit_core" );
-    const mod_id a( "audit_a" );
-    const mod_id b( "audit_b" );
-    const mod_id c( "audit_c" );
     audit_mods mods;
     mods.add( "audit_core", {} );
     mods.add( "audit_b", { core } );
     mods.add( "audit_a", { core, b } );
     mods.add( "audit_c", { core }, { a } );
-    mods.add( "audit_d", { core, mod_id( "audit_not_installed" ) } );
+    mods.add( "audit_d", { core, MOD_INFORMATION_audit_not_installed } );
 
     SECTION( "a clean list" ) {
         const std::vector<mod_id> list = { core, b, a };
@@ -494,7 +513,7 @@ TEST_CASE( "data-b09_world_mod_list_is_checked", "[audit][mods]" )
         CHECK( check.fixed == std::vector<mod_id> { core, b, a } );
     }
     SECTION( "a dependency that isn't installed" ) {
-        const std::vector<mod_id> list = { core, mod_id( "audit_d" ) };
+        const std::vector<mod_id> list = { core, MOD_INFORMATION_audit_d };
         const mod_list_check check = mods.check( list );
         CHECK( check.problems.size() == 1 );
         CHECK( has_problem( check, kind::dependency_not_installed, "audit_d", "audit_not_installed" ) );
@@ -519,7 +538,7 @@ TEST_CASE( "data-b09_world_mod_list_is_checked", "[audit][mods]" )
 // DATA-B09: the shipped mods' own lists check clean
 TEST_CASE( "data-b09_test_world_mod_list_checks_clean", "[audit][mods]" )
 {
-    const std::vector<mod_id> list = { mod_id( "dda" ), mod_id( "test_data" ) };
+    const std::vector<mod_id> list = { MOD_INFORMATION_dda, MOD_INFORMATION_test_data };
     const mod_list_check check = check_mod_list( list, []( const mod_id & id ) {
         return id.is_valid() ? &id.obj() : nullptr;
     } );

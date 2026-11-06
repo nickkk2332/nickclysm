@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cstddef>
+#include <list>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -12,6 +14,7 @@
 #include "character_martial_arts.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "enums.h"
 #include "faction.h"
 #include "flag.h"
 #include "game.h"
@@ -28,12 +31,13 @@
 #include "monstergenerator.h"
 #include "mtype.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vehicle.h"
-#include "veh_type.h"
 #include "weakpoint.h"
 
 // Regression tests for the combat chapter of the engine audit (Audit/18-combat.md).
@@ -55,7 +59,7 @@ static const itype_id itype_test_cmbt_round_plain( "test_cmbt_round_plain" );
 static const itype_id itype_test_cmbt_round_wild( "test_cmbt_round_wild" );
 static const itype_id itype_test_cmbt_unwieldy( "test_cmbt_unwieldy" );
 
-static const mabuff_id test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
+static const mabuff_id ma_buff_test_buff_cmbt_stacking( "test_buff_cmbt_stacking" );
 
 static const matec_id test_cmbt_impale( "test_cmbt_impale" );
 static const matec_id test_cmbt_loaded_strike( "test_cmbt_loaded_strike" );
@@ -542,6 +546,9 @@ TEST_CASE( "cmbt-b12_hardtohit_makes_melee_attackers_roll_twice", "[audit][melee
     avatar &you = get_avatar();
     npc &target = spawn_npc( ( you.pos_bub() + tripoint::east ).xy(), "test_talker" );
     target.remove_weapon();
+    // Its random traits can make it small (a goblin under magiclysm), which alone halves the
+    // hit rate
+    target.clear_mutations();
     // No practice: the attacker's skill stays the same throughout
     target.times_combatted_player = 1000;
 
@@ -688,7 +695,7 @@ TEST_CASE( "cmbt-b16_martial_art_buff_bonuses_stack_with_fractions", "[audit][ma
 {
     combat_scene scene;
     avatar &you = get_avatar();
-    const ma_buff &buff = test_buff_cmbt_stacking.obj();
+    const ma_buff &buff = ma_buff_test_buff_cmbt_stacking.obj();
 
     SECTION( "one stack" ) {
         buff.apply_buff( you );

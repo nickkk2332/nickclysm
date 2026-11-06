@@ -1,14 +1,25 @@
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <random>
+#include <set>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "character.h"
 #include "character_martial_arts.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
@@ -24,20 +35,40 @@
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "martialarts.h"
+#include "math_parser_diag_value.h"
+#include "memory_fast.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
 #include "weakpoint.h"
+
+static const damage_type_id damage_pure( "pure" );
+
+static const execution_id execution_definition_test_exec_clock( "test_exec_clock" );
+static const execution_id execution_definition_test_exec_strike( "test_exec_strike" );
+
+static const execution_trigger_id
+execution_trigger_test_exec_trigger_basic( "test_exec_trigger_basic" );
+
+static const itype_id itype_execution_trigger_test_knife( "execution_trigger_test_knife" );
+static const itype_id itype_knife_combat( "knife_combat" );
+
+static const matype_id
+test_style_execution_trigger_counter( "test_style_execution_trigger_counter" );
+
+static const skill_id skill_dodge( "dodge" );
 
 namespace
 {
@@ -64,7 +95,7 @@ void select_case( const std::string &name )
 
 void equip( Character &actor )
 {
-    item knife( itype_id( "execution_trigger_test_knife" ) );
+    item knife( itype_execution_trigger_test_knife );
     REQUIRE( actor.wield( knife ) );
 }
 
@@ -154,7 +185,7 @@ void attack_until_queued( Character &actor, Creature &target )
     for( int n = 0; n < 100; ++n ) {
         actor.set_stamina( actor.get_stamina_max() );
         actor.set_moves( 100 );
-        actor.melee_attack_abstract( target, false, matec_id( "tec_none" ) );
+        actor.melee_attack_abstract( target, false, tec_none );
         if( report().instance != 0 ) {
             return;
         }
@@ -287,10 +318,10 @@ TEST_CASE( "execution_trigger_arbitration_is_prioritized_bounded_and_deduplicate
     equip( get_avatar() );
     monster &target = spawn_test_monster( "mon_execution_trigger_test",
                                           get_avatar().pos_bub() + tripoint_rel_ms::east );
-    auto s = packet( get_avatar(), target );
+    execution_combat::attack_snapshot s = packet( get_avatar(), target );
     SECTION( "failed high priority falls through and lower tiers are not rolled after a win" ) {
         select_case( "priority" );
-        const auto result = submit( s );
+        const execution_trigger_report result = submit( s );
         CHECK( result.selected == "test_exec_trigger_lower_passed" );
         CHECK( rejected_for( result, "chance_failed" ) );
         CHECK( std::any_of( result.candidates.begin(), result.candidates.end(),
@@ -303,14 +334,16 @@ TEST_CASE( "execution_trigger_arbitration_is_prioritized_bounded_and_deduplicate
         select_case( "basic" );
         s.id = g->executions().next_attack_id();
         REQUIRE( submit( s ).instance > 0 );
-        const auto before = rng_get_engine();
+        // NOLINTNEXTLINE(cata-determinism)
+        const cata_default_random_engine before = rng_get_engine();
         CHECK( submit( s ).reason == "duplicate_contact" );
         CHECK( rng_get_engine() == before );
     }
     SECTION( "zero chance and no matching condition leave RNG untouched" ) {
         const std::string name = GENERATE( "zero", "unconfigured" );
         select_case( name );
-        const auto before = rng_get_engine();
+        // NOLINTNEXTLINE(cata-determinism)
+        const cata_default_random_engine before = rng_get_engine();
         CHECK( submit( s ).instance == 0 );
         CHECK( rng_get_engine() == before );
     }
@@ -321,9 +354,9 @@ TEST_CASE( "execution_trigger_arbitration_is_prioritized_bounded_and_deduplicate
         s.critical.reset();
         s.bodypart.reset();
         s.damage.clear();
-        const auto result = submit( s );
+        const execution_trigger_report result = submit( s );
         REQUIRE( result.instance > 0 );
-        const auto context = scene( result.instance ).context;
+        const global_variables::impl_t context = scene( result.instance ).context;
         CHECK( context.at( "hit" ) == 0 );
         CHECK( context.count( "damage" ) == 0 );
         CHECK( context.count( "hp_loss" ) == 0 );
@@ -331,8 +364,9 @@ TEST_CASE( "execution_trigger_arbitration_is_prioritized_bounded_and_deduplicate
     }
     SECTION( "inspection never rerolls or starts a scene" ) {
         select_case( "half" );
-        const auto result = submit( s );
-        const auto before = rng_get_engine();
+        const execution_trigger_report result = submit( s );
+        // NOLINTNEXTLINE(cata-determinism)
+        const cata_default_random_engine before = rng_get_engine();
         for( int n = 0; n < 20; ++n ) {
             CHECK( report().selected == result.selected );
             CHECK( report().instance == result.instance );
@@ -343,14 +377,16 @@ TEST_CASE( "execution_trigger_arbitration_is_prioritized_bounded_and_deduplicate
         select_case( "half" );
         const unsigned int seed = GENERATE( 1u, 17u, 41723u );
         rng_set_engine_seed( seed );
-        const auto before = rng_get_engine();
+        // NOLINTNEXTLINE(cata-determinism)
+        const cata_default_random_engine before = rng_get_engine();
         const bool passed = rng_float( 0, 1 ) < 0.5;
         if( passed ) {
             // An accepted scene seeds its own saved RNG using two ordinary draws.
             rng( 0, std::numeric_limits<int>::max() );
             rng( 0, std::numeric_limits<int>::max() );
         }
-        const auto expected = rng_get_engine();
+        // NOLINTNEXTLINE(cata-determinism)
+        const cata_default_random_engine expected = rng_get_engine();
         rng_get_engine() = before;
         CHECK( ( submit( s ).instance > 0 ) == passed );
         CHECK( rng_get_engine() == expected );
@@ -375,7 +411,7 @@ TEST_CASE( "execution_trigger_weights_choose_one_rule_in_a_priority_tier",
     int b = 0;
     rng_set_engine_seed( 41723 );
     for( int n = 0; n < 100; ++n ) {
-        const auto result = submit( packet( get_avatar(), target ) );
+        const execution_trigger_report result = submit( packet( get_avatar(), target ) );
         REQUIRE( result.instance > 0 );
         CHECK( result.candidates.size() <= 64 );
         CHECK( rejected_for( result, "not_selected" ) );
@@ -402,25 +438,26 @@ TEST_CASE( "execution_trigger_cooldowns_have_explicit_scopes_and_survive_without
                                          tripoint_rel_ms::east );
     monster &second = spawn_test_monster( "mon_execution_trigger_test", two.pos_bub() +
                                           tripoint_rel_ms::east );
-    const auto initial = submit( packet( one, first ) );
+    const execution_trigger_report initial = submit( packet( one, first ) );
     REQUIRE( initial.instance > 0 );
     cancel( initial.instance );
     const std::string saved = save();
     const JsonObject saved_object = json_loader::from_string( saved );
     saved_object.allow_omitted_members();
     REQUIRE( saved_object.get_array( "instances" ).empty() );
-    const auto before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     g->executions().deserialize( json_loader::from_string( saved ) );
     CHECK( rng_get_engine() == before );
     CHECK_FALSE( g->executions().last_trigger_report().has_value() );
     CHECK( submit( packet( one, first ) ).instance == 0 );
     CHECK( rejected_for( report(), "cooldown" ) );
-    const auto changed_target = submit( packet( one, second ) );
+    const execution_trigger_report changed_target = submit( packet( one, second ) );
     CHECK( ( changed_target.instance == 0 ) == ( scope == "actor" || scope == "world" ) );
     if( changed_target.instance ) {
         cancel( changed_target.instance );
     }
-    const auto changed_actor = submit( packet( two, first ) );
+    const execution_trigger_report changed_actor = submit( packet( two, first ) );
     CHECK( ( changed_actor.instance == 0 ) == ( scope == "target" || scope == "world" ) );
     if( changed_actor.instance ) {
         cancel( changed_actor.instance );
@@ -440,15 +477,18 @@ TEST_CASE( "execution_trigger_refusals_do_not_charge_cooldowns_and_dry_runs_are_
     monster &target = spawn_test_monster( "mon_execution_trigger_test", actor.pos_bub() +
                                           tripoint_rel_ms::east );
     dialogue d( get_talker_for( actor ), get_talker_for( target ) );
-    const auto before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     const std::string saved = save();
     for( int n = 0; n < 10; ++n ) {
-        CHECK( g->executions().check_start( execution_id( "test_exec_clock" ), d ) == "eligible" );
+        CHECK( g->executions().check_start( execution_definition_test_exec_clock, d ) == "eligible" );
     }
     CHECK( rng_get_engine() == before );
     CHECK( save() == saved );
     CHECK_FALSE( g->executions().contains( target ) );
-    const auto manual = g->executions().start( execution_id( "test_exec_clock" ), d, 7 );
+    const execution_start_result manual = g->executions().start( execution_definition_test_exec_clock,
+                                          d,
+                                          7 );
     REQUIRE( manual.id > 0 );
     CHECK( submit( packet( actor, target ) ).instance == 0 );
     CHECK( rejected_for( report(), "participant_busy" ) );
@@ -463,7 +503,8 @@ TEST_CASE( "execution_trigger_primary_damage_excludes_nested_damage_healing_and_
     select_case( "basic" );
     avatar &actor = get_avatar();
     equip( actor );
-    monster &target = spawn_test_monster( "mon_execution_trigger_test", actor.pos_bub() +
+    // Bloodless: a bleed's first tick would otherwise be the first damage event, not the hit.
+    monster &target = spawn_test_monster( "mon_execution_trigger_bloodless", actor.pos_bub() +
                                           tripoint_rel_ms::east );
     monster &child = spawn_test_monster( "mon_execution_trigger_test", actor.pos_bub() +
                                          tripoint_rel_ms::north );
@@ -482,7 +523,7 @@ TEST_CASE( "execution_trigger_primary_damage_excludes_nested_damage_healing_and_
             primary_damage = e.get<int>( "damage" );
             target->apply_damage( actor, bodypart_id( "torso" ), 17 );
             target->heal( 11 );
-            actor->melee_attack_abstract( *child, false, matec_id( "tec_none" ) );
+            actor->melee_attack_abstract( *child, false, tec_none );
         }
     } callback;
     callback.actor = &actor;
@@ -492,8 +533,8 @@ TEST_CASE( "execution_trigger_primary_damage_excludes_nested_damage_healing_and_
     const int hp_before = target.get_hp();
     attack_until_queued( actor, target );
     REQUIRE( callback.fired );
-    const auto result = report();
-    const auto queued = scene( result.instance );
+    const execution_trigger_report result = report();
+    const execution_view queued = scene( result.instance );
     CHECK( queued.context.at( "hp_loss" ) == callback.primary_damage );
     CHECK( hp_before - target.get_hp() == callback.primary_damage + 6 );
     CHECK( queued.context.at( "attack_target_position" ).tripoint() == target.pos_abs() );
@@ -517,7 +558,7 @@ TEST_CASE( "execution_trigger_damage_callbacks_and_scripted_actions_cannot_creat
         void notify( const cata::event &e ) override {
             if( !fired && e.type() == event_type::monster_takes_damage ) {
                 fired = true;
-                actor->melee_attack_abstract( *target, false, matec_id( "tec_none" ) );
+                actor->melee_attack_abstract( *target, false, tec_none );
             }
         }
     } callback;
@@ -529,7 +570,7 @@ TEST_CASE( "execution_trigger_damage_callbacks_and_scripted_actions_cannot_creat
     }
     SECTION( "an execution action is a barrier" ) {
         dialogue d( get_talker_for( actor ), get_talker_for( target ) );
-        REQUIRE( g->executions().start( execution_id( "test_exec_strike" ), d, 7 ).id > 0 );
+        REQUIRE( g->executions().start( execution_definition_test_exec_strike, d, 7 ).id > 0 );
         g->executions().drain_starts();
     }
     REQUIRE( callback.fired );
@@ -555,7 +596,7 @@ TEST_CASE( "execution_trigger_weapon_binding_uses_the_contact_item_not_a_later_r
             if( !fired && e.type() == event_type::monster_takes_damage ) {
                 fired = true;
                 actor->i_rem( &*actor->get_wielded_item() );
-                item replacement( itype_id( "knife_combat" ) );
+                item replacement( itype_knife_combat );
                 REQUIRE( actor->wield( replacement ) );
             }
         }
@@ -564,7 +605,7 @@ TEST_CASE( "execution_trigger_weapon_binding_uses_the_contact_item_not_a_later_r
     get_event_bus().subscribe( &callback );
     for( int n = 0; n < 100 && !callback.fired; ++n ) {
         actor.set_stamina( actor.get_stamina_max() );
-        actor.melee_attack_abstract( target, false, matec_id( "tec_none" ) );
+        actor.melee_attack_abstract( target, false, tec_none );
     }
     REQUIRE( callback.fired );
     if( required ) {
@@ -583,10 +624,9 @@ TEST_CASE( "execution_trigger_defensive_counters_from_direct_hits_are_not_new_ro
     select_case( "basic" );
     avatar &target = get_avatar();
     equip( target );
-    const matype_id style( "test_style_execution_trigger_counter" );
-    target.martial_arts_data->add_martialart( style );
-    target.martial_arts_data->set_style( style, false );
-    target.set_skill_level( skill_id( "dodge" ), 10 );
+    target.martial_arts_data->add_martialart( test_style_execution_trigger_counter );
+    target.martial_arts_data->set_style( test_style_execution_trigger_counter, false );
+    target.set_skill_level( skill_dodge, 10 );
     target.set_dex_base( 20 );
     target.set_dodges_left( 1 );
     monster &source = spawn_test_monster( "mon_execution_trigger_test", target.pos_bub() +
@@ -595,7 +635,7 @@ TEST_CASE( "execution_trigger_defensive_counters_from_direct_hits_are_not_new_ro
         dealt_damage_instance dealt;
         const bodypart_id bp( "arm_l" );
         target.deal_melee_hit( &source, 1000, false,
-                               damage_instance( damage_type_id( "pure" ), 1 ), dealt, {}, &bp );
+                               damage_instance( damage_pure, 1 ), dealt, {}, &bp );
     }
     SECTION( "direct dodge resolution invokes a defensive EOC before any damage" ) {
         REQUIRE( target.deal_melee_attack( &source, -1000 ) < 0 );
@@ -665,7 +705,7 @@ TEST_CASE( "execution_triggers_preserve_impact_position_and_direction_after_disp
     get_event_bus().subscribe( &callback );
     attack_until_queued( actor, target );
     REQUIRE( callback.fired );
-    const auto queued = scene( report().instance );
+    const execution_view queued = scene( report().instance );
     CHECK( queued.context.at( "attack_target_position" ).tripoint() == impact );
     CHECK( target.pos_bub() == displaced );
     g->executions().drain_starts();
@@ -707,5 +747,5 @@ TEST_CASE( "execution_trigger_array_ids_cannot_bypass_the_definition_budget",
     out.end_object();
     CHECK_THROWS_WITH( execution_triggers::load( json_loader::from_string( text.str() ),
                        "trigger_tests" ), Catch::Matchers::Contains( "at most 2048" ) );
-    CHECK( execution_trigger_id( "test_exec_trigger_basic" ).is_valid() );
+    CHECK( execution_trigger_test_exec_trigger_basic.is_valid() );
 }

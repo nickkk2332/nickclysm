@@ -10,5 +10,5 @@ namespace projection_eoc
 std::function<void( dialogue & )> create( const JsonObject &, std::string_view, std::string_view );
 std::function<void( dialogue & )> end( const JsonObject &, std::string_view, std::string_view );
 std::function<void( dialogue & )> dispel( const JsonObject &, std::string_view, std::string_view );
-}
+} // namespace projection_eoc
 #endif // CATA_SRC_PROJECTION_EOC_H

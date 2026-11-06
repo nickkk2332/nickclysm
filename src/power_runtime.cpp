@@ -1,22 +1,22 @@
 #include "power_runtime.h"
-#include "power_actor.h"
-#include "power_projection.h"
-#include "power_grant.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <deque>
 #include <exception>
 #include <limits>
 #include <map>
 #include <set>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 
 #include "ability_runtime.h"
 #include "avatar.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "creature.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
@@ -29,8 +29,15 @@
 #include "json.h"
 #include "magic.h"
 #include "map.h"
-#include "memory_fast.h"
+#include "math_parser_diag_value.h"
+#include "pimpl.h"
+#include "power_actor.h"
+#include "power_grant.h"
+#include "power_projection.h"
 #include "talker.h"
+#include "type_id.h"
+
+static const efftype_id effect_stunned( "stunned" );
 
 namespace
 {
@@ -172,7 +179,7 @@ struct power_manager::impl {
     }
 
     std::string invalid( const application_state &i ) const {
-        const auto &v = i.view;
+        const power_application_view &v = i.view;
         if( !i.cancel_reason.empty() ) {
             return i.cancel_reason;
         }
@@ -194,13 +201,13 @@ struct power_manager::impl {
         if( !target || !real_actor( *target ) ) {
             return "target_unavailable";
         }
-        const auto &def = *v.application;
+        const power_application &def = *v.application;
         if( !def.grants.empty() && ( !get_map().inbounds( owner->pos_bub() ) ||
                                      !get_map().inbounds( target->pos_bub() ) ) ) {
             return "geometry_unavailable";
         }
         if( def.interrupt_incapacitated && ( incapacitation::unconscious( *owner ) ||
-                                             owner->has_effect( efftype_id( "stunned" ) ) ) ) {
+                                             owner->has_effect( effect_stunned ) ) ) {
             return "owner_incapacitated";
         }
         if( def.interrupt_displacement && owner->pos_abs() != v.origin ) {
@@ -220,7 +227,7 @@ struct power_manager::impl {
     }
 
     dialogue context( const application_state &i, Creature *owner, Creature *target ) const {
-        const auto &v = i.view;
+        const power_application_view &v = i.view;
         dialogue d( owner ? get_talker_for( owner ) : nullptr,
                     target ? get_talker_for( target ) : nullptr, {}, v.context );
         d.set_value( "power_application", std::to_string( v.id ) );
@@ -240,7 +247,7 @@ struct power_manager::impl {
     }
 
     void callbacks( application_state &i, const std::vector<effect_on_condition_id> &list,
-                    bool terminal = false ) {
+                    bool terminal = false ) const {
         for( const auto &id : list ) {
             if( !terminal && !invalid( i ).empty() ) {
                 return;
@@ -415,7 +422,7 @@ power_balance power_manager::balance( const Creature &actor, const std::string &
         out.capacity = id->capacity;
     }
     for( const auto &entry : data->reservations ) {
-        const auto &r = entry.second;
+        const power_reservation_view &r = entry.second;
         if( r.token != except &&
             key( r.actor, r.resource, r.follows_avatar ) == key( ref, resource, actor.is_avatar() ) ) {
             out.reserved += r.amount;
@@ -451,7 +458,7 @@ bool power_manager::reserve( const Creature &actor, const std::string &resource,
     }
     const creature_ref ref = creature_ref::bind( actor );
     if( resource != "mana" && resource != "stamina" ) {
-        const auto k = key( ref, resource, actor.is_avatar() );
+        const account_key k = key( ref, resource, actor.is_avatar() );
         const power_resource_id def( resource );
         const auto it = data->pools.find( k );
         data->pools[k] = it == data->pools.end() ?
@@ -467,7 +474,7 @@ void power_manager::release_reservation( int64_t token )
 {
     const auto it = data->reservations.find( token );
     if( it != data->reservations.end() ) {
-        const auto &r = it->second;
+        power_reservation_view const &r = it->second;
         data->record( r.actor, "reservation", r.resource, "release", r.amount, 0, token );
         data->reservations.erase( it );
     }
@@ -498,7 +505,7 @@ bool power_manager::spend( Creature &actor, const std::string &resource, int amo
         actor.as_character()->set_stamina( before.total - amount );
     } else {
         const power_resource_id def( resource );
-        const auto k = key( ref, resource, actor.is_avatar() );
+        const account_key k = key( ref, resource, actor.is_avatar() );
         const auto it = data->pools.find( k );
         pool_state p = it == data->pools.end() ? pool_state{ ref, resource, def->initial, calendar::turn, actor.is_avatar() } :
                        project( it->second, *def );
@@ -527,7 +534,7 @@ bool power_manager::commit( Creature &actor, const std::string &resource, int am
 int power_manager::modify( Creature &actor, const std::string &resource, int delta,
                            const std::string &cause )
 {
-    const auto b = balance( actor, resource );
+    const power_balance b = balance( actor, resource );
     if( !b.reason.empty() || resource == "none" || delta < -value_limit || delta > value_limit ) {
         return 0;
     }
@@ -543,7 +550,7 @@ int power_manager::modify( Creature &actor, const std::string &resource, int del
     } else if( resource == "stamina" ) {
         actor.as_character()->set_stamina( next );
     } else {
-        const auto k = key( ref, resource, actor.is_avatar() );
+        const account_key k = key( ref, resource, actor.is_avatar() );
         const power_resource_id def( resource );
         const auto it = data->pools.find( k );
         pool_state p = it == data->pools.end() ? pool_state{ ref, resource, def->initial, calendar::turn, actor.is_avatar() } :
@@ -596,7 +603,7 @@ std::string power_manager::check_charge( const Creature &actor, const power_cool
     if( amount < 1 || amount > 1000 ) {
         return "invalid_charge_cost";
     }
-    const auto c = charges( actor, group );
+    const power_charge_view c = charges( actor, group );
     return !c.reason.empty() ? c.reason : c.cooldown_remaining > 0 ? "cooldown" :
            c.charges < amount ? "no_charges" : "";
 }
@@ -611,7 +618,7 @@ bool power_manager::use_charge( const Creature &actor, const power_cooldown_id &
         return false;
     }
     const creature_ref ref = creature_ref::bind( actor );
-    const auto k = key( ref, group.str(), actor.is_avatar() );
+    const account_key k = key( ref, group.str(), actor.is_avatar() );
     const auto it = data->cooldowns.find( k );
     charge_state c = it == data->cooldowns.end() ? charge_state{ ref, group, group->initial_charges,
                  calendar::turn, calendar::before_time_starts, actor.is_avatar() } :
@@ -636,7 +643,7 @@ int power_manager::recover_charge( const Creature &actor, const power_cooldown_i
         return 0;
     }
     const creature_ref ref = creature_ref::bind( actor );
-    const auto k = key( ref, group.str(), actor.is_avatar() );
+    const account_key k = key( ref, group.str(), actor.is_avatar() );
     const auto it = data->cooldowns.find( k );
     charge_state c = it == data->cooldowns.end() ? charge_state{ ref, group, group->initial_charges,
                  calendar::turn, after( calendar::turn, group->recharge_ticks ), actor.is_avatar() } :
@@ -666,8 +673,8 @@ std::string power_manager::check_application( const power_application_request &r
     if( !owner || !target || !real_actor( *owner ) || !real_actor( *target ) ) {
         return "participant_unavailable";
     }
-    const auto &def = *request.application;
-    const auto grant_reason = data->grants.check( def.grants, *target );
+    const power_application &def = *request.application;
+    const std::string grant_reason = data->grants.check( def.grants, *target );
     if( !grant_reason.empty() ) {
         return grant_reason;
     }
@@ -705,7 +712,7 @@ std::string power_manager::check_application( const power_application_request &r
         }
     }
     if( def.interrupt_incapacitated && ( incapacitation::unconscious( *owner ) ||
-                                         owner->has_effect( efftype_id( "stunned" ) ) ) ) {
+                                         owner->has_effect( effect_stunned ) ) ) {
         return "owner_incapacitated";
     }
     const std::string upkeep_support = check_cost( *owner, def.upkeep.resource, def.upkeep.amount );
@@ -722,7 +729,7 @@ power_application_admission power_manager::apply( const power_application_reques
         return { 0, reason };
     }
     application_state i;
-    auto &v = i.view;
+    power_application_view &v = i.view;
     v.id = data->next_id++;
     v.application = request.application;
     v.owner = request.owner;
@@ -800,7 +807,7 @@ double power_manager::application_value( const Creature &target,
         return 0;
     }
     double result = 0;
-    const auto ref = creature_ref::bind( target );
+    const creature_ref ref = creature_ref::bind( target );
     for( const auto &entry : data->applications ) {
         const auto &i = entry.second;
         if( i.view.state == "active" && i.cancel_reason.empty() && i.view.target == ref &&
@@ -820,7 +827,7 @@ void power_manager::notify_damage( const Creature &who, int amount )
     if( amount <= 0 || data->applications.empty() ) {
         return;
     }
-    const auto ref = creature_ref::bind( who );
+    const creature_ref ref = creature_ref::bind( who );
     for( const auto &entry : data->applications ) {
         if( entry.second.live() && entry.second.view.owner == ref &&
             entry.second.view.application.is_valid() && entry.second.view.application->interrupt_damage ) {
@@ -837,7 +844,7 @@ void power_manager::retire_actor( const Creature &who )
     if( !execution_fatal::finalized( who ) ) {
         return;
     }
-    const auto ref = creature_ref::bind( who );
+    const creature_ref ref = creature_ref::bind( who );
     for( auto it = data->pools.begin(); it != data->pools.end(); ) {
         if( key( ref, it->second.resource, who.is_avatar() ) == it->first ) {
             it = data->pools.erase( it );
@@ -906,8 +913,8 @@ void power_manager::drain_starts()
             } else if( elapsed( calendar::turn, i.last_tick ) > 1 || calendar::turn < i.last_tick ) {
                 data->finish( i, "start_delayed" );
             } else {
-                const auto &def = *i.view.application;
-                const auto grant_reason = data->grants.check( def.grants, *i.view.target.resolve() );
+                const power_application &def = *i.view.application;
+                const std::string grant_reason = data->grants.check( def.grants, *i.view.target.resolve() );
                 if( !grant_reason.empty() ) {
                     data->finish( i, grant_reason );
                     continue;
@@ -932,7 +939,7 @@ void power_manager::drain_starts()
                                  calendar::before_time_starts;
                 i.view.next_tick = after( calendar::turn, def.interval_ticks );
                 if( !def.grants.empty() ) {
-                    const auto grant_start = data->grants.start( i.view );
+                    const std::string grant_start = data->grants.start( i.view );
                     if( !grant_start.empty() ) {
                         data->finish( i, grant_start );
                         continue;
@@ -993,7 +1000,7 @@ void power_manager::process()
                         data->finish( i, "tick_budget" );
                         continue;
                     }
-                    const auto &def = *i.view.application;
+                    const power_application &def = *i.view.application;
                     Creature &owner = *i.view.owner.resolve();
                     const std::string upkeep_cost = check_cost( owner, def.upkeep.resource, def.upkeep.amount );
                     if( !upkeep_cost.empty() ||
@@ -1055,7 +1062,7 @@ std::vector<power_application_view> power_manager::inspect_applications() const
 {
     std::vector<power_application_view> out;
     for( const auto &entry : data->applications ) {
-        auto v = entry.second.view;
+        power_application_view v = entry.second.view;
         if( v.reason.empty() ) {
             v.reason = entry.second.cancel_reason;
         }
@@ -1107,7 +1114,7 @@ void power_manager::serialize( JsonOut &out ) const
         throw JsonError( "Cannot save partially applied power ownership" );
     }
     for( const auto &entry : data->applications ) {
-        const auto &v = entry.second.view;
+        const power_application_view &v = entry.second.view;
         if( entry.second.live() && v.parent &&
             ( !data->applications.count( v.parent ) || !data->applications.at( v.parent ).live() ) ) {
             throw JsonError( "Owned power cleanup must finish before saving" );
@@ -1146,7 +1153,7 @@ void power_manager::serialize( JsonOut &out ) const
     out.member( "reservations" );
     out.start_array();
     for( const auto &entry : data->reservations ) {
-        const auto &r = entry.second;
+        const power_reservation_view &r = entry.second;
         out.start_object();
         out.member( "token", r.token );
         out.member( "actor", r.actor );
@@ -1169,7 +1176,7 @@ void power_manager::serialize( JsonOut &out ) const
     out.start_array();
     for( const auto &entry : data->applications ) {
         const auto &i = entry.second;
-        const auto &v = i.view;
+        const power_application_view &v = i.view;
         if( !i.live() ) {
             continue;
         }
@@ -1270,7 +1277,7 @@ void power_manager::deserialize( const JsonObject &jo )
     }
     for( const JsonObject saved : jo.get_array( "applications" ) ) {
         application_state i;
-        auto &v = i.view;
+        power_application_view &v = i.view;
         saved.read( "id", v.id, true );
         saved.read( "root", v.root, true );
         saved.read( "parent", v.parent, true );
@@ -1311,7 +1318,7 @@ void power_manager::deserialize( const JsonObject &jo )
         }
     }
     for( const auto &entry : next->applications ) {
-        const auto &v = entry.second.view;
+        const power_application_view &v = entry.second.view;
         if( v.parent && ( !next->applications.count( v.parent ) ||
                           next->applications.at( v.parent ).view.root != v.root ||
                           next->applications.at( v.parent ).view.depth != v.depth - 1 ) ) {

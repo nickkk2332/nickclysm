@@ -1,7 +1,12 @@
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "avatar.h"
@@ -9,18 +14,21 @@
 #include "cata_catch.h"
 #include "character.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
-#include "item_pocket.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "math_parser.h"
 #include "player_helpers.h"
+#include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
@@ -66,7 +74,7 @@ static conditional_t::func load_condition( const std::string &json )
     return condition;
 }
 
-static double eval_math( dialogue &d, const std::string &expression )
+static double eval_math( dialogue &d, const std::string_view expression )
 {
     math_exp exp;
     REQUIRE( exp.parse( expression ) );
@@ -77,7 +85,10 @@ static item &wear_backpack( Character &you )
 {
     std::optional<std::list<item>::iterator> worn = you.wear_item( item( itype_backpack ), false );
     REQUIRE( worn.has_value() );
-    return **worn;
+    // The item lives in the worn list; taking the iterator out first keeps Clang from reading
+    // `**worn` as a reference into the local optional.
+    const std::list<item>::iterator it = *worn;
+    return *it;
 }
 
 // The single item of the given type in the container pockets of a container.

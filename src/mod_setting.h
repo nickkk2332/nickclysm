@@ -2,18 +2,19 @@
 #ifndef CATA_SRC_MOD_SETTING_H
 #define CATA_SRC_MOD_SETTING_H
 
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "cata_path.h"
 #include "mod_setting_values.h"
 #include "options.h"
-#include "string_id.h"
 #include "translation.h"
 #include "type_id.h"
 

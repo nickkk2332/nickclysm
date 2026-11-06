@@ -1,10 +1,21 @@
+#include <cstdint>
+#include <deque>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "execution.h"
 #include "execution_runtime.h"
 #include "flexbuffer_json.h"
@@ -18,9 +29,10 @@
 #include "messages.h"
 #include "monster.h"
 #include "options_helpers.h"
+#include "overmap_ui.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
 
 static const efftype_id effect_blind( "blind" );

@@ -1,17 +1,17 @@
 #include "iexamine_actors.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <memory>
-#include <utility>
-#include <cmath>
 #include <set>
+#include <utility>
 
 #include "ammo_effect.h"
 #include "calendar.h"
 #include "character.h"
-#include "coordinates.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
@@ -30,6 +30,7 @@
 #include "map.h"
 #include "map_iterator.h"
 #include "map_scale_constants.h"
+#include "mapdata.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
 #include "messages.h"

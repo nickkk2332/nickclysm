@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -14,9 +15,10 @@
 
 class Creature;
 class JsonObject;
-struct power_resource;
-struct power_cooldown;
 struct power_application;
+struct power_cooldown;
+struct power_resource;
+
 using power_resource_id = string_id<power_resource>;
 using power_cooldown_id = string_id<power_cooldown>;
 using power_application_id = string_id<power_application>;

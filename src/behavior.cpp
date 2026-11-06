@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -247,11 +248,11 @@ std::function<status_t( const oracle_t *, const std::string & )>
 read_dialogue_condition( const JsonObject &jo )
 {
     if( !jo.has_member( "condition" ) ) {
-        jo.throw_error_at( "predicate", "A \"condition\" predicate needs a \"condition\"." );
+        jo.throw_error_at( "predicate", R"(A "condition" predicate needs a "condition".)" );
     }
     std::function<bool( const_dialogue const & )> cond;
     read_condition( jo, "condition", cond, false );
-    return [cond]( const oracle_t *subject, const std::string & ) {
+    return [cond]( const oracle_t *subject, const std::string_view ) {
         const Creature *who = subject == nullptr ? nullptr : subject->creature();
         if( who == nullptr ) {
             return status_t::failure;
@@ -573,7 +574,7 @@ std::vector<node_t::condition_trace> node_t::trace_conditions( const oracle_t *s
             label += "( " + condition.argument + " )";
         }
         if( condition.invert ) {
-            label = "not " + label;
+            label.insert( 0, "not " );
         }
         status_t result = condition.func( subject, condition.argument );
         if( condition.invert && result != status_t::success ) {
@@ -623,7 +624,7 @@ std::vector<std::string> behavior::link_children( std::vector<node_t> &nodes )
         std::unordered_set<string_id<node_t>> seen;
         for( const string_id<node_t> &child : parent.child_ids ) {
             if( !seen.insert( child ).second ) {
-                problems.push_back( string_format( "Behavior \"%s\" lists child \"%s\" twice.",
+                problems.push_back( string_format( R"(Behavior "%s" lists child "%s" twice.)",
                                                    parent.id.str(), child.str() ) );
                 continue;
             }

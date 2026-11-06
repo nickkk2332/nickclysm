@@ -1,19 +1,27 @@
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "enums.h"
 #include "explosion.h"
 #include "game.h"
 #include "level_cache.h"
-#include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
+#include "mdarray.h"
 #include "monster.h"
 #include "npc.h"
 #include "player_helpers.h"
@@ -34,9 +42,9 @@ static const ter_str_id ter_t_door_c( "t_door_c" );
 
 static const trap_str_id tr_dormant_corpse( "tr_dormant_corpse" );
 
-static const vproto_id vehicle_prototype_none( "none" );
-
 static const vpart_id vpart_ap_wall_light( "ap_wall_light" );
+
+static const vproto_id vehicle_prototype_none( "none" );
 
 // With more than ten sounds in a turn the extra ones merge into a cluster. A sound
 // no seed was within ~12 tiles of went into the first cluster, wherever it was,

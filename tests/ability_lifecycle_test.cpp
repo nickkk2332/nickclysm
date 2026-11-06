@@ -1,7 +1,13 @@
+#include <cstdint>
 #include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "ability.h"
 #include "ability_runtime.h"
@@ -11,6 +17,9 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "dialogue.h"
 #include "event.h"
@@ -23,7 +32,9 @@
 #include "global_vars.h"
 #include "incapacitation.h"
 #include "item.h"
+#include "item_uid.h"
 #include "itype.h"
+#include "iuse.h"
 #include "iuse_actor.h"
 #include "json.h"
 #include "json_loader.h"
@@ -31,16 +42,29 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "mattack_common.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
 #include "options_helpers.h"
+#include "pimpl.h"
+#include "player_activity.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
-#include "iuse.h"
+
+static const ability_id ability_definition_test_ability_free( "test_ability_free" );
+
+static const activity_id ACT_ABILITY( "ACT_ABILITY" );
+
+static const efftype_id effect_stunned( "stunned" );
+
+static const itype_id itype_test_ability_token( "test_ability_token" );
+
+static const spell_id spell_test_ability_context_spell( "test_ability_context_spell" );
+static const spell_id spell_test_ability_spell( "test_ability_spell" );
 
 namespace
 {
@@ -86,7 +110,7 @@ ability_request request_for( Creature &source, Creature &target,
 
 int64_t start( Creature &source, Creature &target, const std::string &id = "test_ability_strike" )
 {
-    const auto result = g->abilities().request( request_for( source, target, id ) );
+    const ability_admission result = g->abilities().request( request_for( source, target, id ) );
     INFO( result.reason );
     REQUIRE( result.accepted() );
     return result.id;
@@ -182,7 +206,7 @@ TEST_CASE( "ability_one_charged_strike_runs_through_avatar_npc_and_native_monste
     CHECK( target.get_hp() == hp );
     source->set_moves( 200 );
     tick();
-    const auto result = view( id );
+    const ability_view result = view( id );
     CHECK( result.state == "completed" );
     CHECK( result.reason == "released" );
     CHECK( result.costs_committed );
@@ -222,7 +246,7 @@ TEST_CASE( "ability_charge_save_restores_sampled_deadline_identity_and_activity_
     const int64_t id = start( source, target, "test_ability_random" );
     g->abilities().drain_starts();
     tick();
-    const auto charged = view( id );
+    const ability_view charged = view( id );
     REQUIRE( charged.windup_ticks >= 2 );
     REQUIRE( charged.windup_ticks <= 4 );
     target.setpos( get_map(), target.pos_bub() + tripoint_rel_ms::north );
@@ -233,7 +257,8 @@ TEST_CASE( "ability_charge_save_restores_sampled_deadline_identity_and_activity_
     std::ostringstream activity;
     JsonOut out( activity );
     source.activity.serialize( out );
-    const auto rng_before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
     g->abilities().reset_for_load();
     CHECK( source.activity.is_null() );
     source.activity.deserialize( json_loader::from_string( activity.str() ) );
@@ -241,7 +266,7 @@ TEST_CASE( "ability_charge_save_restores_sampled_deadline_identity_and_activity_
     g->abilities().end_restore();
     CHECK( rng_get_engine() == rng_before );
     CHECK( save() == saved );
-    CHECK( source.activity.id() == activity_id( "ACT_ABILITY" ) );
+    CHECK( source.activity.id() == ACT_ABILITY );
     CHECK( g->abilities().owns_avatar_activity( id ) );
     g->abilities().process();
     CHECK( counter( "ability_on_start" ) == 1 );
@@ -278,7 +303,7 @@ TEST_CASE( "ability_native_damage_displacement_and_incapacity_interrupt_without_
         reason = "displaced";
     }
     SECTION( "stun" ) {
-        source.add_effect( efftype_id( "stunned" ), 10_turns );
+        source.add_effect( effect_stunned, 10_turns );
         reason = "caster_incapacitated";
     }
     SECTION( "unconsciousness" ) {
@@ -308,7 +333,7 @@ TEST_CASE( "ability_target_loss_range_and_obstruction_refuse_release_and_do_not_
     g->abilities().drain_starts();
     std::string reason;
     SECTION( "target removed and replaced on its old tile" ) {
-        const auto position = target.pos_bub();
+        const tripoint_bub_ms position = target.pos_bub();
         get_creature_tracker().remove( target );
         monster &replacement = spawn_test_monster( "mon_execution_expanded_victim", position );
         REQUIRE_FALSE( selected == creature_ref::bind( replacement ) );
@@ -368,7 +393,7 @@ TEST_CASE( "ability_passive_drain_can_refuse_release_and_monster_resources_are_e
         CHECK( get_avatar().magic->available_mana() == 10 );
     }
     SECTION( "no Character mana fallback for a monster" ) {
-        auto request = request_for( target, get_avatar(), "test_ability_mana" );
+        ability_request request = request_for( target, get_avatar(), "test_ability_mana" );
         const int mana = get_avatar().magic->available_mana();
         CHECK( g->abilities().check( request ) == "unsupported_resource" );
         CHECK( g->abilities().request( request ).reason == "unsupported_resource" );
@@ -382,16 +407,17 @@ TEST_CASE( "ability_effect_only_is_explicit_opt_in_and_skips_charge_and_payment"
 {
     ability_world world;
     monster &target = victim( get_avatar() );
-    auto request = request_for( get_avatar(), target );
+    ability_request request = request_for( get_avatar(), target );
     request.invocation = ability_invocation::effect_only;
-    const auto before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine before = rng_get_engine();
     CHECK( g->abilities().request( request ).reason == "effect_only_forbidden" );
     CHECK( rng_get_engine() == before );
-    request.ability = ability_id( "test_ability_free" );
-    const auto admitted = g->abilities().request( request );
+    request.ability = ability_definition_test_ability_free;
+    const ability_admission admitted = g->abilities().request( request );
     REQUIRE( admitted.accepted() );
     g->abilities().drain_starts();
-    const auto result = view( admitted.id );
+    const ability_view result = view( admitted.id );
     CHECK( result.state == "completed" );
     CHECK( result.windup_ticks == 0 );
     CHECK_FALSE( result.costs_committed );
@@ -459,8 +485,8 @@ TEST_CASE( "ability_queries_and_inspection_do_not_run_spell_conditions_or_change
 {
     ability_world world;
     monster &target = victim( get_avatar() );
-    auto request = request_for( get_avatar(), target, "test_ability_random" );
-    auto &definition = const_cast<spell_type &>( *spell_id( "test_ability_spell" ) );
+    ability_request request = request_for( get_avatar(), target, "test_ability_random" );
+    spell_type &definition = const_cast<spell_type &>( *spell_test_ability_spell );
     const auto old_condition = definition.caster_condition;
     const bool old_has = definition.has_caster_condition;
     const on_out_of_scope restore( [&]() {
@@ -474,7 +500,8 @@ TEST_CASE( "ability_queries_and_inspection_do_not_run_spell_conditions_or_change
         return true;
     };
     const std::string before = save();
-    const auto rng_before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
     const conditional_t available( json_loader::from_string(
                                        R"({"can_request_ability":{"id":"test_ability_random"}})" ) );
     const_dialogue d( get_const_talker_for( get_avatar() ), get_const_talker_for( target ) );
@@ -490,9 +517,10 @@ TEST_CASE( "ability_queries_and_inspection_do_not_run_spell_conditions_or_change
     CHECK_FALSE( available( d ) );
     g->abilities().drain_starts();
     const std::string active = save();
-    const auto charged_rng = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine charged_rng = rng_get_engine();
     for( int i = 0; i < 3; ++i ) {
-        const auto result = view( id );
+        const ability_view result = view( id );
         const std::string rendered = execution_inspector::format_ability( result );
         CHECK( rendered.find( "windup" ) != std::string::npos );
         CHECK( rendered.find( "test_ability_random" ) != std::string::npos );
@@ -512,9 +540,9 @@ TEST_CASE( "ability_point_self_and_item_invocation_use_explicit_target_contracts
     monster &target = victim( get_avatar() );
     int64_t id = 0;
     SECTION( "a fixed point does not follow an occupant" ) {
-        auto request = request_for( get_avatar(), target, "test_ability_point" );
+        ability_request request = request_for( get_avatar(), target, "test_ability_point" );
         request.point = target.pos_abs();
-        const auto admitted = g->abilities().request( request );
+        const ability_admission admitted = g->abilities().request( request );
         REQUIRE( admitted.accepted() );
         id = admitted.id;
         g->abilities().drain_starts();
@@ -535,7 +563,7 @@ TEST_CASE( "ability_point_self_and_item_invocation_use_explicit_target_contracts
     }
     SECTION( "native item EOC supplies a point instead of treating the item as a creature" ) {
         map &here = get_map();
-        item &token = here.add_item( target.pos_bub(), item( itype_id( "test_ability_token" ) ) );
+        item &token = here.add_item( target.pos_bub(), item( itype_test_ability_token ) );
         const auto *use = token.type->get_use( "effect_on_conditions" );
         REQUIRE( use );
         const auto *actor = dynamic_cast<const effect_on_conditions_actor *>( use->get_actor_ptr() );
@@ -581,7 +609,7 @@ TEST_CASE( "ability_callback_children_keep_ancestry_are_deferred_and_bounded",
     REQUIRE( g->abilities().inspect_all().size() == 2 );
     CHECK( view( root ).state == "completed" );
     CHECK( g->abilities().inspect_all().back().state == "pending" );
-    CHECK( get_avatar().activity.id() == activity_id( "ACT_ABILITY" ) );
+    CHECK( get_avatar().activity.id() == ACT_ABILITY );
     CHECK( g->abilities().owns_avatar_activity( g->abilities().inspect_all().back().id ) );
     // Advance the world between pumps, including a save/restore with the root
     // already completed. The child still inherits the original root budget.
@@ -595,7 +623,7 @@ TEST_CASE( "ability_callback_children_keep_ancestry_are_deferred_and_bounded",
     const auto rows = g->abilities().inspect_all();
     REQUIRE( rows.size() == 8 );
     int depth = 1;
-    for( const auto &row : rows ) {
+    for( const ability_view &row : rows ) {
         CHECK( row.root == root );
         CHECK( row.parent < row.id );
         CHECK( row.depth == depth++ );
@@ -706,7 +734,7 @@ TEST_CASE( "ability_loader_rejects_invalid_policy_and_saved_transaction_states",
         monster &target = victim( get_avatar() );
         start( get_avatar(), target );
         std::string bad = save();
-        const auto at = bad.find( "\"pending\"" );
+        const std::string::size_type at = bad.find( "\"pending\"" );
         REQUIRE( at != std::string::npos );
         bad.replace( at, 9, "\"releasing\"" );
         CHECK_THROWS_AS( g->abilities().deserialize( json_loader::from_string( bad ) ), JsonError );
@@ -718,9 +746,9 @@ TEST_CASE( "ability_spell_formulas_use_request_context_and_unrelated_procs_do_no
 {
     ability_world world;
     monster &target = victim( get_avatar() );
-    auto request = request_for( get_avatar(), target, "test_ability_formula" );
+    ability_request request = request_for( get_avatar(), target, "test_ability_formula" );
     request.context["power_amount"] = diag_value{ 18.0 };
-    const auto admitted = g->abilities().request( request );
+    const ability_admission admitted = g->abilities().request( request );
     REQUIRE( admitted.accepted() );
     request.context["power_amount"] = diag_value{ 99.0 };
     events listener;
@@ -728,7 +756,7 @@ TEST_CASE( "ability_spell_formulas_use_request_context_and_unrelated_procs_do_no
     listener.callback = [&]( const cata::event & event ) {
         if( event.type() == event_type::character_casts_spell && !child_cast ) {
             child_cast = true;
-            spell unrelated( spell_id( "test_ability_context_spell" ) );
+            spell unrelated( spell_test_ability_context_spell );
             unrelated.cast_all_effects( get_avatar(), target.pos_bub() );
         }
     };
@@ -747,10 +775,10 @@ TEST_CASE( "ability_spell_EOCs_and_declared_extras_keep_context_and_legacy_actor
 {
     ability_world world;
     monster &target = victim( get_avatar() );
-    auto request = request_for( get_avatar(), target, "test_ability_spell_context" );
+    ability_request request = request_for( get_avatar(), target, "test_ability_spell_context" );
     request.context["power_amount"] = diag_value{ 18.0 };
     request.context["child_level_limit"] = diag_value{ 3.0 };
-    const auto admitted = g->abilities().request( request );
+    const ability_admission admitted = g->abilities().request( request );
     REQUIRE( admitted.accepted() );
     g->abilities().drain_starts();
     tick( 2 );
@@ -762,7 +790,7 @@ TEST_CASE( "ability_spell_EOCs_and_declared_extras_keep_context_and_legacy_actor
     CHECK( get_avatar().get_value( "ability_caster_seen" ).dbl() == 2 );
     CHECK( target.get_value( "ability_caster_seen" ).dbl() == 0 );
     CHECK( get_avatar().get_value( "ability_target_seen" ).dbl() == 0 );
-    spell later( spell_id( "test_ability_context_spell" ) );
+    spell later( spell_test_ability_context_spell );
     later.cast_all_effects( get_avatar(), target.pos_bub() );
     CHECK( counter( "ability_spell_context" ) == 36 );
     CHECK( counter( "ability_spell_paid" ) == 160 );
@@ -779,13 +807,13 @@ TEST_CASE( "ability_area_release_records_each_observed_native_victim",
     const int64_t id = start( get_avatar(), target, "test_ability_area" );
     g->abilities().drain_starts();
     tick( 2 );
-    const auto result = view( id );
+    const ability_view result = view( id );
     REQUIRE( result.contacts.size() == 2 );
     CHECK( target.get_hp() == 9988 );
     CHECK( other.get_hp() == 9988 );
     CHECK( result.effect_completed );
     CHECK( result.paid_moves == 80 );
-    for( const auto &contact : result.contacts ) {
+    for( const ability_contact &contact : result.contacts ) {
         CHECK( contact.facts.at( "hp_loss" ).dbl() == 12 );
     }
 }
@@ -819,7 +847,7 @@ TEST_CASE( "ability_fatal_primary_contact_is_recorded_once_without_promising_fin
     const int64_t id = start( get_avatar(), target );
     g->abilities().drain_starts();
     tick( 2 );
-    const auto result = view( id );
+    const ability_view result = view( id );
     CHECK( result.effect_completed );
     CHECK( result.costs_committed );
     REQUIRE( result.contacts.size() == 1 );

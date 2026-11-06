@@ -1,15 +1,25 @@
-#include "creature.h"
-
 #include <algorithm>
-#include <tuple>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "bodypart.h"
+#include "calendar.h"
 #include "character.h"
+#include "creature.h"
 #include "effect.h"
 #include "event.h"
 #include "event_bus.h"
-#include "flag.h"
+#include "flat_set.h"
+#include "pimpl.h"
+#include "type_id.h"
+
+class effect_source;
+
+static const json_character_flag json_flag_CANNOT_GAIN_EFFECTS( "CANNOT_GAIN_EFFECTS" );
 
 std::string Creature::check_effect_grant( const efftype_id &id, bodypart_id bp,
         int intensity ) const
@@ -21,7 +31,7 @@ std::string Creature::check_effect_grant( const efftype_id &id, bodypart_id bp,
     if( bp != bodypart_str_id::NULL_ID() && ( !bp.is_valid() || !has_part( bp ) ) ) {
         return "bodypart_unavailable";
     }
-    if( is_immune_effect( id ) || has_flag( json_character_flag( "CANNOT_GAIN_EFFECTS" ) ) ) {
+    if( is_immune_effect( id ) || has_flag( json_flag_CANNOT_GAIN_EFFECTS ) ) {
         return "effect_immune";
     }
     if( bp != bodypart_str_id::NULL_ID() ) {

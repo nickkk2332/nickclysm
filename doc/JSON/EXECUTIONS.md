@@ -578,7 +578,7 @@ except `melee`, whose default `actor` is the attacking fighter.
 | `melee` | The scripted `role` performs one native adjacent melee attack against the other role, without selecting special techniques. |
 | `eoc` | Nonempty `eocs` array. Existing EOCs can manipulate terrain, furniture, items, and other world state. These effects retain their existing limitations and narration rules. |
 | `effect` | Required `effect` ID; `duration_ticks`: 1; `intensity`: 1. Applies the existing native effect. |
-| `damage` | Required `damage_type`; `amount`: 0; `bodypart`: `torso`. Uses ordinary damage handling and armor; reported actual HP change can differ from the amount. |
+| `damage` | Required `damage_type`; `amount`: 0; `bodypart`: `torso`. Uses ordinary damage handling and armor, but never rolls a monster weakpoint; reported actual HP change can differ from the amount. |
 | `incapacitate` | Physiological knockout with a separate saved recovery timer. See the knockout contract below. |
 
 ### Physical actions and cinematic clashes

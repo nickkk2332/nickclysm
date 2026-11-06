@@ -4,7 +4,6 @@
 
 #include <cstdint>
 
-#include "character_id.h"
 #include "type_id.h"
 
 class Creature;

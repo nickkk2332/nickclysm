@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <set>
 #include <string>
 #include <tuple>
@@ -45,6 +47,7 @@
 #include "rng.h"
 #include "talker.h"
 #include "temp_crafting_inventory.h"
+#include "value_ptr.h"
 
 static const bionic_id bio_hydraulics( "bio_hydraulics" );
 
@@ -186,6 +189,7 @@ static std::optional<npc_attack_rating> rate_spell_quickly( const spell &attack_
     const bool has_field = type.field.has_value();
     double field_value = 0.0;
     if( has_field ) {
+        // NOLINTNEXTLINE(cata-determinism)
         const cata_default_random_engine before = engine;
         const_dialogue d( get_const_talker_for( source ), nullptr );
         field_value = static_cast<double>( attack_spell.field_intensity( source ) ) /
@@ -199,6 +203,7 @@ static std::optional<npc_attack_rating> rate_spell_quickly( const spell &attack_
     // the same for every creature
     std::optional<float> fixed_dps;
     {
+        // NOLINTNEXTLINE(cata-determinism)
         const cata_default_random_engine before = engine;
         const float dps = attack_spell.dps( source, source );
         if( engine == before ) {

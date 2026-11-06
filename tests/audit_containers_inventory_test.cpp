@@ -1,9 +1,10 @@
 #include <algorithm>
-#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <list>
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "active_item_cache.h"
@@ -12,7 +13,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "coordinates.h"
 #include "enums.h"
 #include "item.h"
@@ -28,8 +28,10 @@
 #include "pocket_type.h"
 #include "point.h"
 #include "ret_val.h"
+#include "safe_reference.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "weather.h"
 
 static const itype_id itype_audit_inv_b02_filter_rack( "audit_inv_b02_filter_rack" );
