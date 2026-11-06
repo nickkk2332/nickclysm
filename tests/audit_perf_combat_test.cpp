@@ -883,7 +883,17 @@ TEST_CASE( "npc-p02_npc_attack_choices", "[audit][npc_attack]" )
         zombie_at( { 8, -3, 0 } );
         zombie_at( { -12, 6, 0 } );
         here.build_map_cache( 0 );
-        check_choice( choose_attack( guy, near, 5 ), "spell", { 8, -2, 0 }, 372 );
+        // As above, the exact tile and rating depend on the standard library (Linux aims at
+        // (8,-2) for 372, Windows at (5,-1) for 361). What holds everywhere: a fireball whose
+        // blast spares the caster and catches the far pair.
+        const chosen_attack got = choose_attack( guy, near, 5 );
+        CAPTURE( got.target, got.value );
+        CHECK( got.kind == "spell" );
+        const int blast_radius = guy.magic->get_spell( spell_test_npc_fireball ).aoe( guy );
+        CHECK( rl_dist( got.target, tripoint_rel_ms::zero ) > blast_radius );
+        CHECK( rl_dist( got.target, tripoint_rel_ms( 7, -3, 0 ) ) <= blast_radius );
+        CHECK( rl_dist( got.target, tripoint_rel_ms( 8, -3, 0 ) ) <= blast_radius );
+        CHECK( got.value > 0 );
     }
     SECTION( "spells only, in a room with a doorway" ) {
         guy.set_attitude( NPCATT_KILL );
