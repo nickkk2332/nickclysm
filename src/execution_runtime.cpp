@@ -47,6 +47,19 @@
 #include "talker.h"
 #include "translations.h"
 
+static const efftype_id effect_beartrap( "beartrap" );
+static const efftype_id effect_grabbing( "grabbing" );
+static const efftype_id effect_ridden( "ridden" );
+static const efftype_id effect_riding( "riding" );
+static const efftype_id effect_tied( "tied" );
+
+static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
+static const flag_id json_flag_GLIDING( "GLIDING" );
+static const flag_id json_flag_GRAB( "GRAB" );
+static const json_character_flag json_flag_LEVITATION( "LEVITATION" );
+static const json_character_flag json_flag_PHASE_MOVEMENT( "PHASE_MOVEMENT" );
+static const json_character_flag json_flag_WALL_CLING( "WALL_CLING" );
+
 namespace
 {
 constexpr size_t max_instances = 64;
@@ -137,10 +150,9 @@ bool needs_control( const execution_definition &def, bool actor )
 
 bool restrained( const Creature &who )
 {
-    if( who.has_effect_with_flag( flag_id( "GRAB" ) ) || who.has_effect( efftype_id( "tied" ) ) ||
-        who.has_effect( efftype_id( "beartrap" ) ) || who.has_effect( efftype_id( "grabbing" ) ) ||
-        who.has_effect( efftype_id( "ridden" ) ) ||
-        who.has_effect( efftype_id( "riding" ) ) ) {
+    if( who.has_effect_with_flag( json_flag_GRAB ) || who.has_effect( effect_tied ) ||
+        who.has_effect( effect_beartrap ) || who.has_effect( effect_grabbing ) ||
+        who.has_effect( effect_ridden ) || who.has_effect( effect_riding ) ) {
         return true;
     }
     if( const Character *person = who.as_character() ) {
@@ -159,11 +171,10 @@ bool passable_step( const Creature &who, const tripoint_bub_ms &next )
         !here.passable( next ) || get_creature_tracker().creature_at( next, true ) ) {
         return false;
     }
-    const int dx = next.x() - from.x();
-    const int dy = next.y() - from.y();
+    const point_rel_ms d = next.xy() - from.xy();
     // Do not push a creature through the intersection of two solid corners.
-    return dx == 0 || dy == 0 || here.passable( from + tripoint_rel_ms( dx, 0, 0 ) ) ||
-           here.passable( from + tripoint_rel_ms( 0, dy, 0 ) );
+    return d.x() == 0 || d.y() == 0 || here.passable( from + tripoint_rel_ms( d.x(), 0, 0 ) ) ||
+           here.passable( from + tripoint_rel_ms( 0, d.y(), 0 ) );
 }
 
 bool unsupported( const tripoint_bub_ms &next )
@@ -178,17 +189,17 @@ bool gravity_applies( Creature &who, const tripoint_bub_ms &next )
     if( restrained( who ) || !unsupported( next ) ||
         !here.inbounds( next + tripoint_rel_ms::below ) ||
         get_creature_tracker().creature_at( next + tripoint_rel_ms::below, true ) ||
-        who.has_effect_with_flag( flag_id( "GLIDING" ) ) ||
-        who.has_effect_with_flag( flag_id( "LEVITATION" ) ) ) {
+        who.has_effect_with_flag( json_flag_GLIDING ) ||
+        who.has_effect_with_flag( json_flag_LEVITATION ) ) {
         return false;
     }
     if( const monster *mon = who.as_monster() ) {
         return !mon->flies();
     }
     if( Character *person = who.as_character() ) {
-        return !person->can_fly() && !person->has_flag( json_character_flag( "PHASE_MOVEMENT" ) ) &&
-               !person->has_flag( json_character_flag( "LEVITATION" ) ) &&
-               !( person->has_flag( json_character_flag( "WALL_CLING" ) ) && here.is_wall_adjacent( next ) );
+        return !person->can_fly() && !person->has_flag( json_flag_PHASE_MOVEMENT ) &&
+               !person->has_flag( json_flag_LEVITATION ) &&
+               !( person->has_flag( json_flag_WALL_CLING ) && here.is_wall_adjacent( next ) );
     }
     return false;
 }
@@ -556,7 +567,7 @@ struct execution_manager::impl {
         map &here = get_map();
         const tripoint_bub_ms destination = who->pos_bub( here ) + offset;
         if( offset == tripoint_rel_ms::zero || restrained( *who ) ||
-            who->has_flag( json_character_flag( "CANNOT_MOVE" ) ) ||
+            who->has_flag( json_flag_CANNOT_MOVE ) ||
             ( who->as_monster() && who->as_monster()->has_flag( mon_flag_IMMOBILE ) ) ) {
             result( scene, action, "unsupported" );
             return true;
@@ -708,6 +719,8 @@ struct execution_manager::impl {
     const execution_transition &select( execution_instance &scene, const execution_transition &t ) {
         switch( t.type ) {
             case execution_transition::kind::step:
+                // Transitions belong to the loaded definition, never to a temporary.
+                // NOLINTNEXTLINE(bugprone-return-const-ref-from-parameter)
                 return t;
             case execution_transition::kind::condition: {
                 const auto actor = hold( scene.actor );
@@ -739,6 +752,7 @@ struct execution_manager::impl {
                 return select( scene, branch == t.cases.end() ? *t.no : *branch->second );
             }
         }
+        // NOLINTNEXTLINE(bugprone-return-const-ref-from-parameter)
         return t;
     }
 
@@ -1377,11 +1391,10 @@ void execution_manager::drain_starts()
     } );
     std::vector<int64_t> pending;
     for( const auto &entry : data->instances ) {
-        if( entry.second.view.state == "pending" &&
-            ( ( entry.second.fatal_ready && !in_combat ) || ( entry.second.fatal_reserved &&
-                    calendar::turn >= entry.second.fatal_until ) ) ) {
-            pending.push_back( entry.first );
-        } else if( entry.second.active() && !entry.second.cancel_reason.empty() ) {
+        if( ( entry.second.view.state == "pending" &&
+              ( ( entry.second.fatal_ready && !in_combat ) || ( entry.second.fatal_reserved &&
+                      calendar::turn >= entry.second.fatal_until ) ) ) ||
+            ( entry.second.active() && !entry.second.cancel_reason.empty() ) ) {
             pending.push_back( entry.first );
         }
     }

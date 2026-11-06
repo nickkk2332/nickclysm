@@ -3,6 +3,7 @@
 #include <cmath>
 #include <set>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 #include "condition.h"
@@ -15,7 +16,7 @@ namespace
 {
 generic_factory<execution_definition> factory( "execution" );
 
-execution_range read_range( const JsonObject &jo, const std::string &key, int fallback,
+execution_range read_range( const JsonObject &jo, std::string_view key, int fallback,
                             int minimum, int maximum )
 {
     execution_range result{ fallback, fallback };
@@ -34,7 +35,7 @@ execution_range read_range( const JsonObject &jo, const std::string &key, int fa
     return result;
 }
 
-int read_integer( const JsonObject &jo, const std::string &key, int fallback, int low, int high )
+int read_integer( const JsonObject &jo, std::string_view key, int fallback, int low, int high )
 {
     const int value = jo.get_int( key, fallback );
     if( value < low || value > high ) {
@@ -43,7 +44,7 @@ int read_integer( const JsonObject &jo, const std::string &key, int fallback, in
     return value;
 }
 
-void load_eocs( const JsonObject &jo, const std::string &key, const std::string &source,
+void load_eocs( const JsonObject &jo, std::string_view key, const std::string &source,
                 std::vector<effect_on_condition_id> &out )
 {
     if( jo.has_member( key ) ) {
