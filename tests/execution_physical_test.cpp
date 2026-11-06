@@ -397,13 +397,18 @@ TEST_CASE( "execution_native_counterattacks_keep_combat_costs_and_do_not_retrigg
     const bool monster = GENERATE( false, true );
     Creature &counter = victim( !monster );
     if( Character *person = counter.as_character() ) {
-        // The thug's random weapon and traits could make even this fighter's one blow miss
-        person->clear_mutations();
-        person->remove_weapon();
-        person->set_dex_base( 30 );
+        // The one blow must land and hurt. A fresh thug rolls its weapon, traits and condition
+        // (one came out with strength 0 and dexterity 8), and even a trained fist's hit roll
+        // misses about one time in twenty, so add accuracy well past the roll's spread.
+        const tripoint_bub_ms pos = person->pos_bub();
+        clear_character( *person );
+        person->setpos( get_map(), pos );
+        person->set_str_base( 10 );
+        person->set_dex_base( 20 );
         person->set_skill_level( skill_melee, 10 );
         person->set_skill_level( skill_unarmed, 10 );
         person->reset_stats();
+        person->mod_hit_bonus( 30 );
     }
     get_avatar().set_dodges_left( 0 );
     const int hp = get_avatar().get_hp();
