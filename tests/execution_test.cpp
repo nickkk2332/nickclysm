@@ -45,6 +45,33 @@
 #include "veh_type.h"
 #include "vehicle.h"
 
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
+
+static const damage_type_id damage_pure( "pure" );
+
+static const efftype_id effect_stunned( "stunned" );
+
+static const execution_id execution_definition_test_exec_clock( "test_exec_clock" );
+static const execution_id execution_definition_test_exec_local( "test_exec_local" );
+static const execution_id execution_definition_test_exec_weapon( "test_exec_weapon" );
+
+static const itype_id itype_knife_combat( "knife_combat" );
+
+static const matec_id test_exec_post_hit( "test_exec_post_hit" );
+
+static const mtype_id mon_zombie_fat( "mon_zombie_fat" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
+static const ter_str_id ter_t_wall( "t_wall" );
+static const ter_str_id ter_t_water_dp( "t_water_dp" );
+
+static const vpart_id vpart_aisle( "aisle" );
+static const vpart_id vpart_board( "board" );
+static const vpart_id vpart_frame( "frame" );
+
+static const vproto_id vehicle_prototype_none( "none" );
+
 namespace
 {
 struct execution_world {
@@ -191,14 +218,14 @@ TEST_CASE( "executions_refuse_invalid_or_competing_participants_atomically", "[e
     npc &target = spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( 2, 0 ), "thug" );
     npc &other = spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( 3, 1 ), "thug" );
     dialogue missing( get_talker_for( get_avatar() ), nullptr );
-    CHECK( g->executions().start( execution_id( "test_exec_clock" ),
+    CHECK( g->executions().start( execution_definition_test_exec_clock,
                                   missing ).reason == "missing_participant" );
     dialogue same( get_talker_for( get_avatar() ), get_talker_for( get_avatar() ) );
-    CHECK( g->executions().start( execution_id( "test_exec_clock" ),
+    CHECK( g->executions().start( execution_definition_test_exec_clock,
                                   same ).reason == "invalid_participant" );
     const int64_t first = start( "test_exec_clock", get_avatar(), target );
     dialogue competing( get_talker_for( other ), get_talker_for( target ) );
-    CHECK( g->executions().start( execution_id( "test_exec_clock" ),
+    CHECK( g->executions().start( execution_definition_test_exec_clock,
                                   competing ).reason == "participant_busy" );
     CHECK_FALSE( g->executions().controls( other ) );
     CHECK( view( first ).state == "pending" );
@@ -211,11 +238,13 @@ TEST_CASE( "executions_have_private_typed_locals_and_preserve_trigger_facts", "[
     dialogue one( get_talker_for( get_avatar() ), get_talker_for( target ) );
     one.set_value( "counter", 10.0 );
     one.set_value( "bp", "arm_l" );
-    const auto first = g->executions().start( execution_id( "test_exec_local" ), one, 7 );
+    const execution_start_result first = g->executions().start( execution_definition_test_exec_local,
+                                         one, 7 );
     REQUIRE( first.id > 0 );
     one.set_value( "counter", 20.0 );
     one.set_value( "bp", "arm_r" );
-    const auto second = g->executions().start( execution_id( "test_exec_local" ), one, 9 );
+    const execution_start_result second = g->executions().start( execution_definition_test_exec_local,
+                                          one, 9 );
     REQUIRE( second.id > 0 );
     g->executions().drain_starts();
     tick();
@@ -224,7 +253,7 @@ TEST_CASE( "executions_have_private_typed_locals_and_preserve_trigger_facts", "[
     CHECK( view( first.id ).context.at( "bp" ) == "arm_l" );
     CHECK( view( second.id ).context.at( "bp" ) == "arm_r" );
     one.set_value( "counter", "wrong type" );
-    CHECK( g->executions().start( execution_id( "test_exec_local" ),
+    CHECK( g->executions().start( execution_definition_test_exec_local,
                                   one ).reason == "invalid_parameter" );
 }
 
@@ -252,7 +281,7 @@ TEST_CASE( "executions_waiting_deadlines_and_chance_choices_survive_save_resume"
     const execution_view pending = view( id );
     const time_point saved_time = calendar::turn;
     const std::string saved = save_executions();
-    const auto globals = get_globals().get_global_values();
+    const global_variables::impl_t globals = get_globals().get_global_values();
     // Inspection and unrelated RNG consumption must not change a selected branch/deadline.
     for( int n = 0; n < 100; ++n ) {
         CHECK( view( id ).due == pending.due );
@@ -312,12 +341,12 @@ TEST_CASE( "executions_message_repeats_and_avatar_activity_resume_without_replay
     const int64_t id = start( "test_exec_pool", actor, get_avatar() );
     g->executions().drain_starts();
     CHECK( view( id ).transcript.empty() );
-    CHECK( get_avatar().activity.id() == activity_id( "ACT_EXECUTION" ) );
+    CHECK( get_avatar().activity.id() == ACT_EXECUTION );
     tick();
     REQUIRE( view( id ).transcript.size() == 1 );
     const std::string saved = save_executions();
     const time_point saved_time = calendar::turn;
-    const auto globals = get_globals().get_global_values();
+    const global_variables::impl_t globals = get_globals().get_global_values();
     std::ostringstream activity_text;
     JsonOut activity_out( activity_text );
     get_avatar().activity.serialize( activity_out );
@@ -332,7 +361,7 @@ TEST_CASE( "executions_message_repeats_and_avatar_activity_resume_without_replay
     g->executions().deserialize( json_loader::from_string( saved ) );
     g->executions().process();
     CHECK( view( id ).transcript.size() == 1 );
-    CHECK( get_avatar().activity.id() == activity_id( "ACT_EXECUTION" ) );
+    CHECK( get_avatar().activity.id() == ACT_EXECUTION );
     tick();
     CHECK( view( id ).transcript == expected );
     CHECK( get_avatar().activity.is_null() );
@@ -381,7 +410,7 @@ TEST_CASE( "executions_avatar_cancellation_and_external_damage_release_control",
         if( whole_body ) {
             get_avatar().hurtall( 1, &third, false );
         } else {
-            get_avatar().deal_damage( &third, bodypart_id( "torso" ), damage_instance( damage_type_id( "pure" ),
+            get_avatar().deal_damage( &third, bodypart_id( "torso" ), damage_instance( damage_pure,
                                       1 ) );
         }
         get_avatar().healall( 1 );
@@ -412,27 +441,27 @@ TEST_CASE( "executions_checked_motion_stops_at_real_blockers", "[executions][map
     const tripoint_abs_ms origin = target->pos_abs();
     std::string expected_result = "blocked";
     SECTION( "wall" ) {
-        here.ter_set( target->pos_bub() + tripoint_rel_ms::east, ter_str_id( "t_wall" ) );
+        here.ter_set( target->pos_bub() + tripoint_rel_ms::east, ter_t_wall );
     }
     SECTION( "occupied tile" ) {
         spawn_test_monster( "mon_zombie", target->pos_bub() + tripoint_rel_ms::east );
     }
     SECTION( "solid vehicle part" ) {
-        vehicle *veh = here.add_vehicle( vproto_id( "none" ), target->pos_bub() + tripoint_rel_ms::east,
+        vehicle *veh = here.add_vehicle( vehicle_prototype_none, target->pos_bub() + tripoint_rel_ms::east,
                                          0_degrees, 0, veh_spawn_status::UNDAMAGED );
         REQUIRE( veh );
-        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_id( "frame" ) ) != -1 );
-        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_id( "board" ) ) != -1 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) != -1 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_board ) != -1 );
         here.add_vehicle_to_cache( veh );
         REQUIRE( here.impassable( target->pos_bub() + tripoint_rel_ms::east ) );
     }
     SECTION( "two solid diagonal corners" ) {
         actor->setpos( here, target->pos_bub() - tripoint_rel_ms( 2, 2, 0 ) );
-        here.ter_set( target->pos_bub() + tripoint_rel_ms::east, ter_str_id( "t_wall" ) );
-        here.ter_set( target->pos_bub() + tripoint_rel_ms::south, ter_str_id( "t_wall" ) );
+        here.ter_set( target->pos_bub() + tripoint_rel_ms::east, ter_t_wall );
+        here.ter_set( target->pos_bub() + tripoint_rel_ms::south, ter_t_wall );
     }
     SECTION( "deep water requires a swimming action contract" ) {
-        here.ter_set( target->pos_bub() + tripoint_rel_ms::east, ter_str_id( "t_water_dp" ) );
+        here.ter_set( target->pos_bub() + tripoint_rel_ms::east, ter_t_water_dp );
         expected_result = "unsupported";
     }
     const int64_t id = start( "test_exec_step", *actor, *target );
@@ -476,8 +505,8 @@ TEST_CASE( "executions_stagger_ledge_branch_uses_native_gravity_and_can_be_survi
     target.set_hp( 5000 );
     const tripoint_abs_ms origin = target.pos_abs();
     const tripoint_bub_ms edge = target.pos_bub() + tripoint_rel_ms::east;
-    here.ter_set( edge, ter_str_id( "t_open_air" ) );
-    here.ter_set( edge + tripoint_rel_ms::below, ter_str_id( "t_floor" ) );
+    here.ter_set( edge, ter_t_open_air );
+    here.ter_set( edge + tripoint_rel_ms::below, ter_t_floor );
     const bool fall = GENERATE( false, true );
     const int64_t id = start( fall ? "test_exec_fall" : "test_exec_stay", get_avatar(), target );
     g->executions().drain_starts();
@@ -501,8 +530,8 @@ TEST_CASE( "executions_native_fall_death_keeps_the_real_source_and_releases_cont
                                           0 ) );
     target.set_hp( 1 );
     const tripoint_bub_ms edge = target.pos_bub() + tripoint_rel_ms::east;
-    here.ter_set( edge, ter_str_id( "t_open_air" ) );
-    here.ter_set( edge + tripoint_rel_ms::below, ter_str_id( "t_floor" ) );
+    here.ter_set( edge, ter_t_open_air );
+    here.ter_set( edge + tripoint_rel_ms::below, ter_t_floor );
     const int64_t id = start( "test_exec_fall", get_avatar(), target );
     g->executions().drain_starts();
     finish_scene( id );
@@ -524,8 +553,8 @@ TEST_CASE( "executions_keep_a_removed_fall_source_alive_through_native_callbacks
     monster &target = spawn_test_monster( "mon_zombie", actor.pos_bub() + tripoint_rel_ms( 2, 0, 0 ) );
     target.set_hp( 5000 );
     const tripoint_bub_ms edge = target.pos_bub() + tripoint_rel_ms::east;
-    here.ter_set( edge, ter_str_id( "t_open_air" ) );
-    here.ter_set( edge + tripoint_rel_ms::below, ter_str_id( "t_floor" ) );
+    here.ter_set( edge, ter_t_open_air );
+    here.ter_set( edge + tripoint_rel_ms::below, ter_t_floor );
     struct remover : event_subscriber {
         using event_subscriber::notify;
         monster *source = nullptr;
@@ -566,14 +595,14 @@ TEST_CASE( "executions_fall_probe_respects_flight_and_vehicle_support", "[execut
     monster &target = spawn_test_monster( flight ? "mon_crow" : "mon_zombie",
                                           get_avatar().pos_bub() + tripoint_rel_ms( 2, 0, 0 ) );
     const tripoint_bub_ms edge = target.pos_bub() + tripoint_rel_ms::east;
-    here.ter_set( edge, ter_str_id( "t_open_air" ) );
-    here.ter_set( edge + tripoint_rel_ms::below, ter_str_id( "t_floor" ) );
+    here.ter_set( edge, ter_t_open_air );
+    here.ter_set( edge + tripoint_rel_ms::below, ter_t_floor );
     if( !flight ) {
-        vehicle *veh = here.add_vehicle( vproto_id( "none" ), edge, 0_degrees, 0,
+        vehicle *veh = here.add_vehicle( vehicle_prototype_none, edge, 0_degrees, 0,
                                          veh_spawn_status::UNDAMAGED );
         REQUIRE( veh );
-        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_id( "frame" ) ) != -1 );
-        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_id( "aisle" ) ) != -1 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) != -1 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_aisle ) != -1 );
         here.add_vehicle_to_cache( veh );
         REQUIRE( here.has_floor_or_support( edge ) );
     }
@@ -609,14 +638,14 @@ TEST_CASE( "executions_weapon_identity_is_not_just_the_item_type", "[executions]
 {
     execution_world world;
     avatar &actor = get_avatar();
-    item first_knife( itype_id( "knife_combat" ) );
+    item first_knife( itype_knife_combat );
     REQUIRE( actor.wield( first_knife ) );
     npc &target = spawn_npc( actor.pos_bub().xy() + point_rel_ms( 2, 0 ), "thug" );
     const int64_t weapon = actor.get_wielded_item()->uid().get_value();
     const int64_t id = start( "test_exec_weapon", actor, target );
     g->executions().drain_starts();
     actor.remove_weapon();
-    item replacement_knife( itype_id( "knife_combat" ) );
+    item replacement_knife( itype_knife_combat );
     REQUIRE( actor.wield( replacement_knife ) );
     REQUIRE( actor.get_wielded_item()->uid().get_value() != weapon );
     tick();
@@ -624,7 +653,7 @@ TEST_CASE( "executions_weapon_identity_is_not_just_the_item_type", "[executions]
     dialogue reported( get_talker_for( actor ), get_talker_for( target ) );
     reported.set_value( "weapon_uid", std::to_string( weapon ) );
     reported.set_value( "weapon", "knife_combat" );
-    CHECK( g->executions().start( execution_id( "test_exec_weapon" ),
+    CHECK( g->executions().start( execution_definition_test_exec_weapon,
                                   reported ).reason == "weapon_lost" );
 }
 
@@ -642,7 +671,7 @@ TEST_CASE( "executions_own_damage_and_effect_actions_return_actual_results", "[e
     finish_scene( id );
     const int64_t other = start( "test_exec_effect", get_avatar(), target );
     g->executions().drain_starts();
-    CHECK( target.has_effect( efftype_id( "stunned" ) ) );
+    CHECK( target.has_effect( effect_stunned ) );
     CHECK( view( other ).context.at( "execution_result_effect" ) == "applied" );
 }
 
@@ -705,7 +734,7 @@ TEST_CASE( "executions_melee_post_hit_trigger_carries_weapon_style_and_hit_conte
 {
     execution_world world;
     avatar &actor = get_avatar();
-    item knife( itype_id( "knife_combat" ) );
+    item knife( itype_knife_combat );
     REQUIRE( actor.wield( knife ) );
     const std::string weapon = std::to_string( actor.get_wielded_item()->uid().get_value() );
     monster &target = spawn_test_monster( "mon_test_non_shearable",
@@ -714,7 +743,7 @@ TEST_CASE( "executions_melee_post_hit_trigger_carries_weapon_style_and_hit_conte
     for( int attempt = 0; attempt < 100 && counter( "exec_accepted" ) == 0; ++attempt ) {
         actor.set_moves( 100 );
         actor.set_stamina( actor.get_stamina_max() );
-        actor.melee_attack_abstract( target, false, matec_id( "test_exec_post_hit" ) );
+        actor.melee_attack_abstract( target, false, test_exec_post_hit );
     }
     REQUIRE( counter( "exec_accepted" ) == 1 );
     const int64_t id = std::stoll( get_globals().get_global_value( "exec_last_id" ).str() );
@@ -771,7 +800,7 @@ TEST_CASE( "execution_monster_identity_survives_serialization_polymorph_and_hord
                                             0, 0 ) );
     const int64_t uid = original.persistent_id();
     const creature_ref ref = creature_ref::bind( original );
-    original.poly( mtype_id( "mon_zombie_fat" ) );
+    original.poly( mon_zombie_fat );
     CHECK( original.persistent_id() == uid );
     CHECK( ref.resolve() == &original );
     monster copy( original );

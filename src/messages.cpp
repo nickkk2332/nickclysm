@@ -847,7 +847,10 @@ void Messages::display_messages( const catacurses::window &ipk_target, const int
         return;
     }
 
-    const auto compact = player_messages.compact_messages( std::max( bottom - top + 1, 0 ) );
+    // The bottom-up layout skips messages hidden by the cooldown, so they mustn't use up the
+    // groups it can show; the top-down layout shows them, as it always has.
+    const auto compact = player_messages.compact_messages( std::max( bottom - top + 1, 0 ),
+                         log_from_top );
     const int history_size = static_cast<int>( compact.size() );
     const int maxlength = right - left;
     int line = log_from_top ? top : bottom;
