@@ -42,7 +42,9 @@ bool Messages::has_debug_filter( debugmode::debug_filter )
 }
 void Messages::add_msg( std::string m )
 {
-    if( !m.empty() ) {
+    // Like the game's log, a deactivated log (after the player's death) takes nothing new until
+    // it is cleared.
+    if( !m.empty() && messages.active ) {
         messages.messages.emplace_back( std::move( m ), m_neutral );
     }
 }
@@ -54,7 +56,10 @@ void Messages::clear_messages()
 {
     messages.clear();
 }
-void Messages::deactivate() {}
+void Messages::deactivate()
+{
+    messages.active = false;
+}
 size_t Messages::size()
 {
     return messages.messages.size();
