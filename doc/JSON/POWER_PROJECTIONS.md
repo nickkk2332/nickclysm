@@ -231,4 +231,6 @@ save during charging, and inspect results. See
 
 This slice does not add arbitrary shape authoring, vertical trajectories, ordinary
 bullet interception, continuous swept membership, offscreen simulation, moving
-terrain constructs, effect/equipment grant ownership, or universal NPC planning.
+terrain constructs, or universal NPC planning. [Application grants](POWER_GRANTS.md) provide explicit
+source-owned native effects and armor/melee equipment; arbitrary area hook
+changes are not automatically converted into those grants.

@@ -16,6 +16,7 @@
 class Creature;
 class JsonObject;
 class JsonOut;
+class power_grant_manager;
 
 struct power_balance {
     std::string reason;
@@ -123,6 +124,8 @@ class power_manager
                                   bool magnitude = false, const std::optional<creature_ref> &owner = std::nullopt,
                                   const std::string &tag = "" ) const;
         bool owns_application( int64_t id, const creature_ref &owner ) const;
+        power_grant_manager &grants();
+        const power_grant_manager &grants() const;
         void notify_damage( const Creature &who, int amount );
         void retire_actor( const Creature &who );
         void drain_starts();

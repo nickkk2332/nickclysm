@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -27,6 +28,7 @@ class Character;
 class JsonObject;
 class JsonOut;
 class effect_type;
+struct owned_effect_state;
 
 /** Handles the large variety of weed messages. */
 void weed_msg( Character &p );
@@ -285,6 +287,15 @@ class effect
         effect( const effect & ) = default;
         effect &operator=( const effect & ) = default;
 
+        // Independent fixed-intensity contributions. Ordinary effects keep their
+        // own timers and native mutation semantics underneath the aggregate.
+        void add_owned( int64_t token, int value, const effect_source &owner, bool keep_native );
+        bool remove_owned( int64_t token );
+        std::vector<int64_t> owned_tokens() const;
+        bool has_owned() const;
+        void merge_native( const effect_source &owner, const time_duration &dur,
+                           bool perm, int value, bool alert );
+
         /** Returns true if the effect is the result of `effect()`, ie. an effect that doesn't exist. */
         bool is_null() const;
 
@@ -470,6 +481,11 @@ class effect
         effect_source source;
         // Currently used only by knocked_out. Other effects keep their existing timers.
         std::optional<time_point> expires_at;
+        std::shared_ptr<owned_effect_state> owned;
+        void detach_owned();
+        void refresh_owned();
+        void serialize_owned( JsonOut &out ) const;
+        void deserialize_owned( const JsonObject &jo );
 
 };
 

@@ -2047,20 +2047,24 @@ void Creature::add_effect( const effect_source &source, const efftype_id &eff_id
             found = true;
             effect &e = found_effect->second;
             const int prev_int = e.get_intensity();
-            // If we do, mod the duration, factoring in the mod value
-            e.mod_duration( dur * e.get_dur_add_perc() / 100 );
-            // int_dur_factor overrides all other intensity settings
-            // ...but it's handled in set_duration, so explicitly do nothing here
-            if( e.get_int_dur_factor() > 0_turns ) {
-                // Set intensity if value is given
-            } else if( intensity > 0 ) {
-                e.set_intensity( intensity, is_avatar() );
-                // Else intensity uses the type'd step size if it already exists
-            } else if( e.get_int_add_val() != 0 ) {
-                e.mod_intensity( e.get_int_add_val(), is_avatar() );
+            if( e.has_owned() ) {
+                e.merge_native( source, dur, permanent, intensity, is_avatar() );
+            } else {
+                // If we do, mod the duration, factoring in the mod value
+                e.mod_duration( dur * e.get_dur_add_perc() / 100 );
+                // int_dur_factor overrides all other intensity settings
+                // ...but it's handled in set_duration, so explicitly do nothing here
+                if( e.get_int_dur_factor() > 0_turns ) {
+                    // Set intensity if value is given
+                } else if( intensity > 0 ) {
+                    e.set_intensity( intensity, is_avatar() );
+                    // Else intensity uses the type'd step size if it already exists
+                } else if( e.get_int_add_val() != 0 ) {
+                    e.mod_intensity( e.get_int_add_val(), is_avatar() );
+                }
+                // Bound new effect intensity by [1, max intensity]
+                e.clamp_intensity();
             }
-            // Bound new effect intensity by [1, max intensity]
-            e.clamp_intensity();
             if( e.get_intensity() != prev_int ) {
                 on_effect_int_change( eff_id, e.get_intensity(), bp );
 

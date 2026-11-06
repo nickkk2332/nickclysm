@@ -27,6 +27,26 @@ struct power_cost {
     void load( const JsonObject &jo );
 };
 
+struct power_effect_grant {
+    efftype_id effect;
+    bodypart_str_id bodypart = bodypart_str_id::NULL_ID();
+    int intensity = 1;
+};
+struct power_equipment_grant {
+    itype_id item;
+    std::string slot = "worn";
+};
+struct power_grant_definition {
+    std::vector<power_effect_grant> effects;
+    std::vector<power_equipment_grant> equipment;
+    bool form = false;
+    bool stow_worn = false;
+    bool stow_weapon = false;
+    bool empty() const;
+    void load( const JsonObject &jo );
+    void check( const std::string &id ) const;
+};
+
 struct power_resource {
     power_resource_id id;
     std::vector<std::pair<power_resource_id, mod_id>> src;
@@ -74,6 +94,7 @@ struct power_application {
     std::vector<effect_on_condition_id> on_tick;
     std::vector<effect_on_condition_id> on_end;
     global_variables::impl_t locals;
+    power_grant_definition grants;
     void load( const JsonObject &jo, std::string_view source );
     void check() const;
 };

@@ -206,7 +206,10 @@ owned instances and prevent terminal hooks from queuing replacements.
 Applications own runtime membership, magnitude, locals and child instances.
 Hook commands that modify native effects, items, stats or terrain retain those
 commands' native ownership and cleanup semantics. This runtime does not convert
-those changes into independently reversible native effect/enchantment grants.
+those changes into independently reversible grants. Explicit application
+[`grants`](POWER_GRANTS.md) add owned native effects, projected armor/melee
+equipment and reversible equipment forms; arbitrary hook changes remain ordinary
+world changes.
 
 Consumers can use pure membership/magnitude queries directly:
 
@@ -260,3 +263,11 @@ The `powers_demo` pack supplies independent ward/mirror focuses, a regenerating
 focus pool, and two shared force-strike charges. Maintain both, toggle one off,
 spend a strike and observe one charge recover; save/load preserves those states.
 See the [milestone record](../../Audit/powers/08-owned-powers-milestone.md).
+
+## Native grants and forms
+
+An optional `grants` object adds source-owned native effect contributions,
+projected equipment and an exclusive equipment form to the application. Costs
+commit before materialization; cleanup runs before terminal observers and
+preserves ordinary effects and other sources. See [power grants](POWER_GRANTS.md)
+for stacking, native cures, real-gear storage/restoration, save/load and limits.

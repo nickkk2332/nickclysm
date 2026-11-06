@@ -1,10 +1,12 @@
 #include "power_runtime.h"
 #include "power_actor.h"
 #include "power_projection.h"
+#include "power_grant.h"
 
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <exception>
 #include <limits>
 #include <map>
 #include <set>
@@ -26,6 +28,7 @@
 #include "incapacitation.h"
 #include "json.h"
 #include "magic.h"
+#include "map.h"
 #include "memory_fast.h"
 #include "talker.h"
 
@@ -148,6 +151,7 @@ bool power_application_admission::accepted() const
 }
 
 struct power_manager::impl {
+    power_grant_manager grants;
     std::map<account_key, pool_state> pools;
     std::map<account_key, charge_state> cooldowns;
     std::map<int64_t, power_reservation_view> reservations;
@@ -191,6 +195,10 @@ struct power_manager::impl {
             return "target_unavailable";
         }
         const auto &def = *v.application;
+        if( !def.grants.empty() && ( !get_map().inbounds( owner->pos_bub() ) ||
+                                     !get_map().inbounds( target->pos_bub() ) ) ) {
+            return "geometry_unavailable";
+        }
         if( def.interrupt_incapacitated && ( incapacitation::unconscious( *owner ) ||
                                              owner->has_effect( efftype_id( "stunned" ) ) ) ) {
             return "owner_incapacitated";
@@ -204,6 +212,9 @@ struct power_manager::impl {
                 !parent->second.cancel_reason.empty() || !invalid( parent->second ).empty() ) {
                 return "parent_ended";
             }
+        }
+        if( v.state == "active" && !v.application->grants.empty() && !grants.contains( v.id ) ) {
+            return "missing_grants";
         }
         return {};
     }
@@ -280,8 +291,27 @@ struct power_manager::impl {
                 ended.insert( entry.first );
             }
         }
-        if( i.view.application.is_valid() ) {
-            callbacks( i, i.view.application->on_end, true );
+        std::exception_ptr failure;
+        for( int64_t token : ended ) {
+            try {
+                grants.release( token, token == i.view.id ? reason : "parent_ended" );
+            } catch( ... ) {
+                if( !failure ) {
+                    failure = std::current_exception();
+                }
+            }
+        }
+        try {
+            if( i.view.application.is_valid() ) {
+                callbacks( i, i.view.application->on_end, true );
+            }
+        } catch( ... ) {
+            if( !failure ) {
+                failure = std::current_exception();
+            }
+        }
+        if( failure ) {
+            std::rethrow_exception( failure );
         }
     }
 
@@ -637,6 +667,10 @@ std::string power_manager::check_application( const power_application_request &r
         return "participant_unavailable";
     }
     const auto &def = *request.application;
+    const auto grant_reason = data->grants.check( def.grants, *target );
+    if( !grant_reason.empty() ) {
+        return grant_reason;
+    }
     if( request.context.size() + def.locals.size() > 256 ) {
         return "context_budget";
     }
@@ -797,6 +831,7 @@ void power_manager::notify_damage( const Creature &who, int amount )
 
 void power_manager::retire_actor( const Creature &who )
 {
+    data->grants.retire_actor( who );
     get_power_actors().retire_actor( who );
     get_projections().retire_actor( who );
     if( !execution_fatal::finalized( who ) ) {
@@ -839,7 +874,7 @@ void power_manager::retire_actor( const Creature &who )
 
 bool power_manager::processing() const
 {
-    return data->pumping;
+    return data->pumping || data->grants.processing();
 }
 
 void power_manager::drain_starts()
@@ -872,6 +907,11 @@ void power_manager::drain_starts()
                 data->finish( i, "start_delayed" );
             } else {
                 const auto &def = *i.view.application;
+                const auto grant_reason = data->grants.check( def.grants, *i.view.target.resolve() );
+                if( !grant_reason.empty() ) {
+                    data->finish( i, grant_reason );
+                    continue;
+                }
                 Creature &owner = *i.view.owner.resolve();
                 const std::string upkeep_support = check_cost( owner, def.upkeep.resource, def.upkeep.amount );
                 const std::string start_cost = check_cost( owner, def.start_cost.resource, def.start_cost.amount );
@@ -891,6 +931,13 @@ void power_manager::drain_starts()
                 i.view.expires = def.duration_ticks > 0 ? after( calendar::turn, def.duration_ticks ) :
                                  calendar::before_time_starts;
                 i.view.next_tick = after( calendar::turn, def.interval_ticks );
+                if( !def.grants.empty() ) {
+                    const auto grant_start = data->grants.start( i.view );
+                    if( !grant_start.empty() ) {
+                        data->finish( i, grant_start );
+                        continue;
+                    }
+                }
                 data->callbacks( i, def.on_start );
                 const std::string after_start = data->invalid( i );
                 if( !after_start.empty() ) {
@@ -903,6 +950,7 @@ void power_manager::drain_starts()
         }
     }
     data->settle_cancelled();
+    data->grants.process();
     data->trim();
 }
 
@@ -970,6 +1018,7 @@ void power_manager::process()
         }
     }
     data->settle_cancelled();
+    data->grants.process();
     data->trim();
 }
 
@@ -993,6 +1042,7 @@ void power_manager::clear()
     if( data->pumping || g->abilities().processing() ) {
         throw JsonError( "Cannot clear power ownership inside a callback" );
     }
+    data->grants.clear();
     data->applications.clear();
     data->root_requests.clear();
     data->pools.clear();
@@ -1065,6 +1115,7 @@ void power_manager::serialize( JsonOut &out ) const
     }
     out.start_object();
     out.member( "next_id", data->next_id );
+    out.member( "grants", data->grants );
     out.member( "pools" );
     out.start_array();
     for( const auto &entry : data->pools ) {
@@ -1155,6 +1206,7 @@ void power_manager::deserialize( const JsonObject &jo )
         jo.throw_error( "Cannot load power ownership inside a callback" );
     }
     auto next = std::make_unique<impl>();
+    jo.read( "grants", next->grants );
     jo.read( "next_id", next->next_id, true );
     if( next->next_id < 1 || next->next_id >= std::numeric_limits<int64_t>::max() ) {
         jo.throw_error_at( "next_id", "invalid power application counter" );
@@ -1274,4 +1326,13 @@ bool power_manager::owns_application( int64_t id, const creature_ref &owner ) co
     const auto it = data->applications.find( id );
     return it != data->applications.end() && it->second.live() && it->second.view.owner == owner &&
            data->invalid( it->second ).empty();
+}
+
+power_grant_manager &power_manager::grants()
+{
+    return data->grants;
+}
+const power_grant_manager &power_manager::grants() const
+{
+    return data->grants;
 }
