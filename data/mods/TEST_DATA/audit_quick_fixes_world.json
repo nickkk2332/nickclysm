@@ -1,0 +1,98 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_OMT_EXIT",
+    "effect": [
+      { "math": [ "aqf_omt_exits += 1" ] },
+      { "copy_var": { "context_val": "omt_pos" }, "target_var": { "global_val": "aqf_exit_omt_pos" } },
+      { "copy_var": { "context_val": "left_oter_id" }, "target_var": { "global_val": "aqf_exit_left" } },
+      { "copy_var": { "context_val": "entered_oter_id" }, "target_var": { "global_val": "aqf_exit_entered" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_OMT_ENTRY",
+    "effect": [
+      { "math": [ "aqf_omt_entries += 1" ] },
+      { "copy_var": { "context_val": "omt_pos" }, "target_var": { "global_val": "aqf_entry_omt_pos" } },
+      { "copy_var": { "context_val": "left_oter_id" }, "target_var": { "global_val": "aqf_entry_left" } },
+      { "copy_var": { "context_val": "entered_oter_id" }, "target_var": { "global_val": "aqf_entry_entered" } }
+    ]
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_aqf_omt_a",
+    "name": "OMT hook test a",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
+    "entry_eoc": "EOC_TEST_AQF_OMT_ENTRY",
+    "exit_eoc": "EOC_TEST_AQF_OMT_EXIT",
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_aqf_omt_b",
+    "name": "OMT hook test b",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
+    "entry_eoc": "EOC_TEST_AQF_OMT_ENTRY",
+    "exit_eoc": "EOC_TEST_AQF_OMT_EXIT",
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_OMT_TRAP",
+    "effect": [
+      { "copy_var": { "context_val": "trap_location" }, "target_var": { "context_val": "aqf_landing" } },
+      { "location_variable_adjust": { "context_val": "aqf_landing" }, "x_adjust": 24 },
+      { "u_teleport": { "context_val": "aqf_landing" }, "force_safe": true }
+    ]
+  },
+  {
+    "type": "trap",
+    "id": "test_aqf_omt_teleport_trap",
+    "copy-from": "tr_beartrap",
+    "name": "OMT hook teleport test trap",
+    "visibility": 1000,
+    "avoidance": 1000,
+    "action": "eocs",
+    "eocs": [ "EOC_TEST_AQF_OMT_TRAP" ],
+    "flags": [ "UNDODGEABLE" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_ADD_WET",
+    "effect": [ { "u_add_wet": 100 } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_VPART_ACTIVATED",
+    "effect": [
+      { "math": [ "aqf_vpart_activations += 1" ] },
+      { "math": [ "n_aqf_vpart_activated = 1" ] },
+      { "copy_var": { "context_val": "vpart_id" }, "target_var": { "global_val": "aqf_vpart_id" } },
+      { "copy_var": { "context_val": "vpart_pos" }, "target_var": { "global_val": "aqf_vpart_pos" } }
+    ]
+  },
+  {
+    "id": "test_aqf_eoc_part",
+    "type": "vehicle_part",
+    "name": { "str": "test activation switch" },
+    "item": "steel_chunk",
+    "location": "center",
+    "categories": [ "utility" ],
+    "durability": 100,
+    "description": "Runs a test effect_on_condition when activated.",
+    "flags": [ "EOC_ACTIVATION" ],
+    "activatable_eoc": "EOC_TEST_AQF_VPART_ACTIVATED",
+    "variants": [ { "symbols": "#", "symbols_broken": "X" } ]
+  }
+]

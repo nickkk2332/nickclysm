@@ -1450,11 +1450,33 @@ units::temperature_delta get_convection_temperature( const tripoint_bub_ms &loca
 
 namespace cata_event_dispatch
 {
-// Constructs and dispatches an avatar movement event with the necessary parameters
+// Constructs and dispatches an avatar movement event with the necessary parameters, then
+// reports an OMT change with avatar_changes_omt
 // @param p The point the avatar moved from in absolute coordinates
 // @param u The avatar (should have already moved to the new pos)
 // @param m The map the avatar is moving on
 void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const map &m );
+
+// If the avatar is no longer in the OMT that holds old_abs_pos, sends avatar_enters_omt and runs
+// the exit_eoc of the OMT left and then the entry_eoc of the OMT entered. Does nothing while an
+// avatar_move_scope is open: the move that opened it reports the change once, when it ends.
+void avatar_changes_omt( const tripoint_abs_ms &old_abs_pos );
+
+// Open while a move of the avatar is under way (a step, stairs, a teleport, vehicle travel).
+// An OMT change made by a move nested inside it, such as a teleport trap stepped on, is left to
+// the outer move, which reports it from where it started.
+class avatar_move_scope
+{
+    public:
+        avatar_move_scope();
+        ~avatar_move_scope();
+        avatar_move_scope( const avatar_move_scope & ) = delete;
+        avatar_move_scope &operator=( const avatar_move_scope & ) = delete;
+        // Closes the scope early, before the caller reports the change.
+        void end();
+    private:
+        bool open = true;
+};
 } // namespace cata_event_dispatch
 
 #endif // CATA_SRC_GAME_H

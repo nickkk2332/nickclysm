@@ -8114,7 +8114,12 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
 
     bool moving = dest_loc != oldpos;
 
-    point_rel_sm submap_shift = place_player( dest_loc );
+    point_rel_sm submap_shift;
+    {
+        // A teleport trap or a fall at dest_loc leaves the OMT change to avatar_moves below.
+        const cata_event_dispatch::avatar_move_scope stepping;
+        submap_shift = place_player( dest_loc );
+    }
     point_rel_ms ms_shift = coords::project_to<coords::ms>( submap_shift );
     oldpos = oldpos - ms_shift.raw();
 
@@ -10107,6 +10112,8 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
     tripoint_bub_ms old_pos = pos;
     const tripoint_abs_ms old_abs_pos = here.get_abs( old_pos );
+    // A fall or a trap on the way leaves the OMT change to avatar_moves at the end.
+    cata_event_dispatch::avatar_move_scope moving;
     const bool z_level_changed = vertical_shift( z_after );
     if( !force ) {
         const point_rel_sm submap_shift = update_map( stairs.x(), stairs.y(), z_level_changed );
@@ -10214,6 +10221,7 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
     u.recoil = MAX_RECOIL;
 
+    moving.end();
     cata_event_dispatch::avatar_moves( old_abs_pos, u, here );
 }
 
@@ -12074,10 +12082,65 @@ bool game::can_pulp_acid_corpse( const Character &you, const mtype &corpse_mtype
 
 namespace cata_event_dispatch
 {
+// How many avatar_move_scopes are open.
+static int avatar_move_depth = 0;
+
+avatar_move_scope::avatar_move_scope()
+{
+    ++avatar_move_depth;
+}
+
+avatar_move_scope::~avatar_move_scope()
+{
+    end();
+}
+
+void avatar_move_scope::end()
+{
+    if( open ) {
+        open = false;
+        --avatar_move_depth;
+    }
+}
+
+// Runs an OMT's entry_eoc or exit_eoc, with the OMT it belongs to and the terrains on both sides
+// of the boundary as context.
+static void run_omt_hook( const effect_on_condition_id &eoc, const tripoint_abs_omt &omt,
+                          const oter_id &left_ter, const oter_id &entered_ter )
+{
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    d.set_value( "omt_pos", project_to<coords::ms>( omt ) );
+    d.set_value( "left_oter_id", left_ter.id().str() );
+    d.set_value( "entered_oter_id", entered_ter.id().str() );
+    eoc->activate_activation_only( d, "OMT movement" );
+}
+
+void avatar_changes_omt( const tripoint_abs_ms &old_abs_pos )
+{
+    if( avatar_move_depth > 0 ) {
+        return;
+    }
+    const tripoint_abs_omt old_abs_omt = project_to<coords::omt>( old_abs_pos );
+    const tripoint_abs_omt new_abs_omt = get_avatar().pos_abs_omt();
+    if( old_abs_omt == new_abs_omt ) {
+        return;
+    }
+    const oter_id cur_ter = overmap_buffer.ter( new_abs_omt );
+    const oter_id past_ter = overmap_buffer.ter( old_abs_omt );
+    get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter,
+            overmap_buffer.overmap_special_at( new_abs_omt ).value_or( overmap_special_id() ) );
+    overmap_buffer.add_extra_note( new_abs_omt );
+    if( !past_ter->get_exit_EOC().is_null() ) {
+        run_omt_hook( past_ter->get_exit_EOC(), old_abs_omt, past_ter, cur_ter );
+    }
+    if( !cur_ter->get_entry_EOC().is_null() ) {
+        run_omt_hook( cur_ter->get_entry_EOC(), new_abs_omt, past_ter, cur_ter );
+    }
+}
+
 void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const map &m )
 {
     const tripoint_bub_ms new_pos = u.pos_bub();
-    const tripoint_abs_ms new_abs_pos = m.get_abs( new_pos );
     mtype_id mount_type;
     if( u.is_mounted() ) {
         mount_type = u.mounted_creature->type->id;
@@ -12085,30 +12148,7 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
     get_event_bus().send<event_type::avatar_moves>( mount_type, m.ter( new_pos ).id(),
             u.current_movement_mode(), u.is_underwater(), new_pos.z() );
 
-    const tripoint_abs_omt old_abs_omt( coords::project_to<coords::omt>(
-                                            old_abs_pos ) );
-    const tripoint_abs_omt new_abs_omt( coords::project_to<coords::omt>(
-                                            new_abs_pos ) );
-    if( old_abs_omt != new_abs_omt ) {
-        const oter_id &cur_ter = overmap_buffer.ter( new_abs_omt );
-        const oter_id &past_ter = overmap_buffer.ter( old_abs_omt );
-        get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter,
-                overmap_buffer.overmap_special_at( new_abs_omt ).value_or( overmap_special_id() ) );
-        overmap_buffer.add_extra_note( new_abs_omt );
-        // if the player has moved omt then might trigger an EOC for that OMT
-        if( !past_ter->get_exit_EOC().is_null() ) {
-            dialogue d( get_talker_for( get_avatar() ), nullptr );
-            effect_on_condition_id eoc = past_ter->get_exit_EOC();
-            eoc->activate_activation_only( d, "OMT movement" );
-        }
-
-        if( !cur_ter->get_entry_EOC().is_null() ) {
-            dialogue d( get_talker_for( get_avatar() ), nullptr );
-            effect_on_condition_id eoc = cur_ter->get_entry_EOC();
-            eoc->activate_activation_only( d, "OMT movement" );
-        }
-
-    }
+    avatar_changes_omt( old_abs_pos );
 }
 } // namespace cata_event_dispatch
 

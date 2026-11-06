@@ -3050,6 +3050,18 @@ These values apply to crafting tasks performed at the WORKBENCH.
 "bonus_fire_warmth_feet": 200,// (Optional, default=0). Bonus fire warmth as for terrain/furniture.
 ```
 
+#### The following field is specific to EOC_ACTIVATION parts.
+```jsonc
+"activatable_eoc": "EOC_PERAMBULATE_VEHICLE", // Id of the effect_on_condition run when the part
+                              // is activated.  Required with the EOC_ACTIVATION flag, and only
+                              // allowed with it.
+```
+`e`xamining the part's tile offers "Activate <part name>"; from the vehicle's controls (or while
+remote controlling it) every working EOC_ACTIVATION part of the vehicle is offered.  The EOC runs
+with the avatar as alpha talker and the vehicle as beta talker, and gets the context variables
+`vpart_id` (the part's id), `vpart_variant` (its variant, or `""`) and `vpart_pos` (a location
+variable: the part's tile).  See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md).
+
 #### The following optional field describes pseudo tools for any part.
 Crafting stations (e.g. kitchen, welding rigs etc) have tools that they provide as part
 of forming the inventory for crafting as well as providing menu items when `e`xamining
