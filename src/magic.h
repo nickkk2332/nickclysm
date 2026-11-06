@@ -39,6 +39,8 @@ struct const_dialogue;
 struct dealt_projectile_attack;
 struct requirement_data;
 
+enum class timed_event_type : int;
+
 namespace spell_effect
 {
 struct override_parameters;
@@ -886,6 +888,8 @@ void fertilize_plant( const spell &sp, Creature &caster, const tripoint_bub_ms &
 void translocate( const spell &sp, Creature &caster, const tripoint_bub_ms &target );
 // adds a timed event to the caster only
 void timed_event( const spell &sp, Creature &caster, const tripoint_bub_ms & );
+// The event a timed_event spell's effect_str names (case-insensitive), or nullopt if it names none
+std::optional<timed_event_type> timed_event_from_effect_str( std::string_view effect_str );
 void transform_blast( const spell &sp, Creature &caster, const tripoint_bub_ms &target );
 void noise( const spell &sp, Creature &, const tripoint_bub_ms &target );
 void vomit( const spell &sp, Creature &caster, const tripoint_bub_ms &target );

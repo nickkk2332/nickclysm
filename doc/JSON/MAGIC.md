@@ -223,7 +223,7 @@ Effect                 | Description
 `summon_vehicle`       | Summons a `vehicle` from `effect_str` that will disappear at the end of its duration.  Default duration is 0.
 `targeted_polymorph`   | A targeted monster is permanently transformed into the `MONSTER` specified by `effect_str`, if it has less HP than the spell's damage.  If `effect_str` is left empty, the target will transform into a random monster with a similar difficulty rating.  Alternatively, the `POLYMORPH_GROUP` flag can be used to pick a weighted ID from a `monstergroup`.  The player and NPCs are immune to this spell effect.
 `ter_transform`        | Transforms the field, furniture, terrain and trap in its aoe.  The chance of any one of the points in the aoe changing is 1 / (damage).  The `effect_str` is the ID of a `ter_furn_transform` (see [TER_FURN_TRANSFORM.md](TER_FURN_TRANSFORM.md) for further details).
-`timed_event`          | Adds a timed event to the player only.  Valid timed events are: `amigara`, `artifact_light`, `dim`, `help`, `robot_attack`, `roots_die`, `spawn_wyrms`, `temple_flood`, `temple_open`, `temple_spawn`, `wanted`.  **NOTE**: This was added only for artifact active effects.  Support is limited, use at your own risk.
+`timed_event`          | Adds a timed event to the player only, which happens after the spell's duration.  `effect_str` names the event, in any letter case: `amigara`, `artifact_light`, `dim`, `help` (currently disabled: it only shows a debug message), `roots_die`, `spawn_wyrms`, `temple_flood`, `temple_open` or `temple_spawn`.  **NOTE**: This was added only for artifact active effects.  Support is limited, use at your own risk; for other delayed effects, use `effect_on_condition` with a `run_eocs` that has `time_in_future`.
 `translocate`          | Opens up a window that allows the caster to choose a translocation gate to teleport to.
 `upgrade`              | Immediately upgrades a target `MONSTER`.
 `vomit`                | Any creature within its aoe will instantly vomit, if it's able to do so.
@@ -250,6 +250,7 @@ Effect                                  | `effect_str` must be
 `revive`, `revive_dormant`              | a `SPECIES` id
 `guilt`                                 | a `SPECIES` id, or empty
 `summon_vehicle`                        | a `vehicle` id, or empty
+`timed_event`                           | one of the timed events listed above, in any letter case
 
 The spell ids in `learn_spells` and in `channel_data` (`channel_spell`, `channel_end_spell`, `channel_interrupt_spell`) and the `magic_type` id are checked the same way.  A spell that is only a base for `copy-from` should be an `abstract` instead of a spell with an empty or placeholder `effect_str`.
 

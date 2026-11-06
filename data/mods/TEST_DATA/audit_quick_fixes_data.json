@@ -1,0 +1,16 @@
+[
+  {
+    "type": "SPELL",
+    "id": "audit_evt_j01_upper_case_timed_event",
+    "//": "EVT-J01: the triffid heart's death spell as it was, with an upper-case effect_str.",
+    "name": { "str": "Audit Upper-Case Timed Event", "//~": "NO_I18N" },
+    "description": { "str": "Queues the roots_die event, named in upper case.", "//~": "NO_I18N" },
+    "effect": "timed_event",
+    "effect_str": "ROOTS_DIE",
+    "flags": [ "SILENT", "NO_EXPLOSION_SFX" ],
+    "min_duration": 60000,
+    "max_duration": 60000,
+    "valid_targets": [ "self" ],
+    "shape": "blast"
+  }
+]

@@ -687,7 +687,7 @@
     "max_duration": 60000,
     "min_range": 48,
     "max_range": 48,
-    "effect_str": "ROOTS_DIE",
+    "effect_str": "roots_die",
     "shape": "blast",
     "valid_targets": [ "ally", "hostile" ]
   },
