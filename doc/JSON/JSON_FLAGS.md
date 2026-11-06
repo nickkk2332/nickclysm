@@ -594,37 +594,41 @@ These branches are the valid `dreams` from [dreams.json](/data/json/dreams.json)
 
 These flags apply to the `use_action` field, instead of the `flags` field.
 
-- ```ANTIBIOTIC``` Helps fight infections.  Removes disease `infected` and adds disease `recover`.
-- ```BANDAGE``` Stop bleeding.
+- ```ADRENALINE_INJECTOR``` Inject adrenaline: adds effect `adrenaline` for 20 minutes and leaves a `syringe`.  Injecting more while it lasts hurts your health.
+- ```ANTIBIOTIC``` Helps fight infections.  Adds effect `antibiotic` for 12 hours, which fights `infected`, and has a 1 in 3 chance to cure `tetanus`.
+- ```ANTICONVULSANT``` Removes effect `shakes` and adds effects `valium` and `high` for up to 8 hours (less with more strength).
+- ```ANTIFUNGAL``` Adds effect `antifungal` for 4 hours.
+- ```ANTIPARASITIC``` Removes the parasite effects `dermatik`, `tapeworm`, `bloodworms`, `blood_spiders`, `brainworms` and `paincysts`; killing worms hurts.
 - ```BLECH``` Causes vomiting, adds disease `poison`, adds pain and hurts torso.
 - ```BLECH_BECAUSE_UNCLEAN``` Causes warning.
 - ```CHEW``` Displays message "You chew your %s.", but otherwise does nothing.
-- ```CIG``` Alleviates nicotine cravings.  Adds disease `cig`.
 - ```COKE``` Decreases hunger.  Adds disease `high`.
-- ```CRACK``` Decreases hunger.  Adds disease `high`.
-- ```DISINFECTANT``` Prevents infections.
-- ```FIRSTAID``` Heals.
+- ```DATURA``` Adds effect `datura` for 3 to 13 hours, and a morale bonus for `SPIRITUAL` characters.  Not for NPCs.
+- ```ECIG``` Smoke an electronic cigarette: adds effect `cig`, easing nicotine cravings.  The advanced one uses `nicotine_liquid`.
+- ```EYEDROPS``` Removes effect `boomered` and shortens `conjunctivitis` on the eyes to a day at most.
+- ```FLU_VACCINE``` Adds effect `flushot` until 24 weeks after the vaccine was made (nothing if it is older), hurts a little and leaves a `syringe`.
 - ```FLUMED``` Adds disease `took_flumed`.
 - ```FLUSLEEP``` Adds disease `took_flumed` and increases sleepiness.
 - ```FUNGICIDE``` Kills fungus and spores. Removes diseases `fungus` and `spores`.
-- ```HALLU``` Adds disease `hallu`.  Its stages are fractions of the dose, the time since it was taken or last topped up plus the time left: you feel strange with 95% of it left, then come up (nausea), see visuals from 80% left, get stat penalties and hallucinations until 30% left, and come down.  A `hallu` of any duration goes through them all.  Adding more while it lasts (pushing its end out by more than a turn) starts the stages over from that moment; adding a turn at a time, as an enchantment's `ench_effects` does, doesn't.
 - ```HONEYCOMB``` Spawns wax.
 - ```INHALER``` Removes disease `asthma`.
-- ```IODINE``` Adds disease `iodine`.
 - ```METH``` Adds disease `meth`.
-- ```NONE``` "You can't do anything of interest with your [x]."
+- ```OXYGEN_BOTTLE``` Breathe from it: removes effect `smoke_lungs`, or else `teargas`, or else `asthma`, or else gives a small stimulant boost.
 - ```PETFOOD``` "Lets you feed the item to animals. Specify in `petfood` i.e. `[ "CATTLEFOOD", "DOGFOOD", "CATFOOD", "BIRDFOOD" ]`."
-- ```PKILL``` Reduces pain.  Adds disease `pkill[n]` where `[n]` is the level of flag `PKILL_[n]` used on this comestible.
 - ```PLANTBLECH``` Activates `BLECH` iuse action if player does not have plant mutations.
 - ```POISON``` Adds diseases `poison` and `foodpoison`.
 - ```PROZAC``` Adds disease `took_prozac` if not currently present, otherwise acts as a minor stimulant.  Rarely has the `took_prozac_bad` adverse effect.
-- ```PURIFIER``` Removes random number of negative mutations.
+- ```PURIFY_SMART``` Remove a mutation of your choice (and maybe a random second one) that isn't a starting trait; leaves a `syringe`.
 - ```SEWAGE``` Causes vomiting.
-- ```SLEEP``` Greatly increases sleepiness.
+- ```SMOKING``` Light a cigarette, cigar or joint (turns it into its lit version), using a fire source.
+- ```STIMPACK``` While worn, inject stimulants: adds effect `stimpack`, restores stamina and reduces sleepiness.
+- ```STRONG_ANTIBIOTIC``` Adds effect `strong_antibiotic` for 12 hours, which fights `infected`.
 - ```THORAZINE``` Removes diseases `hallu`, `visuals`, `high`.  Additionally removes disease `formication` if disease `dermatik` isn't also present.  Has a chance of a negative reaction which increases sleepiness.
-- ```VITAMINS``` Increases healthiness (not to be confused with HP).
-- ```WEED``` Makes you roll with Cheech & Chong.  Adds disease `weed_high`.
+- ```WEAK_ANTIBIOTIC``` Adds effect `weak_antibiotic` for 12 hours, which fights `infected`.
+- ```WEED_CAKE``` Adds effect `weed_high` and some painkiller, and makes you a little hungrier and thirstier.
 - ```XANAX``` Alleviates anxiety.  Adds disease `took_xanax`.
+
+Most drugs and medicines (painkillers, crack, weed, iodine, vitamins, bandages, disinfectants and so on) use a `consume_drug` or `heal` use action instead of one of these names; see [ITEM.md](ITEM.md#use-actions).  For example, hallucinogens add effect `hallu` with `consume_drug`'s `effects`.  The stages of `hallu` are fractions of the dose, the time since it was taken or last topped up plus the time left: you feel strange with 95% of it left, then come up (nausea), see visuals from 80% left, get stat penalties and hallucinations until 30% left, and come down.  A `hallu` of any duration goes through them all.  Adding more while it lasts (pushing its end out by more than a turn) starts the stages over from that moment; adding a turn at a time, as an enchantment's `ench_effects` does, doesn't.
 
 
 ## Effects
@@ -1586,85 +1590,136 @@ Techniques may be used by tools, armors, weapons and anything else that can be w
 
 ### `use_action`
 
-These flags apply to the `use_action` field, instead of the `flags` field.
+These flags apply to the `use_action` field, instead of the `flags` field.  Many tools use one of the structured use actions in [ITEM.md](ITEM.md#use-actions) (`transform`, `explosion`, `place_monster`, `deploy_tent`, ...) instead.
 
 - ```ACIDBOMB_ACT``` Get rid of it, or you'll end up like that guy in Robocop.
-- ```ACIDBOMB``` Pull the pin on an acid bomb.
-- ```AUTOCLAVE``` Sterilize one CBM by autoclaving it.
+- ```AFS_TRANSLOCATOR``` Place a translocator buoy (`f_translocator_buoy`) on a passable tile with a floor and no furniture.
 - ```BELL``` Ring the bell.
+- ```BINDER_ADD_RECIPE``` Copy a recipe you know into this recipe binder, using paper and something to write with.
+- ```BINDER_MANAGE_RECIPE``` Remove a recipe from this recipe binder.
+- ```BLOOD_DRAW``` Draw your own blood into this empty item.  Acidic blood can damage it.
 - ```BOLTCUTTERS``` Use your town key to gain access anywhere.
 - ```BREAK_STICK``` Breaks long branch into two.
-- ```C4``` Arm the C4.
+- ```CALL_OF_TINDALOS``` Opens rifts (`fd_tindalos_rift`) on corner floor tiles within 12 tiles.
+- ```CALORIES_INTAKE_TRACKER``` Shows the calories you ate today and yesterday.
+- ```CAMERA``` Take a photo of what is in view, or view the photos in its memory.
 - ```CAN_GOO``` Release a little blob buddy.
 - ```CAPTURE_MONSTER_ACT``` Capture and encapsulate a monster. The associated action is also used for releasing it.
+- ```CAPTURE_MONSTER_VEH``` Like `CAPTURE_MONSTER_ACT`, for a capture device installed in a vehicle.
+- ```CHANGE_EYES``` Change the avatar's eye color.
+- ```CHANGE_OUTFIT``` Swap the clothes you wear for the outfit stored in this item.
+- ```CHANGE_SKIN``` Change the avatar's skin color.
+- ```CHOP_LOGS``` Chop an adjacent tree trunk into logs.
+- ```CHOP_TREE``` Chop down an adjacent tree.
+- ```CLEAR_RUBBLE``` Clear rubble: opens the construction menu for it.
+- ```COIN_FLIP``` Flip a coin: heads or tails.
+- ```CRAFT``` Continue working on this in-progress craft.
 - ```CROWBAR``` Pry open doors, windows, man-hole covers and many other things that need prying.
-- ```DIG``` Clear rubble.
+- ```CROWBAR_WEAK``` Pry things open, as `CROWBAR` does.
+- ```DBG_LUX_METER``` Debug: shows the incident, natural and sun light levels and the sun's irradiance where you are.
+- ```DIG``` Dig a pit or a shallow pit: opens the construction menu for them.
+- ```DIG_CHANNEL``` Dig a water channel: opens the construction menu for it.
 - ```DIRECTIONAL_ANTENNA``` Find the source of a signal with your radio.
+- ```DIRECTIONAL_HOLOGRAM``` Project a hologram that walks away in the chosen direction.  An armor item must be worn.
+- ```DISASSEMBLE``` Disassemble this item (the "Get content" action of items that come apart into their contents).
 - ```DOG_WHISTLE``` Dogs hate this thing; your dog seems pretty cool with it though.
 - ```DOLLCHAT``` That creepy doll just keeps on talking.
+- ```E_FILE_DEVICE``` Browse, read, move and copy the electronic files on this and other devices.
+- ```EBOOKSAVE``` Copy books into this device's memory.
+- ```EHANDCUFFS``` Tells whether these electronic handcuffs can be taken off yet.
+- ```EHANDCUFFS_TICK``` Tick action of locked electronic handcuffs: a siren every minute and a shock when the wearer moves while they are well charged.  They open when they run out of charge or get wet.
+- ```EMF_PASSIVE_ON``` Tick action of an EMF detector that is on: beeps faster the closer the nearest electrical creature or field is, within 10 tiles.
 - ```EXTINGUISHER``` Put out fires.
-- ```FIRECRACKER_ACT``` The saddest Fourth of July.
+- ```FILL_PIT``` Fill a pit or tamp the ground: opens the construction menu for it.
 - ```FIRECRACKER_PACK_ACT``` Keep the change you filthy animal.
-- ```FLASHBANG``` Pull the pin on a flashbang.
+- ```FISH_ROD``` Fish in an adjacent fishable tile.
+- ```FISH_TRAP``` Place this baited fish trap in water; in about three hours it may catch some fish.
+- ```FISH_TRAP_TICK``` Tick action of a placed fish trap: after three hours, catches fish depending on its bait and your survival skill.
+- ```FITNESS_CHECK``` Shows your heart rate and how active you were today.
+- ```FOODPERSON``` Shows how long your Foodperson shift (its battery) lasts.
+- ```FOODPERSON_VOICE``` Tick action of the Foodperson mask: says a line every minute.
+- ```GASMASK``` Tick action of a worn gas mask: uses up filter charges while there are gases around it, and warns when they run low.
+- ```GASMASK_ACTIVATE``` Activate a gas mask with a filter, which increases its environmental protection.  It then uses filter charges only around gases.
 - ```GEIGER``` Detect local radiation levels.
+- ```GEIGER_ACTIVE``` Tick action of a Geiger counter that is on: clicks or buzzes with the radiation level where it is.
 - ```GRANADE_ACT``` Assaults enemies with source code fixes?
-- ```GRANADE``` Pull the pin on Granade.
-- ```GRENADE``` Pull the pin on a grenade.
+- ```GRENADE_INC_ACT``` Incendiary grenade going off: a small explosion, with flames and incendiary fields around it.
+- ```GUN_REPAIR``` Repair a damaged gun.  Needs mechanics 2.
+- ```GUNMOD_ATTACH``` Attach this gunmod to a gun.  Every gunmod gets this action automatically.
 - ```HACKSAW``` Cut metal into chunks.
-- ```HAMMER``` Pry boards off of windows, doors and fences.
+- ```HAND_CRANK``` Crank to recharge the rechargeable battery in this item.
 - ```HEATPACK``` Activate the heatpack and get warm.
+- ```HEAT_ALL_ITEMS``` Heat up solid and liquid items.
 - ```HEAT_FOOD``` Heat food around fires.
+- ```HEAT_LIQUID_ITEMS``` Heat up liquid items.
+- ```HEAT_SOLID_ITEMS``` Heat up solid items.
 - ```HOTPLATE``` Use the hotplate.
+- ```HOTPLATE_ATOMIC``` Heat up solid items, for the `atomic_coffeepot` only.
 - ```JACKHAMMER``` Bust down walls and other constructions.
 - ```JET_INJECTOR``` Inject some jet drugs right into your veins.
-- ```LAW``` Unpack the LAW for firing.
-- ```LIGHTSTRIP``` Activates the lightstrip.
 - ```LUMBER``` Cut logs into planks.
+- ```LUX_METER``` Shows the light level where you are.
+- ```MA_MANUAL``` Learn the martial art style this manual teaches.
+- ```MACE``` Spray an adjacent creature, which may blind it.
+- ```MAGIC_8_BALL``` Ask a question and get a random answer.
 - ```MAKEMOUND``` Make a mound of dirt.
-- ```MANHACK``` Activate a manhack.
-- ```MATCHBOMB``` Light the matchbomb.
-- ```MILITARYMAP``` Learn of local military installations, and show roads.
+- ```MANAGE_EXOSUIT``` Manage the modules in this exosuit's pockets.
+- ```MEASURE_RESONANCE``` Find the resonant (artifact) items you carry and scan one.
+- ```MEDITATE``` Meditate, for `SPIRITUAL` characters.
 - ```MININUKE``` Set the timer and run.  Or hit with a hammer (not really).
-- ```MOLOTOV``` Light the Molotov cocktail.
 - ```MOP``` Mop up the mess.
-- ```NOISE_EMITTER_OFF``` Turn the noise emitter on.
-- ```NOISE_EMITTER_ON``` Turn the noise emitter off.
-- ```NONE``` Do nothing.
+- ```MP3_ON``` Tick action of an mp3 player that is on: plays music to whoever carries it.
+- ```MULTICOOKER``` Use the multi-cooker's menu: start or stop cooking a dish.
+- ```MULTICOOKER_TICK``` Tick action of a cooking multi-cooker: finishes the dish, or goes on standby when its batteries are low.
+- ```NOISE_EMITTER_ON``` Tick action of a noise emitter that is on: makes a loud (30) alarm noise each turn.
+- ```OXYTORCH``` Cut up metal on an adjacent tile.  Needs welding goggles.
 - ```PACK_CBM``` Put CBM in special autoclave pouch so that they stay sterile once sterilized.
-- ```PHEROMONE``` Makes zombies ignore you.
+- ```PACK_ITEM``` Pack an item that isn't worn for storage: turns an `<id>_on` item back into `<id>`.
+- ```PAPR_BLOWER``` Tick action of a PAPR blower: uses filter charges against gases, and warns when they run low.
+- ```PAPR_MASK``` Tick action of a worn PAPR mask: it stops working without an active PAPR blower.
+- ```PAPR_MASK_ACTIVATE``` Attach this PAPR mask to your active PAPR blower and prepare it.
 - ```PICK_LOCK``` Pick a lock on a door.  Speed and success chance are determined by skill, `LOCKPICK` item quality and `PERFECT_LOCKPICK` item flag.
-- ```PICKAXE``` Does nothing but berate you for having it (I'm serious).
-- ```PLACE_RANDOMLY``` This is very much like the flag in the `manhack` iuse, it prevents the item from querying the player as to where they want the monster unloaded to, and instead chooses randomly.
+- ```PICKAXE``` Mine an adjacent tile of rock or other `MINEABLE` terrain or furniture.
+- ```PLAY_GAME``` Play a tabletop game, with your friends nearby if there are any.
 - ```PORTABLE_GAME``` Play games.
 - ```PORTAL``` Create portal traps.
-- ```RADIO_ON``` Turn the radio off.
-- ```RAG``` Stop the bleeding.
-- ```RESTAURANTMAP``` Learn of local eateries, and show roads.
-- ```ROADMAP``` Learn of local common points-of-interest and show roads.
-- ```SCISSORS``` Cut up clothing.
+- ```POST_UP``` Put this item up on an adjacent wall.
+- ```RADGLOVE``` While worn, measure your radiation level.
+- ```RADIO_MOD``` Fit a radio receiver to an item that can take one (`RADIO_MODABLE`), so that a red, blue or green radio signal sets it off.
+- ```RADIO_ON``` Scan the radio stations and pick one to listen to, on a radio that is on.
+- ```RADIO_TICK``` Tick action of a radio that is on: plays the tuned station's broadcast or weather forecast, or static.
+- ```RADIOCAR``` Turn the RC car on, or put an explosive on it.
+- ```RADIOCONTROL``` Drive an RC car, or press a red, blue or green button to send a radio signal.
+- ```RADIOCONTROL_TICK``` Tick action of an active RC controller: stops controlling when it is dropped or out of charge.
+- ```REMOTEVEH``` Take control of a vehicle remotely, or do one vehicle action.
+- ```REMOTEVEH_TICK``` Tick action of an active vehicle remote: stops when its battery or the vehicle's dies, or contact is lost.
+- ```REMOVE_ALL_MODS``` Remove the mods from one of your modified tools.
+- ```ROBOTCONTROL``` Hack a nearby robot to make it friendly (IFF override), or set your friendly robots to passive or combat mode.
+- ```RPGDIE``` Roll this die.  Its number of sides (4 to 50) is picked at random the first time.
+- ```SCBA_MASK``` Tick action of a worn SCBA mask: it turns off when no SCBA tank is on.
 - ```SCBA_MASK_ACTIVATE``` Prep SCBA regulator for breathing.  Transforms into an item with string <item_id>_scba_on.
 - ```SCBA_TANK_ACTIVATE``` Prep SCBA air source for breathing.
 - ```SEED``` Asks if you are sure that you want to eat the seed.  As it is better to plant seeds.
-- ```SEW``` Sew clothing.
-- ```SHELTER``` Put up a full-blown shelter.
+- ```SEXTANT``` Measure the sun's altitude.
 - ```SIPHON``` Siphon liquids out of vehicle.
-- ```SMOKEBOMB_ACT``` This may be a good way to hide as a smoker.
-- ```SMOKEBOMB``` Pull the pin on a smoke bomb.
 - ```SOLARPACK_OFF``` Fold solar backpack array.
 - ```SOLARPACK``` Unfold solar backpack array.
-- ```SOLDER_WELD``` Solder or weld items.
 - ```SPRAY_CAN``` Graffiti the town.
-- ```SURVIVORMAP``` Learn of local points-of-interest that can help you survive, and show roads.
 - ```TAZER``` Shock someone or something.
 - ```TELEPORT``` Teleport.
-- ```TORCH``` Light a torch.
-- ```TOURISTMAP``` Learn of local points-of-interest that a tourist would like to visit, and show roads.
+- ```TOOLMOD_ATTACH``` Attach this toolmod to a compatible tool.  Every toolmod gets this action automatically.
 - ```TOWEL``` Dry your character using the item as towel.
-- ```TURRET``` Activate a turret.
+- ```UNFOLD_GENERIC``` Unfold this item into a vehicle.
+- ```VIBE``` Relieve some stress (a morale boost).  Not for NPCs.
+- ```VIEW_PHOTOS``` Look at the photos stored on this item.
+- ```VIEW_RECIPES``` List the recipes stored on this item.
+- ```VOLTMETER``` Check whether the vehicle or appliance on an adjacent tile has battery power.
+- ```VORTEX``` Summon a friendly vortex next to you; the item turns into a spiral stone.
 - ```WASH_ALL_ITEMS``` Wash items with `FILTHY` flag.
 - ```WASH_HARD_ITEMS``` Wash hard items with `FILTHY` flag.
 - ```WASH_SOFT_ITEMS``` Wash soft items with `FILTHY` flag.
 - ```WATER_PURIFIER``` Purify water.
+- ```WEATHER_TOOL``` Shows weather readings: temperature, humidity, pressure, wind, radiation and irradiance, depending on the device.
 
 
 ## Traps
@@ -1742,6 +1797,7 @@ Note: Parts that can be switched on and off from the vehicle's electronics menu 
 - ```DOOR_MOTOR``` Can only be installed on a part with `OPENABLE` flag.
 - ```ENABLED_DRAINS_EPOWER``` Make vehicle part to require some energy to start it's work.  Requires `epower` field.
 - ```ENGINE``` Is an engine and contributes towards vehicle mechanical power.
+- ```EOC_ACTIVATION``` 'e'xamining the part's tile, or the vehicle's controls, offers to activate the part, which runs its `activatable_eoc` with the vehicle as beta talker.  Requires the `activatable_eoc` field; see [Vehicle Parts](JSON_INFO.md#vehicle-parts).
 - ```EVENTURN``` Only on during even turns.
 - ```EXTRA_DRAG``` Tells the vehicle that the part exerts engine power reduction.
 - ```E_ALTERNATOR``` Is an engine that can power an alternator.
