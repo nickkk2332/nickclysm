@@ -48,6 +48,8 @@ struct fatal_projectile_world {
         Messages::clear_messages();
         get_globals().clear_global_values();
         get_avatar().setpos( get_map(), tripoint_bub_ms( 60, 60, 0 ) );
+        // Shooters must see their targets: at night an NPC with a bow scatters and can miss.
+        set_time_to_day();
         g->uquit = QUIT_NO;
         get_globals().set_global_value( "exec_projectile_fatal_case", "hold" );
     }
@@ -65,6 +67,13 @@ struct fatal_projectile_world {
 
 item &arm( Character &source, const std::string &kind = "gun" )
 {
+    if( source.is_npc() ) {
+        // Like the avatar: no random traits or worn gear (encumbrance scatters a bow shot).
+        // clear_character() also moves it, so it goes back to its spot.
+        const tripoint_bub_ms where = source.pos_bub();
+        clear_character( source );
+        source.setpos( get_map(), where );
+    }
     source.set_str_base( 40 );
     source.set_dex_base( 20 );
     source.reset_stats();

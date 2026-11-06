@@ -56,6 +56,8 @@ struct projectile_world {
         Messages::clear_messages();
         get_globals().clear_global_values();
         get_avatar().setpos( get_map(), tripoint_bub_ms( 60, 60, 0 ) );
+        // Shooters must see their targets: at night an NPC with a bow scatters and can miss.
+        set_time_to_day();
         g->uquit = QUIT_NO;
         get_globals().set_global_value( "exec_projectile_case", "basic" );
     }
@@ -171,6 +173,10 @@ TEST_CASE( "projectile_execution_captures_real_guns_and_bows_for_loaded_particip
     Character *source = &get_avatar();
     if( pair.find( "npc_" ) == 0 ) {
         npc &person = spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( -3, 0 ), "thug" );
+        // Like the avatar: no random traits or worn gear (encumbrance scatters a bow shot).
+        // clear_character() also moves it, so it goes back to its spot.
+        clear_character( person );
+        person.setpos( get_map(), get_avatar().pos_bub() + tripoint_rel_ms( -3, 0, 0 ) );
         person.set_attitude( NPCATT_KILL );
         source = &person;
     }
