@@ -61,6 +61,7 @@ class window;
 } // namespace catacurses
 class Character;
 class Creature;
+struct dialogue;
 class basecamp;
 class character_id;
 class computer;
@@ -1464,14 +1465,16 @@ class map
          *  @param obj Item to add
          *  @param copies_remaining Number of identical copies of the item to create
          *  @param overflow if destination is full attempt to drop on adjacent tiles
+         *  @param dropper Character responsible for placement, or nullptr for environmental placement
          *  @return reference to dropped (and possibly stacked) item or null item on failure
          *  @warning function is relatively expensive and meant for user initiated actions, not mapgen
          */
         item_location add_item_or_charges_ret_loc( const tripoint_bub_ms &pos, item obj,
-                bool overflow = true );
-        item &add_item_or_charges( const tripoint_bub_ms &pos, item obj, bool overflow = true );
+                bool overflow = true, Character *dropper = nullptr );
+        item &add_item_or_charges( const tripoint_bub_ms &pos, item obj, bool overflow = true,
+                                   Character *dropper = nullptr );
         item &add_item_or_charges( const tripoint_bub_ms &pos, item obj, int &copies_remaining,
-                                   bool overflow = true );
+                                   bool overflow = true, Character *dropper = nullptr );
 
         /**
          * Gets spawn_rate value for item category of 'itm'.
@@ -1771,7 +1774,7 @@ class map
             Map &m, const tripoint_bub_ms &p, const field_type_id &type );
 
         std::pair<item *, tripoint_bub_ms> _add_item_or_charges( const tripoint_bub_ms &pos, item obj,
-                int &copies_remaining, bool overflow = true );
+                int &copies_remaining, bool overflow = true, Character *dropper = nullptr );
     public:
 
         // Splatters of various kind
@@ -1789,8 +1792,13 @@ class map
          * @param pos Location of emission
          * @param src Id of object producing the emission
          * @param mul Multiplies the chance and possibly qty (if `chance*mul > 100`) of the emission
+         * @param source Actual emitting creature, or nullptr for environmental emissions
          */
-        void emit_field( const tripoint_bub_ms &pos, const emit_id &src, float mul = 1.0f );
+        void emit_field( const tripoint_bub_ms &pos, const emit_id &src, float mul = 1.0f,
+                         Creature *source = nullptr );
+        // Evaluate in the supplied source context, adding the emission tile's location and IDs.
+        void emit_field( const tripoint_bub_ms &pos, const emit_id &src, float mul,
+                         const dialogue &context );
 
         // Scent propagation helpers
         /**
@@ -1881,6 +1889,7 @@ class map
                             bool lootable = false, bool powered = false, bool networked = false );
         // places an NPC, if static NPCs are enabled or if force is true
         character_id place_npc( const point_bub_ms &p, const string_id<npc_template> &type );
+        character_id place_npc( const tripoint_bub_ms &p, const string_id<npc_template> &type );
         void apply_faction_ownership( const point_bub_ms &p1, const point_bub_ms &p2,
                                       const faction_id &id );
         void do_vehicle_caching( int z );

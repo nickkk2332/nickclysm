@@ -24,6 +24,7 @@ class npc;
 class time_point;
 class vpart_reference;
 struct itype;
+struct map_data_common_t;
 
 using seed_tuple = std::tuple<itype_id, std::string, int>;
 
@@ -35,6 +36,11 @@ struct iexamine_actor {
 
     virtual void load( const JsonObject &, const std::string & ) = 0;
     virtual void call( Character &, const tripoint_bub_ms & ) const = 0;
+    // The dispatcher knows which layer was examined even when both have actors.
+    virtual void call_with_context( Character &you, const tripoint_bub_ms &pos,
+                                    const map_data_common_t & ) const {
+        call( you, pos );
+    }
     virtual void finalize() const = 0;
 
     virtual std::unique_ptr<iexamine_actor> clone() const = 0;

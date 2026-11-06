@@ -1586,7 +1586,9 @@ The contents of `use_action` fields can either be a string indicating a built-in
 
 ### Drop Actions
 
-Similar to use_action, this drop_actions would be triggered when you throw the item
+Like `use_action`, `drop_action` runs when the item is placed on the map through the drop/placement path, including ordinary drops and thrown items. It runs before insertion or charge merging.
+
+For an EOC drop action, alpha is the actual dropping Character when the caller supplies one; unattended or environmental placement has no alpha. Beta is the dropped item, and `use_location` is the absolute destination. A callback returning zero or cancelling preserves the item; a positive consumption result destroys it during placement. For an EOC action, `consume` controls this result. Do not assume that the item is already on the ground, or that the avatar caused the drop.
 
 ```jsonc
 "drop_action": {                  

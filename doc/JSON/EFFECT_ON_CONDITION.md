@@ -65,7 +65,7 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | Talk with NPC                                    | player (Avatar)             | NPC (NPC)                   |                             |
 | Talk with monster                                | player (Avatar)             | monster (monster)           |
 | Use computer                                     | player (Avatar)             | computer (Furniture)        |
-| furniture: "examine_action"                      | player (Avatar)             | NONE                        | `this`, string, furniture id; `pos`; string, coordinates of the furniture
+| terrain/furniture: "examine_action"              | examining Character         | NONE                        | `this`, examined terrain/furniture ID; `terrain`, `furniture`, both IDs; `examined_layer`, `terrain` or `furniture`; `pos`, absolute tile coordinates
 | furniture: "mortar"                              | player (Avatar)             | NONE                        | `this`, string, furniture id; `pos`; string, coordinates of the furniture; `target`, string, coordinates of picked tile
 | spell: "effect": "effect_on_condition"           | target (Character, Monster) | spell caster (Character, Monster) | `spell_location`, location variable, location of target for use primarily when the target isn't a creature; `spell_id` and `spell_damage_type`, strings; `spell_level` (effective level), `spell_damage`, `spell_dot`, `spell_duration` (in turns), `spell_aoe` and `spell_range`, numbers, the values computed for this cast
 | spell: "description"                             | avatar                      | avatar                      | Used for tags
@@ -2505,7 +2505,7 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | bionics: "processed_eocs" | { "this", `bionic_id` } |
 | bionics: "deactivated_eocs" | { "this", `bionic_id` } |
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
-| furniture: "examine_action" | { "this", `furniture_id` }, { "pos", `tripoint` } |
+| terrain/furniture: "examine_action" | `this`: examined layer ID; `terrain`, `furniture`: both tile IDs; `examined_layer`: `terrain` or `furniture`; `pos`: absolute coordinates |
 | `u_walk_to`: "true_eocs", "false_eocs" | { "reason", `string` why the walk ended }, and the context variables of the EoC that started the walk |
 | `u_pickup_item`, `u_wield_item`, `u_wear_item`, `u_drop_item`: "true_eocs", "false_eocs" | { "reason", `string` why it was refused, or `done` }, and the context variables of the EoC |
 | behavior goal: "on_start", "on_turn", "on_end", "on_interrupt", "on_timeout" | { "goal_id", `string` }, { "turns_active", `int` goal-active turns so far }, and in the end hooks { "reason", `string`: `done`, `timeout` or `interrupted` }; see [JSON goals](NPC_BEHAVIOR.md#json-goals) |
@@ -2514,6 +2514,20 @@ Other EOCs have some variables as well that they have access to, they are as fol
 # Effects
 
 ## General
+
+#### `start_execution`, `cancel_execution`
+
+`{ "start_execution": "execution_id" }` queues a saved execution with alpha as actor
+and beta as target. Both must be distinct, living, loaded creatures. Optional
+`true_eocs`/`false_eocs` handle acceptance/refusal; context receives the decimal string
+`execution_instance` and `reason`. Acceptance means queued, not completed.
+`{ "cancel_execution": { "context_val": "execution_instance" } }` requests cancellation
+of that instance. Both members accept string variable objects.
+
+The simple conditions `u_in_execution` / `npc_in_execution` test participation.
+`{ "execution_can_fall": { "role": "target", "direction": "backward" } }` tests a
+backward ledge step inside an execution callback/transition. See
+[EXECUTIONS.md](EXECUTIONS.md) for definitions, timing, context, controls, and limits.
 
 #### `sound_effect`
 Play a sound effect from sound pack `"type": "sound_effect"`
@@ -4111,6 +4125,7 @@ Deal damage, the same way melee attack deals damage; it can't be dodged, but it 
 | --- | --- | --- | --- |
 | "u_deal_damage" / "npc_deal_damage" | **mandatory** | string or [variable object](#variable-object) | Damage type that would be dealt |
 | "amount" | optional | int or [variable object](#variable-object) | Amount of damage that would be dealt; Default 0 |
+| "source" | optional | string | Damage source: `"u"` (alpha), `"npc"` (beta), or `"none"` (environmental, default). The effect name still selects the damaged actor. An explicitly selected source must be a creature. |
 | "bodypart" | optional | string or [variable object](#variable-object) | Bodypart that take the damage. Reminder that only characters can have limbs. Default is RANDOM |
 | "arpen" | optional | int or [variable object](#variable-object) | Armor penetration of attack; Default 0 |
 | "arpen_mult" | optional | int or [variable object](#variable-object) | Multiplier for armor penetration; Default 1 |
@@ -4119,6 +4134,8 @@ Deal damage, the same way melee attack deals damage; it can't be dodged, but it 
 | "max_hit" | optional | int or [variable object](#variable-object) | If bodypart is RANDOM, limit body part only to bodyparts that has `hit_size` smaller than this; default the size of your biggest body part |
 | "can_attack_high" | optional | bool | If true, can attack limbs with flag LIMB_UPPER, if false, such limbs are discarded; Default true |
 | "hit_roll" | optional | int or [variable object](#variable-object) | hit_roll |
+
+The source receives attack attribution and is exposed to damage-type EOCs through the normal damage pipeline. For example, `{ "npc_deal_damage": "bash", "amount": 10, "source": "u" }` damages beta with alpha as the attacker. Omitting `source` does not attribute the damage to either actor. An unavailable or non-creature explicit source produces a diagnostic and no damage.
 
 ##### Valid talkers:
 
@@ -5673,6 +5690,8 @@ You or NPC cast a spell. The spell uses fake spell data (ignore `energy_cost`, `
 | "targeted" | optional | boolean | default false; if true, allow you to aim casted spell, otherwise cast it in the location set by "loc" |
 | "loc" | optional | [variable object](#variable-object) | Set target location of the spell. If not used, target to caster's location |
 | "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if spell was casted successfully, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run |
+
+If targeted selection is cancelled or finds no target, no spell effect or cast message runs. Only `false_eocs` run, with context variable `reason` set to `target_cancelled`. Success callbacks indicate that the cast was dispatched; they do not guarantee a hit or a particular damage result.
 
 ##### Valid talkers:
 
@@ -7447,6 +7466,10 @@ Emit a field using `type: emit`
 | "u_emit", "npc_emit" | **mandatory** | string or [variable object](#variable-object) | id of emit that would be spawned |
 | "chance_mult" | optional | int, [variable object](#variable-object) or value between two | default 1; multiplies emit `chance` field on this number |
 | "target_var" | optional | [variable object](#variable-object) | if used, the emission would spawn from this location instead of you or NPC |
+
+Emission formulas evaluate with the selected emitter as alpha and the other dialogue participant as beta. Existing context variables are retained; `emit_location` contains the absolute emission coordinates, and `terrain` / `furniture` contain the IDs at that tile. Changing `target_var` changes the location, not the emitter.
+
+Other emission callers supply their actual source: creature emitters use that creature as alpha; item emitters use the item as alpha and its user/carrier, when available, as beta; vehicle emitters use the vehicle as alpha. Environmental terrain/furniture emissions have no creature actor. Formulas for environmental or unattended emitters should provide defaults for actor variables.
 
 ##### Examples
 Spawn `emit_tear_gas_toad` (spawns 3 `fd_tear_gas`) with double of it's chance ( 15 * 2 = 30% chance ) around the player

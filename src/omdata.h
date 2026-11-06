@@ -1306,11 +1306,11 @@ struct mutable_overmap_phase_remainder {
     std::optional<can_place_result> can_place(
         const overmap &om, const mutable_overmap_placement_rule_remainder &rule,
         const tripoint_om_omt &origin, om_direction::type dir,
-        const joins_tracker &unresolved
+        const joins_tracker &unresolved, bool must_be_unexplored
     ) const;
 
     satisfy_result satisfy( const overmap &om, const tripoint_om_omt &pos,
-                            const joins_tracker &unresolved );
+                            const joins_tracker &unresolved, bool must_be_unexplored = false );
 };
 
 struct mutable_overmap_phase {

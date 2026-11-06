@@ -74,13 +74,16 @@ std::optional<mutable_overmap_phase_remainder::can_place_result>
 mutable_overmap_phase_remainder::can_place(
     const overmap &om, const mutable_overmap_placement_rule_remainder &rule,
     const tripoint_om_omt &origin, om_direction::type dir,
-    const joins_tracker &unresolved
+    const joins_tracker &unresolved, bool must_be_unexplored
 ) const
 {
     int context_mandatory_joins_shortfall = 0;
 
     for( const mutable_overmap_piece_candidate &piece : rule.pieces( origin, dir ) ) {
         if( !overmap::inbounds( piece.pos ) ) {
+            return std::nullopt;
+        }
+        if( must_be_unexplored && om.is_omt_generated( piece.pos ) ) {
             return std::nullopt;
         }
         if( !overmap::is_amongst_locations( om.ter( piece.pos ), piece.overmap->locations ) ) {
@@ -138,7 +141,7 @@ mutable_overmap_phase_remainder::can_place(
 
 mutable_overmap_phase_remainder::satisfy_result mutable_overmap_phase_remainder::satisfy(
     const overmap &om, const tripoint_om_omt &pos,
-    const joins_tracker &unresolved )
+    const joins_tracker &unresolved, bool must_be_unexplored )
 {
     weighted_int_list<satisfy_result> options;
 
@@ -151,7 +154,7 @@ mutable_overmap_phase_remainder::satisfy_result mutable_overmap_phase_remainder:
                 tripoint_om_omt origin = pos - piece_pos;
 
                 if( std::optional<can_place_result> result = can_place(
-                            om, rule, origin, dir, unresolved ) ) {
+                            om, rule, origin, dir, unresolved, must_be_unexplored ) ) {
                     if( best_result < *result ) {
                         pos_dir_options.clear();
                         best_result = *result;
@@ -783,8 +786,10 @@ special_placement_result mutable_overmap_special_data::place(
     overmap &om, const tripoint_om_omt &origin, om_direction::type dir, bool /*blob*/,
     const city &cit, bool must_be_unexplored ) const
 {
-    // TODO: respect must_be_unexplored
     std::vector<tripoint_om_omt> result;
+    if( must_be_unexplored && om.is_omt_generated( origin ) ) {
+        return { result, {} };
+    }
 
     auto it = overmaps.find( root );
     if( it == overmaps.end() ) {
@@ -851,7 +856,7 @@ special_placement_result mutable_overmap_special_data::place(
     while( unresolved.any_unresolved() ) {
         tripoint_om_omt next_pos = unresolved.pick_top_priority();
         mutable_overmap_phase_remainder::satisfy_result satisfy_result =
-            phase_remaining.satisfy( om, next_pos, unresolved );
+            phase_remaining.satisfy( om, next_pos, unresolved, must_be_unexplored );
         descriptions.push_back( std::move( satisfy_result.description ) );
         const mutable_overmap_placement_rule_remainder *rule = satisfy_result.rule;
         if( rule ) {

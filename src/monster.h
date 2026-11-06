@@ -23,6 +23,7 @@
 #include "compatibility.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "type_id.h"
 #include "units_fwd.h"
 #include "value_ptr.h"
@@ -81,7 +82,14 @@ enum monster_horde_attraction {
 class monster : public Creature
 {
         friend class editmap_ui;
+        monster_uid persistent_uid;
     public:
+        int64_t persistent_id() const {
+            return persistent_uid.get();
+        }
+        void restore_persistent_id( int64_t id ) {
+            persistent_uid.load( id );
+        }
         monster();
         explicit monster( const mtype_id &id );
         monster( const mtype_id &id, const tripoint_bub_ms &pos );

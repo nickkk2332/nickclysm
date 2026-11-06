@@ -53,6 +53,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "field.h"
@@ -1585,6 +1586,10 @@ void npc::end_cancelled_task()
 
 void npc::move()
 {
+    if( g->executions().controls( *this ) ) {
+        set_moves( 0 );
+        return;
+    }
     // attitude changes this turn are the NPC's own doing, unless something more telling says why
     const npc_attitude_cause cause( npc_attitude_cause::ai );
     const int moves_at_decision = get_moves();

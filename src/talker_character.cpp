@@ -173,7 +173,7 @@ int talker_character_const::get_speed() const
 dealt_damage_instance talker_character_const::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam ) const
 {
-    return source->deal_damage( source, bp, dam );
+    return const_cast<Character *>( me_chr_const )->deal_damage( source, bp, dam );
 }
 
 void talker_character::set_pos( tripoint_bub_ms new_pos )

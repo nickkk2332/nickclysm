@@ -2438,6 +2438,11 @@ void monster::deserialize( const JsonObject &data )
 void monster::load( const JsonObject &data )
 {
     Creature::load( data );
+    int64_t saved_uid = 0;
+    data.read( "monster_uid", saved_uid );
+    restore_persistent_id( saved_uid );
+    // Allocate legacy identities when loading, before another master save can be written.
+    persistent_id();
 
     const mtype_id montype( data.get_string( "typeid", "invalid*type" ) );
     if( montype.is_valid() ) {
@@ -2611,6 +2616,7 @@ void monster::store( JsonOut &json ) const
 {
     Creature::store( json );
     json.member( "typeid", type->id );
+    json.member( "monster_uid", persistent_id() );
     json.member( "unique_name", unique_name );
     json.member( "nickname", nickname );
     json.member( "goal", goal );

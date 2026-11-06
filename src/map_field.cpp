@@ -2160,13 +2160,29 @@ std::tuple<maptile, maptile, maptile> map::get_wind_blockers( const int &winddir
     return std::make_tuple( remove_tile, remove_tile2, remove_tile3 );
 }
 
-void map::emit_field( const tripoint_bub_ms &pos, const emit_id &src, float mul )
+void map::emit_field( const tripoint_bub_ms &pos, const emit_id &src, float mul,
+                      Creature *source )
 {
-    if( !src.is_valid() ) {
+    if( !inbounds( pos ) || !src.is_valid() ) {
+        return;
+    }
+    const dialogue context( source ? get_talker_for( source ) : nullptr, nullptr );
+    emit_field( pos, src, mul, context );
+}
+
+void map::emit_field( const tripoint_bub_ms &pos, const emit_id &src, float mul,
+                      const dialogue &context )
+{
+    if( !inbounds( pos ) || !src.is_valid() ) {
         return;
     }
 
-    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    dialogue d( context.has_actor( false ) ? context.actor( false )->clone() : nullptr,
+                context.has_actor( true ) ? context.actor( true )->clone() : nullptr,
+                context.get_conditionals(), context.get_context() );
+    d.set_value( "emit_location", get_abs( pos ) );
+    d.set_value( "terrain", ter( pos ).id().str() );
+    d.set_value( "furniture", furn( pos ).id().str() );
     const float chance = src->chance( d ) * mul;
     if( x_in_y( chance, 100 ) ) {
         const int qty = chance > 100.0f ? roll_remainder( src->qty( d ) * chance / 100.0f ) : src->qty( d );

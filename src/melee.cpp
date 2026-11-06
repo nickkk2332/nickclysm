@@ -879,6 +879,8 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
     ma_event_context ma_ctx;
     ma_ctx.opponent = &t;
     ma_ctx.weapon = cur_weap.typeId();
+    ma_ctx.weapon_uid = cur_weapon ? cur_weapon->uid().get_value() : 0;
+    ma_ctx.style = martial_arts_data->selected_style();
     ma_ctx.hit = hits;
     if( !hits ) {
         int stumble_pen = stumble( *this, cur_weapon );
@@ -994,6 +996,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
 
         const ma_technique &technique = attack_id.obj();
         ma_ctx.weapon = cur_weap.typeId();
+        ma_ctx.weapon_uid = cur_weapon ? cur_weapon->uid().get_value() : 0;
         ma_ctx.technique = technique.id;
         ma_ctx.bp = target_bp.id();
         ma_ctx.crit = critical_hit;

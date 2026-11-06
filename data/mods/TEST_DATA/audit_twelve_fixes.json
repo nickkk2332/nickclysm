@@ -1,0 +1,374 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_CAST",
+    "effect": [ { "math": [ "twelve_cast_effect += 1" ] } ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_twelve_target_cast",
+    "name": "Target callback test",
+    "description": "",
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_TWELVE_CAST",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "flags": [ "RANDOM_TARGET", "SILENT", "NO_HANDS" ],
+    "min_range": 3,
+    "max_range": 3,
+    "max_level": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "test_twelve_self_cast",
+    "name": "Target callback test",
+    "description": "",
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_TWELVE_CAST",
+    "shape": "blast",
+    "valid_targets": [ "self" ],
+    "flags": [ "SILENT", "NO_HANDS" ],
+    "min_range": 0,
+    "max_range": 0,
+    "max_level": 1
+  },
+  {
+    "type": "magic_type",
+    "id": "test_twelve_magic",
+    "energy_source": "MANA",
+    "cannot_cast_flags": [ "NO_SPELLCASTING" ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_twelve_nonmagical",
+    "name": "Nonmagical eligibility test",
+    "description": "Checks ordinary casting requirements.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "self" ],
+    "flags": [ "NON_MAGICAL", "NO_HANDS", "SILENT" ],
+    "magic_type": "test_twelve_magic",
+    "base_energy_cost": 10,
+    "final_energy_cost": 10,
+    "min_damage": 1,
+    "max_damage": 1,
+    "max_level": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "test_twelve_nonmagical_condition",
+    "copy-from": "test_twelve_nonmagical",
+    "caster_condition": { "math": [ "1 == 0" ] }
+  },
+  {
+    "type": "SPELL",
+    "id": "test_twelve_nonmagical_components",
+    "copy-from": "test_twelve_nonmagical",
+    "components": "test_twelve_components"
+  },
+  {
+    "type": "SPELL",
+    "id": "test_twelve_dash",
+    "name": "Dash movement test",
+    "description": "Tests movement for every caster kind.",
+    "effect": "dash",
+    "shape": "cone",
+    "valid_targets": [ "ground", "hostile" ],
+    "flags": [ "SILENT", "NO_HANDS" ],
+    "min_range": 4,
+    "max_range": 4,
+    "min_aoe": 2,
+    "max_aoe": 2,
+    "min_damage": 10,
+    "max_damage": 10,
+    "damage_type": "pure",
+    "max_level": 1
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_DROP",
+    "effect": [
+      {
+        "target_var": { "global_val": "twelve_dropper" },
+        "set_string_var": [ { "u_val": "twelve_dropper", "default": "environment" } ]
+      },
+      { "copy_var": { "context_val": "use_location" }, "target_var": { "global_val": "twelve_drop_location" } },
+      { "npc_add_var": "twelve_dropped", "value": "yes" },
+      { "npc_location_variable": { "global_val": "twelve_drop_item_location" } }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_drop_item",
+    "name": { "str": "drop context test item" },
+    "description": "Records the real dropper and changes the item before insertion.",
+    "symbol": "x",
+    "color": "white",
+    "weight": "1 g",
+    "volume": "1 ml",
+    "material": [ "paper" ],
+    "drop_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_TEST_TWELVE_DROP" ], "consume": false }
+  },
+  {
+    "type": "emit",
+    "id": "test_twelve_emit",
+    "field": "fd_smoke",
+    "qty": 3,
+    "intensity": { "u_val": "twelve_intensity", "default": 1 },
+    "chance": 100
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_emitter",
+    "name": { "str": "context test emitter" },
+    "description": "Emits based on its own variables.",
+    "symbol": "x",
+    "color": "white",
+    "weight": "1 g",
+    "volume": "1 ml",
+    "material": [ "paper" ],
+    "drop_action": { "type": "emit_actor", "emits": [ "test_twelve_emit" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_falling_item",
+    "name": { "str": "falling test item" },
+    "description": "A non-glass item with no bash resistance.",
+    "symbol": "x",
+    "color": "white",
+    "weight": "1 kg",
+    "volume": "100 ml",
+    "material": [ "lead" ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_weightless_item",
+    "copy-from": "test_twelve_falling_item",
+    "weight": "0 g",
+    "flags": [ "ZERO_WEIGHT" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_EXAMINE",
+    "effect": [
+      { "copy_var": { "context_val": "this" }, "target_var": { "global_val": "twelve_examined_this" } },
+      { "copy_var": { "context_val": "terrain" }, "target_var": { "global_val": "twelve_examined_terrain" } },
+      { "copy_var": { "context_val": "furniture" }, "target_var": { "global_val": "twelve_examined_furniture" } },
+      {
+        "copy_var": { "context_val": "examined_layer" },
+        "target_var": { "global_val": "twelve_examined_examined_layer" }
+      }
+    ]
+  },
+  {
+    "type": "terrain",
+    "id": "test_twelve_terrain",
+    "name": "examine test floor",
+    "description": "Records terrain examination context.",
+    "symbol": ".",
+    "color": "white",
+    "move_cost": 2,
+    "flags": [ "FLAT" ],
+    "examine_action": { "type": "effect_on_condition", "effect_on_conditions": [ "EOC_TEST_TWELVE_EXAMINE" ] }
+  },
+  {
+    "type": "furniture",
+    "id": "test_twelve_furniture",
+    "name": "examine test object",
+    "description": "Records furniture examination context.",
+    "symbol": "x",
+    "color": "white",
+    "move_cost_mod": 0,
+    "required_str": -1,
+    "examine_action": { "type": "effect_on_condition", "effect_on_conditions": [ "EOC_TEST_TWELVE_EXAMINE" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_EXIT_A",
+    "effect": [ { "math": [ "twelve_exit_a += 1" ] } ]
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_twelve_exit_a",
+    "name": "exit callback test a",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
+    "exit_eoc": "EOC_TEST_TWELVE_EXIT_A",
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_EXIT_B",
+    "effect": [ { "math": [ "twelve_exit_b += 1" ] } ]
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_twelve_exit_b",
+    "name": "exit callback test b",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
+    "exit_eoc": "EOC_TEST_TWELVE_EXIT_B",
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_twelve_npc_z",
+    "object": {
+      "place_npcs": [
+        { "class": "test_talker", "unique_id": "test_twelve_npc_above", "x": 4, "y": 4, "z": 1 },
+        { "class": "test_talker", "unique_id": "test_twelve_npc_below", "x": 5, "y": 5, "z": -1 }
+      ]
+    }
+  },
+  {
+    "type": "overmap_special",
+    "id": "test_twelve_mutable",
+    "subtype": "mutable",
+    "locations": [ "land" ],
+    "occurrences": [ 0, 0 ],
+    "joins": [ "test_twelve_join" ],
+    "overmaps": {
+      "root": { "overmap": "field", "north": "test_twelve_join" },
+      "end": { "overmap": "forest", "south": "test_twelve_join" },
+      "marker": { "overmap": "forest" }
+    },
+    "root": "root",
+    "phases": [
+      [
+        {
+          "name": "two_tile_end",
+          "chunk": [
+            { "overmap": "end", "pos": [ 0, 0, 0 ], "rot": "north" },
+            { "overmap": "marker", "pos": [ 1, 0, 0 ], "rot": "north" }
+          ],
+          "max": 1,
+          "weight": 1
+        }
+      ]
+    ]
+  },
+  {
+    "type": "requirement",
+    "id": "test_twelve_components",
+    "components": [ [ [ "rock", 1 ] ] ]
+  },
+  {
+    "type": "damage_type",
+    "id": "test_twelve_damage",
+    "copy-from": "pure",
+    "name": "test source damage",
+    "ondamage_eocs": [ "EOC_TEST_TWELVE_DAMAGE" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_DAMAGE",
+    "effect": [
+      {
+        "target_var": { "global_val": "twelve_damage_source" },
+        "set_string_var": [ { "u_val": "twelve_source", "default": "environment" } ]
+      }
+    ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_twelve_magical",
+    "name": "Nonmagical eligibility test",
+    "description": "Checks ordinary casting requirements.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "self" ],
+    "flags": [ "NO_HANDS", "SILENT" ],
+    "magic_type": "test_twelve_magic",
+    "base_energy_cost": 10,
+    "final_energy_cost": 10,
+    "min_damage": 1,
+    "max_damage": 1,
+    "max_level": 1
+  },
+  {
+    "type": "mutation",
+    "id": "test_twelve_no_cast",
+    "name": "Test spellcasting suppression",
+    "description": "Tests the nonmagical exception.",
+    "points": 0,
+    "flags": [ "NO_SPELLCASTING" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_TRAP",
+    "effect": [
+      { "math": [ "twelve_dash_trap += 1" ] },
+      { "copy_var": { "context_val": "trap_location" }, "target_var": { "context_val": "dash_landing" } },
+      { "location_variable_adjust": { "context_val": "dash_landing" }, "y_adjust": 1 },
+      { "u_teleport": { "context_val": "dash_landing" }, "force_safe": true }
+    ]
+  },
+  {
+    "type": "trap",
+    "id": "test_twelve_dash_trap",
+    "copy-from": "tr_beartrap",
+    "name": "dash interruption test trap",
+    "visibility": 1000,
+    "avoidance": 1000,
+    "action": "eocs",
+    "eocs": [ "EOC_TEST_TWELVE_TRAP" ],
+    "flags": [ "UNDODGEABLE" ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_falling_charges",
+    "copy-from": "battery",
+    "weight": "1 kg",
+    "volume": "100 ml",
+    "stack_size": 1,
+    "material": [ "lead" ],
+    "subtypes": [ "AMMO" ],
+    "flags": [  ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_falling_container",
+    "copy-from": "test_twelve_falling_item",
+    "pocket_data": [ { "pocket_type": "CONTAINER", "max_contains_volume": "1 L", "max_contains_weight": "10 kg", "moves": 100 } ]
+  },
+  {
+    "type": "damage_info_order",
+    "id": "test_twelve_damage",
+    "info_display": "none"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_CAST_OK",
+    "effect": [ { "math": [ "twelve_cast_ok = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_CAST_CANCELLED",
+    "effect": [ { "math": [ "twelve_cast_cancelled = 1" ] } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_consumed_drop_item",
+    "copy-from": "test_twelve_drop_item",
+    "drop_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_TEST_TWELVE_DROP" ], "consume": true }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_TWELVE_RELOCATE",
+    "effect": [ { "npc_teleport": { "global_val": "twelve_item_destination" } } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "test_twelve_relocating_item",
+    "copy-from": "test_twelve_falling_item",
+    "use_action": { "type": "effect_on_conditions", "consume": true, "effect_on_conditions": [ "EOC_TEST_TWELVE_RELOCATE" ] }
+  }
+]

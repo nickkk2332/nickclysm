@@ -2228,7 +2228,7 @@ void spell_effect::emit( const spell &sp, Creature &caster, const tripoint_bub_m
 {
     const std::set<tripoint_bub_ms> area = spell_effect_area( sp, target, caster );
     for( const tripoint_bub_ms &aoe : area ) {
-        get_map().emit_field( aoe, emit_id( sp.effect_data() ) );
+        get_map().emit_field( aoe, emit_id( sp.effect_data() ), 1.0f, &caster );
     }
 }
 
@@ -2311,52 +2311,72 @@ void spell_effect::fling( const spell &sp, Creature &caster, const tripoint_bub_
 
 void spell_effect::dash( const spell &sp, Creature &caster, const tripoint_bub_ms &target )
 {
-    const tripoint_bub_ms source = caster.pos_bub();
-    const std::vector<tripoint_bub_ms> trajectory_local = line_to( source, target );
     ::map &here = get_map();
-    // uses abs() coordinates
+    const tripoint_bub_ms source = caster.pos_bub( here );
+    if( source == target ) {
+        return;
+    }
+    const units::angle direction = coord_to_angle( source, target );
+    const std::vector<tripoint_bub_ms> local_trajectory = line_to( source, target );
     std::vector<tripoint_abs_ms> trajectory;
-    trajectory.reserve( trajectory_local.size() );
-    for( const tripoint_bub_ms &local_point : trajectory_local ) {
-        trajectory.push_back( here.get_abs( local_point ) );
+    trajectory.reserve( local_trajectory.size() );
+    for( const tripoint_bub_ms &p : local_trajectory ) {
+        trajectory.push_back( here.get_abs( p ) );
     }
-    avatar *caster_you = caster.as_avatar();
-    auto walk_point = trajectory.begin();
-    if( here.get_bub( *walk_point ) == source ) {
-        ++walk_point;
-    }
-    // save the amount of moves the caster has so we can restore them after the dash
+
     const int cur_moves = caster.get_moves();
-    creature_tracker &creatures = get_creature_tracker();
-    while( walk_point != trajectory.end() ) {
-        if( caster_you != nullptr ) {
-            if( creatures.creature_at( here.get_bub( *walk_point ) ) ||
-                !g->walk_move( here.get_bub( *walk_point ), false ) ) {
-                if( walk_point != trajectory.begin() ) {
-                    --walk_point;
-                }
+    for( const tripoint_abs_ms &destination : trajectory ) {
+        const tripoint_abs_ms previous = caster.pos_abs();
+        if( destination == previous ) {
+            continue;
+        }
+        const tripoint_bub_ms next = here.get_bub( destination );
+        if( !here.inbounds( next ) || next.z() != caster.pos_bub( here ).z() ||
+            rl_dist( previous, destination ) != 1 ||
+            get_creature_tracker().creature_at( next ) ) {
+            break;
+        }
+
+        if( caster.is_avatar() ) {
+            if( !g->walk_move( next, false ) ) {
                 break;
-            } else if( walk_point != trajectory.begin() ) {
-                sp.create_field( here.get_bub( *( walk_point - 1 ) ), caster );
+            }
+        } else if( npc *person = caster.as_npc() ) {
+            if( !here.passable( next ) || !person->can_move_to( next, true ) ) {
+                break;
+            }
+            person->move_to( next, true );
+        } else if( monster *mon = caster.as_monster() ) {
+            if( !mon->move_effects( false ) || !mon->move_to( next ) ) {
+                break;
+            }
+            here.creature_in_field( *mon );
+        } else {
+            break;
+        }
+
+        if( caster.pos_abs() != previous ) {
+            sp.create_field( here.get_bub( previous ), caster );
+            if( caster.is_avatar() ) {
                 g->draw_ter();
             }
         }
-        ++walk_point;
-    }
-    if( walk_point == trajectory.end() ) {
-        // we want the last tripoint in the actually reached trajectory
-        --walk_point;
+        // A trap, ramp or other movement effect may have moved or killed the caster.
+        if( caster.is_dead_state() || caster.pos_abs() != destination ) {
+            break;
+        }
     }
     caster.set_moves( cur_moves );
+    if( caster.is_dead_state() ) {
+        return;
+    }
 
+    const tripoint_bub_ms reached = caster.pos_bub( here );
     tripoint_bub_ms far_target;
-    calc_ray_end( coord_to_angle( source, target ), sp.aoe( caster ),
-                  here.get_bub( *walk_point ),
-                  far_target );
-
+    calc_ray_end( direction, sp.aoe( caster ), reached, far_target );
     spell_effect::override_parameters params( sp, caster );
     params.range = sp.aoe( caster );
-    const std::set<tripoint_bub_ms> hit_area = spell_effect_cone_range_override( params, source,
+    const std::set<tripoint_bub_ms> hit_area = spell_effect_cone_range_override( params, reached,
             far_target );
     damage_targets( sp, caster, hit_area );
 }

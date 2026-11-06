@@ -890,7 +890,7 @@ class item
          * @param map A map object associated with that position.
          * @return true if the item was destroyed during placement.
          */
-        bool on_drop( const tripoint_bub_ms &pos, map &map );
+        bool on_drop( const tripoint_bub_ms &pos, map &map, Character *dropper = nullptr );
 
         /**
          * Consume a specific amount of items of a specific type.

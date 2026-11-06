@@ -22,6 +22,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "enums.h"
+#include "execution_runtime.h"
 #include "field.h"
 #include "field_type.h"
 #include "game.h"
@@ -994,6 +995,10 @@ bool monster::die_if_drowning( const tripoint_bub_ms &at_pos, const int chance )
 // 4) Sound-based tracking
 void monster::move()
 {
+    if( g->executions().controls( *this ) ) {
+        set_moves( 0 );
+        return;
+    }
     map &here = get_map();
 
     add_msg_debug( debugmode::DF_MONMOVE,

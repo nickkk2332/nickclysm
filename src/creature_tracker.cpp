@@ -30,6 +30,25 @@ static const efftype_id effect_ridden( "ridden" );
 
 #define dbg(x) DebugLog((x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
 
+namespace
+{
+void erase_monster_uid( std::unordered_map<int64_t, shared_ptr_fast<monster>> &index,
+                        const monster &who )
+{
+    if( index.erase( who.persistent_id() ) != 0 ) {
+        return;
+    }
+    // Direct assignment creates a new identity without updating this auxiliary index.
+    for( auto it = index.begin(); it != index.end(); ) {
+        if( it->second.get() == &who ) {
+            it = index.erase( it );
+        } else {
+            ++it;
+        }
+    }
+}
+} // namespace
+
 creature_tracker::creature_tracker() = default;
 
 creature_tracker::~creature_tracker() = default;
@@ -67,6 +86,21 @@ shared_ptr_fast<monster> creature_tracker::from_temporary_id( const int id )
     }
 }
 
+shared_ptr_fast<monster> creature_tracker::find_by_uid( int64_t id ) const
+{
+    const auto it = monsters_by_uid.find( id );
+    if( it != monsters_by_uid.end() && it->second->persistent_id() == id ) {
+        return it->second;
+    }
+    // A direct replacement/assignment of a monster invalidates the old identity.
+    for( const auto &mon : monsters_list ) {
+        if( mon->persistent_id() == id ) {
+            return mon;
+        }
+    }
+    return {};
+}
+
 bool creature_tracker::add( const shared_ptr_fast<monster> &critter_ptr )
 {
     cata_assert( critter_ptr );
@@ -94,6 +128,12 @@ bool creature_tracker::add( const shared_ptr_fast<monster> &critter_ptr )
         return false;
     }
 
+    const int64_t uid = critter.persistent_id();
+    if( monsters_by_uid.count( uid ) != 0 ) {
+        debugmsg( "Duplicate monster UID %lld", static_cast<long long>( uid ) );
+        return false;
+    }
+    monsters_by_uid.emplace( uid, critter_ptr );
     monsters_list.emplace_back( critter_ptr );
     monsters_by_location[critter.pos_abs()] = critter_ptr;
     return true;
@@ -178,11 +218,13 @@ void creature_tracker::remove( const monster &critter )
 
     remove_from_location_map( critter );
     removed_this_turn_.emplace( *iter );
+    erase_monster_uid( monsters_by_uid, critter );
     monsters_list.erase( iter );
 }
 
 void creature_tracker::clear()
 {
+    monsters_by_uid.clear();
     monsters_list.clear();
     monsters_by_location.clear();
     removed_this_turn_.clear();
@@ -193,7 +235,9 @@ void creature_tracker::clear()
 void creature_tracker::rebuild_cache()
 {
     monsters_by_location.clear();
+    monsters_by_uid.clear();
     for( const shared_ptr_fast<monster> &mon_ptr : monsters_list ) {
+        monsters_by_uid.emplace( mon_ptr->persistent_id(), mon_ptr );
         monsters_by_location[mon_ptr->pos_abs()] = mon_ptr;
     }
 }
@@ -292,6 +336,7 @@ void creature_tracker::remove_dead()
         monster *const critter = iter->get();
         if( critter->is_dead() ) {
             remove_from_location_map( *critter );
+            erase_monster_uid( monsters_by_uid, *critter );
             iter = monsters_list.erase( iter );
         } else {
             ++iter;

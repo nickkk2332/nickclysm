@@ -2271,6 +2271,11 @@ void options_manager::add_options_interface()
              1, 10000, 255
            );
 
+        add( "EXECUTION_NARRATION", page_id, to_translation( "Show execution narration" ),
+             to_translation( "Show perceived narration for execution sequences.  Movement, effects, damage, and timing continue when this is disabled." ),
+             true
+           );
+
         add( "NO_UNKNOWN_COMMAND_MSG", page_id,
              to_translation( "Suppress \"Unknown command\" messages" ),
              to_translation( "If true, pressing a key with no set function will not display a notice in the chat log." ),

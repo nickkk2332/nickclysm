@@ -33,6 +33,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "field.h"
@@ -2514,6 +2515,12 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
     if( is_dead_state() || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         return;
     }
+    if( source == nullptr && g ) {
+        source = g->executions().secondary_damage_source();
+    }
+    if( g ) {
+        g->executions().notify_damage( *this, dam );
+    }
     // Ensure we can try to get at what hit us.
     reset_pathfinding_cd();
     hp -= dam;
@@ -3077,11 +3084,11 @@ void monster::process_turn()
                 if( has_effect( effect_emp ) ) {
                     continue; // don't emit electricity while EMPed
                 } else if( has_effect( effect_supercharged ) ) {
-                    here.emit_field( pos_bub(), emit_emit_shock_cloud_big );
+                    here.emit_field( pos_bub(), emit_emit_shock_cloud_big, 1.0f, this );
                     continue;
                 }
             }
-            here.emit_field( pos_bub(), emid );
+            here.emit_field( pos_bub(), emid, 1.0f, this );
         }
     }
 

@@ -1168,5 +1168,16 @@
     "activity_level": "NO_EXERCISE",
     "based_on": "speed",
     "verb": "aiming the artillery"
+  },
+  {
+    "id": "ACT_EXECUTION",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "following a sequence",
+    "rooted": false,
+    "based_on": "neither",
+    "can_resume": false,
+    "refuel_fires": false,
+    "auto_needs": false
   }
 ]

@@ -21,6 +21,7 @@
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "debug.h"
+#include "execution_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "hash_utils.h"
@@ -146,6 +147,7 @@ void game::serialize_json( std::ostream &fout )
     json.member( "achievements_tracker", *achievements_tracker_ptr );
 
     json.member( "player", u );
+    json.member( "executions", executions() );
     json.member( "inactive_global_effect_on_condition_vector",
                  inactive_global_effect_on_condition_vector );
 
@@ -251,6 +253,7 @@ void game::unserialize( std::string fin )
 
 void game::unserialize_impl( const JsonObject &data )
 {
+    executions().clear();
     int tmpturn = 0;
     int tmpcalstart = 0;
     int tmprun = 0;
@@ -314,6 +317,7 @@ void game::unserialize_impl( const JsonObject &data )
     data.read( "kill_tracker", *kill_tracker_ptr );
 
     data.read( "player", u );
+    data.read( "executions", executions() );
     data.read( "inactive_global_effect_on_condition_vector",
                inactive_global_effect_on_condition_vector );
     //load queued_eocs
@@ -1640,6 +1644,10 @@ void game::unserialize_master( const JsonValue &jv )
             next_mission_id = jsin.get_int();
         } else if( name == "next_npc_id" ) {
             next_npc_id.deserialize( jsin );
+        } else if( name == "next_monster_uid" ) {
+            int64_t saved = 1;
+            jsin.read( saved );
+            next_monster_uid = std::max( next_monster_uid, saved );
         } else if( name == "next_item_uid" ) {
             jsin.read( next_item_uid );
         } else if( name == "active_missions" ) {
@@ -1688,6 +1696,10 @@ void game::unserialize_dimension_data( const JsonValue &jv )
             overmap_buffer.deserialize_placed_unique_specials( jsin );
         } else if( name == "power_networks" ) {
             power_networks().deserialize( jsin );
+        } else if( name == "next_monster_uid" ) {
+            int64_t saved = 1;
+            jsin.read( saved );
+            next_monster_uid = std::max( next_monster_uid, saved );
         } else if( name == "next_item_uid" ) {
             // Dimension travel saves this with the maps, but not the master save
             int64_t saved = 0;
@@ -1921,6 +1933,7 @@ void game::serialize_master( std::ostream &fout )
         json.member( "next_mission_id", next_mission_id );
         json.member( "next_npc_id", next_npc_id );
         json.member( "next_item_uid", next_item_uid );
+        json.member( "next_monster_uid", next_monster_uid );
 
         json.member( "active_missions" );
         mission::serialize_all( json );
@@ -1960,6 +1973,7 @@ void game::serialize_dimension_data( std::ostream &fout )
         // counter; without this a crash after travel would leave the counter behind the uids of
         // items saved in the maps
         json.member( "next_item_uid", next_item_uid );
+        json.member( "next_monster_uid", next_monster_uid );
 
         json.end_object();
     } catch( const JsonError &e ) {
@@ -2089,6 +2103,7 @@ void creature_tracker::deserialize( const JsonArray &ja )
 {
     monsters_list.clear();
     monsters_by_location.clear();
+    monsters_by_uid.clear();
     for( JsonValue jv : ja ) {
         // TODO: would be nice if monster had a constructor using JsonIn or similar, so this could be one statement.
         shared_ptr_fast<monster> mptr = make_shared_fast<monster>();

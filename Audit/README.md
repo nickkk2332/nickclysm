@@ -1,5 +1,13 @@
 # nickclysm engine audit
 
+**Follow-up:** [Twelve correctness fixes](correctness-fixes.md) address the concrete observations from the powers, interactivity and worldgen audits. This includes protection of non-root mutable-special pieces, previously left open under OMAP-B01. See that record for validation and scope.
+
+**Executions:** the [implementation design](plans/executions/README.md) now has a
+[first-milestone status](plans/executions/04-implementation-status.md) and a supported
+[JSON authoring guide](../doc/JSON/EXECUTIONS.md).
+The [narration follow-up](plans/executions/05-narration-milestone.md) adds owned message
+appends, hearing audiences, and presentation controls.
+
 This directory is a static audit of the nickclysm C++ engine at commit `a1a646d6`, dated 2026-11-01. It looks for three things: missing JSON bindings and EOC features (behaviour that content should be able to drive but cannot); bugs, oversights and quirks; and obvious performance improvements. Every finding cites the `file:line` locations it is based on, so each claim can be checked against the source.
 
 ## At a glance
@@ -331,7 +339,7 @@ Bug sweep:
 | MGEN-B05 | fixed | `9ff01839`, `359d63d0`, `737dcfd6` | `tests/audit_mapgen_test.cpp` |
 | MGEN-B06 | partial | `d34e62ee` | `tests/audit_mapgen_test.cpp`. Still open: the consistency check between variable-weight mapgens and their predecessors (`road_nesw_manhole` needs its own data fix first) |
 | MGEN-B07 | fixed | `38d80875`, `6755a3ea` | `tests/audit_mapgen_test.cpp` |
-| OMAP-B01 | partial | `5322035b` | `tests/audit_overmap_worldgen_test.cpp`. Still open: the non-root pieces of mutable specials still ignore "must be unexplored" |
+| OMAP-B01 | fixed in working tree | `5322035b` + follow-up | `tests/audit_overmap_worldgen_test.cpp` and `tests/audit_worldgen_correctness_test.cpp`. Non-root mutable pieces now honor unexplored-only placement; see [scope](correctness-fixes.md). |
 | OMAP-B02 | partial | `e1f926a7` | `tests/audit_overmap_worldgen_test.cpp`. Still open: generating overmaps to find a mission target that does not exist yet (too costly) |
 | OMAP-B03 | fixed | `ab91d69d` | `tests/audit_overmap_worldgen_test.cpp` |
 | OMAP-B04 | fixed | `1d3f3350`, `3d7bce37` | `tests/audit_overmap_worldgen_test.cpp` |

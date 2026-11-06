@@ -48,6 +48,8 @@
 #include "emit.h"
 #include "end_screen.h"
 #include "event_statistics.h"
+#include "execution.h"
+#include "execution_runtime.h"
 #include "faction.h"
 #include "faction_camp.h"
 #include "fault.h"
@@ -424,6 +426,7 @@ void DynamicDataLoader::initialize()
     add( "fault_group", &faults::load_group );
     add( "relic_procgen_data", &relic_procgen_data::load_relic_procgen_data );
     add( "effect_on_condition", &effect_on_conditions::load );
+    add( "execution", &executions::load );
     add( "field_type", &field_types::load );
     add( "field_type_migration", &field_type_migrations::load );
     add( "weather_type", &weather_types::load );
@@ -843,6 +846,10 @@ void DynamicDataLoader::unload_data()
     enchantment::reset();
     event_statistic::reset();
     effect_on_conditions::reset();
+    executions::reset();
+    if( g ) {
+        g->executions().clear();
+    }
     event_transformation::reset();
     faction_mission::reset();
     faction_template::reset();
@@ -1219,6 +1226,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Anatomies" ), &anatomy::check_consistency },
             { _( "Magic types" ), &magic_type::check_consistency },
             { _( "Spells" ), &spell_type::check_consistency },
+            { _( "Executions" ), &executions::check },
             { _( "Spell migration" ), &spell_migration::check },
             { _( "Transformations" ), &event_transformation::check_consistency },
             { _( "Statistics" ), &event_statistic::check_consistency },

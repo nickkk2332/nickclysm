@@ -1289,14 +1289,11 @@ bool spell::can_cast( const Character &guy ) const
     if( guy.has_flag( json_flag_CANNOT_ATTACK ) ) {
         return false;
     }
-    if( has_flag( spell_flag::NON_MAGICAL ) ) {
-        return true;
-    };
-
     if( type->magic_type.has_value() ) {
         for( std::string cannot_cast_flag_string : type->magic_type.value()->cannot_cast_flags ) {
             json_character_flag cannot_cast_flag( cannot_cast_flag_string );
-            if( guy.has_flag( cannot_cast_flag ) ) {
+            if( guy.has_flag( cannot_cast_flag ) &&
+                !( has_flag( spell_flag::NON_MAGICAL ) && cannot_cast_flag.str() == "NO_SPELLCASTING" ) ) {
                 return false;
             }
         }

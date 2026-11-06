@@ -35,6 +35,7 @@
 #include "creature_tracker.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect_source.h"
 #include "enum_traits.h"
 #include "enums.h"
@@ -6288,14 +6289,15 @@ void vehicle::idle( map &here, bool on_map )
         if( pt.is_unavailable() || !pt.enabled ) {
             continue;
         }
+        const dialogue emitter_context( get_talker_for( this ), nullptr );
         for( const emit_id &e : pt.info().emissions ) {
-            here.emit_field( bub_part_pos( here, pt ), e );
+            here.emit_field( bub_part_pos( here, pt ), e, 1.0f, emitter_context );
         }
         for( const emit_id &e : pt.info().exhaust ) {
             if( exhaust_and_muffle.first == -1 ) {
-                here.emit_field( bub_part_pos( here, pt ), e );
+                here.emit_field( bub_part_pos( here, pt ), e, 1.0f, emitter_context );
             } else {
-                here.emit_field( exhaust_dest( &here, exhaust_and_muffle.first ), e );
+                here.emit_field( exhaust_dest( &here, exhaust_and_muffle.first ), e, 1.0f, emitter_context );
             }
         }
     }

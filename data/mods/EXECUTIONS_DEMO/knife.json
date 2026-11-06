@@ -1,0 +1,40 @@
+[
+  {
+    "type": "execution",
+    "id": "demo_knife_stagger",
+    "copy-from": "execution_knife_stagger",
+    "require_weapon": true
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_demo_knife",
+    "copy-from": "knife_combat",
+    "name": { "str": "execution demonstration knife" },
+    "description": "A bayonet configured to demonstrate a short stagger sequence after a nonfatal critical hit on a humanoid.",
+    "techniques": [ "tec_execution_demo_stagger" ]
+  },
+  {
+    "type": "technique",
+    "id": "tec_execution_demo_stagger",
+    "name": "Wounding stagger",
+    "melee_allowed": true,
+    "crit_tec": true,
+    "weighting": 100,
+    "attack_vectors": [ "vector_null" ],
+    "weapon_categories_allowed": [ "KNIVES" ],
+    "post_hit_eocs": [ "EOC_EXECUTION_DEMO_STAGGER" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_EXECUTION_DEMO_STAGGER",
+    "condition": {
+      "and": [
+        { "math": [ "_hit == 1" ] },
+        { "math": [ "_killed == 0" ] },
+        { "math": [ "_crit == 1" ] },
+        { "npc_bodytype": "human" }
+      ]
+    },
+    "effect": [ { "start_execution": "demo_knife_stagger" } ]
+  }
+]

@@ -103,6 +103,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_runtime.h"
 #include "faction.h"
 #include "fault.h"
 #include "field.h"
@@ -723,6 +724,8 @@ void game::setup()
     behavior::clear_evaluation_cache();
     next_mission_id = 1;
     next_item_uid = 1;
+    next_monster_uid = 1;
+    executions().clear();
     uquit = QUIT_NO;   // We haven't quit the game
     bVMonsterLookFire = true;
 
@@ -3764,6 +3767,27 @@ character_id game::assign_npc_id()
     character_id ret = next_npc_id;
     ++next_npc_id;
     return ret;
+}
+
+execution_manager &game::executions()
+{
+    return *execution_manager_ptr;
+}
+
+int64_t game::assign_monster_uid()
+{
+    if( next_monster_uid <= 0 || next_monster_uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Monster identity space exhausted" );
+    }
+    return next_monster_uid++;
+}
+
+void game::reserve_monster_uid( int64_t uid )
+{
+    if( uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Invalid saved monster identity" );
+    }
+    next_monster_uid = std::max( next_monster_uid, uid + 1 );
 }
 
 int64_t game::assign_item_uid()
@@ -9991,6 +10015,7 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     if( !save_dimension_data() || !save_maps() ) {
         return false;
     }
+    executions().cancel_all( "dimension_changed" );
     // Who rides the vehicle, before anyone is unboarded or unloaded
     std::vector<std::pair<character_id, tripoint_abs_ms>> passengers;
     if( veh != nullptr ) {
@@ -11826,7 +11851,7 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
         // if the player has moved omt then might trigger an EOC for that OMT
         if( !past_ter->get_exit_EOC().is_null() ) {
             dialogue d( get_talker_for( get_avatar() ), nullptr );
-            effect_on_condition_id eoc = cur_ter->get_exit_EOC();
+            effect_on_condition_id eoc = past_ter->get_exit_EOC();
             eoc->activate_activation_only( d, "OMT movement" );
         }
 

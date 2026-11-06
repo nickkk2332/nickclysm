@@ -77,7 +77,7 @@ static const itype_id itype_glass_shard( "glass_shard" );
 static const json_character_flag json_flag_HARDTOHIT( "HARDTOHIT" );
 
 static void drop_or_embed_projectile( map *here, const dealt_projectile_attack &attack,
-                                      projectile &proj_arg )
+                                      projectile &proj_arg, Creature *origin )
 {
     const projectile &proj = attack.proj;
     const item &drop_item = proj.get_drop();
@@ -182,7 +182,8 @@ static void drop_or_embed_projectile( map *here, const dealt_projectile_attack &
 
         map &here = get_map();
         if( do_drop ) {
-            craft_relocated( here.add_item_or_charges_ret_loc( attack.end_point, dropped_item ) );
+            craft_relocated( here.add_item_or_charges_ret_loc( attack.end_point, dropped_item, true,
+                             origin ? origin->as_character() : nullptr ) );
         }
 
         if( effects.count( ammo_effect_HEAVY_HIT ) ) {
@@ -931,7 +932,7 @@ void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_
 
     static emit_id muzzle_smoke( "emit_smaller_smoke_plume" );
     if( proj_effects.count( ammo_effect_MUZZLE_SMOKE ) ) {
-        here->emit_field( trajectory.front(), muzzle_smoke );
+        here->emit_field( trajectory.front(), muzzle_smoke, 1.0f, origin );
     }
 
     if( !no_overshoot && range < extend_to_range ) {
@@ -1234,7 +1235,7 @@ void projectile_attack( dealt_projectile_attack &attack, const projectile &proj_
             tp = prev_point;
         }
 
-        drop_or_embed_projectile( here, attack, proj );
+        drop_or_embed_projectile( here, attack, proj, origin );
 
         int dealt_damage = attack.dealt_dam.total_damage();
         apply_ammo_effects( null_source ? nullptr : origin, tp, proj.proj_effects, dealt_damage );

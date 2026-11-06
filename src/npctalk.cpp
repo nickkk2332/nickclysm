@@ -65,6 +65,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_runtime.h"
 #include "explosion.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -2779,9 +2780,6 @@ const_dialogue::const_dialogue( const const_dialogue &d )
     }
     if( has_beta ) {
         beta = d.const_actor( true )->const_clone();
-    }
-    if( !has_alpha && !has_beta ) {
-        debugmsg( "Constructed a dialogue with no actors!  %s", get_callstack() );
     }
     if( d.context.has_value() ) {
         context = *d.context;
@@ -6493,6 +6491,40 @@ talk_effect_fun_t::func f_signal_hordes( const JsonObject &jo, std::string_view 
     };
 }
 
+talk_effect_fun_t::func f_start_execution( const JsonObject &jo, std::string_view member,
+        std::string_view source )
+{
+    const str_or_var id = get_str_or_var( jo.get_member( member ), member );
+    const auto success = load_eoc_vector( jo, "true_eocs", source );
+    const auto failure = load_eoc_vector( jo, "false_eocs", source );
+    return [id, success, failure]( dialogue & d ) {
+        const execution_start_result result = g->executions().start( execution_id( id.evaluate( d ) ), d );
+        d.set_value( "execution_instance", std::to_string( result.id ) );
+        d.set_value( "reason", result.reason );
+        run_eoc_vector( result.id != 0 ? success : failure, d );
+    };
+}
+
+talk_effect_fun_t::func f_cancel_execution( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    const str_or_var id = get_str_or_var( jo.get_member( member ), member );
+    return [id]( dialogue & d ) {
+        bool cancelled = false;
+        try {
+            const std::string value = id.evaluate( d );
+            size_t consumed = 0;
+            const int64_t parsed = std::stoll( value, &consumed );
+            if( consumed == value.size() ) {
+                cancelled = g->executions().cancel( parsed );
+            }
+        } catch( const std::exception & ) {
+            // A stale or absent handle is a normal refusal.
+        }
+        d.set_value( "reason", cancelled ? "cancelled" : "not_found" );
+    };
+}
+
 talk_effect_fun_t::func f_cast_spell( const JsonObject &jo, std::string_view member,
                                       std::string_view src, bool is_npc )
 {
@@ -6547,10 +6579,14 @@ talk_effect_fun_t::func f_cast_spell( const JsonObject &jo, std::string_view mem
             }
             spell sp = fake.get_spell( *caster, 0 );
             if( targeted ) {
-                if( std::optional<tripoint_bub_ms> target = sp.select_target( caster ) ) {
-                    sp.cast_all_effects( *caster, *target );
-                    caster->add_msg_player_or_npc( fake.trigger_message, fake.npc_trigger_message );
+                const std::optional<tripoint_bub_ms> target = sp.select_target( caster );
+                if( !target ) {
+                    d.set_value( "reason", "target_cancelled" );
+                    run_eoc_vector( false_eocs, d );
+                    return;
                 }
+                sp.cast_all_effects( *caster, *target );
+                caster->add_msg_player_or_npc( fake.trigger_message, fake.npc_trigger_message );
             } else {
                 const tripoint_bub_ms target_pos = loc_var
                                                    ? get_map().get_bub( read_var_value( *loc_var, d ).tripoint() )
@@ -9305,12 +9341,16 @@ talk_effect_fun_t::func f_deal_damage( const JsonObject &jo, std::string_view me
     dbl_or_var dbl_max_hit = get_dbl_or_var( jo, "max_hit", false, -1 );
     dbl_or_var dbl_hit_roll = get_dbl_or_var( jo, "hit_roll", false, 0 );
     bool can_attack_high = jo.get_bool( "can_attack_high", true );
+    const std::string source = jo.get_string( "source", "none" );
+    if( source != "none" && source != "u" && source != "npc" ) {
+        jo.throw_error_at( "source", "expected none, u or npc" );
+    }
 
     str_or_var bodypart;
     optional( jo, false, "bodypart", bodypart, "RANDOM" );
 
     return [is_npc, dmg_type, dmg_amount, bodypart, arpen, arpen_mult, dmg_mult, dbl_min_hit,
-            dbl_max_hit, dbl_hit_roll, can_attack_high]( dialogue & d ) {
+            dbl_max_hit, dbl_hit_roll, can_attack_high, source]( dialogue & d ) {
 
         damage_instance dmg_inst;
         damage_type_id damage_type = damage_type_id( dmg_type.evaluate( d ) );
@@ -9339,7 +9379,16 @@ talk_effect_fun_t::func f_deal_damage( const JsonObject &jo, std::string_view me
 
         dmg_inst.add_damage( damage_type, dmg_amount.evaluate( d ), arpen.evaluate( d ),
                              arpen_mult.evaluate( d ), dmg_mult.evaluate( d ), 1, 1 );
-        d.actor( is_npc )->deal_damage( d.actor( is_npc )->get_creature(), bp, dmg_inst );
+        Creature *attacker = nullptr;
+        if( source != "none" ) {
+            const bool source_is_npc = source == "npc";
+            if( !d.has_actor( source_is_npc ) ||
+                !( attacker = d.actor( source_is_npc )->get_creature() ) ) {
+                debugmsg( "deal_damage: source %s is not a creature.  %s", source, d.get_callstack() );
+                return;
+            }
+        }
+        d.actor( is_npc )->deal_damage( attacker, bp, dmg_inst );
     };
 }
 
@@ -9851,7 +9900,13 @@ talk_effect_fun_t::func f_emit( const JsonObject &jo, std::string_view member,
             target_pos = read_var_value( *target_var, d ).tripoint();
         }
         tripoint_bub_ms target = here.get_bub( target_pos );
-        here.emit_field( target, emit_id( emit.evaluate( d ) ), chance_mult.evaluate( d ) );
+        dialogue emitter_context( d );
+        if( is_npc ) {
+            emitter_context = dialogue( d.actor( true )->clone(), d.has_actor( false ) ?
+                                        d.actor( false )->clone() : nullptr, d.get_conditionals(), d.get_context() );
+        }
+        here.emit_field( target, emit_id( emit.evaluate( d ) ), chance_mult.evaluate( d ),
+                         emitter_context );
     };
 }
 
@@ -10521,6 +10576,8 @@ parsers = {
     { "u_deal_damage", "npc_deal_damage", jarg::member, &talk_effect_fun::f_deal_damage },
     { "u_bulk_donate", "npc_bulk_donate", jarg::member, &talk_effect_fun::f_bulk_trade_accept },
     { "u_cast_spell", "npc_cast_spell", jarg::member, &talk_effect_fun::f_cast_spell },
+    { "start_execution", jarg::member, &talk_effect_fun::f_start_execution },
+    { "cancel_execution", jarg::member, &talk_effect_fun::f_cancel_execution },
     { "u_map_run_eocs", "npc_map_run_eocs", jarg::member, &talk_effect_fun::f_map_run_eocs },
     { "u_map_run_item_eocs", "npc_map_run_item_eocs", jarg::member, &talk_effect_fun::f_map_run_item_eocs },
     { "u_pickup_items", "npc_pickup_items", jarg::object, &talk_effect_fun::f_pickup_items },

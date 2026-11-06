@@ -17,6 +17,7 @@ horde_entity::horde_entity( const monster &original )
     moves = original.get_moves();
     type_id = original.type->id.id();
     monster_data = std::make_unique<monster>( original );
+    monster_data->restore_persistent_id( original.persistent_id() );
 }
 
 horde_entity::horde_entity( const mtype_id &original )

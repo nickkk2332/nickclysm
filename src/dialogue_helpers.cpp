@@ -32,10 +32,16 @@ diag_value const *maybe_read_var_value( const var_info &info, const_dialogue con
         case var_type::context:
             return d.maybe_get_value( info.name );
         case var_type::u: {
+            if( !d.has_actor( false ) ) {
+                return nullptr;
+            }
             const_talker const *alpha = d.const_actor( false );
             return alpha ? alpha->maybe_get_value( info.name ) : nullptr;
         }
         case var_type::npc: {
+            if( !d.has_actor( true ) ) {
+                return nullptr;
+            }
             const_talker const *beta = d.const_actor( true );
             return beta ? beta->maybe_get_value( info.name ) : nullptr;
         }

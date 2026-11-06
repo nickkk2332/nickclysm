@@ -1,0 +1,70 @@
+[
+  {
+    "type": "execution",
+    "id": "execution_knife_stagger",
+    "name": "Wounded stagger",
+    "revision": 1,
+    "required_roles": [ "actor", "target" ],
+    "control": { "actor": "free", "target": "scripted" },
+    "max_ticks": 12,
+    "max_step_entries": 32,
+    "max_distance": 12,
+    "interruptions": { "external_damage": "interrupt", "displacement": "interrupt" },
+    "start": "stagger",
+    "steps": {
+      "stagger": {
+        "action": {
+          "op": "move",
+          "role": "target",
+          "direction": "backward",
+          "tiles": [ 1, 4 ],
+          "ticks_per_tile": 1,
+          "first_step_after_ticks": 1,
+          "stop_before_unsupported": true,
+          "collision": "stop",
+          "store_result": "stagger"
+        },
+        "next": "edge"
+      },
+      "edge": {
+        "next": {
+          "if": { "execution_can_fall": { "role": "target", "direction": "backward" } },
+          "then": { "chance": 0.5, "then": "tumble", "else": "wait" },
+          "else": "wait"
+        }
+      },
+      "tumble": {
+        "action": {
+          "op": "move",
+          "role": "target",
+          "direction": "backward",
+          "tiles": 1,
+          "first_step_after_ticks": 0,
+          "stop_before_unsupported": false,
+          "narration": { "on_moved": { "text": "<target_name> tumbles backward into open air!", "audience": "visible_action" } },
+          "store_result": "tumble"
+        },
+        "next": { "result": "tumble", "cases": { "moved": "resolve" }, "otherwise": "wait" }
+      },
+      "wait": { "action": { "op": "message", "text": "<target_name> stops, swaying.", "entry": "wounded" }, "next": "wounded_beats" },
+      "wounded_beats": {
+        "repeat": { "count": 2, "interval_ticks": 1, "first_after_ticks": 1 },
+        "action": {
+          "op": "message",
+          "pool": {
+            "avoid_immediate_repeat": true,
+            "entries": [
+              { "text": "<target_name> coughs up blood and grasps weakly at the knife." },
+              { "text": "<target_name> stares at <actor_name>, wide-eyed." },
+              { "text": "<target_name>'s jaw moves silently." }
+            ]
+          },
+          "entry": "wounded_continuation",
+          "append_to": "wounded"
+        },
+        "next": "resolve"
+      },
+      "resolve": { "end": "wound_sequence_resolved" }
+    }
+  }
+]

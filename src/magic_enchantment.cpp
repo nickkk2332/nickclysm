@@ -1519,7 +1519,7 @@ void enchant_cache::activate_passive( Character &guy ) const
                                        guy.get_num_free_dodges() ) - guy.get_num_free_dodges() );
 
     if( emitter ) {
-        get_map().emit_field( guy.pos_bub(), *emitter );
+        get_map().emit_field( guy.pos_bub(), *emitter, 1.0f, &guy );
     }
     for( const std::pair<const efftype_id, int> &eff : ench_effects ) {
         guy.add_effect( eff.first, 1_seconds, false, eff.second );
