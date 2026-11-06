@@ -46,6 +46,7 @@
 #include "fungal_effects.h"
 #include "game.h"
 #include "game_constants.h"
+#include "incapacitation.h"
 #include "input_context.h"
 #include "item.h"
 #include "item_location.h"
@@ -1072,7 +1073,8 @@ int Character::get_sleep_deprivation() const
 
 bool Character::is_deaf() const
 {
-    return get_effect_int( effect_deaf ) > 2 || worn_with_flag( flag_DEAF ) ||
+    return incapacitation::unconscious( *this ) ||
+           get_effect_int( effect_deaf ) > 2 || worn_with_flag( flag_DEAF ) ||
            has_flag( json_flag_DEAF ) || has_effect( effect_narcosis ) ||
            ( has_trait( trait_M_SKIN3 ) &&
              get_map().has_flag_ter_or_furn( ter_furn_flag::TFLAG_FUNGUS, pos_bub() )
@@ -1971,7 +1973,7 @@ bool Character::is_hibernating() const
 
 bool Character::is_blind() const
 {
-    return worn_with_flag( flag_BLIND ) ||
+    return incapacitation::unconscious( *this ) || worn_with_flag( flag_BLIND ) ||
            has_flag( json_flag_BLIND ) || get_limb_score( limb_score_vision ) <= 0;
 }
 
@@ -2766,6 +2768,7 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
     }
 
     execution_combat::record_hp_loss( *this, dam_to_bodypart );
+    incapacitation::wake_on_damage( *this, dam_to_bodypart );
     if( g ) {
         if( source == nullptr ) {
             source = g->executions().secondary_damage_source();
@@ -3075,6 +3078,7 @@ void Character::hurtall( int dam, Creature *source, bool disturb /*= true*/ )
         // Don't use apply_damage here or it will annoy the player with 6 queries
         const int dam_to_bodypart = std::min( dam, get_part_hp_cur( bp ) );
         mod_part_hp_cur( bp, - dam_to_bodypart );
+        incapacitation::wake_on_damage( *this, dam_to_bodypart );
 
         if( g ) {
             g->executions().notify_damage( *this, dam_to_bodypart );
@@ -3311,6 +3315,9 @@ float Character::adjust_for_focus( float amount ) const
 
 bool Character::can_hear( const tripoint_bub_ms &source, const int volume ) const
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     if( is_deaf() ) {
         return false;
     }

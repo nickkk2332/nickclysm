@@ -44,7 +44,7 @@ struct execution_narration {
 };
 
 struct execution_action {
-    enum class kind { none, message, move, eoc, effect, damage } type = kind::none;
+    enum class kind { none, message, move, eoc, effect, damage, incapacitate } type = kind::none;
     std::string role = "target";
     std::string direction = "backward";
     execution_range tiles{ 1, 1 };
@@ -64,6 +64,9 @@ struct execution_action {
     damage_type_id damage_type;
     int amount = 0;
     bodypart_str_id bodypart;
+    execution_range incapacity_duration{ 10, 10 };
+    bool wake_on_damage = true;
+    std::string source;
 };
 
 struct execution_step {

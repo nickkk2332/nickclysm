@@ -1,0 +1,27 @@
+[
+  {
+    "type": "effect_type",
+    "id": "knocked_out",
+    "name": [ "Unconscious", "Deeply unconscious" ],
+    "desc": [
+      "You are unconscious.  You cannot act or perceive your surroundings.  Further injury can wake you.",
+      "You are unconscious.  You cannot act or perceive your surroundings.  You recover when the knockout wears off."
+    ],
+    "apply_message": "You lose consciousness.",
+    "remove_message": "The knockout wears off.",
+    "rating": "bad",
+    "max_duration": "1 h",
+    "max_intensity": 2,
+    "immune_flags": [ "KNOCKOUT_IMMUNE" ]
+  },
+  {
+    "type": "json_flag",
+    "id": "KNOCKOUT_IMMUNE",
+    "info": "Prevents physiological knockouts."
+  },
+  {
+    "type": "json_flag",
+    "id": "KNOCKOUT_VULNERABLE",
+    "info": "Allows a monster physiology to become unconscious through knockout actions."
+  }
+]

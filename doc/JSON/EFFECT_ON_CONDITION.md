@@ -2525,6 +2525,11 @@ and beta as target. Both must be distinct, living, loaded creatures. Optional
 of that instance. Both members accept string variable objects.
 
 The simple conditions `u_in_execution` / `npc_in_execution` test participation.
+`u_is_knocked_out` / `npc_is_knocked_out` test a physiological knockout, including
+immediate expiry or damage wakeup. `u_can_be_knocked_out` / `npc_can_be_knocked_out`
+test current admission without applying it. These conditions require a real creature
+talker and never substitute the avatar. Apply the state through an execution's
+`incapacitate` action; native `knocked_out` effect removal also ends it.
 `{ "execution_can_fall": { "role": "target", "direction": "backward" } }` tests a
 backward ledge step inside an execution callback/transition. See
 [EXECUTIONS.md](EXECUTIONS.md) for definitions, timing, context, controls, and limits.

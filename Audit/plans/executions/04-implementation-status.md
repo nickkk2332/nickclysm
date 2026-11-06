@@ -32,8 +32,8 @@ Still to develop:
 - Phase 0's full producer matrix and shared combat causality. The first indexed
   living-melee slice, committed primary damage snapshots and arbitration are now in
   the [automatic-trigger follow-up](06-automatic-triggers.md).
-- Phase 6 fatal reservation/finalization and real knockout/incapacity semantics. These
-  require their own native combat/death integration and tests before fatal scenes work.
+- Phase 6 fatal reservation/finalization, with its native combat/death integration.
+  Real knockout/incapacity is delivered by the [knockout follow-up](07-knockouts.md).
 - Phase 4's owned appendable narration and auditory audiences are now delivered in the
   [narration follow-up](05-narration-milestone.md); the dedicated transcript inspector UI remains.
 - More physical actions, richer policies, per-action secondary attribution beyond the

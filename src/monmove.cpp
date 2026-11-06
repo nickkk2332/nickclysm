@@ -27,6 +27,7 @@
 #include "field_type.h"
 #include "game.h"
 #include "gates.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "line.h"
 #include "map.h"
@@ -995,6 +996,12 @@ bool monster::die_if_drowning( const tripoint_bub_ms &at_pos, const int chance )
 // 4) Sound-based tracking
 void monster::move()
 {
+    if( incapacitation::unconscious( *this ) ) {
+        gravity_check();
+        die_if_drowning( pos_bub(), 10 );
+        incapacitation::suppress_moves( *this );
+        return;
+    }
     if( g->executions().controls( *this ) ) {
         set_moves( 0 );
         return;
@@ -2143,6 +2150,9 @@ monster::group_bash_skill( const tripoint_bub_ms &target )
 
 bool monster::attack_at( const tripoint_bub_ms &p )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     const map &here = get_map();
 
     // Aquatic monsters that are underwater should not be able to attack

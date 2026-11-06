@@ -18,6 +18,7 @@
 #include "enums.h"
 #include "flag.h"
 #include "grapple.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_pocket.h"
 #include "map.h"
@@ -441,6 +442,9 @@ void Character::try_remove_impeding_effect()
 
 bool Character::move_effects( bool attacking )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     if( has_effect( effect_downed ) ) {
         try_remove_downed();
         return false;

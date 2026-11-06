@@ -41,6 +41,7 @@
 #include "game_constants.h"
 #include "gamemode.h"
 #include "help.h"
+#include "incapacitation.h"
 #include "input.h"
 #include "input_context.h"
 #include "item_wakeup.h"
@@ -288,8 +289,9 @@ npc_turn_result process_npc_turn( map &m, npc &guy )
     if( !guy.has_effect( effect_npc_suspend ) ) {
         guy.process_turn();
     }
-    while( !guy.is_dead() && ( !guy.in_sleep_state() ||
-                               guy.activity.id() == ACT_OPERATION || guy.activity.id() == ACT_MIGRATION_CANCEL ) &&
+    while( !guy.is_dead() && !incapacitation::unconscious( guy ) &&
+           ( !guy.in_sleep_state() ||
+             guy.activity.id() == ACT_OPERATION || guy.activity.id() == ACT_MIGRATION_CANCEL ) &&
            guy.get_moves() > 0 && turns < 10 ) {
         const int moves = guy.get_moves();
         const bool has_destination = guy.has_destination_activity();
@@ -379,6 +381,11 @@ void monmove()
         }
 
         m.creature_in_field( critter );
+        if( incapacitation::unconscious( critter ) ) {
+            critter.gravity_check();
+            critter.die_if_drowning( critter.pos_bub(), 10 );
+            incapacitation::suppress_moves( critter );
+        }
         if( calendar::once_every( 1_days ) ) {
             if( critter.has_flag( mon_flag_MILKABLE ) ) {
                 critter.refill_udders();
@@ -509,12 +516,43 @@ void game::handle_progress_ui()
 {
     avatar &u = get_avatar();
 
+    // Keep saves and information screens accessible without granting physical actions.
+    if( incapacitation::unconscious( u ) && !test_mode ) {
+        input_context ctxt = get_default_mode_input_context();
+        const std::string action = ctxt.handle_input( 0 );
+        if( action == "save" ) {
+            if( query_yn( _( "Save and quit?" ) ) && save() ) {
+                uquit = QUIT_SAVED;
+            }
+        } else if( action == "quicksave" ) {
+            quicksave();
+        } else if( action == "player_data" ) {
+            u.disp_info( true );
+        } else if( action == "messages" ) {
+            Messages::display_messages();
+        } else if( action == "DISPLAY_HELP" ) {
+            help_window hw;
+            hw.show();
+        } else if( action == "zoom_in" || action == "zoom_out" ) {
+            if( action == "zoom_in" ) {
+                zoom_in();
+            } else {
+                zoom_out();
+            }
+            mark_main_ui_adaptor_resize();
+        }
+    }
+
     // handle activity/progress/waiting UI
     const bool player_is_sleeping = u.has_effect( effect_sleep );
     bool wait_redraw = false;
     std::string wait_message;
     time_duration wait_refresh_rate;
-    if( player_is_sleeping ) {
+    if( incapacitation::unconscious( u ) ) {
+        wait_redraw = true;
+        wait_message = _( "You are unconscious…" );
+        wait_refresh_rate = 1_turns;
+    } else if( player_is_sleeping ) {
         wait_redraw = true;
         wait_message = _( "Wait till you wake up…" );
         wait_refresh_rate = 30_minutes;
@@ -672,7 +710,8 @@ bool game::do_turn()
     }
 
     // avatar processes human input through handle_action()
-    if( !u.has_effect( effect_sleep ) || uquit == QUIT_WATCH ) {
+    if( ( !u.has_effect( effect_sleep ) && !incapacitation::unconscious( u ) ) ||
+        uquit == QUIT_WATCH ) {
         if( u.get_moves() > 0 || uquit == QUIT_WATCH ) {
             while( u.get_moves() > 0 || uquit == QUIT_WATCH ) {
 
@@ -802,6 +841,10 @@ bool game::do_turn()
     handle_weather_effects( weather.weather_id );
 
     handle_progress_ui();
+
+    if( uquit == QUIT_SAVED ) {
+        return turn_handler::cleanup_at_end();
+    }
 
     u.update_bodytemp();
     u.update_body_wetness( *weather.weather_precise );

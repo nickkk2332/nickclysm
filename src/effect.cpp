@@ -900,7 +900,7 @@ std::string effect::disp_desc( bool reduced ) const
     }
     ret += string_format( _( "Effect started: <color_white>%s</color>" ), timestr );
     if( debug_mode ) {
-        ret += string_format( _( "Effect ends in: <color_white>%s</color>" ), to_string( duration ) );
+        ret += string_format( _( "Effect ends in: <color_white>%s</color>" ), to_string( get_duration() ) );
     }
     //Newline if necessary
     if( !ret.empty() && ret.back() != '\n' ) {
@@ -1130,10 +1130,10 @@ void effect::decay( std::vector<efftype_id> &rem_ids, std::vector<bodypart_id> &
 
     // Add to removal list if duration is <= 0
     // Decay duration if not permanent
-    if( duration <= 0_turns ) {
+    if( get_duration() <= 0_turns ) {
         rem_ids.push_back( get_id() );
         rem_bps.push_back( bp.id() );
-    } else if( !is_permanent() ) {
+    } else if( !is_permanent() && !has_calendar_deadline() ) {
         mod_duration( -1_turns, player );
     }
 }
@@ -1145,7 +1145,25 @@ bool effect::use_part_descs() const
 
 time_duration effect::get_duration() const
 {
+    if( expires_at ) {
+        return *expires_at <= calendar::turn ? 0_turns : *expires_at - calendar::turn;
+    }
     return duration;
+}
+
+bool effect::has_calendar_deadline() const
+{
+    return expires_at.has_value();
+}
+
+void effect::initialize_calendar_deadline()
+{
+    expires_at.reset();
+    if( eff_type && eff_type->id.str() == "knocked_out" ) {
+        duration = std::clamp( duration, 0_turns, 1_hours );
+        expires_at = calendar::turn + duration;
+        permanent = false;
+    }
 }
 time_duration effect::get_max_duration() const
 {
@@ -1157,6 +1175,11 @@ void effect::set_duration( const time_duration &dur, bool alert )
 
     clamp_duration();
 
+    if( expires_at ) {
+        duration = std::clamp( duration, 0_turns, 1_hours );
+        expires_at = calendar::turn + duration;
+    }
+
     apply_int_dur_factor( alert );
 
     add_msg_debug( debugmode::DF_EFFECT, "ID: %s, Duration %s", get_id().c_str(),
@@ -1164,11 +1187,11 @@ void effect::set_duration( const time_duration &dur, bool alert )
 }
 void effect::mod_duration( const time_duration &dur, bool alert )
 {
-    set_duration( duration + dur, alert );
+    set_duration( get_duration() + dur, alert );
 }
 void effect::mult_duration( double dur, bool alert )
 {
-    set_duration( duration * dur, alert );
+    set_duration( get_duration() * dur, alert );
 }
 void effect::clamp_duration()
 {
@@ -1251,7 +1274,7 @@ void effect::set_bp( const bodypart_str_id &part )
 
 bool effect::is_permanent() const
 {
-    return permanent;
+    return permanent && !has_calendar_deadline();
 }
 void effect::pause_effect()
 {
@@ -1922,7 +1945,10 @@ void effect::serialize( JsonOut &json ) const
 {
     json.start_object();
     json.member( "eff_type", eff_type != nullptr ? eff_type->id.str() : "" );
-    json.member( "duration", duration );
+    json.member( "duration", get_duration() );
+    if( expires_at ) {
+        json.member( "expires_at", *expires_at );
+    }
     json.member( "bp", bp.c_str() );
     json.member( "permanent", permanent );
     json.member( "intensity", intensity );
@@ -1943,6 +1969,18 @@ void effect::deserialize( const JsonObject &jo )
     start_time = calendar::turn_zero;
     jo.read( "start_turn", start_time );
     jo.read( "source", source );
+    initialize_calendar_deadline();
+    if( jo.has_member( "expires_at" ) ) {
+        if( !expires_at ) {
+            jo.throw_error_at( "expires_at", "this effect does not support a calendar deadline" );
+        }
+        time_point saved;
+        jo.read( "expires_at", saved );
+        if( saved > calendar::turn + 1_hours ) {
+            jo.throw_error_at( "expires_at", "knockout deadline exceeds one hour" );
+        }
+        expires_at = saved;
+    }
 }
 
 void effect_migration::load( const JsonObject &jo )

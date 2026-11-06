@@ -221,12 +221,28 @@ execution_action load_action( const JsonObject &jo, const std::string &source )
         jo.read( "damage_type", out.damage_type, true );
         out.amount = read_integer( jo, "amount", 0, 0, 100000 );
         out.bodypart = bodypart_str_id( jo.get_string( "bodypart", "torso" ) );
+    } else if( op == "incapacitate" ) {
+        out.type = execution_action::kind::incapacitate;
+        if( jo.get_string( "state", "unconscious" ) != "unconscious" ) {
+            jo.throw_error_at( "state", "only unconscious incapacitation is supported" );
+        }
+        if( !jo.get_bool( "respect_immunity", true ) ) {
+            jo.throw_error_at( "respect_immunity", "incapacitation cannot bypass immunity" );
+        }
+        out.incapacity_duration = read_range( jo, "duration_ticks", 10, 1, 3600 );
+        out.wake_on_damage = jo.get_bool( "wake_on_damage", true );
     } else {
         jo.throw_error_at( "op", "unsupported execution action" );
     }
     out.role = jo.get_string( "role", "target" );
     if( out.role != "actor" && out.role != "target" ) {
         jo.throw_error_at( "role", "expected actor or target" );
+    }
+    if( out.type == execution_action::kind::incapacitate ) {
+        out.source = jo.get_string( "source", out.role == "target" ? "actor" : "target" );
+        if( out.source != "actor" && out.source != "target" ) {
+            jo.throw_error_at( "source", "expected actor or target" );
+        }
     }
     out.store_result = jo.get_string( "store_result", "" );
     return out;

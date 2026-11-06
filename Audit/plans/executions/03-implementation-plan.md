@@ -1,6 +1,6 @@
 # Implementation sequence and validation plan
 
-**Delivery status:** the living-participant milestone covers portions of phases 0–3 and 7; the [narration milestone](05-narration-milestone.md) delivers phase 4's append, hearing, history, and presentation controls. [First-milestone status](04-implementation-status.md) records the runtime foundation. Indexed combat triggers (phase 5), fatal handling (phase 6), real knockout semantics, and the dedicated inspector remain further work.
+**Delivery status:** the living-participant milestone covers portions of phases 0–3 and 7; the [narration milestone](05-narration-milestone.md) delivers phase 4's append, hearing, history, and presentation controls. [First-milestone status](04-implementation-status.md) records the runtime foundation. The [automatic melee milestone](06-automatic-triggers.md) delivers phase 5's initial living-melee slice; [physiological knockouts](07-knockouts.md) deliver the incapacity portion of phase 3. Further combat producers, fatal handling (phase 6), and the dedicated inspector remain further work.
 
 ## Proposed code boundaries
 

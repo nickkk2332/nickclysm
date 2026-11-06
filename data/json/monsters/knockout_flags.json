@@ -1,0 +1,12 @@
+[
+  {
+    "type": "monster_flag",
+    "id": "KNOCKOUT_IMMUNE",
+    "//": "Cannot be knocked unconscious by physiological knockout actions."
+  },
+  {
+    "type": "monster_flag",
+    "id": "KNOCKOUT_VULNERABLE",
+    "//": "Explicitly opts this monster physiology into knockout support."
+  }
+]

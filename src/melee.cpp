@@ -46,6 +46,7 @@
 #include "game_constants.h"
 #include "game_inventory.h"
 #include "grapple.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_components.h"
 #include "item_contents.h"
@@ -612,6 +613,9 @@ bool Character::melee_attack( Creature &t, bool allow_special, const matec_id &f
 bool Character::melee_attack( Creature &t, bool allow_special, const technique_choice &choice,
                               bool allow_unarmed, int forced_movecost )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     if( has_flag( json_flag_CANNOT_ATTACK ) ) {
         add_msg_if_player( m_info, _( "You are incapable of attacking!" ) );
         return false;
@@ -744,6 +748,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                                        const technique_choice &preset,
                                        bool allow_unarmed, int forced_movecost )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return false;
+    }
     map &here = get_map();
 
     // Prevent player from melee-attacking creatures that are swimming under terrain.
@@ -1473,6 +1480,9 @@ float Character::get_dodge() const
 
 float Character::dodge_roll() const
 {
+    if( incapacitation::unconscious( *this ) ) {
+        return 0.0f;
+    }
     // if your character has evasion then try rolling that first
     double evasion = enchantment_cache->modify_value( enchant_vals::mod::EVASION, 0.0 );
     if( rng( 0, 99 ) < evasion * 100.0 ) {

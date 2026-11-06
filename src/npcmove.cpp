@@ -67,6 +67,7 @@
 #include "gun_mode.h"
 #include "harvest.h"
 #include "iexamine.h"
+#include "incapacitation.h"
 #include "item.h"
 #include "item_contents.h"
 #include "item_location.h"
@@ -1586,6 +1587,10 @@ void npc::end_cancelled_task()
 
 void npc::move()
 {
+    if( incapacitation::unconscious( *this ) ) {
+        incapacitation::suppress_moves( *this );
+        return;
+    }
     if( g->executions().controls( *this ) ) {
         set_moves( 0 );
         return;
@@ -3704,6 +3709,10 @@ static bool can_close_behind( map &here, Character &who, const tripoint_bub_ms &
 
 void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint_bub_ms> *nomove )
 {
+    if( incapacitation::unconscious( *this ) ) {
+        incapacitation::suppress_moves( *this );
+        return;
+    }
     if( has_flag( json_flag_CANNOT_MOVE ) ) {
         move_pause();
         return;
