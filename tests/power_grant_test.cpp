@@ -43,6 +43,8 @@
 #include "vpart_position.h"
 #include "vpart_range.h"
 
+static const itype_id itype_power_demo_form_grant_focus( "power_demo_form_grant_focus" );
+
 namespace
 {
 const efftype_id boost( "test_owned_power_boost" );
@@ -810,11 +812,16 @@ TEST_CASE( "incompatible_application_revisions_release_saved_native_grants",
 TEST_CASE( "armored_form_demo_item_uses_the_paid_ability_and_returns_original_gear",
            "[power_grants][powers_demo]" )
 {
+    // This checks the powers_demo mod's own items, so it runs only with that mod loaded, as in
+    // CI's mods job.
+    if( !itype_power_demo_form_grant_focus.is_valid() ) {
+        return;
+    }
     grant_world world;
     auto &who = get_avatar();
     const auto original = shirt( who );
     const auto use = [&]() {
-        item focus( itype_id( "power_demo_form_grant_focus" ), calendar::turn );
+        item focus( itype_power_demo_form_grant_focus, calendar::turn );
         const auto found = focus.type->use_methods.find( "effect_on_conditions" );
         REQUIRE( found != focus.type->use_methods.end() );
         REQUIRE( found->second.get_actor_ptr() );
