@@ -1548,8 +1548,9 @@ static bool cancel_auto_move( Character &you, const std::string &text )
 
 bool game::cancel_activity_or_ignore_query( const distraction_type type, const std::string &text )
 {
-    if( execution_fatal::pending( u ) ) {
-        return false; // The safe execution-start boundary cancels prior work without a prompt.
+    if( execution_fatal::pending( u ) ||
+        ( u.activity.id() == activity_id( "ACT_EXECUTION" ) && executions().contains( u ) ) ) {
+        return false; // Execution ownership handles cancellation at safe runtime checkpoints.
     }
     if( u.has_distant_destination() ) {
         if( cancel_auto_move( u, text ) ) {
@@ -9297,6 +9298,8 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         debugmsg( "game::fling_creature invoked on null target" );
         return false;
     }
+    const bool execution_fling = executions().claim_physical_flight( *c );
+    const execution_combat::physical_flight_scope execution_flight( *c, execution_fling );
 
     map &here = get_map();
     tripoint_bub_ms pos = c->pos_bub( here );
@@ -9341,7 +9344,7 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     bool thru = true;
     const bool is_u = c == &u;
     // Don't animate critters getting bashed if animations are off
-    const bool animate = is_u || get_option<bool>( "ANIMATIONS" );
+    const bool animate = !test_mode && ( is_u || get_option<bool>( "ANIMATIONS" ) );
 
     Character *you = dynamic_cast<Character *>( c );
 
@@ -9379,6 +9382,9 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
     tripoint_bub_ms pt = pos;
     creature_tracker &creatures = get_creature_tracker();
     while( range > 0 ) {
+        if( execution_fling && !executions().physical_action_valid() ) {
+            return true;
+        }
         c->underwater = false;
         // TODO: Check whenever it is actually in the viewport
         // or maybe even just redraw the changed tiles
@@ -9386,33 +9392,47 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
         tdir.advance();
         pt.x() = pos.x() + tdir.dx();
         pt.y() = pos.y() + tdir.dy();
+        if( execution_fling && !here.inbounds( pt ) ) {
+            return true;
+        }
         float force = 0.0f;
 
         monster *const mon_ptr = creatures.creature_at<monster>( pt );
         // The flung creature is never an obstacle to itself
         if( mon_ptr != nullptr && mon_ptr != c ) {
             monster &critter = *mon_ptr;
+            const auto collision_body = shared_from( critter );
+            const creature_ref collision_identity = creature_ref::bind( critter );
             // Approximate critter's "stopping power" with its max hp
             force = std::min<float>( 1.5f * critter.type->hp, flvel );
             const int damage = rng( force, force * 2.0f ) / 6;
             c->impact( damage, pt );
+            if( execution_fling && ( !executions().physical_action_valid() ||
+                                     collision_identity.resolve() != &critter ) ) {
+                return true;
+            }
             // Multiply zed damage by 6 because no body parts
             const int zed_damage = std::max( 0,
                                              ( damage - critter.get_armor_type( damage_bash, bodypart_id( "torso" ) ) ) * 6 );
-            // TODO: Pass the "flinger" here - it's not the flung critter that deals damage
-            critter.apply_damage( c, bodypart_id( "torso" ), zed_damage );
+            critter.apply_damage( execution_fling ? executions().physical_instigator() : c,
+                                  bodypart_id( "torso" ), zed_damage );
             critter.check_dead_state( &here );
             if( !critter.is_dead() ) {
                 thru = false;
             }
         } else if( Character *const blocker = creatures.creature_at<Character>( pt );
                    blocker != nullptr && blocker != c ) {
+            const auto collision_body = shared_from( *blocker );
+            const creature_ref collision_identity = creature_ref::bind( *blocker );
             // Another character stops the flight like a wall would, so the flung
             // creature never ends up sharing a tile with them.
             if( !options.hit_characters ) {
                 force = flvel;
                 const int damage = rng( force, force * 2.0f ) / 9;
                 c->impact( damage, pt );
+                if( execution_fling && !executions().physical_action_valid() ) {
+                    return true;
+                }
             } else if( flvel >= 30.0f ) {
                 // TLG: the character's size decides how much it stops the flight, and the speed
                 // of the flight how much the character is hurt.
@@ -9423,10 +9443,15 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
                                         blocker->disp_name() );
                 c->impact( damage, pt );
                 const bodypart_id torso( "torso" );
+                if( execution_fling && ( !executions().physical_action_valid() ||
+                                         collision_identity.resolve() != blocker ) ) {
+                    return true;
+                }
                 const int blocker_armor = blocker->get_armor_type( damage_bash, torso );
                 const int blocker_damage = std::max( 0, rng( flvel, flvel * 2.0f ) / 6 -
                                                      blocker_armor );
-                blocker->apply_damage( c, torso, blocker_damage );
+                blocker->apply_damage( execution_fling ? executions().physical_instigator() : c,
+                                       torso, blocker_damage );
                 blocker->check_dead_state( &here );
             }
             thru = false;
@@ -9450,11 +9475,13 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             }
         }
 
+        if( execution_fling && !executions().physical_action_valid() ) {
+            return true;
+        }
         // If the critter dies during flinging, moving it around causes debugmsgs
         if( c->is_dead_state() ) {
             return true;
         }
-
         flvel -= force;
         if( thru ) {
             if( you != nullptr ) {
@@ -9508,6 +9535,9 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             }
         }
         if( c->is_dead_state() ) {
+            return true;
+        }
+        if( execution_fling && !executions().physical_action_valid() ) {
             return true;
         }
         if( over_air ) {

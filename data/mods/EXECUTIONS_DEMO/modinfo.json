@@ -3,7 +3,7 @@
     "type": "MOD_INFO",
     "id": "executions_demo",
     "name": "Executions demonstration",
-    "description": "Demonstration weapons for stagger scenes, knockouts, projectile reactions and opted-in fatal melee executions.",
+    "description": "Demonstration weapons for stagger scenes, knockouts, fatal melee/projectile scenes and cinematic clashes.",
     "category": "content",
     "dependencies": [ "dda" ]
   }

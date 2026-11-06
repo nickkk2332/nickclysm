@@ -187,13 +187,13 @@ execution_action load_action( const JsonObject &jo, const std::string &source )
     if( op == "message" ) {
         out.type = execution_action::kind::message;
         load_messages( jo, out );
-    } else if( op == "move" ) {
-        out.type = execution_action::kind::move;
+    } else if( op == "move" || op == "shove" ) {
+        out.type = op == "move" ? execution_action::kind::move : execution_action::kind::shove;
         out.direction = jo.get_string( "direction", "backward" );
         if( out.direction != "backward" && out.direction != "forward" ) {
             jo.throw_error_at( "direction", "expected backward or forward" );
         }
-        out.tiles = read_range( jo, "tiles", 1, 1, 16 );
+        out.tiles = read_range( jo, "tiles", 1, 1, op == "shove" ? 4 : 16 );
         out.ticks_per_tile = read_integer( jo, "ticks_per_tile", 1, 1, 600 );
         out.first_after = read_integer( jo, "first_step_after_ticks", 1, 0, 600 );
         out.stop_before_unsupported = jo.get_bool( "stop_before_unsupported", true );
@@ -205,6 +205,13 @@ execution_action load_action( const JsonObject &jo, const std::string &source )
             message.read( "text", out.on_moved, true );
             out.on_moved_narration = load_narration( message );
         }
+    } else if( op == "fling" ) {
+        out.type = execution_action::kind::fling;
+        out.velocity = read_range( jo, "velocity", 20, 10, 160 );
+        out.hit_characters = jo.get_bool( "hit_characters", true );
+        out.controlled_landing = jo.get_bool( "controlled_landing", false );
+    } else if( op == "melee" ) {
+        out.type = execution_action::kind::melee;
     } else if( op == "eoc" ) {
         out.type = execution_action::kind::eoc;
         load_eocs( jo, "eocs", source, out.eocs );
@@ -234,14 +241,21 @@ execution_action load_action( const JsonObject &jo, const std::string &source )
     } else {
         jo.throw_error_at( "op", "unsupported execution action" );
     }
-    out.role = jo.get_string( "role", "target" );
+    out.role = jo.get_string( "role", out.type == execution_action::kind::melee ? "actor" : "target" );
     if( out.role != "actor" && out.role != "target" ) {
         jo.throw_error_at( "role", "expected actor or target" );
     }
-    if( out.type == execution_action::kind::incapacitate ) {
+    if( out.type == execution_action::kind::incapacitate || out.type == execution_action::kind::shove ||
+        out.type == execution_action::kind::fling ) {
         out.source = jo.get_string( "source", out.role == "target" ? "actor" : "target" );
         if( out.source != "actor" && out.source != "target" ) {
             jo.throw_error_at( "source", "expected actor or target" );
+        }
+        if( out.type != execution_action::kind::incapacitate && out.source == out.role ) {
+            jo.throw_error_at( "source", "physical displacement requires a different source role" );
+        }
+        if( out.type == execution_action::kind::shove && out.direction != "backward" ) {
+            jo.throw_error_at( "direction", "a shove moves away from its source" );
         }
     }
     out.store_result = jo.get_string( "store_result", "" );
@@ -370,7 +384,8 @@ void execution_definition::load( const JsonObject &jo, std::string_view source )
                 out.action = load_action( step.get_object( "action" ), std::string( source ) );
             }
             if( step.has_member( "repeat" ) ) {
-                if( out.action.type == execution_action::kind::move ) {
+                if( out.action.type == execution_action::kind::move ||
+                    out.action.type == execution_action::kind::shove ) {
                     step.throw_error_at( "repeat", "movement already has a saved per-tile cursor" );
                 }
                 out.repeats = true;
@@ -414,9 +429,10 @@ void execution_definition::load( const JsonObject &jo, std::string_view source )
                     appends.insert( n->append_to );
                 }
             }
-            if( a.type == execution_action::kind::move &&
+            if( ( a.type == execution_action::kind::move || a.type == execution_action::kind::shove ||
+                  a.type == execution_action::kind::fling || a.type == execution_action::kind::melee ) &&
                 ( a.role == "actor" ? control_actor : control_target ) != execution_control::scripted ) {
-                throw std::runtime_error( "move actions require scripted control of their role" );
+                throw std::runtime_error( "physical actions require scripted control of their role" );
             }
         }
         if( entries.size() > 64 ) {

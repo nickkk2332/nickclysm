@@ -65,6 +65,36 @@ class damage_scope;
 class primary_hit_scope;
 class projectile_hit_scope;
 
+/** Only the native flight claimed by an authored fling may attribute its impacts. */
+class physical_flight_scope
+{
+    public:
+        physical_flight_scope( const Creature &target, bool owned );
+        ~physical_flight_scope();
+        physical_flight_scope( const physical_flight_scope & ) = delete;
+        physical_flight_scope &operator=( const physical_flight_scope & ) = delete;
+    private:
+        friend class impact_scope;
+        physical_flight_scope *previous = nullptr;
+        const Creature &target;
+};
+
+/** Native impact calls only: nested scripted damage keeps its explicit source semantics. */
+class impact_scope
+{
+    public:
+        explicit impact_scope( const Creature &target );
+        ~impact_scope();
+        impact_scope( const impact_scope & ) = delete;
+        impact_scope &operator=( const impact_scope & ) = delete;
+    private:
+        friend bool is_impact_damage( const Creature *target );
+        impact_scope *previous = nullptr;
+        const Creature &target;
+        damage_scope *baseline_damage = nullptr;
+        int baseline_depth = 0;
+};
+
 /** One handheld firing action: first direct contact per victim, published after the burst. */
 class projectile_fire_scope
 {
@@ -138,7 +168,9 @@ class attack_scope
         friend class primary_hit_scope;
         friend class projectile_hit_scope;
         friend void record_hp_loss( const Creature &, int );
+        friend bool is_impact_damage( const Creature *target );
         attack_scope( Creature &actor, Creature &target, channel producer, bool projectile_primary );
+        void reserve_fatal( const Creature &target );
         attack_scope *previous = nullptr;
         bool enabled = false;
         bool resolved = false;
@@ -219,6 +251,7 @@ class damage_scope
         void disarm_hp_capture();
     private:
         friend void record_hp_loss( const Creature &, int );
+        friend bool is_impact_damage( const Creature *target );
         damage_scope *previous = nullptr;
         attack_scope *owner = nullptr;
         bool capture_hp = false;
@@ -236,6 +269,7 @@ class damage_barrier
 void record_hp_loss( const Creature &target, int amount );
 bool attack_in_progress();
 bool at_fatal_commit( const Creature &target );
+bool is_impact_damage( const Creature *target );
 std::string channel_name( channel producer );
 } // namespace execution_combat
 

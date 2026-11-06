@@ -1,0 +1,16 @@
+[
+  {
+    "type": "execution",
+    "id": "execution_fatal_projectile_stagger",
+    "copy-from": "execution_projectile_stagger",
+    "name": "Mortal projectile wound",
+    "allow_fatal_target": true
+  },
+  {
+    "type": "execution",
+    "id": "execution_avatar_fatal_projectile_stagger",
+    "copy-from": "execution_fatal_projectile_stagger",
+    "name": "Last wounded steps",
+    "allow_avatar_fatal_target": true
+  }
+]

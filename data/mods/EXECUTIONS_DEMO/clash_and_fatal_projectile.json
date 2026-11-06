@@ -1,0 +1,65 @@
+[
+  {
+    "type": "execution_trigger",
+    "id": "demo_fatal_projectile",
+    "event": "fatal_hit",
+    "execution": "execution_fatal_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_demo_pistol", "execution_demo_bow" ],
+      "source_kind": [ "avatar", "npc" ],
+      "target_kind": [ "npc", "monster" ],
+      "hp_loss": { "minimum": 1 }
+    }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_fatal_projectile_avatar",
+    "event": "fatal_hit",
+    "execution": "execution_avatar_fatal_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "projectile" ],
+      "weapons": [ "execution_demo_pistol", "execution_demo_bow" ],
+      "source_kind": [ "npc" ],
+      "target_kind": [ "avatar" ],
+      "hp_loss": { "minimum": 1 }
+    }
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_demo_clash_sword",
+    "copy-from": "arming_sword",
+    "name": { "str": "execution demonstration clash sword" },
+    "description": "Configured to demonstrate rare cinematic clashes between surviving fighters."
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_cinematic_clash",
+    "execution": "execution_cinematic_clash",
+    "chance": 0.02,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "condition": {
+      "not": {
+        "or": [
+          "u_is_knocked_out",
+          "npc_is_knocked_out",
+          { "u_has_effect": "sleep" },
+          { "npc_has_effect": "sleep" },
+          { "u_has_effect": "narcosis" },
+          { "npc_has_effect": "narcosis" }
+        ]
+      }
+    },
+    "match": {
+      "channels": [ "character_melee" ],
+      "weapons": [ "execution_demo_clash_sword" ],
+      "source_kind": [ "avatar", "npc" ],
+      "target_kind": [ "avatar", "npc" ],
+      "hp_loss": { "minimum": 1 }
+    }
+  }
+]

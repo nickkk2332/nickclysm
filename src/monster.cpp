@@ -2545,7 +2545,7 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
         return;
     }
     if( source == nullptr && g ) {
-        source = g->executions().secondary_damage_source();
+        source = g->executions().secondary_damage_source( this );
     }
     if( g ) {
         g->executions().notify_damage( *this, dam );
@@ -3011,6 +3011,7 @@ float monster::fall_damage_mod() const
 
 int monster::impact( const int force, const tripoint_bub_ms &p )
 {
+    const execution_combat::impact_scope execution_impact( *this );
     if( force <= 0 ) {
         return force;
     }

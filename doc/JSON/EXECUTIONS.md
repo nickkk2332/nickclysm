@@ -154,8 +154,9 @@ does not reemit combat contacts or rerun trigger selection.
 
 Use `"channels": [ "projectile" ]` with `event: "attack_resolved"` to match direct
 nonfatal gun, bow and crossbow hits from a loaded avatar or NPC. Omitted channels and
-`melee` retain their previous melee-only meanings. Projectile `fatal_hit` and
-`hit: false` rules are load errors, including when inherited through `copy-from`.
+`melee` retain their previous melee-only meanings. Use `event: "fatal_hit"` for
+[commit-time fatal admission](#fatal-projectile-rules). Projectile `hit: false` rules
+remain load errors, including when inherited through `copy-from`.
 
 ```json
 {
@@ -174,8 +175,8 @@ nonfatal gun, bow and crossbow hits from a loaded avatar or NPC. Omitted channel
 }
 ```
 
-One native firing action offers **one contact per victim**, using its first direct
-hit. A burst can hit several victims; pellets, later rounds and later body parts do
+For living reactions, one native firing action offers **one contact per victim**,
+using its first direct hit. A burst can hit several victims; pellets, later rounds and later body parts do
 not replace that victim's first hit or roll additional chances. A first hit stopped
 by armor can have zero HP loss even if a later pellet damages the victim. Add an
 `hp_loss` minimum when damage is required. Dodges and misses produce no contact.
@@ -185,8 +186,9 @@ order; additional victims receive normal damage without automatic selection.
 Selection waits until the complete native firing action returns, including all
 rounds, ammo use, recoil, ranged events and synchronous effects. No scene executes
 between pellets or rounds. Participants must still be alive and loaded. A fatal
-primary hit is excluded even if a callback rescues it; a victim killed by a later
-round cannot start a living scene. This producer never reserves projectile death.
+primary hit is excluded from living selection even if a callback rescues it; a
+victim killed by a later round cannot start a living scene. An indexed fatal-stage
+evaluation supersedes buffered living selection for that victim.
 Future queued effects remain ordinary world events and can interrupt scenes normally.
 
 Snapshots include the original firing item UID/type/categories, gun skill, actual
@@ -212,6 +214,39 @@ checked backward steps and stops before unsupported terrain. The optional demo m
 adds a pistol and bow with rare stagger rules and qualifying critical-head knockout
 rules. Production weapons gain no automatic rule. Existing native incapacity and
 its immunities determine whether a knockout actually applies.
+
+### Fatal projectile rules
+
+Use `event: "fatal_hit"` and `"channels": [ "projectile" ]` with a definition that
+sets `allow_fatal_target: true`. Player victims additionally require
+`allow_avatar_fatal_target: true`. The shared [fatal lifecycle](#fatal-hit-rules)
+still applies, including its 30-tick bound and living manual starts.
+
+A victim has at most one fatal opportunity per native firing action. The first
+lethal primary HP write uses its own round's ammunition, critical/body-part/
+weakpoint and damage facts, even when earlier rounds caused nonfatal wounds.
+Fatal selection happens before that write's callbacks/death checks. An accepted
+owner remains unready until the entire firing action ends; no beat runs between
+pellets, rounds, ranged events, ammo consumption or recoil.
+
+Secondary effects are not primary commits. For example, a newly applied bleeding
+effect can kill a 1-HP monster before the projectile's own HP write; that death
+remains ordinary native death and does not acquire a projectile execution.
+
+Later positive damage, including a following pellet, settles the injury promptly.
+A reservation grants no protection from the remainder of a shotgun blast or burst.
+Failed chances and refused/no-match admission retain ordinary native death.
+Initially fatal hits rescued by callbacks do not reroll fatal selection in that
+same firing action. Exceptional firing exits settle accepted reservations.
+
+The ordinary producer exclusions still apply: secondary flights, shrapnel, magic,
+throws, mounted/delegated/turret and underbarrel paths do not acquire fatal owners.
+Saved accepted owners reuse normal scene deadlines, player activities and native
+prevention, death events, kill credit and corpse placement.
+
+[Core fatal projectile content](../../data/json/executions/fatal_projectile.json)
+contains separate NPC/monster and player definitions. The demo pistol/bow add
+explicit fatal rules. Ordinary production weapons acquire no rule.
 
 ## Fatal-hit rules
 
@@ -246,7 +281,7 @@ corpse or an arbitrary earlier fatal injury. The actor must be alive and both ro
 must satisfy normal binding, distance, control, weapon and restraint checks.
 NPC and monster victims use that opt-in. A player victim additionally requires
 `allow_avatar_fatal_target: true`; existing definitions do not gain player targets.
-The same character/monster primary-melee producers support this separate opt-in.
+Supported primary-melee and handheld-projectile producers both support this separate opt-in.
 
 At this boundary, filters see the original weapon/style/technique, critical fact
 (character melee only), resolved body part and weakpoint, reported damage types,
@@ -446,16 +481,72 @@ Nested starts wait for a later drain; callbacks cannot recursively pump the runn
 
 ## Actions
 
-All actions accept `role` (`target` by default, or `actor`) and optional `store_result`.
+All actions accept `role` and optional `store_result`. The default role is `target`,
+except `melee`, whose default `actor` is the attacking fighter.
 
 | `op` | Members and behavior |
 | --- | --- |
 | `message` | Exactly one of translated `text` or `pool`. Optional `entry`, `append_to`, `separator`, and perception fields described below. |
 | `move` | `direction`: `backward` (default) or `forward`; `tiles`: integer or range (default 1); `ticks_per_tile`: 1; `first_step_after_ticks`: 1; `stop_before_unsupported`: true; `collision`: `stop`. Requires scripted control of this role. |
+| `shove` | Checked displacement away from a distinct `source` role. `tiles`: 1–4; timing, support and collision fields follow `move`. Requires scripted control of the displaced role. |
+| `fling` | Native flight from a distinct adjacent `source`. `velocity`: integer/range 10–160 (default 20); `hit_characters`: true; `controlled_landing`: false. Requires scripted control of the displaced role. |
+| `melee` | The scripted `role` performs one native adjacent melee attack against the other role, without selecting special techniques. |
 | `eoc` | Nonempty `eocs` array. Existing EOCs can manipulate terrain, furniture, items, and other world state. These effects retain their existing limitations and narration rules. |
 | `effect` | Required `effect` ID; `duration_ticks`: 1; `intensity`: 1. Applies the existing native effect. |
 | `damage` | Required `damage_type`; `amount`: 0; `bodypart`: `torso`. Uses ordinary damage handling and armor; reported actual HP change can differ from the amount. |
 | `incapacitate` | Physiological knockout with a separate saved recovery timer. See the knockout contract below. |
+
+### Physical actions and cinematic clashes
+
+`shove` and `fling` default `source` to the opposite role; source and displaced
+role must differ. Both start from adjacent actors on the same Z level. Dead or
+pending-fatal participants return `fatal_target`; use checked `move` for supported
+fatal staging. A knocked-out, sleeping or anesthetized source returns `incapacitated`. Vehicles, mounts,
+existing grabs/restraints and hallucinations are outside these physical adapters.
+Native source/target identities are retained and revalidated through callbacks.
+
+A shove captures its source-to-victim horizontal axis at the first committed step.
+It then moves one checked tile per beat, saving its sampled distance, axis and
+progress. It respects native character knockback resistance, immobility, diagonal
+corners, occupancy, terrain and support. It stops at obstacles without adding
+invented collision damage. Results include `moving`, `moved`, `blocked`, `resisted`,
+`unsupported`, `out_of_range`, `fatal_target`, `incapacitated` and `unavailable`.
+`execution_resistance` reports the character resistance used at admission.
+
+A fling delegates to native flight, wall bashing, body collisions, landing, gravity
+and traps. It preserves knockback resistance; the author cannot bypass it through
+an intentional-motion flag. Native velocity determines range and impacts, rather
+than an exact scripted destination. `moved` means the body changed position;
+`blocked` means native flight was accepted without displacement; `resisted` means
+native flight refused. Other preflight results include `unsupported`,
+`out_of_bounds`, `out_of_range` and `fatal_target`. Callback cancellation or identity
+loss stops further owned flight and interrupts the scene. `hit_characters` controls
+damage to character blockers; monster collisions follow native fling behavior.
+
+`execution_velocity` is the sampled input, `execution_distance` the actual net
+grid distance, `execution_position` the absolute position, `execution_fell`
+the Z decrease, and `execution_hp_change` the net target HP change at native action
+return. The runtime then performs its final death check; a prevention callback
+can change the body again. The native instigator receives direct impact, landing/fall
+and collateral attribution. Explicit environmental damage from nested callbacks
+retains no source; unrelated trap/field effects keep their native attribution.
+Terrain-bash callbacks retain their existing engine contract.
+
+A melee action uses native Character/monster combat, armor, evasion, callbacks and
+death handling. `attacked` means a native attempt occurred, including misses or
+armor-stopped blows; `refused` means native attack refused. It also returns the
+shared preflight failures. It pays native stamina/move costs, recorded in
+`execution_attack_moves`, and reports net `execution_hp_change`. Scripted attacks
+do not create new automatic execution roots. They cannot force an unconscious
+fighter to act.
+
+[The cinematic clash](../../data/json/executions/clash.json) scripts both fighters,
+holds a sampled 1–2-turn struggle, then selects separation, a native counterattack,
+or a strength-qualified throw. Blocked/refused physical actions branch to a
+standoff. Real incoming harm, displacement, cancellation and participant loss use
+ordinary interruption and release both controls. Player participants receive an
+interruption message. The demo sword selects this scene rarely; no production
+weapon acquires automatic clash rules.
 
 ### Knockouts and recovery
 
@@ -692,6 +783,5 @@ narration each retain 128 segments. Native message-history limits still apply.
 
 The reference content is [knife_stagger.json](../../data/json/executions/knife_stagger.json).
 It rolls 1–4 backward tiles, stops before a ledge, tries a 50% native tumble, or emits
-two wounded beats. It can end with survival. Fatal projectile reservation,
-additional automatic combat producers, offscreen scene simulation, a dedicated transcript
+two wounded beats. It can end with survival. Additional automatic combat producers, offscreen scene simulation, a dedicated transcript
 inspector UI, and additional typed physical actions remain later milestones.

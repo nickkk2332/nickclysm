@@ -2777,7 +2777,7 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
     incapacitation::wake_on_damage( *this, dam_to_bodypart );
     if( g ) {
         if( source == nullptr ) {
-            source = g->executions().secondary_damage_source();
+            source = g->executions().secondary_damage_source( this );
         }
         g->executions().notify_damage( *this, dam_to_bodypart );
     }

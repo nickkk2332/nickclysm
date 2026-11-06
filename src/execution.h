@@ -44,7 +44,8 @@ struct execution_narration {
 };
 
 struct execution_action {
-    enum class kind { none, message, move, eoc, effect, damage, incapacitate } type = kind::none;
+    enum class kind { none, message, move, eoc, effect, damage, incapacitate, shove, fling, melee } type
+        = kind::none;
     std::string role = "target";
     std::string direction = "backward";
     execution_range tiles{ 1, 1 };
@@ -67,6 +68,9 @@ struct execution_action {
     execution_range incapacity_duration{ 10, 10 };
     bool wake_on_damage = true;
     std::string source;
+    execution_range velocity{ 20, 20 };
+    bool hit_characters = true;
+    bool controlled_landing = false;
 };
 
 struct execution_step {

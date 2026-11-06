@@ -1,0 +1,90 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_EXECUTION_CLASH_INTERRUPTED",
+    "effect": [
+      {
+        "if": { "and": [ "has_alpha", "u_is_avatar" ] },
+        "then": [ { "u_message": "The clash breaks apart.", "type": "info" } ],
+        "else": [
+          {
+            "if": { "and": [ "has_beta", "npc_is_avatar" ] },
+            "then": [ { "npc_message": "The clash breaks apart.", "type": "info" } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "execution",
+    "id": "execution_cinematic_clash",
+    "name": "Cinematic clash",
+    "revision": 1,
+    "control": { "actor": "scripted", "target": "scripted" },
+    "max_ticks": 16,
+    "max_distance": 8,
+    "on_interrupt": [ "EOC_EXECUTION_CLASH_INTERRUPTED" ],
+    "start": "engage",
+    "steps": {
+      "engage": {
+        "action": { "op": "message", "text": "<actor_name> and <target_name> lock together in a sudden clash!", "entry": "clash" },
+        "next": { "step": "struggle", "after_ticks": [ 1, 2 ] }
+      },
+      "struggle": {
+        "action": {
+          "op": "message",
+          "append_to": "clash",
+          "pool": { "entries": [ { "text": "Neither gives ground." }, { "text": "For a moment, they strain against each other." } ] }
+        },
+        "next": {
+          "weighted": [ { "weight": 3, "to": "push" }, { "weight": 3, "to": "counter_announce" }, { "weight": 1, "to": "throw_check" } ]
+        }
+      },
+      "push": {
+        "action": { "op": "shove", "role": "target", "source": "actor", "tiles": 1, "first_step_after_ticks": 0, "store_result": "push" },
+        "next": { "result": "push", "cases": { "moved": "retreat" }, "otherwise": "standoff" }
+      },
+      "retreat": {
+        "action": { "op": "move", "role": "actor", "tiles": 1, "first_step_after_ticks": 1, "store_result": "retreat" },
+        "next": "separate"
+      },
+      "separate": { "action": { "op": "message", "text": "The fighters break apart, watching each other." }, "end": "separated" },
+      "counter_announce": {
+        "action": { "op": "message", "text": "<target_name> twists free and snaps back with a counterattack." },
+        "next": { "step": "counter", "after_ticks": 1 }
+      },
+      "counter": {
+        "action": { "op": "melee", "role": "target", "store_result": "counter" },
+        "next": { "result": "counter", "cases": { "attacked": "counter_done" }, "otherwise": "standoff" }
+      },
+      "counter_done": { "end": "counter_exchange" },
+      "throw_check": {
+        "next": {
+          "if": { "and": [ "u_is_character", "npc_is_character", { "math": [ "u_val('strength') >= n_val('strength') + 4" ] } ] },
+          "then": "throw_announce",
+          "else": "push"
+        }
+      },
+      "throw_announce": {
+        "action": { "op": "message", "text": "<actor_name> turns the struggle into a throw." },
+        "next": { "step": "throw", "after_ticks": 1 }
+      },
+      "throw": {
+        "action": {
+          "op": "fling",
+          "role": "target",
+          "source": "actor",
+          "velocity": [ 20, 40 ],
+          "hit_characters": true,
+          "store_result": "throw"
+        },
+        "next": { "result": "throw", "cases": { "moved": "thrown" }, "otherwise": "standoff" }
+      },
+      "thrown": { "end": "thrown" },
+      "standoff": {
+        "action": { "op": "message", "text": "The exchange stalls, and the fighters release each other." },
+        "end": "standoff"
+      }
+    }
+  }
+]
