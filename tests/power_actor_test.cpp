@@ -765,6 +765,11 @@ TEST_CASE( "power_fling_does_not_damage_a_collider_removed_by_an_impact_callback
 TEST_CASE( "ability_AI_familiar_lost_vision_follows_instead_of_casting_at_the_old_target",
            "[power_actors][powers_demo]" )
 {
+    // This uses the powers_demo mod's familiar, so it runs only with that mod loaded, as in CI's
+    // mods job.
+    if( !itype_power_demo_familiar_focus.is_valid() ) {
+        return;
+    }
     actor_world world;
     const auto bond = summon( get_avatar(), "power_demo_familiar", 3, 0 );
     auto &familiar = *bond.summon.resolve()->as_monster();
