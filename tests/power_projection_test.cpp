@@ -42,6 +42,9 @@
 #include "rng.h"
 #include "talker.h"
 
+static const itype_id
+itype_power_demo_domain_projection_focus( "power_demo_domain_projection_focus" );
+
 namespace
 {
 struct projection_world {
@@ -785,6 +788,11 @@ TEST_CASE( "power_projection_damaged_payload_exceptions_keep_actual_health_loss_
 TEST_CASE( "power_projection_demo_items_and_abilities_use_the_native_routes",
            "[power_projections][powers_demo]" )
 {
+    // This checks the powers_demo mod's own items, so it runs only with that mod loaded, as in
+    // CI's mods job.
+    if( !itype_power_demo_domain_projection_focus.is_valid() ) {
+        return;
+    }
     projection_world world;
     const auto use = []( const std::string & id ) {
         item focus( itype_id( id ), calendar::turn );
