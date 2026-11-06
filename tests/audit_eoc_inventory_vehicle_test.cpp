@@ -77,7 +77,10 @@ static item &wear_backpack( Character &you )
 {
     std::optional<std::list<item>::iterator> worn = you.wear_item( item( itype_backpack ), false );
     REQUIRE( worn.has_value() );
-    return **worn;
+    // The item lives in the worn list; taking the iterator out first keeps Clang from reading
+    // `**worn` as a reference into the local optional.
+    const std::list<item>::iterator it = *worn;
+    return *it;
 }
 
 // The single item of the given type in the container pockets of a container.

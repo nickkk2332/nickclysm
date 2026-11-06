@@ -402,8 +402,9 @@ TEST_CASE( "omap-b07_manual_voronoi_layout_with_positive_bounds", "[audit][overm
         Region_map &global_placed = overmap_buffer.global_state.placed_regions;
         Region_map saved;
         saved.swap( global_placed );
-        on_out_of_scope restore_placed( [&global_placed, &saved]() {
-            global_placed.swap( saved );
+        // global_placed refers to a global, so the lambda names it directly instead of capturing.
+        on_out_of_scope restore_placed( [&saved]() {
+            overmap_buffer.global_state.placed_regions.swap( saved );
         } );
         global_placed.emplace( tripoint_abs_om( 5, 5, 0 ), region_settings_default );
         hole_region = layout.get_overmap_region( tripoint_abs_om( 6, 6, 0 ) );
