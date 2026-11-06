@@ -47,6 +47,9 @@
 #include "talker.h"
 #include "type_id.h"
 
+static const execution_trigger_id
+execution_trigger_demo_strength_takedown_trigger( "demo_strength_takedown_trigger" );
+
 namespace
 {
 const efftype_id effect_knocked_out( "knocked_out" );
@@ -613,6 +616,11 @@ TEST_CASE( "knockout_prevents_uncanny_dodge_from_moving_the_unconscious_body",
 TEST_CASE( "knockout_reference_content_checks_real_character_strength_and_eligibility",
            "[executions][knockout][content]" )
 {
+    // This checks the executions_demo mod's own rule, so it runs only with that mod loaded, as
+    // in CI's mods job.
+    if( !execution_trigger_demo_strength_takedown_trigger.is_valid() ) {
+        return;
+    }
     knockout_world world;
     avatar &actor = get_avatar();
     npc &target = *subject( "npc" ).as_npc();
@@ -622,7 +630,7 @@ TEST_CASE( "knockout_reference_content_checks_real_character_strength_and_eligib
     target.reset_stats();
     REQUIRE( actor.get_str() >= target.get_str() + 4 );
     dialogue d( get_talker_for( actor ), get_talker_for( target ) );
-    const execution_trigger &rule = *execution_trigger_id( "demo_strength_takedown_trigger" );
+    const execution_trigger &rule = *execution_trigger_demo_strength_takedown_trigger;
     CHECK( rule.condition( d ) );
     const int64_t id = start( "execution_strength_takedown", actor, target );
     CHECK( view( id ).context.at( "execution_result_knockout" ) == "applied" );
