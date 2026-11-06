@@ -286,6 +286,10 @@ static npc &armed_follower()
     guy.set_attitude( NPCATT_FOLLOW );
     guy.rules.set_flag( ally_rule::follow_close );
     guy.set_wielded_item( item( itype_crowbar ) );
+    // A spawned NPC's personality is random, and a timid one may back off from the fight these
+    // tests are about (whether it does depends on the seed), so it is set here.
+    guy.personality.aggression = 0;
+    guy.personality.bravery = NPC_PERSONALITY_MAX;
     get_avatar().setpos( get_map(), goal_origin + tripoint( -2, 0, 0 ) );
     get_map().build_map_cache( 0 );
     REQUIRE( guy.is_player_ally() );
