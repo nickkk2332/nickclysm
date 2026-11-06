@@ -26,6 +26,26 @@
 #include "veh_type.h"
 #include "vehicle.h"
 
+static const itype_id itype_rock( "rock" );
+
+static const spell_id spell_test_twelve_dash( "test_twelve_dash" );
+static const spell_id spell_test_twelve_magical( "test_twelve_magical" );
+static const spell_id spell_test_twelve_nonmagical( "test_twelve_nonmagical" );
+static const spell_id
+spell_test_twelve_nonmagical_components( "test_twelve_nonmagical_components" );
+static const spell_id spell_test_twelve_nonmagical_condition( "test_twelve_nonmagical_condition" );
+
+static const ter_str_id ter_t_wall( "t_wall" );
+
+static const trait_id trait_test_twelve_no_cast( "test_twelve_no_cast" );
+
+static const trap_str_id test_twelve_dash_trap( "test_twelve_dash_trap" );
+
+static const vpart_id vpart_board( "board" );
+static const vpart_id vpart_frame( "frame" );
+
+static const vproto_id vehicle_prototype_none( "none" );
+
 namespace
 {
 talk_effect_t powers_effect( const std::string &text )
@@ -138,18 +158,18 @@ TEST_CASE( "powers_nonmagical_casts_still_require_energy_condition_and_component
     clear_avatar();
     clear_map_without_vision();
     avatar &u = get_avatar();
-    const spell ordinary( spell_id( "test_twelve_nonmagical" ) );
+    const spell ordinary( spell_test_twelve_nonmagical );
     u.magic->set_mana( 0 );
     CHECK_FALSE( ordinary.can_cast( u ) );
     u.magic->set_mana( 1000 );
     CHECK( ordinary.can_cast( u ) );
-    u.set_mutation( trait_id( "test_twelve_no_cast" ) );
+    u.set_mutation( trait_test_twelve_no_cast );
     CHECK( ordinary.can_cast( u ) );
-    CHECK_FALSE( spell( spell_id( "test_twelve_magical" ) ).can_cast( u ) );
-    CHECK_FALSE( spell( spell_id( "test_twelve_nonmagical_condition" ) ).can_cast( u ) );
-    const spell components( spell_id( "test_twelve_nonmagical_components" ) );
+    CHECK_FALSE( spell( spell_test_twelve_magical ).can_cast( u ) );
+    CHECK_FALSE( spell( spell_test_twelve_nonmagical_condition ).can_cast( u ) );
+    const spell components( spell_test_twelve_nonmagical_components );
     CHECK_FALSE( components.can_cast( u ) );
-    u.i_add( item( itype_id( "rock" ) ) );
+    u.i_add( item( itype_rock ) );
     u.invalidate_crafting_inventory();
     CHECK( components.can_cast( u ) );
     // Check the NPC eligibility path too; it uses the same ordinary requirements.
@@ -179,14 +199,14 @@ TEST_CASE( "powers_dash_moves_each_caster_kind_and_stops_at_blockers", "[audit][
         get_avatar().setpos( here, start );
         caster = &get_avatar();
     }
-    const spell sp( spell_id( "test_twelve_dash" ) );
+    const spell sp( spell_test_twelve_dash );
     const int moves = caster->get_moves();
     SECTION( "clear path" ) {
         spell_effect::dash( sp, *caster, start + tripoint_rel_ms( 4, 0, 0 ) );
         CHECK( caster->pos_abs() == start_abs + tripoint_rel_ms( 4, 0, 0 ) );
     }
     SECTION( "wall" ) {
-        here.ter_set( start + tripoint_rel_ms( 2, 0, 0 ), ter_str_id( "t_wall" ) );
+        here.ter_set( start + tripoint_rel_ms( 2, 0, 0 ), ter_t_wall );
         spell_effect::dash( sp, *caster, start + tripoint_rel_ms( 4, 0, 0 ) );
         CHECK( caster->pos_abs() == start_abs + tripoint_rel_ms( 1, 0, 0 ) );
     }
@@ -197,18 +217,18 @@ TEST_CASE( "powers_dash_moves_each_caster_kind_and_stops_at_blockers", "[audit][
         CHECK( blocker.pos_abs() == start_abs + tripoint_rel_ms( 2, 0, 0 ) );
     }
     SECTION( "a blocking vehicle part" ) {
-        vehicle *veh = here.add_vehicle( vproto_id( "none" ), start + tripoint_rel_ms( 2, 0, 0 ),
+        vehicle *veh = here.add_vehicle( vehicle_prototype_none, start + tripoint_rel_ms( 2, 0, 0 ),
                                          0_degrees, 0, veh_spawn_status::UNDAMAGED );
         REQUIRE( veh != nullptr );
-        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_id( "frame" ) ) != -1 );
-        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_id( "board" ) ) != -1 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_frame ) != -1 );
+        REQUIRE( veh->install_part( here, point_rel_ms::zero, vpart_board ) != -1 );
         here.add_vehicle_to_cache( veh );
         REQUIRE( here.impassable( start + tripoint_rel_ms( 2, 0, 0 ) ) );
         spell_effect::dash( sp, *caster, start + tripoint_rel_ms( 4, 0, 0 ) );
         CHECK( caster->pos_abs() == start_abs + tripoint_rel_ms( 1, 0, 0 ) );
     }
     SECTION( "a trap displaces the caster and interrupts the trajectory" ) {
-        here.trap_set( start + tripoint_rel_ms( 1, 0, 0 ), trap_str_id( "test_twelve_dash_trap" ).id() );
+        here.trap_set( start + tripoint_rel_ms( 1, 0, 0 ), test_twelve_dash_trap.id() );
         spell_effect::dash( sp, *caster, start + tripoint_rel_ms( 4, 0, 0 ) );
         CHECK( get_globals().get_global_value( "twelve_dash_trap" ) == 1 );
         CHECK( caster->pos_abs() == start_abs + tripoint_rel_ms( 1, 1, 0 ) );

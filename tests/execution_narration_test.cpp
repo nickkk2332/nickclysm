@@ -23,12 +23,21 @@
 #include "talker.h"
 #include "type_id.h"
 
+static const efftype_id effect_blind( "blind" );
+static const efftype_id effect_deaf( "deaf" );
+
+static const execution_id execution_definition_test_exec_stay( "test_exec_stay" );
+
+static const trait_id trait_DEBUG_CLAIRVOYANCE( "DEBUG_CLAIRVOYANCE" );
+
+static const weather_type_id weather_clear( "clear" );
+
 namespace
 {
 struct narration_world {
     time_point old_time = calendar::turn;
     override_option enabled{ "EXECUTION_NARRATION", "true" };
-    scoped_weather_override weather{ weather_type_id( "clear" ) };
+    scoped_weather_override weather{ weather_clear };
     narration_world() {
         g->executions().clear();
         clear_avatar();
@@ -54,7 +63,8 @@ monster &victim()
 int64_t start_narration( const std::string &definition, Creature &target )
 {
     dialogue d( get_talker_for( get_avatar() ), get_talker_for( target ) );
-    const auto result = g->executions().start( execution_id( definition ), d, 90210 );
+    const execution_start_result result = g->executions().start( execution_id( definition ), d,
+                                          90210 );
     REQUIRE( result.id > 0 );
     g->executions().drain_starts();
     return result.id;
@@ -169,14 +179,14 @@ TEST_CASE( "execution_narration_missing_or_unobserved_anchors_create_fresh_visib
     monster &target = victim();
     const bool hidden = GENERATE( false, true );
     if( hidden ) {
-        get_avatar().add_effect( efftype_id( "blind" ), 1_hours );
+        get_avatar().add_effect( effect_blind, 1_hours );
         get_avatar().recalc_sight_limits();
         REQUIRE_FALSE( get_avatar().sees( get_map(), target ) );
     }
     const int64_t id = start_narration( "test_exec_narration", target );
     if( hidden ) {
         CHECK( g->executions().narration( id ).empty() );
-        get_avatar().remove_effect( efftype_id( "blind" ) );
+        get_avatar().remove_effect( effect_blind );
         get_avatar().recalc_sight_limits();
     }
     Messages::clear_messages();
@@ -202,12 +212,12 @@ TEST_CASE( "execution_narration_selects_visual_or_heard_text_without_exposing_un
     const bool blind = GENERATE( false, true );
     const bool deaf = GENERATE( false, true );
     if( blind ) {
-        get_avatar().add_effect( efftype_id( "blind" ), 1_hours );
+        get_avatar().add_effect( effect_blind, 1_hours );
         get_avatar().recalc_sight_limits();
         REQUIRE_FALSE( get_avatar().sees( get_map(), target ) );
     }
     if( deaf ) {
-        get_avatar().add_effect( efftype_id( "deaf" ), 1_hours );
+        get_avatar().add_effect( effect_deaf, 1_hours );
         REQUIRE( get_avatar().is_deaf() );
     }
     Messages::clear_messages();
@@ -234,7 +244,7 @@ TEST_CASE( "execution_narration_sound_only_requires_hearing_even_when_the_subjec
 {
     narration_world world;
     monster &target = victim();
-    get_avatar().add_effect( efftype_id( "deaf" ), 1_hours );
+    get_avatar().add_effect( effect_deaf, 1_hours );
     Messages::clear_messages();
     const int64_t id = start_narration( "test_exec_narration_audible", target );
     CHECK( g->executions().narration( id ).empty() );
@@ -245,11 +255,12 @@ TEST_CASE( "execution_narration_display_settings_preserve_mechanics_and_gameplay
            "[executions][messages]" )
 {
     narration_world world;
-    get_avatar().set_mutation( trait_id( "DEBUG_CLAIRVOYANCE" ) );
+    get_avatar().set_mutation( trait_DEBUG_CLAIRVOYANCE );
     get_avatar().recalc_sight_limits();
     monster &target = victim();
     dialogue d( get_talker_for( get_avatar() ), get_talker_for( target ) );
-    const auto queued = g->executions().start( execution_id( "test_exec_stay" ), d, 90210 );
+    const execution_start_result queued = g->executions().start( execution_definition_test_exec_stay,
+                                          d, 90210 );
     REQUIRE( queued.id > 0 );
     const std::string saved = save_narration();
     const time_point initial_time = calendar::turn;
@@ -265,7 +276,9 @@ TEST_CASE( "execution_narration_display_settings_preserve_mechanics_and_gameplay
         const JsonObject obj = json_loader::from_string( saved );
         Messages::deserialize( obj );
         g->executions().deserialize( obj.get_object( "executions" ) );
-        const auto random_state = rng_get_engine();
+        // A copy, only to check that nothing advanced the shared engine.
+        // NOLINTNEXTLINE(cata-determinism)
+        const cata_default_random_engine random_state = rng_get_engine();
         g->executions().drain_starts();
         for( int n = 0; n < 12 && g->executions().inspect( queued.id )->state == "running"; ++n ) {
             advance_narration();
@@ -291,15 +304,17 @@ TEST_CASE( "owned_messages_cannot_append_to_another_owner_or_reuse_cleared_handl
            "[messages][executions]" )
 {
     message_log log;
-    const auto root = log.add_owned( "one", "", "First.", " ", 20 );
-    const auto stolen = log.add_owned( "two", root.group, "Second.", " ", 20 );
+    const Messages::owned_message_result root = log.add_owned( "one", "", "First.", " ", 20 );
+    const Messages::owned_message_result stolen = log.add_owned( "two", root.group, "Second.", " ",
+            20 );
     CHECK_FALSE( stolen.appended );
     CHECK( stolen.group != root.group );
-    const auto append = log.add_owned( "one", root.group, "Third.", " ", 20 );
+    const Messages::owned_message_result append = log.add_owned( "one", root.group, "Third.", " ", 20 );
     CHECK( append.appended );
     CHECK( append.group == root.group );
     log.clear();
-    const auto after_clear = log.add_owned( "one", root.group, "After clear.", " ", 20 );
+    const Messages::owned_message_result after_clear = log.add_owned( "one", root.group, "After clear.",
+            " ", 20 );
     CHECK_FALSE( after_clear.appended );
     CHECK( after_clear.group != root.group );
 }
@@ -308,9 +323,10 @@ TEST_CASE( "owned_messages_trimmed_anchors_do_not_restore_pruned_history",
            "[messages][executions]" )
 {
     message_log log;
-    const auto root = log.add_owned( "one", "", "Pruned.", " ", 2 );
+    const Messages::owned_message_result root = log.add_owned( "one", "", "Pruned.", " ", 2 );
     log.messages.emplace_back( std::string( "Unrelated." ), m_neutral );
-    const auto next = log.add_owned( "one", root.group, "New segment.", " ", 2 );
+    const Messages::owned_message_result next = log.add_owned( "one", root.group, "New segment.", " ",
+            2 );
     CHECK_FALSE( next.appended );
     REQUIRE( log.messages.size() == 2 );
     CHECK( log.messages[0].message == "Unrelated." );
@@ -347,17 +363,19 @@ TEST_CASE( "owned_messages_keep_legacy_logs_and_reserve_saved_identities",
         {"turn":0,"message":"Old message.","count":2,"type":0}],"curmes":0})" ) );
     REQUIRE( log.messages.size() == 1 );
     CHECK( log.messages[0].group.empty() );
-    const auto root = log.add_owned( "one", "", "Owned.", " ", 20 );
+    const Messages::owned_message_result root = log.add_owned( "one", "", "Owned.", " ", 20 );
     std::ostringstream text;
     JsonOut out( text );
     log.serialize( out );
-    const auto before = log.add_owned( "one", root.group, "Future.", " ", 20 );
+    const Messages::owned_message_result before = log.add_owned( "one", root.group, "Future.", " ",
+            20 );
     log.deserialize( json_loader::from_string( text.str() ) );
-    const auto resumed = log.add_owned( "one", root.group, "Resumed.", " ", 20 );
+    const Messages::owned_message_result resumed = log.add_owned( "one", root.group, "Resumed.", " ",
+            20 );
     CHECK( resumed.appended );
     CHECK( resumed.segment != before.segment );
-    CHECK( log.messages[0].get_with_count() == "Old message. x 2" );
-    CHECK( log.compact_messages( 2 )[1].message == "Owned. Resumed." );
+    CHECK( log.messages[0].get_with_count() == "Old message. x 2" ); // NOLINT(cata-text-style)
+    CHECK( log.compact_messages( 2 )[1].message == "Owned. Resumed." ); // NOLINT(cata-text-style)
     log.deserialize( json_loader::from_string( "{}" ) );
     CHECK( log.messages.empty() );
 }
@@ -383,8 +401,8 @@ TEST_CASE( "execution_narration_schema_rejects_ambiguous_or_unsafe_audiences",
                                    R"({"op":"message","text":"test","separator":"unknown"})",
                                    R"({"op":"message","text":"test","append_to":"missing"})" );
     execution_definition def;
-    const std::string json = "{\"name\":\"invalid\",\"start\":\"a\",\"steps\":{\"a\":{\"action\":" +
-                             action + ",\"end\":\"done\"}}}";
+    const std::string json = R"({"name":"invalid","start":"a","steps":{"a":{"action":)" +
+                             action + R"(,"end":"done"}}})";
     CAPTURE( action );
     CHECK_THROWS( def.load( json_loader::from_string( json ), "test_data" ) );
 }

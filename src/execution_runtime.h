@@ -54,7 +54,7 @@ class execution_manager
         ~execution_manager();
         execution_manager( const execution_manager & ) = delete;
         execution_manager &operator=( const execution_manager & ) = delete;
-        execution_start_result start( const execution_id &definition, const dialogue &context,
+        execution_start_result start( const execution_id &definition, const dialogue &d,
                                       std::optional<uint64_t> seed = std::nullopt );
         bool cancel( int64_t id, const std::string &reason = "cancelled" );
         void cancel_all( const std::string &reason );

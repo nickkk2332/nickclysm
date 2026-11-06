@@ -52,7 +52,7 @@ class message_log
     public:
         std::deque<game_message> messages;
         time_point curmes = calendar::turn_zero;
-        bool active = true;
+        bool active = true; // NOLINT(cata-serialize)
 
         Messages::owned_message_result add_owned( const std::string &owner, const std::string &anchor,
                 std::string text, const std::string &separator, size_t limit );
