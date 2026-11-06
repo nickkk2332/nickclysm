@@ -27,6 +27,12 @@
 #include "submap.h"
 #include "type_id.h"
 
+static const overmap_special_id overmap_special_test_twelve_mutable( "test_twelve_mutable" );
+
+static const ter_str_id ter_t_floor( "t_floor" );
+
+static const update_mapgen_id update_mapgen_test_twelve_npc_z( "test_twelve_npc_z" );
+
 TEST_CASE( "worldgen_exit_callbacks_belong_to_the_terrain_left", "[audit][worldgen][eoc]" )
 {
     clear_avatar();
@@ -93,7 +99,7 @@ TEST_CASE( "worldgen_mapgen_places_NPCs_on_the_requested_z_level",
         const tripoint_bub_ms destination = here.get_bub( origin_ms + tripoint_rel_ms( offset,
                                             offset, z ) );
         REQUIRE( here.inbounds( destination ) );
-        here.ter_set( destination, ter_str_id( "t_floor" ) );
+        here.ter_set( destination, ter_t_floor );
     }
     std::vector<character_id> created;
     const on_out_of_scope cleanup( [&]() {
@@ -103,7 +109,7 @@ TEST_CASE( "worldgen_mapgen_places_NPCs_on_the_requested_z_level",
         g->unique_npc_despawn( "test_twelve_npc_above" );
         g->unique_npc_despawn( "test_twelve_npc_below" );
     } );
-    REQUIRE( run_mapgen_update_func( update_mapgen_id( "test_twelve_npc_z" ), origin,
+    REQUIRE( run_mapgen_update_func( update_mapgen_test_twelve_npc_z, origin,
                                      {}, nullptr, false ).success() );
     for( const int z : {
              -1, 1
@@ -148,7 +154,7 @@ TEST_CASE( "worldgen_mutable_special_protects_every_piece_of_a_chunk",
     const bool protect = GENERATE( false, true );
     special_placement_result result;
     const std::string message = capture_debugmsg_during( [&]() {
-        result = overmap_special_id( "test_twelve_mutable" )->place( om, root,
+        result = overmap_special_test_twelve_mutable->place( om, root,
                  om_direction::type::north, city(), protect );
     } );
     if( protect ) {
