@@ -23,7 +23,7 @@ Delivered behavior:
 - Actor, target, ordered-pair and world cooldowns are saved independently of scenes,
   include dimension and rule identity, and charge only accepted requests.
 - The latest bounded diagnostic report can be inspected from engine code without
-  repeating any selection work. This is an API for a future inspector, not its UI.
+  repeating any selection work. The [inspector follow-up](12-inspector-and-additional-triggers.md) adds its read-only UI.
 - The optional demo knife uses an automatic rule instead of its former explicit
   technique EOC request. Manual EOC starts remain available.
 
@@ -31,7 +31,7 @@ Delivered behavior:
 
 This closes the first indexed living-melee slice of Phase 0/Phase 5, rather than the
 full combat-producer matrix. The [projectile follow-up](10-projectile-triggers.md)
-adds nonfatal handheld firing. Throws, spells, environmental damage,
+adds nonfatal handheld firing. [Throws, direct spell attacks and JSON melee specials](12-inspector-and-additional-triggers.md) are also supported. Environmental damage,
 monster specials that bypass standard melee, and mounted delegation/rider redirects
 need additional adapters and causality contracts. The [fatal melee follow-up](08-fatal-hits.md)
 adds a separate commit-time stage for NPC/monster fatal victims on these primary-melee
@@ -52,8 +52,7 @@ These limits keep state bounded without claiming an unlimited event history.
 Real knockout/incapacity is delivered by the [knockout follow-up](07-knockouts.md).
 Fatal primary-melee reservation/finalization is delivered by the fatal follow-ups.
 The fatal projectile/physical follow-up also supplies shove, fling and native melee.
-Additional physical verbs and a transcript/trigger
-inspector remain separate milestones.
+The inspector follow-up delivers a read-only transcript/trigger view. Additional physical verbs and sandbox preview remain separate milestones.
 
 ## Validation
 

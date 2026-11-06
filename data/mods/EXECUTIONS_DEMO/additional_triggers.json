@@ -1,0 +1,106 @@
+[
+  {
+    "type": "ITEM",
+    "id": "execution_demo_throwing_knife",
+    "copy-from": "knife_combat",
+    "name": { "str": "execution demonstration throwing knife" },
+    "description": "Configured to demonstrate native thrown-hit execution rules."
+  },
+  {
+    "type": "SPELL",
+    "id": "execution_demo_arcane_impact",
+    "name": "Execution demonstration arcane impact",
+    "description": "A simple direct spell with optional execution reactions.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "flags": [ "SILENT", "NO_HANDS" ],
+    "damage_type": "pure",
+    "min_damage": 15,
+    "max_damage": 15,
+    "min_range": 10,
+    "max_range": 10,
+    "min_aoe": 0,
+    "max_aoe": 0,
+    "max_level": 1
+  },
+  {
+    "type": "monster_attack",
+    "attack_type": "melee",
+    "id": "execution_demo_heavy_strike",
+    "cooldown": 10,
+    "move_cost": 100,
+    "damage_max_instance": [ { "damage_type": "bash", "amount": 20 } ],
+    "accuracy": 8
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_execution_demo_brawler",
+    "copy-from": "mon_zombie",
+    "name": { "str": "execution demonstration brawler" },
+    "description": "A demonstration monster with an explicitly configured cinematic special attack.",
+    "special_attacks": [ [ "execution_demo_heavy_strike", 10 ] ]
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_expanded_thrown",
+    "event": "attack_resolved",
+    "execution": "execution_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_demo_throwing_knife" ], "target_kind": [ "npc", "monster" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_expanded_thrown_fatal",
+    "event": "fatal_hit",
+    "execution": "execution_fatal_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": { "channels": [ "thrown" ], "weapons": [ "execution_demo_throwing_knife" ], "target_kind": [ "npc", "monster" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_expanded_spell",
+    "event": "attack_resolved",
+    "execution": "execution_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": { "channels": [ "spell" ], "spells": [ "execution_demo_arcane_impact" ], "target_kind": [ "npc", "monster" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_expanded_spell_fatal",
+    "event": "fatal_hit",
+    "execution": "execution_fatal_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": { "channels": [ "spell" ], "spells": [ "execution_demo_arcane_impact" ], "target_kind": [ "npc", "monster" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_expanded_monster_special",
+    "event": "attack_resolved",
+    "execution": "execution_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "monster_special" ],
+      "monster_attacks": [ "execution_demo_heavy_strike" ],
+      "target_kind": [ "npc", "monster" ]
+    }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "demo_expanded_monster_special_fatal",
+    "event": "fatal_hit",
+    "execution": "execution_fatal_projectile_stagger",
+    "chance": 0.1,
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "monster_special" ],
+      "monster_attacks": [ "execution_demo_heavy_strike" ],
+      "target_kind": [ "npc", "monster" ]
+    }
+  }
+]

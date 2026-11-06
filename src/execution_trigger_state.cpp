@@ -30,9 +30,18 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
     last.emplace();
     execution_trigger_report &report = *last;
     report.attack = s.id;
+    report.when = calendar::turn;
+    report.actor = s.actor;
+    report.target = s.target;
+    report.facts = s.context();
+    report.reason = "selection_aborted";
     selecting = true;
     const on_out_of_scope finish( [&]() {
         selecting = false;
+        reports.push_back( report );
+        if( reports.size() > 32 ) {
+            reports.pop_front();
+        }
     } );
     if( s.id == 0 || s.id == std::numeric_limits<uint64_t>::max() ) {
         report.reason = "invalid_contact";
@@ -78,9 +87,11 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
     dialogue d( get_talker_for( actor ), get_talker_for( target ), {}, s.context() );
     d.set_value( "killed", 0.0 );
     d.set_value( "death_pending", 0.0 );
-    const auto record = [&]( const execution_trigger & rule, const std::string & reason ) {
+    const auto record = [&]( const execution_trigger & rule, const std::string & reason,
+    std::optional<double> roll = std::nullopt ) {
         if( report.candidates.size() < 64 ) {
-            report.candidates.push_back( { rule.id.str(), reason } );
+            report.candidates.push_back( { rule.id.str(), reason, rule.priority, rule.weight,
+                                           rule.chance, roll } );
         }
     };
     size_t begin = 0;
@@ -115,11 +126,18 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
             if( reason.empty() && rule.condition && !rule.condition( d ) ) {
                 reason = "condition";
             }
-            if( reason.empty() && ( rule.chance == 0 ||
-                                    ( rule.chance < 1 && rng_float( 0, 1 ) >= rule.chance ) ) ) {
-                reason = "chance_failed";
+            std::optional<double> roll;
+            if( reason.empty() ) {
+                if( rule.chance == 0 ) {
+                    reason = "chance_failed";
+                } else if( rule.chance < 1 ) {
+                    roll = rng_float( 0, 1 );
+                    if( *roll >= rule.chance ) {
+                        reason = "chance_failed";
+                    }
+                }
             }
-            record( rule, reason.empty() ? "eligible" : reason );
+            record( rule, reason.empty() ? "eligible" : reason, roll );
             if( reason.empty() ) {
                 passing.push_back( &rule );
             }
@@ -130,6 +148,10 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
                 total += rule->weight;
             }
             int choice = passing.size() == 1 ? 1 : rng( 1, total );
+            report.total_weight = total;
+            if( passing.size() > 1 ) {
+                report.weighted_roll = choice;
+            }
             const execution_trigger *selected = passing.front();
             for( const execution_trigger *rule : passing ) {
                 choice -= rule->weight;
@@ -153,6 +175,9 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
                 const time_point until = calendar::turn + time_duration::from_turns( selected->cooldown_ticks );
                 cooldowns[selected->cooldown_key( s )] = until;
                 next_sweep = std::min( next_sweep, until );
+            }
+            for( size_t n = end; n < rules.size(); ++n ) {
+                record( *rules[n], "lower_priority_not_evaluated" );
             }
             return report;
         }
@@ -180,11 +205,17 @@ std::optional<execution_trigger_report> execution_trigger_state::inspect() const
     return last;
 }
 
+std::vector<execution_trigger_report> execution_trigger_state::history() const
+{
+    return { reports.begin(), reports.end() };
+}
+
 void execution_trigger_state::clear()
 {
     cooldowns.clear();
     recent.clear();
     last.reset();
+    reports.clear();
     selecting = false;
     next_sweep = calendar::before_time_starts;
 }

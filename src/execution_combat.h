@@ -18,12 +18,13 @@ class Creature;
 class Character;
 class item;
 class map;
+class spell;
 struct dealt_damage_instance;
 struct dealt_projectile_attack;
 
 namespace execution_combat
 {
-enum class channel { character_melee, monster_melee, projectile };
+enum class channel { character_melee, monster_melee, projectile, thrown, spell, monster_special, count };
 
 /** Facts from one native primary contact; absent facts are not fabricated. */
 struct attack_snapshot {
@@ -40,6 +41,9 @@ struct attack_snapshot {
     std::set<std::string> weapon_categories;
     std::optional<std::string> weapon_skill;
     std::optional<std::string> ammunition;
+    std::optional<std::string> spell_id;
+    std::optional<int> spell_level;
+    std::optional<std::string> monster_attack;
     std::optional<tripoint_abs_ms> projectile_origin;
     std::optional<std::string> style;
     std::optional<std::string> technique;
@@ -64,6 +68,8 @@ class direct_damage_scope;
 class damage_scope;
 class primary_hit_scope;
 class projectile_hit_scope;
+class effect_hit_scope;
+class effect_scope;
 
 /** Only the native flight claimed by an authored fling may attribute its impacts. */
 class physical_flight_scope
@@ -99,7 +105,8 @@ class impact_scope
 class projectile_fire_scope
 {
     public:
-        projectile_fire_scope( Character &actor, map &here, const item &gun );
+        projectile_fire_scope( Character &actor, map &here, const item &gun,
+                               channel producer = channel::projectile );
         ~projectile_fire_scope() noexcept( false );
         projectile_fire_scope( const projectile_fire_scope & ) = delete;
         projectile_fire_scope &operator=( const projectile_fire_scope & ) = delete;
@@ -108,10 +115,43 @@ class projectile_fire_scope
         friend class attack_scope;
         friend class projectile_flight_scope;
         friend class projectile_hit_scope;
+        friend class effect_hit_scope;
+        friend class effect_scope;
+        projectile_fire_scope( Creature &actor, map &here, channel producer );
         struct impl;
         std::unique_ptr<impl> data;
         projectile_fire_scope *previous = nullptr;
         int exceptions = 0;
+};
+
+/** One explicit primary spell effect or JSON monster melee special; children are barriers. */
+class effect_scope
+{
+    public:
+        effect_scope( Creature &source, const spell &effect, bool direct_effect );
+        effect_scope( Creature &source, const std::string &monster_attack );
+        ~effect_scope() noexcept( false );
+        effect_scope( const effect_scope & ) = delete;
+        effect_scope &operator=( const effect_scope & ) = delete;
+    private:
+        std::unique_ptr<projectile_fire_scope> action;
+        projectile_fire_scope *owner = nullptr;
+};
+
+/** Exact native spell projectile dispatch, not secondary projectiles from callbacks. */
+class effect_target_scope
+{
+    public:
+        effect_target_scope( const Creature &target, const dealt_projectile_attack &attack,
+                             const spell &effect );
+        ~effect_target_scope();
+    private:
+        friend class projectile_hit_scope;
+        effect_target_scope *previous = nullptr;
+        const Creature &target;
+        const dealt_projectile_attack &attack;
+        const spell &effect;
+        bool consumed = false;
 };
 
 /** Only the outer native flight belongs to a firing action; bounces/children do not. */
@@ -125,6 +165,7 @@ class projectile_flight_scope
         projectile_flight_scope &operator=( const projectile_flight_scope & ) = delete;
     private:
         friend class projectile_hit_scope;
+        friend class effect_hit_scope;
         projectile_flight_scope *previous = nullptr;
         projectile_fire_scope *owner = nullptr;
         const dealt_projectile_attack *attack = nullptr;
@@ -167,10 +208,12 @@ class attack_scope
         friend class damage_scope;
         friend class primary_hit_scope;
         friend class projectile_hit_scope;
+        friend class effect_hit_scope;
         friend void record_hp_loss( const Creature &, int );
         friend bool is_impact_damage( const Creature *target );
         attack_scope( Creature &actor, Creature &target, channel producer, bool projectile_primary );
         void reserve_fatal( const Creature &target );
+        static std::unique_ptr<attack_scope> action_hit( Creature &target, Creature *source );
         attack_scope *previous = nullptr;
         bool enabled = false;
         bool resolved = false;
@@ -219,8 +262,21 @@ class direct_damage_scope
         direct_damage_scope &operator=( const direct_damage_scope & ) = delete;
     private:
         friend class projectile_hit_scope;
+        friend class effect_hit_scope;
         explicit direct_damage_scope( attack_scope *owner );
         attack_scope *previous = nullptr;
+};
+
+/** An explicit direct damage call in a native spell/special, excluding its nested effects. */
+class effect_hit_scope
+{
+    public:
+        effect_hit_scope( Creature &target, Creature *source, const spell *effect = nullptr );
+        ~effect_hit_scope() noexcept( false );
+        direct_damage_scope capture_damage();
+        void resolve( const dealt_damage_instance &dealt );
+    private:
+        std::unique_ptr<attack_scope> contact;
 };
 
 /** Captures the selected native projectile hit, excluding its callbacks and effects. */

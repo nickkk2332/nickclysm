@@ -1671,6 +1671,8 @@ dealt_projectile_attack Character::throw_item( const tripoint_bub_ms &target, co
     if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return dealt_projectile_attack();
     }
+    execution_combat::projectile_fire_scope execution_throw( *this, get_map(), to_throw,
+            execution_combat::channel::thrown );
     // Copy the item, we may alter it before throwing
     item thrown = to_throw;
     thrown.set_var( "last_act_by_char_id", getID().get_value() );
@@ -1805,6 +1807,7 @@ dealt_projectile_attack Character::throw_item( const tripoint_bub_ms &target, co
     wp_attack.weapon = &to_throw;
     wp_attack.is_thrown = true;
     dealt_projectile_attack dealt_attack;
+    execution_throw.begin_round( to_throw, dealt_attack );
     projectile_attack( dealt_attack, proj, throw_from, target, dispersion,
                        this, nullptr, wp_attack );
     for( std::pair<Creature *const, std::pair<int, int>> &hit_entry : dealt_attack.targets_hit ) {

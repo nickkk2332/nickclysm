@@ -18,6 +18,7 @@
 #include "line.h"
 #include "map.h"
 #include "mapdata.h"
+#include "magic.h"
 #include "monster.h"
 #include "mtype.h"
 #include "projectile.h"
@@ -38,6 +39,13 @@ thread_local projectile_flight_scope *current_flight = nullptr;
 thread_local projectile_target_scope *current_projectile_target = nullptr;
 thread_local physical_flight_scope *current_physical_flight = nullptr;
 thread_local impact_scope *current_impact = nullptr;
+thread_local effect_target_scope *current_effect_target = nullptr;
+
+bool action_channel( channel producer )
+{
+    return producer == channel::projectile || producer == channel::thrown ||
+           producer == channel::spell || producer == channel::monster_special;
+}
 
 std::string kind( const Creature &who )
 {
@@ -109,6 +117,14 @@ std::string channel_name( channel producer )
             return "monster_melee";
         case channel::projectile:
             return "projectile";
+        case channel::thrown:
+            return "thrown";
+        case channel::spell:
+            return "spell";
+        case channel::monster_special:
+            return "monster_special";
+        case channel::count:
+            break;
     }
     return "";
 }
@@ -125,12 +141,16 @@ struct projectile_fire_scope::impl {
     };
     shared_ptr_fast<Creature> actor;
     creature_ref identity;
+    channel producer = channel::projectile;
+    const spell *expected_effect = nullptr;
+    bool effect_claimed = false;
+    bool effect_active = false;
     const dealt_projectile_attack *expected_flight = nullptr;
     attack_snapshot round;
     std::vector<held_contact> contacts;
 };
 
-projectile_fire_scope::projectile_fire_scope( Character &actor, map &here, const item &gun ) :
+projectile_fire_scope::projectile_fire_scope( Creature &actor, map &here, channel producer ) :
     previous( current_fire ), exceptions( std::uncaught_exceptions() )
 {
     current_fire = this;
@@ -141,9 +161,8 @@ projectile_fire_scope::projectile_fire_scope( Character &actor, map &here, const
     } );
     if( previous || current_flight || current_attack || damage_depth != 0 || !g ||
         &here != &get_map() || g->executions().processing_actions() ||
-        !execution_triggers::has_rules( channel::projectile ) || actor.is_fake() ||
-        actor.is_hallucination() || actor.is_mounted() ||
-        actor.get_wielded_item().get_item() != &gun ||
+        !execution_triggers::has_rules( producer ) || actor.is_fake() ||
+        actor.is_hallucination() ||
         creature_ref::bind( actor ).resolve() != &actor ) {
         return;
     }
@@ -152,7 +171,69 @@ projectile_fire_scope::projectile_fire_scope( Character &actor, map &here, const
         data = std::make_unique<impl>();
         data->actor = source;
         data->identity = creature_ref::bind( actor );
+        data->producer = producer;
+        data->round.producer = producer;
     }
+}
+
+projectile_fire_scope::projectile_fire_scope( Character &actor, map &here, const item &gun,
+        channel producer ) : projectile_fire_scope( static_cast<Creature &>( actor ), here, producer )
+{
+    if( actor.is_mounted() || ( producer != channel::projectile && producer != channel::thrown ) ||
+        ( producer == channel::projectile && actor.get_wielded_item().get_item() != &gun ) ) {
+        data.reset();
+    }
+}
+
+effect_scope::effect_scope( Creature &source, const spell &effect, bool direct_effect )
+{
+    if( direct_effect && current_fire && current_fire->data &&
+        current_fire->data->expected_effect == &effect && !current_fire->data->effect_claimed &&
+        current_fire->data->actor.get() == &source ) {
+        owner = current_fire;
+    } else {
+        action.reset( new projectile_fire_scope( source, get_map(), channel::spell ) );
+        owner = action.get();
+        if( owner->data ) {
+            owner->data->expected_effect = &effect;
+            owner->data->round.spell_id = effect.id().str();
+            owner->data->round.spell_level = effect.get_effective_level();
+        }
+    }
+    if( direct_effect && owner->data ) {
+        owner->data->effect_claimed = true;
+        owner->data->effect_active = true;
+    }
+}
+
+effect_scope::effect_scope( Creature &source, const std::string &monster_attack )
+{
+    action.reset( new projectile_fire_scope( source, get_map(), channel::monster_special ) );
+    owner = action.get();
+    if( owner->data ) {
+        owner->data->round.monster_attack = monster_attack;
+        owner->data->effect_active = true;
+    }
+}
+
+effect_scope::~effect_scope() noexcept( false )
+{
+    if( owner && owner->data ) {
+        owner->data->effect_active = false;
+    }
+    delete action.release();
+}
+
+effect_target_scope::effect_target_scope( const Creature &target,
+        const dealt_projectile_attack &attack, const spell &effect ) :
+    previous( current_effect_target ), target( target ), attack( attack ), effect( effect )
+{
+    current_effect_target = this;
+}
+
+effect_target_scope::~effect_target_scope()
+{
+    current_effect_target = previous;
 }
 
 projectile_fire_scope::~projectile_fire_scope() noexcept( false )
@@ -187,11 +268,12 @@ void projectile_fire_scope::begin_round( const item &gun, const dealt_projectile
         return;
     }
     data->round = attack_snapshot();
+    data->round.producer = data->producer;
     data->expected_flight = &attack;
     data->round.weapon = gun.typeId().str();
     data->round.weapon_uid = gun.uid().get_value();
-    data->round.weapon_skill = gun.gun_skill().str();
-    if( !gun.ammo_current().is_null() ) {
+    data->round.weapon_skill = data->producer == channel::thrown ? "throw" : gun.gun_skill().str();
+    if( data->producer == channel::projectile && !gun.ammo_current().is_null() ) {
         data->round.ammunition = gun.ammo_current().str();
     }
     for( const weapon_category_id &category : gun.type->weapon_category ) {
@@ -263,6 +345,15 @@ global_variables::impl_t attack_snapshot::context() const
     if( ammunition ) {
         put( "ammunition", *ammunition );
     }
+    if( spell_id ) {
+        put( "spell", *spell_id );
+    }
+    if( spell_level ) {
+        put( "spell_level", *spell_level );
+    }
+    if( monster_attack ) {
+        put( "monster_attack", *monster_attack );
+    }
     if( projectile_origin ) {
         put( "projectile_origin", *projectile_origin );
     }
@@ -315,7 +406,7 @@ attack_scope::attack_scope( Creature &actor, Creature &target, channel producer,
         }
     } );
     if( previous || ( !projectile_primary && ( damage_depth != 0 || current_fire || current_flight ||
-                      producer == channel::projectile ) ) || !g || g->executions().processing_actions() ||
+                      action_channel( producer ) ) ) || !g || g->executions().processing_actions() ||
         !execution_triggers::has_rules( producer ) || actor.is_hallucination() ||
         target.is_hallucination() ) {
         return;
@@ -347,7 +438,7 @@ attack_scope::attack_scope( Creature &actor, Creature &target, channel producer,
 attack_scope::~attack_scope() noexcept( false )
 {
     current_attack = previous;
-    if( facts.producer == channel::projectile ) {
+    if( action_channel( facts.producer ) ) {
         if( current_fire && current_fire->data ) {
             for( auto &contact : current_fire->data->contacts ) {
                 if( contact.identity == facts.target ) {
@@ -468,14 +559,40 @@ direct_damage_scope::direct_damage_scope( attack_scope *owner ) : previous( pend
 projectile_hit_scope::projectile_hit_scope( Creature &target, Creature *source,
         const dealt_projectile_attack &attack, map *here, bool critical )
 {
-    if( !current_flight || !current_flight->owner ||
-        current_flight->owner != current_fire || current_flight->attack != &attack ||
-        current_flight->here != here || current_attack || !current_projectile_target ||
-        current_projectile_target->consumed || &current_projectile_target->target != &target ||
-        current_fire->data->identity.resolve() != source || attack.shrapnel ||
-        attack.proj.proj_effects.count( ammo_effect_str_id( "MAGIC" ) ) ||
-        current_fire->data->actor.get() != source ) {
+    const bool spell_hit = current_fire && current_fire->data &&
+                           current_fire->data->producer == channel::spell && current_fire->data->effect_active &&
+                           current_effect_target && !current_effect_target->consumed &&
+                           current_fire->data->expected_effect == &current_effect_target->effect &&
+                           &current_effect_target->target == &target && &current_effect_target->attack == &attack &&
+                           here == &get_map();
+    if( !spell_hit && ( !current_flight || !current_flight->owner ||
+                        current_flight->owner != current_fire || current_flight->attack != &attack ||
+                        current_flight->here != here || current_attack || !current_projectile_target ||
+                        current_projectile_target->consumed || &current_projectile_target->target != &target ||
+                        current_fire->data->identity.resolve() != source || attack.shrapnel ||
+                        attack.proj.proj_effects.count( ammo_effect_str_id( "MAGIC" ) ) ||
+                        current_fire->data->actor.get() != source ) ) {
         return;
+    }
+    contact = attack_scope::action_hit( target, source );
+    if( !contact ) {
+        return;
+    }
+    if( spell_hit ) {
+        current_effect_target->consumed = true;
+    } else {
+        current_projectile_target->consumed = true;
+        contact->facts.projectile_origin = current_flight->origin;
+    }
+    contact->set_critical( critical );
+    capture_location( contact->facts, *source, target );
+}
+
+std::unique_ptr<attack_scope> attack_scope::action_hit( Creature &target, Creature *source )
+{
+    if( !current_fire || !current_fire->data || current_attack || !source ||
+        current_fire->data->identity.resolve() != source || current_fire->data->actor.get() != source ) {
+        return nullptr;
     }
     auto &state = *current_fire->data;
     const creature_ref identity = creature_ref::bind( target );
@@ -486,14 +603,13 @@ projectile_hit_scope::projectile_hit_scope( Creature &target, Creature *source,
     const bool first = previous == state.contacts.end();
     if( ( first && state.contacts.size() >= 64 ) ||
         ( !first && ( previous->fatal_attempted ||
-                      !execution_triggers::has_fatal_rules( channel::projectile ) ) ) ) {
-        return;
+                      !execution_triggers::has_fatal_rules( state.producer ) ) ) ) {
+        return nullptr;
     }
-    contact.reset( new attack_scope( *source, target, channel::projectile, true ) );
+    std::unique_ptr<attack_scope> contact( new attack_scope( *source, target, state.producer, true ) );
     if( !contact->enabled ) {
-        return;
+        return nullptr;
     }
-    current_projectile_target->consumed = true;
     if( first ) {
         projectile_fire_scope::impl::held_contact held;
         held.identity = identity;
@@ -505,9 +621,36 @@ projectile_hit_scope::projectile_hit_scope( Creature &target, Creature *source,
     contact->facts.weapon_skill = state.round.weapon_skill;
     contact->facts.weapon_categories = state.round.weapon_categories;
     contact->facts.ammunition = state.round.ammunition;
-    contact->facts.projectile_origin = current_flight->origin;
-    contact->set_critical( critical );
-    capture_location( contact->facts, *source, target );
+    contact->facts.spell_id = state.round.spell_id;
+    contact->facts.spell_level = state.round.spell_level;
+    contact->facts.monster_attack = state.round.monster_attack;
+    return contact;
+}
+
+effect_hit_scope::effect_hit_scope( Creature &target, Creature *source, const spell *effect )
+{
+    if( current_fire && current_fire->data && current_fire->data->effect_active &&
+        ( current_fire->data->producer == channel::monster_special ||
+          ( effect && current_fire->data->expected_effect == effect ) ) ) {
+        contact = attack_scope::action_hit( target, source );
+    }
+}
+
+effect_hit_scope::~effect_hit_scope() noexcept( false )
+{
+    delete contact.release();
+}
+
+direct_damage_scope effect_hit_scope::capture_damage()
+{
+    return direct_damage_scope( contact.get() );
+}
+
+void effect_hit_scope::resolve( const dealt_damage_instance &dealt )
+{
+    if( contact ) {
+        contact->resolve( true, std::nullopt, dealt );
+    }
 }
 
 projectile_hit_scope::~projectile_hit_scope() noexcept( false )
@@ -582,7 +725,7 @@ void record_hp_loss( const Creature &target, int amount )
             return;
         }
         current_damage->owner->facts.hp_loss = std::max( 0, amount );
-        if( current_damage->owner->facts.producer == channel::projectile ) {
+        if( action_channel( current_damage->owner->facts.producer ) ) {
             current_damage->owner->facts.fatal = amount > 0 && target.is_dead_state();
         }
         if( amount > 0 && target.is_dead_state() && g &&
@@ -595,7 +738,7 @@ void record_hp_loss( const Creature &target, int amount )
 void attack_scope::reserve_fatal( const Creature &target )
 {
     projectile_fire_scope::impl::held_contact *projectile_contact = nullptr;
-    if( facts.producer == channel::projectile ) {
+    if( action_channel( facts.producer ) ) {
         if( !current_fire || !current_fire->data ) {
             return;
         }

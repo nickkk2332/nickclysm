@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "calendar.h"
+#include "creature_ref.h"
 #include "global_vars.h"
 #include "type_id.h"
 
@@ -25,6 +26,10 @@ struct attack_snapshot;
 struct execution_trigger_candidate {
     std::string rule;
     std::string reason;
+    int priority = 0;
+    int weight = 1;
+    double chance = 1;
+    std::optional<double> roll;
 };
 
 struct execution_trigger_report {
@@ -34,6 +39,24 @@ struct execution_trigger_report {
     std::string selected;
     std::string reason;
     std::vector<execution_trigger_candidate> candidates;
+    time_point when = calendar::before_time_starts;
+    creature_ref actor;
+    creature_ref target;
+    global_variables::impl_t facts;
+    int total_weight = 0;
+    std::optional<int> weighted_roll;
+};
+
+struct execution_random_draw {
+    std::string step;
+    int entry = 0;
+    std::string purpose;
+    double minimum = 0;
+    double maximum = 0;
+    double value = 0;
+    bool sampled = false;
+    void serialize( JsonOut &out ) const;
+    void deserialize( const JsonObject &obj );
 };
 
 struct execution_start_result {
@@ -63,6 +86,14 @@ struct execution_narration_segment {
     std::string text;
     void serialize( JsonOut &out ) const;
     void deserialize( const JsonObject &obj );
+};
+
+/** Detached, read-only diagnostic snapshot; never evaluates author conditions. */
+struct execution_inspection {
+    execution_view view;
+    global_variables::impl_t details;
+    std::vector<execution_random_draw> draws;
+    std::vector<execution_narration_segment> narration;
 };
 
 /** Saved, bounded, game-turn state machines. No graph work runs inside start/cancel. */
@@ -95,6 +126,7 @@ class execution_manager
         uint64_t next_attack_id();
         void on_attack_resolved( const execution_combat::attack_snapshot &snapshot );
         std::optional<execution_trigger_report> last_trigger_report() const;
+        std::vector<execution_trigger_report> trigger_history() const;
         bool cancel( int64_t id, const std::string &reason = "cancelled" );
         void cancel_all( const std::string &reason );
         void clear();
@@ -110,6 +142,7 @@ class execution_manager
         bool physical_action_valid() const;
         Creature *physical_instigator() const;
         std::optional<execution_view> inspect( int64_t id ) const;
+        std::vector<execution_inspection> inspect_all() const;
         std::vector<execution_narration_segment> narration( int64_t id ) const;
         void serialize( JsonOut &jsout ) const;
         void deserialize( const JsonObject &jo );

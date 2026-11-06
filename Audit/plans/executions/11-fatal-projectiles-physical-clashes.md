@@ -1,5 +1,7 @@
 # Fatal projectiles, physical actions and cinematic clashes
 
+**Follow-up:** [the inspector and additional trigger channels](12-inspector-and-additional-triggers.md) are now implemented. The original milestone record below retains its scope.
+
 This milestone extends [handheld projectile triggers](10-projectile-triggers.md)
 and the existing fatal ownership adapters. The supported authoring contract is
 [EXECUTIONS.md](../../../doc/JSON/EXECUTIONS.md).

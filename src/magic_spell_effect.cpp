@@ -33,6 +33,7 @@
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "explosion.h"
+#include "execution_combat.h"
 #include "game_inventory.h"
 #include "field.h"
 #include "field_type.h"
@@ -955,6 +956,26 @@ static bool touch_required_hit( Creature &caster,
     return caster.hit_roll() > target.dodge_roll();
 }
 
+static void execution_spell_damage( const spell &sp, Creature &caster, Creature &target,
+                                    const bodypart_id &bp, const damage_instance &damage )
+{
+    execution_combat::effect_hit_scope execution_hit( target, &caster, &sp );
+    dealt_damage_instance dealt;
+    {
+        const auto primary = execution_hit.capture_damage();
+        dealt = target.deal_damage( &caster, bp, damage );
+    }
+    dealt.bp_hit = bp;
+    execution_hit.resolve( dealt );
+}
+
+static void execution_spell_projectile( const spell &sp, Creature &caster, Creature &target,
+                                        dealt_projectile_attack &attack )
+{
+    const execution_combat::effect_target_scope permit( target, attack, sp );
+    target.deal_projectile_attack( &get_map(), &caster, attack, attack.missed_by, true );
+}
+
 static void damage_targets( const spell &sp, Creature &caster,
                             const std::set<tripoint_bub_ms> &targets )
 {
@@ -966,6 +987,7 @@ static void damage_targets( const spell &sp, Creature &caster,
             continue;
         }
         Creature *const cr = creatures.creature_at<Creature>( target );
+        const auto execution_target_body = cr ? g->shared_from( *cr ) : nullptr;
 
         if( sp.has_flag( spell_flag::TOUCH_REQUIRED ) && cr && !touch_required_hit( caster, *cr ) ) {
             caster.add_msg_if_player( m_bad, _( "Your target avoids your attempt to touch them!" ) );
@@ -1036,7 +1058,7 @@ static void damage_targets( const spell &sp, Creature &caster,
                     }
                     // the caster is the attacker on every path, not the target itself
                     for( int i = 0; i < multishot; ++i ) {
-                        cr->deal_projectile_attack( &here, &caster, atk, atk.missed_by, true );
+                        execution_spell_projectile( sp, caster, *cr, atk );
                     }
                 } else if( sp.has_flag( spell_flag::SPLIT_DAMAGE ) ) {
                     int amount_of_bp = target_bdpts.size();
@@ -1044,7 +1066,7 @@ static void damage_targets( const spell &sp, Creature &caster,
                         val.amount = roll_remainder( val.amount / amount_of_bp );
                     }
                     for( bodypart_id bp_id : target_bdpts ) {
-                        cr->deal_damage( &caster, bp_id, atk.proj.impact );
+                        execution_spell_damage( sp, caster, *cr, bp_id, atk.proj.impact );
                     }
                 } else if( sp.has_flag( spell_flag::PERCENTAGE_DAMAGE ) ) {
                     for( bodypart_id bp_id : target_bdpts ) {
@@ -1052,10 +1074,10 @@ static void damage_targets( const spell &sp, Creature &caster,
                             val.amount = roll_remainder( cr->get_hp( bp_id ) * sp.damage( caster ) / 100.0 );
                         }
                         // once per body part, not once per damage unit
-                        cr->deal_damage( &caster, bp_id, atk.proj.impact );
+                        execution_spell_damage( sp, caster, *cr, bp_id, atk.proj.impact );
                     }
                 } else {
-                    cr->deal_projectile_attack( &here, &caster, atk, atk.missed_by, true );
+                    execution_spell_projectile( sp, caster, *cr, atk );
                 }
             }
 
@@ -1065,7 +1087,7 @@ static void damage_targets( const spell &sp, Creature &caster,
                         val.amount = cr->get_hp() * sp.damage( caster ) / 100.0;
                     }
                 }
-                cr->deal_projectile_attack( &here, &caster, atk, atk.missed_by, true );
+                execution_spell_projectile( sp, caster, *cr, atk );
             }
         } else if( sp.damage( caster ) < 0 ) {
             if( !cr->has_flag( json_flag_BLOCK_SUPERNATURAL_HEALING ) ) {

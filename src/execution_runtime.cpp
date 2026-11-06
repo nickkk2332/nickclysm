@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cmath>
 #include <limits>
 #include <map>
 #include <utility>
@@ -100,6 +101,7 @@ struct execution_instance {
     std::map<std::string, int> message_choices;
     std::map<std::string, std::string> message_anchors;
     std::vector<execution_narration_segment> narration;
+    std::vector<execution_random_draw> draws;
 
     bool active() const {
         return view.state == "pending" || view.state == "running";
@@ -113,8 +115,17 @@ struct execution_instance {
         return value ^ ( value >> 31 );
     }
 
-    int roll( int minimum, int maximum ) {
+    void record_draw( const std::string &purpose, double minimum, double maximum,
+                      double value, bool sampled ) {
+        if( draws.size() >= 128 ) {
+            draws.erase( draws.begin() );
+        }
+        draws.push_back( { view.step, entries, purpose, minimum, maximum, value, sampled } );
+    }
+
+    int roll( int minimum, int maximum, const std::string &purpose = "range" ) {
         if( minimum == maximum ) {
+            record_draw( purpose, minimum, maximum, minimum, false );
             return minimum;
         }
         const uint64_t count = static_cast<uint64_t>( maximum - minimum ) + 1;
@@ -123,7 +134,9 @@ struct execution_instance {
         do {
             value = random();
         } while( value >= limit );
-        return minimum + static_cast<int>( value % count );
+        const int result = minimum + static_cast<int>( value % count );
+        record_draw( purpose, minimum, maximum, result, true );
+        return result;
     }
 };
 
@@ -148,6 +161,33 @@ bool avatar_activity_is( int64_t id )
 bool needs_control( const execution_definition &def, bool actor )
 {
     return ( actor ? def.control_actor : def.control_target ) != execution_control::free;
+}
+
+const char *action_name( execution_action::kind kind )
+{
+    switch( kind ) {
+        case execution_action::kind::none:
+            return "none";
+        case execution_action::kind::message:
+            return "message";
+        case execution_action::kind::move:
+            return "move";
+        case execution_action::kind::eoc:
+            return "eoc";
+        case execution_action::kind::effect:
+            return "effect";
+        case execution_action::kind::damage:
+            return "damage";
+        case execution_action::kind::incapacitate:
+            return "incapacitate";
+        case execution_action::kind::shove:
+            return "shove";
+        case execution_action::kind::fling:
+            return "fling";
+        case execution_action::kind::melee:
+            return "melee";
+    }
+    return "unknown";
 }
 
 bool restrained( const Creature &who )
@@ -741,7 +781,7 @@ struct execution_manager::impl {
                 result( scene, action, "unsupported" );
                 return;
             }
-            const int velocity = scene.roll( action.velocity.min, action.velocity.max );
+            const int velocity = scene.roll( action.velocity.min, action.velocity.max, "fling_velocity" );
             const tripoint_rel_ms axis( sgn( before.x() - source->pos_abs().x() ),
                                         sgn( before.y() - source->pos_abs().y() ), 0 );
             if( !get_map().inbounds( target->pos_bub() + axis * ( velocity / 10 ) ) ) {
@@ -795,7 +835,7 @@ struct execution_manager::impl {
                     total += action.messages[n].first;
                 }
             }
-            int choice = scene.roll( 1, total );
+            int choice = scene.roll( 1, total, "message_choice" );
             for( size_t n = 0; n < action.messages.size(); ++n ) {
                 if( action.avoid_repeat && action.messages.size() > 1 && static_cast<int>( n ) == previous ) {
                     continue;
@@ -833,7 +873,8 @@ struct execution_manager::impl {
                                 time_duration::from_turns( action.duration ), false, action.intensity );
             result( scene, action, target->has_effect( action.effect ) ? "applied" : "immune" );
         } else if( action.type == execution_action::kind::incapacitate ) {
-            const int duration = scene.roll( action.incapacity_duration.min, action.incapacity_duration.max );
+            const int duration = scene.roll( action.incapacity_duration.min, action.incapacity_duration.max,
+                                             "incapacity_duration" );
             const std::string status = incapacitation::apply( *target, source.get(),
                                        time_duration::from_turns( duration ), action.wake_on_damage );
             scene.view.context["execution_incapacitation_ticks"] = diag_value{ duration };
@@ -869,6 +910,7 @@ struct execution_manager::impl {
             }
             case execution_transition::kind::chance: {
                 const double choice = static_cast<double>( scene.random() >> 11 ) * ( 1.0 / 9007199254740992.0 );
+                scene.record_draw( "branch_chance_" + std::to_string( t.chance ), 0, 1, choice, true );
                 return select( scene, choice < t.chance ? *t.yes : *t.no );
             }
             case execution_transition::kind::weighted: {
@@ -876,7 +918,7 @@ struct execution_manager::impl {
                 for( const auto &entry : t.weighted ) {
                     total += entry.first;
                 }
-                int choice = scene.roll( 1, total );
+                int choice = scene.roll( 1, total, "weighted_branch" );
                 for( const auto &entry : t.weighted ) {
                     choice -= entry.first;
                     if( choice <= 0 ) {
@@ -920,7 +962,7 @@ struct execution_manager::impl {
                 const bool moving = step.action.type == execution_action::kind::move ||
                                     step.action.type == execution_action::kind::shove;
                 scene.requested = scene.remaining = moving ?
-                                                    scene.roll( step.action.tiles.min, step.action.tiles.max ) : 0;
+                                                    scene.roll( step.action.tiles.min, step.action.tiles.max, "movement_tiles" ) : 0;
                 scene.moved = 0;
                 scene.action_direction = tripoint_rel_ms::zero;
                 const int first = moving ?
@@ -966,7 +1008,7 @@ struct execution_manager::impl {
             scene.view.step = next.step;
             scene.entered = false;
             scene.view.due = calendar::turn + time_duration::from_turns( scene.roll( next.delay.min,
-                             next.delay.max ) );
+                             next.delay.max, "transition_delay" ) );
         }
         // Exhausting immediate work yields to the next turn, with all selected state retained.
         if( scene.active() && scene.view.due <= calendar::turn ) {
@@ -1222,6 +1264,11 @@ void execution_manager::on_attack_resolved( const execution_combat::attack_snaps
 std::optional<execution_trigger_report> execution_manager::last_trigger_report() const
 {
     return data->triggers.inspect();
+}
+
+std::vector<execution_trigger_report> execution_manager::trigger_history() const
+{
+    return data->triggers.history();
 }
 
 execution_start_result execution_manager::start_impl( const execution_id &definition,
@@ -1777,6 +1824,102 @@ std::optional<execution_view> execution_manager::inspect( int64_t id ) const
     return it->second.view;
 }
 
+std::vector<execution_inspection> execution_manager::inspect_all() const
+{
+    std::vector<execution_inspection> out;
+    for( const auto &entry : data->instances ) {
+        const execution_instance &scene = entry.second;
+        execution_inspection row;
+        row.view = scene.view;
+        row.draws = scene.draws;
+        row.narration = scene.narration;
+        auto &details = row.details;
+        details["revision"] = diag_value{ scene.revision };
+        details["started"] = diag_value{ to_turns<int>( scene.started - calendar::turn_zero ) };
+        details["last_tick"] = diag_value{ to_turns<int>( scene.last_tick - calendar::turn_zero ) };
+        details["due"] = diag_value{ to_turns<int>( scene.view.due - calendar::turn_zero ) };
+        details["random_state"] = diag_value{ std::to_string( scene.random_state ) };
+        details["weapon_uid"] = diag_value{ std::to_string( scene.weapon ) };
+        details["entries"] = diag_value{ scene.entries };
+        details["occurrences"] = diag_value{ scene.occurrences };
+        details["entered"] = diag_value{ scene.entered ? 1 : 0 };
+        details["movement_requested"] = diag_value{ scene.requested };
+        details["movement_remaining"] = diag_value{ scene.remaining };
+        details["movement_committed"] = diag_value{ scene.moved };
+        details["cancel_pending"] = diag_value{ scene.cancel_reason };
+        details["fatal_reserved"] = diag_value{ scene.fatal_reserved ? 1 : 0 };
+        details["fatal_ready"] = diag_value{ scene.fatal_ready ? 1 : 0 };
+        if( scene.fatal_reserved ) {
+            details["fatal_until"] = diag_value{ to_turns<int>( scene.fatal_until - calendar::turn_zero ) };
+        }
+        const execution_definition *def = scene.view.definition.is_valid() ? &*scene.view.definition :
+                                          nullptr;
+        if( def && def->steps.count( scene.view.step ) ) {
+            details["action_kind"] = diag_value{ static_cast<int>( def->steps.at( scene.view.step ).action.type ) };
+            details["action"] = diag_value{ action_name( def->steps.at( scene.view.step ).action.type ) };
+        }
+        for( bool actor : {
+                 true, false
+             } ) {
+            const std::string prefix = actor ? "actor_" : "target_";
+            const creature_ref &ref = actor ? scene.actor : scene.target;
+            details[prefix + "uid"] = diag_value{ std::to_string( ref.id ) };
+            details[prefix + "kind"] = diag_value{ ref.type == creature_ref::kind::monster ? "monster" : "character" };
+            details[prefix + "dimension"] = diag_value{ ref.dimension.str() };
+            details[prefix + "expected_position"] = diag_value{ actor ? scene.expected_actor : scene.expected_target };
+            const execution_control control = def ? ( actor ? def->control_actor : def->control_target ) :
+                                              execution_control::free;
+            details[prefix + "control"] = diag_value{ control == execution_control::scripted ? "scripted" :
+                                                      control == execution_control::held ? "held" : "free" };
+            const Creature *who = ref.resolve_loaded();
+            details[prefix + "loaded"] = diag_value{ who ? 1 : 0 };
+            details[prefix + "control_claim"] = diag_value{ scene.active() &&control != execution_control::free ? 1 : 0 };
+            if( who ) {
+                details[prefix + "name"] = diag_value{ who->disp_name() };
+                details[prefix + "position"] = diag_value{ who->pos_abs() };
+                details[prefix + "hp"] = diag_value{ who->get_hp() };
+                details[prefix + "moves"] = diag_value{ who->get_moves() };
+                details[prefix + "visible"] = diag_value{ observed( who ) ? 1 : 0 };
+                details[prefix + "dead_state"] = diag_value{ who->is_dead_state() ? 1 : 0 };
+            }
+        }
+        for( const auto &result : scene.results ) {
+            details["result_" + result.first] = diag_value{ result.second };
+        }
+        out.push_back( std::move( row ) );
+    }
+    return out;
+}
+
+void execution_random_draw::serialize( JsonOut &out ) const
+{
+    out.start_object();
+    out.member( "step", step );
+    out.member( "entry", entry );
+    out.member( "purpose", purpose );
+    out.member( "minimum", minimum );
+    out.member( "maximum", maximum );
+    out.member( "value", value );
+    out.member( "sampled", sampled );
+    out.end_object();
+}
+
+void execution_random_draw::deserialize( const JsonObject &obj )
+{
+    obj.read( "step", step, true );
+    obj.read( "entry", entry, true );
+    obj.read( "purpose", purpose, true );
+    obj.read( "minimum", minimum, true );
+    obj.read( "maximum", maximum, true );
+    obj.read( "value", value, true );
+    obj.read( "sampled", sampled, true );
+    if( purpose.size() > 256 || entry < 0 || entry > 10000 ||
+        !std::isfinite( minimum ) || !std::isfinite( maximum ) || !std::isfinite( value ) ||
+        maximum < minimum || value < minimum || value > maximum ) {
+        obj.throw_error( "invalid execution random draw" );
+    }
+}
+
 std::vector<execution_narration_segment> execution_manager::narration( int64_t id ) const
 {
     const auto it = data->instances.find( id );
@@ -1864,6 +2007,7 @@ void execution_manager::serialize( JsonOut &jsout ) const
         jsout.member( "message_choices", scene.message_choices );
         jsout.member( "message_anchors", scene.message_anchors );
         jsout.member( "narration", scene.narration );
+        jsout.member( "draws", scene.draws );
         if( scene.entered && scene.view.definition.is_valid() &&
             scene.view.definition->steps.count( scene.view.step ) != 0 ) {
             jsout.member( "action_kind", static_cast<int>( scene.view.definition->steps.at(
@@ -1973,6 +2117,10 @@ void execution_manager::deserialize( const JsonObject &jo )
         saved.read( "message_choices", scene.message_choices );
         saved.read( "message_anchors", scene.message_anchors );
         saved.read( "narration", scene.narration );
+        saved.read( "draws", scene.draws );
+        if( scene.draws.size() > 128 ) {
+            saved.throw_error( "too many execution random draws" );
+        }
         const int kind = saved.get_int( "action_kind", -1 );
         if( scene.view.id <= 0 || scene.view.id == std::numeric_limits<int64_t>::max() ||
             data->instances.count( scene.view.id ) || !scene.active() ) {
