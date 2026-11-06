@@ -677,7 +677,7 @@ void projectile_hit_scope::resolve( const dealt_damage_instance &dealt )
 damage_scope::damage_scope( const Creature *source, const Creature &target ) :
     previous( current_damage ), owner( std::exchange( pending_damage, nullptr ) )
 {
-    depth = ++damage_depth;
+    ++damage_depth;
     current_damage = this;
     if( owner && ( owner->source_hold.get() != source || owner->target_hold.get() != &target ) ) {
         owner = nullptr;
@@ -710,7 +710,6 @@ global_variables::impl_t damage_scope::context() const
 void damage_scope::arm_hp_capture( bodypart_id bp, const dealt_damage_instance &dealt )
 {
     capture_hp = true;
-    armed_once = true;
     if( owner ) {
         owner->facts.hit = true;
         if( bp ) {
@@ -724,42 +723,24 @@ void damage_scope::arm_hp_capture( bodypart_id bp, const dealt_damage_instance &
 
 void damage_scope::disarm_hp_capture()
 {
-    // A side effect of this hit, such as the first tick of the bleed it opened, took the target's
-    // last HP before the native HP loss, which then skipped the dead target. The hit still killed.
-    if( capture_hp && early_loss > 0 && owner && owner->target_hold &&
-        owner->target_hold->is_dead_state() ) {
-        capture( *owner->target_hold, early_loss );
-    }
     capture_hp = false;
-}
-
-void damage_scope::capture( const Creature &target, int amount )
-{
-    capture_hp = false;
-    if( !owner || owner->target_hold.get() != &target ) {
-        return;
-    }
-    owner->facts.hp_loss = std::max( 0, amount );
-    if( action_channel( owner->facts.producer ) ) {
-        owner->facts.fatal = amount > 0 && target.is_dead_state();
-    }
-    if( amount > 0 && target.is_dead_state() && g && owner->fatal_instance == 0 ) {
-        owner->reserve_fatal( target );
-    }
 }
 
 void record_hp_loss( const Creature &target, int amount )
 {
-    if( !current_damage ) {
-        return;
-    }
-    if( current_damage->capture_hp ) {
-        current_damage->capture( target, amount );
-    } else if( !current_damage->armed_once && amount > 0 && current_damage->owner &&
-               current_damage->owner->target_hold.get() == &target &&
-               // Only the hit's own effects: damage from callbacks they trigger is nested deeper.
-               damage_depth == current_damage->depth + 1 ) {
-        current_damage->early_loss += amount;
+    if( current_damage && current_damage->capture_hp ) {
+        current_damage->capture_hp = false;
+        if( !current_damage->owner || current_damage->owner->target_hold.get() != &target ) {
+            return;
+        }
+        current_damage->owner->facts.hp_loss = std::max( 0, amount );
+        if( action_channel( current_damage->owner->facts.producer ) ) {
+            current_damage->owner->facts.fatal = amount > 0 && target.is_dead_state();
+        }
+        if( amount > 0 && target.is_dead_state() && g &&
+            current_damage->owner->fatal_instance == 0 ) {
+            current_damage->owner->reserve_fatal( target );
+        }
     }
 }
 

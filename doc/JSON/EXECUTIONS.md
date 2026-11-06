@@ -104,9 +104,6 @@ Weakpoint IDs are local to monster definitions and have no global ID registry.
 The two damage concepts intentionally differ. `damage` is the native primary hit's
 reported per-type result; `hp_loss` is its positive HP write, measured before damage-event
 callbacks. Overkill, HP caps and damage-distribution policies can make them differ.
-When the hit's own side effect takes the last HP first (an edged hit on a monster opens
-a bleed whose first tick can land before the hit's HP write), that loss is the hit's
-`hp_loss` and the hit is still the fatal one.
 Neither includes separate mutation attacks, retaliation, extra damage, or healing from
 callbacks. On a resolved hit, an unreported damage type has value zero. On a miss,
 damage, HP loss, body part and critical facts are unavailable rather than invented zeros.

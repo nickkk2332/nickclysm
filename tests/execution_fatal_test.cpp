@@ -369,6 +369,11 @@ TEST_CASE( "fatal_execution_uses_real_character_and_monster_melee_producers",
     const std::string source_kind = GENERATE( "avatar", "npc", "monster" );
     const std::string target_kind = GENERATE( "npc", "monster" );
     Creature &target = victim( target_kind );
+    if( monster *mon = target.as_monster() ) {
+        // A stab can open a bleed whose first point lands before the primary HP commit; that
+        // death stays ordinary. Keep the victim alive through it so the blow itself is lethal.
+        mon->set_hp( 5 );
+    }
     Creature *source = &get_avatar();
     if( source_kind == "npc" ) {
         source = &spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( 1, 1 ), "thug" );
@@ -396,45 +401,6 @@ TEST_CASE( "fatal_execution_uses_real_character_and_monster_melee_producers",
     tick( 3 );
     CHECK( view( id ).outcome == "killed" );
     CHECK( target.get_killer() == source );
-}
-
-// An edged hit can open a bleed whose first tick lands before the hit's own HP loss. When that
-// tick takes the last HP, the hit still delivered the death and must reserve the execution.
-TEST_CASE( "fatal_execution_survives_the_killing_hit_opening_a_bleed",
-           "[executions][fatal_execution][melee]" )
-{
-    struct fatal_damage : event_subscriber {
-        using event_subscriber::notify;
-        int damage = -1;
-        void notify( const cata::event &e ) override {
-            if( e.type() == event_type::monster_takes_damage && e.get<bool>( "dies" ) ) {
-                damage = e.get<int>( "damage" );
-            }
-        }
-    } observed;
-    get_event_bus().subscribe( &observed );
-    bool bleed_killed = false;
-    // The bleed and its first tick are both random; stop once the bleed has taken the last HP.
-    for( int attempt = 0; attempt < 200 && !bleed_killed; ++attempt ) {
-        fatal_world world;
-        Creature &target = victim( "monster" );
-        avatar &you = get_avatar();
-        equip( you );
-        you.set_str_base( 30 );
-        you.set_dex_base( 30 );
-        you.reset_stats();
-        observed.damage = -1;
-        for( int n = 0; n < 20 && !target.is_dead_state(); ++n ) {
-            you.melee_attack_abstract( target, false, tec_none );
-        }
-        REQUIRE( target.is_dead_state() );
-        CAPTURE( attempt, observed.damage );
-        REQUIRE( execution_fatal::pending( target ) );
-        // The stab itself is far stronger than one bleed tick.
-        bleed_killed = observed.damage == 1;
-    }
-    get_event_bus().unsubscribe( &observed );
-    CHECK( bleed_killed );
 }
 
 TEST_CASE( "fatal_execution_checked_movement_retains_collision_and_raw_fatal_health",
