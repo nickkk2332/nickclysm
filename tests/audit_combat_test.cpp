@@ -546,6 +546,9 @@ TEST_CASE( "cmbt-b12_hardtohit_makes_melee_attackers_roll_twice", "[audit][melee
     avatar &you = get_avatar();
     npc &target = spawn_npc( ( you.pos_bub() + tripoint::east ).xy(), "test_talker" );
     target.remove_weapon();
+    // Its random traits can make it small (a goblin under magiclysm), which alone halves the
+    // hit rate
+    target.clear_mutations();
     // No practice: the attacker's skill stays the same throughout
     target.times_combatted_player = 1000;
 
