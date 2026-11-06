@@ -10,6 +10,7 @@
 #include "cursesdef.h"
 #include "damage_transaction.h"
 #include "power_runtime.h"
+#include "power_actor.h"
 #include "execution_runtime.h"
 #include "game.h"
 #include "output.h"
@@ -224,6 +225,34 @@ void execution_inspector::show()
 {
     while( true ) {
         std::vector<std::pair<std::string, std::string>> rows;
+        for( const auto &bond : get_power_actors().inspect() ) {
+            std::ostringstream detail;
+            detail << "Bond #" << bond.id << " / " << bond.definition.str()
+                   << "\nowner=" << bond.owner.id << " / summon=" << bond.summon.id
+                   << " / target=" << bond.target.id << "\ncommand=" << bond.command
+                   << " / state=" << bond.state << " / reason=" << bond.reason
+                   << "\nexpires=" << to_turn<int>( bond.expires );
+            rows.emplace_back( string_format( _( "Summon bond #%lld: %s [%s]" ), bond.id,
+                                              bond.definition.str(), bond.command ), detail.str() );
+        }
+        for( const auto &motion : get_power_actors().motions() ) {
+            std::ostringstream detail;
+            detail << "Instigator=" << motion.instigator.id << " / moved=" << motion.target.id
+                   << " / cause=" << motion.cause << "\nreason=" << motion.reason
+                   << " / velocity=" << motion.velocity << " -> " << motion.remaining_velocity
+                   << "\nHP loss=" << motion.hp_loss << " / fell=" << motion.fell
+                   << " / landed=" << motion.landed << "\nPath:";
+            for( const auto &point : motion.path ) {
+                detail << " " << point.to_string_writable();
+            }
+            for( const auto &impact : motion.impacts ) {
+                detail << "\n" << impact.kind << " @ " << impact.position.to_string_writable()
+                       << " / collider=" << impact.collider.id << " / force=" << impact.force
+                       << " / moved HP loss=" << impact.moved_hp_loss
+                       << " / collider HP loss=" << impact.collider_hp_loss << " / broken=" << impact.broken;
+            }
+            rows.emplace_back( string_format( _( "Power movement: %s" ), motion.reason ), detail.str() );
+        }
         const power_manager &powers = get_powers();
         for( const auto &application : powers.inspect_applications() ) {
             rows.emplace_back( string_format( _( "Application #%lld: %s [%s] %s" ), application.id,

@@ -7648,3 +7648,9 @@ Combination of values work as `and`, no matter how they are arranged. This two n
 ```jsonc
 "search_data": [ { "category": "weapons", "wielded_only": true } ]
 ```
+
+### Power actors and intent selection
+
+`power_fling`, `spawn_power_summon`, `command_power_summon`,
+`dismiss_power_summons` and `use_best_ability` are documented with role, payment,
+result and lifecycle contracts in [POWER_ACTORS.md](POWER_ACTORS.md).

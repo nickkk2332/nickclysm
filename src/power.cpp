@@ -1,4 +1,5 @@
 #include "power.h"
+#include "power_actor.h"
 
 #include <cmath>
 
@@ -173,6 +174,7 @@ void powers::load_application( const JsonObject &jo, const std::string &source )
 }
 void powers::reset()
 {
+    power_summons::reset();
     applications.reset();
     cooldowns.reset();
     resources.reset();
@@ -182,12 +184,14 @@ void powers::finalize()
     resources.finalize();
     cooldowns.finalize();
     applications.finalize();
+    power_summons::finalize();
 }
 void powers::check()
 {
     resources.check();
     cooldowns.check();
     applications.check();
+    power_summons::check();
 }
 bool powers::valid_resource( const std::string &resource )
 {

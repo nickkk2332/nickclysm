@@ -1,4 +1,5 @@
 #include "monster.h"
+#include "power_actor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1727,6 +1728,11 @@ bool monster::is_fleeing( Character &u ) const
 
 Creature::Attitude monster::attitude_to( const Creature &other ) const
 {
+    if( g ) {
+        if( const auto owned = get_power_actors().attitude( *this, other ) ) {
+            return *owned;
+        }
+    }
     const monster *m = other.is_monster() ? static_cast< const monster *>( &other ) : nullptr;
     const Character *p = other.as_character();
     if( m != nullptr ) {
@@ -1773,6 +1779,12 @@ Creature::Attitude monster::attitude_to( const Creature &other ) const
 
 monster_attitude monster::attitude( const Character *u ) const
 {
+    if( g && u ) {
+        if( const auto owned = get_power_actors().attitude( *this, *u ) ) {
+            return *owned == Attitude::HOSTILE ? MATT_ATTACK :
+                   *owned == Attitude::FRIENDLY ? MATT_FRIEND : MATT_FPASSIVE;
+        }
+    }
     // override for the Personal Portal Storms Mod
     // if the monster is a nether portal monster and the character is an NPC then ignore
     if( u != nullptr && faction == monfaction_nether_player_hate && u->is_npc() &&

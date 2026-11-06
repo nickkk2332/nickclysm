@@ -29,6 +29,7 @@
 #include "memory_fast.h"
 #include "player_activity.h"
 #include "power_runtime.h"
+#include "power_actor.h"
 #include "rng.h"
 #include "spell_cast_context.h"
 #include "talker.h"
@@ -149,6 +150,7 @@ std::string native_check( const ability_request &request, tripoint_abs_ms &desti
 struct ability_manager::impl {
     damage_transaction_manager damage;
     power_manager powers;
+    power_actor_manager actors;
     std::map<int64_t, ability_instance> instances;
     std::map<int64_t, int> root_requests;
     int64_t next_id = 1;
@@ -472,6 +474,11 @@ damage_transaction_manager &ability_manager::damage_transactions()
     return data->damage;
 }
 
+power_actor_manager &ability_manager::power_actors()
+{
+    return data->actors;
+}
+
 power_manager &ability_manager::powers()
 {
     return data->powers;
@@ -648,6 +655,7 @@ void ability_manager::cancel_all( const std::string &reason )
         cancel( entry.first, reason );
     }
     data->powers.cancel_all( reason );
+    data->actors.cancel_all( reason );
     if( !processing() ) {
         drain_starts();
     }
@@ -666,6 +674,7 @@ void ability_manager::clear()
     data->root_requests.clear();
     data->damage.clear();
     data->powers.clear();
+    data->actors.clear();
     data->restoring = false;
 }
 
@@ -713,7 +722,8 @@ bool ability_manager::stopping() const
 
 bool ability_manager::processing() const
 {
-    return data->pumping || data->damage.processing() || data->powers.processing();
+    return data->pumping || data->damage.processing() || data->powers.processing() ||
+           data->actors.processing() || power_motion::processing();
 }
 
 void ability_manager::drain_starts()
@@ -763,6 +773,7 @@ void ability_manager::process()
         execution_combat::attack_in_progress() ) {
         return;
     }
+    data->actors.process();
     data->powers.process();
     drain_starts();
     data->pumping = true;
@@ -891,6 +902,7 @@ void ability_manager::serialize( JsonOut &jsout ) const
     jsout.member( "next_id", data->next_id );
     jsout.member( "damage_transactions", data->damage );
     jsout.member( "powers", data->powers );
+    jsout.member( "power_actors", data->actors );
     jsout.member( "roots" );
     jsout.start_array();
     for( const auto &entry : data->root_requests ) {
@@ -952,7 +964,9 @@ void ability_manager::deserialize( const JsonObject &jo )
     data->damage.clear();
     jo.read( "damage_transactions", data->damage );
     data->powers.clear();
+    data->actors.clear();
     jo.read( "powers", data->powers );
+    jo.read( "power_actors", data->actors );
     int64_t next = 1;
     jo.read( "next_id", next, true );
     if( next <= 0 || next >= std::numeric_limits<int64_t>::max() ) {

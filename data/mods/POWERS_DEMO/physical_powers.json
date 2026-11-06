@@ -1,0 +1,121 @@
+[
+  {
+    "type": "ability",
+    "id": "power_demo_bruiser_throw",
+    "name": "Bruiser throw",
+    "windup_ticks": 1,
+    "range": 1,
+    "move_cost": 100,
+    "energy_cost": { "resource": "power_demo_focus_pool", "amount": 5 },
+    "reserve_energy": true,
+    "cooldown": "power_demo_force_group",
+    "ai": { "intent": "control", "relation": "hostile", "priority": 20, "magnitude": 15 },
+    "eocs": [ { "id": "EOC_POWER_DEMO_THROW", "effect": [ { "power_fling": { "velocity": 40 } } ] } ],
+    "on_start": [
+      {
+        "id": "EOC_POWER_DEMO_THROW_START",
+        "effect": [ { "u_make_sound": "winds up for a forceful throw!", "volume": 8, "type": "combat" } ]
+      }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_power_demo_familiar",
+    "copy-from": "mon_dog",
+    "name": { "str": "force familiar" },
+    "description": "A temporary force companion.  Its bond determines its allegiance and orders.  It uses the same paid force abilities as the brawler.",
+    "special_attacks": [  ]
+  },
+  {
+    "type": "power_summon",
+    "id": "power_demo_familiar",
+    "name": "Force familiar",
+    "monster": "mon_power_demo_familiar",
+    "duration_ticks": 300,
+    "max_per_owner": 1,
+    "range": 3,
+    "leash": 30,
+    "abilities": [ "power_demo_bruiser_throw", "power_demo_charged_strike" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_FAMILIAR",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_summons('power_demo_familiar')", ">", "0" ] },
+        "then": [ { "dismiss_power_summons": { "id": "power_demo_familiar" } } ],
+        "else": [
+          { "spawn_power_summon": { "id": "power_demo_familiar" } },
+          { "set_string_var": { "context_val": "power_bond" }, "target_var": { "u_val": "power_demo_familiar_bond" } }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_FAMILIAR_ATTACK",
+    "effect": [
+      {
+        "command_power_summon": { "bond": { "u_val": "power_demo_familiar_bond", "default": "0" }, "command": "attack", "targeted": true }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_FAMILIAR_GUARD",
+    "effect": [ { "command_power_summon": { "bond": { "u_val": "power_demo_familiar_bond", "default": "0" }, "command": "guard" } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_FAMILIAR_FOLLOW",
+    "effect": [ { "command_power_summon": { "bond": { "u_val": "power_demo_familiar_bond", "default": "0" }, "command": "follow" } } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_familiar_focus",
+    "name": { "str": "familiar focus", "str_pl": "familiar foci" },
+    "description": "Activate to summon a force familiar for five minutes, or dismiss your existing one.  Its attacks spend its own focus and shared strike charges.  The command focuses set its orders.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_FAMILIAR" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_familiar_attack_focus",
+    "name": { "str": "familiar attack focus", "str_pl": "familiar attack foci" },
+    "description": "Select a visible hostile creature for your familiar to attack.  It tracks that creature, chooses a close throw or a ranged strike, and follows you if the target is lost.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_FAMILIAR_ATTACK" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_familiar_guard_focus",
+    "name": { "str": "familiar guard focus", "str_pl": "familiar guard foci" },
+    "description": "Tell your familiar to guard its current tile.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_FAMILIAR_GUARD" ] }
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_familiar_follow_focus",
+    "name": { "str": "familiar follow focus", "str_pl": "familiar follow foci" },
+    "description": "Tell your familiar to follow you again.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_FAMILIAR_FOLLOW" ] }
+  }
+]

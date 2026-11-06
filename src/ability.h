@@ -46,6 +46,13 @@ struct ability_definition {
     std::vector<effect_on_condition_id> on_interrupt;
     std::vector<effect_on_condition_id> on_end;
     global_variables::impl_t locals;
+    // Optional declarative estimates, not evaluation of arbitrary release EOCs.
+    std::string ai_intent;
+    std::string ai_relation = "hostile";
+    int ai_priority = 0;
+    int ai_magnitude = 0;
+    int ai_min_range = 0;
+    int ai_safe_radius = 0;
 
     void load( const JsonObject &jo, std::string_view source );
     void check() const;

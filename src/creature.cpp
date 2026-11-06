@@ -1,4 +1,5 @@
 #include "creature.h"
+#include "power_actor.h"
 
 #include <algorithm>
 #include <array>
@@ -2514,6 +2515,11 @@ void Creature::decrement_summon_timer()
 
 Creature *Creature::get_summoner() const
 {
+    if( g ) {
+        if( const auto owner = get_power_actors().owner_of( *this ) ) {
+            return owner->resolve();
+        }
+    }
     if( !summoner ) {
         return nullptr;
     } else if( summoner.value() == get_player_character().getID() ) {

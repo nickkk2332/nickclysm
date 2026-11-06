@@ -175,7 +175,10 @@ struct pulp_data {
  * Optional behaviors of game::fling_creature, from Cataclysm: The Last Generation's throws.
  * All are off by default, so hulk smashes, vehicle crashes and the like are unchanged.
  */
+struct power_motion_result;
 struct fling_options {
+    /** Optional attributed native receipt; callers must keep it alive for this flight. */
+    power_motion_result *motion = nullptr;
     /** A landing below speed 30 is as gentle as a controlled one. */
     bool soft_low_speed_landing = false;
     /**

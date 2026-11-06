@@ -33,12 +33,13 @@
     ],
     "energy_cost": { "resource": "power_demo_focus_pool", "amount": 10 },
     "reserve_energy": true,
-    "cooldown": "power_demo_force_group"
+    "cooldown": "power_demo_force_group",
+    "ai": { "intent": "harm", "relation": "hostile", "min_range": 2, "priority": 10, "magnitude": 25 }
   },
   {
     "type": "effect_on_condition",
     "id": "EOC_POWER_DEMO_REQUEST",
-    "effect": [ { "request_ability": { "id": "power_demo_charged_strike" } } ]
+    "effect": [ { "use_best_ability": { "abilities": [ "power_demo_bruiser_throw", "power_demo_charged_strike" ] } } ]
   },
   {
     "type": "effect_on_condition",
@@ -80,7 +81,7 @@
     "id": "mon_power_demo_brawler",
     "copy-from": "mon_zombie",
     "name": { "str": "charged strike brawler" },
-    "description": "A demonstration brawler that telegraphs a charged force strike.  Its charge can be interrupted.",
+    "description": "A demonstration brawler that chooses a close-range throw or telegraphed force strike using the same eligibility and payment rules as your powers.",
     "special_attacks": [ [ "power_demo_request_strike", 10 ] ]
   }
 ]

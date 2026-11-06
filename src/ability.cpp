@@ -109,6 +109,29 @@ void ability_definition::load( const JsonObject &jo, std::string_view source )
     read_eocs( jo, "on_complete", std::string( source ), on_complete );
     read_eocs( jo, "on_interrupt", std::string( source ), on_interrupt );
     read_eocs( jo, "on_end", std::string( source ), on_end );
+    if( jo.has_object( "ai" ) ) {
+        const auto ai = jo.get_object( "ai" );
+        ai_intent = ai.get_string( "intent" );
+        if( ai_intent != "harm" && ai_intent != "heal" && ai_intent != "protect" &&
+            ai_intent != "control" && ai_intent != "mobility" && ai_intent != "summon" ) {
+            ai.throw_error_at( "intent", "expected harm, heal, protect, control, mobility or summon" );
+        }
+        ai_relation = ai.get_string( "relation", ai_relation );
+        if( ai_relation != "hostile" && ai_relation != "friendly" && ai_relation != "self" &&
+            ai_relation != "any" ) {
+            ai.throw_error_at( "relation", "expected hostile, friendly, self or any" );
+        }
+        ai_priority = bounded( ai, "priority", ai_priority, -1000000, 1000000 );
+        ai_magnitude = bounded( ai, "magnitude", ai_magnitude, 0, 1000000 );
+        ai_min_range = bounded( ai, "min_range", ai_min_range, 0, range );
+        ai_safe_radius = bounded( ai, "safe_radius", ai_safe_radius, 0, 60 );
+        if( target == "point" ) {
+            ai.throw_error( "AI selection currently requires creature or self targets" );
+        }
+    }
+    if( !ai_intent.empty() && ( target == "point" || ai_min_range > range ) ) {
+        jo.throw_error( "AI intent needs a creature/self target and minimum range within ability range" );
+    }
     jo.read( "locals", locals );
     if( locals.size() > 128 ) {
         jo.throw_error_at( "locals", "at most 128 instance locals" );

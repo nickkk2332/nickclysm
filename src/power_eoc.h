@@ -19,6 +19,16 @@ std::function<void( dialogue & )> resource( const JsonObject &jo, std::string_vi
         std::string_view source );
 std::function<void( dialogue & )> charge( const JsonObject &jo, std::string_view member,
         std::string_view source );
+std::function<void( dialogue & )> fling( const JsonObject &jo, std::string_view member,
+        std::string_view source );
+std::function<void( dialogue & )> summon( const JsonObject &jo, std::string_view member,
+        std::string_view source );
+std::function<void( dialogue & )> summon_command( const JsonObject &jo, std::string_view member,
+        std::string_view source );
+std::function<void( dialogue & )> summon_dismiss( const JsonObject &jo, std::string_view member,
+        std::string_view source );
+std::function<void( dialogue & )> choose_ability( const JsonObject &jo, std::string_view member,
+        std::string_view source );
 } // namespace power_eoc
 
 #endif // CATA_SRC_POWER_EOC_H

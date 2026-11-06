@@ -1,4 +1,5 @@
 #include "execution_combat.h"
+#include "power_motion.h"
 
 #include <algorithm>
 #include <exception>
@@ -82,8 +83,8 @@ impact_scope::impact_scope( const Creature &target ) :
     previous( current_impact ), target( target ), baseline_damage( current_damage ),
     baseline_depth( damage_depth )
 {
-    current_impact = !previous && current_physical_flight &&
-                     &current_physical_flight->target == &target ? this : nullptr;
+    current_impact = !previous && ( ( current_physical_flight &&
+                                      &current_physical_flight->target == &target ) || power_motion::active( target ) ) ? this : nullptr;
 }
 
 impact_scope::~impact_scope()

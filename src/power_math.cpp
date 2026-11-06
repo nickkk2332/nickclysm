@@ -1,4 +1,7 @@
 #include "power_math.h"
+#include "ability_ai.h"
+#include "power_actor.h"
+#include "game.h"
 
 #include <optional>
 #include <string>
@@ -14,7 +17,9 @@ namespace
 const Creature *actor( const const_dialogue &d, char scope )
 {
     const bool beta = scope == 'n';
-    return d.has_actor( beta ) ? d.const_actor( beta )->get_const_creature() : nullptr;
+    const Creature *who = d.has_actor( beta ) ? d.const_actor( beta )->get_const_creature() : nullptr;
+    return who && g && !who->is_fake() && !who->is_hallucination() &&
+           g->shared_from( *who ).get() == who ? who : nullptr;
 }
 } // namespace
 
@@ -82,4 +87,63 @@ double power_math::application( const const_dialogue &d, char scope,
     }
     return get_powers().application_value( *who, power_application_id( params[0].str( d ) ),
                                            field == "magnitude", owner, tag );
+}
+
+
+double power_math::ability( const const_dialogue &d, char scope,
+                            const std::vector<diag_value> &params, const diag_kwargs &kwargs )
+{
+    const Creature *caster = actor( d, scope );
+    const Creature *target = actor( d, scope == 'u' ? 'n' : 'u' );
+    ability_request request;
+    request.ability = ability_id( params[0].str( d ) );
+    if( caster ) {
+        request.caster = creature_ref::bind( *caster );
+    }
+    if( target ) {
+        request.target = creature_ref::bind( *target );
+    }
+    const auto result = ability_ai::query( request );
+    const std::string field = kwargs.kwarg_or( "field", "eligible" ).str( d );
+    if( field == "eligible" ) {
+        return result.eligible() ? 1 : 0;
+    }
+    if( field == "score" ) {
+        return result.eligible() ? result.score : 0;
+    }
+    if( field == "magnitude" ) {
+        return result.magnitude;
+    }
+    if( field == "energy_cost" ) {
+        return result.energy_cost;
+    }
+    if( field == "move_cost" ) {
+        return result.move_cost;
+    }
+    if( field == "windup_min" ) {
+        return result.windup_min;
+    }
+    if( field == "windup_max" ) {
+        return result.windup_max;
+    }
+    throw math::runtime_error( "Unknown ability_query field %s", field );
+}
+
+double power_math::summon( const const_dialogue &d, char scope,
+                           const std::vector<diag_value> &params, const diag_kwargs & )
+{
+    const Creature *owner = actor( d, scope );
+    if( !owner ) {
+        return 0;
+    }
+    const auto ref = creature_ref::bind( *owner );
+    const power_summon_id filter( params[0].str( d ) );
+    int count = 0;
+    for( const auto &v : get_power_actors().inspect() ) {
+        if( v.state == "active" && v.owner == ref && v.owner.resolve() == owner && v.summon.resolve() &&
+            calendar::turn < v.expires && ( filter.is_empty() || filter == v.definition ) ) {
+            ++count;
+        }
+    }
+    return count;
 }
