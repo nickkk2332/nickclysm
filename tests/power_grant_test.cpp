@@ -28,6 +28,7 @@
 #include "damage.h"
 #include "effect.h"
 #include "effect_source.h"
+#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
