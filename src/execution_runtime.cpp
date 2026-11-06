@@ -50,16 +50,20 @@
 #include "rng.h"
 #include "talker.h"
 #include "translations.h"
+#include "weakpoint.h"
 
 static const efftype_id effect_beartrap( "beartrap" );
 static const efftype_id effect_grabbing( "grabbing" );
+static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_ridden( "ridden" );
 static const efftype_id effect_riding( "riding" );
+static const efftype_id effect_sleep( "sleep" );
 static const efftype_id effect_tied( "tied" );
 
-static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const flag_id json_flag_GLIDING( "GLIDING" );
 static const flag_id json_flag_GRAB( "GRAB" );
+
+static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_LEVITATION( "LEVITATION" );
 static const json_character_flag json_flag_PHASE_MOVEMENT( "PHASE_MOVEMENT" );
 static const json_character_flag json_flag_WALL_CLING( "WALL_CLING" );
@@ -623,8 +627,8 @@ struct execution_manager::impl {
                 result( scene, action, "fatal_target" );
                 return true;
             }
-            if( incapacitation::unconscious( *actor ) || actor->has_effect( efftype_id( "sleep" ) ) ||
-                actor->has_effect( efftype_id( "narcosis" ) ) ) {
+            if( incapacitation::unconscious( *actor ) || actor->has_effect( effect_sleep ) ||
+                actor->has_effect( effect_narcosis ) ) {
                 result( scene, action, "incapacitated" );
                 return true;
             }
@@ -755,8 +759,8 @@ struct execution_manager::impl {
             result( scene, action, "unsupported" );
             return;
         }
-        if( incapacitation::unconscious( *source ) || source->has_effect( efftype_id( "sleep" ) ) ||
-            source->has_effect( efftype_id( "narcosis" ) ) ) {
+        if( incapacitation::unconscious( *source ) || source->has_effect( effect_sleep ) ||
+            source->has_effect( effect_narcosis ) ) {
             result( scene, action, "incapacitated" );
             return;
         }
@@ -771,14 +775,14 @@ struct execution_manager::impl {
             bool attempted = false;
             const int moves = source->get_moves();
             if( Character *person = source->as_character() ) {
-                attempted = person->melee_attack( *target, false, matec_id( "tec_none" ) );
+                attempted = person->melee_attack( *target, false, tec_none );
             } else if( monster *mon = source->as_monster(); mon && mon->sees( get_map(), *target ) ) {
                 attempted = mon->melee_attack( *target );
             }
             scene.view.context["execution_attack_moves"] = diag_value{ moves - source->get_moves() };
             result( scene, action, attempted ? "attacked" : "refused" );
         } else {
-            if( target->has_flag( json_character_flag( "CANNOT_MOVE" ) ) ||
+            if( target->has_flag( json_flag_CANNOT_MOVE ) ||
                 ( target->as_monster() && target->as_monster()->has_flag( mon_flag_IMMOBILE ) ) ) {
                 result( scene, action, "unsupported" );
                 return;
@@ -885,8 +889,13 @@ struct execution_manager::impl {
         } else if( action.type == execution_action::kind::damage ) {
             const bodypart_id bp = target->as_character() ? action.bodypart.id() : bodypart_id();
             const int before = target->get_hp( bp );
+            // Scripted damage lands where the script says: no weakpoint roll. That roll draws from
+            // the global RNG, so a save could reroll it, and a monster's head could turn a scripted
+            // torso hit into an instant kill.
+            weakpoint_attack scripted;
+            scripted.accuracy = 0.f;
             const dealt_damage_instance dealt = target->deal_damage( source.get(), bp,
-                                                damage_instance( action.damage_type, action.amount ) );
+                                                damage_instance( action.damage_type, action.amount ), scripted, weakpoint() );
             scene.view.context["execution_damage"] = diag_value{ dealt.total_damage() };
             scene.view.context["execution_hp_change"] = diag_value{ target->get_hp( bp ) - before };
             target->check_dead_state( &get_map() );
@@ -1225,7 +1234,7 @@ void execution_manager::defer_kill( const Creature &target, const ma_event_conte
         if( !scene.active() || !scene.fatal_reserved || !( scene.target == ref ) ) {
             continue;
         }
-        auto &out = scene.kill_context;
+        global_variables::impl_t &out = scene.kill_context;
         out["weapon"] = diag_value{ ctx.weapon.str() };
         out["style"] = diag_value{ ctx.style.str() };
         out["technique"] = diag_value{ ctx.technique.str() };
@@ -1846,7 +1855,7 @@ std::vector<execution_inspection> execution_manager::inspect_all() const
         row.view = scene.view;
         row.draws = scene.draws;
         row.narration = scene.narration;
-        auto &details = row.details;
+        global_variables::impl_t &details = row.details;
         details["revision"] = diag_value{ scene.revision };
         details["started"] = diag_value{ to_turns<int>( scene.started - calendar::turn_zero ) };
         details["last_tick"] = diag_value{ to_turns<int>( scene.last_tick - calendar::turn_zero ) };
@@ -2162,8 +2171,9 @@ void execution_manager::deserialize( const JsonObject &jo )
             }
         }
         data->next_id = std::max( data->next_id, scene.view.id + 1 );
-        data->instances.emplace( scene.view.id, std::move( scene ) );
-        data->fatal_count += data->instances.at( scene.view.id ).fatal_reserved;
+        const int64_t id = scene.view.id;
+        data->instances.emplace( id, std::move( scene ) );
+        data->fatal_count += data->instances.at( id ).fatal_reserved;
     }
     // Actor/activity validation happens at the first safe pump, after all save records load.
 }

@@ -2058,7 +2058,7 @@ bool monster::is_underwater() const
 bool monster::is_on_ground() const
 {
     // TODO: actually make this work
-    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) );
+    return incapacitation::unconscious( *this ) || execution_fatal::pending( *this );
 }
 
 bool monster::has_weapon() const

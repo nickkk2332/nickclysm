@@ -45,20 +45,22 @@ static const flag_id json_flag_AUDIT_IMMUNE_B( "AUDIT_IMMUNE_B" );
 static const flag_id json_flag_EFFECT_LIMB_SCORE_MOD( "EFFECT_LIMB_SCORE_MOD" );
 
 static const itype_id itype_FMCNote( "FMCNote" );
-
-static const npc_class_id NC_NONE( "NC_NONE" );
-
-static const string_id<npc_template> npc_template_audit_npc_child( "audit_npc_child" );
-static const string_id<npc_template> npc_template_audit_npc_parent( "audit_npc_parent" );
-static const string_id<npc_template> npc_template_audit_rt_npc( "audit_rt_npc" );
-static const string_id<npc_template>
-npc_template_audit_rt_npc_bad_attitude( "audit_rt_npc_bad_attitude" );
-
 static const itype_id itype_audit_pocket_delete_extend( "audit_pocket_delete_extend" );
 static const itype_id itype_audit_pocket_inherit( "audit_pocket_inherit" );
 static const itype_id itype_audit_pocket_parent( "audit_pocket_parent" );
 static const itype_id itype_audit_pocket_proportional( "audit_pocket_proportional" );
 static const itype_id itype_audit_pocket_relative( "audit_pocket_relative" );
+
+static const npc_class_id NC_NONE( "NC_NONE" );
+
+static const string_id<npc_template> npc_template_audit_npc_child( "audit_npc_child" );
+
+static const string_id<npc_template> npc_template_audit_npc_parent( "audit_npc_parent" );
+
+static const string_id<npc_template> npc_template_audit_rt_npc( "audit_rt_npc" );
+
+static const string_id<npc_template>
+npc_template_audit_rt_npc_bad_attitude( "audit_rt_npc_bad_attitude" );
 
 // The max_item_length a pocket gets when its JSON gives none.
 static units::length default_item_length( const units::volume &volume )

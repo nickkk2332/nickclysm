@@ -174,9 +174,9 @@ bool teleport::teleport_creature( Creature &critter, int min_distance, int max_d
         const units::angle rangle = units::from_degrees( rng( 0, 359 ) );
         const int rdistance = rng( min_distance, max_distance );
         // Rounded, not truncated, or a 1 tile shift would land on the origin.
-        const int dx = static_cast<int>( std::lround( rdistance * units::cos( rangle ) ) );
-        const int dy = static_cast<int>( std::lround( rdistance * units::sin( rangle ) ) );
-        new_pos = { origin.x() + dx, origin.y() + dy, new_pos.z() };
+        const point d( static_cast<int>( std::lround( rdistance * units::cos( rangle ) ) ),
+                       static_cast<int>( std::lround( rdistance * units::sin( rangle ) ) ) );
+        new_pos = { origin.x() + d.x, origin.y() + d.y, new_pos.z() };
         tries++;
         // Diagonals round inwards; retry those that end up closer than min_distance.
     } while( ( new_pos == origin || square_dist( origin, new_pos ) < min_distance ||

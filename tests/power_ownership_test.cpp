@@ -44,12 +44,36 @@
 #include "rng.h"
 #include "talker.h"
 
+static const damage_type_id damage_pure( "pure" );
+
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_POWER_DAMAGE_HOOK( "EOC_TEST_POWER_DAMAGE_HOOK" );
+static const effect_on_condition_id
+effect_on_condition_EOC_TEST_POWER_RECURSIVE( "EOC_TEST_POWER_RECURSIVE" );
+
+static const efftype_id effect_test_damage_observe( "test_damage_observe" );
+static const efftype_id effect_test_damage_shield( "test_damage_shield" );
+static const efftype_id effect_test_power_resource_shield( "test_power_resource_shield" );
+
+static const itype_id itype_power_demo_mirror_focus( "power_demo_mirror_focus" );
 static const itype_id itype_power_demo_ward_focus( "power_demo_ward_focus" );
+
+static const power_application_id
+power_application_power_demo_owned_mirror( "power_demo_owned_mirror" );
+static const power_application_id
+power_application_power_demo_owned_ward( "power_demo_owned_ward" );
+static const power_application_id power_application_test_power_hook( "test_power_hook" );
+static const power_application_id power_application_test_power_interrupt( "test_power_interrupt" );
+static const power_application_id power_application_test_power_mirror( "test_power_mirror" );
+static const power_application_id power_application_test_power_recursive( "test_power_recursive" );
+static const power_application_id power_application_test_power_ward( "test_power_ward" );
+
+static const power_cooldown_id power_cooldown_power_demo_force_group( "power_demo_force_group" );
+static const power_cooldown_id power_cooldown_test_power_group( "test_power_group" );
+static const power_cooldown_id power_cooldown_test_power_lock( "test_power_lock" );
 
 namespace
 {
-const bodypart_str_id torso( "torso" );
-const power_cooldown_id group( "test_power_group" );
 
 struct power_world {
     time_point old_time = calendar::turn;
@@ -112,7 +136,7 @@ power_application_request application( Creature &owner, Creature &target,
 
 int64_t apply( Creature &owner, Creature &target, const std::string &id = "test_power_ward" )
 {
-    const auto result = get_powers().apply( application( owner, target, id ) );
+    const power_application_admission result = get_powers().apply( application( owner, target, id ) );
     INFO( result.reason );
     REQUIRE( result.accepted() );
     return result.id;
@@ -120,7 +144,7 @@ int64_t apply( Creature &owner, Creature &target, const std::string &id = "test_
 
 power_application_view view( int64_t id )
 {
-    for( const auto &v : get_powers().inspect_applications() ) {
+    for( power_application_view const &v : get_powers().inspect_applications() ) {
         if( v.id == id ) {
             return v;
         }
@@ -182,7 +206,7 @@ double counter( const std::string &name )
     return value ? value->dbl() : 0;
 }
 
-double query( const std::string &expression, Creature &alpha, Creature *beta = nullptr )
+double query( const std::string_view expression, Creature &alpha, Creature *beta = nullptr )
 {
     math_exp math;
     REQUIRE( math.parse( expression ) );
@@ -222,8 +246,9 @@ TEST_CASE( "power_regeneration_has_no_banked_full_pool_credit_and_queries_do_not
 {
     power_world world;
     avatar &actor = get_avatar();
-    const auto initial = save();
-    const auto rng_before = rng_get_engine();
+    const std::string initial = save();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
     CHECK( query( "u_power_resource('test_power_regen')", actor ) == 20 );
     CHECK( save() == initial );
     CHECK( rng_get_engine() == rng_before );
@@ -232,7 +257,7 @@ TEST_CASE( "power_regeneration_has_no_banked_full_pool_credit_and_queries_do_not
     tick();
     CHECK( get_powers().balance( actor, "test_power_regen" ).available() == 10 );
     tick();
-    const auto materialized = save();
+    const std::string materialized = save();
     CHECK( get_powers().balance( actor, "test_power_regen" ).available() == 13 );
     CHECK( save() == materialized );
     calendar::turn += 100_turns;
@@ -251,16 +276,16 @@ TEST_CASE( "power_reserved_custom_energy_is_shared_with_real_damage_defenses",
     power_world world;
     monster &target = victim();
     avatar &source = get_avatar();
-    source.add_effect( efftype_id( "test_power_resource_shield" ), 1_hours );
+    source.add_effect( effect_test_power_resource_shield, 1_hours );
     REQUIRE( get_powers().modify( source, "test_power_focus", -70, "fixture" ) == -70 );
-    const auto admitted = g->abilities().request( request( source, target ) );
+    const ability_admission admitted = g->abilities().request( request( source, target ) );
     REQUIRE( admitted.accepted() );
     CHECK( get_powers().balance( source, "test_power_focus" ).total == 30 );
     CHECK( get_powers().balance( source, "test_power_focus" ).reserved == 20 );
     CHECK( get_powers().balance( source, "test_power_focus" ).available() == 10 );
     g->abilities().drain_starts();
     const damage_context_scope trace;
-    source.deal_damage( &target, torso.id(), damage_instance( damage_type_id( "pure" ), 25 ) );
+    source.deal_damage( &target, body_part_torso.id(), damage_instance( damage_pure, 25 ) );
     const auto packet = trace.result();
     REQUIRE( packet );
     CHECK( packet->absorbed == 10 );
@@ -281,14 +306,14 @@ TEST_CASE( "power_reservations_for_native_mana_coordinate_shields_without_fake_r
     avatar &source = get_avatar();
     monster &target = victim();
     source.magic->set_mana( 30 );
-    source.add_effect( efftype_id( "test_damage_shield" ), 1_hours );
-    const auto admitted = g->abilities().request( request( source, target,
-                          "test_power_mana_reserve" ) );
+    source.add_effect( effect_test_damage_shield, 1_hours );
+    const ability_admission admitted = g->abilities().request( request( source, target,
+                                       "test_power_mana_reserve" ) );
     REQUIRE( admitted.accepted() );
     g->abilities().drain_starts();
-    source.deal_damage( nullptr, torso.id(), damage_instance( damage_type_id( "pure" ), 25 ) );
+    source.deal_damage( nullptr, body_part_torso.id(), damage_instance( damage_pure, 25 ) );
     CHECK( source.magic->available_mana() == 20 );
-    CHECK( source.get_hp( torso.id() ) == 9985 );
+    CHECK( source.get_hp( body_part_torso.id() ) == 9985 );
     tick( 2 );
     CHECK( action_view( admitted.id ).paid_energy == 20 );
     CHECK( source.magic->available_mana() == 0 );
@@ -305,9 +330,9 @@ TEST_CASE( "power_cancelled_or_unaffordable_windups_release_claims_without_spend
     if( mana ) {
         source.magic->set_mana( 30 );
     }
-    const auto admitted = g->abilities().request( request( source, target,
-                          mana ? "test_power_mana_reserve" : mode == "before_release" ?
-                          "test_power_cancel" : "test_power_charged" ) );
+    const ability_admission admitted = g->abilities().request( request( source, target,
+                                       mana ? "test_power_mana_reserve" : mode == "before_release" ?
+                                       "test_power_cancel" : "test_power_charged" ) );
     REQUIRE( admitted.accepted() );
     g->abilities().drain_starts();
     if( mode == "cancel" ) {
@@ -329,7 +354,7 @@ TEST_CASE( "power_cancelled_or_unaffordable_windups_release_claims_without_spend
     } else {
         tick( 2 );
         CHECK_FALSE( action_view( admitted.id ).costs_committed );
-        CHECK( get_powers().charges( source, group ).charges == 2 );
+        CHECK( get_powers().charges( source, power_cooldown_test_power_group ).charges == 2 );
         CHECK( get_powers().balance( source, "test_power_focus" ).total == 100 );
     }
     CHECK( get_powers().inspect_reservations().empty() );
@@ -345,7 +370,7 @@ TEST_CASE( "power_native_and_custom_costs_share_actor_support_and_reservation_ru
     const std::string name = GENERATE( "npc", "monster" );
     Creature &actor = kind( name );
     monster &target = victim();
-    const auto admitted = g->abilities().request( request( actor, target ) );
+    const ability_admission admitted = g->abilities().request( request( actor, target ) );
     REQUIRE( admitted.accepted() );
     g->abilities().drain_starts();
     tick( 2 );
@@ -360,27 +385,27 @@ TEST_CASE( "power_shared_charge_groups_recharge_sequentially_and_effect_only_cas
 {
     power_world world;
     monster &target = victim();
-    auto r = request( get_avatar(), target, "test_power_instant" );
+    ability_request r = request( get_avatar(), target, "test_power_instant" );
     for( int i = 0; i < 2; ++i ) {
         REQUIRE( g->abilities().request( r ).accepted() );
         g->abilities().drain_starts();
     }
     CHECK( g->abilities().check( r ) == "no_charges" );
-    CHECK( get_powers().charges( get_avatar(), group ).charges == 0 );
-    auto free = r;
+    CHECK( get_powers().charges( get_avatar(), power_cooldown_test_power_group ).charges == 0 );
+    ability_request free = r;
     free.invocation = ability_invocation::effect_only;
-    const auto proc = g->abilities().request( free );
+    const ability_admission proc = g->abilities().request( free );
     REQUIRE( proc.accepted() );
     g->abilities().drain_starts();
     CHECK( action_view( proc.id ).paid_charges == 0 );
-    CHECK( get_powers().charges( get_avatar(), group ).charges == 0 );
+    CHECK( get_powers().charges( get_avatar(), power_cooldown_test_power_group ).charges == 0 );
     tick( 3 );
-    CHECK( get_powers().charges( get_avatar(), group ).charges == 1 );
-    const auto before = save();
+    CHECK( get_powers().charges( get_avatar(), power_cooldown_test_power_group ).charges == 1 );
+    const std::string before = save();
     CHECK( query( "u_power_cooldown('test_power_group', 'field': 'recharge')", get_avatar() ) == 3 );
     CHECK( save() == before );
     tick( 3 );
-    CHECK( get_powers().charges( get_avatar(), group ).charges == 2 );
+    CHECK( get_powers().charges( get_avatar(), power_cooldown_test_power_group ).charges == 2 );
 }
 
 TEST_CASE( "power_group_cooldown_is_independent_of_recovering_a_charge",
@@ -388,7 +413,7 @@ TEST_CASE( "power_group_cooldown_is_independent_of_recovering_a_charge",
 {
     power_world world;
     monster &target = victim();
-    auto r = request( get_avatar(), target, "test_power_locked" );
+    ability_request r = request( get_avatar(), target, "test_power_locked" );
     REQUIRE( g->abilities().request( r ).accepted() );
     g->abilities().drain_starts();
     CHECK( g->abilities().check( r ) == "cooldown" );
@@ -401,7 +426,7 @@ TEST_CASE( "power_group_cooldown_is_independent_of_recovering_a_charge",
     REQUIRE( g->abilities().request( r ).accepted() );
     g->abilities().drain_starts();
     CHECK( get_powers().charges( get_avatar(),
-                                 power_cooldown_id( "test_power_lock" ) ).recharge_remaining == 5 );
+                                 power_cooldown_test_power_lock ).recharge_remaining == 5 );
 }
 
 TEST_CASE( "power_two_maintained_applications_disappear_independently_and_recover_one_charge_after_load",
@@ -421,21 +446,22 @@ TEST_CASE( "power_two_maintained_applications_disappear_independently_and_recove
     }
     tick();
     CHECK( get_powers().balance( owner, "test_power_focus" ).total == 97 );
-    const auto starts = counter( "power_starts" );
-    const auto rng_before = rng_get_engine();
+    const double starts = counter( "power_starts" );
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
     restore( save() );
     CHECK( rng_get_engine() == rng_before );
     CHECK( counter( "power_starts" ) == starts );
     CHECK( get_powers().application_value( owner, power_application_id() ) == 2 );
     REQUIRE( get_powers().end( ward ) );
-    CHECK( get_powers().application_value( owner, power_application_id( "test_power_ward" ) ) == 0 );
-    CHECK( get_powers().application_value( owner, power_application_id( "test_power_mirror" ) ) == 1 );
+    CHECK( get_powers().application_value( owner, power_application_test_power_ward ) == 0 );
+    CHECK( get_powers().application_value( owner, power_application_test_power_mirror ) == 1 );
     g->abilities().drain_starts();
     CHECK( counter( "power_ends" ) == 1 );
     tick();
     CHECK( get_powers().balance( owner, "test_power_focus" ).total == 95 );
     tick();
-    CHECK( get_powers().charges( owner, group ).charges == 1 );
+    CHECK( get_powers().charges( owner, power_cooldown_test_power_group ).charges == 1 );
     CHECK( view( mirror ).tick_count == 3 );
     CHECK( view( ward ).state == "ended" );
 }
@@ -447,23 +473,23 @@ TEST_CASE( "power_two_casters_same_ward_preserve_surviving_native_combat_contrib
     avatar &a = get_avatar();
     npc &b = spawn_npc( a.pos_bub().xy() + point_rel_ms( 0, -2 ), "thug" );
     monster &target = victim();
-    target.add_effect( efftype_id( "test_damage_observe" ), 1_hours );
+    target.add_effect( effect_test_damage_observe, 1_hours );
     const int64_t first = apply( a, target );
     const int64_t second = apply( b, target );
     g->abilities().drain_starts();
-    target.deal_damage( &a, torso.id(), damage_instance( damage_type_id( "pure" ), 20 ) );
+    target.deal_damage( &a, body_part_torso.id(), damage_instance( damage_pure, 20 ) );
     CHECK( target.get_hp() == 9994 );
     CHECK( query( "n_power_application('test_power_ward', 'owner': 'u')", a, &target ) == 1 );
-    CHECK( get_powers().dispel( creature_ref::bind( target ), power_application_id( "test_power_ward" ),
+    CHECK( get_powers().dispel( creature_ref::bind( target ), power_application_test_power_ward,
                                 creature_ref::bind( a ) ) == 1 );
-    CHECK( get_powers().application_value( target, power_application_id( "test_power_ward" ),
+    CHECK( get_powers().application_value( target, power_application_test_power_ward,
                                            true ) == 7 );
-    target.deal_damage( &a, torso.id(), damage_instance( damage_type_id( "pure" ), 20 ) );
+    target.deal_damage( &a, body_part_torso.id(), damage_instance( damage_pure, 20 ) );
     CHECK( target.get_hp() == 9981 );
     g->abilities().drain_starts();
     CHECK( view( first ).state == "ended" );
     CHECK( view( second ).state == "active" );
-    CHECK( target.has_effect( efftype_id( "test_damage_observe" ) ) );
+    CHECK( target.has_effect( effect_test_damage_observe ) );
     CHECK( a.get_value( "power_owner_seen" ).dbl() == 1 );
     CHECK( b.get_value( "power_owner_seen" ).dbl() == 1 );
     CHECK( target.get_value( "power_target_seen" ).dbl() == 2 );
@@ -518,12 +544,12 @@ TEST_CASE( "power_cancelling_an_application_parent_ends_all_owned_children_witho
     }
     REQUIRE( get_powers().inspect_applications().size() == 9 );
     REQUIRE( get_powers().application_value( get_avatar(),
-             power_application_id( "test_power_recursive" ) ) == 9 );
+             power_application_test_power_recursive ) == 9 );
     REQUIRE( get_powers().end( root ) );
     CHECK( get_powers().application_value( get_avatar(),
-                                           power_application_id( "test_power_recursive" ) ) == 0 );
+                                           power_application_test_power_recursive ) == 0 );
     g->abilities().drain_starts();
-    for( const auto &v : get_powers().inspect_applications() ) {
+    for( power_application_view const &v : get_powers().inspect_applications() ) {
         CHECK( v.state == "ended" );
     }
     CHECK( counter( "power_ends" ) == 9 );
@@ -541,12 +567,12 @@ TEST_CASE( "power_damage_and_displacement_interrupt_only_declared_concentration"
     const int64_t concentrated = apply( get_avatar(), get_avatar(), "test_power_interrupt" );
     g->abilities().drain_starts();
     if( damage ) {
-        get_avatar().apply_damage( nullptr, torso.id(), 1 );
+        get_avatar().apply_damage( nullptr, body_part_torso.id(), 1 );
     } else {
         get_avatar().setpos( get_map(), get_avatar().pos_bub() + tripoint_rel_ms::west );
     }
     CHECK( get_powers().application_value( get_avatar(),
-                                           power_application_id( "test_power_interrupt" ) ) == 0 );
+                                           power_application_test_power_interrupt ) == 0 );
     tick();
     CHECK( view( passive ).state == "active" );
     CHECK( view( concentrated ).reason == ( damage ? "damaged" : "owner_displaced" ) );
@@ -562,8 +588,8 @@ TEST_CASE( "power_lost_owner_or_target_does_not_transfer_to_a_replacement_creatu
     const int64_t id = apply( owner, target );
     g->abilities().drain_starts();
     monster &removed = remove_owner ? owner : target;
-    const auto position = removed.pos_bub();
-    const auto old_ref = creature_ref::bind( removed );
+    const tripoint_bub_ms position = removed.pos_bub();
+    const creature_ref old_ref = creature_ref::bind( removed );
     get_creature_tracker().remove( removed );
     monster &replacement = spawn_test_monster( "mon_execution_expanded_victim", position );
     CHECK_FALSE( creature_ref::bind( replacement ) == old_ref );
@@ -579,7 +605,7 @@ TEST_CASE( "power_application_callback_removal_revalidates_held_roles_without_av
 {
     power_world world;
     monster &owner = victim();
-    const auto identity = creature_ref::bind( owner );
+    const creature_ref identity = creature_ref::bind( owner );
     const int64_t id = apply( owner, get_avatar(), "test_power_hook" );
     g->abilities().drain_starts();
     events listener;
@@ -632,7 +658,7 @@ TEST_CASE( "power_time_jumps_end_sustains_without_replaying_upkeep_or_tick_hooks
     power_world world;
     const int64_t id = apply( get_avatar(), get_avatar() );
     g->abilities().drain_starts();
-    REQUIRE( get_powers().use_charge( get_avatar(), group, 2, "fixture" ) );
+    REQUIRE( get_powers().use_charge( get_avatar(), power_cooldown_test_power_group, 2, "fixture" ) );
     REQUIRE( get_powers().spend( get_avatar(), "test_power_regen", 20, "fixture" ) );
     calendar::turn += 1000_turns;
     g->abilities().process();
@@ -640,7 +666,7 @@ TEST_CASE( "power_time_jumps_end_sustains_without_replaying_upkeep_or_tick_hooks
     CHECK( counter( "power_ticks" ) == 0 );
     CHECK( view( id ).paid_upkeep == 0 );
     CHECK( get_powers().balance( get_avatar(), "test_power_regen" ).total == 20 );
-    CHECK( get_powers().charges( get_avatar(), group ).charges == 2 );
+    CHECK( get_powers().charges( get_avatar(), power_cooldown_test_power_group ).charges == 2 );
     CHECK( counter( "power_ends" ) == 1 );
 }
 
@@ -654,7 +680,7 @@ TEST_CASE( "power_pending_and_active_save_load_preserve_handles_deadlines_and_no
         g->abilities().drain_starts();
         tick();
     }
-    const auto before = view( id );
+    const power_application_view before = view( id );
     restore( save() );
     CHECK( view( id ).state == before.state );
     CHECK( view( id ).next_tick == before.next_tick );
@@ -673,7 +699,7 @@ TEST_CASE( "power_saved_windup_reservations_are_restored_and_protect_the_same_ac
 {
     power_world world;
     monster &target = victim();
-    const auto admitted = g->abilities().request( request( get_avatar(), target ) );
+    const ability_admission admitted = g->abilities().request( request( get_avatar(), target ) );
     REQUIRE( admitted.accepted() );
     g->abilities().drain_starts();
     tick();
@@ -702,10 +728,10 @@ TEST_CASE( "power_application_world_transition_blocks_cross_runtime_terminal_rec
     CHECK( get_powers().inspect_applications().size() == 1 );
     CHECK( get_powers().inspect_reservations().empty() );
     CHECK_FALSE( g->abilities().controls( get_avatar() ) );
-    for( const auto &v : g->abilities().inspect_all() ) {
+    for( ability_view const &v : g->abilities().inspect_all() ) {
         CHECK( v.state == "interrupted" );
     }
-    for( const auto &scene : g->executions().inspect_all() ) {
+    for( execution_inspection const &scene : g->executions().inspect_all() ) {
         CHECK( scene.view.reason == "dimension_changed" );
     }
     tick( 2 );
@@ -772,11 +798,12 @@ TEST_CASE( "power_queries_and_inspection_do_not_run_hooks_mutate_accounts_or_con
     if( active ) {
         g->abilities().drain_starts();
         get_powers().spend( get_avatar(), "test_power_regen", 10, "fixture" );
-        get_powers().use_charge( get_avatar(), group, 1, "fixture" );
+        get_powers().use_charge( get_avatar(), power_cooldown_test_power_group, 1, "fixture" );
     }
-    const auto before = save();
-    const auto rng_before = rng_get_engine();
-    const auto time_before = calendar::turn;
+    const std::string before = save();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
+    const time_point time_before = calendar::turn;
     const double starts = counter( "power_starts" );
     for( int i = 0; i < 3; ++i ) {
         CHECK_FALSE( execution_inspector::format_application( view( id ) ).empty() );
@@ -798,20 +825,20 @@ TEST_CASE( "power_actor_accounts_preserve_avatar_capacity_across_dimension_snaps
 {
     power_world world;
     REQUIRE( get_powers().spend( get_avatar(), "test_power_focus", 37, "fixture" ) );
-    REQUIRE( get_powers().use_charge( get_avatar(), group, 1, "fixture" ) );
+    REQUIRE( get_powers().use_charge( get_avatar(), power_cooldown_test_power_group, 1, "fixture" ) );
     std::string text = save_accounts();
     size_t offset = 0;
     while( ( offset = text.find( "\"dimension\"", offset ) ) != std::string::npos ) {
-        const auto colon = text.find( ':', offset );
-        const auto start = text.find( '"', colon );
-        const auto end = text.find( '"', start + 1 );
+        const std::size_t colon = text.find( ':', offset );
+        const std::size_t start = text.find( '"', colon );
+        const std::size_t end = text.find( '"', start + 1 );
         REQUIRE( end != std::string::npos );
         text.replace( start + 1, end - start - 1, "power_test_old_dimension" );
         offset = start + 1 + std::string( "power_test_old_dimension" ).size();
     }
     get_powers().deserialize( json_loader::from_string( text ) );
     CHECK( get_powers().balance( get_avatar(), "test_power_focus" ).total == 63 );
-    CHECK( get_powers().charges( get_avatar(), group ).charges == 1 );
+    CHECK( get_powers().charges( get_avatar(), power_cooldown_test_power_group ).charges == 1 );
 }
 
 TEST_CASE( "power_ended_history_and_accounting_receipts_are_bounded",
@@ -841,7 +868,7 @@ TEST_CASE( "power_invalid_serialized_application_states_are_rejected_atomically"
     const int64_t id = apply( get_avatar(), get_avatar() );
     g->abilities().drain_starts();
     std::string bad = save_accounts();
-    const auto pos = bad.find( "\"active\"" );
+    const std::size_t pos = bad.find( "\"active\"" );
     REQUIRE( pos != std::string::npos );
     bad.replace( pos, 8, "\"ending\"" );
     CHECK_THROWS_AS( get_powers().deserialize( json_loader::from_string( bad ) ), JsonError );
@@ -875,8 +902,8 @@ TEST_CASE( "power_concentration_incapatitation_and_definition_changes_end_owned_
     const bool changed = GENERATE( false, true );
     const int64_t id = apply( get_avatar(), get_avatar(), "test_power_interrupt" );
     g->abilities().drain_starts();
-    auto &definition = const_cast<power_application &>
-                       ( *power_application_id( "test_power_interrupt" ) );
+    power_application &definition = const_cast<power_application &>
+                                    ( *power_application_test_power_interrupt );
     const int revision = definition.revision;
     const on_out_of_scope reset( [&]() {
         definition.revision = revision;
@@ -898,9 +925,9 @@ TEST_CASE( "power_saved_orphan_reservations_are_rejected_instead_of_locking_an_a
     monster &target = victim();
     REQUIRE( g->abilities().request( request( get_avatar(), target ) ).accepted() );
     std::string bad = save();
-    const auto field = bad.find( "\"energy_reserved\"" );
+    const std::size_t field = bad.find( "\"energy_reserved\"" );
     REQUIRE( field != std::string::npos );
-    const auto value = bad.find( "true", field );
+    const std::size_t value = bad.find( "true", field );
     REQUIRE( value != std::string::npos );
     bad.replace( value, 4, "false" );
     CHECK_THROWS_AS( g->abilities().deserialize( json_loader::from_string( bad ) ), JsonError );
@@ -911,13 +938,13 @@ TEST_CASE( "power_legacy_ability_save_without_power_accounts_remains_loadable",
 {
     power_world world;
     monster &target = victim();
-    const auto admitted = g->abilities().request( request( get_avatar(), target,
-                          "test_ability_strike" ) );
+    const ability_admission admitted = g->abilities().request( request( get_avatar(), target,
+                                       "test_ability_strike" ) );
     REQUIRE( admitted.accepted() );
     std::string text = save();
-    const auto field = text.find( "\"powers\"" );
+    const std::size_t field = text.find( "\"powers\"" );
     REQUIRE( field != std::string::npos );
-    const auto start = text.find( '{', field );
+    const std::size_t start = text.find( '{', field );
     int depth = 0;
     bool quoted = false;
     bool escaped = false;
@@ -941,7 +968,7 @@ TEST_CASE( "power_legacy_ability_save_without_power_accounts_remains_loadable",
         }
     }
     REQUIRE( end < text.size() );
-    const auto comma = text.find( ',', end );
+    const std::size_t comma = text.find( ',', end );
     REQUIRE( comma != std::string::npos );
     text.erase( field, comma - field + 1 );
     restore( text );
@@ -959,12 +986,12 @@ TEST_CASE( "power_finalized_native_death_retires_actor_accounts_without_running_
     Creature &actor = kind( name );
     const auto hold = g->shared_from( actor );
     REQUIRE( hold );
-    const auto ref = creature_ref::bind( actor );
+    const creature_ref ref = creature_ref::bind( actor );
     REQUIRE( get_powers().spend( actor, "test_power_focus", 25, "fixture" ) );
-    REQUIRE( get_powers().use_charge( actor, group, 1, "fixture" ) );
-    const auto id = apply( actor, actor );
+    REQUIRE( get_powers().use_charge( actor, power_cooldown_test_power_group, 1, "fixture" ) );
+    const int64_t id = apply( actor, actor );
     g->abilities().drain_starts();
-    actor.apply_damage( &get_avatar(), torso.id(), 20000 );
+    actor.apply_damage( &get_avatar(), body_part_torso.id(), 20000 );
     g->cleanup_dead();
     CHECK_FALSE( ref.resolve_loaded() );
     CHECK( get_powers().inspect_pools().empty() );
@@ -981,8 +1008,9 @@ TEST_CASE( "power_upkeep_rejects_unsupported_actor_adapters_before_granting_a_fr
     power_world world;
     const std::string name = GENERATE( "avatar", "npc", "monster" );
     Creature &owner = kind( name );
-    auto &definition = const_cast<power_application &>( *power_application_id( "test_power_ward" ) );
-    const auto old_upkeep = definition.upkeep;
+    power_application &definition = const_cast<power_application &>
+                                    ( *power_application_test_power_ward );
+    const power_cost old_upkeep = definition.upkeep;
     const on_out_of_scope reset( [&]() {
         definition.upkeep = old_upkeep;
     } );
@@ -991,7 +1019,7 @@ TEST_CASE( "power_upkeep_rejects_unsupported_actor_adapters_before_granting_a_fr
     if( Character *person = owner.as_character() ) {
         person->magic->set_mana( 10 );
     }
-    const auto result = get_powers().apply( application( owner, owner ) );
+    const power_application_admission result = get_powers().apply( application( owner, owner ) );
     if( name == "monster" ) {
         CHECK_FALSE( result.accepted() );
         CHECK( result.reason == "unsupported_resource" );
@@ -1019,7 +1047,7 @@ TEST_CASE( "power_demo_native_item_toggles_compose_and_charged_strikes_recover_o
     monster &target = victim();
     item &ward = here.add_item( owner.pos_bub(), item( itype_power_demo_ward_focus ) );
     item &mirror = here.add_item( owner.pos_bub() + tripoint_rel_ms::west,
-                                  item( itype_id( "power_demo_mirror_focus" ) ) );
+                                  item( itype_power_demo_mirror_focus ) );
     const auto use = [&]( item & focus, const tripoint_bub_ms & position ) {
         const auto *method = focus.type->get_use( "effect_on_conditions" );
         REQUIRE( method );
@@ -1031,26 +1059,26 @@ TEST_CASE( "power_demo_native_item_toggles_compose_and_charged_strikes_recover_o
     use( ward, owner.pos_bub() );
     use( mirror, owner.pos_bub() + tripoint_rel_ms::west );
     CHECK( get_powers().application_value( owner,
-                                           power_application_id( "power_demo_owned_ward" ) ) == 1 );
+                                           power_application_power_demo_owned_ward ) == 1 );
     CHECK( get_powers().application_value( owner,
-                                           power_application_id( "power_demo_owned_mirror" ) ) == 1 );
+                                           power_application_power_demo_owned_mirror ) == 1 );
     CHECK( get_powers().balance( owner, "power_demo_focus_pool" ).total == 90 );
     use( ward, owner.pos_bub() );
     CHECK( get_powers().application_value( owner,
-                                           power_application_id( "power_demo_owned_ward" ) ) == 0 );
+                                           power_application_power_demo_owned_ward ) == 0 );
     CHECK( get_powers().application_value( owner,
-                                           power_application_id( "power_demo_owned_mirror" ) ) == 1 );
-    const auto strike = g->abilities().request( request( owner, target, "power_demo_charged_strike" ) );
+                                           power_application_power_demo_owned_mirror ) == 1 );
+    const ability_admission strike = g->abilities().request( request( owner, target,
+                                     "power_demo_charged_strike" ) );
     REQUIRE( strike.accepted() );
     const int windup = action_view( strike.id ).windup_ticks;
     g->abilities().drain_starts();
     tick( windup );
     CHECK( action_view( strike.id ).effect_completed );
     CHECK( action_view( strike.id ).paid_energy == 10 );
-    const power_cooldown_id force( "power_demo_force_group" );
-    CHECK( get_powers().charges( owner, force ).charges == 1 );
+    CHECK( get_powers().charges( owner, power_cooldown_power_demo_force_group ).charges == 1 );
     tick( 5 );
-    CHECK( get_powers().charges( owner, force ).charges == 2 );
+    CHECK( get_powers().charges( owner, power_cooldown_power_demo_force_group ).charges == 2 );
 }
 
 TEST_CASE( "power_reservation_tokens_cannot_release_another_actor_or_partial_cost_claim",
@@ -1059,7 +1087,7 @@ TEST_CASE( "power_reservation_tokens_cannot_release_another_actor_or_partial_cos
     power_world world;
     monster &target = victim();
     npc &other = spawn_npc( get_avatar().pos_bub().xy() + point_rel_ms( 0, -2 ), "thug" );
-    const auto admitted = g->abilities().request( request( get_avatar(), target ) );
+    const ability_admission admitted = g->abilities().request( request( get_avatar(), target ) );
     REQUIRE( admitted.accepted() );
     CHECK_FALSE( get_powers().spend( other, "test_power_focus", 20, "wrong_actor", admitted.id ) );
     CHECK_FALSE( get_powers().spend( get_avatar(), "test_power_focus", 10, "partial_claim",
@@ -1077,13 +1105,14 @@ TEST_CASE( "power_parent_callback_failure_removes_child_contributions_and_defers
            "[power_ownership][powers][save]" )
 {
     power_world world;
-    auto &definition = const_cast<power_application &>( *power_application_id( "test_power_hook" ) );
+    power_application &definition = const_cast<power_application &>
+                                    ( *power_application_test_power_hook );
     const auto original = definition.on_tick;
     const on_out_of_scope reset( [&]() {
         definition.on_tick = original;
     } );
-    definition.on_tick = { effect_on_condition_id( "EOC_TEST_POWER_RECURSIVE" ),
-                           effect_on_condition_id( "EOC_TEST_POWER_DAMAGE_HOOK" )
+    definition.on_tick = { effect_on_condition_EOC_TEST_POWER_RECURSIVE,
+                           effect_on_condition_EOC_TEST_POWER_DAMAGE_HOOK
                          };
     const int64_t parent = apply( get_avatar(), get_avatar(), "test_power_hook" );
     g->abilities().drain_starts();

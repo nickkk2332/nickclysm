@@ -42,9 +42,27 @@
 #include "talker.h"
 #include "type_id.h"
 
+static const ability_id ability_definition_test_ability_strike( "test_ability_strike" );
+
+static const ammo_effect_str_id ammo_effect_NO_DAMAGE_SCALING( "NO_DAMAGE_SCALING" );
+
+static const damage_rule_id damage_rule_test_damage_shell( "test_damage_shell" );
+static const damage_rule_id damage_rule_test_damage_shield( "test_damage_shield" );
+
+static const damage_type_id damage_bash( "bash" );
+static const damage_type_id damage_cut( "cut" );
+static const damage_type_id damage_heat( "heat" );
+static const damage_type_id damage_pure( "pure" );
+
+static const efftype_id effect_onfire( "onfire" );
+static const efftype_id effect_test_damage_spell( "test_damage_spell" );
+
+static const execution_trigger_id execution_trigger_test_fatal_hold( "test_fatal_hold" );
+
+static const spell_id spell_test_ability_spell( "test_ability_spell" );
+
 namespace
 {
-const bodypart_str_id torso( "torso" );
 
 struct damage_world {
     time_point old_time = calendar::turn;
@@ -84,7 +102,7 @@ void enable( Creature &who, const std::string &name )
 damage_transaction_view hit( Creature &target, Creature *source, const damage_instance &packet )
 {
     const damage_context_scope context;
-    target.deal_damage( source, torso.id(), packet );
+    target.deal_damage( source, body_part_torso.id(), packet );
     const auto result = context.result();
     REQUIRE( result );
     return *result;
@@ -92,7 +110,7 @@ damage_transaction_view hit( Creature &target, Creature *source, const damage_in
 
 damage_instance pure( float amount )
 {
-    return damage_instance( damage_type_id( "pure" ), amount );
+    return damage_instance( damage_pure, amount );
 }
 
 talk_effect_t effects( const std::string &json )
@@ -135,18 +153,18 @@ TEST_CASE( "damage_shield_spends_exact_capacity_and_passes_overflow_for_characte
     target.set_all_parts_hp_cur( 10000 );
     enable( target, "shield" );
     target.magic->set_mana( 10 );
-    const auto result = hit( target, &victim(), pure( 25 ) );
+    const damage_transaction_view result = hit( target, &victim(), pure( 25 ) );
     CHECK( result.incoming == 25 );
     CHECK( result.after_armor == 25 );
     CHECK( result.outgoing == 15 );
     CHECK( result.hp_loss == 15 );
     CHECK( result.absorbed == 10 );
     CHECK( result.hp_committed );
-    CHECK( target.get_hp( torso.id() ) == 9985 );
+    CHECK( target.get_hp( body_part_torso.id() ) == 9985 );
     CHECK( target.magic->available_mana() == 0 );
     REQUIRE( result.rules.size() == 1 );
     CHECK( result.rules.front().payments.at( "mana" ) == 10 );
-    const auto second = hit( target, nullptr, pure( 25 ) );
+    const damage_transaction_view second = hit( target, nullptr, pure( 25 ) );
     CHECK( second.hp_loss == 25 );
     CHECK( second.absorbed == 0 );
 }
@@ -158,12 +176,13 @@ TEST_CASE( "damage_complete_absorption_prevents_type_side_effects_and_HP_writes"
     avatar &target = get_avatar();
     enable( target, "shield" );
     target.magic->set_mana( 500 );
-    const auto result = hit( target, nullptr, damage_instance( damage_type_id( "heat" ), 200 ) );
+    const damage_transaction_view result = hit( target, nullptr,
+                                           damage_instance( damage_heat, 200 ) );
     CHECK( result.reason == "blocked" );
     CHECK( result.absorbed == 200 );
     CHECK( result.hp_loss == 0 );
     CHECK_FALSE( result.hp_committed );
-    CHECK_FALSE( target.has_effect( efftype_id( "onfire" ) ) );
+    CHECK_FALSE( target.has_effect( effect_onfire ) );
     CHECK( target.get_pain() == 0 );
     CHECK( target.magic->available_mana() == 300 );
 }
@@ -176,9 +195,9 @@ TEST_CASE( "damage_mixed_components_share_one_wallet_and_keep_integer_multiplier
     enable( target, "shield" );
     target.magic->set_mana( 10 );
     damage_instance packet;
-    packet.add_damage( damage_type_id( "bash" ), 10.5f, 0, 1, 1.7f );
-    packet.add_damage( damage_type_id( "cut" ), 8.5f, 0, 1, 1.1f );
-    const auto result = hit( target, nullptr, packet );
+    packet.add_damage( damage_bash, 10.5f, 0, 1, 1.7f );
+    packet.add_damage( damage_cut, 8.5f, 0, 1, 1.1f );
+    const damage_transaction_view result = hit( target, nullptr, packet );
     CHECK( result.incoming == 26 );
     CHECK( result.outgoing == 16 );
     CHECK( result.hp_loss == 16 );
@@ -195,9 +214,9 @@ TEST_CASE( "damage_type_filters_leave_other_components_unspent",
     avatar &target = get_avatar();
     enable( target, "typed" );
     target.magic->set_mana( 20 );
-    damage_instance packet( damage_type_id( "bash" ), 12 );
-    packet.add_damage( damage_type_id( "cut" ), 8 );
-    const auto result = hit( target, nullptr, packet );
+    damage_instance packet( damage_bash, 12 );
+    packet.add_damage( damage_cut, 8 );
+    const damage_transaction_view result = hit( target, nullptr, packet );
     CHECK( result.absorbed == 8 );
     CHECK( result.hp_loss == 12 );
     CHECK( target.magic->available_mana() == 12 );
@@ -212,7 +231,7 @@ TEST_CASE( "damage_native_stamina_payment_uses_whole_affordable_points",
                             get_avatar().pos_bub().xy() + point_rel_ms( 0, -2 ), "thug" ) ) : get_avatar();
     enable( target, "stamina" );
     target.set_stamina( 9 );
-    const auto result = hit( target, nullptr, pure( 10 ) );
+    const damage_transaction_view result = hit( target, nullptr, pure( 10 ) );
     CHECK( result.absorbed == ( npc_target ? 0 : 4 ) );
     CHECK( result.hp_loss == ( npc_target ? 10 : 6 ) );
     REQUIRE( result.rules.size() == 1 );
@@ -233,7 +252,7 @@ TEST_CASE( "damage_monsters_support_bounded_free_defense_without_avatar_resource
     const bool free = GENERATE( false, true );
     enable( target, free ? "shell" : "shield" );
     get_avatar().magic->set_mana( 100 );
-    const auto result = hit( target, &get_avatar(), pure( 20 ) );
+    const damage_transaction_view result = hit( target, &get_avatar(), pure( 20 ) );
     CHECK( result.absorbed == ( free ? 7 : 0 ) );
     CHECK( result.hp_loss == ( free ? 13 : 20 ) );
     CHECK( get_avatar().magic->available_mana() == 100 );
@@ -254,7 +273,8 @@ TEST_CASE( "damage_defense_stages_bracket_real_armor_and_conversion_changes_armo
         enable( target, "convert" );
     }
     enable( target, "shell" );
-    const auto result = hit( target, &get_avatar(), damage_instance( damage_type_id( "bash" ), 30 ) );
+    const damage_transaction_view result = hit( target, &get_avatar(),
+                                           damage_instance( damage_bash, 30 ) );
     CHECK( result.incoming == 30 );
     CHECK( result.after_armor == ( convert ? 10 : 20 ) );
     CHECK( result.absorbed == 7 );
@@ -267,7 +287,7 @@ TEST_CASE( "damage_pre_armor_shield_blocks_before_native_armor_runs",
     damage_world world;
     enable( get_avatar(), "pre" );
     get_avatar().magic->set_mana( 30 );
-    const auto result = hit( get_avatar(), nullptr, pure( 30 ) );
+    const damage_transaction_view result = hit( get_avatar(), nullptr, pure( 30 ) );
     CHECK_FALSE( result.armor_evaluated );
     CHECK( result.absorbed == 30 );
     CHECK( result.hp_loss == 0 );
@@ -285,7 +305,7 @@ TEST_CASE( "damage_rules_run_in_priority_order_and_mutation_outputs_are_validate
     } else {
         enable( target, mode );
     }
-    const auto result = hit( target, &get_avatar(), pure( 25 ) );
+    const damage_transaction_view result = hit( target, &get_avatar(), pure( 25 ) );
     CHECK( result.hp_loss == ( mode == "invalid" ? 25 : 8 ) );
     CHECK( result.absorbed == 0 );
     if( mode == "ordered" ) {
@@ -306,7 +326,7 @@ TEST_CASE( "damage_committed_observers_see_captured_HP_loss_with_defender_as_alp
     monster &target = victim();
     target.set_hp( 5 );
     enable( target, "observe" );
-    const auto result = hit( target, &get_avatar(), pure( 20 ) );
+    const damage_transaction_view result = hit( target, &get_avatar(), pure( 20 ) );
     CHECK( result.outgoing == 20 );
     CHECK( result.hp_loss == 5 );
     CHECK( counter( "damage_observed_hp" ) == 5 );
@@ -321,7 +341,7 @@ TEST_CASE( "damage_nested_EOC_packets_suppress_ancestor_rules_and_preserve_paren
     damage_world world;
     monster &target = victim();
     enable( target, "nested" );
-    const auto result = hit( target, &get_avatar(), pure( 20 ) );
+    const damage_transaction_view result = hit( target, &get_avatar(), pure( 20 ) );
     CHECK( result.hp_loss == 8 );
     CHECK( target.get_hp() == 9991 );
     REQUIRE( result.children.size() == 1 );
@@ -341,7 +361,7 @@ TEST_CASE( "damage_reflection_preserves_attribution_and_terminates_between_two_d
     monster &target = victim( "mon_execution_expanded_victim", 4 );
     enable( source, "reflect" );
     enable( target, "reflect" );
-    const auto result = hit( target, &source, pure( 20 ) );
+    const damage_transaction_view result = hit( target, &source, pure( 20 ) );
     const auto rows = get_damage_transactions().inspect_all();
     REQUIRE( rows.size() == 3 );
     CHECK( result.reflected == 10 );
@@ -363,7 +383,8 @@ TEST_CASE( "damage_paid_reflection_spends_once_and_environment_cannot_be_reflect
     monster &source = victim();
     enable( get_avatar(), "paid_reflect" );
     get_avatar().magic->set_mana( 11 );
-    const auto result = hit( get_avatar(), environment ? nullptr : &source, pure( 20 ) );
+    const damage_transaction_view result = hit( get_avatar(), environment ? nullptr : &source,
+                                           pure( 20 ) );
     CHECK( result.reflected == ( environment ? 0 : 5 ) );
     CHECK( result.hp_loss == ( environment ? 20 : 15 ) );
     CHECK( get_avatar().magic->available_mana() == ( environment ? 11 : 1 ) );
@@ -403,8 +424,8 @@ TEST_CASE( "damage_packet_EOC_rejects_missing_actors_invalid_parts_and_multiplie
     } else if( mode == "multiplier" ) {
         args += R"(,"multiplier":101)";
     }
-    effects( "{\"effect\":{\"deal_damage_packet\":{" + args +
-             ",\"damage\":[{\"damage_type\":\"pure\",\"amount\":10}]}}}" ).apply( d );
+    effects( R"({"effect":{"deal_damage_packet":{)" + args +
+             R"(,"damage":[{"damage_type":"pure","amount":10}]}}})" ).apply( d );
     if( mode == "environment" ) {
         CHECK( d.get_value( "damage_packet_hp_loss" ).dbl() == 10 );
         const auto rows = get_damage_transactions().inspect_all();
@@ -423,14 +444,14 @@ TEST_CASE( "damage_native_spell_filter_observes_real_spell_without_tracing_every
     damage_world world;
     monster &target = victim();
     enable( target, "spell" );
-    spell effect( spell_id( "test_ability_spell" ) );
+    spell effect( spell_test_ability_spell );
     effect.cast_all_effects( get_avatar(), target.pos_bub() );
     CHECK( target.get_hp() == 10000 );
     auto rows = get_damage_transactions().inspect_all();
     REQUIRE( rows.size() == 1 );
     CHECK( rows.front().context.at( "damage_spell" ).str() == "test_ability_spell" );
     CHECK( rows.front().reason == "blocked" );
-    target.remove_effect( efftype_id( "test_damage_spell" ) );
+    target.remove_effect( effect_test_damage_spell );
     get_damage_transactions().clear();
     effect.cast_all_effects( get_avatar(), target.pos_bub() );
     CHECK( target.get_hp() < 10000 );
@@ -441,21 +462,21 @@ TEST_CASE( "damage_actual_HP_capture_precedes_healing_and_raw_secondary_event_wr
            "[damage_transactions][powers]" )
 {
     damage_world world;
-    get_avatar().set_part_hp_cur( torso.id(), 50 );
+    get_avatar().set_part_hp_cur( body_part_torso.id(), 50 );
     bool observed = false;
     events listener;
     listener.callback = [&]( const cata::event & event ) {
         if( event.type() == event_type::character_takes_damage && !observed ) {
             observed = true;
-            get_avatar().heal_bp( torso.id(), 4 );
-            get_avatar().apply_damage( nullptr, torso.id(), 3 );
+            get_avatar().heal_bp( body_part_torso.id(), 4 );
+            get_avatar().apply_damage( nullptr, body_part_torso.id(), 3 );
         }
     };
     get_event_bus().subscribe( &listener );
-    const auto result = hit( get_avatar(), nullptr, pure( 10 ) );
+    const damage_transaction_view result = hit( get_avatar(), nullptr, pure( 10 ) );
     CHECK( observed );
     CHECK( result.hp_loss == 10 );
-    CHECK( get_avatar().get_hp( torso.id() ) == 41 );
+    CHECK( get_avatar().get_hp( body_part_torso.id() ) == 41 );
 }
 
 TEST_CASE( "damage_actor_removal_before_commit_rejects_the_remaining_packet",
@@ -471,11 +492,11 @@ TEST_CASE( "damage_actor_removal_before_commit_rejects_the_remaining_packet",
         }
     };
     get_event_bus().subscribe( &listener );
-    const auto result = hit( get_avatar(), &source, pure( 20 ) );
+    const damage_transaction_view result = hit( get_avatar(), &source, pure( 20 ) );
     CHECK( result.reason == "participant_unavailable" );
     CHECK( result.hp_loss == 0 );
     CHECK_FALSE( result.hp_committed );
-    CHECK( get_avatar().get_hp( torso.id() ) == 9999 );
+    CHECK( get_avatar().get_hp( body_part_torso.id() ) == 9999 );
     CHECK_FALSE( get_damage_transactions().processing() );
 }
 
@@ -494,7 +515,7 @@ TEST_CASE( "damage_removed_killer_is_retained_until_native_fatal_cleanup",
         }
     };
     get_event_bus().subscribe( &listener );
-    const auto result = hit( target, &source, pure( 20 ) );
+    const damage_transaction_view result = hit( target, &source, pure( 20 ) );
     CHECK( result.hp_loss == 5 );
     CHECK( result.state == "committed" );
     CHECK_FALSE( lifetime.expired() );
@@ -540,10 +561,11 @@ TEST_CASE( "damage_history_is_bounded_read_only_and_counter_survives_save",
     }
     const auto rows = get_damage_transactions().inspect_all();
     REQUIRE( rows.size() == 32 );
-    const auto rng_before = rng_get_engine();
-    const auto time_before = calendar::turn;
-    const auto serialized = save();
-    for( const auto &row : rows ) {
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
+    const time_point time_before = calendar::turn;
+    const std::string serialized = save();
+    for( const damage_transaction_view &row : rows ) {
         CHECK_FALSE( execution_inspector::format_damage( row ).empty() );
     }
     CHECK( rng_get_engine() == rng_before );
@@ -551,7 +573,7 @@ TEST_CASE( "damage_history_is_bounded_read_only_and_counter_survives_save",
     CHECK( save() == serialized );
     get_damage_transactions().deserialize( json_loader::from_string( serialized ) );
     CHECK( get_damage_transactions().inspect_all().empty() );
-    const auto result = hit( target, nullptr, pure( 1 ) );
+    const damage_transaction_view result = hit( target, nullptr, pure( 1 ) );
     CHECK( result.id > rows.back().id );
 }
 
@@ -561,11 +583,11 @@ TEST_CASE( "damage_malformed_packet_rejects_without_HP_or_resource_spending",
     damage_world world;
     enable( get_avatar(), "shield" );
     get_avatar().magic->set_mana( 10 );
-    const auto result = hit( get_avatar(), nullptr, pure( 1000001 ) );
+    const damage_transaction_view result = hit( get_avatar(), nullptr, pure( 1000001 ) );
     CHECK( result.state == "rejected" );
     CHECK( result.reason == "invalid_packet" );
     CHECK( result.hp_loss == 0 );
-    CHECK( get_avatar().get_hp( torso.id() ) == 10000 );
+    CHECK( get_avatar().get_hp( body_part_torso.id() ) == 10000 );
     CHECK( get_avatar().magic->available_mana() == 10 );
 }
 
@@ -585,15 +607,15 @@ TEST_CASE( "damage_ancestry_depth_and_family_limits_bound_callback_packets",
             if( !expanded ) {
                 expanded = true;
                 for( int i = 0; i < 70; ++i ) {
-                    target.deal_damage( nullptr, torso.id(), pure( 1 ) );
+                    target.deal_damage( nullptr, body_part_torso.id(), pure( 1 ) );
                 }
             }
         } else {
-            target.deal_damage( nullptr, torso.id(), pure( 1 ) );
+            target.deal_damage( nullptr, body_part_torso.id(), pure( 1 ) );
         }
     };
     get_event_bus().subscribe( &listener );
-    const auto result = hit( target, nullptr, pure( 1 ) );
+    const damage_transaction_view result = hit( target, nullptr, pure( 1 ) );
     const auto rows = get_damage_transactions().inspect_all();
     CHECK( target.get_hp() == ( siblings ? 9936 : 9991 ) );
     CHECK( result.hp_loss == 1 );
@@ -611,10 +633,10 @@ TEST_CASE( "damage_shield_prevents_fatal_HP_and_reflection_can_kill_with_native_
     damage_world world;
     monster &source = victim();
     source.set_hp( 5 );
-    get_avatar().set_part_hp_cur( torso.id(), 5 );
+    get_avatar().set_part_hp_cur( body_part_torso.id(), 5 );
     enable( get_avatar(), "paid_reflect" );
     get_avatar().magic->set_mana( 40 );
-    const auto result = hit( get_avatar(), &source, pure( 20 ) );
+    const damage_transaction_view result = hit( get_avatar(), &source, pure( 20 ) );
     CHECK( result.hp_loss == 0 );
     CHECK( result.reflected == 20 );
     CHECK_FALSE( get_avatar().is_dead_state() );
@@ -629,10 +651,10 @@ TEST_CASE( "damage_ability_spell_keeps_lifecycle_context_and_reports_defended_co
     monster &target = victim();
     enable( target, "shell" );
     ability_request request;
-    request.ability = ability_id( "test_ability_strike" );
+    request.ability = ability_definition_test_ability_strike;
     request.caster = creature_ref::bind( get_avatar() );
     request.target = creature_ref::bind( target );
-    const auto admitted = g->abilities().request( request );
+    const ability_admission admitted = g->abilities().request( request );
     REQUIRE( admitted.accepted() );
     g->abilities().drain_starts();
     for( int i = 0; i < 2; ++i ) {
@@ -675,7 +697,7 @@ TEST_CASE( "damage_native_projectile_impact_encounters_the_same_defense",
     shot.proj.speed = 1000;
     shot.proj.range = 60;
     shot.proj.impact = pure( 25 );
-    shot.proj.proj_effects.insert( ammo_effect_str_id( "NO_DAMAGE_SCALING" ) );
+    shot.proj.proj_effects.insert( ammo_effect_NO_DAMAGE_SCALING );
     const damage_context_scope trace;
     const execution_combat::projectile_target_scope contact( target );
     target.deal_projectile_attack( &get_map(), &get_avatar(), shot, 0, false );
@@ -694,7 +716,8 @@ TEST_CASE( "damage_reflected_packet_encounters_its_recipients_armor",
     monster &source = victim( "mon_test_damage_armor" );
     monster &target = victim( "mon_execution_expanded_victim", 4 );
     enable( target, "reflect" );
-    const auto result = hit( target, &source, damage_instance( damage_type_id( "bash" ), 20 ) );
+    const damage_transaction_view result = hit( target, &source,
+                                           damage_instance( damage_bash, 20 ) );
     CHECK( result.reflected == 10 );
     CHECK( result.hp_loss == 10 );
     CHECK( source.get_hp() == 10000 );
@@ -711,7 +734,7 @@ TEST_CASE( "damage_inspection_does_not_rerun_stateful_rule_conditions",
     damage_world world;
     monster &target = victim();
     enable( target, "shell" );
-    auto &definition = const_cast<damage_rule &>( *damage_rule_id( "test_damage_shell" ) );
+    damage_rule &definition = const_cast<damage_rule &>( *damage_rule_test_damage_shell );
     const auto old_condition = definition.condition;
     const bool old_has = definition.has_condition;
     const on_out_of_scope restore( [&]() {
@@ -726,9 +749,10 @@ TEST_CASE( "damage_inspection_does_not_rerun_stateful_rule_conditions",
     };
     hit( target, nullptr, pure( 10 ) );
     REQUIRE( calls == 1 );
-    const auto rng_before = rng_get_engine();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
     for( int i = 0; i < 3; ++i ) {
-        for( const auto &row : get_damage_transactions().inspect_all() ) {
+        for( damage_transaction_view const &row : get_damage_transactions().inspect_all() ) {
             CHECK_FALSE( execution_inspector::format_damage( row ).empty() );
         }
     }
@@ -742,7 +766,7 @@ TEST_CASE( "damage_condition_killing_defender_stops_payment_for_the_original_pac
     damage_world world;
     enable( get_avatar(), "shield" );
     get_avatar().magic->set_mana( 10 );
-    auto &definition = const_cast<damage_rule &>( *damage_rule_id( "test_damage_shield" ) );
+    damage_rule &definition = const_cast<damage_rule &>( *damage_rule_test_damage_shield );
     const auto old_condition = definition.condition;
     const bool old_has = definition.has_condition;
     const on_out_of_scope restore( [&]() {
@@ -751,10 +775,10 @@ TEST_CASE( "damage_condition_killing_defender_stops_payment_for_the_original_pac
     } );
     definition.has_condition = true;
     definition.condition = [&]( const_dialogue const & ) {
-        get_avatar().set_part_hp_cur( torso.id(), 0 );
+        get_avatar().set_part_hp_cur( body_part_torso.id(), 0 );
         return true;
     };
-    const auto result = hit( get_avatar(), nullptr, pure( 20 ) );
+    const damage_transaction_view result = hit( get_avatar(), nullptr, pure( 20 ) );
     CHECK( result.reason == "defender_dead_before_commit" );
     CHECK( result.hp_loss == 0 );
     CHECK( result.absorbed == 0 );
@@ -767,7 +791,8 @@ TEST_CASE( "damage_HP_capture_precedes_stateful_native_fatal_execution_condition
     damage_world world;
     monster &target = victim();
     target.set_hp( 5 );
-    auto &definition = const_cast<execution_trigger &>( *execution_trigger_id( "test_fatal_hold" ) );
+    execution_trigger &definition = const_cast<execution_trigger &>
+                                    ( *execution_trigger_test_fatal_hold );
     const auto old_condition = definition.condition;
     const on_out_of_scope restore( [&]() {
         definition.condition = old_condition;
@@ -776,7 +801,7 @@ TEST_CASE( "damage_HP_capture_precedes_stateful_native_fatal_execution_condition
     definition.condition = [&]( const_dialogue const & ) {
         called = true;
         target.set_hp( 50 );
-        target.apply_damage( nullptr, torso.id(), 3 );
+        target.apply_damage( nullptr, body_part_torso.id(), 3 );
         return false;
     };
     const damage_context_scope trace;
@@ -784,7 +809,7 @@ TEST_CASE( "damage_HP_capture_precedes_stateful_native_fatal_execution_condition
         execution_combat::attack_scope root( get_avatar(), target,
                                              execution_combat::channel::character_melee );
         dealt_damage_instance dealt;
-        const bodypart_id bp = torso.id();
+        const bodypart_id bp = body_part_torso.id();
         {
             const execution_combat::primary_hit_scope primary( root );
             target.deal_melee_hit( &get_avatar(), 1000, false, pure( 20 ), dealt, {}, &bp );
@@ -805,7 +830,7 @@ TEST_CASE( "damage_payment_does_not_clamp_away_unspent_mana_above_current_maximu
     enable( get_avatar(), "shield" );
     const int initial = get_avatar().magic->max_mana( get_avatar() ) + 100;
     get_avatar().magic->set_mana( initial );
-    const auto result = hit( get_avatar(), nullptr, pure( 25 ) );
+    const damage_transaction_view result = hit( get_avatar(), nullptr, pure( 25 ) );
     CHECK( result.absorbed == 25 );
     CHECK( result.hp_loss == 0 );
     CHECK( get_avatar().magic->available_mana() == initial - 25 );
@@ -829,7 +854,7 @@ TEST_CASE( "ability_NPC_costs_use_real_mana_and_refuse_synthetic_stamina",
     request.ability = ability_id( mana ? "test_ability_mana" : "test_ability_stamina" );
     request.caster = creature_ref::bind( source );
     request.target = creature_ref::bind( target );
-    const auto admitted = g->abilities().request( request );
+    const ability_admission admitted = g->abilities().request( request );
     if( !mana ) {
         CHECK_FALSE( admitted.accepted() );
         CHECK( admitted.reason == "unsupported_resource" );

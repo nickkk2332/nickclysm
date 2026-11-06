@@ -314,6 +314,7 @@ class damage_scope
         attack_scope *owner = nullptr;
         bool capture_hp = false;
         bool armed_once = false;
+        int depth = 0;
         /** HP the target lost to this hit's own side effects (a bleed tick) before its native HP loss. */
         int early_loss = 0;
 };

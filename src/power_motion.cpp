@@ -9,11 +9,15 @@
 #include "map.h"
 #include "power_actor.h"
 
+static const efftype_id effect_narcosis( "narcosis" );
+static const efftype_id effect_sleep( "sleep" );
+static const efftype_id effect_stunned( "stunned" );
+
 namespace
 {
 thread_local power_motion::flight_scope *current = nullptr;
 thread_local int request_depth = 0;
-}
+} // namespace
 
 power_motion::flight_scope::flight_scope( Creature &who, power_motion_result *receipt ) :
     previous( current ), target( who ), result( receipt )
@@ -63,8 +67,8 @@ power_motion_result power_motion::fling( const creature_ref &source_ref,
         out.reason = "world_transition";
     } else if( velocity < 10 || velocity > 300 ) {
         out.reason = "invalid_velocity";
-    } else if( incapacitation::unconscious( *source ) || source->has_effect( efftype_id( "sleep" ) ) ||
-               source->has_effect( efftype_id( "narcosis" ) ) || source->has_effect( efftype_id( "stunned" ) ) ) {
+    } else if( incapacitation::unconscious( *source ) || source->has_effect( effect_sleep ) ||
+               source->has_effect( effect_narcosis ) || source->has_effect( effect_stunned ) ) {
         out.reason = "source_incapacitated";
     } else if( source->pos_abs().z() != target->pos_abs().z() ||
                !get_map().inbounds( source->pos_bub() ) || !get_map().inbounds( target->pos_bub() ) ) {

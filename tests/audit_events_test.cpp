@@ -20,6 +20,8 @@
 #include "stats_tracker.h"
 #include "type_id.h"
 
+static const achievement_id achievement_achievement_kill_zombie( "achievement_kill_zombie" );
+
 // EVT-B02: statistics are saved keyed by event type name. A name this build does not
 // know (an event removed or renamed since the save was written, or one from a newer
 // build) used to throw io::InvalidEnumString out of the save/memorial loaders.
@@ -81,5 +83,5 @@ TEST_CASE( "evt-b02_bad_achievements_file_does_not_stop_others", "[audit][stats]
 
     // The file with an unknown version is skipped (with a log entry, not a popup) and the
     // other file still loads.
-    CHECK( get_past_achievements().is_completed( achievement_id( "achievement_kill_zombie" ) ) );
+    CHECK( get_past_achievements().is_completed( achievement_achievement_kill_zombie ) );
 }

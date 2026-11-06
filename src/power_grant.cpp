@@ -60,7 +60,7 @@ void mark( item &value, const power_application_view &source )
         nested->set_var( "ethereal", 1 );
     }
 }
-}
+} // namespace
 
 struct power_grant_manager::impl {
     std::map<int64_t, grant_record> records;
@@ -89,7 +89,7 @@ struct power_grant_manager::impl {
         for( Creature &who : g->all_creatures() ) {
             if( Character *person = who.as_character() ) {
                 holders.push_back( g->shared_from( who ) );
-                const auto ref = creature_ref::bind( who );
+                const creature_ref ref = creature_ref::bind( who );
                 person->visit_items( [&]( const item_location & location ) {
                     return collect( location, ref );
                 } );
@@ -106,21 +106,21 @@ struct power_grant_manager::impl {
             const auto origin = project_to<coords::ms>( cached.first );
             for( int x = 0; x < SEEX; ++x ) {
                 for( int y = 0; y < SEEY; ++y ) {
-                    const auto point = get_map().get_bub( origin + tripoint_rel_ms( x, y, 0 ) );
+                    const tripoint_bub_ms point = get_map().get_bub( origin + tripoint_rel_ms( x, y, 0 ) );
                     map_cursor( point ).visit_items( [&]( const item_location & location ) {
                         return collect( location, {} );
                     } );
                 }
             }
         }
-        for( const auto &wrapped : get_map().get_vehicles() ) {
+        for( wrapped_vehicle const &wrapped : get_map().get_vehicles() ) {
             for( const vpart_reference &part : wrapped.v->get_any_parts( "CARGO" ) ) {
                 vehicle_cursor( *wrapped.v, part.part_index() ).visit_items( [&]( const item_location & location ) {
                     return collect( location, {} );
                 } );
             }
         }
-        for( auto &value : locations ) {
+        for( entry &value : locations ) {
             const auto available = [&]() {
                 if( value.carrier.type != creature_ref::kind::none ) {
                     const Creature *who = value.carrier.resolve_loaded();
@@ -132,7 +132,7 @@ struct power_grant_manager::impl {
                 !marked( *value.location, record.view.application, record.view.target.dimension ) ) {
                 continue;
             }
-            const auto point = value.location.pos_bub( get_map() );
+            const tripoint_bub_ms point = value.location.pos_bub( get_map() );
             if( !get_map().inbounds( point ) ) {
                 continue;
             }
@@ -188,7 +188,7 @@ struct power_grant_manager::impl {
             if( restored ) {
                 ++record.view.restored;
             } else {
-                const auto where = person ? person->pos_bub() : get_map().get_bub( record.position );
+                const tripoint_bub_ms where = person ? person->pos_bub() : get_map().get_bub( record.position );
                 ++record.view.dropped;
                 get_map().add_item_or_charges( where, std::move( value ) );
             }
@@ -242,8 +242,9 @@ std::string power_grant_manager::check( const power_grant_definition &def,
         return "grant_budget";
     }
     std::set<std::pair<efftype_id, bodypart_id>> cells;
-    for( const auto &grant : def.effects ) {
-        const auto reason = target.check_effect_grant( grant.effect, grant.bodypart.id(), grant.intensity );
+    for( const power_effect_grant &grant : def.effects ) {
+        const std::string reason = target.check_effect_grant( grant.effect, grant.bodypart.id(),
+                                   grant.intensity );
         if( !reason.empty() ) {
             return reason;
         }
@@ -264,12 +265,12 @@ std::string power_grant_manager::check( const power_grant_definition &def,
                     return "form_conflict";
                 }
             }
-            const auto reason = person->check_power_stow( def.stow_worn, def.stow_weapon );
+            const std::string reason = person->check_power_stow( def.stow_worn, def.stow_weapon );
             if( !reason.empty() ) {
                 return reason;
             }
         }
-        for( const auto &grant : def.equipment ) {
+        for( const power_equipment_grant &grant : def.equipment ) {
             if( !grant.item.is_valid() || ( grant.slot == "worn" && !grant.item->armor ) ||
                 grant.item->count_by_charges() || grant.item->comestible || grant.item->gun || grant.item->tool ) {
                 return "invalid_equipment_grant";
@@ -287,13 +288,13 @@ std::string power_grant_manager::start( const power_application_view &applicatio
     if( processing() ) {
         return "grant_reentrancy";
     }
-    const auto &def = application.application->grants;
+    const power_grant_definition &def = application.application->grants;
     Creature *target = application.target.resolve();
     const auto hold = target ? g->shared_from( *target ) : nullptr;
     if( !target || def.empty() ) {
         return target ? "" : "target_unavailable";
     }
-    const auto reason = check( def, *target );
+    const std::string reason = check( def, *target );
     if( !reason.empty() ) {
         return reason;
     }
@@ -319,7 +320,7 @@ std::string power_grant_manager::start( const power_application_view &applicatio
     if( def.form ) {
         person->stow_power_gear( def.stow_worn, def.stow_weapon, state.garments, state.weapon );
     }
-    for( const auto &grant : def.effects ) {
+    for( const power_effect_grant &grant : def.effects ) {
         if( !data->live( state ) || application.target.resolve() != target ) {
             return "application_ended";
         }
@@ -329,7 +330,7 @@ std::string power_grant_manager::start( const power_application_view &applicatio
         }
         ++state.view.effects;
     }
-    for( const auto &grant : def.equipment ) {
+    for( const power_equipment_grant &grant : def.equipment ) {
         if( !data->live( state ) || application.target.resolve() != target ) {
             return "application_ended";
         }
@@ -389,7 +390,7 @@ bool power_grant_manager::item_active( const item &value ) const
     if( g->abilities().restoring() ) {
         return true;
     }
-    const auto token = value.get_var( "power_grant_application", "" );
+    const std::string token = value.get_var( "power_grant_application", "" );
     // Compare exact strings; do not lose 64-bit precision through numeric vars.
     for( const auto &entry : data->records ) {
         if( token == std::to_string( entry.first ) && marked( value, entry.first,
@@ -508,7 +509,7 @@ std::vector<power_grant_view> power_grant_manager::inspect() const
 {
     std::vector<power_grant_view> out;
     for( const auto &entry : data->records ) {
-        auto view = entry.second.view;
+        power_grant_view view = entry.second.view;
         view.stowed = entry.second.garments.size() + ( entry.second.weapon ? 1 : 0 );
         for( const item &value : entry.second.garments ) {
             view.originals.emplace_back( value.uid().get_value(), value.typeId() );
@@ -633,8 +634,8 @@ power_grant_manager &get_power_grants()
 void expire_power_equipment( item &value, map &here, const tripoint_bub_ms &position )
 {
     const auto life = value.get_safe_reference();
-    const auto token = value.get_var( "power_grant_application", "" );
-    const auto dimension = value.get_var( "power_grant_dimension", "" );
+    const std::string token = value.get_var( "power_grant_application", "" );
+    const std::string dimension = value.get_var( "power_grant_dimension", "" );
     std::list<item> minted;
     int count = std::numeric_limits<int>::max();
     value.remove_internal( [&]( item & nested ) {

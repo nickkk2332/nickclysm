@@ -211,7 +211,7 @@ refusal fields_butcher( const eoc_target_fields &given )
         return std::string( "needs \"target_item\" (the corpse)" );
     }
     if( given.loc || given.recipe ) {
-        return std::string( "takes no target but \"target_item\" and \"butcher_type\"" );
+        return std::string( R"(takes no target but "target_item" and "butcher_type")" );
     }
     return std::nullopt;
 }

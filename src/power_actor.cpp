@@ -33,7 +33,7 @@ struct bond {
     power_summon_view view;
     int revision = 1;
 };
-int bounded( const JsonObject &jo, const std::string &key, int fallback, int low, int high )
+int bounded( const JsonObject &jo, const std::string_view key, int fallback, int low, int high )
 {
     const int value = jo.get_int( key, fallback );
     if( value < low || value > high ) {
@@ -41,7 +41,7 @@ int bounded( const JsonObject &jo, const std::string &key, int fallback, int low
     }
     return value;
 }
-void hooks( const JsonObject &jo, const std::string &key, const std::string &source,
+void hooks( const JsonObject &jo, const std::string_view key, const std::string_view source,
             std::vector<effect_on_condition_id> &out )
 {
     if( !jo.has_member( key ) ) {
@@ -233,11 +233,11 @@ power_summon_admission power_actor_manager::summon( const power_summon_id &id,
     if( data->find( *owner ) ) {
         return { 0, "summon_cannot_own", {} };
     }
-    const auto &def = *id;
+    const power_summon &def = *id;
     size_t count = 0;
     size_t total = 0;
     for( const auto &entry : data->bonds ) {
-        const auto &v = entry.second.view;
+        const power_summon_view &v = entry.second.view;
         if( v.state != "ended" ) {
             ++total;
             if( v.owner == owner_ref && v.definition == id ) {
@@ -411,7 +411,7 @@ void power_actor_manager::process()
     } );
     for( auto &entry : data->bonds ) {
         bond &b = entry.second;
-        auto &v = b.view;
+        power_summon_view &v = b.view;
         if( v.state == "active" ) {
             Creature *owner = v.owner.resolve();
             Creature *summon = v.summon.resolve();
@@ -455,7 +455,7 @@ bool power_actor_manager::processing() const
 }
 void power_actor_manager::retire_actor( const Creature &actor )
 {
-    const auto ref = creature_ref::bind( actor );
+    const creature_ref ref = creature_ref::bind( actor );
     for( auto &entry : data->bonds ) {
         if( entry.second.view.summon == ref ) {
             if( entry.second.view.state == "ending" ) {
@@ -506,7 +506,7 @@ bool power_actor_manager::plan( monster &summon )
     if( !found ) {
         return false;
     }
-    const auto &v = found->view;
+    const power_summon_view &v = found->view;
     Creature *owner = v.owner.resolve();
     if( v.state != "active" || !available( owner ) || !v.definition.is_valid() ||
         found->revision != v.definition->revision ||
@@ -524,7 +524,7 @@ bool power_actor_manager::plan( monster &summon )
             return true;
         }
     }
-    const auto destination = v.command == "guard" ? v.guard : owner->pos_abs();
+    const tripoint_abs_ms destination = v.command == "guard" ? v.guard : owner->pos_abs();
     if( rl_dist( summon.pos_abs(), destination ) <= ( v.command == "guard" ? 0 : 1 ) ) {
         summon.unset_dest();
     } else {
@@ -589,7 +589,7 @@ void power_actor_manager::serialize( JsonOut &out ) const
     out.start_array();
     for( const auto &entry : data->bonds ) {
         const bond &b = entry.second;
-        const auto &v = b.view;
+        const power_summon_view &v = b.view;
         if( v.state == "ended" ) {
             continue;
         }
@@ -625,7 +625,7 @@ void power_actor_manager::deserialize( const JsonObject &jo )
     std::vector<creature_ref> owners;
     for( const JsonObject obj : jo.get_array( "bonds" ) ) {
         bond b;
-        auto &v = b.view;
+        power_summon_view &v = b.view;
         obj.read( "id", v.id, true );
         obj.read( "definition", v.definition, true );
         obj.read( "revision", b.revision, true );
@@ -650,7 +650,7 @@ void power_actor_manager::deserialize( const JsonObject &jo )
         }
         owners.push_back( v.owner );
     }
-    for( const auto &owner : owners ) {
+    for( creature_ref const &owner : owners ) {
         if( owner.type == creature_ref::kind::monster && summons.count( { owner.dimension.str(), owner.id } ) ) {
             jo.throw_error( "A bonded summon cannot own another bond" );
         }

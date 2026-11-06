@@ -43,7 +43,7 @@ void load( const JsonObject &jo, const std::string &source );
 void reset();
 void finalize();
 void check();
-}
+} // namespace power_summons
 
 struct power_summon_view {
     int64_t id = 0;
@@ -71,7 +71,7 @@ class power_actor_manager
         ~power_actor_manager();
         power_summon_admission summon( const power_summon_id &id, const creature_ref &owner,
                                        std::optional<tripoint_abs_ms> point = std::nullopt );
-        std::string command( int64_t id, const creature_ref &owner, const std::string &command,
+        std::string command( int64_t id, const creature_ref &owner, const std::string &order,
                              const creature_ref &target = {}, std::optional<tripoint_abs_ms> point = std::nullopt );
         int dismiss( const creature_ref &owner, const power_summon_id &filter = {} );
         bool end( int64_t id, const std::string &reason );

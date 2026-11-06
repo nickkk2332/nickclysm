@@ -10,7 +10,7 @@ namespace
 {
 generic_factory<ability_definition> factory( "ability" );
 
-int bounded( const JsonObject &jo, const std::string &key, int fallback, int low, int high )
+int bounded( const JsonObject &jo, const std::string_view key, int fallback, int low, int high )
 {
     const int value = jo.get_int( key, fallback );
     if( value < low || value > high ) {
@@ -19,7 +19,7 @@ int bounded( const JsonObject &jo, const std::string &key, int fallback, int low
     return value;
 }
 
-void read_eocs( const JsonObject &jo, const std::string &key, const std::string &source,
+void read_eocs( const JsonObject &jo, const std::string_view key, const std::string_view source,
                 std::vector<effect_on_condition_id> &out )
 {
     if( !jo.has_member( key ) ) {
@@ -110,7 +110,7 @@ void ability_definition::load( const JsonObject &jo, std::string_view source )
     read_eocs( jo, "on_interrupt", std::string( source ), on_interrupt );
     read_eocs( jo, "on_end", std::string( source ), on_end );
     if( jo.has_object( "ai" ) ) {
-        const auto ai = jo.get_object( "ai" );
+        const JsonObject ai = jo.get_object( "ai" );
         ai_intent = ai.get_string( "intent" );
         if( ai_intent != "harm" && ai_intent != "heal" && ai_intent != "protect" &&
             ai_intent != "control" && ai_intent != "mobility" && ai_intent != "summon" ) {

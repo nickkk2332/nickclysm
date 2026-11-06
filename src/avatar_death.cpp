@@ -12,6 +12,8 @@
 #include "map.h"
 #include "player_activity.h"
 
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
+
 void avatar::reset_death_state()
 {
     clear_killer();
@@ -74,7 +76,7 @@ bool avatar::finalize_death( Creature *source )
     const on_out_of_scope leave( [&]() {
         death_finalizing_ = false;
     } );
-    if( activity.id() == activity_id( "ACT_EXECUTION" ) ) {
+    if( activity.id() == ACT_EXECUTION ) {
         activity.set_to_null();
     }
     validate_source();

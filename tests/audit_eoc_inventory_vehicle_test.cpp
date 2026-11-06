@@ -73,7 +73,7 @@ static conditional_t::func load_condition( const std::string &json )
     return condition;
 }
 
-static double eval_math( dialogue &d, const std::string &expression )
+static double eval_math( dialogue &d, const std::string_view expression )
 {
     math_exp exp;
     REQUIRE( exp.parse( expression ) );

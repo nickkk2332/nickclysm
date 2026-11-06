@@ -26,6 +26,9 @@
 #include "talker.h"
 #include "type_id.h"
 
+static const execution_trigger_id
+execution_trigger_test_exec_expanded_thrown_living( "test_exec_expanded_thrown_living" );
+
 namespace
 {
 struct inspector_world {
@@ -63,7 +66,7 @@ void restore( const std::string &text )
 int64_t start( Creature &target, const std::string &definition = "test_exec_clock" )
 {
     dialogue d( get_talker_for( get_avatar() ), get_talker_for( target ) );
-    const auto result = g->executions().start( execution_id( definition ), d, 712 );
+    const execution_start_result result = g->executions().start( execution_id( definition ), d, 712 );
     INFO( result.reason );
     REQUIRE( result.id != 0 );
     return result.id;
@@ -117,9 +120,10 @@ TEST_CASE( "execution_inspector_is_read_only_for_pending_running_and_finished_sc
         }
     }
     const std::string before = save();
-    const auto rng_before = rng_get_engine();
-    const auto when = calendar::turn;
-    const auto position = target.pos_abs();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
+    const time_point when = calendar::turn;
+    const tripoint_abs_ms position = target.pos_abs();
     const int moves = target.get_moves();
     for( int i = 0; i < 3; ++i ) {
         const auto rows = g->executions().inspect_all();
@@ -149,13 +153,13 @@ TEST_CASE( "execution_inspector_draws_survive_saves_without_rerolls_or_duplicate
     REQUIRE_FALSE( before.draws.empty() );
     CHECK( before.draws.back().purpose == "transition_delay" );
     CHECK( before.draws.back().sampled );
-    const auto report_text = execution_inspector::format_scene( before );
-    const auto text = save();
+    const std::string report_text = execution_inspector::format_scene( before );
+    const std::string text = save();
     restore( text );
     CHECK( execution_inspector::format_scene( g->executions().inspect_all().front() ) == report_text );
     CHECK( save() == text );
     CHECK( get_globals().get_global_value( "exec_starts" ).dbl() == 1 );
-    const auto old_size = before.draws.size();
+    const std::size_t old_size = before.draws.size();
     calendar::turn += 5_turns;
     g->executions().process();
     CHECK( g->executions().inspect_all().front().draws.size() == old_size );
@@ -201,13 +205,13 @@ TEST_CASE( "execution_inspector_records_actual_chance_and_weight_draws_without_i
         for( const std::string suffix : {
                  "0", "1"
              } ) {
-            const auto &row = candidate( report, "test_exec_inspect_chance_" + suffix );
+            const execution_trigger_candidate &row = candidate( report, "test_exec_inspect_chance_" + suffix );
             REQUIRE( row.roll );
             CHECK( *row.roll >= 0 );
             CHECK( *row.roll < 1 );
             CHECK( row.chance == .65 );
         }
-        const auto &zero = candidate( report, "test_exec_inspect_zero" );
+        const execution_trigger_candidate &zero = candidate( report, "test_exec_inspect_zero" );
         CHECK( zero.reason == "chance_failed" );
         CHECK_FALSE( zero.roll );
     } else {
@@ -217,8 +221,9 @@ TEST_CASE( "execution_inspector_records_actual_chance_and_weight_draws_without_i
         CHECK( *report.weighted_roll <= 4 );
         CHECK_FALSE( candidate( report, "test_exec_inspect_weight_0" ).roll );
     }
-    const auto rng_before = rng_get_engine();
-    const auto saved = save();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng_before = rng_get_engine();
+    const std::string saved = save();
     for( int i = 0; i < 5; ++i ) {
         CHECK_FALSE( execution_inspector::format_trigger(
                          g->executions().trigger_history().front() ).empty() );
@@ -233,8 +238,8 @@ TEST_CASE( "execution_inspector_never_reevaluates_conditions_and_bounds_contact_
 {
     inspector_world world;
     get_globals().set_global_value( "exec_expanded_case", "living" );
-    auto &rule = const_cast<execution_trigger &>
-                 ( execution_trigger_id( "test_exec_expanded_thrown_living" ).obj() );
+    execution_trigger &rule = const_cast<execution_trigger &>
+                              ( execution_trigger_test_exec_expanded_thrown_living.obj() );
     const auto original = rule.condition;
     int evaluations = 0;
     const on_out_of_scope restore_rule( [&]() {
@@ -253,7 +258,7 @@ TEST_CASE( "execution_inspector_never_reevaluates_conditions_and_bounds_contact_
     const auto history = g->executions().trigger_history();
     REQUIRE( history.size() == 32 );
     CHECK( history.front().attack < history.back().attack );
-    for( const auto &report : history ) {
+    for( const execution_trigger_report &report : history ) {
         CHECK( candidate( report, rule.id.str() ).reason == "condition" );
         execution_inspector::format_trigger( report );
     }
@@ -269,8 +274,8 @@ TEST_CASE( "execution_inspector_reports_lost_original_roles_and_pending_cancella
     monster &target = spawn_test_monster( "mon_execution_expanded_victim",
                                           get_avatar().pos_bub() + tripoint_rel_ms::east );
     const int64_t id = start( target );
-    const auto uid = target.persistent_id();
-    const auto position = target.pos_bub();
+    const int64_t uid = target.persistent_id();
+    const tripoint_bub_ms position = target.pos_bub();
     g->executions().cancel( id, "inspector_test_cancel" );
     get_creature_tracker().remove( target );
     spawn_test_monster( "mon_execution_expanded_victim", position );

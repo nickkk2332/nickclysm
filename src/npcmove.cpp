@@ -357,7 +357,7 @@ std::vector<bionic_id> npc_weapon_cbms( const Character &guy )
         }
     }
     const auto by_id = []( const bionic_id & a, const bionic_id & b ) {
-        return a.str() < b.str();
+        return a.str() < b.str(); // NOLINT(cata-use-localized-sorting)
     };
     std::sort( guns.begin(), guns.end(), by_id );
     std::sort( melee.begin(), melee.end(), by_id );

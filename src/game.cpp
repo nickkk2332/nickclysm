@@ -256,6 +256,7 @@
 #define UNUSED
 #endif
 
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
 static const activity_id ACT_MOVE_LOOT( "ACT_MOVE_LOOT" );
 static const activity_id ACT_TRAVELLING( "ACT_TRAVELLING" );
 
@@ -1556,7 +1557,7 @@ static bool cancel_auto_move( Character &you, const std::string &text )
 bool game::cancel_activity_or_ignore_query( const distraction_type type, const std::string &text )
 {
     if( execution_fatal::pending( u ) ||
-        ( u.activity.id() == activity_id( "ACT_EXECUTION" ) && executions().contains( u ) ) ) {
+        ( u.activity.id() == ACT_EXECUTION && executions().contains( u ) ) ) {
         return false; // Execution ownership handles cancellation at safe runtime checkpoints.
     }
     if( u.has_distant_destination() ) {
@@ -3659,8 +3660,8 @@ void game::draw_ter( const tripoint_bub_ms &center, const bool looking, const bo
 
     here.draw( w_terrain, tripoint_bub_ms( center ) );
 
-    for( const auto &tile : get_projections().tiles() ) {
-        const auto point = here.get_bub( tile.position );
+    for( power_projection_tile const &tile : get_projections().tiles() ) {
+        const tripoint_bub_ms point = here.get_bub( tile.position );
         if( point.z() != center.z() || !u.sees( here, point ) ||
             here.field_at( point ).displayed_field_type() != fd_null ) {
             continue;
@@ -9358,7 +9359,7 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             }
         }
     } );
-    auto map_frame = get_map().get_abs( tripoint_bub_ms::zero );
+    tripoint_abs_ms map_frame = get_map().get_abs( tripoint_bub_ms::zero );
     const auto valid_motion = [&]( const tripoint_abs_ms & expected ) {
         if( !receipt ) {
             return true;
@@ -9663,7 +9664,7 @@ bool game::fling_creature( Creature *c, const units::angle &dir, float flvel, bo
             }
             if( force > 0 ) {
                 const int hp = c->get_hp();
-                const auto landing_position = c->pos_abs();
+                const tripoint_abs_ms landing_position = c->pos_abs();
                 int dmg = c->impact( force, pos );
                 if( receipt ) {
                     receipt->impacts.push_back( { here.get_abs( pos ), "landing", {},

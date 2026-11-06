@@ -99,7 +99,7 @@ class damage_context_scope
         ~damage_context_scope();
         damage_context_scope( const damage_context_scope & ) = delete;
         damage_context_scope &operator=( const damage_context_scope & ) = delete;
-        void set( global_variables::impl_t values, bool trace );
+        void set( global_variables::impl_t next, bool trace );
         std::optional<damage_transaction_view> result() const;
     private:
         friend class damage_packet_scope;

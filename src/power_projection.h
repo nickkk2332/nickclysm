@@ -69,7 +69,7 @@ void load( const JsonObject &jo, const std::string &source );
 void reset();
 void finalize();
 void check();
-}
+} // namespace power_projections
 
 struct power_projection_request {
     power_projection_id definition;

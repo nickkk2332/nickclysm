@@ -2530,7 +2530,7 @@ void construction::load( const JsonObject &jo, const std::string_view src )
         read_condition( jo, "condition", condition, false );
         has_condition = true;
     }
-    const auto read_eocs = [&jo, &src]( const std::string & member,
+    const auto read_eocs = [&jo, &src]( const std::string_view member,
     std::vector<effect_on_condition_id> &eocs ) {
         if( !jo.has_member( member ) ) {
             return;

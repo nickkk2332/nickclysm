@@ -2123,7 +2123,7 @@ furn_id map::furn( const tripoint_bub_ms p ) const
 // reality bubble has the avatar's view, so a temporary map overlapping it checks the tile
 // there; asking the temporary map itself would build its sunlight caches for nothing.
 static void forget_decoration_if_seen( map &changed, const tripoint_bub_ms &p,
-                                       const std::string &prefix )
+                                       const std::string_view prefix )
 {
     avatar &u = get_avatar();
     map &bubble = reality_bubble();

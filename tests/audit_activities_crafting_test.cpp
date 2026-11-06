@@ -54,10 +54,10 @@ static const itype_id itype_debug_backpack( "debug_backpack" );
 static const itype_id itype_disassembly( "disassembly" );
 static const itype_id itype_test_audit_hook_widget( "test_audit_hook_widget" );
 
+static const quality_id qual_DIG( "DIG" );
+
 static const recipe_id recipe_cudgel_test_activity_hooks( "cudgel_test_activity_hooks" );
 static const recipe_id recipe_cudgel_test_crafting_eocs( "cudgel_test_crafting_eocs" );
-
-static const quality_id qual_DIG( "DIG" );
 
 static const trait_id trait_DEBUG_CNF( "DEBUG_CNF" );
 

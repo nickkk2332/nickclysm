@@ -16,7 +16,7 @@ namespace
 generic_factory<damage_rule> factory( "damage rule" );
 std::vector<const damage_rule *> sorted_rules;
 
-void read_eocs( const JsonObject &jo, const std::string &key, const std::string &source,
+void read_eocs( const JsonObject &jo, const std::string_view key, const std::string_view source,
                 std::vector<effect_on_condition_id> &out )
 {
     if( !jo.has_member( key ) ) {
@@ -31,7 +31,7 @@ void read_eocs( const JsonObject &jo, const std::string &key, const std::string 
     }
 }
 
-void check_kinds( const JsonObject &jo, const std::string &member,
+void check_kinds( const JsonObject &jo, const std::string_view member,
                   const std::set<std::string> &kinds, bool source )
 {
     for( const std::string &kind : kinds ) {
@@ -158,7 +158,7 @@ void damage_rule::check() const
             debugmsg( "Damage rule %s has invalid spell %s", id.str(), sp.str() );
         }
     }
-    for( const auto &action : actions ) {
+    for( const damage_rule_action &action : actions ) {
         if( !powers::valid_resource( action.resource ) ) {
             debugmsg( "Damage rule %s has invalid resource %s", id.str(), action.resource );
         }
@@ -196,8 +196,10 @@ void damage_rules::finalize()
         sorted_rules.push_back( &rule );
     }
     std::sort( sorted_rules.begin(), sorted_rules.end(), []( const auto * lhs, const auto * rhs ) {
-        return lhs->priority != rhs->priority ? lhs->priority > rhs->priority : lhs->id.str() <
-               rhs->id.str();
+        // NOLINTBEGIN(cata-use-localized-sorting)
+        return lhs->priority != rhs->priority ? lhs->priority > rhs->priority :
+               lhs->id.str() < rhs->id.str();
+        // NOLINTEND(cata-use-localized-sorting)
     } );
 }
 

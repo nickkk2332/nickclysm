@@ -37,8 +37,8 @@ static const activity_id ACT_CHOP_PLANKS( "ACT_CHOP_PLANKS" );
 static const activity_id ACT_FISH( "ACT_FISH" );
 
 static const itype_id itype_2x4( "2x4" );
-static const itype_id itype_ax( "ax" );
 static const itype_id itype_audit_use_b08_rune( "audit_use_b08_rune" );
+static const itype_id itype_ax( "ax" );
 static const itype_id itype_blindfold( "blindfold" );
 static const itype_id itype_blindfold_up( "blindfold_up" );
 static const itype_id itype_cotton_patchwork( "cotton_patchwork" );

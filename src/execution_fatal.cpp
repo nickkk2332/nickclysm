@@ -12,7 +12,7 @@
 namespace
 {
 thread_local std::set<const Creature *> finalizing;
-}
+} // namespace
 
 bool execution_fatal::pending( const Creature &who )
 {

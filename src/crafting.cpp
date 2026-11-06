@@ -1012,12 +1012,12 @@ static item_location place_craft_or_disassembly(
 
     // Crafting without a workbench
     if( !target ) {
-        if( !ch.has_two_arms_lifting() || !ch.can_pickWeight( craft ) ) {
-            craft_in_world = set_item_map_or_vehicle( ch, ch.pos_bub(), craft );
-        } else if( !ch.has_wield_conflicts( craft ) || ch.is_npc() ) {
+        const bool can_hold = ch.has_two_arms_lifting() && ch.can_pickWeight( craft );
+        if( can_hold && ( !ch.has_wield_conflicts( craft ) || ch.is_npc() ) ) {
             craft_wield();
-        } else if( craft_prompts_suppressed() ) {
-            // Nobody to ask: put it down and start working, as the menu's second choice does.
+        } else if( !can_hold || craft_prompts_suppressed() ) {
+            // Can't hold it, or nobody to ask: put it down and start working, as the menu's
+            // second choice does.
             craft_in_world = set_item_map_or_vehicle( ch, ch.pos_bub(), craft );
         } else {
             enum option : int {

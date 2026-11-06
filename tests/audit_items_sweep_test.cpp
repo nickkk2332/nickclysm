@@ -30,10 +30,9 @@
 #include "ret_val.h"
 #include "type_id.h"
 
-static const fault_id fault_test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
+static const fault_id test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
 
-static const item_category_id
-item_category_test_spawn_rate_category( "test_spawn_rate_category" );
+static const item_category_id item_category_test_spawn_rate_category( "test_spawn_rate_category" );
 static const item_category_id
 item_category_test_spawn_rate_category_copy( "test_spawn_rate_category_copy" );
 
@@ -107,13 +106,13 @@ TEST_CASE( "item-b04_instant_damage_fault_does_not_reroll_itself", "[audit][item
     item rod( itype_test_fault_self_damaging_rod );
     REQUIRE( rod.faults.empty() );
     rod.inc_damage();
-    CHECK( rod.has_fault( fault_test_fault_mech_self_damaging ) );
+    CHECK( rod.has_fault( test_fault_mech_self_damaging ) );
     CHECK( rod.faults.size() == 1 );
     CHECK( rod.damage() == itype::damage_scale + 1 );
 
     // A fault the item already has can't be set again without force.
-    CHECK_FALSE( rod.can_have_fault( fault_test_fault_mech_self_damaging ) );
-    CHECK_FALSE( rod.set_fault( fault_test_fault_mech_self_damaging ) );
+    CHECK_FALSE( rod.can_have_fault( test_fault_mech_self_damaging ) );
+    CHECK_FALSE( rod.set_fault( test_fault_mech_self_damaging ) );
     CHECK( rod.damage() == itype::damage_scale + 1 );
 }
 

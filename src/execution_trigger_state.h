@@ -33,12 +33,12 @@ class execution_trigger_state
         void deserialize( const JsonObject &obj );
     private:
         std::map<std::string, time_point> cooldowns;
-        std::deque<uint64_t> recent;
-        std::optional<execution_trigger_report> last;
-        std::deque<execution_trigger_report> reports;
-        bool selecting = false;
+        std::deque<uint64_t> recent; // NOLINT(cata-serialize): runtime deduplication
+        std::optional<execution_trigger_report> last; // NOLINT(cata-serialize): inspector history only
+        std::deque<execution_trigger_report> reports; // NOLINT(cata-serialize): inspector history only
+        bool selecting = false; // NOLINT(cata-serialize)
         uint64_t next_contact = 1;
-        time_point next_sweep = calendar::before_time_starts;
+        time_point next_sweep = calendar::before_time_starts; // NOLINT(cata-serialize)
 };
 
 #endif // CATA_SRC_EXECUTION_TRIGGER_STATE_H

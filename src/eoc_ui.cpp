@@ -61,7 +61,7 @@ void draw_buttons( const catacurses::window &w, int top, int width,
         if( i == selected ) {
             color = hilite( color );
         }
-        trim_and_print( w, point( places[i].x, top + places[i].y ), width - 2 - places[i].x, color,
+        trim_and_print( w, places[i] + point( 0, top ), width - 2 - places[i].x, color,
                         button_label( buttons[i] ) );
     }
 }

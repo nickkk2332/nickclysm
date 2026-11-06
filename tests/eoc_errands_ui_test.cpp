@@ -35,9 +35,9 @@
 static const activity_id ACT_CLOSE_TILE( "ACT_CLOSE_TILE" );
 
 static const furn_str_id furn_f_safe_c( "f_safe_c" );
-static const furn_str_id furn_test_f_dead_gate_control( "test_f_dead_gate_control" );
 static const furn_str_id furn_f_safe_o( "f_safe_o" );
 static const furn_str_id furn_f_workbench( "f_workbench" );
+static const furn_str_id furn_test_f_dead_gate_control( "test_f_dead_gate_control" );
 static const furn_str_id furn_test_f_eoc( "test_f_eoc" );
 
 static const ter_str_id ter_t_door_c( "t_door_c" );
@@ -425,6 +425,7 @@ TEST_CASE( "eoc_run_eoc_checklist", "[eoc][ui][errands_ui]" )
 TEST_CASE( "eoc_show_text_buttons_wrap_to_fit", "[eoc][ui][errands_ui]" )
 {
     std::vector<eoc_ui::text_button> buttons;
+    buttons.reserve( 6 );
     for( int i = 0; i < 6; i++ ) {
         buttons.push_back( { "Button number " + std::to_string( i ), i % 2 == 0 } );
     }

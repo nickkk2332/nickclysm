@@ -41,6 +41,10 @@
 #include "type_id.h"
 #include "uistate.h"
 
+static const damage_type_id damage_pure( "pure" );
+
+static const skill_id skill_melee( "melee" );
+
 namespace
 {
 struct physical_world {
@@ -88,7 +92,8 @@ Creature &victim( bool character = false )
 int64_t start( const std::string &definition, Creature &actor, Creature &target, uint64_t seed = 7 )
 {
     dialogue context( get_talker_for( actor ), get_talker_for( target ) );
-    const auto result = g->executions().start( execution_id( definition ), context, seed );
+    const execution_start_result result = g->executions().start( execution_id( definition ), context,
+                                          seed );
     INFO( result.reason );
     REQUIRE( result.id != 0 );
     return result.id;
@@ -313,7 +318,7 @@ TEST_CASE( "execution_fling_keeps_explicit_environmental_child_damage_unattribut
                 target.apply_damage( nullptr, bodypart_id( "arm_l" ), 1 );
             } else {
                 target.deal_damage( nullptr, bodypart_id( "arm_l" ),
-                                    damage_instance( damage_type_id( "pure" ), 1 ) );
+                                    damage_instance( damage_pure, 1 ) );
             }
         }
     };
@@ -387,7 +392,7 @@ TEST_CASE( "execution_native_counterattacks_keep_combat_costs_and_do_not_retrigg
     Creature &counter = victim( !monster );
     if( Character *person = counter.as_character() ) {
         person->set_dex_base( 30 );
-        person->set_skill_level( skill_id( "melee" ), 10 );
+        person->set_skill_level( skill_melee, 10 );
         person->reset_stats();
     }
     get_avatar().set_dodges_left( 0 );
@@ -481,7 +486,7 @@ TEST_CASE( "execution_cinematic_clash_resumes_without_rerolling_and_interrupts_o
     const int64_t id = start( "execution_cinematic_clash", get_avatar(), target, 123 );
     g->executions().drain_starts();
     REQUIRE( view( id ).state == "running" );
-    const auto before = view( id );
+    const execution_view before = view( id );
     const std::string runtime = save();
     std::ostringstream actor;
     JsonOut out( actor );

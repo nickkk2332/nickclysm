@@ -1530,8 +1530,8 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
         std::tie( center, local ) = project_remain<coords::om>( origin.xy() );
         // The closest any OMT of an overmap in ring i (i > 0) can be to origin: the gap from
         // origin to the nearest edge of its own overmap, plus i - 1 whole overmaps.
-        const int edge_gap_x = std::min( local.x() + 1, OMAPX - local.x() );
-        const int edge_gap_y = std::min( local.y() + 1, OMAPY - local.y() );
+        const point edge_gap( std::min( local.x() + 1, OMAPX - local.x() ), std::min( local.y() + 1,
+                              OMAPY - local.y() ) );
         const overmap_special_id special_id = params.om_special.value();
         tripoint_abs_omt result_pos = tripoint_abs_omt::invalid;
 
@@ -1539,8 +1539,8 @@ tripoint_abs_omt overmapbuffer::find_closest( const tripoint_abs_omt &origin,
         // ring with a hit: a match just across the border can be far closer than one at the
         // other end of the origin's own overmap (OMAP-B02).
         for( int i = 0; i <= om_range; i++ ) {
-            const int ring_min_dist = i == 0 ? 0 : std::min( ( i - 1 ) * OMAPX + edge_gap_x,
-                                      ( i - 1 ) * OMAPY + edge_gap_y );
+            const int ring_min_dist = i == 0 ? 0 : std::min( ( i - 1 ) * OMAPX + edge_gap.x,
+                                      ( i - 1 ) * OMAPY + edge_gap.y );
             if( ring_min_dist >= found_dist ) {
                 break;
             }

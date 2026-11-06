@@ -84,7 +84,7 @@ void rebuild()
     dirty = false;
 }
 
-int integer( const JsonObject &jo, const std::string &key, int fallback, int low, int high )
+int integer( const JsonObject &jo, const std::string_view key, int fallback, int low, int high )
 {
     const int result = jo.get_int( key, fallback );
     if( result < low || result > high ) {
@@ -105,7 +105,7 @@ execution_trigger_range range( const JsonObject &jo )
     return out;
 }
 
-std::set<std::string> strings( const JsonObject &jo, const std::string &key )
+std::set<std::string> strings( const JsonObject &jo, const std::string_view key )
 {
     if( !jo.has_member( key ) ) {
         return {};
@@ -183,7 +183,7 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
                 member.throw_error( "unsupported execution trigger match field" );
             }
         }
-        const auto read = [&]( const std::string & key, auto & destination ) {
+        const auto read = [&]( const std::string_view key, auto & destination ) {
             if( match.has_member( key ) ) {
                 destination = strings( match, key );
             }
@@ -474,7 +474,10 @@ std::vector<const execution_trigger *> execution_triggers::candidates(
         add( index.categories, category );
     }
     std::sort( out.begin(), out.end(), []( const execution_trigger * a, const execution_trigger * b ) {
-        return a->priority != b->priority ? a->priority > b->priority : a->id.str() < b->id.str();
+        // NOLINTBEGIN(cata-use-localized-sorting)
+        return a->priority != b->priority ? a->priority > b->priority : a->id.str() <
+               b->id.str();
+        // NOLINTEND(cata-use-localized-sorting)
     } );
     out.erase( std::unique( out.begin(), out.end() ), out.end() );
     return out;

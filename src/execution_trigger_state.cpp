@@ -166,7 +166,7 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
             report.selected = selected->id.str();
             report.instance = started.id;
             report.reason = started.reason;
-            for( auto &entry : report.candidates ) {
+            for( execution_trigger_candidate &entry : report.candidates ) {
                 if( entry.reason == "eligible" ) {
                     entry.reason = entry.rule == report.selected ? report.reason : "not_selected";
                 }

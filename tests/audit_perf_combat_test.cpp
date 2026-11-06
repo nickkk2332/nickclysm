@@ -73,10 +73,9 @@ static const itype_id itype_shot_00( "shot_00" );
 static const itype_id itype_shot_bird( "shot_bird" );
 static const itype_id itype_shotgun_s( "shotgun_s" );
 
+static const mtype_id mon_cow( "mon_cow" );
 static const mtype_id mon_zombie( "mon_zombie" );
 
-// Magiclysm's attack spells that NPCs are given or cast, checked when the mod is loaded
-// (--mods=magiclysm)
 static const spell_id spell_cone_cold( "cone_cold" );
 static const spell_id spell_fireball( "fireball" );
 static const spell_id spell_gravity_well( "gravity_well" );
@@ -93,11 +92,11 @@ static const spell_id spell_test_spell_pew( "test_spell_pew" );
 
 static const string_id<npc_template> npc_template_test_talker( "test_talker" );
 
-static const trait_id trait_TEST_HALF_AVOID_FRIENDLY_FIRE( "TEST_HALF_AVOID_FRIENDLY_FIRE" );
-
 static const ter_str_id ter_t_laminated_glass( "t_laminated_glass" );
 static const ter_str_id ter_t_wall( "t_wall" );
 static const ter_str_id ter_t_window( "t_window" );
+
+static const trait_id trait_TEST_HALF_AVOID_FRIENDLY_FIRE( "TEST_HALF_AVOID_FRIENDLY_FIRE" );
 
 static const vproto_id vehicle_prototype_wheelchair( "wheelchair" );
 
@@ -420,9 +419,11 @@ void check_matches_full_scan( const npc_attack &attack, const npc &source,
 {
     rng_set_engine_seed( seed );
     const npc_attack_rating fast = attack.evaluate( source, target );
+    // NOLINTNEXTLINE(cata-determinism)
     const cata_default_random_engine after_fast = rng_get_engine();
     rng_set_engine_seed( seed );
     const npc_attack_rating full = best_of( attack.all_evaluations( source, target ), start );
+    // NOLINTNEXTLINE(cata-determinism)
     const cata_default_random_engine after_full = rng_get_engine();
     CHECK( fast.value() == full.value() );
     CHECK( fast.target() == full.target() );
@@ -468,7 +469,7 @@ random_fight build_random_fight( npc &guy, unsigned int seed, int zombies, int w
     }
     const tripoint_bub_ms cow = free_spot( 10 );
     if( cow != center ) {
-        g->place_critter_at( mtype_id( "mon_cow" ), cow );
+        g->place_critter_at( mon_cow, cow );
     }
     const tripoint_bub_ms ally = free_spot( 8 );
     if( ally != center ) {
@@ -858,7 +859,16 @@ TEST_CASE( "npc-p02_npc_attack_choices", "[audit][npc_attack]" )
         zombie_at( { -7, 3, 0 } );
         zombie_at( { -7, 4, 0 } );
         here.build_map_cache( 0 );
-        check_choice( choose_attack( guy, near_ally, 4 ), "spell", { -11, 2, 0 }, 67 );
+        // The fireball's damage is random, and how a seed becomes random numbers differs between
+        // standard libraries, so the exact tile and rating are platform-specific. What holds
+        // everywhere: a fireball, aimed so its blast misses the player and catches the far zombies.
+        const chosen_attack got = choose_attack( guy, near_ally, 4 );
+        CAPTURE( got.target, got.value );
+        CHECK( got.kind == "spell" );
+        const int blast_radius = guy.magic->get_spell( spell_test_npc_fireball ).aoe( guy );
+        CHECK( rl_dist( got.target, tripoint_rel_ms( 9, 0, 0 ) ) > blast_radius );
+        CHECK( rl_dist( got.target, tripoint_rel_ms( -7, 3, 0 ) ) <= blast_radius );
+        CHECK( got.value > 0 );
     }
     SECTION( "spells or a gun, with zombies near and far" ) {
         guy.set_attitude( NPCATT_KILL );

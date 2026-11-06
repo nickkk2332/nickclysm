@@ -43,11 +43,31 @@
 #include "vpart_position.h"
 #include "vpart_range.h"
 
+static const ability_id
+ability_definition_power_demo_form_grant_cast( "power_demo_form_grant_cast" );
+
+static const damage_type_id damage_bash( "bash" );
+
+static const efftype_id effect_knocked_out( "knocked_out" );
+static const efftype_id effect_power_demo_might( "power_demo_might" );
+static const efftype_id effect_test_owned_power_boost( "test_owned_power_boost" );
+
+static const flag_id json_flag_NO_TAKEOFF( "NO_TAKEOFF" );
+
+static const itype_id itype_backpack( "backpack" );
+static const itype_id itype_bat( "bat" );
+static const itype_id itype_knuckle_brass( "knuckle_brass" );
 static const itype_id itype_power_demo_form_grant_focus( "power_demo_form_grant_focus" );
+static const itype_id itype_rock( "rock" );
+static const itype_id itype_test_power_grant_shell( "test_power_grant_shell" );
+static const itype_id itype_tshirt( "tshirt" );
+
+static const matype_id style_kicks( "style_kicks" );
+
+static const vproto_id vehicle_prototype_shopping_cart( "shopping_cart" );
 
 namespace
 {
-const efftype_id boost( "test_owned_power_boost" );
 struct grant_world {
     time_point old_time = calendar::turn;
     override_option animations{ "ANIMATIONS", "false" };
@@ -95,7 +115,7 @@ power_application_request request( Creature &owner, Creature &target, const std:
 int64_t apply( Creature &owner, Creature &target, const std::string &id = "test_grant_buff",
                bool begin = true )
 {
-    const auto out = get_powers().apply( request( owner, target, id ) );
+    const power_application_admission out = get_powers().apply( request( owner, target, id ) );
     INFO( out.reason );
     REQUIRE( out.id != 0 );
     if( begin ) {
@@ -117,7 +137,7 @@ void tick( int count = 1 )
 }
 power_application_view view( int64_t id )
 {
-    for( const auto &value : get_powers().inspect_applications() ) {
+    for( power_application_view const &value : get_powers().inspect_applications() ) {
         if( value.id == id ) {
             return value;
         }
@@ -127,7 +147,7 @@ power_application_view view( int64_t id )
 }
 power_grant_view grant( int64_t id )
 {
-    for( const auto &value : get_power_grants().inspect() ) {
+    for( power_grant_view const &value : get_power_grants().inspect() ) {
         if( value.application == id ) {
             return value;
         }
@@ -161,7 +181,7 @@ void restore( const std::string &runtime, const std::string &who = "" )
 }
 int64_t shirt( Character &who )
 {
-    const auto worn = who.wear_item( item( itype_id( "tshirt" ), calendar::turn ), false );
+    const auto worn = who.wear_item( item( itype_tshirt, calendar::turn ), false );
     REQUIRE( worn );
     item &value = **worn;
     value.set_var( "original_gear", "unique" );
@@ -206,132 +226,132 @@ TEST_CASE( "owned_native_effects_sum_sources_for_every_real_actor_kind", "[power
 {
     grant_world world;
     Creature &target = actor( GENERATE( "avatar", "npc", "monster" ) );
-    const auto one = apply( get_avatar(), target );
-    const auto two = apply( get_avatar(), target );
-    CHECK( target.get_effect_int( boost ) == 4 );
-    CHECK( target.get_effect( boost ).get_mod( "STR" ) == 4 );
+    const int64_t one = apply( get_avatar(), target );
+    const int64_t two = apply( get_avatar(), target );
+    CHECK( target.get_effect_int( effect_test_owned_power_boost ) == 4 );
+    CHECK( target.get_effect( effect_test_owned_power_boost ).get_mod( "STR" ) == 4 );
     end( one );
-    CHECK( target.get_effect_int( boost ) == 2 );
+    CHECK( target.get_effect_int( effect_test_owned_power_boost ) == 2 );
     CHECK( view( two ).state == "active" );
     end( two );
-    CHECK_FALSE( target.has_effect( boost ) );
+    CHECK_FALSE( target.has_effect( effect_test_owned_power_boost ) );
 }
 
 TEST_CASE( "owned_effects_preserve_natural_effects_and_decay_their_own_timers", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    who.add_effect( boost, 10_turns, false, 1 );
-    const auto first = apply( who, who );
-    const auto second = apply( actor( "npc" ), who );
-    CHECK( who.get_effect_int( boost ) == 5 );
+    avatar &who = get_avatar();
+    who.add_effect( effect_test_owned_power_boost, 10_turns, false, 1 );
+    const int64_t first = apply( who, who );
+    const int64_t second = apply( actor( "npc" ), who );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 5 );
     who.process_effects();
     end( first );
-    CHECK( who.get_effect_int( boost ) == 3 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 3 );
     end( second );
-    CHECK( who.get_effect_int( boost ) == 1 );
-    CHECK( who.get_effect_dur( boost ) == 9_turns );
-    CHECK_FALSE( who.get_effect( boost ).is_permanent() );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 1 );
+    CHECK( who.get_effect_dur( effect_test_owned_power_boost ) == 9_turns );
+    CHECK_FALSE( who.get_effect( effect_test_owned_power_boost ).is_permanent() );
 }
 
 TEST_CASE( "ordinary_reapplication_under_owned_effects_survives_last_source_removal",
            "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto id = apply( who, who );
-    who.add_effect( boost, 20_turns, false, 3 );
-    CHECK( who.get_effect_int( boost ) == 5 );
-    who.get_effect( boost ).mod_duration( 2_turns );
-    who.get_effect( boost ).set_intensity( 4 );
-    CHECK( who.get_effect_int( boost ) == 6 );
+    avatar &who = get_avatar();
+    const int64_t id = apply( who, who );
+    who.add_effect( effect_test_owned_power_boost, 20_turns, false, 3 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 5 );
+    who.get_effect( effect_test_owned_power_boost ).mod_duration( 2_turns );
+    who.get_effect( effect_test_owned_power_boost ).set_intensity( 4 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 6 );
     end( id );
-    CHECK( who.get_effect_int( boost ) == 4 );
-    CHECK( who.get_effect_dur( boost ) == 22_turns );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 4 );
+    CHECK( who.get_effect_dur( effect_test_owned_power_boost ) == 22_turns );
 }
 
 TEST_CASE( "owned_effect_intensity_caps_do_not_destroy_hidden_contributions", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    who.add_effect( boost, 30_turns, false, 8 );
-    const auto a = apply( who, who );
-    const auto b = apply( who, who );
-    CHECK( who.get_effect_int( boost ) == 10 );
+    avatar &who = get_avatar();
+    who.add_effect( effect_test_owned_power_boost, 30_turns, false, 8 );
+    const int64_t a = apply( who, who );
+    const int64_t b = apply( who, who );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 10 );
     end( a );
-    CHECK( who.get_effect_int( boost ) == 10 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 10 );
     end( b );
-    CHECK( who.get_effect_int( boost ) == 8 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 8 );
 }
 
 TEST_CASE( "a_natural_effect_can_expire_while_an_owned_contribution_remains", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    who.add_effect( boost, 1_turns, false, 1 );
-    const auto id = apply( who, who );
+    avatar &who = get_avatar();
+    who.add_effect( effect_test_owned_power_boost, 1_turns, false, 1 );
+    const int64_t id = apply( who, who );
     who.process_effects();
     who.process_effects();
-    CHECK( who.get_effect_int( boost ) == 2 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 2 );
     end( id );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
 }
 
 TEST_CASE( "native_cures_clear_owned_layers_without_sustained_reapplication", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto a = apply( who, who );
-    const auto b = apply( actor( "npc" ), who );
-    REQUIRE( who.remove_effect( boost ) );
+    avatar &who = get_avatar();
+    const int64_t a = apply( who, who );
+    const int64_t b = apply( actor( "npc" ), who );
+    REQUIRE( who.remove_effect( effect_test_owned_power_boost ) );
     tick();
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
     CHECK( view( a ).state == "active" );
     end( b );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
 }
 
 TEST_CASE( "owned_bodypart_contributions_are_independent", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto a = apply( who, who, "test_grant_torso" );
-    const auto b = apply( who, who, "test_grant_arm" );
-    CHECK( who.get_effect_int( boost, bodypart_id( "torso" ) ) == 2 );
-    CHECK( who.get_effect_int( boost, bodypart_id( "arm_l" ) ) == 2 );
+    avatar &who = get_avatar();
+    const int64_t a = apply( who, who, "test_grant_torso" );
+    const int64_t b = apply( who, who, "test_grant_arm" );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost, bodypart_id( "torso" ) ) == 2 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost, bodypart_id( "arm_l" ) ) == 2 );
     end( a );
-    CHECK_FALSE( who.has_effect( boost, bodypart_id( "torso" ) ) );
-    CHECK( who.get_effect_int( boost, bodypart_id( "arm_l" ) ) == 2 );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost, bodypart_id( "torso" ) ) );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost, bodypart_id( "arm_l" ) ) == 2 );
     end( b );
 }
 
 TEST_CASE( "owned_effect_copies_do_not_alias_live_layer_mutations", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    who.add_effect( boost, 10_turns, false, 1 );
-    const auto id = apply( who, who );
-    effect snapshot = who.get_effect( boost );
+    avatar &who = get_avatar();
+    who.add_effect( effect_test_owned_power_boost, 10_turns, false, 1 );
+    const int64_t id = apply( who, who );
+    effect snapshot = who.get_effect( effect_test_owned_power_boost );
     snapshot.set_intensity( 5 );
     CHECK( snapshot.get_intensity() == 7 );
-    CHECK( who.get_effect_int( boost ) == 3 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 3 );
     CHECK( snapshot.remove_owned( id ) );
     CHECK( snapshot.get_intensity() == 5 );
-    CHECK( who.get_effect_int( boost ) == 3 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 3 );
 }
 
 TEST_CASE( "form_restores_real_garments_and_weapon_without_copying_UIDs", "[power_grants]" )
 {
     grant_world world;
     Character &who = *actor( GENERATE( "avatar", "npc" ) ).as_character();
-    const auto original = shirt( who );
-    item held( itype_id( "bat" ), calendar::turn );
-    const auto original_weapon = held.uid().get_value();
+    const int64_t original = shirt( who );
+    item held( itype_bat, calendar::turn );
+    const int64_t original_weapon = held.uid().get_value();
     REQUIRE( who.wield_power_item( held ) );
-    const auto id = apply( get_avatar(), who, "test_grant_form" );
+    const int64_t id = apply( get_avatar(), who, "test_grant_form" );
     CHECK( grant( id ).stowed == 2 );
-    CHECK( who.amount_worn( itype_id( "test_power_grant_shell" ) ) == 1 );
-    CHECK( who.get_effect_int( boost ) == 3 );
+    CHECK( who.amount_worn( itype_test_power_grant_shell ) == 1 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 3 );
     CHECK_FALSE( find( who, original ) );
     REQUIRE( who.get_wielded_item() );
     CHECK( who.get_wielded_item()->has_var( "power_grant_application" ) );
@@ -343,30 +363,30 @@ TEST_CASE( "form_restores_real_garments_and_weapon_without_copying_UIDs", "[powe
     CHECK( restored->get_var( "original_gear", "" ) == "unique" );
     CHECK( who.get_wielded_item()->uid().get_value() == original_weapon );
     CHECK( grant( id ).restored == 2 );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
 }
 
 TEST_CASE( "owned_form_escrow_preserves_nested_item_identity_through_a_real_avatar_save",
            "[power_grants][save]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    item pack( itype_id( "backpack" ), calendar::turn );
+    avatar &who = get_avatar();
+    item pack( itype_backpack, calendar::turn );
     const auto worn = who.wear_item( pack, false );
     REQUIRE( worn );
     item &actual_pack = **worn;
-    item stone( itype_id( "rock" ), calendar::turn );
+    item stone( itype_rock, calendar::turn );
     stone.set_var( "cargo", "original" );
-    REQUIRE( actual_pack.put_in( std::move( stone ), pocket_type::CONTAINER ).success() );
-    const auto pack_uid = actual_pack.uid().get_value();
-    const auto cargo_uid = actual_pack.all_items_top().front()->uid().get_value();
-    who.add_effect( boost, 40_turns, false, 1 );
-    const auto id = apply( who, who, "test_grant_form" );
-    const auto runtime = save();
-    const auto person = save_actor();
+    REQUIRE( actual_pack.put_in( stone, pocket_type::CONTAINER ).success() );
+    const int64_t pack_uid = actual_pack.uid().get_value();
+    const int64_t cargo_uid = actual_pack.all_items_top().front()->uid().get_value();
+    who.add_effect( effect_test_owned_power_boost, 40_turns, false, 1 );
+    const int64_t id = apply( who, who, "test_grant_form" );
+    const std::string runtime = save();
+    const std::string person = save_actor();
     restore( runtime, person );
     g->abilities().drain_starts();
-    CHECK( who.get_effect_int( boost ) == 4 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 4 );
     CHECK( grant( id ).stowed == 1 );
     end( id );
     const item *returned = find( who, pack_uid );
@@ -374,16 +394,16 @@ TEST_CASE( "owned_form_escrow_preserves_nested_item_identity_through_a_real_avat
     REQUIRE( returned->all_items_top().size() == 1 );
     CHECK( returned->all_items_top().front()->uid().get_value() == cargo_uid );
     CHECK( returned->all_items_top().front()->get_var( "cargo", "" ) == "original" );
-    CHECK( who.get_effect_int( boost ) == 1 );
-    CHECK( who.get_effect_dur( boost ) == 40_turns );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 1 );
+    CHECK( who.get_effect_dur( effect_test_owned_power_boost ) == 40_turns );
 }
 
 TEST_CASE( "granted_equipment_uses_native_armor_and_cannot_become_crafting_material",
            "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto id = apply( who, who, "test_grant_equipment" );
+    avatar &who = get_avatar();
+    const int64_t id = apply( who, who, "test_grant_equipment" );
     const auto pieces = who.items_with( []( const item & value ) {
         return value.has_var( "power_grant_application" );
     } );
@@ -393,25 +413,26 @@ TEST_CASE( "granted_equipment_uses_native_armor_and_cannot_become_crafting_mater
     CHECK_FALSE( pieces.front()->is_salvageable() );
     CHECK_FALSE( pieces.front()->is_disassemblable() );
     const int hp = who.get_hp();
-    who.deal_damage( nullptr, bodypart_id( "torso" ), damage_instance( damage_type_id( "bash" ), 10 ) );
+    who.deal_damage( nullptr, bodypart_id( "torso" ), damage_instance( damage_bash, 10 ) );
     CHECK( who.get_hp() == hp );
     end( id );
-    CHECK( who.amount_worn( itype_id( "test_power_grant_shell" ) ) == 0 );
+    CHECK( who.amount_worn( itype_test_power_grant_shell ) == 0 );
 }
 
 TEST_CASE( "form_conflicts_and_monster_equipment_refuse_before_payment_or_rng", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
+    avatar &who = get_avatar();
     apply( who, who, "test_grant_form" );
-    const auto r = request( who, who, "test_grant_paid" );
-    const auto before = save();
-    const auto rng = rng_get_engine();
+    const power_application_request r = request( who, who, "test_grant_paid" );
+    const std::string before = save();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng = rng_get_engine();
     CHECK( get_powers().check_application( r ) == "form_conflict" );
     CHECK( get_powers().apply( r ).reason == "form_conflict" );
     CHECK( rng_get_engine() == rng );
     CHECK( save() == before );
-    auto &mon = actor( "monster" );
+    Creature &mon = actor( "monster" );
     CHECK( get_powers().apply( request( who, mon,
                                         "test_grant_equipment" ) ).reason == "equipment_requires_character" );
 }
@@ -419,9 +440,9 @@ TEST_CASE( "form_conflicts_and_monster_equipment_refuse_before_payment_or_rng", 
 TEST_CASE( "queued_forms_revalidate_the_exclusive_claim_before_spending", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto a = apply( who, who, "test_grant_paid", false );
-    const auto b = apply( who, who, "test_grant_paid", false );
+    avatar &who = get_avatar();
+    const int64_t a = apply( who, who, "test_grant_paid", false );
+    const int64_t b = apply( who, who, "test_grant_paid", false );
     g->abilities().drain_starts();
     CHECK( view( a ).state == "active" );
     CHECK( view( b ).reason == "form_conflict" );
@@ -431,16 +452,16 @@ TEST_CASE( "queued_forms_revalidate_the_exclusive_claim_before_spending", "[powe
 TEST_CASE( "form_restoration_preserves_a_newly_occupied_weapon_slot", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    item old( itype_id( "bat" ), calendar::turn );
+    avatar &who = get_avatar();
+    item old( itype_bat, calendar::turn );
     old.set_var( "original_weapon", "kept" );
     REQUIRE( who.wield_power_item( old ) );
-    const auto id = apply( who, who, "test_grant_form" );
+    const int64_t id = apply( who, who, "test_grant_form" );
     who.remove_items_with( []( const item & value ) {
         return value.has_var( "power_grant_application" );
     } );
-    item replacement( itype_id( "bat" ), calendar::turn );
-    const auto replacement_id = replacement.uid().get_value();
+    item replacement( itype_bat, calendar::turn );
+    const int64_t replacement_id = replacement.uid().get_value();
     REQUIRE( who.wield_power_item( replacement ) );
     end( id );
     REQUIRE( who.get_wielded_item() );
@@ -456,21 +477,21 @@ TEST_CASE( "form_restoration_preserves_a_newly_occupied_weapon_slot", "[power_gr
 TEST_CASE( "ending_one_equipment_source_preserves_another_source", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto a = apply( who, who, "test_grant_clothing" );
-    const auto b = apply( actor( "npc" ), who, "test_grant_clothing" );
-    CHECK( who.amount_worn( itype_id( "tshirt" ) ) == 2 );
+    avatar &who = get_avatar();
+    const int64_t a = apply( who, who, "test_grant_clothing" );
+    const int64_t b = apply( actor( "npc" ), who, "test_grant_clothing" );
+    CHECK( who.amount_worn( itype_tshirt ) == 2 );
     end( a );
-    CHECK( who.amount_worn( itype_id( "tshirt" ) ) == 1 );
+    CHECK( who.amount_worn( itype_tshirt ) == 1 );
     CHECK( view( b ).state == "active" );
     end( b );
-    CHECK( who.amount_worn( itype_id( "tshirt" ) ) == 0 );
+    CHECK( who.amount_worn( itype_tshirt ) == 0 );
 }
 
 TEST_CASE( "a_form_cannot_stow_another_sources_projected_equipment", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
+    avatar &who = get_avatar();
     apply( actor( "npc" ), who, "test_grant_equipment" );
     CHECK( get_powers().apply( request( who, who,
                                         "test_grant_form" ) ).reason == "borrowed_equipment" );
@@ -479,14 +500,15 @@ TEST_CASE( "a_form_cannot_stow_another_sources_projected_equipment", "[power_gra
 TEST_CASE( "dropped_and_copied_projected_items_end_with_their_actual_source", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto id = apply( who, who, "test_grant_weapon" );
+    avatar &who = get_avatar();
+    const int64_t id = apply( who, who, "test_grant_weapon" );
     REQUIRE( who.get_wielded_item() );
     item dropped = *who.get_wielded_item();
     const auto point = who.pos_bub() + tripoint_rel_ms( 2, 0, 0 );
-    const auto dropped_location = get_map().add_item_or_charges_ret_loc( point, std::move( dropped ) );
+    const item_location dropped_location = get_map().add_item_or_charges_ret_loc( point,
+                                           std::move( dropped ) );
     REQUIRE( dropped_location );
-    const auto drop_id = dropped_location->uid().get_value();
+    const int64_t drop_id = dropped_location->uid().get_value();
     REQUIRE( ground( point, drop_id ) );
     end( id );
     CHECK_FALSE( who.has_weapon() );
@@ -496,14 +518,14 @@ TEST_CASE( "dropped_and_copied_projected_items_end_with_their_actual_source", "[
 TEST_CASE( "ordinary_contents_of_expiring_projection_equipment_are_preserved", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto id = apply( who, who, "test_grant_weapon" );
+    avatar &who = get_avatar();
+    const int64_t id = apply( who, who, "test_grant_weapon" );
     item projected = *who.get_wielded_item();
     // A scripted conversion retains its source marker; real inserted cargo is not minted.
-    projected.convert( itype_id( "backpack" ) );
-    item stone( itype_id( "rock" ), calendar::turn );
+    projected.convert( itype_backpack );
+    item stone( itype_rock, calendar::turn );
     stone.set_var( "cargo", "ordinary" );
-    REQUIRE( projected.put_in( std::move( stone ), pocket_type::CONTAINER ).success() );
+    REQUIRE( projected.put_in( stone, pocket_type::CONTAINER ).success() );
     get_map().add_item_or_charges( who.pos_bub(), std::move( projected ) );
     end( id );
     int returned = 0;
@@ -516,13 +538,13 @@ TEST_CASE( "ordinary_contents_of_expiring_projection_equipment_are_preserved", "
 TEST_CASE( "detached_projection_processing_discards_orphans_and_preserves_cargo", "[power_grants]" )
 {
     grant_world world;
-    item orphan( itype_id( "backpack" ), calendar::turn );
+    item orphan( itype_backpack, calendar::turn );
     orphan.set_var( "power_grant_application", "999999" );
     orphan.set_var( "power_grant_dimension", g->get_dimension_prefix().str() );
     orphan.ethereal = true;
-    item stone( itype_id( "rock" ), calendar::turn );
+    item stone( itype_rock, calendar::turn );
     stone.set_var( "cargo", "ordinary" );
-    REQUIRE( orphan.put_in( std::move( stone ), pocket_type::CONTAINER ).success() );
+    REQUIRE( orphan.put_in( stone, pocket_type::CONTAINER ).success() );
     CHECK( orphan.process( get_map(), nullptr, get_avatar().pos_bub() ) );
     int returned = 0;
     for( const item &value : get_map().i_at( get_avatar().pos_bub() ) ) {
@@ -535,14 +557,14 @@ TEST_CASE( "source_loss_releases_native_grants_and_returns_the_real_wardrobe_onc
            "[power_grants]" )
 {
     grant_world world;
-    auto &source = *actor( "monster" ).as_monster();
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    const auto id = apply( source, who, "test_grant_form" );
+    monster &source = *actor( "monster" ).as_monster();
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    const int64_t id = apply( source, who, "test_grant_form" );
     get_creature_tracker().remove( source );
     tick();
     CHECK( find( who, original ) );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
     CHECK( view( id ).reason == "owner_unavailable" );
     CHECK( grant( id ).restored == 1 );
     tick();
@@ -553,9 +575,9 @@ TEST_CASE( "native_wear_callback_exceptions_keep_payment_and_restore_committed_g
            "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    const auto id = apply( who, who, "test_grant_paid", false );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    const int64_t id = apply( who, who, "test_grant_paid", false );
     observer events;
     events.wanted = event_type::character_wears_item;
     events.callback = []() {
@@ -568,7 +590,7 @@ TEST_CASE( "native_wear_callback_exceptions_keep_payment_and_restore_committed_g
     CHECK( get_powers().balance( who, "test_power_focus" ).total == 95 );
     CHECK( view( id ).state == "failed" );
     CHECK( find( who, original ) );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
     CHECK_FALSE( who.has_weapon() );
     CHECK( who.amount_worn( itype_id( "test_power_grant_shell" ) ) == 0 );
     CHECK_NOTHROW( save() );
@@ -577,10 +599,10 @@ TEST_CASE( "native_wear_callback_exceptions_keep_payment_and_restore_committed_g
 TEST_CASE( "native_effect_callback_removal_stops_later_equipment_grants", "[power_grants]" )
 {
     grant_world world;
-    auto &source = *actor( "monster" ).as_monster();
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    const auto id = apply( source, who, "test_grant_form", false );
+    monster &source = *actor( "monster" ).as_monster();
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    const int64_t id = apply( source, who, "test_grant_form", false );
     observer events;
     events.callback = [&]() {
         get_creature_tracker().remove( source );
@@ -589,7 +611,7 @@ TEST_CASE( "native_effect_callback_removal_stops_later_equipment_grants", "[powe
     g->abilities().drain_starts();
     CHECK( view( id ).state == "ended" );
     CHECK( find( who, original ) );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
     CHECK_FALSE( who.has_weapon() );
     CHECK( grant( id ).equipment == 0 );
 }
@@ -597,9 +619,9 @@ TEST_CASE( "native_effect_callback_removal_stops_later_equipment_grants", "[powe
 TEST_CASE( "form_upkeep_failure_and_time_skips_return_equipment_without_catchup", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    const auto id = apply( who, who, "test_grant_paid" );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    const int64_t id = apply( who, who, "test_grant_paid" );
     const std::string mode = GENERATE( "upkeep", "skipped" );
     if( mode == "upkeep" ) {
         get_powers().modify( who, "test_power_focus", -95, "fixture" );
@@ -612,19 +634,19 @@ TEST_CASE( "form_upkeep_failure_and_time_skips_return_equipment_without_catchup"
         CHECK( view( id ).paid_upkeep == 0 );
     }
     CHECK( find( who, original ) );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
 }
 
 TEST_CASE( "world_transition_settles_forms_and_preserves_unowned_effects", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    who.add_effect( boost, 30_turns, false, 1 );
-    const auto id = apply( who, who, "test_grant_form" );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    who.add_effect( effect_test_owned_power_boost, 30_turns, false, 1 );
+    const int64_t id = apply( who, who, "test_grant_form" );
     g->abilities().cancel_for_world_transition( "fixture_transition" );
     CHECK( view( id ).reason == "fixture_transition" );
-    CHECK( who.get_effect_int( boost ) == 1 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 1 );
     CHECK( find( who, original ) );
     CHECK( grant( id ).restored == 1 );
 }
@@ -632,13 +654,13 @@ TEST_CASE( "world_transition_settles_forms_and_preserves_unowned_effects", "[pow
 TEST_CASE( "stowed_items_still_run_native_processing_once_per_world_second", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    item old( itype_id( "bat" ), calendar::turn );
+    avatar &who = get_avatar();
+    item old( itype_bat, calendar::turn );
     old.ethereal = true;
     old.set_var( "ethereal", 2 );
-    const auto uid = old.uid().get_value();
+    const int64_t uid = old.uid().get_value();
     REQUIRE( who.wield_power_item( old ) );
-    const auto id = apply( who, who, "test_grant_wardrobe" );
+    const int64_t id = apply( who, who, "test_grant_wardrobe" );
     g->abilities().drain_starts();
     CHECK( grant( id ).stowed == 1 );
     tick();
@@ -654,16 +676,17 @@ TEST_CASE( "stowed_items_still_run_native_processing_once_per_world_second", "[p
 TEST_CASE( "grant_inspection_and_admission_queries_are_pure", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto id = apply( who, who, "test_grant_buff" );
-    const auto r = request( who, who, "test_grant_equipment" );
-    const auto before = save();
-    const auto person = save_actor();
-    const auto rng = rng_get_engine();
+    avatar &who = get_avatar();
+    const int64_t id = apply( who, who, "test_grant_buff" );
+    const power_application_request r = request( who, who, "test_grant_equipment" );
+    const std::string before = save();
+    const std::string person = save_actor();
+    // NOLINTNEXTLINE(cata-determinism)
+    const cata_default_random_engine rng = rng_get_engine();
     for( int n = 0; n < 3; ++n ) {
         CHECK( get_powers().check_application( r ).empty() );
         CHECK_FALSE( execution_inspector::format_grant( grant( id ) ).empty() );
-        CHECK( who.get_effect_int( boost ) == 2 );
+        CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 2 );
     }
     CHECK( save() == before );
     CHECK( save_actor() == person );
@@ -674,50 +697,50 @@ TEST_CASE( "orphaned_native_effect_layers_are_removed_without_erasing_the_natura
            "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    who.add_effect( boost, 15_turns, false, 1 );
-    REQUIRE( who.add_effect_grant( 999999, effect_source::empty(), boost,
+    avatar &who = get_avatar();
+    who.add_effect( effect_test_owned_power_boost, 15_turns, false, 1 );
+    REQUIRE( who.add_effect_grant( 999999, effect_source::empty(), effect_test_owned_power_boost,
                                    bodypart_str_id::NULL_ID(), 2 ) );
-    CHECK( who.get_effect_int( boost ) == 3 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 3 );
     g->abilities().drain_starts();
-    CHECK( who.get_effect_int( boost ) == 1 );
-    CHECK( who.get_effect_dur( boost ) == 15_turns );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 1 );
+    CHECK( who.get_effect_dur( effect_test_owned_power_boost ) == 15_turns );
 }
 
 TEST_CASE( "malformed_owned_layer_saves_are_rejected_before_nested_recursion",
            "[power_grants][save]" )
 {
     grant_world world;
-    auto &who = get_avatar();
+    avatar &who = get_avatar();
     apply( who, who );
     std::ostringstream buffer;
     JsonOut out( buffer );
-    who.get_effect( boost ).serialize( out );
+    who.get_effect( effect_test_owned_power_boost ).serialize( out );
     auto text = buffer.str();
-    const auto found = text.find( "\"intensity\":2", text.find( "owned_sources" ) );
+    const std::size_t found = text.find( "\"intensity\":2", text.find( "owned_sources" ) );
     REQUIRE( found != std::string::npos );
     text.replace( found, std::string( "\"intensity\":2" ).size(), "\"intensity\":-1" );
     effect temporary;
     CHECK_THROWS_AS( temporary.deserialize( json_loader::from_string( text ) ), JsonError );
-    CHECK( who.get_effect_int( boost ) == 2 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 2 );
 }
 
 TEST_CASE( "malformed_wardrobe_saves_leave_existing_owned_state_intact", "[power_grants][save]" )
 {
     grant_world world;
-    auto &who = get_avatar();
+    avatar &who = get_avatar();
     shirt( who );
-    const auto id = apply( who, who, "test_grant_form" );
+    const int64_t id = apply( who, who, "test_grant_form" );
     std::ostringstream buffer;
     JsonOut out( buffer );
     get_power_grants().serialize( out );
     auto text = buffer.str();
-    const auto pos = text.find( "\"effects\":1" );
+    const std::size_t pos = text.find( "\"effects\":1" );
     REQUIRE( pos != std::string::npos );
     text.replace( pos, std::string( "\"effects\":1" ).size(), "\"effects\":100" );
     CHECK_THROWS_AS( get_power_grants().deserialize( json_loader::from_string( text ) ), JsonError );
     CHECK( grant( id ).stowed == 1 );
-    CHECK( who.get_effect_int( boost ) == 3 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 3 );
 }
 
 TEST_CASE( "invalid_grant_definitions_and_unavailable_bodyparts_refuse", "[power_grants]" )
@@ -729,20 +752,21 @@ TEST_CASE( "invalid_grant_definitions_and_unavailable_bodyparts_refuse", "[power
                      JsonError );
     CHECK_THROWS_AS( spec.load( json_loader::from_string(
                                     R"({"effects":[{"id":"test_owned_power_boost","intensity":0}]})" ) ), JsonError );
-    CHECK_FALSE( get_avatar().check_effect_grant( efftype_id( "knocked_out" ),
+    CHECK_FALSE( get_avatar().check_effect_grant( effect_knocked_out,
                  bodypart_str_id::NULL_ID(), 1 ).empty() );
-    CHECK_FALSE( get_avatar().check_effect_grant( boost, bodypart_id( "head_dragonfly" ), 1 ).empty() );
+    CHECK_FALSE( get_avatar().check_effect_grant( effect_test_owned_power_boost,
+                 bodypart_id( "head_dragonfly" ), 1 ).empty() );
 }
 
 TEST_CASE( "lost_form_targets_do_not_give_their_wardrobe_to_replacement_residents",
            "[power_grants]" )
 {
     grant_world world;
-    auto &who = *actor( "npc" ).as_character();
-    const auto original = shirt( who );
-    const auto point = who.pos_bub();
-    const auto identity = who.getID();
-    const auto id = apply( get_avatar(), who, "test_grant_form" );
+    Character &who = *actor( "npc" ).as_character();
+    const int64_t original = shirt( who );
+    const tripoint_bub_ms point = who.pos_bub();
+    const character_id identity = who.getID();
+    const int64_t id = apply( get_avatar(), who, "test_grant_form" );
     g->remove_npc( identity );
     REQUIRE( overmap_buffer.remove_npc( identity ) );
     npc &replacement = spawn_npc( point.xy(), "thug" );
@@ -765,9 +789,9 @@ TEST_CASE( "lost_form_targets_do_not_give_their_wardrobe_to_replacement_resident
 TEST_CASE( "loaned_projection_equipment_is_removed_from_the_actual_carrier", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    auto &borrower = *actor( "npc" ).as_character();
-    const auto id = apply( who, who, "test_grant_weapon" );
+    avatar &who = get_avatar();
+    Character &borrower = *actor( "npc" ).as_character();
+    const int64_t id = apply( who, who, "test_grant_weapon" );
     item loan = who.remove_weapon();
     REQUIRE( borrower.wield_power_item( loan ) );
     CHECK( get_power_grants().item_active( *borrower.get_wielded_item() ) );
@@ -778,14 +802,14 @@ TEST_CASE( "loaned_projection_equipment_is_removed_from_the_actual_carrier", "[p
 TEST_CASE( "form_native_removal_locks_are_honored_before_admission", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
     const auto value = who.items_with( [original]( const item & it ) {
         return it.uid().get_value() == original;
     } );
     REQUIRE( value.size() == 1 );
-    value.front()->set_flag( flag_id( "NO_TAKEOFF" ) );
-    const auto before = save();
+    value.front()->set_flag( json_flag_NO_TAKEOFF );
+    const std::string before = save();
     CHECK( get_powers().apply( request( who, who, "test_grant_paid" ) ).reason == "clothing_locked" );
     CHECK( save() == before );
     CHECK( find( who, original ) );
@@ -795,18 +819,18 @@ TEST_CASE( "incompatible_application_revisions_release_saved_native_grants",
            "[power_grants][save]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    const auto id = apply( who, who, "test_grant_form" );
-    auto text = save();
-    const auto pos = text.find( "\"revision\":1" );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    const int64_t id = apply( who, who, "test_grant_form" );
+    std::string text = save();
+    const std::size_t pos = text.find( "\"revision\":1" );
     REQUIRE( pos != std::string::npos );
     text.replace( pos, std::string( "\"revision\":1" ).size(), "\"revision\":2" );
     restore( text );
     tick();
     CHECK( view( id ).reason == "incompatible_definition" );
     CHECK( find( who, original ) );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
 }
 
 TEST_CASE( "armored_form_demo_item_uses_the_paid_ability_and_returns_original_gear",
@@ -818,8 +842,8 @@ TEST_CASE( "armored_form_demo_item_uses_the_paid_ability_and_returns_original_ge
         return;
     }
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
     const auto use = [&]() {
         item focus( itype_power_demo_form_grant_focus, calendar::turn );
         const auto found = focus.type->use_methods.find( "effect_on_conditions" );
@@ -833,11 +857,11 @@ TEST_CASE( "armored_form_demo_item_uses_the_paid_ability_and_returns_original_ge
     tick();
     g->abilities().drain_starts();
     CHECK( who.amount_worn( itype_id( "power_demo_armor_shell" ) ) == 1 );
-    CHECK( who.get_effect_int( efftype_id( "power_demo_might" ) ) == 2 );
+    CHECK( who.get_effect_int( effect_power_demo_might ) == 2 );
     CHECK( get_powers().balance( who, "power_demo_focus_pool" ).total == 90 );
     int paid = 0;
-    for( const auto &ability : g->abilities().inspect_all() ) {
-        if( ability.ability == ability_id( "power_demo_form_grant_cast" ) ) {
+    for( ability_view const &ability : g->abilities().inspect_all() ) {
+        if( ability.ability == ability_definition_power_demo_form_grant_cast ) {
             CHECK( ability.paid_moves == 100 );
             ++paid;
         }
@@ -845,19 +869,19 @@ TEST_CASE( "armored_form_demo_item_uses_the_paid_ability_and_returns_original_ge
     CHECK( paid == 1 );
     use();
     CHECK( find( who, original ) );
-    CHECK_FALSE( who.has_effect( efftype_id( "power_demo_might" ) ) );
+    CHECK_FALSE( who.has_effect( effect_power_demo_might ) );
     CHECK_FALSE( who.has_weapon() );
 }
 
 TEST_CASE( "parent_end_removes_child_native_grants_before_terminal_observers", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto id = apply( who, who, "test_grant_parent" );
+    avatar &who = get_avatar();
+    const int64_t id = apply( who, who, "test_grant_parent" );
     g->abilities().drain_starts();
-    CHECK( who.get_effect_int( boost ) == 3 );
+    CHECK( who.get_effect_int( effect_test_owned_power_boost ) == 3 );
     end( id );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
     const auto *leftover = get_globals().maybe_get_global_value( "grant_parent_leftover" );
     REQUIRE( leftover );
     CHECK( leftover->dbl() == 0 );
@@ -866,14 +890,14 @@ TEST_CASE( "parent_end_removes_child_native_grants_before_terminal_observers", "
 TEST_CASE( "partial_native_outfit_refusal_keeps_costs_and_returns_original_gear", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    const auto id = apply( who, who, "test_grant_partial_failure" );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    const int64_t id = apply( who, who, "test_grant_partial_failure" );
     CHECK( view( id ).reason == "equipment_refused" );
     CHECK( get_powers().balance( who, "test_power_focus" ).total == 95 );
     CHECK( find( who, original ) );
     CHECK( grant( id ).equipment == 1 );
-    CHECK_FALSE( who.has_effect( boost ) );
+    CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
     CHECK( who.amount_worn( itype_id( "test_power_grant_shell" ) ) == 0 );
 }
 
@@ -881,9 +905,9 @@ TEST_CASE( "restoration_callback_failure_keeps_the_committed_transfer_and_never_
            "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto original = shirt( who );
-    const auto id = apply( who, who, "test_grant_form" );
+    avatar &who = get_avatar();
+    const int64_t original = shirt( who );
+    const int64_t id = apply( who, who, "test_grant_form" );
     observer events;
     events.wanted = event_type::character_wears_item;
     events.callback = []() {
@@ -908,10 +932,10 @@ TEST_CASE( "unloaded_wardrobe_cleanup_is_saved_without_adopting_a_new_target",
            "[power_grants][save]" )
 {
     grant_world world;
-    auto &who = *actor( "npc" ).as_character();
+    Character &who = *actor( "npc" ).as_character();
     shirt( who );
-    const auto identity = who.getID();
-    const auto id = apply( get_avatar(), who, "test_grant_form" );
+    const character_id identity = who.getID();
+    const int64_t id = apply( get_avatar(), who, "test_grant_form" );
     auto far = who.pos_abs() + tripoint_rel_ms( 500, 0, 0 );
     if( project_to<coords::om>( far ) != project_to<coords::om>( who.pos_abs() ) ) {
         far = who.pos_abs() + tripoint_rel_ms( -500, 0, 0 );
@@ -926,8 +950,8 @@ TEST_CASE( "unloaded_wardrobe_cleanup_is_saved_without_adopting_a_new_target",
     tick();
     CHECK( grant( id ).state == "cleanup" );
     CHECK( grant( id ).stowed == 1 );
-    auto &replacement = *actor( "npc" ).as_character();
-    const auto other = apply( get_avatar(), replacement, "test_grant_form" );
+    Character &replacement = *actor( "npc" ).as_character();
+    const int64_t other = apply( get_avatar(), replacement, "test_grant_form" );
     CHECK( view( other ).state == "active" );
     CHECK( grant( id ).stowed == 1 );
 }
@@ -935,19 +959,19 @@ TEST_CASE( "unloaded_wardrobe_cleanup_is_saved_without_adopting_a_new_target",
 TEST_CASE( "projected_equipment_cleanup_reaches_loaded_vehicle_cargo", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    const auto id = apply( who, who, "test_grant_weapon" );
-    vehicle *cart = get_map().add_vehicle( vproto_id( "shopping_cart" ),
+    avatar &who = get_avatar();
+    const int64_t id = apply( who, who, "test_grant_weapon" );
+    vehicle *cart = get_map().add_vehicle( vehicle_prototype_shopping_cart,
                                            who.pos_bub() + tripoint_rel_ms( 4, 0, 0 ), 0_degrees );
     REQUIRE( cart );
     const auto cargo = cart->get_any_parts( "CARGO" );
     REQUIRE( cargo.begin() != cargo.end() );
-    auto &part = cargo.begin()->part();
+    vehicle_part &part = cargo.begin()->part();
     REQUIRE( cart->add_item( get_map(), part, *who.get_wielded_item() ) );
-    REQUIRE( cart->add_item( get_map(), part, item( itype_id( "rock" ), calendar::turn ) ) );
-    const auto before_end = cart->get_items( part ).size();
+    REQUIRE( cart->add_item( get_map(), part, item( itype_rock, calendar::turn ) ) );
+    const size_t before_end = cart->get_items( part ).size();
     end( id );
-    const auto &items = cart->get_items( part );
+    const vehicle_stack &items = cart->get_items( part );
     CHECK( items.size() == before_end - 1 );
     for( const item &value : items ) {
         CHECK_FALSE( value.has_var( "power_grant_application" ) );
@@ -957,15 +981,15 @@ TEST_CASE( "projected_equipment_cleanup_reaches_loaded_vehicle_cargo", "[power_g
 TEST_CASE( "forms_preserve_wielded_items_when_a_style_forces_unarmed_combat", "[power_grants]" )
 {
     grant_world world;
-    auto &who = get_avatar();
-    item original( itype_id( "knuckle_brass" ), calendar::turn );
-    const auto uid = original.uid().get_value();
+    avatar &who = get_avatar();
+    item original( itype_knuckle_brass, calendar::turn );
+    const int64_t uid = original.uid().get_value();
     REQUIRE( who.wield_power_item( original ) );
-    who.martial_arts_data->set_style( matype_id( "style_kicks" ), true );
+    who.martial_arts_data->set_style( style_kicks, true );
     REQUIRE_FALSE( who.has_weapon() );
     REQUIRE( who.get_wielded_item() );
     CHECK( get_powers().apply( request( who, who, "test_grant_weapon" ) ).reason == "weapon_occupied" );
-    const auto id = apply( who, who, "test_grant_form" );
+    const int64_t id = apply( who, who, "test_grant_form" );
     CHECK( grant( id ).stowed == 1 );
     end( id );
     REQUIRE( who.get_wielded_item() );
@@ -975,11 +999,11 @@ TEST_CASE( "forms_preserve_wielded_items_when_a_style_forces_unarmed_combat", "[
 TEST_CASE( "restoration_rechecks_a_target_unloaded_by_its_first_wear_callback", "[power_grants]" )
 {
     grant_world world;
-    auto &who = *actor( "npc" ).as_character();
+    Character &who = *actor( "npc" ).as_character();
     shirt( who );
-    REQUIRE( who.wear_item( item( itype_id( "backpack" ), calendar::turn ), false ) );
-    const auto identity = who.getID();
-    const auto id = apply( get_avatar(), who, "test_grant_form" );
+    REQUIRE( who.wear_item( item( itype_backpack, calendar::turn ), false ) );
+    const character_id identity = who.getID();
+    const int64_t id = apply( get_avatar(), who, "test_grant_form" );
     observer events;
     events.wanted = event_type::character_wears_item;
     events.callback = [&]() {

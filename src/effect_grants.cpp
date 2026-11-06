@@ -158,7 +158,7 @@ void effect::deserialize_owned( const JsonObject &jo )
         jo.throw_error( "Invalid owned effect" );
     }
     if( jo.has_object( "native_base" ) ) {
-        const auto base = jo.get_object( "native_base" );
+        const JsonObject base = jo.get_object( "native_base" );
         if( base.has_member( "owned_sources" ) || base.has_member( "native_base" ) ) {
             base.throw_error( "Nested owned effects are not supported" );
         }

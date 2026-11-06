@@ -32,6 +32,8 @@
 static const itype_id itype_match( "match" );
 static const itype_id itype_test_eoc_use_rune( "test_eoc_use_rune" );
 
+static const magic_type_id magic_audit_magic_j03_type( "audit_magic_j03_type" );
+
 static const mongroup_id GROUP_AUDIT_MONDT_J01( "GROUP_AUDIT_MONDT_J01" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
@@ -120,7 +122,7 @@ TEST_CASE( "mondt-j01_dialogue_condition_gates_spawn_entry", "[audit][monster]" 
     remove_audit_group();
 }
 
-static bool contains( const std::string &haystack, const std::string &needle )
+static bool contains( const std::string_view haystack, const std::string_view needle )
 {
     return haystack.find( needle ) != std::string::npos;
 }
@@ -180,7 +182,7 @@ TEST_CASE( "magic-j03_spell_check_rejects_unknown_references", "[audit][magic]" 
 // formula ids without checking them; the energy vitamin and failure_eocs were never checked.
 TEST_CASE( "magic-j03_magic_type_check_rejects_unknown_references", "[audit][magic]" )
 {
-    if( !magic_type_id( "audit_magic_j03_type" ).is_valid() ) {
+    if( !magic_audit_magic_j03_type.is_valid() ) {
         JsonObject jo = json_loader::from_string( R"({ "id": "audit_magic_j03_type",
             "energy_source": { "type": "VITAMIN", "vitamin": "audit_magic_j03_no_vitamin" },
             "casting_xp_formula_id": "audit_magic_j03_no_formula" })" );

@@ -32,7 +32,7 @@ static const efftype_id effect_disarmed( "disarmed" );
 
 static const json_character_flag json_flag_DISTRIBUTED_DAMAGE( "DISTRIBUTED_DAMAGE" );
 
-static const matec_id tec_DEF_DISARM( "DEF_DISARM" );
+static const matec_id DEF_DISARM( "DEF_DISARM" );
 
 static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
 static const trait_id trait_TEST_MELEE_DAMAGE( "TEST_MELEE_DAMAGE" );
@@ -179,7 +179,7 @@ TEST_CASE( "cmbt-b02_tech_effect_without_condition_is_applied", "[audit][melee]"
     clear_avatar();
     clear_map();
     Character &dummy = get_player_character();
-    const ma_technique &tech = tec_DEF_DISARM.obj();
+    const ma_technique &tech = DEF_DISARM.obj();
     REQUIRE( tech.tech_effects.size() == 1 );
     const tech_effect_data &eff = tech.tech_effects.front();
     REQUIRE( eff.id == effect_disarmed );

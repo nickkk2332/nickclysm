@@ -15,18 +15,18 @@
 #include "skill.h"
 #include "type_id.h"
 
-static const proficiency_id proficiency_prof_burn_care( "prof_burn_care" );
-static const proficiency_id proficiency_prof_frying_dessert( "prof_frying_dessert" );
-static const proficiency_id proficiency_prof_wound_care( "prof_wound_care" );
-
 static const profession_id profession_firefighter( "firefighter" );
 static const profession_id profession_frying( "frying" );
 static const profession_id profession_test_player_only_hobby( "test_player_only_hobby" );
 static const profession_id profession_test_player_only_profession( "test_player_only_profession" );
 
+static const proficiency_id proficiency_prof_burn_care( "prof_burn_care" );
+static const proficiency_id proficiency_prof_frying_dessert( "prof_frying_dessert" );
+static const proficiency_id proficiency_prof_wound_care( "prof_wound_care" );
+
 static const skill_id skill_melee( "melee" );
 
-static double eval_math( dialogue &d, const std::string &expr )
+static double eval_math( dialogue &d, const std::string_view expr )
 {
     math_exp exp;
     REQUIRE( exp.parse( expr ) );

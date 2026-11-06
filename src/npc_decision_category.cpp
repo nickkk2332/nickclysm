@@ -13,6 +13,18 @@
 #include "npc_json_goal.h"
 #include "string_formatter.h"
 
+static const npc_decision_category_id npc_decision_category_camp_travel( "camp_travel" );
+static const npc_decision_category_id npc_decision_category_camp_work( "camp_work" );
+static const npc_decision_category_id npc_decision_category_combat( "combat" );
+static const npc_decision_category_id npc_decision_category_duty( "duty" );
+static const npc_decision_category_id npc_decision_category_follow( "follow" );
+static const npc_decision_category_id npc_decision_category_free_time( "free_time" );
+static const npc_decision_category_id npc_decision_category_idle( "idle" );
+static const npc_decision_category_id npc_decision_category_investigate( "investigate" );
+static const npc_decision_category_id npc_decision_category_needs( "needs" );
+static const npc_decision_category_id npc_decision_category_order( "order" );
+static const npc_decision_category_id npc_decision_category_unmodeled( "unmodeled" );
+
 namespace
 {
 generic_factory<npc_decision_category> category_factory( "npc_decision_category" );
@@ -276,19 +288,19 @@ void npc_decision_category::check_consistency()
     }
 }
 
-const decision_category decision_category::combat( npc_decision_category_id( "combat" ) );
-const decision_category decision_category::investigate( npc_decision_category_id( "investigate" ) );
-const decision_category decision_category::needs( npc_decision_category_id( "needs" ) );
-const decision_category decision_category::follow( npc_decision_category_id( "follow" ) );
-const decision_category decision_category::order( npc_decision_category_id( "order" ) );
-const decision_category decision_category::duty( npc_decision_category_id( "duty" ) );
-const decision_category decision_category::camp_work( npc_decision_category_id( "camp_work" ) );
-const decision_category decision_category::camp_travel( npc_decision_category_id( "camp_travel" ) );
-const decision_category decision_category::free_time( npc_decision_category_id( "free_time" ) );
-const decision_category decision_category::idle( npc_decision_category_id( "idle" ) );
-const decision_category decision_category::unmodeled( npc_decision_category_id( "unmodeled" ) );
+const decision_category decision_category::combat( npc_decision_category_combat );
+const decision_category decision_category::investigate( npc_decision_category_investigate );
+const decision_category decision_category::needs( npc_decision_category_needs );
+const decision_category decision_category::follow( npc_decision_category_follow );
+const decision_category decision_category::order( npc_decision_category_order );
+const decision_category decision_category::duty( npc_decision_category_duty );
+const decision_category decision_category::camp_work( npc_decision_category_camp_work );
+const decision_category decision_category::camp_travel( npc_decision_category_camp_travel );
+const decision_category decision_category::free_time( npc_decision_category_free_time );
+const decision_category decision_category::idle( npc_decision_category_idle );
+const decision_category decision_category::unmodeled( npc_decision_category_unmodeled );
 
-decision_category::decision_category() : id_( "unmodeled" ) {}
+decision_category::decision_category() : id_( npc_decision_category_unmodeled ) {}
 
 decision_category::decision_category( const npc_decision_category_id &id ) : id_( id ) {}
 

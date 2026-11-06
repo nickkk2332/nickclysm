@@ -1234,7 +1234,7 @@ class Character : public Creature, public visitable
                                     bool crit = false, bool dodge_counter = false, bool block_counter = false ) const;
         std::optional<std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id>>
                 evaluate_technique( const matec_id &tec_id, Creature const &t, const item_location &weap,
-                                    const technique_query &query ) const;
+                                    const technique_query &kind ) const;
         /**
          * Can the technique be used in this kind of attack on t? Returns why not, or
          * technique_rejection::none. When it can and query.roll is set, the chosen attack vector
@@ -1273,7 +1273,7 @@ class Character : public Creature, public visitable
          * it calls the attack off and returns false.
          */
         bool melee_attack_abstract( Creature &t, bool allow_special,
-                                    const technique_choice &choice, bool allow_unarmed = true,
+                                    const technique_choice &preset, bool allow_unarmed = true,
                                     int forced_movecost = -1 );
         /** A forced or chosen technique with an attack vector picked for it as usual */
         std::tuple<matec_id, attack_vector_id, sub_bodypart_str_id> forced_technique_attack(

@@ -1,7 +1,9 @@
 #include "execution_inspector.h"
 
 #include <algorithm>
+#include <map>
 #include <sstream>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -24,8 +26,14 @@ namespace
 {
 void values( std::ostream &out, const global_variables::impl_t &entries )
 {
+    // In key order: the map's own order follows its insertion history, which a save and load
+    // change, so the same scene would otherwise print differently on some platforms.
+    std::map<std::string_view, const diag_value *> sorted;
     for( const auto &entry : entries ) {
-        out << entry.first << ": " << entry.second.to_string() << '\n';
+        sorted.emplace( entry.first, &entry.second );
+    }
+    for( const std::pair<const std::string_view, const diag_value *> &entry : sorted ) {
+        out << entry.first << ": " << entry.second->to_string() << '\n';
     }
 }
 
@@ -46,7 +54,7 @@ void show_detail( const std::string &text )
 std::string execution_inspector::format_scene( const execution_inspection &scene )
 {
     std::ostringstream out;
-    const auto &view = scene.view;
+    const execution_view &view = scene.view;
     out << "Execution #" << view.id << " / " << view.definition.str() << '\n'
         << "state: " << view.state << "\nstep: " << view.step << "\nreason: " << view.reason
         << "\noutcome: " << view.outcome << "\n\nRuntime and participants\n";
@@ -54,13 +62,13 @@ std::string execution_inspector::format_scene( const execution_inspection &scene
     out << "\nContact and local context\n";
     values( out, view.context );
     out << "\nRecorded choices (latest 128; fixed ranges do not draw RNG)\n";
-    for( const auto &draw : scene.draws ) {
+    for( const execution_random_draw &draw : scene.draws ) {
         out << "entry " << draw.entry << " / " << draw.step << " / " << draw.purpose << ": ["
             << draw.minimum << ", " << draw.maximum << "] -> " << draw.value
             << ( draw.sampled ? " (sampled)" : " (fixed)" ) << '\n';
     }
     out << "\nOwned narration\n";
-    for( const auto &segment : scene.narration ) {
+    for( const execution_narration_segment &segment : scene.narration ) {
         out << to_turns<int>( segment.when - calendar::turn_zero ) << " / " << segment.entry
             << " / " << segment.role << " / " << segment.audience << ": " << segment.text << '\n';
     }
@@ -90,7 +98,7 @@ std::string execution_inspector::format_trigger( const execution_trigger_report 
     out << "\n\nCaptured native facts\n";
     values( out, report.facts );
     out << "\nCandidate decisions (recorded, never reevaluated)\n";
-    for( const auto &candidate : report.candidates ) {
+    for( const execution_trigger_candidate &candidate : report.candidates ) {
         out << candidate.rule << ": " << candidate.reason << " / priority=" << candidate.priority
             << " / weight=" << candidate.weight << " / chance=" << candidate.chance << " / draw=";
         if( candidate.roll ) {
@@ -124,7 +132,7 @@ std::string execution_inspector::format_ability( const ability_view &v )
         << "\ncontacts truncated: " << v.contacts_truncated << "\n\nRequest context and locals\n";
     values( out, v.context );
     out << "\nObserved primary native contacts\n";
-    for( const auto &contact : v.contacts ) {
+    for( const ability_contact &contact : v.contacts ) {
         out << "target UID: " << contact.target.id << " / " << contact.target.dimension.str() << '\n';
         values( out, contact.facts );
     }
@@ -158,7 +166,7 @@ std::string execution_inspector::format_damage( const damage_transaction_view &v
     packet( "After armor components", v.after_armor_components );
     packet( "Outgoing components", v.outgoing_components );
     out << "\nRecorded rule decisions (never reevaluated)\n";
-    for( const auto &rule : v.rules ) {
+    for( const damage_rule_result &rule : v.rules ) {
         out << rule.rule << " / " << rule.stage << ": " << rule.reason << " / "
             << rule.before << " -> " << rule.after << " / absorbed=" << rule.absorbed
             << " / reflected=" << rule.reflected;
@@ -168,7 +176,7 @@ std::string execution_inspector::format_damage( const damage_transaction_view &v
         out << '\n';
     }
     out << "\nChildren:";
-    for( const auto child : v.children ) {
+    for( const int64_t child : v.children ) {
         out << ' ' << child;
     }
     out << "\n\nCaptured context\n";
@@ -197,25 +205,25 @@ std::string execution_inspector::format_power_accounts( const power_manager &pow
 {
     std::ostringstream out;
     out << "Custom pools (projected at current world time; read-only)\n";
-    for( const auto &p : powers.inspect_pools() ) {
+    for( power_pool_view const &p : powers.inspect_pools() ) {
         out << p.actor.id << " / " << p.actor.dimension.str() << " / " << p.resource
             << ": total=" << p.balance.total << " / available=" << p.balance.available()
             << " / reserved=" << p.balance.reserved << " / capacity=" << p.balance.capacity
             << " / reason=" << p.balance.reason << '\n';
     }
     out << "\nAbility reservations (claims, not payment)\n";
-    for( const auto &r : powers.inspect_reservations() ) {
+    for( power_reservation_view const &r : powers.inspect_reservations() ) {
         out << "ability #" << r.token << " / actor=" << r.actor.id << " / " << r.resource
             << " / amount=" << r.amount << '\n';
     }
     out << "\nCooldown groups and sequential charge recharge\n";
-    for( const auto &c : powers.inspect_cooldowns() ) {
+    for( power_charge_view const &c : powers.inspect_cooldowns() ) {
         out << c.actor.id << " / " << c.actor.dimension.str() << " / " << c.group.str()
             << ": charges=" << c.charges << '/' << c.capacity << " / cooldown=" << c.cooldown_remaining
             << " / next charge=" << c.recharge_remaining << " / reason=" << c.reason << '\n';
     }
     out << "\nLatest 64 accounting operations (no hook reevaluation)\n";
-    for( const auto &change : powers.history() ) {
+    for( power_change const &change : powers.history() ) {
         out << to_turn<int>( change.when ) << " / actor=" << change.actor.id << " / " << change.kind
             << " / " << change.name << " / " << change.cause << ": " << change.before << " -> "
             << change.after << " / token=" << change.token << '\n';
@@ -258,7 +266,7 @@ std::string execution_inspector::format_projection( const power_projection_view 
         out << " " << point.to_string_writable();
     }
     out << "\nMembers:";
-    for( const auto &ref : v.members ) {
+    for( const creature_ref &ref : v.members ) {
         out << " " << ref.id;
     }
     return out.str();
@@ -268,7 +276,7 @@ void execution_inspector::show()
 {
     while( true ) {
         std::vector<std::pair<std::string, std::string>> rows;
-        for( const auto &bond : get_power_actors().inspect() ) {
+        for( power_summon_view const &bond : get_power_actors().inspect() ) {
             std::ostringstream detail;
             detail << "Bond #" << bond.id << " / " << bond.definition.str()
                    << "\nowner=" << bond.owner.id << " / summon=" << bond.summon.id
@@ -278,7 +286,7 @@ void execution_inspector::show()
             rows.emplace_back( string_format( _( "Summon bond #%lld: %s [%s]" ), bond.id,
                                               bond.definition.str(), bond.command ), detail.str() );
         }
-        for( const auto &motion : get_power_actors().motions() ) {
+        for( power_motion_result const &motion : get_power_actors().motions() ) {
             std::ostringstream detail;
             detail << "Instigator=" << motion.instigator.id << " / moved=" << motion.target.id
                    << " / cause=" << motion.cause << "\nreason=" << motion.reason
@@ -288,7 +296,7 @@ void execution_inspector::show()
             for( const auto &point : motion.path ) {
                 detail << " " << point.to_string_writable();
             }
-            for( const auto &impact : motion.impacts ) {
+            for( const power_motion_impact &impact : motion.impacts ) {
                 detail << "\n" << impact.kind << " @ " << impact.position.to_string_writable()
                        << " / collider=" << impact.collider.id << " / force=" << impact.force
                        << " / moved HP loss=" << impact.moved_hp_loss
@@ -296,15 +304,15 @@ void execution_inspector::show()
             }
             rows.emplace_back( string_format( _( "Power movement: %s" ), motion.reason ), detail.str() );
         }
-        for( const auto &grant : get_power_grants().inspect() ) {
+        for( power_grant_view const &grant : get_power_grants().inspect() ) {
             rows.emplace_back( string_format( _( "Power grants #%lld: %s [%s]" ), grant.application,
                                               grant.definition.str(), grant.state ), format_grant( grant ) );
         }
-        for( const auto &projection : get_projections().inspect() ) {
+        for( power_projection_view const &projection : get_projections().inspect() ) {
             rows.emplace_back( string_format( _( "Projection #%lld: %s [%s]" ), projection.id,
                                               projection.definition.str(), projection.state ), format_projection( projection ) );
         }
-        for( const auto &contact : get_projections().contacts() ) {
+        for( power_projection_contact const &contact : get_projections().contacts() ) {
             std::ostringstream out;
             out << "Projection #" << contact.projection << " / other #" << contact.other
                 << " / target=" << contact.target.id << " / " << contact.reason
@@ -313,7 +321,7 @@ void execution_inspector::show()
             rows.emplace_back( _( "Projection contact" ), out.str() );
         }
         const power_manager &powers = get_powers();
-        for( const auto &application : powers.inspect_applications() ) {
+        for( power_application_view const &application : powers.inspect_applications() ) {
             rows.emplace_back( string_format( _( "Application #%lld: %s [%s] %s" ), application.id,
                                               application.application.str(), application.state, application.reason ),
                                format_application( application ) );
@@ -324,15 +332,15 @@ void execution_inspector::show()
                                format_power_accounts( powers ) );
         }
 
-        for( const auto &damage : get_damage_transactions().inspect_all() ) {
+        for( damage_transaction_view const &damage : get_damage_transactions().inspect_all() ) {
             rows.emplace_back( string_format( _( "Damage #%lld: %s (%s)" ), damage.id,
                                               damage.state, damage.reason ), format_damage( damage ) );
         }
-        for( const auto &ability : g->abilities().inspect_all() ) {
+        for( ability_view const &ability : g->abilities().inspect_all() ) {
             rows.emplace_back( string_format( _( "Ability #%lld: %s [%s] %s" ), ability.id,
                                               ability.ability.str(), ability.state, ability.reason ), format_ability( ability ) );
         }
-        for( const auto &scene : g->executions().inspect_all() ) {
+        for( execution_inspection const &scene : g->executions().inspect_all() ) {
             rows.emplace_back( string_format( _( "Scene #%lld: %s [%s] %s" ), scene.view.id,
                                               scene.view.definition.str(), scene.view.state, scene.view.step ), format_scene( scene ) );
         }
@@ -344,7 +352,7 @@ void execution_inspector::show()
         uilist menu;
         menu.title = _( "Execution and powers inspector (read-only)" );
         menu.text =
-            _( "Active/recent applications, grants, resources, damage, abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
+            _( "Active/recent applications, grants, resources, damage, abilities, scenes and contacts.  Inspection does not run conditions, consume randomness, or advance time." );
         if( rows.empty() ) {
             menu.addentry( -1, false, -1,
                            _( "No recorded powers, damage, abilities, execution scenes or contacts." ) );

@@ -54,16 +54,39 @@
 #include "worldfactory.h"
 #include "weather_gen.h"
 #include "weather_type.h"
-#include "worldfactory.h"
 
-static const mod_setting_id mod_setting_test_ms_switch( "test_ms_switch" );
+static const bionic_id bio_alarm( "bio_alarm" );
 
-// ---- LOOP-B06 ----
+static const dimension_id dimension_world_scarlet( "scarlet" );
 
+static const efftype_id effect_pet( "pet" );
+static const efftype_id effect_test_loop_b15_weather_mark( "test_loop_b15_weather_mark" );
+
+static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_bucket( "bucket" );
 static const itype_id itype_maple_sap( "maple_sap" );
 
+static const itype_id itype_rock( "rock" );
+
+static const mod_setting_id mod_setting_test_ms_switch( "test_ms_switch" );
+
+static const mtype_id mon_zombie( "mon_zombie" );
+
+static const ter_str_id ter_t_flat_roof( "t_flat_roof" );
+static const ter_str_id ter_t_floor( "t_floor" );
+static const ter_str_id ter_t_open_air( "t_open_air" );
 static const ter_str_id ter_t_tree_maple_tapped( "t_tree_maple_tapped" );
+static const ter_str_id ter_t_wall( "t_wall" );
+static const ter_str_id ter_t_water_dp( "t_water_dp" );
+static const ter_str_id ter_t_water_sh( "t_water_sh" );
+
+static const vproto_id vehicle_prototype_bicycle( "bicycle" );
+
+static const weather_type_id weather_drizzle( "drizzle" );
+static const weather_type_id weather_scarlet_dimension_storm( "scarlet_dimension_storm" );
+static const weather_type_id weather_scarlet_storm_5( "scarlet_storm_5" );
+static const weather_type_id
+weather_test_loop_b15_reaching_weather( "test_loop_b15_reaching_weather" );
 
 // The water temperature curve and the maple sap season count days from the start of spring
 // (calendar::turn_zero), but were given days from Jan 1, 81 days later in the year. Water was
@@ -153,10 +176,6 @@ TEST_CASE( "loop-b06_maple_sap_runs_in_late_winter_and_early_spring", "[audit][m
 
 // ---- LOOP-B08 ----
 
-static const bionic_id bio_alarm( "bio_alarm" );
-
-static const efftype_id effect_pet( "pet" );
-
 // The power the motion alarm takes over the monsters' share of one turn
 static units::energy alarm_power_used_in_one_turn()
 {
@@ -222,9 +241,6 @@ TEST_CASE( "loop-b08_motion_alarm_goes_off_once_a_turn_for_strangers_that_move",
 
 // ---- LOOP-B09 ----
 
-static const weather_type_id weather_scarlet_dimension_storm( "scarlet_dimension_storm" );
-static const weather_type_id weather_scarlet_storm_5( "scarlet_storm_5" );
-
 // A plain number for a weather type's temperature_modifier was read in legacy body temperature
 // units (0.002 K), so the scarlet storms' -2 to -30 chilled by 0.004 to 0.06 K.
 TEST_CASE( "loop-b09_weather_temperature_modifier_is_in_degrees", "[audit][weather]" )
@@ -280,13 +296,6 @@ TEST_CASE( "loop-b09_a_storm_chills_the_surface_but_not_the_cellar",
 }
 
 // ---- LOOP-B11 ----
-
-static const ter_str_id ter_t_flat_roof( "t_flat_roof" );
-static const ter_str_id ter_t_floor( "t_floor" );
-static const ter_str_id ter_t_open_air( "t_open_air" );
-static const ter_str_id ter_t_wall( "t_wall" );
-static const ter_str_id ter_t_water_dp( "t_water_dp" );
-static const ter_str_id ter_t_water_sh( "t_water_sh" );
 
 // Knockback tested for water on the tile the target started on instead of the one it was
 // moving through, and looked for walls on the map's own level instead of the target's.
@@ -410,7 +419,8 @@ class keep_save_files
         ~keep_save_files() {
             std::vector<std::filesystem::path> added;
             if( std::filesystem::exists( world ) ) {
-                for( const auto &entry : std::filesystem::recursive_directory_iterator( world ) ) {
+                for( const std::filesystem::directory_entry &entry : std::filesystem::recursive_directory_iterator(
+                         world ) ) {
                     if( !dirs.count( entry.path() ) && !files.count( entry.path() ) ) {
                         added.push_back( entry.path() );
                     }
@@ -441,7 +451,7 @@ class keep_save_files
                 files[path] = ss.str();
             } else if( std::filesystem::is_directory( path ) ) {
                 dirs.insert( path );
-                for( const auto &entry : std::filesystem::directory_iterator( path ) ) {
+                for( const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator( path ) ) {
                     remember( entry.path() );
                 }
             }
@@ -621,15 +631,6 @@ TEST_CASE( "mod_settings_changed_in_game_are_saved_with_the_game", "[mod_setting
     CHECK( on_disk().find( "\"test_ms_switch\":true" ) != std::string::npos );
 }
 
-static const dimension_id dimension_scarlet( "scarlet" );
-
-static const itype_id itype_2x4( "2x4" );
-static const itype_id itype_rock( "rock" );
-
-static const mtype_id mon_zombie( "mon_zombie" );
-
-static const vproto_id vehicle_prototype_bicycle( "bicycle" );
-
 static int items_of_type_at( const tripoint_bub_ms &p, const itype_id &type )
 {
     int count = 0;
@@ -693,12 +694,12 @@ TEST_CASE( "loop-b14_a_failed_dimension_travel_save_loses_nothing", "[audit][sav
 
     SECTION( "the save before the trip fails, so nothing is taken out" ) {
         save_steps steps( { "maps" }, { "dimension" } );
-        CHECK( !g->travel_to_dimension( dimension_scarlet, { &rider }, items, spot, bike ) );
+        CHECK( !g->travel_to_dimension( dimension_world_scarlet, { &rider }, items, spot, bike ) );
         CHECK( !save_step_started( "travel_save" ) );
     }
     SECTION( "the save without the travellers fails, so they are put back" ) {
         save_steps steps( { "travel_save" }, { "dimension", "maps" } );
-        CHECK( !g->travel_to_dimension( dimension_scarlet, { &rider }, items, spot, bike ) );
+        CHECK( !g->travel_to_dimension( dimension_world_scarlet, { &rider }, items, spot, bike ) );
         CHECK( save_step_started( "travel_save" ) );
     }
 
@@ -725,10 +726,6 @@ TEST_CASE( "loop-b14_a_failed_dimension_travel_save_loses_nothing", "[audit][sav
 }
 
 // ---- LOOP-B15 ----
-
-static const efftype_id effect_test_loop_b15_weather_mark( "test_loop_b15_weather_mark" );
-
-static const weather_type_id weather_test_loop_b15_reaching( "test_loop_b15_reaching_weather" );
 
 // Weather passive effects reached every creature in the bubble, underground ones too, but only
 // while the avatar was above ground and out of the water. Now they reach the creatures above
@@ -760,7 +757,7 @@ TEST_CASE( "loop-b15_weather_effects_reach_creatures_by_their_own_level", "[audi
     SECTION( "with the avatar underground" ) {
         u.setpos( here, cellar + tripoint_rel_ms( -2, 0, 0 ) );
     }
-    handle_weather_effects( weather_test_loop_b15_reaching );
+    handle_weather_effects( weather_test_loop_b15_reaching_weather );
     CHECK( up_top.has_effect( effect_test_loop_b15_weather_mark ) );
     CHECK( !down_below.has_effect( effect_test_loop_b15_weather_mark ) );
     CHECK( in_the_pit.has_effect( effect_test_loop_b15_weather_mark ) );
@@ -799,9 +796,9 @@ TEST_CASE( "loop-b15_the_game_loop_runs_the_weather_with_the_avatar_underground"
     // Between minutes, hours and days, so no hourly or daily work runs in the turn
     calendar::turn = calendar::turn_zero + 2_days + 12_hours + 17_turns;
     // The weather as an EOC sets it: a new game's turn clears the debug override
-    weather.eoc_weather.set( weather_test_loop_b15_reaching, calendar::turn_max );
+    weather.eoc_weather.set( weather_test_loop_b15_reaching_weather, calendar::turn_max );
     weather.set_nextweather( calendar::turn );
-    REQUIRE( weather.weather_id == weather_test_loop_b15_reaching );
+    REQUIRE( weather.weather_id == weather_test_loop_b15_reaching_weather );
 
     const tripoint_bub_ms cellar( 60, 60, -1 );
     here.ter_set( cellar, ter_t_floor );
@@ -814,11 +811,9 @@ TEST_CASE( "loop-b15_the_game_loop_runs_the_weather_with_the_avatar_underground"
     // With no moves left the turn doesn't wait for the player's input
     u.set_moves( -1000 );
     g->do_turn();
-    REQUIRE( weather.weather_id == weather_test_loop_b15_reaching );
+    REQUIRE( weather.weather_id == weather_test_loop_b15_reaching_weather );
     CHECK( up_top.has_effect( effect_test_loop_b15_weather_mark ) );
 }
-
-static const weather_type_id weather_drizzle( "drizzle" );
 
 // Weather now runs wherever the avatar is, but the avatar's own share still waits for it to
 // come out of the water, as it did when the game loop skipped all weather for a diver.

@@ -31,7 +31,7 @@ double power_math::resource( const const_dialogue &d, char scope,
     if( !who ) {
         return 0;
     }
-    const auto status = get_powers().balance( *who, params[0].str( d ) );
+    const power_balance status = get_powers().balance( *who, params[0].str( d ) );
     const std::string field = kwargs.kwarg_or( "field", "available" ).str( d );
     if( field == "supported" ) {
         return status.reason.empty() ? 1 : 0;
@@ -50,7 +50,8 @@ double power_math::cooldown( const const_dialogue &d, char scope,
     if( !who ) {
         return 0;
     }
-    const auto status = get_powers().charges( *who, power_cooldown_id( params[0].str( d ) ) );
+    const power_charge_view status = get_powers().charges( *who,
+                                     power_cooldown_id( params[0].str( d ) ) );
     const std::string field = kwargs.kwarg_or( "field", "charges" ).str( d );
     if( field == "supported" ) {
         return status.reason.empty() ? 1 : 0;
@@ -104,7 +105,7 @@ double power_math::ability( const const_dialogue &d, char scope,
     if( target ) {
         request.target = creature_ref::bind( *target );
     }
-    const auto result = ability_ai::query( request );
+    const ability_ai_view result = ability_ai::query( request );
     const std::string field = kwargs.kwarg_or( "field", "eligible" ).str( d );
     if( field == "eligible" ) {
         return result.eligible() ? 1 : 0;
@@ -137,10 +138,10 @@ double power_math::summon( const const_dialogue &d, char scope,
     if( !owner ) {
         return 0;
     }
-    const auto ref = creature_ref::bind( *owner );
+    const creature_ref ref = creature_ref::bind( *owner );
     const power_summon_id filter( params[0].str( d ) );
     int count = 0;
-    for( const auto &v : get_power_actors().inspect() ) {
+    for( power_summon_view const &v : get_power_actors().inspect() ) {
         if( v.state == "active" && v.owner == ref && v.owner.resolve() == owner && v.summon.resolve() &&
             calendar::turn < v.expires && ( filter.is_empty() || filter == v.definition ) ) {
             ++count;
@@ -157,7 +158,7 @@ double power_math::projection( const const_dialogue &d, char scope,
     if( !who ) {
         return 0;
     }
-    const auto field = kwargs.kwarg_or( "field", "count" ).str( d );
+    const std::string field = kwargs.kwarg_or( "field", "count" ).str( d );
     if( field != "count" && field != "strength" && field != "charging" ) {
         throw math::runtime_error( "Unknown power_projection field %s", field );
     }
@@ -171,11 +172,11 @@ double power_math::area( const const_dialogue &d, char scope, const std::vector<
     if( !who ) {
         return 0;
     }
-    const auto field = kwargs.kwarg_or( "field", "count" ).str( d );
+    const std::string field = kwargs.kwarg_or( "field", "count" ).str( d );
     if( field != "count" && field != "strength" ) {
         throw math::runtime_error( "Unknown power_area field %s", field );
     }
-    const auto owner_role = kwargs.kwarg_or( "owner", "any" ).str( d );
+    const std::string owner_role = kwargs.kwarg_or( "owner", "any" ).str( d );
     std::optional<creature_ref> owner;
     if( owner_role != "any" ) {
         if( owner_role != "u" && owner_role != "npc" ) {

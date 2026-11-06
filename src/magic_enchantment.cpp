@@ -681,7 +681,7 @@ void enchantment::load( const JsonObject &jo, std::string_view,
             mandatory( value_obj, false, "value", sv.value );
             sv.filter.load( value_obj );
             if( !value_obj.has_member( "add" ) && !value_obj.has_member( "multiply" ) ) {
-                value_obj.throw_error( "spell_values entry needs \"add\" or \"multiply\"" );
+                value_obj.throw_error( R"(spell_values entry needs "add" or "multiply")" );
             }
             sv.add = get_dbl_or_var( value_obj, "add", false, 0.0 );
             sv.multiply = get_dbl_or_var( value_obj, "multiply", false, 0.0 );

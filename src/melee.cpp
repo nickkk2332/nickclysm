@@ -100,8 +100,7 @@ static const bionic_id bio_cqb( "bio_cqb" );
 static const bionic_id bio_heat_absorb( "bio_heat_absorb" );
 static const bionic_id bio_shock( "bio_shock" );
 
-static const character_modifier_id
-character_modifier_limb_dodge_mod( "limb_dodge_mod" );
+static const character_modifier_id character_modifier_limb_dodge_mod( "limb_dodge_mod" );
 static const character_modifier_id
 character_modifier_melee_attack_roll_mod( "melee_attack_roll_mod" );
 static const character_modifier_id
@@ -3437,6 +3436,7 @@ thread_local int technique_menu_suppression = 0;
 class menu_random_numbers
 {
     public:
+        // NOLINTNEXTLINE(cata-determinism)
         explicit menu_random_numbers( const Creature &target ) : saved( rng_get_engine() ) {
             const tripoint_abs_ms pos = target.pos_abs();
             const unsigned int seed = static_cast<unsigned int>( to_turn<int>( calendar::turn ) ) ^

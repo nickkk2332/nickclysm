@@ -473,7 +473,7 @@ class effect
     protected:
         void initialize_calendar_deadline();
         const effect_type *eff_type;
-        time_duration duration;
+        time_duration duration; // NOLINT(cata-serialize): saved through get_duration()
         bodypart_str_id bp;
         bool permanent;
         int intensity;
@@ -481,7 +481,7 @@ class effect
         effect_source source;
         // Currently used only by knocked_out. Other effects keep their existing timers.
         std::optional<time_point> expires_at;
-        std::shared_ptr<owned_effect_state> owned;
+        std::shared_ptr<owned_effect_state> owned; // NOLINT(cata-serialize): saved by serialize_owned()
         void detach_owned();
         void refresh_owned();
         void serialize_owned( JsonOut &out ) const;

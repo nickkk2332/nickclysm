@@ -27,6 +27,10 @@
 #include "power_runtime.h"
 #include "talker.h"
 
+static const efftype_id effect_narcosis( "narcosis" );
+static const efftype_id effect_sleep( "sleep" );
+static const efftype_id effect_stunned( "stunned" );
+
 namespace
 {
 constexpr size_t max_active = 128;
@@ -46,8 +50,10 @@ struct projection_state {
 };
 bool ref_less( const creature_ref &a, const creature_ref &b )
 {
+    // NOLINTBEGIN(cata-use-localized-sorting)
     return std::make_tuple( a.dimension.str(), a.type, a.id ) <
            std::make_tuple( b.dimension.str(), b.type, b.id );
+    // NOLINTEND(cata-use-localized-sorting)
 }
 bool real( const Creature *who )
 {
@@ -75,12 +81,12 @@ struct power_projection_manager::impl {
         if( !p.cancel_reason.empty() ) {
             return p.cancel_reason;
         }
-        const auto &v = p.view;
+        const power_projection_view &v = p.view;
         if( !v.definition.is_valid() || v.definition->revision != p.revision ||
             v.definition->kind != v.kind ) {
             return "incompatible_definition";
         }
-        const auto &def = *v.definition;
+        const power_projection &def = *v.definition;
         const Creature *owner = v.owner.resolve();
         if( !real( owner ) ) {
             return "owner_unavailable";
@@ -99,15 +105,15 @@ struct power_projection_manager::impl {
             return "displaced";
         }
         if( def.interrupt_incapacitated && ( incapacitation::unconscious( *owner ) ||
-                                             owner->has_effect( efftype_id( "stunned" ) ) || owner->has_effect( efftype_id( "sleep" ) ) ||
-                                             owner->has_effect( efftype_id( "narcosis" ) ) ) ) {
+                                             owner->has_effect( effect_stunned ) || owner->has_effect( effect_sleep ) ||
+                                             owner->has_effect( effect_narcosis ) ) ) {
             return "incapacitated";
         }
         if( def.track_target && !real( v.target.resolve() ) ) {
             return "target_unavailable";
         }
-        const auto anchor = def.follow_owner ? owner->pos_abs() : v.position;
-        const auto selected = def.track_target ? v.target.resolve()->pos_abs() : v.selected;
+        const tripoint_abs_ms anchor = def.follow_owner ? owner->pos_abs() : v.position;
+        const tripoint_abs_ms selected = def.track_target ? v.target.resolve()->pos_abs() : v.selected;
         if( !get_map().inbounds( get_map().get_bub( anchor ) ) ||
             ( v.kind != "area" && ( anchor.z() != selected.z() ||
                                     !get_map().inbounds( get_map().get_bub( selected ) ) ) ) ) {
@@ -120,12 +126,12 @@ struct power_projection_manager::impl {
         if( !p.live() || !invalid( p ).empty() ) {
             return out;
         }
-        const auto &v = p.view;
-        const auto &def = *v.definition;
+        const power_projection_view &v = p.view;
+        const power_projection &def = *v.definition;
         const map &here = get_map();
         const Creature *owner = v.owner.resolve();
-        const auto origin = def.follow_owner ? owner->pos_abs() : v.position;
-        const auto selected = def.track_target ? v.target.resolve()->pos_abs() : v.selected;
+        const tripoint_abs_ms origin = def.follow_owner ? owner->pos_abs() : v.position;
+        const tripoint_abs_ms selected = def.track_target ? v.target.resolve()->pos_abs() : v.selected;
         if( v.kind == "area" ) {
             for( const auto &point : here.points_in_radius( here.get_bub( origin ), def.radius ) ) {
                 if( here.inbounds( point ) && ( !def.line_of_sight ||
@@ -158,7 +164,7 @@ struct power_projection_manager::impl {
         if( filter == "all" ) {
             return true;
         }
-        const auto relation = owner->attitude_to( target );
+        const Creature::Attitude relation = owner->attitude_to( target );
         return filter == "friendly" ? &target == owner || relation == Creature::Attitude::FRIENDLY :
                &target != owner && relation == Creature::Attitude::HOSTILE;
     }
@@ -185,7 +191,7 @@ struct power_projection_manager::impl {
             }
             dialogue d( source_hold ? get_talker_for( source_hold.get() ) : nullptr,
                         target_hold ? get_talker_for( target_hold.get() ) : nullptr, {}, p.view.context );
-            const auto &v = p.view;
+            const power_projection_view &v = p.view;
             d.set_value( "power_projection", std::to_string( v.id ) );
             d.set_value( "projection_definition", v.definition.str() );
             d.set_value( "projection_root", std::to_string( v.root ) );
@@ -232,7 +238,7 @@ struct power_projection_manager::impl {
             return;
         }
         std::exception_ptr failure;
-        for( const auto &ref : members ) {
+        for( const creature_ref &ref : members ) {
             try {
                 callbacks( p, p.view.definition->on_exit, ref, "exit", p.view.position, 0, 0, true );
             } catch( ... ) {
@@ -306,13 +312,13 @@ struct power_projection_manager::impl {
         }
         const auto previous = p.view.members;
         p.view.members.clear();
-        for( const auto &ref : previous ) {
+        for( const creature_ref &ref : previous ) {
             if( std::find( now.begin(), now.end(), ref ) != now.end() ) {
                 p.view.members.push_back( ref );
             }
         }
         std::exception_ptr failure;
-        for( const auto &ref : previous ) {
+        for( const creature_ref &ref : previous ) {
             if( std::find( now.begin(), now.end(), ref ) == now.end() ) {
                 try {
                     callbacks( p, p.view.definition->on_exit, ref, "exit", p.view.position, 0, 0, true );
@@ -326,7 +332,7 @@ struct power_projection_manager::impl {
         if( failure ) {
             std::rethrow_exception( failure );
         }
-        for( const auto &ref : now ) {
+        for( creature_ref const &ref : now ) {
             if( !p.live() || !invalid( p ).empty() ) {
                 break;
             }
@@ -425,13 +431,13 @@ struct power_projection_manager::impl {
         callbacks( p, p.view.definition->on_hit, ref, "hit", point, 0, loss, true );
     }
     void fly( projection_state &p ) {
-        const auto &def = *p.view.definition;
+        const power_projection &def = *p.view.definition;
         for( int step = 0; step < def.speed && p.live() && invalid( p ).empty(); ++step ) {
             if( p.view.travelled >= def.range ) {
                 mark( p, "range_exhausted" );
                 break;
             }
-            const auto aim = def.track_target ? p.view.target.resolve()->pos_abs() : p.view.selected;
+            const tripoint_abs_ms aim = def.track_target ? p.view.target.resolve()->pos_abs() : p.view.selected;
             if( aim == p.view.position ) {
                 mark( p, "reached" );
                 break;
@@ -465,7 +471,7 @@ struct power_projection_manager::impl {
             if( !p.live() || !invalid( p ).empty() ) {
                 break;
             }
-            const auto cell = get_map().get_bub( p.view.position );
+            const tripoint_bub_ms cell = get_map().get_bub( p.view.position );
             if( get_map().impassable( cell ) ) {
                 contact( { p.view.id, 0, {}, p.view.position, "terrain", p.view.strength, p.view.strength, 0 } );
                 callbacks( p, def.on_hit, {}, "terrain", p.view.position );
@@ -475,7 +481,7 @@ struct power_projection_manager::impl {
             Creature *who = get_creature_tracker().creature_at( cell );
             if( who && real( who ) && !who->is_dead_state() &&
                 !( creature_ref::bind( *who ) == p.view.owner ) ) {
-                const auto ref = creature_ref::bind( *who );
+                const creature_ref ref = creature_ref::bind( *who );
                 if( affects( p, *who ) ) {
                     hit( p, ref, p.view.position );
                 } else {
@@ -484,7 +490,8 @@ struct power_projection_manager::impl {
                 mark( p, "contact" );
                 break;
             }
-            const auto live_aim = def.track_target ? p.view.target.resolve()->pos_abs() : p.view.selected;
+            const tripoint_abs_ms live_aim = def.track_target ? p.view.target.resolve()->pos_abs() :
+                                             p.view.selected;
             if( p.view.position == live_aim ) {
                 callbacks( p, def.on_hit, {}, "reached", p.view.position );
                 mark( p, "reached" );
@@ -509,7 +516,7 @@ struct power_projection_manager::impl {
             targets.resize( max_members );
             p.view.members_truncated = true;
         }
-        for( const auto &ref : targets ) {
+        for( creature_ref const &ref : targets ) {
             Creature *who = ref.resolve();
             if( !p.live() || !invalid( p ).empty() ) {
                 break;
@@ -519,7 +526,7 @@ struct power_projection_manager::impl {
                 std::find( current_cells.begin(), current_cells.end(), who->pos_abs() ) == current_cells.end() ) {
                 continue;
             }
-            const auto point = who->pos_abs();
+            const tripoint_abs_ms point = who->pos_abs();
             if( p.view.kind == "area" ) {
                 callbacks( p, p.view.definition->on_stay, ref, "stay", point );
             }
@@ -528,6 +535,7 @@ struct power_projection_manager::impl {
     }
     void sweep( bool begin_pending = true ) {
         std::vector<int64_t> ids;
+        ids.reserve( objects.size() );
         for( const auto &entry : objects ) {
             ids.push_back( entry.first );
         }
@@ -537,7 +545,7 @@ struct power_projection_manager::impl {
             if( p.view.state == "ended" ) {
                 continue;
             }
-            const auto reason = invalid( p );
+            const std::string reason = invalid( p );
             if( !reason.empty() ) {
                 mark( p, reason );
                 continue;
@@ -572,7 +580,7 @@ std::string power_projection_manager::check( const power_projection_request &req
     if( !request.definition.is_valid() ) {
         return "invalid_definition";
     }
-    const auto &def = *request.definition;
+    const power_projection &def = *request.definition;
     const Creature *owner = request.owner.resolve();
     if( !real( owner ) ) {
         return "owner_unavailable";
@@ -631,7 +639,8 @@ std::string power_projection_manager::check( const power_projection_request &req
             return "ancestry_budget";
         }
     }
-    const auto cost = get_powers().check_cost( *owner, def.start_cost.resource, def.start_cost.amount );
+    const std::string cost = get_powers().check_cost( *owner, def.start_cost.resource,
+                             def.start_cost.amount );
     if( !cost.empty() ) {
         return cost;
     }
@@ -640,13 +649,13 @@ std::string power_projection_manager::check( const power_projection_request &req
 power_projection_admission power_projection_manager::create( const power_projection_request
         &request )
 {
-    const auto reason = check( request );
+    const std::string reason = check( request );
     if( !reason.empty() ) {
         return { 0, reason };
     }
     projection_state p;
-    auto &v = p.view;
-    const auto &def = *request.definition;
+    power_projection_view &v = p.view;
+    const power_projection &def = *request.definition;
     v.id = data->next_id++;
     v.root = v.id;
     const auto parent = data->objects.find( data->current );
@@ -702,7 +711,7 @@ int power_projection_manager::dispel( const creature_ref &owner, const power_pro
 {
     int count = 0;
     for( auto &entry : data->objects ) {
-        const auto &v = entry.second.view;
+        const power_projection_view &v = entry.second.view;
         if( v.owner == owner && ( filter.is_empty() || v.definition == filter ) &&
             ( tag.empty() || ( v.definition.is_valid() && v.definition->tags.count( tag ) ) ) ) {
             count += end( entry.first, "dispelled" ) ? 1 : 0;
@@ -764,7 +773,7 @@ void power_projection_manager::process()
             }
             data->sync( p );
             if( calendar::turn >= p.view.next_pulse ) {
-                const auto &cost = p.view.definition->upkeep;
+                const power_cost &cost = p.view.definition->upkeep;
                 if( !get_powers().spend( *p.view.owner.resolve(), cost.resource, cost.amount,
                                          "projection_upkeep" ) ) {
                     data->mark( p, "upkeep_unaffordable" );
@@ -820,7 +829,7 @@ void power_projection_manager::notify_damage( const Creature &who, int amount )
     if( amount <= 0 ) {
         return;
     }
-    const auto ref = creature_ref::bind( who );
+    const creature_ref ref = creature_ref::bind( who );
     for( auto &entry : data->objects ) {
         auto &p = entry.second;
         if( p.live() && p.view.owner == ref && p.view.definition.is_valid() &&
@@ -831,7 +840,7 @@ void power_projection_manager::notify_damage( const Creature &who, int amount )
 }
 void power_projection_manager::retire_actor( const Creature &who )
 {
-    const auto ref = creature_ref::bind( who );
+    const creature_ref ref = creature_ref::bind( who );
     for( auto &entry : data->objects ) {
         if( entry.second.view.owner == ref ) {
             data->mark( entry.second, "owner_unavailable" );
@@ -897,7 +906,7 @@ std::vector<power_projection_view> power_projection_manager::inspect() const
 {
     std::vector<power_projection_view> result;
     for( const auto &entry : data->objects ) {
-        auto view = entry.second.view;
+        power_projection_view view = entry.second.view;
         if( view.reason.empty() ) {
             view.reason = entry.second.cancel_reason;
         }
@@ -917,8 +926,8 @@ std::vector<power_projection_tile> power_projection_manager::tiles() const
     for( const auto &entry : data->objects ) {
         const auto &p = entry.second;
         for( const auto &point : data->geometry( p ) ) {
-            const auto center = p.view.definition->follow_owner ? p.view.owner.resolve()->pos_abs() :
-                                p.view.position;
+            const tripoint_abs_ms center = p.view.definition->follow_owner ? p.view.owner.resolve()->pos_abs() :
+                                           p.view.position;
             if( p.view.kind == "area" && rl_dist( center, point ) != p.view.definition->radius ) {
                 continue;
             }
@@ -950,7 +959,7 @@ void power_projection_manager::serialize( JsonOut &out ) const
     out.start_array();
     for( const auto &entry : data->objects ) {
         const auto &p = entry.second;
-        const auto &v = p.view;
+        const power_projection_view &v = p.view;
         if( v.state == "ended" ) {
             continue;
         }
@@ -1014,7 +1023,7 @@ void power_projection_manager::deserialize( const JsonObject &jo )
     std::map<int64_t, int> families;
     for( const JsonObject obj : jo.get_array( "objects" ) ) {
         projection_state p;
-        auto &v = p.view;
+        power_projection_view &v = p.view;
         obj.read( "id", v.id, true );
         obj.read( "root", v.root, true );
         obj.read( "parent", v.parent, true );
@@ -1067,7 +1076,7 @@ void power_projection_manager::deserialize( const JsonObject &jo )
             obj.throw_error( "Invalid projection state" );
         }
         std::set<std::tuple<std::string, creature_ref::kind, int64_t>> seen;
-        for( const auto &ref : v.members ) {
+        for( creature_ref const &ref : v.members ) {
             if( ref.id <= 0 || ref.type == creature_ref::kind::none || ref.dimension != v.owner.dimension ||
                 !seen.emplace( ref.dimension.str(), ref.type, ref.id ).second ) {
                 obj.throw_error( "Invalid area membership" );
@@ -1082,7 +1091,7 @@ void power_projection_manager::deserialize( const JsonObject &jo )
         }
     }
     for( const auto &entry : objects ) {
-        const auto &v = entry.second.view;
+        const power_projection_view &v = entry.second.view;
         const auto parent = objects.find( v.parent );
         if( parent != objects.end() && ( parent->second.view.root != v.root ||
                                          parent->second.view.depth + 1 != v.depth ) ) {

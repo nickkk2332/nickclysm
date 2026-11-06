@@ -64,9 +64,9 @@ static const achievement_id
 achievement_achievement_reach_refugee_center( "achievement_reach_refugee_center" );
 
 static const event_statistic_id
-event_statistic_last_overmap_special_avatar_entered( "last_overmap_special_avatar_entered" );
-static const event_statistic_id
 event_statistic_last_oter_type_avatar_entered( "last_oter_type_avatar_entered" );
+static const event_statistic_id
+event_statistic_last_overmap_special_avatar_entered( "last_overmap_special_avatar_entered" );
 
 static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_glockmag( "glockmag" );
@@ -80,8 +80,8 @@ static const itype_id itype_test_multimag_aux_gun( "test_multimag_aux_gun" );
 static const itype_id itype_test_multimag_gun_consume( "test_multimag_gun_consume" );
 static const itype_id
 itype_test_watertight_open_sealed_container_250ml( "test_watertight_open_sealed_container_250ml" );
-static const itype_id itype_test_watertight_open_sealed_multipocket_container_2x250ml(
-    "test_watertight_open_sealed_multipocket_container_2x250ml" );
+static const itype_id
+itype_test_watertight_open_sealed_multipocket_container_2x250ml( "test_watertight_open_sealed_multipocket_container_2x250ml" );
 static const itype_id itype_tshirt( "tshirt" );
 
 static const oter_type_str_id oter_type_field( "field" );
@@ -156,12 +156,13 @@ std::vector<int64_t> uids_in( const item &it )
 }
 
 // Saved items with every uid ("uid" and "rle_uids") replaced by the next from next_uid
-std::string renumber_uids( const std::string &json, int64_t &next_uid )
+std::string renumber_uids( const std::string_view json, int64_t &next_uid )
 {
     static const std::regex uids( R"re("uid":\d+|"rle_uids":\[[0-9,]*\])re" );
     std::string result;
-    std::string::const_iterator done = json.begin();
-    for( std::sregex_iterator m( json.begin(), json.end(), uids ), end; m != end; ++m ) {
+    const char *done = json.data();
+    const char *const json_end = json.data() + json.size();
+    for( std::cregex_iterator m( json.data(), json_end, uids ), end; m != end; ++m ) {
         result.append( done, ( *m )[0].first );
         const std::string found = ( *m )[0].str();
         if( found.rfind( "\"uid\"", 0 ) == 0 ) {
@@ -177,7 +178,7 @@ std::string renumber_uids( const std::string &json, int64_t &next_uid )
         }
         done = ( *m )[0].second;
     }
-    result.append( done, json.end() );
+    result.append( done, json_end );
     return result;
 }
 
@@ -761,7 +762,8 @@ TEST_CASE( "map-p03_saving_only_uniform_quads_creates_no_files", "[audit][map]" 
         add_quad( mb, omt, true );
         add_quad( mb, omt + tripoint_rel_omt( 1, 0, 0 ), true );
         mb.save( true );
-        CHECK( mb.begin() == mb.end() );
+        const decltype( mb.begin() ) first_submap = mb.begin();
+        CHECK( first_submap == mb.end() );
         cata_path zzip_name = segment_path( omt );
         zzip_name += zzip_suffix;
         CHECK_FALSE( file_exist( zzip_name ) );
@@ -793,7 +795,8 @@ TEST_CASE( "map-p03_quads_load_after_saves_reverts_and_clears", "[audit][map]" )
         // a saved quad loads, the others still don't
         add_quad( mb, a, false );
         mb.save( true );
-        REQUIRE( mb.begin() == mb.end() );
+        const decltype( mb.begin() ) first_submap = mb.begin();
+        REQUIRE( first_submap == mb.end() );
         CHECK( quad_file_holds_dirt( a, compressed ) );
         CHECK( quad_loads( mb, a ) );
         CHECK_FALSE( quad_loads( mb, b ) );

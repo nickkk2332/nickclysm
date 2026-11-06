@@ -280,6 +280,7 @@ TEST_CASE( "camp-b03_camp_planting_takes_only_the_chosen_seeds", "[audit][camp]"
     here.i_clear( storage );
     here.i_clear( corner );
     std::vector<item *> stored;
+    stored.reserve( 5 );
     for( int i = 0; i < 5; ++i ) {
         stored.push_back( &here.add_item( storage, item( itype_seed_hops ) ) );
     }

@@ -373,9 +373,9 @@ TEST_CASE( "map-b08_mapbuffer_entry_without_a_submap_is_regenerated", "[audit][m
 
     // What a quad file missing this submap used to leave behind: an entry with no submap
     bool emptied = false;
-    for( auto it = MAPBUFFER.begin(); it != MAPBUFFER.end(); ++it ) {
-        if( it->first == sm_addr ) {
-            it->second.reset();
+    for( auto &it : MAPBUFFER ) {
+        if( it.first == sm_addr ) {
+            it.second.reset();
             emptied = true;
         }
     }

@@ -53,7 +53,7 @@ struct walk_order {
     global_variables::impl_t context;
     // walk_kind::pickup: the item, found again after a load by its uid (or its type) where
     // the walk ends, so a vanished item reads as gone without complaint
-    item_location item;
+    item_location item; // NOLINT(cata-serialize): found again from item_uid and item_type
     int64_t item_uid = 0;
     itype_id item_type;
     bool allow_theft = true;
@@ -64,15 +64,15 @@ struct walk_order {
 
     // not saved
     // the avatar's auto-move ends there; unset after a load, so the route is made again
-    std::optional<tripoint_abs_ms> auto_move_end;
+    std::optional<tripoint_abs_ms> auto_move_end; // NOLINT(cata-serialize)
     // last turn the walk took a step; a gap means it was paused
-    time_point last_step = calendar::turn_zero;
+    time_point last_step = calendar::turn_zero; // NOLINT(cata-serialize)
     // tells this walk from one that replaced it
-    int serial = 0;
+    int serial = 0; // NOLINT(cata-serialize)
     // no way there for now: an NPC told to keep trying looks again at this turn
-    time_point retry_at = calendar::turn_zero;
+    time_point retry_at = calendar::turn_zero; // NOLINT(cata-serialize)
     // took a step during the current npc::move()
-    bool stepped = false;
+    bool stepped = false; // NOLINT(cata-serialize)
 
     void serialize( JsonOut &jsout ) const;
     void deserialize( const JsonObject &jo );

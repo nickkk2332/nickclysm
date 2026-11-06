@@ -107,7 +107,7 @@ TEST_CASE( "eoc-b04_weighted_list_eocs_fractional_and_zero_weights", "[audit][eo
     CHECK( run_weighted_list( R"([ "EOC_mess_pass", [ "EOC_mess_fail", 0 ] ])" ) == 1 );
 }
 
-static double eval_math( dialogue &d, const std::string &expr )
+static double eval_math( dialogue &d, const std::string_view expr )
 {
     math_exp exp;
     REQUIRE( exp.parse( expr ) );

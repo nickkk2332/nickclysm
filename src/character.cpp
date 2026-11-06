@@ -121,6 +121,7 @@
 #include "weather.h"
 
 static const activity_id ACT_AUTODRIVE( "ACT_AUTODRIVE" );
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
 static const activity_id ACT_FISH( "ACT_FISH" );
 static const activity_id ACT_GAME( "ACT_GAME" );
 static const activity_id ACT_HAND_CRANK( "ACT_HAND_CRANK" );
@@ -5683,7 +5684,7 @@ void Character::process_activity()
         activity.do_turn( *this );
     }
     if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
-        if( !activity.is_null() && activity.id() != activity_id( "ACT_EXECUTION" ) ) {
+        if( !activity.is_null() && activity.id() != ACT_EXECUTION ) {
             cancel_activity();
         }
         incapacitation::suppress_moves( *this );

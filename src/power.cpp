@@ -16,7 +16,7 @@ generic_factory<power_resource> resources( "power resource" );
 generic_factory<power_cooldown> cooldowns( "power cooldown" );
 generic_factory<power_application> applications( "power application" );
 
-int bounded( const JsonObject &jo, const std::string &key, int fallback, int low = 0,
+int bounded( const JsonObject &jo, const std::string_view key, int fallback, int low = 0,
              int high = 1000000 )
 {
     const int value = jo.get_int( key, fallback );
@@ -26,7 +26,7 @@ int bounded( const JsonObject &jo, const std::string &key, int fallback, int low
     return value;
 }
 
-void read_eocs( const JsonObject &jo, const std::string &key, const std::string &source,
+void read_eocs( const JsonObject &jo, const std::string_view key, const std::string_view source,
                 std::vector<effect_on_condition_id> &out )
 {
     if( !jo.has_member( key ) ) {

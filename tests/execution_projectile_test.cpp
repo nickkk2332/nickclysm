@@ -43,6 +43,16 @@
 #include "rng.h"
 #include "type_id.h"
 
+static const ammo_effect_str_id ammo_effect_MAGIC( "MAGIC" );
+static const ammo_effect_str_id ammo_effect_NO_DAMAGE_SCALING( "NO_DAMAGE_SCALING" );
+
+static const damage_type_id damage_pure( "pure" );
+
+static const itype_id itype_execution_projectile_test_round( "execution_projectile_test_round" );
+static const itype_id itype_knife_combat( "knife_combat" );
+
+static const matec_id tec_none( "tec_none" );
+
 namespace
 {
 struct projectile_world {
@@ -124,8 +134,8 @@ dealt_projectile_attack shot( int damage = 4 )
     result.proj.speed = 1000;
     result.proj.range = 60;
     result.proj.critical_multiplier = 2;
-    result.proj.impact = damage_instance( damage_type_id( "pure" ), damage );
-    result.proj.proj_effects.insert( ammo_effect_str_id( "NO_DAMAGE_SCALING" ) );
+    result.proj.impact = damage_instance( damage_pure, damage );
+    result.proj.proj_effects.insert( ammo_effect_NO_DAMAGE_SCALING );
     return result;
 }
 
@@ -217,9 +227,9 @@ TEST_CASE( "projectile_execution_captures_real_guns_and_bows_for_loaded_particip
     REQUIRE( saw_native_event );
     CHECK( gun.ammo_remaining() == before - gun.ammo_required() );
     CHECK_FALSE( execution_combat::attack_in_progress() );
-    const auto selected = report();
+    const execution_trigger_report selected = report();
     REQUIRE( selected.instance != 0 );
-    const auto scene = view( selected.instance );
+    const execution_view scene = view( selected.instance );
     CHECK( scene.state == "pending" );
     CHECK( scene.context.at( "attack_channel" ) == "projectile" );
     CHECK( scene.context.at( "weapon" ) == weapon );
@@ -275,7 +285,7 @@ TEST_CASE( "projectile_execution_first_contact_is_not_replaced_by_a_later_pellet
         for( int damage : {
                  0, 9
              } ) {
-            auto round = shot( damage );
+            dealt_projectile_attack round = shot( damage );
             firing.begin_round( *source.get_wielded_item(), round );
             const execution_combat::projectile_flight_scope flight( round, &get_map(), &source,
                     source.pos_bub() );
@@ -307,11 +317,11 @@ TEST_CASE( "projectile_execution_primary_hp_snapshot_excludes_callback_damage_an
         }
     };
     get_event_bus().subscribe( &callbacks );
-    auto round = shot();
+    dealt_projectile_attack round = shot();
     scoped_impact( source, target, round );
     REQUIRE( changed );
     REQUIRE( report().instance != 0 );
-    const auto context = view( report().instance ).context;
+    const global_variables::impl_t context = view( report().instance ).context;
     CHECK( context.at( "hp_loss" ).dbl() == 4 );
     CHECK( context.at( "damage_pure" ).dbl() == 4 );
     CHECK( hp - target.get_hp() == 22 );
@@ -334,11 +344,11 @@ TEST_CASE( "projectile_execution_ranged_callbacks_cannot_spawn_automatic_child_a
             if( native_gun ) {
                 REQUIRE( fire( source, secondary ) == 1 );
             } else {
-                auto round = shot();
+                dealt_projectile_attack round = shot();
                 projectile_attack( round, round.proj, source.pos_bub(), secondary.pos_bub(),
                                    dispersion_sources(), &source );
             }
-            source.melee_attack_abstract( secondary, false, matec_id( "tec_none" ) );
+            source.melee_attack_abstract( secondary, false, tec_none );
             CHECK_FALSE( g->executions().last_trigger_report() );
         }
     };
@@ -357,7 +367,7 @@ TEST_CASE( "projectile_execution_filters_real_ammunition_and_keeps_legacy_channe
 {
     projectile_world world;
     mode( "ammunition" );
-    arm( get_avatar(), "execution_projectile_test_gun", itype_id( "execution_projectile_test_round" ) );
+    arm( get_avatar(), "execution_projectile_test_gun", itype_execution_projectile_test_round );
     monster &target = victim( get_avatar().pos_bub() + tripoint_rel_ms::east );
     REQUIRE( fire( get_avatar(), target ) == 1 );
     REQUIRE( report().instance != 0 );
@@ -392,7 +402,7 @@ TEST_CASE( "projectile_execution_refuses_fatal_hits_and_victims_killed_later_in_
     {
         execution_combat::projectile_fire_scope firing( source, get_map(), *source.get_wielded_item() );
         for( int n = 0; n < ( later ? 2 : 1 ); ++n ) {
-            auto round = shot();
+            dealt_projectile_attack round = shot();
             firing.begin_round( *source.get_wielded_item(), round );
             const execution_combat::projectile_flight_scope flight( round, &get_map(), &source,
                     source.pos_bub() );
@@ -425,7 +435,7 @@ TEST_CASE( "projectile_execution_does_not_reclassify_a_rescued_fatal_primary_hit
         }
     };
     get_event_bus().subscribe( &callbacks );
-    auto round = shot();
+    dealt_projectile_attack round = shot();
     scoped_impact( source, target, round );
     CHECK_FALSE( target.is_dead_state() );
     CHECK_FALSE( g->executions().last_trigger_report() );
@@ -443,7 +453,7 @@ TEST_CASE( "projectile_execution_saved_progress_context_and_cooldowns_do_not_rep
     const int64_t id = report().instance;
     REQUIRE( id != 0 );
     g->executions().drain_starts();
-    const auto before = view( id );
+    const execution_view before = view( id );
     const std::string saved = save();
     g->executions().reset_for_load();
     g->executions().deserialize( json_loader::from_string( saved ) );
@@ -458,7 +468,7 @@ TEST_CASE( "projectile_execution_saved_progress_context_and_cooldowns_do_not_rep
     CHECK( view( id ).outcome == "complete" );
     CHECK( get_globals().get_global_value( "exec_projectile_starts" ).dbl() == 1 );
     REQUIRE( fire( source, target ) == 1 );
-    const auto cooled = report();
+    const execution_trigger_report cooled = report();
     CHECK( cooled.instance == 0 );
     CHECK( std::any_of( cooled.candidates.begin(), cooled.candidates.end(),
     []( const execution_trigger_candidate & candidate ) {
@@ -533,7 +543,7 @@ TEST_CASE( "projectile_execution_removed_victims_and_lost_weapon_identity_are_re
             if( remove ) {
                 get_creature_tracker().remove( target );
             } else {
-                gun = item( itype_id( "knife_combat" ) );
+                gun = item( itype_knife_combat );
                 CHECK( gun.uid().get_value() != original_uid );
             }
         }
@@ -544,7 +554,7 @@ TEST_CASE( "projectile_execution_removed_victims_and_lost_weapon_identity_are_re
     if( remove ) {
         CHECK( report().reason == "participant_unavailable" );
     } else {
-        const auto result = report();
+        const execution_trigger_report result = report();
         CHECK( std::any_of( result.candidates.begin(), result.candidates.end(),
         []( const execution_trigger_candidate & candidate ) {
             return candidate.reason == "weapon_lost";
@@ -561,9 +571,9 @@ TEST_CASE( "projectile_execution_excludes_unowned_secondary_magic_and_shrapnel_c
     avatar &source = get_avatar();
     arm( source );
     monster &target = victim( source.pos_bub() + tripoint_rel_ms::east );
-    auto round = shot();
+    dealt_projectile_attack round = shot();
     if( kind == "magic" ) {
-        round.proj.proj_effects.insert( ammo_effect_str_id( "MAGIC" ) );
+        round.proj.proj_effects.insert( ammo_effect_MAGIC );
     }
     round.shrapnel = kind == "shrapnel";
     if( kind == "unowned" ) {
@@ -572,7 +582,7 @@ TEST_CASE( "projectile_execution_excludes_unowned_secondary_magic_and_shrapnel_c
         item detached( *source.get_wielded_item() );
         execution_combat::projectile_fire_scope firing( source, get_map(), kind == "unwielded" ?
                 detached : *source.get_wielded_item() );
-        auto expected = shot();
+        dealt_projectile_attack expected = shot();
         firing.begin_round( *source.get_wielded_item(), kind == "secondary" ? expected : round );
         const execution_combat::projectile_flight_scope flight( round, &get_map(), &source,
                 source.pos_bub() );
@@ -608,7 +618,7 @@ TEST_CASE( "projectile_execution_no_match_and_zero_chance_preserve_native_rng",
          } ) {
         mode( choice );
         rng_set_engine_seed( 8913 );
-        auto round = shot();
+        dealt_projectile_attack round = shot();
         scoped_impact( source, target, round );
         const int after = rng( 0, INT_MAX );
         CHECK( report().instance == 0 );
@@ -629,7 +639,7 @@ TEST_CASE( "projectile_execution_cleans_combat_guards_when_native_flight_unwinds
     monster &target = victim( source.pos_bub() + tripoint_rel_ms::east );
     try {
         execution_combat::projectile_fire_scope firing( source, get_map(), *source.get_wielded_item() );
-        auto round = shot();
+        dealt_projectile_attack round = shot();
         firing.begin_round( *source.get_wielded_item(), round );
         const execution_combat::projectile_flight_scope flight( round, &get_map(), &source,
                 source.pos_bub() );
@@ -639,7 +649,7 @@ TEST_CASE( "projectile_execution_cleans_combat_guards_when_native_flight_unwinds
     }
     CHECK_FALSE( execution_combat::attack_in_progress() );
     CHECK_FALSE( g->executions().last_trigger_report() );
-    auto round = shot();
+    dealt_projectile_attack round = shot();
     scoped_impact( source, target, round );
     CHECK( report().instance != 0 );
 }
@@ -654,7 +664,7 @@ TEST_CASE( "projectile_execution_bounds_a_firing_actions_victim_candidates",
         execution_combat::projectile_fire_scope firing( source, get_map(), *source.get_wielded_item() );
         for( int n = 0; n < 65; ++n ) {
             monster &target = victim( tripoint_bub_ms( 40 + n % 8, 40 + n / 8, 0 ) );
-            auto round = shot();
+            dealt_projectile_attack round = shot();
             firing.begin_round( *source.get_wielded_item(), round );
             const execution_combat::projectile_flight_scope flight( round, &get_map(), &source,
                     source.pos_bub() );

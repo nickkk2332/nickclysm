@@ -106,9 +106,9 @@ class execution_manager
         execution_manager &operator=( const execution_manager & ) = delete;
         execution_start_result start( const execution_id &definition, const dialogue &d,
                                       std::optional<uint64_t> seed = std::nullopt );
-        std::string check_start( const execution_id &definition, const dialogue &context );
-        std::string check_fatal_start( const execution_id &definition, const dialogue &context );
-        execution_start_result start_fatal( const execution_id &definition, const dialogue &context );
+        std::string check_start( const execution_id &definition, const dialogue &d );
+        std::string check_fatal_start( const execution_id &definition, const dialogue &d );
+        execution_start_result start_fatal( const execution_id &definition, const dialogue &d );
         int64_t on_fatal_hit( const execution_combat::attack_snapshot &snapshot );
         void release_fatal_attack( int64_t id, bool successful );
         bool death_pending( const Creature &who ) const;
@@ -116,7 +116,7 @@ class execution_manager
         bool owns_fatal_gravity( const Creature &who ) const;
         bool settle_fatal( const Creature &who, const std::string &reason );
         void settle_for_removal( const Creature &who, const std::string &reason );
-        void defer_kill( const Creature &target, const ma_event_context &context );
+        void defer_kill( const Creature &target, const ma_event_context &ctx );
         void reset_for_load();
         void end_restore();
         bool restoring() const;
@@ -147,7 +147,7 @@ class execution_manager
         void serialize( JsonOut &jsout ) const;
         void deserialize( const JsonObject &jo );
     private:
-        execution_start_result start_impl( const execution_id &definition, const dialogue &context,
+        execution_start_result start_impl( const execution_id &definition, const dialogue &d,
                                            std::optional<uint64_t> seed, bool check_only, bool fatal = false );
         struct impl;
         std::unique_ptr<impl> data;

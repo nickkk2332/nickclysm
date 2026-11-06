@@ -31,7 +31,7 @@
 #include "start_location.h"
 #include "type_id.h"
 
-static const item_group_id item_group_test_audit_two_hammers( "test_audit_two_hammers" );
+static const item_group_id Item_spawn_data_test_audit_two_hammers( "test_audit_two_hammers" );
 
 static const itype_id itype_hammer( "hammer" );
 
@@ -39,6 +39,7 @@ static const oter_str_id oter_field( "field" );
 
 static const overmap_special_id overmap_special_natural_spring( "natural_spring" );
 
+static const start_location_id start_location_audit_test_sloc( "audit_test_sloc" );
 static const start_location_id start_location_sloc_field( "sloc_field" );
 
 static const ter_str_id ter_t_floor( "t_floor" );
@@ -113,7 +114,7 @@ static std::string check_messages_for( const std::string &members )
     } );
 }
 
-static bool mentions( const std::string &messages, const std::string &what )
+static bool mentions( const std::string_view messages, const std::string_view what )
 {
     return messages.find( what ) != std::string::npos;
 }
@@ -276,7 +277,7 @@ TEST_CASE( "mgen-b05_item_category_spawn_rate_scales_each_item_once", "[audit][m
 
     SECTION( "rate 2 doubles every item" ) {
         tools.set_spawn_rate( 2.0f );
-        here.place_items( item_group_test_audit_two_hammers, 100, group_spot, group_spot, true,
+        here.place_items( Item_spawn_data_test_audit_two_hammers, 100, group_spot, group_spot, true,
                           calendar::start_of_cataclysm );
         CHECK( hammers_at( group_spot ) == 4 );
         place_hammer();
@@ -284,14 +285,14 @@ TEST_CASE( "mgen-b05_item_category_spawn_rate_scales_each_item_once", "[audit][m
     }
     SECTION( "rate 0 removes every item" ) {
         tools.set_spawn_rate( 0.0f );
-        here.place_items( item_group_test_audit_two_hammers, 100, group_spot, group_spot, true,
+        here.place_items( Item_spawn_data_test_audit_two_hammers, 100, group_spot, group_spot, true,
                           calendar::start_of_cataclysm );
         CHECK( hammers_at( group_spot ) == 0 );
         place_hammer();
         CHECK( hammers_at( item_spot ) == 0 );
     }
     SECTION( "rate 1 changes nothing" ) {
-        here.place_items( item_group_test_audit_two_hammers, 100, group_spot, group_spot, true,
+        here.place_items( Item_spawn_data_test_audit_two_hammers, 100, group_spot, group_spot, true,
                           calendar::start_of_cataclysm );
         CHECK( hammers_at( group_spot ) == 2 );
         place_hammer();
@@ -356,7 +357,7 @@ TEST_CASE( "mgen-b07_start_location_check_validates_parameters", "[audit][mapgen
             "terrain": [ { "om_terrain": "shelter", "parameters": )" + parameters + "} ] }" );
         jo.allow_omitted_members();
         start_location sloc;
-        sloc.id = start_location_id( "audit_test_sloc" );
+        sloc.id = start_location_audit_test_sloc;
         sloc.load( jo, "" );
         return capture_debugmsg_during( [&sloc]() {
             sloc.check();

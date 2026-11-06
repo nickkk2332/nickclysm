@@ -201,7 +201,7 @@ TEST_CASE( "spat-b02_3d_bresenham_reaches_target_when_z_ties_minor_axis", "[audi
         { -1, 5, -1 }, { 5, -1, -1 }, { -2, -6, 2 }, { -6, -2, -2 },
         { 3, 4, 3 }, { 4, 3, 3 }
     };
-    const tripoint origin( 0, 0, 0 );
+    const tripoint origin;
     for( const tripoint &target : targets ) {
         CAPTURE( target );
         const std::vector<tripoint> line = line_to( origin, target );

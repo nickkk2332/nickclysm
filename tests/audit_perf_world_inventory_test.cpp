@@ -324,6 +324,7 @@ phase_outcome old_phase_outcome( map &here, const tripoint_bub_ms &p,
     const size_t temp_n = tt.phase_temps.size();
     if( targ_n > 0 && temp_n + 1 == targ_n ) {
         std::vector<ter_str_id> targets;
+        targets.reserve( tt.phase_targets.size() );
         for( const ter_str_id &target : tt.phase_targets ) {
             targets.push_back( target == ter_t_pseudo_phase ? base.id() : target );
         }
@@ -433,6 +434,7 @@ TEST_CASE( "mgen-p01_submap_loads_freeze_and_thaw_as_before", "[audit][mapgen]" 
         for( const tripoint_abs_omt &omt : omts ) {
             const std::vector<tripoint_bub_ms> tiles = omt_surface( omt );
             std::vector<phase_outcome> expected;
+            expected.reserve( tiles.size() );
             for( const tripoint_bub_ms &p : tiles ) {
                 expected.push_back( old_phase_outcome( here, p, wgen ) );
             }
@@ -831,6 +833,7 @@ TEST_CASE( "omap-p02_terrain_searches_give_the_same_answers", "[audit][overmap]"
 
         rng_set_engine_seed( ++seed );
         const tripoint_abs_omt old_closest = old_omt_search::find_closest( origin, params );
+        // NOLINTNEXTLINE(cata-determinism)
         const cata_default_random_engine old_rng = rng_get_engine();
         rng_set_engine_seed( seed );
         const tripoint_abs_omt new_closest = overmap_buffer.find_closest( origin, params );
@@ -840,6 +843,7 @@ TEST_CASE( "omap-p02_terrain_searches_give_the_same_answers", "[audit][overmap]"
 
         rng_set_engine_seed( ++seed );
         const std::vector<tripoint_abs_omt> old_all = old_omt_search::find_all( origin, params );
+        // NOLINTNEXTLINE(cata-determinism)
         const cata_default_random_engine old_all_rng = rng_get_engine();
         rng_set_engine_seed( seed );
         const std::vector<tripoint_abs_omt> new_all = overmap_buffer.find_all( origin, params );
@@ -902,12 +906,14 @@ namespace
 {
 
 // What a search did on a fresh overmap buffer.
+// NOLINTNEXTLINE(cata-determinism,cert-msc32-c,cert-msc51-cpp): holds a copy of the game's RNG
 struct fresh_search {
     tripoint_abs_omt closest = tripoint_abs_omt::invalid;
     std::vector<tripoint_abs_omt> all;
     // the overmaps around the origin that exist afterwards
     std::vector<point_abs_om> overmaps;
     int generated = 0;
+    // A copy of the search's RNG state afterwards, assigned before use.
     cata_default_random_engine rng_after;
 };
 
@@ -950,6 +956,7 @@ fresh_search search_on_fresh_buffer( bool old_search, bool all, const tripoint_a
 TEST_CASE( "omap-p02_generating_searches_match_the_old_search", "[audit][overmap]" )
 {
     clear_avatar();
+    // NOLINTNEXTLINE(cata-determinism)
     const cata_default_random_engine saved_rng = rng_get_engine();
     const int overmaps_before = overmap_buffer.get_overmap_count();
     // far from anything the other tests generate
@@ -972,6 +979,7 @@ TEST_CASE( "omap-p02_generating_searches_match_the_old_search", "[audit][overmap
         { tripoint_om_omt( OMAPX - 2, 90, 0 ), { { "field", ot_match_type::type } }, 12, 0, 0, true },
     };
     rng_set_engine_seed( 7349 );
+    // NOLINTNEXTLINE(cata-determinism)
     const cata_default_random_engine rng = rng_get_engine();
     bool warmed_up = false;
     for( const generating_query &q : queries ) {

@@ -29,15 +29,11 @@ static const bionic_id
 test_bio_mutj03_blade_off_self_remove( "test_bio_mutj03_blade_off_self_remove" );
 static const bionic_id test_bio_mutj03_off_self_remove( "test_bio_mutj03_off_self_remove" );
 static const bionic_id test_bio_mutj03_passive( "test_bio_mutj03_passive" );
-static const bionic_id
-test_bio_mutj03_passive_self_remove( "test_bio_mutj03_passive_self_remove" );
+static const bionic_id test_bio_mutj03_passive_self_remove( "test_bio_mutj03_passive_self_remove" );
 static const bionic_id test_bio_mutj03_toggle( "test_bio_mutj03_toggle" );
-static const bionic_id
-test_bio_mutj03_toggle_self_remove( "test_bio_mutj03_toggle_self_remove" );
+static const bionic_id test_bio_mutj03_toggle_self_remove( "test_bio_mutj03_toggle_self_remove" );
 static const bionic_id test_bio_npcj01_blade( "test_bio_npcj01_blade" );
 static const bionic_id test_bio_npcj01_shield( "test_bio_npcj01_shield" );
-
-static const efftype_id effect_adrenaline( "adrenaline" );
 
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_MUTJ03_ACTIVATE( "EOC_TEST_MUTJ03_ACTIVATE" );
@@ -47,6 +43,8 @@ static const effect_on_condition_id
 effect_on_condition_EOC_TEST_MUTJ03_DEACTIVATE( "EOC_TEST_MUTJ03_DEACTIVATE" );
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_MUTJ03_NPC_GUN( "EOC_TEST_MUTJ03_NPC_GUN" );
+
+static const efftype_id effect_adrenaline( "adrenaline" );
 
 static const itype_id itype_bio_blade_weapon( "bio_blade_weapon" );
 

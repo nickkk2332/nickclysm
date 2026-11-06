@@ -200,10 +200,13 @@ TEST_CASE( "npc_decision_tree_loads_unchanged", "[npc][behavior]" )
            "goal return_to_camp\n"
            "    npc_free_time: if npc_is_camp_idle; score npc_free_time_urgency; goal free_time\n" );
     // inverted conditions and arguments, from the monster goals
+    // The summary's own spacing, not prose: ", !" marks an inverted condition.
+    // NOLINTBEGIN(cata-text-style)
     CHECK( describe( behavior_node_t_ABSORB_ITEMS.obj() ) ==
            "ABSORB_ITEMS: strategy sequential; if monster_not_hallucination, !monster_split_possible, "
            "monster_special_available(!SPLIT), monster_special_available(ABSORB_ITEMS), "
            "monster_items_available; goal ABSORB_ITEMS\n" );
+    // NOLINTEND(cata-text-style)
 }
 
 TEST_CASE( "behavior_copy_from_extend_and_delete_children", "[npc][behavior]" )
@@ -352,7 +355,7 @@ TEST_CASE( "math_oracle_function_reads_named_scores", "[npc][behavior][math_pars
     CHECK_THROWS_WITH( unknown.parse( "oracle('no_such_score')", false ),
                        Catch::Matchers::Contains( "\"no_such_score\" is not a named score" ) );
     load_node( "test_val_bad",
-               "{ \"goal\": \"g\", \"score\": { \"math\": [ \"oracle('no_such_score')\" ] } }" );
+               R"lit({ "goal": "g", "score": { "math": [ "oracle('no_such_score')" ] } })lit" );
     CHECK_THROWS_WITH( finalize_conditions(), Catch::Matchers::Contains( "is not a named score" ) );
     // one from a variable, when it is read
     guy.set_value( "bt_score_name", std::string( "no_such_score" ) );
@@ -636,8 +639,10 @@ TEST_CASE( "behavior_delete_conditions", "[behavior]" )
         { "predicate": "npc_on_shift" },
         { "predicate": "test_bt_tagged", "argument": "b" },
         { "predicate": "npc_displaced_from_post", "invert_result": true } ] })" );
-    CHECK( base.summary() == "if test_bt_tagged(a), npc_on_shift, test_bt_tagged(b), "
-           "!npc_displaced_from_post; goal g" );
+    // The summaries' own spacing, not prose: ", !" marks an inverted condition.
+    // NOLINTBEGIN(cata-text-style)
+    CHECK( base.summary() ==
+           "if test_bt_tagged(a), npc_on_shift, test_bt_tagged(b), !npc_displaced_from_post; goal g" );
     // by name and argument: only that one
     CHECK( load_node( "test_val_one", R"({ "delete": { "conditions": [
         { "predicate": "test_bt_tagged", "argument": "b" } ] } })", &base ).summary() ==
@@ -645,6 +650,7 @@ TEST_CASE( "behavior_delete_conditions", "[behavior]" )
     // by name: every one using the predicate
     CHECK( load_node( "test_val_all", R"({ "delete": { "conditions": [ "test_bt_tagged" ] } })",
                       &base ).summary() == "if npc_on_shift, !npc_displaced_from_post; goal g" );
+    // NOLINTEND(cata-text-style)
     CHECK( load_node( "test_val_two", R"({ "delete": { "conditions": [ "npc_on_shift",
         "npc_displaced_from_post" ] } })", &base ).summary() ==
            "if test_bt_tagged(a), test_bt_tagged(b); goal g" );

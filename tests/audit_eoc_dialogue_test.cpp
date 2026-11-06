@@ -70,6 +70,8 @@ static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B15_RECURRING( "EOC_AUDIT_B15_RECURRING" );
 static const effect_on_condition_id
 effect_on_condition_EOC_AUDIT_B15_TAKE_CONTROL( "EOC_AUDIT_B15_TAKE_CONTROL" );
+static const effect_on_condition_id
+effect_on_condition_EOC_BROWNIE_INDOOR_BLINK( "EOC_BROWNIE_INDOOR_BLINK" );
 static const effect_on_condition_id effect_on_condition_EOC_HAUNTING_SPAWN( "EOC_HAUNTING_SPAWN" );
 
 static const faction_id faction_your_followers( "your_followers" );
@@ -668,11 +670,13 @@ TEST_CASE( "eoc-b09_talk_none_stays_on_the_first_topic", "[audit][npc_talk]" )
 {
     const auto back_from = []( const std::vector<std::string> &ids ) {
         std::vector<talk_topic> topic_stack;
+        topic_stack.reserve( ids.size() );
         for( const std::string &id : ids ) {
             topic_stack.emplace_back( id );
         }
         go_back_from_topic( topic_stack );
         std::vector<std::string> left;
+        left.reserve( topic_stack.size() );
         for( const talk_topic &topic : topic_stack ) {
             left.push_back( topic.id );
         }
@@ -944,17 +948,16 @@ TEST_CASE( "eoc_brownie_blink_gives_up_without_an_indoor_spot", "[.][xedra_evolv
         clear_avatar();
     } );
     avatar &u = get_avatar();
-    const effect_on_condition_id blink( "EOC_BROWNIE_INDOOR_BLINK" );
     const tripoint_bub_ms start = u.pos_bub();
     SECTION( "indoors with only open ground around: it stays put" ) {
         roof_around_avatar( 0 );
         REQUIRE_FALSE( get_map().is_outside( start ) );
-        CHECK( runs_quietly( blink ) );
+        CHECK( runs_quietly( effect_on_condition_EOC_BROWNIE_INDOOR_BLINK ) );
         CHECK( u.pos_bub() == start );
     }
     SECTION( "indoors everywhere: it slips 5 to 10 tiles away" ) {
         roof_around_avatar( 12 );
-        CHECK( runs_quietly( blink ) );
+        CHECK( runs_quietly( effect_on_condition_EOC_BROWNIE_INDOOR_BLINK ) );
         CHECK( rl_dist( u.pos_bub(), start ) >= 5 );
         CHECK( square_dist( u.pos_bub(), start ) <= 10 );
     }

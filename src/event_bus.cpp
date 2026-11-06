@@ -119,7 +119,7 @@ void event_bus::send_with_talker( vehicle *alpha,  Creature *beta, const cata::e
 }
 namespace
 {
-bool is_integer_in( const std::string &v, long long min, long long max )
+bool is_integer_in( const std::string_view v, long long min, long long max )
 {
     long long value = 0;
     const char *const end = v.data() + v.size();

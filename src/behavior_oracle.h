@@ -59,8 +59,8 @@ extern std::unordered_set<std::string> scores_with_argument;
 
 // The oracle a built-in predicate or score reads; `any` for a name that isn't built in. Given
 // another kind of oracle, a built-in fails (predicates) or gives 0 (scores) with a debugmsg.
-oracle_kind predicate_kind( const std::string &name );
-oracle_kind score_kind( const std::string &name );
+oracle_kind predicate_kind( std::string_view name );
+oracle_kind score_kind( std::string_view name );
 
 } // namespace behavior
 #endif // CATA_SRC_BEHAVIOR_ORACLE_H

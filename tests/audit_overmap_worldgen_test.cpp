@@ -35,10 +35,10 @@
 #include "submap.h"
 #include "type_id.h"
 
-static const overmap_connection_id overmap_connection_test_audit_rail( "test_audit_rail" );
-
 static const oter_str_id oter_field( "field" );
 static const oter_str_id oter_test_forest_very_thick( "test_forest_very_thick" );
+
+static const overmap_connection_id overmap_connection_test_audit_rail( "test_audit_rail" );
 
 static const overmap_special_id overmap_special_test_audit_mansion( "test_audit_mansion" );
 static const overmap_special_id overmap_special_test_audit_road_shack( "test_audit_road_shack" );

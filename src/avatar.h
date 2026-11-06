@@ -136,10 +136,10 @@ class avatar : public Character
             return this;
         }
 
-        void die( map *here, Creature *killer ) override;
+        void die( map *here, Creature *source ) override;
         void prevent_death() override;
         /** Run native prevention/events once; presentation waits for the game loop. */
-        bool finalize_death( Creature *killer );
+        bool finalize_death( Creature *source );
         bool death_finalized() const {
             return death_finalized_;
         }

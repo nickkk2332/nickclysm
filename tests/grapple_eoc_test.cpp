@@ -72,10 +72,9 @@ static avatar &setup_scene()
     return you;
 }
 
-static const bodypart_id &no_part()
+static bodypart_id no_part()
 {
-    static const bodypart_id null_part = bodypart_str_id::NULL_ID().id();
-    return null_part;
+    return bodypart_str_id::NULL_ID().id();
 }
 
 static bool test_condition( const std::string &condition, const Creature &alpha,
@@ -133,7 +132,15 @@ static std::string global_string( const std::string &name )
 
 static void make_thrower( Character &guy )
 {
+    if( guy.is_npc() ) {
+        // A random NPC's traits, gear, bionics and wounds (and with mods, more) would weaken
+        // its arms. It holds nothing yet.
+        const tripoint_bub_ms pos = guy.pos_bub();
+        clear_character( guy );
+        guy.setpos( get_map(), pos );
+    }
     guy.set_str_base( 10 );
+    guy.reset_stats();
     guy.set_skill_level( skill_unarmed, 2 );
     guy.set_skill_level( skill_throw, 2 );
     REQUIRE( guy.get_arm_str() == 10 );
@@ -501,7 +508,7 @@ TEST_CASE( "grapple_eoc_u_throw_grabbed", "[grapple][eoc]" )
     SECTION( "diagonally away" ) {
         make_thrower( you );
         grapple::end_hold( you, &mon );
-        mon.setpos( here, you.pos_bub() + tripoint( 1, 1, 0 ) );
+        mon.setpos( here, you.pos_bub() + tripoint::south_east );
         REQUIRE( grapple::start_hold( you, mon, 20, no_part() ) );
         apply( R"({ "u_throw_grabbed": { } })", you, bystander );
         CHECK( mon.pos_bub() == you.pos_bub() + tripoint( 4, 4, 0 ) );

@@ -3607,7 +3607,7 @@ void target_ui::update_status()
                !gunmode_checks_common( *you, get_map(), msgbuf, relevant->gun_current_mode() ) ) ) {
         status = Status::OutOfAmmo;
     } else if( ( src == dst ) && !( mode == TargetMode::Spell &&
-                                    casting->is_valid_target( spell_target::self ) ) ) {
+                                    casting->is_valid_target( spell_target::self ) ) ) { // NOLINT(bugprone-branch-clone)
         // TODO: consider allowing targeting yourself with turrets
         status = Status::BadTarget;
     } else if( dist_fn( dst ) > range ) {
@@ -4446,8 +4446,8 @@ void target_ui::panel_throw_creature( int &text_y )
     const float force = grapple::throw_force_at( grapple::throw_force( *you, thrown ), distance );
     const int tier = grapple::throw_verb_tier( *you, thrown, force );
     const nc_color force_color = tier <= 1 ? c_light_green : tier == 2 ? c_yellow : c_red;
-    //~ Throwing a creature. %1$d: force of the throw, %2$s: shove, toss, throw, hurl or launch
     trim_and_print( w_target, point( 1, text_y++ ), width, force_color,
+                    //~ Throwing a creature. %1$d: force of the throw, %2$s: shove, toss, throw, hurl or launch
                     string_format( _( "Force: %1$d (%2$s)" ), static_cast<int>( force ),
                                    grapple::throw_verb( *you, thrown, force, 0 ) ) );
     // The cost of a throw this far, and whether you have it in you.
@@ -4477,8 +4477,8 @@ void target_ui::panel_knockback( int &text_y )
         return;
     }
     const int distance = std::clamp( square_dist( src.xy(), dst.xy() ), 1, range );
-    //~ Aiming a technique's knockback: how many tiles the target is knocked back
     trim_and_print( w_target, point( 1, text_y++ ), width, c_light_gray,
+                    //~ Aiming a technique's knockback: how many tiles the target is knocked back
                     string_format( n_gettext( "Knockback: %d tile", "Knockback: %d tiles", distance ),
                                    distance ) );
     panel_flight_path( text_y, distance );

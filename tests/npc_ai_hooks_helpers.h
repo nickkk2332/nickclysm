@@ -11,6 +11,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -60,95 +61,23 @@ struct ai_hooks_world {
     // each faction as it was, nullopt for one that didn't exist yet
     std::vector<std::pair<faction_id, std::optional<faction>>> factions;
 
-    ai_hooks_world() {
-        if( bubble != tripoint_abs_sm() ) {
-            get_map().load( tripoint_abs_sm(), false );
-        }
-        clear_map();
-        followers = get_avatar().follower_ids;
-        get_avatar().setpos( get_map(), npc_spot + tripoint( -10, 0, 0 ) );
-        for( const char *id : {
-                 "your_followers", "amf", "tacoma_commune", "debuggers", "test_npc_ai_deserters",
-                 "test_npc_ai_hawks", "test_npc_ai_doves"
-             } ) {
-            const std::map<faction_id, faction> &all = g->faction_manager_ptr->all();
-            const auto found = all.find( faction_id( id ) );
-            factions.emplace_back( faction_id( id ), found == all.end() ? std::nullopt :
-                                   std::optional<faction>( found->second ) );
-        }
-    }
+    ai_hooks_world();
     ai_hooks_world( const ai_hooks_world & ) = delete;
     ai_hooks_world &operator=( const ai_hooks_world & ) = delete;
-    ~ai_hooks_world() {
-        clear_npcs();
-        for( const std::pair<faction_id, std::optional<faction>> &fac : factions ) {
-            if( fac.second ) {
-                *g->faction_manager_ptr->get( fac.first ) = *fac.second;
-            } else {
-                g->faction_manager_ptr->remove_faction( fac.first );
-            }
-        }
-        avatar &u = get_avatar();
-        u.follower_ids = followers;
-        u.cash = cash;
-        calendar::turn = turn;
-        for( const std::string &name : hook_globals ) {
-            get_globals().remove_global_value( name );
-        }
-        map &here = get_map();
-        if( here.get_abs_sub() != bubble ) {
-            here.load( bubble, false );
-        }
-        u.setpos( here, here.get_bub( avatar_at ) );
-    }
+    ~ai_hooks_world() noexcept( false );
 };
 
 // an NPC with no attitude, mission, post or opinion of the avatar, in an empty field
-inline npc &hooks_npc()
-{
-    npc &guy = spawn_npc( npc_spot.xy(), "test_talker" );
-    clear_character( guy, true );
-    guy.setpos( get_map(), npc_spot );
-    guy.set_attitude( NPCATT_NULL );
-    guy.set_mission( NPC_MISSION_NULL );
-    guy.guard_pos = std::nullopt;
-    guy.clear_ai_guard_pos();
-    guy.personality = npc_personality();
-    guy.op_of_u = npc_opinion();
-    get_map().build_map_cache( 0 );
-    return guy;
-}
+npc &hooks_npc();
 
 // the NPC events, in the order they went out
 struct npc_event_recorder : public event_subscriber {
     std::vector<cata::event> events;
 
-    npc_event_recorder() {
-        get_event_bus().subscribe( this );
-    }
+    npc_event_recorder();
     using event_subscriber::notify;
-    void notify( const cata::event &e ) override {
-        switch( e.type() ) {
-            case event_type::npc_attitude_changed:
-            case event_type::npc_becomes_hostile:
-            case event_type::npc_recruited:
-            case event_type::npc_dismissed:
-            case event_type::npc_mutinies:
-                events.push_back( e );
-                break;
-            default:
-                break;
-        }
-    }
-    std::vector<cata::event> of( const event_type type ) const {
-        std::vector<cata::event> ret;
-        for( const cata::event &e : events ) {
-            if( e.type() == type ) {
-                ret.push_back( e );
-            }
-        }
-        return ret;
-    }
+    void notify( const cata::event &e ) override;
+    std::vector<cata::event> of( event_type type ) const;
 };
 
 inline std::string str_field( const cata::event &e, const std::string &field )
@@ -168,36 +97,9 @@ inline double global_number( const std::string &name )
     return value == nullptr ? 0.0 : value->dbl();
 }
 
-inline bool test_condition( const std::string &condition, const_dialogue const &d )
-{
-    const JsonObject jo = json_loader::from_string( R"({ "condition": )" + condition + " }" );
-    jo.allow_omitted_members();
-    conditional_t::func cond;
-    read_condition( jo, "condition", cond, false );
-    finalize_conditions();
-    return cond( d );
-}
-
-inline talk_effect_t load_effect( const std::string &effect )
-{
-    const JsonObject jo = json_loader::from_string( R"({ "effect": )" + effect + " }" );
-    jo.allow_omitted_members();
-    talk_effect_t ret( jo, "effect", "npc_ai_hooks_test" );
-    finalize_conditions();
-    return ret;
-}
-
-inline void run_effect( const std::string &effect, dialogue &d )
-{
-    load_effect( effect ).apply( d );
-}
-
-inline double eval_math( const std::string &expression, const_dialogue const &d )
-{
-    math_exp exp;
-    REQUIRE( exp.parse( expression ) );
-    return exp.eval( d );
-}
-
+bool test_condition( const std::string &condition, const_dialogue const &d );
+talk_effect_t load_effect( const std::string &effect );
+void run_effect( const std::string &effect, dialogue &d );
+double eval_math( std::string_view expression, const_dialogue const &d );
 
 #endif // CATA_TESTS_NPC_AI_HOOKS_HELPERS_H

@@ -1602,7 +1602,7 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
     execution_combat::projectile_hit_scope execution_contact( *this, source, attack, here,
             hit_selection.is_crit );
     {
-        const auto primary = execution_contact.capture_damage();
+        const execution_combat::direct_damage_scope primary = execution_contact.capture_damage();
         dealt_dam = deal_damage( source, hit_selection.bp_hit, impact, wp_attack_copy,
                                  hit_selection.wp ? *hit_selection.wp : default_weakpoint );
     }

@@ -1149,7 +1149,7 @@ void mapgen_function_json_base::setup_setmap( const JsonArray &parray )
                 tmpop == JMAPGEN_SETMAP_BURN || tmpop == JMAPGEN_SETMAP_VARIABLE ) ) {
             const bool is_line = setmap_optype == JMAPGEN_SETMAP_OPTYPE_LINE;
             pjo.throw_error_at( is_line ? "line" : "square",
-                                string_format( "\"%s\" only works with \"point\"", tmpval ) );
+                                string_format( R"("%s" only works with "point")", tmpval ) );
         }
         jmapgen_int tmp_x2( 0, 0 );
         jmapgen_int tmp_y2( 0, 0 );
@@ -2418,7 +2418,7 @@ class jmapgen_liquid_item : public jmapgen_piece
 };
 
 // The "faction" owning spawned items or vehicles must exist; empty means none
-static void check_faction( const std::string &faction, const std::string &context )
+void check_faction( const std::string &faction, const std::string &context )
 {
     if( !faction.empty() && !faction_id( faction ).is_valid() ) {
         debugmsg( "Invalid faction \"%s\" in %s", faction, context );

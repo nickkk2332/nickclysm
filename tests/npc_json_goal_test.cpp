@@ -160,6 +160,9 @@ TEST_CASE( "npc_decision_category_placed_before_and_after", "[npc][npc_goal]" )
     }
 }
 
+static const bionic_id bio_power_storage( "bio_power_storage" );
+static const bionic_id test_bio_npcj01_shield( "test_bio_npcj01_shield" );
+
 static const faction_id faction_your_followers( "your_followers" );
 
 static const itype_id itype_backpack( "backpack" );
@@ -170,6 +173,16 @@ static const itype_id itype_water_clean( "water_clean" );
 
 static const mtype_id mon_zombie( "mon_zombie" );
 
+static const npc_decision_category_id npc_decision_category_follow( "follow" );
+static const npc_decision_category_id npc_decision_category_needs( "needs" );
+static const npc_decision_category_id npc_decision_category_test_goal_top( "test_goal_top" );
+
+static const string_id<behavior::node_t> behavior_node_t_test_goal_until( "test_goal_until" );
+
+static const ter_str_id ter_t_wall( "t_wall" );
+
+static const weather_type_id weather_clear( "clear" );
+
 static constexpr tripoint_bub_ms goal_origin{ 50, 50, 0 };
 
 static const std::vector<std::string> goal_globals = {
@@ -179,13 +192,6 @@ static const std::vector<std::string> goal_globals = {
     "test_goal_timeout_reason", "test_goal_spot", "test_goal_listen", "test_goal_changed_old",
     "test_goal_changed_new", "test_goal_changed_u", "test_goal_name", "test_goal_end_pos"
 };
-
-static const bionic_id bio_power_storage( "bio_power_storage" );
-static const bionic_id test_bio_npcj01_shield( "test_bio_npcj01_shield" );
-
-static const ter_str_id ter_t_wall( "t_wall" );
-
-static const weather_type_id weather_clear( "clear" );
 
 static void forget_goal_globals()
 {
@@ -322,9 +328,9 @@ static bool load_goal_node( npc_goal_registry &reg, const std::string &node,
     return loaded;
 }
 
-static bool has_error( const std::vector<std::string> &errors, const std::string &part )
+static bool has_error( const std::vector<std::string> &errors, const std::string_view part )
 {
-    return std::any_of( errors.begin(), errors.end(), [&part]( const std::string & e ) {
+    return std::any_of( errors.begin(), errors.end(), [&part]( const std::string_view e ) {
         return e.find( part ) != std::string::npos;
     } );
 }
@@ -356,7 +362,7 @@ TEST_CASE( "npc_json_goal_load_errors", "[npc][npc_goal]" )
     // a node loaded again replaces what it defined
     CHECK( load_goal_node( reg, "n1",
                            R"({ "category": "follow", "goal": { "id": "test_load_goal" } })" ) );
-    CHECK( reg.find( "test_load_goal" )->category == npc_decision_category_id( "follow" ) );
+    CHECK( reg.find( "test_load_goal" )->category == npc_decision_category_follow );
     CHECK( reg.check().empty() );
 
     SECTION( "an unknown category" ) {
@@ -985,7 +991,7 @@ TEST_CASE( "npc_json_goal_reaction_held_only_by_a_winning_pick", "[npc][npc_goal
     // drinking, in test_goal_top too: the goal's score (none) doesn't beat its thirst
     const std::optional<npc_decision_category_id> was =
         npc_decision_category::set_goal_category_for_test(
-            "drink_water", npc_decision_category_id( "test_goal_top" ) );
+            "drink_water", npc_decision_category_test_goal_top );
     on_out_of_scope restore( [was]() {
         npc_decision_category::set_goal_category_for_test( "drink_water", was );
     } );
@@ -1014,7 +1020,7 @@ TEST_CASE( "npc_builtin_goal_rules_follow_the_goal", "[npc][npc_goal]" )
     goal_test_tree tree( "test_goal_idle_tree" );
     const std::optional<npc_decision_category_id> was =
         npc_decision_category::set_goal_category_for_test(
-            "fight", npc_decision_category_id( "needs" ) );
+            "fight", npc_decision_category_needs );
     on_out_of_scope restore( [was]() {
         npc_decision_category::set_goal_category_for_test( "fight", was );
     } );
@@ -1035,14 +1041,14 @@ TEST_CASE( "npc_builtin_goal_without_a_category_is_a_load_error", "[npc][npc_goa
     CHECK( check_goal_claims( claims, {} ).empty() );
     // a mod's needs without copy-from and without its goals
     claims.erase( std::remove_if( claims.begin(), claims.end(), []( const npc_goal_claim & c ) {
-        return c.category == npc_decision_category_id( "needs" );
+        return c.category == npc_decision_category_needs;
     } ), claims.end() );
     const std::vector<std::string> errors = check_goal_claims( claims, {} );
     CHECK( has_error( errors, "built-in goal drink_water has no npc_decision_category" ) );
     CHECK( has_error( errors, "built-in goal start_fire has no npc_decision_category" ) );
     // a node may give it one
     const std::vector<npc_goal_claim> from_a_node = {
-        { "drink_water", npc_decision_category_id( "needs" ), "behavior x" }
+        { "drink_water", npc_decision_category_needs, "behavior x" }
     };
     CHECK_FALSE( has_error( check_goal_claims( claims, from_a_node ), "drink_water" ) );
 }
@@ -1064,7 +1070,7 @@ TEST_CASE( "npc_json_goal_node_override_keeps_the_goal", "[npc][npc_goal]" )
 
     // copy-from in the loaded data: the node keeps its goal, still registered
     const npc_goal_registry saved = npc_json_goals::registry();
-    behavior::node_t node = behavior::node_t( string_id<behavior::node_t>( "test_goal_until" ).obj() );
+    behavior::node_t node = behavior::node_t( behavior_node_t_test_goal_until.obj() );
     node.was_loaded = true;
     const JsonObject jo = json_loader::from_string(
                               R"({ "conditions": [ { "predicate": "npc_has_target", "invert_result": true } ] })" );
@@ -1072,7 +1078,7 @@ TEST_CASE( "npc_json_goal_node_override_keeps_the_goal", "[npc][npc_goal]" )
     CHECK( node.goal() == "test_goal_until" );
     const npc_json_goal *kept = npc_json_goals::find( "test_goal_until" );
     REQUIRE( kept != nullptr );
-    CHECK( kept->node == string_id<behavior::node_t>( "test_goal_until" ) );
+    CHECK( kept->node == behavior_node_t_test_goal_until );
     npc_json_goals::registry() = saved;
 }
 

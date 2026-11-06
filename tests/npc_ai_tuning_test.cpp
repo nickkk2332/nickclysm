@@ -24,9 +24,9 @@
 // NPC-J10: the npc_class "ai_tuning": its defaults are the constants it replaced, a class's
 // numbers change when its NPCs act, copies inherit them, and the load checks them.
 
-static const npc_class_id npc_class_NC_DOCTOR( "NC_DOCTOR" );
-static const npc_class_id npc_class_test_npc_ai_tuned( "test_npc_ai_tuned" );
-static const npc_class_id npc_class_test_npc_ai_tuned_child( "test_npc_ai_tuned_child" );
+static const npc_class_id NC_DOCTOR( "NC_DOCTOR" );
+static const npc_class_id test_npc_ai_tuned( "test_npc_ai_tuned" );
+static const npc_class_id test_npc_ai_tuned_child( "test_npc_ai_tuned_child" );
 
 static void check_same_tuning( const npc_ai_tuning &a, const npc_ai_tuning &b )
 {
@@ -92,7 +92,7 @@ TEST_CASE( "npc_ai_tuning_defaults_are_the_old_constants", "[npc][npc_ai_hooks][
 
     // no class but the test ones sets any
     for( const npc_class &cls : npc_class::get_all() ) {
-        if( cls.id == npc_class_test_npc_ai_tuned || cls.id == npc_class_test_npc_ai_tuned_child ) {
+        if( cls.id == test_npc_ai_tuned || cls.id == test_npc_ai_tuned_child ) {
             continue;
         }
         CAPTURE( cls.id.str() );
@@ -108,7 +108,7 @@ TEST_CASE( "npc_ai_tuning_defaults_are_the_old_constants", "[npc][npc_ai_hooks][
 
 TEST_CASE( "npc_ai_tuning_from_the_class_and_its_copies", "[npc][npc_ai_hooks][npc_tuning]" )
 {
-    const npc_ai_tuning &t = npc_class_test_npc_ai_tuned->get_ai_tuning();
+    const npc_ai_tuning &t = test_npc_ai_tuned->get_ai_tuning();
     CHECK( t.drink_water.act == 0.25f );
     CHECK( t.thirst_act_level() == 300 );
     CHECK( t.tired_level() == 100 );
@@ -123,7 +123,7 @@ TEST_CASE( "npc_ai_tuning_from_the_class_and_its_copies", "[npc][npc_ai_hooks][n
     CHECK( t.stall_window == 10_minutes );
     CHECK( t.stall_duration == 1_hours );
     // a copy keeps what it doesn't change
-    const npc_ai_tuning &child = npc_class_test_npc_ai_tuned_child->get_ai_tuning();
+    const npc_ai_tuning &child = test_npc_ai_tuned_child->get_ai_tuning();
     CHECK( child.goto_order == 0.8f );
     npc_ai_tuning expected = t;
     expected.goto_order = 0.8f;
@@ -137,9 +137,9 @@ TEST_CASE( "npc_ai_tuning_changes_when_the_npc_acts", "[npc][npc_ai_hooks][npc_t
     const npc_class_id vanilla = guy.myclass;
     const behavior::character_oracle_t oracle( &guy );
     const auto tuned = [&guy]( const bool on ) {
-        guy.myclass = on ? npc_class_test_npc_ai_tuned : npc_class_NC_DOCTOR;
+        guy.myclass = on ? test_npc_ai_tuned : NC_DOCTOR;
     };
-    REQUIRE( vanilla == npc_class_NC_DOCTOR );
+    REQUIRE( vanilla == NC_DOCTOR );
     CHECK( &ai_tuning_of( guy ) == &vanilla->get_ai_tuning() );
 
     SECTION( "thirst" ) {
