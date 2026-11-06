@@ -44,6 +44,8 @@
 #include "rng.h"
 #include "talker.h"
 
+static const itype_id itype_power_demo_ward_focus( "power_demo_ward_focus" );
+
 namespace
 {
 const bodypart_str_id torso( "torso" );
@@ -1006,11 +1008,16 @@ TEST_CASE( "power_upkeep_rejects_unsupported_actor_adapters_before_granting_a_fr
 TEST_CASE( "power_demo_native_item_toggles_compose_and_charged_strikes_recover_one_charge",
            "[power_ownership][powers][iuse]" )
 {
+    // This checks the powers_demo mod's own items, so it runs only with that mod loaded, as in
+    // CI's mods job.
+    if( !itype_power_demo_ward_focus.is_valid() ) {
+        return;
+    }
     power_world world;
     map &here = get_map();
     avatar &owner = get_avatar();
     monster &target = victim();
-    item &ward = here.add_item( owner.pos_bub(), item( itype_id( "power_demo_ward_focus" ) ) );
+    item &ward = here.add_item( owner.pos_bub(), item( itype_power_demo_ward_focus ) );
     item &mirror = here.add_item( owner.pos_bub() + tripoint_rel_ms::west,
                                   item( itype_id( "power_demo_mirror_focus" ) ) );
     const auto use = [&]( item & focus, const tripoint_bub_ms & position ) {
