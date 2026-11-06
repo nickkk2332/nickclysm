@@ -36,6 +36,8 @@ struct narration_world {
         calendar::turn = calendar::turn_zero + 12_hours;
         get_avatar().setpos( get_map(), tripoint_bub_ms( 60, 60, 0 ) );
         get_map().build_map_cache( 0 );
+        // clear_avatar() leaves the cached sight limit of whichever test ran before.
+        get_avatar().recalc_sight_limits();
         Messages::clear_messages();
     }
     ~narration_world() {
@@ -168,6 +170,7 @@ TEST_CASE( "execution_narration_missing_or_unobserved_anchors_create_fresh_visib
     const bool hidden = GENERATE( false, true );
     if( hidden ) {
         get_avatar().add_effect( efftype_id( "blind" ), 1_hours );
+        get_avatar().recalc_sight_limits();
         REQUIRE_FALSE( get_avatar().sees( get_map(), target ) );
     }
     const int64_t id = start_narration( "test_exec_narration", target );
@@ -200,6 +203,8 @@ TEST_CASE( "execution_narration_selects_visual_or_heard_text_without_exposing_un
     const bool deaf = GENERATE( false, true );
     if( blind ) {
         get_avatar().add_effect( efftype_id( "blind" ), 1_hours );
+        get_avatar().recalc_sight_limits();
+        REQUIRE_FALSE( get_avatar().sees( get_map(), target ) );
     }
     if( deaf ) {
         get_avatar().add_effect( efftype_id( "deaf" ), 1_hours );
@@ -312,6 +317,26 @@ TEST_CASE( "owned_messages_trimmed_anchors_do_not_restore_pruned_history",
     CHECK( log.messages[1].message == "New segment." );
     CHECK( log.compact_messages( 1 ).size() == 1 );
     CHECK( log.compact_messages( 0 ).empty() );
+}
+
+TEST_CASE( "compact_messages_can_leave_cooldown_hidden_messages_out_of_the_count",
+           "[messages][executions]" )
+{
+    message_log log;
+    log.messages.emplace_back( std::string( "Visible." ), m_neutral );
+    for( int i = 0; i < 3; ++i ) {
+        log.messages.emplace_back( std::string( "Hidden." ), m_neutral );
+        log.messages.back().cooldown_hidden = true;
+    }
+    // Counted, the newest hidden message takes the only group.
+    const std::vector<game_message> counted = log.compact_messages( 1 );
+    REQUIRE( counted.size() == 1 );
+    CHECK( counted[0].is_in_cooldown() );
+    // Not counted, the sidebar still gets the visible message for its one line.
+    const std::vector<game_message> uncounted = log.compact_messages( 1, false );
+    REQUIRE( uncounted.size() == 4 );
+    CHECK( uncounted[0].message == "Visible." );
+    CHECK_FALSE( uncounted[0].is_in_cooldown() );
 }
 
 TEST_CASE( "owned_messages_keep_legacy_logs_and_reserve_saved_identities",

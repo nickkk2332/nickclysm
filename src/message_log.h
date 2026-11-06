@@ -56,7 +56,13 @@ class message_log
 
         Messages::owned_message_result add_owned( const std::string &owner, const std::string &anchor,
                 std::string text, const std::string &separator, size_t limit );
-        std::vector<game_message> compact_messages( size_t count ) const;
+        /**
+         * The last @p count message groups, oldest first, with appendable entries joined.
+         * When @p count_hidden is false, messages hidden by the message cooldown don't count
+         * toward @p count (they are still returned), so callers that skip them can fill
+         * every line with visible messages.
+         */
+        std::vector<game_message> compact_messages( size_t count, bool count_hidden = true ) const;
         std::vector<std::pair<std::string, std::string>> recent( size_t count,
                 bool compact = false ) const;
         void clear();

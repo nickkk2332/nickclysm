@@ -133,7 +133,7 @@ Messages::owned_message_result message_log::add_owned( const std::string &owner,
     return result;
 }
 
-std::vector<game_message> message_log::compact_messages( size_t count ) const
+std::vector<game_message> message_log::compact_messages( size_t count, bool count_hidden ) const
 {
     std::vector<game_message> result;
     result.reserve( std::min( count, messages.size() ) );
@@ -148,7 +148,9 @@ std::vector<game_message> message_log::compact_messages( size_t count ) const
     size_t groups = 0;
     while( begin > 0 ) {
         const size_t n = begin - 1;
-        if( begin == messages.size() || !joins( messages[n], messages[n + 1] ) ) {
+        // A hidden message never joins another, so it is always a group of its own.
+        const bool counted = count_hidden || !messages[n].cooldown_hidden;
+        if( counted && ( begin == messages.size() || !joins( messages[n], messages[n + 1] ) ) ) {
             if( groups == count ) {
                 break;
             }
