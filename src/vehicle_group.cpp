@@ -183,6 +183,14 @@ bool string_id<VehicleSpawn>::is_valid() const
     return vspawns.count( *this ) > 0;
 }
 
+// GCC 16 speculatively devirtualizes the release of the shared_ptr made below for a
+// VehicleFunction_builtin into ~VehicleFunction_json, then warns that the json members lie
+// outside the builtin's 32-byte allocation. That path can't run: the guard on the real type
+// skips it.
+#pragma GCC diagnostic push
+#ifndef __clang__
+# pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
 void VehicleSpawn::load( const JsonObject &jo )
 {
     VehicleSpawn &spawn = vspawns[vspawn_id( jo.get_string( "id" ) )];
@@ -202,6 +210,7 @@ void VehicleSpawn::load( const JsonObject &jo )
         }
     }
 }
+#pragma GCC diagnostic pop
 
 void VehicleSpawn::reset()
 {
