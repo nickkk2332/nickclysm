@@ -65,15 +65,15 @@ bool Messages::has_undisplayed_messages()
 }
 void Messages::display_messages() {}
 void Messages::display_messages( const catacurses::window &, int, int, int, int ) {}
-void Messages::serialize( JsonOut &out )
+void Messages::serialize( JsonOut &json )
 {
-    out.member( "player_messages" );
-    messages.serialize( out );
+    json.member( "player_messages" );
+    messages.serialize( json );
 }
-void Messages::deserialize( const JsonObject &obj )
+void Messages::deserialize( const JsonObject &json )
 {
-    if( obj.has_member( "player_messages" ) ) {
-        messages.deserialize( obj.get_object( "player_messages" ) );
+    if( json.has_member( "player_messages" ) ) {
+        messages.deserialize( json.get_object( "player_messages" ) );
     } else {
         messages.clear();
     }
