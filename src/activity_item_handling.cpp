@@ -2563,12 +2563,14 @@ activity_reason_info multi_farm_activity_actor::multi_activity_can_do( Character
         const itype_id seed = options.get_seed();
         // Only the planting branch and its failure message read this, and it samples the
         // weather hundreds of times, so tiles to clear, harvest, fertilize or till skip it.
-        std::optional<ret_val<void>> can_plant_result;
-        const auto can_plant = [&]() -> const ret_val<void> & {
+        // An alias, because astyle 3.1 can't settle on a format for `-> const ret_val<void> &`.
+        using plant_check = ret_val<void>;
+        std::optional<plant_check> can_plant_result;
+        const auto can_plant = [&]() -> const plant_check & {
             if( !can_plant_result )
             {
                 can_plant_result = !seed.is_empty() ? warm_enough_to_plant( src_loc, seed ) :
-                ret_val<void>::make_success();
+                plant_check::make_success();
             }
             return *can_plant_result;
         };
