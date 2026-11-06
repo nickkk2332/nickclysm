@@ -26,6 +26,8 @@ struct pick_info {
     void deserialize( const JsonObject &jsobj );
     void set_src( const item_location &src_ );
     void set_dst( const item_location &dst_ );
+    /** Forgets the bulk load so far (its volume, source and destination), not the limits */
+    void reset_bulk_load();
 
     units::volume total_bulk_volume = 0_ml;
     item_location::type src_type = item_location::type::invalid;

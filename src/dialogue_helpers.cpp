@@ -46,13 +46,34 @@ diag_value const *maybe_read_var_value( const var_info &info, const_dialogue con
             return beta ? beta->maybe_get_value( info.name ) : nullptr;
         }
         case var_type::var: {
-            diag_value const *const var_val = d.maybe_get_value( info.name );
-            return var_val ? maybe_read_var_value( process_variable( var_val->str() ), d ) : nullptr;
+            const var_info target = resolve_var_val( info.name, d );
+            return target.type == var_type::last ? nullptr : maybe_read_var_value( target, d );
         }
         case var_type::last:
             return nullptr;
     }
     return nullptr;
+}
+
+var_info resolve_var_val( const std::string &name, const_dialogue const &d )
+{
+    // A var_val can name another var_val (`v_`); a few levels are plenty, and stop a loop
+    constexpr int max_depth = 8;
+    std::string context_name = name;
+    for( int depth = 0; depth < max_depth; ++depth ) {
+        diag_value const *const value = d.maybe_get_value( context_name );
+        if( value == nullptr ) {
+            return {};
+        }
+        var_info target = process_variable( value->str() );
+        if( target.type != var_type::var ) {
+            return target;
+        }
+        context_name = target.name;
+    }
+    debugmsg( R"(var_val "%s" leads through more than %d var_vals, probably in a loop.  %s)", name,
+              max_depth, d.get_callstack() );
+    return {};
 }
 
 var_info process_variable( const std::string &type )
@@ -65,6 +86,11 @@ var_info process_variable( const std::string &type )
         ret_str = type.substr( 2, type.size() - 2 );
     } else if( type.compare( 0, 2, "n_" ) == 0 ) {
         vt = var_type::npc;
+        ret_str = type.substr( 2, type.size() - 2 );
+    } else if( type.compare( 0, 2, "g_" ) == 0 ) {
+        ret_str = type.substr( 2, type.size() - 2 );
+    } else if( type.compare( 0, 2, "v_" ) == 0 ) {
+        vt = var_type::var;
         ret_str = type.substr( 2, type.size() - 2 );
     } else if( type.compare( 0, 1, "_" ) == 0 ) {
         vt = var_type::context;

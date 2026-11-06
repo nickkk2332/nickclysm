@@ -1,0 +1,68 @@
+[
+  {
+    "//": "MATH-J01 fixture: an effect whose duration and intensity math sets.",
+    "type": "effect_type",
+    "id": "audit_qf_math_effect",
+    "name": [ "Audit Math Effect" ],
+    "desc": [ "MATH-J01: an effect math sets the duration and intensity of." ],
+    "max_intensity": 5
+  },
+  {
+    "//": "MUT-J04 fixture: an active trait with a 10 turn cost timer.",
+    "type": "mutation",
+    "id": "AUDIT_QF_MATH_ACTIVE",
+    "name": { "str": "Audit Math Active Trait" },
+    "points": 0,
+    "description": "MUT-J04 fixture: an active trait whose cost timer math reads and sets.",
+    "active": true,
+    "time": "10 s"
+  },
+  {
+    "//": "ACT-J04 fixture: an activity u_has_activity looks for by id.",
+    "id": "ACT_AUDIT_QF_MATH_A",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "testing activity math",
+    "based_on": "time"
+  },
+  {
+    "//": "ACT-J04 fixture: a second activity, which the character isn't doing.",
+    "id": "ACT_AUDIT_QF_MATH_B",
+    "type": "activity_type",
+    "activity_level": "NO_EXERCISE",
+    "verb": "testing activity math",
+    "based_on": "time"
+  },
+  {
+    "//": "VINT-J04 fixture: the base item of a vehicle part heavier than the 2147 kg an int of milligrams holds.",
+    "type": "ITEM",
+    "id": "audit_qf_math_ballast",
+    "category": "other",
+    "name": { "str": "audit ballast block" },
+    "description": "Base item of the VINT-J04 ballast vehicle part.",
+    "//2": "Steel is at most 8 kg/L, so 3000 kg of it takes 400 L.",
+    "weight": "3000 kg",
+    "volume": "400 L",
+    "price": "0 cent",
+    "price_postapoc": "0 cent",
+    "material": [ "steel" ],
+    "symbol": ";",
+    "color": "light_gray"
+  },
+  {
+    "//": "VINT-J04 fixture: a vehicle part that weighs 3000 kg.",
+    "type": "vehicle_part",
+    "id": "audit_qf_math_ballast",
+    "name": { "str": "audit ballast block" },
+    "item": "audit_qf_math_ballast",
+    "description": "TestPart",
+    "durability": 400,
+    "categories": [ "other" ],
+    "broken_color": "dark_gray",
+    "location": "center",
+    "flags": [ "NO_REPAIR", "NO_INSTALL_PLAYER" ],
+    "requirements": { "install": { "skills": [ [ "mechanics", 0 ] ] }, "removal": { "skills": [ [ "mechanics", 0 ] ] } },
+    "breaks_into": [  ],
+    "variants": [ { "symbols": ";", "symbols_broken": "*" } ]
+  }
+]

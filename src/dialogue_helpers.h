@@ -57,7 +57,13 @@ struct var_info {
 diag_value const &read_var_value( const var_info &info, const_dialogue const &d );
 diag_value const *maybe_read_var_value( const var_info &info, const_dialogue const &d );
 
+// Splits a scoped variable name ("u_", "n_", "g_" or no prefix, "_" for context, "v_" for a
+// var_val) into its scope and name.
 var_info process_variable( const std::string &type );
+// What the var_val @p name points at: the variable named by the context variable @p name,
+// followed further while that is a var_val itself.  type last if a context variable on the way
+// isn't set, or the chain is too long.
+var_info resolve_var_val( const std::string &name, const_dialogue const &d );
 
 struct eoc_math {
     std::shared_ptr<math_exp> exp;
