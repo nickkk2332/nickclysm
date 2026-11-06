@@ -7,10 +7,11 @@
 #include "json.h"
 #include "player_activity.h"
 
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
+
 const activity_id &execution_activity_actor::get_type() const
 {
-    static const activity_id id( "ACT_EXECUTION" );
-    return id;
+    return ACT_EXECUTION;
 }
 
 void execution_activity_actor::start( player_activity &act, Character & )
