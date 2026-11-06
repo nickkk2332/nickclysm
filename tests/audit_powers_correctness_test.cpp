@@ -81,8 +81,10 @@ TEST_CASE( "powers_damage_keeps_receiver_and_source_separate", "[audit][powers][
         CHECK( victim.get_part_hp_cur( bodypart_id( "torso" ) ) == hp - 8 );
     }
     SECTION( "a monster receiver" ) {
-        monster &victim = spawn_test_monster( "mon_zombie", attacker.pos_bub() + tripoint_rel_ms( 2, 0,
-                                              0 ) );
+        // Its one weakpoint covers it all and changes nothing: a zombie's are rolled at random
+        // and some multiply the damage
+        monster &victim = spawn_test_monster( "mon_execution_trigger_test",
+                                              attacker.pos_bub() + tripoint_rel_ms( 2, 0, 0 ) );
         const int hp = victim.get_hp();
         dialogue d( get_talker_for( attacker ), get_talker_for( victim ) );
         effect.apply( d );
