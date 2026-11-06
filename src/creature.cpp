@@ -1597,8 +1597,13 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
 
     // TODO: see note on projectile_attack_results::wp; this fallback hides the API gap.
     static const weakpoint default_weakpoint;
-    dealt_dam = deal_damage( source, hit_selection.bp_hit, impact, wp_attack_copy,
-                             hit_selection.wp ? *hit_selection.wp : default_weakpoint );
+    execution_combat::projectile_hit_scope execution_contact( *this, source, attack, here,
+            hit_selection.is_crit );
+    {
+        const auto primary = execution_contact.capture_damage();
+        dealt_dam = deal_damage( source, hit_selection.bp_hit, impact, wp_attack_copy,
+                                 hit_selection.wp ? *hit_selection.wp : default_weakpoint );
+    }
     // Force damage instance to match the selected body point
     dealt_dam.bp_hit = hit_selection.bp_hit;
     // Retrieve the selected weakpoint from the damage instance.
@@ -1622,6 +1627,7 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
     if( total_dam > 0 ) {
         attack.targets_hit[this].second += total_dam;
     }
+    execution_contact.resolve( dealt_dam );
 }
 
 dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,

@@ -27,6 +27,7 @@ std::set<std::string> declared_ids;
 struct channel_index {
     std::vector<const execution_trigger *> common;
     std::map<std::string, std::vector<const execution_trigger *>> weapons;
+    std::map<std::string, std::vector<const execution_trigger *>> ammunition;
     std::map<std::string, std::vector<const execution_trigger *>> source_monsters;
     std::map<std::string, std::vector<const execution_trigger *>> target_monsters;
     std::map<std::string, std::vector<const execution_trigger *>> styles;
@@ -34,7 +35,7 @@ struct channel_index {
     std::map<std::string, std::vector<const execution_trigger *>> techniques;
     bool empty = true;
 };
-std::array<channel_index, 2> indexes;
+std::array<channel_index, 3> indexes;
 bool dirty = true;
 
 void rebuild()
@@ -54,6 +55,8 @@ void rebuild()
             };
             if( !rule.weapons.empty() ) {
                 add( rule.weapons, index.weapons );
+            } else if( !rule.ammunition.empty() ) {
+                add( rule.ammunition, index.ammunition );
             } else if( !rule.source_monsters.empty() ) {
                 add( rule.source_monsters, index.source_monsters );
             } else if( !rule.target_monsters.empty() ) {
@@ -162,7 +165,7 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
     if( jo.has_member( "match" ) ) {
         const JsonObject match = jo.get_object( "match" );
         const std::set<std::string> allowed = { "channels", "source_kind", "target_kind", "source_monsters",
-                                                "target_monsters", "weapons", "weapon_categories", "weapon_skills", "styles", "techniques",
+                                                "target_monsters", "weapons", "ammunition", "weapon_categories", "weapon_skills", "styles", "techniques",
                                                 "body_parts", "weakpoints", "terrains", "furniture", "hit", "critical", "hp_loss", "damage", "fatal_state"
                                               };
         for( const JsonMember member : match ) {
@@ -184,7 +187,11 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
                 if( channel == "melee" || channel == "monster_melee" ) {
                     channels.insert( execution_combat::channel::monster_melee );
                 }
-                if( channel != "melee" && channel != "character_melee" && channel != "monster_melee" ) {
+                if( channel == "projectile" ) {
+                    channels.insert( execution_combat::channel::projectile );
+                }
+                if( channel != "melee" && channel != "character_melee" && channel != "monster_melee" &&
+                    channel != "projectile" ) {
                     match.throw_error_at( "channels", "unsupported combat producer" );
                 }
             }
@@ -203,6 +210,7 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
         read( "source_monsters", source_monsters );
         read( "target_monsters", target_monsters );
         read( "weapons", weapons );
+        read( "ammunition", ammunition );
         read( "weapon_categories", weapon_categories );
         read( "weapon_skills", weapon_skills );
         read( "styles", styles );
@@ -232,6 +240,9 @@ void execution_trigger::load( const JsonObject &jo, std::string_view )
             }
         }
     }
+    if( channels.count( execution_combat::channel::projectile ) && ( fatal || !hit ) ) {
+        jo.throw_error( "projectile rules support living direct hits only" );
+    }
     if( jo.has_member( "condition" ) ) {
         read_condition( jo, "condition", condition, false );
     }
@@ -260,6 +271,9 @@ void execution_trigger::check() const
         return mtype_id( s );
     } );
     check_ids( weapons, []( const std::string & s ) {
+        return itype_id( s );
+    } );
+    check_ids( ammunition, []( const std::string & s ) {
         return itype_id( s );
     } );
     check_ids( weapon_categories, []( const std::string & s ) {
@@ -295,7 +309,8 @@ std::string execution_trigger::matches( const execution_combat::attack_snapshot 
     if( fatal != s.fatal || !channels.count( s.producer ) || hit != s.hit ||
         !accepts( source_kinds, s.source_kind ) || !accepts( target_kinds, s.target_kind ) ||
         !accepts( source_monsters, s.source_monster ) || !accepts( target_monsters, s.target_monster ) ||
-        !accepts( weapons, s.weapon ) || !accepts( weapon_skills, s.weapon_skill ) ||
+        !accepts( weapons, s.weapon ) || !accepts( ammunition, s.ammunition ) ||
+        !accepts( weapon_skills, s.weapon_skill ) ||
         !accepts( styles, s.style ) || !accepts( techniques, s.technique ) ||
         !accepts( bodyparts, s.bodypart ) || !accepts( weakpoints, s.weakpoint ) ||
         !accepts( terrains, s.terrain ) || !accepts( furniture, s.furniture ) ) {
@@ -402,6 +417,7 @@ std::vector<const execution_trigger *> execution_triggers::candidates(
         }
     };
     add( index.weapons, s.weapon );
+    add( index.ammunition, s.ammunition );
     add( index.source_monsters, s.source_monster );
     add( index.target_monsters, s.target_monster );
     add( index.styles, s.style );

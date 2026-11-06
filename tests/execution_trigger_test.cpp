@@ -678,7 +678,7 @@ TEST_CASE( "execution_trigger_definitions_reject_unsupported_producers_and_inval
 {
     const std::string field = GENERATE(
                                   R"("event":"unsupported_event")",
-                                  R"("match":{"channels":["projectile"]})",
+                                  R"("match":{"channels":["spell"]})",
                                   R"("match":{"fatal_state":"pending"})",
                                   R"("match":{"crit":true})",
                                   R"("match":{"weapons":[]})",

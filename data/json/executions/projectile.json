@@ -1,0 +1,38 @@
+[
+  {
+    "type": "execution",
+    "id": "execution_projectile_stagger",
+    "name": "Reeling from a shot",
+    "revision": 1,
+    "control": { "actor": "free", "target": "scripted" },
+    "max_ticks": 8,
+    "max_distance": 60,
+    "start": "impact",
+    "steps": {
+      "impact": {
+        "action": {
+          "op": "message",
+          "pool": {
+            "entries": [ { "text": "<target_name> reels from the impact." }, { "text": "<target_name> struggles to stay upright." } ]
+          }
+        },
+        "next": "stagger"
+      },
+      "stagger": {
+        "action": {
+          "op": "move",
+          "role": "target",
+          "direction": "backward",
+          "tiles": [ 1, 2 ],
+          "ticks_per_tile": 1,
+          "first_step_after_ticks": 1,
+          "stop_before_unsupported": true,
+          "collision": "stop",
+          "store_result": "footing"
+        },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "recovered" }
+    }
+  }
+]
