@@ -999,6 +999,7 @@ void DynamicDataLoader::finalize_loaded_data()
     const std::vector<named_entry> entries = {{
             { _( "Flags" ), &json_flag::finalize_all },
             { _( "Option sliders" ), &option_slider::finalize_all },
+            { _( "Executions" ), &executions::finalize },
             { _( "Execution triggers" ), &execution_triggers::finalize },
             { _( "Mod settings" ), &mod_settings::finalize_all },
             { _( "Addictions" ), &add_type::finalize_all },

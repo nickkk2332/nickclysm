@@ -1,10 +1,10 @@
 # Executions
 
-An execution is a saved sequence of actions on two particular living creatures. It can
+An execution is a saved sequence of actions on two particular creatures. It can
 describe a stagger, a brief clash, or an interrupted takedown. Completion does not imply
 death. One tick is one game turn (one second), regardless of participant speed.
 
-The current implementation supports EOC starts and automatic living-actor melee rules,
+The current implementation supports living EOC starts and automatic living/fatal melee rules,
 bounded step graphs, native movement and falling, knockouts, damage/effects, and owned visible/audible
 narration. The broader design in
 [the execution plans](../../Audit/plans/executions/README.md) includes later features;
@@ -26,7 +26,8 @@ Alpha (`u_`) becomes `actor`; beta (`npc_`) becomes `target`. Either can be an a
 NPC, or monster. They must be distinct and loaded. Missing talkers never fall back to
 the avatar. A request reserves its controlled participants immediately, then starts at
 the next safe action/turn boundary. It does not run graph actions inside the combat
-callback. A target already killed by the triggering hit is refused.
+callback. Manual starts refuse fatal/dead targets. Fatal-hit rules use the separate
+commit-time reservation described below.
 
 `start_execution` also accepts the usual string variable object and optional
 `true_eocs`/`false_eocs` arrays. The requesting dialogue receives `execution_instance`
@@ -91,7 +92,7 @@ different filters must all pass. An omitted filter imposes no restriction.
 | `hit`, `critical` | Booleans; `critical` is absent for standard monster attacks, so neither critical filter matches those attacks |
 | `hp_loss` | Inclusive `{ "minimum": 0, "maximum": 2147483647 }` range for primary applied HP loss |
 | `damage` | Up to 64 distinct `{ "type": "stab", "minimum": 0, "maximum": 2147483647 }` ranges for reported post-armor damage |
-| `fatal_state` | Only `alive`; already fatal/dead participants are refused |
+| `fatal_state` | `alive` for `attack_resolved`, `fatal` for `fatal_hit`; defaults to the event's state |
 
 Unknown match fields, unsupported channels/events, reversed ranges, and invalid limits
 are load errors. Referenced content IDs are checked during consistency validation.
@@ -104,7 +105,7 @@ Neither includes separate mutation attacks, retaliation, extra damage, or healin
 callbacks. On a resolved hit, an unreported damage type has value zero. On a miss,
 damage, HP loss, body part and critical facts are unavailable rather than invented zeros.
 
-Rules run after native combat callbacks and death checks return. The participants must
+`attack_resolved` rules run after native combat callbacks and death checks return. The participants must
 still be alive and loaded; a removed or dead actor is never replaced. Character melee
 captures the original item UID before defensive callbacks, then the chosen style and
 technique before technique effects. It preserves those facts if a callback switches the
@@ -134,8 +135,9 @@ resolved reach contact) and standard monster primary melee. Nested/counter attac
 mutation contacts, direct damage and projectile callbacks inside the wrapped damage
 handlers, and execution-scripted attacks cannot become new automatic roots. Mech
 delegation, rider redirects, monster specials that bypass standard melee, projectiles/throws, spells,
-environmental damage, and pending-fatal scenes have no automatic producer in this
-milestone. Projectile/fatal rule definitions are rejected. This is not a universal
+environmental damage, and avatar fatal deferral have no automatic producer in this
+milestone. Projectile rule definitions are rejected. Fatal rules use the same supported
+primary melee paths at the earlier boundary below. This is not a universal
 combat-event/causality API.
 
 For engine tooling, `execution_manager::last_trigger_report()` returns the latest
@@ -147,6 +149,92 @@ There are at most 2,048 rules and 4,096 saved cooldown keys. The last 128 proces
 contact IDs suppress duplicate in-session submissions; this bounded cache and the
 latest report are not saved. The monotonic contact counter is saved. Loading scenes
 does not reemit combat contacts or rerun trigger selection.
+
+## Fatal-hit rules
+
+```json
+{
+  "type": "execution_trigger",
+  "id": "example_mortal_knife_wound",
+  "event": "fatal_hit",
+  "execution": "execution_fatal_knife_stagger",
+  "chance": 0.2,
+  "match": {
+    "channels": [ "character_melee" ],
+    "weapons": [ "knife_combat" ],
+    "target_kind": [ "npc", "monster" ],
+    "fatal_state": "fatal",
+    "hp_loss": { "minimum": 1 }
+  }
+}
+```
+
+Fatal selection runs immediately after the supported primary HP write makes the
+target fatally injured, before its damage-event callbacks and ordinary death checks.
+Only the selected, accepted rule reserves death finalization. No match, a failed roll,
+or refused admission takes the normal immediate-death path. The scene begins after
+the outer attack returns, never inside the damage callback. One contact is arbitrated
+once; fatal selection is not retried as a living hit afterward.
+
+The referenced definition must set `allow_fatal_target: true`, control its target with
+`held` or `scripted`, and have `max_ticks` at most 30. This enables fatal admission
+only from supported native producers; it does not make a manual EOC start accept a
+corpse or an arbitrary earlier fatal injury. The actor must be alive and both roles
+must satisfy normal binding, distance, control, weapon and restraint checks.
+The first fatal release supports NPC and monster victims. Avatar fatal hits retain
+ordinary death/prevention and game-over handling.
+
+At this boundary, filters see the original weapon/style/technique, critical fact
+(character melee only), resolved body part and weakpoint, reported damage types,
+primary HP loss and impact location. These are commit-time facts, before later
+callbacks can heal or add damage. `attack_event` is `fatal_hit`, `attack_fatal` is 1,
+and `killed` is 0. Selection conditions run before a reservation exists; use those
+facts rather than requiring `npc_death_pending` during admission.
+
+The injury stays real: fatal health is not raised to one, and a finalized actor is
+never revived for narration. A reservation retains occupancy and explicitly permitted
+scene movement while excluding ordinary AI, targeting ranges and voluntary actions,
+including scripted combat dispatch and evasion. Native passive turn processing,
+damage-over-time, inventory processing and fields continue through the manager once
+per game turn. The actor gains no bank of missed actions.
+
+Checked flat movement can span multiple beats. A supported owned fall keeps the
+reservation through native landing, then ends the scene and settles death there.
+Other displacement/physics, direct death calls, positive incoming damage requests,
+removal, transformation, cancellation, timeout, unload and world transitions settle
+promptly. The damage-request check runs before the raw-fatal early return (and before
+armor when entering `deal_damage`); it cannot be disabled by `external_damage: continue`.
+Projectile evasion is suppressed. Shrapnel can still contact a reserved victim, and
+shockwaves settle defeated participants before iterating ordinary living actors.
+An arbitrary EOC teleport is not a checked fatal movement action.
+
+Settlement releases the reservation before native death/prevention processing.
+Corpses, drops, kill rewards, death functions and faction consequences run through
+the native finalizer once. Genuine health restoration can rescue the victim, as can
+normal NPC death prevention. The original retained source is validated; a replacement
+avatar/body is never credited. If that identity is unavailable, no replacement source
+is invented. Rescue clears the captured killer pointer. Deferred martial-art on-kill
+hooks use the original style/contact after actual finalization, once, while that
+character source remains alive. Post-hit hooks see `killed: 0` and `death_pending: 1`
+while the victim is reserved.
+
+The actual fatal outcome is `killed`, `rescued`, or `unavailable` in the scene's
+`outcome` and `execution_fatal_outcome`. The graph's requested end label is retained
+as `execution_authored_outcome`. `execution_target_dead` reflects finalization;
+`death_pending` reflects the target's current reservation. The read-only conditions
+`u_death_pending` / `npc_death_pending` also query that state and return false for
+missing/non-creature talkers and avatar fatal deferral.
+
+Reservations, absolute deadlines and deferred kill context are saved with their
+owners. Load installs them before actor/map processing, then validates actors at the
+first safe pump without rerolling or replaying completed beats. Missing definitions,
+incompatible content and expired deadlines settle the injury. Saves inside an attack
+or an in-progress scene action are refused. Replacing a session for load discards its
+old runtime without adding death side effects to the checkpoint being restored.
+
+[The core fatal knife scene](../../data/json/executions/fatal_knife.json) reuses the
+stagger/ledge/message graph. The optional demo mod adds a separate knife with rare
+fatal rules; production weapons acquire no automatic rules.
 
 ## Definition
 
@@ -162,6 +250,7 @@ does not reemit combat contacts or rerun trigger selection.
   "max_step_entries": 128,
   "max_distance": 12,
   "require_weapon": false,
+  "allow_fatal_target": false,
   "interruptions": { "external_damage": "interrupt", "displacement": "interrupt" },
   "locals": { "counter": 0, "tone": "grim" },
   "on_start": [],
@@ -208,6 +297,7 @@ the current wielded item is captured. Changing selected style does not itself ca
 
 A step has an optional `action`, optional `repeat`, and exactly one of `next` or `end`.
 `end` is an authored outcome string, not a command to kill or knock out a creature.
+Ending a reserved fatal scene does settle its already committed injury as described above.
 
 `next` accepts the following forms, nested up to eight levels:
 

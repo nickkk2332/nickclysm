@@ -31,9 +31,10 @@ Delivered behavior:
 
 This closes the first indexed living-melee slice of Phase 0/Phase 5, rather than the
 full combat-producer matrix. Projectiles/throws, spells, environmental damage,
-monster specials that bypass standard melee, mounted delegation/rider redirects and pending-fatal actors
-need additional adapters and causality contracts. Fatal/projectile rule definitions
-are rejected rather than accepted without a working producer.
+monster specials that bypass standard melee, and mounted delegation/rider redirects
+need additional adapters and causality contracts. The [fatal melee follow-up](08-fatal-hits.md)
+adds a separate commit-time stage for NPC/monster fatal victims on these primary-melee
+producers. Projectile rules and unsupported events remain rejected.
 
 The one-contact guarantee applies to automatic rules. An author can still explicitly
 queue independent free-role scenes through EOCs. Existing ownership requirements

@@ -37,6 +37,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "explosion.h"
 #include "flag.h"
 #include "game.h"
@@ -1147,7 +1148,7 @@ int Character::fire_gun( const tripoint_bub_ms &target, int shots )
 int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, item &gun,
                          item_location ammo )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return 0;
     }
     if( !gun.is_gun() ) {
@@ -1663,7 +1664,7 @@ int Character::thrown_item_total_damage_raw( const item &thrown ) const
 dealt_projectile_attack Character::throw_item( const tripoint_bub_ms &target, const item &to_throw,
         const std::optional<tripoint_bub_ms> &blind_throw_from_pos )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return dealt_projectile_attack();
     }
     // Copy the item, we may alter it before throwing

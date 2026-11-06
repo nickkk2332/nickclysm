@@ -46,6 +46,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "faction.h"
 #include "fault.h"
 #include "field.h"
@@ -1452,8 +1453,9 @@ int Character::swim_speed() const
 
 bool Character::is_on_ground() const
 {
-    return incapacitation::unconscious( *this ) || ( !enough_working_legs() &&
-            !weapon.has_flag( flag_CRUTCHES ) ) ||
+    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) ||
+           ( !enough_working_legs() &&
+             !weapon.has_flag( flag_CRUTCHES ) ) ||
            has_effect( effect_downed ) || is_prone();
 }
 
@@ -1963,7 +1965,7 @@ float Character::get_melee() const
 
 bool Character::uncanny_dodge()
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     map &here = get_map();
@@ -2363,7 +2365,7 @@ void Character::process_turn()
     suffer();
     recalc_speed_bonus();
     //
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         incapacitation::suppress_moves( *this );
     } else if( !has_effect( effect_ridden ) ) {
         moves += get_speed();
@@ -5675,10 +5677,11 @@ void Character::resume_backlog_activity()
 
 void Character::process_activity()
 {
-    while( get_moves() > 0 && activity && !incapacitation::unconscious( *this ) ) {
+    while( get_moves() > 0 && activity && !( incapacitation::unconscious( *this ) ||
+            execution_fatal::pending( *this ) ) ) {
         activity.do_turn( *this );
     }
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         if( !activity.is_null() && activity.id() != activity_id( "ACT_EXECUTION" ) ) {
             cancel_activity();
         }
@@ -6178,7 +6181,7 @@ void Character::on_effect_int_change( const efftype_id &eid, int intensity,
         }
         recalc_sight_limits();
         incapacitation::suppress_moves( *this );
-        if( incapacitation::unconscious( *this ) ) {
+        if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
             blocks_left = 0;
             set_dodges_left( 0 );
             set_free_dodges_left( 0 );

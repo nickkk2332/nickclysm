@@ -22,6 +22,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "field.h"
 #include "field_type.h"
@@ -996,7 +997,7 @@ bool monster::die_if_drowning( const tripoint_bub_ms &at_pos, const int chance )
 // 4) Sound-based tracking
 void monster::move()
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         gravity_check();
         die_if_drowning( pos_bub(), 10 );
         incapacitation::suppress_moves( *this );
@@ -2150,7 +2151,7 @@ monster::group_bash_skill( const tripoint_bub_ms &target )
 
 bool monster::attack_at( const tripoint_bub_ms &p )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     const map &here = get_map();

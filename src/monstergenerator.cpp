@@ -17,6 +17,7 @@
 #include "damage.h"
 #include "debug.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
@@ -1284,7 +1285,7 @@ class mattack_hardcoded_wrapper : public mattack_actor
 
         ~mattack_hardcoded_wrapper() override = default;
         bool call( monster &m ) const override {
-            return !incapacitation::unconscious( m ) && cpp_function( &m );
+            return !( incapacitation::unconscious( m ) || execution_fatal::pending( m ) ) && cpp_function( &m );
         }
         std::unique_ptr<mattack_actor> clone() const override {
             return std::make_unique<mattack_hardcoded_wrapper>( *this );

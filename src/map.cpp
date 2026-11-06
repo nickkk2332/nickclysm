@@ -45,6 +45,7 @@
 #include "drawing_primitives.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "explosion.h"
 #include "field.h"
 #include "field_type.h"
@@ -11760,6 +11761,9 @@ void map::maybe_trigger_prox_trap( const tripoint_bub_ms &pos, Creature &c,
 bool map::try_fall( const tripoint_bub_ms &p, Creature *c )
 {
     if( c == nullptr ) {
+        return false;
+    }
+    if( is_open_air( p ) && !execution_fatal::before_gravity( *c ) ) {
         return false;
     }
 

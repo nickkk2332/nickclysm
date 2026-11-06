@@ -30,6 +30,7 @@ struct execution_trigger {
     std::vector<std::pair<execution_trigger_id, mod_id>> src;
     bool was_loaded = false;
     execution_id execution;
+    bool fatal = false;
     int priority = 0;
     int weight = 1;
     double chance = 1;

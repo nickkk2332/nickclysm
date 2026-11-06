@@ -96,8 +96,9 @@ class creature_tracker
         /** Removes the given monster from the Creature tracker, adjusting other entries as needed. */
         void remove( const monster &critter );
         void clear();
-        void clear_npcs() {
-            active_npc.clear();
+        void clear_npcs();
+        const std::list<shared_ptr_fast<npc>> &get_npcs_list() const {
+            return active_npc;
         }
         /** Swaps the positions of two monsters */
         void swap_positions( monster &first, monster &second );

@@ -592,6 +592,9 @@ class monster : public Creature
         // If true, sound and message is suppressed for monster death.
         bool quiet_death = false;
         bool is_dead() const;
+        bool death_finalized() const {
+            return dead;
+        }
         bool made_footstep = false;
         //if we are a nemesis monster from the 'hunted' trait
         bool is_nemesis() const;

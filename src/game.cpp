@@ -82,6 +82,7 @@
 #include "construction_group.h"
 #include "contents_change_handler.h"
 #include "coordinates.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "cuboid_rectangle.h"
 #include "current_map.h"
@@ -103,6 +104,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "faction.h"
 #include "fault.h"
@@ -725,7 +727,9 @@ void game::setup()
     next_mission_id = 1;
     next_item_uid = 1;
     next_monster_uid = 1;
-    executions().clear();
+    // Setup replaces a session; it must not finalize old injuries into the new map/checkpoint.
+    executions().reset_for_load();
+    executions().end_restore();
     uquit = QUIT_NO;   // We haven't quit the game
     bVMonsterLookFire = true;
 
@@ -1327,7 +1331,14 @@ void game::remove_npc( character_id const &id )
         return n->getID() == id;
     } );
     if( it != active_npc.end() ) {
-        active_npc.erase( it );
+        const auto removed = *it;
+        execution_fatal::before_removal( *removed, "participant_removed" );
+        // A native death callback may have already erased this resident.
+        const auto current = std::find( active_npc.begin(), active_npc.end(), removed );
+        if( current == active_npc.end() ) {
+            return;
+        }
+        active_npc.erase( current );
     }
 }
 
@@ -3645,6 +3656,17 @@ void game::draw_ter( const tripoint_bub_ms &center, const bool looking, const bo
     for( Creature &critter : all_creatures() ) {
         draw_critter( critter, center );
     }
+    // Defeated participants occupy the world but are excluded from living-target ranges.
+    for( const auto &mon : critter_tracker->get_monsters_list() ) {
+        if( execution_fatal::pending( *mon ) ) {
+            draw_critter( *mon, center );
+        }
+    }
+    for( const auto &person : critter_tracker->get_npcs_list() ) {
+        if( execution_fatal::pending( *person ) ) {
+            draw_critter( *person, center );
+        }
+    }
 
     if( !destination_preview.empty() && u.view_offset.z() == 0 ) {
         // Draw auto move preview trail
@@ -4165,7 +4187,7 @@ void game::cleanup_dead()
     bool npc_is_dead = false;
     // can't use all_npcs as that does not include dead ones
     for( const auto &n : critter_tracker->active_npc ) {
-        if( n->is_dead() ) {
+        if( n->is_dead() && !execution_fatal::pending( *n ) ) {
             n->die( &here, nullptr ); // make sure this has been called to create corpses etc.
             npc_is_dead = true;
         }
@@ -4178,7 +4200,7 @@ void game::cleanup_dead()
 
     if( npc_is_dead ) {
         for( auto it = critter_tracker->active_npc.begin(); it != critter_tracker->active_npc.end(); ) {
-            if( ( *it )->is_dead() ) {
+            if( ( *it )->is_dead() && !execution_fatal::pending( **it ) ) {
                 get_avatar().get_mon_visible().remove_npc( ( *it ).get() );
                 remove_npc_follower( ( *it )->getID() );
                 overmap_buffer.remove_npc( ( *it )->getID() );
@@ -10010,12 +10032,35 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
 {
     map &here = get_map();
     avatar &player = get_avatar();
-    // Save first, with everything still in place: if the dimension can't be saved, the trip
-    // fails before anything is taken out of it
+    // Settlement/interrupt EOCs may destroy the vehicle or remove travelling residents.
+    const safe_reference<vehicle> travelling_vehicle = veh ? veh->get_safe_reference() :
+            safe_reference<vehicle>();
+    std::vector<shared_ptr_fast<npc>> retained_travellers;
+    for( npc *person : npc_travellers ) {
+        if( person ) {
+            if( const auto retained = shared_from( *person ) ) {
+                retained_travellers.push_back( retained );
+            }
+        }
+    }
+    // A dimension snapshot has no scene owners. Settle their fatal injuries before writing it,
+    // even if saving refuses travel. Saving still precedes unboarding/unloading; ordinary
+    // scene cancellation stays below.
+    if( !executions().prepare_world_transition() ) {
+        return false;
+    }
+    cleanup_dead();
     if( !save_dimension_data() || !save_maps() ) {
         return false;
     }
     executions().cancel_all( "dimension_changed" );
+    veh = travelling_vehicle.get();
+    std::vector<npc *> live_travellers;
+    for( const auto &person : retained_travellers ) {
+        if( !person->is_dead() && creature_ref::bind( *person ).resolve() == person.get() ) {
+            live_travellers.push_back( person.get() );
+        }
+    }
     // Who rides the vehicle, before anyone is unboarded or unloaded
     std::vector<std::pair<character_id, tripoint_abs_ms>> passengers;
     if( veh != nullptr ) {
@@ -10027,20 +10072,20 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
     }
     // a walk leads to a spot in the dimension being left (u_walk_to, "Move there!")
     errand::end_walk( player, errand::reason::cancelled );
-    for( npc *guy : npc_travellers ) {
+    for( npc *guy : live_travellers ) {
         errand::end_walk( *guy, errand::reason::cancelled );
     }
     std::vector<npc_ptr> moving_npcs;
-    moving_npcs.reserve( npc_travellers.size() );
-    if( !npc_travellers.empty() ) {
-        int traveller_count = npc_travellers.size();
+    moving_npcs.reserve( live_travellers.size() );
+    if( !live_travellers.empty() ) {
+        int traveller_count = live_travellers.size();
         overmap &old_om = overmap_buffer.get( project_to<coords::om>( player.pos_abs().xy() ) );
         for( auto it = critter_tracker->active_npc.begin(); it != critter_tracker->active_npc.end(); ) {
             // skip unloading a traveller
             bool skip = false;
             if( traveller_count > 0 ) {
-                for( npc *guy : npc_travellers ) {
-                    if( guy->getID() == ( *it )->getID() ) {
+                for( npc *guy : live_travellers ) {
+                    if( !guy->is_dead() && guy->getID() == ( *it )->getID() ) {
                         skip = true;
                         traveller_count--;
                         break;
@@ -10083,6 +10128,7 @@ bool game::travel_to_dimension( dimension_id dimension_destination,
         here.unboard_vehicle( player.pos_bub() );
     }
     std::unique_ptr<vehicle> vehicle_ref;
+    veh = travelling_vehicle.get();
     if( veh != nullptr ) {
         vehicle_ref = here.detach_vehicle( veh );
     }
@@ -10697,6 +10743,10 @@ void game::update_overmap_seen()
 void game::despawn_monster( monster &critter )
 {
     critter.on_unload();
+    if( execution_fatal::finalized( critter ) ) {
+        remove_zombie( critter );
+        return;
+    }
     // hallucinations aren't stored, they come and go as they like
     if( !critter.is_hallucination() ) {
         // despawn_monster saves a copy of the monster in the overmap, so
@@ -11047,14 +11097,14 @@ template<>
 bool game::non_dead_range<monster>::iterator::valid()
 {
     current = iter->lock();
-    return current && !current->is_dead();
+    return current && !current->is_dead() && !execution_fatal::pending( *current );
 }
 
 template<>
 bool game::non_dead_range<npc>::iterator::valid()
 {
     current = iter->lock();
-    return current && !current->is_dead();
+    return current && !current->is_dead() && !execution_fatal::pending( *current );
 }
 
 template<>
@@ -11063,7 +11113,7 @@ bool game::non_dead_range<Creature>::iterator::valid()
     current = iter->lock();
     // There is no Creature::is_dead function, so we can't write
     // return current && !current->is_dead();
-    if( !current ) {
+    if( !current || execution_fatal::pending( *current ) ) {
         return false;
     }
     const Creature *const critter = current.get();

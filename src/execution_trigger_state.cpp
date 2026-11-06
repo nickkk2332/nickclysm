@@ -8,6 +8,7 @@
 
 #include "cata_scope_helpers.h"
 #include "creature.h"
+#include "creature_tracker.h"
 #include "dialogue.h"
 #include "execution_combat.h"
 #include "execution_trigger.h"
@@ -47,14 +48,16 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
         recent.pop_front();
     }
     Creature *actor = s.actor.resolve();
-    Creature *target = s.target.resolve();
+    Creature *target = s.fatal ? s.target.resolve_loaded() : s.target.resolve();
     if( !actor || !target || actor == target || actor->is_hallucination() ||
         target->is_hallucination() ) {
         report.reason = "participant_unavailable";
         return report;
     }
     const auto actor_hold = g->shared_from( *actor );
-    const auto target_hold = g->shared_from( *target );
+    // A raw fatal monster is excluded from the ordinary position lookup until reserved.
+    const auto target_hold = s.fatal && target->as_monster() ?
+                             get_creature_tracker().find_by_uid( s.target.id ) : g->shared_from( *target );
     if( !actor_hold || !target_hold ) {
         report.reason = "participant_unavailable";
         return report;
@@ -74,6 +77,7 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
     report.considered = static_cast<int>( rules.size() );
     dialogue d( get_talker_for( actor ), get_talker_for( target ), {}, s.context() );
     d.set_value( "killed", 0.0 );
+    d.set_value( "death_pending", 0.0 );
     const auto record = [&]( const execution_trigger & rule, const std::string & reason ) {
         if( report.candidates.size() < 64 ) {
             report.candidates.push_back( { rule.id.str(), reason } );
@@ -102,7 +106,8 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
                 }
             }
             if( reason.empty() ) {
-                reason = manager.check_start( rule.execution, d );
+                reason = s.fatal ? manager.check_fatal_start( rule.execution, d ) :
+                         manager.check_start( rule.execution, d );
                 if( reason == "eligible" ) {
                     reason.clear();
                 }
@@ -134,7 +139,8 @@ execution_trigger_report execution_trigger_state::consider( execution_manager &m
                 }
             }
             d.set_value( "attack_trigger", selected->id.str() );
-            const execution_start_result started = manager.start( selected->execution, d );
+            const execution_start_result started = s.fatal ? manager.start_fatal( selected->execution, d ) :
+                                                   manager.start( selected->execution, d );
             report.selected = selected->id.str();
             report.instance = started.id;
             report.reason = started.reason;

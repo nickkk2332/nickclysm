@@ -25,6 +25,7 @@
 #include "effect.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "generic_factory.h"
@@ -150,7 +151,7 @@ std::unique_ptr<mattack_actor> leap_actor::clone() const
 
 bool leap_actor::call( monster &z ) const
 {
-    if( incapacitation::unconscious( z ) ) {
+    if( incapacitation::unconscious( z ) || execution_fatal::pending( z ) ) {
         return false;
     }
     if( !z.has_dest() || !z.can_act() || !z.move_effects( false ) ) {
@@ -308,7 +309,7 @@ void mon_eoc_actor::load_internal( const JsonObject &obj, const std::string & )
 
 bool mon_eoc_actor::call( monster &mon ) const
 {
-    if( incapacitation::unconscious( mon ) ) {
+    if( incapacitation::unconscious( mon ) || execution_fatal::pending( mon ) ) {
         return false;
     }
     map &here = get_map();
@@ -374,7 +375,7 @@ void mon_spellcasting_actor::load_internal( const JsonObject &obj, const std::st
 
 bool mon_spellcasting_actor::call( monster &mon ) const
 {
-    if( incapacitation::unconscious( mon ) ) {
+    if( incapacitation::unconscious( mon ) || execution_fatal::pending( mon ) ) {
         return false;
     }
     if( !mon.can_act() ) {
@@ -919,7 +920,7 @@ std::vector<bodypart_id> melee_actor::pick_bodyparts_hit( const Creature *target
 
 bool melee_actor::call( monster &z ) const
 {
-    if( incapacitation::unconscious( z ) ) {
+    if( incapacitation::unconscious( z ) || execution_fatal::pending( z ) ) {
         return false;
     }
     map &here = get_map();
@@ -1422,7 +1423,7 @@ int gun_actor::get_max_range()  const
 
 bool gun_actor::call( monster &z ) const
 {
-    if( incapacitation::unconscious( z ) ) {
+    if( incapacitation::unconscious( z ) || execution_fatal::pending( z ) ) {
         return false;
     }
     map &here = get_map();
@@ -1634,7 +1635,7 @@ void polymorph_special::load_internal( const JsonObject &jo, const std::string &
 
 bool polymorph_special::call( monster &z ) const
 {
-    if( incapacitation::unconscious( z ) ) {
+    if( incapacitation::unconscious( z ) || execution_fatal::pending( z ) ) {
         return false;
     }
     const int old_speed = z.get_speed_base();

@@ -33,6 +33,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "execution_combat.h"
 #include "explosion.h"
@@ -379,6 +380,11 @@ void monster::on_effect_int_change( const efftype_id &/*eid*/, int /*intensity*/
 
 void monster::poly( const mtype_id &id )
 {
+    const bool was_pending = execution_fatal::pending( *this );
+    execution_fatal::before_removal( *this, "transformed" );
+    if( was_pending && death_finalized() ) {
+        return;
+    }
     double hp_percentage = static_cast<double>( hp ) / static_cast<double>( type->hp );
     if( !no_extra_death_drops ) {
         generate_inventory();
@@ -1389,13 +1395,15 @@ bool monster::has_flag( const flag_id &f ) const
 
 bool monster::can_see() const
 {
-    return !incapacitation::unconscious( *this ) && has_flag( mon_flag_SEES ) &&
+    return !( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) &&
+           has_flag( mon_flag_SEES ) &&
            !effect_cache[VISION_IMPAIRED];
 }
 
 bool monster::can_hear() const
 {
-    return !incapacitation::unconscious( *this ) && has_flag( mon_flag_HEARS ) &&
+    return !( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) &&
+           has_flag( mon_flag_HEARS ) &&
            !has_effect( effect_deaf );
 }
 
@@ -1452,7 +1460,8 @@ int monster::dig_skill() const
 
 bool monster::flies() const
 {
-    return !incapacitation::unconscious( *this ) && has_flag( mon_flag_FLIES ) &&
+    return !( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) &&
+           has_flag( mon_flag_FLIES ) &&
            !has_effect_with_flag( json_flag_DISABLE_FLIGHT );
 }
 
@@ -1522,7 +1531,8 @@ int monster::get_swim_mod() const
 
 bool monster::can_act() const
 {
-    return !incapacitation::unconscious( *this ) && moves > 0 &&
+    return !( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) &&
+           moves > 0 &&
            ( effects->empty() ||
              ( !has_effect( effect_stunned ) && !has_effect( effect_psi_stunned ) &&
                !has_effect( effect_downed ) && !has_effect( effect_webbed ) ) );
@@ -2034,7 +2044,7 @@ bool monster::is_underwater() const
 bool monster::is_on_ground() const
 {
     // TODO: actually make this work
-    return incapacitation::unconscious( *this );
+    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) );
 }
 
 bool monster::has_weapon() const
@@ -2239,7 +2249,7 @@ bool monster::melee_attack( Creature &target )
 
 bool monster::melee_attack( Creature &target, float accuracy )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     map &here = get_map();
@@ -2529,7 +2539,9 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
                             const bool /*bypass_med*/ )
 {
     const execution_combat::damage_barrier execution_damage;
-    if( is_dead_state() || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
+    execution_fatal::before_damage( *this, dam > 0 );
+    if( ( is_dead_state() && !( g && g->executions().owns_fatal_gravity( *this ) ) ) ||
+        has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         return;
     }
     if( source == nullptr && g ) {
@@ -2580,7 +2592,7 @@ bool monster::movement_impaired()
 
 bool monster::move_effects( bool )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     // This function is relatively expensive, we want that cached
@@ -2907,7 +2919,7 @@ float monster::stability_roll() const
 
 float monster::get_dodge() const
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return 0;
     }
     if( has_effect( effect_downed ) || has_flag( json_flag_CANNOT_MOVE ) ) {
@@ -3231,6 +3243,9 @@ void monster::die( map *here, Creature *nkiller )
     if( dead ) {
         // We are already dead, don't die again, note that monster::dead is
         // *only* set to true in this function!
+        return;
+    }
+    if( execution_fatal::before_death( *this, here, nkiller ) ) {
         return;
     }
     // We were carrying a creature, deposit the rider
@@ -4376,11 +4391,15 @@ bool monster::will_join_horde( int size )
 
 void monster::on_unload()
 {
+    execution_fatal::before_removal( *this, "participant_unloaded" );
     last_updated = calendar::turn;
 }
 
 void monster::on_load()
 {
+    if( execution_fatal::pending( *this ) ) {
+        return;
+    }
     try_upgrade( false );
     try_reproduce();
     try_biosignature();

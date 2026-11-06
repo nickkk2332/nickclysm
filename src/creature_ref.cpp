@@ -5,6 +5,7 @@
 #include "avatar.h"
 #include "creature.h"
 #include "creature_tracker.h"
+#include "execution_fatal.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "json.h"
@@ -67,6 +68,18 @@ creature_ref creature_ref::bind( const Creature &who )
 
 Creature *creature_ref::resolve() const
 {
+    Creature *who = resolve_loaded();
+    return who && !who->is_dead_state() ? who : nullptr;
+}
+
+Creature *creature_ref::resolve_for_execution() const
+{
+    Creature *who = resolve_loaded();
+    return who && ( !who->is_dead_state() || execution_fatal::pending( *who ) ) ? who : nullptr;
+}
+
+Creature *creature_ref::resolve_loaded() const
+{
     if( !g || id <= 0 || dimension != g->get_dimension_prefix() ) {
         return nullptr;
     }
@@ -76,9 +89,9 @@ Creature *creature_ref::resolve() const
             result = &get_avatar();
         } else {
             // Only active NPCs can participate. An unloaded resident is not an offscreen actor.
-            for( npc &person : g->all_npcs() ) {
-                if( person.getID().get_value() == id ) {
-                    result = &person;
+            for( const auto &person : get_creature_tracker().get_npcs_list() ) {
+                if( person->getID().get_value() == id ) {
+                    result = person.get();
                     break;
                 }
             }
@@ -86,7 +99,7 @@ Creature *creature_ref::resolve() const
     } else if( type == kind::monster ) {
         result = get_creature_tracker().find_by_uid( id ).get();
     }
-    return result && !result->is_dead_state() ? result : nullptr;
+    return result && !execution_fatal::finalized( *result ) ? result : nullptr;
 }
 
 bool creature_ref::operator==( const creature_ref &other ) const

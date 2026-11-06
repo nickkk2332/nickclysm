@@ -1153,6 +1153,9 @@ class npc : public Character
         void reboot();
         void die( map *here, Creature *killer ) override;
         bool is_dead() const;
+        bool death_finalized() const {
+            return dead;
+        }
         void prevent_death() override;
         // How well we smash terrain (not corpses!)
         std::map<damage_type_id, int> smash_ability() const override;

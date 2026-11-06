@@ -95,6 +95,7 @@ struct execution_definition {
     bool interrupt_damage = true;
     bool interrupt_displacement = true;
     bool require_weapon = false;
+    bool allow_fatal_target = false;
     std::string start;
     global_variables::impl_t locals;
     std::map<std::string, execution_step> steps;
@@ -112,6 +113,7 @@ namespace executions
 {
 void load( const JsonObject &jo, const std::string &source );
 void reset();
+void finalize();
 void check();
 } // namespace executions
 

@@ -39,6 +39,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "execution_combat.h"
 #include "field_type.h"
@@ -1073,7 +1074,7 @@ int Character::get_sleep_deprivation() const
 
 bool Character::is_deaf() const
 {
-    return incapacitation::unconscious( *this ) ||
+    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) ||
            get_effect_int( effect_deaf ) > 2 || worn_with_flag( flag_DEAF ) ||
            has_flag( json_flag_DEAF ) || has_effect( effect_narcosis ) ||
            ( has_trait( trait_M_SKIN3 ) &&
@@ -1973,7 +1974,8 @@ bool Character::is_hibernating() const
 
 bool Character::is_blind() const
 {
-    return incapacitation::unconscious( *this ) || worn_with_flag( flag_BLIND ) ||
+    return ( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) ||
+           worn_with_flag( flag_BLIND ) ||
            has_flag( json_flag_BLIND ) || get_limb_score( limb_score_vision ) <= 0;
 }
 
@@ -2722,7 +2724,9 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
                               const bool bypass_med )
 {
     const execution_combat::damage_barrier execution_damage;
-    if( is_dead_state() || has_effect( effect_incorporeal ) ||
+    execution_fatal::before_damage( *this, dam > 0 );
+    if( ( is_dead_state() && !( g && g->executions().owns_fatal_gravity( *this ) ) ) ||
+        has_effect( effect_incorporeal ) ||
         has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         // don't do any more damage if we're already dead
         // Or if we're debugging and don't want to die
@@ -3061,6 +3065,7 @@ void Character::healall( int dam )
 void Character::hurtall( int dam, Creature *source, bool disturb /*= true*/ )
 {
     const execution_combat::damage_barrier execution_damage;
+    execution_fatal::before_damage( *this, dam > 0 );
     if( is_dead_state() || has_effect( effect_incorporeal ) ||
         dam <= 0 || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         return;
@@ -3315,7 +3320,7 @@ float Character::adjust_for_focus( float amount ) const
 
 bool Character::can_hear( const tripoint_bub_ms &source, const int volume ) const
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         return false;
     }
     if( is_deaf() ) {

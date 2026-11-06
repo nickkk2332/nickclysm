@@ -38,6 +38,7 @@ struct attack_snapshot {
     std::optional<std::string> style;
     std::optional<std::string> technique;
     bool hit = false;
+    bool fatal = false;
     std::optional<bool> critical;
     std::optional<std::string> bodypart;
     std::optional<std::string> weakpoint;
@@ -68,6 +69,7 @@ class attack_scope
         void set_weapon( const item *weapon, const std::string &style,
                          const std::string &technique );
         void set_technique( const std::string &style, const std::string &technique );
+        void set_critical( bool critical );
         void resolve( bool hit, std::optional<bool> critical,
                       const dealt_damage_instance &dealt );
     private:
@@ -80,6 +82,7 @@ class attack_scope
         bool enabled = false;
         bool resolved = false;
         bool armed = false;
+        int64_t fatal_instance = 0;
         int exceptions = 0;
         attack_snapshot facts;
         shared_ptr_fast<Creature> source_hold;
@@ -134,7 +137,7 @@ class damage_scope
         damage_scope( const damage_scope & ) = delete;
         damage_scope &operator=( const damage_scope & ) = delete;
         void set_weakpoint( const std::string &id );
-        void arm_hp_capture();
+        void arm_hp_capture( bodypart_id bp, const dealt_damage_instance &dealt );
         void disarm_hp_capture();
     private:
         friend void record_hp_loss( const Creature &, int );
@@ -153,6 +156,8 @@ class damage_barrier
 };
 
 void record_hp_loss( const Creature &target, int amount );
+bool attack_in_progress();
+bool at_fatal_commit( const Creature &target );
 std::string channel_name( channel producer );
 } // namespace execution_combat
 

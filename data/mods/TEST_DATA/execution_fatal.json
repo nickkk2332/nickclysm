@@ -1,0 +1,143 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FATAL_START",
+    "effect": [ { "math": [ "exec_fatal_starts += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FATAL_KILL",
+    "effect": [
+      { "math": [ "exec_fatal_kills += 1" ] },
+      { "copy_var": { "context_val": "killed" }, "target_var": { "global_val": "exec_fatal_killed_seen" } },
+      { "copy_var": { "context_val": "death_pending" }, "target_var": { "global_val": "exec_fatal_pending_seen" } }
+    ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_execution_fatal",
+    "name": { "str": "Fatal execution test style" },
+    "description": "Tests delayed on-kill dispatch.",
+    "initiate": [ "You prepare.", "%s prepares." ],
+    "allow_all_weapons": true,
+    "onkill_eocs": [ "EOC_TEST_FATAL_KILL" ]
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_fatal_test_knife",
+    "copy-from": "knife_combat",
+    "name": { "str": "fatal execution test knife" },
+    "description": "Tests native fatal melee admission."
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_execution_fatal_attacker",
+    "copy-from": "mon_execution_trigger_test",
+    "name": { "str_sp": "fatal execution test attacker" },
+    "melee_damage": [ { "damage_type": "pure", "amount": 1000 } ]
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_fatal_hold",
+    "name": "Fatal reservation test",
+    "allow_fatal_target": true,
+    "control": { "actor": "free", "target": "held" },
+    "max_ticks": 8,
+    "on_start": [ "EOC_TEST_FATAL_START" ],
+    "start": "wait",
+    "steps": {
+      "wait": {
+        "action": { "op": "message", "text": "<target_name> staggers, mortally wounded." },
+        "next": { "step": "done", "after_ticks": 3 }
+      },
+      "done": { "end": "authored_finish" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_fatal_walk",
+    "copy-from": "test_exec_fatal_hold",
+    "name": "Fatal checked movement test",
+    "control": { "actor": "free", "target": "scripted" },
+    "start": "walk",
+    "steps": {
+      "walk": {
+        "action": { "op": "move", "tiles": 2, "ticks_per_tile": 1, "first_step_after_ticks": 1, "store_result": "walk" },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "walk_finished" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_fatal_fall",
+    "copy-from": "test_exec_fatal_hold",
+    "name": "Fatal landing test",
+    "control": { "actor": "free", "target": "scripted" },
+    "start": "fall",
+    "steps": {
+      "fall": {
+        "action": { "op": "move", "tiles": 1, "first_step_after_ticks": 1, "stop_before_unsupported": false, "store_result": "fall" },
+        "next": { "step": "done", "after_ticks": 1 }
+      },
+      "done": { "end": "fall_finished" }
+    }
+  },
+  {
+    "type": "execution",
+    "id": "test_exec_fatal_timeout",
+    "copy-from": "test_exec_fatal_hold",
+    "name": "Fatal timeout test",
+    "max_ticks": 3,
+    "start": "wait",
+    "steps": { "wait": { "next": { "step": "wait", "after_ticks": 1 } } }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_fatal_hold",
+    "event": "fatal_hit",
+    "execution": "test_exec_fatal_hold",
+    "match": { "channels": [ "character_melee", "monster_melee" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_fatal_case", "default": "" }, "hold" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_fatal_walk",
+    "event": "fatal_hit",
+    "execution": "test_exec_fatal_walk",
+    "match": { "channels": [ "character_melee", "monster_melee" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_fatal_case", "default": "" }, "walk" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_fatal_fall",
+    "event": "fatal_hit",
+    "execution": "test_exec_fatal_fall",
+    "match": { "channels": [ "character_melee", "monster_melee" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_fatal_case", "default": "" }, "fall" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_fatal_timeout",
+    "event": "fatal_hit",
+    "execution": "test_exec_fatal_timeout",
+    "match": { "channels": [ "character_melee", "monster_melee" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_fatal_case", "default": "" }, "timeout" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_fatal_core",
+    "event": "fatal_hit",
+    "execution": "execution_fatal_knife_stagger",
+    "match": { "channels": [ "character_melee", "monster_melee" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_fatal_case", "default": "" }, "core" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_fatal_zero",
+    "event": "fatal_hit",
+    "execution": "test_exec_fatal_hold",
+    "chance": 0,
+    "condition": { "compare_string": [ { "global_val": "exec_fatal_case", "default": "" }, "zero" ] }
+  }
+]

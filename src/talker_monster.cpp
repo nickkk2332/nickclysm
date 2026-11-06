@@ -9,6 +9,7 @@
 #include "damage.h"
 #include "debug.h"
 #include "effect.h"
+#include "execution_fatal.h"
 #include "incapacitation.h"
 #include "map.h"
 #include "math_parser_diag_value.h"
@@ -260,7 +261,8 @@ void talker_monster::set_all_parts_hp_cur( int set )
 void talker_monster::attack_target( Creature &t, bool allow_special,
                                     const matec_id &force_technique, bool, int forced_movecost )
 {
-    if( me_mon->is_dead() || incapacitation::unconscious( *me_mon ) || &t == me_mon ) {
+    if( me_mon->is_dead() || ( incapacitation::unconscious( *me_mon ) ||
+                               execution_fatal::pending( *me_mon ) ) || &t == me_mon ) {
         return;
     }
     const int moves_before = me_mon->get_moves();

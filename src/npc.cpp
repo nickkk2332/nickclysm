@@ -42,6 +42,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "faction.h"
 #include "flag.h"
 #include "flat_set.h"
@@ -3393,6 +3394,13 @@ void npc::die( map *here, Creature *nkiller )
         // *only* set to true in this function!
         return;
     }
+    if( execution_fatal::before_death( *this, here, nkiller ) ) {
+        return;
+    }
+    const execution_fatal::death_guard guard( *this );
+    if( !guard.entered() ) {
+        return;
+    }
     prevent_death_reminder = false;
     dialogue d( get_talker_for( this ), nkiller == nullptr ? nullptr : get_talker_for( nkiller ) );
     for( effect_on_condition_id &eoc : death_eocs ) {
@@ -3664,6 +3672,7 @@ void npc::add_new_mission( class mission *miss )
 
 void npc::on_unload()
 {
+    execution_fatal::before_removal( *this, "participant_unloaded" );
 }
 
 void npc::update_bodytemp_and_wetness()
@@ -3687,6 +3696,9 @@ void npc::npc_update_body()
 
 void npc::on_load( map *here )
 {
+    if( execution_fatal::pending( *this ) ) {
+        return; // A saved scene resumes before any offscreen catch-up simulation.
+    }
     const auto advance_effects = [&]( const time_duration & elapsed_dur ) {
         for( auto &elem : *effects ) {
             for( auto &_effect_it : elem.second ) {

@@ -16,6 +16,7 @@ class Creature;
 class JsonObject;
 class JsonOut;
 struct dialogue;
+struct ma_event_context;
 namespace execution_combat
 {
 struct attack_snapshot;
@@ -75,6 +76,21 @@ class execution_manager
         execution_start_result start( const execution_id &definition, const dialogue &d,
                                       std::optional<uint64_t> seed = std::nullopt );
         std::string check_start( const execution_id &definition, const dialogue &context );
+        std::string check_fatal_start( const execution_id &definition, const dialogue &context );
+        execution_start_result start_fatal( const execution_id &definition, const dialogue &context );
+        int64_t on_fatal_hit( const execution_combat::attack_snapshot &snapshot );
+        void release_fatal_attack( int64_t id, bool successful );
+        bool death_pending( const Creature &who ) const;
+        bool owns_fatal_motion( const Creature &who ) const;
+        bool owns_fatal_gravity( const Creature &who ) const;
+        bool settle_fatal( const Creature &who, const std::string &reason );
+        void settle_for_removal( const Creature &who, const std::string &reason );
+        void defer_kill( const Creature &target, const ma_event_context &context );
+        void reset_for_load();
+        void end_restore();
+        bool restoring() const;
+        /** Settle fatal owners before writing an independent dimension snapshot. */
+        bool prepare_world_transition();
         bool processing_actions() const;
         uint64_t next_attack_id();
         void on_attack_resolved( const execution_combat::attack_snapshot &snapshot );
@@ -96,7 +112,7 @@ class execution_manager
         void deserialize( const JsonObject &jo );
     private:
         execution_start_result start_impl( const execution_id &definition, const dialogue &context,
-                                           std::optional<uint64_t> seed, bool check_only );
+                                           std::optional<uint64_t> seed, bool check_only, bool fatal = false );
         struct impl;
         std::unique_ptr<impl> data;
 };

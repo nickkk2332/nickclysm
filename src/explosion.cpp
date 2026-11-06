@@ -29,6 +29,7 @@
 #include "damage.h"
 #include "debug.h"
 #include "enums.h"
+#include "execution_fatal.h"
 #include "field_type.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
@@ -481,7 +482,8 @@ static std::vector<tripoint_bub_ms> shrapnel( map *m, const Creature *source,
         int damage = ballistic_damage( cloud.velocity, fragment_mass );
         const tripoint_abs_ms abs_target = m->get_abs( target );
         Creature *critter = creatures.creature_at( abs_target );
-        if( damage > 0 && critter && !critter->is_dead_state() ) {
+        if( damage > 0 && critter &&
+            ( !critter->is_dead_state() || execution_fatal::pending( *critter ) ) ) {
             std::poisson_distribution<> d( cloud.density );
             int hits = d( rng_get_engine() );
             dealt_projectile_attack frag;
@@ -503,7 +505,7 @@ static std::vector<tripoint_bub_ms> shrapnel( map *m, const Creature *source,
                                critter->disp_name(),
                                frag.proj.speed, rl_dist( src, target ) );
                 add_msg_debug( debugmode::DF_EXPLOSION, "Shrapnel dealt %d damage", frag.dealt_dam.total_damage() );
-                if( critter->is_dead_state() ) {
+                if( critter->is_dead_state() && !execution_fatal::pending( *critter ) ) {
                     break;
                 }
             }
@@ -708,6 +710,22 @@ void shockwave( const tripoint_bub_ms &p, int radius, int force, int stun, int d
 
     sounds::sound( p, force * force * dam_mult / 2, sounds::sound_t::combat, _( "Crack!" ), false,
                    "misc", "shockwave" );
+
+    if( force > 0 ) {
+        // Living ranges exclude reservations. Settle defeated bodies before this external
+        // motion request; a genuinely rescued resident can then take the ordinary shockwave.
+        const auto settle_defeated = [&]( const auto & residents ) {
+            const auto snapshot = residents;
+            for( const auto &resident : snapshot ) {
+                if( execution_fatal::pending( *resident ) && resident->posz() == p.z() &&
+                    rl_dist( resident->pos_bub(), p ) <= radius ) {
+                    execution_fatal::before_motion( *resident );
+                }
+            }
+        };
+        settle_defeated( get_creature_tracker().get_monsters_list() );
+        settle_defeated( get_creature_tracker().get_npcs_list() );
+    }
 
     for( monster &critter : g->all_monsters() ) {
         if( critter.posz() != p.z() ) {

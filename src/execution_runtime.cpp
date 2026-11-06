@@ -21,6 +21,8 @@
 #include "execution.h"
 #include "execution_activity_actor.h"
 #include "execution_combat.h"
+#include "execution_fatal.h"
+#include "execution_trigger.h"
 #include "execution_trigger_state.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
@@ -32,6 +34,7 @@
 #include "line.h"
 #include "map.h"
 #include "mapdata.h"
+#include "martialarts.h"
 #include "memory_fast.h"
 #include "messages.h"
 #include "monster.h"
@@ -45,6 +48,7 @@
 #include "translations.h"
 
 static const efftype_id effect_beartrap( "beartrap" );
+static const efftype_id effect_grabbing( "grabbing" );
 static const efftype_id effect_ridden( "ridden" );
 static const efftype_id effect_riding( "riding" );
 static const efftype_id effect_tied( "tied" );
@@ -78,6 +82,12 @@ struct execution_instance {
     uint64_t random_state = 0;
     bool entered = false;
     bool target_dead = false;
+    bool fatal_reserved = false;
+    bool fatal_ready = true;
+    time_point fatal_until = calendar::before_time_starts;
+    shared_ptr_fast<Creature> fatal_source;
+    shared_ptr_fast<Creature> fatal_target;
+    global_variables::impl_t kill_context;
     int entries = 0;
     int occurrences = 0;
     int requested = 0;
@@ -122,7 +132,7 @@ const creature_ref &role_ref( const execution_instance &scene, const std::string
 
 shared_ptr_fast<Creature> hold( const creature_ref &ref )
 {
-    Creature *who = ref.resolve();
+    Creature *who = ref.resolve_for_execution();
     return who ? g->shared_from( *who ) : nullptr;
 }
 
@@ -141,8 +151,8 @@ bool needs_control( const execution_definition &def, bool actor )
 bool restrained( const Creature &who )
 {
     if( who.has_effect_with_flag( json_flag_GRAB ) || who.has_effect( effect_tied ) ||
-        who.has_effect( effect_beartrap ) || who.has_effect( effect_ridden ) ||
-        who.has_effect( effect_riding ) ) {
+        who.has_effect( effect_beartrap ) || who.has_effect( effect_grabbing ) ||
+        who.has_effect( effect_ridden ) || who.has_effect( effect_riding ) ) {
         return true;
     }
     if( const Character *person = who.as_character() ) {
@@ -265,10 +275,13 @@ void narrate( execution_instance &scene, const translation &text, const std::str
 struct execution_manager::impl {
     std::map<int64_t, execution_instance> instances;
     int64_t next_id = 1;
+    size_t fatal_count = 0;
     bool processing = false;
     bool stopping = false;
+    bool restoring = false;
     int64_t owned_action = 0;
     bool gravity_action = false;
+    bool motion_action = false;
     execution_trigger_state triggers;
 
     dialogue context( execution_instance &scene, const shared_ptr_fast<Creature> &actor,
@@ -287,6 +300,7 @@ struct execution_manager::impl {
         result.set_value( "execution_actor_origin", scene.origin_actor );
         result.set_value( "execution_target_origin", scene.origin_target );
         result.set_value( "execution_target_dead", scene.target_dead ? 1.0 : 0.0 );
+        result.set_value( "death_pending", target && execution_fatal::pending( *target ) ? 1.0 : 0.0 );
         if( actor ) {
             result.set_value( "execution_actor_position", actor->pos_abs() );
         }
@@ -297,24 +311,33 @@ struct execution_manager::impl {
     }
 
     void refresh_positions( execution_instance &scene ) {
-        if( Creature *who = scene.actor.resolve() ) {
+        if( Creature *who = scene.actor.resolve_for_execution() ) {
             scene.expected_actor = who->pos_abs();
         }
-        if( Creature *who = scene.target.resolve() ) {
+        if( Creature *who = scene.target.resolve_for_execution() ) {
             scene.expected_target = who->pos_abs();
         }
     }
 
     std::string invalid( const execution_instance &scene, bool displacement ) const {
+        if( scene.fatal_reserved && calendar::turn >= scene.fatal_until ) {
+            return "fatal_timeout";
+        }
         if( !scene.view.definition.is_valid() ) {
             return "missing_definition";
         }
         const execution_definition &def = *scene.view.definition;
+        if( scene.fatal_reserved && !def.allow_fatal_target ) {
+            return "incompatible_fatal_policy";
+        }
         if( def.revision != scene.revision || def.steps.count( scene.view.step ) == 0 ) {
             return "incompatible_definition";
         }
-        Creature *actor = scene.actor.resolve();
-        Creature *target = scene.target.resolve();
+        Creature *actor = scene.actor.resolve_for_execution();
+        Creature *target = scene.target.resolve_for_execution();
+        if( scene.fatal_reserved && target && target->is_avatar() ) {
+            return "unsupported_fatal_target";
+        }
         if( !actor || ( !target && !scene.target_dead ) ) {
             return "participant_unavailable";
         }
@@ -350,7 +373,7 @@ struct execution_manager::impl {
     void callbacks( execution_instance &scene, const std::vector<effect_on_condition_id> &list,
                     bool terminal = false ) {
         for( const effect_on_condition_id &eoc : list ) {
-            if( !terminal && !scene.cancel_reason.empty() ) {
+            if( !terminal && ( !scene.active() || !scene.cancel_reason.empty() ) ) {
                 break;
             }
             // Keep the actual creatures alive through a callback that removes a tracker entry.
@@ -392,7 +415,7 @@ struct execution_manager::impl {
         for( const auto *ref : {
                  &scene.actor, &scene.target
              } ) {
-            if( Creature *who = ref->resolve() ) {
+            if( Creature *who = ref->resolve_for_execution() ) {
                 const bool actor = ref == &scene.actor;
                 if( discard_moves && scene.view.definition.is_valid() &&
                     needs_control( *scene.view.definition, actor ) ) {
@@ -402,13 +425,92 @@ struct execution_manager::impl {
         }
     }
 
+    void settle( execution_instance &scene ) {
+        if( !scene.fatal_reserved ) {
+            return;
+        }
+        // Detach ownership before native death/prevention and its reentrant callbacks.
+        scene.fatal_reserved = false;
+        --fatal_count;
+        auto target = scene.fatal_target;
+        if( !target ) {
+            if( Creature *who = scene.target.resolve_loaded() ) {
+                target = who->as_monster() ? get_creature_tracker().find_by_uid( scene.target.id ) :
+                         g->shared_from( *who );
+            }
+        }
+        auto source = scene.fatal_source;
+        if( !source ) {
+            if( Creature *who = scene.actor.resolve_loaded() ) {
+                source = who->as_monster() ? get_creature_tracker().find_by_uid( scene.actor.id ) :
+                         g->shared_from( *who );
+            }
+        }
+        if( source && !( creature_ref::bind( *source ) == scene.actor ) ) {
+            source.reset(); // Never attribute the injury to a replacement avatar/body.
+        }
+        scene.view.context["death_pending"] = diag_value{ 0.0 };
+        if( target && !execution_fatal::finalized( *target ) ) {
+            // Native set_killer keeps the first pointer. That pointer may now be a new avatar body.
+            target->killer = target->is_dead_state() && source && !source->is_fake() ? source.get() : nullptr;
+        }
+        if( target && target->is_dead_state() && !execution_fatal::finalized( *target ) ) {
+            target->die( &get_map(), source.get() );
+        }
+        scene.target_dead = target && execution_fatal::finalized( *target );
+        if( target && !scene.target_dead ) {
+            target->killer = nullptr; // Native NPC prevention may have rescued it inside die().
+        }
+        if( target && !scene.target_dead && target->as_character() ) {
+            target->as_character()->recalc_sight_limits();
+        }
+        const std::string outcome = !target ? "unavailable" : scene.target_dead ? "killed" : "rescued";
+        scene.view.context["execution_authored_outcome"] = diag_value{ scene.view.outcome };
+        scene.view.outcome = outcome;
+        scene.view.context["execution_fatal_outcome"] = diag_value{ outcome };
+        // The original style/context receives one delayed kill event after real finalization.
+        auto values = std::move( scene.kill_context );
+        scene.kill_context.clear();
+        if( scene.target_dead && source && !source->is_dead_state() && source->as_character() &&
+            !values.empty() ) {
+            ma_event_context ctx;
+            const auto text = [&]( const std::string & key ) {
+                const auto it = values.find( key );
+                return it != values.end() && it->second.is_str() ? it->second.str() : std::string();
+            };
+            ctx.opponent = target.get();
+            ctx.weapon = itype_id( text( "weapon" ) );
+            ctx.style = matype_id( text( "style" ) );
+            ctx.technique = matec_id( text( "technique" ) );
+            ctx.bp = bodypart_str_id( text( "bp" ) );
+            if( values.count( "damage" ) ) {
+                ctx.damage = values.at( "damage" ).dbl();
+            }
+            if( values.count( "crit" ) ) {
+                ctx.crit = values.at( "crit" ).dbl() != 0;
+            }
+            if( values.count( "weapon_uid" ) ) {
+                ctx.weapon_uid = std::stoll( text( "weapon_uid" ) );
+            }
+            ctx.hit = ctx.killed = true;
+            if( ctx.style.is_valid() ) {
+                ctx.style->apply_onkill_buffs( *source->as_character() );
+                ctx.style->apply_onkill_eocs( *source->as_character(), ctx );
+            }
+        }
+        scene.fatal_source.reset();
+        scene.fatal_target.reset();
+    }
+
     void finish( execution_instance &scene, const std::string &reason = {} ) {
         if( !scene.active() ) {
             return;
         }
         const bool was_running = scene.view.state == "running";
-        scene.view.state = reason.empty() ? "completed" : "interrupted";
+        scene.view.state = "settling";
         scene.view.reason = reason;
+        settle( scene );
+        scene.view.state = reason.empty() ? "completed" : "interrupted";
         scene.view.context["execution_target_dead"] = diag_value{ scene.target_dead ? 1.0 : 0.0 };
         release( scene, was_running );
         if( scene.view.definition.is_valid() && scene.revision == scene.view.definition->revision ) {
@@ -481,7 +583,9 @@ struct execution_manager::impl {
         const tripoint_abs_ms intended = here.get_abs( destination );
         // The default setpos/knockback path falls immediately. Commit the checked tile
         // first so narration, cursor accounting, and attributed native gravity stay ordered.
+        motion_action = true;
         who->setpos( here, destination, false );
+        motion_action = false;
         if( who->pos_abs() != intended ) {
             result( scene, action, "blocked" );
             return true;
@@ -492,7 +596,8 @@ struct execution_manager::impl {
             narrate( scene, action.on_moved, action.role, action.on_moved_narration );
         }
         here.creature_on_trap( *who );
-        if( !who->is_dead_state() && role_ref( scene, action.role ).resolve() == who.get() ) {
+        if( scene.active() && ( !who->is_dead_state() || scene.fatal_reserved ) &&
+            role_ref( scene, action.role ).resolve_for_execution() == who.get() ) {
             // Scope attribution only to native gravity/impact, not to unrelated environmental damage.
             gravity_action = true;
             who->gravity_check( &here );
@@ -501,13 +606,13 @@ struct execution_manager::impl {
                 here.creature_in_field( *who );
             }
         }
-        if( action.role == "target" && who->is_dead_state() ) {
+        if( action.role == "target" && who->is_dead_state() && !scene.fatal_reserved ) {
             scene.target_dead = true;
         }
         who->check_dead_state( &here );
         if( action.role == "target" ) {
             // Native death prevention can rescue a target.
-            scene.target_dead = who->is_dead_state();
+            scene.target_dead = who->is_dead_state() && !scene.fatal_reserved;
         }
         if( who->is_avatar() && !who->is_dead_state() ) {
             g->update_map( *who->as_character(), before.z() != who->pos_abs().z() );
@@ -516,12 +621,17 @@ struct execution_manager::impl {
         scene.view.context["execution_fell"] = diag_value{ who->pos_abs().z() < before.z() ? 1.0 : 0.0 };
         scene.view.context["execution_position"] = diag_value{ who->pos_abs() };
         refresh_positions( scene );
+        if( scene.fatal_reserved && action.role == "target" && who->pos_abs().z() < before.z() ) {
+            result( scene, action, "moved" );
+            finish( scene ); // Native landing is the terminal checkpoint for an owned fatal fall.
+            return true;
+        }
         if( who->pos_abs() != intended ) {
             // A fall is an expected result; teleporting traps stop the current motion too.
             result( scene, action, who->pos_abs().z() < before.z() ? "moved" : "displaced" );
             return true;
         }
-        if( scene.remaining == 0 || who->is_dead_state() ) {
+        if( scene.remaining == 0 || ( who->is_dead_state() && !scene.fatal_reserved ) ) {
             result( scene, action, "moved" );
             return true;
         }
@@ -674,12 +784,18 @@ struct execution_manager::impl {
             if( step.action.type == execution_action::kind::move ) {
                 const bool complete = move( scene, step.action );
                 owned_action = 0;
+                if( !scene.active() ) {
+                    return;
+                }
                 if( !complete ) {
                     return;
                 }
             } else {
                 immediate( scene, step.action );
                 owned_action = 0;
+                if( !scene.active() ) {
+                    return;
+                }
                 ++scene.occurrences;
                 if( scene.occurrences < step.repeat_count && scene.cancel_reason.empty() ) {
                     scene.view.due = calendar::turn + time_duration::from_turns( step.interval );
@@ -714,13 +830,20 @@ struct execution_manager::impl {
             return;
         }
         const execution_definition &def = *scene.view.definition;
+        if( scene.fatal_reserved ) {
+            Creature *victim = scene.target.resolve_for_execution();
+            if( victim && !victim->is_dead_state() ) {
+                finish( scene, "rescued" );
+                return;
+            }
+        }
         for( bool actor : {
                  true, false
              } ) {
             if( !needs_control( def, actor ) ) {
                 continue;
             }
-            Creature *who = ( actor ? scene.actor : scene.target ).resolve();
+            Creature *who = ( actor ? scene.actor : scene.target ).resolve_for_execution();
             if( Character *person = who->as_character() ) {
                 if( !person->activity.is_null() ) {
                     finish( scene, "busy" );
@@ -734,7 +857,7 @@ struct execution_manager::impl {
                  true, false
              } ) {
             if( needs_control( def, actor ) ) {
-                Creature *who = ( actor ? scene.actor : scene.target ).resolve();
+                Creature *who = ( actor ? scene.actor : scene.target ).resolve_for_execution();
                 who->set_moves( std::min( who->get_moves(), 0 ) );
                 if( who->is_avatar() ) {
                     get_avatar().assign_activity( execution_activity_actor( scene.view.id ) );
@@ -765,6 +888,149 @@ std::string execution_manager::check_start( const execution_id &definition, cons
     return start_impl( definition, d, std::nullopt, true ).reason;
 }
 
+std::string execution_manager::check_fatal_start( const execution_id &definition,
+        const dialogue &d )
+{
+    return start_impl( definition, d, std::nullopt, true, true ).reason;
+}
+
+execution_start_result execution_manager::start_fatal( const execution_id &definition,
+        const dialogue &d )
+{
+    return start_impl( definition, d, std::nullopt, false, true );
+}
+
+int64_t execution_manager::on_fatal_hit( const execution_combat::attack_snapshot &snapshot )
+{
+    if( data->processing || data->stopping || !snapshot.fatal ) {
+        return 0;
+    }
+    const auto candidates = execution_triggers::candidates( snapshot );
+    if( std::none_of( candidates.begin(), candidates.end(), []( const execution_trigger * rule ) {
+    return rule->fatal;
+} ) ) {
+        return 0;
+    }
+    return data->triggers.consider( *this, snapshot ).instance;
+}
+
+void execution_manager::release_fatal_attack( int64_t id, bool successful )
+{
+    const auto it = data->instances.find( id );
+    if( it == data->instances.end() || !it->second.active() || !it->second.fatal_reserved ) {
+        return;
+    }
+    it->second.fatal_ready = true;
+    if( !successful ) {
+        settle_fatal( *it->second.fatal_target, "attack_aborted" );
+    }
+}
+
+bool execution_manager::death_pending( const Creature &who ) const
+{
+    if( data->fatal_count == 0 || who.is_avatar() ) {
+        return false;
+    }
+    for( const auto &entry : data->instances ) {
+        const execution_instance &scene = entry.second;
+        if( scene.active() && scene.fatal_reserved &&
+            scene.target.dimension == g->get_dimension_prefix() ) {
+            if( const Character *person = who.as_character() ) {
+                if( scene.target.type == creature_ref::kind::character &&
+                    scene.target.id == person->getID().get_value() ) {
+                    return true;
+                }
+            } else if( scene.fatal_target.get() == &who || scene.target.resolve_loaded() == &who ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool execution_manager::owns_fatal_motion( const Creature &who ) const
+{
+    const auto it = data->instances.find( data->owned_action );
+    return ( data->motion_action || data->gravity_action ) && it != data->instances.end() &&
+           it->second.active() && it->second.fatal_reserved &&
+           it->second.target == creature_ref::bind( who );
+}
+
+bool execution_manager::owns_fatal_gravity( const Creature &who ) const
+{
+    return data->gravity_action && owns_fatal_motion( who );
+}
+
+bool execution_manager::settle_fatal( const Creature &who, const std::string &reason )
+{
+    if( data->fatal_count == 0 ) {
+        return false;
+    }
+    const creature_ref ref = creature_ref::bind( who );
+    for( auto &entry : data->instances ) {
+        execution_instance &scene = entry.second;
+        if( scene.active() && scene.fatal_reserved && scene.target == ref ) {
+            const bool previous = data->processing;
+            data->processing = true;
+            const on_out_of_scope restore( [&]() {
+                data->processing = previous;
+            } );
+            data->finish( scene, reason );
+            return true;
+        }
+    }
+    return false;
+}
+
+void execution_manager::settle_for_removal( const Creature &who, const std::string &reason )
+{
+    if( data->fatal_count == 0 ) {
+        return;
+    }
+    const creature_ref ref = creature_ref::bind( who );
+    std::vector<int64_t> ids;
+    for( const auto &entry : data->instances ) {
+        const execution_instance &scene = entry.second;
+        if( scene.active() && scene.fatal_reserved && ( scene.actor == ref || scene.target == ref ) ) {
+            ids.push_back( entry.first );
+        }
+    }
+    const bool previous = data->processing;
+    data->processing = true;
+    const on_out_of_scope restore( [&]() {
+        data->processing = previous;
+    } );
+    for( int64_t id : ids ) {
+        data->finish( data->instances.at( id ), reason );
+    }
+}
+
+void execution_manager::defer_kill( const Creature &target, const ma_event_context &ctx )
+{
+    const creature_ref ref = creature_ref::bind( target );
+    for( auto &entry : data->instances ) {
+        execution_instance &scene = entry.second;
+        if( !scene.active() || !scene.fatal_reserved || !( scene.target == ref ) ) {
+            continue;
+        }
+        auto &out = scene.kill_context;
+        out["weapon"] = diag_value{ ctx.weapon.str() };
+        out["style"] = diag_value{ ctx.style.str() };
+        out["technique"] = diag_value{ ctx.technique.str() };
+        out["bp"] = diag_value{ ctx.bp.str() };
+        if( ctx.weapon_uid > 0 ) {
+            out["weapon_uid"] = diag_value{ std::to_string( ctx.weapon_uid ) };
+        }
+        if( ctx.damage ) {
+            out["damage"] = diag_value{ *ctx.damage };
+        }
+        if( ctx.crit ) {
+            out["crit"] = diag_value{ *ctx.crit ? 1.0 : 0.0 };
+        }
+        return;
+    }
+}
+
 bool execution_manager::processing_actions() const
 {
     return data->processing || data->stopping || data->triggers.is_selecting();
@@ -793,7 +1059,7 @@ std::optional<execution_trigger_report> execution_manager::last_trigger_report()
 
 execution_start_result execution_manager::start_impl( const execution_id &definition,
         const dialogue &d,
-        std::optional<uint64_t> seed, bool check_only )
+        std::optional<uint64_t> seed, bool check_only, bool fatal )
 {
     if( data->stopping ) {
         return { 0, "world_transition" };
@@ -806,14 +1072,31 @@ execution_start_result execution_manager::start_impl( const execution_id &defini
     }
     const Creature *actor = d.const_actor( false )->get_const_creature();
     const Creature *target = d.const_actor( true )->get_const_creature();
-    if( !actor || !target || actor == target || actor->is_dead_state() || target->is_dead_state() ) {
+    if( !actor || !target || actor == target || actor->is_dead_state() ||
+        ( target->is_dead_state() && !fatal ) ) {
         return { 0, "invalid_participant" };
     }
     const execution_definition &def = *definition;
+    if( death_pending( *actor ) || death_pending( *target ) ) {
+        return { 0, "fatal_target_busy" };
+    }
+    if( fatal && ( actor->is_fake() || actor->is_hallucination() || target->is_avatar() ||
+                   target->is_fake() || target->is_hallucination() ||
+                   ( actor->as_npc() && actor->as_npc()->marked_for_death ) ||
+                   ( target->as_npc() && target->as_npc()->marked_for_death ) ||
+                   !target->is_dead_state() || execution_fatal::finalized( *target ) ||
+                   !def.allow_fatal_target || def.max_ticks > 30 ||
+                   def.control_target == execution_control::free ) ) {
+        return { 0, "unsupported_fatal_target" };
+    }
+    if( fatal && !execution_combat::at_fatal_commit( *target ) ) {
+        return { 0, "unsupported_fatal_boundary" };
+    }
     execution_instance scene;
     scene.actor = creature_ref::bind( *actor );
     scene.target = creature_ref::bind( *target );
-    if( scene.actor.resolve() != actor || scene.target.resolve() != target ) {
+    if( scene.actor.resolve() != actor ||
+        ( fatal ? scene.target.resolve_loaded() : scene.target.resolve() ) != target ) {
         return { 0, "participant_unloaded" };
     }
     if( rl_dist( actor->pos_abs(), target->pos_abs() ) > def.max_distance ) {
@@ -932,8 +1215,29 @@ execution_start_result execution_manager::start_impl( const execution_id &defini
     scene.random_state = seed ? *seed : ( static_cast<uint64_t>( rng( 0, INT_MAX ) ) << 32 |
                                           static_cast<uint64_t>( rng( 0, INT_MAX ) ) );
     scene.random_state ^= static_cast<uint64_t>( scene.view.id );
+    if( fatal ) {
+        scene.fatal_reserved = true;
+        scene.fatal_ready = false;
+        scene.fatal_until = calendar::turn + time_duration::from_turns( def.max_ticks );
+        scene.fatal_source = g->shared_from( *actor );
+        scene.fatal_target = target->as_monster() ?
+                             get_creature_tracker().find_by_uid( scene.target.id ) : g->shared_from( *target );
+        if( !scene.fatal_source || !scene.fatal_target ) {
+            return { 0, "participant_unloaded" };
+        }
+        scene.view.context["death_pending"] = diag_value{ 1.0 };
+        scene.fatal_target->set_moves( std::min( scene.fatal_target->get_moves(), 0 ) );
+    }
     const int64_t id = scene.view.id;
     data->instances.emplace( id, std::move( scene ) );
+    if( fatal ) {
+        ++data->fatal_count;
+        if( Character *person = data->instances.at( id ).fatal_target->as_character() ) {
+            person->recalc_sight_limits();
+            person->set_dodges_left( 0 );
+            person->set_free_dodges_left( 0 );
+        }
+    }
     return { id, "queued" };
 }
 
@@ -980,13 +1284,66 @@ void execution_manager::clear()
         cancel_all( "cleared" );
         return;
     }
+    data->processing = true;
+    const on_out_of_scope restore( [&]() {
+        data->processing = false;
+    } );
     for( auto &entry : data->instances ) {
         if( entry.second.active() ) {
-            data->release( entry.second );
+            if( entry.second.fatal_reserved ) {
+                data->finish( entry.second, "cleared" );
+            } else {
+                data->release( entry.second );
+            }
         }
     }
     data->instances.clear();
+    data->fatal_count = 0;
+    data->restoring = false;
     data->triggers.clear();
+}
+
+void execution_manager::reset_for_load()
+{
+    if( processing_actions() ) {
+        throw JsonError( "Cannot replace a session inside an execution action" );
+    }
+    for( const auto &entry : data->instances ) {
+        if( avatar_activity_is( entry.first ) ) {
+            get_avatar().activity.set_to_null();
+        }
+    }
+    data->instances.clear();
+    data->fatal_count = 0;
+    data->triggers.clear();
+    data->restoring = true;
+}
+
+void execution_manager::end_restore()
+{
+    data->restoring = false;
+}
+
+bool execution_manager::restoring() const
+{
+    return data->restoring;
+}
+
+bool execution_manager::prepare_world_transition()
+{
+    if( processing_actions() || execution_combat::attack_in_progress() ) {
+        return false;
+    }
+    data->processing = true;
+    const on_out_of_scope restore( [&]() {
+        data->processing = false;
+    } );
+    for( auto &entry : data->instances ) {
+        if( entry.second.active() && entry.second.fatal_reserved ) {
+            data->finish( entry.second, "dimension_changed" );
+        }
+    }
+    return true;
 }
 
 void execution_manager::drain_starts()
@@ -995,27 +1352,32 @@ void execution_manager::drain_starts()
         return;
     }
     data->processing = true;
+    const bool in_combat = execution_combat::attack_in_progress();
     const on_out_of_scope reset_pump( [&]() {
         if( data->owned_action != 0 ) {
             execution_instance &scene = data->instances.at( data->owned_action );
-            scene.view.state = "interrupted";
-            scene.view.reason = "callback_failed";
-            data->release( scene );
+            data->finish( scene, "callback_failed" );
         }
         data->owned_action = 0;
         data->gravity_action = false;
+        data->motion_action = false;
         data->processing = false;
     } );
     std::vector<int64_t> pending;
     for( const auto &entry : data->instances ) {
-        if( entry.second.view.state == "pending" ||
+        if( ( entry.second.view.state == "pending" &&
+              ( ( entry.second.fatal_ready && !in_combat ) || ( entry.second.fatal_reserved &&
+                      calendar::turn >= entry.second.fatal_until ) ) ) ||
             ( entry.second.active() && !entry.second.cancel_reason.empty() ) ) {
             pending.push_back( entry.first );
         }
     }
     for( int64_t id : pending ) {
         execution_instance &scene = data->instances.at( id );
-        if( scene.view.state == "pending" ) {
+        if( in_combat ) {
+            // Emergency settlement may run inside a callback; graph activation may not.
+            data->finish( scene, scene.cancel_reason.empty() ? "fatal_timeout" : scene.cancel_reason );
+        } else if( scene.view.state == "pending" ) {
             data->begin( scene );
         } else {
             data->finish( scene, scene.cancel_reason );
@@ -1031,16 +1393,18 @@ void execution_manager::process()
         return;
     }
     drain_starts();
+    if( execution_combat::attack_in_progress() ) {
+        return;
+    }
     data->processing = true;
     const on_out_of_scope reset_pump( [&]() {
         if( data->owned_action != 0 ) {
             execution_instance &scene = data->instances.at( data->owned_action );
-            scene.view.state = "interrupted";
-            scene.view.reason = "callback_failed";
-            data->release( scene );
+            data->finish( scene, "callback_failed" );
         }
         data->owned_action = 0;
         data->gravity_action = false;
+        data->motion_action = false;
         data->processing = false;
     } );
     std::vector<int64_t> active;
@@ -1073,6 +1437,29 @@ void execution_manager::process()
             continue;
         }
         scene.last_tick = calendar::turn;
+        if( scene.fatal_reserved ) {
+            const auto victim = hold( scene.target );
+            if( victim && !victim->is_dead_state() ) {
+                data->finish( scene, "rescued" );
+                continue;
+            }
+            if( victim ) {
+                // Rebuild transient lifetime holds after loading, before callbacks can remove actors.
+                if( !scene.fatal_target ) {
+                    scene.fatal_target = victim;
+                    scene.fatal_source = hold( scene.actor );
+                }
+                // Pending victims are deliberately absent from normal living-actor loops.
+                victim->process_turn();
+                victim->set_moves( std::min( victim->get_moves(), 0 ) );
+                if( scene.active() && scene.fatal_reserved ) {
+                    get_map().creature_in_field( *victim );
+                }
+            }
+            if( !scene.active() ) {
+                continue;
+            }
+        }
         data->owned_action = scene.view.id;
         data->callbacks( scene, def.on_tick );
         data->owned_action = 0;
@@ -1104,6 +1491,9 @@ bool execution_manager::controls( const Creature &who ) const
     const creature_ref ref = creature_ref::bind( who );
     for( const auto &entry : data->instances ) {
         const execution_instance &scene = entry.second;
+        if( scene.active() && scene.fatal_reserved && scene.target == ref ) {
+            return true;
+        }
         if( !scene.active() || !scene.cancel_reason.empty() || !scene.view.definition.is_valid() ) {
             continue;
         }
@@ -1137,7 +1527,7 @@ bool execution_manager::can_fall( int64_t id, const std::string &role ) const
         return false;
     }
     const execution_instance &scene = it->second;
-    Creature *who = role_ref( scene, role ).resolve();
+    Creature *who = role_ref( scene, role ).resolve_for_execution();
     execution_action action;
     action.role = role;
     const tripoint_rel_ms direction = direction_for( scene, action );
@@ -1156,7 +1546,7 @@ void execution_manager::notify_damage( const Creature &who, int amount )
     const creature_ref ref = creature_ref::bind( who );
     for( auto &entry : data->instances ) {
         execution_instance &scene = entry.second;
-        if( scene.active() && scene.view.id != data->owned_action &&
+        if( scene.active() && !scene.fatal_reserved && scene.view.id != data->owned_action &&
             scene.view.definition.is_valid() && scene.view.definition->interrupt_damage &&
             ( scene.actor == ref || scene.target == ref ) ) {
             scene.cancel_reason = "damaged";
@@ -1215,7 +1605,7 @@ void execution_narration_segment::deserialize( const JsonObject &obj )
 
 void execution_manager::serialize( JsonOut &jsout ) const
 {
-    if( processing_actions() ) {
+    if( processing_actions() || execution_combat::attack_in_progress() ) {
         throw JsonError( "Cannot save an execution inside a partially committed action" );
     }
     jsout.start_object();
@@ -1250,6 +1640,14 @@ void execution_manager::serialize( JsonOut &jsout ) const
         jsout.member( "random", std::to_string( scene.random_state ) );
         jsout.member( "entered", scene.entered );
         jsout.member( "target_dead", scene.target_dead );
+        jsout.member( "fatal_pending", scene.fatal_reserved );
+        if( scene.fatal_reserved ) {
+            if( !scene.fatal_ready ) {
+                throw JsonError( "Cannot save an uncommitted fatal attack" );
+            }
+            jsout.member( "fatal_until", scene.fatal_until );
+            jsout.member( "kill_context", scene.kill_context );
+        }
         jsout.member( "entries", scene.entries );
         jsout.member( "occurrences", scene.occurrences );
         jsout.member( "requested", scene.requested );
@@ -1276,6 +1674,7 @@ void execution_manager::deserialize( const JsonObject &jo )
     // The game cleared the old session before restoring actors/activities. Do not erase
     // the just-restored avatar activity while reading its matching runtime record.
     data->instances.clear();
+    data->fatal_count = 0;
     data->triggers.clear();
     jo.read( "triggers", data->triggers );
     int64_t saved_next = 1;
@@ -1321,6 +1720,42 @@ void execution_manager::deserialize( const JsonObject &jo )
         }
         saved.read( "entered", scene.entered );
         saved.read( "target_dead", scene.target_dead );
+        saved.read( "fatal_pending", scene.fatal_reserved );
+        if( scene.fatal_reserved ) {
+            saved.read( "fatal_until", scene.fatal_until, true );
+            saved.read( "kill_context", scene.kill_context );
+            if( scene.fatal_until > calendar::turn + 30_turns || scene.target_dead ||
+                scene.target.id <= 0 || scene.kill_context.size() > 7 ) {
+                saved.throw_error( "invalid saved fatal reservation" );
+            }
+            for( const auto &entry : data->instances ) {
+                if( entry.second.fatal_reserved && entry.second.target == scene.target ) {
+                    saved.throw_error( "duplicate saved fatal owner" );
+                }
+            }
+            for( const auto &value : scene.kill_context ) {
+                const bool numeric = value.first == "damage" || value.first == "crit";
+                const bool text = value.first == "weapon" || value.first == "style" ||
+                                  value.first == "technique" || value.first == "bp" || value.first == "weapon_uid";
+                if( ( numeric && !value.second.is_dbl() ) || ( text && !value.second.is_str() ) ||
+                    ( !numeric && !text ) ) {
+                    saved.throw_error( "invalid deferred kill context" );
+                }
+                if( value.first == "weapon_uid" ) {
+                    try {
+                        size_t end = 0;
+                        const std::string uid = value.second.str();
+                        if( std::stoll( uid, &end ) <= 0 || end != uid.size() ) {
+                            saved.throw_error( "invalid deferred weapon identity" );
+                        }
+                    } catch( const std::invalid_argument & ) {
+                        saved.throw_error( "invalid deferred weapon identity" );
+                    } catch( const std::out_of_range & ) {
+                        saved.throw_error( "invalid deferred weapon identity" );
+                    }
+                }
+            }
+        }
         saved.read( "entries", scene.entries );
         saved.read( "occurrences", scene.occurrences );
         saved.read( "requested", scene.requested );
@@ -1355,6 +1790,7 @@ void execution_manager::deserialize( const JsonObject &jo )
         }
         data->next_id = std::max( data->next_id, scene.view.id + 1 );
         data->instances.emplace( scene.view.id, std::move( scene ) );
+        data->fatal_count += data->instances.at( scene.view.id ).fatal_reserved;
     }
     // Actor/activity validation happens at the first safe pump, after all save records load.
 }

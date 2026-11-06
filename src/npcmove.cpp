@@ -53,6 +53,7 @@
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "explosion.h"
 #include "faction.h"
@@ -1587,7 +1588,7 @@ void npc::end_cancelled_task()
 
 void npc::move()
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         incapacitation::suppress_moves( *this );
         return;
     }
@@ -3709,7 +3710,7 @@ static bool can_close_behind( map &here, Character &who, const tripoint_bub_ms &
 
 void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint_bub_ms> *nomove )
 {
-    if( incapacitation::unconscious( *this ) ) {
+    if( incapacitation::unconscious( *this ) || execution_fatal::pending( *this ) ) {
         incapacitation::suppress_moves( *this );
         return;
     }
