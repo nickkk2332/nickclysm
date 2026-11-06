@@ -137,7 +137,7 @@
     "symbol": "x",
     "color": "white",
     "weight": "1 kg",
-    "volume": "1 ml",
+    "volume": "100 ml",
     "material": [ "lead" ]
   },
   {
@@ -327,7 +327,7 @@
     "id": "test_twelve_falling_charges",
     "copy-from": "battery",
     "weight": "1 kg",
-    "volume": "1 ml",
+    "volume": "100 ml",
     "stack_size": 1,
     "material": [ "lead" ],
     "subtypes": [ "AMMO" ],
