@@ -132,6 +132,9 @@ void power_application::load( const JsonObject &jo, std::string_view source )
     if( jo.has_object( "upkeep" ) ) {
         upkeep.load( jo.get_object( "upkeep" ) );
     }
+    if( jo.has_object( "grants" ) ) {
+        grants.load( jo.get_object( "grants" ) );
+    }
     read_eocs( jo, "on_start", std::string( source ), on_start );
     read_eocs( jo, "on_tick", std::string( source ), on_tick );
     read_eocs( jo, "on_end", std::string( source ), on_end );
@@ -143,6 +146,7 @@ void power_application::load( const JsonObject &jo, std::string_view source )
 
 void power_application::check() const
 {
+    grants.check( id.str() );
     for( const auto *cost : {
              &start_cost, &upkeep
          } ) {

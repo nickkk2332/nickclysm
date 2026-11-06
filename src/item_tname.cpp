@@ -369,6 +369,9 @@ std::string location_closest_city( item const &it, unsigned int /* quantity */,
 std::string ethereal( item const &it, unsigned int /* quantity */,
                       segment_bitset const &/* segments */ )
 {
+    if( it.has_var( "power_grant_application" ) ) {
+        return _( " (projected)" );
+    }
     if( it.ethereal ) {
         const time_duration turns = time_duration::from_turns(
                                         std::lround( it.get_var( "ethereal", 0.0 ) ) );

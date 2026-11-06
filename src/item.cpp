@@ -1,4 +1,5 @@
 #include "item.h"
+#include "power_grant.h"
 
 #include <algorithm>
 #include <cmath>
@@ -3342,6 +3343,9 @@ int item::wheel_area() const
 
 bool item::is_salvageable() const
 {
+    if( has_var( "power_grant_application" ) ) {
+        return false;
+    }
     if( is_null() ) {
         return false;
     }
@@ -3357,7 +3361,8 @@ bool item::is_salvageable() const
 
 bool item::is_disassemblable() const
 {
-    return !ethereal && ( recipe_dictionary::get_uncraft( typeId() ) || typeId() == itype_disassembly );
+    return !ethereal && !has_var( "power_grant_application" ) &&
+           ( recipe_dictionary::get_uncraft( typeId() ) || typeId() == itype_disassembly );
 }
 
 bool item::is_craft() const
@@ -3905,6 +3910,9 @@ bool item::use_amount_internal( const itype_id &it, int &quantity, std::list<ite
 
 bool item::allow_crafting_component() const
 {
+    if( has_var( "power_grant_application" ) ) {
+        return false;
+    }
     if( has_flag( flag_PSEUDO ) ) {
         return false;
     }
@@ -4257,7 +4265,7 @@ int item::processing_speed() const
         return to_turns<int>( 10_minutes );
     }
 
-    if( active || ethereal || wetness || has_link_data() ||
+    if( active || ethereal || has_var( "power_grant_application" ) || wetness || has_link_data() ||
         has_flag( flag_RADIO_ACTIVATION ) || has_relic_recharge() ||
         has_fault_flag( flag_BLACKPOWDER_FOULING_DAMAGE ) || get_var( "gun_heat", 0 ) > 0 ||
         has_fault( fault_emp_reboot ) ) {
@@ -4793,6 +4801,11 @@ void item::actualize_scheduled( item_wakeup_kind kind, time_point now,
 bool item::process( map &here, Character *carrier, const tripoint_bub_ms &pos, float insulation,
                     temperature_flag flag, float spoil_multiplier_parent, bool watertight_container, bool recursive )
 {
+    const power_grant_item_scope grant_dispatch( has_var( "power_grant_application" ) );
+    if( has_var( "power_grant_application" ) && !get_power_grants().item_active( *this ) ) {
+        expire_power_equipment( *this, here, pos );
+        return true;
+    }
     process_relic( carrier, pos );
     if( recursive ) {
         contents.process( here, carrier, pos, insulation, flag,
@@ -4810,6 +4823,9 @@ void item::set_last_temp_check( const time_point &pt )
 bool item::process_internal( map &here, Character *carrier, const tripoint_bub_ms &pos,
                              float insulation, const temperature_flag flag, float spoil_modifier, bool watertight_container )
 {
+    if( has_var( "power_grant_application" ) ) {
+        return false;
+    }
     if( ethereal ) {
         diag_value const &eth = get_value( "ethereal" );
         if( eth.is_empty() ) {

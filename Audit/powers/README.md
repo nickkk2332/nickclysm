@@ -12,6 +12,8 @@ The fourth milestone adds [movement, summon bonds and AI intent](09-movement-sum
 
 The fifth milestone adds [persistent projectiles, beams, interception and area membership](10-projections-areas-milestone.md), including charged shapes, deterministic strength contests and source-specific aura defenses. See the [projection authoring contract](../../doc/JSON/POWER_PROJECTIONS.md).
 
+The sixth milestone adds [source-owned native effects, equipment and armor forms](11-owned-grants-forms-milestone.md), preserving ordinary effects and real original gear through overlapping sources and cleanup. See the [grant authoring contract](../../doc/JSON/POWER_GRANTS.md).
+
 **Question:** How far can current Nickclysm JSON and EOCs take superhero brawls, archwizards, anime fighters, and similar ability-heavy play? Which additions would remove the most important limits?
 
 **Snapshot:** `b32c9baea25f62478228c6a91cbbf9f356e4e8a3` (`master`, inspected 2026-11-03). This is an audit and a proposed direction, not an implementation. No engine, gameplay JSON, or tests were changed for this report.

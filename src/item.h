@@ -3836,7 +3836,8 @@ inline units::mass lifting_quality_to_mass( int quality_level )
  */
 inline bool is_crafting_component( const item &component )
 {
-    return ( component.allow_crafting_component() || component.count_by_charges() ) &&
+    return !component.has_var( "power_grant_application" ) &&
+           ( component.allow_crafting_component() || component.count_by_charges() ) &&
            !component.is_filthy();
 }
 

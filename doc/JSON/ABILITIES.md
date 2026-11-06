@@ -275,3 +275,7 @@ See [POWER_ACTORS.md](POWER_ACTORS.md) for optional `ai` metadata, pure queries,
 [Persistent power projections](POWER_PROJECTIONS.md) add saved travelling bolts,
 charged beams, intercepting areas and independent aura membership as opt-in EOC
 payloads. Ability payment and projection start/upkeep costs are separate.
+
+[Owned native grants and armor forms](POWER_GRANTS.md) are application consumers.
+A self-targeted ability can apply a sustained form with its own source-specific
+lifetime, upkeep and original-equipment restoration.

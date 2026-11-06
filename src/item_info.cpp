@@ -3903,7 +3903,10 @@ void item::properties_info( std::vector<iteminfo> &info, const iteminfo_query *p
 
     armor_fit_info( info, parts, batch, debug );
 
-    if( ethereal ) {
+    if( has_var( "power_grant_application" ) ) {
+        info.emplace_back( "DESCRIPTION",
+                           _( "This equipment is sustained by a power and disappears when that power ends." ) );
+    } else if( ethereal ) {
         info.emplace_back( "DESCRIPTION",
                            _( "This item disappears as soon as its timer runs out, unless it is permanent or a comestible." ) );
     }

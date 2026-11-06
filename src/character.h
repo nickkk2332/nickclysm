@@ -2986,6 +2986,11 @@ class Character : public Creature, public visitable
         item_location get_wielded_item();
         // This invalidates the item_location returned by get_wielded_item
         void set_wielded_item( const item &to_wield );
+        std::string check_power_stow( bool clothing, bool held ) const;
+        void stow_power_gear( bool clothing, bool held, std::list<item> &garments,
+                              std::optional<item> &weapon );
+        bool wear_power_item( item &value );
+        bool wield_power_item( item &value );
 
         int scent = 0;
         pimpl<bionic_collection> my_bionics;

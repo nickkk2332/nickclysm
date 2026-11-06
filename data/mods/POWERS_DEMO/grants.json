@@ -1,0 +1,221 @@
+[
+  {
+    "type": "effect_type",
+    "id": "power_demo_might",
+    "name": [ "Projected might" ],
+    "desc": [ "A sustained power increases your strength." ],
+    "rating": "good",
+    "max_duration": "1 h",
+    "max_intensity": 10,
+    "base_mods": { "str_mod": [ 2 ] },
+    "scaling_mods": { "str_mod": [ 2 ] }
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "id": "power_demo_armor_shell",
+    "name": { "str": "projected armor shell" },
+    "description": "A sustained shell of armor covering your torso and arms.  It disappears when its source ends.",
+    "weight": "100 g",
+    "volume": "500 ml",
+    "material": [ "steel" ],
+    "symbol": "[",
+    "color": "light_cyan",
+    "material_thickness": 2,
+    "armor": [ { "coverage": 100, "covers": [ "torso", "arm_l", "arm_r" ], "encumbrance": 8 } ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_force_blade",
+    "name": { "str": "projected force blade" },
+    "description": "A blade sustained by a power.  It disappears when its source ends.",
+    "weight": "600 g",
+    "volume": "1 L",
+    "material": [ "steel" ],
+    "symbol": "/",
+    "color": "light_cyan",
+    "melee_damage": { "bash": 5, "cut": 30 },
+    "flags": [ "DURABLE_MELEE" ]
+  },
+  {
+    "type": "power_application",
+    "id": "power_demo_might_grant",
+    "name": "projected might",
+    "duration_ticks": 60,
+    "tags": [ "buff", "might" ],
+    "start_cost": { "resource": "power_demo_focus_pool", "amount": 5 },
+    "upkeep": { "resource": "power_demo_focus_pool", "amount": 1 },
+    "grants": { "effects": [ { "id": "power_demo_might", "intensity": 1 } ] }
+  },
+  {
+    "type": "power_application",
+    "id": "power_demo_armored_form",
+    "name": "armored force form",
+    "duration_ticks": 60,
+    "tags": [ "form" ],
+    "start_cost": { "resource": "power_demo_focus_pool", "amount": 10 },
+    "upkeep": { "resource": "power_demo_focus_pool", "amount": 3 },
+    "grants": {
+      "form": {  },
+      "effects": [ { "id": "power_demo_might", "intensity": 2 } ],
+      "equipment": [ { "item": "power_demo_armor_shell", "slot": "worn" }, { "item": "power_demo_force_blade", "slot": "wielded" } ]
+    }
+  },
+  {
+    "type": "power_application",
+    "id": "power_demo_blade_grant",
+    "name": "projected force blade",
+    "duration_ticks": 60,
+    "tags": [ "equipment" ],
+    "start_cost": { "resource": "power_demo_focus_pool", "amount": 5 },
+    "upkeep": { "resource": "power_demo_focus_pool", "amount": 1 },
+    "grants": { "equipment": [ { "item": "power_demo_force_blade", "slot": "wielded" } ] }
+  },
+  {
+    "type": "ability",
+    "id": "power_demo_form_grant_cast",
+    "name": "armored form",
+    "target": "self",
+    "windup_ticks": 1,
+    "move_cost": 100,
+    "eocs": [
+      {
+        "id": "EOC_POWER_DEMO_GRANT_FORM",
+        "effect": [
+          { "apply_power_application": { "id": "power_demo_armored_form" } },
+          {
+            "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+            "then": [ { "u_message": "Your current state or equipment prevents that power." } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_TOGGLE_GRANT_FORM",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_application('power_demo_armored_form', 'owner': 'u')", ">", "0" ] },
+        "then": [ { "dispel_power_applications": { "id": "power_demo_armored_form" } } ],
+        "else": [
+          { "request_ability": { "id": "power_demo_form_grant_cast" } },
+          {
+            "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+            "then": [ { "math": [ "_cancel = 1" ] }, { "u_message": "You cannot begin that power." } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_form_grant_focus",
+    "name": { "str": "armored form focus", "str_pl": "armored form foci" },
+    "description": "Activate to charge for one second and assume an armored form for up to one minute.  Your original worn and wielded equipment is stowed, and you gain armor, a force blade, and four strength.  Ending the form returns the same gear; occupied or incompatible slots cause it to be placed at your feet.  It costs ten focus to start and three per second.  Activate again to end your own form.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_TOGGLE_GRANT_FORM" ] }
+  },
+  {
+    "type": "ability",
+    "id": "power_demo_might_grant_cast",
+    "name": "projected might",
+    "target": "self",
+    "windup_ticks": 0,
+    "move_cost": 100,
+    "eocs": [
+      {
+        "id": "EOC_POWER_DEMO_GRANT_MIGHT",
+        "effect": [
+          { "apply_power_application": { "id": "power_demo_might_grant" } },
+          {
+            "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+            "then": [ { "u_message": "Your current state or equipment prevents that power." } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_TOGGLE_GRANT_MIGHT",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_application('power_demo_might_grant', 'owner': 'u')", ">", "0" ] },
+        "then": [ { "dispel_power_applications": { "id": "power_demo_might_grant" } } ],
+        "else": [
+          { "request_ability": { "id": "power_demo_might_grant_cast" } },
+          {
+            "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+            "then": [ { "math": [ "_cancel = 1" ] }, { "u_message": "You cannot begin that power." } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_might_grant_focus",
+    "name": { "str": "projected might focus", "str_pl": "projected might foci" },
+    "description": "Activate to gain two strength for up to one minute.  Independent sources combine, including an armored form.  It costs five focus to start and one per second.  Activate again to end your own contribution.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_TOGGLE_GRANT_MIGHT" ] }
+  },
+  {
+    "type": "ability",
+    "id": "power_demo_blade_grant_cast",
+    "name": "force blade",
+    "target": "self",
+    "windup_ticks": 0,
+    "move_cost": 100,
+    "eocs": [
+      {
+        "id": "EOC_POWER_DEMO_GRANT_BLADE",
+        "effect": [
+          { "apply_power_application": { "id": "power_demo_blade_grant" } },
+          {
+            "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+            "then": [ { "u_message": "Your current state or equipment prevents that power." } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_POWER_DEMO_TOGGLE_GRANT_BLADE",
+    "effect": [
+      {
+        "if": { "math": [ "u_power_application('power_demo_blade_grant', 'owner': 'u')", ">", "0" ] },
+        "then": [ { "dispel_power_applications": { "id": "power_demo_blade_grant" } } ],
+        "else": [
+          { "request_ability": { "id": "power_demo_blade_grant_cast" } },
+          {
+            "if": { "not": { "compare_string": [ { "context_val": "reason" }, "accepted" ] } },
+            "then": [ { "math": [ "_cancel = 1" ] }, { "u_message": "You cannot begin that power." } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "ITEM",
+    "id": "power_demo_blade_grant_focus",
+    "name": { "str": "force blade focus", "str_pl": "force blade foci" },
+    "description": "Activate with empty hands to wield a projected force blade for up to one minute.  It costs five focus to start and one per second.  The blade disappears when its source ends, including after being dropped or loaned to another character.  Activate again to end your own blade.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_cyan",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_POWER_DEMO_TOGGLE_GRANT_BLADE" ] }
+  }
+]

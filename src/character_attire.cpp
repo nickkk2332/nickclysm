@@ -348,7 +348,25 @@ Character::wear( item_location item_wear, bool interactive )
 std::optional<std::list<item>::iterator> outfit::wear_item( Character &guy, const item &to_wear,
         bool interactive, bool do_calc_encumbrance, bool do_sort_items, bool quiet )
 {
+    return wear_item_impl( guy, to_wear, interactive, do_calc_encumbrance, do_sort_items, quiet,
+                           nullptr );
+}
+
+std::optional<std::list<item>::iterator> outfit::wear_power_item( Character &guy, item &to_wear )
+{
+    return wear_item_impl( guy, to_wear, false, true, true, true, &to_wear );
+}
+
+std::optional<std::list<item>::iterator> outfit::wear_item_impl( Character &guy,
+        const item &to_wear,
+        bool interactive, bool do_calc_encumbrance, bool do_sort_items, bool quiet, item *transfer )
+{
     const map &here = get_map();
+    std::optional<item> snapshot;
+    if( transfer ) {
+        snapshot.emplace( to_wear );
+    }
+    const item &presentation = snapshot ? *snapshot : to_wear;
 
     const bool was_deaf = guy.is_deaf();
     const bool supertinymouse = guy.get_size() == creature_size::tiny;
@@ -358,10 +376,15 @@ std::optional<std::list<item>::iterator> outfit::wear_item( Character &guy, cons
 
     if( do_sort_items ) {
         std::list<item>::iterator position = position_to_wear_new_item( to_wear );
-        new_item_it = worn.insert( position, to_wear );
+        new_item_it = transfer ? worn.insert( position, std::move( *transfer ) ) : worn.insert( position,
+                      to_wear );
     } else {
         // this is used for debug and putting on clothing in the wrong order
-        worn.push_back( to_wear );
+        if( transfer ) {
+            worn.push_back( std::move( *transfer ) );
+        } else {
+            worn.push_back( to_wear );
+        }
     }
 
     item_location loc = new_item_it != worn.end() ?
@@ -376,13 +399,13 @@ std::optional<std::list<item>::iterator> outfit::wear_item( Character &guy, cons
             guy.add_msg_player_or_npc(
                 _( "You put on your %s." ),
                 _( "<npcname> puts on their %s." ),
-                to_wear.tname() );
+                presentation.tname() );
         }
-        guy.mod_moves( -guy.item_wear_cost( to_wear ) );
+        guy.mod_moves( -guy.item_wear_cost( presentation ) );
 
         if( !quiet ) {
             for( const bodypart_id &bp : guy.get_all_body_parts() ) {
-                if( to_wear.covers( bp ) && guy.encumb( bp ) >= 40 ) {
+                if( presentation.covers( bp ) && guy.encumb( bp ) >= 40 ) {
                     guy.add_msg_if_player( m_warning,
                                            bp == body_part_eyes ?
                                            _( "Your %s are very encumbered!  %s" ) : _( "Your %s is very encumbered!  %s" ),
@@ -392,18 +415,18 @@ std::optional<std::list<item>::iterator> outfit::wear_item( Character &guy, cons
             if( !was_deaf && guy.is_deaf() ) {
                 guy.add_msg_if_player( m_info, _( "You're deafened!" ) );
             }
-            if( supertinymouse && !to_wear.has_flag( flag_UNDERSIZE ) ) {
+            if( supertinymouse && !presentation.has_flag( flag_UNDERSIZE ) ) {
                 guy.add_msg_if_player( m_warning,
                                        _( "This %s is too big to wear comfortably!  Maybe it could be refitted." ),
-                                       to_wear.tname() );
-            } else if( !supertinymouse && to_wear.has_flag( flag_UNDERSIZE ) ) {
+                                       presentation.tname() );
+            } else if( !supertinymouse && presentation.has_flag( flag_UNDERSIZE ) ) {
                 guy.add_msg_if_player( m_warning,
                                        _( "This %s is too small to wear comfortably!  Maybe it could be refitted." ),
-                                       to_wear.tname() );
+                                       presentation.tname() );
             }
         }
     } else if( !quiet && guy.is_npc() && get_player_view().sees( here, guy ) ) {
-        guy.add_msg_if_npc( _( "<npcname> puts on their %s." ), to_wear.tname() );
+        guy.add_msg_if_npc( _( "<npcname> puts on their %s." ), presentation.tname() );
     }
 
     // skip this for unsorted items in debug mode
@@ -421,7 +444,7 @@ std::optional<std::list<item>::iterator> outfit::wear_item( Character &guy, cons
         guy.calc_discomfort();
     }
 
-    if( to_wear.is_rigid() || to_wear.is_ablative() ) {
+    if( presentation.is_rigid() || presentation.is_ablative() ) {
         recalc_ablative_blocking( &guy );
     }
 

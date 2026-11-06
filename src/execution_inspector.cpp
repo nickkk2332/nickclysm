@@ -12,6 +12,7 @@
 #include "power_runtime.h"
 #include "power_actor.h"
 #include "power_projection.h"
+#include "power_grant.h"
 #include "execution_runtime.h"
 #include "game.h"
 #include "output.h"
@@ -222,6 +223,24 @@ std::string execution_inspector::format_power_accounts( const power_manager &pow
     return out.str();
 }
 
+std::string execution_inspector::format_grant( const power_grant_view &v )
+{
+    std::ostringstream out;
+    out << "Grants / application #" << v.application << " / " << v.definition.str()
+        << "\nstate=" << v.state << " / reason=" << v.reason
+        << "\nowner=" << static_cast<int>( v.owner.type ) << ":" << v.owner.id
+        << " @ " << v.owner.dimension.str()
+        << "\ntarget=" << static_cast<int>( v.target.type ) << ":" << v.target.id
+        << " @ " << v.target.dimension.str()
+        << "\nform=" << v.form << " / effects installed=" << v.effects
+        << " / equipment issued=" << v.equipment << "\nstowed=" << v.stowed
+        << " / restored=" << v.restored << " / dropped=" << v.dropped << "\nStored originals:";
+    for( const auto &original : v.originals ) {
+        out << "\n" << original.first << " / " << original.second.str();
+    }
+    return out.str();
+}
+
 std::string execution_inspector::format_projection( const power_projection_view &v )
 {
     std::ostringstream out;
@@ -277,6 +296,10 @@ void execution_inspector::show()
             }
             rows.emplace_back( string_format( _( "Power movement: %s" ), motion.reason ), detail.str() );
         }
+        for( const auto &grant : get_power_grants().inspect() ) {
+            rows.emplace_back( string_format( _( "Power grants #%lld: %s [%s]" ), grant.application,
+                                              grant.definition.str(), grant.state ), format_grant( grant ) );
+        }
         for( const auto &projection : get_projections().inspect() ) {
             rows.emplace_back( string_format( _( "Projection #%lld: %s [%s]" ), projection.id,
                                               projection.definition.str(), projection.state ), format_projection( projection ) );
@@ -321,7 +344,7 @@ void execution_inspector::show()
         uilist menu;
         menu.title = _( "Execution and powers inspector (read-only)" );
         menu.text =
-            _( "Active/recent applications, resources, damage, abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
+            _( "Active/recent applications, grants, resources, damage, abilities, scenes and contacts. Inspection does not run conditions, consume randomness, or advance time." );
         if( rows.empty() ) {
             menu.addentry( -1, false, -1,
                            _( "No recorded powers, damage, abilities, execution scenes or contacts." ) );

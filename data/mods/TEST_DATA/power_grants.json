@@ -1,0 +1,134 @@
+[
+  {
+    "type": "effect_type",
+    "id": "test_owned_power_boost",
+    "name": [ "Owned power boost" ],
+    "desc": [ "An independently owned testing boost." ],
+    "rating": "good",
+    "max_duration": "1 h",
+    "max_intensity": 10,
+    "base_mods": { "str_mod": [ 1 ] },
+    "scaling_mods": { "str_mod": [ 1 ] }
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "ARMOR" ],
+    "id": "test_power_grant_shell",
+    "name": { "str": "projection shell" },
+    "description": "An armor fixture for owned power grants.",
+    "weight": "1 g",
+    "volume": "1 ml",
+    "material": [ "steel" ],
+    "symbol": "[",
+    "color": "light_cyan",
+    "material_thickness": 20,
+    "armor": [ { "coverage": 100, "covers": [ "torso" ], "encumbrance": 0 } ],
+    "max_worn": 1
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_buff",
+    "name": "Owned buff fixture",
+    "duration_ticks": 30,
+    "tags": [ "native_buff" ],
+    "grants": { "effects": [ { "id": "test_owned_power_boost", "intensity": 2 } ] },
+    "on_start": [ { "id": "EOC_TEST_GRANT_START", "effect": [ { "math": [ "grant_starts", "+=", "1" ] } ] } ],
+    "on_end": [ { "id": "EOC_TEST_GRANT_END", "effect": [ { "math": [ "grant_ends", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_form",
+    "name": "Owned form fixture",
+    "duration_ticks": 30,
+    "grants": {
+      "form": {  },
+      "effects": [ { "id": "test_owned_power_boost", "intensity": 3 } ],
+      "equipment": [ { "item": "test_power_grant_shell", "slot": "worn" }, { "item": "bat", "slot": "wielded" } ]
+    },
+    "on_end": [ { "id": "EOC_TEST_FORM_END", "effect": [ { "math": [ "form_ends", "+=", "1" ] } ] } ]
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_equipment",
+    "name": "Owned equipment fixture",
+    "duration_ticks": 30,
+    "grants": { "equipment": [ { "item": "test_power_grant_shell", "slot": "worn" } ] }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_weapon",
+    "name": "Owned weapon fixture",
+    "duration_ticks": 30,
+    "grants": { "equipment": [ { "item": "bat", "slot": "wielded" } ] }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_paid",
+    "copy-from": "test_grant_form",
+    "name": "Paid form fixture",
+    "start_cost": { "resource": "test_power_focus", "amount": 5 },
+    "upkeep": { "resource": "test_power_focus", "amount": 5 }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_torso",
+    "copy-from": "test_grant_buff",
+    "name": "Torso effect grant fixture",
+    "grants": { "effects": [ { "id": "test_owned_power_boost", "bodypart": "torso", "intensity": 2 } ] }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_arm",
+    "copy-from": "test_grant_buff",
+    "name": "Arm effect grant fixture",
+    "grants": { "effects": [ { "id": "test_owned_power_boost", "bodypart": "arm_l", "intensity": 2 } ] }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_wardrobe",
+    "name": "Owned wardrobe fixture",
+    "duration_ticks": 30,
+    "grants": { "form": {  } }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_clothing",
+    "name": "Clothing grant fixture",
+    "duration_ticks": 30,
+    "grants": { "equipment": [ { "item": "tshirt", "slot": "worn" } ] }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_partial_failure",
+    "copy-from": "test_grant_paid",
+    "name": "Partial form failure fixture",
+    "grants": {
+      "equipment": [ { "item": "test_power_grant_shell", "slot": "worn" }, { "item": "test_power_grant_shell", "slot": "worn" } ]
+    }
+  },
+  {
+    "type": "power_application",
+    "id": "test_grant_parent",
+    "name": "Parent native grant fixture",
+    "duration_ticks": 30,
+    "grants": { "effects": [ { "id": "test_owned_power_boost", "intensity": 1 } ] },
+    "on_start": [
+      {
+        "id": "EOC_TEST_GRANT_CHILD",
+        "effect": [ { "apply_power_application": { "id": "test_grant_buff", "owner": "u", "target": "npc" } } ]
+      }
+    ],
+    "on_end": [
+      {
+        "id": "EOC_TEST_GRANT_PARENT_END",
+        "effect": [
+          {
+            "if": { "npc_has_effect": "test_owned_power_boost" },
+            "then": [ { "math": [ "grant_parent_leftover = 1" ] } ],
+            "else": [ { "math": [ "grant_parent_leftover = 0" ] } ]
+          }
+        ]
+      }
+    ]
+  }
+]

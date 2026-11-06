@@ -1,4 +1,5 @@
 #include "effect.h"
+#include "effect_grant_state.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1115,6 +1116,19 @@ static bool effect_is_blocked( const efftype_id &e, const effects_map &eff_map )
 void effect::decay( std::vector<efftype_id> &rem_ids, std::vector<bodypart_id> &rem_bps,
                     const time_point &time, const bool player, const effects_map &eff_map )
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            std::vector<efftype_id> removed;
+            std::vector<bodypart_id> parts;
+            owned->native->decay( removed, parts, time, player, eff_map );
+            if( !removed.empty() ) {
+                owned->native.reset();
+            }
+        }
+        refresh_owned();
+        return;
+    }
     // Decay intensity if supposed to do so, removing effects at zero intensity
     if( intensity > 0 && eff_type->int_decay_tick != 0 &&
         to_turn<int>( time ) % eff_type->int_decay_tick == 0 &&
@@ -1171,6 +1185,14 @@ time_duration effect::get_max_duration() const
 }
 void effect::set_duration( const time_duration &dur, bool alert )
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->set_duration( dur, alert );
+        }
+        refresh_owned();
+        return;
+    }
     duration = dur;
 
     clamp_duration();
@@ -1187,10 +1209,26 @@ void effect::set_duration( const time_duration &dur, bool alert )
 }
 void effect::mod_duration( const time_duration &dur, bool alert )
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->mod_duration( dur, alert );
+        }
+        refresh_owned();
+        return;
+    }
     set_duration( get_duration() + dur, alert );
 }
 void effect::mult_duration( double dur, bool alert )
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->mult_duration( dur, alert );
+        }
+        refresh_owned();
+        return;
+    }
     set_duration( get_duration() * dur, alert );
 }
 void effect::clamp_duration()
@@ -1270,6 +1308,12 @@ bodypart_id effect::get_bp() const
 void effect::set_bp( const bodypart_str_id &part )
 {
     bp = part;
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->set_bp( part );
+        }
+    }
 }
 
 bool effect::is_permanent() const
@@ -1278,10 +1322,26 @@ bool effect::is_permanent() const
 }
 void effect::pause_effect()
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->pause_effect( );
+        }
+        refresh_owned();
+        return;
+    }
     permanent = true;
 }
 void effect::unpause_effect()
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->unpause_effect( );
+        }
+        refresh_owned();
+        return;
+    }
     permanent = false;
 }
 
@@ -1308,6 +1368,14 @@ int effect::get_effective_intensity() const
 
 int effect::set_intensity( int val, bool alert )
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->set_intensity( val, alert );
+        }
+        refresh_owned();
+        return intensity;
+    }
     clamp_intensity();
 
     val = std::clamp( val, 0, eff_type->max_intensity );
@@ -1347,6 +1415,14 @@ int effect::clamp_intensity()
 
 int effect::mod_intensity( int mod, bool alert )
 {
+    if( owned ) {
+        detach_owned();
+        if( owned->native ) {
+            owned->native->mod_intensity( mod, alert );
+        }
+        refresh_owned();
+        return intensity;
+    }
     return set_intensity( intensity + mod, alert );
 }
 
@@ -1954,6 +2030,7 @@ void effect::serialize( JsonOut &json ) const
     json.member( "intensity", intensity );
     json.member( "start_turn", start_time );
     json.member( "source", source );
+    serialize_owned( json );
     json.end_object();
 }
 
@@ -1981,6 +2058,7 @@ void effect::deserialize( const JsonObject &jo )
         }
         expires_at = saved;
     }
+    deserialize_owned( jo );
 }
 
 void effect_migration::load( const JsonObject &jo )

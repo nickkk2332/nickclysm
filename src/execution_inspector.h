@@ -11,6 +11,7 @@ struct damage_transaction_view;
 struct power_application_view;
 class power_manager;
 struct power_projection_view;
+struct power_grant_view;
 
 namespace execution_inspector
 {
@@ -21,6 +22,7 @@ std::string format_damage( const damage_transaction_view &damage );
 std::string format_application( const power_application_view &application );
 std::string format_power_accounts( const power_manager &powers );
 std::string format_projection( const power_projection_view &projection );
+std::string format_grant( const power_grant_view &grant );
 void show();
 } // namespace execution_inspector
 
