@@ -3,7 +3,7 @@
     "type": "MOD_INFO",
     "id": "powers_demo",
     "name": "Powers demonstration",
-    "description": "Charged strikes, attributed throws, commanded familiars, exact shields, and independent sustained wards and mirrors with shared resources and rechargeable charges.",
+    "description": "Charged strikes, throws, familiars, travelling projectiles, contestable beams and overlapping protective domains with shared resources and independently owned lifetimes.",
     "category": "content",
     "dependencies": [ "dda" ]
   }

@@ -1,6 +1,7 @@
 #include "power_math.h"
 #include "ability_ai.h"
 #include "power_actor.h"
+#include "power_projection.h"
 #include "game.h"
 
 #include <optional>
@@ -146,4 +147,46 @@ double power_math::summon( const const_dialogue &d, char scope,
         }
     }
     return count;
+}
+
+
+double power_math::projection( const const_dialogue &d, char scope,
+                               const std::vector<diag_value> &params, const diag_kwargs &kwargs )
+{
+    const Creature *who = actor( d, scope );
+    if( !who ) {
+        return 0;
+    }
+    const auto field = kwargs.kwarg_or( "field", "count" ).str( d );
+    if( field != "count" && field != "strength" && field != "charging" ) {
+        throw math::runtime_error( "Unknown power_projection field %s", field );
+    }
+    return get_projections().owned_value( *who, power_projection_id( params[0].str( d ) ), field );
+}
+
+double power_math::area( const const_dialogue &d, char scope, const std::vector<diag_value> &params,
+                         const diag_kwargs &kwargs )
+{
+    const Creature *who = actor( d, scope );
+    if( !who ) {
+        return 0;
+    }
+    const auto field = kwargs.kwarg_or( "field", "count" ).str( d );
+    if( field != "count" && field != "strength" ) {
+        throw math::runtime_error( "Unknown power_area field %s", field );
+    }
+    const auto owner_role = kwargs.kwarg_or( "owner", "any" ).str( d );
+    std::optional<creature_ref> owner;
+    if( owner_role != "any" ) {
+        if( owner_role != "u" && owner_role != "npc" ) {
+            throw math::runtime_error( "Unknown power_area owner %s", owner_role );
+        }
+        const Creature *source = actor( d, owner_role == "u" ? 'u' : 'n' );
+        if( !source || get_projections().owned_value( *source, power_projection_id() ) == 0 ) {
+            return 0;
+        }
+        owner = creature_ref::bind( *source );
+    }
+    return get_projections().area_value( *who, power_projection_id( params[0].str( d ) ),
+                                         field == "strength", owner );
 }

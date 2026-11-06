@@ -16,6 +16,10 @@ double ability( const const_dialogue &d, char scope, const std::vector<diag_valu
                 const diag_kwargs &kwargs );
 double summon( const const_dialogue &d, char scope, const std::vector<diag_value> &params,
                const diag_kwargs &kwargs );
+double projection( const const_dialogue &d, char scope, const std::vector<diag_value> &params,
+                   const diag_kwargs &kwargs );
+double area( const const_dialogue &d, char scope, const std::vector<diag_value> &params,
+             const diag_kwargs &kwargs );
 } // namespace power_math
 
 #endif // CATA_SRC_POWER_MATH_H

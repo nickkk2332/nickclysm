@@ -1,5 +1,6 @@
 #include "power_runtime.h"
 #include "power_actor.h"
+#include "power_projection.h"
 
 #include <algorithm>
 #include <cmath>
@@ -797,6 +798,7 @@ void power_manager::notify_damage( const Creature &who, int amount )
 void power_manager::retire_actor( const Creature &who )
 {
     get_power_actors().retire_actor( who );
+    get_projections().retire_actor( who );
     if( !execution_fatal::finalized( who ) ) {
         return;
     }
@@ -1265,4 +1267,11 @@ void power_manager::deserialize( const JsonObject &jo )
         }
     }
     data = std::move( next );
+}
+
+bool power_manager::owns_application( int64_t id, const creature_ref &owner ) const
+{
+    const auto it = data->applications.find( id );
+    return it != data->applications.end() && it->second.live() && it->second.view.owner == owner &&
+           data->invalid( it->second ).empty();
 }

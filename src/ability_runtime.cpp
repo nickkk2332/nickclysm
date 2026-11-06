@@ -30,6 +30,7 @@
 #include "player_activity.h"
 #include "power_runtime.h"
 #include "power_actor.h"
+#include "power_projection.h"
 #include "rng.h"
 #include "spell_cast_context.h"
 #include "talker.h"
@@ -151,6 +152,7 @@ struct ability_manager::impl {
     damage_transaction_manager damage;
     power_manager powers;
     power_actor_manager actors;
+    power_projection_manager projections;
     std::map<int64_t, ability_instance> instances;
     std::map<int64_t, int> root_requests;
     int64_t next_id = 1;
@@ -474,6 +476,11 @@ damage_transaction_manager &ability_manager::damage_transactions()
     return data->damage;
 }
 
+power_projection_manager &ability_manager::projections()
+{
+    return data->projections;
+}
+
 power_actor_manager &ability_manager::power_actors()
 {
     return data->actors;
@@ -656,6 +663,7 @@ void ability_manager::cancel_all( const std::string &reason )
     }
     data->powers.cancel_all( reason );
     data->actors.cancel_all( reason );
+    data->projections.cancel_all( reason );
     if( !processing() ) {
         drain_starts();
     }
@@ -675,6 +683,7 @@ void ability_manager::clear()
     data->damage.clear();
     data->powers.clear();
     data->actors.clear();
+    data->projections.clear();
     data->restoring = false;
 }
 
@@ -723,7 +732,7 @@ bool ability_manager::stopping() const
 bool ability_manager::processing() const
 {
     return data->pumping || data->damage.processing() || data->powers.processing() ||
-           data->actors.processing() || power_motion::processing();
+           data->actors.processing() || data->projections.processing() || power_motion::processing();
 }
 
 void ability_manager::drain_starts()
@@ -733,6 +742,7 @@ void ability_manager::drain_starts()
         return;
     }
     data->powers.drain_starts();
+    data->projections.drain_starts();
     data->pumping = true;
     const on_out_of_scope restore( [&]() {
         data->current = 0;
@@ -775,6 +785,7 @@ void ability_manager::process()
     }
     data->actors.process();
     data->powers.process();
+    data->projections.process();
     drain_starts();
     data->pumping = true;
     const on_out_of_scope restore( [&]() {
@@ -840,6 +851,7 @@ bool ability_manager::owns_avatar_activity( int64_t id ) const
 void ability_manager::notify_damage( const Creature &who, int amount )
 {
     data->powers.notify_damage( who, amount );
+    data->projections.notify_damage( who, amount );
     if( amount <= 0 || data->instances.empty() ) {
         return;
     }
@@ -903,6 +915,7 @@ void ability_manager::serialize( JsonOut &jsout ) const
     jsout.member( "damage_transactions", data->damage );
     jsout.member( "powers", data->powers );
     jsout.member( "power_actors", data->actors );
+    jsout.member( "power_projections", data->projections );
     jsout.member( "roots" );
     jsout.start_array();
     for( const auto &entry : data->root_requests ) {
@@ -965,8 +978,10 @@ void ability_manager::deserialize( const JsonObject &jo )
     jo.read( "damage_transactions", data->damage );
     data->powers.clear();
     data->actors.clear();
+    data->projections.clear();
     jo.read( "powers", data->powers );
     jo.read( "power_actors", data->actors );
+    jo.read( "power_projections", data->projections );
     int64_t next = 1;
     jo.read( "next_id", next, true );
     if( next <= 0 || next >= std::numeric_limits<int64_t>::max() ) {

@@ -11,6 +11,7 @@
 #include "damage_transaction.h"
 #include "power_runtime.h"
 #include "power_actor.h"
+#include "power_projection.h"
 #include "execution_runtime.h"
 #include "game.h"
 #include "output.h"
@@ -221,6 +222,29 @@ std::string execution_inspector::format_power_accounts( const power_manager &pow
     return out.str();
 }
 
+std::string execution_inspector::format_projection( const power_projection_view &v )
+{
+    std::ostringstream out;
+    out << "Projection #" << v.id << " / " << v.definition.str() << " / " << v.kind
+        << "\nstate=" << v.state << " / reason=" << v.reason << " / owner=" << v.owner.id
+        << " / target=" << v.target.id << "\nroot=" << v.root << " / parent=" << v.parent
+        << " / application=" << v.application << "\nstrength=" << v.strength << "/" << v.initial_strength
+        << " / travelled=" << v.travelled << " / ticks=" << v.tick_count
+        << "\nrelease=" << to_turn<int>( v.release ) << " / expires=" << to_turn<int>( v.expires )
+        << " / next pulse=" << to_turn<int>( v.next_pulse )
+        << "\npaid start=" << v.paid_start << " / upkeep=" << v.paid_upkeep << " / HP loss=" << v.hp_loss
+        << "\nposition=" << v.position.to_string_writable() << " / members=" << v.members.size()
+        << " / truncated=" << v.members_truncated << "\nCells:";
+    for( const auto &point : v.cells ) {
+        out << " " << point.to_string_writable();
+    }
+    out << "\nMembers:";
+    for( const auto &ref : v.members ) {
+        out << " " << ref.id;
+    }
+    return out.str();
+}
+
 void execution_inspector::show()
 {
     while( true ) {
@@ -252,6 +276,18 @@ void execution_inspector::show()
                        << " / collider HP loss=" << impact.collider_hp_loss << " / broken=" << impact.broken;
             }
             rows.emplace_back( string_format( _( "Power movement: %s" ), motion.reason ), detail.str() );
+        }
+        for( const auto &projection : get_projections().inspect() ) {
+            rows.emplace_back( string_format( _( "Projection #%lld: %s [%s]" ), projection.id,
+                                              projection.definition.str(), projection.state ), format_projection( projection ) );
+        }
+        for( const auto &contact : get_projections().contacts() ) {
+            std::ostringstream out;
+            out << "Projection #" << contact.projection << " / other #" << contact.other
+                << " / target=" << contact.target.id << " / " << contact.reason
+                << " @ " << contact.position.to_string_writable() << "\nstrength=" << contact.before
+                << " -> " << contact.after << " / HP loss=" << contact.hp_loss;
+            rows.emplace_back( _( "Projection contact" ), out.str() );
         }
         const power_manager &powers = get_powers();
         for( const auto &application : powers.inspect_applications() ) {

@@ -466,6 +466,8 @@ struct damage_packet_scope::impl {
         if( ( !rule.required_effect.is_empty() && !defender->has_effect( rule.required_effect ) ) ||
             ( !rule.required_application.is_empty() &&
               get_powers().application_value( *defender, rule.required_application ) == 0 ) ||
+            ( !rule.required_area.is_empty() &&
+              get_projections().area_value( *defender, rule.required_area ) == 0 ) ||
             ( !rule.defender_kinds.empty() && !rule.defender_kinds.count( defender_kind ) ) ||
             ( !rule.source_kinds.empty() && !rule.source_kinds.count( source_kind ) ) ||
             ( !rule.bodyparts.empty() && !rule.bodyparts.count( view.bodypart ) ) ) {

@@ -1,5 +1,6 @@
 #include "power.h"
 #include "power_actor.h"
+#include "power_projection.h"
 
 #include <cmath>
 
@@ -175,6 +176,7 @@ void powers::load_application( const JsonObject &jo, const std::string &source )
 void powers::reset()
 {
     power_summons::reset();
+    power_projections::reset();
     applications.reset();
     cooldowns.reset();
     resources.reset();
@@ -185,6 +187,7 @@ void powers::finalize()
     cooldowns.finalize();
     applications.finalize();
     power_summons::finalize();
+    power_projections::finalize();
 }
 void powers::check()
 {
@@ -192,6 +195,7 @@ void powers::check()
     cooldowns.check();
     applications.check();
     power_summons::check();
+    power_projections::check();
 }
 bool powers::valid_resource( const std::string &resource )
 {
