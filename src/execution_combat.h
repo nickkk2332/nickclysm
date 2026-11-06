@@ -309,9 +309,13 @@ class damage_scope
     private:
         friend void record_hp_loss( const Creature &, int );
         friend bool is_impact_damage( const Creature *target );
+        void capture( const Creature &target, int amount );
         damage_scope *previous = nullptr;
         attack_scope *owner = nullptr;
         bool capture_hp = false;
+        bool armed_once = false;
+        /** HP the target lost to this hit's own side effects (a bleed tick) before its native HP loss. */
+        int early_loss = 0;
 };
 
 class damage_barrier

@@ -1,4 +1,4 @@
-#include <stdint.h>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <list>
