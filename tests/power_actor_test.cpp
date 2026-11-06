@@ -40,6 +40,8 @@
 #include "rng.h"
 #include "talker.h"
 
+static const itype_id itype_power_demo_familiar_focus( "power_demo_familiar_focus" );
+
 namespace
 {
 struct actor_world {
@@ -689,6 +691,11 @@ TEST_CASE( "ability_AI_NPC_and_monster_entry_points_use_native_action_accounting
 TEST_CASE( "familiar_demo_item_route_saves_a_string_handle_and_issues_orders",
            "[power_actors][powers_demo]" )
 {
+    // This checks the powers_demo mod's own items, so it runs only with that mod loaded, as in
+    // CI's mods job.
+    if( !itype_power_demo_familiar_focus.is_valid() ) {
+        return;
+    }
     actor_world world;
     const auto use = []( const std::string & id ) {
         item focus( itype_id( id ), calendar::turn );
