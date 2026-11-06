@@ -155,6 +155,7 @@
 #include "weather_type.h"
 #include "wound.h"
 
+static const activity_id ACT_ABILITY( "ACT_ABILITY" );
 static const activity_id ACT_AIM( "ACT_AIM" );
 static const activity_id ACT_ATM( "ACT_ATM" );
 static const activity_id ACT_AUTODRIVE( "ACT_AUTODRIVE" );
@@ -185,6 +186,7 @@ static const activity_id ACT_DISSECT( "ACT_DISSECT" );
 static const activity_id ACT_DROP( "ACT_DROP" );
 static const activity_id ACT_EBOOKSAVE( "ACT_EBOOKSAVE" );
 static const activity_id ACT_E_FILE( "ACT_E_FILE" );
+static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
 static const activity_id ACT_FERTILIZE_PLANT( "ACT_FERTILIZE_PLANT" );
 static const activity_id ACT_FETCH_REQUIRED( "ACT_FETCH_REQUIRED" );
 static const activity_id ACT_FIELD_DRESS( "ACT_FIELD_DRESS" );
@@ -15765,8 +15767,8 @@ deserialize_functions = {
     { ACT_DROP, &drop_activity_actor::deserialize },
     { ACT_E_FILE, &efile_activity_actor::deserialize },
     { ACT_EBOOKSAVE, &ebooksave_activity_actor::deserialize },
-    { activity_id( "ACT_EXECUTION" ), &execution_activity_actor::deserialize },
-    { activity_id( "ACT_ABILITY" ), &ability_activity_actor::deserialize },
+    { ACT_EXECUTION, &execution_activity_actor::deserialize },
+    { ACT_ABILITY, &ability_activity_actor::deserialize },
     { ACT_FERTILIZE_PLANT, &fertilize_plant_activity_actor::deserialize },
     { ACT_FETCH_REQUIRED, &fetch_required_activity_actor::deserialize },
     { ACT_FIELD_DRESS, &butchery_activity_actor::deserialize },
