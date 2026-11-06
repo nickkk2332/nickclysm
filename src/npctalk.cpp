@@ -7431,6 +7431,11 @@ talk_effect_fun_t::func f_remove_fault( const JsonObject &jo, std::string_view m
 {
     str_or_var fault_var = get_str_or_var( jo.get_member( member ), member, true );
     return [fault_var, is_npc]( dialogue const & d ) {
+        // an item used up earlier in the same EOC is skipped silently, as set_fault does
+        if( const item_location *gone = d.actor( is_npc )->get_item(); gone != nullptr &&
+            gone->get_item() == nullptr ) {
+            return;
+        }
         item_location *it = require_item( d, is_npc, "remove_fault" );
         if( it == nullptr ) {
             return;
@@ -7450,6 +7455,11 @@ talk_effect_fun_t::func f_remove_fault_of_type( const JsonObject &jo, std::strin
     str_or_var fault_type_var = get_str_or_var( jo.get_member( member ), member, true );
     const bool all = jo.get_bool( "all", false );
     return [fault_type_var, all, is_npc]( dialogue const & d ) {
+        // an item used up earlier in the same EOC is skipped silently, as set_fault does
+        if( const item_location *gone = d.actor( is_npc )->get_item(); gone != nullptr &&
+            gone->get_item() == nullptr ) {
+            return;
+        }
         item_location *it = require_item( d, is_npc, "remove_fault_of_type" );
         if( it == nullptr ) {
             return;

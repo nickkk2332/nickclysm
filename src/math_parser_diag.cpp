@@ -432,13 +432,26 @@ double damage_level_eval( const_dialogue const &d, char scope,
     return ( *it )->damage_level();
 }
 
+// add_effect keeps a main_parts_only effect on the main part, so read and write it there,
+// or setting it on a hand would add a second effect instead of changing the first
+static bodypart_id effect_bodypart( const efftype_id &id, const std::string &bp_str )
+{
+    if( bp_str.empty() ) {
+        return bodypart_str_id::NULL_ID();
+    }
+    const bodypart_id bp( bp_str );
+    if( !bp.is_valid() ) {
+        return bp;
+    }
+    return id.is_valid() && id->get_main_parts() ? bodypart_id( bp->main_part ) : bp;
+}
+
 double effect_intensity_eval( const_dialogue const &d, char scope,
                               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
-    std::string const bp_str = kwargs.kwarg_or( "bodypart" ).str( d );
-    bodypart_id const bp = bp_str.empty() ? bodypart_str_id::NULL_ID() : bodypart_id( bp_str );
-    effect target =
-        d.const_actor( is_beta( scope ) )->get_effect( efftype_id( params[0].str( d ) ), bp );
+    const efftype_id id( params[0].str( d ) );
+    bodypart_id const bp = effect_bodypart( id, kwargs.kwarg_or( "bodypart" ).str( d ) );
+    effect target = d.const_actor( is_beta( scope ) )->get_effect( id, bp );
     return target.is_null() ? -1 : target.get_intensity();
 }
 
@@ -1739,10 +1752,9 @@ double effect_duration_eval( const_dialogue const &d, char scope,
     diag_value bp_val = kwargs.kwarg_or( "bodypart" );
     diag_value unit_val = kwargs.kwarg_or( "unit" );
 
-    std::string const &bp_str = bp_val.str( d );
-    bodypart_id const bp = bp_str.empty() ? bodypart_str_id::NULL_ID() : bodypart_id( bp_str );
-    effect target =
-        d.const_actor( is_beta( scope ) )->get_effect( efftype_id( params[0].str( d ) ), bp );
+    const efftype_id id( params[0].str( d ) );
+    bodypart_id const bp = effect_bodypart( id, bp_val.str( d ) );
+    effect target = d.const_actor( is_beta( scope ) )->get_effect( id, bp );
     return target.is_null()
            ? -1
            : _time_in_unit( to_seconds<double>( target.get_duration() ), unit_val.str( d ) );
@@ -1770,7 +1782,7 @@ effect_to_set get_effect_to_set( dialogue &d, char scope, std::vector<diag_value
     if( !bp_str.empty() && !bodypart_str_id( bp_str ).is_valid() ) {
         throw math::runtime_error( R"(%s(): unknown body part "%s")", func, bp_str );
     }
-    return { *who, id, bp_str.empty() ? bodypart_str_id::NULL_ID() : bodypart_id( bp_str ) };
+    return { *who, id, effect_bodypart( id, bp_str ) };
 }
 
 // In the unit effect_duration() reads in. A missing effect is added; 0 or less removes it, as
@@ -1810,6 +1822,13 @@ void effect_intensity_ass( double val, dialogue &d, char scope,
     }
     const int intensity = static_cast<int>( std::min( std::round( val ),
                                             static_cast<double>( target.get_max_intensity() ) ) );
+    if( eff.id->intensity_duration() > 0_turns ) {
+        // An effect whose intensity follows its duration ignores an intensity it is given;
+        // set the duration that gives this intensity instead
+        effect &changed = eff.who.get_effect( eff.id, eff.bp );
+        changed.set_duration( eff.id->intensity_duration() * ( intensity - 1 ) + 1_turns );
+        return;
+    }
     // add_effect changes the intensity as the game does, with its messages and morale
     eff.who.add_effect( eff.id, 0_turns, eff.bp, false, intensity, true );
 }

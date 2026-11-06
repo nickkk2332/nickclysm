@@ -39,6 +39,8 @@ effect_on_condition_EOC_TEST_AQF_VPART_ACTIVATED( "EOC_TEST_AQF_VPART_ACTIVATED"
 
 static const oter_str_id oter_test_aqf_omt_a( "test_aqf_omt_a" );
 static const oter_str_id oter_test_aqf_omt_b( "test_aqf_omt_b" );
+static const oter_str_id oter_test_aqf_omt_ping( "test_aqf_omt_ping" );
+static const oter_str_id oter_test_aqf_omt_pong( "test_aqf_omt_pong" );
 
 static const oter_type_str_id oter_type_test_aqf_omt_a( "test_aqf_omt_a" );
 
@@ -81,11 +83,13 @@ tripoint_bub_ms omt_tile( const map &here, const avatar &u, int offset )
     return here.get_bub( pos + tripoint_rel_ms( west_edge + offset - pos.x(), 0, 0 ) );
 }
 
-// The exit_eoc of the terrain left and the entry_eoc of the terrain entered each ran once, with
-// the OMT they belong to and the terrain on each side as context.
+// The exit_eoc of the terrain left (a) and the entry_eoc of the terrain entered (b) each ran
+// once, with the OMT they belong to and the terrain on each side as context.  Terrain a's
+// entry_eoc and terrain b's exit_eoc count wrong hooks, so running either fails the check.
 void check_one_crossing( const tripoint_abs_omt &left, const tripoint_abs_omt &entered )
 {
     const global_variables &globals = get_globals();
+    CHECK( globals.maybe_get_global_value( "aqf_omt_wrong_hooks" ) == nullptr );
     REQUIRE( globals.get_global_value( "aqf_omt_exits" ) == 1 );
     REQUIRE( globals.get_global_value( "aqf_omt_entries" ) == 1 );
     CHECK( globals.get_global_value( "aqf_exit_omt_pos" ).tripoint() ==
@@ -142,6 +146,31 @@ TEST_CASE( "loop-j02_omt_hooks_run_when_the_avatar_teleports", "[audit][overmap]
                                           false ) );
     REQUIRE( u.pos_abs_omt() == omt_b );
     check_one_crossing( omt_a, omt_b );
+}
+
+// LOOP-J02: now that a teleport runs the OMT hooks, an entry_eoc that teleports the avatar into
+// an OMT whose entry_eoc teleports it back would recurse until the stack ran out.  The hooks
+// stop after 8 crossings in a row, with a debugmsg.
+TEST_CASE( "loop-j02_omt_hooks_that_keep_moving_the_avatar_are_stopped",
+           "[audit][overmap][eoc]" )
+{
+    clear_avatar();
+    clear_map_without_vision();
+    get_globals().clear_global_values();
+    avatar &u = get_avatar();
+    map &here = get_map();
+    const tripoint_bub_ms start = omt_tile( here, u, 5 );
+    u.setpos( here, start );
+    const tripoint_abs_omt omt_ping = u.pos_abs_omt();
+    const tripoint_abs_omt omt_pong = omt_ping + tripoint_rel_omt( 1, 0, 0 );
+    const omt_terrain_override set_ping( omt_ping, oter_test_aqf_omt_ping );
+    const omt_terrain_override set_pong( omt_pong, oter_test_aqf_omt_pong );
+
+    const std::string msg = capture_debugmsg_during( [&u, &start]() {
+        teleport::teleport_to_point( u, start + tripoint_rel_ms( 24, 0, 0 ), true, false, false );
+    } );
+    CHECK_THAT( msg, Catch::Matchers::Contains( "moved the avatar 8 times in a row" ) );
+    CHECK( get_globals().get_global_value( "aqf_omt_ping_pongs" ) == 8 );
 }
 
 // LOOP-J02: a teleport made during a step (here by a trap stepped on) is reported by the step,

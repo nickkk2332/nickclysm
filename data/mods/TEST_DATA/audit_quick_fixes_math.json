@@ -8,6 +8,24 @@
     "max_intensity": 5
   },
   {
+    "//": "MATH-J01 fixture: an effect add_effect keeps on the main body part.",
+    "type": "effect_type",
+    "id": "audit_qf_math_main_part",
+    "name": [ "Audit Math Main Part Effect" ],
+    "desc": [ "MATH-J01: an effect kept on the arm when it is given to the hand." ],
+    "max_intensity": 3,
+    "main_parts_only": true
+  },
+  {
+    "//": "MATH-J01 fixture: an effect whose intensity follows its duration.",
+    "type": "effect_type",
+    "id": "audit_qf_math_dur_scaled",
+    "name": [ "Audit Math Duration Scaled Effect" ],
+    "desc": [ "MATH-J01: an effect one intensity stronger for every 10 seconds left." ],
+    "max_intensity": 5,
+    "int_dur_factor": "10 s"
+  },
+  {
     "//": "MUT-J04 fixture: an active trait with a 10 turn cost timer.",
     "type": "mutation",
     "id": "AUDIT_QF_MATH_ACTIVE",

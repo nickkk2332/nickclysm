@@ -20,6 +20,12 @@
     ]
   },
   {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_OMT_WRONG_HOOK",
+    "//": "The entry_eoc of the terrain left and the exit_eoc of the terrain entered; neither runs.",
+    "effect": [ { "math": [ "aqf_omt_wrong_hooks += 1" ] } ]
+  },
+  {
     "type": "overmap_terrain",
     "id": "test_aqf_omt_a",
     "name": "OMT hook test a",
@@ -29,7 +35,7 @@
     "travel_cost_type": "field",
     "see_cost": "none",
     "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
-    "entry_eoc": "EOC_TEST_AQF_OMT_ENTRY",
+    "entry_eoc": "EOC_TEST_AQF_OMT_WRONG_HOOK",
     "exit_eoc": "EOC_TEST_AQF_OMT_EXIT",
     "uniform_terrain": "t_grass"
   },
@@ -44,7 +50,55 @@
     "see_cost": "none",
     "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
     "entry_eoc": "EOC_TEST_AQF_OMT_ENTRY",
-    "exit_eoc": "EOC_TEST_AQF_OMT_EXIT",
+    "exit_eoc": "EOC_TEST_AQF_OMT_WRONG_HOOK",
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_OMT_PING",
+    "//": "Entering the ping terrain sends the avatar one OMT east, into the pong terrain.",
+    "effect": [
+      { "math": [ "aqf_omt_ping_pongs += 1" ] },
+      { "u_location_variable": { "context_val": "aqf_dest" } },
+      { "location_variable_adjust": { "context_val": "aqf_dest" }, "x_adjust": 24 },
+      { "u_teleport": { "context_val": "aqf_dest" }, "force_safe": true }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_AQF_OMT_PONG",
+    "//": "Entering the pong terrain sends the avatar one OMT west, back into the ping terrain.",
+    "effect": [
+      { "math": [ "aqf_omt_ping_pongs += 1" ] },
+      { "u_location_variable": { "context_val": "aqf_dest" } },
+      { "location_variable_adjust": { "context_val": "aqf_dest" }, "x_adjust": -24 },
+      { "u_teleport": { "context_val": "aqf_dest" }, "force_safe": true }
+    ]
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_aqf_omt_ping",
+    "name": "OMT hook test ping",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
+    "entry_eoc": "EOC_TEST_AQF_OMT_PING",
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_aqf_omt_pong",
+    "name": "OMT hook test pong",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
+    "entry_eoc": "EOC_TEST_AQF_OMT_PONG",
     "uniform_terrain": "t_grass"
   },
   {

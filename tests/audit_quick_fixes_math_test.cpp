@@ -35,6 +35,8 @@
 static const activity_id ACT_AUDIT_QF_MATH_A( "ACT_AUDIT_QF_MATH_A" );
 
 static const efftype_id effect_audit_qf_math_effect( "audit_qf_math_effect" );
+static const efftype_id effect_audit_qf_math_dur_scaled( "audit_qf_math_dur_scaled" );
+static const efftype_id effect_audit_qf_math_main_part( "audit_qf_math_main_part" );
 
 static const mutation_category_id mutation_category_INST_TEST( "INST_TEST" );
 static const mutation_category_id mutation_category_REMOVAL_TEST( "REMOVAL_TEST" );
@@ -109,6 +111,28 @@ TEST_CASE( "math-j01_effect_duration_and_intensity_are_assignable", "[audit][mat
 
     CHECK_THROWS_AS( eval_math( d, "u_effect_duration('audit_no_such_effect') = 5" ),
                      math::runtime_error );
+
+    // a main_parts_only effect given to a hand is kept on the arm, and read and set there
+    eval_math( d, "u_effect_duration('audit_qf_math_main_part', 'bodypart': 'hand_l') = 10" );
+    CHECK( u.get_effect_dur( effect_audit_qf_math_main_part, body_part_arm_l ) == 10_seconds );
+    CHECK_FALSE( u.has_effect( effect_audit_qf_math_main_part, body_part_hand_l ) );
+    eval_math( d, "u_effect_duration('audit_qf_math_main_part', 'bodypart': 'hand_l') = 20" );
+    CHECK( u.get_effect_dur( effect_audit_qf_math_main_part, body_part_arm_l ) == 20_seconds );
+    eval_math( d, "u_effect_intensity('audit_qf_math_main_part', 'bodypart': 'hand_l') = 2" );
+    CHECK( u.get_effect_int( effect_audit_qf_math_main_part, body_part_arm_l ) == 2 );
+    CHECK( eval_math( d, "u_effect_intensity('audit_qf_math_main_part', 'bodypart': 'hand_l')" ) ==
+           2 );
+    CHECK( eval_math( d, "u_effect_duration('audit_qf_math_main_part', 'bodypart': 'hand_l')" ) ==
+           20 );
+
+    // an effect whose intensity follows its duration gets the duration of that intensity
+    eval_math( d, "u_effect_duration('audit_qf_math_dur_scaled') = 5" );
+    REQUIRE( u.get_effect_int( effect_audit_qf_math_dur_scaled ) == 1 );
+    eval_math( d, "u_effect_intensity('audit_qf_math_dur_scaled') = 3" );
+    CHECK( u.get_effect_int( effect_audit_qf_math_dur_scaled ) == 3 );
+    CHECK( u.get_effect_dur( effect_audit_qf_math_dur_scaled ) == 21_seconds );
+    eval_math( d, "u_effect_intensity('audit_qf_math_dur_scaled') = 9" );
+    CHECK( u.get_effect_int( effect_audit_qf_math_dur_scaled ) == 5 );
 }
 
 // MATH-J01: the documented example u_val('strength') = 2 threw "Invalid aspect": only the

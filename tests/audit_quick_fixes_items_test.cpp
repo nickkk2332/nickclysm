@@ -90,6 +90,18 @@ TEST_CASE( "mondt-j03_udders_of_a_non_milk_liquid_refill", "[audit][monster]" )
         CHECK( aphid.ammo == std::map<itype_id, int> { { itype_water_clean, 3 } } );
     }
 
+    SECTION( "a leftover milk_raw entry doesn't take the refill" ) {
+        // The old code found milk_raw first and refilled the first entry in the map, which
+        // sorts before water_clean: the milk was refilled and the water never was.
+        monster aphid( mon_test_qf_honeydew_aphid );
+        aphid.ammo = { { itype_milk_raw, 0 }, { itype_water_clean, 0 } };
+
+        calendar::turn += 2_days;
+        aphid.refill_udders();
+        const std::map<itype_id, int> refilled = { { itype_milk_raw, 0 }, { itype_water_clean, 3 } };
+        CHECK( aphid.ammo == refilled );
+    }
+
     SECTION( "a monster saved without any ammo starts full" ) {
         monster aphid( mon_test_qf_honeydew_aphid );
         aphid.ammo.clear();

@@ -331,6 +331,39 @@ TEST_CASE( "inv-j04_bulk_reset_keeps_limits_and_totals", "[audit][pickup]" )
     CHECK( info.picked_up_mass == 100_gram );
 }
 
+// INV-J04: a real pickup of more than 200 ml in one bulk load restarts the bulk load partway,
+// and the volume limit it was started with still stops it at the limit.
+TEST_CASE( "inv-j04_pickup_past_a_bulk_reset_keeps_its_volume_limit", "[audit][eoc][pickup]" )
+{
+    clear_map();
+    clear_avatar();
+    on_out_of_scope restore( []() {
+        clear_map();
+        clear_avatar();
+    } );
+    avatar &u = get_avatar();
+    map &here = get_map();
+    u.wear_item( item( itype_test_backpack ), false );
+    // thirty 10 ml pebbles one tile away; the bulk load restarts after the 21st
+    const tripoint_bub_ms spot = u.pos_bub() + point::east;
+    std::vector<item_location> targets;
+    std::vector<int> quantities;
+    for( int i = 0; i < 30; ++i ) {
+        item &pebble = here.add_item( spot, item( itype_audit_j04_pebble ) );
+        targets.emplace_back( map_cursor( here.get_abs( spot ) ), &pebble );
+        quantities.push_back( 0 );
+    }
+    Pickup::pick_info info( 0, 250_ml, -1_gram );
+    bool stash_successful = true;
+    u.set_moves( 100000 );
+    Pickup::do_pickup( targets, quantities, false, stash_successful, info );
+
+    CHECK_FALSE( stash_successful );
+    CHECK( u.amount_of( itype_audit_j04_pebble ) == 25 );
+    CHECK( info.picked_up_volume == 250_ml );
+    CHECK( info.max_volume == 250_ml );
+}
+
 // INV-J04: npc_pickup_items (or u_pickup_items run by an NPC) opened the avatar's pickup menu and
 // then tripped ACT_PICKUP's avatar-only assertion, ending the game.  Both now refuse.
 TEST_CASE( "inv-j04_pickup_items_refuses_a_non_avatar", "[audit][eoc][pickup]" )

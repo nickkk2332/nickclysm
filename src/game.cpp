@@ -12130,6 +12130,18 @@ void avatar_changes_omt( const tripoint_abs_ms &old_abs_pos )
     get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter,
             overmap_buffer.overmap_special_at( new_abs_omt ).value_or( overmap_special_id() ) );
     overmap_buffer.add_extra_note( new_abs_omt );
+    // A hook that moves the avatar into another OMT runs that OMT's hooks from inside its own.
+    // Hooks that keep moving it (an entry_eoc teleporting back into an OMT that teleports it
+    // back again) are stopped here rather than recursing until the stack runs out.
+    static int hook_depth = 0;
+    constexpr int max_hook_depth = 8;
+    if( hook_depth >= max_hook_depth ) {
+        debugmsg( "OMT entry_eoc/exit_eoc moved the avatar %d times in a row; not running the "
+                  "hooks of %s and %s", max_hook_depth, past_ter.id().str(), cur_ter.id().str() );
+        return;
+    }
+    restore_on_out_of_scope restore_depth( hook_depth );
+    ++hook_depth;
     if( !past_ter->get_exit_EOC().is_null() ) {
         run_omt_hook( past_ter->get_exit_EOC(), old_abs_omt, past_ter, cur_ter );
     }
