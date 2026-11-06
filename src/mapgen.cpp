@@ -6889,6 +6889,8 @@ character_id map::place_npc( const point_bub_ms &p, const string_id<npc_template
     return place_npc( tripoint_bub_ms( p, abs_sub.z() ), type );
 }
 
+// Placing an NPC is a change to the map, even though the NPC itself lives in the overmap buffer.
+// NOLINTNEXTLINE(readability-make-member-function-const)
 character_id map::place_npc( const tripoint_bub_ms &p, const string_id<npc_template> &type )
 {
     shared_ptr_fast<npc> temp = make_shared_fast<npc>();
