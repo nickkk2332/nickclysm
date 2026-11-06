@@ -1,7 +1,8 @@
 #include "npc_decision_category.h"
 
 #include <algorithm>
-#include <cstddef>
+#include <functional>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <set>

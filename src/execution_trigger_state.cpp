@@ -1,13 +1,18 @@
 #include "execution_trigger_state.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <functional>
 #include <limits>
+#include <memory>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "cata_scope_helpers.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "dialogue.h"
 #include "execution_combat.h"
@@ -16,7 +21,6 @@
 #include "game.h"
 #include "json.h"
 #include "rng.h"
-#include "talker.h"
 
 execution_trigger_report execution_trigger_state::consider( execution_manager &manager,
         const execution_combat::attack_snapshot &s )

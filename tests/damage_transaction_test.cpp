@@ -1,7 +1,14 @@
 #include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <random>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ability.h"
 #include "ability_runtime.h"
@@ -10,7 +17,11 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "damage_rule.h"
@@ -19,8 +30,8 @@
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
-#include "execution_inspector.h"
 #include "execution_combat.h"
+#include "execution_inspector.h"
 #include "execution_runtime.h"
 #include "execution_trigger.h"
 #include "flexbuffer_json.h"
@@ -32,15 +43,19 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "monster.h"
 #include "npc.h"
 #include "options_helpers.h"
+#include "pimpl.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "projectile.h"
 #include "rng.h"
 #include "talker.h"
 #include "type_id.h"
+#include "weakpoint.h"
 
 static const ability_id ability_definition_test_ability_strike( "test_ability_strike" );
 

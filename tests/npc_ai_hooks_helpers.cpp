@@ -1,6 +1,9 @@
 #include "npc_ai_hooks_helpers.h"
 
+#include <functional>
+#include <initializer_list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -23,6 +26,8 @@
 #include "map_helpers.h"
 #include "math_parser.h"
 #include "npc.h"
+#include "npc_opinion.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"

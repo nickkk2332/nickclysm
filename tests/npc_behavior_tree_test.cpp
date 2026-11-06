@@ -3,10 +3,12 @@
 // The test nodes are in data/mods/TEST_DATA/npc_behavior_tree.json.
 
 #include <functional>
-#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 

@@ -1,7 +1,12 @@
-#include "avatar.h"
-#include "power_runtime.h"
+#include <functional>
+#include <memory>
+#include <string>
 
+#include "avatar.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_ref.h"
 #include "effect_on_condition.h"
 #include "event.h"
@@ -10,7 +15,10 @@
 #include "execution_runtime.h"
 #include "game.h"
 #include "map.h"
+#include "memory_fast.h"
 #include "player_activity.h"
+#include "power_runtime.h"
+#include "type_id.h"
 
 static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
 

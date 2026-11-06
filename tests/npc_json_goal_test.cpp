@@ -225,6 +225,8 @@ static std::optional<tripoint_bub_ms> end_pos()
 // npc::move() walks this tree while the test runs; the globals go too.  The weather is mild
 // and clear meanwhile: where earlier tests left the reality bubble, noon in March can freeze
 // a bottle of water within a turn.
+namespace
+{
 struct goal_test_tree {
     explicit goal_test_tree( const std::string &root ) : weather( weather_clear ) {
         forget_goal_globals();
@@ -246,6 +248,7 @@ struct goal_test_tree {
         set_npc_decision_tree_for_test( string_id<behavior::node_t>( root ) );
     }
 };
+} // namespace
 
 // nothing pressing: needs met, no post, no task
 static void calm( npc &guy )

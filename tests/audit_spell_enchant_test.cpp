@@ -10,6 +10,8 @@ static const spell_id spell_test_spell_enchant_power( "test_spell_enchant_power"
 
 static const trait_id trait_TEST_SPELL_POWER( "TEST_SPELL_POWER" );
 
+namespace
+{
 struct expected_spell_values {
     int damage;
     int range;
@@ -18,6 +20,7 @@ struct expected_spell_values {
     int cost;
     int cast_time;
 };
+} // namespace
 
 static void check_spell_values( const spell &sp, const Character &caster,
                                 const expected_spell_values &expected )

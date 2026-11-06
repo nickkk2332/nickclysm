@@ -1,10 +1,10 @@
 #include "damage_rule.h"
 
 #include <algorithm>
+#include <initializer_list>
 
 #include "condition.h"
 #include "creature.h"
-#include "damage.h"
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"

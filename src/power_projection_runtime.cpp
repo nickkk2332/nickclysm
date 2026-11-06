@@ -1,18 +1,28 @@
-#include "power_projection.h"
-
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <exception>
+#include <functional>
 #include <limits>
 #include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "ability_runtime.h"
-#include "bodypart.h"
+#include "calendar.h"
 #include "cata_scope_helpers.h"
+#include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
+#include "damage.h"
 #include "damage_transaction.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
@@ -20,12 +30,19 @@
 #include "execution_runtime.h"
 #include "flexbuffer_json.h"
 #include "game.h"
+#include "global_vars.h"
 #include "incapacitation.h"
 #include "json.h"
 #include "line.h"
 #include "map.h"
+#include "map_iterator.h"
+#include "math_parser_diag_value.h"
+#include "point.h"
+#include "power.h"
+#include "power_projection.h"
 #include "power_runtime.h"
 #include "talker.h"
+#include "type_id.h"
 
 static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_sleep( "sleep" );

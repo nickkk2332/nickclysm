@@ -1,5 +1,4 @@
 #include "creature.h"
-#include "power_actor.h"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +24,7 @@
 #include "character_attire.h"
 #include "character_id.h"
 #include "color.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "cursesdef.h"
 #include "damage.h"
@@ -67,6 +67,7 @@
 #include "options.h"
 #include "output.h"
 #include "point.h"
+#include "power_actor.h"
 #include "projectile.h"
 #include "ret_val.h"
 #include "rng.h"

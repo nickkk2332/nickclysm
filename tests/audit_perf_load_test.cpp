@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -26,7 +27,6 @@
 #include "debug.h"
 #include "event.h"
 #include "event_bus.h"
-#include "event_statistics.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -160,9 +160,9 @@ std::string renumber_uids( const std::string_view json, int64_t &next_uid )
 {
     static const std::regex uids( R"re("uid":\d+|"rle_uids":\[[0-9,]*\])re" );
     std::string result;
-    const char *done = json.data();
-    const char *const json_end = json.data() + json.size();
-    for( std::cregex_iterator m( json.data(), json_end, uids ), end; m != end; ++m ) {
+    const std::string text( json );
+    std::string::const_iterator done = text.begin();
+    for( std::sregex_iterator m( text.begin(), text.end(), uids ), end; m != end; ++m ) {
         result.append( done, ( *m )[0].first );
         const std::string found = ( *m )[0].str();
         if( found.rfind( "\"uid\"", 0 ) == 0 ) {
@@ -178,7 +178,7 @@ std::string renumber_uids( const std::string_view json, int64_t &next_uid )
         }
         done = ( *m )[0].second;
     }
-    result.append( done, json_end );
+    result.append( done, text.end() );
     return result;
 }
 

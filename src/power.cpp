@@ -1,14 +1,15 @@
 #include "power.h"
-#include "power_actor.h"
-#include "power_projection.h"
 
 #include <cmath>
+#include <initializer_list>
 
 #include "creature.h"
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "power_actor.h"
+#include "power_projection.h"
 
 namespace
 {

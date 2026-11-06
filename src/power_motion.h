@@ -7,6 +7,7 @@
 
 #include "coordinates.h"
 #include "creature_ref.h"
+#include "point.h"
 
 class Creature;
 

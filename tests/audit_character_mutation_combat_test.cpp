@@ -1,8 +1,9 @@
+#include <initializer_list>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "avatar.h"
-#include "bionics.h"
 #include "bodypart.h"
 #include "cata_catch.h"
 #include "character.h"
@@ -21,6 +22,8 @@
 #include "point.h"
 #include "type_id.h"
 #include "units.h"
+
+struct bionic;
 
 static const bionic_id bio_claws( "bio_claws" );
 static const bionic_id bio_power_storage( "bio_power_storage" );

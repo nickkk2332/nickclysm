@@ -2,7 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <deque>
+#include <cstddef>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <set>
@@ -10,23 +11,23 @@
 
 #include "ability_runtime.h"
 #include "bodypart.h"
-#include "cata_scope_helpers.h"
 #include "character.h"
 #include "creature.h"
-#include "creature_tracker.h"
 #include "damage.h"
 #include "damage_rule.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "json.h"
-#include "magic.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
-#include "talker.h"
+#include "power_projection.h"
 #include "power_runtime.h"
+#include "talker.h"
 
 namespace
 {

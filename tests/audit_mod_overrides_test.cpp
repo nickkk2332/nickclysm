@@ -1,23 +1,32 @@
+#include <cstddef>
+#include <functional>
 #include <map>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "calendar.h"
 #include "cata_catch.h"
 #include "debug.h"
+#include "dialogue_chatbin.h"
 #include "effect.h"
 #include "enums.h"
 #include "faction.h"
+#include "flat_set.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "init.h"
 #include "item_pocket.h"
-#include "pocket_type.h"
 #include "itype.h"
-#include "json_error.h"
 #include "json_loader.h"
+#include "math_defines.h"
 #include "mod_tracker.h"
 #include "npc.h"
+#include "pimpl.h"
+#include "pocket_type.h"
+#include "string_formatter.h"
+#include "translation.h"
 #include "type_id.h"
 #include "units.h"
 

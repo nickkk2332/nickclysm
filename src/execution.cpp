@@ -1,6 +1,7 @@
 #include "execution.h"
 
 #include <cmath>
+#include <initializer_list>
 #include <set>
 #include <stdexcept>
 #include <string_view>

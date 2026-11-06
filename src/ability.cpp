@@ -1,10 +1,11 @@
 #include "ability.h"
 
+#include <initializer_list>
+
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
-#include "magic.h"
 
 namespace
 {

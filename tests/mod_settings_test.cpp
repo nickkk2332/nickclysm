@@ -1,16 +1,26 @@
+#include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "avatar.h"
 #include "cata_catch.h"
+#include "cata_path.h"
 #include "cata_scope_helpers.h"
+#include "cata_variant.h"
+#include "catacharset.h"
 #include "condition.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "event.h"
 #include "event_bus.h"
@@ -18,16 +28,18 @@
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "mod_setting.h"
+#include "mod_setting_values.h"
 #include "options.h"
 #include "path_info.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "talker.h"
+#include "translation.h"
 #include "type_id.h"
 #include "worldfactory.h"
 

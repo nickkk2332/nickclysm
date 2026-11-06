@@ -1,13 +1,16 @@
 #include "mongroup.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_utility.h"
 #include "condition.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "enum_conversions.h"

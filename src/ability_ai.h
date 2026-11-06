@@ -2,7 +2,14 @@
 #ifndef CATA_SRC_ABILITY_AI_H
 #define CATA_SRC_ABILITY_AI_H
 
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ability.h"
 #include "ability_runtime.h"
+
+struct creature_ref;
 
 struct ability_ai_view {
     ability_id ability;

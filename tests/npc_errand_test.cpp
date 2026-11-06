@@ -3,32 +3,33 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "action.h"
-#include "activity_type.h"
 #include "avatar.h"
 #include "avatar_action.h"
-#include "bionics.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "character_id.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "dialogue.h"
 #include "errand.h"
-#include "faction.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "map_selector.h"
 #include "math_parser_diag_value.h"
 #include "monster.h"
@@ -40,6 +41,10 @@
 #include "point.h"
 #include "talker.h"
 #include "type_id.h"
+#include "units.h"
+#include "weather.h"
+
+struct bionic;
 
 // NPC errands from EOCs (src/errand.h): u_walk_to, u_pickup_item and the other item effects,
 // the conditions that go with them, and the NPC movement fixes they rest on (NPC-B14, NPC-B17).

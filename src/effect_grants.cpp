@@ -1,9 +1,19 @@
-#include "effect_grant_state.h"
-
 #include <algorithm>
+#include <cstdint>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "calendar.h"
+#include "effect.h"
+#include "effect_grant_state.h"
+#include "effect_source.h"
 #include "flexbuffer_json.h"
+#include "int_id.h"
 #include "json.h"
 
 void effect::detach_owned()

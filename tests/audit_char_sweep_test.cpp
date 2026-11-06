@@ -1,6 +1,10 @@
 #include <algorithm>
+#include <functional>
+#include <initializer_list>
 #include <map>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -11,21 +15,21 @@
 #include "character.h"
 #include "coordinates.h"
 #include "effect.h"
+#include "enums.h"
 #include "grab.h"
 #include "grapple.h"
 #include "item.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "monster.h"
 #include "player_helpers.h"
 #include "point.h"
-#include "skill.h"
 #include "subbodypart.h"
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
-#include "veh_type.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "vpart_range.h"

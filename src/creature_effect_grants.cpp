@@ -1,15 +1,23 @@
-#include "creature.h"
-
 #include <algorithm>
-#include <tuple>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "bodypart.h"
+#include "calendar.h"
 #include "character.h"
+#include "creature.h"
 #include "effect.h"
 #include "event.h"
 #include "event_bus.h"
-#include "flag.h"
+#include "flat_set.h"
+#include "pimpl.h"
+#include "type_id.h"
+
+class effect_source;
 
 static const json_character_flag json_flag_CANNOT_GAIN_EFFECTS( "CANNOT_GAIN_EFFECTS" );
 

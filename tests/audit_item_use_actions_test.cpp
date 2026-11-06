@@ -1,18 +1,19 @@
 #include <list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
-#include "activity_type.h"
 #include "avatar.h"
-#include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
 #include "coordinates.h"
 #include "item.h"
+#include "item_components.h"
 #include "item_factory.h"
 #include "item_location.h"
 #include "itype.h"
@@ -24,11 +25,8 @@
 #include "map_selector.h"
 #include "mapdata.h"
 #include "messages.h"
-#include "morale_types.h"
 #include "npc.h"
-#include "omdata.h"
 #include "overmapbuffer.h"
-#include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"

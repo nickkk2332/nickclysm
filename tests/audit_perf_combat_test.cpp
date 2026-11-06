@@ -7,19 +7,23 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <functional>
+#include <initializer_list>
+#include <list>
+#include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -31,6 +35,7 @@
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
+#include "iuse.h"
 #include "iuse_actor.h"
 #include "line.h"
 #include "magic.h"
@@ -38,6 +43,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "monster.h"
 #include "npc.h"
 #include "npc_attack.h"
@@ -49,11 +55,9 @@
 #include "test_statistics.h"
 #include "type_id.h"
 #include "units.h"
-#include "veh_type.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
-#include "weather.h"
 #include "weather_type.h"
 
 static const faction_id faction_your_followers( "your_followers" );

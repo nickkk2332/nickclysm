@@ -1,4 +1,8 @@
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "addiction.h"
 #include "avatar.h"
@@ -14,8 +18,10 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const addiction_id addiction_alcohol( "alcohol" );

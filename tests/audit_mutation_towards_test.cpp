@@ -1,4 +1,7 @@
+#include <functional>
+#include <memory>
 #include <string>
+#include <unordered_set>
 
 #include "avatar.h"
 #include "cata_catch.h"
@@ -10,6 +13,7 @@
 #include "json_loader.h"
 #include "mutation.h"
 #include "player_helpers.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const mutation_category_id mutation_category_AUDIT_NOT_A_CATEGORY( "AUDIT_NOT_A_CATEGORY" );

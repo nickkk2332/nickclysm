@@ -1,5 +1,7 @@
 #include "ability_activity_actor.h"
 
+#include <string>
+
 #include "ability_runtime.h"
 #include "character.h"
 #include "flexbuffer_json.h"

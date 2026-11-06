@@ -1,11 +1,11 @@
 #include "mapgen.h"
-#include "mapgen_post_process.h"
 
 #include <algorithm>
 #include <array>
 #include <climits>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <memory>
@@ -46,7 +46,6 @@
 #include "input.h"
 #include "input_enums.h"
 #include "item.h"
-#include "item_category.h"
 #include "item_factory.h"
 #include "item_group.h"
 #include "itype.h"
@@ -54,6 +53,7 @@
 #include "level_cache.h"
 #include "line.h"
 #include "localized_comparator.h"
+#include "magic_teleporter_list.h"
 #include "magic_ter_furn_transform.h"
 #include "map.h"
 #include "map_extras.h"
@@ -62,6 +62,7 @@
 #include "mapbuffer.h"
 #include "mapdata.h"
 #include "mapgen_functions.h"
+#include "mapgen_post_process.h"
 #include "mapgendata.h"
 #include "memory_fast.h"
 #include "messages.h"
@@ -101,7 +102,6 @@
 #include "weather_gen.h"
 #include "weighted_dbl_or_var_list.h"
 #include "weighted_list.h"
-#include "magic_teleporter_list.h"
 
 static const furn_str_id furn_f_ash( "f_ash" );
 static const furn_str_id furn_f_console( "f_console" );

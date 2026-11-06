@@ -1,12 +1,15 @@
-#include "power.h"
-
 #include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "bodypart.h"
 #include "debug.h"
 #include "effect.h"
 #include "flexbuffer_json.h"
 #include "itype.h"
+#include "power.h"
+#include "type_id.h"
+#include "value_ptr.h"
 
 bool power_grant_definition::empty() const
 {

@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "avatar.h"
@@ -9,10 +11,11 @@
 #include "dialogue.h"
 #include "math_parser.h"
 #include "player_helpers.h"
-#include "proficiency.h"
 #include "profession.h"
+#include "proficiency.h"
 #include "scenario.h"
 #include "skill.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const profession_id profession_firefighter( "firefighter" );

@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <set>
 #include <string>
 #include <tuple>
@@ -45,6 +47,7 @@
 #include "rng.h"
 #include "talker.h"
 #include "temp_crafting_inventory.h"
+#include "value_ptr.h"
 
 static const bionic_id bio_hydraulics( "bio_hydraulics" );
 

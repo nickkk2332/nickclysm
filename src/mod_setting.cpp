@@ -1,11 +1,14 @@
 #include "mod_setting.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <locale>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <system_error>
@@ -13,7 +16,6 @@
 #include <variant>
 
 #include "catacharset.h"
-#include "debug.h"
 #include "event.h"
 #include "event_bus.h"
 #include "filesystem.h"
@@ -21,7 +23,6 @@
 #include "generic_factory.h"
 #include "init.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "mod_manager.h"
 #include "string_formatter.h"

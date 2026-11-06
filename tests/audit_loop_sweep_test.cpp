@@ -1,13 +1,18 @@
 #include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
+#include <functional>
+#include <initializer_list>
+#include <list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -15,32 +20,35 @@
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "cata_path.h"
 #include "cata_scope_helpers.h"
 #include "character_id.h"
 #include "coordinates.h"
-#include "creature_tracker.h"
 #include "debug.h"
 #include "do_turn.h"
+#include "enums.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
-#include "line.h"
 #include "magic_enchantment.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mod_setting.h"
+#include "mod_setting_values.h"
 #include "monster.h"
 #include "mtype.h"
 #include "npc.h"
 #include "options_helpers.h"
-#include "overmapbuffer.h"
+#include "overmap_ui.h"
 #include "path_info.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "save_fault.h"
@@ -50,10 +58,11 @@
 #include "veh_type.h"
 #include "vehicle.h"
 #include "vpart_position.h"
+#include "vpart_range.h"
 #include "weather.h"
-#include "worldfactory.h"
 #include "weather_gen.h"
 #include "weather_type.h"
+#include "worldfactory.h"
 
 static const bionic_id bio_alarm( "bio_alarm" );
 

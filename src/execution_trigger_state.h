@@ -7,12 +7,14 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "calendar.h"
 #include "execution_runtime.h"
 
 class JsonObject;
 class JsonOut;
+
 namespace execution_combat
 {
 struct attack_snapshot;

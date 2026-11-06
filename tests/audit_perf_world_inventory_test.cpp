@@ -5,9 +5,14 @@
 #include <cstddef>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <limits>
+#include <list>
+#include <memory>
 #include <optional>
+#include <random>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -20,6 +25,8 @@
 #include "character.h"
 #include "clzones.h"
 #include "coordinates.h"
+#include "enums.h"
+#include "flexbuffer_json.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
@@ -28,27 +35,27 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "map_memory.h"
+#include "map_scale_constants.h"
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
 #include "memory_fast.h"
 #include "messages.h"
-#include "omdata.h"
 #include "overmap.h"
+#include "overmap_worldgen.h"
 #include "overmapbuffer.h"
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
 #include "requirement_scan_memo.h"
-#include "requirements.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "string_formatter.h"
 #include "submap.h"
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
-#include "veh_type.h"
 #include "vehicle.h"
 #include "visitable.h"
 #include "weather.h"
@@ -906,7 +913,7 @@ namespace
 {
 
 // What a search did on a fresh overmap buffer.
-// NOLINTNEXTLINE(cata-determinism,cert-msc32-c,cert-msc51-cpp): holds a copy of the game's RNG
+// NOLINTNEXTLINE(cata-determinism,cert-msc32-c,cert-msc51-cpp,bugprone-random-generator-seed): holds a copy of the game's RNG
 struct fresh_search {
     tripoint_abs_omt closest = tripoint_abs_omt::invalid;
     std::vector<tripoint_abs_omt> all;

@@ -1,28 +1,34 @@
 #include <algorithm>
+#include <functional>
+#include <memory>
+#include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "addiction.h"
 #include "avatar.h"
-#include "bionics.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "character_creator_ui.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "flexbuffer_json.h"
 #include "item.h"
 #include "json.h"
 #include "json_loader.h"
 #include "math_parser.h"
 #include "output.h"
 #include "player_helpers.h"
-#include "proficiency.h"
 #include "profession.h"
+#include "proficiency.h"
 #include "recipe.h"
 #include "skill.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "trait_group.h"
 #include "type_id.h"
 

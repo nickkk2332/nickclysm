@@ -13,9 +13,11 @@
 #include "creature_ref.h"
 #include "global_vars.h"
 #include "memory_fast.h"
+#include "point.h"
+#include "type_id.h"
 
-class Creature;
 class Character;
+class Creature;
 class item;
 class map;
 class spell;
@@ -63,13 +65,7 @@ struct attack_snapshot {
     global_variables::impl_t context() const;
 };
 
-class melee_hit_scope;
-class direct_damage_scope;
 class damage_scope;
-class primary_hit_scope;
-class projectile_hit_scope;
-class effect_hit_scope;
-class effect_scope;
 
 /** Execution-owned native flight; power flights use the same narrow impact barrier. */
 class physical_flight_scope
@@ -119,6 +115,7 @@ class projectile_fire_scope
         friend class effect_scope;
         projectile_fire_scope( Creature &actor, map &here, channel producer );
         struct impl;
+
         std::unique_ptr<impl> data;
         projectile_fire_scope *previous = nullptr;
         int exceptions = 0;

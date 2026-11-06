@@ -7,7 +7,6 @@
 // ways to run conditions, effects and math.  Their test classes, factions and EOCs are in
 // data/mods/TEST_DATA/npc_ai_hooks.json.
 
-#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -17,28 +16,20 @@
 
 #include "avatar.h"
 #include "calendar.h"
-#include "cata_catch.h"
 #include "cata_variant.h"
 #include "character_id.h"
-#include "condition.h"
 #include "coordinates.h"
 #include "dialogue.h"
 #include "event.h"
-#include "event_bus.h"
 #include "event_subscriber.h"
-#include "faction.h"
-#include "flexbuffer_json.h"
-#include "game.h"
 #include "global_vars.h"
-#include "json_loader.h"
 #include "map.h"
-#include "map_helpers.h"
-#include "math_parser.h"
 #include "math_parser_diag_value.h"
-#include "npc.h"
-#include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
+
+class faction;
+class npc;
 
 inline const tripoint_bub_ms npc_spot( 60, 60, 0 );
 

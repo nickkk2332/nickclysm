@@ -1,4 +1,7 @@
+#include <initializer_list>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "behavior.h"
@@ -6,6 +9,7 @@
 #include "cata_catch.h"
 #include "character.h"
 #include "character_oracle.h"
+#include "coordinates.h"
 #include "errand.h"
 #include "flexbuffer_json.h"
 #include "itype.h"
@@ -19,6 +23,7 @@
 #include "npc_json_goal.h"
 #include "npc_sleep.h"
 #include "point.h"
+#include "stomach.h"
 #include "type_id.h"
 
 // NPC-J10: the npc_class "ai_tuning": its defaults are the constants it replaced, a class's

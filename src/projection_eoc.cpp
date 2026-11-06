@@ -1,12 +1,17 @@
 #include "projection_eoc.h"
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 
 #include "condition.h"
+#include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
@@ -14,7 +19,9 @@
 #include "game.h"
 #include "generic_factory.h"
 #include "map.h"
+#include "math_parser_diag_value.h"
 #include "power_projection.h"
+#include "string_id.h"
 #include "talker.h"
 
 namespace

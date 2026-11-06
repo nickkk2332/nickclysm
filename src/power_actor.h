@@ -6,18 +6,25 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ability.h"
 #include "calendar.h"
+#include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
+#include "point.h"
 #include "power_motion.h"
+#include "translation.h"
+#include "type_id.h"
 
 class JsonObject;
 class JsonOut;
 class monster;
-
 struct power_summon;
+
 using power_summon_id = string_id<power_summon>;
 struct power_summon {
     power_summon_id id;
@@ -91,6 +98,7 @@ class power_actor_manager
         void deserialize( const JsonObject &jo );
     private:
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 power_actor_manager &get_power_actors();

@@ -1,14 +1,18 @@
 #include <functional>
+#include <list>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "enums.h"
-#include "field.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
 #include "item.h"
@@ -16,14 +20,16 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
-#include "omdata.h"
 #include "overmapbuffer.h"
 #include "point.h"
 #include "submap.h"
+#include "translation.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vehicle.h"
 
 static const field_type_str_id field_fd_blood( "fd_blood" );

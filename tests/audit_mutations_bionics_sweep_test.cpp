@@ -1,6 +1,10 @@
 #include <array>
+#include <list>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "bionics.h"
@@ -23,12 +27,15 @@
 #include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 
 static const bionic_id bio_fuel_cell_gasoline( "bio_fuel_cell_gasoline" );
 static const bionic_id bio_power_storage( "bio_power_storage" );
@@ -510,6 +517,8 @@ TEST_CASE( "mut-b10_upgrade_takes_over_what_the_base_cbm_taught",
 }
 
 // Records the CBM removal events sent while it lives.
+namespace
+{
 struct cbm_removal_events : public event_subscriber {
     cbm_removal_events() {
         get_event_bus().subscribe( this );
@@ -530,6 +539,7 @@ struct cbm_removal_events : public event_subscriber {
     int removed = 0;
     int failed = 0;
 };
+} // namespace
 
 // MUT-B11: a nurse bot's failed removal ran its consequences on the avatar instead of the
 // patient, with no part under operation, so they did nothing.

@@ -19,31 +19,33 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
+#include <ratio>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "clzones.h"
 #include "coordinates.h"
+#include "enums.h"
 #include "item.h"
 #include "item_location.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
-#include "omdata.h"
-#include "overmap.h"
+#include "map_scale_constants.h"
 #include "overmapbuffer.h"
 #include "player_activity.h"
 #include "player_helpers.h"
-#include "point.h"
 #include "pocket_type.h"
+#include "point.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "type_id.h"
-#include "visitable.h"
 
 static const faction_id faction_your_followers( "your_followers" );
 

@@ -1,11 +1,15 @@
 #include "power_actor.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <functional>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <set>
 
 #include "ability_ai.h"
+#include "ability_runtime.h"
 #include "cata_scope_helpers.h"
 #include "creature_tracker.h"
 #include "debug.h"
@@ -19,10 +23,12 @@
 #include "incapacitation.h"
 #include "json.h"
 #include "map.h"
+#include "map_iterator.h"
+#include "memory_fast.h"
 #include "monster.h"
-#include "mtype.h"
 #include "power_runtime.h"
 #include "talker.h"
+#include "vpart_position.h"
 
 namespace
 {

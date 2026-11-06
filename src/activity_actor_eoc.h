@@ -5,14 +5,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
-#include "calendar.h"
 #include "coordinates.h"
 #include "item_location.h"
 #include "type_id.h"
 
 class Character;
 class activity_actor;
+class time_duration;
 
 // Starting activities that have an activity actor from EOCs (u_assign_activity).
 namespace activity_actors

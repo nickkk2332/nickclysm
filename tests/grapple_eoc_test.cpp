@@ -1,3 +1,4 @@
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -7,6 +8,7 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "character_id.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -15,11 +17,9 @@
 #include "effect.h"
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"
-#include "game.h"
 #include "global_vars.h"
 #include "grapple.h"
 #include "item.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"

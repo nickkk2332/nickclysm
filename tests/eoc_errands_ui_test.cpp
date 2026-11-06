@@ -1,9 +1,11 @@
+#include <cstddef>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "activity_actor_definitions.h"
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
@@ -12,17 +14,17 @@
 #include "character.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
-#include "effect_on_condition.h"
 #include "eoc_ui.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "npc.h"
 #include "player_activity.h"
 #include "player_helpers.h"

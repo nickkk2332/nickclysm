@@ -1,9 +1,12 @@
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "avatar_action.h"
@@ -12,10 +15,12 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "dialogue.h"
 #include "effect.h"
+#include "effect_source.h"
 #include "enums.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
@@ -40,7 +45,8 @@
 #include "trap.h"
 #include "type_id.h"
 #include "units.h"
-#include "vehicle.h"
+
+class vehicle;
 
 // Grabs started by characters (src/grapple.h), ported from Cataclysm: The Last Generation.
 // Every roll below is either skipped (a tolerated grab, a hold set up directly) or made at

@@ -5,14 +5,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <random>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -31,15 +34,14 @@
 #include "dialogue.h"
 #include "dialogue_helpers.h"
 #include "effect_on_condition.h"
-#include "spell_cast_context.h"
 #include "enums.h"
-#include "explosion.h"
 #include "execution_combat.h"
-#include "game_inventory.h"
+#include "explosion.h"
 #include "field.h"
 #include "field_type.h"
 #include "fungal_effects.h"
 #include "game.h"
+#include "game_inventory.h"
 #include "item.h"
 #include "item_group.h"
 #include "kill_tracker.h"
@@ -65,6 +67,7 @@
 #include "projectile.h"
 #include "ret_val.h"
 #include "rng.h"
+#include "spell_cast_context.h"
 #include "string_formatter.h"
 #include "talker.h"
 #include "teleport.h"

@@ -32,6 +32,7 @@
 #include "type_id.h"
 #include "units.h"
 
+class Creature;
 class JsonObject;
 class JsonOut;
 class advanced_inv_area;
@@ -39,6 +40,7 @@ class advanced_inv_listitem;
 class advanced_inventory_pane;
 class cata_path;
 class diary;
+class map;
 class map_memory;
 class memorized_tile;
 class mission;

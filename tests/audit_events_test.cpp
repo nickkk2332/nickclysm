@@ -1,5 +1,5 @@
+#include <cstddef>
 #include <functional>
-#include <ostream>
 #include <sstream>
 #include <string>
 

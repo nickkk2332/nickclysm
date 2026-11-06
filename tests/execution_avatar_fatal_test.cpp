@@ -1,16 +1,27 @@
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "activity_actor_definitions.h"
-#include "activity_type.h"
 #include "avatar.h"
 #include "avatar_action.h"
 #include "bodypart.h"
 #include "calendar.h"
-#include "cata_scope_helpers.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
+#include "character.h"
+#include "character_id.h"
 #include "character_martial_arts.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
@@ -23,7 +34,6 @@
 #include "execution_combat.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "field_type.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
@@ -35,18 +45,20 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "martialarts.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "monster.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "options_helpers.h"
+#include "pimpl.h"
 #include "player_activity.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
-#include "units.h"
 #include "uistate.h"
+#include "units.h"
+#include "weakpoint.h"
 
 static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
 static const activity_id ACT_WAIT( "ACT_WAIT" );

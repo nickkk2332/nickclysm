@@ -1,5 +1,7 @@
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "bionics.h"
@@ -10,8 +12,10 @@
 #include "effect_on_condition.h"
 #include "flag.h"
 #include "item.h"
+#include "item_location.h"
 #include "math_parser_diag_value.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "talker.h"
 #include "type_id.h"

@@ -3,22 +3,19 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <initializer_list>
 #include <sstream>
 #include <utility>
 
-#include "bodypart.h"
 #include "condition.h"
-#include "damage.h"
+#include "creature_ref.h"
 #include "debug.h"
 #include "execution.h"
+#include "execution_combat.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "json.h"
-#include "mapdata.h"
-#include "magic.h"
-#include "martialarts.h"
-#include "mtype.h"
-#include "skill.h"
 
 namespace
 {

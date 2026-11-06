@@ -1,11 +1,25 @@
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "character_id.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "dialogue.h"
 #include "execution_combat.h"
@@ -20,10 +34,11 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
 
 static const execution_trigger_id

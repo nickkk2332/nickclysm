@@ -4,6 +4,7 @@
 #include <set>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -15,12 +16,14 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "mapgen.h"
 #include "mapgen_primitives.h"
 #include "mapgendata.h"
 #include "maptile_fwd.h"
 #include "messages.h"
 #include "options_helpers.h"
+#include "overmap_ui.h"
 #include "pathfinding.h"
 #include "player_helpers.h"
 #include "point.h"

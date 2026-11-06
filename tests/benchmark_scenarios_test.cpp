@@ -14,10 +14,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <map>
+#include <memory>
+#include <ratio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,12 +31,13 @@
 #include "build_reqs.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "clzones.h"
 #include "construction.h"
 #include "coordinates.h"
 #include "crafting.h"
 #include "crafting_enums.h"
+#include "enums.h"
+#include "flexbuffer_json.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
@@ -42,6 +47,8 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
+#include "map_scale_constants.h"
 #include "map_selector.h"
 #include "memory_fast.h"
 #include "monster.h"

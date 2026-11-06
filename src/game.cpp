@@ -1340,6 +1340,8 @@ void game::remove_npc( character_id const &id )
         return n->getID() == id;
     } );
     if( it != active_npc.end() ) {
+        // A copy: it keeps the NPC alive while the callbacks below may erase it from the list.
+        // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
         const auto removed = *it;
         execution_fatal::before_removal( *removed, "participant_removed" );
         // A native death callback may have already erased this resident.

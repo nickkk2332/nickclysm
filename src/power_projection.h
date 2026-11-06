@@ -7,18 +7,26 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "calendar.h"
 #include "coordinates.h"
 #include "creature_ref.h"
 #include "damage.h"
+#include "global_vars.h"
+#include "point.h"
 #include "power.h"
+#include "translation.h"
+#include "type_id.h"
 
 class Creature;
 class JsonObject;
 class JsonOut;
 struct power_projection;
+
 using power_projection_id = string_id<power_projection>;
 
 /** Saved power objects; these do not replace instantaneous firearm ballistics. */
@@ -161,6 +169,7 @@ class power_projection_manager
         void deserialize( const JsonObject &jo );
     private:
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 power_projection_manager &get_projections();

@@ -1,13 +1,17 @@
 #include "power_motion.h"
 
+#include <functional>
+#include <memory>
+
 #include "ability_runtime.h"
-#include "creature.h"
 #include "cata_scope_helpers.h"
+#include "creature.h"
 #include "game.h"
 #include "incapacitation.h"
 #include "line.h"
 #include "map.h"
 #include "power_actor.h"
+#include "type_id.h"
 
 static const efftype_id effect_narcosis( "narcosis" );
 static const efftype_id effect_sleep( "sleep" );

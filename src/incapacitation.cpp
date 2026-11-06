@@ -1,9 +1,10 @@
 #include "incapacitation.h"
 
 #include <algorithm>
+#include <functional>
 #include <vector>
 
-#include "activity_type.h"
+#include "calendar.h"
 #include "character.h"
 #include "creature.h"
 #include "effect.h"

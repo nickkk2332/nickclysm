@@ -1,3 +1,6 @@
+#include <functional>
+#include <initializer_list>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
@@ -6,11 +9,11 @@
 
 #include "achievement.h"
 #include "avatar.h"
+#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_path.h"
 #include "cata_scope_helpers.h"
-#include "cata_utility.h"
 #include "cata_variant.h"
 #include "character.h"
 #include "character_id.h"
@@ -20,7 +23,6 @@
 #include "diary.h"
 #include "event.h"
 #include "event_bus.h"
-#include "event_statistics.h"
 #include "event_subscriber.h"
 #include "explosion.h"
 #include "filesystem.h"
@@ -28,13 +30,13 @@
 #include "game.h"
 #include "global_vars.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "monster.h"
 #include "path_info.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "stats_tracker.h"
@@ -151,7 +153,7 @@ struct timed_events_restorer {
     timed_events_restorer() {
         get_timed_events() = timed_event_manager();
     }
-    ~timed_events_restorer() {
+    ~timed_events_restorer() noexcept( false ) {
         load_timed_events( saved );
     }
 };

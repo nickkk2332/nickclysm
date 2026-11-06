@@ -5,9 +5,11 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "cata_catch.h"
@@ -17,16 +19,12 @@
 #include "construction.h"
 #include "coordinates.h"
 #include "dependency_tree.h"
-#include "end_screen.h"
-#include "fault.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
-#include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "mapbuffer.h"
 #include "mod_manager.h"
-#include "omdata.h"
 #include "options_helpers.h"
 #include "overmapbuffer.h"
 #include "path_info.h"

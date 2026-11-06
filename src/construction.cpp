@@ -70,6 +70,7 @@
 #include "skill.h"
 #include "sounds.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "temp_crafting_inventory.h"
 #include "translation_cache.h"
 #include "translations.h"

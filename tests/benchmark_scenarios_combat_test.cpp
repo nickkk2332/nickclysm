@@ -16,36 +16,38 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <memory>
+#include <ratio>
 #include <string>
 #include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature_tracker.h"
 #include "explosion.h"
 #include "game.h"
 #include "item.h"
+#include "item_location.h"
 #include "itype.h"
+#include "iuse.h"
 #include "iuse_actor.h"
 #include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "monster.h"
 #include "npc.h"
-#include "npc_attack.h"
 #include "options_helpers.h"
 #include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "rng.h"
 #include "type_id.h"
-#include "weather.h"
 #include "weather_type.h"
 
 static const faction_id faction_your_followers( "your_followers" );

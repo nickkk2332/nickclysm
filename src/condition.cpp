@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <exception>
 #include <functional>
+#include <list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -16,8 +17,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "ability.h"
+#include "ability_runtime.h"
 #include "avatar.h"
 #include "basecamp.h"
 #include "bionics.h"
@@ -27,6 +31,7 @@
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
@@ -37,7 +42,6 @@
 #include "errand.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
-#include "ability_runtime.h"
 #include "faction.h"
 #include "field.h"
 #include "flag.h"
@@ -57,10 +61,11 @@
 #include "mapdata.h"
 #include "martialarts.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "math_parser_type.h"
+#include "mattack_common.h"
 #include "memory_fast.h"
 #include "messages.h"
-#include "math_parser_diag_value.h"
 #include "mission.h"
 #include "mod_setting.h"
 #include "monster.h"
@@ -71,12 +76,15 @@
 #include "npc_ai_ids.h"
 #include "npc_decision_category.h"
 #include "npc_json_goal.h"
+#include "omdata.h"
 #include "options.h"
 #include "output.h"
 #include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_activity.h"
+#include "pocket_type.h"
 #include "point.h"
 #include "profession.h"
 #include "recipe_groups.h"

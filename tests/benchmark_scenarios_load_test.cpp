@@ -18,8 +18,12 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <initializer_list>
+#include <list>
+#include <map>
 #include <memory>
 #include <optional>
+#include <ratio>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -32,7 +36,6 @@
 #include "cata_variant.h"
 #include "coordinates.h"
 #include "event.h"
-#include "event_statistics.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
 #include "item.h"
@@ -40,18 +43,20 @@
 #include "json_loader.h"
 #include "map_scale_constants.h"
 #include "mapbuffer.h"
-#include "omdata.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
-#include "point.h"
 #include "pocket_type.h"
+#include "point.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "stats_tracker.h"
 #include "string_formatter.h"
 #include "submap.h"
 #include "type_id.h"
 #include "worldfactory.h"
+
+class event_statistic;
 
 static const itype_id itype_bottle_plastic( "bottle_plastic" );
 static const itype_id itype_can_beans( "can_beans" );

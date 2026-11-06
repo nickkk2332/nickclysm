@@ -1,10 +1,15 @@
+#include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <map>
+#include <memory>
 #include <optional>
+#include <random>
 #include <set>
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -21,6 +26,9 @@
 #include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "flat_set.h"
+#include "flexbuffer_json.h"
+#include "game_constants.h"
 #include "grapple.h"
 #include "item.h"
 #include "item_location.h"
@@ -41,7 +49,6 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "rng.h"
-#include "talker.h"
 #include "type_id.h"
 
 // The manual technique menu (Phase 9 of the TLG grappling port; the menu idea is from

@@ -4,6 +4,8 @@
 #include <climits>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,12 +31,11 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
-#include "field_type.h"
 #include "game.h"
-#include "game_constants.h"
 #include "item_location.h"
 #include "line.h"
 #include "map.h"
+#include "map_iterator.h"
 #include "mapdata.h"
 #include "martialarts.h"
 #include "math_parser_jmath.h"
@@ -46,10 +47,10 @@
 #include "mtype.h"
 #include "npc.h"
 #include "options.h"
+#include "pimpl.h"
 #include "point.h"
 #include "rng.h"
 #include "string_formatter.h"
-#include "talker.h"
 #include "text_snippets.h"
 #include "tileray.h"
 #include "translation.h"

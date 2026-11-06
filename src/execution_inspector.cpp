@@ -1,24 +1,34 @@
 #include "execution_inspector.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <map>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "calendar.h"
 #include "ability_runtime.h"
-#include "cursesdef.h"
+#include "calendar.h"
+#include "coordinates.h"
+#include "creature_ref.h"
 #include "damage_transaction.h"
-#include "power_runtime.h"
-#include "power_actor.h"
-#include "power_projection.h"
-#include "power_grant.h"
 #include "execution_runtime.h"
 #include "game.h"
+#include "global_vars.h"
+#include "math_parser_diag_value.h"
 #include "output.h"
+#include "power_actor.h"
+#include "power_grant.h"
+#include "power_motion.h"
+#include "power_projection.h"
+#include "power_runtime.h"
 #include "string_formatter.h"
+#include "string_id.h"
 #include "translations.h"
 #include "uilist.h"
 

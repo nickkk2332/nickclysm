@@ -1,11 +1,13 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <set>
 #include <string>
 #include <tuple>
@@ -22,6 +24,7 @@
 #include "character_id.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_imgui.h"
@@ -33,11 +36,12 @@
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
-#include "line.h"
 #include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
+#include "map_scale_constants.h"
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapgendata.h"
@@ -46,15 +50,17 @@
 #include "mtype.h"
 #include "npc.h"
 #include "omdata.h"
-#include "overmap.h"
 #include "overmap_test_helper.h"
 #include "overmapbuffer.h"
 #include "pickup.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "talker.h"
 #include "timed_event.h"
+#include "translation.h"
 #include "type_id.h"
+#include "units.h"
 #include "viewer.h"
 
 static const effect_on_condition_id

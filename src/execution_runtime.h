@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "calendar.h"
@@ -18,6 +19,7 @@ class JsonObject;
 class JsonOut;
 struct dialogue;
 struct ma_event_context;
+
 namespace execution_combat
 {
 struct attack_snapshot;
@@ -150,6 +152,7 @@ class execution_manager
         execution_start_result start_impl( const execution_id &definition, const dialogue &d,
                                            std::optional<uint64_t> seed, bool check_only, bool fatal = false );
         struct impl;
+
         std::unique_ptr<impl> data;
 };
 

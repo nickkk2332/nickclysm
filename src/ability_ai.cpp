@@ -1,10 +1,14 @@
 #include "ability_ai.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <memory>
 
+#include "coordinates.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "game.h"
-#include "map.h"
+#include "string_id.h"
 
 bool ability_ai_view::eligible() const
 {

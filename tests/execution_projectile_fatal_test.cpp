@@ -1,12 +1,21 @@
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "creature_ref.h"
+#include "character.h"
+#include "coordinates.h"
+#include "creature.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "event.h"
@@ -25,12 +34,13 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "monster.h"
 #include "npc.h"
-#include "npc_turn_helpers.h"
 #include "options_helpers.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "projectile.h"
 #include "type_id.h"
 

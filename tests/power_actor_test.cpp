@@ -1,17 +1,27 @@
+#include <cstddef>
 #include <functional>
+#include <map>
 #include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "ability.h"
 #include "ability_ai.h"
+#include "ability_runtime.h"
 #include "avatar.h"
 #include "bodypart.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
-#include "damage.h"
 #include "dialogue.h"
 #include "event.h"
 #include "event_bus.h"
@@ -20,25 +30,28 @@
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
-#include "incapacitation.h"
 #include "item.h"
 #include "itype.h"
-#include "iuse_actor.h"
+#include "iuse.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
 #include "options_helpers.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "power_actor.h"
 #include "power_motion.h"
 #include "power_runtime.h"
 #include "rng.h"
 #include "talker.h"
+#include "type_id.h"
+#include "units.h"
 
 static const ability_id ability_definition_test_ability_strike( "test_ability_strike" );
 static const ability_id ability_definition_test_ai_fling( "test_ai_fling" );

@@ -1,8 +1,14 @@
+#include <cstddef>
+#include <cstdint>
 #include <functional>
-#include <set>
+#include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "ability.h"
 #include "ability_runtime.h"
@@ -11,7 +17,11 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
 #include "condition.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "damage_transaction.h"
@@ -25,24 +35,29 @@
 #include "game.h"
 #include "global_vars.h"
 #include "incapacitation.h"
-#include "json.h"
 #include "item.h"
 #include "itype.h"
+#include "iuse.h"
 #include "iuse_actor.h"
+#include "json.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
 #include "options_helpers.h"
+#include "pimpl.h"
 #include "player_helpers.h"
+#include "point.h"
 #include "power.h"
 #include "power_runtime.h"
 #include "rng.h"
 #include "talker.h"
+#include "type_id.h"
 
 static const damage_type_id damage_pure( "pure" );
 

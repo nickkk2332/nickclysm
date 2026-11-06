@@ -1,6 +1,8 @@
 #include "execution_fatal.h"
 
+#include <memory>
 #include <set>
+#include <utility>
 
 #include "avatar.h"
 #include "creature.h"

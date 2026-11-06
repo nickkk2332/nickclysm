@@ -1,17 +1,33 @@
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <list>
+#include <map>
 #include <memory>
+#include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "ability.h"
 #include "ability_runtime.h"
 #include "avatar.h"
 #include "bodypart.h"
+#include "calendar.h"
 #include "cata_catch.h"
+#include "character.h"
+#include "character_id.h"
 #include "character_martial_arts.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "damage.h"
 #include "effect.h"
+#include "effect_source.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
@@ -22,22 +38,29 @@
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
-#include "iuse_actor.h"
+#include "iuse.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
 #include "options_helpers.h"
 #include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_helpers.h"
+#include "pocket_type.h"
+#include "point.h"
+#include "power.h"
 #include "power_grant.h"
 #include "power_runtime.h"
+#include "ret_val.h"
 #include "rng.h"
-#include "talker.h"
+#include "type_id.h"
 #include "units.h"
 #include "vehicle.h"
 #include "vpart_position.h"
@@ -57,6 +80,7 @@ static const flag_id json_flag_NO_TAKEOFF( "NO_TAKEOFF" );
 static const itype_id itype_backpack( "backpack" );
 static const itype_id itype_bat( "bat" );
 static const itype_id itype_knuckle_brass( "knuckle_brass" );
+static const itype_id itype_power_demo_armor_shell( "power_demo_armor_shell" );
 static const itype_id itype_power_demo_form_grant_focus( "power_demo_form_grant_focus" );
 static const itype_id itype_rock( "rock" );
 static const itype_id itype_test_power_grant_shell( "test_power_grant_shell" );
@@ -592,7 +616,7 @@ TEST_CASE( "native_wear_callback_exceptions_keep_payment_and_restore_committed_g
     CHECK( find( who, original ) );
     CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
     CHECK_FALSE( who.has_weapon() );
-    CHECK( who.amount_worn( itype_id( "test_power_grant_shell" ) ) == 0 );
+    CHECK( who.amount_worn( itype_test_power_grant_shell ) == 0 );
     CHECK_NOTHROW( save() );
 }
 
@@ -856,7 +880,7 @@ TEST_CASE( "armored_form_demo_item_uses_the_paid_ability_and_returns_original_ge
     CHECK( get_power_grants().inspect().empty() );
     tick();
     g->abilities().drain_starts();
-    CHECK( who.amount_worn( itype_id( "power_demo_armor_shell" ) ) == 1 );
+    CHECK( who.amount_worn( itype_power_demo_armor_shell ) == 1 );
     CHECK( who.get_effect_int( effect_power_demo_might ) == 2 );
     CHECK( get_powers().balance( who, "power_demo_focus_pool" ).total == 90 );
     int paid = 0;
@@ -898,7 +922,7 @@ TEST_CASE( "partial_native_outfit_refusal_keeps_costs_and_returns_original_gear"
     CHECK( find( who, original ) );
     CHECK( grant( id ).equipment == 1 );
     CHECK_FALSE( who.has_effect( effect_test_owned_power_boost ) );
-    CHECK( who.amount_worn( itype_id( "test_power_grant_shell" ) ) == 0 );
+    CHECK( who.amount_worn( itype_test_power_grant_shell ) == 0 );
 }
 
 TEST_CASE( "restoration_callback_failure_keeps_the_committed_transfer_and_never_duplicates_gear",
@@ -961,8 +985,10 @@ TEST_CASE( "projected_equipment_cleanup_reaches_loaded_vehicle_cargo", "[power_g
     grant_world world;
     avatar &who = get_avatar();
     const int64_t id = apply( who, who, "test_grant_weapon" );
+    // Undamaged: a randomly damaged cart can lose the cargo part the test fills.
     vehicle *cart = get_map().add_vehicle( vehicle_prototype_shopping_cart,
-                                           who.pos_bub() + tripoint_rel_ms( 4, 0, 0 ), 0_degrees );
+                                           who.pos_bub() + tripoint_rel_ms( 4, 0, 0 ), 0_degrees, 0,
+                                           veh_spawn_status::UNDAMAGED );
     REQUIRE( cart );
     const auto cargo = cart->get_any_parts( "CARGO" );
     REQUIRE( cargo.begin() != cargo.end() );

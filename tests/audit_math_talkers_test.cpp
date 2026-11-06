@@ -1,5 +1,9 @@
 #include <functional>
+#include <initializer_list>
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -24,7 +28,6 @@
 #include "item.h"
 #include "item_location.h"
 #include "json_loader.h"
-#include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
@@ -35,6 +38,7 @@
 #include "npc.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "string_formatter.h"

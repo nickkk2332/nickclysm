@@ -1,22 +1,22 @@
 #include "power_runtime.h"
-#include "power_actor.h"
-#include "power_projection.h"
-#include "power_grant.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <deque>
 #include <exception>
 #include <limits>
 #include <map>
 #include <set>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 
 #include "ability_runtime.h"
 #include "avatar.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "creature.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
@@ -29,8 +29,13 @@
 #include "json.h"
 #include "magic.h"
 #include "map.h"
-#include "memory_fast.h"
+#include "math_parser_diag_value.h"
+#include "pimpl.h"
+#include "power_actor.h"
+#include "power_grant.h"
+#include "power_projection.h"
 #include "talker.h"
+#include "type_id.h"
 
 static const efftype_id effect_stunned( "stunned" );
 

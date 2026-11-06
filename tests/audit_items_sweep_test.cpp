@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <climits>
+#include <functional>
 #include <list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -13,6 +15,7 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "flag.h"
+#include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
 #include "item_category.h"
@@ -28,7 +31,9 @@
 #include "pocket_type.h"
 #include "relic.h"
 #include "ret_val.h"
+#include "subbodypart.h"
 #include "type_id.h"
+#include "value_ptr.h"
 
 static const fault_id test_fault_mech_self_damaging( "test_fault_mech_self_damaging" );
 

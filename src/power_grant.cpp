@@ -1,17 +1,21 @@
 #include "power_grant.h"
 
 #include <algorithm>
-#include <list>
+#include <functional>
 #include <limits>
+#include <list>
 #include <map>
 #include <optional>
 #include <set>
-#include <tuple>
 #include <utility>
 
 #include "ability_runtime.h"
+#include "active_item_cache.h"
+#include "bodypart.h"
+#include "calendar.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "coordinates.h"
 #include "creature.h"
 #include "effect.h"
 #include "effect_source.h"
@@ -19,18 +23,24 @@
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
 #include "json.h"
 #include "map.h"
+#include "map_scale_constants.h"
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "memory_fast.h"
+#include "point.h"
 #include "power_runtime.h"
+#include "safe_reference.h"
 #include "submap.h"
+#include "value_ptr.h"
 #include "vehicle.h"
+#include "vehicle_selector.h"
+#include "visitable.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
-#include "vehicle_selector.h"
 
 namespace
 {

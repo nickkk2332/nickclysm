@@ -16,14 +16,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <ratio>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
 #include "behavior.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "character_oracle.h"
 #include "coordinates.h"
 #include "item.h"
@@ -37,7 +38,6 @@
 #include "point.h"
 #include "rng.h"
 #include "type_id.h"
-#include "weather.h"
 #include "weather_type.h"
 
 static const faction_id faction_your_followers( "your_followers" );

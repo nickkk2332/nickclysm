@@ -1,24 +1,32 @@
 #include "power_eoc.h"
-#include "ability_ai.h"
-#include "power_actor.h"
-#include "power_motion.h"
-#include "creature_tracker.h"
-#include "map.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <utility>
+#include <vector>
 
-#include "creature.h"
+#include "ability.h"
+#include "ability_ai.h"
+#include "ability_runtime.h"
 #include "condition.h"
-#include "generic_factory.h"
+#include "coordinates.h"
+#include "creature.h"
+#include "creature_ref.h"
+#include "creature_tracker.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
 #include "flexbuffer_json.h"
 #include "game.h"
+#include "generic_factory.h"
+#include "math_parser_diag_value.h"
+#include "point.h"
+#include "power.h"
+#include "power_actor.h"
+#include "power_motion.h"
 #include "power_runtime.h"
 #include "talker.h"
 

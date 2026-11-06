@@ -1,15 +1,23 @@
 #include "power_math.h"
-#include "ability_ai.h"
-#include "power_actor.h"
-#include "power_projection.h"
-#include "game.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 
+#include "ability.h"
+#include "ability_ai.h"
+#include "ability_runtime.h"
+#include "calendar.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "dialogue.h"
+#include "game.h"
+#include "math_parser_diag.h"
+#include "math_parser_diag_value.h"
 #include "math_parser_type.h"
+#include "power.h"
+#include "power_actor.h"
+#include "power_projection.h"
 #include "power_runtime.h"
 #include "talker.h"
 

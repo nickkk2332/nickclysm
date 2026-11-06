@@ -1,6 +1,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <climits>
 #include <cmath>
 #include <cstddef>
@@ -8,6 +9,7 @@
 #include <deque>
 #include <exception>
 #include <filesystem>
+#include <initializer_list>
 #include <iterator>
 #include <list>
 #include <map>
@@ -15,17 +17,22 @@
 #include <optional>
 #include <ostream>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "ability.h"
+#include "ability_runtime.h"
 #include "achievement.h"
 #include "action.h"
-#include "activity_actor_definitions.h"
+#include "activity_actor.h"
 #include "activity_actor_eoc.h"
 #include "auto_pickup.h"
 #include "avatar.h"
@@ -42,6 +49,7 @@
 #include "character_id.h"
 #include "character_martial_arts.h"
 #include "city.h"
+#include "clone_ptr.h"
 #include "clzones.h"
 #include "color.h"
 #include "condition.h"
@@ -49,9 +57,11 @@
 #include "craft_reservation.h"
 #include "crafting_gui.h"
 #include "creature.h"
+#include "creature_ref.h"
 #include "creature_tracker.h"
 #include "current_map.h"
 #include "damage.h"
+#include "damage_transaction.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_chatbin.h"
@@ -59,17 +69,13 @@
 #include "dialogue_imgui.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
-#include "eoc_ui.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "eoc_ui.h"
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "execution_runtime.h"
-#include "ability_runtime.h"
-#include "damage_transaction.h"
-#include "power_eoc.h"
-#include "projection_eoc.h"
 #include "explosion.h"
 #include "faction.h"
 #include "faction_camp.h"
@@ -80,6 +86,7 @@
 #include "flexbuffer_json.h"
 #include "fungal_effects.h"
 #include "game.h"
+#include "game_constants.h"
 #include "game_inventory.h"
 #include "generic_factory.h"
 #include "global_vars.h"
@@ -95,6 +102,7 @@
 #include "item_category.h"
 #include "item_group.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
 #include "kill_tracker.h"
 #include "line.h"
@@ -111,13 +119,13 @@
 #include "martialarts.h"
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
-#include "memory_fast.h"
-#include "memorial_logger.h"
 #include "melee.h"
+#include "memorial_logger.h"
+#include "memory_fast.h"
 #include "messages.h"
 #include "mission.h"
 #include "mod_setting.h"
-#include "monfaction.h"
+#include "mod_setting_values.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -129,8 +137,10 @@
 #include "npctalk.h"
 #include "npctalk_rules.h"
 #include "npctrade.h"
+#include "omdata.h"
 #include "options.h"
 #include "output.h"
+#include "overmap.h"
 #include "overmap_ui.h"
 #include "overmapbuffer.h"
 #include "path_info.h"
@@ -140,7 +150,9 @@
 #include "pocket_type.h"
 #include "point.h"
 #include "popup.h"
+#include "power_eoc.h"
 #include "proficiency.h"
+#include "projection_eoc.h"
 #include "ranged.h"
 #include "recipe.h"
 #include "recipe_groups.h"

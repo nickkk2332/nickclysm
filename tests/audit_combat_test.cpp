@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cstddef>
+#include <list>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -12,6 +14,7 @@
 #include "character_martial_arts.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "enums.h"
 #include "faction.h"
 #include "flag.h"
 #include "game.h"
@@ -28,12 +31,13 @@
 #include "monstergenerator.h"
 #include "mtype.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vehicle.h"
-#include "veh_type.h"
 #include "weakpoint.h"
 
 // Regression tests for the combat chapter of the engine audit (Audit/18-combat.md).

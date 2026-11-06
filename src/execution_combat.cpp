@@ -1,29 +1,32 @@
 #include "execution_combat.h"
-#include "power_motion.h"
 
 #include <algorithm>
 #include <exception>
+#include <functional>
 #include <utility>
 #include <vector>
 
-#include "avatar.h"
+#include "bodypart.h"
 #include "cata_scope_helpers.h"
+#include "character.h"
 #include "creature.h"
 #include "damage.h"
+#include "enums.h"
 #include "execution_runtime.h"
 #include "execution_trigger.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
 #include "line.h"
-#include "map.h"
-#include "mapdata.h"
 #include "magic.h"
+#include "map.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "mtype.h"
+#include "power_motion.h"
 #include "projectile.h"
-#include "skill.h"
 
 static const ammo_effect_str_id ammo_effect_MAGIC( "MAGIC" );
 

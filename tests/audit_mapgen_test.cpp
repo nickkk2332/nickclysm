@@ -1,7 +1,9 @@
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -14,16 +16,14 @@
 #include "global_vars.h"
 #include "item.h"
 #include "item_category.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
-#include "math_parser_diag_value.h"
-#include "mapdata.h"
 #include "mapgen.h"
 #include "mapgen_functions.h"
 #include "mapgen_parameter.h"
 #include "mapgendata.h"
+#include "math_parser_diag_value.h"
 #include "omdata.h"
 #include "options_helpers.h"
 #include "overmapbuffer.h"

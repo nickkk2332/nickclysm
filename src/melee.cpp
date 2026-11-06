@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <memory>
@@ -34,13 +35,12 @@
 #include "damage.h"
 #include "debug.h"
 #include "dialogue.h"
-#include "effect.h"
-#include "execution_combat.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_combat.h"
 #include "execution_fatal.h"
 #include "execution_runtime.h"
 #include "flag.h"
@@ -53,6 +53,7 @@
 #include "item_components.h"
 #include "item_contents.h"
 #include "item_location.h"
+#include "item_uid.h"
 #include "itype.h"
 #include "line.h"
 #include "localized_comparator.h"

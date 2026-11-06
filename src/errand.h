@@ -7,6 +7,7 @@
 // u_wield_item, u_wear_item, u_drop_item).  See doc/JSON/EFFECT_ON_CONDITION.md.
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "coordinates.h"
 #include "global_vars.h"
 #include "item_location.h"
+#include "point.h"
 #include "type_id.h"
 
 class Character;
