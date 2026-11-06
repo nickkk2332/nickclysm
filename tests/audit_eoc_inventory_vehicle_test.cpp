@@ -1,6 +1,10 @@
+#include <stdint.h>
+#include <functional>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -9,18 +13,21 @@
 #include "cata_catch.h"
 #include "character.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "item.h"
 #include "item_location.h"
-#include "item_pocket.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "math_parser.h"
 #include "player_helpers.h"
+#include "pocket_type.h"
 #include "point.h"
+#include "ret_val.h"
 #include "talker.h"
 #include "type_id.h"
 #include "units.h"

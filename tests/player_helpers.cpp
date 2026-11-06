@@ -23,8 +23,8 @@
 #include "item_location.h"
 #include "itype.h"
 #include "magic.h"
-#include "map_helpers.h"
 #include "map.h"
+#include "map_helpers.h"
 #include "map_iterator.h"
 #include "npc.h"
 #include "pimpl.h"
@@ -38,6 +38,7 @@
 #include "stomach.h"
 #include "temp_crafting_inventory.h"
 #include "type_id.h"
+#include "units.h"
 #include "value_ptr.h"
 
 static const itype_id itype_debug_backpack( "debug_backpack" );

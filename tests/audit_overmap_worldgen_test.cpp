@@ -1,9 +1,15 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <functional>
+#include <initializer_list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -12,10 +18,12 @@
 #include "cata_scope_helpers.h"
 #include "city.h"
 #include "coordinates.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "json_loader.h"
 #include "map_helpers.h"
 #include "map_iterator.h"
+#include "map_scale_constants.h"
 #include "mapbuffer.h"
 #include "omdata.h"
 #include "overmap.h"

@@ -8,7 +8,7 @@
 
 void effect::detach_owned()
 {
-    if( owned && !owned.unique() ) {
+    if( owned && owned.use_count() != 1 ) {
         owned = std::make_shared<owned_effect_state>( *owned );
     }
 }

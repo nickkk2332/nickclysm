@@ -11,6 +11,7 @@
 #include <set>
 #include <stdexcept>
 #include <tuple>
+#include <type_traits>
 #include <unordered_set>
 #include <variant>
 
@@ -48,6 +49,7 @@
 #include "iuse_actor.h"
 #include "mapdata.h"
 #include "material.h"
+#include "math_defines.h"
 #include "math_parser_diag_value.h"
 #include "options.h"
 #include "output.h"

@@ -1,5 +1,7 @@
+#include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -14,7 +16,6 @@
 #include "item_location.h"
 #include "itype.h"
 #include "iuse.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "magic_type.h"

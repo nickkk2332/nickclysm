@@ -26,6 +26,7 @@
 #include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
+#include "character_id.h"
 #include "clzones.h"
 #include "construction.h"
 #include "coordinates.h"
