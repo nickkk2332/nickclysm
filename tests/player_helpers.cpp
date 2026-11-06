@@ -165,6 +165,9 @@ void clear_character( Character &dummy, bool skip_nutrition )
     dummy.per_bonus_hardcoded = 0;
     dummy.set_dodges_left( dummy.get_num_dodges() );
     dummy.set_underwater( false );
+    // Set by moving into water and only cleared by moving out of it, so a swimming test that
+    // ends in the water would leave every later test swimming.
+    dummy.is_swimming = false;
 
     // Make stats nominal.
     dummy.set_str_base( 8 );

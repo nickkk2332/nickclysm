@@ -3,7 +3,9 @@
 #include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
+#include "cata_scope_helpers.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
@@ -83,6 +85,12 @@ TEST_CASE( "mondt-j01_unknown_spawn_condition_fails_to_load", "[audit][monster]"
 TEST_CASE( "mondt-j01_dialogue_condition_gates_spawn_entry", "[audit][monster]" )
 {
     clear_avatar();
+    // Group entries spawn only once the cataclysm has started, and the test before this one may
+    // have left the clock earlier than that.
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    if( calendar::turn <= calendar::start_of_cataclysm ) {
+        calendar::turn = calendar::start_of_cataclysm + 1_minutes;
+    }
     avatar &u = get_avatar();
     load_audit_group( R"({ "id": "GROUP_AUDIT_MONDT_J01", "default": "mon_null", "monsters": [
         { "monster": "mon_zombie", "weight": 10, "condition": { "u_has_trait": "NIGHTVISION" } }
