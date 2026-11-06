@@ -1140,7 +1140,9 @@ TEST_CASE( "bubble_restorer_leaves_no_vehicle_of_the_far_bubble_listed", "[map][
         const on_out_of_scope restore_bubble( bubble_restorer() );
         g->place_player_overmap( project_to<coords::omt>( home ) + point_rel_omt( 0, 40 ) );
         REQUIRE( here.get_abs_sub() != home );
-        REQUIRE( here.add_vehicle( vehicle_prototype_bicycle, get_avatar().pos_bub() + point::east * 3,
+        // Whatever mapgen put there could block the bicycle
+        clear_map_without_vision();
+        REQUIRE( here.add_vehicle( vehicle_prototype_bicycle, tripoint_bub_ms( 30, 30, 0 ),
                                    0_degrees, 0, veh_spawn_status::UNDAMAGED ) != nullptr );
     }
     REQUIRE( here.get_abs_sub() == home );

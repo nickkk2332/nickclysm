@@ -12,6 +12,7 @@
 #include "item.h"
 #include "item_location.h"
 #include "item_pocket.h"
+#include "itype.h" // IWYU pragma: keep
 #include "iuse.h"
 #include "map.h"
 #include "map_helpers.h"

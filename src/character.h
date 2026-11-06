@@ -2988,7 +2988,7 @@ class Character : public Creature, public visitable
         void set_wielded_item( const item &to_wield );
         std::string check_power_stow( bool clothing, bool held ) const;
         void stow_power_gear( bool clothing, bool held, std::list<item> &garments,
-                              std::optional<item> &weapon );
+                              std::optional<item> &held_item );
         bool wear_power_item( item &value );
         bool wield_power_item( item &value );
 
