@@ -141,6 +141,7 @@ parsers = {
     "disease_type": dummy_parser,
     "effect_on_condition": parse_effect_on_condition,
     "execution": parse_execution,
+    "execution_trigger": parse_effect_on_condition,
     "effect_type": parse_effect_type,
     "effect_migration": dummy_parser,
     "emit": dummy_parser,

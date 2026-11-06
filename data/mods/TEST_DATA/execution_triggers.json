@@ -1,0 +1,170 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EXEC_TRIGGER_COUNTER",
+    "condition": "has_beta",
+    "effect": [ { "math": [ "exec_trigger_counters += 1" ] }, { "u_attack": "tec_none", "allow_special": false } ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_execution_trigger_counter",
+    "name": { "str": "Execution counter test style" },
+    "description": "Tests defensive callback attack causality.",
+    "initiate": [ "You prepare a counterattack.", "%s prepares a counterattack." ],
+    "allow_all_weapons": true,
+    "ongethit_eocs": [ "EOC_TEST_EXEC_TRIGGER_COUNTER" ],
+    "ondodge_eocs": [ "EOC_TEST_EXEC_TRIGGER_COUNTER" ]
+  },
+  {
+    "type": "ITEM",
+    "id": "execution_trigger_test_knife",
+    "copy-from": "knife_combat",
+    "name": { "str": "automatic execution test knife" },
+    "description": "A knife used by automatic execution regression tests."
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_execution_trigger_test",
+    "copy-from": "mon_test_non_shearable",
+    "name": { "str_sp": "automatic execution test creature" },
+    "description": "A creature used by automatic execution regression tests.",
+    "hp": 10000,
+    "melee_skill": 50,
+    "melee_dice": 1,
+    "melee_dice_sides": 1,
+    "melee_damage": [ { "damage_type": "pure", "amount": 5 } ],
+    "weakpoints": [ { "id": "exec_stable_wp", "name": "a translated vulnerable spot", "coverage": 100 } ]
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_basic",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "basic" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_direction",
+    "execution": "test_exec_fall",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "direction" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_miss",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ], "hit": false },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "miss" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_zero",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "zero" ] },
+    "chance": 0
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_half",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "half" ] },
+    "chance": 0.5
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_high_failed",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "priority" ] },
+    "priority": 20,
+    "chance": 0
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_lower_passed",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "priority" ] },
+    "priority": 10
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_lowest",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "priority" ] },
+    "priority": 0
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_weighted_a",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "weighted" ] },
+    "weight": 1
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_weighted_b",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "weighted" ] },
+    "weight": 9
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_required_weapon",
+    "execution": "test_exec_weapon",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "weapon_loss" ] }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_cooldown_actor",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "cooldown_actor" ] },
+    "cooldown": { "ticks": 20, "scope": "actor" }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_cooldown_target",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "cooldown_target" ] },
+    "cooldown": { "ticks": 20, "scope": "target" }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_cooldown_actor_target_pair",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "cooldown_actor_target_pair" ] },
+    "cooldown": { "ticks": 20, "scope": "actor_target_pair" }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_cooldown_world",
+    "execution": "test_exec_free",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "cooldown_world" ] },
+    "cooldown": { "ticks": 20, "scope": "world" }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_claim",
+    "execution": "test_exec_clock",
+    "match": { "weapons": [ "execution_trigger_test_knife" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "claim" ] },
+    "cooldown": { "ticks": 20, "scope": "world" }
+  },
+  {
+    "type": "execution_trigger",
+    "id": "test_exec_trigger_monster",
+    "execution": "test_exec_free",
+    "match": { "channels": [ "monster_melee" ], "source_monsters": [ "mon_execution_trigger_test" ] },
+    "condition": { "compare_string": [ { "global_val": "exec_trigger_case", "default": "" }, "native_monster" ] }
+  }
+]

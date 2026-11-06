@@ -29,8 +29,9 @@ processing, rather than being retroactively converted into a delayed death scene
 
 Still to develop:
 
-- Phase 0's full producer matrix, shared nested combat causality and committed per-type
-  damage snapshots, followed by indexed automatic trigger rules and arbitration.
+- Phase 0's full producer matrix and shared combat causality. The first indexed
+  living-melee slice, committed primary damage snapshots and arbitration are now in
+  the [automatic-trigger follow-up](06-automatic-triggers.md).
 - Phase 6 fatal reservation/finalization and real knockout/incapacity semantics. These
   require their own native combat/death integration and tests before fatal scenes work.
 - Phase 4's owned appendable narration and auditory audiences are now delivered in the
@@ -38,7 +39,8 @@ Still to develop:
 - More physical actions, richer policies, per-action secondary attribution beyond the
   implemented native fall scope, and broad gameplay/tooling demonstrations.
 
-Current constraints are deliberate: two living loaded participants, explicit EOC requests,
+Current constraints are deliberate: two living loaded participants, EOC requests or
+the [supported automatic melee producers](06-automatic-triggers.md),
 no offscreen catchup, no save from inside an in-progress action, at most 64 active scenes,
 and bounded graphs. Damage interruption includes periodic environmental/bleeding HP loss.
 Revision changes interrupt incompatible instances; authors must bump revisions for graph

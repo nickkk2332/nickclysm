@@ -21,20 +21,20 @@
     "crit_tec": true,
     "weighting": 100,
     "attack_vectors": [ "vector_null" ],
-    "weapon_categories_allowed": [ "KNIVES" ],
-    "post_hit_eocs": [ "EOC_EXECUTION_DEMO_STAGGER" ]
+    "weapon_categories_allowed": [ "KNIVES" ]
   },
   {
-    "type": "effect_on_condition",
-    "id": "EOC_EXECUTION_DEMO_STAGGER",
-    "condition": {
-      "and": [
-        { "math": [ "_hit == 1" ] },
-        { "math": [ "_killed == 0" ] },
-        { "math": [ "_crit == 1" ] },
-        { "npc_bodytype": "human" }
-      ]
+    "type": "execution_trigger",
+    "id": "demo_knife_stagger_trigger",
+    "execution": "demo_knife_stagger",
+    "cooldown": { "ticks": 30, "scope": "actor_target_pair" },
+    "match": {
+      "channels": [ "character_melee" ],
+      "weapons": [ "execution_demo_knife" ],
+      "techniques": [ "tec_execution_demo_stagger" ],
+      "critical": true,
+      "hp_loss": { "minimum": 1 }
     },
-    "effect": [ { "start_execution": "demo_knife_stagger" } ]
+    "condition": { "npc_bodytype": "human" }
   }
 ]

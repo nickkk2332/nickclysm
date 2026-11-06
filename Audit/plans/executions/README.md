@@ -1,6 +1,6 @@
 # Executions: implementation design
 
-**Status:** the living-participant runtime and [owned appendable/audible narration](05-narration-milestone.md) are implemented. See [first-milestone status](04-implementation-status.md) and the supported [JSON contract](../../../doc/JSON/EXECUTIONS.md). The documents below retain the broader design and future proposals; their proposed schemas must not be assumed implemented. Original source inspection was pinned to Nickclysm `b32c9baea25f62478228c6a91cbbf9f356e4e8a3`.
+**Status:** the living-participant runtime, [owned appendable/audible narration](05-narration-milestone.md), and [automatic primary-melee rules](06-automatic-triggers.md) are implemented. See [first-milestone status](04-implementation-status.md) and the supported [JSON contract](../../../doc/JSON/EXECUTIONS.md). The documents below retain the broader design and future proposals; their proposed schemas must not be assumed implemented. Original source inspection was pinned to Nickclysm `b32c9baea25f62478228c6a91cbbf9f356e4e8a3`.
 
 An **execution** is a short, stateful sequence of authored beats that can act on creatures and the world. Its name includes finishing moves, but its outcome can be survival, unconsciousness, escape, interruption, a completed exchange, or death. A sequence should be able to describe a brutal takedown, an unlucky stumble, or a rare cinematic clash using the same machinery.
 

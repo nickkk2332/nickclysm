@@ -33,6 +33,7 @@
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
+#include "execution_combat.h"
 #include "explosion.h"
 #include "field.h"
 #include "field_type.h"
@@ -1049,6 +1050,7 @@ float Creature::get_crit_factor( const bodypart_id &bp ) const
 
 int Creature::deal_melee_attack( Creature *source, int hitroll )
 {
+    const execution_combat::damage_barrier execution_damage;
 
     const float dodge = dodge_roll();
     on_try_dodge();
@@ -1081,6 +1083,8 @@ void Creature::deal_melee_hit( Creature *source, int hit_spread, bool critical_h
                                damage_instance dam, dealt_damage_instance &dealt_dam,
                                const weakpoint_attack &attack, const bodypart_id *bp )
 {
+    const execution_combat::melee_hit_scope execution_hit( source, *this );
+    const execution_combat::damage_barrier execution_damage;
     map &here = get_map();
 
     if( source == nullptr || source->is_hallucination() ) {
@@ -1112,7 +1116,10 @@ void Creature::deal_melee_hit( Creature *source, int hit_spread, bool critical_h
 
     on_hit( &here, source, bp_hit ); // trigger on-gethit events
     dam.onhit_effects( source, this ); // on-hit effects for inflicted damage types
-    dealt_dam = deal_damage( source, bp_hit, d, attack_copy );
+    {
+        const execution_combat::direct_damage_scope primary;
+        dealt_dam = deal_damage( source, bp_hit, d, attack_copy );
+    }
     dealt_dam.bp_hit = bp_hit;
 }
 
@@ -1466,6 +1473,7 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
                                        const double &missed_by, bool print_messages,
                                        const weakpoint_attack &wp_attack )
 {
+    const execution_combat::damage_barrier execution_damage;
     const bool magic = attack.proj.proj_effects.count( ammo_effect_MAGIC ) > 0;
     if( missed_by >= 1.0 && !magic ) {
         // Total miss
@@ -1591,6 +1599,7 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
 dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam, const weakpoint_attack &attack, const weakpoint &wp )
 {
+    execution_combat::damage_scope execution_damage( source, *this );
     if( is_dead_state() || has_flag( json_flag_CANNOT_TAKE_DAMAGE ) ) {
         return dealt_damage_instance();
     }
@@ -1608,6 +1617,9 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
     }
     const weakpoint *wkpt = absorb_hit( attack_copy, bp, d, wp );
     dealt_dams.wp_hit = wkpt == nullptr ? "" : wkpt->get_name();
+    if( wkpt ) {
+        execution_damage.set_weakpoint( wkpt->id );
+    }
 
     // Add up all the damage units dealt
     for( const damage_unit &it : d.damage_units ) {
@@ -1630,7 +1642,9 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         mod_pain( total_pain, bp );
     }
 
+    execution_damage.arm_hp_capture();
     apply_damage( source, bp, total_damage );
+    execution_damage.disarm_hp_capture();
 
     if( wkpt != nullptr ) {
         // attack_copy: a melee attack only gets its attacker here
