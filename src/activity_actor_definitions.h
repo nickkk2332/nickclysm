@@ -768,6 +768,9 @@ class hacking_activity_actor : public activity_actor
         void start( player_activity &act, Character &who ) override;
         void do_turn( player_activity &, Character & ) override {}
         void finish( player_activity &act, Character &who ) override;
+        // what a successful hack at `examp` does: routes a gas pump's fuel, opens a card reader's
+        // doors as its card would, or opens an electronic safe into its `hack_result` (ACT-J06)
+        static void hack_success( Character &who, const tripoint_bub_ms &examp );
 
         std::unique_ptr<activity_actor> clone() const override {
             return std::make_unique<hacking_activity_actor>( *this );

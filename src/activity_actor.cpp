@@ -43,6 +43,7 @@
 #include "character.h"
 #include "character_id.h"
 #include "character_martial_arts.h"
+#include "clone_ptr.h"
 #include "clzones.h"
 #include "construction.h"
 #include "contents_change_handler.h"
@@ -74,6 +75,7 @@
 #include "handle_liquid.h"
 #include "harvest.h"
 #include "iexamine.h"
+#include "iexamine_actors.h"
 #include "input_popup.h"
 #include "inventory_ui.h"
 #include "item.h"
@@ -319,8 +321,6 @@ static const flag_id json_flag_ALWAYS_AIMED( "ALWAYS_AIMED" );
 static const flag_id json_flag_NO_RELOAD( "NO_RELOAD" );
 
 static const furn_str_id furn_f_crate_o( "f_crate_o" );
-static const furn_str_id furn_f_gunsafe_mj( "f_gunsafe_mj" );
-static const furn_str_id furn_f_gunsafe_ml( "f_gunsafe_ml" );
 static const furn_str_id furn_f_plant_seed( "f_plant_seed" );
 static const furn_str_id furn_f_safe_c( "f_safe_c" );
 static const furn_str_id furn_f_safe_o( "f_safe_o" );
@@ -410,13 +410,9 @@ static const skill_id skill_traps( "traps" );
 
 static const species_id species_ZOMBIE( "ZOMBIE" );
 
-static const ter_str_id ter_t_card_reader_broken( "t_card_reader_broken" );
 static const ter_str_id ter_t_dirt( "t_dirt" );
 static const ter_str_id ter_t_dirtmound( "t_dirtmound" );
 static const ter_str_id ter_t_door_c( "t_door_c" );
-static const ter_str_id ter_t_door_locked_alarm( "t_door_locked_alarm" );
-static const ter_str_id ter_t_door_metal_c( "t_door_metal_c" );
-static const ter_str_id ter_t_door_metal_locked( "t_door_metal_locked" );
 static const ter_str_id ter_t_greenhouse( "t_greenhouse" );
 static const ter_str_id ter_t_greenhouse_tilled( "t_greenhouse_tilled" );
 static const ter_str_id ter_t_stump( "t_stump" );
@@ -438,6 +434,7 @@ static const vproto_id vehicle_prototype_none( "none" );
 static const zone_type_id zone_type_LOOT_IGNORE( "LOOT_IGNORE" );
 static const zone_type_id zone_type_LOOT_IGNORE_FAVORITES( "LOOT_IGNORE_FAVORITES" );
 static const zone_type_id zone_type_LOOT_UNSORTED( "LOOT_UNSORTED" );
+static const zone_type_id zone_type_NO_NPC_PICKUP( "NO_NPC_PICKUP" );
 static const zone_type_id zone_type_STRIP_CORPSES( "STRIP_CORPSES" );
 static const zone_type_id zone_type_UNLOAD_ALL( "UNLOAD_ALL" );
 
@@ -1068,10 +1065,67 @@ static hack_type get_hack_type( const tripoint_bub_ms &examp )
     return type;
 }
 
+// The card reader actor of the furniture at `p`, else of its terrain; nullptr if neither has one.
+static const cardreader_examine_actor *cardreader_at( const tripoint_bub_ms &p,
+        bool &furniture_reader )
+{
+    const map &here = get_map();
+    const furn_t &furn = here.furn( p ).obj();
+    const ter_t &ter = here.ter( p ).obj();
+    for( const map_data_common_t *data : {
+             static_cast<const map_data_common_t *>( &furn ), static_cast<const map_data_common_t *>( &ter )
+         } ) {
+        for( const cata::clone_ptr<iexamine_actor> &actor : data->get_examine_actors() ) {
+            if( const cardreader_examine_actor *reader =
+                    dynamic_cast<const cardreader_examine_actor *>( actor.get() ) ) {
+                furniture_reader = data == &furn;
+                return reader;
+            }
+        }
+    }
+    return nullptr;
+}
+
+void hacking_activity_actor::hack_success( Character &who, const tripoint_bub_ms &examp )
+{
+    map &here = get_map();
+    const hack_type type = get_hack_type( examp );
+    if( type == hack_type::GAS ) {
+        int tankUnits;
+        fuel_station_fuel_type fuelType;
+        const std::optional<tripoint_bub_ms> pTank_ = iexamine::getNearFilledGasTank( examp, tankUnits,
+                fuelType );
+        if( !pTank_ ) {
+            return;
+        }
+        const tripoint_bub_ms pTank = *pTank_;
+        const std::optional<tripoint_bub_ms> pGasPump = iexamine::getGasPumpByNumber( examp,
+                uistate.ags_pay_gas_selected_pump );
+        if( pGasPump && iexamine::toPumpFuel( pTank, *pGasPump, tankUnits ) ) {
+            who.add_msg_if_player( _( "You hack the terminal and route all available fuel to your pump!" ) );
+            sounds::sound( examp, 6, sounds::sound_t::activity,
+                           _( "Glug Glug Glug Glug Glug Glug Glug Glug Glug" ), true, "tool", "gaspump" );
+        } else {
+            who.add_msg_if_player( _( "Nothing happens." ) );
+        }
+    } else if( type == hack_type::SAFE ) {
+        who.add_msg_if_player( m_good, _( "The door on the safe swings open." ) );
+        const furn_str_id &opened = here.furn( examp )->hack_result;
+        here.furn_set( examp, opened.is_empty() ? furn_f_safe_o : opened );
+    } else if( type == hack_type::DOOR ) {
+        who.add_msg_if_player( _( "You activate the panel!" ) );
+        who.add_msg_if_player( m_good, _( "The nearby doors unlock." ) );
+        // what the reader's card would do, from its JSON
+        bool furniture_reader = false;
+        if( const cardreader_examine_actor *reader = cardreader_at( examp, furniture_reader ) ) {
+            reader->hack( examp, furniture_reader );
+        }
+    }
+}
+
 void hacking_activity_actor::finish( player_activity &act, Character &who )
 {
     tripoint_bub_ms examp = get_map().get_bub( act.placement );
-    hack_type type = get_hack_type( examp );
     switch( hack_attempt( who, tool ) ) {
         case hack_result::UNABLE:
             who.add_msg_if_player( _( "You cannot hack this." ) );
@@ -1088,38 +1142,7 @@ void hacking_activity_actor::finish( player_activity &act, Character &who )
             who.add_msg_if_player( _( "You fail the hack, but no alarms are triggered." ) );
             break;
         case hack_result::SUCCESS:
-            map &here = get_map();
-            if( type == hack_type::GAS ) {
-                int tankUnits;
-                fuel_station_fuel_type fuelType;
-                const std::optional<tripoint_bub_ms> pTank_ = iexamine::getNearFilledGasTank( examp, tankUnits,
-                        fuelType );
-                if( !pTank_ ) {
-                    break;
-                }
-                const tripoint_bub_ms pTank = *pTank_;
-                const std::optional<tripoint_bub_ms> pGasPump = iexamine::getGasPumpByNumber( examp,
-                        uistate.ags_pay_gas_selected_pump );
-                if( pGasPump && iexamine::toPumpFuel( pTank, *pGasPump, tankUnits ) ) {
-                    who.add_msg_if_player( _( "You hack the terminal and route all available fuel to your pump!" ) );
-                    sounds::sound( examp, 6, sounds::sound_t::activity,
-                                   _( "Glug Glug Glug Glug Glug Glug Glug Glug Glug" ), true, "tool", "gaspump" );
-                } else {
-                    who.add_msg_if_player( _( "Nothing happens." ) );
-                }
-            } else if( type == hack_type::SAFE ) {
-                who.add_msg_if_player( m_good, _( "The door on the safe swings open." ) );
-                here.furn_set( examp, furn_f_safe_o );
-            } else if( type == hack_type::DOOR ) {
-                who.add_msg_if_player( _( "You activate the panel!" ) );
-                who.add_msg_if_player( m_good, _( "The nearby doors unlock." ) );
-                here.ter_set( examp, ter_t_card_reader_broken );
-                for( const tripoint_bub_ms &tmp : here.points_in_radius( examp, 3 ) ) {
-                    if( here.ter( tmp ) == ter_t_door_metal_locked ) {
-                        here.ter_set( tmp, ter_t_door_metal_c );
-                    }
-                }
-            }
+            hack_success( who, examp );
             break;
     }
     act.set_to_null();
@@ -3416,6 +3439,8 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
     ter_id new_ter_type;
     furn_id new_furn_type;
     std::string open_message = _( "The lock opens…" );
+    // the furniture or terrain whose lock is picked, null for a vehicle's (ACT-J07)
+    const map_data_common_t *lock = nullptr;
 
     if( veh ) {
         std::vector<vehicle_part *> parts_at_target = veh->vehicle().get_parts_at(
@@ -3436,6 +3461,7 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
         if( !furn_type->lockpick_message.empty() ) {
             open_message = furn_type->lockpick_message.translated();
         }
+        lock = &furn_type.obj();
     } else if( locked_part >= 0 ) {
         // no-op.
     } else {
@@ -3448,6 +3474,7 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
         if( !ter_type->lockpick_message.empty() ) {
             open_message = ter_type->lockpick_message.translated();
         }
+        lock = &ter_type.obj();
     }
 
     bool perfect = it->has_flag( flag_PERFECT_LOCKPICK );
@@ -3485,9 +3512,16 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
     // A standard deviation of 2 means that about 2/3 of rolls will come within 2 points of your mean_roll. Lockpicking
     int pick_roll = std::round( normal_roll( mean_roll, 2 ) );
 
-    // Lock_roll should be replaced with a flat value defined by the door, soon.
-    // In the meantime, let's roll 3d5-3, giving us a range of 0-12.
-    int lock_roll = rng( 0, 4 ) + rng( 0, 4 ) + rng( 0, 4 );
+    // The lock's "lockpick_difficulty" (ACT-J07); a lock without one rolls 3d5-3, 0 to 12.
+    int lock_roll = 0;
+    if( lock != nullptr && lock->lockpick_difficulty ) {
+        lock_roll = rng( lock->lockpick_difficulty->first, lock->lockpick_difficulty->second );
+    } else {
+        lock_roll = rng( 0, 4 ) + rng( 0, 4 ) + rng( 0, 4 );
+    }
+    const bool can_jam = lock != nullptr && ( here.has_furn( target ) ?
+                         !furn_type->lockpick_jam_result.is_empty() :
+                         !ter_type->lockpick_jam_result.is_empty() );
 
     add_msg_debug( debugmode::DF_ACT_LOCKPICK, "Rolled %i. Mean_roll %g. Difficulty %i.",
                    pick_roll, mean_roll, lock_roll );
@@ -3509,9 +3543,14 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
         sounds::sound( target, 5, sounds::sound_t::combat, _( "Click!" ),
                        true, "tool", "lockpick_success" );
         who.add_msg_if_player( m_good, open_message );
-    } else if( furn_type == furn_f_gunsafe_ml && lock_roll > ( 3 * pick_roll ) ) {
+    } else if( can_jam && lock_roll > ( 3 * pick_roll ) ) {
+        // the lock's "lockpick_jam_result" (ACT-J07)
         who.add_msg_if_player( m_bad, _( "Your clumsy attempt jams the lock!" ) );
-        here.furn_set( target, furn_f_gunsafe_mj );
+        if( here.has_furn( target ) ) {
+            here.furn_set( target, furn_type->lockpick_jam_result );
+        } else {
+            here.ter_set( target, ter_type->lockpick_jam_result );
+        }
     } else if( lock_roll > ( 1.5 * pick_roll ) ) {
         if( it->inc_damage() ) {
             sounds::sound( target, 5, sounds::sound_t::combat, _( "Snap!" ),
@@ -3541,7 +3580,9 @@ void lockpick_activity_actor::finish( player_activity &act, Character &who )
         you->practice( skill_traps, xp_gain );
     }
 
-    if( !perfect && ter_type == ter_t_door_locked_alarm && ( lock_roll + dice( 1, 30 ) ) > pick_roll ) {
+    // an ALARMED lock may go off (ACT-J07)
+    if( !perfect && lock != nullptr && lock->has_flag( ter_furn_flag::TFLAG_ALARMED ) &&
+        ( lock_roll + dice( 1, 30 ) ) > pick_roll ) {
         sounds::sound( who.pos_bub(), 40, sounds::sound_t::alarm, _( "an alarm sound!" ), true,
                        "environment",
                        "alarm" );
@@ -14619,6 +14660,10 @@ void zone_sort_activity_actor::stage_init( player_activity &, Character &you )
     for( const tripoint_abs_ms &p :
          mgr.get_near( zone_type_LOOT_UNSORTED, you.pos_abs(), MAX_VIEW_DISTANCE, nullptr, fac ) ) {
         if( skip_personal && !mgr.has_nonpersonal( zone_type_LOOT_UNSORTED, p, fac ) ) {
+            continue;
+        }
+        // an NPC sorting for the faction leaves its NO_NPC_PICKUP tiles alone (ACT-B04)
+        if( !you.is_avatar() && mgr.has( zone_type_NO_NPC_PICKUP, p, fac ) ) {
             continue;
         }
         coord_set.insert( p );

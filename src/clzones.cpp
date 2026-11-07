@@ -51,6 +51,7 @@
 
 static const faction_id faction_your_followers( "your_followers" );
 
+static const flag_id json_flag_FERTILIZER( "FERTILIZER" );
 static const flag_id json_flag_FIREWOOD( "FIREWOOD" );
 
 static const item_category_id item_category_food( "food" );
@@ -97,6 +98,12 @@ static const std::unordered_map< std::string, zone_type_id> legacy_zone_types = 
 
 zone_manager::zone_manager()
 {
+    reload_types();
+}
+
+void zone_manager::reload_types()
+{
+    types.clear();
     for( const zone_type &zone : zone_type::get_all() ) {
         types.emplace( zone.id, zone );
     }
@@ -108,10 +115,19 @@ void zone_manager::clear()
     added_vzones.clear();
     changed_vzones.clear();
     removed_vzones.clear();
-    // Do not clear types since it is needed for the next games.
+    num_personal_zones = 0;
+    // Types stay: they come from the loaded data, and reload_types() follows it
     area_cache.clear();
     vzone_cache.clear();
     filter_cache.clear();
+}
+
+void zone_manager::recount_personal_zones()
+{
+    num_personal_zones = static_cast<int>( std::count_if( zones.begin(), zones.end(),
+    []( const zone_data & z ) {
+        return z.get_is_personal();
+    } ) );
 }
 
 const std::function<bool( const item & )> &zone_manager::cached_item_filter(
@@ -174,11 +190,14 @@ void zone_type::load_zones( const JsonObject &jo, const std::string &src )
 void zone_type::finalize_all()
 {
     zone_type_factory.finalize();
+    // the zone manager outlives the world: it must offer this world's zone types (ACT-B06)
+    zone_manager::get_manager().reload_types();
 }
 
 void zone_type::reset()
 {
     zone_type_factory.reset();
+    zone_manager::get_manager().reload_types();
 }
 
 void zone_type::load( const JsonObject &jo, std::string_view )
@@ -396,6 +415,32 @@ bool plot_options::query_fertilizer()
         fertilizer = *selected_fertilizer;
     }
     return previous_fertilizer != fertilizer;
+}
+
+void plot_options::set_seed( const itype_id &new_seed )
+{
+    seed = new_seed;
+    mark = new_seed.is_valid() && new_seed->seed ? new_seed->seed->fruit_id : new_seed;
+}
+
+void blueprint_options::set_construction( const construction_id &con )
+{
+    std::set<construction_id> skip_index;
+    index = get_final_construction( get_constructions(), con, skip_index );
+    const construction &chosen = index.obj();
+    group = chosen.group;
+    mark = chosen.post_terrain;
+}
+
+void unload_options::set_unload( std::optional<bool> new_mods, std::optional<bool> new_molle,
+                                 std::optional<bool> new_sparse_only, std::optional<int> new_sparse_threshold,
+                                 std::optional<bool> new_always_unload )
+{
+    mods = new_mods.value_or( mods );
+    molle = new_molle.value_or( molle );
+    sparse_only = new_sparse_only.value_or( sparse_only );
+    sparse_threshold = new_sparse_threshold.value_or( sparse_threshold );
+    always_unload = new_always_unload.value_or( always_unload );
 }
 
 bool blueprint_options::query_at_creation()
@@ -1141,12 +1186,13 @@ std::unordered_set<tripoint_bub_ms> zone_manager::get_point_set_loot( const trip
     }
 
     if( npc_search ) {
-        for( const auto &cache : vzone_cache ) {
-            zone_type_id type = zone_data::unhash_type( cache.first );
-            if( type == zone_type_NO_NPC_PICKUP ) {
-                for( const tripoint_abs_ms &point : cache.second ) {
-                    res.erase( here.get_bub( point ) );
-                }
+        // NPCs of the faction don't take from its NO_NPC_PICKUP zones, on the ground or on
+        // vehicles (ACT-B04)
+        for( auto it = res.begin(); it != res.end(); ) {
+            if( has( zone_type_NO_NPC_PICKUP, here.get_abs( *it ), fac ) ) {
+                it = res.erase( it );
+            } else {
+                ++it;
             }
         }
     }
@@ -1867,10 +1913,6 @@ void zone_manager::deserialize( const JsonValue &jv )
 {
     jv.read( zones );
     for( auto it = zones.begin(); it != zones.end(); ) {
-        // need to keep track of number of personal zones on reload
-        if( it->get_is_personal() ) {
-            num_personal_zones++;
-        }
         const zone_type_id zone_type = it->get_type();
 
         if( !has_type( zone_type ) ) {
@@ -1882,6 +1924,8 @@ void zone_manager::deserialize( const JsonValue &jv )
             ++it;
         }
     }
+    // counted from what was read, not added to the count of the zones it replaced (ACT-B05)
+    recount_personal_zones();
 }
 
 void zone_data::serialize( JsonOut &json ) const
@@ -2039,6 +2083,7 @@ void zone_manager::load_zones( std::string const &suffix )
         zones.clear();
     }
     load_world_zones( suffix );
+    recount_personal_zones();
     revert_vzones();
     added_vzones.clear();
     changed_vzones.clear();
@@ -2112,7 +2157,9 @@ void zone_manager::revert_vzones()
     for( const auto &zpair : changed_vzones ) {
         *( zpair.second ) = zpair.first;
     }
-    for( zone_data *zone : added_vzones ) {
+    // remove() erases each zone from added_vzones, so walk a copy (ACT-B05)
+    const std::vector<zone_data *> added = added_vzones;
+    for( zone_data *zone : added ) {
         remove( *zone );
     }
 }
@@ -2120,7 +2167,7 @@ void zone_manager::revert_vzones()
 void mapgen_place_zone( tripoint_abs_ms const &start, tripoint_abs_ms const &end,
                         zone_type_id const &type,
                         faction_id const &fac, std::string const &name, std::string const &filter,
-                        map *pmap )
+                        map *pmap, const zone_options_preset *preset )
 {
     zone_manager &mgr = zone_manager::get_manager();
     auto options = zone_options::create( type );
@@ -2131,7 +2178,100 @@ void mapgen_place_zone( tripoint_abs_ms const &start, tripoint_abs_ms const &end
             dynamic_cast<loot_options *>( &*options )->set_mark( filter );
         }
     }
+    if( preset != nullptr ) {
+        preset->apply( type, *options );
+    }
     mgr.add( name, type, fac, false, true, s_, e_, options, true, pmap );
+}
+
+bool zone_options_preset::empty() const
+{
+    return !seed && !fertilizer && !construction && !ignore_contents && !mods && !molle &&
+           !sparse_only && !sparse_threshold && !always_unload;
+}
+
+void zone_options_preset::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "seed", seed );
+    optional( jo, false, "fertilizer", fertilizer );
+    optional( jo, false, "construction", construction );
+    optional( jo, false, "ignore_contents", ignore_contents );
+    optional( jo, false, "mods", mods );
+    optional( jo, false, "molle", molle );
+    optional( jo, false, "sparse_only", sparse_only );
+    optional( jo, false, "sparse_threshold", sparse_threshold );
+    optional( jo, false, "always_unload", always_unload );
+}
+
+std::string zone_options_preset::check( const zone_type_id &type ) const
+{
+    const bool farm = type == zone_type_FARM_PLOT;
+    const bool blueprint = type == zone_type_CONSTRUCTION_BLUEPRINT;
+    const bool ignorable = std::find( ignorable_zone_types.begin(), ignorable_zone_types.end(),
+                                      type ) != ignorable_zone_types.end();
+    const bool unload = type == zone_type_UNLOAD_ALL;
+    std::vector<std::string> wrong;
+    if( ( seed || fertilizer ) && !farm ) {
+        wrong.emplace_back( "\"seed\" and \"fertilizer\" are for FARM_PLOT zones" );
+    }
+    if( construction && !blueprint ) {
+        wrong.emplace_back( "\"construction\" is for CONSTRUCTION_BLUEPRINT zones" );
+    }
+    if( ignore_contents && !ignorable ) {
+        wrong.emplace_back(
+            "\"ignore_contents\" is for AUTO_EAT, AUTO_DRINK, DISASSEMBLE and SOURCE_FIREWOOD zones" );
+    }
+    if( ( mods || molle || sparse_only || sparse_threshold || always_unload ) && !unload ) {
+        wrong.emplace_back( "\"mods\", \"molle\", \"sparse_only\", \"sparse_threshold\" and "
+                            "\"always_unload\" are for UNLOAD_ALL zones" );
+    }
+    if( seed && ( !seed->is_valid() || !( *seed )->seed ) ) {
+        wrong.emplace_back( string_format( "seed \"%s\" is not a seed", seed->str() ) );
+    }
+    if( fertilizer && ( !fertilizer->is_valid() ||
+                        !( *fertilizer )->has_flag( json_flag_FERTILIZER ) ) ) {
+        wrong.emplace_back( string_format(
+                                "fertilizer \"%s\" is not an item with the FERTILIZER flag", fertilizer->str() ) );
+    }
+    if( construction && !construction->is_valid() ) {
+        wrong.emplace_back( string_format( "construction \"%s\" does not exist",
+                                           construction->str() ) );
+    }
+    if( sparse_threshold && *sparse_threshold < 1 ) {
+        wrong.emplace_back( "\"sparse_threshold\" must be at least 1" );
+    }
+    std::string result;
+    for( const std::string &w : wrong ) {
+        result += result.empty() ? w : "; " + w;
+    }
+    return result;
+}
+
+void zone_options_preset::apply( const zone_type_id &type, zone_options &options ) const
+{
+    if( type == zone_type_FARM_PLOT ) {
+        if( plot_options *plot = dynamic_cast<plot_options *>( &options ) ) {
+            if( seed ) {
+                plot->set_seed( *seed );
+            }
+            if( fertilizer ) {
+                plot->set_fertilizer( *fertilizer );
+            }
+        }
+    } else if( type == zone_type_CONSTRUCTION_BLUEPRINT ) {
+        blueprint_options *blueprint = dynamic_cast<blueprint_options *>( &options );
+        if( blueprint != nullptr && construction && construction->is_valid() ) {
+            blueprint->set_construction( construction->id() );
+        }
+    } else if( type == zone_type_UNLOAD_ALL ) {
+        if( unload_options *unload = dynamic_cast<unload_options *>( &options ) ) {
+            unload->set_unload( mods, molle, sparse_only, sparse_threshold, always_unload );
+        }
+    } else if( ignore_contents ) {
+        if( ignorable_options *ignorable = dynamic_cast<ignorable_options *>( &options ) ) {
+            ignorable->set_ignore_contents( *ignore_contents );
+        }
+    }
 }
 
 std::unique_ptr<talker> get_talker_for( zone_data &me )

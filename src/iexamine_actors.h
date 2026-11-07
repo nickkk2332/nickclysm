@@ -70,6 +70,10 @@ class cardreader_examine_actor : public iexamine_actor
         std::string success_msg;
         std::string redundant_msg;
 
+        // ACT-J06: what the reader itself becomes when hacked open
+        std::optional<ter_str_id> hacked_ter;
+        std::optional<furn_str_id> hacked_furn;
+
         void consume_card( const std::vector<item_location> &cards ) const;
         std::vector<item_location> get_cards( Character &you, const tripoint_bub_ms &examp ) const;
         bool apply( const tripoint_bub_ms &examp ) const;
@@ -81,6 +85,15 @@ class cardreader_examine_actor : public iexamine_actor
         void load( const JsonObject &jo, const std::string & ) override;
         void call( Character &you, const tripoint_bub_ms &examp ) const override;
         void finalize() const override;
+        void check( const std::string &owner ) const override;
+        /**
+         * A successful hack of this reader at `examp`: makes the changes a card would, then turns
+         * the reader into `hacked_ter` / `hacked_furn` (unless those changes replaced it). Without
+         * them, a terrain reader becomes t_card_reader_broken and a furniture reader stays.
+         * @param furniture_reader whether the reader is the furniture at `examp`, not its terrain
+         * @return whether the card changes changed anything
+         */
+        bool hack( const tripoint_bub_ms &examp, bool furniture_reader ) const;
 
         std::unique_ptr<iexamine_actor> clone() const override;
 };

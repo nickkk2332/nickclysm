@@ -3853,6 +3853,8 @@ class jmapgen_zone : public jmapgen_piece
         mapgen_value<faction_id> faction;
         std::string name;
         std::string filter;
+        // ACT-J05: farm seed, blueprint construction, unload and ignore settings
+        zone_options_preset options;
         jmapgen_zone( const JsonObject &jsi, std::string_view/*context*/ )
             : zone_type( jsi.get_member( "type" ) )
             , faction( jsi.get_member( "faction" ) ) {
@@ -3861,6 +3863,9 @@ class jmapgen_zone : public jmapgen_piece
             }
             if( jsi.has_string( "filter" ) ) {
                 filter = jsi.get_string( "filter" );
+            }
+            if( jsi.has_member( "options" ) ) {
+                options.deserialize( jsi.get_object( "options" ) );
             }
         }
         mapgen_phase phase() const override {
@@ -3874,7 +3879,8 @@ class jmapgen_zone : public jmapgen_piece
                                           dat.zlevel() + z.get() ) );
             const tripoint_abs_ms end = dat.m.get_abs( tripoint_bub_ms( int( x.valmax ), int( y.valmax ),
                                         dat.zlevel() + z.get() ) );
-            mapgen_place_zone( start, end, chosen_zone_type, chosen_faction, name, filter, &dat.m );
+            mapgen_place_zone( start, end, chosen_zone_type, chosen_faction, name, filter, &dat.m,
+                               options.empty() ? nullptr : &options );
         }
 
         void check( const std::string &oter_name, const mapgen_parameters &parameters,
@@ -3882,6 +3888,16 @@ class jmapgen_zone : public jmapgen_piece
                   ) const override {
             zone_type.check( oter_name, parameters );
             faction.check( oter_name, parameters );
+            if( options.empty() ) {
+                return;
+            }
+            for( const zone_type_id &type : zone_type.all_possible_results( parameters ) ) {
+                const std::string wrong = options.check( type );
+                if( !wrong.empty() ) {
+                    debugmsg( "zone of type %s in mapgen for %s has wrong \"options\": %s", type.str(),
+                              oter_name, wrong );
+                }
+            }
         }
 };
 

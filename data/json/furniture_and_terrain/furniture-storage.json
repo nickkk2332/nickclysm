@@ -394,6 +394,7 @@
     "flags": [ "TRANSPARENT", "CONTAINER", "SEALED", "PLACE_ITEM", "MOUNTABLE", "PICKABLE" ],
     "lockpick_result": "f_gunsafe_o",
     "lockpick_message": "With a satisfying click, the lock on the gun safe door opens.",
+    "lockpick_jam_result": "f_gunsafe_mj",
     "examine_action": "locked_object_pickable",
     "oxytorch": { "result": "f_safe_o", "duration": "14 seconds" },
     "bash": {

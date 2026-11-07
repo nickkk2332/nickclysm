@@ -63,8 +63,7 @@
 
 static const activity_id ACT_MORTAR_AIMING( "ACT_MORTAR_AIMING" );
 
-static const ter_str_id ter_t_door_metal_c( "t_door_metal_c" );
-static const ter_str_id ter_t_door_metal_locked( "t_door_metal_locked" );
+static const ter_str_id ter_t_card_reader_broken( "t_card_reader_broken" );
 
 void appliance_convert_examine_actor::load( const JsonObject &jo, const std::string & )
 {
@@ -270,7 +269,41 @@ void cardreader_examine_actor::load( const JsonObject &jo, const std::string & )
     optional( jo, false, "query_msg", query_msg );
     mandatory( jo, false, "success_msg", success_msg );
     mandatory( jo, false, "redundant_msg", redundant_msg );
+    optional( jo, false, "hacked_ter", hacked_ter );
+    optional( jo, false, "hacked_furn", hacked_furn );
 
+}
+
+bool cardreader_examine_actor::hack( const tripoint_bub_ms &examp, bool furniture_reader ) const
+{
+    map &here = get_map();
+    const ter_id reader_ter = here.ter( examp );
+    const furn_id reader_furn = here.furn( examp );
+    // the doors (or the mapgen update) first: apply() looks at the tiles around the reader
+    const bool opened = apply( examp );
+    // the reader itself, unless the changes already replaced it
+    if( here.ter( examp ) == reader_ter ) {
+        if( hacked_ter ) {
+            here.ter_set( examp, *hacked_ter );
+        } else if( !furniture_reader ) {
+            here.ter_set( examp, ter_t_card_reader_broken );
+        }
+    }
+    if( hacked_furn && here.furn( examp ) == reader_furn ) {
+        here.furn_set( examp, *hacked_furn );
+    }
+    return opened;
+}
+
+void cardreader_examine_actor::check( const std::string &owner ) const
+{
+    if( hacked_ter && !hacked_ter->is_valid() ) {
+        debugmsg( "card reader of %s: hacked_ter \"%s\" is not a terrain", owner, hacked_ter->str() );
+    }
+    if( hacked_furn && !hacked_furn->is_valid() ) {
+        debugmsg( "card reader of %s: hacked_furn \"%s\" is not furniture", owner,
+                  hacked_furn->str() );
+    }
 }
 
 void cardreader_examine_actor::finalize() const
@@ -292,12 +325,7 @@ void cardreader_examine_actor::finalize() const
     if( query && query_msg.empty() ) {
         debugmsg( "Cardreader is told to query, yet does not have a query message defined." );
     }
-
-    if( allow_hacking && ( !furn_changes.empty() || terrain_changes.size() != 1 ||
-                           terrain_changes.count( ter_t_door_metal_locked ) != 1 ||
-                           terrain_changes.at( ter_t_door_metal_locked ) != ter_t_door_metal_c ) ) {
-        debugmsg( "Cardreader allows hacking, but activities different that if hacked." );
-    }
+    // hacking makes the same changes as a card (ACT-J06), so any reader may allow it
 }
 
 std::unique_ptr<iexamine_actor> cardreader_examine_actor::clone() const
