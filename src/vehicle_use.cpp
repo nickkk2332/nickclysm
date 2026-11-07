@@ -2421,12 +2421,30 @@ void vehicle::build_interact_menu( veh_menu &menu, map *here, const tripoint_bub
         .hotkey( "TOGGLE_ALARM" )
         .on_submit( [this, here] { smash_security_system( *here ); } );
     }
-    for( const vpart_reference &vp : this->get_avail_parts( "EOC_ACTIVATION" ) ) {
-        vehicle_part &part = vp.part();
-        menu.add( string_format( _( "Activate  %s" ), vp.part().name() ) )
-        .on_submit( [&part] {
-            dialogue newDialog( get_talker_for( get_player_character() ), nullptr );
-            part.info().activatable_eoc.value()->activate( newDialog );
+    // Parts that run an EOC when activated: the ones on this tile, or from the controls (and by
+    // remote) all of the vehicle's.
+    const tripoint_abs_ms interacted_abs = here->get_abs( vppos );
+    for( const vpart_reference &eoc_vp : get_avail_parts( "EOC_ACTIVATION" ) ) {
+        if( !controls_here && !remote && eoc_vp.pos_abs() != interacted_abs ) {
+            continue;
+        }
+        const vpart_info &info = eoc_vp.info();
+        if( !info.activatable_eoc ) {
+            debugmsg( "vehicle part %s has the EOC_ACTIVATION flag but no activatable_eoc",
+                      info.id.str() );
+            continue;
+        }
+        const int part_index = eoc_vp.part_index();
+        const effect_on_condition_id eoc = *info.activatable_eoc;
+        menu.add( string_format( _( "Activate %s" ), eoc_vp.part().name() ) )
+        .location( eoc_vp.pos_bub( *here ).raw() )
+        .on_submit( [this, part_index, eoc] {
+            const vehicle_part &activated = part( part_index );
+            dialogue d( get_talker_for( get_player_character() ), get_talker_for( *this ) );
+            d.set_value( "vpart_id", activated.info().id.str() );
+            d.set_value( "vpart_variant", activated.variant );
+            d.set_value( "vpart_pos", abs_part_pos( part_index ) );
+            eoc->activate( d );
         } );
     }
 

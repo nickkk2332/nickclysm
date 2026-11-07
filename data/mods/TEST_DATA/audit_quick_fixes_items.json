@@ -1,0 +1,77 @@
+[
+  {
+    "id": "test_qf_tailors_kit",
+    "type": "ITEM",
+    "subtypes": [ "TOOL" ],
+    "name": { "str": "TEST clothing modification kit" },
+    "description": "USE-J03: modifies cotton and leather clothing with padding.",
+    "weight": "100 g",
+    "volume": "250 ml",
+    "material": [ "plastic" ],
+    "symbol": ";",
+    "color": "light_gray",
+    "use_action": [
+      {
+        "type": "sew_advanced",
+        "materials": [ "cotton", "leather" ],
+        "skill": "tailor",
+        "clothing_mods": [ "leather_padded", "kevlar_padded" ]
+      }
+    ]
+  },
+  {
+    "id": "test_qf_npc_summoner",
+    "type": "ITEM",
+    "name": { "str": "TEST NPC summoning whistle" },
+    "description": "USE-J04: places an NPC up to 3 tiles away.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "plastic" ],
+    "symbol": ",",
+    "color": "light_gray",
+    "use_action": { "type": "place_npc", "npc_class_id": "true_foodperson", "place_randomly": true, "radius": 3 }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_qf_honeydew_aphid",
+    "name": { "str": "TEST honeydew aphid" },
+    "description": "MONDT-J03: a milkable monster whose \"milk\" is clean water, not milk.",
+    "default_faction": "herbivore",
+    "material": [ "flesh" ],
+    "harvest": "mon_test_bovine",
+    "symbol": "a",
+    "color": "green",
+    "volume": "30 L",
+    "weight": "30 kg",
+    "hp": 20,
+    "speed": 50,
+    "starting_ammo": { "water_clean": 3 },
+    "flags": [ "SEES", "HEARS", "ANIMAL", "MILKABLE", "PET_WONT_FOLLOW" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_QF_DEATH_CONTEXT",
+    "//": "MONDT-J05: records the context vars a death EOC gets.",
+    "effect": [
+      { "copy_var": { "context_val": "loc" }, "target_var": { "global_val": "test_qf_death_loc" } },
+      { "math": [ "test_qf_death_overkill = _overkill" ] }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_qf_death_context",
+    "name": { "str": "TEST death context monster" },
+    "description": "MONDT-J05: its death EOC records where it died and by how much.",
+    "default_faction": "zombie",
+    "material": [ "flesh" ],
+    "harvest": "mon_test_bovine",
+    "symbol": "Z",
+    "color": "red",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 20,
+    "speed": 50,
+    "death_function": { "corpse_type": "NO_CORPSE", "message": "The %s vanishes.", "eoc": "EOC_TEST_QF_DEATH_CONTEXT" },
+    "flags": [ "SEES", "HEARS" ]
+  }
+]

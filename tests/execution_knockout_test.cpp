@@ -648,6 +648,11 @@ TEST_CASE( "knockout_reference_content_checks_real_character_strength_and_eligib
     knockout_world world;
     avatar &actor = get_avatar();
     npc &target = *subject( "npc" ).as_npc();
+    // A thug rolls random traits, some of which change its strength; the roll depends on what
+    // the tests before used of the RNG
+    const tripoint_bub_ms pos = target.pos_bub();
+    clear_character( target );
+    target.setpos( get_map(), pos );
     actor.set_str_base( 20 );
     actor.reset_stats();
     target.set_str_base( 8 );

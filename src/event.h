@@ -1211,6 +1211,9 @@ class event
 
         using fields_type = std::unordered_map<std::string, cata_variant_type>;
         static fields_type get_fields( event_type );
+        // The fields in the order of the event's spec, the order make_dyn takes its arguments in
+        using field_list_type = std::vector<std::pair<std::string, cata_variant_type>>;
+        static field_list_type get_field_list( event_type );
 
         event_type type() const {
             return type_;

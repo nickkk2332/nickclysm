@@ -714,9 +714,9 @@ void check_martialarts()
             }
         }
     }
+    // ma_technique::check runs from ma_technique::verify_ma_techniques
     for( const ma_technique &t : ma_techniques.get_all() ) {
         ::check( t.reqs, string_format( "technique %s", t.id.c_str() ) );
-        t.check();
     }
     for( const ma_buff &b : ma_buffs.get_all() ) {
         ::check( b.reqs, string_format( "buff %s", b.id.c_str() ) );

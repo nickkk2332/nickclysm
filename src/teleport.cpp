@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -201,6 +202,13 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
     }
     Character *const p = critter.as_character();
     const bool c_is_u = p != nullptr && p->is_avatar();
+    // The avatar's OMT change is reported once, at the end, even if a trap where it lands moves
+    // it again.
+    const tripoint_abs_ms old_abs_pos = critter.pos_abs();
+    std::optional<cata_event_dispatch::avatar_move_scope> moving;
+    if( c_is_u ) {
+        moving.emplace();
+    }
     map &here = get_map();
     tripoint_abs_ms abs_ms( here.get_abs( target ) );
     if( abs_ms.z() > OVERMAP_HEIGHT || abs_ms.z() < -OVERMAP_DEPTH ) {
@@ -444,6 +452,12 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
     for( const effect &grab : critter.get_effects_with_flag( json_flag_GRAB ) ) {
         critter.remove_effect( grab.get_id() );
     }
+    if( moving ) {
+        moving.reset();
+        if( !critter.is_dead_state() ) {
+            cata_event_dispatch::avatar_changes_omt( old_abs_pos );
+        }
+    }
 
     return true;
 }
@@ -460,6 +474,9 @@ bool teleport::teleport_vehicle( vehicle &veh, const tripoint_abs_ms &dp, bool f
     veh.precalc_mounts( 1, veh.skidding ? veh.turn_dir : facing.dir(), veh.pivot_anchor[0] );
 
     Character &player_character = get_player_character();
+    // An avatar riding along changes OMT with the vehicle; that is reported once, at the end.
+    const tripoint_abs_ms old_avatar_pos = player_character.pos_abs();
+    cata_event_dispatch::avatar_move_scope moving;
     tripoint_bub_ms src = veh.pos_bub( here );
     auto pos_abs_offset = dp - veh.pos_abs();
 
@@ -550,6 +567,8 @@ bool teleport::teleport_vehicle( vehicle &veh, const tripoint_abs_ms &dp, bool f
     // Cables on vehicle need to translate to new postion to keep connection working
     veh.translate_cables( pos_abs_offset );
     CleanUpAfterVehicleTeleport( veh, here, dp, smzs, src );
+    moving.end();
+    cata_event_dispatch::avatar_changes_omt( old_avatar_pos );
     return true;
 }
 

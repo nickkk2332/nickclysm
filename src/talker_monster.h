@@ -10,6 +10,7 @@
 #include "monster.h"
 #include "talker.h"
 #include "type_id.h"
+#include "units_fwd.h"
 
 /*
  * Talker wrapper class for monster.
@@ -73,7 +74,7 @@ class talker_monster_const: public const_talker_cloner<talker_monster_const>
 
         bool can_see_location( const tripoint_bub_ms &pos ) const override;
         int get_volume() const override;
-        int get_weight() const override;
+        units::mass get_weight() const override;
         bool is_warm() const override;
         bool is_underwater() const override;
         bool is_swimming() const override;

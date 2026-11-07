@@ -206,7 +206,7 @@ class talker_character_const: virtual public const_talker
         int get_ugliness() const override;
         int get_height() const override;
         int get_bmi_permil() const override;
-        int get_weight() const override;
+        units::mass get_weight() const override;
         int get_volume() const override;
         const move_mode_id &get_move_mode() const override;
         int get_fine_detail_vision_mod() const override;

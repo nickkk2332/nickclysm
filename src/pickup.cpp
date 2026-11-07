@@ -378,9 +378,9 @@ static bool pick_one_up( item_location &loc, int quantity, bool &got_water, bool
                                            quantity ) + ( distance * info.extra_moves_per_distance ) ) );
         } else {
             // Pure cost to handling item excluding overhead.
-            player_character.mod_moves( ( -std::max( player_character.item_handling_cost( *loc, true, 0,
-                                          quantity,
-                                          true ), 1 ) + ( distance * info.extra_moves_per_distance ) ) );
+            const int handling = std::max( player_character.item_handling_cost( *loc, true, 0,
+                                           quantity, true ), 1 );
+            player_character.mod_moves( -( handling + distance * info.extra_moves_per_distance ) );
         }
         contents_change_handler handler;
         handler.unseal_pocket_containing( loc );
@@ -436,12 +436,9 @@ bool Pickup::do_pickup( std::vector<item_location> &targets, std::vector<int> &q
         problem = !pick_one_up( target, quantity, got_water, got_gas, mapPickup, autopickup,
                                 stash_successful, got_frozen_liquid, info );
         if( info.total_bulk_volume > 200_ml ) {
-            // Bulk loading is not allowed beyond a certain volume.  The limits this pickup was
-            // started with, and what it picked up so far, still count.
-            Pickup::pick_info next( info.extra_moves_per_distance, info.max_volume, info.max_mass );
-            next.picked_up_volume = info.picked_up_volume;
-            next.picked_up_mass = info.picked_up_mass;
-            info = next;
+            // Bulk loading is not allowed beyond a certain volume: start a new bulk load.  The
+            // limits this pickup was started with, and what it picked up so far, still count.
+            info.reset_bulk_load();
         }
     }
 
@@ -591,4 +588,13 @@ void Pickup::pick_info::set_src( const item_location &src_ )
 void Pickup::pick_info::set_dst( const item_location &dst_ )
 {
     dst = dst_;
+}
+
+void Pickup::pick_info::reset_bulk_load()
+{
+    total_bulk_volume = 0_ml;
+    src_type = item_location::type::invalid;
+    src_pos = tripoint_bub_ms();
+    src_container = item_location();
+    dst = item_location();
 }

@@ -1011,6 +1011,8 @@ void map::vehmove()
     int minz = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
     int maxz = zlevels ? OVERMAP_HEIGHT : abs_sub.z();
     const tripoint_abs_ms player_pos = get_player_character().pos_abs();
+    // An avatar carried (or flung) to another OMT is reported once, when the vehicles are done.
+    cata_event_dispatch::avatar_move_scope moving;
     for( int zlev = minz; zlev <= maxz; ++zlev ) {
         level_cache *cache_lazy = get_cache_lazy( zlev );
         if( !cache_lazy ) {
@@ -1082,6 +1084,11 @@ void map::vehmove()
 
     // refresh vehicle zones for moved vehicles
     zone_manager::get_manager().cache_vzones( this );
+
+    moving.end();
+    if( !get_player_character().is_dead_state() ) {
+        cata_event_dispatch::avatar_changes_omt( player_pos );
+    }
 }
 
 bool map::vehproceed( VehicleList &vehicle_list )

@@ -1012,6 +1012,8 @@ void math_exp::math_exp_impl::new_var( std::string_view str )
             case 'v':
                 type = var_type::var;
                 break;
+            case 'g':
+                break;
             default:
                 throw math::syntax_error( "Unknown scope %c in variable %s", str[0], str );
         }

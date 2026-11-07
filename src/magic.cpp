@@ -569,8 +569,8 @@ static bool spell_infinite_loop_check( std::set<spell_id> spell_effects, const s
     return false;
 }
 
-// Checks that effect_str names an existing id of the type the spell effect reads it as.
-// Effects that ignore effect_str, and timed_event (a fixed keyword list), are not checked.
+// Checks that effect_str names an existing id of the type the spell effect reads it as, or
+// one of the keywords it accepts.  Effects that ignore effect_str are not checked.
 static void check_spell_effect_str( const spell_type &sp_t )
 {
     const std::string &str = sp_t.effect_str;
@@ -654,6 +654,10 @@ static void check_spell_effect_str( const spell_type &sp_t )
     } else if( eff == "summon_vehicle" ) {
         if( !str.empty() && !vproto_id( str ).is_valid() ) {
             invalid( "vehicle prototype id" );
+        }
+    } else if( eff == "timed_event" ) {
+        if( !spell_effect::timed_event_from_effect_str( str ) ) {
+            invalid( "timed event (see the timed_event effect in doc/JSON/MAGIC.md)" );
         }
     }
 }

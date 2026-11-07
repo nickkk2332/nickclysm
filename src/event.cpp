@@ -285,6 +285,31 @@ event::fields_type event::get_fields( event_type type )
                type, std::make_integer_sequence<int, static_cast<int>( event_type::num_event_types )> {} );
 }
 
+template<event_type Type>
+static void get_field_list_if_match( event_type type, event::field_list_type &out )
+{
+    if( Type == type ) {
+        out = { event_detail::event_spec<Type>::fields.begin(),
+                event_detail::event_spec<Type>::fields.end()
+              };
+    }
+}
+
+template<int... I>
+static event::field_list_type
+get_field_list_helper( event_type type, std::integer_sequence<int, I...> )
+{
+    event::field_list_type result;
+    ( get_field_list_if_match<static_cast<event_type>( I )>( type, result ), ... );
+    return result;
+}
+
+event::field_list_type event::get_field_list( event_type type )
+{
+    return get_field_list_helper(
+               type, std::make_integer_sequence<int, static_cast<int>( event_type::num_event_types )> {} );
+}
+
 cata_variant event::get_variant( const std::string &key ) const
 {
     auto it = data_.find( key );

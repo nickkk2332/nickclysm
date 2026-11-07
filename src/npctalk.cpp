@@ -44,6 +44,7 @@
 #include "cata_lazy.h"
 #include "cata_path.h"
 #include "cata_utility.h"
+#include "cata_variant.h"
 #include "catacharset.h"
 #include "character.h"
 #include "character_id.h"
@@ -7318,16 +7319,14 @@ talk_effect_fun_t::func f_remove_active_mission( const JsonObject &jo,
 talk_effect_fun_t::func f_offer_mission( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
-    std::vector<std::string> mission_names;
-
+    // a mission id, a variable object, or an array of them
+    std::vector<str_or_var> mission_names;
     if( jo.has_array( member ) ) {
-        for( const std::string mission_name : jo.get_array( member ) ) {
-            mission_names.push_back( mission_name );
+        for( const JsonValue jv : jo.get_array( member ) ) {
+            mission_names.push_back( get_str_or_var( jv, member ) );
         }
-    } else if( jo.has_string( member ) ) {
-        mission_names.push_back( jo.get_string( std::string( member ) ) );
     } else {
-        jo.throw_error( "Invalid input for set_offer_mission" );
+        mission_names.push_back( get_str_or_var( jo.get_member( member ), member ) );
     }
 
     return [mission_names]( dialogue const & d ) {
@@ -7335,8 +7334,14 @@ talk_effect_fun_t::func f_offer_mission( const JsonObject &jo, std::string_view 
         npc *p = d.actor( d.has_beta )->get_npc();
 
         if( p ) {
-            for( const std::string &mission_name : mission_names ) {
-                p->add_new_mission( mission::reserve_new( mission_type_id( mission_name ), p->getID() ) );
+            for( const str_or_var &mission_name : mission_names ) {
+                const mission_type_id mission_type( mission_name.evaluate( d ) );
+                if( !mission_type.is_valid() ) {
+                    debugmsg( R"(offer_mission: no mission type "%s".  %s)", mission_type.str(),
+                              d.get_callstack() );
+                    continue;
+                }
+                p->add_new_mission( mission::reserve_new( mission_type, p->getID() ) );
             }
         }
     };
@@ -7393,7 +7398,8 @@ talk_effect_fun_t::func f_set_fault( const JsonObject &jo, std::string_view memb
         if( it == nullptr ) {
             return;
         }
-        const Character *holder = msg ? d.actor( is_npc )->get_character() : nullptr;
+        // the message is for whoever carries the item (set_fault shows it to the avatar only)
+        const Character *holder = msg ? it->carrier() : nullptr;
         it->get_item()->set_fault( fault_id( fault_var.evaluate( d ) ), force, holder );
     };
 }
@@ -7415,8 +7421,54 @@ talk_effect_fun_t::func f_set_random_fault_of_type( const JsonObject &jo, std::s
         if( it == nullptr ) {
             return;
         }
-        const Character *holder = msg ? d.actor( is_npc )->get_character() : nullptr;
+        const Character *holder = msg ? it->carrier() : nullptr;
         it->get_item()->set_random_fault_of_type( fault_type_var.evaluate( d ), force, holder );
+    };
+}
+
+talk_effect_fun_t::func f_remove_fault( const JsonObject &jo, std::string_view member,
+                                        const std::string_view, bool is_npc )
+{
+    str_or_var fault_var = get_str_or_var( jo.get_member( member ), member, true );
+    return [fault_var, is_npc]( dialogue const & d ) {
+        // an item used up earlier in the same EOC is skipped silently, as set_fault does
+        if( const item_location *gone = d.actor( is_npc )->get_item(); gone != nullptr &&
+            gone->get_item() == nullptr ) {
+            return;
+        }
+        item_location *it = require_item( d, is_npc, "remove_fault" );
+        if( it == nullptr ) {
+            return;
+        }
+        const fault_id fault( fault_var.evaluate( d ) );
+        if( !fault.is_valid() ) {
+            debugmsg( R"(remove_fault: no fault "%s".  %s)", fault.str(), d.get_callstack() );
+            return;
+        }
+        it->get_item()->remove_fault( fault );
+    };
+}
+
+talk_effect_fun_t::func f_remove_fault_of_type( const JsonObject &jo, std::string_view member,
+        const std::string_view, bool is_npc )
+{
+    str_or_var fault_type_var = get_str_or_var( jo.get_member( member ), member, true );
+    const bool all = jo.get_bool( "all", false );
+    return [fault_type_var, all, is_npc]( dialogue const & d ) {
+        // an item used up earlier in the same EOC is skipped silently, as set_fault does
+        if( const item_location *gone = d.actor( is_npc )->get_item(); gone != nullptr &&
+            gone->get_item() == nullptr ) {
+            return;
+        }
+        item_location *it = require_item( d, is_npc, "remove_fault_of_type" );
+        if( it == nullptr ) {
+            return;
+        }
+        item &target = *it->get_item();
+        const std::string fault_type = fault_type_var.evaluate( d );
+        do {
+            target.remove_single_fault_of_type( fault_type );
+        } while( all && target.has_fault_of_type( fault_type ) );
     };
 }
 
@@ -10297,14 +10349,23 @@ talk_effect_fun_t::func f_pickup_items( const JsonObject &jo, std::string_view m
         tripoint_abs_ms target_pos_abs = read_var_value( target_var, d ).tripoint();
         tripoint_bub_ms target_pos = get_map().get_bub( target_pos_abs );
         Character *c = d.actor( is_npc )->get_character();
+        if( c == nullptr ) {
+            return;
+        }
+        // The pickup menu and the pickup itself are the avatar's
+        if( !c->is_avatar() ) {
+            debugmsg( "%s: only the avatar can pick up items this way, not %s.  %s",
+                      is_npc ? "npc_pickup_items" : "u_pickup_items", c->get_name(),
+                      d.get_callstack() );
+            return;
+        }
         const int volume_ml = max_volume.evaluate( d );
         const std::int64_t mass_g = max_mass.evaluate( d );
         Pickup::pick_info info = Pickup::pick_info( extra_moves_per_item.evaluate( d ),
                                  volume_ml < 0 ? -1_ml : units::from_milliliter( volume_ml ),
                                  mass_g < 0 ? -1_gram : units::from_gram( mass_g ) );
-        if( c ) {
-            ( *c ).pick_up( game_menus::inv::pickup( {target_pos}, {}, info ) );
-        }
+        // the limits and the extra moves count for the pickup, not only for the menu
+        c->pick_up( game_menus::inv::pickup( {target_pos}, {}, info ), info );
     };
 }
 
@@ -10549,6 +10610,19 @@ talk_effect_fun_t::func f_trigger_event( const JsonObject &jo, std::string_view 
     if( engine_only.count( type ) ) {
         jo.throw_error_at( member, string_format( "event type \"%s\" can't be triggered", type_str ) );
     }
+    // args are the event's fields, in the order of event.h
+    const cata::event::field_list_type fields = cata::event::get_field_list( type );
+    if( jargs.size() != fields.size() ) {
+        std::vector<std::string> names;
+        names.reserve( fields.size() );
+        for( const std::pair<std::string, cata_variant_type> &field : fields ) {
+            names.push_back( string_format( "%s (%s)", field.first,
+                                            io::enum_to_string( field.second ) ) );
+        }
+        const std::string order = names.empty() ? "none" : string_join( names, ", " );
+        jo.throw_error_at( "args", string_format( "event type \"%s\" takes %d args, in this order: "
+                           "%s; got %d", type_str, fields.size(), order, jargs.size() ) );
+    }
     std::vector<diag_value_or_var> args;
     args.reserve( jargs.size() );
     for( JsonValue const &jv : jargs ) {
@@ -10755,6 +10829,8 @@ parsers = {
     { "u_unset_flag", "npc_unset_flag", jarg::member, &talk_effect_fun::f_unset_flag },
     { "u_set_fault", "npc_set_fault", jarg::member, &talk_effect_fun::f_set_fault },
     { "u_set_random_fault_of_type", "npc_set_random_fault_of_type", jarg::member, &talk_effect_fun::f_set_random_fault_of_type },
+    { "u_remove_fault", "npc_remove_fault", jarg::member, &talk_effect_fun::f_remove_fault },
+    { "u_remove_fault_of_type", "npc_remove_fault_of_type", jarg::member, &talk_effect_fun::f_remove_fault_of_type },
     { "u_activate", "npc_activate", jarg::member, &talk_effect_fun::f_activate },
     { "u_consume_item", "npc_consume_item", jarg::member, &talk_effect_fun::f_consume_item },
     { "u_pickup_item", "npc_pickup_item", jarg::member, &talk_effect_fun::f_pickup_item },
@@ -10835,7 +10911,7 @@ parsers = {
     { "assign_mission", jarg::member, &talk_effect_fun::f_assign_mission },
     { "finish_mission", jarg::member, &talk_effect_fun::f_finish_mission },
     { "remove_active_mission", jarg::member, &talk_effect_fun::f_remove_active_mission },
-    { "offer_mission", jarg::array | jarg::string, &talk_effect_fun::f_offer_mission },
+    { "offer_mission", jarg::member, &talk_effect_fun::f_offer_mission },
     { "run_eocs", jarg::member | jarg::array, &talk_effect_fun::f_run_eocs },
     { "run_eoc_selector", jarg::member, &talk_effect_fun::f_run_eoc_selector },
     { "run_eoc_checklist", jarg::member, &talk_effect_fun::f_run_eoc_checklist },

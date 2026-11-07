@@ -58,7 +58,7 @@ class talker_item_const: public const_talker_cloner<talker_item_const>
         int coverage_at( bodypart_id & ) const override;
         int encumbrance_at( bodypart_id & ) const override;
         int get_volume() const override;
-        int get_weight() const override;
+        units::mass get_weight() const override;
         int get_quality( const std::string &, bool strict ) const override;
 
         int get_price() const override;

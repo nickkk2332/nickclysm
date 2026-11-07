@@ -252,6 +252,10 @@ void harvest_list::check_consistency()
         if( !hl.leftovers.is_valid() ) {
             debugmsg( "Harvest id %s has invalid leftovers: %s", hl.id.c_str(), hl.leftovers.c_str() );
         }
+        if( !hl.butchery_requirements_.is_valid() ) {
+            debugmsg( "Harvest id %s has unknown butchery_requirements: %s", hl.id.c_str(),
+                      hl.butchery_requirements_.c_str() );
+        }
     }
 }
 
