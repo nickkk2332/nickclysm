@@ -174,6 +174,10 @@ struct load_history {
 
 load_history object_load_history;
 
+// Set while load_deferred() replays objects whose copy-from parent wasn't loaded yet: a replay
+// is the same definition again, not a second one from its source.
+bool replaying_deferred = false;
+
 // One key per object id ("type\nid"), or one for the abstract id.
 std::vector<std::string> object_keys( const JsonObject &jo )
 {
@@ -272,10 +276,10 @@ void DynamicDataLoader::load_object( const JsonObject &jo, const std::string &sr
     const int src_index = history.src_index.try_emplace( src,
                           static_cast<int>( history.src_index.size() ) ).first->second;
     const uint64_t load = history.next_load++;
-    // These types are loaded outside generic_factory and don't record where each id came
-    // from, so two definitions of one id from the same source are reported here (NPC-J02).
+    // These types don't record where each id came from (no mod_tracker "src"), so two
+    // definitions of one id from the same source are reported here (NPC-J02).
     static const std::unordered_set<std::string> untracked_types = { "faction", "npc" };
-    const bool report_duplicates = untracked_types.count( type ) > 0;
+    const bool report_duplicates = !replaying_deferred && untracked_types.count( type ) > 0;
     for( std::string &key : object_keys( jo ) ) {
         const std::string id = report_duplicates ? key.substr( key.rfind( '\n' ) + 1 ) : "";
         std::vector<std::pair<int, uint64_t>> &loads = history.loaded_by[std::move( key )];
@@ -317,6 +321,8 @@ shared_ptr_fast<std::istream> DynamicDataLoader::get_cached_stream( const std::s
 
 void DynamicDataLoader::load_deferred( deferred_json &data )
 {
+    restore_on_out_of_scope restore_replaying( replaying_deferred );
+    replaying_deferred = true;
     while( !data.empty() ) {
         const size_t n = data.size();
         auto it = data.begin();
@@ -626,7 +632,7 @@ void DynamicDataLoader::initialize()
     add( "MOD_INFO", &load_ignored_type );
 
     add( "faction", &faction_template::load );
-    add( "npc", &npc_template::load );
+    add( "npc", &npc_template::load_npc_template );
     add( "npc_class", &npc_class::load_npc_class );
     add( "talk_topic", &load_talk_topic );
     add( "behavior", &behavior::load_behavior );
@@ -1044,6 +1050,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Diseases" ), &disease_type::finalize_all },
             { _( "Weather types" ), &weather_types::finalize_all },
             { _( "Weather generators" ), &weather_generator::finalize_all },
+            { _( "NPC templates" ), &npc_template::finalize },
             { _( "Effect on conditions" ), &effect_on_conditions::finalize_all },
             { _( "Field types" ), &field_types::finalize_all },
             { _( "Ammo effects" ), &ammo_effects::finalize_all },

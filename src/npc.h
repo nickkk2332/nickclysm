@@ -1975,12 +1975,25 @@ class standard_npc : public npc
 };
 
 // instances of this can be accessed via string_id<npc_template>.
+// The JSON "npc" type: what npc::load_npc_template() gives an npc.  Loaded through
+// generic_factory, so it takes copy-from, abstract, extend and delete (NPC-J02).
 class npc_template
 {
     public:
         npc_template() = default;
 
-        npc guy;
+        npc_template_id id;
+        bool was_loaded = false;
+
+        faction_id fac_id = faction_id::NULL_ID();
+        npc_class_id myclass = npc_class_id::NULL_ID();
+        npc_attitude attitude = NPCATT_NULL;
+        npc_mission mission = NPC_MISSION_NULL;
+        // first_topic ("chat") and the talk_* topics
+        dialogue_chatbin chatbin;
+        // "mission_offered"
+        std::vector<mission_type_id> miss_ids;
+        std::vector<effect_on_condition_id> death_eocs;
         character_portrait_id unique_portrait_filename;
         dialogue_chatbin_snippets snippets;
         translation name_unique;
@@ -2000,11 +2013,14 @@ class npc_template
         std::optional<int> per;
         std::optional<npc_personality> personality;
 
-        static void load( const JsonObject &jsobj, std::string_view src );
+        void load( const JsonObject &jsobj, std::string_view src );
+
+        static void load_npc_template( const JsonObject &jsobj, const std::string &src );
         static void reset();
+        static void finalize();
         static void check_consistency();
 
-        static std::map<npc_template_id, npc_template> &get_npc_templates();
+        static const std::vector<npc_template> &get_all();
 };
 
 std::ostream &operator<< ( std::ostream &os, const npc_need &need );

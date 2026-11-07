@@ -309,12 +309,12 @@ TEST_CASE( "npc-j02_npc_and_faction_copy_from", "[audit][npc]" )
     SECTION( "an npc template copies its parent and changes what it gives" ) {
         const npc_template &parent = npc_template_audit_npc_parent.obj();
         const npc_template &child = npc_template_audit_npc_child.obj();
-        CHECK( parent.guy.get_fac_id() == faction_audit_faction_parent );
-        CHECK( child.guy.get_fac_id() == faction_audit_faction_child );
+        CHECK( parent.fac_id == faction_audit_faction_parent );
+        CHECK( child.fac_id == faction_audit_faction_child );
         CHECK( child.name_suffix.translated() == "Child" );
-        CHECK( child.guy.myclass == NC_NONE );
-        CHECK( child.guy.mission == NPC_MISSION_GUARD );
-        CHECK( child.guy.chatbin.first_topic == "TALK_DONE" );
+        CHECK( child.myclass == NC_NONE );
+        CHECK( child.mission == NPC_MISSION_GUARD );
+        CHECK( child.chatbin.first_topic == "TALK_DONE" );
         CHECK( child.str == 12 );
     }
     SECTION( "a faction copies its parent and changes what it gives" ) {
@@ -378,5 +378,5 @@ TEST_CASE( "npc-j02_invalid_npc_attitude_becomes_null", "[audit][npc]" )
             "chat": "TALK_DONE" })" ), "audit_mod_a" );
     } );
     CHECK( msg.find( "invalid attitude enum 99" ) != std::string::npos );
-    CHECK( npc_template_audit_rt_npc_bad_attitude->guy.get_attitude() == NPCATT_NULL );
+    CHECK( npc_template_audit_rt_npc_bad_attitude->attitude == NPCATT_NULL );
 }

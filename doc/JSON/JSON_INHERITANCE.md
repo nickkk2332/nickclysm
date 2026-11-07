@@ -163,6 +163,7 @@ The following `type`s currently support inheritance (non-exhaustive list):
 ```
 effect_on_condition
 effect_type
+faction
 furniture
 harvest
 ITEM
@@ -172,6 +173,7 @@ MONSTER
 MONSTER_FACTION
 monstergroup
 mutation
+npc
 overmap_terrain
 recipe
 scenario
@@ -203,7 +205,8 @@ In summary, there is no "default" JSON inheritance, only shared degrees of suppo
 * `SPELL` has limited support, given their behavior is governed by its spell `effect`.  Flags are not always inherited.  Testing is required to guarantee an inherited spell will behave as intended, use at your own risk.
 * The `vitamins` field from `material` extends by default.
 * An `ITEM`'s `pocket_data` is patched pocket by pocket: `relative`, `proportional`, `delete` and `extend` select pockets by `id` or index (see [Changing inherited pockets](ITEM.md#changing-inherited-pockets)).
-* `npc` and `faction` can only `copy-from` an object loaded before them (see [NPCs.md](NPCs.md#npc-instance-definition) and [FACTIONS.md](FACTIONS.md#redefining-and-copying-factions)).
+* A `faction` copy adds to the `relations` of its parent instead of replacing them, and its `extend` and `delete` of `relations` and `epilogues` work by faction and snippet id (see [FACTIONS.md](FACTIONS.md#redefining-and-copying-factions)). `npc` lists are described in [NPCs.md](NPCs.md#npc-instance-definition).
+* A `recipe` copy inherits its parent's `components`, `tools` and `qualities`; `extend` adds whole groups and `delete` removes ids from every group (see [ITEM_CRAFT_AND_DISASSEMBLY.md](ITEM_CRAFT_AND_DISASSEMBLY.md#inheriting-and-changing-components-tools-and-qualities-with-copy-from)).
 
 
 ## Guidelines
