@@ -344,6 +344,11 @@ mtype::mtype()
     biosignatures = false;
     biosig_item = itype_id::NULL_ID();
 
+    // Unset: finalize makes it 5 times max_dist. Set here, not only by the path_settings loader, so
+    // that a copy-from monster that adds path_settings to a parent without them gets it too
+    // (SPAT-J02's load check found those with max_length 0, which routes nowhere).
+    path_settings.max_length = -1;
+
     burn_into = mtype_id::NULL_ID();
     sp_defense = nullptr;
     melee_training_cap = MAX_SKILL;
