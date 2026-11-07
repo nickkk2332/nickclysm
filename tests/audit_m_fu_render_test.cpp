@@ -18,16 +18,23 @@
 #include <vector>
 
 #include "atlas_bake_plan.h"
+#include "avatar.h"
 #include "calendar.h"
 #include "cata_tiles.h"
 #include "coordinates.h"
+#include "enums.h"
 #include "game.h"
+#include "level_cache.h"
+#include "lightmap.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "mdarray.h"
+#include "output.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "sdl_renderer_recovery.h"
+#include "trap.h"
 #include "type_id.h"
 #include "weighted_list.h"
 
@@ -298,6 +305,13 @@ TEST_CASE( "rend-p02_sprite_lookup_cache_draws_what_the_plain_lookups_draw", "[a
     } );
     override_option cache_option( "TILE_LOOKUP_CACHE", "false" );
     options_manager::update_options_cache();
+    // The draw puts the avatar's tile at (POSX, POSY) of the view.  Only the game's UI
+    // layout sets them, and the tests skip it, so they are 0 here: the view would start at
+    // the avatar and show only the map south-east of it.  Centre it, as the game does.
+    restore_on_out_of_scope restore_posx( POSX );
+    restore_on_out_of_scope restore_posy( POSY );
+    POSX = view_tiles / 2;
+    POSY = view_tiles / 2;
 
     clear_map();
     clear_avatar();
@@ -305,36 +319,77 @@ TEST_CASE( "rend-p02_sprite_lookup_cache_draws_what_the_plain_lookups_draw", "[a
     build_test_map( ter_t_grass.id() );
     set_time_to_day();
     map &here = get_map();
-    // In the part of the map the small view draws, all in the avatar's sight: a wall from
-    // (1, -2) east to (3, -2) and on south to (3, -1), so it ends twice, runs straight once
-    // and turns once.
-    for( const tripoint &d : {
-             tripoint( 1, -2, 0 ), tripoint( 2, -2, 0 ), tripoint( 3, -2, 0 ), tripoint( 3, -1, 0 )
-         } ) {
-        here.ter_set( player_pos + d, ter_t_wall.id() );
+    // In the part of the map the view draws (from three tiles west and north of the avatar
+    // to four east and south) and all in the avatar's sight: a wall from (1, -2) east to
+    // (3, -2) and on south to (3, -1), so it ends twice, runs straight once and turns once;
+    // a chair; bubble wrap; and blood of intensity 1, which has its own sprite, and of
+    // intensity 2, which falls back to the base one.
+    const tripoint_bub_ms wall_west_end = player_pos + tripoint( 1, -2, 0 );
+    const tripoint_bub_ms wall_edge = player_pos + tripoint( 2, -2, 0 );
+    const tripoint_bub_ms wall_corner = player_pos + tripoint( 3, -2, 0 );
+    const tripoint_bub_ms wall_south_end = player_pos + tripoint( 3, -1, 0 );
+    const tripoint_bub_ms chair_pos = player_pos + tripoint( -2, 2, 0 );
+    const tripoint_bub_ms trap_pos = player_pos + tripoint( -2, 0, 0 );
+    const tripoint_bub_ms blood_1_pos = player_pos + tripoint( 0, 3, 0 );
+    const tripoint_bub_ms blood_2_pos = player_pos + tripoint( 2, 2, 0 );
+    const std::array<tripoint_bub_ms, 4> wall_pos = { {
+            wall_west_end, wall_edge, wall_corner, wall_south_end
+        }
+    };
+    for( const tripoint_bub_ms &p : wall_pos ) {
+        here.ter_set( p, ter_t_wall.id() );
     }
-    here.furn_set( player_pos + tripoint( -2, 2, 0 ), furn_f_chair.id() );
-    here.trap_set( player_pos + tripoint( -3, 0, 0 ), tr_bubblewrap.id() );
-    // intensity 1 has its own sprite, intensity 2 falls back to the base one
-    here.add_field( player_pos + tripoint( 0, 3, 0 ), field_fd_blood.id(), 1 );
-    here.add_field( player_pos + tripoint( 2, 2, 0 ), field_fd_blood.id(), 2 );
+    here.furn_set( chair_pos, furn_f_chair.id() );
+    here.trap_set( trap_pos, tr_bubblewrap.id() );
+    here.add_field( blood_1_pos, field_fd_blood.id(), 1 );
+    here.add_field( blood_2_pos, field_fd_blood.id(), 2 );
     here.invalidate_map_cache( 0 );
     here.build_map_cache( 0 );
     here.invalidate_visibility_cache();
     here.update_visibility_cache( 0 );
 
+    // what the draw needs to draw each piece: the avatar sees its tile clearly (else the
+    // tile gets a vision effect, or its memory), the trap is one the avatar sees, and each
+    // field has the intensity its sprite is for
+    const std::vector<tripoint_bub_ms> scene = {
+        wall_west_end, wall_edge, wall_corner, wall_south_end, chair_pos, trap_pos, blood_1_pos,
+        blood_2_pos
+    };
+    const level_cache &level = here.access_cache( player_pos.z() );
+    const visibility_variables &vision = here.get_visibility_variables_cache();
+    for( const tripoint_bub_ms &p : scene ) {
+        const lit_level ll = level.visibility_cache[p.x()][p.y()];
+        CAPTURE( p - player_pos );
+        CAPTURE( static_cast<int>( ll ) );
+        REQUIRE( here.get_visibility( ll, vision ) == visibility_type::CLEAR );
+    }
+    REQUIRE( here.tr_at( trap_pos ).can_see( trap_pos, get_avatar() ) );
+    REQUIRE( here.get_field_intensity( blood_1_pos, field_fd_blood.id() ) == 1 );
+    REQUIRE( here.get_field_intensity( blood_2_pos, field_fd_blood.id() ) == 2 );
+
     const std::shared_ptr<const tileset> ts = renderer_recovery_test_support::install_tiles_bundle(
                 "audit_m_fu_render_ts", "color_pixel_darken", 1, 1, atlas_bake_plan{}, true,
                 cache_test_tiles() );
     REQUIRE( ts );
+    // the tiles the scene draws, each found with its one sprite
+    const auto sprite_tile = [&ts]( const std::string & id ) {
+        CAPTURE( id );
+        const tile_type *tile = ts->find_tile_type( id );
+        REQUIRE( tile != nullptr );
+        REQUIRE( tile->fg.size() == 1 );
+        return tile;
+    };
     const size_t season = static_cast<size_t>( season_of_year( calendar::turn ) );
-    const tile_type *wall = ts->find_tile_type( ter_t_wall.str() );
-    const tile_type *center = ts->find_tile_type( ter_t_wall.str() + "_center" );
-    const tile_type *seasonal_edge = ts->find_tile_type( ter_t_wall.str() + "_edge" +
+    const tile_type *wall = sprite_tile( ter_t_wall.str() );
+    const tile_type *center = sprite_tile( ter_t_wall.str() + "_center" );
+    const tile_type *seasonal_edge = sprite_tile( ter_t_wall.str() + "_edge" +
                                      season_suffixes[season] );
-    REQUIRE( wall != nullptr );
-    REQUIRE( center != nullptr );
-    REQUIRE( seasonal_edge != nullptr );
+    const tile_type *corner = sprite_tile( ter_t_wall.str() + "_corner" );
+    const tile_type *end_piece = sprite_tile( ter_t_wall.str() + "_end_piece" );
+    const tile_type *chair = sprite_tile( furn_f_chair.str() );
+    const tile_type *bubblewrap = sprite_tile( tr_bubblewrap.str() );
+    const tile_type *blood = sprite_tile( field_fd_blood.str() );
+    const tile_type *blood_1 = sprite_tile( field_fd_blood.str() + "_int1" );
 
     // the links: center (subtile 0) is the same in every season, edge (subtile 2) is the
     // season's own sprite, open (subtile 6) is not one of the wall's subtiles
@@ -357,6 +412,7 @@ TEST_CASE( "rend-p02_sprite_lookup_cache_draws_what_the_plain_lookups_draw", "[a
     }
 
     std::unique_ptr<cata_tiles> tiles = renderer_recovery_test_support::make_test_tiles( ts );
+    REQUIRE_FALSE( tiles->is_isometric() );
     std::vector<drawn_sprite_record> log;
     renderer_recovery_test_support::log_draw_light( *tiles, &log );
     on_out_of_scope stop_logging( [&tiles]() {
@@ -372,10 +428,23 @@ TEST_CASE( "rend-p02_sprite_lookup_cache_draws_what_the_plain_lookups_draw", "[a
         get_options().get_option( "TILE_LOOKUP_CACHE" ).setValue( on ? "true" : "false" );
         options_manager::update_options_cache();
     };
-    const auto drew_tile = []( const std::vector<drawn_sprite_record> &drawn,
-    const tile_type * tile ) {
+    // whether `drawn` has a sprite at map tile `p`, and one of `tile` there; where the draw
+    // puts a map tile is known once it has drawn a frame
+    const auto drew_anything_at = [&tiles]( const std::vector<drawn_sprite_record> &drawn,
+    const tripoint_bub_ms & p ) {
+        const point screen = tiles->player_to_screen( p.xy() );
         for( const drawn_sprite_record &r : drawn ) {
-            if( r.tile == tile ) {
+            if( r.p == screen ) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const auto drew_at = [&tiles]( const std::vector<drawn_sprite_record> &drawn,
+    const tripoint_bub_ms & p, const tile_type * tile ) {
+        const point screen = tiles->player_to_screen( p.xy() );
+        for( const drawn_sprite_record &r : drawn ) {
+            if( r.p == screen && r.tile == tile ) {
                 return true;
             }
         }
@@ -388,13 +457,20 @@ TEST_CASE( "rend-p02_sprite_lookup_cache_draws_what_the_plain_lookups_draw", "[a
     REQUIRE_FALSE( plain.empty() );
     CHECK_FALSE( renderer_recovery_test_support::lookup_memo_enabled( *tiles ) );
     CHECK( renderer_recovery_test_support::lookup_memo_size( *tiles ) == 0 );
+    // every piece is on the screen: its terrain at least is drawn there
+    for( const tripoint_bub_ms &p : scene ) {
+        CAPTURE( p - player_pos );
+        REQUIRE( drew_anything_at( plain, p ) );
+    }
     // the scene draws the pieces this test is about
-    CHECK( drew_tile( plain, seasonal_edge ) );
-    CHECK( drew_tile( plain, ts->find_tile_type( ter_t_wall.str() + "_corner" ) ) );
-    CHECK( drew_tile( plain, ts->find_tile_type( furn_f_chair.str() ) ) );
-    CHECK( drew_tile( plain, ts->find_tile_type( tr_bubblewrap.str() ) ) );
-    CHECK( drew_tile( plain, ts->find_tile_type( field_fd_blood.str() ) ) );
-    CHECK( drew_tile( plain, ts->find_tile_type( field_fd_blood.str() + "_int1" ) ) );
+    CHECK( drew_at( plain, wall_edge, seasonal_edge ) );
+    CHECK( drew_at( plain, wall_corner, corner ) );
+    CHECK( drew_at( plain, wall_west_end, end_piece ) );
+    CHECK( drew_at( plain, wall_south_end, end_piece ) );
+    CHECK( drew_at( plain, chair_pos, chair ) );
+    CHECK( drew_at( plain, trap_pos, bubblewrap ) );
+    CHECK( drew_at( plain, blood_1_pos, blood_1 ) );
+    CHECK( drew_at( plain, blood_2_pos, blood ) );
 
     set_cache( true );
     const std::vector<drawn_sprite_record> filling = draw();
