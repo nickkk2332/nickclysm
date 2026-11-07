@@ -12,6 +12,9 @@
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
+#include "event.h"
+#include "event_bus.h"
+#include "event_subscriber.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -544,11 +547,25 @@ TEST_CASE( "map-j02_contact_damage_and_eoc_on_contact", "[audit][field][eoc]" )
     REQUIRE( zombie.type->weakpoints.weakpoint_list.empty() );
     const int zombie_hp = zombie.get_hp();
     REQUIRE( here.add_field( zombie_tile, field_audit_high_fields_tar, 1, 0_turns, false ) );
+    // Heat can also set the monster on fire (8 in 100 for 8 heat), and the fire's first burn
+    // comes inside the same hit, before it: the contact's own damage is the last event
+    struct last_monster_damage : event_subscriber {
+        using event_subscriber::notify;
+        int damage = -1;
+        void notify( const cata::event &e ) override {
+            if( e.type() == event_type::monster_takes_damage ) {
+                damage = e.get<int>( "damage" );
+            }
+        }
+    } contact_hit;
+    get_event_bus().subscribe( &contact_hit );
     here.creature_in_field( zombie );
+    get_event_bus().unsubscribe( &contact_hit );
     const int burnt_hp = zombie.get_hp();
     // 4 heat times a monster_mult of 2, less any heat armor
     CHECK( burnt_hp < zombie_hp );
-    CHECK( burnt_hp >= zombie_hp - 8 );
+    CHECK( contact_hit.damage > 0 );
+    CHECK( contact_hit.damage <= 8 );
     CHECK( tar_global( "audit_high_fields_tar_monster" ).dbl() == 1 );
     CHECK( tar_global( "audit_high_fields_tar_loc" ).tripoint() == here.get_abs( zombie_tile ) );
     // monster_mult 0: no damage to monsters, but the EOC still runs
