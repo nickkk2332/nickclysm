@@ -214,7 +214,9 @@ std::optional<int> disassemble( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> post_up( Character *, item *, const tripoint_bub_ms & );
 
 // Helper functions for other iuse functions
-void cut_log_into_planks( Character & );
+// Starts p cutting the given number of logs into planks where p stands; the logs are not
+// items (a trunk being cut up), so nothing is used up
+void cut_log_into_planks( Character &p, int logs = 1 );
 void play_music( Character *p, const tripoint_bub_ms &source, int volume, int max_morale,
                  bool play_sounds = true );
 void make_music( Character *p, const tripoint_bub_ms &source, int volume, int max_morale,

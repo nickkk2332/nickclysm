@@ -405,6 +405,7 @@ In summary, there is no "default" JSON inheritance, only shared degrees of suppo
 * An `ITEM`'s `pocket_data` is patched pocket by pocket: `relative`, `proportional`, `delete` and `extend` select pockets by `id` or index (see [Changing inherited pockets](ITEM.md#changing-inherited-pockets)).
 * A `faction` copy adds to the `relations` of its parent instead of replacing them, and its `extend` and `delete` of `relations` and `epilogues` work by faction and snippet id (see [FACTIONS.md](FACTIONS.md#redefining-and-copying-factions)). `npc` lists are described in [NPCs.md](NPCs.md#npc-instance-definition).
 * A `recipe` copy inherits its parent's `components`, `tools` and `qualities`; `extend` adds whole groups and `delete` removes ids from every group (see [ITEM_CRAFT_AND_DISASSEMBLY.md](ITEM_CRAFT_AND_DISASSEMBLY.md#inheriting-and-changing-components-tools-and-qualities-with-copy-from)).
+* A `construction` copy does the same with its parent's `components`, `tools` and `qualities` (see [Constructions](JSON_INFO.md#constructions)).
 
 
 ## Guidelines

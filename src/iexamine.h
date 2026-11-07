@@ -79,6 +79,9 @@ bool harvestable_now( const tripoint_bub_ms &examp );
 void gaspump( Character &you, const tripoint_bub_ms &examp );
 void atm( Character &you, const tripoint_bub_ms &examp );
 void vending( Character &you, const tripoint_bub_ms &examp );
+/** Takes price from you's cash cards and, with use_bank, what they can't cover from you's bank
+ * account.  Returns false, taking nothing, if that isn't enough. */
+bool vending_pay( Character &you, int price, bool use_bank );
 void iso_recycler( Character &you, const tripoint_bub_ms &examp );
 void elevator( Character &you, const tripoint_bub_ms &examp );
 void genemill( Character &you, const tripoint_bub_ms &examp );
@@ -172,6 +175,8 @@ void workout( Character &you, const tripoint_bub_ms &examp );
 void invalid( Character &you, const tripoint_bub_ms &examp );
 
 bool pour_into_keg( const tripoint_bub_ms &pos, item &liquid, bool silent );
+/** The liquid stored in the keg at pos, not counting liquid in containers lying in it; or nullptr. */
+item *keg_liquid( const tripoint_bub_ms &pos );
 std::optional<tripoint_bub_ms> getGasPumpByNumber( const tripoint_bub_ms &p, int number );
 bool toPumpFuel( const tripoint_bub_ms &src, const tripoint_bub_ms &dst, int units );
 std::optional<tripoint_bub_ms> getNearFilledGasTank( const tripoint_bub_ms &center, int &fuel_units,

@@ -145,13 +145,23 @@ static bool cleanup_after_pit( map &here, const tripoint_bub_ms &p, Creature *c 
     return false;
 }
 
+// The character riding z, if any: NPCs ride too, so it isn't always the avatar (TERR-B09)
+static Character *rider_of( const monster &z )
+{
+    return z.has_effect( effect_ridden ) ? z.mounted_player : nullptr;
+}
+
 static void pit_try_dismount( monster *z )
 {
-    // Note that it's possible for NPCs to ride horses or other mounts.
-    // FIXME: Only checks for/ejects player, need some way to match the rider and the mount
-    if( z->has_effect( effect_ridden ) && z->pos_abs() == get_player_character().pos_abs() ) {
-        add_msg( m_bad, _( "Your %s falls into a pit!" ), z->get_name() );
-        get_player_character().forced_dismount();
+    if( Character *rider = rider_of( *z ) ) {
+        if( rider->is_avatar() ) {
+            add_msg( m_bad, _( "Your %s falls into a pit!" ), z->get_name() );
+        } else {
+            //~ An NPC's mount falls into a pit, e.g. "Jane's horse falls into a pit!"
+            add_msg_if_player_sees( z->pos_bub(), m_bad, _( "%1$s's %2$s falls into a pit!" ),
+                                    rider->disp_name( true ), z->get_name() );
+        }
+        rider->forced_dismount();
     }
 }
 
@@ -498,14 +508,19 @@ bool trapfunc::eocs( const tripoint_bub_ms &p, Creature *critter, item * )
         return false;
     }
     map &here = get_map();
-    trap tr = here.tr_at( p );
+    // trap types are never unloaded, so this stays valid once the trap is removed
+    const trap &tr = here.tr_at( p );
     const tripoint_abs_ms trap_location = here.get_abs( p );
+    // Removed first, as cast_spell does: a trap the EOCs set there stays, and a teleport can't
+    // make the removal hit another tile.  UNCONSUMED keeps it (TERR-B08)
+    if( !tr.has_flag( json_flag_UNCONSUMED ) ) {
+        here.remove_trap( p );
+    }
     for( const effect_on_condition_id &eoc : tr.eocs ) {
         dialogue d( get_talker_for( critter ), nullptr );
         write_var_value( var_type::context, "trap_location", &d, trap_location );
         eoc->activate_activation_only( d, "activation", "item's involvement", "item" );
     }
-    here.remove_trap( p );
     return true;
 }
 
@@ -527,8 +542,14 @@ bool trapfunc::tripwire( const tripoint_bub_ms &p, Creature *c, item * )
     Character &player_character = get_player_character();
     map &here = get_map();
     if( z != nullptr ) {
-        if( z->has_effect( effect_ridden ) ) {
-            add_msg( m_bad, _( "Your %s trips over a tripwire!" ), z->get_name() );
+        if( Character *rider = rider_of( *z ) ) {
+            if( rider->is_avatar() ) {
+                add_msg( m_bad, _( "Your %s trips over a tripwire!" ), z->get_name() );
+            } else {
+                //~ An NPC's mount trips, e.g. "Jane's horse trips over a tripwire!"
+                add_msg_if_player_sees( p, m_bad, _( "%1$s's %2$s trips over a tripwire!" ),
+                                        rider->disp_name( true ), z->get_name() );
+            }
             std::vector<tripoint_bub_ms> valid;
             for( const tripoint_bub_ms &jk : here.points_in_radius( p, 1 ) ) {
                 if( g->is_empty( jk ) ) {
@@ -536,11 +557,13 @@ bool trapfunc::tripwire( const tripoint_bub_ms &p, Creature *c, item * )
                 }
             }
             if( !valid.empty() ) {
-                player_character.setpos( here, random_entry( valid ) );
-                z->setpos( player_character.pos_abs() );
+                rider->setpos( here, random_entry( valid ) );
+                z->setpos( rider->pos_abs() );
             }
-            player_character.mod_moves( -z->get_speed() * 1.5 );
-            g->update_map( player_character );
+            rider->mod_moves( -z->get_speed() * 1.5 );
+            if( rider->is_avatar() ) {
+                g->update_map( *rider );
+            }
         } else {
             z->stumble_involuntary();
         }
@@ -986,8 +1009,8 @@ bool trapfunc::goo( const tripoint_bub_ms &p, Creature *c, item * )
         }
         return true;
     } else if( z != nullptr ) {
-        if( z->has_effect( effect_ridden ) ) {
-            get_player_character().forced_dismount();
+        if( Character *rider = rider_of( *z ) ) {
+            rider->forced_dismount();
         }
         //All monsters except for blobs get a speed decrease
         if( z->type->id != mon_blob ) {
@@ -1407,9 +1430,15 @@ bool trapfunc::sinkhole( const tripoint_bub_ms &p, Creature *c, item *i )
     Character *you = dynamic_cast<Character *>( c );
     map &here = get_map();
     if( z != nullptr ) {
-        if( z->has_effect( effect_ridden ) ) {
-            add_msg( m_bad, _( "Your %s falls into a sinkhole!" ), z->get_name() );
-            get_player_character().forced_dismount();
+        if( Character *rider = rider_of( *z ) ) {
+            if( rider->is_avatar() ) {
+                add_msg( m_bad, _( "Your %s falls into a sinkhole!" ), z->get_name() );
+            } else {
+                //~ An NPC's mount falls, e.g. "Jane's horse falls into a sinkhole!"
+                add_msg_if_player_sees( p, m_bad, _( "%1$s's %2$s falls into a sinkhole!" ),
+                                        rider->disp_name( true ), z->get_name() );
+            }
+            rider->forced_dismount();
         }
     } else if( you != nullptr ) {
         bool success = false;
@@ -1554,15 +1583,15 @@ bool trapfunc::glow( const tripoint_bub_ms &p, Creature *c, item * )
                             10 ) ) );
             z->set_speed_base( z->get_speed_base() * 0.9 );
         }
-        if( z->has_effect( effect_ridden ) ) {
+        if( Character *rider = rider_of( *z ) ) {
             if( one_in( 3 ) ) {
-                add_msg( m_bad, _( "You're bathed in radiation!" ) );
-                get_player_character().irradiate( rng( 10, 30 ) );
+                rider->add_msg_if_player( m_bad, _( "You're bathed in radiation!" ) );
+                rider->irradiate( rng( 10, 30 ) );
             } else if( one_in( 4 ) ) {
-                add_msg( m_bad, _( "A blinding flash strikes you!" ) );
+                rider->add_msg_if_player( m_bad, _( "A blinding flash strikes you!" ) );
                 explosion_handler::flashbang( p );
             } else {
-                add_msg( _( "Small flashes surround you." ) );
+                rider->add_msg_if_player( _( "Small flashes surround you." ) );
             }
         }
     }

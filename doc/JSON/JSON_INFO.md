@@ -2208,6 +2208,8 @@ The array of hobbies (listed as professions) is whitelisted to all characters, e
 "post_eocs": [ "EOC_WARD_DONE" ]                                    // Effect on conditions run once the construction is finished, see below
 ```
 
+A construction with `copy-from` inherits its parent's `components`, `tools` and `qualities`. Each of the three that it gives replaces the inherited list whole, and `extend` and `delete` change one, as for recipes (see [ITEM_CRAFT_AND_DISASSEMBLY.md](ITEM_CRAFT_AND_DISASSEMBLY.md#inheriting-and-changing-components-tools-and-qualities-with-copy-from)): `"extend": { "components": [ [ [ "nail", 4 ] ] ] }` adds whole groups, `"delete": { "tools": [ "hammer" ] }` takes ids out of every group, and neither is allowed without `copy-from`. `using`, as a string or an array, replaces the inherited one.
+
 #### Construction conditions and EOCs
 
 `condition`, `do_turn_eocs` and `post_eocs` let a construction do things the hardcoded `pre_special`, `do_turn_special` and `post_special` can't.

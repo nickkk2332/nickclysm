@@ -27,6 +27,7 @@
 #include "construction_category.h"
 #include "construction_group.h"
 #include "coordinates.h"
+#include "craft_command.h"
 #include "craft_reservation.h"
 #include "crafting.h"
 #include "creature.h"
@@ -1482,14 +1483,22 @@ void place_construction( std::vector<construction_group_str_id> const &groups )
             used.emplace_back( it.front().type );
         }
     } else {
-        // Use up the components
+        // Choose every group's component before using any up: cancelling a later choice must
+        // not leave the earlier groups consumed (TERR-B06)
+        temp_crafting_inventory map_inv;
+        map_inv.form_from_map( player_character.pos_bub(), PICKUP_RANGE, &player_character );
+        std::vector<comp_selection<item_comp>> selections;
         for( const std::vector<item_comp> &it : con.requirements->get_components() ) {
-            std::list<item> tmp = player_character.consume_items( it, 1, is_crafting_component,
-                                  return_false<itype_id>, true );
-            if( tmp.empty() ) {
+            const comp_selection<item_comp> sel = player_character.select_item_component( it, 1, map_inv,
+                                                  true, is_crafting_component );
+            if( sel.use_from == usage_from::cancel || sel.use_from == usage_from::none ) {
                 return;
             }
-            used.splice( used.end(), tmp );
+            selections.push_back( sel );
+        }
+        // Use up the components
+        for( const comp_selection<item_comp> &sel : selections ) {
+            used.splice( used.end(), player_character.consume_items( sel, 1, is_crafting_component ) );
         }
     }
     pc.components = used;
@@ -1609,8 +1618,9 @@ void build_construction_activity_actor::complete_construction( player_activity &
     get_event_bus().send<event_type::character_finishes_construction>( you.getID(),
             built.id.str(), site_abs.raw() );
     ended.run( you, false );
-    // Players will not automatically resume backlog, other Characters will.
-    if( you.is_avatar() && !you.backlog.empty() &&
+    // Players will not automatically resume backlog, other Characters will.  Work a post_special
+    // or EOC started (cutting a trunk into planks) is done first: replacing it lost it (TERR-B07)
+    if( you.is_avatar() && !you.activity && !you.backlog.empty() &&
         you.backlog.front().id() == ACT_MULTIPLE_CONSTRUCTION ) {
         you.backlog.clear();
         you.assign_activity( multi_build_construction_activity_actor() );
@@ -1820,13 +1830,12 @@ bool construct::check_matching_down_above( const tripoint_bub_ms &p )
            ter_here.substr( 0, separation + 1 ) + "down" == ter_above;
 }
 
-void construct::done_trunk_plank( const tripoint_bub_ms &/*p*/, Character &/*who*/ )
+void construct::done_trunk_plank( const tripoint_bub_ms &/*p*/, Character &who )
 {
-    int num_logs = rng( 2, 3 );
-    Character &player_character = get_player_character();
-    for( int i = 0; i < num_logs; ++i ) {
-        iuse::cut_log_into_planks( player_character );
-    }
+    // The builder cuts all the trunk's logs in one go: one activity per log replaced the one
+    // before, so only one log was ever cut, and always by the avatar (TERR-B07)
+    const int num_logs = rng( 2, 3 );
+    iuse::cut_log_into_planks( who, num_logs );
 }
 
 void construct::done_grave( const tripoint_bub_ms &p, Character &player_character )
@@ -2084,7 +2093,8 @@ void construct::done_digormine_stair( const tripoint_bub_ms &p, bool dig,
     bool dig_muts = player_character.has_trait( trait_PAINRESIST_TROGLO ) ||
                     player_character.has_trait( trait_STOCKY_TROGLO );
 
-    int no_mut_penalty = dig_muts ? 10 : 0;
+    // the penalty is for characters without the underground traits (TERR-B03)
+    int no_mut_penalty = dig_muts ? 0 : 10;
     int mine_penalty = dig ? 0 : 10;
     player_character.mod_stored_kcal( -43 - 9 * mine_penalty - 9 * no_mut_penalty );
     player_character.mod_thirst( 5 + mine_penalty + no_mut_penalty );
@@ -2184,7 +2194,8 @@ void construct::done_mine_upstair( const tripoint_bub_ms &p, Character &player_c
     bool dig_muts = player_character.has_trait( trait_PAINRESIST_TROGLO ) ||
                     player_character.has_trait( trait_STOCKY_TROGLO );
 
-    int no_mut_penalty = dig_muts ? 15 : 0;
+    // the penalty is for characters without the underground traits (TERR-B03)
+    int no_mut_penalty = dig_muts ? 0 : 15;
     player_character.mod_stored_kcal( -174 - 9 * no_mut_penalty );
     player_character.mod_thirst( 20 + no_mut_penalty );
     player_character.mod_sleepiness( 25 + no_mut_penalty );
@@ -2413,13 +2424,21 @@ void construction::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "category", category, construction_category_OTHER );
     optional( jo, was_loaded, "time", time, time_duration_as_moves_reader{} );
 
+    // A copy starts from its parent's components, tools and qualities, which "extend" and
+    // "delete" change as for recipes; they were dropped, so a copy was free to build (TERR-B12)
+    requirement_data inherited_reqs;
+    if( was_loaded && requirements.is_valid() ) {
+        inherited_reqs = requirements.obj();
+    }
     const requirement_id req_id( "inline_construction_" + id.str() );
-    requirement_data::load_requirement( jo, req_id );
+    requirement_data::load_inline_requirement( jo, req_id, inherited_reqs, was_loaded );
     requirements = req_id;
 
     if( jo.has_string( "using" ) ) {
         reqs_using = { { requirement_id( jo.get_string( "using" ) ), 1} };
     } else if( jo.has_array( "using" ) ) {
+        // replaces what copy-from inherited, as the string form does
+        reqs_using.clear();
         for( JsonArray cur : jo.get_array( "using" ) ) {
             reqs_using.emplace_back( requirement_id( cur.get_string( 0 ) ), cur.get_int( 1 ) );
         }

@@ -4253,21 +4253,21 @@ std::optional<int> iuse::blood_draw( Character *p, item *it, const tripoint_bub_
 }
 
 // The log stays where it is until the cut is done.
-static void start_cutting_log( Character &p, const item_location &log )
+static void start_cutting_log( Character &p, const item_location &log, const int logs = 1 )
 {
     if( p.cant_do_mounted() ) {
         return;
     }
-    const int moves = to_moves<int>( 20_minutes );
+    const int moves = to_moves<int>( 20_minutes ) * logs;
     p.add_msg_if_player( _( "You cut the log into planks." ) );
 
-    p.assign_activity( chop_planks_activity_actor( moves, log ) );
+    p.assign_activity( chop_planks_activity_actor( moves, log, logs ) );
     p.activity.placement = get_map().get_abs( p.pos_bub() );
 }
 
-void iuse::cut_log_into_planks( Character &p )
+void iuse::cut_log_into_planks( Character &p, const int logs )
 {
-    start_cutting_log( p, item_location() );
+    start_cutting_log( p, item_location(), logs );
 }
 
 std::optional<int> iuse::lumber( Character *p, item *it, const tripoint_bub_ms & )
