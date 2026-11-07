@@ -696,6 +696,7 @@ const temp_crafting_inventory &Character::crafting_inventory( map *here,
     if( crafting_cache.valid
         && moves == crafting_cache.moves
         && radius == crafting_cache.radius
+        && clear_path == crafting_cache.clear_path
         && calendar::turn == crafting_cache.time
         && inv_pos == crafting_cache.position
         && reservation_generation == crafting_cache.reservation_generation
@@ -745,6 +746,7 @@ const temp_crafting_inventory &Character::crafting_inventory( map *here,
     crafting_cache.time = calendar::turn;
     crafting_cache.position = inv_pos;
     crafting_cache.radius = radius;
+    crafting_cache.clear_path = clear_path;
     return *crafting_cache.crafting_inventory;
 }
 

@@ -8449,6 +8449,53 @@ static ret_val<void> try_insert( item_location &holster, drop_location &holstere
     return ret;
 }
 
+// try_insert, into the pocket of holster a drag and drop chose (pocket_index, as
+// item::get_container_pockets lists them). As Character::store: a better pocket inside that one
+// may take the item. The containers around holster are checked as the drag and drop checks
+// them, so an item can move between the pockets of the container that holds it.
+static ret_val<void> try_insert_into_pocket( item_location &holster, const int pocket_index,
+        drop_location &holstered_item, int *charges_added, Character &who )
+{
+    const std::vector<item_pocket *> pockets = holster->get_container_pockets();
+    if( pocket_index < 0 || static_cast<size_t>( pocket_index ) >= pockets.size() ) {
+        return ret_val<void>::make_failure( _( "item can't be stored there" ) );
+    }
+    item_pocket *pocket = pockets[pocket_index];
+    item &it = *holstered_item.first;
+    if( holster->has_flag( json_flag_NO_RELOAD ) ) {
+        return ret_val<void>::make_failure( _( "destination can't be reloaded" ) );
+    }
+    const ret_val<void> parents = drag_drop_parents_can_contain( holstered_item.first, holster );
+    if( !parents.success() ) {
+        return parents;
+    }
+    if( charges_added != nullptr ) {
+        *charges_added = pocket->fill_with( it, who, holstered_item.second, /*allow_unseal=*/true,
+                                            /*ignore_settings=*/true );
+        if( *charges_added <= 0 ) {
+            return ret_val<void>::make_failure( _( "item can't be stored there" ) );
+        }
+        return ret_val<void>::make_success();
+    }
+    if( it.is_bucket_nonempty() ) {
+        return ret_val<void>::make_failure( _( "item would spill" ) );
+    }
+    const ret_val<item_pocket::contain_code> contain = pocket->can_contain( it );
+    if( !contain.success() ) {
+        return ret_val<void>::make_failure( contain.str() );
+    }
+    item_pocket *best = pocket->best_pocket_in_contents( holster, it, nullptr, false, false ).second;
+    if( best != nullptr && pocket->better_pocket( *best, it, true ) ) {
+        pocket = best;
+    }
+    const ret_val<item *> result = pocket->insert_item( it );
+    if( !result.success() ) {
+        return ret_val<void>::make_failure( result.str() );
+    }
+    result.value()->on_pickup( who );
+    return ret_val<void>::make_success();
+}
+
 void insert_item_activity_actor::finish( player_activity &act, Character &who )
 {
     bool success = false;
@@ -8466,7 +8513,9 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
         ret_val<void> ret = ret_val<void>::make_failure( _( "item can't be stored there" ) );
 
         if( !it.count_by_charges() ) {
-            ret = try_insert( holster, holstered_item, nullptr, carrier, false );
+            ret = pocket_index >= 0 ?
+                  try_insert_into_pocket( holster, pocket_index, holstered_item, nullptr, who ) :
+                  try_insert( holster, holstered_item, nullptr, carrier, false );
 
             if( ret.success() ) {
                 //~ %1$s: item to put in the container, %2$s: container to put item in
@@ -8478,7 +8527,9 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
             }
         } else {
             int charges_added = 0;
-            ret = try_insert( holster, holstered_item, &charges_added, carrier,
+            ret = pocket_index >= 0 ?
+                  try_insert_into_pocket( holster, pocket_index, holstered_item, &charges_added, who ) :
+                  try_insert( holster, holstered_item, &charges_added, carrier,
                               allow_fill_count_by_charge_item_nested );
 
             if( ret.success() ) {
@@ -8554,6 +8605,7 @@ void insert_item_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "all_pockets_rigid", all_pockets_rigid );
     jsout.member( "reopen_menu", reopen_menu );
     jsout.member( "allow_fill_charge_item_nested", allow_fill_count_by_charge_item_nested );
+    jsout.member( "pocket_index", pocket_index );
 
     jsout.end_object();
 }
@@ -8570,6 +8622,7 @@ std::unique_ptr<activity_actor> insert_item_activity_actor::deserialize( JsonVal
     data.read( "all_pockets_rigid", actor.all_pockets_rigid );
     data.read( "reopen_menu", actor.reopen_menu );
     data.read( "allow_fill_charge_item_nested", actor.allow_fill_count_by_charge_item_nested );
+    data.read( "pocket_index", actor.pocket_index );
 
     return actor.clone();
 }
@@ -10712,7 +10765,7 @@ void chop_tree_activity_actor::finish( player_activity &act, Character &who )
     const tripoint_bub_ms &pos = here.get_bub( act.placement );
 
     tripoint_rel_ms direction;
-    if( !who.is_npc() &&
+    if( !who.is_npc() && !auto_fall &&
         ( who.backlog.empty() || who.backlog.front().id() != ACT_MULTIPLE_CHOP_TREES ) ) {
         while( true ) {
             if( const std::optional<tripoint_rel_ms> dir = choose_direction(
@@ -10780,6 +10833,7 @@ void chop_tree_activity_actor::serialize( JsonOut &jsout ) const
 
     jsout.member( "moves", moves );
     jsout.member( "tool", tool );
+    jsout.member( "auto_fall", auto_fall );
 
     jsout.end_object();
 }
@@ -10792,6 +10846,7 @@ std::unique_ptr<activity_actor> chop_tree_activity_actor::deserialize( JsonValue
 
     data.read( "moves", actor.moves );
     data.read( "tool", actor.tool );
+    data.read( "auto_fall", actor.auto_fall );
 
     return actor.clone();
 }
@@ -11128,7 +11183,7 @@ void firstaid_activity_actor::finish( player_activity &act, Character &who )
     act.set_to_null();
     act.values.clear();
 
-    if( who.is_avatar() ) {
+    if( who.is_avatar() && reopen_menu ) {
         uistate.open_menu = []() {
             avatar_action::eat_or_use( get_avatar(),
                                        game_menus::inv::consume( uistate.consume_uistate.consume_menu_comestype ) );
@@ -11150,6 +11205,7 @@ void firstaid_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "moves", moves );
     jsout.member( "name", name );
     jsout.member( "patientID", patientID );
+    jsout.member( "reopen_menu", reopen_menu );
 
     jsout.end_object();
 }
@@ -11163,6 +11219,7 @@ std::unique_ptr<activity_actor> firstaid_activity_actor::deserialize( JsonValue 
     data.read( "moves", actor.moves );
     data.read( "name", actor.name );
     data.read( "patientID", actor.patientID );
+    data.read( "reopen_menu", actor.reopen_menu );
 
     return actor.clone();
 }

@@ -4480,6 +4480,8 @@ class Character : public Creature, public visitable
             int moves;
             tripoint_bub_ms position;
             int radius;
+            // built with only what a clear path reaches
+            bool clear_path = true;
             // cache built earlier in the turn can't see a later acquire or release
             uint64_t reservation_generation = 0;
             pimpl<temp_crafting_inventory> crafting_inventory;

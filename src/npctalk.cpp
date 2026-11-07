@@ -6129,8 +6129,12 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
     fields.loc = jo.has_member( "target_loc" );
     fields.recipe = jo.has_member( "recipe" );
     fields.butcher_type = jo.has_member( "butcher_type" );
+    fields.creature = jo.has_member( "target_monster" );
     if( fields.item ) {
         check_other_talker( jo, "target_item", is_npc );
+    }
+    if( fields.creature ) {
+        check_other_talker( jo, "target_monster", is_npc );
     }
     std::optional<var_info> target_loc;
     if( fields.loc ) {
@@ -6225,6 +6229,15 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
                     return;
                 }
                 what.item = *it;
+            }
+            if( fields.creature ) {
+                monster *const mon = d.has_actor( !is_npc ) ? d.actor( !is_npc )->get_monster() :
+                                     nullptr;
+                if( mon == nullptr ) {
+                    refuse( _( "There is no creature to work on." ) );
+                    return;
+                }
+                what.creature = mon;
             }
             if( target_loc ) {
                 what.loc = read_var_value( *target_loc, d ).tripoint();
