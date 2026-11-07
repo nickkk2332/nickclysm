@@ -277,8 +277,11 @@ void DynamicDataLoader::load_object( const JsonObject &jo, const std::string &sr
                           static_cast<int>( history.src_index.size() ) ).first->second;
     const uint64_t load = history.next_load++;
     // These types don't record where each id came from (no mod_tracker "src"), so two
-    // definitions of one id from the same source are reported here (NPC-J02).
-    static const std::unordered_set<std::string> untracked_types = { "faction", "npc" };
+    // definitions of one id from the same source are reported here (NPC-J02, DATA-J02).
+    // Vehicle groups are left out: a second definition adds to the group (DATA-J02).
+    static const std::unordered_set<std::string> untracked_types = {
+        "dream", "faction", "npc", "speech"
+    };
     const bool report_duplicates = !replaying_deferred && untracked_types.count( type ) > 0;
     for( std::string &key : object_keys( jo ) ) {
         const std::string id = report_duplicates ? key.substr( key.rfind( '\n' ) + 1 ) : "";
@@ -475,8 +478,8 @@ void DynamicDataLoader::initialize()
     add( "mood_face", &mood_face::load_mood_faces );
     add( "skill", &Skill::load_skill );
     add( "skill_display_type", &SkillDisplayType::load );
-    add( "dream", &dream::load );
-    add( "mutation_category", &mutation_category_trait::load );
+    add( "dream", &dream::load_all );
+    add( "mutation_category", &mutation_category_trait::load_all );
     add( "mutation_type", &load_mutation_type );
     add( "mutation", &mutation_branch::load_trait );
     add( "furniture", &load_furniture );
@@ -523,7 +526,7 @@ void DynamicDataLoader::initialize()
     add( "vehicle_part_location",  &vpart_location::load_vehicle_part_locations );
     add( "vehicle_part_migration", &vpart_migration::load );
     add( "vehicle", &vehicles::load_prototype );
-    add( "vehicle_group",  &VehicleGroup::load );
+    add( "vehicle_group",  &VehicleGroup::load_all );
     add( "vehicle_placement",  &VehiclePlacement::load );
     add( "vehicle_spawn",  &VehicleSpawn::load );
 
@@ -689,6 +692,215 @@ void DynamicDataLoader::initialize()
     // Dummy function
     add( "mod_tileset", load_ignored_type );
 #endif
+}
+
+// Keep this next to the add() calls above: a type added there must be listed here, and in the
+// support table of doc/JSON/JSON_INHERITANCE.md (DATA-J02; tests/audit_high_factory_test.cpp
+// checks both).
+const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_support()
+{
+    static const std::map<std::string, json_inheritance> support = {
+        { "EXTERNAL_OPTION", json_inheritance::none },
+        { "ITEM", json_inheritance::copy_from },
+        { "ITEM_BLACKLIST", json_inheritance::none },
+        { "ITEM_CATEGORY", json_inheritance::copy_from },
+        { "LOOT_ZONE", json_inheritance::copy_from },
+        { "MIGRATION", json_inheritance::none },
+        { "MOD_INFO", json_inheritance::none },
+        { "MONSTER", json_inheritance::copy_from },
+        { "MONSTER_BLACKLIST", json_inheritance::none },
+        { "MONSTER_FACTION", json_inheritance::copy_from },
+        { "MONSTER_WHITELIST", json_inheritance::none },
+        { "SCENARIO_BLACKLIST", json_inheritance::none },
+        { "SPECIES", json_inheritance::copy_from },
+        { "SPELL", json_inheritance::copy_from },
+        { "TRAIT_BLACKLIST", json_inheritance::none },
+        { "TRAIT_MIGRATION", json_inheritance::none },
+        { "WORLD_OPTION", json_inheritance::none },
+        { "ability", json_inheritance::copy_from },
+        { "achievement", json_inheritance::copy_from },
+        { "activity_type", json_inheritance::copy_from },
+        { "addiction_type", json_inheritance::copy_from },
+        { "ammo_effect", json_inheritance::copy_from },
+        { "ammunition_type", json_inheritance::merges },
+        { "anatomy", json_inheritance::copy_from },
+        { "ascii_art", json_inheritance::copy_from },
+        { "attack_vector", json_inheritance::copy_from },
+        { "bash_damage_profile", json_inheritance::copy_from },
+        { "behavior", json_inheritance::copy_from },
+        { "bionic", json_inheritance::copy_from },
+        { "bionic_migration", json_inheritance::none },
+        { "body_graph", json_inheritance::copy_from },
+        { "body_part", json_inheritance::copy_from },
+        { "butchery_requirement", json_inheritance::copy_from },
+        { "camp_migration", json_inheritance::none },
+        { "character_mod", json_inheritance::copy_from },
+        { "charge_removal_blacklist", json_inheritance::none },
+        { "city", json_inheritance::copy_from },
+        { "city_building", json_inheritance::partial },
+        { "climbing_aid", json_inheritance::copy_from },
+        { "clothing_mod", json_inheritance::copy_from },
+        { "colordef", json_inheritance::none },
+        { "conduct", json_inheritance::copy_from },
+        { "connect_group", json_inheritance::none },
+        { "construction", json_inheritance::copy_from },
+        { "construction_category", json_inheritance::copy_from },
+        { "construction_group", json_inheritance::copy_from },
+        { "damage_info_order", json_inheritance::copy_from },
+        { "damage_rule", json_inheritance::copy_from },
+        { "damage_type", json_inheritance::copy_from },
+        { "dimension", json_inheritance::copy_from },
+        { "dimension_region_layout", json_inheritance::copy_from },
+        { "disease_type", json_inheritance::copy_from },
+        { "dream", json_inheritance::copy_from },
+        { "effect_migration", json_inheritance::none },
+        { "effect_on_condition", json_inheritance::copy_from },
+        { "effect_type", json_inheritance::copy_from },
+        { "emit", json_inheritance::none },
+        { "enchantment", json_inheritance::copy_from },
+        { "end_screen", json_inheritance::copy_from },
+        { "event_statistic", json_inheritance::copy_from },
+        { "event_transformation", json_inheritance::copy_from },
+        { "execution", json_inheritance::copy_from },
+        { "execution_trigger", json_inheritance::copy_from },
+        { "faction", json_inheritance::copy_from },
+        { "faction_mission", json_inheritance::copy_from },
+        { "fault", json_inheritance::copy_from },
+        { "fault_fix", json_inheritance::copy_from },
+        { "fault_group", json_inheritance::copy_from },
+        { "field_type", json_inheritance::copy_from },
+        { "field_type_migration", json_inheritance::none },
+        { "forest_biome_component", json_inheritance::copy_from },
+        { "forest_biome_mapgen", json_inheritance::copy_from },
+        { "furniture", json_inheritance::copy_from },
+        { "gate", json_inheritance::copy_from },
+        { "harvest", json_inheritance::copy_from },
+        { "harvest_drop_type", json_inheritance::copy_from },
+        { "help", json_inheritance::none },
+        { "hit_range", json_inheritance::none },
+        { "item_action", json_inheritance::none },
+        { "item_group", json_inheritance::partial },
+        { "jmath_function", json_inheritance::copy_from },
+        { "json_flag", json_inheritance::copy_from },
+        { "limb_score", json_inheritance::copy_from },
+        { "magic_type", json_inheritance::copy_from },
+        { "map_extra", json_inheritance::copy_from },
+        { "map_extra_collection", json_inheritance::copy_from },
+        { "mapgen", json_inheritance::none },
+        { "martial_art", json_inheritance::copy_from },
+        { "material", json_inheritance::copy_from },
+        { "mission_definition", json_inheritance::copy_from },
+        { "mod_migration", json_inheritance::none },
+        { "mod_setting", json_inheritance::copy_from },
+        { "mod_tileset", json_inheritance::none },
+        { "monster_adjustment", json_inheritance::none },
+        { "monster_attack", json_inheritance::none },
+        { "monster_flag", json_inheritance::copy_from },
+        { "monstergroup", json_inheritance::merges },
+        { "mood_face", json_inheritance::copy_from },
+        { "morale_type", json_inheritance::copy_from },
+        { "movement_mode", json_inheritance::copy_from },
+        { "mutation", json_inheritance::copy_from },
+        { "mutation_category", json_inheritance::copy_from },
+        { "mutation_type", json_inheritance::none },
+        { "nested_category", json_inheritance::copy_from },
+        { "npc", json_inheritance::copy_from },
+        { "npc_class", json_inheritance::copy_from },
+        { "npc_decision_category", json_inheritance::copy_from },
+        { "npc_need", json_inheritance::copy_from },
+        { "omt_placeholder", json_inheritance::copy_from },
+        { "option_slider", json_inheritance::copy_from },
+        { "oter_id_migration", json_inheritance::none },
+        { "oter_vision", json_inheritance::copy_from },
+        { "overlay_order", json_inheritance::none },
+        { "overmap_connection", json_inheritance::copy_from },
+        { "overmap_land_use_code", json_inheritance::copy_from },
+        { "overmap_location", json_inheritance::copy_from },
+        { "overmap_special", json_inheritance::partial },
+        { "overmap_special_migration", json_inheritance::copy_from },
+        { "overmap_terrain", json_inheritance::copy_from },
+        { "palette", json_inheritance::none },
+        { "playlist", json_inheritance::none },
+        { "power_application", json_inheritance::copy_from },
+        { "power_cooldown", json_inheritance::copy_from },
+        { "power_projection", json_inheritance::copy_from },
+        { "power_resource", json_inheritance::copy_from },
+        { "power_summon", json_inheritance::copy_from },
+        { "pp_generator", json_inheritance::copy_from },
+        { "practice", json_inheritance::copy_from },
+        { "profession", json_inheritance::copy_from },
+        { "profession_blacklist", json_inheritance::none },
+        { "profession_group", json_inheritance::copy_from },
+        { "profession_item_substitutions", json_inheritance::none },
+        { "proficiency", json_inheritance::copy_from },
+        { "proficiency_category", json_inheritance::copy_from },
+        { "proficiency_migration", json_inheritance::none },
+        { "recipe", json_inheritance::copy_from },
+        { "recipe_category", json_inheritance::copy_from },
+        { "recipe_group", json_inheritance::copy_from },
+        { "region_settings", json_inheritance::copy_from },
+        { "region_settings_city", json_inheritance::copy_from },
+        { "region_settings_forest", json_inheritance::copy_from },
+        { "region_settings_forest_mapgen", json_inheritance::copy_from },
+        { "region_settings_forest_trail", json_inheritance::copy_from },
+        { "region_settings_highway", json_inheritance::copy_from },
+        { "region_settings_lake", json_inheritance::copy_from },
+        { "region_settings_map_extras", json_inheritance::copy_from },
+        { "region_settings_ocean", json_inheritance::copy_from },
+        { "region_settings_ravine", json_inheritance::copy_from },
+        { "region_settings_river", json_inheritance::copy_from },
+        { "region_settings_terrain_furniture", json_inheritance::copy_from },
+        { "region_terrain_furniture", json_inheritance::copy_from },
+        { "relic_procgen_data", json_inheritance::copy_from },
+        { "requirement", json_inheritance::partial },
+        { "rotatable_symbol", json_inheritance::none },
+        { "scenario", json_inheritance::copy_from },
+        { "scent_type", json_inheritance::copy_from },
+        { "score", json_inheritance::copy_from },
+        { "shopkeeper_blacklist", json_inheritance::copy_from },
+        { "shopkeeper_consumption_rates", json_inheritance::copy_from },
+        { "shopkeeper_whitelist", json_inheritance::copy_from },
+        { "skill", json_inheritance::copy_from },
+        { "skill_display_type", json_inheritance::none },
+        { "snippet", json_inheritance::merges },
+        { "sound_effect", json_inheritance::none },
+        { "sound_effect_preload", json_inheritance::none },
+        { "speech", json_inheritance::copy_from },
+        { "speed_description", json_inheritance::copy_from },
+        { "spell_migration", json_inheritance::none },
+        { "start_location", json_inheritance::copy_from },
+        { "sub_body_part", json_inheritance::copy_from },
+        { "talk_topic", json_inheritance::merges },
+        { "technique", json_inheritance::copy_from },
+        { "temperature_removal_blacklist", json_inheritance::none },
+        { "ter_furn_migration", json_inheritance::none },
+        { "ter_furn_transform", json_inheritance::copy_from },
+        { "terrain", json_inheritance::copy_from },
+        { "test_data", json_inheritance::none },
+        { "tool_quality", json_inheritance::copy_from },
+        { "trait_group", json_inheritance::none },
+        { "trap", json_inheritance::copy_from },
+        { "trap_migration", json_inheritance::none },
+        { "uncraft", json_inheritance::copy_from },
+        { "var_migration", json_inheritance::none },
+        { "vehicle", json_inheritance::copy_from },
+        { "vehicle_group", json_inheritance::partial },
+        { "vehicle_part", json_inheritance::copy_from },
+        { "vehicle_part_category", json_inheritance::none },
+        { "vehicle_part_location", json_inheritance::copy_from },
+        { "vehicle_part_migration", json_inheritance::none },
+        { "vehicle_placement", json_inheritance::merges },
+        { "vehicle_spawn", json_inheritance::merges },
+        { "vitamin", json_inheritance::copy_from },
+        { "weakpoint_set", json_inheritance::copy_from },
+        { "weapon_category", json_inheritance::copy_from },
+        { "weather_generator", json_inheritance::copy_from },
+        { "weather_type", json_inheritance::copy_from },
+        { "widget", json_inheritance::copy_from },
+        { "wound", json_inheritance::copy_from },
+        { "wound_fix", json_inheritance::copy_from },
+    };
+    return support;
 }
 
 void DynamicDataLoader::load_data_from_path( const cata_path &path, const std::string &src )
@@ -864,7 +1076,7 @@ void DynamicDataLoader::unload_data()
     dimension_world::reset();
     dimension_region_layout::reset();
     disease_type::reset();
-    dreams.clear();
+    dream::reset();
     emit::reset();
     end_screen::reset();
     get_help().reset();
@@ -1027,6 +1239,11 @@ void DynamicDataLoader::finalize_loaded_data()
     using named_entry = std::pair<std::string, std::function<void()>>;
     const std::vector<named_entry> entries = {{
             { _( "Flags" ), &json_flag::finalize_all },
+            { _( "Vitamins" ), &vitamin::finalize_all },
+            { _( "Mutation categories" ), &mutation_category_trait::finalize_all },
+            { _( "Skills" ), &Skill::finalize_all },
+            { _( "Dreams" ), &dream::finalize_all },
+            { _( "Speech" ), &finalize_speech },
             { _( "Option sliders" ), &option_slider::finalize_all },
             { _( "Executions" ), &executions::finalize },
             { _( "Abilities" ), &abilities::finalize },
@@ -1054,7 +1271,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Diseases" ), &disease_type::finalize_all },
             { _( "Weather types" ), &weather_types::finalize_all },
             { _( "Weather generators" ), &weather_generator::finalize_all },
-            { _( "NPC templates" ), &npc_template::finalize },
+            { _( "NPC templates" ), &npc_template::finalize_all },
             { _( "Effect on conditions" ), &effect_on_conditions::finalize_all },
             { _( "Field types" ), &field_types::finalize_all },
             { _( "Ammo effects" ), &ammo_effects::finalize_all },
@@ -1093,6 +1310,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Start locations" ), &start_locations::finalize_all },
             { _( "Vehicle part locations" ), &vpart_location::finalize_all },
             { _( "Vehicle part migrations" ), &vpart_migration::finalize },
+            { _( "Vehicle groups" ), &VehicleGroup::finalize_all },
             { _( "Vehicle prototypes" ), &vehicles::finalize_prototypes },
             { _( "Map Extras" ), &map_extra::finalize_all },
             { _( "Magic Types" ), &magic_type::finalize_all },

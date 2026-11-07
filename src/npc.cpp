@@ -563,7 +563,7 @@ void npc_template::reset()
     npc_template_factory.reset();
 }
 
-void npc_template::finalize()
+void npc_template::finalize_all()
 {
     npc_template_factory.finalize();
 }

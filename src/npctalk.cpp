@@ -12192,11 +12192,20 @@ void json_talk_topic::load( const JsonObject &jo, std::string_view src )
             }
         }
     }
+    // A later definition of the topic keeps the portrait an earlier one gave unless it names one.
     if( jo.has_member( "portrait_override" ) ) {
         portrait_override = character_portrait_id( jo.get_member( "portrait_override" ) );
-    } else {
-        // FIXME: Use real null IDs not std::optional juggling :(
-        portrait_override = std::nullopt;
+    }
+    // Earlier definitions' responses: "replace_responses" drops them all, "delete" the ones
+    // matched by text and/or topic (DATA-J02).
+    if( jo.get_bool( "replace_responses", false ) ) {
+        responses.clear();
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        for( const JsonObject match : del.get_array( "responses" ) ) {
+            delete_responses( match );
+        }
     }
     bool insert_above_bottom = false;
     if( jo.has_bool( "insert_before_standard_exits" ) ) {
@@ -12232,6 +12241,30 @@ void json_talk_topic::load( const JsonObject &jo, std::string_view src )
     }
     replace_built_in_responses = jo.get_bool( "replace_built_in_responses",
                                  replace_built_in_responses );
+}
+
+void json_talk_topic::delete_responses( const JsonObject &match )
+{
+    const bool by_text = match.has_member( "text" );
+    const bool by_topic = match.has_string( "topic" );
+    if( !by_text && !by_topic ) {
+        match.throw_error( "a response to delete needs a \"text\", a \"topic\" or both" );
+    }
+    translation text;
+    if( by_text ) {
+        match.read( "text", text, true );
+    }
+    const std::string topic = by_topic ? match.get_string( "topic" ) : std::string();
+    const auto doomed = [&]( const json_talk_response & r ) {
+        const talk_response &resp = r.get_actual_response();
+        return ( !by_text || resp.truetext == text ) &&
+               ( !by_topic || resp.success.next_topic.id == topic );
+    };
+    const auto removed = std::remove_if( responses.begin(), responses.end(), doomed );
+    if( removed == responses.end() ) {
+        match.throw_error( "the talk topic has no such response to delete" );
+    }
+    responses.erase( removed, responses.end() );
 }
 
 bool json_talk_topic::gen_responses( dialogue &d )
@@ -12291,7 +12324,7 @@ cata::flat_set<std::string> json_talk_topic::get_directly_reachable_topics(
     return cata::flat_set<std::string>( result.begin(), result.end() );
 }
 
-std::vector<json_talk_response> json_talk_topic::get_responses()
+std::vector<json_talk_response> json_talk_topic::get_responses() const
 {
     return responses;
 }

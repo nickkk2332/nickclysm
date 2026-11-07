@@ -1,12 +1,14 @@
 [
   {
     "type": "dream",
+    "id": "dream_TYRANT_1",
     "messages": [ "You dream of a strange jungle with giant ferns.", "Dreams of being the king are all you can remember." ],
     "category": "TYRANT",
     "strength": 1
   },
   {
     "type": "dream",
+    "id": "dream_TYRANT_2",
     "messages": [
       "You brush through tree sized ferns as you hunt for your prey.  The rain falls slick upon your skin.",
       "Thunderous footsteps shake the earth, are they yours?"
@@ -16,6 +18,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_TYRANT_3",
     "messages": [
       "Your teeth, how do you have so many teeth?  Am I growing extra teeth?",
       "The hairless apes around you smell like food.  Are they?"
@@ -25,12 +28,14 @@
   },
   {
     "type": "dream",
+    "id": "dream_TYRANT_4",
     "messages": [ "So close, you can taste the rebirth of a glorious past.", "King, nay not a king.  A god among beasts." ],
     "category": "TYRANT",
     "strength": 4
   },
   {
     "type": "dream",
+    "id": "dream_STEGO_1",
     "messages": [
       "The warm sun upon your skin.  A heavier air, golden dreams.",
       "You dream of eating the largest fern you've ever seen."
@@ -40,6 +45,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_STEGO_2",
     "messages": [
       "Large, you are becoming larger every day.  Armored skin, to protect you from the world.  These are the gifts you are receiving.",
       "You dream of before the Cataclysm, but you are different somehow.  The other humans all seem so soft to you."
@@ -49,6 +55,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_STEGO_3",
     "messages": [
       "Slower, trudging through the universe, you cease to notice those that try to stop you as you walk through them.",
       "Why is this world so cold compared to the one in your dreams?"
@@ -58,6 +65,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_STEGO_4",
     "messages": [
       "Is this how superman feels?  Bulletproof?  But superman is much faster than you.",
       "Nothing less than an asteroid can kill you."
@@ -67,6 +75,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_HORNS_1",
     "messages": [
       "The warm sun upon your skin after escaping from a hard shell.",
       "You dream of eating the largest fern you've ever seen."
@@ -76,6 +85,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_HORNS_2",
     "messages": [
       "Large, you are becoming larger every day.  Majestic horns, to protect you from the world and show your power.  These are the gifts you are receiving.",
       "You dream of before the Cataclysm, but you are different somehow.  The other humans all seem so flat and weak to you."
@@ -85,6 +95,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_HORNS_3",
     "messages": [
       "Wandering peacefully through the woods with your family, easily knocking down anything in your path, fearing nothing.",
       "Why is this world so cold compared to the one in your dreams?"
@@ -94,6 +105,7 @@
   },
   {
     "type": "dream",
+    "id": "dream_HORNS_4",
     "messages": [
       "Giant teeth come down on you, finding horns.  The screaming and blood is not yours.",
       "While you are not the most feared, your majestic horns and powerful herd command respect."

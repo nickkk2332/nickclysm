@@ -505,9 +505,9 @@ For mod usage to insert dialogue above the `TALK_DONE` and `TALK_NONE` lines. De
 ```
 
 #### `id`
-The topic id can be one of the built-in topics or a new id. However, if several talk topics *in json* have the same id, the last topic definition will override the previous ones.
+The topic id can be one of the built-in topics or a new id. If several talk topics *in json* have the same id, they are merged in load order: each definition adds its `responses`, `repeat_responses` and `speaker_effect`, and the `dynamic_line`, `portrait_override` and `replace_built_in_responses` it has replace the earlier ones.
 
-The topic id can also be an array of strings. This is loaded as if several topics with the exact same content have been given in json, each associated with an id from the `id`, array. Note that loading from json will append responses and, if defined in json, override the `dynamic_line` and the `replace_built_in_responses` setting. This allows adding responses to several topics at once.
+The topic id can also be an array of strings. This is loaded as if several topics with the exact same content have been given in json, each associated with an id from the `id`, array. Note that loading from json will append responses and, if defined in json, override the `dynamic_line`, the `portrait_override` and the `replace_built_in_responses` setting. This allows adding responses to several topics at once (see [Changing the responses of an earlier definition](#changing-the-responses-of-an-earlier-definition) to remove or replace them).
 
 This example adds the "I'm going now!" response to all the listed topics.
 ```jsonc
@@ -534,7 +534,7 @@ This example adds the "I'm going now!" response to all the listed topics.
   }
 ```
 
-Portrait_override will force the dialogue window to display the given portrait ID while on that topic, overriding any portrait that may normally be displayed.
+Portrait_override will force the dialogue window to display the given portrait ID while on that topic, overriding any portrait that may normally be displayed.  A later definition of the same topic that has no `portrait_override` keeps the portrait an earlier one gave.
 
 #### `dynamic_line`
 The `dynamic_line` is the line spoken by the NPC.  It is optional.  If it is not defined and the topic has the same id as a built-in topic, the `dynamic_line` from that built-in topic will be used.  Otherwise the NPC will say nothing.  [See the chapter about Dynamic Lines below](#dynamic-lines) for more details.
@@ -549,6 +549,21 @@ The `responses` entry is an array with possible responses.  It must not be empty
 
 #### `replace_built_in_responses`
 `replace_built_in_responses` is an optional boolean that defines whether to dismiss the built-in responses for that topic (default is `false`). If there are no built-in responses, this won't do anything. If `true`, the built-in responses are ignored and only those from this definition in the current json are used. If `false`, the responses from the current json are used along with the built-in responses (if any).
+
+#### Changing the responses of an earlier definition
+Each definition of a topic adds its `responses` to those of the earlier definitions (from vanilla or an earlier mod).  Two optional members change that:
+
+* `"replace_responses": true` drops every response the earlier definitions gave, so the topic has only the `responses` of this definition.  It doesn't touch `repeat_responses`, `speaker_effect` or the built-in responses (see `replace_built_in_responses`).
+* `"delete": { "responses": [ ... ] }` removes earlier responses before this definition's are added.  Each entry selects responses by `"text"` (the response's `text`, or the `true` text of a `truefalsetext`, compared as written in the JSON, with its `ctxt` if it has one), by `"topic"` (the topic the response leads to), or by both.  Every response that matches is removed, and an entry that matches none is an error.
+
+```jsonc
+  {
+    "type": "talk_topic",
+    "id": "TALK_REFUGEE_Draco_1a",
+    "delete": { "responses": [ { "text": "Have you seen anything that could help me?" }, { "topic": "TALK_DONE" } ] },
+    "responses": [ { "text": "I have to go.", "topic": "TALK_DONE" } ]
+  }
+```
 
 ---
 

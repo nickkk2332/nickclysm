@@ -1,0 +1,197 @@
+[
+  {
+    "//": "DATA-J02: vitamins, skills, mutation categories, vehicle groups, dreams and speech load through generic_factory; talk topics can delete and replace earlier responses.  Read by tests/audit_high_factory_test.cpp.",
+    "type": "vitamin",
+    "id": "audit_hf_vit_parent",
+    "vit_type": "counter",
+    "name": { "str": "audit parent vitamin" },
+    "min": 0,
+    "max": 100,
+    "rate": "1 days",
+    "disease": [ [ 50, 60 ] ],
+    "flags": [ "NO_DISPLAY", "OBSOLETE", "AUDIT_HF_A" ]
+  },
+  {
+    "type": "vitamin",
+    "id": "audit_hf_vit_child",
+    "copy-from": "audit_hf_vit_parent",
+    "name": { "str": "audit child vitamin" },
+    "max": 200,
+    "extend": { "flags": [ "AUDIT_HF_B" ] },
+    "delete": { "flags": [ "AUDIT_HF_A" ] }
+  },
+  {
+    "type": "vitamin",
+    "id": "audit_hf_vit_override",
+    "vit_type": "counter",
+    "name": { "str": "audit overridden vitamin" },
+    "min": 0,
+    "max": 100,
+    "rate": "1 days",
+    "flags": [ "NO_DISPLAY", "OBSOLETE" ]
+  },
+  {
+    "type": "skill",
+    "id": "audit_hf_skill_parent",
+    "//": "contextual, so it isn't in Skill::skills and other tests don't see it",
+    "name": { "str": "audit parent skill" },
+    "description": "The parent of the skill copy-from tests.",
+    "display_category": "display_melee",
+    "sort_rank": 900001,
+    "tags": [ "contextual_skill", "combat_skill" ],
+    "companion_combat_rank_factor": 3,
+    "time_to_attack": { "min_time": 10, "base_time": 20, "time_reduction_per_level": 2 }
+  },
+  {
+    "type": "skill",
+    "id": "audit_hf_skill_child",
+    "copy-from": "audit_hf_skill_parent",
+    "name": { "str": "audit child skill" },
+    "sort_rank": 900002,
+    "time_to_attack": { "base_time": 30 },
+    "extend": { "requires_any_traits": [ "FLEET" ] },
+    "delete": { "tags": [ "combat_skill" ] }
+  },
+  {
+    "type": "skill",
+    "id": "audit_hf_skill_override",
+    "name": { "str": "audit overridden skill" },
+    "description": "A later mod changes one member of this skill.",
+    "display_category": "display_melee",
+    "sort_rank": 900003,
+    "tags": [ "contextual_skill" ],
+    "companion_survival_rank_factor": 4
+  },
+  {
+    "type": "mutation_category",
+    "id": "AUDIT_HF_CAT_PARENT",
+    "name": "audit parent category",
+    "threshold_mut": "",
+    "mutagen_message": "audit parent message",
+    "threshold_min": 1000,
+    "base_removal_chance": 50,
+    "wip": true
+  },
+  {
+    "type": "mutation_category",
+    "id": "AUDIT_HF_CAT_CHILD",
+    "copy-from": "AUDIT_HF_CAT_PARENT",
+    "name": "audit child category",
+    "relative": { "threshold_min": 500 }
+  },
+  {
+    "type": "mutation_category",
+    "id": "AUDIT_HF_CAT_OVERRIDE",
+    "name": "audit overridden category",
+    "threshold_mut": "",
+    "mutagen_message": "audit overridden message",
+    "base_removal_cost_mul": 2.5,
+    "wip": true
+  },
+  {
+    "type": "vehicle_group",
+    "id": "audit_hf_vg_parent",
+    "vehicles": [ [ "car", 100 ], [ "bicycle", 50 ] ]
+  },
+  {
+    "type": "vehicle_group",
+    "id": "audit_hf_vg_child",
+    "copy-from": "audit_hf_vg_parent",
+    "extend": { "vehicles": [ [ "motorcycle", 25 ] ] },
+    "delete": { "vehicles": [ "bicycle" ] }
+  },
+  {
+    "type": "vehicle_group",
+    "id": "audit_hf_vg_merged",
+    "vehicles": [ [ "car", 10 ] ]
+  },
+  {
+    "//": "a second definition without copy-from adds to the group, as vehicle groups always did",
+    "type": "vehicle_group",
+    "id": "audit_hf_vg_merged",
+    "vehicles": [ [ "bicycle", 20 ] ]
+  },
+  {
+    "type": "vehicle_group",
+    "id": "audit_hf_vg_override",
+    "vehicles": [ [ "car", 10 ] ]
+  },
+  {
+    "type": "vehicle_group",
+    "id": "audit_hf_vg_override",
+    "override": true,
+    "vehicles": [ [ "bicycle", 20 ] ]
+  },
+  {
+    "type": "dream",
+    "id": "audit_hf_dream_parent",
+    "//": "strength 99 is never dreamed",
+    "category": "LIZARD",
+    "strength": 99,
+    "messages": [ "audit dream a", "audit dream b" ]
+  },
+  {
+    "type": "dream",
+    "id": "audit_hf_dream_child",
+    "copy-from": "audit_hf_dream_parent",
+    "strength": 98,
+    "extend": { "messages": [ "audit dream c" ] },
+    "delete": { "messages": [ "audit dream a" ] }
+  },
+  {
+    "type": "dream",
+    "category": "LIZARD",
+    "strength": 97,
+    "messages": [ "audit dream without id" ]
+  },
+  {
+    "type": "speech",
+    "id": "audit_hf_speech_parent",
+    "speaker": [ "audit_hf_speaker_a", "audit_hf_speaker_b" ],
+    "sound": "audit parent line",
+    "volume": 10
+  },
+  {
+    "type": "speech",
+    "id": "audit_hf_speech_child",
+    "copy-from": "audit_hf_speech_parent",
+    "volume": 20,
+    "extend": { "speaker": [ "audit_hf_speaker_c" ] },
+    "delete": { "speaker": [ "audit_hf_speaker_a" ] }
+  },
+  {
+    "type": "speech",
+    "speaker": "audit_hf_speaker_d",
+    "sound": "audit line without id",
+    "volume": 5
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_HF_DELETE",
+    "portrait_override": "audit_hf_portrait",
+    "dynamic_line": "Audit topic.",
+    "responses": [
+      { "text": "Keep me.", "topic": "TALK_DONE" },
+      { "text": "Delete me.", "topic": "TALK_DONE" },
+      { "text": "Delete my topic.", "topic": "TALK_NONE" }
+    ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_HF_DELETE",
+    "delete": { "responses": [ { "text": "Delete me." }, { "topic": "TALK_NONE" } ] },
+    "responses": [ { "text": "Added later.", "topic": "TALK_DONE" } ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_HF_REPLACE",
+    "dynamic_line": "Audit topic.",
+    "responses": [ { "text": "First A.", "topic": "TALK_DONE" }, { "text": "First B.", "topic": "TALK_DONE" } ]
+  },
+  {
+    "type": "talk_topic",
+    "id": "TALK_AUDIT_HF_REPLACE",
+    "replace_responses": true,
+    "responses": [ { "text": "Only me.", "topic": "TALK_DONE" } ]
+  }
+]
