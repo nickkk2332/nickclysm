@@ -661,6 +661,7 @@ These are checked by hardcode for monsters (introducing new flags will require C
 - ```GRAB``` This effect is a grab, creatures will attempt to break it as such (see `character_escape.cpp`).  When a character holds the creature, the effect's source is that character (see [Grab attacks](MONSTER_SPECIAL_ATTACKS.md#characters-grabbing-creatures)).
 - ```GRAB_FILTER``` This effect is a grab filter effect, assigning grabs to their grabbing monster or character.  Handles targeted grab removal on grab break, as well as potentially acting as a filter for monster attack logic.  Bodypart `grabbing_effects` should have it defined.
 - ```NO_GRAB``` A creature with this flag can't start a grab: the `grab`, `grab_2` and `grab_3` monster attacks check it, and so does a character's grab (for characters any character flag counts, not only effect flags).
+- ```PAINKILLER``` A character under an effect with this flag has taken a painkiller: an NPC doesn't take another (see the comestible `npc_use` in [ITEM.md](ITEM.md)).  Vanilla's `pkill1_*`, `pkill2`, `pkill3` and `pkill_l` have it.
 
 
 ## Furniture and Terrain
@@ -917,6 +918,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```NO_STERILE``` This item is not sterile.  Only applies to CBMs.
 - ```NPC_ACTIVATE``` NPCs can activate this item as an alternative attack.  Currently done by throwing it right after activation.  `BOMB` implies this.
 - ```NPC_ALT_ATTACK``` Shouldn't be set directly.  Implied by `NPC_ACTIVATE` and `NPC_THROWN`.
+- ```NPC_DRINKABLE``` On a liquid: NPCs drink it straight from terrain whose endless `liquid_source` it is (a river, a well), a sip a turn, if they could drink it themselves (their diet and mutations agree).  Each sip brings its share of the liquid's water and nutrients, and the first sip of each charge runs its `consumption_effect_on_conditions` and the `character_eats_item` and `character_consumes_item` events.  Vanilla gives it to `water_clean` and `water` (`water_murky` deletes it).
 - ```NPC_SAFE``` NPC will consume this item if you give them, no matter of it's trust about you.
 - ```NPC_THROWN``` NPCs will throw this item (without activating it first) as an alternative attack.
 - ```NPC_THROW_NOW``` NPCs will try to throw this item away, preferably at enemies.  Implies `TRADER_AVOID` and `NPC_THROWN`.

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <initializer_list>
 #include <imgui/imgui.h>
 #include <iterator>
 #include <limits>
@@ -3748,7 +3749,21 @@ void heal_actor::load( const JsonObject &obj, const std::string &src )
         proficiencies.clear();
         mandatory( obj, false, "proficiencies", proficiencies );
     }
-    optional( obj, false, "cures", cures );
+    // "cures": an effect id, or an object (USE-J08, NPC-J08)
+    if( obj.has_member( "cures" ) ) {
+        cures.clear();
+        for( const JsonValue jv : obj.get_array( "cures" ) ) {
+            cure_data cure;
+            if( jv.test_string() ) {
+                cure.effect = efftype_id( jv.get_string() );
+                cure.message = to_translation( "The treatment works." );
+                cure.fail_message = to_translation( "The treatment doesn't work this time." );
+            } else {
+                cure.deserialize( jv.get_object() );
+            }
+            cures.push_back( cure );
+        }
+    }
     for( JsonValue jv : obj.get_array( "finish_eocs" ) ) {
         finish_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
     }
@@ -3781,7 +3796,7 @@ void heal_actor::load( const JsonObject &obj, const std::string &src )
     const bool has_scripted_effect = obj.has_array( "effects" ) || !cures.empty() ||
                                      !finish_eocs.empty();
     if( !does_instant_healing && !heal_over_time && !stops_bleed
-        && !has_any_disinfect && !has_scripted_effect ) {
+        && !has_any_disinfect && !has_scripted_effect && cures.empty() ) {
         obj.throw_error( _( "Heal actor is missing any valid healing effect" ) );
     }
 
@@ -3794,6 +3809,23 @@ void heal_actor::load( const JsonObject &obj, const std::string &src )
         optional( u, false, "charges", used_up_item_charges, 1 );
         optional( u, false, "flags", used_up_item_flags );
     }
+}
+
+// the effects some healing item cures; a superset after a data reload, which costs a lookup only
+static std::set<efftype_id> &curable_effect_set()
+{
+    static std::set<efftype_id> curable;
+    return curable;
+}
+
+const std::set<efftype_id> &heal_actor::curable_effects()
+{
+    return curable_effect_set();
+}
+
+void heal_actor::clear_curable_effects()
+{
+    curable_effect_set().clear();
 }
 
 void heal_actor::finalize( const itype_id &my_item_type )
@@ -3811,6 +3843,9 @@ void heal_actor::finalize( const itype_id &my_item_type )
         if( !cure.effect.is_valid() ) {
             debugmsg( "Item %s has a heal action that cures invalid effect %s", my_item_type.str(),
                       cure.effect.str() );
+        } else {
+            // NPC-J08: NPCs look for these on their patients
+            curable_effect_set().insert( cure.effect );
         }
         if( !cure.replace_with.is_null() && !cure.replace_with.is_valid() ) {
             debugmsg( "Item %s has a heal action that replaces %s with invalid effect %s",
@@ -4264,6 +4299,15 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
                 healed = part_id;
             }
         }
+        // an effect it cures on the whole body is treated through the torso
+        if( healed == bodypart_str_id::NULL_ID() ) {
+            for( const cure_data &cure : cures ) {
+                if( !patient.get_effect( cure.effect, bodypart_str_id::NULL_ID() ).is_null() ) {
+                    healed = bodypart_id( "torso" );
+                    break;
+                }
+            }
+        }
     } else if( patient.is_avatar() ) {
         // Player healing self - let player select
         if( healer.activity.id() != ACT_FIRSTAID ) {
@@ -4295,10 +4339,17 @@ bodypart_id heal_actor::use_healing_item( Character &healer, Character &patient,
     return healed;
 }
 
+// the name to show for an effect a healing item cures
+static std::string cure_name( const efftype_id &id )
+{
+    const std::string name = effect( &id.obj() ).disp_name();
+    return name.empty() ? std::string( _( "ailment" ) ) : name;
+}
+
 void heal_actor::info( const item &, std::vector<iteminfo> &dump ) const
 {
     if( head_power > 0 || torso_power > 0 || limb_power > 0 || bandages_power > 0 ||
-        disinfectant_power > 0 || bleed > 0 || bite > 0.0f || infect > 0.0f ) {
+        disinfectant_power > 0 || bleed > 0 || bite > 0.0f || infect > 0.0f || !cures.empty() ) {
         dump.emplace_back( "HEAL", _( "<bold>Healing effects</bold> " ) );
     }
 
@@ -4352,6 +4403,13 @@ void heal_actor::info( const item &, std::vector<iteminfo> &dump ) const
         if( infect > 0.0f ) {
             dump.emplace_back( "HEAL", _( "* Infection: " ),
                                static_cast<int>( infect * 100 ) );
+        }
+    }
+    if( !cures.empty() ) {
+        dump.emplace_back( "HEAL", _( "Chance to treat (percent): " ) );
+        for( const cure_data &cure : cures ) {
+            dump.emplace_back( "HEAL", string_format( "* %s: ", cure_name( cure.effect ) ),
+                               static_cast<int>( cure.chance * 100 ) );
         }
     }
     dump.emplace_back( "HEAL", _( "Moves to use: " ), move_cost );

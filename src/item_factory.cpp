@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -4208,6 +4209,29 @@ class vitamins_reader : public generic_typed_reader<vitamins_reader>
 };
 } // namespace
 
+void comestible_npc_use::deserialize( const JsonObject &jo )
+{
+    if( jo.has_member( "pain" ) ) {
+        pain = jo.get_int( "pain" );
+    }
+    optional( jo, false, "min_pain", min_pain, 0 );
+    optional( jo, false, "max_pain", max_pain, INT_MAX );
+    optional( jo, false, "preference", preference, 1 );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, false );
+        has_condition = true;
+    }
+    if( !pain && !has_condition ) {
+        jo.throw_error( "npc_use needs a pain (for a painkiller) or a condition (when to take it)" );
+    }
+    if( preference < 1 ) {
+        jo.throw_error_at( "preference", "preference must be 1 or more" );
+    }
+    if( min_pain > max_pain ) {
+        jo.throw_error_at( "min_pain", "min_pain is above max_pain" );
+    }
+}
+
 void islot_comestible::deserialize( const JsonObject &jo )
 {
     std::string src = "dda";
@@ -4268,6 +4292,10 @@ void islot_comestible::deserialize( const JsonObject &jo )
         }
     }
     optional( jo, was_loaded, "rot_spawn", rot_spawn );
+    if( jo.has_object( "npc_use" ) ) {
+        npc_use.emplace();
+        npc_use->deserialize( jo.get_object( "npc_use" ) );
+    }
 
     if( smoking_result != itype_id::NULL_ID() && comesttype == "INVALID" ) {
         jo.throw_error( "comestible_type INVALID cannot have smoking_result" );
@@ -5392,6 +5420,7 @@ void Item_factory::reset()
 
 void Item_factory::clear()
 {
+    heal_actor::clear_curable_effects();
     m_template_groups.clear();
     armor_containers.clear();
 

@@ -152,6 +152,24 @@ struct enum_traits<hit_type> {
     static constexpr hit_type last = hit_type::last;
 };
 
+// How the NPC AI casts a spell in a fight (JSON "npc_use", NPC-J06)
+enum class spell_npc_role : int {
+    // rated by the damage it deals to the creatures it hits, as before
+    attack,
+    // cast on the caster itself (a ground-targeted spell next to it): buffs, self-heals, summons
+    self,
+    // cast on the caster or a friend in range: heals, buffs
+    ally,
+    // never cast by the NPC AI
+    never,
+    last
+};
+
+template<>
+struct enum_traits<spell_npc_role> {
+    static constexpr spell_npc_role last = spell_npc_role::last;
+};
+
 struct fake_spell {
     spell_id id;
 
@@ -413,6 +431,14 @@ class spell_type
         bool has_target_condition = false; // NOLINT(cata-serialize)
 
         translation target_condition_fail_message_; // NOLINT(cata-serialize)
+
+        // NPC-J06: "npc_use": how NPCs cast it in a fight, the condition they cast it on (u is
+        // the caster, npc the creature it is cast on or fights) and, for the self and ally
+        // roles, its rating against the attacks
+        spell_npc_role npc_role = spell_npc_role::attack;
+        std::function<bool( const_dialogue const & )> npc_condition; // NOLINT(cata-serialize)
+        bool has_npc_condition = false; // NOLINT(cata-serialize)
+        dbl_or_var npc_priority; // NOLINT(cata-serialize)
 
         std::set<mtype_id> targeted_monster_ids;
 

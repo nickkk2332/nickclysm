@@ -726,7 +726,15 @@ CBMs can be defined like this:
 }
 "smoking_result": "dry_meat",     // Food that results from drying this food in a smoker
 "petfood": [ "FUNGALFRUIT", "MIGOFOOD" ] // (Optional) Pet food categories this item is in.
+"npc_use": {                      // (Optional) NPCs take this medicine on their own.  Needs "pain" or "condition"
+  "pain": 30,                     // It is a painkiller for about this much pain: an NPC in pain (15 or more, after painkillers) that hasn't taken one (no effect flagged PAINKILLER on it) takes the painkiller whose "pain" is closest to its pain
+  "min_pain": 0,                  // (Optional) Carrying it makes the NPC reach for a painkiller only while its pain is at least this (default 0)...
+  "max_pain": 35,                 // (Optional) ...and at most this (default no limit)
+  "preference": 2,                // (Optional) Divides how far its "pain" is from the NPC's when picking; 2 is picked over a wider range of pain (default 1)
+  "condition": { "u_has_effect": "infected" } // (Optional) The NPC (u) takes it only while this holds (the item is npc).  Medicine without "pain" is taken whenever it holds, so give it one that stops holding once the medicine works
+}
 ```
+Vanilla's painkillers (aspirin, acetaminophen and ibuprofen up to pain 35, codeine, tramadol, oxycodone and heroin from pain 50) have an `npc_use`; NPCs only take a medicine they could take themselves (heroin needs a syringe).
 
 
 ### Containers
@@ -1481,7 +1489,7 @@ A `copy-from` item can `extend` its `use_action` (and `tick_action`) with more a
     { "id": "prof_wound_care", "time_mult": 0.5, "bonus": 1 },        // time_mult (default 1) multiplies the time to use the item when the healer has it;
     { "id": "prof_wound_care_expert", "time_mult": 0.5, "bonus": 2 }  // bonus (default 0) is added to the skill level for bandaging, disinfecting and stopping bleeding
   ],
-  "cures": [                    // (optional) Other effects it can remove, like bite and infect.  The effect is looked for on the treated body part, then on the whole body (an effect on no part, such as poison).  A part with one of them can be chosen for treatment even at full hp
+  "cures": [                    // (optional) Other effects it can remove, like bite and infect.  The effect is looked for on the treated body part, then on the whole body (an effect on no part, such as poison).  A part with one of them can be chosen for treatment even at full hp.  An entry can also be just an effect id (always removed, with the default messages).  NPCs treat these on themselves, the player and their allies with the items that cure them, as they do bleeding, bites and infections
     { "effect": "venom", "chance": 1.0, "replace_with": "recover", "message": "The venom is drawn out.", "fail_message": "Some venom is still in the wound." }
                                 // chance (default 1) to remove it; replace_with (optional) is given to the whole body for as long as the cured effect had left; message and fail_message (optional) are shown when the patient can be seen
   ],

@@ -161,11 +161,12 @@ If none holds, or the class has none, the built-in choice is made.  A list given
     "stall_window": "30 minutes",               // within this long, its sleep stalls
     "stall_duration": "30 minutes",             // and steps aside for other work this long
     "restless_window": "30 minutes"             // noise wakes within this long of the last hold sleep back
-  }
+  },
+  "first_aid": { "limb": 75, "torso": 80, "head": 80 }  // percent of a part's HP at or below which the NPC bandages and disinfects it
 }
 ```
 
-Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. `needs` tunes the four built-in needs; a mod adds needs of its own with [`npc_need`](NPC_BEHAVIOR.md#custom-needs).
+Out-of-range numbers (`first_aid` percentages are 0 to 100), levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. `needs` tunes the four built-in needs; a mod adds needs of its own with [`npc_need`](NPC_BEHAVIOR.md#custom-needs).
 
 ### Shopkeeper NPC configuration
 `npc_class` supports several properties for configuring the behavior of NPCs that behave as shopkeepers:

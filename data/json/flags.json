@@ -1635,6 +1635,11 @@
     "type": "json_flag"
   },
   {
+    "id": "PAINKILLER",
+    "type": "json_flag",
+    "//": "On an effect: an NPC under it has taken a painkiller and doesn't take another (NPC-J07)."
+  },
+  {
     "id": "NO_GRAB",
     "type": "json_flag",
     "//": "A creature with this flag (on an effect, or for characters any character flag) can't start a grab."
@@ -1951,6 +1956,11 @@
   {
     "id": "NPC_ALT_ATTACK",
     "type": "json_flag"
+  },
+  {
+    "id": "NPC_DRINKABLE",
+    "type": "json_flag",
+    "//": "NPCs drink this liquid straight from a terrain liquid_source (NPC-J09)."
   },
   {
     "id": "NPC_SAFE",

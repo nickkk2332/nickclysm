@@ -525,10 +525,14 @@ struct healing_options {
     bool bleed = false;
     bool bite = false;
     bool infect = false;
+    // NPC-J08: effects a healing item's "cures" removes
+    std::set<efftype_id> cure;
     void clear_all();
     void set_all();
     bool any_true() const;
     bool all_false() const;
+    // a wound: bandage, disinfect, bleed, bite or infect, not a cure
+    bool any_wound() const;
 };
 
 // Data relevant only for this action
@@ -560,7 +564,6 @@ struct npc_short_term_cache {
     // Use weak_ptr to avoid circular references between Creatures
     // attitude of creatures the npc can see
     std::vector<weak_ptr_fast<Creature>> hostile_guys;
-    std::vector<weak_ptr_fast<Creature>> neutral_guys;
     std::vector<weak_ptr_fast<Creature>> friends;
     std::vector<sphere> dangerous_explosives;
     std::map<direction, float> threat_map;
@@ -571,6 +574,8 @@ struct npc_short_term_cache {
     // within the turn don't invalidate it
     mutable npc_trip last_trip;
     npc_retained_trip retained_trip;
+    // NPC-J09: how much of the charge it is drinking from a terrain source is still to sip
+    units::volume terrain_sip_left = 0_ml;
     // diagnostic count of route() calls made while resolving self-care walks
     mutable int trip_route_calls = 0;
     // last sleep search found no spot the NPC may use; holds sleep back until it
@@ -1105,6 +1110,10 @@ class npc : public Character
         bool took_painkiller() const;
         void use_painkiller();
         item *most_appropriate_painkiller();
+        // NPC-J07: the first medicine that isn't a painkiller whose "npc_use" condition holds
+        // now, nullptr for none; take_medicine() takes it
+        item *medicine_to_take();
+        bool take_medicine();
         void activate_item( item &it );
         bool has_identified( const itype_id & ) const override {
             return true;
