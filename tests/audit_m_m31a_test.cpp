@@ -541,7 +541,7 @@ TEST_CASE( "rend-b07_overlay_ordering_is_the_main_tilesets", "[audit][tiles]" )
         skip( std::string( "the test renderer can't load a tileset: " ) + err.what() );
         return;
     }
-    if( !main_context->is_valid() || main_context->get_tileset_id() != ordered.id ) {
+    if( !main_context->is_valid() ) {
         skip( "the test renderer can't load a tileset" );
         return;
     }

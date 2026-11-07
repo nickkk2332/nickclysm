@@ -415,7 +415,7 @@ TEST_CASE( "eoc-j10_add_and_remove_death_eocs", "[audit][eoc]" )
     avatar &u = get_avatar();
     npc &guy = spawn_npc( u.pos_bub().xy() + point::east, "thug" );
     const effect_on_condition_id &eoc = effect_on_condition_EOC_AUDIT_M01B_J10_NPC_DEATH;
-    const auto has = [&guy]() {
+    const auto has = [&guy, &eoc]() {
         return std::count( guy.death_eocs.begin(), guy.death_eocs.end(), eoc );
     };
     dialogue d( get_talker_for( guy ), nullptr );
