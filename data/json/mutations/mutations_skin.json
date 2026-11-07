@@ -449,7 +449,15 @@
     "points": 1,
     "vitamin_cost": 60,
     "visibility": 1,
-    "ugliness": 2
+    "ugliness": 2,
+    "retaliation": [
+      {
+        "damage_type": "stab",
+        "damage": [ 1, 8 ],
+        "message": "Your spines puncture %s in mid-attack!",
+        "npc_message": "%1$s's spines puncture %2$s in mid-attack!"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -462,7 +470,15 @@
     "points": 2,
     "vitamin_cost": 160,
     "visibility": 3,
-    "ugliness": 3
+    "ugliness": 3,
+    "retaliation": [
+      {
+        "damage_type": "stab",
+        "damage": [ 1, 20 ],
+        "message": "Your quills puncture %s in mid-attack!",
+        "npc_message": "%1$s's quills puncture %2$s in mid-attack!"
+      }
+    ]
   },
   {
     "type": "mutation",

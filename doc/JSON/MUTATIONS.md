@@ -237,6 +237,7 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "You only eat cooked food." }, // Food can only be eaten while the condition is true; an object or an array of them.  See Diet rules (default: none).
   "food_fun": { "positive": 1.5, "positive_max": 3, "negative": 0.5, "negative_max": 1 }, // Changes how good or bad food tastes.  See Diet rules (default: none).
   "eat_eocs": [ "EOC_ATE_SOMETHING" ],        // EOCs run when food is swallowed.  See Diet rules (default: empty).
+  "retaliation": [ { "damage_type": "stab", "damage": [ 1, 20 ], "message": "Your quills puncture %s in mid-attack!" } ], // Harm done to melee attackers.  See Retaliation (default: none).
   "can_only_heal_with": [ "bandage" ],        // List of `MED` you are restricted to, includes mutagen, serum, aspirin, bandages etc. (default: empty).
   "can_heal_with": [ "caramel_ointement" ],   // List of `MED` that will work for you but not for anyone else.  See `CANT_HEAL_EVERYONE` flag for items (default: empty).
   "allowed_category": [ "ALPHA" ],            // List of categories you can mutate into (default: empty).
@@ -457,6 +458,32 @@ Vanilla uses them: `VEGETARIAN`, `MEATARIAN`, `ANTIFRUIT`, `LACTOSE`, `ANTIJUNK`
     }
   }
 ```
+
+### Retaliation
+
+`retaliation` is a list of what a creature that hits the mutant in melee suffers; ranged and thrown hits don't trigger it.  Vanilla `SPINES`, `QUILLS`, `THORNS` and `CF_HAIR` use it.  Each object can have:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `damage_type` | none | The damage type dealt to the attacker's torso.  Needed when `damage` is more than 0 |
+| `damage` | 0 | A number, or `[ min, max ]` rolled each time |
+| `requires_uncovered` | true | Only when the body part hit has nothing worn on it |
+| `unarmed_attacker_only` | false | Only when the attacker wields nothing |
+| `effects` | none | Effects given to the attacker: `[ { "id": "stunned", "duration": "2 turns", "one_in": 3 } ]`; `duration` defaults to 1 turn and `one_in` (the chance, one in this) to 1 |
+| `message` | none | Shown when it is the avatar's; `%s` is the attacker |
+| `npc_message` | none | Shown when it is another character's and the avatar sees it; `%1$s` is the mutant, `%2$s` the attacker |
+
+```jsonc
+"retaliation": [
+  {
+    "effects": [ { "id": "stunned", "duration": "2 turns" }, { "id": "blind", "duration": "2 turns", "one_in": 3 } ],
+    "message": "Your hairs detach into %s!",
+    "npc_message": "%2$s gets a load of %1$s's hair stuck in!"
+  }
+]
+```
+
+For anything else (a condition, a spell, an EOC), use an enchantment's [`hit_me_effect`](MAGIC.md), whose EOCs get the body part hit as `hit_bodypart`.
 
 ### Sample trait: Example Sleep
 

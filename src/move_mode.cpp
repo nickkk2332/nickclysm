@@ -5,9 +5,14 @@
 #include <string>
 #include <unordered_map>
 
+#include "character.h"
+#include "condition.h"
+#include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "talker.h"
 #include "translations.h"
 
 static std::vector<move_mode_id> move_modes_sorted;
@@ -83,6 +88,14 @@ void move_mode::load( const JsonObject &jo, std::string_view/*src*/ )
     optional( jo, was_loaded, "swim_speed_mod", _swim_speed_mod, 0 );
 
     optional( jo, was_loaded, "stop_hauling", _stop_hauling );
+
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", _condition, true );
+    }
+    optional( jo, was_loaded, "switch_cost", _switch_cost, 0 );
+    if( _switch_cost < 0 ) {
+        jo.throw_error_at( "switch_cost", "switch_cost can't be negative" );
+    }
 }
 
 void move_mode::reset()
@@ -243,6 +256,20 @@ bool move_mode::stop_hauling() const
 move_mode_type move_mode::type() const
 {
     return _type;
+}
+
+bool move_mode::condition_allows( const Character &who ) const
+{
+    if( !_condition ) {
+        return true;
+    }
+    const const_dialogue d( get_const_talker_for( who ), nullptr );
+    return _condition( d );
+}
+
+int move_mode::switch_cost() const
+{
+    return _switch_cost;
 }
 
 void move_mode::set_cycle( const move_mode_id &mode ) const

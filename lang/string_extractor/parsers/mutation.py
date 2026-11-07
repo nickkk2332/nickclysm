@@ -67,6 +67,14 @@ def parse_mutation(json, origin):
                    comment="Message when transforming from mutation"
                    f" '{name}' to '{target_id}'")
 
+    for retaliation in json.get("retaliation", []):
+        write_text(retaliation.get("message"), origin,
+                   comment="Message when a melee attacker is hurt by"
+                   f" the player's mutation '{name}'")
+        write_text(retaliation.get("npc_message"), origin,
+                   comment="Message when a melee attacker is hurt by"
+                   f" an NPC's mutation '{name}'")
+
     for enchantment in json.get("enchantments", []):
         parse_enchant(enchantment, origin)
 

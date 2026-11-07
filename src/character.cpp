@@ -181,7 +181,6 @@ static const damage_type_id damage_bash( "bash" );
 static const damage_type_id damage_cut( "cut" );
 static const damage_type_id damage_electric( "electric" );
 static const damage_type_id damage_heat( "heat" );
-static const damage_type_id damage_stab( "stab" );
 
 static const effect_on_condition_id effect_on_condition_add_effect( "add_effect" );
 
@@ -189,7 +188,6 @@ static const efftype_id effect_adrenaline( "adrenaline" );
 static const efftype_id effect_beartrap( "beartrap" );
 static const efftype_id effect_bite( "bite" );
 static const efftype_id effect_bleed( "bleed" );
-static const efftype_id effect_blind( "blind" );
 static const efftype_id effect_blood_spiders( "blood_spiders" );
 static const efftype_id effect_bloodworms( "bloodworms" );
 static const efftype_id effect_boomered( "boomered" );
@@ -347,7 +345,6 @@ static const start_location_id start_location_sloc_shelter_safe( "sloc_shelter_s
 static const trait_id trait_ARACHNID_ARMS( "ARACHNID_ARMS" );
 static const trait_id trait_ARACHNID_ARMS_OK( "ARACHNID_ARMS_OK" );
 static const trait_id trait_BIRD_EYE( "BIRD_EYE" );
-static const trait_id trait_CF_HAIR( "CF_HAIR" );
 static const trait_id trait_CHITIN2( "CHITIN2" );
 static const trait_id trait_CHITIN3( "CHITIN3" );
 static const trait_id trait_CHITIN_FUR3( "CHITIN_FUR3" );
@@ -387,7 +384,6 @@ static const trait_id trait_PER_SLIME( "PER_SLIME" );
 static const trait_id trait_PER_SLIME_OK( "PER_SLIME_OK" );
 static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
 static const trait_id trait_PROF_SKATER( "PROF_SKATER" );
-static const trait_id trait_QUILLS( "QUILLS" );
 static const trait_id trait_ROOTS3( "ROOTS3" );
 static const trait_id trait_SAVANT( "SAVANT" );
 static const trait_id trait_SHELL2( "SHELL2" );
@@ -395,10 +391,8 @@ static const trait_id trait_SHELL3( "SHELL3" );
 static const trait_id trait_SHOUT2( "SHOUT2" );
 static const trait_id trait_SHOUT3( "SHOUT3" );
 static const trait_id trait_SLIMY( "SLIMY" );
-static const trait_id trait_SPINES( "SPINES" );
 static const trait_id trait_SUNLIGHT_DEPENDENT( "SUNLIGHT_DEPENDENT" );
 static const trait_id trait_THICK_SCALES( "THICK_SCALES" );
-static const trait_id trait_THORNS( "THORNS" );
 static const trait_id trait_VISCOUS( "VISCOUS" );
 static const trait_id trait_WHISKERS( "WHISKERS" );
 static const trait_id trait_WHISKERS_RAT( "WHISKERS_RAT" );
@@ -2253,7 +2247,11 @@ bool Character::can_switch_to( const move_mode_id &mode ) const
         ( mode->type() == move_mode_type::PRONE || mode->type() == move_mode_type::CROUCHING ) ) {
         return false;
     }
-    // Only running modes are restricted at the moment and only when its your legs doing the running
+    // CHAR-J07: the mode's own JSON condition, e.g. wings for a flying mode
+    if( !mode->condition_allows( *this ) ) {
+        return false;
+    }
+    // Running modes are restricted only when its your legs doing the running
     return get_steed_type() != steed_type::NONE || mode->type() != move_mode_type::RUNNING || can_run();
 }
 
@@ -2286,6 +2284,10 @@ int Character::move_mode_switch_cost( const move_mode_id &old_mode,
         // One step of change walking to crouch or crouch to walking
         move_cost = standing_crouch_base_cost;
     }
+    // CHAR-J07: the new mode's own JSON switch_cost
+    if( old_mode != new_mode ) {
+        move_cost += new_mode->switch_cost();
+    }
 
     // If we're carrying more than we should, make it cost more
     if( weight_ratio > 1 ) {
@@ -2300,6 +2302,12 @@ int Character::move_mode_switch_cost( const move_mode_id &old_mode,
     // 50% more cost with clumsy
     if( has_trait( trait_CLUMSY ) ) {
         move_cost *= 1.5;
+    }
+
+    // CHAR-J07: enchantments can change it too
+    if( move_cost > 0 ) {
+        move_cost = std::max( 0, static_cast<int>( enchantment_cache->modify_value(
+                                  enchant_vals::mod::MOVE_MODE_SWITCH_COST, move_cost ) ) );
     }
 
     return move_cost;
@@ -5532,7 +5540,13 @@ void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,
                         float /*difficulty*/, dealt_projectile_attack const *const proj )
 {
     check_dead_state( here );
-    if( source == nullptr || proj != nullptr ) {
+    if( source == nullptr ) {
+        return;
+    }
+    if( proj != nullptr ) {
+        // CHAR-J08: a ranged hit casts the hit_me_effect spells whose hit_types name it; the
+        // retaliation below is for melee only
+        enchantment_cache->cast_hit_me( *this, source, hit_type::ranged, bp_hit );
         return;
     }
 
@@ -5564,55 +5578,34 @@ void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,
         // Should hit body part used for attack
         source->deal_damage( this, body_part_torso, ods_shock_damage );
     }
-    if( !wearing_something_on( bp_hit ) &&
-        ( has_trait( trait_SPINES ) || has_trait( trait_QUILLS ) ) ) {
-        int spine = rng( 1, has_trait( trait_QUILLS ) ? 20 : 8 );
-        if( !is_avatar() ) {
-            if( u_see ) {
-                add_msg( _( "%1$s's %2$s puncture %3$s in mid-attack!" ), get_name(),
-                         ( has_trait( trait_QUILLS ) ? _( "quills" ) : _( "spines" ) ),
-                         source->disp_name() );
+    // CHAR-J08: a mutation's "retaliation" (SPINES, QUILLS, THORNS, CF_HAIR)
+    const auto retaliates = []( const mutation_branch & mut ) {
+        return !mut.retaliation.empty();
+    };
+    for( const trait_id &mut : get_functioning_mutations( true, false, retaliates ) ) {
+        for( const mutation_retaliation &ret : mut->retaliation ) {
+            if( ( ret.requires_uncovered && wearing_something_on( bp_hit ) ) ||
+                ( ret.unarmed_attacker_only && source->has_weapon() ) ) {
+                continue;
             }
-        } else {
-            add_msg( m_good, _( "Your %1$s puncture %2$s in mid-attack!" ),
-                     ( has_trait( trait_QUILLS ) ? _( "quills" ) : _( "spines" ) ),
-                     source->disp_name() );
-        }
-        damage_instance spine_damage;
-        // FIXME: Hardcoded damage type
-        spine_damage.add_damage( damage_stab, spine );
-        source->deal_damage( this, body_part_torso, spine_damage );
-    }
-    if( ( !wearing_something_on( bp_hit ) ) && has_trait( trait_THORNS ) &&
-        ( !source->has_weapon() ) ) {
-        if( !is_avatar() ) {
-            if( u_see ) {
-                add_msg( _( "%1$s's %2$s scrape %3$s in mid-attack!" ), get_name(),
-                         _( "thorns" ), source->disp_name() );
+            if( is_avatar() ) {
+                if( !ret.message.empty() ) {
+                    add_msg( m_good, ret.message.translated(), source->disp_name() );
+                }
+            } else if( u_see && !ret.npc_message.empty() ) {
+                add_msg( ret.npc_message.translated(), get_name(), source->disp_name() );
             }
-        } else {
-            add_msg( m_good, _( "Your thorns scrape %s in mid-attack!" ), source->disp_name() );
-        }
-        int thorn = rng( 1, 4 );
-        damage_instance thorn_damage;
-        // FIXME: Hardcoded damage type
-        thorn_damage.add_damage( damage_cut, thorn );
-        // In general, critters don't have separate limbs
-        // so safer to target the torso
-        source->deal_damage( this, body_part_torso, thorn_damage );
-    }
-    if( ( !wearing_something_on( bp_hit ) ) && has_trait( trait_CF_HAIR ) ) {
-        if( !is_avatar() ) {
-            if( u_see ) {
-                add_msg( _( "%1$s gets a load of %2$s's %3$s stuck in!" ), source->disp_name(),
-                         get_name(), _( "hair" ) );
+            if( ret.max_damage > 0 ) {
+                damage_instance retaliation_damage;
+                retaliation_damage.add_damage( ret.damage_type, rng( ret.min_damage, ret.max_damage ) );
+                // In general, critters don't have separate limbs, so the torso is safer
+                source->deal_damage( this, body_part_torso, retaliation_damage );
             }
-        } else {
-            add_msg( m_good, _( "Your hairs detach into %s!" ), source->disp_name() );
-        }
-        source->add_effect( effect_stunned, 2_turns );
-        if( one_in( 3 ) ) { // In the eyes!
-            source->add_effect( effect_blind, 2_turns );
+            for( const mutation_retaliation::effect_data &eff : ret.effects ) {
+                if( one_in( eff.one_in ) ) {
+                    source->add_effect( eff.effect, eff.duration );
+                }
+            }
         }
     }
 
@@ -5650,7 +5643,7 @@ void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,
         }
     }
 
-    enchantment_cache->cast_hit_me( *this, source );
+    enchantment_cache->cast_hit_me( *this, source, hit_type::melee, bp_hit );
 }
 
 bool Character::crossed_threshold() const

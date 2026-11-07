@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <utility>
 
+#include "bodypart.h"
 #include "cata_utility.h"
 #include "character.h"
 #include "creature_tracker.h"
@@ -135,7 +136,19 @@ void climbing_aid::reset()
 void climbing_aid::load( const JsonObject &jo, std::string_view )
 {
     optional( jo, was_loaded, "slip_chance_mod", slip_chance_mod );
-    mandatory( jo, was_loaded, "down", down );
+    // CHAR-J11: an aid for climbing up only may leave "down" out
+    if( jo.has_member( "down" ) ) {
+        mandatory( jo, was_loaded, "down", down );
+    } else if( !was_loaded ) {
+        if( !jo.has_member( "up" ) ) {
+            jo.throw_error( "a climbing aid needs \"down\", \"up\" or both" );
+        }
+        down.max_height = 0;
+    }
+    if( jo.has_member( "up" ) ) {
+        mandatory( jo, was_loaded, "up", up );
+        up.was_loaded = true;
+    }
     mandatory( jo, was_loaded, "condition", base_condition );
 
     was_loaded = true;
@@ -227,7 +240,21 @@ void climbing_aid::down_t::deserialize( const JsonObject &jo )
         // Messages show when actually climbing.
         optional( jo, true, "msg_before", msg_before );
         optional( jo, true, "msg_after", msg_after );
+    } else {
+        // a disabled "down" needs nothing else
+        jo.allow_omitted_members();
     }
+}
+
+void climbing_aid::up_t::deserialize( const JsonObject &jo )
+{
+    optional( jo, true, "move_cost", move_cost );
+    if( move_cost < 0 ) {
+        jo.throw_error_at( "move_cost", "move_cost can't be negative" );
+    }
+    optional( jo, true, "needs_support", needs_support );
+    optional( jo, true, "cost", cost );
+    optional( jo, true, "msg_after", msg_after );
 }
 
 void climbing_aid::climb_cost::deserialize( const JsonObject &jo )
@@ -236,6 +263,22 @@ void climbing_aid::climb_cost::deserialize( const JsonObject &jo )
     optional( jo, true, "thirst", thirst );
     optional( jo, true, "damage", damage );
     optional( jo, true, "pain", pain );
+}
+
+void climbing_aid::climb_cost::apply( Character &you ) const
+{
+    if( damage > 0 ) {
+        you.apply_damage( nullptr, body_part_torso, damage );
+    }
+    if( pain > 0 ) {
+        you.mod_pain( pain );
+    }
+    if( kcal > 0 ) {
+        you.mod_stored_kcal( -kcal );
+    }
+    if( thirst > 0 ) {
+        you.mod_thirst( thirst );
+    }
 }
 
 template< typename Lambda >
@@ -259,7 +302,7 @@ climbing_aid::aid_list climbing_aid::list(
     std::vector<const climbing_aid *> list;
 
     const auto add_deployables = [&list]( const condition &, const climbing_aid & aid ) {
-        if( aid.down.deploys_furniture() ) {
+        if( aid.down.enabled() && aid.down.deploys_furniture() ) {
             list.push_back( &aid );
         }
     };
@@ -276,7 +319,9 @@ climbing_aid::aid_list climbing_aid::list_all(
     std::vector<const climbing_aid *> list;
 
     const auto add_climbing_aids = [&list]( const condition &, const climbing_aid & aid ) {
-        list.push_back( &aid );
+        if( aid.down.enabled() ) {
+            list.push_back( &aid );
+        }
     };
     for_each_aid_condition( conditions, add_climbing_aids );
 
@@ -291,7 +336,7 @@ const climbing_aid &climbing_aid::get_safest(
     const climbing_aid *choice = climbing_aid_default_ptr;
 
     const auto choose_safest = [&choice, no_deploy]( const condition &, const climbing_aid & aid ) {
-        if( !no_deploy || aid.down.deploy_furn.is_empty() ) {
+        if( aid.down.enabled() && ( !no_deploy || aid.down.deploy_furn.is_empty() ) ) {
             if( aid.slip_chance_mod < choice->slip_chance_mod ) {
                 choice = &aid;
             }
@@ -300,6 +345,18 @@ const climbing_aid &climbing_aid::get_safest(
     for_each_aid_condition( conditions, choose_safest );
 
     return *choice;
+}
+
+const climbing_aid *climbing_aid::get_safest_up( const condition_list &conditions )
+{
+    const climbing_aid *choice = nullptr;
+    const auto choose_safest = [&choice]( const condition &, const climbing_aid & aid ) {
+        if( aid.up.enabled() && ( choice == nullptr || aid.slip_chance_mod < choice->slip_chance_mod ) ) {
+            choice = &aid;
+        }
+    };
+    for_each_aid_condition( conditions, choose_safest );
+    return choice;
 }
 
 const climbing_aid &climbing_aid::get_default()
@@ -311,11 +368,11 @@ template< typename Test >
 static void detect_conditions_sub( climbing_aid::condition_list &list,
                                    climbing_aid::category category, const Test &test )
 {
-    std::string empty;
-    const std::string *flag_already_tested = &empty;
+    // nothing tested yet: an empty flag (a veh aid for any vehicle) must be tested too
+    const std::string *flag_already_tested = nullptr;
     for( auto &[ flag, aid ] : climbing_lookup[ int( category ) ] ) {
         // climbing_lookup is a multimap, don't test flags twice.
-        if( flag == *flag_already_tested ) {
+        if( flag_already_tested != nullptr && flag == *flag_already_tested ) {
             continue;
         }
 
@@ -352,10 +409,14 @@ climbing_aid::condition_list climbing_aid::detect_conditions( Character &you,
         cond.range = fall.pos_top().z() - pos.z();
         return here.has_flag( cond.flag, pos );
     };
-    auto detect_vehicle = [&fall]( condition & cond ) {
-        // TODO implement flags and range?
+    auto detect_vehicle = [&here, &fall]( condition & cond ) {
         cond.range = 1;
-        return fall.veh_just_below();
+        if( !fall.veh_just_below() ) {
+            return false;
+        }
+        // CHAR-J11: an empty flag is any vehicle, else a part there must have the flag
+        return cond.flag.empty() ||
+               here.veh_at( fall.pos_just_below() ).part_with_feature( cond.flag, true ).has_value();
     };
 
     detect_conditions_sub( list, category::character, detect_you_character_flag );

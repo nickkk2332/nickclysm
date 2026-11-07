@@ -710,6 +710,10 @@ void Character::load( const JsonObject &data )
         randomize_blood();
     }
     data.read( "avg_nat_bpm", avg_nat_bpm );
+    // CHAR-J09: what effects did to blood pressure, heart rate and breathing; older saves lack it
+    data.read( "bp_effect_mod", bp_effect_mod );
+    data.read( "heart_rate_effect_mod", heart_rate_effect_mod );
+    data.read( "resp_rate_effect_mod", resp_rate_effect_mod );
 
     data.read( "custom_profession", custom_profession );
 
@@ -1280,6 +1284,9 @@ void Character::store( JsonOut &json ) const
     json.member_as_string( "blood_type", my_blood_type );
     json.member( "blood_rh_factor", blood_rh_factor );
     json.member( "avg_nat_bpm", avg_nat_bpm );
+    json.member( "bp_effect_mod", bp_effect_mod );
+    json.member( "heart_rate_effect_mod", heart_rate_effect_mod );
+    json.member( "resp_rate_effect_mod", resp_rate_effect_mod );
 
     json.member( "custom_profession", custom_profession );
 

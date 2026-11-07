@@ -152,6 +152,10 @@ enum class event_type : int {
     character_disassembles_item,
     character_learns_recipe,
     tile_destroyed,
+    character_changes_move_mode,
+    character_falls,
+    character_climbs,
+    character_moves,
     num_event_types // last
 };
 
@@ -219,7 +223,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 128,
+static_assert( static_cast<int>( event_type::num_event_types ) == 132,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1068,6 +1072,53 @@ struct event_spec<event_type::tile_destroyed> {
             { "new_ter", cata_variant_type::ter_str_id },
             { "new_furn", cata_variant_type::furn_str_id },
             { "cause", cata_variant_type::string },
+        }
+    };
+};
+
+// a character's movement mode changed (doc/JSON/MOVE_MODE.md)
+template<>
+struct event_spec<event_type::character_changes_move_mode> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "old_mode", cata_variant_type::move_mode_id },
+            { "new_mode", cata_variant_type::move_mode_id },
+        }
+    };
+};
+
+// a character fell height Z-levels (counted before anything softened the landing)
+template<>
+struct event_spec<event_type::character_falls> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "height", cata_variant_type::int_ },
+        }
+    };
+};
+
+// the avatar climbed up or down height Z-levels with a climbing aid (doc/JSON/CLIMBING.md)
+template<>
+struct event_spec<event_type::character_climbs> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "climbing_aid", cata_variant_type::string },
+            { "direction", cata_variant_type::string },
+            { "height", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character (the avatar or an NPC) stepped onto another tile; avatar_moves is the avatar's own
+template<>
+struct event_spec<event_type::character_moves> {
+    static constexpr std::array<event_field, 6> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "mount", cata_variant_type::mtype_id },
+            { "terrain", cata_variant_type::ter_id },
+            { "movement_mode", cata_variant_type::move_mode_id },
+            { "underwater", cata_variant_type::bool_ },
+            { "z", cata_variant_type::int_ },
         }
     };
 };

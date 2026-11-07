@@ -369,6 +369,8 @@ void Character::update_body( const time_point &from, const time_point &to )
         update_bloodvol_index();
         update_heartrate_index();
         update_circulation();
+        // CHAR-J09: nothing kept the respiration rate current, so respiratory_rate_* was never seen
+        update_respiration_rate();
     }
 
     if( is_avatar() && ticks_between( from, to, 24_hours ) > 0 ) {
@@ -1493,6 +1495,11 @@ void Character::update_bloodvol_index()
 float Character::get_circulation_resistance() const
 {
     return circulation_resistance;
+}
+
+float Character::get_circulation() const
+{
+    return circulation;
 }
 
 void Character::set_bp_effect_mod( int mod )

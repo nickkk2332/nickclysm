@@ -9282,6 +9282,10 @@ void game::on_move_effects()
             u.add_effect( effect_winded, 10_turns );
         }
     }
+    // CHAR-J07: a mode whose JSON condition stopped holding (the wings are gone) falls back to walking
+    if( !u.current_movement_mode()->condition_allows( u ) ) {
+        u.reset_move_mode();
+    }
 
     // apply martial art move bonuses
     u.martial_arts_data->ma_onmove_effects( u );
@@ -9844,6 +9848,8 @@ void game::vertical_move( int movez, bool force, bool peeking )
     // Force means we're going down, even if there's no staircase, etc.
     bool climbing = false;
     climbing_aid_id climbing_aid = climbing_aid_default;
+    // the JSON aid climbing up uses, if any (CHAR-J11); the class, as climbing_aid is the id here
+    const ::climbing_aid *up_aid = nullptr;
     int move_cost = 100;
     tripoint_bub_ms stairs( pos.xy(), pos.z() + movez );
     bool wall_cling = u.has_flag( json_flag_WALL_CLING );
@@ -9878,8 +9884,12 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
         const int cost = u.climbing_cost( pos, stairs );
         add_msg_debug( debugmode::DF_GAME, "Climb cost %d", cost );
+        // CHAR-J11: the safest climbing aid at hand with an "up" block; furn_CLIMBABLE's if none
+        up_aid = climb_flying ? nullptr :
+                 ::climbing_aid::get_safest_up( ::climbing_aid::detect_conditions( u, stairs ) );
         const bool can_climb_here = cost > 0 ||
-                                    u.has_flag( json_flag_CLIMB_NO_LADDER ) || wall_cling || climb_flying;
+                                    u.has_flag( json_flag_CLIMB_NO_LADDER ) || wall_cling || climb_flying ||
+                                    ( up_aid != nullptr && !up_aid->up.needs_support );
         if( !can_climb_here && !adjacent_climb ) {
             add_msg( m_info, _( "You can't climb here - you need walls and/or furniture to brace against." ) );
             return;
@@ -9920,14 +9930,16 @@ void game::vertical_move( int movez, bool force, bool peeking )
         } else {
             // TODO: Make it an extended action
             climbing = true;
-            climbing_aid = climbing_aid_furn_CLIMBABLE;
+            climbing_aid = up_aid != nullptr ? up_aid->id : climbing_aid_furn_CLIMBABLE;
 
             if( climb_flying ) {
                 u.set_activity_level( MODERATE_EXERCISE );
                 move_cost = 100;
             } else {
                 u.set_activity_level( EXTRA_EXERCISE );
-                move_cost = cost == 0 ? 1000 : cost + 500;
+                const ::climbing_aid::up_t &up = climbing_aid->up;
+                const int aid_move_cost = up.enabled() ? up.move_cost : 500;
+                move_cost = cost == 0 ? 2 * aid_move_cost : cost + aid_move_cost;
             }
 
             // climbing up, select which tile to climb to
@@ -9990,7 +10002,7 @@ void game::vertical_move( int movez, bool force, bool peeking )
     }
 
     if( climbing &&
-        slip_down( ( ( movez > 1 ) ? climb_maneuver::up : climb_maneuver::down ), climbing_aid ) ) {
+        slip_down( ( ( movez > 0 ) ? climb_maneuver::up : climb_maneuver::down ), climbing_aid ) ) {
         return;
     }
 
@@ -10254,6 +10266,20 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
     moving.end();
     cata_event_dispatch::avatar_moves( old_abs_pos, u, here );
+    if( climbing && movez > 0 && !climb_flying ) {
+        // CHAR-J11: what the aid's "up" block asks of the climber
+        const ::climbing_aid::up_t &up = climbing_aid->up;
+        if( up.enabled() ) {
+            if( !up.msg_after.empty() ) {
+                u.add_msg_if_player( up.msg_after.translated() );
+            }
+            up.cost.apply( u );
+        }
+    }
+    if( climbing ) {
+        get_event_bus().send<event_type::character_climbs>( u.getID(), climbing_aid.str(),
+                std::string( movez > 0 ? "up" : "down" ), std::abs( movez ) );
+    }
 }
 
 bool game::travel_to_dimension( dimension_id dimension_destination,
@@ -11895,18 +11921,7 @@ void game::climb_down_using( const tripoint_bub_ms &examp, climbing_aid_id aid_i
     }
 
     // You ride the ride, you pay the tithe.
-    if( aid.down.cost.damage > 0 ) {
-        you.apply_damage( nullptr, bodypart_id( "torso" ), aid.down.cost.damage );
-    }
-    if( aid.down.cost.pain > 0 ) {
-        you.mod_pain( aid.down.cost.pain );
-    }
-    if( aid.down.cost.kcal > 0 ) {
-        you.mod_stored_kcal( -aid.down.cost.kcal );
-    }
-    if( aid.down.cost.thirst > 0 ) {
-        you.mod_thirst( aid.down.cost.thirst );
-    }
+    aid.down.cost.apply( you );
 
     // vertical_move with force=true triggers traps at the end of the move.
     g->vertical_move( -descended_levels, true );
@@ -11920,6 +11935,8 @@ void game::climb_down_using( const tripoint_bub_ms &examp, climbing_aid_id aid_i
             you.add_msg_if_player( _( "You climb down and dive underwater." ) );
         }
     }
+    get_event_bus().send<event_type::character_climbs>( you.getID(), aid_id.str(),
+            std::string( "down" ), descended_levels );
 }
 
 pulp_data game::calculate_character_ability_to_pulp( const Character &you )
@@ -12202,6 +12219,8 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
     }
     get_event_bus().send<event_type::avatar_moves>( mount_type, m.ter( new_pos ).id(),
             u.current_movement_mode(), u.is_underwater(), new_pos.z() );
+    get_event_bus().send<event_type::character_moves>( u.getID(), mount_type,
+            m.ter( new_pos ).id(), u.current_movement_mode(), u.is_underwater(), new_pos.z() );
 
     avatar_changes_omt( old_abs_pos );
 }

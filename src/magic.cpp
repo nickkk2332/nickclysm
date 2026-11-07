@@ -4112,6 +4112,7 @@ void fake_spell::load( const JsonObject &jo )
     }
     optional( jo, false, "hit_types", hit_types, enum_flags_reader<hit_type> { "hit_types" },
               hit_types_default );
+    hit_types_given = jo.has_member( "hit_types" );
     if( hit_types.none() ) {
         jo.throw_error_at( "hit_types", "hit_types must name at least one kind of hit" );
     }
@@ -4125,7 +4126,7 @@ void fake_spell::serialize( JsonOut &json ) const
     json.member( "once_in", trigger_once_in, trigger_once_in_default );
     json.member( "max_level", max_level, max_level_default );
     json.member( "min_level", level, level_default );
-    if( hit_types != hit_types_default ) {
+    if( hit_types_given || hit_types != hit_types_default ) {
         json.member( "hit_types", hit_types );
     }
     json.end_object();

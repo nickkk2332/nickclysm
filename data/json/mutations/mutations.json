@@ -6243,7 +6243,14 @@
     "points": 3,
     "vitamin_cost": 160,
     "visibility": 1,
-    "ugliness": 1
+    "ugliness": 1,
+    "retaliation": [
+      {
+        "effects": [ { "id": "stunned", "duration": "2 turns" }, { "id": "blind", "duration": "2 turns", "one_in": 3 } ],
+        "message": "Your hairs detach into %s!",
+        "npc_message": "%2$s gets a load of %1$s's hair stuck in!"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -7285,7 +7292,16 @@
     "vitamin_cost": 160,
     "visibility": 8,
     "ugliness": 4,
-    "enchantments": [ { "condition": { "not": "u_has_weapon" }, "melee_damage_bonus": [ { "type": "stab", "add": 2 } ] } ]
+    "enchantments": [ { "condition": { "not": "u_has_weapon" }, "melee_damage_bonus": [ { "type": "stab", "add": 2 } ] } ],
+    "retaliation": [
+      {
+        "damage_type": "cut",
+        "damage": [ 1, 4 ],
+        "unarmed_attacker_only": true,
+        "message": "Your thorns scrape %s in mid-attack!",
+        "npc_message": "%1$s's thorns scrape %2$s in mid-attack!"
+      }
+    ]
   },
   {
     "type": "mutation",

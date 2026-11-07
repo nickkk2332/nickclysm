@@ -3190,6 +3190,114 @@ double warmth_eval( const_dialogue const &d, char scope, std::vector<diag_value>
                d.const_actor( is_beta( scope ) )->get_cur_part_temp( bp ) );
 }
 
+// CHAR-J10: per-part body state.  A talker that isn't a character, or lacks the part, reads 0
+// and ignores writes.
+Character const *_body_part_owner( const_dialogue const &d, char scope,
+                                   std::vector<diag_value> const &params, bodypart_id &bp )
+{
+    Character const *const chr = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( chr == nullptr ) {
+        return nullptr;
+    }
+    bp = bodypart_id( params[0].str( d ) );
+    return chr->has_part( bp ) ? chr : nullptr;
+}
+
+Character *_body_part_owner( dialogue &d, char scope, std::vector<diag_value> const &params,
+                             bodypart_id &bp )
+{
+    Character *const chr = d.actor( is_beta( scope ) )->get_character();
+    if( chr == nullptr ) {
+        return nullptr;
+    }
+    bp = bodypart_id( params[0].str( d ) );
+    return chr->has_part( bp ) ? chr : nullptr;
+}
+
+// wetness('bp'): how wet the part is, in percent of what it can hold
+double wetness_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                     diag_kwargs const & /* kwargs */ )
+{
+    bodypart_id bp;
+    Character const *const chr = _body_part_owner( d, scope, params, bp );
+    return chr == nullptr ? 0.0 : chr->get_part_wetness_percentage( bp ) * 100.0;
+}
+
+void wetness_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                  diag_kwargs const & /* kwargs */ )
+{
+    bodypart_id bp;
+    Character *const chr = _body_part_owner( d, scope, params, bp );
+    if( chr == nullptr ) {
+        return;
+    }
+    const int capacity = chr->get_part_drench_capacity( bp );
+    const double fraction = std::clamp( val, 0.0, 100.0 ) / 100.0;
+    const int wetness = static_cast<int>( std::lround( fraction * capacity ) );
+    chr->set_part_wetness( bp, std::clamp( wetness, 0, capacity ) );
+}
+
+// body_temp('bp'): the part's current temperature in Celsius; a write is a momentary change,
+// the part then drifts back towards what its surroundings make it
+double body_temp_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                       diag_kwargs const & /* kwargs */ )
+{
+    bodypart_id bp;
+    Character const *const chr = _body_part_owner( d, scope, params, bp );
+    return chr == nullptr ? 0.0 : units::to_celsius( chr->get_part_temp_cur( bp ) );
+}
+
+void body_temp_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                    diag_kwargs const & /* kwargs */ )
+{
+    bodypart_id bp;
+    Character *const chr = _body_part_owner( d, scope, params, bp );
+    if( chr != nullptr ) {
+        chr->set_part_temp_cur( bp, units::from_celsius( val ) );
+    }
+}
+
+// frostbite('bp'): the part's frostbite timer; frostnip and frostbite come from it
+double frostbite_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                       diag_kwargs const & /* kwargs */ )
+{
+    bodypart_id bp;
+    Character const *const chr = _body_part_owner( d, scope, params, bp );
+    return chr == nullptr ? 0.0 : chr->get_part_frostbite_timer( bp );
+}
+
+void frostbite_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                    diag_kwargs const & /* kwargs */ )
+{
+    bodypart_id bp;
+    Character *const chr = _body_part_owner( d, scope, params, bp );
+    if( chr != nullptr ) {
+        chr->set_part_frostbite_timer( bp, std::max( 0, static_cast<int>( val ) ) );
+    }
+}
+
+// CHAR-J09: the cardiovascular readings, updated once a minute
+double heart_rate_eval( const_dialogue const &d, char scope,
+                        std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    Character const *const chr = d.const_actor( is_beta( scope ) )->get_const_character();
+    return chr == nullptr ? 0.0 : chr->heartrate_bpm_average();
+}
+
+double blood_pressure_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    Character const *const chr = d.const_actor( is_beta( scope ) )->get_const_character();
+    return chr == nullptr ? 0.0 : chr->get_circulation();
+}
+
+double respiration_rate_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    Character const *const chr = d.const_actor( is_beta( scope ) )->get_const_character();
+    return chr == nullptr ? 0.0 : chr->get_respiration_rate();
+}
+
 double weather_eval( const_dialogue const &d, char /* scope */,
                      std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
@@ -3507,6 +3615,12 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "remaining_volume", { "un", 0, remaining_volume_eval } },
     { "remaining_weight", { "un", 0, remaining_weight_eval } },
     { "warmth", { "un", 1, warmth_eval } },
+    { "wetness", { "un", 1, wetness_eval, wetness_ass } },
+    { "body_temp", { "un", 1, body_temp_eval, body_temp_ass } },
+    { "frostbite", { "un", 1, frostbite_eval, frostbite_ass } },
+    { "heart_rate", { "un", 0, heart_rate_eval } },
+    { "blood_pressure", { "un", 0, blood_pressure_eval } },
+    { "respiration_rate", { "un", 0, respiration_rate_eval } },
     { "weather", { "g", 1, weather_eval, weather_ass, { "duration", "unit" } } },
     { "climate_control_str_heat", { "un", 0, climate_control_str_heat_eval } },
     { "climate_control_str_chill", { "un", 0, climate_control_str_chill_eval } },
