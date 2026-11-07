@@ -44,7 +44,6 @@
 #include "cata_lazy.h"
 #include "cata_path.h"
 #include "cata_utility.h"
-#include "cata_variant.h"
 #include "catacharset.h"
 #include "character.h"
 #include "character_id.h"
@@ -103,8 +102,8 @@
 #include "item_category.h"
 #include "item_group.h"
 #include "item_location.h"
-#include "item_wakeup.h"
 #include "item_uid.h"
+#include "item_wakeup.h"
 #include "itype.h"
 #include "kill_tracker.h"
 #include "line.h"
@@ -175,8 +174,8 @@
 #include "translation.h"
 #include "translation_gendered.h"
 #include "translations.h"
-#include "try_parse_integer.h"
 #include "trap.h"
+#include "try_parse_integer.h"
 #include "ui_manager.h"
 #include "uilist.h"
 #include "uistate.h"
@@ -194,6 +193,7 @@
 #include "wound.h"
 
 class recipe_subset;
+enum class cata_variant_type : int;
 
 static const activity_id ACT_AIM( "ACT_AIM" );
 static const activity_id ACT_SOCIALIZE( "ACT_SOCIALIZE" );
@@ -3450,7 +3450,7 @@ static item_locator_hint handle_hint( std::string_view handle )
 
 // Whether `str` is a monster, item or vehicle handle.  If it is and that is still around (in the
 // reality bubble), `found` is its talker.  An item found is kept in `items`.
-static bool talker_from_handle( const std::string &str, std::unique_ptr<talker> &found,
+static bool talker_from_handle( const std::string_view str, std::unique_ptr<talker> &found,
                                 std::list<item_location> &items )
 {
     if( const int64_t uid = handle_uid( str, "monster:" ) ) {

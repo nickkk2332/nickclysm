@@ -1,5 +1,7 @@
+#include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "avatar.h"
 #include "bodypart.h"

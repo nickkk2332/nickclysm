@@ -1,6 +1,11 @@
+#include <algorithm>
+#include <functional>
+#include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -8,11 +13,11 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
@@ -25,6 +30,7 @@
 #include "mapgen_primitives.h"
 #include "math_parser.h"
 #include "math_parser_diag_value.h"
+#include "math_parser_type.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "npc.h"
@@ -39,8 +45,6 @@
 static const bionic_id bio_power_storage( "bio_power_storage" );
 static const bionic_id test_bio_mutj03_toggle( "test_bio_mutj03_toggle" );
 
-static const efftype_id effect_test_grapple_mark( "test_grapple_mark" );
-
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_DAMAGE_ALL_WHEELS( "EOC_TEST_DAMAGE_ALL_WHEELS" );
 static const effect_on_condition_id
@@ -54,6 +58,8 @@ static const effect_on_condition_id
 effect_on_condition_EOC_TEST_OWN_VEHICLE( "EOC_TEST_OWN_VEHICLE" );
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_PAID_BIONIC( "EOC_TEST_PAID_BIONIC" );
+
+static const efftype_id effect_test_grapple_mark( "test_grapple_mark" );
 
 static const faction_id faction_test_npc_ai_doves( "test_npc_ai_doves" );
 static const faction_id faction_test_npc_ai_hawks( "test_npc_ai_hawks" );

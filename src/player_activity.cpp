@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 
 #include "activity_actor_definitions.h"
 #include "activity_handlers.h"
@@ -20,6 +21,7 @@
 #include "game.h"
 #include "item.h"
 #include "itype.h"
+#include "math_parser_diag_value.h"
 #include "messages.h"
 #include "rng.h"
 #include "skill.h"

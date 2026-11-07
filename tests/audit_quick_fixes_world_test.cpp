@@ -46,7 +46,7 @@ static const oter_type_str_id oter_type_test_aqf_omt_a( "test_aqf_omt_a" );
 
 static const ter_str_id ter_t_pavement( "t_pavement" );
 
-static const trap_str_id tr_test_aqf_omt_teleport_trap( "test_aqf_omt_teleport_trap" );
+static const trap_str_id test_aqf_omt_teleport_trap( "test_aqf_omt_teleport_trap" );
 
 static const vpart_id vpart_controls( "controls" );
 static const vpart_id vpart_frame( "frame" );
@@ -189,7 +189,7 @@ TEST_CASE( "loop-j02_a_teleport_trap_stepped_on_runs_the_omt_hooks_once", "[audi
     const omt_terrain_override set_a( omt_a, oter_test_aqf_omt_a );
     const omt_terrain_override set_b( omt_b, oter_test_aqf_omt_b );
     // The trap is in the same OMT; it sends the avatar 24 tiles east, into the next one.
-    here.trap_set( start + tripoint_rel_ms::east, tr_test_aqf_omt_teleport_trap.id() );
+    here.trap_set( start + tripoint_rel_ms::east, test_aqf_omt_teleport_trap.id() );
 
     REQUIRE( avatar_action::move( u, here, tripoint_rel_ms::east ) );
     REQUIRE( u.pos_abs_omt() == omt_b );

@@ -5192,10 +5192,16 @@ std::optional<std::string> Character::lose_body_part_by_eoc( const bodypart_str_
             }
         }
     }
+    // the root first, then the part itself, then the others: the set's order isn't fixed
     for( const bodypart_str_id &part : lost ) {
         if( part->connected_to == part ) {
             return part.str() + " is the root of the body";
         }
+    }
+    if( bp->is_vital ) {
+        return bp.str() + " is vital";
+    }
+    for( const bodypart_str_id &part : lost ) {
         if( part->is_vital ) {
             return part.str() + " is vital";
         }

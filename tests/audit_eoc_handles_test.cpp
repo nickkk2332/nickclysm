@@ -6,14 +6,15 @@
 #include <utility>
 
 #include "avatar.h"
-#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character_id.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "enums.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"

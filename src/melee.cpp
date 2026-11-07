@@ -35,7 +35,6 @@
 #include "damage.h"
 #include "debug.h"
 #include "dialogue.h"
-#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"

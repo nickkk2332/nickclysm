@@ -56,6 +56,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "options.h"
+#include "pimpl.h"
 #include "point.h"
 #include "projectile.h"
 #include "rng.h"
