@@ -168,12 +168,6 @@ int talker_item_const::get_artifact_resonance() const
     return ret;
 }
 
-int talker_item_const::charges_of( const itype_id &item_id ) const
-{
-    const item *it = alive( me_it_const );
-    return it != nullptr ? it->charges_of( item_id ) : 0;
-}
-
 int talker_item_const::get_count() const
 {
     const item *it = alive( me_it_const );

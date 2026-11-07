@@ -187,8 +187,8 @@ TEST_CASE( "use-j10_item_power_is_battery_and_charges_are_writable", "[audit][eo
     item_location rounds_loc( map_cursor( spot ), &rounds );
     dialogue d_rounds( get_talker_for( u ), get_talker_for( rounds_loc ) );
     CHECK( eval_math( d_rounds, "n_item_charges()" ) == 50 );
-    // charge_count() was always 0 for an item
-    CHECK( eval_math( d_rounds, "n_charge_count('9mm')" ) == 50 );
+    // charge_count() on an item talker counts what the item holds, not the stack itself (INV-J07)
+    CHECK( eval_math( d_rounds, "n_charge_count('9mm')" ) == 0 );
     eval_math( d_rounds, "n_item_charges() = 20" );
     CHECK( rounds.charges == 20 );
     // ITEM-J04's item_charges() keeps a stack at 1 or more: removing it is die()'s job
