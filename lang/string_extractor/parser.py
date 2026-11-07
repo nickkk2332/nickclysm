@@ -138,6 +138,7 @@ parsers = {
     "construction_group": parse_construction_group,
     "damage_info_order": parse_damage_info_order,
     "damage_type": parse_damage_type,
+    "dialogue_topic_override": dummy_parser,
     "dimension": dummy_parser,
     "dimension_region_layout": dummy_parser,
     "dream": parse_dream,

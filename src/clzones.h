@@ -18,6 +18,7 @@
 #include "coordinates.h"
 #include "cuboid_rectangle.h"
 #include "game.h"
+#include "global_vars.h"
 #include "map_scale_constants.h"
 #include "memory_fast.h"
 #include "point.h"
@@ -412,6 +413,8 @@ class zone_data
         tripoint_abs_ms cached_shift;
         shared_ptr_fast<zone_options> options;
         bool is_displayed;
+        // MATH-J08: EOC variables of the zone, set through the zone talker
+        global_variables::impl_t values;
 
     public:
         zone_data() {
@@ -579,6 +582,9 @@ class zone_data
             }
             return inclusive_cuboid<tripoint_abs_ms>( start, end ).contains( p );
         }
+        void set_value( const std::string &key, diag_value value );
+        void remove_value( const std::string &key );
+        diag_value const *maybe_get_value( const std::string &key ) const;
         void serialize( JsonOut &json ) const;
         void deserialize( const JsonObject &data );
 };

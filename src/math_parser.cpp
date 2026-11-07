@@ -178,7 +178,7 @@ struct parse_state {
 bool is_function( op_t const &op )
 {
     return std::holds_alternative<pmath_func>( op ) ||
-           std::holds_alternative<jmath_func_id>( op ) ||
+           std::holds_alternative<scoped_jmath_proto>( op ) ||
            std::holds_alternative<scoped_diag_proto>( op );
 }
 
@@ -192,7 +192,9 @@ bool is_assign_target( thingie const &thing )
     return std::holds_alternative<var>( thing.data ) ||
            std::holds_alternative<dot_oper>( thing.data ) ||
            ( std::holds_alternative<func_diag>( thing.data ) &&
-             std::get<func_diag>( thing.data ).fa != nullptr );
+             std::get<func_diag>( thing.data ).fa != nullptr ) ||
+           ( std::holds_alternative<func_jmath>( thing.data ) &&
+             std::get<func_jmath>( thing.data ).id->can_assign() );
 }
 
 std::vector<double> _eval_params( std::vector<thingie> const &params, const_dialogue const &d )
@@ -265,17 +267,34 @@ constexpr bool v_is_static = std::is_same_v<double, std::decay_t<T>> ||
 func::func( std::vector<thingie> &&params_, math_func::f_t f_ ) : params( params_ ),
     f( f_ ) {}
 func_jmath::func_jmath( std::vector<thingie> &&params_,
-                        jmath_func_id const &id_ ) : params( params_ ),
-    id( id_ ) {}
+                        jmath_func_id const &id_, char scope_ ) : params( params_ ),
+    id( id_ ), scope( scope_ ) {}
 
 double func::eval( const_dialogue const &d ) const
 {
     return f( _eval_params( params, d ) );
 }
 
+// MATH-J11: the arguments keep their type, so a jmath function can take strings and arrays
+static std::vector<diag_value> _jmath_args( std::vector<thingie> const &params,
+        const_dialogue const &d )
+{
+    std::vector<diag_value> args;
+    args.reserve( params.size() );
+    for( thingie const &param : params ) {
+        args.emplace_back( _get_diag_value( d, param ) );
+    }
+    return args;
+}
+
 double func_jmath::eval( const_dialogue const &d ) const
 {
-    return id->eval( d, _eval_params( params, d ) );
+    return id->eval( d, _jmath_args( params, d ), scope );
+}
+
+void func_jmath::assign( dialogue &d, double val ) const
+{
+    id->assign( d, _jmath_args( params, d ), scope, val );
 }
 
 double var::eval( const_dialogue const &d ) const
@@ -550,7 +569,7 @@ class math_exp::math_exp_impl
         void _parse( std::string_view str );
         void parse_string( std::string_view token );
         void parse_number( std::string_view token );
-        void parse_id( std::string_view token );
+        void parse_id( std::string_view token, bool called );
         void parse_bin_op( pbin_op const &op, std::string_view pos );
         void parse_ass_op( pass_op const &op, std::string_view pos );
         void parse_diag_f( std::string_view symbol, scoped_diag_proto const &token );
@@ -584,14 +603,16 @@ void math_exp::math_exp_impl::_parse( std::string_view str )
 {
     state = {};
     math::lexer lex( str );
-    for( math::token const &lexed : lex.tokens() ) {
+    std::vector<math::token> const &tokens = lex.tokens();
+    for( std::size_t i = 0; i < tokens.size(); i++ ) {
+        math::token const &lexed = tokens[i];
         std::string_view token = lexed.str;
         parse_position = token;
         if( lexed.type == math::token_t::string ) {
             parse_string( token );
 
         } else if( lexed.type == math::token_t::id ) {
-            parse_id( token );
+            parse_id( token, i + 1 < tokens.size() && tokens[i + 1].str == "(" );
 
         } else if( lexed.type == math::token_t::number ) {
             parse_number( token );
@@ -675,19 +696,30 @@ void math_exp::math_exp_impl::parse_number( std::string_view token )
     }
 }
 
-void math_exp::math_exp_impl::parse_id( std::string_view token )
+void math_exp::math_exp_impl::parse_id( std::string_view token, bool called )
 {
     state.validate( parse_state::expect::operand );
     maybe_first_argument();
+
+    // MATH-J11: u_my_func( ... ) and n_my_func( ... ) call my_func() for that talker; without the
+    // parenthesis, u_my_func is still a variable
+    jmath_func_id jmfid( token );
+    char jmath_scope = 'g';
+    if( !jmfid.is_valid() && called && token.size() > 2 && token[1] == '_' &&
+        ( token[0] == 'u' || token[0] == 'n' ) ) {
+        jmfid = jmath_func_id( token.substr( 2 ) );
+        jmath_scope = token[0];
+    }
 
     if( std::optional<pmath_func> ftoken = get_function( token ); ftoken ) {
         ops.emplace( *ftoken, token );
         arity.emplace( ( *ftoken )->symbol, ( *ftoken )->num_params, arity_t::type_t::func );
         state.set( parse_state::expect::lparen );
 
-    } else if( jmath_func_id jmfid( token ); jmfid.is_valid() ) {
-        ops.emplace( jmfid, token );
-        arity.emplace( token, jmfid->num_params, arity_t::type_t::func );
+    } else if( jmfid.is_valid() ) {
+        ops.emplace( scoped_jmath_proto{ jmfid, jmath_scope }, token );
+        // stringy: the arguments can be strings and arrays, as for dialogue functions
+        arity.emplace( token, jmfid->num_params, arity_t::type_t::func, true );
         state.set( parse_state::expect::lparen );
 
     } else if( std::optional<scoped_diag_proto> fproto = _get_dialogue_func( token ); fproto ) {
@@ -861,9 +893,12 @@ void math_exp::math_exp_impl::new_func()
             {
                 output.emplace( std::in_place_type_t<func>(), std::move( params ), v->f );
             },
-            [&params, this]( jmath_func_id const & v )
+            [&params, &kwargs, this]( scoped_jmath_proto const & v )
             {
-                output.emplace( std::in_place_type_t<func_jmath>(), std::move( params ), v );
+                if( !kwargs.empty() ) {
+                    throw math::syntax_error( "jmath function %s() takes no kwargs", v.id.str() );
+                }
+                output.emplace( std::in_place_type_t<func_jmath>(), std::move( params ), v.id, v.scope );
             },
             // TODO: LAMBDA_NORETURN_CLANG21x1 can be replaced with [[noreturn]] once we switch to C++23 on all compilers
             []( auto /* v */ ) LAMBDA_NORETURN_CLANG21x1

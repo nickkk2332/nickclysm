@@ -521,6 +521,87 @@ double damage_level_eval( const_dialogue const &d, char scope,
     return ( *it )->damage_level();
 }
 
+// MATH-J07: the item a function reads, or an error naming the function for another talker
+item const &_talker_item( const_dialogue const &d, char scope, std::string_view func )
+{
+    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "subject of %s() must be an item", func );
+    }
+    return *it->get_item();
+}
+
+item &_talker_item( dialogue &d, char scope, std::string_view func )
+{
+    item_location *it = d.actor( is_beta( scope ) )->get_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "subject of %s() must be an item", func );
+    }
+    return *it->get_item();
+}
+
+// item_temp(): in kelvin, as weather('temperature'); 0 for an item whose temperature isn't kept
+double item_temp_eval( const_dialogue const &d, char scope,
+                       std::vector<diag_value> const & /* params */,
+                       diag_kwargs const & /* kwargs */ )
+{
+    item const &it = _talker_item( d, scope, "item_temp" );
+    return it.has_temperature() ? units::to_kelvin( it.temperature ) : 0;
+}
+
+void item_temp_ass( double val, dialogue &d, char scope,
+                    std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    item &it = _talker_item( d, scope, "item_temp" );
+    if( it.has_temperature() ) {
+        it.set_item_temperature( units::from_kelvin( std::max( 0.0, val ) ) );
+    }
+}
+
+// rot(): in seconds; 'format': 'relative' is the fraction of the shelf life (1 is rotten).
+// 0 for an item that doesn't spoil, which ignores assignment
+double rot_eval( const_dialogue const &d, char scope, std::vector<diag_value> const & /* params */,
+                 diag_kwargs const &kwargs )
+{
+    item const &it = _talker_item( d, scope, "rot" );
+    if( !it.goes_bad() ) {
+        return 0;
+    }
+    std::string const format = kwargs.kwarg_or( "format" ).str( d );
+    if( format == "relative" ) {
+        return it.get_relative_rot();
+    }
+    if( !format.empty() ) {
+        throw math::runtime_error( R"(rot(): unknown format "%s")", format );
+    }
+    return to_turns<double>( it.get_rot() );
+}
+
+void rot_ass( double val, dialogue &d, char scope, std::vector<diag_value> const & /* params */,
+              diag_kwargs const &kwargs )
+{
+    item &it = _talker_item( d, scope, "rot" );
+    if( !it.goes_bad() ) {
+        return;
+    }
+    std::string const format = kwargs.kwarg_or( "format" ).str( d );
+    if( format == "relative" ) {
+        it.set_relative_rot( val );
+    } else if( format.empty() ) {
+        it.set_rot( time_duration::from_turns( static_cast<int>( std::lround( val ) ) ) );
+    } else {
+        throw math::runtime_error( R"(rot(): unknown format "%s")", format );
+    }
+}
+
+// ammo_count(): the ammo loaded in the item, of any type (a gun's rounds, a tool's charges)
+double ammo_count_eval( const_dialogue const &d, char scope,
+                        std::vector<diag_value> const & /* params */,
+                        diag_kwargs const & /* kwargs */ )
+{
+    return _talker_item( d, scope, "ammo_count" ).ammo_remaining();
+}
+
 // add_effect keeps a main_parts_only effect on the main part, so read and write it there,
 // or setting it on a hand would add a second effect instead of changing the first
 bodypart_id effect_bodypart( const efftype_id &id, const std::string &bp_str )
@@ -1425,9 +1506,12 @@ enum class mon_filter : int {
     enemies = 0,
     friends,
     both,
+    // MATH-J06: by the monster's attitude to the talker, so wildlife that won't attack is left out
+    hostile_to,
+    neutral_to,
 };
 
-bool _matches_attitude_filter( Creature const &critter, mon_filter filter )
+bool _matches_attitude_filter( Creature const &critter, mon_filter filter, Creature const *to )
 {
     monster const *mon = critter.as_monster();
     switch( filter ) {
@@ -1437,22 +1521,27 @@ bool _matches_attitude_filter( Creature const &critter, mon_filter filter )
             return mon->friendly != 0;
         case mon_filter::both:
             return true;
+        case mon_filter::hostile_to:
+            return to != nullptr && mon->attitude_to( *to ) == Creature::Attitude::HOSTILE;
+        case mon_filter::neutral_to:
+            return to != nullptr && mon->attitude_to( *to ) == Creature::Attitude::NEUTRAL;
     }
     return false;
 }
 
 template <class ID>
 bool _filter_monster( Creature const &critter, std::vector<ID> const &ids, int radius,
-                      tripoint_abs_ms const &loc, f_monster_match<ID> f, mon_filter filter )
+                      tripoint_abs_ms const &loc, f_monster_match<ID> f, mon_filter filter,
+                      bool allow_hallucinations, Creature const *to )
 {
-    if( critter.is_monster() ) {
+    if( critter.is_monster() && ( allow_hallucinations || !critter.is_hallucination() ) ) {
         bool const id_filter =
         ids.empty() || std::any_of( ids.begin(), ids.end(), [&critter, f]( ID const & id ) {
             return ( *f )( critter, id );
         } );
 
-        return id_filter && _matches_attitude_filter( critter, filter ) &&
-               radius >= rl_dist( critter.pos_abs(), loc );
+        return id_filter && radius >= rl_dist( critter.pos_abs(), loc ) &&
+               _matches_attitude_filter( critter, filter, to );
     }
     return false;
 }
@@ -1491,16 +1580,41 @@ double _monsters_nearby_eval( const_dialogue const &d, char scope,
         filter = mon_filter::both;
     } else if( filter_str == "friendly" ) {
         filter = mon_filter::friends;
+    } else if( filter_str == "enemy" ) {
+        filter = mon_filter::hostile_to;
+    } else if( filter_str == "neutral" ) {
+        filter = mon_filter::neutral_to;
     } else if( filter_str != "hostile" ) {
         throw math::runtime_error( R"(Unknown attitude filter "%s" for monsters_nearby())",
                                    filter_str );
     }
+    // MATH-J06: hallucinations count only when asked for, as for characters_nearby()
+    bool const allow_hallucinations =
+        is_true( kwargs.kwarg_or( "allow_hallucinations", 0 ).dbl( d ) );
+    // "enemy" and "neutral" are the attitude to the talker, or to the avatar without one
+    Creature const *to = nullptr;
+    if( filter == mon_filter::hostile_to || filter == mon_filter::neutral_to ) {
+        to = scope != 'g' ? d.const_actor( is_beta( scope ) )->get_const_creature() : nullptr;
+        if( to == nullptr ) {
+            to = &get_player_character();
+        }
+    }
 
     std::vector<Creature *> const targets =
-    g->get_creatures_if( [&mids, &radius, &loc, f, filter]( const Creature & critter ) {
-        return _filter_monster( critter, mids, radius, loc, f, filter );
+        g->get_creatures_if( [&mids, &radius, &loc, f, filter, allow_hallucinations,
+           to]( const Creature & critter ) {
+        return _filter_monster( critter, mids, radius, loc, f, filter, allow_hallucinations, to );
     } );
     return static_cast<double>( targets.size() );
+}
+
+// MATH-J06: is_hallucination(): 1 for a hallucinated monster or NPC, 0 for anything else
+double is_hallucination_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    Creature const *critter = d.const_actor( is_beta( scope ) )->get_const_creature();
+    return critter != nullptr && critter->is_hallucination() ? 1 : 0;
 }
 
 double monsters_nearby_eval( const_dialogue const &d, char scope,
@@ -3202,6 +3316,57 @@ double warmth_eval( const_dialogue const &d, char scope, std::vector<diag_value>
                d.const_actor( is_beta( scope ) )->get_cur_part_temp( bp ) );
 }
 
+// MATH-J05: the character's own body part a function names, or nullopt for another talker or
+// a part it doesn't have
+std::optional<bodypart_id> _character_part( const Character *guy, std::string const &bp_str,
+        std::string_view func )
+{
+    if( !bodypart_str_id( bp_str ).is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown body part "%s")", func, bp_str );
+    }
+    const bodypart_id bp( bp_str );
+    if( guy == nullptr || !guy->has_part( bp ) ) {
+        return std::nullopt;
+    }
+    return bp;
+}
+
+// Sets the part's current temperature, which then moves toward what clothing and weather make it
+void warmth_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                 diag_kwargs const & /* kwargs */ )
+{
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( std::optional<bodypart_id> bp = _character_part( guy, params[0].str( d ), "warmth" ) ) {
+        guy->set_part_temp_cur( *bp, units::from_legacy_bodypart_temp( static_cast<int>(
+                                    std::lround( val ) ) ) );
+    }
+}
+
+// wetness('torso'): how wet the part is, in percent of what it can hold (u_add_wet's unit)
+double wetness_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                     diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    std::optional<bodypart_id> bp = _character_part( guy, params[0].str( d ), "wetness" );
+    if( !bp ) {
+        return 0;
+    }
+    return 100.0 * guy->get_part_wetness_percentage( *bp );
+}
+
+void wetness_ass( double val, dialogue &d, char scope, std::vector<diag_value> const &params,
+                  diag_kwargs const & /* kwargs */ )
+{
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    std::optional<bodypart_id> bp = _character_part( guy, params[0].str( d ), "wetness" );
+    if( !bp ) {
+        return;
+    }
+    const int capacity = guy->get_part_drench_capacity( *bp );
+    guy->set_part_wetness( *bp, clamp( static_cast<int>( std::lround( val * capacity / 100.0 ) ), 0,
+                                       capacity ) );
+}
+
 double weather_eval( const_dialogue const &d, char /* scope */,
                      std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
@@ -3381,6 +3546,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "activity_moves_left", { "un", 0, activity_moves_left_eval, activity_moves_left_ass } },
     { "armor", { "un", 2, armor_eval } },
     { "arm_strength", { "un", 0, arm_strength_eval } },
+    { "ammo_count", { "un", 0, ammo_count_eval } },
     { "artifact_resonance", { "un", 0, artifact_resonance_eval } },
     { "attack_speed", { "un", 0, attack_speed_eval } },
     { "speed", { "un", 0, move_speed_eval } },
@@ -3435,14 +3601,16 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "has_var", { "g", 1, has_var_eval } },
     { "hp", { "un", 1, hp_eval, hp_ass } },
     { "hp_max", { "un", 1, hp_max_eval } },
+    { "is_hallucination", { "un", 0, is_hallucination_eval } },
     { "item_count", { "un", 1, item_count_eval } },
+    { "item_temp", { "un", 0, item_temp_eval, item_temp_ass } },
     { "item_rad", { "un", 1, item_rad_eval, {}, { "aggregate" } } },
     { "melee_damage", { "un", 1, melee_damage_eval } },
     { "mod_load_order", { "g", 1, mod_order_eval } },
     { "mod_setting", { "g", 1, mod_setting_eval, mod_setting_ass, {}, mod_setting_check, mod_setting_assign_check } },
-    { "monsters_nearby", { "ung", -1, monsters_nearby_eval, {}, { "radius", "attitude", "location" } } },
-    { "mon_species_nearby", { "ung", -1, monster_species_nearby_eval, {}, { "radius", "attitude", "location" } } },
-    { "mon_groups_nearby", { "ung", -1, monster_groups_nearby_eval, {}, { "radius", "attitude", "location" } } },
+    { "monsters_nearby", { "ung", -1, monsters_nearby_eval, {}, { "radius", "attitude", "location", "allow_hallucinations" } } },
+    { "mon_species_nearby", { "ung", -1, monster_species_nearby_eval, {}, { "radius", "attitude", "location", "allow_hallucinations" } } },
+    { "mon_groups_nearby", { "ung", -1, monster_groups_nearby_eval, {}, { "radius", "attitude", "location", "allow_hallucinations" } } },
     // OMAP-J01: overmap functions
     { "omt_distance", { "g", 2, omt_distance_eval } },
     { "horde_size", { "g", 1, horde_size_eval, {}, { "radius" } } },
@@ -3518,7 +3686,9 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "contents_weight", { "un", 0, contents_weight_eval } },
     { "remaining_volume", { "un", 0, remaining_volume_eval } },
     { "remaining_weight", { "un", 0, remaining_weight_eval } },
-    { "warmth", { "un", 1, warmth_eval } },
+    { "rot", { "un", 0, rot_eval, rot_ass, { "format" } } },
+    { "warmth", { "un", 1, warmth_eval, warmth_ass } },
+    { "wetness", { "un", 1, wetness_eval, wetness_ass } },
     { "weather", { "g", 1, weather_eval, weather_ass, { "duration", "unit" } } },
     { "climate_control_str_heat", { "un", 0, climate_control_str_heat_eval } },
     { "climate_control_str_chill", { "un", 0, climate_control_str_chill_eval } },

@@ -46,6 +46,7 @@
 #include "damage_rule.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_topic_override.h"
 #include "disease.h"
 #include "effect.h"
 #include "effect_on_condition.h"
@@ -638,6 +639,7 @@ void DynamicDataLoader::initialize()
     add( "npc", &npc_template::load_npc_template );
     add( "npc_class", &npc_class::load_npc_class );
     add( "talk_topic", &load_talk_topic );
+    add( "dialogue_topic_override", &dialogue_topic_override::load_override );
     add( "behavior", &behavior::load_behavior );
     add( "npc_decision_category", &npc_decision_category::load_category );
     add( "npc_need", &npc_custom_needs::load );
@@ -749,6 +751,7 @@ const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_su
         { "damage_info_order", json_inheritance::copy_from },
         { "damage_rule", json_inheritance::copy_from },
         { "damage_type", json_inheritance::copy_from },
+        { "dialogue_topic_override", json_inheritance::copy_from },
         { "dimension", json_inheritance::copy_from },
         { "dimension_region_layout", json_inheritance::copy_from },
         { "disease_type", json_inheritance::copy_from },
@@ -1201,6 +1204,7 @@ void DynamicDataLoader::unload_data()
     trap::reset();
     trap_migrations::reset();
     unload_talk_topics();
+    dialogue_topic_override::reset();
     VehicleGroup::reset();
     VehiclePlacement::reset();
     VehicleSpawn::reset();
@@ -1308,6 +1312,7 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Overmap locations" ), &overmap_locations::finalize },
             { _( "Cities" ), &city::finalize_all },
             { _( "Math functions" ), &jmath_func::finalize_all },
+            { _( "Dialogue topic overrides" ), &dialogue_topic_override::finalize_all },
             { _( "Start locations" ), &start_locations::finalize_all },
             { _( "Vehicle part locations" ), &vpart_location::finalize_all },
             { _( "Vehicle part migrations" ), &vpart_migration::finalize },
@@ -1418,6 +1423,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Weather types" ), &weather_types::check_consistency },
             { _( "Weapon categories" ), &weapon_category::verify_weapon_categories },
             { _( "Effect on conditions" ), &effect_on_conditions::check_consistency },
+            { _( "Dialogue topic overrides" ), &dialogue_topic_override::check_all },
             { _( "Field types" ), &field_types::check_consistency },
             { _( "Field type migrations" ), &field_type_migrations::check },
             { _( "Ammo effects" ), &ammo_effects::check_consistency },

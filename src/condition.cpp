@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <exception>
 #include <functional>
@@ -29,6 +30,7 @@
 #include "calendar.h"
 #include "character.h"
 #include "character_id.h"
+#include "clzones.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "creature_ref.h"
@@ -1857,6 +1859,14 @@ conditional_t::func f_is_furniture( bool is_npc )
     };
 }
 
+// MATH-J08: a zone talker, as u_run_fixed_zone_eocs gives
+conditional_t::func f_is_zone( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        return d.const_actor( is_npc )->get_const_zone() != nullptr;
+    };
+}
+
 conditional_t::func f_is_vehicle( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
@@ -3296,6 +3306,36 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
             const vehicle *veh = d.const_actor( is_npc )->get_const_vehicle();
             return ret_func( veh != nullptr ? veh->type.str() : std::string() );
         };
+    } else if( mutator == "u_activity" || mutator == "npc_activity" ) {
+        // MATH-J05: the id of the character's current activity, "" without one
+        const bool is_npc = mutator == "npc_activity";
+        return [is_npc, ret_func]( const_dialogue const & d ) {
+            const Character *who = d.const_actor( is_npc )->get_const_character();
+            return ret_func( who != nullptr && who->activity ? who->activity.id().str() :
+                             std::string() );
+        };
+    } else if( mutator == "u_monster_faction" || mutator == "npc_monster_faction" ) {
+        // MATH-J06: this monster's own faction (u_set_monster_faction changes it), not its type's
+        const bool is_npc = mutator == "npc_monster_faction";
+        return [is_npc, ret_func]( const_dialogue const & d ) {
+            const monster *mon = d.const_actor( is_npc )->get_const_monster();
+            return ret_func( mon != nullptr ? mon->faction.id().str() : std::string() );
+        };
+    } else if( mutator == "u_loaded_ammo" || mutator == "npc_loaded_ammo" ) {
+        // MATH-J07: the id of the ammo loaded in the item, "" for none or another talker
+        const bool is_npc = mutator == "npc_loaded_ammo";
+        return [is_npc, ret_func]( const_dialogue const & d ) {
+            const item_location *it = d.const_actor( is_npc )->get_const_item();
+            const itype *ammo = it != nullptr && *it ? ( *it )->ammo_data() : nullptr;
+            return ret_func( ammo != nullptr ? ammo->get_id().str() : std::string() );
+        };
+    } else if( mutator == "u_zone_type" || mutator == "npc_zone_type" ) {
+        // MATH-J08: the zone type of a zone talker (u_run_fixed_zone_eocs), "" for another talker
+        const bool is_npc = mutator == "npc_zone_type";
+        return [is_npc, ret_func]( const_dialogue const & d ) {
+            const zone_data *zone = d.const_actor( is_npc )->get_const_zone();
+            return ret_func( zone != nullptr ? zone->get_type().str() : std::string() );
+        };
     }
 
     return nullptr;
@@ -3564,6 +3604,16 @@ void conditional_t::set_legacy_dbl( dialogue &d, double input, std::string_view 
     } else if( checked_value == "power_percentage" ) {
         // Energy in milijoule
         d.actor( is_npc )->set_power_cur( ( d.actor( is_npc )->power_max() * input ) / 100 );
+    } else if( checked_value == "count" ) {
+        // MATH-J07: the size of a stack counted by charges (ammo, thread, ...), at least 1
+        item_location *it = d.actor( is_npc )->get_item();
+        if( it == nullptr || !*it || !( *it )->count_by_charges() ) {
+            throw math::runtime_error( R"(val("count") can only be set on an item counted by charges)" );
+        }
+        const int count = std::max( 1, static_cast<int>( std::lround( input ) ) );
+        ( *it )->mod_charges( count - ( *it )->charges );
+        // refresh the stack, its container and, for vehicle cargo, the vehicle mass
+        it->on_contents_changed();
     } else if( checked_value == "focus" ) {
         d.actor( is_npc )->mod_focus( input - d.actor( is_npc )->focus_cur() );
     } else if( checked_value == "mana_percentage" ) {
@@ -3823,6 +3873,9 @@ parsers_simple = {
     {"u_is_monster", "npc_is_monster", &conditional_fun::f_is_monster },
     {"u_is_item", "npc_is_item", &conditional_fun::f_is_item },
     {"u_is_furniture", "npc_is_furniture", &conditional_fun::f_is_furniture },
+    // the "furniture" talker is a computer's: u_is_computer says so
+    {"u_is_computer", "npc_is_computer", &conditional_fun::f_is_furniture },
+    {"u_is_zone", "npc_is_zone", &conditional_fun::f_is_zone },
     {"u_is_vehicle", "npc_is_vehicle", &conditional_fun::f_is_vehicle },
     {"u_has_ammo", "npc_has_ammo", &conditional_fun::f_has_ammo },
     // legacy spelling of npc_has_ammo
