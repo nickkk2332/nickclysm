@@ -529,6 +529,8 @@ void init_mapdata();
 struct map_data_common_t {
         std::set<emit_id> emissions;
         translation lockpick_message; // Lockpick action: message when successfully lockpicked
+        // ACT-J07: the lock's difficulty, rolled between the two; unset rolls 3d5-3
+        std::optional<std::pair<int, int>> lockpick_difficulty;
         cata::value_ptr<map_shoot_info> shoot;
 
     public:
@@ -755,6 +757,8 @@ struct ter_t : map_data_common_t {
     std::string phase_method;
 
     ter_str_id lockpick_result; // Lockpick action: transform when successfully lockpicked
+    // ACT-J07: what a clumsy lockpicking attempt jams the lock into; empty: it can't jam
+    ter_str_id lockpick_jam_result;
 
     cata::value_ptr<activity_data_ter> boltcut; // Bolt cutting action data
     cata::value_ptr<activity_data_ter> hacksaw; // Hacksaw action data
@@ -819,6 +823,10 @@ struct furn_t : map_data_common_t {
     furn_str_id open;  // Open action: transform into furniture with matching id
     furn_str_id close; // Close action: transform into furniture with matching id
     furn_str_id lockpick_result; // Lockpick action: transform when successfully lockpicked
+    // ACT-J07: what a clumsy lockpicking attempt jams the lock into; empty: it can't jam
+    furn_str_id lockpick_jam_result;
+    // ACT-J06: what an electronic safe (gunsafe_el) becomes when hacked; empty: f_safe_o
+    furn_str_id hack_result;
     std::optional<map_furn_bash_info> bash;
     std::optional<map_furn_deconstruct_info> deconstruct;
     itype_id crafting_pseudo_item;

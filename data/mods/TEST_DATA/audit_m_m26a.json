@@ -1,0 +1,139 @@
+[
+  {
+    "id": "TEST_M26A_ZONE",
+    "type": "LOOT_ZONE",
+    "name": "m26a test zone",
+    "display_field": "fd_null",
+    "description": "ACT-B06 fixture: the test renames it and checks that the zone manager follows.",
+    "hidden": true
+  },
+  {
+    "type": "mapgen",
+    "update_mapgen_id": "test_m26a_zone_options",
+    "//": "ACT-J05 fixture: zones with the options the zone manager would set.",
+    "object": {
+      "place_zones": [
+        {
+          "type": "FARM_PLOT",
+          "faction": "your_followers",
+          "x": 2,
+          "y": 2,
+          "options": { "seed": "seed_corn", "fertilizer": "fertilizer_commercial" }
+        },
+        {
+          "type": "CONSTRUCTION_BLUEPRINT",
+          "faction": "your_followers",
+          "x": 4,
+          "y": 2,
+          "options": { "construction": "constr_wall_log_half" }
+        },
+        {
+          "type": "UNLOAD_ALL",
+          "faction": "your_followers",
+          "x": 6,
+          "y": 2,
+          "options": { "molle": true, "sparse_only": true, "sparse_threshold": 5 }
+        },
+        {
+          "type": "SOURCE_FIREWOOD",
+          "faction": "your_followers",
+          "x": 8,
+          "y": 2,
+          "options": { "ignore_contents": true }
+        },
+        { "type": "FARM_PLOT", "faction": "your_followers", "x": 10, "y": 2 }
+      ]
+    }
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m26a_card_reader",
+    "name": "test card reader",
+    "description": "ACT-J06 fixture: its card turns locked metal doors within 2 tiles into floor; hacked, it becomes floor itself.",
+    "symbol": "6",
+    "color": "pink",
+    "move_cost": 0,
+    "flags": [ "NOITEM" ],
+    "examine_action": {
+      "type": "cardreader",
+      "flags": [ "SCIENCE_CARD" ],
+      "radius": 2,
+      "terrain_changes": { "t_door_metal_locked": "t_thconc_floor" },
+      "hacked_ter": "t_floor",
+      "query_msg": "Swipe your ID card?",
+      "success_msg": "The doors open.",
+      "redundant_msg": "The doors are already open."
+    }
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_m26a_card_reader",
+    "name": "test card reader console",
+    "description": "ACT-J06 fixture: a furniture card reader that opens the crates next to it.",
+    "symbol": "6",
+    "color": "pink",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "examine_action": {
+      "type": "cardreader",
+      "flags": [ "SCIENCE_CARD" ],
+      "radius": 1,
+      "furn_changes": { "f_crate_c": "f_crate_o" },
+      "query_msg": "Swipe your ID card?",
+      "success_msg": "The crates open.",
+      "redundant_msg": "The crates are already open."
+    }
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_m26a_el_safe",
+    "name": "test electronic safe",
+    "description": "ACT-J06 fixture: hacked open, it becomes an open gun safe.",
+    "symbol": "X",
+    "color": "light_gray",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "flags": [ "CONTAINER", "SEALED", "PLACE_ITEM" ],
+    "examine_action": "gunsafe_el",
+    "hack_result": "f_gunsafe_o"
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m26a_vault_door",
+    "name": "test vault door",
+    "description": "ACT-J07 fixture: a lock no one can pick, that jams into a door frame and sets off an alarm.",
+    "symbol": "+",
+    "color": "brown",
+    "move_cost": 0,
+    "flags": [ "NOITEM", "PICKABLE", "ALARMED" ],
+    "lockpick_result": "t_door_c",
+    "lockpick_difficulty": 1000,
+    "lockpick_jam_result": "t_door_frame"
+  },
+  {
+    "type": "terrain",
+    "id": "t_test_m26a_easy_lock",
+    "name": "test easy lock",
+    "description": "ACT-J07 fixture: a lock any trained hand opens.",
+    "symbol": "+",
+    "color": "brown",
+    "move_cost": 0,
+    "flags": [ "NOITEM", "PICKABLE" ],
+    "lockpick_result": "t_door_c",
+    "lockpick_difficulty": [ 0, 0 ]
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_m26a_vault_safe",
+    "name": "test vault safe",
+    "description": "ACT-J07 fixture: a safe no one can pick, that jams.",
+    "symbol": "X",
+    "color": "light_gray",
+    "move_cost_mod": -1,
+    "required_str": -1,
+    "flags": [ "CONTAINER", "SEALED", "PLACE_ITEM", "PICKABLE" ],
+    "lockpick_result": "f_gunsafe_o",
+    "lockpick_difficulty": 1000,
+    "lockpick_jam_result": "f_gunsafe_mj"
+  }
+]

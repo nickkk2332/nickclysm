@@ -1225,6 +1225,28 @@ NPCs in the faction will use the zone to influence the AI.
 | faction | (required, string) the faction id of the NPC faction that will use the zone.
 | name    | (optional, string) the name of the zone.
 | filter  | (optional, string) used as filter for `LOOT_CUSTOM`, or as group id for `LOOT_ITEM_GROUP`
+| options | (optional, object) the zone's options, as the zone manager would set them; see below
+
+`options` takes the members that fit the zone's type, all optional. The others are an error when the data loads.
+
+| Zone type | Member | Description
+| ---       | ---    | ---
+| `FARM_PLOT` | seed | (string) the seed item to plant; the plot is marked with what it grows. Without it the plot is tilled and harvested but not planted.
+| `FARM_PLOT` | fertilizer | (string) an item with the `FERTILIZER` flag to fertilize the plants with
+| `CONSTRUCTION_BLUEPRINT` | construction | (string) the construction id to build. As when it is picked in the zone manager, the zone builds up to the last construction of its group that follows from it (a half-built wall is finished into a wall). Without it the blueprint has no useful construction.
+| `AUTO_EAT`, `AUTO_DRINK`, `DISASSEMBLE`, `SOURCE_FIREWOOD` | ignore_contents | (bool) items in the zone are left alone when sorting. Default false.
+| `UNLOAD_ALL` | mods | (bool) detach mods from weapons. Default false.
+| `UNLOAD_ALL` | molle | (bool) detach MOLLE pouches. Default false.
+| `UNLOAD_ALL` | sparse_only | (bool) leave stacks bigger than `sparse_threshold` packed. Default false.
+| `UNLOAD_ALL` | sparse_threshold | (int) at least 1. Default 20.
+| `UNLOAD_ALL` | always_unload | (bool) unload even containers that have a sorting destination. Default false.
+
+```jsonc
+"zones": {
+  "f": { "type": "FARM_PLOT", "faction": "your_followers", "options": { "seed": "seed_corn", "fertilizer": "fertilizer_commercial" } },
+  "b": { "type": "CONSTRUCTION_BLUEPRINT", "faction": "your_followers", "options": { "construction": "constr_wall_log" } }
+}
+```
 
 The `type` field values affect NPC behavior. NPCs will:
 

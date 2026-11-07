@@ -113,6 +113,9 @@ Use the `Home` key to return to the top.
       - [`deployed_item`](#deployed_item)
       - [`lockpick_result`](#lockpick_result)
       - [`lockpick_message`](#lockpick_message)
+      - [`lockpick_difficulty`](#lockpick_difficulty)
+      - [`lockpick_jam_result`](#lockpick_jam_result)
+      - [`hack_result`](#hack_result)
       - [`light_emitted`](#light_emitted)
       - [`boltcut`](#boltcut)
       - [`hacksaw`](#hacksaw)
@@ -130,6 +133,8 @@ Use the `Home` key to return to the top.
       - [`light_emitted`](#light_emitted-1)
       - [`lockpick_result`](#lockpick_result-1)
       - [`lockpick_message`](#lockpick_message-1)
+      - [`lockpick_difficulty`](#lockpick_difficulty-1)
+      - [`lockpick_jam_result`](#lockpick_jam_result-1)
       - [`trap`](#trap)
       - [`boltcut`](#boltcut-1)
       - [`hacksaw`](#hacksaw-1)
@@ -3690,6 +3695,18 @@ Same as for terrain, see below in the chapter "Common to furniture and terrain".
 
 (Optional) When the furniture is successfully lockpicked, this is the message that will be printed to the player. When it is missing, a generic `"The lock opens…"` message will be printed instead.
 
+#### `lockpick_difficulty`
+
+(Optional) How hard the lock is to pick: an int, or `[ min, max ]` to roll between for each attempt. The attempt succeeds when the picker's roll (skills, stats, proficiencies and the tool's `LOCKPICK` quality; about 2 for an untrained survivor with a bobby pin) is at least the difficulty, and the lockpicking experience gained grows with it. Without it each attempt rolls 3d5-3 (0 to 12). An `ALARMED` lock may set off an alarm on any attempt that isn't made with a perfect lockpick, more likely the harder the lock.
+
+#### `lockpick_jam_result`
+
+(Optional) The furniture a very clumsy attempt (difficulty more than three times the picker's roll) jams the lock into, e.g. `"f_gunsafe_mj"` for the gun safe. Without it the lock can't jam.
+
+#### `hack_result`
+
+(Optional) For an electronic safe (`"examine_action": "gunsafe_el"`): the furniture it becomes when it is hacked open. Defaults to `f_safe_o`.
+
 #### `light_emitted`
 
 (Optional) How much light the furniture produces.  10 will light the tile it's on brightly, 15 will light that tile and the tiles around it brightly, as well as slightly lighting the tiles two tiles away from the source.
@@ -3900,6 +3917,14 @@ For examples: An overhead light is 120, a utility light, 240, and a console, 10.
 #### `lockpick_message`
 
 (Optional) When the terrain is successfully lockpicked, this is the message that will be printed to the player. When it is missing, a generic `"The lock opens…"` message will be printed instead.
+
+#### `lockpick_difficulty`
+
+(Optional) How hard the lock is to pick, as for [furniture](#lockpick_difficulty). Without it each attempt rolls 3d5-3 (0 to 12). An `ALARMED` lock (like `t_door_locked_alarm`) may set off an alarm.
+
+#### `lockpick_jam_result`
+
+(Optional) The terrain a very clumsy lockpicking attempt jams the lock into. Without it the lock can't jam.
 
 #### `trap`
 

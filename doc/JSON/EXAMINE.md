@@ -14,6 +14,8 @@
       - [`flags`](#flags)
       - [`consume_card`](#consume_card)
       - [`allow_hacking`](#allow_hacking)
+      - [`hacked_ter`](#hacked_ter)
+      - [`hacked_furn`](#hacked_furn)
       - [`despawn_monsters`](#despawn_monsters)
       - [`omt_allowed_radius`](#omt_allowed_radius)
       - [`mapgen_id`](#mapgen_id)
@@ -69,8 +71,9 @@ Examine actions and examine actors can be mixed within single key, like `"examin
 - ```fungus``` Release spores as the terrain crumbles away.
 - ```gaspump``` Use the gas-pump.
 - ```harvest_plant_ex``` Harvest a harvestable plant. Works on field crops and planters. (corn, wheat, etc.)
-- ```locked_object``` Locked, but can be pried open. Adding 'PICKABLE' flag allows opening with a lockpick as well. Prying/lockpicking results are hardcoded.
-- ```locked_object_pickable``` Locked, but can be opened with a lockpick. Requires 'PICKABLE' flag, lockpicking results are hardcoded.
+- ```gunsafe_el``` An electronic safe: hacking it open turns it into its `hack_result` furniture (default `f_safe_o`), see [JSON_INFO.md](JSON_INFO.md#hack_result).
+- ```locked_object``` Locked, but can be pried open. Adding 'PICKABLE' flag allows opening with a lockpick as well. Lockpicking uses the furniture/terrain's `lockpick_result`, `lockpick_message`, `lockpick_difficulty` and `lockpick_jam_result` (see [JSON_INFO.md](JSON_INFO.md#lockpick_result)); an `ALARMED` lock may set off an alarm.
+- ```locked_object_pickable``` Locked, but can be opened with a lockpick. Requires 'PICKABLE' flag; lockpicking works as for `locked_object`.
 - ```none``` None
 - ```pedestal_temple``` Opens the temple if you have a petrified eye.
 - ```pedestal_wyrm``` Spawn wyrms.
@@ -142,7 +145,19 @@ Whether or not to consume the item used to activate this cardreader.
 Optional, defaults to true.
 Boolean (true/false).
 Whether or not to allow hacking this door with an electrohack.
-If this allows hacking, it will ignore the data specified here, and transform all `t_door_metal_locked` to `t_door_metal_c` in a 3 tile radius.
+A successful hack makes the same changes as a card (`mapgen_id`, or `terrain_changes` and `furn_changes` within `radius`), without despawning monsters or using up a card, then turns the reader into `hacked_ter` / `hacked_furn`.
+
+#### `hacked_ter`
+Optional.
+String.
+The terrain the reader's tile becomes when it is hacked open.
+Defaults to `t_card_reader_broken` for a terrain reader; the terrain under a furniture reader stays as it is.
+
+#### `hacked_furn`
+Optional.
+String.
+The furniture the reader's tile becomes when it is hacked open.
+Without it the furniture stays as it is.
 
 #### `despawn_monsters`
 Optional, defaults to true.

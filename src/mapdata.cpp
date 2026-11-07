@@ -1401,6 +1401,22 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     floor_bedding_warmth = units::from_legacy_bodypart_temp_delta( legacy_floor_bedding_warmth );
 
     optional( jo, was_loaded, "lockpick_message", lockpick_message, translation() );
+    // ACT-J07: an int, or [ min, max ] to roll between
+    if( jo.has_int( "lockpick_difficulty" ) ) {
+        const int difficulty = jo.get_int( "lockpick_difficulty" );
+        lockpick_difficulty = std::make_pair( difficulty, difficulty );
+    } else if( jo.has_array( "lockpick_difficulty" ) ) {
+        const JsonArray ja = jo.get_array( "lockpick_difficulty" );
+        if( ja.size() != 2 ) {
+            ja.throw_error( "lockpick_difficulty must be an int or [ min, max ]" );
+        }
+        lockpick_difficulty = std::make_pair( ja.get_int( 0 ), ja.get_int( 1 ) );
+        if( lockpick_difficulty->first > lockpick_difficulty->second ) {
+            ja.throw_error( "lockpick_difficulty: min is more than max" );
+        }
+    } else if( jo.has_member( "lockpick_difficulty" ) ) {
+        jo.throw_error_at( "lockpick_difficulty", "lockpick_difficulty must be an int or [ min, max ]" );
+    }
     optional( jo, was_loaded, "light_emitted", light_emitted );
     if( jo.has_array( "light_color" ) ) {
         JsonArray jarr = jo.get_array( "light_color" );
@@ -1517,6 +1533,7 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "churned_into", churned_into );
 
     optional( jo, was_loaded, "lockpick_result", lockpick_result, ter_str_id::NULL_ID() );
+    optional( jo, was_loaded, "lockpick_jam_result", lockpick_jam_result );
 
     // Phase-change fields
     if( jo.has_array( "phase_targets" ) ) {
@@ -1698,6 +1715,11 @@ void ter_t::check() const
         !has_flag( ter_furn_flag::TFLAG_TREE ) ) {
         debugmsg( "ter %s has felled terrain but isn't a TREE", id.c_str() );
     }
+    // ACT-J07
+    if( !lockpick_jam_result.is_empty() && !lockpick_jam_result.is_valid() ) {
+        debugmsg( "ter %s: lockpick_jam_result terrain %s doesn't exist", id.c_str(),
+                  lockpick_jam_result.c_str() );
+    }
 
     // Validate open/close transforms
     if( !open.is_valid() ) {
@@ -1775,6 +1797,10 @@ void furn_t::load( const JsonObject &jo, const std::string &src )
 
     optional( jo, was_loaded, "lockpick_result", lockpick_result, string_id_reader<furn_t> {},
               furn_str_id::NULL_ID() );
+    optional( jo, was_loaded, "lockpick_jam_result", lockpick_jam_result,
+              string_id_reader<furn_t> {}, furn_str_id() );
+    optional( jo, was_loaded, "hack_result", hack_result, string_id_reader<furn_t> {},
+              furn_str_id() );
 
     load_tool_activity( jo, "oxytorch", was_loaded, oxytorch );
     load_tool_activity( jo, "boltcut", was_loaded, boltcut );
@@ -1856,6 +1882,16 @@ void furn_t::check() const
     }
     if( plant && !plant->base.is_valid() ) {
         debugmsg( "Invalid furniture %s for plant base in furn %s", plant->base.c_str(), id.c_str() );
+    }
+    // ACT-J06, ACT-J07
+    for( const std::pair<const furn_str_id *, const char *> &result : {
+             std::make_pair( &lockpick_jam_result, "lockpick_jam_result" ),
+             std::make_pair( &hack_result, "hack_result" )
+         } ) {
+        if( !result.first->is_empty() && !result.first->is_valid() ) {
+            debugmsg( "furn %s: %s furniture %s doesn't exist", id.c_str(), result.second,
+                      result.first->c_str() );
+        }
     }
 }
 
