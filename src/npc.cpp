@@ -789,6 +789,10 @@ void npc::randomize( const npc_class_id &type, const npc_template_id &tem_id )
 
     // Run mutation rounds
     for( const auto &mr : myclass->mutation_rounds ) {
+        if( !mr.first.is_valid() ) {
+            // reported by npc_class::check_consistency()
+            continue;
+        }
         int rounds = mr.second.roll();
         for( int i = 0; i < rounds; ++i ) {
             mutate_category( mr.first );

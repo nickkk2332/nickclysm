@@ -1136,10 +1136,24 @@ void npc::assess_danger()
         }
     }
 
+    // update the threat cache
+    const auto commit_threat_map = [this, &cur_threat_map]() {
+        for( size_t i = 0; i < 8; i++ ) {
+            direction threat_dir = npc_threat_dir[i];
+            direction dir_right = npc_threat_dir[( i + 1 ) % 8];
+            direction dir_left = npc_threat_dir[( i + 7 ) % 8 ];
+            ai_cache.threat_map[threat_dir] = cur_threat_map[threat_dir] + 0.1f *
+                                              ( cur_threat_map[dir_right] + cur_threat_map[dir_left] );
+        }
+    };
+
     if( mem_combat.assess_enemy == 0.0 && ai_cache.hostile_guys.empty() ) {
         if( mem_combat.panic > 0 ) {
             mem_combat.panic -= 1;
         }
+        // NPC-B09: with nobody hostile in sight the map is still committed, so nearby fire
+        // counts and the last fight's threats fade instead of staying for good
+        commit_threat_map();
         ai_cache.danger_assessment = mem_combat.assess_enemy;
         return;
     }
@@ -1174,7 +1188,13 @@ void npc::assess_danger()
             if( self_defense_only ) {
                 break;
             }
-            is_too_close |= too_close( foe.pos_bub(), guy.lock()->pos_bub(), def_radius );
+            // NPC-B15: g->shared_from() can give a null friend (see the HACK above), which
+            // the other loops over friends skip but this one dereferenced
+            const shared_ptr_fast<Creature> ally = guy.lock();
+            if( !ally ) {
+                continue;
+            }
+            is_too_close |= too_close( foe.pos_bub(), ally->pos_bub(), def_radius );
             if( is_too_close ) {
                 break;
             }
@@ -1308,14 +1328,7 @@ void npc::assess_danger()
         add_msg_debug( debugmode::DF_NPC, "Enemy Danger: %1f, Ally Strength: %2f.", mem_combat.assess_enemy,
                        mem_combat.assess_ally );
     }
-    // update the threat cache
-    for( size_t i = 0; i < 8; i++ ) {
-        direction threat_dir = npc_threat_dir[i];
-        direction dir_right = npc_threat_dir[( i + 1 ) % 8];
-        direction dir_left = npc_threat_dir[( i + 7 ) % 8 ];
-        ai_cache.threat_map[threat_dir] = cur_threat_map[threat_dir] + 0.1f *
-                                          ( cur_threat_map[dir_right] + cur_threat_map[dir_left] );
-    }
+    commit_threat_map();
     if( mem_combat.assess_enemy <= 2.0f ) {
         ai_cache.danger_assessment = -10.0f + 5.0f *
                                      mem_combat.assess_enemy; // Low danger if no monsters around
@@ -2686,12 +2699,17 @@ void npc::evaluate_best_attack( const Creature *target )
         }
         return VisitResponse::NEXT;
     } );
-    if( magic->spells().empty() ) {
+    const std::vector<spell_id> known_spells = magic->spells();
+    // NPC-B06: a caster runs the opens_spellbook EOCs (caster level, cost and casting time
+    // adjustments) before rating its spells. The check was inverted: only NPCs without spells
+    // sent the event, on every combat decision. Once a turn is enough.
+    if( !known_spells.empty() && ai_cache.opens_spellbook_turn != calendar::turn ) {
+        ai_cache.opens_spellbook_turn = calendar::turn;
         magic->clear_opens_spellbook_data();
         get_event_bus().send<event_type::opens_spellbook>( getID() );
-        magic->evaluate_opens_spellbook_data();
+        magic->evaluate_opens_spellbook_data( *this );
     }
-    for( const spell_id &sp : magic->spells() ) {
+    for( const spell_id &sp : known_spells ) {
         compare( std::make_shared<npc_attack_spell>( sp ), sp.c_str(), nullptr );
     }
 
@@ -4137,13 +4155,17 @@ void npc::avoid_friendly_fire()
         }
     }
 
-    tripoint_bub_ms center = midpoint_round_to_nearest( fr_pts );
+    // NPC-B13: a lone NPC (a gunman behind a closed window) has no friends to move away from,
+    // and the midpoint of no points divided 0 by 0
+    const std::optional<tripoint_bub_ms> center = fr_pts.empty() ? std::nullopt :
+            std::optional<tripoint_bub_ms>( midpoint_round_to_nearest( fr_pts ) );
 
     std::vector<tripoint_bub_ms> candidates = closest_points_first( pos_bub(), 1, 1 );
-    std::sort( candidates.begin(), candidates.end(),
-    [&tar, &center]( const tripoint_bub_ms & l, const tripoint_bub_ms & r ) {
-        return ( rl_dist( l, tar ) - rl_dist( l, center ) ) <
-               ( rl_dist( r, tar ) - rl_dist( r, center ) );
+    // a tile with a clear line of fire first, then near the target and away from friends
+    cata::sort_by_rating( candidates.begin(), candidates.end(),
+    [&tar, &center]( const tripoint_bub_ms & p ) {
+        return std::make_pair( !clear_shot_reach( p, tar ),
+                               rl_dist( p, tar ) - ( center ? rl_dist( p, *center ) : 0 ) );
     } );
 
     for( const tripoint_bub_ms &pt : candidates ) {
@@ -4480,7 +4502,8 @@ void npc::find_item()
 
     fetching_item = false;
     wanted_item = {};
-    int best_value = minimum_item_value();
+    // value of the item picked so far; good_for_pickup() already holds back what's too cheap
+    std::optional<double> best_value;
     // Not perfect, but has to mirror pickup code
     units::volume volume_allowed = free_space();
     units::mass   weight_allowed = weight_capacity() - weight_carried();
@@ -4507,8 +4530,14 @@ void npc::find_item()
             return false;
         }
         if( ::good_for_pickup( it, *this, p ) ) {
+            // NPC-B10: keep the best item, not the last one: tiles are scanned nearest first,
+            // so the last was the farthest. Of equally good items the nearest stays.
+            const double item_value = has_item_whitelist() ? 1000 : value( it );
+            if( best_value && item_value <= *best_value ) {
+                return false;
+            }
             wanted_item_pos = p;
-            best_value = has_item_whitelist() ? 1000 : value( it );
+            best_value = item_value;
             return true;
         } else {
             // whether an open container can be emptied first depends on NPC, not tile

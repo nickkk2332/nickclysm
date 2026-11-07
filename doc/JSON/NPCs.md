@@ -4,6 +4,7 @@
 
 - [Creating new NPCs](#creating-new-npcs)
   - [NPC Class definition](#npc-class-definition)
+    - [Copying a class](#copying-a-class)
     - [AI tuning](#ai-tuning)
     - [Shopkeeper NPC configuration](#shopkeeper-npc-configuration)
   - [NPC instance definition](#npc-instance-definition)
@@ -53,8 +54,18 @@ Format:
       "skill": "ALL",                                                      // Optional. Applies bonuses/penalties to skills like the examples above. `ALL` is a special string which
                                                                            // applies to all skills not otherwise modified. See data/json/skills.json for a list of skill IDs.
       "level": { "mul": [ { "one_in": 3 }, { "sum": [ { "dice": [ 2, 2 ] }, { "constant": -2 }, { "one_in": 4 } ] } ] }
-    }
+    },
+    { "skill": [ "gun", "rifle" ], "bonus": { "rng": [ 1, 3 ] } }       // Optional. "skill" is one skill or a list. "bonus" instead of "level" adds to
+                                                                           // the level rolled for the skill (or for `ALL`) instead of replacing it.
   ],
+  "spells": [ { "id": "magic_missile", "level": 3 } ],                   // Optional. Spells NPCs of this class know, at the given level.
+  "bionics": [ { "id": [ "bio_flashlight", "bio_tools" ], "chance": 50 } ], // Optional. Each listed bionic is installed with this chance in percent (0 to 100).
+  "mutation_rounds": { "ANY": { "constant": 1 }, "INSECT": { "rng": [ 1, 3 ] } }, // Optional. How many times NPCs of this class mutate in each mutation category
+                                                                           // (a distribution like the bonuses above; "ANY" is any category).
+  "work_hours": [ 22, 6 ],                                                 // Optional, default [ 0, 24 ]: always on duty. The shift starts at the first hour
+                                                                           // and ends before the second, both from 0 to 24. A start after the end wraps
+                                                                           // midnight: [ 22, 6 ] is 10pm to 6am. An NPC with a post keeps it, and is woken
+                                                                           // for it, only during its shift.
   "worn_override": "NC_EXAMPLE_worn",                                      // Optional. Defines an [item group](ITEM_SPAWN.md) that replaces all of their worn items.
   "carry_override": "NC_EXAMPLE_carried",                                  // Optional. Defines an item group that replaces their carried items (in pockets, etc). Items which cannot
                                                                            // be carried will overflow(fall to the ground) when the NPC is loaded.
@@ -81,6 +92,23 @@ Format:
   "stranger_topics": [ { "condition": { "math": [ "n_npc_trust() > 5" ] }, "topic": "talk_stranger_friendly" } ]    // Optional. See [Stranger topics](#stranger-topics) below.
 }
 ```
+
+A spell, bionic, proficiency or mutation category that doesn't exist is a load error, and so are a bionic `chance` outside 0 to 100 and `work_hours` outside 0 to 24.
+
+### Copying a class
+With `"copy-from"`, a class starts as a copy of the class it names, and what it doesn't give keeps the copied value, the `bonus_*` distributions included.  Its `skills`, `spells`, `bionics` and `mutation_rounds` add to the copied entries; an entry for a skill, spell, bionic or category the copy already has replaces it (a spell's level, a bionic's chance).  `"delete"` takes copied entries away by id:
+
+```jsonc
+{
+  "type": "npc_class",
+  "id": "NC_EXAMPLE_NIGHT",
+  "copy-from": "NC_EXAMPLE",
+  "spells": [ { "id": "magic_missile", "level": 5 } ],                     // a level for a copied spell, or a new spell
+  "delete": { "spells": [ "light_healing" ], "bionics": [ "bio_tools" ], "skills": [ "melee" ], "mutation_rounds": [ "INSECT" ] }
+}
+```
+
+`traits`, `proficiencies` and `stranger_topics` given replace the copied ones.
 
 ### Stranger topics
 When an NPC that isn't your follower, isn't asleep and has no mission to talk about starts a conversation, its personality and its opinion of you pick how it opens: `talk_mug` (and it starts mugging you), `talk_stranger_aggressive`, `talk_stranger_scared`, `talk_stranger_wary`, `talk_stranger_friendly` or `talk_stranger_neutral`, which its template can point at its own topics (see [Writing dialogues](#writing-dialogues)).  A class's `"stranger_topics"` are tried first, in order, and the first whose `condition` holds (u is you, npc the NPC; no condition always holds) decides instead:

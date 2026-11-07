@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include "avatar.h"
+#include "bodypart.h"
 #include "cata_utility.h"
 #include "character.h"
 #include "creature.h"
@@ -24,12 +26,15 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
+#include "explosion.h"
 #include "flag.h"
 #include "game.h"
 #include "gun_mode.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
+#include "iuse.h"
+#include "iuse_actor.h"
 #include "magic.h"
 #include "magic_spell_effect_helpers.h"
 #include "map.h"
@@ -514,8 +519,23 @@ npc_attack_rating npc_attack_spell::evaluate_tripoint(
 static double melee_damage_per_second( const item &weapon, const npc &source )
 {
     double damage{ weapon.base_damage_melee().total_damage() };
+    if( weapon.is_null() ) {
+        // NPC-B05: a fist has no damage of its own, so a punch rated 0 and was never chosen.
+        // Rate it by what it deals on average: strength, unarmed skill, martial arts.
+        damage_instance punch;
+        source.roll_all_damage( false, punch, true, weapon, attack_vector_id::NULL_ID(),
+                                sub_bodypart_str_id::NULL_ID(), nullptr, body_part_torso );
+        damage = punch.total_damage();
+    }
     damage *= 100.0 / weapon.attack_time( source );
     return damage;
+}
+
+// NPC-B05: the barehanded attack is the null item, which is_wielding() (an address compare)
+// never matches, so it is "in hand" when nothing is wielded.
+static bool holds_melee_weapon( const npc &source, const item &weapon )
+{
+    return weapon.is_null() ? !source.is_armed() : source.is_wielding( weapon );
 }
 
 static npc_attack_rating rate_melee_critter( const npc &source, const Creature *target,
@@ -523,7 +543,8 @@ static npc_attack_rating rate_melee_critter( const npc &source, const Creature *
 
 void npc_attack_melee::use( npc &source, const tripoint_bub_ms &location ) const
 {
-    if( !source.is_wielding( weapon ) ) {
+    if( !holds_melee_weapon( source, weapon ) ) {
+        // for the barehanded attack this puts the wielded item away
         if( !source.wield( weapon ) ) {
             debugmsg( "ERROR: npc tried to equip a weapon it couldn't wield" );
         }
@@ -676,13 +697,21 @@ std::vector<npc_attack_rating> npc_attack_melee::all_evaluations( const npc &sou
 
 bool npc_attack_melee::can_use( const npc &source ) const
 {
+    if( holds_melee_weapon( source, weapon ) ) {
+        return true;
+    }
+    if( weapon.is_null() ) {
+        // punching means putting the wielded item away, which a bionic weapon or a
+        // NO_UNWIELD item doesn't allow
+        return source.can_unwield( *source.get_wielded_item() ).success();
+    }
     // can't attack with something you can't wield
-    return source.is_wielding( weapon ) || source.can_wield( weapon ).success();
+    return source.can_wield( weapon ).success();
 }
 
 int npc_attack_melee::base_time_penalty( const npc &source ) const
 {
-    return source.is_wielding( weapon ) ? 0 : npc_attack_constants::base_time_penalty;
+    return holds_melee_weapon( source, weapon ) ? 0 : npc_attack_constants::base_time_penalty;
 }
 
 npc_attack_rating npc_attack_melee::evaluate_critter( const npc &source,
@@ -818,7 +847,10 @@ int npc_attack_gun::base_time_penalty( const npc &source ) const
 {
     const item &weapon = *gunmode;
     int time_penalty = 0;
-    if( source.is_wielding( weapon ) ) {
+    // NPC-B08: the penalty is for a gun that must be wielded first; it was added to the
+    // wielded one, so a spare copy always won and the NPC swapped guns every turn. An
+    // underbarrel mode's gunmod is never wielded itself, so ask about the base gun.
+    if( !source.is_wielding( gun ) ) {
         time_penalty += npc_attack_constants::base_time_penalty;
     }
     // we want the need to reload a gun cumulative with needing to wield the gun
@@ -1002,6 +1034,114 @@ static npc_attack_rating rate_throw_tile( const npc &source, const Creature *tar
         const tripoint_bub_ms &location, const item &thrown_item, const item &single_item,
         float throw_mult );
 
+// The blast radius of an explosive, as npc::find_dangerous_explosives() reads it: an explosion
+// countdown_action (grenades, dynamite) or an "explosion" use action. 0 for anything else.
+static int explosive_safe_range( const item &it )
+{
+    const explosion_iuse *actor = dynamic_cast<const explosion_iuse *>
+                                  ( it.type->countdown_action.get_actor_ptr() );
+    if( actor == nullptr ) {
+        if( const use_function *use = it.type->get_use( "explosion" ) ) {
+            actor = dynamic_cast<const explosion_iuse *>( use->get_actor_ptr() );
+        }
+    }
+    return actor == nullptr ? 0 : actor->explosion.safe_range();
+}
+
+// Where something thrown from `from` at `to` comes down: the last tile before a wall in the way.
+static tripoint_bub_ms throw_landing_point( const tripoint_bub_ms &from,
+        const tripoint_bub_ms &to )
+{
+    const map &here = get_map();
+    tripoint_bub_ms landing = from;
+    for( const tripoint_bub_ms &p : line_to( from, to ) ) {
+        if( here.impassable( p ) ) {
+            break;
+        }
+        landing = p;
+    }
+    return landing;
+}
+
+// NPC-B07: where to get rid of an NPC_THROW_NOW item. This used to return the first tile of
+// the range, which is always its north-west corner, whoever stood there. Each tile in range is
+// rated instead, by where the item would come down:
+// - farther from the thrower is better, and a clear line is worth 100, as before;
+// - every tile the thrower or an ally would be inside the blast radius costs 50;
+// - every tile an enemy would be inside it is worth 10, for up to 3 enemies;
+// - with the avoid_friendly_fire rule, a throw that could hit a friend costs 150.
+static npc_attack_rating rate_hot_potato( const npc &source, const item &thrown_item,
+        const tripoint_range<tripoint_bub_ms> &in_range, const bool avoids_friendly_fire )
+{
+    const tripoint_bub_ms pos = source.pos_bub();
+    const int safe_range = explosive_safe_range( thrown_item );
+    std::vector<tripoint_bub_ms> allies;
+    std::vector<tripoint_bub_ms> enemies;
+    if( safe_range > 0 ) {
+        const tripoint_rel_ms margin( safe_range, safe_range, 0 );
+        const tripoint_range<tripoint_bub_ms> blast_area( in_range.min() - margin,
+                in_range.max() + margin );
+        creature_tracker &creatures = get_creature_tracker();
+        for( const tripoint_bub_ms &p : creature_tiles_in( blast_area ) ) {
+            const Creature *critter = creatures.creature_at( p );
+            if( critter == nullptr || critter == &source ) {
+                continue;
+            }
+            const Creature::Attitude att = source.attitude_to( *critter );
+            if( att == Creature::Attitude::FRIENDLY ) {
+                allies.push_back( p );
+            } else if( att == Creature::Attitude::HOSTILE ) {
+                enemies.push_back( p );
+            }
+        }
+    }
+    // how many tiles inside the blast radius `who` would be
+    const auto inside_blast = [safe_range]( const tripoint_bub_ms & landing,
+    const tripoint_bub_ms & who ) {
+        return std::max( 0, safe_range - rl_dist( landing, who ) );
+    };
+
+    npc_attack_rating best( std::nullopt, pos );
+    std::vector<int> enemy_depths;
+    enemy_depths.reserve( enemies.size() );
+    for( const tripoint_bub_ms &potential : in_range ) {
+        const tripoint_bub_ms landing = throw_landing_point( pos, potential );
+        int result = npc_attack_constants::base_throw_now + rl_dist( landing, pos );
+        if( !has_obstruction( pos, potential, avoids_friendly_fire ) ) {
+            // More likely to pick a target tile that isn't obstructed
+            result += 100;
+        }
+        if( safe_range > 0 ) {
+            result -= 50 * inside_blast( landing, pos );
+            for( const tripoint_bub_ms &ally : allies ) {
+                result -= 50 * inside_blast( landing, ally );
+            }
+            enemy_depths.clear();
+            for( const tripoint_bub_ms &enemy : enemies ) {
+                enemy_depths.push_back( inside_blast( landing, enemy ) );
+            }
+            std::sort( enemy_depths.begin(), enemy_depths.end(), std::greater<>() );
+            for( size_t i = 0; i < enemy_depths.size() && i < 3; ++i ) {
+                result += 10 * enemy_depths[i];
+            }
+        }
+        // the friend check is the costly part, and can only lower the rating
+        if( best > result ) {
+            continue;
+        }
+        if( avoids_friendly_fire && !source.wont_hit_friend( potential, thrown_item, true ) ) {
+            result -= 150;
+        }
+        // still well above any other attack, so the item always goes
+        npc_attack_rating rated( std::max( result, npc_attack_constants::base_throw_now / 2 ),
+                                 potential );
+        if( rated > best ) {
+            best = rated;
+        }
+    }
+    return best;
+}
+
 void npc_attack_throw::use( npc &source, const tripoint_bub_ms &location ) const
 {
     if( !source.is_wielding( thrown_item ) ) {
@@ -1011,9 +1151,12 @@ void npc_attack_throw::use( npc &source, const tripoint_bub_ms &location ) const
         return;
     }
 
-    if( has_obstruction( source.pos_bub(), location, false ) ||
-        ( source.rules.has_flag( ally_rule::avoid_friendly_fire ) &&
-          !source.wont_hit_friend( location, thrown_item, true ) ) ) {
+    // NPC-B07: a live explosive is thrown at once, to the tile evaluate() picked for it, even
+    // if the line isn't clear: sidestepping to get a better line can last until it goes off
+    if( !thrown_item.has_flag( flag_NPC_THROW_NOW ) &&
+        ( has_obstruction( source.pos_bub(), location, false ) ||
+          ( source.rules.has_flag( ally_rule::avoid_friendly_fire ) &&
+            !source.wont_hit_friend( location, thrown_item, true ) ) ) ) {
         if( can_move( source ) ) {
             source.avoid_friendly_fire();
         } else {
@@ -1119,18 +1262,7 @@ npc_attack_rating npc_attack_throw::evaluate(
     const bool avoids_friendly_fire = source.rules.has_flag( ally_rule::avoid_friendly_fire );
     if( throw_now ) {
         // hot potato! HOT POTATO!
-        // The first targetable point, with or without a target
-        for( const tripoint_bub_ms &potential : targetable_points( source ) ) {
-            // TODO: Take into account distance to allies too
-            const int distance_to_me = rl_dist( potential, source.pos_bub() );
-            int result = npc_attack_constants::base_throw_now + distance_to_me;
-            if( !has_obstruction( source.pos_bub(), potential, avoids_friendly_fire ) ) {
-                // More likely to pick a target tile that isn't obstructed
-                result += 100;
-            }
-            return npc_attack_rating( result, potential );
-        }
-        return effectiveness;
+        return rate_hot_potato( source, thrown_item, targetable_points( source ), avoids_friendly_fire );
     }
 
     const item single_item = single_throw( thrown_item );

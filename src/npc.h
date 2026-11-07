@@ -553,6 +553,8 @@ struct npc_short_term_cache {
 
     npc_attack_rating current_attack_evaluation;
     std::shared_ptr<npc_attack> current_attack;
+    // the turn the NPC last sent opens_spellbook before rating its spells (NPC-B06)
+    time_point opens_spellbook_turn = calendar::before_time_starts;
 
 
     // Use weak_ptr to avoid circular references between Creatures
@@ -1614,6 +1616,11 @@ class npc : public Character
         }
         weak_ptr_fast<Creature> get_ai_target() const {
             return ai_cache.target;
+        }
+        // threat per direction, as assess_danger() last left it
+        float get_ai_threat( direction dir ) const {
+            const auto found = ai_cache.threat_map.find( dir );
+            return found == ai_cache.threat_map.end() ? 0.0f : found->second;
         }
         bool has_ai_sound_alerts() const {
             return !ai_cache.sound_alerts.empty();

@@ -3080,7 +3080,7 @@ void known_magic::clear_opens_spellbook_data()
     }
 }
 
-void known_magic::evaluate_opens_spellbook_data()
+void known_magic::evaluate_opens_spellbook_data( const Character &caster )
 {
     for( spell *sp : get_spells() ) {
         double raw_level_adjust = caster_level_adjustment + sp->get_temp_level_adjustment();
@@ -3095,7 +3095,7 @@ void known_magic::evaluate_opens_spellbook_data()
             raw_level_adjust += spell_it->second;
         }
         int final_level = clamp( sp->get_level() + static_cast<int>( raw_level_adjust ), 0,
-                                 sp->get_max_level( get_player_character() ) );
+                                 sp->get_max_level( caster ) );
         sp->set_temp_level_adjustment( final_level - sp->get_level() );
     }
 }

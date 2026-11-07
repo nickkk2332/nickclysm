@@ -837,8 +837,8 @@ class known_magic
         bool has_enough_energy( const Character &guy, const spell &sp ) const;
         // Clears old data written by EoC triggered by the events player_opens_spellbook or npc_opens_spellbook
         void clear_opens_spellbook_data();
-        // uses data received from EoC
-        void evaluate_opens_spellbook_data();
+        // uses data received from EoC; levels are capped at what the caster can reach
+        void evaluate_opens_spellbook_data( const Character &caster );
         void channel_magic( Character &guy );
         void break_channeling( Character &guy );
 
