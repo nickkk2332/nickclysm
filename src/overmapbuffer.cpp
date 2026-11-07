@@ -1990,6 +1990,30 @@ radio_tower_reference overmapbuffer::find_radio_station( const int frequency )
     return radio_tower_reference{ nullptr, point_abs_sm(), 0 };
 }
 
+int overmapbuffer::add_radio_station( const tripoint_abs_omt &p, const int strength,
+                                      const std::string &message, const bool weather )
+{
+    const overmap_with_local_coords om_loc = get_om_global( p );
+    const point_om_sm pos_sm = project_to<coords::sm>( om_loc.local.xy() );
+    if( weather ) {
+        om_loc.om->radios.emplace_back( pos_sm, strength, "", radio_type::WEATHER_RADIO );
+    } else {
+        om_loc.om->radios.emplace_back( pos_sm, strength, message );
+    }
+    return om_loc.om->radios.back().frequency;
+}
+
+int overmapbuffer::remove_radio_stations( const tripoint_abs_omt &p )
+{
+    const overmap_with_local_coords om_loc = get_om_global( p );
+    std::vector<radio_tower> &radios = om_loc.om->radios;
+    const size_t before = radios.size();
+    radios.erase( std::remove_if( radios.begin(), radios.end(), [&]( const radio_tower & tower ) {
+        return project_to<coords::omt>( tower.pos ) == om_loc.local.xy();
+    } ), radios.end() );
+    return static_cast<int>( before - radios.size() );
+}
+
 std::vector<radio_tower_reference> overmapbuffer::find_all_radio_stations()
 {
     std::vector<radio_tower_reference> result;
@@ -2652,6 +2676,12 @@ bool overmapbuffer::place_special( const overmap_special_id &special_id,
     // Get all of the overmaps within the defined radius of the center.
     for( overmap * const &om : get_overmaps_near(
              project_to<coords::sm>( center ), omt_to_sm_copy( rad ) ) ) {
+
+        // The special's EOC condition, once per overmap: the placement below doesn't test it
+        // (OMAP-J07).
+        if( !special.eoc_condition_allows( *om ) ) {
+            continue;
+        }
 
         // Build an overmap_special_batch for the special on this overmap.
         std::vector<const overmap_special *> specials;

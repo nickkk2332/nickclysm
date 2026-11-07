@@ -276,6 +276,35 @@ struct overmap_static_spawns : public overmap_spawns {
     }
 };
 
+/**
+ * A radio station that worldgen may put on an overmap terrain at z-level 0 (OMAP-J08).  One of a
+ * terrain's stations is picked by weight; a "none" station puts none there.
+ */
+struct oter_radio_station {
+    enum class station_type : int {
+        broadcast,
+        weather,
+        none,
+        last
+    };
+    station_type type = station_type::broadcast;
+    int weight = 1;
+    // Signal strength, rolled between these
+    int min_strength = 120;
+    int max_strength = 360;
+    // A broadcast's message; "<station_number>" becomes the terrain's position on its overmap
+    translation message;
+    // Or a random snippet of this category
+    std::string snippet_category;
+
+    void deserialize( const JsonObject &jo );
+};
+
+template<>
+struct enum_traits<oter_radio_station::station_type> {
+    static constexpr oter_radio_station::station_type last = oter_radio_station::station_type::last;
+};
+
 //terrain flags enum! this is for tracking the indices of each flag.
 enum class oter_flags : int {
     known_down = 0,
@@ -452,6 +481,9 @@ struct oter_type_t {
         oter_vision_id vision_levels;
 
         std::vector<pp_generator_id> post_process_generators;
+
+        // The radio stations worldgen picks from for this terrain, if any (OMAP-J08)
+        std::vector<oter_radio_station> radio_stations;
 
         std::string get_symbol() const;
 
@@ -795,8 +827,18 @@ class overmap_special
         const overmap_special_terrain &get_terrain_at( const tripoint_rel_omt &p ) const;
         /** @returns true if this special requires a city */
         bool requires_city() const;
-        /** @returns whether the special at specified tripoint can belong to the specified city. */
-        bool can_belong_to_city( const tripoint_om_omt &p, const city &cit, const overmap &omap ) const;
+        /**
+         * @returns whether the special may go at a spot whose nearest city (on its overmap or on an
+         * existing neighbouring one, see overmap::nearest_city_across_borders) is nearest_city,
+         * nearest_distance tiles away as city::get_distance_from counts.  nearest_city is nullptr
+         * when there is no city.
+         */
+        bool can_belong_to_city( const city *nearest_city, int nearest_distance ) const;
+        /**
+         * Whether the condition of the special's "eoc" (if it has one) lets it be placed on om.
+         * Alpha is the avatar; the context variable overmap_pos is the center of om (OMAP-J07).
+         */
+        bool eoc_condition_allows( const overmap &om ) const;
         const cata::flat_set<std::string> &get_flags() const {
             return flags_;
         }

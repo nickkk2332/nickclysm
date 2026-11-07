@@ -208,18 +208,20 @@ are applied afterwards. The `om_terrain` is the only required field.
 
 Identifier             | Description
 ---                    | ---
-`om_terrain`           | ID of overmap terrain which will be selected as the target. Mandatory.  String or or [variable object](#variable-object)
+`om_terrain`           | ID of overmap terrain which will be selected as the target. Mandatory.  String or or [variable object](#variable-object), or a list of them: the target is then any of those terrains (all with the same `om_terrain_match_type`), and `om_terrain_replace` turns a tile into the first.
 `om_terrain_match_type`| Matching rule to use with `om_terrain`. Defaults to TYPE. Details below.
 `om_special`           | ID of overmap special containing the overmap terrain.  String or or [variable object](#variable-object)
 `om_terrain_replace`   | ID of overmap terrain to be found and replaced if `om_terrain` cannot be found. String or or [variable object](#variable-object)
 `reveal_radius`        | Radius in overmap terrain coordinates to reveal.  Int or or [variable object](#variable-object)
 `must_see`             | If true, the `om_terrain` must have been seen already.
-`cant_see`             | If true, the `om_terrain` must not have been seen already.
+`cant_see`             | If true, the `om_terrain` must not have been seen already.  (`exclude_seen` is an older name for it.)
 `random`               | If true, a random matching `om_terrain` is used. If false, the closest is used.
-`search_range`         | Maximum range in overmap terrain coordinates to look for a matching `om_terrain`.  Int or or [variable object](#variable-object). Default 2520. Should only be used to limit maximum range when multiple valid destinations are possible, and only works to do that when random is also set to true.
+`search_range`         | Maximum range in overmap terrain coordinates to look for a matching `om_terrain`, for random and closest searches alike.  Int or or [variable object](#variable-object). Default 540 (three overmaps).  With `"create_if_necessary": false` this makes "the nearest X within N tiles, if there is one".
 `min_distance`         | Range in overmap terrain coordinates.  Instances of `om_terrain` in this range will be ignored.  Int or or [variable object](#variable-object)
+`create_if_necessary`  | Default true: when no match is found, place the `om_special` (or convert an `om_terrain_replace` tile) to make one.  If false, the search only finds what is already there, and finding nothing is not an error: a mission gets no target, `u_location_variable` runs its `false_eocs`.
 `origin_npc`           | Start the search at the NPC's, rather than the player's, current position.
-`z`                    | If specified, will be used rather than the player or NPC's z when searching.  Int or or [variable object](#variable-object)
+`z`                    | If specified, will be used rather than the player or NPC's z when searching.  Int or or [variable object](#variable-object).  This is where the search starts: a random search only looks on this level (one for an `om_special` looks on all levels), a closest search looks on every level and takes the nearest match counting z.  Use `min_z` and `max_z` to choose the levels.
+`min_z`, `max_z`       | Only look for matches on these levels (inclusive), in random and closest searches alike.  Int or [variable object](#variable-object).  Giving only one leaves the other end at the lowest or highest level.
 `var`                  | A variable_object ( see `variable_object` in [doc](NPCs.md#variable-object) ), if set this variable's value will be used.
 `offset_x`,<br\>`offset_y`,<br\>`offset_z` | After finding or creating `om_terrain`, offset the mission target terrain by the offsets in overmap terrain coordinates.
 

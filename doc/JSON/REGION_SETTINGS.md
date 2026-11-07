@@ -41,6 +41,33 @@ see their info later in this document.
 | `default_groundcover`    |  weighted list of `oter_id`         | List of terrain types and weights applied as default ground cover.    |
 | `feature_flag_settings`  |  two lists of strings               | Defines operations on overmap features based on their flags.          |
 | `connections`            | `overmap_connection_id` fields      | Defines what overmap connections this region uses.                    |
+| `special_sector_size`    | integer                             | Overmap specials are placed one per square of this many tiles a side (1 to 180, default 15).  Smaller squares make denser specials.  Best a divisor of 180. |
+| `special_attempts_per_sector` | integer                        | Spots tried in each square before it is given up (default 10).        |
+| `worldgen_monsters`      | object                              | The monster groups worldgen places on the region's overmaps.  See [Worldgen monsters](#worldgen-monsters). |
+
+### Worldgen monsters
+
+`worldgen_monsters` sets which monster groups worldgen places on this region's overmaps, and how
+many, instead of overriding the global groups (which applies to every region and dimension).  A
+region that leaves a field out keeps its parent's value (with `copy-from`) or the default.  A group
+of `GROUP_NULL` places none.
+
+| Identifier                  | Default              | Description                                                         |
+| --------------------------- | -------------------- | ------------------------------------------------------------------- |
+| `city_horde`                | `GROUP_ZOMBIE_HORDE` | Hordes placed along a city's roads (the `SPAWN_CITY_HORDE_*` world options set how many). |
+| `city_horde_pack_size`      | 10                   | City hordes are split into groups of at most this many.             |
+| `swamp`                     | `GROUP_SWAMP`        | Placed in swampy parts of the map; only with the `DISABLE_ANIMAL_CLASH` world option on. |
+| `river`                     | `GROUP_RIVER`        | Placed along rivers and lakes.                                      |
+| `ocean_shore`, `ocean_deep` | `GROUP_OCEAN_SHORE`, `GROUP_OCEAN_DEEP` | Placed in shallow and deep ocean.                |
+| `water_min_tiles`           | 25                   | The swamp, river and ocean groups go in 7x7 tile windows of the surface with at least this many such tiles (a swamp tile counts twice). |
+| `water_population_per_tile` | `[ 8, 25 ]`          | Their population: this many monsters per such tile, rolled, scaled by the group's frequency total. |
+| `deep_ocean_threshold`      | 1.25                 | Ocean counts as deep where its noise is above the ocean's `noise_threshold_ocean` times this. |
+| `subway_city`               | `GROUP_SUBWAY_CITY`  | Placed under each city, size times size times 2 monsters.           |
+| `subway_z`                  | -2                   | The level the subway group goes on (-1 to -10).                     |
+
+```jsonc
+"worldgen_monsters": { "swamp": "GROUP_SWAMP_TROPICAL", "river": "GROUP_NULL", "city_horde_pack_size": 20 }
+```
 
 ### Example
 ```jsonc
@@ -318,10 +345,15 @@ them in region overlays.
 
 |  Identifier   |                             Description                              |
 | ------------- | -------------------------------------------------------------------- |
-| `sequence`    | Sequence in which components are processed.                          |
+| `sequence`    | Sequence in which components are processed, lowest first (default 0). |
 | `chance`      | One in X chance that something from this component will be placed.   |
-| `clear_types` | Clear all previously defined `types` for this component.             |
 | `types`       | Weighted list of terrains and furniture that make up this component. |
+
+A biome rolls its components in `sequence` order, lowest first; components with the same
+`sequence` go in order of their ids. The first component whose `chance` succeeds picks the
+feature for the tile, so components earlier in the sequence take precedence. The order of the
+biome's `components` list does not matter. To replace a component's `types` in an overlay, give
+`types` again; `extend` and `delete` add or remove single entries.
 
 ### Example
 
@@ -497,6 +529,33 @@ relative placements of various classes of buildings.
 | `city_spacing`         | Space between cities. Larger number = more space between cities. Range: 0 - 8 |
 | `is_megacity`          | Special flag to trigger special map generation. Generates a megacity.         |
 | `road_post_process`    | List of `pp_generator` ids run on every road tile in a city of this region, in order (see [OVERMAP.md](OVERMAP.md#post-process-generators)). Default `[ "riot_damage_road" ]`; `[]` for none. |
+
+The shape of the cities can be set too.  A region that leaves a field out keeps its parent's value
+(with `copy-from`) or the default, which is what all cities used before these fields existed.
+
+|       Identifier       | Default | Description                                                          |
+| ---------------------- | ------- | -------------------------------------------------------------------- |
+| `empty_lot_chance`     | 4       | One in this many building lots along a street is left empty.         |
+| `min_size`, `max_size` | 2, 55   | A random city's size stays within these (1 to 89).                   |
+| `size_variations`      | see below | A random city's size is multiplied by `multiply` / `divide` of one of these, picked by `weight`. |
+| `max_spacing`          | 10      | The city spacing, after urbanity and forests change it, is at most this. |
+| `block_width`          | `[ 3, 5 ]` | Width of the wide blocks between side streets (they alternate with blocks of 2). |
+| `street_shrink`        | `[ 1, 3 ]` | How much shorter than its street a side street is.                |
+| `extra_branch_chance`  | 5       | One in this many streets that turn at the edge of town also branch the other way. |
+| `megacity_size`        | 40      | With `is_megacity`, the size of each city.                           |
+| `megacity_seeds`       | five points | With `is_megacity`, the `[ x, y ]` tiles of every overmap where a city goes: by default `[ 45, 45 ]`, `[ 45, 135 ]`, `[ 90, 90 ]`, `[ 135, 45 ]` and `[ 135, 135 ]`. |
+
+The default `size_variations` make a third of the cities tiny, a third small, and a sixth each large
+and huge:
+
+```jsonc
+"size_variations": [
+  { "weight": 2, "multiply": 1, "divide": 3 },
+  { "weight": 2, "multiply": 2, "divide": 3 },
+  { "weight": 1, "multiply": 3, "divide": 2 },
+  { "weight": 1, "multiply": 2 }
+]
+```
 
 ### Placing shops, parks, and houses
 

@@ -332,9 +332,9 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 | `mapgen_end`      | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
 | `mapgen_tee`      | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
 | `mapgen_four_way` | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
-| `eoc`             | Supply an effect_on_condition id or an inline effect_on_condition.  The condition of the eoc will be tested to see if the special can be placed.  The effect of the eoc will be run when the special is placed.  See [effect_on_condition.md](EFFECT_ON_CONDITION.md). |
 | `entry_eoc`       | An effect on condition ID that will run when you enter this location.  See [`entry_eoc` and `exit_eoc`](#entry_eoc-and-exit_eoc). |
 | `exit_eoc`        | An effect on condition ID that will run when you exit this location.  See [`entry_eoc` and `exit_eoc`](#entry_eoc-and-exit_eoc). |
+| `radio`           | A radio station worldgen puts on this terrain when it is on z-level 0, or a list of them to pick one from.  See [`radio`](#radio). |
 | `post_process_generators` | Array of `pp_generator` ids applied after mapgen completes.  See [Post-Process Generators](#post-process-generators).  Supports `copy-from` inheritance and `delete`. |
 
 ### `entry_eoc` and `exit_eoc`
@@ -359,6 +359,29 @@ beta talker, and get these context variables:
 
 Read them as context variables, e.g. `{ "context_val": "omt_pos" }`.  Both EOC ids are checked
 at load: an unknown id is reported as an error.
+
+### `radio`
+
+When an overmap is generated, each of its z-level 0 tiles whose terrain has a `radio` gets a radio
+station.  `radio` is one station, or a list of stations of which one is picked by `weight`:
+
+| Identifier         | Description                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| `type`             | `broadcast` (default) plays a message; `weather` gives weather reports; `none` places no station, to make a station a chance. |
+| `weight`           | Weight when picking from a list.  Default 1.                                             |
+| `strength`         | Signal strength, a number or `[ min, max ]` to roll from; 1 to 360.  Default `[ 120, 360 ]`.  It is heard about that many submaps away. |
+| `message`          | The broadcast.  `<station_number>` in it becomes the tile's position on its overmap, as `1234`. |
+| `snippet_category` | Broadcast a random snippet of this category instead of a `message`.                      |
+
+```jsonc
+"radio": [
+  { "type": "weather", "weight": 1 },
+  { "type": "broadcast", "weight": 2, "snippet_category": "radio_archive" }
+]
+```
+
+A terrain loaded with `copy-from` keeps its parent's `radio` unless it gives its own; `"radio": []`
+removes it.  EOCs add and remove stations with `add_radio_station` and `remove_radio_station`.
 
 ### `see_cost` values
 
@@ -722,7 +745,14 @@ specials are placed. Each city gets assigned a size at generation and will begin
 intersection. The city distance field specifies the minimum and maximum distance the special can be
 placed from the edge of the urban radius of a city, and not from the center of the city.
 Both city size and city distance requirements are only checked for the "nearest" city, measured from the
-original intersection.
+original intersection.  That city may be on a neighbouring overmap, if that overmap has already been
+generated: a wilderness special does not spawn right across the border from a city, and a special that
+needs a nearby city can use one across the border.  Specials that missions place check the same way
+(`place_overmap_special` places a special at the given spot without the city rules).
+
+A minimum distance is kept even when the maximum is open-ended (`-1`): a special with
+`"city_distance": [ 5, -1 ]` is placed more than 5 tiles from the edge of every city, whatever its
+`city_sizes`.
 
 
 ### Fields
@@ -739,6 +769,39 @@ original intersection.
 | `priority`      | **Warning: Do not use this unnecessarily.** The generation process is executed in the order of specials with the highest value. Can be used when maps are difficult to generate. (large maps, maps that are or require dependencies etc) It is **strongly recommended** to set it to 1 (HIGH priority) or -1 (LOW priority) if used. (default = 0).  It is adviced that map specials marked with the SAFE_AT_WORLDGEN are given a priority of 1 unless there are reasons not to, in order to exist when specials spawning monsters in an area are spawned, as that will cause the latter not to spawn that close. |
 | `flags`         | See `Overmap specials` in [JSON_FLAGS.md](JSON_FLAGS.md).                                             |
 | `rotate`        | Whether the special can rotate. True if not specified.                                                |
+| `spawns`        | Monsters placed around the special when it is placed: `{ "group": "GROUP_X", "population": [ min, max ], "radius": [ min, max ] }` (radius in overmap tiles).  The special is not placed where the largest radius would reach a `SAFE_AT_WORLDGEN` special. |
+| `eoc`           | An effect_on_condition id or an inline effect_on_condition.  See [The `eoc` of a special](#the-eoc-of-a-special). |
+
+### The `eoc` of a special
+
+The EOC's condition decides whether the special can be placed, and its effect runs after the special
+has been placed.  In both, alpha is the avatar, wherever they are; there is no beta.
+
+The condition is tested once for each overmap the special could be placed on (when the overmap is
+generated, or when a mission or an EOC places the special), not for every spot and rotation tried.  If it
+fails, the special is not placed on that overmap.  Placing the special at a given spot with
+`place_overmap_special`, or as a city building, tests it once for that spot; a forced placement (`"force": true`,
+the debug menu) places the special whatever the condition says.  Its context variable:
+
+| Variable      | Value                                                                      |
+| ------------- | -------------------------------------------------------------------------- |
+| `overmap_pos` | Location of the center of the overmap (its tile at 90, 90 on z-level 0).   |
+
+The effect runs every time the special is placed, including forced and debug placements, with these
+context variables:
+
+| Variable        | Value                                                                              |
+| --------------- | ---------------------------------------------------------------------------------- |
+| `special_id`    | The special's id.                                                                  |
+| `special_pos`   | Location of the special's origin tile (its `[ 0, 0, 0 ]` point).                   |
+| `rotation`      | The direction the special was placed in: `north`, `east`, `south` or `west`.       |
+| `overmap_pos`   | Location of the center of the overmap the special is on.                           |
+| `city_name`     | The name of the special's city (the nearest on its overmap), if there is one.      |
+| `city_size`     | That city's size.                                                                  |
+| `city_distance` | Distance from the special's origin to the edge of that city, in overmap tiles.     |
+
+Locations are absolute map-square positions, as other location variables.  A special loaded with
+`copy-from` takes the parent's `eoc` unless it gives its own.
 
 Depending on the subtype, there are further relevant fields:
 
@@ -1284,6 +1347,7 @@ by the frequency assigned to the city building within the `region_settings`. Con
 | `flags`     | As in `overmap_special`.                                                         |
 | `rotate`    | As in `overmap_special`.                                                         |
 | `city_sizes`| As in `overmap_special`.                                                         |
+| `eoc`       | As in `overmap_special`; the condition is tested for each building placement.    |
 
 ### Example
 

@@ -24,8 +24,6 @@
 #include "coordinates.h"
 #include "cuboid_rectangle.h"
 #include "debug.h"
-#include "dialogue.h"
-#include "effect_on_condition.h"
 #include "filesystem.h"
 #include "flood_fill.h"
 #include "game.h"
@@ -43,6 +41,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "options.h"
+#include "output.h"
 #include "overmap_connection.h"
 #include "overmap_map_data_cache.h"
 #include "overmap_noise.h"
@@ -55,19 +54,12 @@
 #include "sets_intersect.h"
 #include "simple_pathfinding.h"
 #include "string_formatter.h"
-#include "talker.h"
 #include "text_snippets.h"
 #include "translations.h"
 #include "worldfactory.h"
 #include "zzip.h"
 
 static const mongroup_id GROUP_NEMESIS( "GROUP_NEMESIS" );
-static const mongroup_id GROUP_OCEAN_DEEP( "GROUP_OCEAN_DEEP" );
-static const mongroup_id GROUP_OCEAN_SHORE( "GROUP_OCEAN_SHORE" );
-static const mongroup_id GROUP_RIVER( "GROUP_RIVER" );
-static const mongroup_id GROUP_SUBWAY_CITY( "GROUP_SUBWAY_CITY" );
-static const mongroup_id GROUP_SWAMP( "GROUP_SWAMP" );
-static const mongroup_id GROUP_ZOMBIE_HORDE( "GROUP_ZOMBIE_HORDE" );
 
 static const oter_str_id oter_empty_rock( "empty_rock" );
 static const oter_str_id oter_field( "field" );
@@ -1136,13 +1128,15 @@ bool overmap::generate_sub( const int z )
         }
     }
 
+    // The region sets the group and the level (OMAP-J09)
+    const region_settings_worldgen_monsters &monsters = settings->worldgen_monsters;
     for( city &i : cities ) {
         tripoint_om_omt omt_pos( i.pos, z );
         tripoint_om_sm sm_pos = project_to<coords::sm>( omt_pos );
         tripoint_abs_sm abs_pos = project_combine( pos(), sm_pos );
         // Normal subways are present at z == -2, but filtering for the terrain would be much nicer
-        if( z == -2 ) {
-            spawn_mon_group( mongroup( GROUP_SUBWAY_CITY, abs_pos, i.size * i.size * 2 ),
+        if( z == monsters.subway_z && !monsters.subway_city().is_null() ) {
+            spawn_mon_group( mongroup( monsters.subway_city(), abs_pos, i.size * i.size * 2 ),
                              i.size * 2 );
         }
     }
@@ -2945,7 +2939,7 @@ om_direction::type om_direction::from_cube( cube_direction c, const std::string 
 }
 
 om_direction::type overmap::random_special_rotation( const overmap_special &special,
-        const tripoint_om_omt &p, const bool must_be_unexplored ) const
+        const tripoint_om_omt &p, const bool must_be_unexplored, const bool check_eoc ) const
 {
     std::vector<om_direction::type> rotations( om_direction::size );
     const auto first = rotations.begin();
@@ -2973,7 +2967,7 @@ om_direction::type overmap::random_special_rotation( const overmap_special &spec
     // Pick first valid rotation at random.
     std::shuffle( first, last, rng_get_engine() );
     const auto rotation = std::find_if( first, last, [&]( om_direction::type elem ) {
-        return can_place_special( special, p, elem, must_be_unexplored );
+        return can_place_special( special, p, elem, must_be_unexplored, check_eoc );
     } );
 
     return rotation != last ? *rotation : om_direction::type::invalid;
@@ -2996,7 +2990,8 @@ bool overmap::contains_unique_special( const overmap_special_id &id ) const
 }
 
 bool overmap::can_place_special( const overmap_special &special, const tripoint_om_omt &p,
-                                 om_direction::type dir, const bool must_be_unexplored ) const
+                                 om_direction::type dir, const bool must_be_unexplored,
+                                 const bool check_eoc ) const
 {
     cata_assert( dir != om_direction::type::invalid );
 
@@ -3040,11 +3035,8 @@ bool overmap::can_place_special( const overmap_special &special, const tripoint_
         return false;
     }
 
-    if( special.has_eoc() ) {
-        dialogue d( get_talker_for( get_avatar() ), nullptr );
-        if( !special.get_eoc()->test_condition( d ) ) {
-            return false;
-        }
+    if( check_eoc && !special.eoc_condition_allows( *this ) ) {
+        return false;
     }
 
     // Don't spawn monster areas over locations designated as safe.
@@ -3077,7 +3069,8 @@ std::vector<tripoint_om_omt> overmap::place_special(
 {
     cata_assert( dir != om_direction::type::invalid );
     if( !force ) {
-        cata_assert( can_place_special( special, p, dir, must_be_unexplored ) );
+        // Without the EOC condition: it can be random, and the caller tested it (OMAP-J07).
+        cata_assert( can_place_special( special, p, dir, must_be_unexplored, false ) );
     }
 
     if( special.has_flag( "GLOBALLY_UNIQUE" ) ) {
@@ -3192,6 +3185,9 @@ bool overmap::place_special_attempt(
     const tripoint_om_omt p( rng( p2.x(), p2.x() + sector_width - 1 ),
                              rng( p2.y(), p2.y() + sector_width - 1 ), 0 );
     const city &nearest_city = get_nearest_city( p );
+    // The city rules also see the cities of existing neighbouring overmaps (OMAP-B08).
+    int nearest_distance = 0;
+    const city *nearest_any_city = nearest_city_across_borders( p, nearest_distance );
 
     std::shuffle( enabled_specials.begin(), enabled_specials.end(), rng_get_engine() );
     std::set<int> priorities;
@@ -3216,11 +3212,13 @@ bool overmap::place_special_attempt(
                 continue;
             }
             // City check is the fastest => it goes first.
-            if( !special.can_belong_to_city( p, nearest_city, *this ) ) {
+            if( !special.can_belong_to_city( nearest_any_city, nearest_distance ) ) {
                 continue;
             }
-            // See if we can actually place the special there.
-            const om_direction::type rotation = random_special_rotation( special, p, must_be_unexplored );
+            // See if we can actually place the special there.  Its EOC condition was tested for
+            // the whole batch (OMAP-J07).
+            const om_direction::type rotation = random_special_rotation( special, p, must_be_unexplored,
+                                                false );
             if( rotation == om_direction::type::invalid ) {
                 continue;
             }
@@ -3252,10 +3250,11 @@ void overmap::place_specials_pass(
 {
     // Walk over sectors in random order, to minimize "clumping".
     std::shuffle( sectors.sectors.begin(), sectors.sectors.end(), rng_get_engine() );
+    // The region's number of spots to try in a sector, 10 by default (OMAP-J04)
+    const int attempts = std::max( settings->special_attempts_per_sector, 1 );
     for( auto it = sectors.sectors.begin(); it != sectors.sectors.end(); ) {
-        const size_t attempts = 10;
         bool placed = false;
-        for( size_t i = 0; i < attempts; ++i ) {
+        for( int i = 0; i < attempts; ++i ) {
             if( place_special_attempt( enabled_specials, *it, sectors.sector_width, place_optional,
                                        must_be_unexplored ) ) {
                 placed = true;
@@ -3301,6 +3300,12 @@ void overmap::place_specials( overmap_special_batch &enabled_specials )
     }
 
     for( auto iter = enabled_specials.begin(); iter != enabled_specials.end(); ) {
+        // A special whose EOC condition fails is not placed on this overmap.  The condition is
+        // tested once here, not for every spot and rotation tried (OMAP-J07).
+        if( !iter->special_details->eoc_condition_allows( *this ) ) {
+            iter = enabled_specials.erase( iter );
+            continue;
+        }
         // If this special has the LAKE flag and the overmap doesn't have any
         // lake terrain, then remove this special from the candidates for this
         // overmap.
@@ -3376,7 +3381,9 @@ void overmap::place_specials( overmap_special_batch &enabled_specials )
     if( !any_candidates ) {
         return;
     }
-    om_special_sectors sectors = get_sectors( OMSPEC_FREQ );
+    // The region's sector size, OMSPEC_FREQ by default (OMAP-J04)
+    om_special_sectors sectors = get_sectors( std::clamp( settings->special_sector_size, 1,
+                                 std::min( OMAPX, OMAPY ) ) );
 
     // First, place the mandatory specials to ensure that all minimum instance
     // counts are met.
@@ -3484,9 +3491,16 @@ void overmap::place_specials( overmap_special_batch &enabled_specials )
 
 void overmap::place_mongroups()
 {
+    // The region's groups and numbers (OMAP-J09)
+    const region_settings_worldgen_monsters &monsters = settings->worldgen_monsters;
+    const mongroup_id &city_horde_group = monsters.city_horde();
+    const int pack_size = std::max( monsters.city_horde_pack_size, 1 );
+    const int water_min_tiles = monsters.water_min_tiles;
+    const int water_pop_min = monsters.water_population_per_tile[0];
+    const int water_pop_max = std::max( monsters.water_population_per_tile[1], water_pop_min );
     // Cities can be full of zombies
     int city_spawn_threshold = get_option<int>( "SPAWN_CITY_HORDE_THRESHOLD" );
-    if( city_spawn_threshold > -1 ) {
+    if( city_spawn_threshold > -1 && !city_horde_group.is_null() ) {
         int city_spawn_chance = get_option<int>( "SPAWN_CITY_HORDE_SMALL_CITY_CHANCE" );
         float city_spawn_scalar = get_option<float>( "SPAWN_CITY_HORDE_SCALAR" );
         float city_spawn_spread = get_option<float>( "SPAWN_CITY_HORDE_SPREAD" );
@@ -3561,15 +3575,15 @@ void overmap::place_mongroups()
                         if( desired_zombies <= 0 ) {
                             break;
                         }
-                        spawn_mongroup( s, GROUP_ZOMBIE_HORDE, desired_zombies > 10 ? 10 : desired_zombies );
-                        desired_zombies -= 10;
+                        spawn_mongroup( s, city_horde_group, std::min( desired_zombies, pack_size ) );
+                        desired_zombies -= pack_size;
                     }
                 }
             }
         }
     }
 
-    if( get_option<bool>( "DISABLE_ANIMAL_CLASH" ) ) {
+    if( get_option<bool>( "DISABLE_ANIMAL_CLASH" ) && !monsters.swamp().is_null() ) {
         // Figure out where swamps are, and place swamp monsters
         for( int x = 3; x < OMAPX - 3; x += 7 ) {
             for( int y = 3; y < OMAPY - 3; y += 7 ) {
@@ -3581,21 +3595,22 @@ void overmap::place_mongroups()
                         }
                     }
                 }
-                if( swamp_count >= 25 ) {
+                if( swamp_count >= water_min_tiles ) {
                     tripoint_om_omt p( x, y, 0 );
-                    float norm_factor = std::abs( GROUP_SWAMP->freq_total / 1000.0f );
+                    float norm_factor = std::abs( monsters.swamp()->freq_total / 1000.0f );
                     unsigned int pop =
-                        std::round( norm_factor * rng( swamp_count * 8, swamp_count * 25 ) );
+                        std::round( norm_factor * rng( swamp_count * water_pop_min,
+                                                       swamp_count * water_pop_max ) );
                     spawn_mon_group(
                         mongroup(
-                            GROUP_SWAMP, project_combine( pos(), project_to<coords::sm>( p ) ),
+                            monsters.swamp(), project_combine( pos(), project_to<coords::sm>( p ) ),
                             pop ), 3 );
                 }
             }
         }
     }
 
-    if( settings->overmap_river || settings->overmap_lake ) {
+    if( ( settings->overmap_river || settings->overmap_lake ) && !monsters.river().is_null() ) {
         // Figure out where rivers and lakes are, and place appropriate critters
         for( int x = 3; x < OMAPX - 3; x += 7 ) {
             for( int y = 3; y < OMAPY - 3; y += 7 ) {
@@ -3607,13 +3622,14 @@ void overmap::place_mongroups()
                         }
                     }
                 }
-                if( river_count >= 25 && is_lake_or_river( ter( { x, y, 0 } ) ) ) {
+                if( river_count >= water_min_tiles && is_lake_or_river( ter( { x, y, 0 } ) ) ) {
                     tripoint_om_omt p( x, y, 0 );
-                    float norm_factor = std::abs( GROUP_RIVER->freq_total / 1000.0f );
+                    float norm_factor = std::abs( monsters.river()->freq_total / 1000.0f );
                     unsigned int pop =
-                        std::round( norm_factor * rng( river_count * 8, river_count * 25 ) );
+                        std::round( norm_factor * rng( river_count * water_pop_min,
+                                                       river_count * water_pop_max ) );
                     spawn_mon_group(
-                        mongroup( GROUP_RIVER, project_combine( pos(), project_to<coords::sm>( p ) ),
+                        mongroup( monsters.river(), project_combine( pos(), project_to<coords::sm>( p ) ),
                                   pop ), 3 );
                 }
             }
@@ -3629,7 +3645,7 @@ void overmap::place_mongroups()
                                      !settings_ocean.ocean_start_west.has_value() && !settings_ocean.ocean_start_south.has_value();
 
         // noise threshold adjuster for deep ocean. Increase to make deep ocean move further from the shore.
-        constexpr float DEEP_OCEAN_THRESHOLD_ADJUST = 1.25;
+        const float deep_ocean_threshold_adjust = monsters.deep_ocean_threshold;
 
         // code taken from place_oceans, but noise threshold increased to determine "deep ocean".
         const auto is_deep_ocean = [&]( const point_om_omt & p ) {
@@ -3648,7 +3664,7 @@ void overmap::place_mongroups()
                 return false;
             }
             return f.noise_at( p ) + ocean_adjust > settings_ocean.noise_threshold_ocean *
-                   DEEP_OCEAN_THRESHOLD_ADJUST;
+                   deep_ocean_threshold_adjust;
         };
 
         for( int x = 3; x < OMAPX - 3; x += 7 ) {
@@ -3662,21 +3678,17 @@ void overmap::place_mongroups()
                     }
                 }
                 bool am_deep = is_deep_ocean( { x, y } );
-                if( ocean_count >= 25 ) {
+                if( ocean_count >= water_min_tiles ) {
                     tripoint_om_omt p( x, y, 0 );
-                    if( am_deep ) {
-                        float norm_factor = std::abs( GROUP_OCEAN_DEEP->freq_total / 1000.0f );
+                    const mongroup_id &ocean_group = am_deep ? monsters.ocean_deep() :
+                                                     monsters.ocean_shore();
+                    if( !ocean_group.is_null() ) {
+                        float norm_factor = std::abs( ocean_group->freq_total / 1000.0f );
                         unsigned int pop =
-                            std::round( norm_factor * rng( ocean_count * 8, ocean_count * 25 ) );
+                            std::round( norm_factor * rng( ocean_count * water_pop_min,
+                                                           ocean_count * water_pop_max ) );
                         spawn_mon_group(
-                            mongroup( GROUP_OCEAN_DEEP, project_combine( pos(), project_to<coords::sm>( p ) ),
-                                      pop ), 3 );
-                    } else {
-                        float norm_factor = std::abs( GROUP_OCEAN_SHORE->freq_total / 1000.0f );
-                        unsigned int pop =
-                            std::round( norm_factor * rng( ocean_count * 8, ocean_count * 25 ) );
-                        spawn_mon_group(
-                            mongroup( GROUP_OCEAN_SHORE, project_combine( pos(), project_to<coords::sm>( p ) ),
+                            mongroup( ocean_group, project_combine( pos(), project_to<coords::sm>( p ) ),
                                       pop ), 3 );
                     }
                 }
@@ -3702,32 +3714,59 @@ point_abs_omt overmap::global_base_point() const
 
 void overmap::place_radios()
 {
-    auto strength = []() {
-        return rng( RADIO_MIN_STRENGTH, RADIO_MAX_STRENGTH );
-    };
-    std::string message;
+    // The stations come from the terrains' "radio" (OMAP-J08).  This used to look for terrain
+    // ids starting with radio_tower, lmoe and fema_entrance, with fixed messages.
     for( int i = 0; i < OMAPX; i++ ) {
         for( int j = 0; j < OMAPY; j++ ) {
             tripoint_om_omt pos_omt( i, j, 0 );
+            const std::vector<oter_radio_station> &stations =
+                ter( pos_omt )->get_type_id()->radio_stations;
+            if( stations.empty() ) {
+                continue;
+            }
             point_om_sm pos_sm = project_to<coords::sm>( pos_omt.xy() );
-            // Since location have id such as "radio_tower_1_north", we must check the beginning of the id
-            if( is_ot_match( "radio_tower", ter( pos_omt ), ot_match_type::prefix ) ) {
-                if( one_in( 3 ) ) {
-                    radios.emplace_back( pos_sm, strength(), "", radio_type::WEATHER_RADIO );
-                } else {
-                    message = SNIPPET.expand( SNIPPET.random_from_category( "radio_archive" ).value_or(
-                                                  translation() ).translated() );
-                    radios.emplace_back( pos_sm, strength(), message );
+            const oter_radio_station *station = &stations.front();
+            if( stations.size() > 1 ) {
+                int total_weight = 0;
+                for( const oter_radio_station &candidate : stations ) {
+                    total_weight += std::max( candidate.weight, 0 );
                 }
-            } else if( is_ot_match( "lmoe", ter( pos_omt ), ot_match_type::prefix ) ) {
-                message = string_format( _( "This is automated emergency shelter beacon %d%d."
-                                            "  Supplies, amenities and shelter are stocked." ), i, j );
-                radios.emplace_back( pos_sm, strength() / 2, message );
-            } else if( is_ot_match( "fema_entrance", ter( pos_omt ), ot_match_type::prefix ) ) {
-                message = string_format( _( "This is FEMA camp %d%d."
-                                            "  Supplies are limited, please bring supplemental food, water, and bedding."
-                                            "  This is FEMA camp %d%d.  A designated long-term emergency shelter." ), i, j, i, j );
-                radios.emplace_back( pos_sm, strength(), message );
+                if( total_weight <= 0 ) {
+                    continue;
+                }
+                int roll = rng( 1, total_weight );
+                for( const oter_radio_station &candidate : stations ) {
+                    roll -= std::max( candidate.weight, 0 );
+                    if( roll <= 0 ) {
+                        station = &candidate;
+                        break;
+                    }
+                }
+            }
+            switch( station->type ) {
+                case oter_radio_station::station_type::weather:
+                    radios.emplace_back( pos_sm, rng( station->min_strength, station->max_strength ), "",
+                                         radio_type::WEATHER_RADIO );
+                    break;
+                case oter_radio_station::station_type::broadcast: {
+                    std::string message;
+                    if( !station->snippet_category.empty() ) {
+                        message = SNIPPET.random_from_category( station->snippet_category ).value_or(
+                                      translation() ).translated();
+                    } else {
+                        message = station->message.translated();
+                        // The terrain's position on its overmap, as the shelters always said it
+                        replace_substring( message, "<station_number>", string_format( "%d%d", i, j ),
+                                           true );
+                    }
+                    message = SNIPPET.expand( message );
+                    radios.emplace_back( pos_sm, rng( station->min_strength, station->max_strength ),
+                                         message );
+                    break;
+                }
+                case oter_radio_station::station_type::none:
+                case oter_radio_station::station_type::last:
+                    break;
             }
         }
     }
