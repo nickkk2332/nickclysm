@@ -39,6 +39,8 @@
 enum class cata_variant_type : int;
 struct mutation_branch;
 
+static const addiction_id addiction_opiate( "opiate" );
+
 static const efftype_id effect_bandaged( "bandaged" );
 static const efftype_id effect_beartrap( "beartrap" );
 static const efftype_id effect_crushed( "crushed" );
@@ -669,6 +671,16 @@ void effect_type::verify() const
             debugmsg( "effect_type %s has unknown vitamin %s", id.str(), vit.vitamin.str() );
         }
     }
+    if( pkill_addict_reduces && !pkill_addiction.is_valid() ) {
+        debugmsg( "effect_type %s: pkill_addict_reduces names unknown addiction %s", id.str(),
+                  pkill_addiction.str() );
+    }
+    for( const effect_periodic_message &msg : periodic_msgs ) {
+        if( msg.chance < 1 || msg.min_intensity > msg.max_intensity ) {
+            debugmsg( "effect_type %s: a periodic message needs a chance of at least 1 and "
+                      "min_intensity no higher than max_intensity", id.str() );
+        }
+    }
     for( const limb_score_effect &score : limb_score_data ) {
         if( !score.score_id.is_valid() ) {
             debugmsg( "effect_type %s has unknown limb score %s", id.str(), score.score_id.str() );
@@ -835,6 +847,15 @@ static game_message_type read_effect_rating( const JsonObject &jo )
                            "\"neutral\", \"bad\", or \"mixed\"", r ) );
     }
     return *rate;
+}
+
+void effect_periodic_message::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "text", text );
+    mandatory( jo, false, "chance", chance );
+    type = read_effect_rating( jo );
+    optional( jo, false, "min_intensity", min_intensity, 1 );
+    optional( jo, false, "max_intensity", max_intensity, INT_MAX );
 }
 
 // helps load the internal message arrays for decay and apply into the msgs vector
@@ -1668,16 +1689,26 @@ bool effect::activated( const time_point &when, const std::string &arg, int val,
 
 double effect::get_addict_mod( const std::string &arg, int addict_level ) const
 {
-    // TODO: convert this to JSON id's and values once we have JSON'ed addictions
     if( arg == "PKILL" ) {
         if( eff_type->pkill_addict_reduces ) {
-            return 1.0 / std::max( static_cast<double>( addict_level ) * 2.0, 1.0 );
+            return 1.0 / std::max( static_cast<double>( addict_level ) * eff_type->pkill_addict_scale,
+                                   1.0 );
         } else {
             return 1.0;
         }
     } else {
         return 1.0;
     }
+}
+
+const addiction_id &effect::get_pkill_addiction() const
+{
+    return eff_type->pkill_addiction;
+}
+
+const std::vector<effect_periodic_message> &effect::get_periodic_msgs() const
+{
+    return eff_type->periodic_msgs;
 }
 
 bool effect::get_harmful_cough() const
@@ -1947,7 +1978,30 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "main_parts_only", new_etype.main_parts_only, false );
     optional( jo, was_loaded, "show_in_info", new_etype.show_in_info, false );
     optional( jo, was_loaded, "show_intensity", new_etype.show_intensity, true );
-    optional( jo, was_loaded, "pkill_addict_reduces", new_etype.pkill_addict_reduces, false );
+    // HLTH-J11: true is opiate tolerance; an object names the addiction and how strongly each
+    // level of it weakens the painkiller.
+    no_inheritance_ops( "pkill_addict_reduces" );
+    if( jo.has_object( "pkill_addict_reduces" ) ) {
+        const JsonObject tolerance = jo.get_object( "pkill_addict_reduces" );
+        new_etype.pkill_addict_reduces = true;
+        mandatory( tolerance, false, "addiction", new_etype.pkill_addiction );
+        optional( tolerance, false, "per_intensity", new_etype.pkill_addict_scale, 2.0 );
+    } else if( jo.has_member( "pkill_addict_reduces" ) ) {
+        new_etype.pkill_addict_reduces = jo.get_bool( "pkill_addict_reduces" );
+        new_etype.pkill_addiction = new_etype.pkill_addict_reduces ? addiction_opiate :
+                                    addiction_id::NULL_ID();
+        new_etype.pkill_addict_scale = 2.0;
+    }
+    if( !new_etype.pkill_addict_reduces ) {
+        new_etype.pkill_addiction = addiction_id::NULL_ID();
+    }
+
+    // HLTH-J13: given, the list replaces the parent's.
+    no_inheritance_ops( "periodic_messages" );
+    if( jo.has_member( "periodic_messages" ) ) {
+        new_etype.periodic_msgs.clear();
+        jo.read( "periodic_messages", new_etype.periodic_msgs, true );
+    }
 
     optional( jo, was_loaded, "pain_sizing", new_etype.pain_sizing, false );
     optional( jo, was_loaded, "hurt_sizing", new_etype.hurt_sizing, false );

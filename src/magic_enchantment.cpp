@@ -199,6 +199,12 @@ namespace io
             case enchant_vals::mod::TURNING_DIFFICULTY: return "TURNING_DIFFICULTY";
             case enchant_vals::mod::CROWD_CRUSH_RESIST: return "CROWD_CRUSH_RESIST";
             case enchant_vals::mod::DRUG_DURATION: return "DRUG_DURATION";
+            case enchant_vals::mod::ADDICTION_STRENGTH: return "ADDICTION_STRENGTH";
+            case enchant_vals::mod::ADDICTION_SATIATION: return "ADDICTION_SATIATION";
+            case enchant_vals::mod::ADDICTION_RECOVERY: return "ADDICTION_RECOVERY";
+            case enchant_vals::mod::SLEEP_LIGHT_TOLERANCE: return "SLEEP_LIGHT_TOLERANCE";
+            case enchant_vals::mod::WAKE_RESISTANCE: return "WAKE_RESISTANCE";
+            case enchant_vals::mod::WAKE_PAIN_THRESHOLD: return "WAKE_PAIN_THRESHOLD";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );

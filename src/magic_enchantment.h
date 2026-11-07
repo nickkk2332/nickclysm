@@ -163,6 +163,14 @@ enum class mod : int {
     TURNING_DIFFICULTY,
     CROWD_CRUSH_RESIST,
     DRUG_DURATION, // the duration of a consume_drug action's effects
+    // HLTH-J11: addiction lifecycle (a dose's strength and satiation, time to lose a level)
+    ADDICTION_STRENGTH,
+    ADDICTION_SATIATION,
+    ADDICTION_RECOVERY,
+    // HLTH-J12: sleeping through light, noise, alarms and pain
+    SLEEP_LIGHT_TOLERANCE,
+    WAKE_RESISTANCE,
+    WAKE_PAIN_THRESHOLD,
     NUM_MOD
 };
 

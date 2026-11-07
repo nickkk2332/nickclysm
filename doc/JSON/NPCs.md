@@ -1217,6 +1217,7 @@ Condition | Type | Description
 `"is_day"` | simple string | `true` if it is currently daytime (sun is at or above the [civil dawn](https://en.wikipedia.org/wiki/Dawn#Civil_dawn) point)
 `"u_is_outside"`<br/>`"npc_is_outside"`<br/>`"is_outside"`  | simple string or object | `true` if you or the NPC is on a tile without a roof. if `is_outside`, you can pass a variable with coordinates to check if this tile is outside, like `{ "is_outside": { "context_val": "loc" } }`
 `"u_is_underwater"`<br/>`"npc_is_underwater"`  | simple string | `true` if you or the NPC is underwater.
+`"u_in_sleep_state"`<br/>`"npc_in_sleep_state"`  | simple string | `true` if you or the NPC (or monster) is asleep, lying down or trying to sleep, or unconscious: the opposite of "awake" for the per-turn trait effects, such as the `processed_eocs` of Narcoleptic, Mood Swings and the Shouter traits.
 `"one_in_chance"` | int or [variable object](#variable-object) | `true` if a one in `one_in_chance` random chance occurs.
 `"x_in_y_chance"` | object | `true` if a `x` in `y` random chance occurs. `x` and `y` are either ints  or [variable object](#variable-object).
 `"is_weather"` | string or [variable object](#variable-object)  | `true` if current weather is `"is_weather"`.

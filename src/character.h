@@ -3562,6 +3562,12 @@ class Character : public Creature, public visitable
         /** Returns intensity of painkillers  */
         int get_painkiller() const;
         void react_to_felt_pain( int intensity );
+        /** HLTH-J12: how many d15 a noise or an alarm has to beat to wake this character:
+         *  2, plus the WAKE_RESISTANCE enchantment value (Heavy Sleeper 1, Very Heavy Sleeper 4). */
+        int wake_dice() const;
+        /** HLTH-J12: the multiplier on the roll that light has to beat to wake this character,
+         *  from SLEEP_LIGHT_TOLERANCE (1, Very Heavy Sleeper 1.25, with Hibernation 5). */
+        double sleep_light_tolerance() const;
 
         /** Monster cameras are mtype_ids with an integer range of transmission */
         void clear_moncams();

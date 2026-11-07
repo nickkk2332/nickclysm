@@ -1,0 +1,71 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_audit_m15b_withdrawal",
+    "effect": [ { "math": [ "u_audit_m15b_withdrawal++" ] } ]
+  },
+  {
+    "type": "addiction_type",
+    "id": "test_audit_m15b_short",
+    "name": "Test Short Withdrawal",
+    "type_name": "test short",
+    "description": "A short-lived test addiction.",
+    "effect_on_condition": "EOC_test_audit_m15b_withdrawal",
+    "dose_satiation": "30 m",
+    "recovery_time": "1 h",
+    "intensity_decay": "1 m",
+    "max_intensity": 5,
+    "remove_below": 2
+  },
+  {
+    "type": "effect_type",
+    "id": "test_audit_m15b_pkill",
+    "name": [ "Test Short Painkiller" ],
+    "desc": [ "A painkiller that the short test addiction weakens." ],
+    "pkill_addict_reduces": { "addiction": "test_audit_m15b_short", "per_intensity": 4 },
+    "base_mods": { "pkill_min": [ 1 ] }
+  },
+  {
+    "type": "effect_type",
+    "id": "test_audit_m15b_chatty",
+    "name": [ "Test Chatty Effect" ],
+    "desc": [ "Shows test messages every turn." ],
+    "max_intensity": 3,
+    "periodic_messages": [
+      { "text": "Test periodic message that always shows.", "chance": 1, "rating": "bad" },
+      { "text": "Test periodic message for intensity 2 and up.", "chance": 1, "min_intensity": 2 }
+    ]
+  },
+  {
+    "type": "effect_type",
+    "id": "test_audit_m15b_comfy",
+    "name": [ "Test Comfy" ],
+    "desc": [ "Makes the conditional comfort test trait comfortable anywhere." ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_AUDIT_M15B_COMFORT",
+    "name": { "str": "Test Conditional Comfort" },
+    "description": "Comfortable anywhere while under the test comfy effect.",
+    "points": 0,
+    "valid": false,
+    "comfort": [
+      {
+        "conditions": [ { "type": "condition", "condition": { "u_has_effect": "test_audit_m15b_comfy" } } ],
+        "comfort": "very_comfortable"
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_audit_m15b_awake",
+    "condition": { "not": "u_in_sleep_state" },
+    "effect": [ { "math": [ "u_audit_m15b_awake = 1" ] } ],
+    "false_effect": [ { "math": [ "u_audit_m15b_awake = 0" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_test_audit_m15b_shout",
+    "effect": [ "u_shout", { "math": [ "u_audit_m15b_shouted = 1" ] } ]
+  }
+]

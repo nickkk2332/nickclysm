@@ -10741,6 +10741,14 @@ talk_effect_fun_t::func f_vomit( bool is_npc )
     };
 }
 
+// HLTH-J14: the shout of the Shouter traits, now their processed_eocs
+talk_effect_fun_t::func f_shout( bool is_npc )
+{
+    return [is_npc]( dialogue & d ) {
+        d.actor( is_npc )->shout();
+    };
+}
+
 talk_effect_fun_t::func f_fall_asleep( const JsonObject &jo, std::string_view member,
                                        std::string_view, bool is_npc )
 {
@@ -13018,6 +13026,11 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
 
     if( effect_id == "u_wake_up" || effect_id == "npc_wake_up" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_wake_up( effect_id == "npc_wake_up" ) ) );
+        return;
+    }
+
+    if( effect_id == "u_shout" || effect_id == "npc_shout" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_shout( effect_id == "npc_shout" ) ) );
         return;
     }
 

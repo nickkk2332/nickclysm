@@ -5924,6 +5924,13 @@ Makes the character vomit.
 "u_vomit"
 ```
 
+#### `u_shout`, `npc_shout`
+Makes the character shout, as the Shouter, Screamer and Howler traits do (their `processed_eocs`).  How loud depends on strength and the `SHOUT_NOISE` and `SHOUT_NOISE_STR_MULT` enchantment values.
+
+```jsonc
+"u_shout"
+```
+
 #### `u_fall_asleep`, `npc_fall_asleep`
 Makes the character fall asleep for the given duration.
 This can cancel the character's current activity.  When called from a consumption EOC, queue a separate EOC with `run_eocs` and `"time_in_future": 0` so the consume activity finishes before falling asleep.

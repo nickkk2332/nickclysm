@@ -944,6 +944,13 @@ Addictions are defined in JSON using `"addiction_type"`:
 | `"craving_morale"`      | ID of the `morale_type` penalty
 | `"effect_on_condition"` | ID of the `effect_on_condition` (can also be an inline EOC) which activates on each `update_body` (aka every turn)
 | `"builtin"`             | *(for legacy addiction code)* Name of a hardcoded function to process the addiction's effect. For new addictions, use `"effect_on_condition"` instead.
+| `"dose_satiation"`      | How long a dose keeps the addiction sated (default `"2 h"`).  A dose while it's sated for less than 10 minutes adds this much, otherwise half of it; a dose after the satiation ran out sets it to this.
+| `"recovery_time"`       | How long past the end of its satiation it takes to lose a level (default `"6 h"`); each level of intensity makes it `"intensity_decay"` shorter.  At the end, the intensity drops by 1 and the satiation starts again from 0.
+| `"intensity_decay"`     | How much sooner each level of intensity ends the recovery (default `"10 m"`), so heavier addictions lose levels faster.
+| `"max_intensity"`       | The intensity doses can't raise it past (default 20).  A dose raises it by 1 when its strength beats the intensity times 2 to 5.
+| `"remove_below"`        | When a recovery ends below this intensity, the addiction is gone instead of losing a level (default 3, the intensity where withdrawal starts; at least 1).
+
+The character's enchantment values change the lifecycle (see [MAGIC.md](MAGIC.md)): `ADDICTION_STRENGTH` multiplies the strength of each dose, `ADDICTION_SATIATION` the `dose_satiation` and `ADDICTION_RECOVERY` the `recovery_time`.  Addictive Personality and Addiction Resistant are those values, not C++.
 
 Each turn, the player's addictions are processed using either the given `effect_on_condition` or `builtin`. These effects usually have a rng condition so that the effect isn't applied constantly every turn. Ex:
 

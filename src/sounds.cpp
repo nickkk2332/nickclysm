@@ -189,8 +189,6 @@ static const ter_str_id ter_t_underbrush( "t_underbrush" );
 static const ter_str_id ter_t_underbrush_harvested( "t_underbrush_harvested" );
 #endif
 
-static const trait_id trait_HEAVYSLEEPER( "HEAVYSLEEPER" );
-static const trait_id trait_HEAVYSLEEPER2( "HEAVYSLEEPER2" );
 
 namespace
 {
@@ -783,10 +781,8 @@ void sounds::process_sound_markers( Character *you )
         bool slept_through = you->has_effect( effect_slept_through_alarm );
         // See if we need to wake someone up
         if( you->in_sleep_state() ) {
-            if( ( ( !( you->has_trait( trait_HEAVYSLEEPER ) ||
-                       you->has_trait( trait_HEAVYSLEEPER2 ) ) && dice( 2, 15 ) < heard_volume ) ||
-                  ( you->has_trait( trait_HEAVYSLEEPER ) && dice( 3, 15 ) < heard_volume ) ||
-                  ( you->has_trait( trait_HEAVYSLEEPER2 ) && dice( 6, 15 ) < heard_volume ) ) &&
+            // HLTH-J12: 2d15, 3d15 for Heavy Sleeper, 6d15 for Very Heavy Sleeper (WAKE_RESISTANCE)
+            if( dice( you->wake_dice(), 15 ) < heard_volume &&
                 !you->has_effect( effect_narcosis ) &&
                 !you->has_bionic( bio_sleep_shutdown ) ) {
                 //Not kidding about sleep-through-firefight
