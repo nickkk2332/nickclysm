@@ -2373,6 +2373,16 @@ void vehicle::build_interact_menu( veh_menu &menu, map *here, const tripoint_bub
         .on_submit( [this] { display_effects(); } );
     }
 
+    // VINT-J01: a vehicle with chat topics (from its prototype or an EOC) can be talked to
+    if( !chat_topics.empty() ) {
+        //~ %s is the vehicle's name
+        menu.add( string_format( _( "Talk to the %s" ), name ) )
+        .skip_theft_check()
+        .skip_locked_check()
+        .hotkey_auto()
+        .on_submit( [this] { get_avatar().talk_to( get_talker_for( this ) ); } );
+    }
+
     bool has_immobilizer = false;
     for( const vehicle_part *vp : vp_parts ) {
         if( vp->has_fault_flag( "IMMOBILIZER" ) ) {

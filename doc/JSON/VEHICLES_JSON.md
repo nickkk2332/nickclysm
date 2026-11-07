@@ -13,6 +13,7 @@
     - [Part variants](#part-variants)
     - [Items list](#items-list)
     - [Zones list](#zones-list)
+    - [Chat topics](#chat-topics)
   - [Export vehicle prototypes using debug menu](#export-vehicle-prototypes-using-debug-menu)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -55,7 +56,8 @@ Vehicle prototypes are used to spawn stock vehicles. After a vehicle has been sp
 ]
 "zones": [
     { "x": -3, "y": 0, "type": "LOOT_AMMO" }
-]
+],
+"chat_topics": [ "TALK_SAMPLE_VEHICLE" ]  // Optional, see Chat topics below
 ```
 
 ### Part order
@@ -131,10 +133,13 @@ The zones list contains an arbitrary number of lines. Each line is of the form:
 where ZONE_ID is any valid zone id such as `LOOT_UNSORTED`.
 These zones are only placed if the vehicle has a faction owner.
 
+### Chat topics
+`chat_topics` (optional, array of talk topic ids) makes the vehicle one the player can talk to: its menu (examine the vehicle) gets a "Talk to" entry, and the conversation starts with the last topic, as for a monster's `chat_topics`. During the conversation the vehicle is the beta talker, so `npc_vehicle_fuel('gasoline')` and the other vehicle [math functions](NPCs.md#math-functions) and conditions read it. Each vehicle spawned from the prototype gets its own copy of the list, which EOCs can change with `u_add_vehicle_chat_topic` and `u_remove_vehicle_chat_topic` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)); a vehicle spawned before a mod added the field keeps the list it had. An unknown topic is an error when the game data loads.
+
 ## Export vehicle prototypes using debug menu
 There's an function in debug menu to generate a prototype from a vehicle. To use this, step on any vehicle in the game, then go to debug menu "Vehicle -> Export vehicle as prototype".
 By using this, you can visually and interactively edit the vehicle in the game, then export the prototype as a json file. The file needs to be processed by the json formatter for readability.
-Supported functionality: Exporting the parts, their variants, ammo of the turrets, fuel of the tanks, attached tools, loot zones bound to the vehicle, the blueprint ( the vehicle's appearance )and simple top-level items in the cargo space.
+Supported functionality: Exporting the parts, their variants, ammo of the turrets, fuel of the tanks, attached tools, loot zones bound to the vehicle, the vehicle's chat topics, the blueprint ( the vehicle's appearance )and simple top-level items in the cargo space.
 Note that support for exporting items is rather imperfect. Do not rely on this for complicated spawning of items.
 Example of exported json ( after formatting ):
 ```jsonc

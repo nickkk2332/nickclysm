@@ -558,6 +558,8 @@ struct vehicle_prototype {
         std::vector<part_def> parts;
         std::vector<vehicle_item_spawn> item_spawns;
         std::vector<zone_def> zone_defs;
+        // what a vehicle built from it has to say: its "Talk to" entry starts with these
+        std::vector<std::string> chat_topics;
         std::vector<std::pair<vproto_id, mod_id>> src;
 
         shared_ptr_fast<vehicle> blueprint;

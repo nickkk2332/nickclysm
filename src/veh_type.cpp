@@ -33,6 +33,7 @@
 #include "json.h"
 #include "magic_enchantment.h"
 #include "map.h"
+#include "npctalk.h"
 #include "output.h"
 #include "pocket_type.h"
 #include "requirements.h"
@@ -1369,6 +1370,7 @@ void vehicle_prototype::load( const JsonObject &jo, std::string_view )
 
     optional( jo, was_loaded, "items", item_spawns );
     optional( jo, was_loaded, "zones", zone_defs, json_read_reader<zone_def> {} );
+    optional( jo, was_loaded, "chat_topics", chat_topics );
 }
 
 void vehicle_prototype::save_vehicle_as_prototype( const vehicle &veh,
@@ -1386,6 +1388,9 @@ void vehicle_prototype::save_vehicle_as_prototype( const vehicle &veh,
     json.member( "id", "/TO_BE_REPLACED/" );
     json.member( "type", "vehicle" );
     json.member( "name", "/TO_BE_REPLACED/" );
+    if( !veh.chat_topics.empty() ) {
+        json.member( "chat_topics", veh.chat_topics );
+    }
     std::map<point_rel_ms, std::list<const vehicle_part *>> vp_map;
     int mount_min_y = 123;
     int mount_max_y = -123;
@@ -1537,6 +1542,13 @@ void vehicles::finalize_prototypes()
         vehicle &blueprint = *proto.blueprint;
         blueprint.type = proto.id;
         blueprint.name = proto.name.translated();
+        // VINT-J01: each vehicle built from it gets a copy, which EOCs can change
+        for( const std::string &topic : proto.chat_topics ) {
+            if( !talk_topic_exists( topic ) ) {
+                debugmsg( "vehicle prototype %s has unknown chat topic %s", proto.id.str(), topic );
+            }
+        }
+        blueprint.chat_topics = proto.chat_topics;
 
         blueprint.suspend_refresh();
         for( vehicle_prototype::part_def &pt : proto.parts ) {

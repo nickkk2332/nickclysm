@@ -614,6 +614,28 @@ The vehicle belongs to the player's faction
 { "u_vehicle_owner": "your_followers" }
 ```
 
+### `u_vehicle_type`, `npc_vehicle_type`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is a vehicle spawned from that [vehicle prototype](VEHICLES_JSON.md) id. A vehicle built in the game, or a piece split off another vehicle, is `"none"`. The [mutator](NPCs.md#mutators) `u_vehicle_type` / `npc_vehicle_type` gives the id as a string, to store it in a variable or compare it with `compare_string`.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+#### Examples
+
+The beta talker is a stock station wagon
+```jsonc
+{ "npc_vehicle_type": "car" }
+```
+
+The alpha talker is one of two kinds of vehicle
+```jsonc
+{ "compare_string": [ { "mutator": "u_vehicle_type" }, "humvee", "military_cargo_truck" ] }
+```
+
 ### `u_has_species`, `npc_has_species`
 - type: string or [variable object](#variable-object)
 - true if alpha or beta talker has the defined species
@@ -3516,6 +3538,152 @@ Sets the faction that owns the alpha or beta talker, which must be a vehicle: a 
 The vehicle in beta now belongs to the player
 ```jsonc
 { "npc_set_vehicle_owner": "u" }
+```
+
+#### `u_repair_vehicle_parts`, `npc_repair_vehicle_parts`
+Gives hit points back to the damaged parts of the alpha or beta talker, which must be a vehicle, without the tools, skills or components the vehicle menu asks for. Every damaged part is repaired unless filters narrow it down; carried vehicles and fake parts are never repaired. A part can't get back the durability it lost to wear (degradation), as with a repair in the game, and faults stay.
+
+Broken parts are skipped unless `fix_broken` is true: the game replaces a broken part, while this mends it in place, and it works again.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_repair_vehicle_parts" / "npc_repair_vehicle_parts" | **mandatory** | int or [variable object](#variable-object) | how many hit points each part gets back, at most up to its durability |
+| "percent" | optional | bool | when true, the amount is a percentage of each part's durability (100 repairs it fully) |
+| "flag" | optional | string or [variable object](#variable-object) | only parts with this flag |
+| "part" | optional | string or [variable object](#variable-object) | only parts of this vehicle part id |
+| "loc" | optional | [variable object](#variable-object) | only parts on this tile |
+| "count" | optional | int or [variable object](#variable-object) | at most this many of the damaged parts that match, picked at random |
+| "fix_broken" | optional | bool | also repair broken parts |
+
+The EOC's context gets `vehicle_parts_repaired` (parts that got hit points back) and `vehicle_parts_fixed` (broken parts that work again).
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+##### Examples
+Repair nanites: one damaged part gets a fifth of its durability back, a broken one too
+```jsonc
+{ "u_repair_vehicle_parts": 20, "percent": true, "fix_broken": true, "count": 1 }
+```
+
+#### `u_install_vehicle_part`, `npc_install_vehicle_part`
+Installs a new part on the alpha or beta talker, which must be a vehicle, without the tools, skills or components the vehicle menu asks for. The part goes where the vehicle menu would let it go: by the part's install rules (a wheel needs a wheel mount, a frame needs a frame next to it, parts that can't share a tile don't), on a tile that is not a wall or other obstacle and has no other vehicle, and an obstacle part not on a creature. It is a new, undamaged part; a light faces the vehicle's front.
+
+Give either `loc` or `mount_x` and `mount_y`. Installing a part rebuilds the vehicle's parts list, as the vehicle menu does, which also clears out the parts removed earlier in the turn.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_install_vehicle_part" / "npc_install_vehicle_part" | **mandatory** | string or [variable object](#variable-object) | the vehicle part id |
+| "loc" | optional | [variable object](#variable-object) | the tile: one of the vehicle's, or one next to it for a new frame |
+| "mount_x", "mount_y" | optional | int or [variable object](#variable-object) | the mount point, as `x` and `y` in a [vehicle prototype](VEHICLES_JSON.md)'s `parts` |
+| "variant" | optional | string or [variable object](#variable-object) | the part's variant (the part after `#` in a prototype); the part's default if not given |
+
+The EOC's context gets `vehicle_part_installed`: 1 if the part was installed, 0 if it could not go there.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+##### Examples
+In a conversation with the vehicle (the player is the alpha talker, the vehicle the beta): a seat on the tile the player stands on
+```jsonc
+[
+  { "set_string_var": { "mutator": "u_loc_relative", "target": "(0,0,0)" }, "target_var": { "context_val": "spot" } },
+  { "npc_install_vehicle_part": "seat", "loc": { "context_val": "spot" } }
+]
+```
+
+A frame in front of the vehicle's origin, as the `cross` variant
+```jsonc
+{ "u_install_vehicle_part": "frame", "mount_x": 1, "mount_y": 0, "variant": "cross" }
+```
+
+#### `u_remove_vehicle_parts`, `npc_remove_vehicle_parts`
+Removes parts of the alpha or beta talker, which must be a vehicle, without the tools, skills or components the vehicle menu asks for. Every part is removed unless filters narrow it down, by the vehicle menu's rules: what is attached to a part goes first (the seatbelt before the seat, everything on a tile before its frame), and parts that hold an animal or a racked vehicle, or a locked door, stay. Power cables and tow cables, and frames with one on their tile, are never removed: disconnect them in the game. Fake parts are never removed.
+
+Unless `split` is true, a frame whose removal would split the vehicle in two stays. With `split`, the pieces become separate vehicles at once, as when a crash splits a vehicle; the talker keeps one of them, and the others can be reached with `u_run_vehicle_eocs`. The last part can be removed, which leaves nothing of the vehicle.
+
+Removed parts are only taken out of the vehicle at the end of the turn (or when a part is installed), so the talker can still be used for the rest of the EOC: the math functions and the other effects no longer see the removed parts.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_remove_vehicle_parts" / "npc_remove_vehicle_parts" | **mandatory** | string or [variable object](#variable-object) | `salvage`: each part is dropped on its tile as uninstalling it gives it (a broken part, or one that is smashed to remove it, as the pieces it breaks into), with nothing lost to the mechanics roll; `destroy`: nothing is left of it. Either way, what is in a removed part's cargo spills around it; a magic vehicle leaves nothing |
+| "flag" | optional | string or [variable object](#variable-object) | only parts with this flag |
+| "part" | optional | string or [variable object](#variable-object) | only parts of this vehicle part id |
+| "loc" | optional | [variable object](#variable-object) | only parts on this tile |
+| "count" | optional | int or [variable object](#variable-object) | at most this many parts, picked at random among those that can be removed |
+| "split" | optional | bool | allow removing frames that split the vehicle |
+
+The EOC's context gets `vehicle_parts_removed` and `vehicle_destroyed` (1 when no part is left).
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+##### Examples
+A wheel thief: one wheel ends up on the ground
+```jsonc
+{ "u_remove_vehicle_parts": "salvage", "flag": "WHEEL", "count": 1 }
+```
+
+Disintegrate the vehicle
+```jsonc
+{ "u_remove_vehicle_parts": "destroy", "split": true }
+```
+
+#### `u_toggle_vehicle_parts`, `npc_toggle_vehicle_parts`
+Switches working parts of the alpha or beta talker, which must be a vehicle, on or off: `on`, `off`, or `toggle`, which turns them all on when none of them is on and all off otherwise, as the electronics menu does. Every working part is switched unless filters narrow it down; broken parts and those of a racked vehicle aren't. A part that can't be on now stays off: one that uses power when the batteries are empty, a planter in the cold.
+
+Engines are switched as in "Control individual engines": switching one on doesn't start the vehicle (use `vehicle_engine_on()` for that, see [math functions](NPCs.md#math-functions)), and an engine switched on while the vehicle runs runs at once, without the start checks. Switching off the last running engine stops the vehicle. Cameras follow the vehicle's camera system and turrets without turret controls stay off.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_toggle_vehicle_parts" / "npc_toggle_vehicle_parts" | **mandatory** | string or [variable object](#variable-object) | `on`, `off` or `toggle` |
+| "flag" | optional | string or [variable object](#variable-object) | only parts with this flag |
+| "part" | optional | string or [variable object](#variable-object) | only parts of this vehicle part id |
+| "loc" | optional | [variable object](#variable-object) | only parts on this tile |
+
+The EOC's context gets `vehicle_parts_toggled`: how many parts changed.
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+##### Examples
+An EMP: the lights and the engines go off
+```jsonc
+[
+  { "u_toggle_vehicle_parts": "off", "flag": "CONE_LIGHT" },
+  { "u_toggle_vehicle_parts": "off", "flag": "ENGINE" }
+]
+```
+
+#### `u_add_vehicle_chat_topic`, `npc_add_vehicle_chat_topic`, `u_remove_vehicle_chat_topic`, `npc_remove_vehicle_chat_topic`
+Adds a chat topic to the alpha or beta talker, which must be a vehicle, or removes one. A vehicle with chat topics has a "Talk to" entry in its menu (examine it), and `open_dialogue` with the vehicle as beta talker talks to it; the conversation starts with the last topic added. A vehicle starts with the `chat_topics` of its [prototype](VEHICLES_JSON.md). Adding a topic it already has moves it to the end. During the conversation the vehicle is the beta talker, so `npc_vehicle_fuel('gasoline')` and the other `npc_` vehicle functions read it.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_add_vehicle_chat_topic" / "npc_add_vehicle_chat_topic" / "u_remove_vehicle_chat_topic" / "npc_remove_vehicle_chat_topic" | **mandatory** | string or [variable object](#variable-object) | the talk topic id |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+##### Examples
+The car wakes up
+```jsonc
+{ "u_add_vehicle_chat_topic": "TALK_SENTIENT_CAR" }
 ```
 
 #### `u_run_vehicle_eocs`, `npc_run_vehicle_eocs`
