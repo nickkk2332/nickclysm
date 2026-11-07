@@ -1,6 +1,5 @@
 #include "overmap_location.h"
 
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -72,10 +71,12 @@ void overmap_location::finalize()
     for( const std::string &elem : flags ) {
         auto it = oter_flags_map.find( elem );
         // OMAP-J12: a flag that isn't an engine flag is a mod's own overmap terrain flag.
-        const std::optional<oter_flags> check_flag = it == oter_flags_map.end() ?
-                std::nullopt : std::optional<oter_flags>( it->second );
+        // (A bool and a plain enum, not std::optional: GCC 9 LTO reports a false
+        // maybe-uninitialized on the optional.)
+        const bool engine_flag = it != oter_flags_map.end();
+        const oter_flags check_flag = engine_flag ? it->second : oter_flags::num_oter_flags;
         for( const oter_t &ter_elem : overmap_terrains::get_all() ) {
-            if( check_flag ? ter_elem.has_flag( *check_flag ) : ter_elem.has_flag( elem ) ) {
+            if( engine_flag ? ter_elem.has_flag( check_flag ) : ter_elem.has_flag( elem ) ) {
                 terrains.insert( ter_elem.get_type_id() );
             }
         }

@@ -508,9 +508,11 @@ TEST_CASE( "hlth-j10_wake_up_from_an_eoc", "[audit][npc_talk]" )
     dialogue d( get_talker_for( u ), nullptr );
     event_catcher events( { event_type::character_wakes_up } );
 
-    // Under anesthesia, nothing wakes it
-    u.fall_asleep( 2_hours );
+    // Under anesthesia, nothing wakes it. Narcosis goes on first: falling asleep runs the
+    // sleep effect's light and temperature checks at once, and without narcosis those can
+    // wake the avatar at random before the test starts.
     u.add_effect( effect_narcosis, 1_hours );
+    u.fall_asleep( 2_hours );
     REQUIRE( u.get_effect_dur( effect_sleep ) > 0_turns );
     wake.apply( d );
     CHECK( u.get_effect_dur( effect_sleep ) > 0_turns );
