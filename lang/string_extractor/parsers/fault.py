@@ -27,7 +27,8 @@ def parse_fault(json, origin):
 
     if "while_moving" in json:
         write_text(json["while_moving"].get("sound"), origin,
-                   comment=f"Sound of a moving vehicle wheel with fault '{name}'")
+                   comment="Sound of a moving vehicle wheel with fault "
+                   f"'{name}'")
         write_text(json["while_moving"].get("message"), origin,
                    comment="Message when driving damages a vehicle wheel "
                    f"with fault '{name}'")
