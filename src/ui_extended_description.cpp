@@ -18,7 +18,7 @@
 #include "viewer.h"
 #include "vpart_position.h"
 
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 
 static description_target &operator++( description_target &c )
 {
@@ -55,7 +55,7 @@ static void draw_sign_text( const tripoint_bub_ms &p )
     std::string signage = get_map().get_signage( p );
     if( !signage.empty() ) {
         ImGui::Separator();
-        cataimgui::draw_colored_text( get_player_character().has_trait( trait_ILLITERATE ) ?
+        cataimgui::draw_colored_text( get_player_character().has_flag( json_flag_ILLITERATE ) ?
                                       // NOLINTNEXTLINE(cata-text-style): the question mark does not end a sentence
                                       _( "Sign: ???" ) : string_format( _( "Sign: %s" ), signage ) );
     }
@@ -66,7 +66,7 @@ static void draw_graffiti_text( const tripoint_bub_ms &p )
     std::string graffiti = get_map().graffiti_at( p );
     if( !graffiti.empty() ) {
         ImGui::Separator();
-        cataimgui::draw_colored_text( get_player_character().has_trait( trait_ILLITERATE ) ?
+        cataimgui::draw_colored_text( get_player_character().has_flag( json_flag_ILLITERATE ) ?
                                       // NOLINTNEXTLINE(cata-text-style): the question mark does not end a sentence
                                       _( "Inscription: ???" ) : string_format( _( "Inscription: %s" ), graffiti ) );
     }

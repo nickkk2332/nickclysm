@@ -155,6 +155,8 @@ static const itype_id itype_oxycodone( "oxycodone" );
 static const itype_id itype_tramadol( "tramadol" );
 
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
+static const json_character_flag
+json_flag_NO_BOOK_COMPLEXITY_PENALTY( "NO_BOOK_COMPLEXITY_PENALTY" );
 static const json_character_flag json_flag_READ_IN_DARKNESS( "READ_IN_DARKNESS" );
 static const json_character_flag json_flag_SAPIOVORE( "SAPIOVORE" );
 
@@ -197,7 +199,6 @@ static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
 static const trait_id trait_HALLUCINATION( "HALLUCINATION" );
 static const trait_id trait_INTERCOM_OPERATOR( "INTERCOM_OPERATOR" );
 static const trait_id trait_NO_BASH( "NO_BASH" );
-static const trait_id trait_PROF_DICEMASTER( "PROF_DICEMASTER" );
 static const trait_id trait_TERRIFYING( "TERRIFYING" );
 static const trait_id trait_TRADE_BACKEND( "TRADE_BACKEND" );
 
@@ -1531,7 +1532,8 @@ time_duration npc::time_to_read( const item &book, const Character &reader ) con
     time_duration retval = type->time * reading_speed / 100;
     retval *= std::min( fine_detail_vision_mod(), reader.fine_detail_vision_mod() );
 
-    if( type->intel > reader.get_int() && !reader.has_trait( trait_PROF_DICEMASTER ) ) {
+    if( type->intel > reader.get_int() &&
+        !reader.has_flag( json_flag_NO_BOOK_COMPLEXITY_PENALTY ) ) {
         retval += type->time * ( time_duration::from_seconds( type->intel - reader.get_int() ) /
                                  1_minutes );
     }

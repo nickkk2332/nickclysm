@@ -2034,7 +2034,8 @@
     "description": "There's nothing quite like the smell of a good book!  Books are more fun (or less boring) for you!",
     "cancels": [ "ILLITERATE", "HATES_BOOKS" ],
     "points": 1,
-    "valid": false
+    "valid": false,
+    "flags": [ "LOVES_BOOKS" ]
   },
   {
     "type": "mutation",
@@ -2043,7 +2044,8 @@
     "description": "Reading is for nerds!  Boring books are more boring, and you can't have fun by reading books.",
     "cancels": [ "ILLITERATE", "LOVES_BOOKS" ],
     "points": -1,
-    "valid": false
+    "valid": false,
+    "flags": [ "HATES_BOOKS" ]
   },
   {
     "type": "mutation",
@@ -2076,7 +2078,8 @@
     "cancels": [ "FASTREADER", "SLOWREADER", "PROF_DICEMASTER", "LOVES_BOOKS", "HATES_BOOKS" ],
     "points": -6,
     "starting_trait": true,
-    "valid": false
+    "valid": false,
+    "flags": [ "ILLITERATE" ]
   },
   {
     "type": "mutation",

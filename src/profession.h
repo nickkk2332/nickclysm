@@ -87,6 +87,9 @@ class profession
         std::map<spell_id, int> _starting_spells;
         std::vector<effect_on_condition_id> effect_on_conditions;
         std::set<std::string> flags; // flags for some special properties of the profession
+        // The profession group of hobbies a new character with this profession starts with:
+        // unset, the scenario's; an empty id, none (PROG-J01)
+        std::optional<profession_group_id> _default_backgrounds;
         StartingSkillList  _starting_skills;
         std::vector<mission_type_id> _missions; // starting missions for profession
 
@@ -122,7 +125,10 @@ class profession
         std::string description( bool male ) const;
         signed int point_cost() const;
         std::optional<signed int> starting_cash() const;
-        std::list<item> items( bool male, const std::vector<trait_id> &traits ) const;
+        // bonus_items: whether to add the items traits give (an inhaler for ASTHMA...); the
+        // profession's NO_BONUS_ITEMS flag leaves them out either way
+        std::list<item> items( bool male, const std::vector<trait_id> &traits,
+                               bool bonus_items = true ) const;
         std::vector<addiction> addictions() const;
         vproto_id vehicle() const;
         std::vector<mtype_id> pets() const;
@@ -159,6 +165,8 @@ class profession
          * Current flags: none
          */
         bool has_flag( const std::string &flag ) const;
+        /** The JSON's "default_backgrounds", if it has one (PROG-J01) */
+        const std::optional<profession_group_id> &default_backgrounds() const;
 
         /**
          * Check if the given player can pick this job with the given amount

@@ -196,6 +196,7 @@ namespace io
             case enchant_vals::mod::FUEL_USAGE: return "FUEL_USAGE";
             case enchant_vals::mod::TURNING_DIFFICULTY: return "TURNING_DIFFICULTY";
             case enchant_vals::mod::CROWD_CRUSH_RESIST: return "CROWD_CRUSH_RESIST";
+            case enchant_vals::mod::BOOK_FUN: return "BOOK_FUN";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );

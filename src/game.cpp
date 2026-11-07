@@ -339,6 +339,7 @@ static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
 static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_INFECTION_IMMUNE( "INFECTION_IMMUNE" );
 static const json_character_flag json_flag_ITEM_WATERPROOFING( "ITEM_WATERPROOFING" );
 static const json_character_flag json_flag_NYCTOPHOBIA( "NYCTOPHOBIA" );
@@ -383,7 +384,6 @@ static const ter_str_id ter_t_manhole_cover( "t_manhole_cover" );
 
 static const trait_id trait_BADKNEES( "BADKNEES" );
 static const trait_id trait_CENOBITE( "CENOBITE" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
 static const trait_id trait_INFRESIST( "INFRESIST" );
 static const trait_id trait_LEG_TENT_BRACE( "LEG_TENT_BRACE" );
 static const trait_id trait_MASOCHIST( "MASOCHIST" );
@@ -4547,7 +4547,7 @@ void game::use_computer( const tripoint_bub_ms &p )
 {
     map &here = get_map();
 
-    if( u.has_trait( trait_ILLITERATE ) ) {
+    if( u.has_flag( json_flag_ILLITERATE ) ) {
         add_msg( m_info, _( "You can not read a computer screen!" ) );
         return;
     }
@@ -8399,14 +8399,14 @@ point_rel_sm game::place_player( const tripoint_bub_ms &dest_loc, bool quick )
     }
     std::string signage = here.get_signage( dest_loc );
     if( !signage.empty() ) {
-        if( !u.has_trait( trait_ILLITERATE ) ) {
+        if( !u.has_flag( json_flag_ILLITERATE ) ) {
             add_msg( m_info, _( "The sign says: %s" ), signage );
         } else {
             add_msg( m_info, _( "There is a sign here, but you are unable to read it." ) );
         }
     }
     if( here.has_graffiti_at( dest_loc ) ) {
-        if( !u.has_trait( trait_ILLITERATE ) ) {
+        if( !u.has_flag( json_flag_ILLITERATE ) ) {
             add_msg( m_info, _( "Written here: %s" ), here.graffiti_at( dest_loc ) );
         } else {
             add_msg( m_info, _( "Something is written here, but you are unable to read it." ) );

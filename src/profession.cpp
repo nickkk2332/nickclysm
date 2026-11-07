@@ -380,6 +380,7 @@ void profession::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "forbidden_traits", _forbidden_traits,
               string_id_reader<::mutation_branch> {} );
     optional( jo, was_loaded, "flags", flags, auto_flags_reader<> {} );
+    optional( jo, was_loaded, "default_backgrounds", _default_backgrounds );
 
     optional( jo, was_loaded, "hobbies", _hobby_exclusion );
     optional( jo, was_loaded, "whitelist_hobbies", hobbies_whitelist, true );
@@ -537,6 +538,11 @@ void profession::check_definition() const
         debugmsg( "npc_background %s for profession %s is not a trait group",
                   _starting_npc_background.str(), id.str() );
     }
+    if( _default_backgrounds && !_default_backgrounds->is_empty() &&
+        !_default_backgrounds->is_valid() ) {
+        debugmsg( "default_backgrounds %s for profession %s is not a profession group",
+                  _default_backgrounds->str(), id.str() );
+    }
     for( const string_id<profession> &hobby : _hobby_exclusion ) {
         if( !hobby.is_valid() ) {
             debugmsg( "hobby %s for profession %s does not exist", hobby.str(), id.str() );
@@ -618,7 +624,8 @@ static void clear_faults( item &it )
     it.faults.clear();
 }
 
-std::list<item> profession::items( bool male, const std::vector<trait_id> &traits ) const
+std::list<item> profession::items( bool male, const std::vector<trait_id> &traits,
+                                   bool bonus_items ) const
 {
     std::list<item> result;
     auto add_legacy_items = [&result]( const itypedecvec & vec ) {
@@ -644,7 +651,7 @@ std::list<item> profession::items( bool male, const std::vector<trait_id> &trait
     result.insert( result.begin(), std::make_move_iterator( group_gender.begin() ),
                    std::make_move_iterator( group_gender.end() ) );
 
-    if( !has_flag( "NO_BONUS_ITEMS" ) ) {
+    if( bonus_items && !has_flag( "NO_BONUS_ITEMS" ) ) {
         const std::vector<item> &items = item_substitutions.get_bonus_items( traits );
         for( const item &it : items ) {
             if( it.typeId() != no_bonus ) {
@@ -776,6 +783,11 @@ profession::StartingSkillList profession::skills() const
 bool profession::has_flag( const std::string &flag ) const
 {
     return flags.count( flag ) != 0;
+}
+
+const std::optional<profession_group_id> &profession::default_backgrounds() const
+{
+    return _default_backgrounds;
 }
 
 ret_val<void> profession::can_afford( const Character &you, const int points ) const

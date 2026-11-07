@@ -83,6 +83,8 @@ class proficiency
         float _default_weakpoint_penalty = 0.0f;
 
         time_duration _time_to_learn = 9999_hours;
+        // Whether the JSON (or the one it copies from) gives time_to_learn (PROG-J02)
+        bool _has_time_to_learn = false;
         std::set<proficiency_id> _required;
 
         std::map<std::string, std::vector<proficiency_bonus>> _bonuses;
@@ -92,6 +94,14 @@ class proficiency
         static void finalize_all();
         static void reset();
         void load( const JsonObject &jo, std::string_view src );
+        // Load checks (PROG-J02): every proficiency's check(), and no circle of prerequisites
+        static void check_all();
+        // Reports an unknown category or prerequisite, and a learnable proficiency without
+        // time_to_learn
+        void check() const;
+        // Every circle of prerequisites among the loaded proficiencies, each listed round from
+        // one of them back to it; none of a circle's proficiencies can be practiced
+        static std::vector<std::vector<proficiency_id>> prerequisite_cycles();
 
         static const std::vector<proficiency> &get_all();
 

@@ -146,6 +146,7 @@ static const flag_id json_flag_MOP( "MOP" );
 static const itype_id itype_disassembly( "disassembly" );
 static const itype_id itype_paper( "paper" );
 
+static const json_character_flag json_flag_ILLITERATE( "ILLITERATE" );
 static const json_character_flag json_flag_SAFECRACK_NO_TOOL( "SAFECRACK_NO_TOOL" );
 
 static const proficiency_id proficiency_prof_dissect_humans( "prof_dissect_humans" );
@@ -171,7 +172,6 @@ static const ter_str_id ter_t_trunk( "t_trunk" );
 
 static const trait_id trait_BURROW( "BURROW" );
 static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
-static const trait_id trait_ILLITERATE( "ILLITERATE" );
 
 namespace activity_actors
 {
@@ -1554,7 +1554,7 @@ refusal start_hacking( const activity_id &, Character &who, const eoc_activity_t
         !ter.has_examine( iexamine::gunsafe_el ) && !furn.has_examine( iexamine::gunsafe_el ) ) {
         return string_format( _( "There is nothing to hack at the %s." ), here.name( pos ) );
     }
-    if( who.has_trait( trait_ILLITERATE ) ) {
+    if( who.has_flag( json_flag_ILLITERATE ) ) {
         return string_format( _( "%s can't read." ), who.get_name() );
     }
     item_location tool;

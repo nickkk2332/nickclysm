@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <set>
 #include <string>
 #include <utility>
@@ -121,6 +122,9 @@ void proficiency::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "default_weakpoint_bonus", _default_weakpoint_bonus );
     optional( jo, was_loaded, "default_weakpoint_penalty", _default_weakpoint_penalty );
     optional( jo, was_loaded, "time_to_learn", _time_to_learn );
+    if( jo.has_member( "time_to_learn" ) ) {
+        _has_time_to_learn = true;
+    }
     optional( jo, was_loaded, "required_proficiencies", _required );
     optional( jo, was_loaded, "ignore_focus", _ignore_focus );
     optional( jo, was_loaded, "teachable", _teachable, true );
@@ -139,6 +143,86 @@ void proficiency_category::load( const JsonObject &jo, std::string_view )
 {
     mandatory( jo, was_loaded, "name", _name );
     mandatory( jo, was_loaded, "description", _description );
+}
+
+void proficiency::check() const
+{
+    // A bad category showed up only as an error in the UI, and an unknown prerequisite made the
+    // proficiency impossible to learn by practice (PROG-J02)
+    if( !_category.is_valid() ) {
+        debugmsg( "proficiency %s has unknown category %s", id.str(), _category.str() );
+    }
+    for( const proficiency_id &req : _required ) {
+        if( !req.is_valid() ) {
+            debugmsg( "proficiency %s requires unknown proficiency %s", id.str(), req.str() );
+        }
+    }
+    if( _can_learn && !_has_time_to_learn ) {
+        debugmsg( "proficiency %s can be learned but has no time_to_learn (it would take %s)",
+                  id.str(), to_string( _time_to_learn ) );
+    }
+}
+
+namespace
+{
+enum class prerequisite_visit : int {
+    in_progress,
+    done
+};
+
+// Depth-first search from prof through its (known) prerequisites: a prerequisite still in
+// progress closes a circle, the part of path from it on
+void find_prerequisite_cycles( const proficiency_id &prof,
+                               std::map<proficiency_id, prerequisite_visit> &visited,
+                               std::vector<proficiency_id> &path,
+                               std::vector<std::vector<proficiency_id>> &cycles )
+{
+    visited[prof] = prerequisite_visit::in_progress;
+    path.push_back( prof );
+    for( const proficiency_id &req : prof->required_proficiencies() ) {
+        if( !req.is_valid() ) {
+            continue;
+        }
+        const auto found = visited.find( req );
+        if( found == visited.end() ) {
+            find_prerequisite_cycles( req, visited, path, cycles );
+        } else if( found->second == prerequisite_visit::in_progress ) {
+            std::vector<proficiency_id> cycle( std::find( path.begin(), path.end(), req ), path.end() );
+            cycle.push_back( req );
+            cycles.push_back( cycle );
+        }
+    }
+    path.pop_back();
+    visited[prof] = prerequisite_visit::done;
+}
+} // namespace
+
+std::vector<std::vector<proficiency_id>> proficiency::prerequisite_cycles()
+{
+    std::vector<std::vector<proficiency_id>> cycles;
+    std::map<proficiency_id, prerequisite_visit> visited;
+    std::vector<proficiency_id> path;
+    for( const proficiency &prof : get_all() ) {
+        if( visited.count( prof.id ) == 0 ) {
+            find_prerequisite_cycles( prof.id, visited, path, cycles );
+        }
+    }
+    return cycles;
+}
+
+void proficiency::check_all()
+{
+    for( const proficiency &prof : get_all() ) {
+        prof.check();
+    }
+    for( const std::vector<proficiency_id> &cycle : prerequisite_cycles() ) {
+        std::string listed;
+        for( const proficiency_id &prof : cycle ) {
+            listed += listed.empty() ? prof.str() : " -> " + prof.str();
+        }
+        debugmsg( "proficiencies require each other in a circle, so none of them can be learned by "
+                  "practice: %s", listed );
+    }
 }
 
 const std::vector<proficiency> &proficiency::get_all()

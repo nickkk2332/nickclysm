@@ -160,6 +160,8 @@ enum class mod : int {
     FUEL_USAGE,
     TURNING_DIFFICULTY,
     CROWD_CRUSH_RESIST,
+    // added to and multiplies how much fun reading a book is (PROG-J03)
+    BOOK_FUN,
     NUM_MOD
 };
 

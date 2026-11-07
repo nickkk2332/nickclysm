@@ -90,6 +90,7 @@ static const std::string flag_STANDARD( "STANDARD" );
 static const std::string flag_TOUGH( "TOUGH" );
 static const std::string flag_CHALLENGE( "CHALLENGE" );
 static const std::string flag_CITY_START( "CITY_START" );
+static const std::string flag_NO_BONUS_ITEMS( "NO_BONUS_ITEMS" );
 static const std::string flag_SECRET( "SECRET" );
 static const std::string flag_SKIP_DEFAULT_BACKGROUND( "SKIP_DEFAULT_BACKGROUND" );
 
@@ -633,7 +634,10 @@ void Character::add_profession_items()
         return;
     }
 
-    std::list<item> prof_items = prof->items( outfit, get_mutations() );
+    // NO_BONUS_ITEMS works on the avatar's scenario too, as documented (PROG-J01); the player's
+    // scenario is no concern of NPCs
+    const bool bonus_items = !( is_avatar() && get_scenario()->has_flag( flag_NO_BONUS_ITEMS ) );
+    std::list<item> prof_items = prof->items( outfit, get_mutations(), bonus_items );
     std::list<item> try_adding_again;
 
     auto attempt_add_items = [this]( std::list<item> &prof_items, std::list<item> &failed_to_add ) {
@@ -798,9 +802,8 @@ bool avatar::create( character_type type, const std::string &tempname )
             //tabs.position.last();
             break;
     }
-    // Don't apply the default backgrounds on a template or scenario with SKIP_DEFAULT_BACKGROUND
-    if( type != character_type::TEMPLATE &&
-        !get_scenario()->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
+    // Not on a template; SKIP_DEFAULT_BACKGROUND is checked by add_default_background (PROG-J01)
+    if( type != character_type::TEMPLATE ) {
         add_default_background();
     }
 
@@ -1717,7 +1720,9 @@ void draw_profession_inventory( const avatar &u )
     const profession &selected_profession = sorted_profs[selected_profession_index].obj();
 
     if( cc_uistate.cached_profession_inventory.empty() ) {
-        cc_uistate.cached_profession_inventory = selected_profession.items( outfit, u.get_mutations() );
+        // As add_profession_items gives them (PROG-J01)
+        cc_uistate.cached_profession_inventory = selected_profession.items( outfit, u.get_mutations(),
+                !get_scenario()->has_flag( flag_NO_BONUS_ITEMS ) );
     }
     const std::list<item> &prof_items = cc_uistate.cached_profession_inventory;
 
@@ -2123,6 +2128,73 @@ std::vector<std::string> drop_what_profession_excludes( avatar &u )
     return dropped;
 }
 
+std::vector<profession_id> default_background_hobbies( const profession *prof,
+        const scenario *scen )
+{
+    // Only the scenario's flag counted, while the docs (and the professions setting it) said
+    // the profession's, and the group was always adult_basic_background (PROG-J01)
+    std::optional<profession_group_id> group;
+    if( prof != nullptr ) {
+        if( prof->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
+            return {};
+        }
+        group = prof->default_backgrounds();
+    }
+    if( !group && scen != nullptr ) {
+        if( scen->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
+            return {};
+        }
+        group = scen->default_backgrounds();
+    }
+    const profession_group_id &chosen = group ? *group : profession_group_adult_basic_background;
+    std::vector<profession_id> ret;
+    if( chosen.is_empty() || !chosen.is_valid() ) {
+        return ret;
+    }
+    for( const profession_id &hobby : chosen->get_professions() ) {
+        // Not those the profession excludes (PROG-B08)
+        if( prof == nullptr || prof->allows_hobby( hobby ) ) {
+            ret.push_back( hobby );
+        }
+    }
+    return ret;
+}
+
+void change_default_background( avatar &u, const profession *old_prof )
+{
+    const std::vector<profession_id> before = default_background_hobbies( old_prof,
+            get_scenario() );
+    const std::vector<profession_id> after = default_background_hobbies( u.prof, get_scenario() );
+    for( const profession_id &hobby : before ) {
+        if( std::find( after.begin(), after.end(), hobby ) != after.end() ||
+            u.hobbies.erase( &hobby.obj() ) == 0 ) {
+            continue;
+        }
+        // As deselecting it does: its traits go, unless the profession or another hobby has them
+        for( const trait_and_var &cur : hobby->get_locked_traits() ) {
+            bool kept = u.prof->is_locked_trait( cur.trait );
+            for( const profession *other : u.hobbies ) {
+                kept = kept || other->is_locked_trait( cur.trait );
+            }
+            if( !kept && u.has_trait( cur.trait ) ) {
+                u.toggle_trait_deps( cur.trait );
+            }
+        }
+    }
+    for( const profession_id &hobby : after ) {
+        if( std::find( before.begin(), before.end(), hobby ) != before.end() ||
+            !u.hobbies.insert( &hobby.obj() ).second ) {
+            continue;
+        }
+        // As choosing it does
+        for( const trait_and_var &cur : hobby->get_locked_traits() ) {
+            if( !u.has_trait( cur.trait ) ) {
+                u.toggle_trait_deps( cur.trait );
+            }
+        }
+    }
+}
+
 } // namespace char_creation
 
 std::vector<trait_id> Character::get_base_traits() const
@@ -2324,15 +2396,10 @@ void avatar::character_to_template( const std::string &name )
 
 void Character::add_default_background()
 {
-    for( const profession_group &prof_grp : profession_group::get_all() ) {
-        if( prof_grp.get_id() == profession_group_adult_basic_background ) {
-            for( const profession_id &hobb : prof_grp.get_professions() ) {
-                // Not those the profession excludes (PROG-B08)
-                if( prof == nullptr || prof->allows_hobby( hobb ) ) {
-                    hobbies.insert( &hobb.obj() );
-                }
-            }
-        }
+    // The player's scenario for the avatar; NPCs come from the generic one (PROG-B03)
+    const scenario *scen = is_avatar() ? get_scenario() : scenario::generic();
+    for( const profession_id &hobb : char_creation::default_background_hobbies( prof, scen ) ) {
+        hobbies.insert( &hobb.obj() );
     }
 }
 
@@ -2439,9 +2506,8 @@ void reset_scenario( avatar &u, const scenario *scen )
     u.prof = &default_prof.obj();
 
     u.hobbies.clear();
-    if( !scen->has_flag( flag_SKIP_DEFAULT_BACKGROUND ) ) {
-        u.add_default_background();
-    };
+    // Which the scenario and profession give, if any (PROG-J01)
+    u.add_default_background();
     u.clear_mutations();
     u.recalc_hp();
     u.empty_skills();
@@ -3772,6 +3838,7 @@ void character_creator_callback::confirm( uilist *menu )
                 u.toggle_trait_deps( old.trait );
             }
 
+            const profession *old_prof = u.prof;
             u.prof = &*selected_profession;
 
             // Remove pre-selected traits that conflict
@@ -3793,6 +3860,8 @@ void character_creator_callback::confirm( uilist *menu )
             for( const std::string &dropped : char_creation::drop_what_profession_excludes( u ) ) {
                 popup( dropped );
             }
+            // A profession can give other default hobbies, or none (PROG-J01)
+            char_creation::change_default_background( u, old_prof );
 
             cc_uistate.recalc_hobbies = true;
             cc_uistate.recalc_hobbies_taken = true;

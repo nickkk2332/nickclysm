@@ -70,6 +70,9 @@ class scenario
         point_rel_om origin_offset = point_rel_om::zero;
         int _point_cost = 0;
         std::set<std::string> flags; // flags for some special properties of the scenario
+        // The profession group of hobbies new characters start with, unless their profession
+        // names its own: unset, adult_basic_background; an empty id, none (PROG-J01)
+        std::optional<profession_group_id> _default_backgrounds;
         map_extra_id _map_extra;
         std::vector<mission_type_id> _missions;
         std::vector<effect_on_condition_id> _eoc;
@@ -167,6 +170,8 @@ class scenario
 
         /** Such as a seasonal start, fiery start, surrounded start, etc. */
         bool has_flag( const std::string &flag ) const;
+        /** The JSON's "default_backgrounds", if it has one (PROG-J01) */
+        const std::optional<profession_group_id> &default_backgrounds() const;
 
         /**
          * Do you have the necessary achievement state

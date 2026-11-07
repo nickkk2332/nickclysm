@@ -1447,6 +1447,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Materials" ), &materials::check },
             { _( "Faults" ), &faults::check_consistency },
             { _( "Post-process generators" ), &pp_generators::check_consistency },
+            { _( "Proficiencies" ), &proficiency::check_all },
             { _( "Proficiency migration" ), &proficiency_migration::check },
             { _( "Vehicle parts" ), &vehicles::parts::check },
             { _( "Vehicle part locations" ), &vpart_location::check_all },

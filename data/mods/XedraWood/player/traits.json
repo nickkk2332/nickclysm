@@ -41,7 +41,8 @@
     "description": "While some warrior societies or groups of the Wise may have secret runic codes, wide-scale writing has not yet been invented.  You cannot read.",
     "cancels": [ "FASTREADER", "SLOWREADER", "PROF_DICEMASTER", "LOVES_BOOKS", "HATES_BOOKS" ],
     "points": 0,
-    "valid": false
+    "valid": false,
+    "flags": [ "ILLITERATE" ]
   },
   {
     "type": "mutation",

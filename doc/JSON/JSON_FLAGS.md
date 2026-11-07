@@ -344,7 +344,8 @@ Some armor flags, such as `WATCH` and `ALARMCLOCK` are compatible with other ite
 
 ## Books
 
-- ```INSPIRATIONAL``` Reading this book grants bonus morale to characters with the `SPIRITUAL` trait.
+- ```ENJOYED_BY_CANNIBALS``` Characters with the `CANNIBAL`, `PSYCHOPATH` or `SAPIOVORE` flag enjoy reading this book: its fun counts as positive, however boring it is to others (vanilla: *To Serve Man*).
+- ```INSPIRATIONAL``` Reading this book is three times as fun (and never boring) for characters with the `SPIRITUAL` flag.
 - ```BINDER_ADD_RECIPE``` Add recipe to a book binder.
 
 
@@ -410,6 +411,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```GLIDING``` You are in the process of gliding.
 - ```HANDS_CANNOT_USE_FIREARMS``` Your hands (or paws, tentacles, etc) are incapable of operating a firearm
 - ```HARDTOHIT``` Whenever something attacks you, RNG gets rolled twice, and you get the better result.  In melee (and for grabs) the attacker rolls to hit twice and keeps the worse roll; a projectile's aim is rolled twice and the worse shot kept.  A monster gets the flag from the flags of an effect it has, and on a monster it works against melee attacks (and grabs) only.
+- ```HATES_BOOKS``` Books are no fun for you, and boring ones are one point more boring.  The `HATES_BOOKS` trait has it.
 - ```HEATSINK``` You are resistant to extreme heat.
 - ```HEAT_IMMUNE``` Immune to very hot temperatures and fire damage.
 - ```HERITAGE``` Turns a mutation with this flag light cyan on the list.  Currently used in mods for mutations that indicate non-human ancestry.
@@ -417,6 +419,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```HUGE``` Changes your size to `creature_size::huge`.  Checked last of the size category flags, if no size flags are found your size defaults to `creature_size::medium`.
 - ```HUNGER_DISRUPTION``` You cannot tell how hungry you are 
 - ```HYPEROPIC``` You are far-sighted: close combat is hampered and reading is impossible without glasses.
+- ```ILLITERATE``` You can't read: books that need intelligence, signs, notes, computer screens and the like.  The `ILLITERATE` trait has it.
 - ```INHALED_TOXIN_IMMUNE``` You are immune to any inhaled toxin that mouth environmental resistance would also protect against.
 - ```IMMUNE_HEARING_DAMAGE``` Immune to hearing damage from loud sounds.
 - ```IMMUNE_SPOIL``` You are immune to negative outcomes from spoiled food.
@@ -429,6 +432,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```ITEM_WATERPROOFING``` Gear on your person is immune to being dissolved or broken while you're underwater.
 - ```LARGE``` Changes your size to `creature_size::large`.  Checked third of the size category flags.
 - ```LEVITATION``` You can walk on air. Does not allow you to ascend unless paired with `CLIMB_FLYING`
+- ```LOVES_BOOKS``` Books are one point more fun for you.  The `LOVES_BOOKS` trait has it.
 - ```MAGICAL_MIND_PROTECTION``` Your mind is protected by magic from being attacked, such as from a flaming eye's stare.
 - ```MA_BASIC_FALLBACK``` Your basic attacks are fallbacks: techniques with `"fallback": true` (the base punch, kick and headbutt) are used only when no other technique is possible, and the base techniques follow the grappling rules (headbutt only in a grapple, either way round; no kicks while you hold someone).  Without this flag a fallback technique is an ordinary technique.  A martial art usually grants it through a static buff (see [MARTIALART_JSON.md](MARTIALART_JSON.md#fallback-and-basic-techniques)).
 - ```MEND_ALL``` You need no splint to heal broken bones.
@@ -440,6 +444,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```MYOPIC_SUPERNATURAL``` You are nearsighted in such a way that glasses cannot fix it, such as by magic.
 - ```MYOPIC_IN_LIGHT_SUPERNATURAL``` You are nearsighted in light in such a way that glasses cannot fix it, such as by magic.
 - ```NIGHT_VISION``` You can see in the dark.
+- ```NO_BOOK_COMPLEXITY_PENALTY``` Books above your intelligence don't take you longer to read.  The `PROF_DICEMASTER` trait has it.
 - ```NO_BODY_HEAT``` Your temperature is indistinguishable from the surrounding environmental temperature, making you not show up on infrared.
 - ```NO_CBM_INSTALLATION``` You are unable to install any CBMs.
 - ```NO_DISEASE``` This mutation grants immunity to diseases.
@@ -479,7 +484,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```SLUDGE_IMMUNE``` Critter is immune to sludge trail field (`fd_sludge`)
 - ```SNOWWALKING``` Character's movement is not slowed by snow depth
 - ```SMALL``` Changes your size to `creature_size::small`.  Checked second of the size category flags.
-- ```SPIRITUAL``` Changes character's moral behaviour in some situations.
+- ```SPIRITUAL``` Changes character's moral behaviour in some situations, and books with the `INSPIRATIONAL` flag are three times as fun.
 - ```STAB_IMMUNE``` You are immune to stabbing damage.
 - ```STEADY``` Your speed can never go below base speed, bonuses from effects etc can still apply.
 - ```STOP_SLEEP_DEPRIVATION``` Stops Sleep Deprivation while awake and boosts it while sleeping.
@@ -1494,8 +1499,9 @@ The purpose of these flags is to allow reuse of blueprints to create the "same" 
 - ```FIRE_START``` Player starts the game with fire nearby.
 - ```FORGIVING``` Sorted into the "FORGIVING" category in the character creation UI.
 - ```HELI_CRASH``` Player starts the game with various limbs wounds.
-- ```LONE_START``` This scenario won't spawn a fellow NPC on game start.
-- ```NO_BONUS_ITEMS``` This scenario prevent bonus items (such as inhalers with the `ASTHMA` trait) from being given to this profession
+- ```LONE_START``` This scenario won't spawn a fellow NPC on game start, and the start doesn't need room for one.
+- ```NO_BONUS_ITEMS``` Characters starting in this scenario get no bonus items (such as an inhaler for the `ASTHMA` trait).  NPCs aren't affected.  Also a profession flag.
+- ```SKIP_DEFAULT_BACKGROUND``` New characters get no default background hobbies, unless their profession names a group in `default_backgrounds` (see [Profession groups](JSON_INFO.md#profession-groups)).  Also a profession flag.
 - ```STANDARD``` Sorted into the "STANDARD" category in the character creation UI.
 - ```SUR_START``` Write `Zombies nearby` in the scenario info, doesn't spawn monsters by itself (put close to `LONE_START`)
 - ```TOUGH``` Sorted into the "TOUGH" category in the character creation UI.
@@ -1503,8 +1509,9 @@ The purpose of these flags is to allow reuse of blueprints to create the "same" 
 
 ### Profession
 
+- ```NO_BONUS_ITEMS``` Characters with this profession get no bonus items (such as an inhaler for the `ASTHMA` trait).
 - ```SCEN_ONLY``` Profession can be chosen only as part of the appropriate scenario.
-- ```SKIP_DEFAULT_BACKGROUND``` This profession will not add the default background package of hobbies (`adult_basic_background`).
+- ```SKIP_DEFAULT_BACKGROUND``` Characters with this profession get no default background hobbies (see [Profession groups](JSON_INFO.md#profession-groups)), whatever the scenario's `default_backgrounds`.  Choosing it in the character creator removes them.
 
 
 ### Starting Location

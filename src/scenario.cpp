@@ -99,6 +99,7 @@ void scenario::load( const JsonObject &jo, std::string_view )
         jo.throw_error( "at least one starting location (member \"allowed_locs\") must be defined" );
     }
     optional( jo, was_loaded, "flags", flags, auto_flags_reader<> {} );
+    optional( jo, was_loaded, "default_backgrounds", _default_backgrounds );
     optional( jo, was_loaded, "map_extra", _map_extra, map_extra_id::NULL_ID() );
     optional( jo, was_loaded, "missions", _missions, string_id_reader<::mission_type> {} );
 
@@ -293,6 +294,12 @@ void scenario::check() const
         if( !l.is_valid() ) {
             debugmsg( "starting location %s for scenario %s does not exist", l.c_str(), id.c_str() );
         }
+    }
+
+    if( _default_backgrounds && !_default_backgrounds->is_empty() &&
+        !_default_backgrounds->is_valid() ) {
+        debugmsg( "default_backgrounds %s for scenario %s is not a profession group",
+                  _default_backgrounds->str(), id.str() );
     }
 
     if( _starting_npc ) {
@@ -720,6 +727,11 @@ bool scenario::is_forbidden_trait( const trait_id &trait ) const
 bool scenario::has_flag( const std::string &flag ) const
 {
     return flags.count( flag ) != 0;
+}
+
+const std::optional<profession_group_id> &scenario::default_backgrounds() const
+{
+    return _default_backgrounds;
 }
 
 bool scenario::allowed_start( const start_location_id &loc ) const
