@@ -475,6 +475,9 @@ TEST_CASE( "evt-j08_damage_events_name_the_damage_type", "[audit][event]" )
         clear_map();
     } );
     monster &zombie = spawn_test_monster( mon_zombie.str(), u.pos_bub() + tripoint_rel_ms( 3, 0, 0 ) );
+    // so that neither hit kills it (a weak point can multiply the 40), which would leave the
+    // second hit without an event
+    zombie.set_hp( 1000 );
     event_catcher events( { event_type::monster_takes_damage, event_type::character_takes_damage,
                             event_type::character_heals_damage
                           } );
