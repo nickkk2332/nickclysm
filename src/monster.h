@@ -267,6 +267,22 @@ class monster : public Creature
          */
         void wander_to( const tripoint_abs_ms &p, int f );
 
+        /**
+         * A destination or target forced on the monster (by an EOC). plan() heads for it
+         * instead of making its own plans until the destination is reached (within `range`
+         * tiles on its z-level), `until` comes or the target is gone. One at a time: forcing
+         * one replaces the other. Saved with the monster.
+         */
+        void force_destination( const tripoint_abs_ms &p, int range,
+                                const time_point &until = calendar::turn_max );
+        void force_target( const Creature &target, const time_point &until = calendar::turn_max );
+        // Forgets the forced destination or target, and the plans made for it.
+        void clear_forced_goal();
+        bool has_forced_goal() const;
+        std::optional<tripoint_abs_ms> get_forced_destination() const;
+        // The forced target, if it is still there.
+        Creature *get_forced_target() const;
+
         // How good of a target is given creature (checks for visibility)
         float rate_target( Creature &c, float best, bool smart = false ) const;
         // is it mating season?
@@ -652,6 +668,13 @@ class monster : public Creature
         int hp = 60;
         std::map<std::string, mon_special_attack, std::less<>> special_attacks;
         std::optional<tripoint_abs_ms> goal;
+        // See force_destination(): a forced destination, or a forced target, and when it ends.
+        std::optional<tripoint_abs_ms> forced_dest;
+        int forced_dest_range = 0;
+        creature_ref forced_target;
+        time_point forced_goal_until = calendar::turn_max;
+        // Sets the plans for the forced goal; false (and forgets it) once the goal is over.
+        bool follow_forced_goal();
         bool dead = false;
         /** Normal upgrades **/
         int next_upgrade_time();

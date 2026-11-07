@@ -2164,8 +2164,29 @@ ret_val<void> drag_drop_parents_can_contain( const item_location &src,
     return ret_val<void>::make_success();
 }
 
-bool inventory_selector::drag_drop_item( item *sourceItem, item *destItem )
+ret_val<void> drag_drop_start_move( Character &who, const item_location &src,
+                                    const item_location &dest, const int pocket_index )
 {
+    const std::vector<const item_pocket *> pockets = dest->get_container_pockets();
+    if( pocket_index < 0 || static_cast<size_t>( pocket_index ) >= pockets.size() ) {
+        return ret_val<void>::make_failure( _( "Destination has no pockets." ) );
+    }
+    const ret_val<item_pocket::contain_code> contain = pockets[pocket_index]->can_contain( *src );
+    if( !contain.success() ) {
+        return ret_val<void>::make_failure( string_format( _( "Cannot put item in pocket: %s" ),
+                                            contain.str() ) );
+    }
+    // As AIM moves an item into a container: the move takes its time, and the whole stack goes.
+    const int count = src->count_by_charges() ? src->charges : 1;
+    who.assign_activity( insert_item_activity_actor( dest, { { src, count } }, false, true,
+    pocket_index ) );
+    return ret_val<void>::make_success();
+}
+
+bool inventory_selector::drag_drop_item( item_location source, item_location dest )
+{
+    item *sourceItem = source.get_item();
+    item *destItem = dest.get_item();
     if( sourceItem == destItem ) {
         return false;
     }
@@ -2205,15 +2226,11 @@ bool inventory_selector::drag_drop_item( item *sourceItem, item *destItem )
     }
     action_menu.query();
     if( action_menu.ret >= 0 && static_cast<size_t>( action_menu.ret ) < pockets.size() ) {
-        ret_val<item_pocket::contain_code> contain = pockets[action_menu.ret]->can_contain( *sourceItem );
-        if( contain.success() ) {
-            // storage should mimick character inserting
-            u.store( pockets[action_menu.ret], *sourceItem, true, base_move_cost );
-            return true;
-        } else {
-            popup( _( "Cannot put item in pocket: %s" ), contain.str() );
-            return false;
+        const ret_val<void> moved = drag_drop_start_move( u, source, dest, action_menu.ret );
+        if( !moved.success() ) {
+            popup( moved.str() );
         }
+        return moved.success();
     }
 
     return false;
@@ -4075,9 +4092,9 @@ item_location inventory_pick_selector::execute()
                     endDragItem = input.entry->locations.front();
                     if( startDragItemCpy && endDragItem && startDragItemCpy != endDragItem ) {
                         if( drag_drop_allowed( u, startDragItemCpy, endDragItem ) &&
-                            drag_drop_item( startDragItemCpy.get_item(), endDragItem.get_item() ) ) {
-                            clear_items();
-                            add_character_items( u );
+                            drag_drop_item( startDragItemCpy, endDragItem ) ) {
+                            // The insert activity moves it once the menu is closed.
+                            return item_location();
                         }
                     } else {
                         return input.entry->any_item();
@@ -5463,9 +5480,9 @@ std::pair<item_location, bool> unload_selector::execute()
                     endDragItem = input.entry->locations.front();
                     if( startDragItemCpy && endDragItem && startDragItemCpy != endDragItem ) {
                         if( drag_drop_allowed( u, startDragItemCpy, endDragItem ) &&
-                            drag_drop_item( startDragItemCpy.get_item(), endDragItem.get_item() ) ) {
-                            clear_items();
-                            add_character_items( u );
+                            drag_drop_item( startDragItemCpy, endDragItem ) ) {
+                            // The insert activity moves it once the menu is closed.
+                            return { item_location(), uistate.unload_auto_contain };
                         }
                     } else {
                         return {input.entry->any_item(), uistate.unload_auto_contain};

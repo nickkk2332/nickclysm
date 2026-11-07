@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <map>
+#include <string>
 #include <utility>
 
 #include "ammo.h"
@@ -12,6 +14,7 @@
 #include "generic_factory.h"
 #include "item.h"
 #include "item_group.h"
+#include "iuse.h"
 #include "map.h"
 #include "material.h"
 #include "recipe.h"
@@ -239,10 +242,26 @@ bool itype::can_use( const std::string &iuse_name ) const
     return get_use( iuse_name ) != nullptr;
 }
 
+// The action with the id `name`, else the first (by id) of the type `name`.
+static const use_function *find_use_action( const std::map<std::string, use_function> &actions,
+        const std::string &name )
+{
+    const auto iter = actions.find( name );
+    if( iter != actions.end() ) {
+        return &iter->second;
+    }
+    for( const std::pair<const std::string, use_function> &action : actions ) {
+        const iuse_actor *actor = action.second.get_actor_ptr();
+        if( actor != nullptr && actor->type == name ) {
+            return &action.second;
+        }
+    }
+    return nullptr;
+}
+
 const use_function *itype::get_use( const std::string &iuse_name ) const
 {
-    const auto iter = use_methods.find( iuse_name );
-    return iter != use_methods.end() ? &iter->second : nullptr;
+    return find_use_action( use_methods, iuse_name );
 }
 
 bool itype::has_tick( const std::string &iuse_name ) const
@@ -252,8 +271,15 @@ bool itype::has_tick( const std::string &iuse_name ) const
 
 const use_function *itype::get_tick( const std::string &iuse_name ) const
 {
-    const auto iter = tick_action.find( iuse_name );
-    return iter != tick_action.end() ? &iter->second : nullptr;
+    return find_use_action( tick_action, iuse_name );
+}
+
+int itype::get_ammo_scale( const std::string &method ) const
+{
+    const use_function *use = get_use( method );
+    const iuse_actor *actor = use == nullptr ? nullptr : use->get_actor_ptr();
+    const auto iter = ammo_scale.find( actor == nullptr ? method : actor->id );
+    return iter == ammo_scale.end() ? 1 : iter->second;
 }
 
 int itype::tick( Character *p, item &it, const tripoint_bub_ms &pos ) const
@@ -277,8 +303,8 @@ std::optional<int> itype::invoke( Character *p, item &it, map *here,
     if( !has_use() ) {
         return 0;
     }
-    if( use_methods.find( "transform" ) != use_methods.end() ) {
-        return invoke( p, it, here, pos, "transform" );
+    if( const use_function *transform = get_use( "transform" ) ) {
+        return invoke( p, it, here, pos, transform->get_id() );
     } else {
         return invoke( p, it, here, pos, use_methods.begin()->first );
     }

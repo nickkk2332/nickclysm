@@ -53,7 +53,7 @@
       {
         "result": "t_dirtmoundfloor",
         "valid_terrain": [ "t_gutter_downspout" ],
-        "valid_flags": [ "DIGGABLE", "TREE", "SHRUB", "FLOWER" ]
+        "valid_flags": [ "DIGGABLE", "TREE", "SHRUB" ]
       }
     ],
     "furniture": [ { "result": "f_rubble", "valid_furniture": [ "f_null" ], "valid_flags": [ "BLOCKSDOOR", "TRANSPARENT" ] } ]
@@ -61,7 +61,7 @@
   {
     "type": "ter_furn_transform",
     "id": "struc_carcrash_dirt",
-    "terrain": [ { "result": "t_dirtmoundfloor", "valid_flags": [ "DIGGABLE", "TREE", "SHRUB", "FLOWER" ] } ],
+    "terrain": [ { "result": "t_dirtmoundfloor", "valid_flags": [ "DIGGABLE", "TREE", "SHRUB" ] } ],
     "furniture": [ { "result": "f_null", "valid_flags": [ "BLOCKSDOOR", "TRANSPARENT" ] } ]
   },
   {

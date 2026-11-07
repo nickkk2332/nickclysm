@@ -1821,12 +1821,7 @@ bool item::ammo_sufficient( const Character *carrier, int qty ) const
 
 bool item::ammo_sufficient( const Character *carrier, const std::string &method, int qty ) const
 {
-    auto iter = type->ammo_scale.find( method );
-    if( iter != type->ammo_scale.end() ) {
-        qty *= iter->second;
-    }
-
-    return ammo_sufficient( carrier, qty );
+    return ammo_sufficient( carrier, qty * type->get_ammo_scale( method ) );
 }
 
 int item::ammo_consume( int qty, const tripoint_bub_ms &pos, Character *carrier )
@@ -2615,8 +2610,7 @@ static int method_scale( const itype *type, const std::string &method )
     if( !type || method.empty() ) {
         return 1;
     }
-    auto it = type->ammo_scale.find( method );
-    return it == type->ammo_scale.end() ? 1 : it->second;
+    return type->get_ammo_scale( method );
 }
 
 static std::string format_entry_name( const item &host, const pocket_consumption_entry &e,

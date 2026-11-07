@@ -1,0 +1,176 @@
+[
+  {
+    "//": "MAGIC-J02 fixture: the spell_values kinds FAIL, DIFFICULTY, EXP and SOUND.",
+    "type": "enchantment",
+    "id": "test_ench_spell_tricks",
+    "condition": "ALWAYS",
+    "spell_values": [
+      { "value": "FAIL", "spell": "test_spell_enchant_power", "add": 0.25 },
+      { "value": "DIFFICULTY", "spell": "test_spell_enchant_power", "add": 5 },
+      { "value": "EXP", "spell": "test_spell_enchant_other", "multiply": 1 },
+      { "value": "SOUND", "spell": "test_spell_enchant_power", "add": 7 }
+    ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_SPELL_TRICKS",
+    "name": { "str": "Test Spell Tricks" },
+    "points": 0,
+    "description": "Test mutation whose enchantment changes the fail chance, difficulty, XP and sound of a spell.",
+    "enchantments": [ "test_ench_spell_tricks" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GROW_TAIL",
+    "//": "CHAR-J01",
+    "effect": [
+      {
+        "u_add_body_part": "test_tail",
+        "true_eocs": [ { "id": "EOC_TEST_GROW_TAIL_OK", "effect": [ { "math": [ "test_body_changed += 1" ] } ] } ],
+        "false_eocs": [
+          {
+            "id": "EOC_TEST_GROW_TAIL_NO",
+            "effect": [ { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_body_refused" } } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_LOSE_BODY_PART",
+    "//": "CHAR-J01: loses the part named in the global test_body_part",
+    "effect": [
+      {
+        "u_lose_body_part": { "global_val": "test_body_part" },
+        "true_eocs": [ { "id": "EOC_TEST_LOSE_BODY_PART_OK", "effect": [ { "math": [ "test_body_changed += 1" ] } ] } ],
+        "false_eocs": [
+          {
+            "id": "EOC_TEST_LOSE_BODY_PART_NO",
+            "effect": [ { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "test_body_refused" } } ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FREE_BIONIC",
+    "//": "MUT-J03",
+    "effect": [
+      {
+        "u_activate_bionic": "test_bio_mutj03_toggle",
+        "ignore_cost": true,
+        "true_eocs": [ { "id": "EOC_TEST_FREE_BIONIC_OK", "effect": [ { "math": [ "test_bionic_switched = 1" ] } ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_PAID_BIONIC",
+    "//": "MUT-J03",
+    "effect": [
+      {
+        "u_activate_bionic": "test_bio_mutj03_toggle",
+        "false_eocs": [ { "id": "EOC_TEST_PAID_BIONIC_NO", "effect": [ { "math": [ "test_bionic_refused = 1" ] } ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_DAMAGE_WHEELS",
+    "//": "VEH-J01: run with a vehicle as u",
+    "effect": [
+      { "u_damage_vehicle_parts": 100000, "flag": "WHEEL", "count": 2 },
+      { "copy_var": { "context_val": "vehicle_parts_damaged" }, "target_var": { "global_val": "test_veh_damaged" } },
+      { "copy_var": { "context_val": "vehicle_parts_broken" }, "target_var": { "global_val": "test_veh_broken" } },
+      { "copy_var": { "context_val": "vehicle_destroyed" }, "target_var": { "global_val": "test_veh_destroyed" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_DAMAGE_ALL_WHEELS",
+    "//": "VEH-J01: the wheels already broken are skipped",
+    "effect": [
+      { "u_damage_vehicle_parts": 100000, "flag": "WHEEL" },
+      { "copy_var": { "context_val": "vehicle_parts_damaged" }, "target_var": { "global_val": "test_veh_damaged" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_OWN_VEHICLE",
+    "//": "VEH-J01",
+    "effect": [
+      { "u_set_vehicle_owner": "free_merchants" },
+      {
+        "if": { "u_vehicle_owner": "free_merchants" },
+        "then": [ { "math": [ "test_veh_owned = 1" ] } ],
+        "else": [ { "math": [ "test_veh_owned = 0" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "monstergroup",
+    "id": "GROUP_TEST_SPAWN_DATA",
+    "//": "MONDT-J01: an entry with every new spawn_data field",
+    "monsters": [
+      {
+        "monster": "mon_test_cmbt_post",
+        "weight": 100,
+        "spawn_data": {
+          "effects": [ { "id": "test_grapple_mark", "duration": 50, "intensity": 2 } ],
+          "variables": { "test_tag": "cult", "test_level": 3 },
+          "faction": "animal"
+        }
+      }
+    ]
+  },
+  {
+    "type": "monstergroup",
+    "id": "GROUP_TEST_SPAWN_LOC",
+    "//": "MONDT-J01: an entry that spawns only on t_floor, read from the spawn location",
+    "default": "mon_null",
+    "monsters": [
+      {
+        "monster": "mon_test_cmbt_post",
+        "weight": 100,
+        "condition": { "map_terrain_id": "t_floor", "loc": { "context_val": "loc" } }
+      }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_cmbt_b02_armored_post",
+    "copy-from": "mon_test_cmbt_post",
+    "name": { "str": "armored combat test post", "//~": "NO_I18N" },
+    "description": { "str": "A target no blow gets through.", "//~": "NO_I18N" },
+    "armor": { "bash": 1000, "cut": 1000, "stab": 1000 }
+  },
+  {
+    "type": "technique",
+    "id": "test_cmbt_b02",
+    "//": "CMBT-B02: one effect that needs the hit to do damage, one that doesn't",
+    "name": "Test Damage Check",
+    "unarmed_allowed": true,
+    "melee_allowed": true,
+    "messages": [ "You test-check %s", "<npcname> test-checks %s" ],
+    "attack_vectors": [ "vector_punch", "vector_null" ],
+    "tech_effects": [
+      { "id": "test_grapple_mark", "duration": 10, "chance": 100 },
+      { "id": "test_grapple_focus", "duration": 10, "chance": 100, "on_damage": false }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_EVT_B01_SWITCH",
+    "//": "EVT-B01: the death switch, while the test arms it",
+    "eoc_type": "AVATAR_DEATH",
+    "condition": { "math": [ "test_evt_b01_armed == 1" ] },
+    "effect": [
+      {
+        "run_eocs": [ { "id": "EOC_TEST_EVT_B01_TAKE", "effect": [ "take_control" ] } ],
+        "beta_talker": { "global_val": "test_evt_b01_npc" }
+      }
+    ]
+  }
+]

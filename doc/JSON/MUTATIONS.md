@@ -326,7 +326,7 @@ These fields are optional, but are very frequently used in mutations and their c
 | `types`           | Nothing | A list of types that this mutation can be classified under. Each mutation with a certain type is mutually exclusive with other mutations that also have that type; if a trait has the `EXAMPLE` type defined, then no other trait with that type can exist on a character, and mutating towards such a trait would remove the existing one if it could.  An exception is made for same-typed prerequisite traits, these will not get removed.|
 | `prereqs`         | Nothing | An array of mutation IDs that are possible requirements for this trait to be obtained. Only a single option from this list needs to be present.             |
 | `prereqs2`        | Nothing | Identical to `prereqs`, and will throw errors if `prereqs` isn't defined. This is used to have multiple traits required to obtain another trait; one option must be present on the character from both `prereqs` and `prereqs2` for a trait to be obtainable. |
-| `threshreq`       | Nothing | This is a dedicated prerequisite slot for threshold mutations, and functions identically to `prereq` and `prereq2`.                                         |
+| `threshreq`       | Nothing | This is a dedicated prerequisite slot for threshold mutations, and functions identically to `prereq` and `prereq2`.  A random mutation doesn't pick a trait whose threshold the character lacks (unless it is still missing a prerequisite, which it then mutates towards); instead the attempt does nothing ("You feel something straining deep inside you…") as often as it used to when such traits could be picked, so a character near a threshold mutates no faster than before. |
 | `cancels`         | Nothing | Trait IDs defined in this array will be forcibly removed from the character when trait is mutated.                                                          |
 | `changes_to`      | Nothing | Used for defining mutation lines with defined steps. This trait can further mutate into any other trait defined in this list.                               |
 | `leads_to`        | Nothing | Mutations that add onto this one without removing it. Effectively a reverse of the `prereqs` tag.  Also prevents type conflicts with this trait!            |
@@ -395,7 +395,7 @@ Mutations support EOC on activate, deactivate and for processing. As well for ea
 There are two ways for JSON to stop an activation:
 
 - `activation_condition` is a veto checked **before** anything happens: when it is false the mutation is not turned on, no cost (kcal, thirst, sleepiness, mana, stamina) is paid, the cooldown does not start, no `activated_eocs` run, and `activation_fail_message` (if any) is shown.  The condition sees the character as `u` and the context variable `this` (the mutation id), so one condition can be shared between traits.  It applies to every way of activating the mutation: the mutation menu, `u_activate_trait` and reflex `triggers`.  Keep it free of randomness: it is meant to answer "can this be used right now?".
-- An `activated_eocs` EOC may turn the mutation off itself with `u_deactivate_trait` (usually on `{ "context_val": "this" }`).  The engine respects that: the mutation stays off (its `deactivated_eocs` run), the rest of the activation (`transform`, `spawn_item`, `ranged_mutation`, hardcoded effects) is skipped, and `activated_is_setup` is not applied.  The cost already paid is kept, so use `activation_condition` for checks that should be free.
+- An `activated_eocs` EOC may turn the mutation off itself with `u_deactivate_trait` (usually on `{ "context_val": "this" }`).  The engine respects that: the mutation stays off (its `deactivated_eocs` run), the rest of the activation (`transform`, `spawn_item`, `ranged_mutation`, hardcoded effects) is skipped, and `activated_is_setup` is not applied.  This cancels the activation, so its cost is refunded: the kcal, thirst, sleepiness, mana or stamina it paid are given back, and the cooldown (`charge`) is as it was before.  Only the cost: whatever else the EOC did before turning the mutation off stays done.  An EOC that removes the mutation (`u_lose_trait`) instead of turning it off doesn't cancel the activation, and nothing is refunded.  `activation_condition` is still the better place for checks that don't need the EOC to run: with it, the mutation never turns on, so its `deactivated_eocs` don't run either.
 
 ```jsonc
   {
@@ -429,6 +429,8 @@ Three fields let a mutation change what its owner can eat, without C++. They app
 - `eat_condition`: object with a mandatory `condition` and an optional `fail_message` (default "You can't eat that."). The condition runs with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker, every time the game checks whether the food can be eaten (eat menu, NPC food choice, forced eating), for every comestible including drinks and medicine. When it is false, the food can't be eaten and `fail_message` is shown. Unlike `consumption_effect_on_conditions` on the food, it runs before anything is eaten.
 
 Unknown flag, vitamin and morale ids are reported at load.
+
+Vanilla uses them: `VEGETARIAN`, `MEATARIAN`, `ANTIFRUIT`, `LACTOSE`, `ANTIJUNK` and `ANTIWHEAT` are `food_allergies`, the animal thresholds are `edible_food_flags`, and `VEGAN` is an `eat_condition`. `RUMINANT` gets its herbivore diet from the `HERBIVORE_DIET` character flag. The other diet traits are still C++, because these fields can't express them: `PICKYEATER` (it refuses by taste, with separate messages for food and drink), `GOURMAND` (it changes taste and its cap), `SAPROPHAGE`, `SAPROVORE` and `EATDEAD` (they change calories, morale and food poisoning from rot), `PROBOSCIS`, `M_DEPENDENT` and the Mycus traits (checked before frozen food and drugs, for food and drink only), and `PROJUNK` (a morale bonus).
 
 ```jsonc
   {
@@ -479,6 +481,12 @@ A Mutation Category identifies a set of interrelated mutations that as a whole e
 | `base_removal_cost_mul` | Float, multiplier on the primer cost of the trait that removed a canceled starting trait, down to 0.0 for free mutations as long as a starting trait was given up.  Default 3.0, used for human-like categories and lower as categories become more inhuman.
 | `wip`                   | A flag indicating that a mutation category is unfinished and shouldn't have consistency tests run on it. See tests/mutation_test.cpp.
 | `skip_test`             | If true, this mutation category will be skipped in consistency tests; this should only be used if you know what you're doing. See tests/mutation_test.cpp.
+
+A category can `copy-from` another category (or an `abstract` one), and a later mod changes a category by copying it under the same id: it keeps every member it doesn't name, and the numbers take `relative` and `proportional`.  A second definition of an id without `copy-from` replaces the first one entirely.
+
+```jsonc
+{ "type": "mutation_category", "id": "LIZARD", "copy-from": "LIZARD", "relative": { "threshold_min": 400 } }
+```
 
 ## Trait Migrations
 

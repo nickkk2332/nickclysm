@@ -1300,6 +1300,10 @@ int Character::fire_gun( map &here, const tripoint_bub_ms &target, int shots, it
                 multi_projectile_hit_message( hit_entry.first, hit_entry.second.first, hit_entry.second.second,
                                               n_gettext( "projectile", "projectiles", hit_entry.second.first ) );
             }
+            // enchantments' hit_you_effect, once a shot for each creature it hit
+            if( !hit_entry.first->is_hallucination() ) {
+                did_hit( *hit_entry.first, hit_type::ranged );
+            }
         }
         if( shot.headshot ) {
             get_event_bus().send<event_type::character_gets_headshot>( getID() );
@@ -1828,6 +1832,10 @@ dealt_projectile_attack Character::throw_item( const tripoint_bub_ms &target, co
                             true,
                             c->getID(), c->get_name() );
             get_event_bus().send_with_talker( this, c, e );
+        }
+        // enchantments' hit_you_effect, for each creature it hit
+        if( !hit_entry.first->is_hallucination() ) {
+            did_hit( *hit_entry.first, hit_type::thrown );
         }
     }
     const double missed_by = dealt_attack.missed_by;

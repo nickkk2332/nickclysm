@@ -30,7 +30,7 @@
     "time": "5 s",
     "components": [ [ [ "standing_pyrokinetic_lamp", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -47,7 +47,7 @@
     "time": "5 m",
     "components": [ [ [ "psi_noetic_resonance_detector", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   }
 ]

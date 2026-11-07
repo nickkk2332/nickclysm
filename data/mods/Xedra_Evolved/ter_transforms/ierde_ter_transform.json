@@ -105,7 +105,7 @@
       { "result": "t_soil", "valid_flags": [ "DIGGABLE" ], "message": "The ground rises into a wall of solid earth." },
       { "result": "t_dirt", "valid_terrain": [ "t_soil" ], "message": "The solid earth sinks away." }
     ],
-    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT", "WALL" ] } ]
+    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT" ] } ]
   },
   {
     "type": "ter_furn_transform",
@@ -136,7 +136,7 @@
         "message": "The dirt rises up into a set of earthen stairs."
       }
     ],
-    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT", "WALL" ] } ]
+    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT" ] } ]
   },
   {
     "type": "ter_furn_transform",
@@ -158,7 +158,7 @@
         "message": "The dirt sinks down into a set of earthen stairs."
       }
     ],
-    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT", "WALL" ] } ]
+    "furniture": [ { "result": "f_null", "valid_flags": [ "TRANSPARENT" ] } ]
   },
   {
     "type": "ter_furn_transform",

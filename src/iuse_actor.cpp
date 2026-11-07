@@ -46,6 +46,7 @@
 #include "game_inventory.h"
 #include "generic_factory.h"
 #include "iexamine.h"
+#include "iexamine_actors.h"
 #include "input_popup.h"
 #include "item.h"
 #include "item_components.h"
@@ -127,9 +128,6 @@ static const efftype_id effect_stunned( "stunned" );
 
 static const fault_id fault_bionic_salvaged( "fault_bionic_salvaged" );
 
-static const furn_str_id furn_f_kiln_empty( "f_kiln_empty" );
-static const furn_str_id furn_f_kiln_metal_empty( "f_kiln_metal_empty" );
-static const furn_str_id furn_f_kiln_portable_empty( "f_kiln_portable_empty" );
 static const furn_str_id furn_f_metal_smoking_rack( "f_metal_smoking_rack" );
 static const furn_str_id furn_f_smoking_rack( "f_smoking_rack" );
 
@@ -333,7 +331,6 @@ void iuse_transform::load( const JsonObject &obj, const std::string & )
 
     optional( obj, false, "qualities_needed", qualities_needed );
 
-    optional( obj, false, "menu_text", menu_text );
 }
 
 std::optional<int> iuse_transform::use( Character *p, item &it, map *,
@@ -344,7 +341,7 @@ std::optional<int> iuse_transform::use( Character *p, item &it, map *,
     }
 
     int scale = 1;
-    auto iter = it.type->ammo_scale.find( type );
+    auto iter = it.type->ammo_scale.find( id );
     if( iter != it.type->ammo_scale.end() ) {
         scale = iter->second;
     }
@@ -502,14 +499,6 @@ ret_val<void> iuse_transform::can_use( const Character &p, const item &it,
     return ret_val<void>::make_failure( n_gettext( "You need a tool with %s.",
                                         "You need tools with %s.",
                                         unmet_reqs.size() ), unmet_reqs_string );
-}
-
-std::string iuse_transform::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void iuse_transform::finalize( const itype_id &my_item_type )
@@ -1489,16 +1478,18 @@ firestarter_actor::start_type firestarter_actor::prep_firestarter_use( Character
         return start_type::NONE;
     }
 
-    const furn_id &f_id = here->furn( pos );
-    const bool is_smoking_rack = f_id == furn_f_metal_smoking_rack ||
-                                 f_id == furn_f_smoking_rack;
-    const bool is_kiln = f_id == furn_f_kiln_empty ||
-                         f_id == furn_f_kiln_metal_empty || f_id == furn_f_kiln_portable_empty;
-
-    if( is_smoking_rack ) {
-        return iexamine::smoker_prep( p, pos ) ? start_type::SMOKER : start_type::NONE;
-    } else if( is_kiln ) {
-        return iexamine::kiln_prep( p, pos ) ? start_type::KILN : start_type::NONE;
+    switch( furniture_start_type( here->furn( pos ) ) ) {
+        case start_type::SMOKER:
+            return iexamine::smoker_prep( p, pos ) ? start_type::SMOKER : start_type::NONE;
+        case start_type::KILN:
+            return iexamine::kiln_prep( p, pos ) ? start_type::KILN : start_type::NONE;
+        case start_type::PROCESS: {
+            const process_start_examine_actor *process =
+                process_start_examine_actor::firestarter_process( here->furn( pos ).obj() );
+            return process != nullptr && process->prep( p, pos ) ? start_type::PROCESS : start_type::NONE;
+        }
+        default:
+            break;
     }
 
     if( here->get_field( pos, fd_fire ) ) {
@@ -1567,6 +1558,21 @@ void firestarter_actor::resolve_firestarter_use( Character *p, map *here,
     }
 }
 
+firestarter_actor::start_type firestarter_actor::furniture_start_type( const furn_id &furn )
+{
+    if( furn == furn_f_metal_smoking_rack || furn == furn_f_smoking_rack ) {
+        return start_type::SMOKER;
+    }
+    if( process_start_examine_actor::firestarter_process( furn.obj() ) != nullptr ) {
+        return start_type::PROCESS;
+    }
+    // a mod's furniture that still names the old kiln action
+    if( furn.obj().has_examine( iexamine::kiln_empty ) ) {
+        return start_type::KILN;
+    }
+    return start_type::FIRE;
+}
+
 bool firestarter_actor::resolve_start( Character *p, map *here,
                                        const tripoint_bub_ms &pos, start_type type )
 {
@@ -1577,6 +1583,11 @@ bool firestarter_actor::resolve_start( Character *p, map *here,
             return iexamine::smoker_fire( *p, pos );
         case start_type::KILN:
             return iexamine::kiln_fire( *p, pos );
+        case start_type::PROCESS: {
+            const process_start_examine_actor *process =
+                process_start_examine_actor::firestarter_process( here->furn( pos ).obj() );
+            return process != nullptr && process->fire( *p, pos );
+        }
         case start_type::NONE:
         default:
             return false;
@@ -1704,7 +1715,7 @@ std::optional<int> firestarter_actor::use( Character *p, item &it,
     // skill gains are handled by the activity, but stored here in the index field
     const int potential_skill_gain = moves_modifier * ( std::min( 10.0, moves_cost_fast / 100.0 ) + 2 );
     p->assign_activity( fire_start_activity_actor( here->get_abs( pos ), form_loc( *p, here, pos, it ),
-                        potential_skill_gain, moves ) );
+                        potential_skill_gain, moves, false, id ) );
     // charges to use are handled by the activity
     return 0;
 }
@@ -1793,7 +1804,7 @@ bool firestarter_actor::npc_start_fire( npc &who, item &tool,
     item_location tool_loc( who, &tool );
     who.assign_activity( fire_start_activity_actor(
                              here.get_abs( fire_pos ), tool_loc,
-                             potential_skill_gain, moves, tinder_consumed ) );
+                             potential_skill_gain, moves, tinder_consumed, id ) );
     return true;
 }
 
@@ -3127,8 +3138,9 @@ std::optional<int> repair_item_actor::use( Character *p, item &it,
     }
 
     p->assign_activity( ACT_REPAIR_ITEM, 0, p->get_item_position( &it ), INT_MIN );
-    // We also need to store the repair actor subtype in the activity
-    p->activity.str_values.push_back( type );
+    // We also need to store which repair action this is in the activity: its id (its type, the
+    // item_action_type, unless it has an "id"; old saves have the type)
+    p->activity.str_values.push_back( id );
     // storing of item_location to support repairs by tools on the ground
     p->activity.targets.emplace_back( form_loc( *p, here, pos, it ) );
     // All repairs are done in the activity, including charge cost and target item selection
@@ -3729,7 +3741,7 @@ std::optional<int> heal_actor::use( Character *p, item &it, map *here,
     cost = p->has_proficiency( proficiency_prof_wound_care_expert ) ? cost / 2 : cost;
     cost = p->has_proficiency( proficiency_prof_wound_care ) ? cost / 2 : cost;
 
-    p->assign_activity( firstaid_activity_actor( cost, it.tname(), patient.getID() ) );
+    p->assign_activity( firstaid_activity_actor( cost, it.tname(), patient.getID(), true, id ) );
 
     // Player: Only time this item_location gets used in firstaid::finish() is when activating the item's
     // container from the inventory window, so an item_on_person impl is all that is needed.
@@ -4868,7 +4880,6 @@ void link_up_actor::load( const JsonObject &jo, const std::string & )
     optional( jo, false, "charge_rate", charge_rate, 0_W );
     optional( jo, false, "efficiency", efficiency, 0.85f );
     optional( jo, false, "move_cost", move_cost, 5 );
-    optional( jo, false, "menu_text", menu_text );
     optional( jo, false, "targets", targets, { link_state::no_link, link_state::vehicle_port } );
     optional( jo, false, "can_extend", can_extend );
 }
@@ -4876,14 +4887,6 @@ void link_up_actor::load( const JsonObject &jo, const std::string & )
 std::unique_ptr<iuse_actor> link_up_actor::clone() const
 {
     return std::make_unique<link_up_actor>( *this );
-}
-
-std::string link_up_actor::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void link_up_actor::info( const item &it, std::vector<iteminfo> &dump ) const
@@ -5130,7 +5133,7 @@ std::optional<int> link_up_actor::use( Character *p, item &it, map *here,
         // Selection: Detach & respool.
 
         // Reopen the menu after respooling.
-        p->assign_activity( invoke_item_activity_actor( item_location{*p, &it}, "link_up" ) );
+        p->assign_activity( invoke_item_activity_actor( item_location{*p, &it}, id ) );
         p->activity.auto_resume = true;
 
         if( t_veh ) {
@@ -6023,7 +6026,6 @@ void effect_on_conditions_actor::load( const JsonObject &obj, const std::string 
 {
     optional( obj, false, "consume", consume, false );
     optional( obj, false, "description", description );
-    optional( obj, false, "menu_text", menu_text );
     optional( obj, false, "need_worn", need_worn, false );
     optional( obj, false, "need_wielding", need_wielding, false );
     if( obj.has_member( "condition" ) ) {
@@ -6075,14 +6077,6 @@ ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const ite
         }
     }
     return ret_val<void>::make_success();
-}
-
-std::string effect_on_conditions_actor::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void effect_on_conditions_actor::info( const item &, std::vector<iteminfo> &dump ) const
@@ -6187,6 +6181,11 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
     write_var_value( var_type::context, "id", &d, it.typeId().str() );
     // The tile the item is used at: u_activate's target_var, else the user's or item's tile.
     write_var_value( var_type::context, "use_location", &d, here->get_abs( pos ) );
+    // _method: the use action's id, which the item's use menu and u_activate know it by (its
+    // type when it has no "id"; for a tick, countdown or drop action too).
+    write_var_value( var_type::context, "method", &d, id );
+    // _item_pos: where the item is, its carrier's tile when carried
+    write_var_value( var_type::context, "item_pos", &d, loc ? loc.pos_abs() : here->get_abs( pos ) );
     // Read before the EOCs run: they may destroy the item.
     const bool comestible = static_cast<bool>( it.type->comestible );
     eoc_use_request request;

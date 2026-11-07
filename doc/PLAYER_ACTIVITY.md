@@ -47,10 +47,11 @@ to the character and started using `Character::assign_activity`.
 `eoc_starters` next to `deserialize_functions` so `u_assign_activity` can
 start it from an EOC.
 
-7. If it works on a target (an item, a location, a recipe), it can be started
-from an EOC through `target_starters` in `activity_actor_eoc.cpp`: add an entry
-with the fields it takes ("target_item", "target_loc", "recipe",
-"butcher_type") and a function that starts it. That function must ask the
+7. If it works on a target (an item, a location, a monster, a recipe), it can
+be started from an EOC through `target_starters` in `activity_actor_eoc.cpp`:
+add an entry with the fields it takes ("target_item", "target_loc",
+"target_monster", "recipe", "butcher_type"; `fields_of` covers the usual
+combinations) and a function that starts it. That function must ask the
 player nothing, for the avatar or an NPC, and return why it can't start
 instead: check before starting whatever the actor's `start()` or first
 `do_turn()` would refuse or ask about (look for `query_yn`, `uilist`,
@@ -59,7 +60,8 @@ and leave things as they were when it refuses. The refusal reaches the
 effect's `false_eocs` as the context value `reason`. Activities without an
 entry can't be given a target: the effect fails to load, naming the
 activity. Document the activity in the table of activities with a target
-under `u_assign_activity` in `doc/JSON/EFFECT_ON_CONDITION.md`.
+under `u_assign_activity` in `doc/JSON/EFFECT_ON_CONDITION.md`, or, if it
+can't be started from an EOC, in the list of those there, with the reason.
 
 ## JSON Properties
 
@@ -144,6 +146,13 @@ with `activity_actor::hook_target()`. Context values:
 | `_moves_total` | the moves the activity takes in all |
 | `_moves_left` | the moves still left; for completion_eoc and cancel_eoc, what was left when it ended |
 | `_resume` | start_eoc only: 1 when the activity resumes, 0 when it starts |
+| `_outcome` | completion_eoc and cancel_eoc only: `completed`, `canceled`, or `interrupted` for a cancel that left the activity in the backlog to resume |
+
+An activity started by `u_assign_activity` with a `context` object also gives
+its EOCs those values (see EFFECT_ON_CONDITION.md). The activity keeps them,
+in saves and when it is interrupted and resumed; the values above win over one
+of the same name. The `character_finished_activity` event has the same
+`outcome` field.
 
 An activity completes when it runs out of moves, and also when its actor ends
 it after finishing its work: a craft that is done, each item disassembled, a

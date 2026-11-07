@@ -44,6 +44,8 @@
 #include "enum_conversions.h"
 #include "enum_traits.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "flag.h"
 #include "flat_set.h" // IWYU pragma: keep
@@ -509,10 +511,15 @@ int Character::available_assistant_count( const recipe &rec ) const
 
 int64_t Character::expected_time_to_craft( const recipe &rec, int batch_size ) const
 {
+    return expected_time_to_craft( rec, batch_size, crafting_cost_context::for_recipe( *this, rec ) );
+}
+
+int64_t Character::expected_time_to_craft( const recipe &rec, int batch_size,
+        const crafting_cost_context &ctx ) const
+{
     const size_t assistants = available_assistant_count( rec );
     float modifier = crafting_speed_multiplier( rec );
-    return rec.batch_time( *this, batch_size, modifier, assistants,
-                           crafting_cost_context::for_recipe( *this, rec ) );
+    return rec.batch_time( *this, batch_size, modifier, assistants, ctx );
 }
 
 bool Character::check_eligible_containers_for_crafting( const recipe &rec, int batch_size ) const
@@ -696,6 +703,7 @@ const temp_crafting_inventory &Character::crafting_inventory( map *here,
     if( crafting_cache.valid
         && moves == crafting_cache.moves
         && radius == crafting_cache.radius
+        && clear_path == crafting_cache.clear_path
         && calendar::turn == crafting_cache.time
         && inv_pos == crafting_cache.position
         && reservation_generation == crafting_cache.reservation_generation
@@ -745,6 +753,7 @@ const temp_crafting_inventory &Character::crafting_inventory( map *here,
     crafting_cache.time = calendar::turn;
     crafting_cache.position = inv_pos;
     crafting_cache.radius = radius;
+    crafting_cache.clear_path = clear_path;
     return *crafting_cache.crafting_inventory;
 }
 
@@ -3177,6 +3186,16 @@ void Character::start_craft( craft_command &command, const std::optional<tripoin
             add_msg_if_player( m_info, _( "%s helps with crafting…" ), guy->get_name() );
         }
     }
+
+    // last, so an EOC sees the craft started (and may cancel it)
+    if( !making.start_eocs.empty() && craft_in_world.get_item() != nullptr ) {
+        dialogue d( get_talker_for( *this ), get_talker_for( craft_in_world ) );
+        d.set_value( "recipe_id", making.ident().str() );
+        d.set_value( "batch_size", craft_in_world->get_making_batch_size() );
+        for( const effect_on_condition_id &eoc : making.start_eocs ) {
+            eoc->activate_activation_only( d, "a recipe", "crafting start", "recipe" );
+        }
+    }
 }
 
 bool Character::craft_skill_gain( const item &craft, const int &num_practice_ticks )
@@ -3842,7 +3861,7 @@ void Character::complete_craft( item &craft, const std::optional<tripoint_bub_ms
             const double time_to_learn = 1000 * 8 * std::pow( difficulty, 4 ) / learning_speed;
             const crafting_cost_context ctx{ book_bonuses_nearby(), {} };
             if( x_in_y( making.time_to_craft_moves( *this, ctx ), time_to_learn ) ) {
-                learn_recipe( &making );
+                learn_recipe( &making, false, "crafting" );
                 if( is_avatar() ) {
                     add_msg( m_good, _( "You memorized the recipe for %s!" ),
                              making.result_name() );
@@ -3885,6 +3904,8 @@ void Character::complete_craft( item &craft, const std::optional<tripoint_bub_ms
             eoc->activate_activation_only( d, "a recipe", "crafting", "recipe" );
         }
     }
+    get_event_bus().send<event_type::character_crafts_item>( getID(), making.ident().str(),
+            making.result(), batch_size );
 }
 
 bool Character::can_continue_craft( item &craft )
@@ -5801,7 +5822,7 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
             // TODO: make this depend on intelligence
             if( one_in( 4 ) ) {
                 // TODO: change to forward an id or a reference
-                learn_recipe( &dis.ident().obj() );
+                learn_recipe( &dis.ident().obj(), false, "disassembly" );
                 add_msg_if_player( m_good, _( "You learned a recipe for %s from disassembling it!" ),
                                    dis_item.tname() );
             } else {
@@ -5823,6 +5844,8 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
             eoc->activate_activation_only( d, "a recipe", "disassembly", "recipe" );
         }
     }
+    get_event_bus().send<event_type::character_disassembles_item>( getID(), dis.ident().str(),
+            dis_item.typeId() );
 }
 
 void remove_ammo( std::list<item> &dis_items, Character &p )

@@ -6,13 +6,12 @@
 #include "scent_map.h"
 
 scent_block::scent_block( const tripoint_bub_sm &sub, scent_map &scents )
-// NOLINTNEXTLINE(cata-use-named-point-constants)
-    : origin( coords::project_to<coords::ms>( sub ) + point( -1, -1 ) )
+    : origin( coords::project_to<coords::ms>( sub ) + point( -border, -border ) )
     , scents( scents )
     , modification_count( 0 )
 {
-    for( int x = 0; x < SEEX + 2; ++x ) {
-        for( int y = 0; y < SEEY + 2; ++y ) {
+    for( int x = 0; x < SEEX + 2 * border; ++x ) {
+        for( int y = 0; y < SEEY + 2 * border; ++y ) {
             assignment[x][y] = { data_mode::NONE, 0, 0 };
         }
     }
@@ -28,8 +27,8 @@ void scent_block::commit_modifications()
     if( origin.z() != get_map().get_abs_sub().z() ) {
         return;
     }
-    for( int x = 0; x < SEEX + 2; ++x ) {
-        for( int y = 0; y < SEEY + 2; ++y ) {
+    for( int x = 0; x < SEEX + 2 * border; ++x ) {
+        for( int y = 0; y < SEEY + 2 * border; ++y ) {
             const datum &dat = assignment[x][y];
             if( dat.mode == data_mode::NONE ) {
                 continue;

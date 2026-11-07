@@ -124,7 +124,9 @@
     "copy-from": "mace",
     "description": "A giant bloodstained club, barely human wieldable with two hands.  You see shadowy tendrils of blood whenever it connects with an enemy, sticking to whatever it hits and burning like acid.",
     "flags": [ "DURABLE_MELEE", "NONCONDUCTIVE", "BELT_CLIP", "ALWAYS_TWOHAND" ],
-    "passive_effects": [ { "has": "WIELD", "condition": "ALWAYS", "hit_you_effect": [ { "id": "blood_tendrils" } ] } ]
+    "passive_effects": [
+      { "has": "WIELD", "condition": "ALWAYS", "hit_you_effect": [ { "id": "blood_tendrils", "hit_types": [ "melee" ] } ] }
+    ]
   },
   {
     "id": "blood_tendrils",
@@ -150,7 +152,9 @@
     "longest_side": "60 cm",
     "material": [ "moon_tears" ],
     "weapon_category": [ "SHORT_SWORDS" ],
-    "passive_effects": [ { "has": "WIELD", "condition": "ALWAYS", "hit_you_effect": [ { "id": "distant_thunder" } ] } ]
+    "passive_effects": [
+      { "has": "WIELD", "condition": "ALWAYS", "hit_you_effect": [ { "id": "distant_thunder", "hit_types": [ "melee" ] } ] }
+    ]
   },
   {
     "type": "ITEM",

@@ -64,6 +64,7 @@
 #include "item_stack.h"
 #include "item_tname.h"
 #include "itype.h"
+#include "iuse.h"
 #include "lightmap.h"
 #include "line.h"
 #include "localized_comparator.h"
@@ -4715,6 +4716,31 @@ bool Character::invoke_item( item *used, const std::string &method )
     return invoke_item( used, method, pos_bub() );
 }
 
+// Removes an item that was used up from wherever it was used: carried, or where it lies
+// (ALLOWS_REMOTE_USE) on the ground or in a vehicle at pt. Returns whether it was found.
+static bool remove_used_item( Character &you, item &used, const tripoint_bub_ms &pt )
+{
+    if( you.has_item( used ) ) {
+        you.i_rem( &used );
+        return true;
+    }
+    map &here = get_map();
+    map_cursor ground( &here, pt );
+    if( ground.has_item( used ) ) {
+        ground.remove_item( used );
+        return true;
+    }
+    if( const optional_vpart_position vp = here.veh_at( pt ) ) {
+        vehicle_cursor cargo( vp->vehicle(), vp->part_index() );
+        if( cargo.has_item( used ) ) {
+            cargo.remove_item( used );
+            return true;
+        }
+    }
+    debugmsg( "Couldn't find the used %s to remove it", used.tname() );
+    return false;
+}
+
 bool Character::invoke_item( item *used, const std::string &method, const tripoint_bub_ms &pt,
                              int pre_obtain_moves )
 {
@@ -4789,6 +4815,20 @@ bool Character::invoke_item( item *used, const std::string &method, const tripoi
     if( actually_used->has_flag( flag_SINGLE_USE ) || actually_used->is_bionic() ) {
         i_rem( actually_used );
         return true;
+    }
+
+    // An item with no charges to spend has itself as its one use, for the use actions that say
+    // so: one of a stack counted by charges, else the item (USE-B08).
+    const use_function *use_fn = actually_used->type->get_use( method );
+    const bool no_charges = !actually_used->uses_firing_requirements() &&
+                            actually_used->ammo_required() == 0;
+    if( no_charges && use_fn != nullptr && use_fn->get_actor_ptr() != nullptr &&
+        use_fn->get_actor_ptr()->uses_up_item_without_charges() ) {
+        if( actually_used->count_by_charges() && actually_used->charges > 1 ) {
+            actually_used->mod_charges( -1 );
+            return false;
+        }
+        return remove_used_item( *this, *actually_used, pt );
     }
 
     return false;
@@ -5094,13 +5134,144 @@ void Character::drench_mut_calc()
     }
 }
 
-void Character::recalculate_bodyparts()
+body_part_set Character::target_bodyparts() const
 {
     body_part_set body_set;
     for( const bodypart_id &bp : creature_anatomy->get_bodyparts() ) {
         body_set.set( bp.id() );
     }
     body_set = enchantment_cache->modify_bodyparts( body_set );
+    // u_lose_body_part wins over u_add_body_part and enchantments alike; each one resets the
+    // other's record of the part
+    body_set.unify_set( eoc_added_bodyparts );
+    body_set.substract_set( eoc_removed_bodyparts );
+    return body_set;
+}
+
+// Removes the effects on a body part the body is losing
+static void remove_effects_on( Character &who, const bodypart_str_id &bp )
+{
+    std::vector<efftype_id> on_part;
+    for( const effect &eff : who.get_effects_from_bp( bp.id() ) ) {
+        on_part.push_back( eff.get_id() );
+    }
+    for( const efftype_id &id : on_part ) {
+        who.remove_effect( id, bp.id() );
+    }
+}
+
+// Brings the body, hp and what depends on it up to date after an EOC changed its parts
+static void rebuild_body_after_eoc( Character &who )
+{
+    who.recalculate_bodyparts();
+    who.recalc_hp();
+    who.recalc_sight_limits();
+    who.invalidate_crafting_inventory();
+    // worn items left covering none of the remaining parts fall off
+    const std::map<bodypart_str_id, bodypart> &body = who.get_body();
+    std::list<item> fallen = who.remove_worn_items_with( [&body]( const item & armor ) {
+        if( armor.has_flag( flag_INTEGRATED ) || !armor.is_armor() ) {
+            return false;
+        }
+        for( const std::pair<const bodypart_str_id, bodypart> &part : body ) {
+            if( armor.covers( part.first.id() ) ) {
+                return false;
+            }
+        }
+        return true;
+    } );
+    map &here = get_map();
+    for( item &armor : fallen ) {
+        who.add_msg_player_or_npc( m_bad, _( "Your %s falls off!" ), _( "<npcname>'s %s falls off!" ),
+                                   armor.tname() );
+        here.add_item_or_charges( who.pos_bub(), armor );
+    }
+}
+
+std::optional<std::string> Character::add_body_part_by_eoc( const bodypart_str_id &bp )
+{
+    if( !bp.is_valid() ) {
+        return string_format( "unknown body part \"%s\"", bp.str() );
+    }
+    const bodypart_str_id &parent = bp->connected_to;
+    if( parent != bp && !target_bodyparts().test( parent ) ) {
+        return string_format( "%s connects to %s, which the body doesn't have", bp.str(),
+                              parent.str() );
+    }
+    const bool had_it = target_bodyparts().test( bp );
+    eoc_removed_bodyparts.reset( bp );
+    eoc_added_bodyparts.set( bp );
+    if( had_it ) {
+        // kept now, even after the enchantment that gave it ends
+        return "the body already has " + bp.str();
+    }
+    rebuild_body_after_eoc( *this );
+    return std::nullopt;
+}
+
+std::optional<std::string> Character::lose_body_part_by_eoc( const bodypart_str_id &bp,
+        bool force )
+{
+    if( !bp.is_valid() ) {
+        return string_format( "unknown body part \"%s\"", bp.str() );
+    }
+    const body_part_set target = target_bodyparts();
+    if( !target.test( bp ) ) {
+        return "the body has no " + bp.str();
+    }
+    // the part and every part connected to the body through it
+    body_part_set lost;
+    lost.set( bp );
+    bool grew = true;
+    while( grew ) {
+        grew = false;
+        for( const bodypart_str_id &part : target ) {
+            if( !lost.test( part ) && part->connected_to != part && lost.test( part->connected_to ) ) {
+                lost.set( part );
+                grew = true;
+            }
+        }
+    }
+    // the root first, then the part itself, then the others: the set's order isn't fixed
+    for( const bodypart_str_id &part : lost ) {
+        if( part->connected_to == part ) {
+            return part.str() + " is the root of the body";
+        }
+    }
+    if( bp->is_vital ) {
+        return bp.str() + " is vital";
+    }
+    for( const bodypart_str_id &part : lost ) {
+        if( part->is_vital ) {
+            return part.str() + " is vital";
+        }
+    }
+    if( !force ) {
+        for( const bionic_id &bid : get_bionics() ) {
+            for( const std::pair<const bodypart_str_id, size_t> &slot : bid->occupied_bodyparts ) {
+                if( lost.test( slot.first ) ) {
+                    return string_format( "%s holds the bionic %s", slot.first.str(), bid.str() );
+                }
+            }
+            for( const std::pair<const bodypart_str_id, int> &enc : bid->encumbrance ) {
+                if( lost.test( enc.first ) ) {
+                    return string_format( "%s holds the bionic %s", enc.first.str(), bid.str() );
+                }
+            }
+        }
+    }
+    for( const bodypart_str_id &part : lost ) {
+        eoc_added_bodyparts.reset( part );
+        eoc_removed_bodyparts.set( part );
+        remove_effects_on( *this, part );
+    }
+    rebuild_body_after_eoc( *this );
+    return std::nullopt;
+}
+
+void Character::recalculate_bodyparts()
+{
+    body_part_set body_set = target_bodyparts();
     // first come up with the bodyparts that need to be removed from body
     for( auto bp_iter = body.begin(); bp_iter != body.end(); ) {
         if( !body_set.test( bp_iter->first ) ) {
@@ -5127,17 +5298,17 @@ void Character::recalculate_bodyparts()
                    get_cached_organic_size() );
 }
 
-// True when the body holds exactly the anatomy's parts, so no enchantment that added or
-// removed a part is still reflected in it.
-static bool body_matches_anatomy( const Creature &who )
+// True when the body holds exactly the parts it should (Character::target_bodyparts), so no
+// enchantment or EOC that added or removed a part has been left out of it.
+static bool body_matches_target( const Character &who )
 {
     const std::map<bodypart_str_id, bodypart> &body = who.get_body();
-    const std::vector<bodypart_id> parts = who.get_anatomy()->get_bodyparts();
-    if( parts.size() != body.size() ) {
+    const body_part_set parts = who.target_bodyparts();
+    if( parts.count() != body.size() ) {
         return false;
     }
-    return std::all_of( parts.begin(), parts.end(), [&body]( const bodypart_id & bp ) {
-        return body.count( bp.id() ) > 0;
+    return std::all_of( parts.begin(), parts.end(), [&body]( const bodypart_str_id & bp ) {
+        return body.count( bp ) > 0;
     } );
 }
 
@@ -5211,7 +5382,7 @@ void Character::recalculate_enchantment_cache()
 
     // Also rebuild once the last body-part enchantment is gone (an effect expired, an item
     // was taken off), or the parts it added or removed would stay forever.
-    if( enchantment_cache->modifies_bodyparts() || !body_matches_anatomy( *this ) ) {
+    if( enchantment_cache->modifies_bodyparts() || !body_matches_target( *this ) ) {
         recalculate_bodyparts();
     }
 
@@ -5349,7 +5520,12 @@ void Character::passive_absorb_hit( const bodypart_id &bp, damage_unit &du ) con
 
 void Character::did_hit( Creature &target )
 {
-    enchantment_cache->cast_hit_you( *this, target );
+    did_hit( target, hit_type::melee );
+}
+
+void Character::did_hit( Creature &target, const hit_type hit )
+{
+    enchantment_cache->cast_hit_you( *this, target, hit );
 }
 
 void Character::on_hit( map *here, Creature *source, bodypart_id bp_hit,
@@ -5594,6 +5770,12 @@ void Character::assign_activity( const player_activity &act )
 
         activity = act;
     }
+    // u_assign_activity's context, for this activity's EOCs
+    if( std::optional<global_variables::impl_t> context = activity_eoc_context_scope::take() ) {
+        for( std::pair<const std::string, diag_value> &value : *context ) {
+            activity.eoc_context[value.first] = std::move( value.second );
+        }
+    }
 
     activity.start_or_resume( *this, resuming );
 
@@ -5642,7 +5824,9 @@ void Character::cancel_activity()
         backlog.front().auto_resume ) {
         backlog.front().auto_resume = false;
     }
-    if( activity && activity.can_resume() ) {
+    // left in the backlog to resume, so its end is an interruption
+    const bool resumable = activity && activity.can_resume();
+    if( resumable ) {
         activity.allow_distractions();
         // Don't auto-resume after explicit cancellation.  The stamina
         // "continue after a break" path uses assign_activity() (not
@@ -5662,7 +5846,7 @@ void Character::cancel_activity()
         // nothing reads stale task mission or attitude
         guy->end_cancelled_task();
     }
-    ended.run( *this, true );
+    ended.run( *this, true, resumable );
 }
 
 void Character::resume_backlog_activity()

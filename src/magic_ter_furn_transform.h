@@ -4,6 +4,9 @@
 
 #include <map>
 #include <optional>
+#include <set>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "coords_fwd.h"
@@ -83,7 +86,11 @@ class ter_furn_transform
         static void reset();
         static void load_transform( const JsonObject &jo, const std::string &src );
         static void finalize_all();
+        // Reports every unknown id, and terrain or furniture flags nothing has (MAGIC-J06)
+        static void check_all();
         void load( const JsonObject &jo, std::string_view );
+        void check( const std::set<std::string> &terrain_flags,
+                    const std::set<std::string> &furniture_flags ) const;
 
         static const std::vector<ter_furn_transform> &get_all();
         static void reset_all();

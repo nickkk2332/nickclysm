@@ -22,6 +22,7 @@
 #include "avatar_action.h"
 #include "ballistics.h"
 #include "bodypart.h"
+#include "cached_options.h"
 #include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
@@ -192,6 +193,8 @@ namespace
 generic_factory<bionic_data> bionic_factory( "bionic" );
 std::vector<bionic_id> faulty_bionics;
 } //namespace
+
+std::function<int()> bionic_menus::remote_test_choice;
 
 namespace io
 {
@@ -418,7 +421,14 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
         read_condition( jsobj, "activation_condition", activation_condition, false );
     }
     optional( jsobj, was_loaded, "activation_fail_message", activation_fail_message );
-    optional( jsobj, was_loaded, "npc_use", npc_use, bionic_npc_use::none );
+    if( jsobj.has_object( "npc_use" ) ) {
+        // { "when": "combat", "priority": 10 }
+        JsonObject npc_use_jo = jsobj.get_object( "npc_use" );
+        mandatory( npc_use_jo, false, "when", npc_use );
+        optional( npc_use_jo, false, "priority", npc_use_priority, 0 );
+    } else {
+        optional( jsobj, was_loaded, "npc_use", npc_use, bionic_npc_use::none );
+    }
 
     int enchant_num = 0;
     for( JsonValue jv : jsobj.get_array( "enchantments" ) ) {
@@ -681,9 +691,14 @@ void npc::deactivate_or_discharge_bionic_weapon( bool stow_real_weapon )
 
 void npc::check_or_use_weapon_cbm( const bionic_id &cbm_id )
 {
-    // if we're already using a bio_weapon, keep using it
+    // if we're already using a bio_weapon, keep using it, unless it is a gun with no power left
+    // to fire: then put it away, so the NPC has its own weapon back for the rest of the fight
     if( is_using_bionic_weapon() ) {
-        return;
+        const item_location held = get_wielded_item();
+        if( !held || !held->is_gun() || held->ammo_sufficient( this ) ) {
+            return;
+        }
+        discharge_cbm_weapon( false );
     }
     const float allowed_ratio = static_cast<int>( rules.cbm_reserve ) / 100.0f;
     const units::energy free_power = get_power_level() - get_max_power_level() * allowed_ratio;
@@ -812,7 +827,8 @@ static bool activation_needs_avatar( const bionic &bio )
            bio.id == bio_remote;
 }
 
-bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics_ui )
+bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics_ui,
+                                 bool ignore_cost )
 {
     const bool mounted = is_mounted();
     if( bio.incapacitated_time > 0_turns ) {
@@ -863,7 +879,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
 
     // eff_only means only do the effect without messing with stats or displaying messages
     if( !eff_only ) {
-        if( !enough_power_for( bio.id ) ) {
+        if( !ignore_cost && !enough_power_for( bio.id ) ) {
             add_msg_if_player( m_info, _( "You don't have the power to activate your %s." ),
                                bio.info().name );
             return false;
@@ -880,7 +896,9 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         }
 
         // We can actually activate now, do activation-y things
-        mod_power_level( -bio.info().power_activate );
+        if( !ignore_cost ) {
+            mod_power_level( -bio.info().power_activate );
+        }
 
         bio.powered = bio.info().has_flag( json_flag_BIONIC_TOGGLED ) || bio.info().charge_time > 0_turns;
 
@@ -898,7 +916,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         }
     };
     auto refund_power = [&]() {
-        if( !eff_only ) {
+        if( !eff_only && !ignore_cost ) {
             mod_power_level( bio.info().power_activate );
         }
     };
@@ -1204,10 +1222,26 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         std::string dirstring = get_dirstring( weather.winddirection );
         add_msg_if_player( m_info, _( "Wind Direction: From the %s." ), dirstring );
     } else if( bio.id == bio_remote ) {
+        // The menu comes first: the activation message only if a function was picked
+        int choice = -1;
+        if( test_mode ) {
+            if( bionic_menus::remote_test_choice ) {
+                choice = bionic_menus::remote_test_choice();
+            }
+        } else {
+            choice = uilist( _( "Perform which function:" ), {
+                _( "Control vehicle" ), _( "RC radio" )
+            } );
+        }
+        if( choice < 0 || choice > 1 ) {
+            bio.powered = g->remoteveh() != nullptr || maybe_get_value( "remote_controlling" );
+            if( !bio.powered ) {
+                // Cancelled: nothing activated, nothing paid
+                refund_power();
+                return false;
+            }
+        }
         add_msg_activate();
-        int choice = uilist( _( "Perform which function:" ), {
-            _( "Control vehicle" ), _( "RC radio" )
-        } );
         if( choice >= 0 && choice <= 1 ) {
             item ctr;
             if( choice == 0 ) {
@@ -1219,8 +1253,6 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             int power_use = invoke_item( &ctr );
             mod_power_level( units::from_kilojoule( static_cast<std::int64_t>( -power_use ) ) );
             bio.powered = ctr.active;
-        } else {
-            bio.powered = g->remoteveh() != nullptr || maybe_get_value( "remote_controlling" );
         }
     } else if( bio.info().is_remote_fueled ) {
         std::vector<item_location> cables = cache_get_items_with( flag_CABLE_SPOOL );
@@ -1308,7 +1340,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         dialogue d( get_talker_for( *this ), nullptr );
         d.set_value( "this", activated_id.str() );
         write_var_value( var_type::context, "act_cost", &d,
-                         units::to_millijoule( activated_id->power_activate ) );
+                         ignore_cost ? 0 : units::to_millijoule( activated_id->power_activate ) );
         eoc->activate_activation_only( d, "a bionic activation", "bionic being activated", "bionic" );
     }
 
@@ -1316,7 +1348,8 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
 }
 
 
-ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only ) const
+ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only,
+        bool ignore_cost ) const
 {
 
     if( bio.incapacitated_time > 0_turns ) {
@@ -1335,7 +1368,7 @@ ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only ) con
             return ret_val<void>::make_failure( _( "You can't deactivate your %s manually!" ),
                                                 bio.info().name );
         }
-        if( get_power_level() < bio.info().power_deactivate ) {
+        if( !ignore_cost && get_power_level() < bio.info().power_deactivate ) {
             return ret_val<void>::make_failure( _( "You don't have the power to deactivate your %s." ),
                                                 bio.info().name );
         }
@@ -1344,11 +1377,11 @@ ret_val<void> Character::can_deactivate_bionic( bionic &bio, bool eff_only ) con
     return ret_val<void>::make_success();
 }
 
-bool Character::deactivate_bionic( bionic &bio, bool eff_only )
+bool Character::deactivate_bionic( bionic &bio, bool eff_only, bool ignore_cost )
 {
     const map &here = get_map();
 
-    const auto can_deactivate = can_deactivate_bionic( bio, eff_only );
+    const auto can_deactivate = can_deactivate_bionic( bio, eff_only, ignore_cost );
     bio_flag_cache.clear();
     if( !can_deactivate.success() ) {
         if( !can_deactivate.str().empty() ) {
@@ -1360,7 +1393,9 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only )
     // Just do the effect, no stat changing or messages
     if( !eff_only ) {
         //We can actually deactivate now, do deactivation-y things
-        mod_power_level( -bio.info().power_deactivate );
+        if( !ignore_cost ) {
+            mod_power_level( -bio.info().power_deactivate );
+        }
         bio.powered = false;
         add_msg_if_player( m_neutral, _( "You deactivate your %s." ), bio.info().name );
     }
@@ -2740,9 +2775,20 @@ static std::string granted_proficiency_tag( const proficiency_id &taught )
     return "cbm_granted_proficiency:" + taught.str();
 }
 
-// Takes from a bionic about to be upgraded what it taught that the upgrade teaches too, so
-// removing it doesn't take those back; returns the tags to put on the upgrade.
-static std::vector<std::string> take_grants_shared_with( bionic &base, const bionic_id &upgrade )
+namespace
+{
+// What a bionic about to be upgraded hands over to the upgrade: the tags of what it taught and
+// the spell experience it added (see bionic::raised_spell_xp), for what the upgrade teaches too.
+struct bionic_grants {
+    std::vector<std::string> tags;
+    std::map<spell_id, int> raised_spell_xp;
+};
+} // namespace
+
+// Takes from a bionic about to be upgraded what it taught, or the spell experience it added,
+// that the upgrade teaches too, so removing it doesn't take those back; returns them to put on
+// the upgrade.
+static bionic_grants take_grants_shared_with( bionic &base, const bionic_id &upgrade )
 {
     if( !base.has_flag( bionic_tag_grants_recorded ) ) {
         // Spell out what an older bionic is taken to have taught.
@@ -2754,12 +2800,20 @@ static std::vector<std::string> take_grants_shared_with( bionic &base, const bio
             base.set_flag( granted_proficiency_tag( taught ) );
         }
     }
-    std::vector<std::string> shared;
+    bionic_grants shared;
     for( const std::pair<const spell_id, int> &spell_pair : base.id->learned_spells ) {
         const std::string tag = granted_spell_tag( spell_pair.first );
         if( base.has_flag( tag ) && upgrade->learned_spells.count( spell_pair.first ) > 0 ) {
             base.remove_flag( tag );
-            shared.push_back( tag );
+            shared.tags.push_back( tag );
+        }
+    }
+    for( auto raised = base.raised_spell_xp.begin(); raised != base.raised_spell_xp.end(); ) {
+        if( upgrade->learned_spells.count( raised->first ) > 0 ) {
+            shared.raised_spell_xp.emplace( *raised );
+            raised = base.raised_spell_xp.erase( raised );
+        } else {
+            ++raised;
         }
     }
     for( const proficiency_id &taught : base.id->proficiencies ) {
@@ -2768,7 +2822,7 @@ static std::vector<std::string> take_grants_shared_with( bionic &base, const bio
             std::find( upgrade->proficiencies.begin(), upgrade->proficiencies.end(),
                        taught ) != upgrade->proficiencies.end() ) {
             base.remove_flag( tag );
-            shared.push_back( tag );
+            shared.tags.push_back( tag );
         }
     }
     return shared;
@@ -2785,7 +2839,7 @@ void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int
         get_event_bus().send<event_type::installs_cbm>( getID(), bid );
         // Spells and proficiencies the upgrade takes over from the bionic it replaces, so they
         // aren't forgotten and taught again (losing a spell's experience).
-        std::vector<std::string> taken_over;
+        bionic_grants taken_over;
         if( upbio_uid ) {
             if( std::optional<bionic *> upbio = find_bionic_by_uid( upbio_uid ) ) {
                 const std::string bio_name = ( *upbio )->id->name.translated();
@@ -2803,8 +2857,11 @@ void Character::perform_install( const bionic_id &bid, bionic_uid upbio_uid, int
 
         const bionic_uid added_uid = add_bionic( bid );
         if( const std::optional<bionic *> added = find_bionic_by_uid( added_uid ) ) {
-            for( const std::string &tag : taken_over ) {
+            for( const std::string &tag : taken_over.tags ) {
                 ( *added )->set_flag( tag );
+            }
+            for( const std::pair<const spell_id, int> &raised : taken_over.raised_spell_xp ) {
+                ( *added )->raised_spell_xp[raised.first] += raised.second;
             }
         }
 
@@ -3062,6 +3119,7 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
     }
 
     std::vector<std::string> grants = { bionic_tag_grants_recorded };
+    std::map<spell_id, int> raised_spell_xp;
     for( const std::pair<const spell_id, int> &spell_pair : b->learned_spells ) {
         const spell_id learned_spell = spell_pair.first;
         if( learned_spell->spell_class != trait_NONE ) {
@@ -3074,16 +3132,23 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
                 add_msg_if_player( mutation_desc( spell_class ) );
             }
         }
+        bool taught = false;
         if( !magic->knows_spell( learned_spell ) ) {
             magic->learn_spell( learned_spell, *this, true );
             if( magic->knows_spell( learned_spell ) ) {
                 grants.push_back( granted_spell_tag( learned_spell ) );
+                taught = true;
             }
         }
         spell &known_spell = magic->get_spell( learned_spell );
         // spells you learn from installing a bionic upgrade spells you know if they are the same
         if( known_spell.get_level() < spell_pair.second ) {
+            const int xp_before = known_spell.xp();
             known_spell.set_level( *this, spell_pair.second );
+            // A spell it taught is forgotten with it; one known before only loses the raise.
+            if( !taught ) {
+                raised_spell_xp[learned_spell] += known_spell.xp() - xp_before;
+            }
         }
     }
 
@@ -3099,6 +3164,9 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
     if( const std::optional<bionic *> added = find_bionic_by_uid( bio_uid ) ) {
         for( const std::string &tag : grants ) {
             ( *added )->set_flag( tag );
+        }
+        for( const std::pair<const spell_id, int> &raised : raised_spell_xp ) {
+            ( *added )->raised_spell_xp[raised.first] += raised.second;
         }
     }
 
@@ -3207,6 +3275,29 @@ void Character::remove_bionic( const bionic &bio )
                 keeper->set_flag( tag );
             } else {
                 magic->forget_spell( taught );
+            }
+        }
+        // The experience it added to spells known before it goes too. Another installed bionic
+        // teaching a higher level keeps the spell there, and counts what that adds as its own.
+        for( const std::pair<const spell_id, int> &raised : removed.raised_spell_xp ) {
+            if( !magic->knows_spell( raised.first ) ) {
+                continue;
+            }
+            spell &known_spell = magic->get_spell( raised.first );
+            known_spell.set_exp( std::max( known_spell.xp() - raised.second, 0 ) );
+            bionic *keeper = nullptr;
+            int keeper_level = known_spell.get_level();
+            for( bionic &other : new_my_bionics ) {
+                const auto teaches = other.id->learned_spells.find( raised.first );
+                if( teaches != other.id->learned_spells.end() && teaches->second > keeper_level ) {
+                    keeper = &other;
+                    keeper_level = teaches->second;
+                }
+            }
+            if( keeper != nullptr ) {
+                const int xp_before = known_spell.xp();
+                known_spell.set_level( *this, keeper_level );
+                keeper->raised_spell_xp[raised.first] += known_spell.xp() - xp_before;
             }
         }
         for( const proficiency_id &taught : removed.id->proficiencies ) {
@@ -3486,6 +3577,9 @@ void bionic::serialize( JsonOut &json ) const
     if( incapacitated_time > 0_turns ) {
         json.member( "incapacitated_time", incapacitated_time );
     }
+    if( !raised_spell_xp.empty() ) {
+        json.member( "raised_spell_xp", raised_spell_xp );
+    }
     if( is_safe_fuel_on() ) {
         json.member( "safe_fuel_threshold", safe_fuel_threshold );
     }
@@ -3539,6 +3633,8 @@ void bionic::deserialize( const JsonObject &jo )
     if( jo.has_int( "incapacitated_time" ) ) {
         incapacitated_time = 1_turns * jo.get_int( "incapacitated_time" );
     }
+    // Saves from before MUT-B10's record have none.
+    jo.read( "raised_spell_xp", raised_spell_xp );
     if( jo.has_float( "safe_fuel_threshold" ) ) {
         safe_fuel_threshold = jo.get_float( "safe_fuel_threshold" );
     }
