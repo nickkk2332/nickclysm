@@ -468,7 +468,6 @@
     "color": "magenta",
     "use_action": {
       "type": "effect_on_conditions",
-      "consume": true,
       "description": "Return to the sky.",
       "effect_on_conditions": [ "EOC_WARPED_ENEMY_CHECK_RETURN" ]
     }
@@ -504,7 +503,6 @@
     "color": "cyan",
     "use_action": {
       "type": "effect_on_conditions",
-      "consume": true,
       "description": "Cross the waters.",
       "effect_on_conditions": [ "EOC_WARPED_WATERWALKING" ]
     }

@@ -229,6 +229,17 @@ std::string enum_to_string<magic_energy_type>( magic_energy_type data )
     }
     cata_fatal( "Invalid magic_energy_type" );
 }
+template<>
+std::string enum_to_string<hit_type>( hit_type data )
+{
+    switch( data ) {
+    case hit_type::melee: return "melee";
+    case hit_type::ranged: return "ranged";
+    case hit_type::thrown: return "thrown";
+    case hit_type::last: break;
+    }
+    cata_fatal( "Invalid hit_type" );
+}
 // *INDENT-ON*
 
 } // namespace io
@@ -4022,6 +4033,11 @@ void fake_spell::load( const JsonObject &jo )
     if( jo.has_string( "level" ) ) {
         debugmsg( "level member for fake_spell was renamed to min_level.  id: %s", id.c_str() );
     }
+    optional( jo, false, "hit_types", hit_types, enum_flags_reader<hit_type> { "hit_types" },
+              hit_types_default );
+    if( hit_types.none() ) {
+        jo.throw_error_at( "hit_types", "hit_types must name at least one kind of hit" );
+    }
 }
 
 void fake_spell::serialize( JsonOut &json ) const
@@ -4032,6 +4048,9 @@ void fake_spell::serialize( JsonOut &json ) const
     json.member( "once_in", trigger_once_in, trigger_once_in_default );
     json.member( "max_level", max_level, max_level_default );
     json.member( "min_level", level, level_default );
+    if( hit_types != hit_types_default ) {
+        json.member( "hit_types", hit_types );
+    }
     json.end_object();
 }
 

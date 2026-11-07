@@ -12,7 +12,7 @@
       {
         "has": "WIELD",
         "condition": "ALWAYS",
-        "hit_you_effect": [ { "id": "boann_unique_weapon_sword_onhit_blind", "once_in": 3 } ],
+        "hit_you_effect": [ { "id": "boann_unique_weapon_sword_onhit_blind", "hit_types": [ "melee" ], "once_in": 3 } ],
         "values": [ { "value": "ATTACK_SPEED", "add": -25 }, { "value": "MELEE_DAMAGE", "multiply": 0.15 } ]
       }
     ]
