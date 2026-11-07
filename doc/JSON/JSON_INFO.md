@@ -226,6 +226,10 @@ Use the `Home` key to return to the top.
   - [`tiles-new`](#tiles-new)
 - [Obsoletion and migration](#obsoletion-and-migration)
 - [Field types](#field-types)
+  - [Field processors](#field-processors)
+    - [`processors`](#processors)
+    - [`contact_processors`](#contact_processors)
+    - [`contact_damage`](#contact_damage)
   - [Emits](#emits)
   - [Immunity data](#immunity-data)
 - [Mod settings](#mod-settings)
@@ -4593,7 +4597,7 @@ Setting of sprite sheets. Same as `tiles-new` field in `tile_config`. Sprite fil
 
 # Field types
 
-Fields can exist on top of terrain/furniture, and support different intensity levels. Each intensity level inherits its properties from the lower one, so any field not explicitly overwritten will carry over. They affect both characters and monsters, but a lot of fields have hardcoded effects that are potentially different for both (found in `map_field.cpp:creature_in_field`). Gaseous fields that have a chance to do so are spread depending on the local wind force when outside, preferring spreading down to on the same Z-level, which is preferred to spreading upwards. Indoors and by weak winds fields spread randomly.
+Fields can exist on top of terrain/furniture, and support different intensity levels. Each intensity level inherits its properties from the lower one, so any field not explicitly overwritten will carry over. They affect both characters and monsters through their `effects`, `contact_damage` and `eoc_on_contact`, and through the `contact_processors` they pick: the behaviours vanilla fields such as fire, acid and electricity have, which differ for characters and monsters. What a field does every turn besides spreading and decaying (burning, falling, arcing, pushing items...) is picked in its `processors`. Both are described [below](#field-processors). Gaseous fields that have a chance to do so are spread depending on the local wind force when outside, preferring spreading down to on the same Z-level, which is preferred to spreading upwards. Indoors and by weak winds fields spread randomly.
 
 ```jsonc
   {
@@ -4629,14 +4633,24 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "convection_temperature_mod": 12, // Heat given off by this level of intensity
         "effects": [  ] // List of effects applied to any creatures within the field as long as they aren't immune to the effect or the field itself. See field_effect below for syntax
         "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on the tiles within scent_neutralization_radius of it by this value. Only a field with the gas phase and a percent_spread does this; on any other field it is an error at load
+        "heat_radiation": 2, // Heat this intensity radiates to its surroundings, as a terrain's heat_radiation does (fd_fire: its intensity). With has_fire, an intensity that radiates heat is also a fire that can be used to cook and craft (has_nearby_fire)
+        "hot_air_field": "fd_hot_air2", // The hot air the fire, vent_cycle and incendiary processors spread around a field of this intensity. Default none
+        "contact_damage": [ // Damage dealt each turn to a creature on the field that isn't immune to it. See contact_damage below
+          { "damage_type": "heat", "amount": [ 2, 6 ], "body_parts": "ground_contact", "monster_mult": 1.0 }
+        ],
+        "eoc_on_contact": "EOC_HOT_TAR" // EOC id or inline EOC run each turn for a creature on the field that isn't immune to it, with that creature as u. Context variables: loc (the field's location), field (its id), intensity
     ],
+    "processors": [ { "type": "fire" }, "fungicide" ], // What the field does every turn, in this order. See Field processors below. A list given replaces the inherited one
+    "contact_processors": [ "fire" ], // What the field does to creatures on it. See Field processors below. A list given replaces the inherited one
+    "decay_mode": "exponential", // How the field loses intensity as it ages: "exponential" (default, one intensity after a random time, two half lives on average), "linear" (one intensity every half life) or "fire" (fd_fire's: one intensity once half_life in turns is less than 2d(age in turns))
+    "opaque_variant": "fd_electricity_unlit", // On a tile that isn't transparent (a wall, thick smoke) this field is placed as opaque_variant, which turns back into this field on a transparent tile. The variant must not have an opaque_variant of its own, and only one field can name it
     "npc_complain": { "chance": 20, "issue": "weed_smoke", "duration": "10 minutes", "speech": "<weed_smoke>" }, // NPCs in this field will complain about being in it once per <duration> if a 1-in-<chance> roll succeeds, giving off a <speech> bark that supports snippets
     "immunity_data": {...} // See Immunity Data below
     "decay_amount_factor": 2, // The field's rain decay amount is divided by this when processing the field, the rain decay is a function of the weather type's precipitation class: very_light = 5s, light = 15s, heavy = 45 s
     "half_life": "3 minutes", // If above 0 the field will disappear after two half-lifes on average
     "underwater_age_speedup": "25 minutes", // Increase the field's age by this time every tick if it's on a terrain with the SWIMMABLE flag
     "block_mtypes": [ "zombie", "animal" ], // these monster types cannot move on tile with this field
-    "linear_half_life": "true", // If true the half life decay is converted to a non-random, linear wait based on the defined half_life time. 
+    "linear_half_life": true, // The older spelling of "decay_mode": "linear" (false is "exponential"). Give either this or decay_mode
     "outdoor_age_speedup": "20 minutes", // Increase the field's age by this duration if it's on an outdoor tile
     "accelerated_decay": true, // If the field should use a more simple decay calculation, used for cosmetic fields like gibs
     "percent_spread": 90, // The field must succeed on a `rng( 1, 100 - local windpower ) > percent_spread` roll to spread. The field must have a non-zero spread percent and the GAS phase to be eligible to spread in the first place
@@ -4646,7 +4660,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
     "gas_absorption_factor": "80m", // Length a full 100 charge gas mask filter will last in this gas. Will be divided by the concentration of the gas, and should be 80m for concentration 1 toxic gas or similar. The worst gas should still be kept out for 20 minutes in a concentration 4 thick gas.
     "is_splattering": true, // If splatters of this field should bloody vehicle parts
     "dirty_transparency_cache": true, // Should the transparency cache be recalculated when the field is modified (used for nontransparent, spreading fields)
-    "has_fire": false, // Is this field a kind of fire (for immunity, monster avoidance and similar checks)
+    "has_fire": false, // Is this field a kind of fire (for immunity and similar checks). With heat_radiation, a usable fire for cooking and crafting. It doesn't make the field burn or hurt: pick the fire processor and contact processor for that
     "has_acid": false, // See has_fire
     "has_elec": false, // See has_fire
     "has_fume": false, // See has_fire, non-breathing monsters are immune to this field
@@ -4680,6 +4694,70 @@ Fields can exist on top of terrain/furniture, and support different intensity le
     },
     "indestructible": true // Field cannot be bashed or destroyed, but may still expire over time.  Useful when combined with the bash field because it can allow fields to prevent bashing terrain but not be destructible.
   }
+```
+
+## Field processors
+
+A field type picks the behaviours of the vanilla fields it wants in `processors` (run on each of its fields every turn) and `contact_processors` (run for each creature on one of its fields). A processor acts as the field itself: a field with the `fire` processor spreads, fuels and joins fields of its own type, not `fd_fire`. Processors other members imply (spreading gas, `wandering_field`, radiation, intensity upgrades, monster spawns, slime, dissolving in water) run before the listed ones and aren't listed.
+
+### `processors`
+
+Each entry is a processor's name, or an object with its `type` and parameters. A parameter left out takes the value the vanilla field had; an object may only hold its own type's parameters.
+
+| Type | Vanilla field | What it does | Parameters |
+|---|---|---|---|
+| `fire` | `fd_fire` | Burns and destroys items (setting off explosives), damages vehicles, feeds on and bashes flammable terrain and furniture, falls through open air, fuels weaker fires of its type next to it, grows with fuel and burning neighbours, spreads to flammable neighbours and up, makes smoke and its intensity's `hot_air_field`. A fire in a pit only spreads to other pits; a `FIRE_CONTAINER` stops it spreading and burning the tile | `spread_chance` (25: percent per intensity above 1 to spread to a flammable neighbour), `smoke_field` (`fd_smoke`; `fd_null` for none), `fuel_field` (`fd_web`: a field next to it that it spreads into readily and destroys), `ash_item` (`ash`, left by burnt `FLAMMABLE_ASH` terrain and furniture; `null` for none), `ash_furniture` (`f_ash`, what burnt `FLAMMABLE_ASH` furniture becomes) |
+| `fungicide` | `fd_fungicidal_gas`, `fd_fire` | One turn in 10 / intensity, fungal terrain becomes `terrain` and fungal furniture goes away | `terrain` (`t_dirt`) |
+| `fall` | `fd_acid` | Falls a z-level through open air, joining the same field below (up to its highest intensity) | none |
+| `extinguish` | `fd_extinguisher` | Puts out the listed fields on its tile, one intensity of its own for each | `fields` (required) |
+| `arc` | `fd_electricity`, `fd_electricity_unlit` | Spreads its intensity to the tiles around it, choosing walls, creatures and open ground by weight, as `field` (placed as that field's `opaque_variant` where it applies) | `field` (itself), `grounded_weight` (6), `creature_weight` (6), `other_weight` (1): the weights from a passable tile; from inside a wall they are 1, 5 and 0 |
+| `push_items` | `fd_push_items` | Pushes the listed items at least a turn old to a neighbouring tile holding the same field, hitting a creature there | `items` (every item if empty; `fd_push_items` lists `rock`), `damage_type` (`bash`), `damage` (6) |
+| `vent_cycle` | `fd_fire_vent`, `fd_flame_burst` | Above intensity 1, loses an intensity one turn in `weaken_chance` and spreads its `hot_air_field`; at 1, turns into `next_field` | `next_field` (required), `weaken_chance` (1), `next_intensity` (3) |
+| `shock_vent` | `fd_shock_vent` | Recharges, losing an intensity one turn in 5; at 1, goes back to 3 and shoots 3 to 6 bolts of `field` 4 to 12 tiles long | `field` (`fd_electricity`) |
+| `acid_vent` | `fd_acid_vent` | Recharges, losing an intensity a minute; at 1, goes back to 3 and spills `field` around it | `field` (`fd_acid`) |
+| `incendiary` | `fd_incendiary` | Sets a random flammable neighbour (terrain, furniture or items) alight with `field` and spreads its `hot_air_field` | `field` (`fd_fire`) |
+| `fungal_haze` | `fd_fungal_haze` | One turn in 10 - 2 × intensity, spreads fungus to its tile | none |
+| `last_known` | `fd_last_known` | Goes away once older than `max_age`, or when a creature other than the avatar is on it | `max_age` (5 seconds) |
+
+```jsonc
+"processors": [ { "type": "fire", "smoke_field": "fd_hellsmoke", "ash_item": "null" }, "fungicide" ]
+```
+
+### `contact_processors`
+
+A list of names. Each does to a creature on the field what it did to creatures on the vanilla field named, by its intensity:
+
+| Name | Vanilla field | Characters | Monsters |
+|---|---|---|---|
+| `acid` | `fd_acid` | Burns the parts touching the ground (or most of the body lying down), unless in a vehicle or `ACIDPROOF` | Acid damage, unless flying |
+| `sap` | `fd_sap` | Uses up an intensity, unless in a vehicle | Slows; uses up an intensity. Fliers are immune |
+| `sludge` | `fd_sludge` | Costs moves and clears the field, unless `GASTROPOD_FOOT` or in a vehicle | The same, unless digging, flying or `SLUDGEPROOF`. Fliers are immune |
+| `fire` | `fd_fire` | Burns more of the body the stronger it is (none at intensity 1, one turn in 10 at 2), less in or on a vehicle; `HEATSINK` and `HEAT_IMMUNE` stop it | Heat damage by material, may set alight; tramples the fire. Not `FIREPROOF` or `FIREY` monsters, nor in a `FIRE_CONTAINER`. Monsters that avoid fire avoid fields with it |
+| `tear_gas` | `fd_tear_gas` | Tear gas and blindness | Stuns and blinds breathing flesh and plants |
+| `fungal_haze` | `fd_fungal_haze` | Fungal infection, unless `M_IMMUNE` | Damages and slows, or turns fungal. Non-breathers and fungi are immune |
+| `flame_burst` | `fd_flame_burst` | Burns the legs and torso, unless inside a vehicle or `HEATSINK` | Heat damage by material |
+| `electricity` | `fd_electricity`, `fd_electricity_unlit` | Electric damage to the torso, then to the other main parts, unless electricity-immune or in a vehicle | Electric damage. Monsters that avoid simple dangers avoid fields with it |
+| `teleport` | `fd_fatigue` | Hurts and teleports the avatar, unless in a vehicle | Hurts and teleports |
+| `shut_off` | `fd_shock_vent`, `fd_acid_vent` | Stepping on it shuts it down | nothing |
+| `incendiary` | `fd_incendiary` | Burns, and melts into the skin above intensity 1 (`M_SKIN2`, `M_SKIN3` take only the burn) | Heat damage by material, may set alight |
+| `fungicidal_gas`, `insecticidal_gas` | `fd_fungicidal_gas`, `fd_insecticidal_gas` | Poison, worse past the Mycus or Marloss threshold (and the insect or spider one for `insecticidal_gas`), unless inside a vehicle or in a gas-proof suit | Damages fungi (`fungicidal_gas`) or insect flesh that isn't `INSECTICIDEPROOF`, which alone aren't immune |
+| `smoke`, `relax_gas`, `dazzling`, `toxic_gas`, `nuke_gas` | the vanilla field of that name | nothing | Slows, stuns, blinds or damages as that field does |
+
+### `contact_damage`
+
+Each intensity may list damage dealt each turn to a creature on the field that isn't immune to the field (`immunity_data`, `immune_mtypes`, `has_fire` and the like). It is dealt after the contact processors, with the field's causer as the attacker, through armor and resistances.
+
+```jsonc
+"contact_damage": [
+  {
+    "damage_type": "heat", // A damage type id
+    "amount": [ 2, 6 ], // A number, or [ min, max ] rolled for each body part
+    "body_parts": "ground_contact", // "ground_contact" (default): the feet, hands and feet on all fours, every main part lying down, nothing in a vehicle; "all": every main part; or a list of body part ids
+    "monster_mult": 1.0, // A monster takes the amount times this, once, on its torso; 0 spares monsters. Fliers take no ground_contact damage, and digging monsters and monsters in vehicles none
+    "message": "The tar burns you!", // Shown when it hurts a character (optional)
+    "message_npc": "The tar burns <npcname>!"
+  }
+]
 ```
 
 ## Emits

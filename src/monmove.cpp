@@ -12,6 +12,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -38,6 +39,7 @@
 #include "item.h"
 #include "line.h"
 #include "map.h"
+#include "map_field.h"
 #include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
@@ -109,11 +111,8 @@ static const itype_id itype_pressurized_tank( "pressurized_tank" );
 
 static const json_character_flag json_flag_SNOWWALKING( "SNOWWALKING" );
 
-static const material_id material_iflesh( "iflesh" );
-
 static const mfaction_str_id monfaction_player( "player" );
 
-static const species_id species_FUNGUS( "FUNGUS" );
 static const species_id species_ZOMBIE( "ZOMBIE" );
 
 static const ter_str_id ter_t_lava( "t_lava" );
@@ -123,22 +122,15 @@ static const ter_str_id ter_t_pit_spiked( "t_pit_spiked" );
 
 bool monster::is_immune_field( const field_type_id &fid ) const
 {
-    if( fid == fd_fungal_haze ) {
-        return has_flag( mon_flag_NO_BREATHE ) || type->in_species( species_FUNGUS );
-    }
-    if( fid == fd_fungicidal_gas ) {
-        return !type->in_species( species_FUNGUS );
-    }
-    if( fid == fd_insecticidal_gas ) {
-        return !made_of( material_iflesh ) || has_flag( mon_flag_INSECTICIDEPROOF );
+    const field_type &ft = fid.obj();
+    // Gases that spare non-breathers or the wrong species, sap and sludge that fliers pass over
+    if( const std::optional<bool> immune = map_field_processing::monster_contact_immunity( ft,
+                                           *this ) ) {
+        return *immune;
     }
     if( fid == fd_web ) {
         return has_flag( mon_flag_WEBWALK );
     }
-    if( fid == fd_sludge || fid == fd_sap ) {
-        return flies();
-    }
-    const field_type &ft = fid.obj();
     if( ft.has_fume ) {
         return has_flag( mon_flag_NO_BREATHE );
     }
@@ -324,15 +316,20 @@ bool monster::know_danger_at( map *here, const tripoint_bub_ms &p ) const
             return false;
         }
 
-        // Without avoid_complex, only fire and electricity are checked for field
-        // avoidance.
-        if( avoid_fire && target_field.find_field( fd_fire ) &&
-            !is_immune_field( fd_fire ) ) {
-            return false;
-        }
-        if( avoid_simple && target_field.find_field( fd_electricity ) &&
-            !is_immune_field( fd_electricity ) ) {
-            return false;
+        // Without avoid_complex, only fire and electricity (fields with the fire or
+        // electricity contact processor) are checked for field avoidance.
+        if( avoid_fire || avoid_simple ) {
+            for( const auto &fd : target_field ) {
+                const field_type &ft = *fd.first;
+                if( !fd.second.is_field_alive() ) {
+                    continue;
+                }
+                if( ( ( avoid_fire && ft.has_contact( field_contact_type::fire ) ) ||
+                      ( avoid_simple && ft.has_contact( field_contact_type::electricity ) ) ) &&
+                    !is_immune_field( fd.first ) ) {
+                    return false;
+                }
+            }
         }
     }
 
