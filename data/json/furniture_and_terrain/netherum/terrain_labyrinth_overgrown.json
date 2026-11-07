@@ -8,6 +8,7 @@
     "color": "green",
     "move_cost": 0,
     "coverage": 100,
+    "sound_attenuation": 12,
     "light_emitted": 5,
     "light_color": [ 240, 245, 200 ],
     "roof": "t_nl_roof",

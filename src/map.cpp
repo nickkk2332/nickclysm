@@ -4,6 +4,7 @@
 #include <array>
 #include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <optional>
@@ -11258,7 +11259,7 @@ void map::build_sound_attenuation_cache( const int zlev ) const
 
 bool map::sound_muffled_on_level( const int zlev ) const
 {
-    if( !inbounds_z( zlev ) ) {
+    if( !inbounds_z( zlev ) || sound_attenuation_percent <= 0 ) {
         return false;
     }
     if( sounds::terrain_can_muffle() ) {
@@ -11288,9 +11289,20 @@ static int vehicle_sound_attenuation( const vpart_position &vp )
     return total;
 }
 
+// A sum of sound_attenuation values scaled by the SOUND_ATTENUATION_PERCENT external
+// option (100: as given, 0: nothing muffles)
+static int scaled_sound_attenuation( const int total )
+{
+    if( total <= 0 || sound_attenuation_percent <= 0 ) {
+        return 0;
+    }
+    const int64_t scaled = static_cast<int64_t>( total ) * sound_attenuation_percent / 100;
+    return static_cast<int>( std::min<int64_t>( scaled, std::numeric_limits<int>::max() ) );
+}
+
 int map::sound_attenuation_at( const tripoint_bub_ms &p ) const
 {
-    if( !inbounds( p ) ) {
+    if( !inbounds( p ) || sound_attenuation_percent <= 0 ) {
         return 0;
     }
     int total = 0;
@@ -11303,7 +11315,7 @@ int map::sound_attenuation_at( const tripoint_bub_ms &p ) const
             total += vehicle_sound_attenuation( *vp );
         }
     }
-    return total;
+    return scaled_sound_attenuation( total );
 }
 
 int map::sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_bub_ms &to,
@@ -11311,8 +11323,10 @@ int map::sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_
 {
     const bool terrain = sounds::terrain_can_muffle();
     const bool vehicles = sounds::vehicles_can_muffle();
-    // with vanilla data nothing muffles sound, and adjacent tiles have nothing between
-    if( ( !terrain && !vehicles ) || stop_at <= 0 || square_dist( from, to ) <= 1 ) {
+    // with nothing loaded that muffles, or SOUND_ATTENUATION_PERCENT at 0, nothing muffles
+    // sound, and adjacent tiles have nothing between
+    if( ( !terrain && !vehicles ) || sound_attenuation_percent <= 0 || stop_at <= 0 ||
+        square_dist( from, to ) <= 1 ) {
         return 0;
     }
     // what may muffle on each level the line crosses; the line is walked only if any does
@@ -11362,9 +11376,9 @@ int map::sound_attenuation_between( const tripoint_bub_ms &from, const tripoint_
                 state.total += vehicle_sound_attenuation( *vp );
             }
         }
-        return state.total < state.stop_at;
+        return scaled_sound_attenuation( state.total ) < state.stop_at;
     } );
-    return state.total;
+    return scaled_sound_attenuation( state.total );
 }
 
 void map::ensure_scene_caches() const

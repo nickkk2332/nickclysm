@@ -9,6 +9,7 @@
     "damage_reduction": { "all": 20 },
     "description": "A door.  Has a window so you can see out of it, even when closed.",
     "durability": 225,
+    "sound_attenuation": 5,
     "flags": [
       "CARGO",
       "CARGO_PASSABLE",
@@ -62,6 +63,7 @@
     "description": "A cloth sheet that can be fastened into a closed position to act as a door.",
     "item": "sheet",
     "durability": 15,
+    "sound_attenuation": 1,
     "folded_volume": "2500 ml",
     "breaks_into": "ig_vp_cloth",
     "requirements": {

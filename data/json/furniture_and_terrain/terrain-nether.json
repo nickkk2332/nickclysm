@@ -50,6 +50,7 @@
     "symbol": " ",
     "color": "black",
     "move_cost": 0,
+    "sound_attenuation": 4,
     "connect_groups": "WALL",
     "connects_to": "WALL",
     "flags": [ "NOITEM", "WALL" ]
@@ -62,6 +63,7 @@
     "symbol": "#",
     "color": "dark_gray",
     "move_cost": 0,
+    "sound_attenuation": 20,
     "connect_groups": "WALL",
     "connects_to": "WALL",
     "flags": [ "NOITEM", "WALL" ]

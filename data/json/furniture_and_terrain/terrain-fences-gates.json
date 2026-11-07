@@ -8,6 +8,7 @@
     "color": "light_red",
     "move_cost": 0,
     "coverage": 55,
+    "sound_attenuation": 10,
     "connect_groups": "WALL",
     "connects_to": "WALL",
     "rotates_to": "INDOORFLOOR",

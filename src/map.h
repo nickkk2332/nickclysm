@@ -564,7 +564,8 @@ class map
         /**
          * Sound muffling: the sound_attenuation of terrain, furniture, fields and vehicle
          * parts. Terrain, furniture and fields come from a per-level cache built on first
-         * use after a change; vehicle parts are read where a sound crosses them.
+         * use after a change; vehicle parts are read where a sound crosses them. The sums
+         * are scaled by the SOUND_ATTENUATION_PERCENT external option (0: nothing muffles).
          */
         /*@{*/
         // Volume a sound loses crossing tile p
