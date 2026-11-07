@@ -211,15 +211,6 @@ bool string_id<mon_flag>::is_valid() const
     return mon_flags.is_valid( *this );
 }
 
-std::optional<mon_action_death> MonsterGenerator::get_death_function( const std::string &f ) const
-{
-    const auto it = death_map.find( f );
-
-    return it != death_map.cend()
-           ? std::optional<mon_action_death>( it->second )
-           : std::optional<mon_action_death>();
-}
-
 MonsterGenerator::MonsterGenerator()
     : mon_templates( "monster type" )
     , mon_species( "species" )
@@ -283,6 +274,8 @@ namespace
 {
 struct monster_adjustment {
     species_id species;
+    // when not empty, only these monsters (MONDT-B14)
+    std::set<mtype_id> monsters;
     std::string stat;
     float stat_adjust = 0.0f;
     std::string flag;
@@ -294,7 +287,10 @@ struct monster_adjustment {
 
 void monster_adjustment::apply( mtype &mon ) const
 {
-    if( !mon.in_species( species ) ) {
+    if( !species.is_empty() && !mon.in_species( species ) ) {
+        return;
+    }
+    if( !monsters.empty() && monsters.count( mon.id ) == 0 ) {
         return;
     }
     if( !stat.empty() ) {
@@ -326,11 +322,20 @@ void reset_monster_adjustment()
 void load_monster_adjustment( const JsonObject &jsobj )
 {
     monster_adjustment adj;
-    adj.species = species_id( jsobj.get_string( "species" ) );
+    if( jsobj.has_member( "species" ) || !jsobj.has_member( "monsters" ) ) {
+        adj.species = species_id( jsobj.get_string( "species" ) );
+    }
+    optional( jsobj, false, "monsters", adj.monsters, string_id_reader<::mtype> {} );
+    // an unknown stat or special used to change nothing, silently (MONDT-B14)
     if( jsobj.has_member( "stat" ) ) {
         JsonObject stat = jsobj.get_object( "stat" );
         stat.read( "name", adj.stat );
         stat.read( "modifier", adj.stat_adjust );
+        if( adj.stat != "speed" && adj.stat != "hp" && adj.stat != "bleed_rate" ) {
+            stat.throw_error_at( "name", string_format(
+                                     "unknown monster_adjustment stat \"%s\"; valid stats are speed, hp and "
+                                     "bleed_rate", adj.stat ) );
+        }
     }
     if( jsobj.has_member( "flag" ) ) {
         JsonObject flag = jsobj.get_object( "flag" );
@@ -339,6 +344,11 @@ void load_monster_adjustment( const JsonObject &jsobj )
     }
     if( jsobj.has_member( "special" ) ) {
         jsobj.read( "special", adj.special );
+        if( adj.special != "nightvision" ) {
+            jsobj.throw_error_at( "special", string_format(
+                                      "unknown monster_adjustment special \"%s\"; the only one is nightvision",
+                                      adj.special ) );
+        }
     }
     adjustments.push_back( adj );
 }
@@ -932,10 +942,11 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
     if( jo.has_member( "block" ) ) {
         JsonObject block_jo = jo.get_object( "block" );
 
-        block.chance = block_jo.get_int( "chance", 0 );
-        block.effectiveness = block_jo.get_int( "effectiveness", 0 );
-        block.count = block_jo.get_int( "count", 0 );
-        block.ranged = block_jo.get_bool( "ranged", false );
+        // a member left out keeps what copy-from gave (MONDT-B14); a new monster starts at 0
+        block.chance = block_jo.get_int( "chance", block.chance );
+        block.effectiveness = block_jo.get_int( "effectiveness", block.effectiveness );
+        block.count = block_jo.get_int( "count", block.count );
+        block.ranged = block_jo.get_bool( "ranged", block.ranged );
     }
     if( jo.has_object( "armor" ) ) {
         armor = load_resistances_instance( jo.get_object( "armor" ) );
@@ -1049,7 +1060,9 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
                                          "death_drops for mtype " + id.str() );
     }
 
-    // FIXME: there's code to check if harvest is null, which will never trigger as it defaults to human
+    // Without one a monster is butchered as a human (MONDT-B14: about 400 monsters in the game
+    // and its mods leave it out, most without a corpse); the null check in
+    // check_monster_definitions() catches an explicit "null".
     optional( jo, was_loaded, "harvest", harvest, harvest_list_human );
 
     optional( jo, was_loaded, "dissect", dissect );
@@ -1112,14 +1125,18 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
             mandatory( up, was_loaded, "into", upgrade_into, string_id_reader<::mtype> {} );
             upgrade_group = mongroup_id::NULL_ID();
         }
+        // the members of "upgrades", not of the monster (MONDT-B14)
         bool multi = !!upgrade_multi_range;
         optional( up, was_loaded, "multiple_spawns", multi, false );
-        if( multi && jo.has_bool( "multiple_spawns" ) ) {
-            mandatory( up, was_loaded, "spawn_range", upgrade_multi_range );
-        } else if( multi ) {
+        if( multi ) {
             optional( up, was_loaded, "spawn_range", upgrade_multi_range );
+            if( !upgrade_multi_range ) {
+                up.throw_error( "\"spawn_range\" is mandatory when \"multiple_spawns\" is true" );
+            }
         } else {
-            jo.get_int( "spawn_range", 0 ); // ignore if defined
+            // false clears a range copy-from gave
+            upgrade_multi_range.reset();
+            up.get_int( "spawn_range", 0 ); // ignore if defined
         }
         optional( up, was_loaded, "despawn_when_null", upgrade_null_despawn, false );
         upgrades = true;
@@ -1196,10 +1213,14 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     // Can't calculate yet - we want all flags first
     if( jo.has_int( "bash_skill" ) ) {
-        int skill;
-        optional( jo, false, "bash_skill", skill, -1 );
-        if( skill <= 0 ) {
+        // a number is bash damage; 0 or less is calculated from the melee damage, as an empty
+        // object is (MONDT-B14)
+        int skill = 0;
+        optional( jo, false, "bash_skill", skill, 0 );
+        if( skill > 0 ) {
             bash_skill = {{{damage_bash, skill}}};
+        } else {
+            bash_skill.clear();
         }
     } else {
         optional( jo, was_loaded, "bash_skill", bash_skill );
@@ -1424,6 +1445,13 @@ void MonsterGenerator::load_monster_attack( const JsonObject &jo, const std::str
 
 void MonsterGenerator::check_monster_definitions() const
 {
+    for( const monster_adjustment &adj : adjustments ) {
+        for( const mtype_id &mon : adj.monsters ) {
+            if( !mon.is_valid() ) {
+                debugmsg( "monster_adjustment for unknown monster %s", mon.str() );
+            }
+        }
+    }
     for( const mtype &mon : mon_templates->get_all() ) {
         if( !mon.src.empty() && mon.src.back().second.str() == "dda" ) {
             std::string mon_id = mon.id.str();
@@ -1696,9 +1724,10 @@ void move_skills_data::load( const JsonObject &jo )
         debugmsg( "dig value out of range.  It has to be between 0 and 10" );
         dig = std::max( std::min( dig.value(), 10 ), 0 );
     }
-    if( dig && ( dig.value() < 0 || dig.value() > 10 ) ) {
-        debugmsg( "dig value out of range.  It has to be between 0 and 10" );
-        dig = std::max( std::min( dig.value(), 10 ), 0 );
+    // swim was never checked; dig was checked twice (MONDT-B14)
+    if( swim && ( swim.value() < 0 || swim.value() > 10 ) ) {
+        debugmsg( "swim value out of range.  It has to be between 0 and 10" );
+        swim = std::max( std::min( swim.value(), 10 ), 0 );
     }
 }
 

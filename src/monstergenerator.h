@@ -78,7 +78,6 @@ class MonsterGenerator
 
         void check_monster_definitions() const;
 
-        std::optional<mon_action_death> get_death_function( const std::string &f ) const;
         /** The monster attack defined in JSON with this id, or nullptr if there is none or it is
          *  hardcoded (hardcoded attacks may expect the monster to have them) */
         const mtype_special_attack *find_json_attack( const std::string &id ) const;
@@ -119,7 +118,6 @@ class MonsterGenerator
         std::vector<mtype_id> hallucination_monsters;
 
         std::unordered_map<std::string, phase_id> phase_map;
-        std::map<std::string, mon_action_death> death_map;
         std::map<std::string, mon_action_defend> defense_map;
         std::map<std::string, mtype_special_attack> attack_map;
 };

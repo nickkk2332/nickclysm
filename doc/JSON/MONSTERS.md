@@ -164,7 +164,7 @@ Property                 | Description
 `attack_effs`            | (array of objects) Effects applied to the attacked creature when the monster successfully attacks
 `path_settings`          | (object) How monster may find a path, open doors, avoid traps, or bash obstacles
 `biosignature`           | (object) Droppings or feces left by the animal or monster
-`harvest`                | (string) ID of a "harvest" type describing what can be harvested from the corpse
+`harvest`                | (string) ID of a "harvest" type describing what can be harvested from the corpse. Without one the corpse is butchered as a human's (`human`)
 `dissect`                | (string) (Optional) ID of a "harvest" type describing what is returned when a corpse of this monster is dissected
 `decay`                  | (string) (Optional) ID of a "harvest" type describing what is left when a corpse of this monster rots away
 `zombify_into`           | (string) mtype_id this monster zombifies into after it's death
@@ -359,9 +359,9 @@ Monster melee skill, ranges from 0 - 10, with 4 being an average mob. See [GAME_
 Monster dodge skill. See [GAME_BALANCE.md](/doc/design-balance-lore/GAME_BALANCE.md) for an explanation of dodge mechanics.
 
 ## "block"
-(array of objects, optional)
+(object, optional)
 
-Monster block skill.
+Monster block skill. With `copy-from`, a member left out keeps the inherited value.
 
 Field               | Description
 ---                 | ---
@@ -538,6 +538,8 @@ The colour of the monster's `luminance`, red, green and blue from 0 to 255: `"li
 
 Damage done bashing, of each type. If not specified, or specified as empty, it is autocalculated based on melee damage (and is only bash).
 
+A number is bash damage: `"bash_skill": 30` is `"bash_skill": { "bash": 30 }`. A number of 0 or less is autocalculated, as an empty object is.
+
 ## "hp"
 (integer, required)
 
@@ -655,7 +657,7 @@ Field               | Description
 `into`              | (string, optional) The upgraded monster's type.
 `age_grow`          | (int, optional) Number of days needed for monster to change into another monster. Does not scale with the evolution factor.
 `multiple_spawns`   | (bool, optional) If using `into_group`, the selected entry spawns a number of monsters based on the entry's `pack_size`.
-`spawn_range`       | (int, optional) Mandatory when `multiple_spawns` is true. Determines how far away from the original monster the upgraded monsters can spawn.
+`spawn_range`       | (int, optional) Mandatory when `multiple_spawns` is true (it can come from `copy-from`). Determines how far away from the original monster the upgraded monsters can spawn. `"multiple_spawns": false` drops an inherited range.
 `despawn_when_null` | (bool, optional) For `into_group`, when `mon_null` is selected as the group entry upgrade, the monster will despawn leaving no trace when this is true. Otherwise the monster "dies" naturally. Defaults to false.
 
 ## "reproduction"
@@ -808,8 +810,10 @@ Field                | Description
 
 Field                | Description
 ---                  | ---
-`swim`               | (int or null, 0-10,optional) swimming monsters ignore SWIMMABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
-`dig`                | (int or null, 0-10, optional) swimming monsters ignore DIGGABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
+`swim`               | (int or null, 0-10, optional) swimming monsters ignore SWIMMABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
+`dig`                | (int or null, 0-10, optional) digging monsters ignore DIGGABLE terrain-cost. Instead it applies a flat movecost penalty inversly related to the skill.
+
+A value outside 0 to 10 is an error, and is clamped to that range.
 `climb`              | (int or null, 0-10, optional) climbing monsters can climb CLIMBABLE ter/furn and can use DIFFICULT_Z ter/furn (i.e. ladders). The ter/furn cost gets multiplied by the skill modifier
 
 

@@ -449,10 +449,9 @@ void harvest_list::check_consistency()
             std::string errorlist;
             if( entry.type.is_null() ) {
                 // Type id is null
-                if( item::type_is_defined( itype_id( entry.drop ) ) ) {
-                    return errorlist;
+                if( !item::type_is_defined( itype_id( entry.drop ) ) ) {
+                    errorlist += "null type";
                 }
-                errorlist += "null type";
             } else if( !entry.type.is_valid() ) {
                 // Type id is invalid
                 errorlist += "invalid type \"" + entry.type.str() + "\"";
@@ -462,6 +461,19 @@ void harvest_list::check_consistency()
                 // Specified as item_group but no such group exists, or
                 // specified as single itype but no such itype exists
                 errorlist += entry.drop;
+            }
+            // the flags and faults butchery puts on the drops (MONDT-B08)
+            for( const flag_id &flag : entry.flags ) {
+                if( !flag.is_valid() ) {
+                    errorlist += ( errorlist.empty() ? "" : " " ) +
+                                 string_format( "%s has unknown flag \"%s\"", entry.drop, flag.str() );
+                }
+            }
+            for( const fault_id &flt : entry.faults ) {
+                if( !flt.is_valid() ) {
+                    errorlist += ( errorlist.empty() ? "" : " " ) +
+                                 string_format( "%s has unknown fault \"%s\"", entry.drop, flt.str() );
+                }
             }
             return errorlist;
         };

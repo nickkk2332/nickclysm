@@ -509,7 +509,9 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
     } else if( extending && !jo.has_string( "default" ) && g.defaultMonster == mon_null ) {
         explicit_def_null = true;
     }
-    g.is_animal = jo.get_bool( "is_animal", false );
+    // a definition that adds to a group keeps what the group had unless it says otherwise
+    // (MONDT-B13); a new group starts from the defaults
+    g.is_animal = jo.get_bool( "is_animal", g.is_animal );
     if( jo.has_array( "monsters" ) ) {
         for( JsonObject mon : jo.get_array( "monsters" ) ) {
             bool isgroup = false;
@@ -594,13 +596,16 @@ void MonsterGroupManager::LoadMonsterGroup( const JsonObject &jo )
             g.defaultMonster = max_freq.first;
         }
     }
-    g.replace_monster_group = jo.get_bool( "replace_monster_group", false );
-    g.new_monster_group = mongroup_id( jo.get_string( "new_monster_group_id",
-                                       mongroup_id::NULL_ID().str() ) );
+    g.replace_monster_group = jo.get_bool( "replace_monster_group", g.replace_monster_group );
+    if( jo.has_string( "new_monster_group_id" ) ) {
+        g.new_monster_group = mongroup_id( jo.get_string( "new_monster_group_id" ) );
+    } else if( !extending ) {
+        g.new_monster_group = mongroup_id::NULL_ID();
+    }
     if( jo.has_member( "replacement_time" ) ) {
         mandatory( jo, false, "replacement_time", g.monster_group_time, time_bound_reader{ 1_days } );
     }
-    g.is_safe = jo.get_bool( "is_safe", false );
+    g.is_safe = jo.get_bool( "is_safe", g.is_safe );
 
     g.freq_total = jo.get_int( "freq_total", ( extending ? g.freq_total : 0 ) + freq_total );
     if( jo.get_bool( "auto_total", false ) ) { //Fit the max size to the sum of all freqs

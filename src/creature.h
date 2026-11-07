@@ -23,6 +23,7 @@
 #include "character_id.h"
 #include "compatibility.h"
 #include "coordinates.h"
+#include "creature_ref.h"
 #include "damage.h"
 #include "debug.h"
 #include "effect_source.h"
@@ -215,6 +216,13 @@ constexpr bool operator==( const I lhs, const creature_size rhs )
 {
     return lhs == static_cast<I>( rhs );
 }
+
+/**
+ * How far away (in tiles) a character of @p size can still be seen behind cover of @p coverage
+ * (30 or more) when crouching or crawling, prone, or seen from another z-level: less the more of
+ * their profile the cover hides, and 0 when it hides all of it.
+ */
+int partial_cover_sight_range( int coverage, creature_size size, bool crouching, bool prone );
 
 enum class FacingDirection : int {
     NONE = 0,
@@ -1278,7 +1286,8 @@ class Creature : public viewer
         Creature *killer; // whoever killed us. this should be NULL unless we are dead
         void set_killer( Creature *killer );
         std::optional<time_point> lifespan_end = std::nullopt;
-        std::optional<character_id> summoner = std::nullopt; // whoever summoned us
+        // whoever summoned us: a character or a monster; saved (MONDT-B12)
+        creature_ref summoner;
         /**
          * Processes one effect on the Creature.
          * Must not remove the effect, but can set it up for removal.

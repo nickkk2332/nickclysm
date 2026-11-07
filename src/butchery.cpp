@@ -466,8 +466,11 @@ int butcher_time_to_cut( Character &you, const item &corpse_item, const butcher_
     double penalty_small = 0.5;
     double penalty_big = 1.5;
 
-    int prof_butch_penalty = penalty_big * ( 1 - butch_basic ) + penalty_small * ( 1 - butch_adv );
-    int prof_skin_penalty = penalty_small * ( 1 - skin_basic );
+    // fractional: in whole numbers the skinning penalty was always 0 and partial practice of
+    // butchering counted for little (MONDT-B10)
+    const double prof_butch_penalty = penalty_big * ( 1 - butch_basic ) + penalty_small *
+                                      ( 1 - butch_adv );
+    const double prof_skin_penalty = penalty_small * ( 1 - skin_basic );
 
     // there supposed to be a code for book mitigation, but we don't have any book fitting for this
 
@@ -489,7 +492,8 @@ int butcher_time_to_cut( Character &you, const item &corpse_item, const butcher_
         time_to_cut *= 1 + prof_skin_penalty;
     }
 
-    time_to_cut *= ( 1.0f - ( get_player_character().get_num_crafting_helpers( 3 ) / 10.0f ) );
+    // the helpers of whoever butchers, not always the avatar's
+    time_to_cut *= ( 1.0f - ( you.get_num_crafting_helpers( 3 ) / 10.0f ) );
     return time_to_cut;
 }
 
@@ -830,8 +834,9 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
                 for( const flag_id &flg : entry.flags ) {
                     obj.set_flag( flg );
                 }
+                // the entry's faults are added (MONDT-B08)
                 for( const fault_id &flt : entry.faults ) {
-                    obj.remove_fault( flt );
+                    obj.set_fault( flt );
                 }
 
                 // If we're not bleeding the animal we don't care about the blood being wasted
@@ -862,8 +867,9 @@ bool butchery_drops_harvest( butchery_data bt, Character &you )
                 for( const flag_id &flg : entry.flags ) {
                     obj.set_flag( flg );
                 }
+                // the entry's faults are added (MONDT-B08)
                 for( const fault_id &flt : entry.faults ) {
-                    obj.remove_fault( flt );
+                    obj.set_fault( flt );
                 }
                 if( !you.backlog.empty() && you.backlog.front().id() == ACT_MULTIPLE_BUTCHER ) {
                     obj.set_var( "activity_var", you.name );
