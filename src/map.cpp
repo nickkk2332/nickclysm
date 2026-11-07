@@ -12240,6 +12240,8 @@ bool map::try_fall( const tripoint_bub_ms &p, Creature *c )
         return false;
     }
 
+    // CHAR-J10: sent after the landing, with the Z-levels fallen
+    const int levels_fallen = height;
     if( you->is_avatar() ) {
         add_msg( m_bad, n_gettext( "You fall down %d story!", "You fall down %d stories!", height ),
                  height );
@@ -12296,6 +12298,7 @@ bool map::try_fall( const tripoint_bub_ms &p, Creature *c )
         you->add_msg_player_or_npc( _( "You dive into water." ), _( "<npcname> dives into water." ) );
     }
 
+    get_event_bus().send<event_type::character_falls>( you->getID(), levels_fallen );
     return true;
 }
 

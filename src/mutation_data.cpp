@@ -378,6 +378,45 @@ static mutation_eat_condition load_eat_condition( const JsonObject &eat_jo )
     return ret;
 }
 
+// One object of a mutation's "retaliation" (CHAR-J08)
+static mutation_retaliation load_retaliation( const JsonObject &rjo )
+{
+    mutation_retaliation ret;
+    optional( rjo, false, "damage_type", ret.damage_type );
+    if( rjo.has_array( "damage" ) ) {
+        JsonArray range = rjo.get_array( "damage" );
+        if( range.size() != 2 ) {
+            range.throw_error( "damage must be a number or [ min, max ]" );
+        }
+        ret.min_damage = range.get_int( 0 );
+        ret.max_damage = range.get_int( 1 );
+    } else if( rjo.has_member( "damage" ) ) {
+        ret.min_damage = rjo.get_int( "damage" );
+        ret.max_damage = ret.min_damage;
+    }
+    if( ret.min_damage < 0 || ret.max_damage < ret.min_damage ) {
+        rjo.throw_error_at( "damage", "damage must be 0 or more, and max at least min" );
+    }
+    if( ret.max_damage > 0 && ret.damage_type.is_empty() ) {
+        rjo.throw_error_at( "damage", "damage needs a damage_type" );
+    }
+    optional( rjo, false, "requires_uncovered", ret.requires_uncovered, true );
+    optional( rjo, false, "unarmed_attacker_only", ret.unarmed_attacker_only, false );
+    for( JsonObject ejo : rjo.get_array( "effects" ) ) {
+        mutation_retaliation::effect_data eff;
+        mandatory( ejo, false, "id", eff.effect );
+        optional( ejo, false, "duration", eff.duration, 1_turns );
+        optional( ejo, false, "one_in", eff.one_in, 1 );
+        if( eff.one_in < 1 ) {
+            ejo.throw_error_at( "one_in", "one_in must be 1 or more" );
+        }
+        ret.effects.push_back( eff );
+    }
+    optional( rjo, false, "message", ret.message );
+    optional( rjo, false, "npc_message", ret.npc_message );
+    return ret;
+}
+
 void mutation_branch::load( const JsonObject &jo, std::string_view src )
 {
     mandatory( jo, was_loaded, "name", raw_name );
@@ -499,6 +538,12 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     } else if( jo.has_object( "eat_condition" ) ) {
         eat_conditions.clear();
         eat_conditions.push_back( load_eat_condition( jo.get_object( "eat_condition" ) ) );
+    }
+    if( jo.has_array( "retaliation" ) ) {
+        retaliation.clear();
+        for( JsonObject rjo : jo.get_array( "retaliation" ) ) {
+            retaliation.push_back( load_retaliation( rjo ) );
+        }
     }
     if( jo.has_object( "food_fun" ) ) {
         JsonObject fun_jo = jo.get_object( "food_fun" );
@@ -833,6 +878,18 @@ void mutation_branch::check_consistency()
             if( !food_flag.is_valid() ) {
                 debugmsg( "mutation %s has undefined edible_food_flags flag %s", mid.c_str(),
                           food_flag.c_str() );
+            }
+        }
+        for( const mutation_retaliation &ret : mdata.retaliation ) {
+            if( !ret.damage_type.is_empty() && !ret.damage_type.is_valid() ) {
+                debugmsg( "mutation %s retaliation has undefined damage_type %s", mid.c_str(),
+                          ret.damage_type.c_str() );
+            }
+            for( const mutation_retaliation::effect_data &eff : ret.effects ) {
+                if( !eff.effect.is_valid() ) {
+                    debugmsg( "mutation %s retaliation has undefined effect %s", mid.c_str(),
+                              eff.effect.c_str() );
+                }
             }
         }
         for( const std::pair<vitamin_id, morale_type> &allergy : mdata.food_allergies ) {

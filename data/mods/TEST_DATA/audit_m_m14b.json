@@ -1,0 +1,115 @@
+[
+  {
+    "//": "CHAR-J07 fixture: a movement mode only TEST_M14B_GLIDER can switch to, which costs 40 moves more.",
+    "type": "movement_mode",
+    "id": "test_m14b_glide",
+    "character": "g",
+    "panel_char": "G",
+    "name": { "str": "test glide", "//~": "NO_I18N" },
+    "exertion_level": "LIGHT_EXERCISE",
+    "prepare_none": { "str": "You prepare to glide.", "//~": "NO_I18N" },
+    "prepare_animal": { "str": "Your steed prepares to glide.", "//~": "NO_I18N" },
+    "prepare_mech": { "str": "Your mech prepares to glide.", "//~": "NO_I18N" },
+    "change_good_none": { "str": "You start gliding.", "//~": "NO_I18N" },
+    "change_good_animal": { "str": "Your steed starts gliding.", "//~": "NO_I18N" },
+    "change_good_mech": { "str": "Your mech starts gliding.", "//~": "NO_I18N" },
+    "change_bad_none": { "str": "You can't glide.", "//~": "NO_I18N" },
+    "move_type": "walking",
+    "move_speed_multiplier": 1.0,
+    "condition": { "u_has_trait": "TEST_M14B_GLIDER" },
+    "switch_cost": 40
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M14B_GLIDER",
+    "name": { "str": "Test Glider", "//~": "NO_I18N" },
+    "description": { "str": "Test trait that lets the character glide.", "//~": "NO_I18N" },
+    "points": 0,
+    "valid": false
+  },
+  {
+    "//": "CHAR-J07 fixture: halves the moves movement mode changes take.",
+    "type": "mutation",
+    "id": "TEST_M14B_NIMBLE",
+    "name": { "str": "Test Nimble", "//~": "NO_I18N" },
+    "description": { "str": "Test trait that halves movement mode switch costs.", "//~": "NO_I18N" },
+    "points": 0,
+    "valid": false,
+    "enchantments": [ { "values": [ { "value": "MOVE_MODE_SWITCH_COST", "multiply": -0.5 } ] } ]
+  },
+  {
+    "//": "CHAR-J08 fixture: one hit_me_effect for ranged hits only, one with no hit_types (a character's goes off on melee hits).",
+    "type": "mutation",
+    "id": "TEST_M14B_HIT_ME",
+    "name": { "str": "Test Hit Me", "//~": "NO_I18N" },
+    "description": { "str": "Test trait whose enchantment counts the hits taken.", "//~": "NO_I18N" },
+    "points": 0,
+    "valid": false,
+    "enchantments": [
+      {
+        "hit_me_effect": [
+          { "id": "test_m14b_count_ranged", "hit_self": true, "hit_types": [ "ranged" ] },
+          { "id": "test_m14b_count_any", "hit_self": true }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_m14b_count_ranged",
+    "name": { "str": "Test Ranged Hit Count", "//~": "NO_I18N" },
+    "description": { "str": "Counts the ranged hits taken.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_M14B_COUNT_RANGED",
+    "shape": "blast"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M14B_COUNT_RANGED",
+    "effect": [
+      { "math": [ "u_test_m14b_ranged_hits += 1" ] },
+      { "set_string_var": { "context_val": "hit_type" }, "target_var": { "u_val": "test_m14b_ranged_type" } }
+    ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_m14b_count_any",
+    "name": { "str": "Test Hit Count", "//~": "NO_I18N" },
+    "description": { "str": "Counts the hits taken.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_M14B_COUNT_ANY",
+    "shape": "blast"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_M14B_COUNT_ANY",
+    "effect": [
+      { "math": [ "u_test_m14b_any_hits += 1" ] },
+      { "set_string_var": { "context_val": "hit_type" }, "target_var": { "u_val": "test_m14b_any_type" } },
+      { "set_string_var": { "context_val": "hit_bodypart" }, "target_var": { "u_val": "test_m14b_any_bodypart" } }
+    ]
+  },
+  {
+    "//": "CHAR-J11 fixture: an aid for climbing up only, needing nothing to brace against.",
+    "type": "climbing_aid",
+    "id": "test_m14b_up_harness",
+    "slip_chance_mod": -60,
+    "up": {
+      "move_cost": 300,
+      "needs_support": false,
+      "cost": { "kcal": 20 },
+      "msg_after": { "str": "Your test harness takes the strain.", "//~": "NO_I18N" }
+    },
+    "condition": { "type": "trait", "flag": "TEST_M14B_CLIMBER" }
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_M14B_CLIMBER",
+    "name": { "str": "Test Climber", "//~": "NO_I18N" },
+    "description": { "str": "Test trait that brings an up-only climbing aid.", "//~": "NO_I18N" },
+    "points": 0,
+    "valid": false
+  }
+]

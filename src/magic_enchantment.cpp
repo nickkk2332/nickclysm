@@ -165,6 +165,7 @@ namespace io
             case enchant_vals::mod::KNOCKDOWN_RESIST: return "KNOCKDOWN_RESIST";
             case enchant_vals::mod::FALL_DAMAGE: return "FALL_DAMAGE";
             case enchant_vals::mod::CLIMB_SLIP_CHANCE: return "CLIMB_SLIP_CHANCE";
+            case enchant_vals::mod::MOVE_MODE_SWITCH_COST: return "MOVE_MODE_SWITCH_COST";
             case enchant_vals::mod::FORCEFIELD: return "FORCEFIELD";
             case enchant_vals::mod::EVASION: return "EVASION";
             case enchant_vals::mod::OVERKILL_DAMAGE: return "OVERKILL_DAMAGE";
@@ -1645,10 +1646,13 @@ void enchant_cache::cast_hit_you( Creature &caster, const Creature &target ) con
     }
 }
 
-void enchant_cache::cast_hit_me( Creature &caster, const Creature *target ) const
+void enchant_cache::cast_hit_me( Creature &caster, const Creature *target, const hit_type hit,
+                                 const std::optional<bodypart_id> &hit_bp ) const
 {
     for( const fake_spell &sp : hit_me_effect ) {
-        cast_enchantment_spell( caster, target, sp );
+        if( sp.hit_types[hit] ) {
+            cast_enchantment_spell( caster, target, sp, hit, hit_bp );
+        }
     }
 }
 
@@ -1662,15 +1666,21 @@ void enchant_cache::cast_hit_you( Character &caster, const Creature &target,
     }
 }
 
-void enchant_cache::cast_hit_me( Character &caster, const Creature *target ) const
+void enchant_cache::cast_hit_me( Character &caster, const Creature *target, const hit_type hit,
+                                 const std::optional<bodypart_id> &hit_bp ) const
 {
     for( const fake_spell &sp : hit_me_effect ) {
-        cast_enchantment_spell( caster, target, sp );
+        // CHAR-J08: characters cast them on melee hits only, unless hit_types says otherwise
+        const bool casts = sp.hit_types_given ? sp.hit_types[hit] : hit == hit_type::melee;
+        if( casts ) {
+            cast_enchantment_spell( caster, target, sp, hit, hit_bp );
+        }
     }
 }
 
 void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *target,
-        const fake_spell &sp, const std::optional<hit_type> hit ) const
+        const fake_spell &sp, const std::optional<hit_type> hit,
+        const std::optional<bodypart_id> &hit_bp ) const
 {
     // check the chances
     if( !one_in( sp.trigger_once_in ) ) {
@@ -1680,6 +1690,9 @@ void enchant_cache::cast_enchantment_spell( Creature &caster, const Creature *ta
     global_variables::impl_t context;
     if( hit ) {
         context.emplace( "hit_type", diag_value( io::enum_to_string( *hit ) ) );
+    }
+    if( hit_bp ) {
+        context.emplace( "hit_bodypart", diag_value( hit_bp->id().str() ) );
     }
     if( sp.self ) {
         caster.add_msg_player_or_npc( m_good,

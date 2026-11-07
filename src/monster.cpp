@@ -4330,7 +4330,7 @@ void monster::on_dodge( Creature *, float, float )
     // Currently does nothing, later should handle faction relations
 }
 
-void monster::on_hit( map *here, Creature *source, bodypart_id,
+void monster::on_hit( map *here, Creature *source, bodypart_id bp_hit,
                       float, dealt_projectile_attack const *const proj )
 {
     if( is_hallucination() ) {
@@ -4379,7 +4379,8 @@ void monster::on_hit( map *here, Creature *source, bodypart_id,
         }
     }
 
-    enchantment_cache->cast_hit_me( *this, source );
+    enchantment_cache->cast_hit_me( *this, source, proj != nullptr ? hit_type::ranged : hit_type::melee,
+                                    bp_hit );
 
     check_dead_state( here );
     // TODO: Faction relations

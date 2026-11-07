@@ -203,6 +203,28 @@ struct mutation_food_fun {
     std::optional<float> negative_max;
 };
 
+/** What a creature that hits the mutant in melee suffers: SPINES, QUILLS, THORNS, CF_HAIR (CHAR-J08) */
+struct mutation_retaliation {
+    struct effect_data {
+        efftype_id effect;
+        time_duration duration = 1_turns;
+        // the effect is given with a chance of one in this
+        int one_in = 1;
+    };
+    // damage rolled from min_damage to max_damage, to the attacker's torso; none if max_damage is 0
+    damage_type_id damage_type;
+    int min_damage = 0;
+    int max_damage = 0;
+    // only when the hit part has nothing worn on it
+    bool requires_uncovered = true;
+    // only when the attacker wields nothing
+    bool unarmed_attacker_only = false;
+    std::vector<effect_data> effects;
+    // the avatar's message, %s is the attacker; others': %1$s is the mutant, %2$s the attacker
+    translation message;
+    translation npc_message;
+};
+
 struct mutation_branch {
         trait_id id;
         std::vector<std::pair<trait_id, mod_id>> src;
@@ -312,6 +334,8 @@ struct mutation_branch {
         std::vector<std::pair<vitamin_id, morale_type>> food_allergies;
         /** Food can only be eaten while each of these is true (see mutation_eat_condition) */
         std::vector<mutation_eat_condition> eat_conditions;
+        /** Harm done to melee attackers (see mutation_retaliation) */
+        std::vector<mutation_retaliation> retaliation;
         /** Changes how good or bad food tastes */
         std::optional<mutation_food_fun> food_fun;
         /** Run when food is swallowed, as its morale applies; eater as u_, food as npc_ */

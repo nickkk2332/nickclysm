@@ -3426,6 +3426,8 @@ class Character : public Creature, public visitable
         void update_bloodvol_index();
 
         float get_circulation_resistance() const;
+        // blood volume x heart rate x resistance; 1.0 is normal (CHAR-J09)
+        float get_circulation() const;
         void set_bp_effect_mod( int mod );
         void modify_bp_effect_mod( int mod );
         int get_bp_effect_mod() const;
@@ -4151,6 +4153,8 @@ class Character : public Creature, public visitable
         /** Recalculates morale penalty/bonus from wetness based on mutations, equipment and temperature */
         void apply_wetness_morale( units::temperature temperature );
         int heartrate_bpm() const;
+        // heartrate_bpm without the moment-to-moment variation (CHAR-J09)
+        int heartrate_bpm_average() const;
         std::vector<std::string> short_description_parts() const;
         std::string short_description() const;
         // Checks whether a player can hear a sound at a given volume and location.
@@ -4527,7 +4531,7 @@ class Character : public Creature, public visitable
         float blood_vol_index = 1.0f;
         float respiration_rate = 1.0f;
 
-        float circulation;
+        float circulation = 1.0f;
         // Should remain fixed at 1.0 for now.
         float circulation_resistance = 1.0f;
 

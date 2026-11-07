@@ -1199,6 +1199,7 @@ void avatar::set_movement_mode( const move_mode_id &new_mode )
             stop_hauling();
         }
         add_msg( new_mode->change_message( true, get_steed_type() ) );
+        const move_mode_id old_mode = move_mode;
         move_mode = new_mode;
         // A direct change (falling prone, mounting, waking up...) is also the new desired mode.
         // Otherwise the next action would switch back to the old desired mode and charge for it.
@@ -1206,6 +1207,9 @@ void avatar::set_movement_mode( const move_mode_id &new_mode )
         // Enchantments based on move modes can stack inappropriately without a recalc here
         recalculate_enchantment_cache();
         recoil = MAX_RECOIL;
+        if( old_mode != new_mode ) {
+            get_event_bus().send<event_type::character_changes_move_mode>( getID(), old_mode, new_mode );
+        }
     } else {
         add_msg( new_mode->change_message( false, get_steed_type() ) );
     }

@@ -3316,6 +3316,15 @@ int Character::get_painkiller() const
     return pkill;
 }
 
+int Character::heartrate_bpm_average() const
+{
+    //Dead have no heartbeat usually and no heartbeat in omnicell
+    if( is_dead_state() || has_trait( trait_SLIMESPAWNER ) ) {
+        return 0;
+    }
+    return avg_nat_bpm * get_heartrate_index();
+}
+
 int Character::heartrate_bpm() const
 {
     //Dead have no heartbeat usually and no heartbeat in omnicell
@@ -3323,7 +3332,7 @@ int Character::heartrate_bpm() const
         return 0;
     }
 
-    int average_heartbeat = avg_nat_bpm * get_heartrate_index();
+    int average_heartbeat = heartrate_bpm_average();
 
     // minor moment-to-moment variation
     average_heartbeat += rng( -5, 5 );

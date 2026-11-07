@@ -178,8 +178,10 @@ struct fake_spell {
 
     // every kind of hit
     static constexpr enum_bitset<hit_type> hit_types_default{ ~0ULL };
-    // the hits that cast it, as an enchantment's hit_you_effect
+    // the hits that cast it, as an enchantment's hit_you_effect or hit_me_effect
     enum_bitset<hit_type> hit_types = hit_types_default;
+    // hit_types was written out: a character's hit_me_effect is cast on ranged hits only then
+    bool hit_types_given = false;
 
     fake_spell() = default;
     explicit fake_spell( const spell_id &sp_id, bool hit_self = false,
@@ -194,7 +196,8 @@ struct fake_spell {
                trigger_once_in == rhs.trigger_once_in &&
                trigger_message == rhs.trigger_message &&
                npc_trigger_message == rhs.npc_trigger_message &&
-               hit_types == rhs.hit_types;
+               hit_types == rhs.hit_types &&
+               hit_types_given == rhs.hit_types_given;
     }
 
     // gets the spell with an additional override for minimum level (default 0)

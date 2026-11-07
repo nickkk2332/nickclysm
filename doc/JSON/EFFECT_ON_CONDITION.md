@@ -557,6 +557,22 @@ Alpha talker has `GRAB` flag, and beta talker has `GRAB_FILTER` flag; monster us
 
 A held creature has an effect with the `GRAB` flag, and the one holding it an effect with the `GRAB_FILTER` flag.  These flags say that someone holds or is held, not who: to ask whether the alpha talker holds the beta talker, or the other way round, use [`u_is_grabbing` and `u_is_grabbed`](#u_is_grabbing-npc_is_grabbing-u_is_grabbed-npc_is_grabbed).
 
+### `u_has_move_mode`, `npc_has_move_mode`
+- type: string or [variable object](#variable-object)
+- return true if the alpha or beta talker's current [movement mode](MOVE_MODE.md) is this one (`walk`, `run`, `crouch`, `prone` or a mod's).  For the avatar this is the mode it is in, not one it has chosen but not yet switched to.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+#### Examples
+The avatar is crouching
+```jsonc
+{ "u_has_move_mode": "crouch" }
+```
+
 ### `u_is_grabbing`, `npc_is_grabbing`, `u_is_grabbed`, `npc_is_grabbed`
 - type: string, `"any"` or the other talker (`"npc"` for `u_is_grabbing` and `u_is_grabbed`, `"u"` for `npc_is_grabbing` and `npc_is_grabbed`)
 - `u_is_grabbing`: true if the alpha talker holds the other talker (`"npc"`), or any creature (`"any"`).  `npc_is_grabbing` is the same for the beta talker
@@ -2559,6 +2575,10 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | character_removes_gunmod | Triggers when a character has taken a gunmod off a gun | { "character", `character_id` },<br/> { "gun", `itype_id` },<br/> { "gunmod", `itype_id` } | character / the gun |
 | character_reloads_item | Triggers when a character (or an NPC) has reloaded an item: a gun, a magazine, a tool, or a container refilled with a liquid. Statistics don't keep it | { "character", `character_id` },<br/> { "itype", `itype_id` } (the item reloaded),<br/> { "ammo_itype", `itype_id` } (the ammo it holds now; null for a liquid),<br/> { "ammo_remaining", `int` } (how much ammo it holds now) | character / the item reloaded |
 | character_unloads_item | Triggers when a character has taken the ammo or the magazine out of an item (unloading a gun, a tool or a magazine; not emptying a container). Statistics don't keep it | { "character", `character_id` },<br/> { "itype", `itype_id` } (the item unloaded) | character / the item unloaded |
+| character_changes_move_mode | Triggers when a character's movement mode changes: chosen by the avatar or an NPC, forced (falling prone, mounting, running out of stamina) or set by `u_set_move_mode`. Statistics don't keep it | { "character", `character_id` },<br/> { "old_mode", `move_mode_id` },<br/> { "new_mode", `move_mode_id` } | character / NONE |
+| character_falls | Triggers when a character (the avatar or an NPC) falls down one or more Z-levels, after the landing. `height` is the number of Z-levels fallen, before anything (a small size, `ONE_STORY_FALL`, wings, a jetpack) softened it | { "character", `character_id` },<br/> { "height", `int` } | character / NONE |
+| character_climbs | Triggers when the avatar has climbed up or down with a [climbing aid](CLIMBING.md) without slipping: climbing up a wall or furniture, climbing down a ledge (the examine menu), or descending with `WALL_CLING`. `direction` is `up` or `down`, `climbing_aid` the aid's id | { "character", `character_id` },<br/> { "climbing_aid", `string` },<br/> { "direction", `string` },<br/> { "height", `int` } | character / NONE |
+| character_moves | Triggers when a character, the avatar or an NPC, steps onto another tile, after the step (as `avatar_moves` does for the avatar). Statistics don't keep it | { "character", `character_id` },<br/> { "mount", `mtype_id` },<br/> { "terrain", `ter_id` },<br/> { "movement_mode", `move_mode_id` },<br/> { "underwater", `bool` },<br/> { "z", `int` } | character / NONE |
 | companion_mission_finished | Triggers when a companion is back from a mission (camp missions and NPC jobs alike), is called back, or dies on it. A companion that dies on a mission also runs its `death_eocs` and sends `character_dies` first | { "npc", `character_id` },<br/> { "mission", `string` } (mission kind, as for `companion_mission_started`),<br/> { "pos", `tripoint` } (location of the overmap tile the mission was given from, the camp for camp missions, its north-west corner),<br/> { "outcome", `string` } (`returned`, `canceled` or `died`),<br/> { "camp_mission", `string` } (the [faction_mission](FACTION_MISSIONS.md) id of a camp mission from JSON, e.g. `camp_foraging`; empty for upgrades, crafting, fortifications and NPC jobs) | companion / NONE |
 | companion_mission_started | Triggers when a companion sets off on a mission | { "npc", `character_id` },<br/> { "mission", `string` } (mission kind, e.g. `Camp_Scouting` or `Scavenging_Patrol_Job`; for a camp mission from JSON its behavior, `Camp_Generic` for a generic one such as foraging),<br/> { "pos", `tripoint` } (location of the overmap tile the mission was given from, its north-west corner),<br/> { "camp_mission", `string` } (the [faction_mission](FACTION_MISSIONS.md) id of a camp mission from JSON, empty for the others) | companion / NONE |
 | consumes_marloss_item | | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
@@ -5790,12 +5810,16 @@ Override the initial lighthouse girl topic `TALK_lighthouse_girl_start` with `TA
 
 
 #### `u_add_wet`, `npc_add_wet`
-Your character or the NPC will be wet as if they were in the rain.
+Your character or the NPC will be wet as if they were in the rain.  Rain doesn't always soak: thick clothing on the torso and head slows it down, a given call may do nothing, and `FEATHERS`, `RAIN_IMMUNE`, a held `RAIN_PROTECT` item or (usually) `RAINPROOF` clothing keep it off.
+
+With `bodypart`, only those parts get wet, at once: each is soaked up to the amount, in percent of what it can hold, unless waterproof clothing covers it.  The math function `wetness()` ([NPCs.md](NPCs.md)) reads or sets a part's wetness exactly.
 
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_add_wet" / "npc_add_wet" | **mandatory** | int, float or [variable object](#variable-object) | How much wetness would be added (in percent) |
+| "bodypart" | optional | string, [variable object](#variable-object) or array of them | Body part ids: wet only these, deterministically |
+| "ignore_waterproof" | optional | bool | With `bodypart`: soak the parts even under waterproof clothing.  Default false |
 
 ##### Valid talkers:
 
@@ -5807,6 +5831,31 @@ Your character or the NPC will be wet as if they were in the rain.
 Makes you 10% wet (whatever that means)
 ```jsonc
 "effect": [ { "u_add_wet": 10 } ]
+```
+
+Wading: the legs and feet get half soaked, unless covered by waterproof clothing
+```jsonc
+"effect": [ { "u_add_wet": 50, "bodypart": [ "leg_l", "leg_r", "foot_l", "foot_r" ] } ]
+```
+
+
+#### `u_set_move_mode`, `npc_set_move_mode`
+Switch the character to a [movement mode](MOVE_MODE.md), as choosing it would: nothing happens if it can't switch to it (running without stamina, crouching on a horse, the mode's `condition`) or is already in it.  The switch costs the usual moves (an NPC pays them as it switches, the avatar at once) and sends `character_changes_move_mode`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_move_mode" / "npc_set_move_mode" | **mandatory** | string or [variable object](#variable-object) | The movement mode id (`walk`, `run`, `crouch`, `prone` or a mod's); an unknown one is an error |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Knocked flat
+```jsonc
+"effect": [ { "u_set_move_mode": "prone" } ]
 ```
 
 

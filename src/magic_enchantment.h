@@ -130,6 +130,7 @@ enum class mod : int {
     KNOCKDOWN_RESIST,
     FALL_DAMAGE,
     CLIMB_SLIP_CHANCE,
+    MOVE_MODE_SWITCH_COST, // moves to change movement mode (CHAR-J07)
     FORCEFIELD,
     EVASION,
     OVERKILL_DAMAGE,
@@ -414,9 +415,11 @@ class enchant_cache : public enchantment
         // checks if the enchantments have the same active_conditions
         bool stacks_with( const enchantment &rhs ) const;
         // performs cooldown and distance checks before casting enchantment spells; a hit_you_effect
-        // spell gets the kind of hit, which its EOCs read as the context value "hit_type"
+        // or hit_me_effect spell gets the kind of hit, which its EOCs read as the context value
+        // "hit_type", and a hit_me_effect one the body part hit, as "hit_bodypart"
         void cast_enchantment_spell( Creature &caster, const Creature *target,
-                                     const fake_spell &sp, std::optional<hit_type> hit = std::nullopt ) const;
+                                     const fake_spell &sp, std::optional<hit_type> hit = std::nullopt,
+                                     const std::optional<bodypart_id> &hit_bp = std::nullopt ) const;
         //Clears all the maps and vectors in the cache.
         void clear();
 
@@ -425,9 +428,13 @@ class enchant_cache : public enchantment
                            hit_type hit = hit_type::melee ) const;
         // monsters cast them on their melee hits
         void cast_hit_you( Creature &caster, const Creature &target ) const;
-        // casts all the hit_me_effects on self or a target depending on the enchantment definition
-        void cast_hit_me( Character &caster, const Creature *target ) const;
-        void cast_hit_me( Creature &caster, const Creature *target ) const;
+        // casts the hit_me_effects for this kind of hit on self or a target depending on the
+        // enchantment definition.  A character casts one on a ranged hit only if its hit_types
+        // were given and name it; a monster casts those without hit_types on every hit.
+        void cast_hit_me( Character &caster, const Creature *target, hit_type hit = hit_type::melee,
+                          const std::optional<bodypart_id> &hit_bp = std::nullopt ) const;
+        void cast_hit_me( Creature &caster, const Creature *target, hit_type hit = hit_type::melee,
+                          const std::optional<bodypart_id> &hit_bp = std::nullopt ) const;
 
         template<typename TKey>
         void save_add_and_multiply( JsonOut &jsout, const std::string_view &member_key,

@@ -90,6 +90,7 @@
 #include "messages.h"
 #include "mission.h"
 #include "monster.h"
+#include "move_mode.h"
 #include "mtype.h"
 #include "npc.h"
 #include "npc_ai_tuning.h"
@@ -3997,6 +3998,20 @@ void npc::move_to( const tripoint_bub_ms &pt, bool no_bashing, std::set<tripoint
                                         string_format( _( "%s has to really cram their huge body to fit." ), disp_name() ) );
             }
             add_effect( effect_cramped_space, 2_turns, true );
+        }
+        // CHAR-J07: a mode whose JSON condition stopped holding falls back to walking
+        if( !current_movement_mode()->condition_allows( *this ) && can_switch_to( move_mode_walk ) ) {
+            set_movement_mode( move_mode_walk );
+        }
+        // CHAR-J10: a step any character takes; the avatar's are sent with avatar_moves
+        if( !is_hallucination() ) {
+            const tripoint_bub_ms new_pos = pos_bub( here );
+            mtype_id mount_type;
+            if( is_mounted() ) {
+                mount_type = mounted_creature->type->id;
+            }
+            get_event_bus().send<event_type::character_moves>( getID(), mount_type,
+                    here.ter( new_pos ).id(), current_movement_mode(), is_underwater(), new_pos.z() );
         }
     }
 }
@@ -8534,8 +8549,12 @@ bool outfit::adjust_worn( npc &guy )
 void npc::set_movement_mode( const move_mode_id &new_mode )
 {
     mod_moves( -move_mode_switch_cost( move_mode, new_mode ) );
+    const move_mode_id old_mode = move_mode;
     move_mode = new_mode;
     // Enchantments based on move modes can stack inappropriately without a recalc here.
     // Recalculate after the new mode is set, so the cache reflects it.
     recalculate_enchantment_cache();
+    if( old_mode != new_mode ) {
+        get_event_bus().send<event_type::character_changes_move_mode>( getID(), old_mode, new_mode );
+    }
 }

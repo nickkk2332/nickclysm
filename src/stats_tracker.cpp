@@ -366,10 +366,10 @@ void stats_tracker::unwatch_all()
 
 bool stats_tracker::records( const event_type type )
 {
-    // one summary per NPC and pair of goals or attitudes (and cause), or per mod setting and
-    // pair of values, or per tile destroyed, teleport, sound heard or overmap tile generated, or
-    // per reload (and ammo count) or unload, or per armor hit on each part, or per item type and
-    // count moved, kept for good, would grow every save
+    // these would keep a summary per NPC and pair of goals, attitudes or movement modes, per mod
+    // setting and pair of values, per tile destroyed or overmap tile generated, per teleport, sound
+    // heard or step, per reload or unload, per armor hit on each part, or per item type and count
+    // moved: kept for good, they would grow every save
     switch( type ) {
         case event_type::npc_goal_changed:
         case event_type::npc_attitude_changed:
@@ -385,6 +385,8 @@ bool stats_tracker::records( const event_type type )
         case event_type::character_picks_up_item:
         case event_type::character_drops_item:
         case event_type::character_stores_item:
+        case event_type::character_changes_move_mode:
+        case event_type::character_moves:
             return false;
         default:
             return true;

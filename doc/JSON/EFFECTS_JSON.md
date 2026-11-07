@@ -691,6 +691,10 @@ Valid arguments:
 "respiratory_rate_chance"  // Chance to change respiratory rate
 "respiratory_rate_chance_bot"
 "respiratory_rate_tick"    // Defaults to every tick
+// heart_rate_*, blood_pressure_* and respiratory_rate_* add up on the character, 1/10000 of the normal
+// rate a point (200 is +2%), and wear off over time as stimulants do. The heart rate shows on a heart rate
+// monitor and in the math function heart_rate(); blood pressure and breathing are read only by the math
+// functions blood_pressure() and respiration_rate() (NPCs.md), so they matter only through EOCs.
 
 "cough_chance"      // Chance to cause cough
 "cough_chance_bot"

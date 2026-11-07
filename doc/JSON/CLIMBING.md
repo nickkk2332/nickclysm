@@ -50,8 +50,7 @@ For the most part, each climbing aid will have a unique condition, with possible
 Mandatory.  String.  One of the following.
 
 * `ter_furn`:  One of the tiles on the climbing route has terrain or furniture with the given `flag`.
-* `veh`:  One of the tiles on the climbing route has a vehicle part with the given `flag`
-  * Flag detection is currently unsupported and a `veh` condition will be activated by the presence of any vehicle.
+* `veh`:  The tile just below the ledge has a vehicle part with the given `flag`; an empty `flag` (`""`) means any vehicle.
 * `character`:  The one climbing has the given `flag`.
 * `trait`:  The one climbing has the trait named by the `flag` field.
 * `item`:  The character climbing has the item identified by the `flag` field in their inventory.
@@ -77,14 +76,14 @@ Note:  This is not fully implemented.
 
 #### `down`
 
-Mandatory.  Object with the fields listed below.  Rules for climbing down with this aid.  Does not apply to stairs or stair-like objects (eg, permanent ladders) at this time.
+Mandatory unless the aid has an [`up`](#up) block.  Object with the fields listed below.  Rules for climbing down with this aid.  Does not apply to stairs or stair-like objects (eg, permanent ladders) at this time.
 
 Note:  The player can climb down by walking into a ledge or using `>` near a ledge.  This will first present a menu with any climbing aids that can deploy furniture, plus the safest climbing aid that does *not* deploy furniture based on `slip_chance_mod`.  eg:  A stepladder takes priority over a downspout.
 
 #### `down` › `max_height`
 Optional.  Integer.  Default 1.  The maximum number of stories that a creature can descend using this climbing aid.
 
-Set this to 0 to disable using this climbing aid to climb down.
+Set this to 0 to disable using this climbing aid to climb down: it isn't offered when climbing down, and the rest of the `down` block can be left out.  An aid without `down` has this.
 
 #### `down` › `allow_remaining_height`
 
@@ -142,7 +141,7 @@ Note:  Pay special attention to whether deployed furniture has the `ALLOW_ON_OPE
 
 #### `down` › `cost`
 
-Optional.  Object containing the fields below.  This penalty is applied to the player once for every story they descend using this climbing aid.
+Optional.  Object containing the fields below.  This penalty is applied to the player once, after a climb down that didn't slip.
 
 #### `down` › `cost` › `kcal`
 
@@ -160,3 +159,42 @@ Optional.  Integer.  Pain increase per story.
 
 Optional.  Integer.  Damage taken to the torso per story.
 
+-----
+
+#### `up`
+
+Optional.  Object with the fields listed below.  Rules for climbing up a Z-level with this aid (`<` where there are no stairs or ladder: up a wall, furniture or a ledge above).  An aid without `up` isn't used to climb up.
+
+When climbing up, the conditions are checked at the climber's own tile (its terrain, furniture and vehicle) and on the climber (flags, traits, items).  The safest matching aid with an `up` block (lowest `slip_chance_mod`) is used for the slip chance, the move cost and the cost below.  If none matches, `furn_CLIMBABLE` is used, as vanilla does.  Characters with the `CLIMB_FLYING` flag fly up instead and use no aid.  Items aren't used up when climbing up.
+
+```jsonc
+{
+  "type": "climbing_aid",
+  "id": "item_climbing_harness",
+  "slip_chance_mod": -30,
+  "up": { "move_cost": 300, "needs_support": false, "cost": { "kcal": 20 }, "msg_after": "Your harness takes the strain." },
+  "condition": { "type": "item", "flag": "climbing_harness", "uses": 0 }
+}
+```
+
+#### `up` › `move_cost`
+
+Optional.  Integer.  Default 500.  Moves added to the climbing cost of the terrain and furniture braced against; twice this when nothing braces the climber (`CLIMB_NO_LADDER`, `WALL_CLING`, a nearby `CLIMB_ADJACENT` tile, or an aid with `needs_support: false`).
+
+#### `up` › `needs_support`
+
+Optional.  Boolean.  Default true.  If false, the aid alone lets the character climb up, with no walls or furniture to brace against (a grappling hook, climbing gear).
+
+#### `up` › `cost`
+
+Optional.  The same object as [`down` › `cost`](#down--cost), applied once after a climb up that didn't slip.
+
+#### `up` › `msg_after`
+
+Optional.  String.  Message added to the log after a successful climb up.
+
+-----
+
+#### Events
+
+The event `character_climbs` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)) is sent after the avatar climbs up or down without slipping, with the aid's id, the direction and the Z-levels climbed: an EOC on it can follow up on a climb.  `character_falls` is sent when a character falls.

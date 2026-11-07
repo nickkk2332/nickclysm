@@ -37,6 +37,7 @@
 #include "auto_pickup.h"
 #include "avatar.h"
 #include "bionics.h"
+#include "body_part_set.h"
 #include "bodypart.h"
 #include "cached_options.h"
 #include "calendar.h"
@@ -6887,10 +6888,76 @@ talk_effect_fun_t::func f_add_wet( const JsonObject &jo, std::string_view member
                                    std::string_view, bool is_npc )
 {
     dbl_or_var dov = get_dbl_or_var( jo, member );
-    return [is_npc, dov]( dialogue & d ) {
+    // CHAR-J10: named parts get wet at once, without the rain's roll
+    std::vector<str_or_var> parts;
+    if( jo.has_array( "bodypart" ) ) {
+        for( JsonValue jv : jo.get_array( "bodypart" ) ) {
+            parts.emplace_back( get_str_or_var( jv, "bodypart" ) );
+        }
+    } else if( jo.has_member( "bodypart" ) ) {
+        parts.emplace_back( get_str_or_var( jo.get_member( "bodypart" ), "bodypart" ) );
+    }
+    const bool ignore_waterproof = jo.get_bool( "ignore_waterproof", false );
+    return [is_npc, dov, parts, ignore_waterproof]( dialogue & d ) {
         Character *target = d.actor( is_npc )->get_character();
-        if( target ) {
-            wet_character( *target, dov.evaluate( d ) );
+        if( !target ) {
+            return;
+        }
+        const int amount = dov.evaluate( d );
+        if( parts.empty() ) {
+            wet_character( *target, amount );
+            return;
+        }
+        body_part_set soaked;
+        for( const str_or_var &part : parts ) {
+            const bodypart_str_id bp( part.evaluate( d ) );
+            if( !bp.is_valid() ) {
+                debugmsg( "u_add_wet: unknown body part %s", bp.str() );
+                continue;
+            }
+            if( !target->has_part( bp.id() ) ) {
+                continue;
+            }
+            if( ignore_waterproof || !target->is_waterproof( body_part_set{ bp } ) ) {
+                soaked.set( bp );
+            }
+        }
+        if( soaked.any() ) {
+            // waterproof parts are left out above; this soaks the rest up to amount at once
+            target->drench( amount, soaked, true );
+        }
+    };
+}
+
+// CHAR-J07: switch to a movement mode, as choosing it would; the switch costs the usual moves
+talk_effect_fun_t::func f_set_move_mode( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    str_or_var mode = get_str_or_var( jo.get_member( member ), member, true );
+    return [is_npc, mode]( dialogue & d ) {
+        Character *guy = d.actor( is_npc )->get_character();
+        if( guy == nullptr ) {
+            return;
+        }
+        const move_mode_id new_mode( mode.evaluate( d ) );
+        if( !new_mode.is_valid() ) {
+            debugmsg( "u_set_move_mode: unknown movement mode %s", new_mode.str() );
+            return;
+        }
+        const move_mode_id old_mode = guy->current_movement_mode();
+        if( old_mode == new_mode || !guy->can_switch_to( new_mode ) ) {
+            return;
+        }
+        if( guy->is_avatar() ) {
+            // an NPC pays in its own set_movement_mode; the avatar pays when its next action starts,
+            // so this charges it here
+            const int cost = guy->move_mode_switch_cost( old_mode, new_mode );
+            guy->set_movement_mode( new_mode );
+            if( guy->current_movement_mode() == new_mode ) {
+                guy->mod_moves( -cost );
+            }
+        } else {
+            guy->set_movement_mode( new_mode );
         }
     };
 }
@@ -12558,6 +12625,7 @@ parsers = {
     { "u_forget_recipe", "npc_forget_recipe", jarg::member, &talk_effect_fun::f_forget_recipe },
     { "u_message", "npc_message", jarg::member, &talk_effect_fun::f_message },
     { "u_add_wet", "npc_add_wet", jarg::member | jarg::array, &talk_effect_fun::f_add_wet },
+    { "u_set_move_mode", "npc_set_move_mode", jarg::member, &talk_effect_fun::f_set_move_mode },
     { "u_assign_activity", "npc_assign_activity", jarg::member, &talk_effect_fun::f_assign_activity },
     { "u_examine", "npc_examine", jarg::member, &talk_effect_fun::f_examine },
     { "u_make_sound", "npc_make_sound", jarg::member, &talk_effect_fun::f_make_sound },

@@ -54,6 +54,8 @@ class climbing_aid
             int thirst = 0;
 
             void deserialize( const JsonObject &jo );
+            // the climber pays it: damage to the torso, pain, kcal and thirst
+            void apply( Character &you ) const;
         };
 
         static void load_climbing_aid( const JsonObject &jo, const std::string &src );
@@ -87,6 +89,8 @@ class climbing_aid
          * for stairs that end in a sheer drop; nullptr if there is none.
          */
         static const climbing_aid *get_sheer_drop_aid( Character &you );
+        // The safest aid with an "up" block among those the conditions allow, or nullptr (CHAR-J11)
+        static const climbing_aid *get_safest_up( const condition_list &cond );
 
 
         /**
@@ -190,8 +194,9 @@ class climbing_aid
             climb_cost  cost;
             furn_str_id deploy_furn;
 
+            // CHAR-J11: 0 disables it, as documented
             bool enabled() const noexcept {
-                return max_height >= 0;
+                return max_height > 0;
             }
 
             bool deploys_furniture() const noexcept {
@@ -200,6 +205,25 @@ class climbing_aid
 
             void deserialize( const JsonObject &jo );
         } down;
+
+        // Rule for using this aid to climb up a Z-level (a wall, furniture, a ledge above), where
+        // there are no stairs or ladder (CHAR-J11).  An aid without one isn't used to climb up.
+        struct up_t {
+            bool was_loaded = false;
+
+            // Moves added to the climbing cost of the terrain; twice this when nothing braces you
+            int         move_cost = 500;
+            // false: the aid alone lets you climb, with no walls or furniture to brace against
+            bool        needs_support = true;
+            climb_cost  cost;
+            translation msg_after;
+
+            bool enabled() const noexcept {
+                return was_loaded;
+            }
+
+            void deserialize( const JsonObject &jo );
+        } up;
 
 };
 #endif // CATA_SRC_CLIMBING_H
