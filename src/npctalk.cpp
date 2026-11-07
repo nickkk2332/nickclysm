@@ -1749,6 +1749,13 @@ void avatar::talk_to( std::unique_ptr<talker> talk_with, bool radio_contact,
     } else {
         d.add_topic( debug_topic );
     }
+    if( d.topic_stack.empty() ) {
+        // A monster, item, vehicle or furniture without chat topics (open_dialogue with no
+        // "topic"): the conversation would start from a topic that isn't there
+        debugmsg( "%s has nothing to talk about: it has no chat topics.",
+                  d.actor( true )->disp_name() );
+        return;
+    }
     dialogue_imgui d_img( &d );
     d_img.draw_dialogue_imgui( is_computer, is_not_conversation, remote_name );
     if( activity.id() == ACT_AIM && !has_weapon() ) {

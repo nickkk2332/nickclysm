@@ -2670,7 +2670,7 @@ Plays sound `bionics`, variant `pixelated` with volume 50
 
 
 #### `open_dialogue`
-Opens up a dialog between the participants; this should only be used in effect_on_conditions, not in actual npc dialogue
+Opens up a dialog between the participants; this should only be used in effect_on_conditions, not in actual npc dialogue.  Without a `topic`, the beta talker needs chat topics of its own (an NPC always has them; a monster, item, vehicle or furniture has its `chat_topics`); one without any shows a debug message instead of a dialogue.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
