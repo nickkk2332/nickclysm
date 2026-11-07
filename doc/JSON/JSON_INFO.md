@@ -2682,6 +2682,8 @@ it is present to help catch errors.
 | `consumes_focus`           | (Boolean) Whether focus is consumed when this skill is trained.
 | `sort_rank`                | Order in which the skill is shown. |
 | `teachable`                | Whether it's possible to teach this skill between characters. (Default = true) |
+| `training_time`            | How long a lesson in this skill from an NPC (or to one) takes: a duration, a [variable object](EFFECT_ON_CONDITION.md#variable-object) or math in seconds, at least one turn.  u is the student and npc the teacher; the context values are `skill` (this skill's id), `level` (the student's practical level), `knowledge_level` (the student's theoretical level) and `teacher_level` (the teacher's practical level).  Default: 1 hour + 30 minutes x `level` - 1 minute x `teacher_level`, as `{ "math": [ "3600 + 1800 * _level - 60 * _teacher_level" ] }`. |
+| `training_cost`            | What that lesson costs, in cents, from the same dialogue: a number, variable object or math, not below 0.  A follower teaches for free whatever this says.  Default: 1000 x (1 + `knowledge_level`)², as `{ "math": [ "1000 * (1 + _knowledge_level) * (1 + _knowledge_level)" ] }`. |
 | `companion_skill_practice` | Determines the priority of this skill within a mision skill category when an NPC gains experience from a companion mission. |
 | `level_descriptions_theory`|  Description of your current theoretical level. The smallest one is picked, if you define only level 0 and 2, skill level 1 would show description for level 0 
 | `level_descriptions_practice`| Same as level_descriptions_theory, but for practical skill level.

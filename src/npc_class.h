@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -11,6 +12,7 @@
 
 #include "calendar.h"
 #include "faction.h"
+#include "npc_ai_ids.h"
 #include "npc_ai_tuning.h"
 #include "translation.h"
 #include "type_id.h"
@@ -74,6 +76,16 @@ struct shopkeeper_item_group {
     void deserialize( const JsonObject &jo );
 };
 
+// One of an npc_class's "stranger_topics": what a stranger of the class opens a conversation with
+struct npc_stranger_topic {
+    // u is who it talks to, npc the NPC; none always holds
+    std::function<bool( const_dialogue const & )> condition;
+    // a chatbin topic name ("talk_stranger_wary"), so the NPC's own topic for it is used
+    std::string topic;
+    // the attitude it takes, if any
+    std::optional<npc_attitude> attitude;
+};
+
 class npc_class
 {
     private:
@@ -109,6 +121,8 @@ class npc_class
         std::pair<int, int> work_hours_ = { 0, 24 };
         // "ai_tuning": the defaults unless the class or the one it copies gives some
         npc_ai_tuning ai_tuning;
+        // "stranger_topics", tried in order before the built-in personality thresholds
+        std::vector<npc_stranger_topic> stranger_topics;
 
     public:
         npc_class_id id;
@@ -156,6 +170,9 @@ class npc_class
         const std::pair<int, int> &get_work_hours() const;
         const npc_ai_tuning &get_ai_tuning() const {
             return ai_tuning;
+        }
+        const std::vector<npc_stranger_topic> &get_stranger_topics() const {
+            return stranger_topics;
         }
         faction_price_rule const *get_price_rules( item const &it, npc const &guy ) const;
 

@@ -399,6 +399,8 @@ void spell_type::load( const JsonObject &jo, std::string_view src )
     mandatory( jo, was_loaded, "description", description );
     optional( jo, was_loaded, "skill", skill, skill_default );
     optional( jo, was_loaded, "teachable", teachable, true );
+    optional( jo, was_loaded, "training_time", training_time );
+    optional( jo, was_loaded, "training_cost", training_cost );
     optional( jo, was_loaded, "components", spell_components, spell_components_default );
     optional( jo, was_loaded, "message", message, message_default );
     optional( jo, was_loaded, "sound_description", sound_description, sound_description_default );

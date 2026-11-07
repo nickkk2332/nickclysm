@@ -1395,7 +1395,10 @@ std::string talker_character_const::style_training_text( const_talker const &stu
                me_chr_const->as_npc()->is_ally( *student.get_const_character() ) ) {
         return string_format( "%s", style.obj().name );
     } else {
-        return string_format( _( "%s ( cost $%d )" ), style.obj().name, 8 );
+        // the price a style's training_cost sets, $8 if it has none
+        const int cost = calc_ma_style_training_cost( *me_chr_const, *student.get_const_character(),
+                         style );
+        return string_format( _( "%s ( cost $%d )" ), style.obj().name, cost / 100 );
     }
 }
 
@@ -1417,11 +1420,18 @@ std::string talker_character_const::spell_training_text( const_talker const &stu
     }
     const spell &temp_spell = me_chr_const->magic->get_spell( sp );
     const bool knows = pupil->magic->knows_spell( sp );
-    const int cost = me_chr_const->calc_spell_training_cost( knows, temp_spell.get_difficulty( *pupil ),
-                     temp_spell.get_level() );
+    // the price a spell's training_cost sets, or the built-in one (what training charges)
+    const int cost = sp->training_cost ? calc_spell_training_cost( *me_chr_const, *pupil, sp ) :
+                     me_chr_const->calc_spell_training_cost( knows, temp_spell.get_difficulty( *pupil ),
+                             temp_spell.get_level() );
     std::string text;
     if( cost == 0 && ( !me_chr_const->is_npc() || me_chr_const->as_npc()->is_ally( *pupil ) ) ) {
         text = temp_spell.name();
+    } else if( knows && sp->training_time ) {
+        //~ %1$s is a spell, %2$s how long the lesson takes, %3$s its price
+        text = string_format( _( "%1$s: %2$s lesson (cost %3$s)" ), temp_spell.name(),
+                              to_string( calc_spell_training_time( *me_chr_const, *pupil, sp ) ),
+                              format_money( cost ) );
     } else if( knows ) {
         text = string_format( _( "%s: 1 hour lesson (cost %s)" ), temp_spell.name(),
                               format_money( cost ) );

@@ -323,9 +323,20 @@ struct character_portrait {
 
 struct queued_eoc {
     public:
+        queued_eoc() = default;
+        queued_eoc( const effect_on_condition_id &in_eoc, const time_point &in_time,
+                    const global_variables::impl_t &in_context ) : eoc( in_eoc ), time( in_time ),
+            context( in_context ) {}
+
         effect_on_condition_id eoc;
         time_point time;
         global_variables::impl_t context;
+        // For run_eocs' keep_talkers: handles (see talker_handle) to the u and npc it runs with.
+        // An empty alpha is the queue's owner (the avatar on the game's queue).
+        std::string alpha;
+        std::string beta;
+        // Set by u_cancel_queued_eocs: it is dropped when it comes due, and isn't saved
+        bool cancelled = false;
 };
 
 struct eoc_compare {

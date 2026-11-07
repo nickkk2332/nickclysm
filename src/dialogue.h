@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -80,12 +81,19 @@ std::string bye_message( const npc *npc_actor );
  */
 struct talk_trial {
     talk_trial_type type = TALK_TRIAL_NONE;
-    int difficulty = 0;
+    // A number, a variable or math, worked out each time it's shown or rolled
+    dbl_or_var difficulty;
     std::function<bool( const_dialogue const & )> condition;
+    // The speech practice a LIE, PERSUADE or INTIMIDATE roll gives, when JSON says (the context
+    // values `chance` and `success` say how it went); otherwise (100 - chance) / 10 on a success
+    // and / 7 on a failure
+    std::optional<dbl_or_var> speech_practice;
 
     // If this talk_trial is skill check, this is the string ID of the skill that we check the level of.
     std::string skill_required;
 
+    // `difficulty` now, rounded
+    int get_difficulty( const_dialogue const &d ) const;
     int calc_chance( const_dialogue const &d ) const;
     /**
      * Returns a user-friendly representation of @ref type

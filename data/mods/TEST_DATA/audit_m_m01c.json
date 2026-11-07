@@ -1,0 +1,102 @@
+[
+  {
+    "type": "npc_class",
+    "id": "test_m01c_stranger_class",
+    "//": "EOC-J11: how a stranger of this class opens depends on a global the test sets.",
+    "name": { "str": "Stranger topic tester" },
+    "job_description": "I test how strangers greet you.",
+    "common": false,
+    "stranger_topics": [
+      { "condition": { "math": [ "m01c_stranger == 1" ] }, "topic": "talk_mug", "attitude": "NPCATT_MUG" },
+      { "condition": { "math": [ "m01c_stranger == 2" ] }, "topic": "talk_stranger_wary" }
+    ]
+  },
+  {
+    "type": "martial_art",
+    "id": "test_style_m01c_training",
+    "//": "EOC-J11: a style with its own NPC lesson time and price.",
+    "name": { "str": "Test Training Style" },
+    "description": "Test martial art whose lessons take and cost what its JSON says.",
+    "initiate": [ "You use a test training style.", "%s enters a test training stance." ],
+    "allow_all_weapons": true,
+    "training_time": "90 minutes",
+    "training_cost": { "math": [ "1234 + u_val('strength')" ] }
+  },
+  {
+    "type": "SPELL",
+    "id": "test_spell_m01c_training",
+    "//": "EOC-J11: a spell with its own NPC lesson time and price.",
+    "name": { "str": "Test Training Spell", "//~": "NO_I18N" },
+    "description": { "str": "A spell whose lessons take and cost what its JSON says.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_M01C_SPELL_CAST",
+    "shape": "blast",
+    "flags": [ "NO_HANDS", "NO_LEGS", "NO_FAIL", "SILENT" ],
+    "max_level": 10,
+    "difficulty": 3,
+    "training_time": { "math": [ "_known ? 600 : 7200 + 60 * _difficulty" ] },
+    "training_cost": { "math": [ "_known ? 100 * _level : 999" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_SPELL_CAST",
+    "//": "EOC-J11: what test_spell_m01c_training does when cast; the tests never cast it.",
+    "effect": [ { "math": [ "m01c_spell_casts += 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_LATER",
+    "//": "EOC-J12: the queued EOC; marks its u, and its npc if it has one.",
+    "effect": [ { "math": [ "u_m01c_ran += 1" ] }, { "if": "has_beta", "then": [ { "math": [ "n_m01c_seen += 1" ] } ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_GLOBAL_LATER",
+    "//": "EOC-J12: a global queued EOC; marks its u, and its npc if it has one.",
+    "global": true,
+    "effect": [
+      { "math": [ "u_m01c_global_ran += 1" ] },
+      { "if": "has_beta", "then": [ { "math": [ "n_m01c_global_seen += 1" ] } ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_QUEUE_KEPT",
+    "//": "EOC-J12: queues EOC_M01C_LATER for the u and npc it runs with.",
+    "effect": [ { "run_eocs": "EOC_M01C_LATER", "time_in_future": "2 seconds", "keep_talkers": true } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_QUEUE_PLAIN",
+    "//": "EOC-J12: queues EOC_M01C_LATER as before, without keep_talkers.",
+    "effect": [ { "run_eocs": "EOC_M01C_LATER", "time_in_future": "2 seconds" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_QUEUE_GLOBAL_KEPT",
+    "//": "EOC-J12: queues the global EOC_M01C_GLOBAL_LATER for the u and npc it runs with.",
+    "effect": [ { "run_eocs": "EOC_M01C_GLOBAL_LATER", "time_in_future": "2 seconds", "keep_talkers": true } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_CANCEL",
+    "//": "EOC-J12: calls off EOC_M01C_LATER for its u.",
+    "effect": [ { "u_cancel_queued_eocs": [ "EOC_M01C_LATER" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_TIME_LEFT",
+    "//": "EOC-J12: stores how long until EOC_M01C_LATER runs for its u, in seconds.",
+    "effect": [ { "math": [ "m01c_time_left = u_time_until_eoc('EOC_M01C_LATER')" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_M01C_SET_CHATBIN",
+    "//": "EOC-J11: changes the NPC's greeting as a friend, and the one named in a context value.",
+    "effect": [
+      { "npc_set_chatbin_topic": "talk_friend", "topic": "TALK_STRANGER_FRIENDLY" },
+      { "npc_set_chatbin_topic": { "context_val": "slot" }, "topic": { "context_val": "topic" } }
+    ]
+  }
+]

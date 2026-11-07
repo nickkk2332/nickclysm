@@ -106,6 +106,12 @@ void add_load_check( std::function<void()> check );
 /** queue an eoc to happen in the future */
 void queue_effect_on_condition( time_duration duration, effect_on_condition_id eoc,
                                 Character &you, global_variables::impl_t const &context );
+/** queue an eoc that runs with the u and npc these handles name (run_eocs' keep_talkers): on
+ *  @p you's queue when @p alpha is empty and the EOC isn't global, otherwise on the game's, with
+ *  the avatar as u if @p alpha is empty */
+void queue_effect_on_condition( time_duration duration, effect_on_condition_id eoc,
+                                Character &you, global_variables::impl_t const &context,
+                                const std::string &alpha, const std::string &beta );
 /** called every turn to process the queued eocs */
 void process_effect_on_conditions( Character &you );
 /** called after certain events to test whether to reactivate eocs */

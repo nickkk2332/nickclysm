@@ -11,11 +11,13 @@
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_chatbin.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item_group.h"
 #include "mutation.h"
 #include "npc.h"
+#include "npctalk.h"
 #include "rng.h"
 #include "shop_cons_rate.h"
 #include "skill.h"
@@ -296,6 +298,30 @@ void npc_class::load( const JsonObject &jo, std::string_view )
     // changes what the class has: the defaults, or with copy-from what it copies
     if( jo.has_object( "ai_tuning" ) ) {
         ai_tuning.load( jo.get_object( "ai_tuning" ) );
+    }
+    // a list given replaces the copied one
+    if( jo.has_array( "stranger_topics" ) ) {
+        stranger_topics.clear();
+        for( JsonObject rule_jo : jo.get_array( "stranger_topics" ) ) {
+            npc_stranger_topic rule;
+            if( rule_jo.has_member( "condition" ) ) {
+                read_condition( rule_jo, "condition", rule.condition, true );
+            }
+            rule.topic = rule_jo.get_string( "topic" );
+            dialogue_chatbin probe;
+            if( chatbin_topic( probe, rule.topic ) == nullptr ) {
+                rule_jo.throw_error_at( "topic", string_format( "no chatbin topic \"%s\"", rule.topic ) );
+            }
+            if( rule_jo.has_member( "attitude" ) ) {
+                const std::string attitude = rule_jo.get_string( "attitude" );
+                rule.attitude = npc_attitude_from_id( attitude );
+                if( !rule.attitude ) {
+                    rule_jo.throw_error_at( "attitude", string_format( "%s isn't an NPC attitude",
+                                            attitude ) );
+                }
+            }
+            stranger_topics.push_back( std::move( rule ) );
+        }
     }
     /* Mutation rounds can be specified as follows:
      *   "mutation_rounds": {

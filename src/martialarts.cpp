@@ -554,6 +554,8 @@ void martialart::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "primary_skill", primary_skill, skill_unarmed );
     optional( jo, was_loaded, "learn_difficulty", learn_difficulty );
     optional( jo, was_loaded, "teachable", teachable, true );
+    optional( jo, was_loaded, "training_time", training_time );
+    optional( jo, was_loaded, "training_cost", training_cost );
 
     optional( jo, was_loaded, "static_buffs", static_buffs, ma_buff_reader{} );
     optional( jo, was_loaded, "onmove_buffs", onmove_buffs, ma_buff_reader{} );

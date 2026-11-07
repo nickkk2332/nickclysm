@@ -250,6 +250,10 @@ class spell_type
         // spell effect string. used to look up spell function
         std::string effect_name;
         bool teachable;
+        // How long an NPC lesson takes and what it costs, when JSON says (u is the student, npc
+        // the teacher); otherwise the built-in formulas
+        std::optional<duration_or_var> training_time;
+        std::optional<dbl_or_var> training_cost;
         // NOLINTNEXTLINE(cata-serialize)
         std::function<void( const spell &, Creature &, const tripoint_bub_ms & )> effect;
         std::function<std::set<tripoint_bub_ms>( const spell_effect::override_parameters &params,

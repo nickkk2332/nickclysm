@@ -77,8 +77,27 @@ Format:
   "restock_interval": "6 days",
   "proficiencies": [ "prof_gunsmithing_basic", "prof_spotting" ],         // Optional. Note that prereqs do not need to be defined. NPCs of this class will learn this proficiency *and all pre-requisite proficiencies*.
   "traits": [ { "group": "BG_survival_story_EVACUEE" }, { "group": "NPC_starting_traits" }, { "group": "Appearance_demographics" } ],    // Optional
-  "ai_tuning": { "needs": { "drink_water": { "act": 0.5 } } }               // Optional. See [AI tuning](#ai-tuning) below.
+  "ai_tuning": { "needs": { "drink_water": { "act": 0.5 } } },              // Optional. See [AI tuning](#ai-tuning) below.
+  "stranger_topics": [ { "condition": { "math": [ "n_npc_trust() > 5" ] }, "topic": "talk_stranger_friendly" } ]    // Optional. See [Stranger topics](#stranger-topics) below.
 }
+```
+
+### Stranger topics
+When an NPC that isn't your follower, isn't asleep and has no mission to talk about starts a conversation, its personality and its opinion of you pick how it opens: `talk_mug` (and it starts mugging you), `talk_stranger_aggressive`, `talk_stranger_scared`, `talk_stranger_wary`, `talk_stranger_friendly` or `talk_stranger_neutral`, which its template can point at its own topics (see [Writing dialogues](#writing-dialogues)).  A class's `"stranger_topics"` are tried first, in order, and the first whose `condition` holds (u is you, npc the NPC; no condition always holds) decides instead:
+
+| Member | Optionality | Value | Info |
+| --- | --- | --- | --- |
+| `topic` | **mandatory** | string | the chatbin topic name it opens with: one of those above, or any other the template can set (`talk_friend`, `talk_radio`...) |
+| `condition` | optional | [condition](#dialogue-conditions) | when; [`npc_personality()`](#math), `npc_trust()`, `npc_fear()` and the other NPC math read what the built-in choice reads |
+| `attitude` | optional | string | an attitude it takes as well, such as `"NPCATT_MUG"` (the built-in choice sets that for `talk_mug`) |
+
+If none holds, or the class has none, the built-in choice is made.  A list given replaces the one a `copy-from` class has.
+
+```jsonc
+"stranger_topics": [
+  { "condition": { "and": [ { "math": [ "n_npc_personality('aggression') > 5" ] }, { "not": "u_has_weapon" } ] }, "topic": "talk_mug", "attitude": "NPCATT_MUG" },
+  { "condition": { "math": [ "n_npc_fear() > 3" ] }, "topic": "talk_stranger_scared" }
+]
 ```
 
 ### AI tuning
@@ -834,7 +853,9 @@ A trial object can be used to attempt to lie to, persuade or intimidate the NPC.
 
 Optional, if not defined, `"NONE"` is used. Otherwise one of `"NONE"`, `"LIE"`, `"PERSUADE"`, `"INTIMIDATE"`, or `"CONDITION"`. If `"NONE"` is used, the `failure` object is not read, otherwise it's mandatory.
 
-The `difficulty` is only required if type is not `"NONE"` or `"CONDITION"` and, for most trials, specifies the success chance in percent (it is however modified by various things like mutations).  Higher difficulties are easier to pass. `"SKILL_CHECK"` trials are unique, and use the difficulty as a flat comparison.
+The `difficulty` is only required if type is not `"NONE"` or `"CONDITION"` and, for most trials, specifies the success chance in percent (it is however modified by various things like mutations).  Higher difficulties are easier to pass. `"SKILL_CHECK"` trials are unique, and use the difficulty as a flat comparison.  The difficulty can be a number, a [variable object](EFFECT_ON_CONDITION.md#variable-object) or math (u is you, npc the NPC), worked out each time the response is shown and each time it's tried; the chance shown is the one it rolls against, as long as the value doesn't change in between (a random range does).
+
+`"LIE"`, `"PERSUADE"` and `"INTIMIDATE"` trials train your speech skill, by (100 - chance) / 10 on a success and (100 - chance) / 7 on a failure, chance being the percent rolled against.  An optional `speech_practice` (a number, variable object or math, with the context values `chance` and `success`, 1 or 0) sets how much instead; 0 or less trains nothing.
 
 `"CONDITION"` trials take a mandatory `condition` instead of `difficulty`.  The `success` object is chosen if the `condition` is true and the `failure` is chosen otherwise.
 
@@ -846,6 +867,7 @@ Sample trials:
 "trial": { "type": "INTIMIDATE", "difficulty": 20, "mod": [ [ "FEAR", 8 ], [ "VALUE", 2 ], [ "TRUST", 2 ], [ "BRAVERY", -2 ] ] }
 "trial": { "type": "CONDITION", "condition": { "npc_has_trait": "FARMER" } }
 "trial": { "type": "SKILL_CHECK", "difficulty": 3, "skill_required": "swimming" }
+"trial": { "type": "PERSUADE", "difficulty": { "math": [ "40 + n_npc_personality('altruism') * 3" ] }, "speech_practice": { "math": [ "_success ? 0 : 5" ] } }
 ```
 
 #### `mod`
@@ -1576,7 +1598,7 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | time(`s`/`v`)    |  ✅   |   ✅  | N/A<br/>(global)  | Return a numeric value (in turns) for a time period string (see [Units](JSON_INFO.md#units)).<br/><br/>Special Values:<br/>`now` - returns duration since turn zero<br/>`cataclysm` - returns duration between cataclysm and turn zero<br/><br/>`time('now')` can serve as an assignment target to change current turn.<br/><br/>Optional kwargs:<br/> `unit`: specify return unit. Assumes `turns` if unspecified or empty. An assignment takes its value in the same unit, so `time('now', 'unit':'hours') += 1` moves the clock one hour ahead.<br/><br/>Example:<br/>`{ "math": [ "time('now') - u_timer_caravan_RandEnc > time('1 h')" ] }`|
 | time_since(`v`)<br/>time_since('cataclysm')<br/>time_since('midnight')    |  ✅   |   ❌  | N/A<br/>(global)  | Convenience function that returns a numeric value (in turns) for the time period since time point stored in variable.<br/><br/>Special values:<br/>`cataclysm` - return time since start of cataclysm<br/>`midnight` - return time since midnight<br/>`noon` - return time since the ingame clock last read 12:00 (0 to 24 hours; 22 hours at 10:00)<br/><br/>Optional kwargs:<br/> `unit`: specify return unit. Assumes `turns` if unspecified or empty.<br/><br/>Returns -1 if the argument is an undefined variable<br/><br/>Example:<br/>`{ "math": [ "time_since(u_timer_caravan_RandEnc) > time('1 h')" ] }`<br/>`{ "math": [ "time_since('cataclysm', 'unit':'years') > 1" ] }`|
 | time_until(`v`)<br/>time_until('daylight_time')<br/>time_until('night_time')<br/>time_until('sunset')<br/>time_until('sunrise')    |  ✅   |   ❌  | N/A<br/>(global)  | Convenience function that returns a numeric value (in turns) for the time period until time point stored in variable.<br/><br/>Special values:<br/>`daylight_time` - when sun rises above the [civil dawn](https://en.wikipedia.org/wiki/Dawn#Civil_dawn) point<br/>`night_time` - when sun sets below civil dawn<br/>`sunrise` - sun above horizon<br/>`sunset` - sun below horizon<br/>`noon` - when the ingame clock next reads 12:00 (0 to 24 hours; 22 hours at 14:00)<br/><br/>Optional kwargs:<br/> `unit`: specify return unit. Assumes `turns` if unspecified or empty.<br/><br/>Returns -1 if the argument is an undefined variable<br/><br/>Example:<br/>`{ "math": [ "TIME_TILL_SUNRISE = time_until('sunrise', 'unit':'minutes')" ] },`<br/>`{ "u_message": "Minutes remaining until daylight is <global_val:TIME_TILL_SUNRISE>", "type": "good" },`|
-| time_until_eoc(`s`/`v`)  |  ✅   |   ❌  | u, n, global  | Returns time until next scheduled run of an EOC (the soonest, if it is queued more than once). Argument is EOC id.<br/><br/>Without a scope it looks at the queue of `global` EOCs. The others are queued on a character: a recurring EOC on the avatar and on every NPC, and one queued by `run_eocs` with a `time_in_future` on the alpha talker. Use `u_time_until_eoc` or `n_time_until_eoc` for those. (When that alpha talker isn't a character, a `global` EOC still goes to the global queue, and any other EOC isn't queued at all.)<br/><br/>Optional kwargs:<br/> `unit`: specify return unit<br/><br/>Returns -1 is the EOC is not scheduled.<br/><br/>Example:<br/>`"condition": { "math": [ "u_time_until_eoc('EOC_MY_RECURRING', 'unit':'minutes') < 10" ] }` |
+| time_until_eoc(`s`/`v`)  |  ✅   |   ❌  | u, n, global  | Returns time until next scheduled run of an EOC (the soonest, if it is queued more than once). Argument is EOC id.<br/><br/>Without a scope it looks at the queue of `global` EOCs. The others are queued on a character: a recurring EOC on the avatar and on every NPC, and one queued by `run_eocs` with a `time_in_future` on the alpha talker. Use `u_time_until_eoc` or `n_time_until_eoc` for those. (When that alpha talker isn't a character, a `global` EOC still goes to the global queue, and any other EOC isn't queued at all, unless `run_eocs` has [`keep_talkers`](EFFECT_ON_CONDITION.md#run_eocs).) `u_` and `n_` also find the EOCs queued with `keep_talkers` for that talker, a monster, item or vehicle too. A run called off with [`u_cancel_queued_eocs`](EFFECT_ON_CONDITION.md#u_cancel_queued_eocsnpc_cancel_queued_eocs) doesn't count.<br/><br/>Optional kwargs:<br/> `unit`: specify return unit<br/><br/>Returns -1 is the EOC is not scheduled.<br/><br/>Example:<br/>`"condition": { "math": [ "u_time_until_eoc('EOC_MY_RECURRING', 'unit':'minutes') < 10" ] }` |
 | val(`s`)    |  ✅   |   varies  | u, n  | Return or set a Character or item value. Argument is a [Character/item aspect](#list-of-character-and-item-aspects).<br/><br/>These are all in one function for legacy reasons and are generally poorly tested. If you need one of them, consider porting it to a native math function.<br/><br/>Example:<br/>`{ "math": [ "u_val('strength') = 2" ] }`|
 | npc_anger()    |  ✅   |  ✅   | u, n  | Return NPC anger toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_anger() > 2" ] }`|
 | npc_fear()    |  ✅   |  ✅   | u, n  | Return NPC fear toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_fear() < 2" ] }`|

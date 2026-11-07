@@ -255,6 +255,8 @@ void Skill::load( const JsonObject &jsobj, std::string_view )
               0 );
     optional( jsobj, was_loaded, "obsolete", _obsolete, false );
     optional( jsobj, was_loaded, "teachable", _teachable, true );
+    optional( jsobj, was_loaded, "training_time", _training_time );
+    optional( jsobj, was_loaded, "training_cost", _training_cost );
     optional( jsobj, was_loaded, "requires_all_traits", _requires_all_traits, string_reader{} );
     optional( jsobj, was_loaded, "requires_any_traits", _requires_any_traits, string_reader{} );
 }
