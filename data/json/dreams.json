@@ -169,17 +169,6 @@
   },
   {
     "type": "dream",
-    "messages": [
-      "You dream of a strange quest for a bush that grows gray apples.",
-      "You feel like you're cracking a combination lock.",
-      "Red, blue, and yellow cancel each other out, don't they?",
-      "Red, blue, and yellow add together, don't they?"
-    ],
-    "category": "MARLOSS",
-    "strength": 1
-  },
-  {
-    "type": "dream",
     "messages": [ "You dream you are sleeping.  How odd?", "You sleep so well.  You must have been tired." ],
     "category": "INTERSTICE",
     "strength": 1

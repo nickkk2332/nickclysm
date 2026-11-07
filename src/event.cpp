@@ -140,6 +140,10 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::npc_dismissed: return "npc_dismissed";
         case event_type::npc_mutinies: return "npc_mutinies";
         case event_type::mod_setting_changed: return "mod_setting_changed";
+        case event_type::character_crafts_item: return "character_crafts_item";
+        case event_type::character_disassembles_item: return "character_disassembles_item";
+        case event_type::character_learns_recipe: return "character_learns_recipe";
+        case event_type::tile_destroyed: return "tile_destroyed";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -162,7 +166,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 124,
+static_assert( static_cast<int>( event_type::num_event_types ) == 128,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -240,6 +244,10 @@ DEFINE_EVENT_FIELDS( npc_recruited )
 DEFINE_EVENT_FIELDS( npc_dismissed )
 DEFINE_EVENT_FIELDS( npc_mutinies )
 DEFINE_EVENT_FIELDS( mod_setting_changed )
+DEFINE_EVENT_FIELDS( character_crafts_item )
+DEFINE_EVENT_FIELDS( character_disassembles_item )
+DEFINE_EVENT_FIELDS( character_learns_recipe )
+DEFINE_EVENT_FIELDS( tile_destroyed )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )
@@ -282,6 +290,31 @@ get_fields_helper( event_type type, std::integer_sequence<int, I...> )
 event::fields_type event::get_fields( event_type type )
 {
     return get_fields_helper(
+               type, std::make_integer_sequence<int, static_cast<int>( event_type::num_event_types )> {} );
+}
+
+template<event_type Type>
+static void get_field_list_if_match( event_type type, event::field_list_type &out )
+{
+    if( Type == type ) {
+        out = { event_detail::event_spec<Type>::fields.begin(),
+                event_detail::event_spec<Type>::fields.end()
+              };
+    }
+}
+
+template<int... I>
+static event::field_list_type
+get_field_list_helper( event_type type, std::integer_sequence<int, I...> )
+{
+    event::field_list_type result;
+    ( get_field_list_if_match<static_cast<event_type>( I )>( type, result ), ... );
+    return result;
+}
+
+event::field_list_type event::get_field_list( event_type type )
+{
+    return get_field_list_helper(
                type, std::make_integer_sequence<int, static_cast<int>( event_type::num_event_types )> {} );
 }
 

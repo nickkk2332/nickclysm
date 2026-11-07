@@ -172,10 +172,10 @@ int talker_item_const::get_volume() const
     return it != nullptr ? units::to_milliliter( it->volume() ) : 0;
 }
 
-int talker_item_const::get_weight() const
+units::mass talker_item_const::get_weight() const
 {
     const item *it = alive( me_it_const );
-    return it != nullptr ? units::to_milligram( it->weight() ) : 0;
+    return it != nullptr ? it->weight() : 0_gram;
 }
 
 int talker_item_const::get_quality( const std::string &quality, bool strict ) const

@@ -96,6 +96,8 @@ void clear_character( Character &dummy, bool skip_nutrition )
     dummy.calc_encumbrance();
     dummy.invalidate_crafting_inventory();
     dummy.remove_weapon();
+    dummy.eoc_added_bodyparts = body_part_set();
+    dummy.eoc_removed_bodyparts = body_part_set();
     dummy.clear_mutations();
     // clear_mutations() removes traits but does not rebuild bodypart topology.
     // Rebuild anatomy now so tests see baseline human limbs (e.g. feet, not talons).

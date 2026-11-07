@@ -304,6 +304,12 @@ class recipe
         std::vector<effect_on_condition_id> result_item_eocs;
         // Run when an item is disassembled with this recipe, after its components are placed.
         std::vector<effect_on_condition_id> disassembly_eocs;
+        // Run when the craft starts, with the craft in progress as beta talker; context
+        // recipe_id and batch_size.
+        std::vector<effect_on_condition_id> start_eocs;
+        // Run each time the craft fails partway, with the craft in progress as beta talker;
+        // context recipe_id, batch_size, components_lost, progress_lost and destroyed.
+        std::vector<effect_on_condition_id> fail_eocs;
         std::pair<int, time_duration> morale_modifier;
         skill_id skill_used;
         std::map<skill_id, int> required_skills;

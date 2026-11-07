@@ -1,0 +1,30 @@
+[
+  {
+    "type": "fault",
+    "id": "fault_audit_j01_goo",
+    "//": "ITEM-J01: a fault with a message, for set_fault's \"message\".",
+    "fault_type": "audit_j01_coating",
+    "name": { "str": "audit goo" },
+    "description": "Test fault: goo on the %s.",
+    "message": "Audit goo sticks to the %s!"
+  },
+  {
+    "type": "fault",
+    "id": "fault_audit_j01_slime",
+    "//": "ITEM-J01: a second fault of the same type, for remove_fault_of_type.",
+    "fault_type": "audit_j01_coating",
+    "name": { "str": "audit slime" },
+    "description": "Test fault: slime on the %s."
+  },
+  {
+    "id": "audit_j04_pebble",
+    "type": "ITEM",
+    "name": { "str": "TEST pebble" },
+    "description": "INV-J04: a small stone; two of them are picked up in one bulk load.",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_gray"
+  }
+]

@@ -18,6 +18,7 @@
 #include "compatibility.h"
 #include "coordinates.h"
 #include "enums.h"
+#include "global_vars.h"
 #include "item_location.h"
 #include "memory_fast.h"
 #include "point.h"
@@ -64,6 +65,8 @@ class player_activity
         std::vector<item_location> targets;
         std::vector<int> values;
         std::vector<std::string> str_values;
+        // The "context" u_assign_activity gave this activity: values for its EOCs
+        global_variables::impl_t eoc_context;
         std::vector<tripoint_abs_ms> coords;
         std::unordered_set<tripoint_abs_ms> coord_set;
         std::vector<weak_ptr_fast<monster>> monsters;
@@ -229,8 +232,12 @@ class player_activity
 class activity_end_hooks
 {
     public:
-        /** Runs the hooks for @p who as a completion, or a cancel. Only the first call does. */
-        void run( Character &who, bool canceled );
+        /**
+         * Runs the hooks for @p who as a completion, or a cancel. Only the first call does.
+         * A cancel that left the activity in the backlog to resume (@p resumable) is reported as
+         * "interrupted" rather than "canceled".
+         */
+        void run( Character &who, bool canceled, bool resumable = false );
     private:
         friend class player_activity;
         bool pending = false;
@@ -239,6 +246,24 @@ class activity_end_hooks
         int moves_left = 0;
         // the EOCs' beta talker, see activity_actor::hook_target
         item_location target;
+        global_variables::impl_t eoc_context;
+};
+
+/**
+ * While it lives, the next activity a character is assigned takes these values (the "context"
+ * of u_assign_activity) as its eoc_context, for its start, do_turn, completion and cancel EOCs.
+ */
+class activity_eoc_context_scope
+{
+    public:
+        explicit activity_eoc_context_scope( global_variables::impl_t values );
+        ~activity_eoc_context_scope();
+        activity_eoc_context_scope( const activity_eoc_context_scope & ) = delete;
+        activity_eoc_context_scope &operator=( const activity_eoc_context_scope & ) = delete;
+        /** The values, for the first activity assigned that asks; none after that */
+        static std::optional<global_variables::impl_t> take();
+    private:
+        std::optional<global_variables::impl_t> previous;
 };
 
 #endif // CATA_SRC_PLAYER_ACTIVITY_H

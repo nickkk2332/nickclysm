@@ -223,7 +223,7 @@ Effect                 | Description
 `summon_vehicle`       | Summons a `vehicle` from `effect_str` that will disappear at the end of its duration.  Default duration is 0.
 `targeted_polymorph`   | A targeted monster is permanently transformed into the `MONSTER` specified by `effect_str`, if it has less HP than the spell's damage.  If `effect_str` is left empty, the target will transform into a random monster with a similar difficulty rating.  Alternatively, the `POLYMORPH_GROUP` flag can be used to pick a weighted ID from a `monstergroup`.  The player and NPCs are immune to this spell effect.
 `ter_transform`        | Transforms the field, furniture, terrain and trap in its aoe.  The chance of any one of the points in the aoe changing is 1 / (damage).  The `effect_str` is the ID of a `ter_furn_transform` (see [TER_FURN_TRANSFORM.md](TER_FURN_TRANSFORM.md) for further details).
-`timed_event`          | Adds a timed event to the player only.  Valid timed events are: `amigara`, `artifact_light`, `dim`, `help`, `robot_attack`, `roots_die`, `spawn_wyrms`, `temple_flood`, `temple_open`, `temple_spawn`, `wanted`.  **NOTE**: This was added only for artifact active effects.  Support is limited, use at your own risk.
+`timed_event`          | Adds a timed event to the player only, which happens after the spell's duration.  `effect_str` names the event, in any letter case: `amigara`, `artifact_light`, `dim`, `help` (currently disabled: it only shows a debug message), `roots_die`, `spawn_wyrms`, `temple_flood`, `temple_open` or `temple_spawn`.  **NOTE**: This was added only for artifact active effects.  Support is limited, use at your own risk; for other delayed effects, use `effect_on_condition` with a `run_eocs` that has `time_in_future`.
 `translocate`          | Opens up a window that allows the caster to choose a translocation gate to teleport to.
 `upgrade`              | Immediately upgrades a target `MONSTER`.
 `vomit`                | Any creature within its aoe will instantly vomit, if it's able to do so.
@@ -250,6 +250,7 @@ Effect                                  | `effect_str` must be
 `revive`, `revive_dormant`              | a `SPECIES` id
 `guilt`                                 | a `SPECIES` id, or empty
 `summon_vehicle`                        | a `vehicle` id, or empty
+`timed_event`                           | one of the timed events listed above, in any letter case
 
 The spell ids in `learn_spells` and in `channel_data` (`channel_spell`, `channel_end_spell`, `channel_interrupt_spell`) and the `magic_type` id are checked the same way.  A spell that is only a base for `copy-from` should be an `abstract` instead of a spell with an empty or placeholder `effect_str`.
 
@@ -785,7 +786,7 @@ Identifier                  | Description
 `intermittent_activation`   | Spells that activate centered on you depending on the duration.  The spells follow the `fake_spell` template.
 `values`                    | Numbers that can be modified (see [list](#id-values)).  `add` is added to the base value, `multiply` is **also added** and treated as percentage: 2.5 is +250% and -1 is -100%.  `add` is always applied before `multiply`.  Either `add` or `multiply` can be a variable_object/math expression (see [below](#variables) for syntax and application, and [NPCs](NPCs.md) for the in depth explanation).
 `skills`                    | A bonus or penalty to skills. Syntax is the same as for values, using the id of the skill name.
-`spell_values`              | Changes the damage, range, area, duration, cost or casting time of the spells you cast, optionally only for some spells.  See [Spell values](#spell-values).
+`spell_values`              | Changes the damage, range, area, duration, cost, casting time, fail chance, difficulty, casting XP or sound of the spells you cast, optionally only for some spells.  See [Spell values](#spell-values).
 `emitter`                   | Grants the emit_id.
 `modified_bodyparts`        | Modifies the body plan (standard is human).  `gain` adds body_part_id, `lose` removes body_part_id.
 `mutations`                 | Grants the mutation/trait ID.  Note: enchantments effects added this way won't stack, due how mutations work.
@@ -1160,6 +1161,10 @@ Value       | Changes
 `DURATION`  | The spell's duration, in moves (100 per second).
 `COST`      | The spell's energy cost, after encumbrance.  Spells that cost nothing stay free.
 `CAST_TIME` | The spell's casting time, in moves, after encumbrance and `CASTING_TIME_MULTIPLIER`.
+`FAIL`      | The spell's chance to fail, as a fraction: `"add": 0.1` is 10 points more likely to fail. The result is kept between 0 and 1. Spells with `NO_FAIL` never fail.
+`DIFFICULTY` | The spell's difficulty, which the fail chance and the XP a cast gives follow. Unlike the other values it can go below 0.
+`EXP`       | The XP a successful cast gives. Studying the spell is unchanged.
+`SOUND`     | How loud casting the spell is.
 
 Filter        | The spell must
 ---           |---

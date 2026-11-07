@@ -199,6 +199,10 @@ namespace io
             case enchant_vals::spell_mod::DURATION: return "DURATION";
             case enchant_vals::spell_mod::COST: return "COST";
             case enchant_vals::spell_mod::CAST_TIME: return "CAST_TIME";
+            case enchant_vals::spell_mod::FAIL: return "FAIL";
+            case enchant_vals::spell_mod::DIFFICULTY: return "DIFFICULTY";
+            case enchant_vals::spell_mod::EXP: return "EXP";
+            case enchant_vals::spell_mod::SOUND: return "SOUND";
             case enchant_vals::spell_mod::NUM_SPELL_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::spell_mod" );

@@ -639,8 +639,8 @@ class const_talker
         virtual int get_volume() const {
             return 0;
         }
-        virtual int get_weight() const {
-            return 0;
+        virtual units::mass get_weight() const {
+            return 0_gram;
         }
         virtual int get_npc_trust() const {
             return 0;
@@ -742,8 +742,8 @@ class const_talker
         virtual int get_current_speed() const {
             return 0;
         }
-        virtual int get_unloaded_weight() const {
-            return 0;
+        virtual units::mass get_unloaded_weight() const {
+            return 0_gram;
         }
         virtual int get_friendly_passenger_count() const {
             return 0;

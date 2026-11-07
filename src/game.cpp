@@ -734,6 +734,7 @@ void game::setup()
     next_mission_id = 1;
     next_item_uid = 1;
     next_monster_uid = 1;
+    next_vehicle_uid = 1;
     // Setup replaces a session; it must not finalize old injuries into the new map/checkpoint.
     executions().reset_for_load();
     executions().end_restore();
@@ -3851,6 +3852,22 @@ void game::reserve_monster_uid( int64_t uid )
     next_monster_uid = std::max( next_monster_uid, uid + 1 );
 }
 
+int64_t game::assign_vehicle_uid()
+{
+    if( next_vehicle_uid <= 0 || next_vehicle_uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Vehicle identity space exhausted" );
+    }
+    return next_vehicle_uid++;
+}
+
+void game::reserve_vehicle_uid( int64_t uid )
+{
+    if( uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Invalid saved vehicle identity" );
+    }
+    next_vehicle_uid = std::max( next_vehicle_uid, uid + 1 );
+}
+
 int64_t game::assign_item_uid()
 {
     return next_item_uid++;
@@ -4494,10 +4511,17 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
                 knockback( traj, stun, dam_mult );
                 break;
             }
-            if( here.has_flag( ter_furn_flag::TFLAG_LIQUID, pos ) && force_remaining == 0 ) {
-                avatar_action::swim( here, u, pos );
-            } else {
-                u.setpos( here,  traj[i] );
+            u.setpos( here,  traj[i] );
+            // LOOP-B11: deep water ends the flight there, with what walking into it does. It
+            // checked the starting tile, and only once the force was spent, which it never was.
+            // The map isn't re-centred here: callers go on using bubble coordinates.
+            if( here.has_flag( ter_furn_flag::TFLAG_SWIMMABLE, traj[i] ) &&
+                here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, traj[i] ) &&
+                !here.has_flag_furn( "BRIDGE", traj[i] ) && !here.veh_at( traj[i] ) &&
+                !u.has_flag( json_flag_WATERWALKING ) ) {
+                add_msg( m_bad, _( "You land in the water." ) );
+                avatar_action::enter_water( u );
+                break;
             }
         }
     }
@@ -8114,7 +8138,12 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
 
     bool moving = dest_loc != oldpos;
 
-    point_rel_sm submap_shift = place_player( dest_loc );
+    point_rel_sm submap_shift;
+    {
+        // A teleport trap or a fall at dest_loc leaves the OMT change to avatar_moves below.
+        const cata_event_dispatch::avatar_move_scope stepping;
+        submap_shift = place_player( dest_loc );
+    }
     point_rel_ms ms_shift = coords::project_to<coords::ms>( submap_shift );
     oldpos = oldpos - ms_shift.raw();
 
@@ -10107,6 +10136,8 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
     tripoint_bub_ms old_pos = pos;
     const tripoint_abs_ms old_abs_pos = here.get_abs( old_pos );
+    // A fall or a trap on the way leaves the OMT change to avatar_moves at the end.
+    cata_event_dispatch::avatar_move_scope moving;
     const bool z_level_changed = vertical_shift( z_after );
     if( !force ) {
         const point_rel_sm submap_shift = update_map( stairs.x(), stairs.y(), z_level_changed );
@@ -10214,6 +10245,7 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
     u.recoil = MAX_RECOIL;
 
+    moving.end();
     cata_event_dispatch::avatar_moves( old_abs_pos, u, here );
 }
 
@@ -12074,10 +12106,77 @@ bool game::can_pulp_acid_corpse( const Character &you, const mtype &corpse_mtype
 
 namespace cata_event_dispatch
 {
+// How many avatar_move_scopes are open.
+static int avatar_move_depth = 0;
+
+avatar_move_scope::avatar_move_scope()
+{
+    ++avatar_move_depth;
+}
+
+avatar_move_scope::~avatar_move_scope()
+{
+    end();
+}
+
+void avatar_move_scope::end()
+{
+    if( open ) {
+        open = false;
+        --avatar_move_depth;
+    }
+}
+
+// Runs an OMT's entry_eoc or exit_eoc, with the OMT it belongs to and the terrains on both sides
+// of the boundary as context.
+static void run_omt_hook( const effect_on_condition_id &eoc, const tripoint_abs_omt &omt,
+                          const oter_id &left_ter, const oter_id &entered_ter )
+{
+    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    d.set_value( "omt_pos", project_to<coords::ms>( omt ) );
+    d.set_value( "left_oter_id", left_ter.id().str() );
+    d.set_value( "entered_oter_id", entered_ter.id().str() );
+    eoc->activate_activation_only( d, "OMT movement" );
+}
+
+void avatar_changes_omt( const tripoint_abs_ms &old_abs_pos )
+{
+    if( avatar_move_depth > 0 ) {
+        return;
+    }
+    const tripoint_abs_omt old_abs_omt = project_to<coords::omt>( old_abs_pos );
+    const tripoint_abs_omt new_abs_omt = get_avatar().pos_abs_omt();
+    if( old_abs_omt == new_abs_omt ) {
+        return;
+    }
+    const oter_id cur_ter = overmap_buffer.ter( new_abs_omt );
+    const oter_id past_ter = overmap_buffer.ter( old_abs_omt );
+    get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter,
+            overmap_buffer.overmap_special_at( new_abs_omt ).value_or( overmap_special_id() ) );
+    overmap_buffer.add_extra_note( new_abs_omt );
+    // A hook that moves the avatar into another OMT runs that OMT's hooks from inside its own.
+    // Hooks that keep moving it (an entry_eoc teleporting back into an OMT that teleports it
+    // back again) are stopped here rather than recursing until the stack runs out.
+    static int hook_depth = 0;
+    constexpr int max_hook_depth = 8;
+    if( hook_depth >= max_hook_depth ) {
+        debugmsg( "OMT entry_eoc/exit_eoc moved the avatar %d times in a row; not running the "
+                  "hooks of %s and %s", max_hook_depth, past_ter.id().str(), cur_ter.id().str() );
+        return;
+    }
+    restore_on_out_of_scope restore_depth( hook_depth );
+    ++hook_depth;
+    if( !past_ter->get_exit_EOC().is_null() ) {
+        run_omt_hook( past_ter->get_exit_EOC(), old_abs_omt, past_ter, cur_ter );
+    }
+    if( !cur_ter->get_entry_EOC().is_null() ) {
+        run_omt_hook( cur_ter->get_entry_EOC(), new_abs_omt, past_ter, cur_ter );
+    }
+}
+
 void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const map &m )
 {
     const tripoint_bub_ms new_pos = u.pos_bub();
-    const tripoint_abs_ms new_abs_pos = m.get_abs( new_pos );
     mtype_id mount_type;
     if( u.is_mounted() ) {
         mount_type = u.mounted_creature->type->id;
@@ -12085,30 +12184,7 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
     get_event_bus().send<event_type::avatar_moves>( mount_type, m.ter( new_pos ).id(),
             u.current_movement_mode(), u.is_underwater(), new_pos.z() );
 
-    const tripoint_abs_omt old_abs_omt( coords::project_to<coords::omt>(
-                                            old_abs_pos ) );
-    const tripoint_abs_omt new_abs_omt( coords::project_to<coords::omt>(
-                                            new_abs_pos ) );
-    if( old_abs_omt != new_abs_omt ) {
-        const oter_id &cur_ter = overmap_buffer.ter( new_abs_omt );
-        const oter_id &past_ter = overmap_buffer.ter( old_abs_omt );
-        get_event_bus().send<event_type::avatar_enters_omt>( new_abs_omt.raw(), cur_ter,
-                overmap_buffer.overmap_special_at( new_abs_omt ).value_or( overmap_special_id() ) );
-        overmap_buffer.add_extra_note( new_abs_omt );
-        // if the player has moved omt then might trigger an EOC for that OMT
-        if( !past_ter->get_exit_EOC().is_null() ) {
-            dialogue d( get_talker_for( get_avatar() ), nullptr );
-            effect_on_condition_id eoc = past_ter->get_exit_EOC();
-            eoc->activate_activation_only( d, "OMT movement" );
-        }
-
-        if( !cur_ter->get_entry_EOC().is_null() ) {
-            dialogue d( get_talker_for( get_avatar() ), nullptr );
-            effect_on_condition_id eoc = cur_ter->get_entry_EOC();
-            eoc->activate_activation_only( d, "OMT movement" );
-        }
-
-    }
+    avatar_changes_omt( old_abs_pos );
 }
 } // namespace cata_event_dispatch
 

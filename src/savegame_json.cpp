@@ -406,6 +406,9 @@ void player_activity::serialize( JsonOut &json ) const
         json.member( "relative_placement", relative_placement );
         json.member( "values", values );
         json.member( "str_values", str_values );
+        if( !eoc_context.empty() ) {
+            json.member( "eoc_context", eoc_context );
+        }
         json.member( "auto_resume", auto_resume );
         json.member( "monsters", monsters );
     }
@@ -474,6 +477,7 @@ void player_activity::deserialize( const JsonObject &data )
     data.read( "relative_placement", relative_placement );
     values = data.get_int_array( "values" );
     str_values = data.get_string_array( "str_values" );
+    data.read( "eoc_context", eoc_context );
     data.read( "auto_resume", auto_resume );
     data.read( "monsters", monsters );
 
@@ -892,6 +896,9 @@ void Character::load( const JsonObject &data )
     []( const bionic & it ) {
         return it.id.is_null(); // remove obsoleted bionics
     } ), my_bionics->end() );
+    // before the rebuild below, which builds the body from them too
+    data.read( "eoc_added_bodyparts", eoc_added_bodyparts );
+    data.read( "eoc_removed_bodyparts", eoc_removed_bodyparts );
     // We need to ensure that cached_mutations contains no invalid mutations before we do this
     // As every time we add a mutation, we rebuild the enchantment cache, causing errors if
     // we have invalid mutations.
@@ -1239,6 +1246,14 @@ void Character::load( const JsonObject &data )
 void Character::store( JsonOut &json ) const
 {
     Creature::store( json );
+
+    // u_add_body_part and u_lose_body_part
+    if( eoc_added_bodyparts.any() ) {
+        json.member( "eoc_added_bodyparts", eoc_added_bodyparts );
+    }
+    if( eoc_removed_bodyparts.any() ) {
+        json.member( "eoc_removed_bodyparts", eoc_removed_bodyparts );
+    }
 
     if( !weapon.is_null() ) {
         json.member( "weapon", weapon ); // also saves contents
@@ -3953,6 +3968,9 @@ void vehicle::deserialize( const JsonObject &data )
     data.read( "moveDir", mdir );
     data.read( "values", values );
     data.read( "chat_topics", chat_topics );
+    int64_t saved_uid = 0;
+    data.read( "vehicle_uid", saved_uid );
+    persistent_uid.load( saved_uid );
     int turn_dir_int;
     data.read( "turn_dir", turn_dir_int );
     turn_dir = units::from_degrees( turn_dir_int );
@@ -4071,6 +4089,9 @@ void vehicle::serialize( JsonOut &json ) const
     json.member( "om_id", om_id );
     json.member( "values", values );
     json.member( "chat_topics", chat_topics );
+    if( persistent_uid.peek() != 0 ) {
+        json.member( "vehicle_uid", persistent_uid.peek() );
+    }
     json.member( "faceDir", std::lround( to_degrees( face.dir() ) ) );
     json.member( "moveDir", std::lround( to_degrees( move.dir() ) ) );
     json.member( "turn_dir", std::lround( to_degrees( turn_dir ) ) );
@@ -5232,6 +5253,75 @@ void submap::store_phase_reverts( JsonOut &jsout ) const
     jsout.end_array();
 }
 
+void spawn_data::serialize_saved( JsonOut &jsout ) const
+{
+    jsout.start_object();
+    if( !ammo.empty() ) {
+        jsout.member( "ammo" );
+        jsout.start_array();
+        for( const std::pair<const itype_id, jmapgen_int> &a : ammo ) {
+            jsout.start_array();
+            jsout.write( a.first );
+            jsout.write( a.second.val );
+            jsout.write( a.second.valmax );
+            jsout.end_array();
+        }
+        jsout.end_array();
+    }
+    if( !patrol_points_rel_ms.empty() ) {
+        jsout.member( "patrol", patrol_points_rel_ms );
+    }
+    if( !effects.empty() ) {
+        jsout.member( "effects" );
+        jsout.start_array();
+        for( const spawn_effect &eff : effects ) {
+            jsout.start_array();
+            jsout.write( eff.id );
+            jsout.write( eff.duration.val );
+            jsout.write( eff.duration.valmax );
+            jsout.write( eff.intensity.val );
+            jsout.write( eff.intensity.valmax );
+            jsout.write( eff.permanent );
+            jsout.end_array();
+        }
+        jsout.end_array();
+    }
+    if( !str_variables.empty() ) {
+        jsout.member( "str_variables", str_variables );
+    }
+    if( !num_variables.empty() ) {
+        jsout.member( "num_variables", num_variables );
+    }
+    if( !faction.is_empty() ) {
+        jsout.member( "faction", faction );
+    }
+    jsout.end_object();
+}
+
+void spawn_data::deserialize_saved( const JsonObject &jo )
+{
+    jo.allow_omitted_members();
+    for( JsonArray a : jo.get_array( "ammo" ) ) {
+        const itype_id id( a.next_string() );
+        const int val = a.next_int();
+        ammo.emplace( id, jmapgen_int( val, a.next_int() ) );
+    }
+    jo.read( "patrol", patrol_points_rel_ms );
+    for( JsonArray e : jo.get_array( "effects" ) ) {
+        spawn_effect eff;
+        eff.id = efftype_id( e.next_string() );
+        const int dur = e.next_int();
+        eff.duration = jmapgen_int( dur, e.next_int() );
+        const int intensity = e.next_int();
+        eff.intensity = jmapgen_int( intensity, e.next_int() );
+        eff.permanent = e.next_bool();
+        effects.push_back( eff );
+    }
+    jo.read( "str_variables", str_variables );
+    jo.read( "num_variables", num_variables );
+    jo.read( "faction", faction );
+}
+
 void submap::store_spawns( JsonOut &jsout ) const
 {
     jsout.member( "spawns" );
@@ -5247,6 +5337,11 @@ void submap::store_spawns( JsonOut &jsout ) const
         jsout.write( elem.mission_id );
         jsout.write( elem.friendly );
         jsout.write( elem.name );
+        // MONDT-J01: the spawn data, which a pending spawn used to lose when its submap was saved;
+        // left out when there is none, as older saves have it
+        if( !elem.data.empty() ) {
+            elem.data.serialize_saved( jsout );
+        }
         jsout.end_array();
     }
     jsout.end_array();
@@ -5739,10 +5834,14 @@ void submap::load( const JsonValue &jv, const std::string &member_name, int vers
             bool friendly = spawn_entry.next_bool();
             std::optional<std::string> name = std::nullopt;
             spawn_entry.read_next( name );
+            spawn_data data;
+            if( spawn_entry.has_more() ) {
+                data.deserialize_saved( spawn_entry.next_object() );
+            }
             if( spawn_entry.has_more() ) {
                 spawn_entry.throw_error( "Too many values for spawn" );
             }
-            spawn_point tmp( type, count, p, faction_id, mission_id, friendly, name );
+            spawn_point tmp( type, count, p, faction_id, mission_id, friendly, name, data );
             spawns.push_back( tmp );
         }
     } else if( member_name == "vehicles" ) {

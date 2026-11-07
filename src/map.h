@@ -203,6 +203,24 @@ struct bash_params {
     Creature *basher = nullptr;
 };
 
+/**
+ * What bashes tiles while this lives: "explosion", "fire", "vehicle", "collapse" or
+ * "projectile". Bash EOCs and the tile_destroyed event get it as their "cause". A bash with no
+ * cause given is a "smash" when a creature does it, and "other" when nothing is known.
+ */
+class bash_cause_scope
+{
+    public:
+        explicit bash_cause_scope( const char *cause );
+        ~bash_cause_scope();
+        bash_cause_scope( const bash_cause_scope & ) = delete;
+        bash_cause_scope &operator=( const bash_cause_scope & ) = delete;
+        /** The cause of a bash now, by @p basher if a creature does it */
+        static std::string current( const Creature *basher );
+    private:
+        const char *previous;
+};
+
 /** Draw parameters used by map::drawsq() and similar methods. */
 struct drawsq_params {
     private:

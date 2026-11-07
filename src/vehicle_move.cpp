@@ -1113,6 +1113,7 @@ veh_collision vehicle::part_collision( map &here, int part, const tripoint_abs_m
             // Something bashable -- use map::bash to determine outcome
             // NOTE: Floor bashing disabled for balance reasons
             //       Floor values are still used to set damage dealt to vehicle
+            const bash_cause_scope crashing( "vehicle" );
             smashed = here.is_bashable_ter_furn( pos, false ) &&
                       here.bash_resistance( pos, bash_floor ) <= obj_dmg &&
                       here.bash( pos, obj_dmg, false, false, false, this ).success;

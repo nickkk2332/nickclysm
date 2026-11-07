@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "behavior_oracle.h"
+#include "bionics.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_compiler_support.h"
@@ -57,6 +58,7 @@
 #include "npc_json_goal.h"
 #include "options.h"
 #include "pimpl.h"
+#include "player_activity.h"
 #include "point.h"
 #include "power_math.h"
 #include "proficiency.h"
@@ -431,13 +433,26 @@ double damage_level_eval( const_dialogue const &d, char scope,
     return ( *it )->damage_level();
 }
 
+// add_effect keeps a main_parts_only effect on the main part, so read and write it there,
+// or setting it on a hand would add a second effect instead of changing the first
+static bodypart_id effect_bodypart( const efftype_id &id, const std::string &bp_str )
+{
+    if( bp_str.empty() ) {
+        return bodypart_str_id::NULL_ID();
+    }
+    const bodypart_id bp( bp_str );
+    if( !bp.is_valid() ) {
+        return bp;
+    }
+    return id.is_valid() && id->get_main_parts() ? bodypart_id( bp->main_part ) : bp;
+}
+
 double effect_intensity_eval( const_dialogue const &d, char scope,
                               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
-    std::string const bp_str = kwargs.kwarg_or( "bodypart" ).str( d );
-    bodypart_id const bp = bp_str.empty() ? bodypart_str_id::NULL_ID() : bodypart_id( bp_str );
-    effect target =
-        d.const_actor( is_beta( scope ) )->get_effect( efftype_id( params[0].str( d ) ), bp );
+    const efftype_id id( params[0].str( d ) );
+    bodypart_id const bp = effect_bodypart( id, kwargs.kwarg_or( "bodypart" ).str( d ) );
+    effect target = d.const_actor( is_beta( scope ) )->get_effect( id, bp );
     return target.is_null() ? -1 : target.get_intensity();
 }
 
@@ -666,6 +681,290 @@ double sum_traits_of_category_char_has_eval( const_dialogue const &d, char scope
     }
 
     return d.const_actor( is_beta( scope ) )->get_total_in_category_char_has( cat, count_type );
+}
+
+mutation_category_id mutation_category_param( const_dialogue const &d,
+        std::vector<diag_value> const &params, std::string_view func )
+{
+    const mutation_category_id cat( params[0].str( d ) );
+    if( !cat.is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown mutation category "%s")", func, cat.str() );
+    }
+    return cat;
+}
+
+trait_id trait_param( const_dialogue const &d, std::vector<diag_value> const &params,
+                      std::string_view func )
+{
+    const trait_id trait( params[0].str( d ) );
+    if( !trait.is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown trait "%s")", func, trait.str() );
+    }
+    return trait;
+}
+
+// mutation_instability('ALPHA'): the instability mutating towards the category would weigh;
+// 0 for a talker that isn't a character
+double mutation_instability_eval( const_dialogue const &d, char scope,
+                                  std::vector<diag_value> const &params,
+                                  diag_kwargs const & /* kwargs */ )
+{
+    const mutation_category_id cat = mutation_category_param( d, params, "mutation_instability" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr ? 0.0 : guy->get_instability_per_category( cat );
+}
+
+// mutation_category_level('ALPHA'): the strength of the category that gates its threshold and
+// dreams; 0 for a talker that isn't a character
+double mutation_category_level_eval( const_dialogue const &d, char scope,
+                                     std::vector<diag_value> const &params,
+                                     diag_kwargs const & /* kwargs */ )
+{
+    const mutation_category_id cat = mutation_category_param( d, params,
+                                     "mutation_category_level" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    const auto level = guy->mutation_category_level.find( cat );
+    return level == guy->mutation_category_level.end() ? 0.0 : level->second;
+}
+
+// trait_cooldown('SHELL2'): turns until the active trait next pays its cost; 0 for a trait the
+// character doesn't have, or a talker that isn't a character
+double trait_cooldown_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const &params,
+                            diag_kwargs const & /* kwargs */ )
+{
+    const trait_id trait = trait_param( d, params, "trait_cooldown" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr || !guy->has_trait( trait ) ) {
+        return 0.0;
+    }
+    return to_turns<double>( guy->get_cost_timer( trait ) );
+}
+
+// a trait the character doesn't have is left alone
+void trait_cooldown_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const trait_id trait = trait_param( d, params, "trait_cooldown" );
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( guy == nullptr ) {
+        throw math::runtime_error( "trait_cooldown(): talker must be a character" );
+    }
+    if( guy->has_trait( trait ) ) {
+        const double turns = std::clamp( std::round( val ), 0.0,
+                                         to_turns<double>( calendar::INDEFINITELY_LONG_DURATION ) );
+        guy->set_cost_timer( trait, time_duration::from_turns<double>( turns ) );
+    }
+}
+
+// has_active_trait('SHELL2'): 1 if the character has the trait and it is switched on
+double has_active_trait_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const &params,
+                              diag_kwargs const & /* kwargs */ )
+{
+    const trait_id trait = trait_param( d, params, "has_active_trait" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy != nullptr && guy->has_active_mutation( trait ) ? 1.0 : 0.0;
+}
+
+// MUT-J03: bionic state for EOC math. A talker that isn't a character reads 0.
+bionic_id bionic_param( const_dialogue const &d, std::vector<diag_value> const &params,
+                        std::string_view func )
+{
+    const bionic_id bio( params[0].str( d ) );
+    if( !bio.is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown bionic "%s")", func, bio.str() );
+    }
+    return bio;
+}
+
+// The character's first installed copy of the bionic, or null
+bionic *installed_bionic( const Character &guy, const bionic_id &bio )
+{
+    const std::optional<bionic *> found = guy.find_bionic_by_type( bio );
+    return found ? *found : nullptr;
+}
+
+Character &bionic_character( dialogue &d, char scope, std::string_view func )
+{
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( guy == nullptr ) {
+        throw math::runtime_error( "%s(): talker must be a character", func );
+    }
+    return *guy;
+}
+
+// bionic_count('bio_ears'): how many of the bionic are installed; 'ANY' counts every bionic
+double bionic_count_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    if( params[0].str( d ) == "ANY" ) {
+        return guy->num_bionics();
+    }
+    const bionic_id bio = bionic_param( d, params, "bionic_count" );
+    int count = 0;
+    for( const bionic_id &installed : guy->get_bionics() ) {
+        count += installed == bio ? 1 : 0;
+    }
+    return count;
+}
+
+// has_active_bionic('bio_night_vision'): 1 if it is installed and working (powered, not shorted
+// out, not stopped by its fuel threshold)
+double has_active_bionic_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "has_active_bionic" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy != nullptr && guy->has_active_bionic( bio ) ? 1.0 : 0.0;
+}
+
+// bionic_charge('bio_ads'): turns left on its charge timer (a bionic with a "time" that is
+// running); 0 when it isn't installed
+double bionic_charge_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_charge" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    const bionic *installed = guy == nullptr ? nullptr : installed_bionic( *guy, bio );
+    return installed == nullptr ? 0.0 : to_turns<double>( installed->charge_timer );
+}
+
+void bionic_charge_ass( double val, dialogue &d, char scope,
+                        std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_charge" );
+    if( bionic *installed = installed_bionic( bionic_character( d, scope, "bionic_charge" ), bio ) ) {
+        installed->charge_timer = time_duration::from_turns( std::max( 0.0, std::round( val ) ) );
+    }
+}
+
+// bionic_incapacitated('bio_flashlight'): turns until it stops shorting out (an EMP, say)
+double bionic_incapacitated_eval( const_dialogue const &d, char scope,
+                                  std::vector<diag_value> const &params,
+                                  diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_incapacitated" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    const bionic *installed = guy == nullptr ? nullptr : installed_bionic( *guy, bio );
+    return installed == nullptr ? 0.0 : to_turns<double>( installed->incapacitated_time );
+}
+
+void bionic_incapacitated_ass( double val, dialogue &d, char scope,
+                               std::vector<diag_value> const &params,
+                               diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_incapacitated" );
+    Character &guy = bionic_character( d, scope, "bionic_incapacitated" );
+    if( bionic *installed = installed_bionic( guy, bio ) ) {
+        installed->incapacitated_time = time_duration::from_turns( std::max( 0.0, std::round( val ) ) );
+        // a shorted-out bionic is off, as an EMP leaves it
+        if( installed->incapacitated_time > 0_turns && installed->powered ) {
+            guy.deactivate_bionic( *installed, false, true );
+        }
+    }
+}
+
+// bionic_safe_fuel('bio_fuel_wood'): the fraction of power below which the power source burns
+// fuel; -1 when it burns regardless
+double bionic_safe_fuel_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_safe_fuel" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    const bionic *installed = guy == nullptr ? nullptr : installed_bionic( *guy, bio );
+    return installed == nullptr ? 0.0 : installed->get_safe_fuel_thresh();
+}
+
+void bionic_safe_fuel_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_safe_fuel" );
+    if( bionic *installed = installed_bionic( bionic_character( d, scope, "bionic_safe_fuel" ),
+                            bio ) ) {
+        installed->set_safe_fuel_thresh( static_cast<float>( std::clamp( val, -1.0, 1.0 ) ) );
+    }
+}
+
+// bionic_cost('bio_night_vision', 'type': 'activate'): a cost from the bionic's definition, in
+// millijoules: 'activate' (the default), 'deactivate', 'react' (each time it recharges) or
+// 'trigger'
+double bionic_cost_eval( const_dialogue const &d, char /* scope */,
+                         std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const bionic_id bio = bionic_param( d, params, "bionic_cost" );
+    const std::string type = kwargs.kwarg_or( "type", "activate" ).str( d );
+    if( type == "activate" ) {
+        return units::to_millijoule( bio->power_activate );
+    } else if( type == "deactivate" ) {
+        return units::to_millijoule( bio->power_deactivate );
+    } else if( type == "react" ) {
+        return units::to_millijoule( bio->power_over_time );
+    } else if( type == "trigger" ) {
+        return units::to_millijoule( bio->power_trigger );
+    }
+    throw math::runtime_error( R"(bionic_cost(): unknown type "%s"; use 'activate', 'deactivate', )"
+                               R"('react' or 'trigger')", type );
+}
+
+// bionic_power(): stored bionic power in millijoules, assignable within 0 and the maximum
+double bionic_power_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr ? 0.0 : units::to_millijoule( guy->get_power_level() );
+}
+
+void bionic_power_ass( double val, dialogue &d, char scope,
+                       std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    Character &guy = bionic_character( d, scope, "bionic_power" );
+    const double max = units::to_millijoule( guy.get_max_power_level() );
+    guy.set_power_level( units::from_millijoule( static_cast<std::int64_t>( std::clamp( std::round(
+                             val ), 0.0, max ) ) ) );
+}
+
+double bionic_power_max_eval( const_dialogue const &d, char scope,
+                              std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr ? 0.0 : units::to_millijoule( guy->get_max_power_level() );
+}
+
+// activity_moves_left(): the moves (100 a turn) the current activity has left; 0 without one,
+// or for a talker that isn't a character
+double activity_moves_left_eval( const_dialogue const &d, char scope,
+                                 std::vector<diag_value> const & /* params */,
+                                 diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr || !guy->activity ? 0.0 : guy->activity.moves_left;
+}
+
+// 0 ends the activity at its next turn, as if its time had run out; without an activity it does
+// nothing
+void activity_moves_left_ass( double val, dialogue &d, char scope,
+                              std::vector<diag_value> const & /* params */,
+                              diag_kwargs const & /* kwargs */ )
+{
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( guy == nullptr ) {
+        throw math::runtime_error( "activity_moves_left(): talker must be a character" );
+    }
+    if( guy->activity ) {
+        player_activity &act = guy->activity;
+        act.moves_left = static_cast<int>( std::clamp( std::round( val ), 0.0,
+                                           static_cast<double>( calendar::INDEFINITELY_LONG ) ) );
+        // keeps the progress shown between 0 and 100%
+        act.moves_total = std::max( act.moves_total, act.moves_left );
+    }
 }
 
 double has_flag_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
@@ -1372,6 +1671,101 @@ double spell_difficulty_eval( const_dialogue const &d, char scope,
     throw math::runtime_error( R"(Unknown spell id "%s" for spell_difficulty_eval)", sid_str );
 }
 
+// MAGIC-J02: what a cast of the spell would do now. The character's own spell, or a level 0 one
+// if it doesn't know the spell; with 'baseline', its level without temporary adjustments.
+spell spell_for_math( const Character &guy, const spell_id &id, bool baseline )
+{
+    if( guy.magic->knows_spell( id ) ) {
+        const spell &known = guy.magic->get_spell( id );
+        return baseline ? spell( id, known.xp() ) : known;
+    }
+    return spell( id );
+}
+
+spell_id spell_param( const_dialogue const &d, std::vector<diag_value> const &params,
+                      std::string_view func )
+{
+    const spell_id id( params[0].str( d ) );
+    if( !id.is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown spell "%s")", func, id.str() );
+    }
+    return id;
+}
+
+// Runs @p read on the spell for the talker; 0 for a talker that isn't a character
+template<typename Read>
+double spell_value_for_math( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const &kwargs,
+                             std::string_view func, Read read )
+{
+    const spell_id id = spell_param( d, params, func );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    const bool baseline = is_true( kwargs.kwarg_or( "baseline" ).dbl( d ) );
+    return read( spell_for_math( *guy, id, baseline ), *guy );
+}
+
+double spell_fail_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                        diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_fail",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.spell_fail( guy ) );
+    } );
+}
+
+double spell_casting_exp_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_casting_exp",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.casting_exp( guy ) );
+    } );
+}
+
+double spell_sound_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                         diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_sound",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.sound_volume( guy ) );
+    } );
+}
+
+double spell_energy_cost_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_energy_cost",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.energy_cost( guy ) );
+    } );
+}
+
+double spell_cast_time_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    return spell_value_for_math( d, scope, params, kwargs, "spell_cast_time",
+    []( const spell & sp, const Character & guy ) {
+        return static_cast<double>( sp.casting_time( guy ) );
+    } );
+}
+
+// XP still needed for the next level of a spell the character knows; -1 otherwise, as
+// spell_exp() reads
+double spell_exp_to_next_level_eval( const_dialogue const &d, char scope,
+                                     std::vector<diag_value> const &params,
+                                     diag_kwargs const & /* kwargs */ )
+{
+    const spell_id id = spell_param( d, params, "spell_exp_to_next_level" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr || !guy->magic->knows_spell( id ) ) {
+        return -1.0;
+    }
+    return guy->magic->get_spell( id ).exp_to_next_level();
+}
+
 double spell_exp_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
                        diag_kwargs const & /* kwargs */ )
 {
@@ -1622,13 +2016,85 @@ double effect_duration_eval( const_dialogue const &d, char scope,
     diag_value bp_val = kwargs.kwarg_or( "bodypart" );
     diag_value unit_val = kwargs.kwarg_or( "unit" );
 
-    std::string const &bp_str = bp_val.str( d );
-    bodypart_id const bp = bp_str.empty() ? bodypart_str_id::NULL_ID() : bodypart_id( bp_str );
-    effect target =
-        d.const_actor( is_beta( scope ) )->get_effect( efftype_id( params[0].str( d ) ), bp );
+    const efftype_id id( params[0].str( d ) );
+    bodypart_id const bp = effect_bodypart( id, bp_val.str( d ) );
+    effect target = d.const_actor( is_beta( scope ) )->get_effect( id, bp );
     return target.is_null()
            ? -1
            : _time_in_unit( to_seconds<double>( target.get_duration() ), unit_val.str( d ) );
+}
+
+// The creature, effect and body part effect_duration() and effect_intensity() set
+struct effect_to_set {
+    Creature &who;
+    efftype_id id;
+    bodypart_id bp;
+};
+
+effect_to_set get_effect_to_set( dialogue &d, char scope, std::vector<diag_value> const &params,
+                                 diag_kwargs const &kwargs, std::string_view func )
+{
+    Creature *who = d.actor( is_beta( scope ) )->get_creature();
+    if( who == nullptr ) {
+        throw math::runtime_error( "%s(): only a creature's effects can be set", func );
+    }
+    const efftype_id id( params[0].str( d ) );
+    if( !id.is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown effect "%s")", func, id.str() );
+    }
+    const std::string bp_str = kwargs.kwarg_or( "bodypart" ).str( d );
+    if( !bp_str.empty() && !bodypart_str_id( bp_str ).is_valid() ) {
+        throw math::runtime_error( R"(%s(): unknown body part "%s")", func, bp_str );
+    }
+    return { *who, id, effect_bodypart( id, bp_str ) };
+}
+
+// In the unit effect_duration() reads in. A missing effect is added; 0 or less removes it, as
+// u_lose_effect does.
+void effect_duration_ass( double val, dialogue &d, char scope,
+                          std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const effect_to_set eff = get_effect_to_set( d, scope, params, kwargs, "effect_duration" );
+    const std::string unit = kwargs.kwarg_or( "unit" ).str( d );
+    const double turns = std::min( std::round( val * _turns_per_unit( unit ) ),
+                                   to_turns<double>( calendar::INDEFINITELY_LONG_DURATION ) );
+    effect &target = eff.who.get_effect( eff.id, eff.bp );
+    if( turns < 1 ) {
+        if( !target.is_null() ) {
+            eff.who.remove_effect( eff.id, eff.bp );
+        }
+    } else if( target.is_null() ) {
+        eff.who.add_effect( eff.id, time_duration::from_turns<double>( turns ), eff.bp );
+    } else {
+        target.set_duration( time_duration::from_turns<double>( turns ) );
+    }
+}
+
+// Clamped to what the effect allows; below 1 removes the effect. A missing effect is left
+// alone, as there is no duration to give it.
+void effect_intensity_ass( double val, dialogue &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const effect_to_set eff = get_effect_to_set( d, scope, params, kwargs, "effect_intensity" );
+    const effect &target = eff.who.get_effect( eff.id, eff.bp );
+    if( target.is_null() ) {
+        return;
+    }
+    if( std::round( val ) < 1 ) {
+        eff.who.remove_effect( eff.id, eff.bp );
+        return;
+    }
+    const int intensity = static_cast<int>( std::min( std::round( val ),
+                                            static_cast<double>( target.get_max_intensity() ) ) );
+    if( eff.id->intensity_duration() > 0_turns ) {
+        // An effect whose intensity follows its duration ignores an intensity it is given;
+        // set the duration that gives this intensity instead
+        effect &changed = eff.who.get_effect( eff.id, eff.bp );
+        changed.set_duration( eff.id->intensity_duration() * ( intensity - 1 ) + 1_turns );
+        return;
+    }
+    // add_effect changes the intensity as the game does, with its messages and morale
+    eff.who.add_effect( eff.id, 0_turns, eff.bp, false, intensity, true );
 }
 
 double proficiency_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
@@ -2071,15 +2537,18 @@ void calories_ass( double val, dialogue &d, char scope,
 double weight_eval( const_dialogue const &d, char scope,
                     std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
 {
-    if( d.const_actor( is_beta( scope ) )->get_const_character() ||
-        d.const_actor( is_beta( scope ) )->get_const_monster() ) {
-        return d.const_actor( is_beta( scope ) )->get_weight();
+    const_talker const *actor = d.const_actor( is_beta( scope ) );
+    // in milligrams, as a double: a vehicle (cargo and passengers included) or a big monster
+    // is heavier than the 2147 kg an int holds
+    if( actor->get_const_character() || actor->get_const_monster() ||
+        actor->get_const_vehicle() ) {
+        return static_cast<double>( to_milligram( actor->get_weight() ) );
     }
-    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    item_location const *it = actor->get_const_item();
     if( it && *it ) {
-        return static_cast<int>( to_milligram( it->get_item()->weight() ) );
+        return static_cast<double>( to_milligram( it->get_item()->weight() ) );
     }
-    throw math::runtime_error( "For weight(), talker is not character nor item" );
+    throw math::runtime_error( "For weight(), talker is not a creature, item or vehicle" );
 }
 
 double quality_eval( const_dialogue const &d, char scope,
@@ -2765,6 +3234,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "_test_str_len_", { "g", -1, test_str_len, {}, { "1", "2", "3" } } },
     { "addiction_intensity", { "un", 1, addiction_intensity_eval } },
     { "addiction_turns", { "un", 1, addiction_turns_eval, addiction_turns_ass } },
+    { "activity_moves_left", { "un", 0, activity_moves_left_eval, activity_moves_left_ass } },
     { "armor", { "un", 2, armor_eval } },
     { "arm_strength", { "un", 0, arm_strength_eval } },
     { "artifact_resonance", { "un", 0, artifact_resonance_eval } },
@@ -2780,8 +3250,8 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "degradation", { "un", 0, degradation_eval, degradation_ass } },
     { "distance", { "g", 2, distance_eval } },
     { "light_level", { "g", 1, light_level_eval } },
-    { "effect_intensity", { "un", 1, effect_intensity_eval, {}, { "bodypart" } } },
-    { "effect_duration", { "un", 1, effect_duration_eval, {}, { "bodypart", "unit" } } },
+    { "effect_intensity", { "un", 1, effect_intensity_eval, effect_intensity_ass, { "bodypart" } } },
+    { "effect_duration", { "un", 1, effect_duration_eval, effect_duration_ass, { "bodypart", "unit" } } },
     { "limb_score", { "un", 1, limb_score_eval, {}, { "type" } } },
     { "health", { "un", 0, health_eval, health_ass } },
     { "hunger", { "un", 0, hunger_eval, hunger_ass } },
@@ -2803,6 +3273,18 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "has_trait", { "un", 1, has_trait_eval } },
     { "sum_traits_of_category", { "un", 1, sum_traits_of_category_eval, {}, { "type" } } },
     { "sum_traits_of_category_char_has", { "un", 1, sum_traits_of_category_char_has_eval, {}, { "type" } } },
+    { "has_active_trait", { "un", 1, has_active_trait_eval } },
+    { "bionic_count", { "un", 1, bionic_count_eval } },
+    { "has_active_bionic", { "un", 1, has_active_bionic_eval } },
+    { "bionic_charge", { "un", 1, bionic_charge_eval, bionic_charge_ass } },
+    { "bionic_incapacitated", { "un", 1, bionic_incapacitated_eval, bionic_incapacitated_ass } },
+    { "bionic_safe_fuel", { "un", 1, bionic_safe_fuel_eval, bionic_safe_fuel_ass } },
+    { "bionic_cost", { "g", 1, bionic_cost_eval, {}, { "type" } } },
+    { "bionic_power", { "un", 0, bionic_power_eval, bionic_power_ass } },
+    { "bionic_power_max", { "un", 0, bionic_power_max_eval } },
+    { "mutation_category_level", { "un", 1, mutation_category_level_eval } },
+    { "mutation_instability", { "un", 1, mutation_instability_eval } },
+    { "trait_cooldown", { "un", 1, trait_cooldown_eval, trait_cooldown_ass } },
     { "has_proficiency", { "un", 1, knows_proficiency_eval } },
     { "has_wielded_with_flag", { "un", 1, has_wielded_with_flag_eval } },
     { "has_var", { "g", 1, has_var_eval } },
@@ -2843,6 +3325,12 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "spell_count", { "un", 0, spell_count_eval, {}, { "school" } } },
     { "spell_difficulty", { "un", 1, spell_difficulty_eval, {}, { "baseline" } } },
     { "spell_exp", { "un", 1, spell_exp_eval, spell_exp_ass } },
+    { "spell_exp_to_next_level", { "un", 1, spell_exp_to_next_level_eval } },
+    { "spell_fail", { "un", 1, spell_fail_eval, {}, { "baseline" } } },
+    { "spell_casting_exp", { "un", 1, spell_casting_exp_eval, {}, { "baseline" } } },
+    { "spell_sound", { "un", 1, spell_sound_eval, {}, { "baseline" } } },
+    { "spell_energy_cost", { "un", 1, spell_energy_cost_eval, {}, { "baseline" } } },
+    { "spell_cast_time", { "un", 1, spell_cast_time_eval, {}, { "baseline" } } },
     { "spell_exp_for_level", { "g", 2, spell_exp_for_level_eval } },
     { "spell_level", { "un", 1, spell_level_eval, spell_level_ass } },
     { "spell_level_adjustment", { "un", 1, spell_level_adjustment_eval, spell_level_adjustment_ass } },
