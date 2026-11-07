@@ -470,8 +470,11 @@ TEST_CASE( "map_route_player_into_danger", "[map][pathfinding]" )
             place_wreckage( m, obstacles );
             WHEN( "map::route does pathfinding" ) {
                 const std::vector<tripoint_bub_ms> path = m.route( pc, t );
-                THEN( "route goes through the sharp wreckage" ) {
-                    CHECK( path == expected_path );
+                // The player's path settings avoid sharp tiles outright (traps only cost more), and
+                // the pathfinding cache knows sharp furniture as it knows sharp terrain (SPAT-J03).
+                // This used to route through only because the cache ignored furniture flags.
+                THEN( "no route goes over the sharp wreckage" ) {
+                    CHECK( path.empty() );
                 }
             }
         }

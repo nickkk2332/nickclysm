@@ -76,7 +76,6 @@
     "name": { "str": "test dryer" },
     "description": "MAP-J03 fixture: the base item of the test dryer appliance.",
     "weight": "25 kg",
-    "to_hit": -1,
     "material": [ "plastic", "steel" ],
     "volume": "60 L",
     "longest_side": "70 cm",
