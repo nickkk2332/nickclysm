@@ -216,7 +216,7 @@
     "description": "Test trait that splits off a slime."
   },
   {
-    "//": "MUT-J06 fixture: a modded trait with the web weaving activation.",
+    "//": "MUT-J06 fixture: a modded trait with the web weaving activation. WEBWALK as vanilla WEB_WEAVER keeps WEB_WALKER's: the web placed under a weaver who isn't a web walker is torn at once (decrease_intensity_on_contact).",
     "type": "mutation",
     "id": "TEST_M17A_WEAVER",
     "name": { "str": "Test Weaver" },
@@ -224,6 +224,7 @@
     "valid": false,
     "active": true,
     "builtin_activation": "web",
+    "flags": [ "WEBWALK" ],
     "description": "Test trait that weaves webs."
   },
   {
