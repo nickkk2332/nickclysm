@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <initializer_list>
 #include <ostream>
 #include <unordered_set>
 
@@ -360,24 +361,21 @@ void scen_blacklist::load_scen_blacklist( const JsonObject &jo, std::string_view
 
 void scen_blacklist::load( const JsonObject &jo, std::string_view )
 {
-    if( !scenarios.empty() ) {
-        DebugLog( D_INFO, DC_ALL ) <<
-                                   "Attempted to load scenario blacklist with an existing scenario blacklist, resetting blacklist info";
-        reset_scenarios_blacklist();
-    }
-
     const std::string bl_stype = jo.get_string( "subtype" );
+    std::set<string_id<scenario>> listed;
+    for( const std::string line : jo.get_array( "scenarios" ) ) {
+        listed.emplace( line );
+    }
 
     if( bl_stype == "whitelist" ) {
+        // A later whitelist replaces an earlier one
         whitelist = true;
+        whitelisted = std::move( listed );
     } else if( bl_stype == "blacklist" ) {
-        whitelist = false;
+        // Blacklists add up
+        blacklisted.insert( listed.begin(), listed.end() );
     } else {
         jo.throw_error( "Blacklist subtype is not a valid subtype." );
-    }
-
-    for( const std::string line : jo.get_array( "scenarios" ) ) {
-        scenarios.emplace( line );
     }
 }
 
@@ -389,25 +387,26 @@ void scen_blacklist::finalize()
     for( const scenario &scen : all_scenarios ) {
         all_scens.emplace_back( scen.ident() );
     }
-    for( const string_id<scenario> &sc : sc_blacklist.scenarios ) {
-        if( std::find( all_scens.begin(), all_scens.end(), sc ) == all_scens.end() ) {
-            debugmsg( "Scenario blacklist contains invalid scenario" );
+    for( const std::set<string_id<scenario>> *listed : {
+             &blacklisted, &whitelisted
+         } ) {
+        for( const string_id<scenario> &sc : *listed ) {
+            if( std::find( all_scens.begin(), all_scens.end(), sc ) == all_scens.end() ) {
+                debugmsg( "Scenario blacklist contains invalid scenario %s", sc.str() );
+            }
         }
     }
 
-    if( sc_blacklist.whitelist ) {
-        std::set<string_id<scenario>> listed_scenarios = sc_blacklist.scenarios;
-        sc_blacklist.scenarios.clear();
-        for( const scenario &scen : scenario::get_all() ) {
-            sc_blacklist.scenarios.insert( scen.ident() );
-        }
-        for( auto i = sc_blacklist.scenarios.begin(); i != sc_blacklist.scenarios.end(); ) {
-            if( listed_scenarios.count( *i ) != 0 ) {
-                i = sc_blacklist.scenarios.erase( i );
-            } else {
-                ++i;
+    scenarios.clear();
+    if( whitelist ) {
+        // Everything the whitelist doesn't list; a blacklist can't hide what it lists
+        for( const string_id<scenario> &sc : all_scens ) {
+            if( whitelisted.count( sc ) == 0 ) {
+                scenarios.insert( sc );
             }
         }
+    } else {
+        scenarios = blacklisted;
     }
 }
 
@@ -415,6 +414,8 @@ void reset_scenarios_blacklist()
 {
     sc_blacklist.scenarios.clear();
     sc_blacklist.whitelist = false;
+    sc_blacklist.blacklisted.clear();
+    sc_blacklist.whitelisted.clear();
 }
 
 // The permitted lists are cached for the avatar, and the chargen_allow_npc filter is applied

@@ -64,6 +64,7 @@
 #include "debug.h"
 #include "dialogue_chatbin.h"
 #include "effect.h"
+#include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enum_conversions.h"
 #include "errand.h"
@@ -76,6 +77,7 @@
 #include "flat_set.h"
 #include "game.h"
 #include "game_constants.h"
+#include "global_vars.h"
 #include "inventory.h"
 #include "item.h"
 #include "item_contents.h"
@@ -423,23 +425,16 @@ void player_activity::deserialize( const JsonObject &data )
     int tmppos = 0;
 
     bool is_obsolete = false;
-    std::set<std::string> obs_activities {
-        "ACT_EAT_MENU", // Remove after 0.J
-        "ACT_CONSUME_FOOD_MENU", // Remove after 0.J
-        "ACT_CONSUME_DRINK_MENU", // Remove after 0.J
-        "ACT_CONSUME_MEDS_MENU", // Remove after 0.J
-        "ACT_ARMOR_LAYERS", // Remove after 0.J
-        "ACT_TRAIN_TEACHER", // Remove after 0.J
-        "ACT_TIDY_UP", // Remove after 0.J
-        "ACT_FERTILIZE_PLOT" // Remove after 0.J
-    };
     if( !data.read( "type", tmptype ) ) {
         // Then it's a legacy save.
         int tmp_type_legacy = data.get_int( "type" );
         deserialize_legacy_type( tmp_type_legacy, type );
-    } else if( !obs_activities.count( tmptype ) ) {
-        type = activity_id( tmptype );
+    } else if( const std::optional<activity_id> migrated = activity_type::migrate_saved(
+                   activity_id( tmptype ) ) ) {
+        // An activity_migration can rename the type
+        type = *migrated;
     } else {
+        // or drop the activity (obsolete activities are activity_migrations without "to")
         is_obsolete = true;
     }
 
@@ -1226,7 +1221,14 @@ void Character::load( const JsonObject &data )
     for( JsonObject elem : data.get_array( "queued_effect_on_conditions" ) ) {
         queued_eoc temp;
         temp.time = time_point( elem.get_int( "time" ) );
-        temp.eoc = effect_on_condition_id( elem.get_string( "eoc" ) );
+        const std::optional<effect_on_condition_id> eoc = effect_on_conditions::migrate_saved(
+                    effect_on_condition_id( elem.get_string( "eoc" ) ) );
+        if( !eoc ) {
+            // An effect_on_condition_migration drops it
+            elem.allow_omitted_members();
+            continue;
+        }
+        temp.eoc = *eoc;
         elem.read( "context", temp.context );
         game::legacy_migrate_npctalk_var_prefix( temp.context );
         elem.read( "beta", temp.beta );
@@ -1234,6 +1236,7 @@ void Character::load( const JsonObject &data )
         queued_effect_on_conditions.push( temp );
     }
     data.read( "inactive_eocs", inactive_effect_on_condition_vector );
+    effect_on_conditions::migrate_saved( inactive_effect_on_condition_vector );
 
     walk.reset();
     if( data.has_object( "walk" ) ) {
@@ -2493,7 +2496,8 @@ void monster::load( const JsonObject &data )
     // Allocate legacy identities when loading, before another master save can be written.
     persistent_id();
 
-    const mtype_id montype( data.get_string( "typeid", "invalid*type" ) );
+    const mtype_id montype = monster_migrations::migrate( mtype_id( data.get_string( "typeid",
+                             "invalid*type" ) ) );
     if( montype.is_valid() ) {
         type = &montype.obj();
     } else { // type is invalid (monster deleted from data - replace with something neutral)
@@ -3605,16 +3609,8 @@ void item::io( Archive &archive )
         }
     }
 
-    static const std::set<std::string> removed_item_vars = {
-        // Searchlight monster setting vars
-        "SL_PREFER_UP", "SL_PREFER_DOWN", "SL_PREFER_RIGHT", "SL_PREFER_LEFT", "SL_SPOT_X", "SL_SPOT_Y", "SL_POWER", "SL_DIR",
-        // Remove stored translated gerund in favor of storing the inscription tool type
-        "item_label_type", "item_note_type"
-    };
-
-    for( const std::string &var : removed_item_vars ) {
-        item_vars.erase( var );
-    }
+    // Renamed and removed item variables are var_migrations with the "item" scope
+    get_globals().migrate_vars( *item_vars, var_scope::item );
 
     current_phase = static_cast<phase_id>( cur_phase );
     // override phase if frozen, needed for legacy save
@@ -3997,6 +3993,7 @@ void vehicle::deserialize( const JsonObject &data )
     data.read( "faceDir", fdir );
     data.read( "moveDir", mdir );
     data.read( "values", values );
+    get_globals().migrate_vars( values, var_scope::vehicle );
     data.read( "chat_topics", chat_topics );
     int64_t saved_uid = 0;
     data.read( "vehicle_uid", saved_uid );
@@ -4442,13 +4439,7 @@ void Creature::load( const JsonObject &jsin )
     // u/npc variables
     jsin.read( "values", values );
     // potentially migrate some values
-    for( std::pair<std::string, std::string> migration : get_globals().migrations ) {
-        if( values.count( migration.first ) != 0 ) {
-            auto extracted = values.extract( migration.first );
-            extracted.key() = migration.second;
-            values.insert( std::move( extracted ) );
-        }
-    }
+    get_globals().migrate_vars( values, is_monster() ? var_scope::monster : var_scope::character );
 
     game::legacy_migrate_npctalk_var_prefix( values );
 
@@ -5269,6 +5260,60 @@ void field_type_migrations::check()
     }
 }
 
+// monster_migration entries: the type a saved monster becomes; none: it is removed
+static std::map<mtype_id, std::optional<mtype_id>> mon_migrations;
+
+void monster_migrations::load( const JsonObject &jo )
+{
+    const mtype_id from( jo.get_string( "from" ) );
+    std::optional<mtype_id> to;
+    if( jo.has_member( "to" ) ) {
+        to = mtype_id( jo.get_string( "to" ) );
+    }
+    // A later migration of the same id replaces the earlier one
+    mon_migrations.insert_or_assign( from, to );
+}
+
+void monster_migrations::reset()
+{
+    mon_migrations.clear();
+}
+
+void monster_migrations::check()
+{
+    for( const auto &[from, to] : mon_migrations ) {
+        if( to && !to->is_valid() ) {
+            debugmsg( "monster_migration from %s names a monster type that does not exist: %s",
+                      from.str(), to->str() );
+        }
+    }
+}
+
+mtype_id monster_migrations::migrate( const mtype_id &id )
+{
+    const auto it = mon_migrations.find( id );
+    if( it == mon_migrations.end() || !it->second ) {
+        return id;
+    }
+    return *it->second;
+}
+
+bool monster_migrations::removes( const mtype_id &id )
+{
+    const auto it = mon_migrations.find( id );
+    return it != mon_migrations.end() && !it->second;
+}
+
+bool monster_migrations::removes( const JsonObject &saved_monster )
+{
+    if( mon_migrations.empty() || !saved_monster.has_string( "typeid" ) ||
+        !removes( mtype_id( saved_monster.get_string( "typeid" ) ) ) ) {
+        return false;
+    }
+    saved_monster.allow_omitted_members();
+    return true;
+}
+
 void submap::store_phase_reverts( JsonOut &jsout ) const
 {
     jsout.member( "phase_reverts" );
@@ -5854,7 +5899,8 @@ void submap::load( const JsonValue &jv, const std::string &member_name, int vers
         JsonArray spawns_json = jv;
         for( JsonArray spawn_entry : spawns_json ) {
             // TODO: json should know how to read an string_id
-            const mtype_id type = mtype_id( spawn_entry.next_string() );
+            const mtype_id saved_type( spawn_entry.next_string() );
+            const mtype_id type = monster_migrations::migrate( saved_type );
             int count = spawn_entry.next_int();
             int i = spawn_entry.next_int();
             int j = spawn_entry.next_int();
@@ -5870,6 +5916,9 @@ void submap::load( const JsonValue &jv, const std::string &member_name, int vers
             }
             if( spawn_entry.has_more() ) {
                 spawn_entry.throw_error( "Too many values for spawn" );
+            }
+            if( monster_migrations::removes( saved_type ) ) {
+                continue;
             }
             spawn_point tmp( type, count, p, faction_id, mission_id, friendly, name, data );
             spawns.push_back( tmp );

@@ -68,5 +68,45 @@
     "based_on": "time",
     "can_resume": false,
     "auto_needs": true
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_EAT_MENU"
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_CONSUME_FOOD_MENU"
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_CONSUME_DRINK_MENU"
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_CONSUME_MEDS_MENU"
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_ARMOR_LAYERS"
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_TRAIN_TEACHER"
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_TIDY_UP"
+  },
+  {
+    "type": "activity_migration",
+    "//": "A saved activity of this obsolete type is dropped.  Remove after 0.J",
+    "from": "ACT_FERTILIZE_PLOT"
   }
 ]

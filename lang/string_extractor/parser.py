@@ -109,6 +109,7 @@ def dummy_parser(json, origin):
 
 parsers = {
     "achievement": parse_achievement,
+    "activity_migration": dummy_parser,
     "activity_type": parse_activity_type,
     "addiction_type": parse_addiction_type,
     "ammo_effect": dummy_parser,
@@ -144,6 +145,7 @@ parsers = {
     "dream": parse_dream,
     "disease_type": dummy_parser,
     "effect_on_condition": parse_effect_on_condition,
+    "effect_on_condition_migration": dummy_parser,
     "execution": parse_execution,
     "ability": parse_ability,
     "damage_rule": parse_damage_rule,
@@ -201,6 +203,7 @@ parsers = {
     "monster_blacklist": dummy_parser,
     "monster_faction": dummy_parser,
     "monster_flag": dummy_parser,
+    "monster_migration": dummy_parser,
     "monster_whitelist": dummy_parser,
     "monstergroup": dummy_parser,
     "mod_setting": parse_mod_setting,

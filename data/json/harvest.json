@@ -1674,10 +1674,9 @@
     "id": "zombie_rust",
     "type": "harvest",
     "copy-from": "zombie_humanoid",
-    "delete": { "entries": [ { "drop": "meat_tainted", "type": "flesh", "mass_ratio": 0.25 } ] },
+    "//": "Before 2.0 a delete of meat_tainted (not in zombie_humanoid) cancelled an extend of meat_tainted; the result is kept",
     "extend": {
       "entries": [
-        { "drop": "meat_tainted", "type": "flesh", "mass_ratio": 0.175 },
         { "drop": "budget_steel_chunk", "type": "flesh", "mass_ratio": 0.075 },
         { "drop": "scrap", "type": "flesh", "mass_ratio": 0.025 }
       ]

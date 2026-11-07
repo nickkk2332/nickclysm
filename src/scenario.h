@@ -177,9 +177,17 @@ struct scenario_sorter {
     bool operator()( const scenario *a, const scenario *b ) const;
 };
 
+// SCENARIO_BLACKLIST: every "blacklist" adds its scenarios to the hidden ones, and the last
+// "whitelist" hides every scenario it doesn't list, whatever a blacklist says
 struct scen_blacklist {
+    // The scenarios hidden, worked out by finalize() from the lists below
     std::set<string_id<scenario>> scenarios;
+    // Whether a whitelist is in force
     bool whitelist = false;
+    // Every blacklist's scenarios
+    std::set<string_id<scenario>> blacklisted;
+    // The last whitelist's scenarios
+    std::set<string_id<scenario>> whitelisted;
 
     static void load_scen_blacklist( const JsonObject &jo, std::string_view src );
     void load( const JsonObject &jo, std::string_view );

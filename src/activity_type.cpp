@@ -3,6 +3,7 @@
 #include <functional>
 #include <initializer_list>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -125,6 +126,29 @@ void activity_type::finalize_all()
     activity_type_factory.finalize();
 }
 
+// activity_migration entries: the type a saved activity becomes; none: the activity is dropped
+static std::map<activity_id, std::optional<activity_id>> activity_migrations;
+
+void activity_type::load_migration( const JsonObject &jo )
+{
+    const activity_id from( jo.get_string( "from" ) );
+    std::optional<activity_id> to;
+    if( jo.has_member( "to" ) ) {
+        to = activity_id( jo.get_string( "to" ) );
+    }
+    // A later migration of the same id replaces the earlier one
+    activity_migrations.insert_or_assign( from, to );
+}
+
+std::optional<activity_id> activity_type::migrate_saved( const activity_id &id )
+{
+    const auto it = activity_migrations.find( id );
+    if( it == activity_migrations.end() ) {
+        return id;
+    }
+    return it->second;
+}
+
 const std::vector<activity_type> &activity_type::get_all()
 {
     return activity_type_factory.get_all();
@@ -167,6 +191,13 @@ void activity_type::check_consistency()
                       pair.first.c_str() );
         }
     }
+
+    for( const auto &[from, to] : activity_migrations ) {
+        if( to && !to->is_valid() ) {
+            debugmsg( "activity_migration from %s names an activity that does not exist: %s",
+                      from.str(), to->str() );
+        }
+    }
 }
 
 void activity_type::call_do_turn( player_activity *act, Character *you ) const
@@ -193,6 +224,7 @@ bool activity_type::call_finish( player_activity *act, Character *you ) const
 void activity_type::reset()
 {
     activity_type_factory.reset();
+    activity_migrations.clear();
 }
 
 std::string activity_type::stop_phrase() const

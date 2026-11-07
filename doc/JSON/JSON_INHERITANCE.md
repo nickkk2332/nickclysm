@@ -171,6 +171,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 |---|---|
 | `ability` | copy-from |
 | `achievement` | copy-from |
+| `activity_migration` | none |
 | `activity_type` | copy-from |
 | `addiction_type` | copy-from |
 | `ammo_effect` | copy-from |
@@ -208,6 +209,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 | `dream` | copy-from |
 | `effect_migration` | none |
 | `effect_on_condition` | copy-from |
+| `effect_on_condition_migration` | none |
 | `effect_type` | copy-from |
 | `emit` | none |
 | `enchantment` | copy-from |
@@ -259,6 +261,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 | `MONSTER_BLACKLIST` | none |
 | `MONSTER_FACTION` | copy-from |
 | `monster_flag` | copy-from |
+| `monster_migration` | none |
 | `MONSTER_WHITELIST` | none |
 | `monstergroup` | merges |
 | `mood_face` | copy-from |
@@ -374,6 +377,17 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 ## Behavior
 
 A common misconception is that every `type` that supports `copy-from` will also support `extend`, `delete`, `proportional` and `relative`, in the same way as one's most commonly seen object: `ITEM`.  As explained above, this is not the case; some types handle these fields manually (which is undesired), others use generic_factory.  `extend` and `delete` only apply to JSON members that have containers as their underlying C++ types, and `proportional`/`relative` handling must be implemented with corresponding C++ functions.  
+
+### Members read by the shared loaders
+
+The members most types read through the shared loading code (generic_factory) take these fields in the same way:
+
+* A member that must be given (a mandatory member) needn't be when the object has `copy-from`, and then takes `relative`, `proportional`, `extend` and `delete` as any other member does: `{ "type": "mutation", "id": "STRONG_X", "copy-from": "X", "relative": { "points": 2 } }` works for a mutation's, profession's or scenario's `points`, a trap's or mission's `difficulty`, and so on.
+* They apply in this order: the member itself (which replaces the inherited value), then `relative`, `proportional`, `delete` and last `extend`.  A `delete` and an `extend` of the same entry therefore replace it.  (Before 2.0 `extend` came before `delete`, and the pair removed the entry.)
+* Lists and sets (of ids, flags, ...): `extend` adds entries and `delete` removes them; deleting an entry that isn't there is an error.  They take no `relative` or `proportional`.
+* Maps (an object of keys and values, or a list of key and value pairs): `extend` adds entries, and replaces the value of a key that is already there; `delete` removes keys; `relative` adds to the values of keys that are there; `proportional` multiplies numeric values, every one by a number (`"proportional": { "member": 0.5 }`) or some by key (`"proportional": { "member": { "key": 0.5 } }`).  Maps whose values aren't numbers take no `proportional`.
+* Weighted lists (entries with a weight): `extend` adds entries or replaces the weight of one already there; `delete` removes entries; `relative` adds to the weights of entries that are there (one whose weight drops to 0 or below is removed); `proportional` multiplies the weights (rounded, and at least 1), all by a number or some by id.
+* Members that a type reads with its own code can differ; the type's documentation says how.
 
 In summary, there is no "default" JSON inheritance, only shared degrees of support; check the relevant C++ if `copy-from` behavior is uncertain, and looking for an existing (and functional!) example is always a good idea.  Types whose `copy-from` support, or whose redefinitions, follow rules of their own:
 * `monstergroup` extends by default.  This prevents mods copying monstergroup definitions from replacing vanilla monstergroup lists.  To replace the *entire* list, add `"override": true` to the monstergroup object.

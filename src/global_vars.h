@@ -3,6 +3,7 @@
 #define CATA_SRC_GLOBAL_VARS_H
 
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -11,6 +12,31 @@
 #include "math_parser_diag_value.h"
 
 #include "json.h"
+
+// The kinds of saved variables a var_migration can apply to
+enum class var_scope : int {
+    global,
+    character,
+    monster,
+    item,
+    vehicle,
+    computer
+};
+
+// A var_migration: renames or erases saved dialogue/EOC variables when a save loads
+struct var_migration {
+    // The new name; none: the variable is erased
+    std::optional<std::string> to;
+    // "from" is a prefix: every variable whose name starts with it is renamed (keeping the rest
+    // of its name) or erased
+    bool prefix = false;
+    // The kinds of variables it applies to; empty: all of them
+    std::set<var_scope> scopes;
+
+    bool applies_to( var_scope scope ) const {
+        return scopes.empty() || scopes.count( scope ) != 0;
+    }
+};
 
 class global_variables
 {
@@ -68,11 +94,14 @@ class global_variables
         void unserialize( const JsonObject &jo );
         void serialize( JsonOut &jsout ) const;
 
-        std::map<std::string, std::string> migrations; // NOLINT(cata-serialize)
+        // var_migration entries by their "from"; a later one with the same "from" replaces it
+        std::map<std::string, var_migration> migrations; // NOLINT(cata-serialize)
         static void load_migrations( const JsonObject &jo, std::string_view src );
         // The variables a watched_variable entry names: writing one sends var_changed
         std::set<std::string> watched; // NOLINT(cata-serialize)
         static void load_watched( const JsonObject &jo, std::string_view src );
+        // Renames or erases the variables in @p vars as the var_migrations for @p scope say
+        void migrate_vars( impl_t &vars, var_scope scope ) const;
 
     private:
         impl_t global_values;

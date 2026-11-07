@@ -629,4 +629,24 @@ struct mtype {
         void load( const JsonObject &jo, std::string_view src );
 };
 
+/** monster_migration: what saved monsters of a renamed or removed type become */
+class monster_migrations
+{
+    public:
+        /** Handler for loading "monster_migration" type of json object */
+        static void load( const JsonObject &jo );
+        /** Clears migration list */
+        static void reset();
+        /** Checks migrations */
+        static void check();
+        /** The type a saved monster of type @p id loads as: @p id itself without a migration
+         *  that renames it */
+        static mtype_id migrate( const mtype_id &id );
+        /** Whether saved monsters of type @p id are removed when a save loads */
+        static bool removes( const mtype_id &id );
+        /** removes() for the type of a saved monster; when it is removed, the monster's JSON is
+         *  marked as read */
+        static bool removes( const JsonObject &saved_monster );
+};
+
 #endif // CATA_SRC_MTYPE_H

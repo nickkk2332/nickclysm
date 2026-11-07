@@ -232,6 +232,7 @@ void computer::deserialize( const JsonValue &jv )
         jo.read( "eocs", eocs );
         jo.read( "chat_topics", chat_topics );
         jo.read( "values", values );
+        get_globals().migrate_vars( values, var_scope::computer );
         if( !jo.read( "location", loc ) ) {
             // Backward compatibility code for change made 2025-02-19.
             tripoint_bub_ms temp;

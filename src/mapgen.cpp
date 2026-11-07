@@ -7945,6 +7945,9 @@ mapgen_update_func add_mapgen_update_func( const JsonObject &jo, bool &defer )
                                            "unknown object in add_mapgen_update_func" );
     mapgen_defer::defer = defer;
     if( !json_data.setup_update( jo ) ) {
+        // A forward reference met before the failure still asks the caller to defer
+        defer = mapgen_defer::defer;
+        mapgen_defer::jsi = JsonObject();
         const auto null_function = []( const tripoint_abs_omt &, mission * ) {
         };
         return null_function;
