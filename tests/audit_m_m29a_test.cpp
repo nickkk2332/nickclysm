@@ -108,7 +108,7 @@ struct aim_fixture {
     advanced_inventory_pane &dest() const {
         return advinv->get_pane( advinv->get_dest() );
     }
-    void show( const aim_location src_area, const aim_location dest_area ) {
+    void show( const aim_location src_area, const aim_location dest_area ) const {
         src().set_area( advinv->get_one_square( src_area ) );
         dest().set_area( advinv->get_one_square( dest_area ) );
         recalc();
@@ -120,7 +120,7 @@ struct aim_fixture {
         advinv->recalc_pane( advanced_inventory::side::right );
     }
     // the cursor on the first item of the source pane of this type
-    void select( const itype_id &type ) {
+    void select( const itype_id &type ) const {
         advanced_inventory_pane &pane = src();
         for( size_t i = 0; i < pane.items.size(); ++i ) {
             if( pane.items[i].items.front()->typeId() == type ) {
