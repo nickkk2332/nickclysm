@@ -558,6 +558,21 @@ std::string mtype::get_footsteps() const
     return _( "footsteps." );
 }
 
+float mtype::get_hearing_mult() const
+{
+    return hearing_mult.value_or( has_flag( mon_flag_GOODHEARING ) ? 2.0f : 1.0f );
+}
+
+int mtype::get_scent_min() const
+{
+    return scent_min.value_or( has_flag( mon_flag_KEENNOSE ) ? 1 : 10 );
+}
+
+int mtype::get_scent_max() const
+{
+    return scent_max.value_or( has_flag( mon_flag_KEENNOSE ) ? 400 : 200 );
+}
+
 void mtype::set_strategy()
 {
     goals.set_strategy( behavior::strategy_map[ "sequential_until_done" ] );

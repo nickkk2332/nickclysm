@@ -601,7 +601,10 @@ bool enchantment::is_monster_relevant() const
             pair_values.first == enchant_vals::mod::RANGE_DODGE ||
             pair_values.first == enchant_vals::mod::SPEED ||
             pair_values.first == enchant_vals::mod::LUMINATION ||
-            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ) {
+            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
+            // MONAI-J04
+            pair_values.first == enchant_vals::mod::HEARING_MULT ||
+            pair_values.first == enchant_vals::mod::FOOTSTEP_NOISE ) {
             return true;
         }
     }
@@ -615,7 +618,10 @@ bool enchantment::is_monster_relevant() const
             pair_values.first == enchant_vals::mod::RANGE_DODGE ||
             pair_values.first == enchant_vals::mod::SPEED ||
             pair_values.first == enchant_vals::mod::LUMINATION ||
-            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ) {
+            pair_values.first == enchant_vals::mod::TOTAL_WEIGHT ||
+            // MONAI-J04
+            pair_values.first == enchant_vals::mod::HEARING_MULT ||
+            pair_values.first == enchant_vals::mod::FOOTSTEP_NOISE ) {
             return true;
         }
     }

@@ -129,6 +129,9 @@ class monster : public Creature
         void spawn( const tripoint_abs_ms &loc );
         std::vector<material_id> get_absorb_material() const;
         std::vector<material_id> get_no_absorb_material() const;
+        // ABSORB_ITEMS: may absorb this item (no material on the no_absorb_material list,
+        // and one on absorb_material when that list isn't empty)
+        bool can_absorb_item( const item &it ) const;
         creature_size get_size() const override;
         units::mass get_weight() const override;
         units::mass weight_capacity() const override;

@@ -381,56 +381,16 @@ bool mattack::absorb_items( monster *z )
 {
     map &here = get_map();
 
-    static const units::quantity<int, units::volume_in_milliliter_tag> ml_per_hp =
-        units::from_milliliter( z->type->absorb_ml_per_hp );
+    // MONAI-B09: this was a function-local static, so the first monster type to absorb
+    // something set the rate for every type until the game was closed
+    const int ml_per_hp = std::max( 1, z->type->absorb_ml_per_hp );
 
     std::vector<item *> consumed_items;
-    std::vector<material_id> absorb_material = z->get_absorb_material();
-    std::vector<material_id> no_absorb_material = z->get_no_absorb_material();
+    const bool spills_containers = !z->get_absorb_material().empty();
 
     for( item &elem : here.i_at( z->pos_bub() ) ) {
-        bool any_materials_match = false;
-
-        // there is no whitelist or blacklist so allow anything.
-        if( absorb_material.empty() && no_absorb_material.empty() ) {
-            any_materials_match = true;
-            // there is a whitelist but no blacklist
-        } else if( !absorb_material.empty() && no_absorb_material.empty() ) {
-            for( const material_type *mat_type : elem.made_of_types() ) {
-                if( std::find( absorb_material.begin(), absorb_material.end(),
-                               mat_type->id ) != absorb_material.end() ) {
-                    any_materials_match = true;
-                }
-            }
-            // there is no whitelist but there is a blacklist
-        } else if( absorb_material.empty() && !no_absorb_material.empty() ) {
-            bool found = false;
-            for( const material_type *mat_type : elem.made_of_types() ) {
-                if( std::find( no_absorb_material.begin(), no_absorb_material.end(),
-                               mat_type->id ) != no_absorb_material.end() ) {
-                    found = true;
-                }
-            }
-            // if the item wasn't on the blacklist, it's allowed
-            if( !found ) {
-                any_materials_match = true;
-            }
-            // there is a whitelist and a blacklist
-        } else if( !absorb_material.empty() && !no_absorb_material.empty() ) {
-            for( const material_type *mat_type : elem.made_of_types() ) {
-                if( !( std::find( no_absorb_material.begin(), no_absorb_material.end(),
-                                  mat_type->id ) != no_absorb_material.end() ) ) {
-                    // the item wasn't found on the blacklist so check the whitelist
-                    if( std::find( absorb_material.begin(), absorb_material.end(),
-                                   mat_type->id ) != absorb_material.end() ) {
-                        any_materials_match = true;
-                    }
-                }
-            }
-        }
-
         // make sure we don't absorb the wrong types of items
-        if( !any_materials_match ) {
+        if( !z->can_absorb_item( elem ) ) {
             continue;
         }
 
@@ -440,7 +400,7 @@ bool mattack::absorb_items( monster *z )
 
         int volume_in_ml = units::to_milliliter( elem.volume() );
         // Allows the monster to exceed normal max HP. Split occurs as normal max HP * 2.
-        z->set_hp( z->get_hp() + std::max( volume_in_ml / ml_per_hp.value(), 1 ) );
+        z->set_hp( z->get_hp() + std::max( volume_in_ml / ml_per_hp, 1 ) );
         int absorb_move_cost = static_cast<int>( z->type->absorb_move_cost_per_ml * volume_in_ml );
         absorb_move_cost = std::max( absorb_move_cost, z->type->absorb_move_cost_min );
         if( z->type->absorb_move_cost_max != -1 ) {
@@ -457,7 +417,7 @@ bool mattack::absorb_items( monster *z )
     for( item *it : consumed_items ) {
         // check if the item being removed is a corpse so that the items are dropped.
         // only do this if the monster is selectively eating flesh
-        if( it->is_container() && !absorb_material.empty() ) {
+        if( it->is_container() && spills_containers ) {
             it->spill_contents( z->pos_bub() );
         }
         here.i_rem( z->pos_bub(), it );

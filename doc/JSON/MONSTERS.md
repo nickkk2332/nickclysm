@@ -35,6 +35,7 @@
   - ["weakpoint_sets"](#weakpoint_sets)
   - ["families"](#families)
   - ["vision_day", "vision_night"](#vision_day-vision_night)
+  - ["hearing_mult", "scent_sensitivity", "footstep_volume"](#hearing_mult-scent_sensitivity-footstep_volume)
   - ["luminance"](#luminance)
   - ["light_color"](#light_color)
   - ["hp"](#hp)
@@ -133,6 +134,9 @@ Property                 | Description
 `families`               | (array of objects or strings) Weakpoint families that the monster belongs to
 `vision_day`             | (integer) Vision range in full daylight, with `50` being the typical maximum
 `vision_night`           | (integer) Vision range in total darkness, ex. coyote `5`, bear `10`, sewer rat `30`, flaming eye `40`
+`hearing_mult`           | (float) How many times as loud the monster hears sounds.  Defaults to 2 with the `GOODHEARING` flag, else 1.  See [hearing, smell and footsteps](#hearing_mult-scent_sensitivity-footstep_volume)
+`scent_sensitivity`      | (object) `min` and `max` scent strength the monster follows.  Defaults to 1 and 400 with the `KEENNOSE` flag, else 10 and 200
+`footstep_volume`        | (integer) Noise the monster makes moving.  Defaults to a value from its size and the `LOUDMOVES`, `QUIETMOVES` and `SILENTMOVES` flags
 `tracking_distance`      | (integer) Amount of tiles the monster will keep between itself and its current tracked enemy or followed leader. Defaults to `3`.
 `trap_avoids`            | (array of strings) trap_id of traps that are not triggered by this monster. Default behaviour is to trigger all traps.
 `luminance`              | (float) Amount of light passively emitted by the monster, must be >0 to have any effect
@@ -172,7 +176,7 @@ Property                 | Description
 `shearing`               | (array of objects) Items produced when the monster is sheared
 `speed_description`      | (string) ID of a `speed_description` type describing the monster speed string
 `petfood`                | (object) Data regarding feeding this monster to turn it into a pet
-`absorb_ml_per_hp`       | (int) For monsters with the `ABSORB_ITEMS` special attack. Determines the amount in milliliters that must be absorbed to gain 1 HP. Default 250.
+`absorb_ml_per_hp`       | (int) For monsters with the `ABSORB_ITEMS` special attack. Determines the amount in milliliters that must be absorbed to gain 1 HP. Default 250.  Must be above 0.
 `absorb_move_cost_per_ml`| (float) For monsters with the `ABSORB_ITEMS` special attack. Determines the move cost for absorbing items based on the volume in milliliters of the absorbed items. Default 0.025f.
 `absorb_move_cost_min`   | (int) For monsters with the `ABSORB_ITEMS` special attack. Sets a minimum movement cost for absorbing items regardless of the volume of the consumed item. Default 1.
 `absorb_move_cost_max`   | (int) For monsters with the `ABSORB_ITEMS` special attack. Sets a maximum movement cost for absorbing items regardless of the volume of the consumed item. -1 for no limit. Default -1.
@@ -522,6 +526,21 @@ Field              | Description
 (integer, optional)
 
 Vision range in full daylight and in total darkness.  Defaults to 40 tiles for day and 1 for night.
+
+## "hearing_mult", "scent_sensitivity", "footstep_volume"
+(optional)
+
+The monster's hearing, smell and footsteps as numbers.  Each one left out comes from the flags, as before:
+
+- `hearing_mult` (float, default 1, or 2 with `GOODHEARING`): a sound of volume `v` from `d` tiles away is heard at `v * hearing_mult - d`.  The `HEARING_MULT` enchantment (from the monster's effects) changes it.  `GOODHEARING` also makes the monster follow a sound six times as long.
+- `scent_sensitivity` (object with `min` and `max`, default 10 and 200, or 1 and 400 with `KEENNOSE`): the monster follows scent of at least `min`; above `max` the scent is too strong to follow and it wanders.  A `copy-from` that sets only one of them keeps the other.
+- `footstep_volume` (integer, at least 0): the noise of its movement, in place of the value worked out from its size (none for tiny monsters, a third for small ones, 1.5 times for large and twice for huge), digging (10), flying or `SILENTMOVES` (none), and `LOUDMOVES` (+6) or `QUIETMOVES` (-3).  The `FOOTSTEP_NOISE` enchantment changes it.  0 is silent.
+
+```jsonc
+"hearing_mult": 1.5,
+"scent_sensitivity": { "min": 5, "max": 300 },
+"footstep_volume": 4
+```
 
 ## "luminance"
 (integer, optional)

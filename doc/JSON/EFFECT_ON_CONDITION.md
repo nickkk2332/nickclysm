@@ -8344,7 +8344,7 @@ Does the same, but spawns it from coordinates, stored in context var `loc`
 ```
 
 #### `turn_cost`
-Subtract this many turns from the alpha talker's moves.
+Subtract this many turns from the alpha talker's moves.  Any creature: for a monster, for example in an EOC special attack, it takes moves from the monster.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -8364,7 +8364,7 @@ Subtract this many turns from the alpha talker's moves.
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
 
 
 #### `transform_item`

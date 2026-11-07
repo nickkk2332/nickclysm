@@ -1002,6 +1002,14 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     optional( jo, was_loaded, "vision_day", vision_day, numeric_bound_reader{0}, 40 );
     optional( jo, was_loaded, "vision_night", vision_night, numeric_bound_reader{0}, 1 );
+    // MONAI-J04: unset, the GOODHEARING, KEENNOSE and *MOVES flags and the size decide
+    optional( jo, was_loaded, "hearing_mult", hearing_mult );
+    if( jo.has_member( "scent_sensitivity" ) ) {
+        const JsonObject scent = jo.get_object( "scent_sensitivity" );
+        optional( scent, was_loaded, "min", scent_min );
+        optional( scent, was_loaded, "max", scent_max );
+    }
+    optional( jo, was_loaded, "footstep_volume", footstep_volume );
 
     optional( jo, was_loaded, "regenerates", regenerates, 0 );
     optional( jo, was_loaded, "regenerates_in_dark", regenerates_in_dark, false );
@@ -1630,7 +1638,33 @@ void MonsterGenerator::check_monster_definitions() const
             }
         }
 
+        // MONAI-B09: absorb_items divides by it
+        if( mon.absorb_ml_per_hp <= 0 ) {
+            debugmsg( "absorb_ml_per_hp (%d) of monster %s must be above 0", mon.absorb_ml_per_hp,
+                      mon.id.c_str() );
+        }
+        // MONAI-J04
+        if( mon.get_hearing_mult() < 0.0f ) {
+            debugmsg( "hearing_mult (%g) of monster %s is negative", mon.get_hearing_mult(),
+                      mon.id.c_str() );
+        }
+        if( mon.get_scent_min() < 0 || mon.get_scent_min() > mon.get_scent_max() ) {
+            debugmsg( "scent_sensitivity of monster %s needs 0 <= min (%d) <= max (%d)", mon.id.c_str(),
+                      mon.get_scent_min(), mon.get_scent_max() );
+        }
+        if( mon.footstep_volume && *mon.footstep_volume < 0 ) {
+            debugmsg( "footstep_volume (%d) of monster %s is negative", *mon.footstep_volume,
+                      mon.id.c_str() );
+        }
+
         for( const std::pair<const std::string, mtype_special_attack> &spatk : mon.special_attacks ) {
+            // MONAI-B04: a polymorph into an unknown monster
+            if( const polymorph_special *poly = dynamic_cast<const polymorph_special *>( &*spatk.second ) ) {
+                if( !poly->mon_id.is_valid() ) {
+                    debugmsg( "Monster %s attack %s polymorphs into unknown monster \"%s\"", mon.id.c_str(),
+                              spatk.first, poly->mon_id.str() );
+                }
+            }
             const melee_actor *atk = dynamic_cast<const melee_actor *>( &*spatk.second );
             if( !atk ) {
                 continue;

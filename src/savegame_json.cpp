@@ -121,6 +121,7 @@
 #include "stats_tracker.h"
 #include "stomach.h"
 #include "submap.h"
+#include "talker.h"
 #include "text_snippets.h"
 #include "tileray.h"
 #include "units_utility.h"
@@ -2569,7 +2570,8 @@ void monster::load( const JsonObject &data )
                 if( ptimeout >= 0 ) {
                     entry.cooldown = ptimeout;
                 } else { // -1 means disabled, unclear what <-1 values mean in old saves
-                    dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+                    // No target while loading: an empty npc, as at spawn (MONAI-J03)
+                    dialogue d( get_talker_for( this ), std::make_unique<talker>() );
                     entry.cooldown = type->special_attacks.at( aname )->cooldown.evaluate( d );
                     entry.enabled = false;
                 }
@@ -2593,7 +2595,8 @@ void monster::load( const JsonObject &data )
         const std::string &aname = sa.first;
         if( special_attacks.find( aname ) == special_attacks.end() ) {
             auto &entry = special_attacks[aname];
-            dialogue d( get_talker_for( this ), get_talker_for( get_avatar() ) );
+            // No target while loading: an empty npc, as at spawn (MONAI-J03)
+            dialogue d( get_talker_for( this ), std::make_unique<talker>() );
             entry.cooldown = rng( 0, sa.second->cooldown.evaluate( d ) );
         }
     }
@@ -2635,7 +2638,12 @@ void monster::load( const JsonObject &data )
     }
 
     biosignatures = data.get_bool( "biosignatures", type->biosignatures );
-    biosig_timer = time_point( data.get_int( "biosig_timer", -1 ) );
+    // Older saves stored an unset timer as -1, which would drop 51 items at once (MONAI-B05)
+    biosig_timer.reset();
+    data.read( "biosig_timer", biosig_timer );
+    if( biosig_timer && *biosig_timer == calendar::before_time_starts ) {
+        biosig_timer.reset();
+    }
 
     data.read( "udder_timer", udder_timer );
     data.read( "times_combatted_player", times_combatted_player );
