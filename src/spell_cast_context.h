@@ -2,6 +2,9 @@
 #ifndef CATA_SRC_SPELL_CAST_CONTEXT_H
 #define CATA_SRC_SPELL_CAST_CONTEXT_H
 
+#include <functional>
+#include <string>
+
 #include "global_vars.h"
 
 class spell;

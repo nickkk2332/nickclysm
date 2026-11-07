@@ -1,11 +1,13 @@
+#include <functional>
 #include <string>
 
 #include "cata_catch.h"
 #include "debug.h"
 #include "flexbuffer_json.h"
-#include "item.h"
+#include "item.h" // IWYU pragma: keep
 #include "item_pocket.h"
 #include "json_loader.h"
+#include "units.h"
 
 // Loads a pocket definition and returns any debugmsg it produced (unread keys are reported
 // when the JSON object is destroyed, so it must go out of scope inside the capture).

@@ -1,6 +1,7 @@
 #include "past_games_info.h"
 
 #include <algorithm>
+#include <exception>
 #include <filesystem>
 #include <map>
 #include <stdexcept>

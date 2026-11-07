@@ -2,7 +2,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <utility>
 
 #include "activity_handlers.h"
 #include "avatar.h"

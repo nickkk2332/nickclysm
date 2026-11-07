@@ -1,6 +1,8 @@
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -20,6 +22,7 @@
 #include "math_parser_diag_value.h"
 #include "monster.h"
 #include "mtype.h"
+#include "point.h"
 #include "type_id.h"
 
 static const clothing_mod_id clothing_mod_kevlar_padded( "kevlar_padded" );

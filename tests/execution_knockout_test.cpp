@@ -5,7 +5,6 @@
 #include <random>
 #include <sstream>
 #include <string>
-#include <utility>
 
 #include "activity_actor_definitions.h"
 #include "avatar.h"

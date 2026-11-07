@@ -1,3 +1,5 @@
+#include <functional>
+#include <list>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -9,6 +11,7 @@
 #include "butchery_requirements.h"
 #include "calendar.h"
 #include "cata_catch.h"
+#include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
 #include "enum_conversions.h"

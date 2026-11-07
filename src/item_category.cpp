@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "global_vars.h"
 #include "item.h"
