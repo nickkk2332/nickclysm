@@ -331,7 +331,9 @@ std::vector<const score *> stats_tracker::valid_scores() const
 {
     std::vector<const score *> result;
     for( const score &scr : score::get_all() ) {
-        if( initial_scores.count( scr.id ) ) {
+        // EVT-J05: or one that allows it, added to a game that started without it
+        if( initial_scores.count( scr.id ) ||
+            ( scr.allows_late_tracking() && !initial_scores.empty() ) ) {
             result.push_back( &scr );
         }
     }

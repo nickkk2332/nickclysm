@@ -2,6 +2,7 @@
 #include <utility>
 #include <vector>
 
+#include "achievement.h"
 #include "debug.h"
 #include "filesystem.h"
 #include "flexbuffer_json.h"
@@ -41,6 +42,17 @@ std::vector<std::string> past_achievements_info::avatars_completed(
         }
     }
     return completed;
+}
+
+bool past_achievements_info::unlocks_all_content() const
+{
+    // EVT-J05: the achievement says so ("unlocks_all_content"), such as Arcade Mode
+    for( const achievement &ach : achievement::get_all() ) {
+        if( ach.unlocks_all_content() && is_completed( ach.id ) ) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void past_achievements_info::load()

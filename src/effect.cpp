@@ -17,6 +17,7 @@
 #include "color.h"
 #include "debug.h"
 #include "effect_grant_state.h"
+#include "effect_on_condition.h"
 #include "effect_source.h"
 #include "enums.h"
 #include "event.h"
@@ -1980,6 +1981,50 @@ void load_effect_type( const JsonObject &jo, std::string_view src )
             }
         }
     }
+
+    // EVT-J04: EOCs run when a creature gains the effect, its intensity changes or it's lost.
+    // Given, a list replaces the parent's; "extend" adds to it and "delete" takes EOC ids out.
+    const auto load_eocs = [&]( const std::string_view member,
+    std::vector<effect_on_condition_id> &eocs ) {
+        warn_disabled_feature( jo, "relative", member, "not supported for effect_type" );
+        warn_disabled_feature( jo, "proportional", member, "not supported for effect_type" );
+        if( !was_loaded ) {
+            warn_disabled_feature( jo, "extend", member, "no copy-from" );
+            warn_disabled_feature( jo, "delete", member, "no copy-from" );
+        }
+        if( jo.has_member( member ) ) {
+            eocs.clear();
+            for( const JsonValue jv : jo.get_array( member ) ) {
+                eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+            }
+            return;
+        }
+        if( !was_loaded ) {
+            return;
+        }
+        if( jo.has_object( "extend" ) ) {
+            JsonObject extend = jo.get_object( "extend" );
+            extend.allow_omitted_members();
+            for( const JsonValue jv : extend.get_array( member ) ) {
+                eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+            }
+        }
+        if( jo.has_object( "delete" ) ) {
+            JsonObject del = jo.get_object( "delete" );
+            del.allow_omitted_members();
+            for( const JsonValue jv : del.get_array( member ) ) {
+                const effect_on_condition_id doomed( jv.get_string() );
+                const auto iter = std::find( eocs.begin(), eocs.end(), doomed );
+                if( iter == eocs.end() ) {
+                    jv.throw_error( "the effect type has no such effect_on_condition" );
+                }
+                eocs.erase( iter );
+            }
+        }
+    };
+    load_eocs( "apply_eocs", new_etype.apply_eocs );
+    load_eocs( "intensity_change_eocs", new_etype.intensity_change_eocs );
+    load_eocs( "remove_eocs", new_etype.remove_eocs );
 
     if( is_abstract ) {
         effect_type_abstracts[id] = new_etype;

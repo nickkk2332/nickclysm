@@ -1350,6 +1350,7 @@ void score::load( const JsonObject &jo, std::string_view )
 {
     optional( jo, was_loaded, "description", description_ );
     mandatory( jo, was_loaded, "statistic", stat_ );
+    optional( jo, was_loaded, "allow_late_tracking", allow_late_tracking_, false );
 }
 
 void score::check() const

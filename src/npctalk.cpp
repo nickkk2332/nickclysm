@@ -6868,23 +6868,53 @@ talk_effect_fun_t::func f_sound_effect( const JsonObject &jo, std::string_view m
     };
 }
 
+// EVT-J05: give_achievement completes an achievement and fail_conduct fails a conduct, if this
+// game tracks it and it's still pending.  A wrong id or kind is an error.  One the game doesn't
+// track (its mod was added to the save, and it doesn't allow late tracking) is left alone.
+static void finish_achievement( std::string_view effect, const achievement_id &id,
+                                const bool conduct )
+{
+    if( !id.is_valid() ) {
+        debugmsg( "%s: there is no achievement or conduct %s", effect, id.str() );
+        return;
+    }
+    if( id->is_conduct() && !conduct ) {
+        debugmsg( "%s: %s is a conduct, which can only be failed; fail it with fail_conduct",
+                  effect, id.str() );
+        return;
+    }
+    if( !id->is_conduct() && conduct ) {
+        debugmsg( "%s: %s is an achievement, not a conduct; give it with give_achievement", effect,
+                  id.str() );
+        return;
+    }
+    achievements_tracker &achievements = get_achievements();
+    if( !achievements.is_tracked( id ) ) {
+        add_msg_debug( debugmode::DF_TALKER, "%s: %s isn't tracked in this game, as it was added "
+                       "after the game started and doesn't allow late tracking", effect, id.str() );
+        return;
+    }
+    if( achievements.is_completed( id ) == achievement_completion::pending ) {
+        achievements.report_achievement( &id.obj(), conduct ? achievement_completion::failed :
+                                         achievement_completion::completed );
+    }
+}
+
 talk_effect_fun_t::func f_give_achievment( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
     str_or_var achieve = get_str_or_var( jo.get_member( member ), member, true );
     return [achieve]( dialogue const & d ) {
-        const achievement_id achievement_to_give( achieve.evaluate( d ) );
-        // make sure the achievement is being tracked and that it is currently pending
-        std::vector<const achievement *> all_achievements = get_achievements().valid_achievements();
-        if( std::find_if( all_achievements.begin(),
-        all_achievements.end(), [&achievement_to_give]( const achievement * ach ) {
-        return ach->id == achievement_to_give;
-    } ) != all_achievements.end() ) {
-            if( get_achievements().is_completed( achievement_to_give ) == achievement_completion::pending ) {
-                get_achievements().report_achievement( &achievement_to_give.obj(),
-                                                       achievement_completion::completed );
-            }
-        }
+        finish_achievement( "give_achievement", achievement_id( achieve.evaluate( d ) ), false );
+    };
+}
+
+talk_effect_fun_t::func f_fail_conduct( const JsonObject &jo, std::string_view member,
+                                        std::string_view )
+{
+    str_or_var conduct = get_str_or_var( jo.get_member( member ), member, true );
+    return [conduct]( dialogue const & d ) {
+        finish_achievement( "fail_conduct", achievement_id( conduct.evaluate( d ) ), true );
     };
 }
 
@@ -12427,6 +12457,7 @@ parsers = {
     { "u_set_chatbin_topic", "npc_set_chatbin_topic", jarg::member, &talk_effect_fun::f_set_chatbin_topic },
     { "sound_effect", jarg::member, &talk_effect_fun::f_sound_effect },
     { "give_achievement", jarg::member, &talk_effect_fun::f_give_achievment },
+    { "fail_conduct", jarg::member, &talk_effect_fun::f_fail_conduct },
     { "assign_mission", jarg::member, &talk_effect_fun::f_assign_mission },
     { "finish_mission", jarg::member, &talk_effect_fun::f_finish_mission },
     { "remove_active_mission", jarg::member, &talk_effect_fun::f_remove_active_mission },

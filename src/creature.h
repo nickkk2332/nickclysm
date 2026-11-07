@@ -45,6 +45,7 @@ class avatar;
 class body_part_set;
 class const_talker;
 class effect;
+class effect_type;
 class effects_map;
 class enchant_cache;
 class field;
@@ -679,6 +680,23 @@ class Creature : public viewer
          * removed. */
         bool remove_effect( const efftype_id &eff_id, const bodypart_id &bp );
         bool remove_effect( const efftype_id &eff_id );
+        /** Which of an effect type's EOC lists to run (EVT-J04) */
+        enum class effect_eoc_hook : int {
+            apply,
+            intensity_change,
+            remove
+        };
+        /** Runs the effect type's apply_eocs, intensity_change_eocs or remove_eocs with this
+         * creature as u and the creature that caused the effect, if it can be found, as npc.
+         * Their context has `effect`, `bodypart`, `intensity` (now) and `old_intensity`
+         * (before: 0 when gained, and `intensity` is 0 when lost).  While effects are held
+         * (hold_effect_eocs) they run once the last hold is released. */
+        void run_effect_eocs( effect_eoc_hook hook, const effect_type &type, const bodypart_id &bp,
+                              int intensity, int old_intensity, const effect_source &source );
+        /** While effects are being looped over, effect EOCs wait: one that removed an effect could
+         * break the loop.  Each hold must be released; the last release runs those that waited. */
+        static void hold_effect_eocs();
+        static void release_effect_eocs();
         /** Schedule effect removal */
         void schedule_effect_removal( const efftype_id &eff_id, const bodypart_id &bp );
         void schedule_effect_removal( const efftype_id &eff_id );

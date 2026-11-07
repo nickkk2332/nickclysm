@@ -208,7 +208,7 @@ class stats_tracker : public event_subscriber
         void stat_value_changed( const string_id<event_statistic> &,
                                  const cata_variant &new_value );
 
-        // Return all scores which are valid now and existed at game start
+        // Return all scores which are valid now and existed at game start (or allow late tracking)
         std::vector<const score *> valid_scores() const;
 
         void clear();

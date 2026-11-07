@@ -177,6 +177,12 @@ class effect_type
         std::vector<enchantment_id> enchantments;
         cata::flat_set<json_character_flag> immune_flags;
         cata::flat_set<json_character_flag> immune_bp_flags;
+        /** EOCs run, with the creature as u and the creature that caused the effect (if it can
+            be found) as npc, when a creature gains this effect, when the effect's intensity
+            changes, and when the creature loses it.  See Creature::run_effect_eocs. */
+        std::vector<effect_on_condition_id> apply_eocs;
+        std::vector<effect_on_condition_id> intensity_change_eocs;
+        std::vector<effect_on_condition_id> remove_eocs;
     protected:
         uint32_t get_effect_modifier_key( mod_action action, uint8_t reduction_level ) const {
             return static_cast<uint8_t>( action ) << 0 |

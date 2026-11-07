@@ -38,7 +38,6 @@
 
 struct bionic_data;
 
-static const achievement_id achievement_achievement_arcade_mode( "achievement_arcade_mode" );
 static const json_character_flag json_flag_NO_CBM_INSTALLATION( "NO_CBM_INSTALLATION" );
 static const trait_group::Trait_group_tag
 Trait_group_BG_survival_story_UNIVERSAL( "BG_survival_story_UNIVERSAL" );
@@ -780,7 +779,7 @@ ret_val<void> profession::can_pick() const
 {
     const bool meta_progression = get_option<bool>( "META_PROGRESS" );
     // if meta progression is disabled then skip this
-    if( get_past_achievements().is_completed( achievement_achievement_arcade_mode ) ||
+    if( get_past_achievements().unlocks_all_content() ||
         ( !meta_progression && !has_hard_requirement() ) ) {
         return ret_val<void>::make_success();
     }

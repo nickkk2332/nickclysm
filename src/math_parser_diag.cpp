@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "achievement.h"
 #include "behavior_oracle.h"
 #include "bionics.h"
 #include "bodypart.h"
@@ -61,6 +62,7 @@
 #include "npctalk.h"
 #include "options.h"
 #include "overmapbuffer.h"
+#include "past_achievements_info.h"
 #include "pimpl.h"
 #include "player_activity.h"
 #include "point.h"
@@ -239,6 +241,43 @@ double event_statistic_eval( const_dialogue const &d, char /* scope */,
     }
     cata_variant val = get_stats().value_of( stat_id );
     return diag_value( val ).dbl( d );
+}
+
+// EVT-J05: -1 not tracked in this game, 0 pending, 1 completed, 2 failed
+double achievement_state_eval( const_dialogue const &d, char /* scope */,
+                               std::vector<diag_value> const &params,
+                               diag_kwargs const & /* kwargs */ )
+{
+    const achievement_id id( params[0].str( d ) );
+    if( !id.is_valid() ) {
+        throw math::runtime_error( R"(Unknown achievement or conduct "%s")", id.str() );
+    }
+    const achievements_tracker &achievements = get_achievements();
+    if( !achievements.is_tracked( id ) ) {
+        return -1;
+    }
+    switch( achievements.is_completed( id ) ) {
+        case achievement_completion::completed:
+            return 1;
+        case achievement_completion::failed:
+            return 2;
+        case achievement_completion::pending:
+        case achievement_completion::last:
+            break;
+    }
+    return 0;
+}
+
+// EVT-J05: 1 when a past game (any world) completed the achievement, as unlocks read it
+double past_achievement_eval( const_dialogue const &d, char /* scope */,
+                              std::vector<diag_value> const &params,
+                              diag_kwargs const & /* kwargs */ )
+{
+    const achievement_id id( params[0].str( d ) );
+    if( !id.is_valid() ) {
+        throw math::runtime_error( R"(Unknown achievement or conduct "%s")", id.str() );
+    }
+    return get_past_achievements().is_completed( id ) ? 1 : 0;
 }
 
 double addiction_intensity_eval( const_dialogue const &d, char scope,
@@ -3569,6 +3608,8 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "encumbrance", { "un", 1, encumbrance_eval } },
     { "energy", { "g", 1, energy_eval } },
     { "event_statistic", { "g", 1, event_statistic_eval } },
+    { "achievement_state", { "g", 1, achievement_state_eval } },
+    { "past_achievement", { "g", 1, past_achievement_eval } },
     { "faction_like", { "g", 1, faction_like_eval, faction_like_ass } },
     { "faction_respect", { "g", 1, faction_respect_eval, faction_respect_ass } },
     { "faction_trust", { "g", 1, faction_trust_eval, faction_trust_ass } },

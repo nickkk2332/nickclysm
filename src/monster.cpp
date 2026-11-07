@@ -3897,12 +3897,14 @@ void monster::process_effects()
 {
     map &here = get_map();
 
-    // Monster only effects
+    // Monster only effects.  Effect EOCs wait until the loop is done.
+    hold_effect_eocs();
     for( auto &elem : *effects ) {
         for( auto &_effect_it : elem.second ) {
             process_one_effect( _effect_it.second, false );
         }
     }
+    release_effect_eocs();
 
     //Process enchantments that apply to monsters.
     rebuild_effect_enchantments( *this, *effects );
