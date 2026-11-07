@@ -24,12 +24,13 @@
     },
     "base_energy_cost": {
       "math": [
-        "u_effect_intensity('effect_afs_precog_premonition') > -1 ? 0 : max( (2250 - ( (u_spell_level('afs_precog_danger_sense') + u_spell_level('clair_danger_sense_knack') ) * 85)), 850)"
-      ]
+        "u_effect_intensity('effect_afs_precog_danger_sense') > -1 ? 0 : max( (2250 - ( (u_spell_level('afs_precog_danger_sense') + u_spell_level('clair_danger_sense_knack') ) * 85)), 850)"
+      ],
+      "optional_ids": true
     },
     "base_casting_time": {
       "math": [
-        "u_effect_intensity('effect_afs_precog_premonition') > -1 ? 10 : max( (85 - (u_spell_level('afs_precog_danger_sense') * 7) ), 25)"
+        "u_effect_intensity('effect_afs_precog_danger_sense') > -1 ? 10 : max( (85 - (u_spell_level('afs_precog_danger_sense') * 7) ), 25)"
       ]
     }
   },

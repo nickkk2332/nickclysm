@@ -74,12 +74,12 @@
     "damage_type": "electric",
     "min_damage": {
       "math": [
-        "( (u_spell_level('electrokinesis_zap_enemies') / 4 ) + 1) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
+        "( (u_spell_level('electrokinetic_zap_enemies') / 4 ) + 1) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
       ]
     },
     "max_damage": {
       "math": [
-        "( (u_spell_level('electrokinesis_zap_enemies') / 2 ) + 5) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
+        "( (u_spell_level('electrokinetic_zap_enemies') / 2 ) + 5) * (scaling_factor(u_val('intelligence') ) ) * u_nether_attunement_power_scaling"
       ]
     },
     "min_range": 1,

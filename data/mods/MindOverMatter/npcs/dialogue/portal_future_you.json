@@ -10,8 +10,8 @@
           "or": [
             {
               "and": [
-                { "math": [ "u_spell_level('knack_clair_danger_sense') <= 11" ] },
-                { "math": [ "u_spell_level('knack_clair_danger_sense') != -1" ] }
+                { "math": [ "u_spell_level('clair_danger_sense_knack') <= 11" ] },
+                { "math": [ "u_spell_level('clair_danger_sense_knack') != -1" ] }
               ]
             },
             {

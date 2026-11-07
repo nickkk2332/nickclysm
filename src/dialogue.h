@@ -80,18 +80,23 @@ std::string bye_message( const npc *npc_actor );
  */
 struct talk_trial {
     talk_trial_type type = TALK_TRIAL_NONE;
-    int difficulty = 0;
+    // a number, a variable or math (MATH-J03)
+    dbl_or_var difficulty;
     std::function<bool( const_dialogue const & )> condition;
 
     // If this talk_trial is skill check, this is the string ID of the skill that we check the level of.
     std::string skill_required;
 
     int calc_chance( const_dialogue const &d ) const;
+    // the difficulty, rounded
+    int get_difficulty( const_dialogue const &d ) const;
     /**
      * Returns a user-friendly representation of @ref type
      */
     std::string name() const;
     std::vector<trial_mod> modifiers;
+    // "mod" entries that are math, each adding what it gives to the chance (MATH-J03)
+    std::vector<dbl_or_var> math_modifiers;
     explicit operator bool() const {
         return type != TALK_TRIAL_NONE;
     }

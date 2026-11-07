@@ -349,7 +349,10 @@
         "text": "[Telepathy] *Go deeper*.",
         "topic": "TALK_BOANN_DEEP_SCAN",
         "condition": {
-          "or": [ { "math": [ "u_school_level('TELEPATH') >= 10" ] }, { "math": [ "jmath_telepathy_knacks_combined_level() > 20" ] } ]
+          "or": [
+            { "math": [ "u_school_level('TELEPATH') >= 10" ], "optional_ids": true },
+            { "math": [ "jmath_telepathy_knacks_combined_level() > 20" ] }
+          ]
         }
       }
     ]

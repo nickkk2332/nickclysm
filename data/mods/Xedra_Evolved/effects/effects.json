@@ -1459,8 +1459,14 @@
     "enchantments": [
       {
         "values": [
-          { "value": "REGEN_MANA", "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.04" ] } },
-          { "value": "MAX_MANA", "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.1" ] } }
+          {
+            "value": "REGEN_MANA",
+            "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.04" ], "optional_ids": true }
+          },
+          {
+            "value": "MAX_MANA",
+            "multiply": { "math": [ "u_effect_intensity('effect_max_mana_penalty') * -0.1" ], "optional_ids": true }
+          }
         ]
       }
     ],

@@ -179,12 +179,8 @@
     "difficulty": 1,
     "effect": "attack",
     "effect_str": "effect_sense_vampire",
-    "min_duration": {
-      "math": [ "( 6000 + (u_spell_level('homullus_sense_vampires_spell') * 3000) ) * scaling_factor(u_val('intelligence') )" ]
-    },
-    "max_duration": {
-      "math": [ "( 6000 + (u_spell_level('homullus_sense_vampires_spell') * 3000) ) * scaling_factor(u_val('intelligence') )" ]
-    },
+    "min_duration": { "math": [ "( 6000 + (u_spell_level('homullus_sense_vampires') * 3000) ) * scaling_factor(u_val('intelligence') )" ] },
+    "max_duration": { "math": [ "( 6000 + (u_spell_level('homullus_sense_vampires') * 3000) ) * scaling_factor(u_val('intelligence') )" ] },
     "base_energy_cost": 300,
     "final_energy_cost": 150,
     "energy_increment": -8,
@@ -354,7 +350,7 @@
     "shape": "blast",
     "magic_type": "xe_fey_magick",
     "base_energy_cost": 0,
-    "base_casting_time": { "math": [ "1440000 - max(( u_spell_level('homullus_road_translocate') * 108000), 90000)" ] }
+    "base_casting_time": { "math": [ "1440000 - max(( u_spell_level('homullus_road_translocate_spell') * 108000), 90000)" ] }
   },
   {
     "id": "homullus_civilization_translocate_attune_real",

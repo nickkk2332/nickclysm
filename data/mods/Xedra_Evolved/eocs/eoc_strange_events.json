@@ -63,7 +63,7 @@
           "x_in_y_chance": {
             "x": {
               "math": [
-                "1 + min( (u_effect_intensity('effect_lilin_ruach_drain_side_effects') * 90 ), 180) + (u_effect_intensity('common_cold') > -1 ? 15 : 0) + (u_effect_intensity('influenza') > -1 ? 25 : 0) + (u_effect_intensity('pre_common_cold') > -1 ? 7 : 0) + (u_effect_intensity('pre_flu') > -1 ? 12 : 0)"
+                "1 + min( (u_effect_intensity('effect_lilin_ruach_drain_side_effects') * 90 ), 180) + (u_effect_intensity('common_cold') > -1 ? 15 : 0) + (u_effect_intensity('flu') > -1 ? 25 : 0) + (u_effect_intensity('pre_common_cold') > -1 ? 7 : 0) + (u_effect_intensity('pre_flu') > -1 ? 12 : 0)"
               ]
             },
             "y": 365

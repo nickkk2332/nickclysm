@@ -344,7 +344,7 @@
                   ]
                 },
                 { "math": [ "u_spell_level('telekinetic_strength') >= 10" ] },
-                { "math": [ "u_spell_level(' telekinetic_lifting_field') >= 12" ] }
+                { "math": [ "u_spell_level('telekinetic_lifting_field') >= 12" ] }
               ]
             }
           ]

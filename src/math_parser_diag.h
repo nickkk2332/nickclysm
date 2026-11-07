@@ -60,4 +60,23 @@ using pdiag_func = dialogue_func const *;
 
 std::map<std::string_view, dialogue_func> const &get_all_diag_funcs();
 
+// An argument of a dialogue function written as a literal string that names an id, as in
+// has_trait('FEEBLE'). Checked once all data has loaded, as nothing else would notice a typo.
+struct diag_literal_id {
+    // the function and what the id names, for messages: "has_trait", "trait"
+    std::string_view func;
+    std::string_view kind;
+    std::string id;
+    // whether the id names something loaded, or is a value the function takes instead ('ALL')
+    bool ( *is_known )( std::string const & ) = nullptr;
+};
+
+// Appends to @p ids the literal id arguments of a call to the dialogue function @p func, as the
+// parser has them (@p params and @p kwargs hold the literals; other arguments are empty).
+void collect_literal_ids( std::string_view func, std::vector<diag_value> const &params,
+                          diag_kwargs const &kwargs, std::vector<diag_literal_id> &ids );
+
+// The dialogue functions whose literal arguments are checked as ids
+std::vector<std::string_view> diag_funcs_with_literal_ids();
+
 #endif // CATA_SRC_MATH_PARSER_DIAG_H

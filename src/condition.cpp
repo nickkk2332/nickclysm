@@ -118,9 +118,13 @@ struct deferred_math {
     std::string str;
     math_type_t type;
     std::shared_ptr<math_exp> exp;
+    // "optional_ids": the ids the math names may not be loaded (another mod's), so aren't checked
+    bool optional_ids = false;
 
-    deferred_math( JsonObject const &jo_, std::string_view str_, math_type_t type_ )
-        : jo( jo_ ), str( str_ ), type( type_ ), exp( std::make_shared<math_exp>() ) {
+    deferred_math( JsonObject const &jo_, std::string_view str_, math_type_t type_,
+                   bool optional_ids_ )
+        : jo( jo_ ), str( str_ ), type( type_ ), exp( std::make_shared<math_exp>() ),
+          optional_ids( optional_ids_ ) {
 
         jo.allow_omitted_members();
     }
@@ -182,10 +186,27 @@ void clear_deferred_math()
 }
 
 std::shared_ptr<math_exp> &defer_math( JsonObject const &jo, std::string_view str,
-                                       math_type_t type )
+                                       math_type_t type, bool optional_ids )
 {
-    get_deferred_math().emplace( jo, str, type );
+    get_deferred_math().emplace( jo, str, type, optional_ids );
     return get_deferred_math().back().exp;
+}
+
+// MATH-J04: an id a dialogue function names as a literal must be loaded. Reported where the
+// math is written, but loading goes on: only that function's result is wrong.
+void report_unknown_literal_ids( deferred_math &math )
+{
+    if( math.optional_ids ) {
+        return;
+    }
+    for( const std::string &err : math.exp->check_literal_ids() ) {
+        try {
+            math.jo.throw_error_at( "math",
+                                    err + R"(.  If the id is another mod's, add "optional_ids": true.)" );
+        } catch( const JsonError &e ) {
+            debugmsg( "%s", e.what() );
+        }
+    }
 }
 
 }  // namespace
@@ -481,6 +502,7 @@ void finalize_conditions()
             clear_deferred_math();
             jo.throw_error_at( "math", ex.what() );
         }
+        report_unknown_literal_ids( math );
         dfr.pop();
     }
 }
@@ -3539,7 +3561,7 @@ void eoc_math::from_json( const JsonObject &jo, std::string_view member, math_ty
     for( size_t i = 0; i < objects.size(); i++ ) {
         combined.append( objects.get_string( i ) );
     }
-    exp = defer_math( jo, combined, type_ );
+    exp = defer_math( jo, combined, type_, jo.get_bool( "optional_ids", false ) );
 }
 
 void eoc_math::deserialize( JsonValue const &jsin )

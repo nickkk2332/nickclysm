@@ -3506,9 +3506,209 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "vehicle_velocity", { "un", 0, vehicle_velocity_eval, vehicle_velocity_ass } },
 };
 
+// MATH-J04: the ids dialogue functions take. A literal one is checked once all data has loaded;
+// an id in a variable can only be checked when the function runs.
+template<typename Id>
+bool is_known_id( std::string const &id )
+{
+    return id.empty() || Id( id ).is_valid();
+}
+
+bool is_known_bodypart_or_all( std::string const &id )
+{
+    return id == "ALL" || id == "ALL_MAJOR" || id == "ALL_MINOR" ||
+           is_known_id<bodypart_str_id>( id );
+}
+
+bool is_known_damage_type_or_all( std::string const &id )
+{
+    return id == "ALL" || is_known_id<damage_type_id>( id );
+}
+
+bool is_known_bionic_or_any( std::string const &id )
+{
+    return id == "ANY" || is_known_id<bionic_id>( id );
+}
+
+// the null spell is the highest level spell for spell_level()
+bool is_known_spell( std::string const &id )
+{
+    return is_known_id<spell_id>( id ) || spell_id( id ).is_null();
+}
+
+// a magic school is a trait; spells without one are in "NONE"
+bool is_known_school( std::string const &id )
+{
+    return id == "NONE" || is_known_id<trait_id>( id );
+}
+
+struct literal_id_kind {
+    std::string_view name;
+    bool ( *is_known )( std::string const & );
+};
+
+const literal_id_kind id_addiction{ "addiction", &is_known_id<addiction_id> };
+const literal_id_kind id_bionic{ "bionic", &is_known_id<bionic_id> };
+const literal_id_kind id_bionic_or_any{ "bionic", &is_known_bionic_or_any };
+const literal_id_kind id_bodypart{ "body part", &is_known_id<bodypart_str_id> };
+const literal_id_kind id_bodypart_or_all{ "body part", &is_known_bodypart_or_all };
+const literal_id_kind id_damage_type{ "damage type", &is_known_id<damage_type_id> };
+const literal_id_kind id_damage_type_or_all{ "damage type", &is_known_damage_type_or_all };
+const literal_id_kind id_effect{ "effect", &is_known_id<efftype_id> };
+const literal_id_kind id_eoc{ "effect_on_condition", &is_known_id<effect_on_condition_id> };
+const literal_id_kind id_event_statistic{ "event_statistic", &is_known_id<string_id<event_statistic>> };
+const literal_id_kind id_field_type{ "field type", &is_known_id<field_type_str_id> };
+const literal_id_kind id_item_flag{ "item flag", &is_known_id<flag_id> };
+const literal_id_kind id_itype{ "item", &is_known_id<itype_id> };
+const literal_id_kind id_limb_score{ "limb score", &is_known_id<limb_score_id> };
+const literal_id_kind id_mongroup{ "monster group", &is_known_id<mongroup_id> };
+const literal_id_kind id_mtype{ "monster", &is_known_id<mtype_id> };
+const literal_id_kind id_mutation_category{ "mutation category", &is_known_id<mutation_category_id> };
+const literal_id_kind id_proficiency{ "proficiency", &is_known_id<proficiency_id> };
+const literal_id_kind id_quality{ "quality", &is_known_id<quality_id> };
+const literal_id_kind id_school{ "magic school", &is_known_school };
+const literal_id_kind id_skill{ "skill", &is_known_id<skill_id> };
+const literal_id_kind id_species{ "species", &is_known_id<species_id> };
+const literal_id_kind id_spell{ "spell", &is_known_spell };
+const literal_id_kind id_trait{ "trait", &is_known_id<trait_id> };
+const literal_id_kind id_vitamin{ "vitamin", &is_known_id<vitamin_id> };
+const literal_id_kind id_vpart{ "vehicle part", &is_known_id<vpart_id> };
+
+// An argument that names an id: a positional one (every_arg for all of them), or a kwarg
+constexpr int every_arg = -1;
+constexpr int kwarg_arg = -2;
+struct literal_id_arg {
+    int pos;
+    std::string_view kwarg;
+    literal_id_kind kind;
+};
+
+literal_id_arg id_arg( int pos, literal_id_kind const &kind )
+{
+    return { pos, {}, kind };
+}
+
+literal_id_arg id_kwarg( std::string_view kwarg, literal_id_kind const &kind )
+{
+    return { kwarg_arg, kwarg, kind };
+}
+
+// Functions whose arguments can also be something other than an id (a variable name, a flag
+// that needn't be defined, a faction made in play) are left out.
+std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
+    { "addiction_intensity", { id_arg( 0, id_addiction ) } },
+    { "addiction_turns", { id_arg( 0, id_addiction ) } },
+    { "armor", { id_arg( 0, id_damage_type ), id_arg( 1, id_bodypart ) } },
+    { "bionic_charge", { id_arg( 0, id_bionic ) } },
+    { "bionic_cost", { id_arg( 0, id_bionic ) } },
+    { "bionic_count", { id_arg( 0, id_bionic_or_any ) } },
+    { "bionic_incapacitated", { id_arg( 0, id_bionic ) } },
+    { "bionic_safe_fuel", { id_arg( 0, id_bionic ) } },
+    { "charge_count", { id_arg( 0, id_itype ) } },
+    { "consumption_count", { id_arg( 0, id_itype ) } },
+    { "coverage", { id_arg( 0, id_bodypart ) } },
+    { "effect_duration", { id_arg( 0, id_effect ), id_kwarg( "bodypart", id_bodypart ) } },
+    { "effect_intensity", { id_arg( 0, id_effect ), id_kwarg( "bodypart", id_bodypart ) } },
+    { "encumbrance", { id_arg( 0, id_bodypart ) } },
+    { "event_statistic", { id_arg( 0, id_event_statistic ) } },
+    { "faction_food_supply", { id_kwarg( "vitamin", id_vitamin ) } },
+    { "field_strength", { id_arg( 0, id_field_type ) } },
+    { "gun_damage", { id_arg( 0, id_damage_type_or_all ) } },
+    { "has_active_bionic", { id_arg( 0, id_bionic ) } },
+    { "has_active_trait", { id_arg( 0, id_trait ) } },
+    { "has_proficiency", { id_arg( 0, id_proficiency ) } },
+    { "has_trait", { id_arg( 0, id_trait ) } },
+    { "has_wielded_with_flag", { id_arg( 0, id_item_flag ) } },
+    { "hp", { id_arg( 0, id_bodypart_or_all ) } },
+    { "hp_max", { id_arg( 0, id_bodypart ) } },
+    { "item_count", { id_arg( 0, id_itype ) } },
+    { "item_rad", { id_arg( 0, id_item_flag ) } },
+    { "limb_score", { id_arg( 0, id_limb_score ) } },
+    { "melee_damage", { id_arg( 0, id_damage_type_or_all ) } },
+    { "mon_groups_nearby", { id_arg( every_arg, id_mongroup ) } },
+    { "mon_species_nearby", { id_arg( every_arg, id_species ) } },
+    { "monsters_nearby", { id_arg( every_arg, id_mtype ) } },
+    { "mutation_category_level", { id_arg( 0, id_mutation_category ) } },
+    { "mutation_instability", { id_arg( 0, id_mutation_category ) } },
+    { "proficiency", { id_arg( 0, id_proficiency ) } },
+    { "quality", { id_arg( 0, id_quality ) } },
+    { "school_level", { id_arg( 0, id_school ) } },
+    { "school_level_adjustment", { id_arg( 0, id_school ) } },
+    { "skill", { id_arg( 0, id_skill ) } },
+    { "skill_exp", { id_arg( 0, id_skill ) } },
+    { "spell_cast_time", { id_arg( 0, id_spell ) } },
+    { "spell_casting_exp", { id_arg( 0, id_spell ) } },
+    { "spell_count", { id_kwarg( "school", id_school ) } },
+    { "spell_difficulty", { id_arg( 0, id_spell ) } },
+    { "spell_energy_cost", { id_arg( 0, id_spell ) } },
+    { "spell_exp", { id_arg( 0, id_spell ) } },
+    { "spell_exp_for_level", { id_arg( 0, id_spell ) } },
+    { "spell_exp_to_next_level", { id_arg( 0, id_spell ) } },
+    { "spell_fail", { id_arg( 0, id_spell ) } },
+    { "spell_level", { id_arg( 0, id_spell ) } },
+    { "spell_level_adjustment", { id_arg( 0, id_spell ) } },
+    { "spell_level_sum", { id_kwarg( "school", id_school ) } },
+    { "spell_sound", { id_arg( 0, id_spell ) } },
+    { "spellcasting_adjustment", { id_kwarg( "school", id_school ), id_kwarg( "spell", id_spell ) } },
+    { "sum_traits_of_category", { id_arg( 0, id_mutation_category ) } },
+    { "sum_traits_of_category_char_has", { id_arg( 0, id_mutation_category ) } },
+    { "time_until_eoc", { id_arg( 0, id_eoc ) } },
+    { "trait_cooldown", { id_arg( 0, id_trait ) } },
+    { "vehicle_fuel", { id_arg( 0, id_itype ) } },
+    { "vehicle_fuel_capacity", { id_arg( 0, id_itype ) } },
+    { "vehicle_part_broken_count", { id_kwarg( "part", id_vpart ) } },
+    { "vehicle_part_count", { id_kwarg( "part", id_vpart ) } },
+    { "vehicle_part_hp", { id_kwarg( "part", id_vpart ) } },
+    { "vitamin", { id_arg( 0, id_vitamin ) } },
+    { "warmth", { id_arg( 0, id_bodypart ) } },
+};
+
+void add_literal_id( std::string_view func, diag_value const &arg, literal_id_kind const &kind,
+                     std::vector<diag_literal_id> &ids )
+{
+    if( arg.is_str() ) {
+        ids.push_back( { func, kind.name, arg.str(), kind.is_known } );
+    }
+}
+
 } // namespace
 
 std::map<std::string_view, dialogue_func> const &get_all_diag_funcs()
 {
     return dialogue_funcs;
+}
+
+void collect_literal_ids( std::string_view func, std::vector<diag_value> const &params,
+                          diag_kwargs const &kwargs, std::vector<diag_literal_id> &ids )
+{
+    const auto entry = literal_id_args.find( func );
+    if( entry == literal_id_args.end() ) {
+        return;
+    }
+    // the table's key outlives the expression's text
+    const std::string_view name = entry->first;
+    for( const literal_id_arg &arg : entry->second ) {
+        if( arg.pos == kwarg_arg ) {
+            const auto kw = kwargs.kwargs.find( std::string( arg.kwarg ) );
+            if( kw != kwargs.kwargs.end() ) {
+                add_literal_id( name, kw->second, arg.kind, ids );
+            }
+        } else if( arg.pos == every_arg ) {
+            for( const diag_value &param : params ) {
+                add_literal_id( name, param, arg.kind, ids );
+            }
+        } else if( static_cast<size_t>( arg.pos ) < params.size() ) {
+            add_literal_id( name, params[arg.pos], arg.kind, ids );
+        }
+    }
+}
+
+std::vector<std::string_view> diag_funcs_with_literal_ids()
+{
+    std::vector<std::string_view> names;
+    names.reserve( literal_id_args.size() );
+    for( const auto &entry : literal_id_args ) {
+        names.push_back( entry.first );
+    }
+    return names;
 }

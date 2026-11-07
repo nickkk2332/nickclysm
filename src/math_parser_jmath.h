@@ -18,6 +18,8 @@ struct jmath_func {
     std::vector<std::pair<jmath_func_id, mod_id>> src;
     bool was_loaded = false;
     int num_params{};
+    // the ids the function names may not be loaded (another mod's), so aren't checked (MATH-J04)
+    bool optional_ids = false;
 
     double eval( const_dialogue const &d ) const;
     double eval( const_dialogue const &d, std::vector<double> const &params ) const;

@@ -2312,12 +2312,18 @@ static int total_price( const_talker const &seller, const itype_id &item_type )
     return price;
 }
 
+int talk_trial::get_difficulty( const_dialogue const &d ) const
+{
+    return static_cast<int>( std::round( difficulty.evaluate( d ) ) );
+}
+
 int talk_trial::calc_chance( const_dialogue const &d ) const
 {
     if( d.const_actor( false )->has_trait( trait_DEBUG_MIND_CONTROL ) ) {
         return 100;
     }
-    int chance = difficulty;
+    const int trial_difficulty = get_difficulty( d );
+    int chance = trial_difficulty;
     switch( type ) {
         case NUM_TALK_TRIALS:
             dbg( D_ERROR ) << "called calc_chance with invalid talk_trial value: "
@@ -2327,8 +2333,8 @@ int talk_trial::calc_chance( const_dialogue const &d ) const
             chance = 100;
             break;
         case TALK_TRIAL_SKILL_CHECK:
-            chance = d.const_actor( false )->get_skill_level( skill_id( skill_required ) ) >= difficulty ? 100 :
-                     0;
+            chance = d.const_actor( false )->get_skill_level( skill_id( skill_required ) ) >=
+                     trial_difficulty ? 100 : 0;
             break;
         case TALK_TRIAL_CONDITION:
             if( condition ) {
@@ -2357,6 +2363,12 @@ int talk_trial::calc_chance( const_dialogue const &d ) const
         // Extra spaces at start for legibility.
         add_msg_debug( debugmode::DF_NPC, "    %s modified trial chance by %d, now %d",
                        this_mod.first, trial_mod_int, chance );
+    }
+    for( const dbl_or_var &math_mod : math_modifiers ) {
+        const int trial_mod_int = static_cast<int>( std::round( math_mod.evaluate( d ) ) );
+        chance += trial_mod_int;
+        add_msg_debug( debugmode::DF_NPC, "    math modified trial chance by %d, now %d",
+                       trial_mod_int, chance );
     }
 
     return std::max( 0, std::min( 100, chance ) );
@@ -2851,11 +2863,12 @@ talk_data talk_response::create_option_line( dialogue &d, const input_event &hot
         ftext = text;
     } else if( trial.type == TALK_TRIAL_SKILL_CHECK ) {
         const Skill &req_skill = skill_id( trial.skill_required ).obj();
+        const int trial_difficulty = trial.get_difficulty( d );
         ftext = string_format( pgettext( "talk option", "[%1$s %2$d/%3$d] %4$s" ),
                                req_skill.name(),
                                std::min( d.actor( false )->get_skill_level( req_skill.ident() ),
-                                         trial.difficulty ),
-                               trial.difficulty,
+                                         trial_difficulty ),
+                               trial_difficulty,
                                text );
     } else {
         // dialogue w/ a % chance to work
@@ -3300,7 +3313,7 @@ talk_trial::talk_trial( const JsonObject &jo )
     }
     type = iter->second;
     if( type != TALK_TRIAL_NONE && type != TALK_TRIAL_CONDITION ) {
-        difficulty = jo.get_int( "difficulty" );
+        difficulty = get_dbl_or_var( jo, "difficulty" );
     }
     if( type == TALK_TRIAL_SKILL_CHECK ) {
         skill_required = jo.get_string( "skill_required" );
@@ -3310,10 +3323,18 @@ talk_trial::talk_trial( const JsonObject &jo )
         read_condition( jo, "condition", condition, false );
     }
     if( jo.has_member( "mod" ) ) {
-        for( JsonArray jmod : jo.get_array( "mod" ) ) {
+        for( const JsonValue jmod : jo.get_array( "mod" ) ) {
+            if( jmod.test_object() ) {
+                // MATH-J03: { "math": [ "..." ] } adds what it gives, with any alpha talker
+                dbl_or_var math_mod;
+                jmod.read( math_mod, true );
+                math_modifiers.push_back( math_mod );
+                continue;
+            }
+            JsonArray pair = jmod.get_array();
             trial_mod this_modifier;
-            this_modifier.first = jmod.next_string();
-            this_modifier.second = jmod.next_int();
+            this_modifier.first = pair.next_string();
+            this_modifier.second = pair.next_int();
             modifiers.push_back( this_modifier );
         }
     }
