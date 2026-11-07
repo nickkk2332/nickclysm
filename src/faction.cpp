@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@
 
 static const faction_id faction_amf( "amf" );
 static const faction_id faction_no_faction( "no_faction" );
+static const faction_id faction_your_followers( "your_followers" );
 
 static const mfaction_str_id monfaction_human( "human" );
 
@@ -456,10 +458,24 @@ std::string fac_wealth_text( int val, int size )
     return pgettext( "Faction wealth", "Destitute" );
 }
 
+// What one person eats in a day, as vitamin_stores() counts it
+static constexpr int kcal_per_person_day = 3000;
+
+// NPC-B12: how many days the food supply feeds the faction. This divided kcal by the old
+// 288-a-day nutrition unit (about 10 times too many days) and by the JSON size, which is 1 for
+// your followers whatever their number, and 0 for some factions.
+static int food_supply_days( const faction &fac )
+{
+    // your followers and you, or as many as an NPC faction's size says
+    const int eaters = fac.id == faction_your_followers ?
+                       static_cast<int>( g->get_follower_list().size() ) + 1 : fac.size;
+    return fac.food_supply().kcal() / ( std::max( eaters, 1 ) * kcal_per_person_day );
+}
+
 std::string faction::food_supply_text() const
 {
     //Convert to how many days you can support the population
-    int val = food_supply().kcal() / ( size * 288 );
+    const int val = food_supply_days( *this );
     if( val >= 30 ) {
         return pgettext( "Faction food", "Overflowing" );
     }
@@ -487,7 +503,7 @@ bool faction::wont_talk_to_you() const
 
 nc_color faction::food_supply_color() const
 {
-    int val = food_supply().kcal() / ( size * 288 );
+    const int val = food_supply_days( *this );
     if( val >= 30 ) {
         return c_green;
     } else if( val >= 14 ) {
@@ -504,7 +520,7 @@ nc_color faction::food_supply_color() const
 std::pair<nc_color, std::string> faction::vitamin_stores( vitamin_type vit_type )
 {
     bool is_toxin = vit_type == vitamin_type::TOXIN;
-    const double days_of_food = food_supply().kcal() / 3000.0;
+    const double days_of_food = food_supply().kcal() / static_cast<double>( kcal_per_person_day );
     std::map<vitamin_id, int> stored_vits = food_supply().vitamins();
     // First, pare down our search to only the relevant type
     for( auto it = stored_vits.cbegin(); it != stored_vits.cend(); ) {
@@ -521,17 +537,21 @@ std::pair<nc_color, std::string> faction::vitamin_stores( vitamin_type vit_type 
     // Iterate the map's content into a sortable container...
     for( auto &vit : stored_vits ) {
         int units_per_day = vit.first.obj().units_absorption_per_day();
-        double relative_intake = static_cast<double>( vit.second ) / static_cast<double>
-                                 ( units_per_day ) / days_of_food;
+        // with no food (or a vitamin absorbed at no rate) this was 0 / 0, which sorts badly
+        double relative_intake = days_of_food > 0.0 && units_per_day > 0 ?
+                                 static_cast<double>( vit.second ) / static_cast<double>
+                                 ( units_per_day ) / days_of_food : 0.0;
         // We use the inverse value for toxins, since they are bad.
         if( is_toxin ) {
-            relative_intake = 1 / relative_intake;
+            relative_intake = relative_intake > 0.0 ? 1 / relative_intake :
+                              std::numeric_limits<double>::max();
         }
         vitamins.emplace_back( vit.first, relative_intake );
     }
     // Sort to find the worst-case scenario, lowest relative_intake is first
+    // NPC-B12: it sorted the highest first, so "Worst vitamin" showed the best one
     std::sort( vitamins.begin(), vitamins.end(), []( const auto & x, const auto & y ) {
-        return x.second > y.second;
+        return x.second < y.second;
     } );
     const double worst_intake = vitamins.at( 0 ).second;
     std::string vit_name = vitamins.at( 0 ).first.obj().name();

@@ -823,13 +823,14 @@ TEST_CASE( "npc-p02_npc_attack_choices", "[audit][npc_attack]" )
         arm_shooter( guy, itype_modular_m16a4 );
     };
 
+    // the gun ratings are 3 higher since NPC-B08: the gun in hand pays no wield penalty
     SECTION( "gun, melee or throw, against an adjacent zombie and one 6 tiles away" ) {
         guy.set_attitude( NPCATT_KILL );
         arm_fighter();
         monster *close = zombie_at( { 1, 0, 0 } );
         zombie_at( { 6, 0, 0 } );
         here.build_map_cache( 0 );
-        check_choice( choose_attack( guy, close, 1 ), "gun", { 1, 0, 0 }, 221 );
+        check_choice( choose_attack( guy, close, 1 ), "gun", { 1, 0, 0 }, 224 );
     }
     SECTION( "zombies at 4, 9 and 15 tiles, aiming at the middle one" ) {
         guy.set_attitude( NPCATT_KILL );
@@ -838,7 +839,7 @@ TEST_CASE( "npc-p02_npc_attack_choices", "[audit][npc_attack]" )
         monster *middle = zombie_at( { -9, 2, 0 } );
         zombie_at( { 3, -15, 0 } );
         here.build_map_cache( 0 );
-        check_choice( choose_attack( guy, middle, 2 ), "gun", { -9, 2, 0 }, 300 );
+        check_choice( choose_attack( guy, middle, 2 ), "gun", { -9, 2, 0 }, 303 );
     }
     SECTION( "a follower with the player in the line of fire" ) {
         guy.set_fac( faction_your_followers );
@@ -849,7 +850,7 @@ TEST_CASE( "npc-p02_npc_attack_choices", "[audit][npc_attack]" )
         monster *behind = zombie_at( { 6, 0, 0 } );
         zombie_at( { 5, 4, 0 } );
         here.build_map_cache( 0 );
-        check_choice( choose_attack( guy, behind, 3 ), "gun", { 6, 0, 0 }, 269 );
+        check_choice( choose_attack( guy, behind, 3 ), "gun", { 6, 0, 0 }, 272 );
     }
     SECTION( "a follower casting a fireball with the player next to the zombies" ) {
         guy.set_fac( faction_your_followers );
