@@ -11512,12 +11512,20 @@ talk_effect_fun_t::func f_field( const JsonObject &jo, std::string_view member,
     const bool indoor_only = jo.get_bool( "indoor_only", false );
     const bool hit_player = jo.get_bool( "hit_player", true );
     const bool square = jo.get_bool( "square", false );
+    // MAP-J06: "add" (default) adds to a field already there, "set" makes its intensity exactly
+    // this (0 or less removes it), "max" raises it to this and never lowers it
+    const std::string mode = jo.get_string( "mode", "add" );
+    if( mode != "add" && mode != "set" && mode != "max" ) {
+        jo.throw_error_at( "mode", R"(mode must be "add", "set" or "max")" );
+    }
+    const bool set_mode = mode == "set";
+    const bool max_mode = mode == "max";
 
     std::optional<var_info> target_var;
     optional( jo, false, "target_var", target_var );
 
     return [new_field, dov_intensity, dov_age, dov_radius, outdoor_only,
-               hit_player, square, target_var, is_npc, indoor_only]( dialogue & d ) {
+               hit_player, square, target_var, is_npc, indoor_only, set_mode, max_mode]( dialogue & d ) {
 
         map &here = get_map();
         const int radius = dov_radius.evaluate( d );
@@ -11537,7 +11545,30 @@ talk_effect_fun_t::func f_field( const JsonObject &jo, std::string_view member,
         for( const tripoint_bub_ms &dest : points ) {
             if( ( !outdoor_only || here.is_outside( dest ) ) &&
                 ( !indoor_only || !here.is_outside( dest ) ) ) {
-                here.add_field( dest, field, dov_intensity.evaluate( d ), dov_age.evaluate( d ), hit_player );
+                const int intensity = dov_intensity.evaluate( d );
+                if( !set_mode && !max_mode ) {
+                    here.add_field( dest, field, intensity, dov_age.evaluate( d ), hit_player );
+                    continue;
+                }
+                if( !here.inbounds( dest ) ) {
+                    continue;
+                }
+                // the field this tile holds for that type (fd_electricity is fd_electricity_unlit
+                // in a wall)
+                const field_type_id placed = here.placed_field_type( dest, field );
+                const field_entry *there = here.field_at( dest ).find_field( placed );
+                if( there != nullptr && max_mode && there->get_field_intensity() >= intensity ) {
+                    continue;
+                }
+                if( there != nullptr && intensity > 0 ) {
+                    here.set_field_intensity( dest, placed, intensity );
+                } else if( intensity <= 0 ) {
+                    if( set_mode ) {
+                        here.remove_field( dest, placed );
+                    }
+                } else {
+                    here.add_field( dest, field, intensity, dov_age.evaluate( d ), hit_player );
+                }
             }
         }
     };

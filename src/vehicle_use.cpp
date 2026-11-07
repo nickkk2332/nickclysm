@@ -7,8 +7,10 @@
 #include <initializer_list>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "action.h"
@@ -1611,6 +1613,121 @@ void vehicle::use_mws( map &here, int p )
     }
 }
 
+// MAP-J03: processing cycles
+namespace
+{
+// the part's base item variable holding the turn its processing cycle started
+const std::string processing_cycle_start_var = "processing_cycle_start";
+
+std::optional<time_point> processing_cycle_start( const vehicle_part &vp )
+{
+    const double started = vp.get_base().get_var( processing_cycle_start_var, -1.0 );
+    if( started < 0.0 ) {
+        return std::nullopt;
+    }
+    return calendar::turn_zero + time_duration::from_turns( started );
+}
+
+void set_processing_cycle_start( vehicle_part &vp, const std::optional<time_point> &started )
+{
+    item base = vp.get_base();
+    if( started ) {
+        base.set_var( processing_cycle_start_var, to_turns<double>( *started - calendar::turn_zero ) );
+    } else {
+        base.remove_var( processing_cycle_start_var );
+    }
+    vp.set_base( std::move( base ) );
+}
+
+// Whether the EOC's condition held
+bool run_processing_cycle_eoc( vehicle &veh, int part, const effect_on_condition_id &eoc )
+{
+    const vehicle_part &vp = veh.part( part );
+    dialogue d( get_talker_for( get_player_character() ), get_talker_for( veh ) );
+    d.set_value( "vpart_id", vp.info().id.str() );
+    d.set_value( "vpart_variant", vp.variant );
+    d.set_value( "vpart_pos", veh.abs_part_pos( part ) );
+    return eoc->activate( d );
+}
+} // namespace
+
+bool processing_cycles::running( const vehicle_part &vp )
+{
+    return vp.enabled && vp.info().processing_cycle && processing_cycle_start( vp ).has_value();
+}
+
+void processing_cycles::toggle( vehicle &veh, int part )
+{
+    vehicle_part &vp = veh.part( part );
+    if( !vp.info().processing_cycle ) {
+        return;
+    }
+    const vpslot_processing_cycle &cycle = *vp.info().processing_cycle;
+    if( running( vp ) ) {
+        vp.enabled = false;
+        set_processing_cycle_start( vp, std::nullopt );
+        add_msg( m_bad, _( "You stop the %s before it has finished." ), vp.name( false ) );
+        return;
+    }
+    if( veh.get_items( vp ).empty() ) {
+        add_msg( m_bad, _( "The %s is empty; there's no point in starting it." ), vp.name( false ) );
+        return;
+    }
+    if( cycle.eoc_on_start && !run_processing_cycle_eoc( veh, part, *cycle.eoc_on_start ) ) {
+        // its false_effect can say why
+        return;
+    }
+    // the EOC may have changed the vehicle
+    if( part < 0 || part >= veh.part_count() ) {
+        return;
+    }
+    vehicle_part &started = veh.part( part );
+    started.enabled = true;
+    set_processing_cycle_start( started, calendar::turn );
+    if( cycle.start_message.empty() ) {
+        add_msg( m_good, _( "You start the %s." ), started.name( false ) );
+    } else {
+        add_msg( m_good, cycle.start_message.translated() );
+    }
+}
+
+void processing_cycles::process( vehicle &veh, int part )
+{
+    vehicle_part &vp = veh.part( part );
+    if( !running( vp ) ) {
+        return;
+    }
+    const vpslot_processing_cycle &cycle = *vp.info().processing_cycle;
+    if( calendar::turn - *processing_cycle_start( vp ) < cycle.duration ) {
+        if( !cycle.progress_message.empty() && calendar::once_every( 15_minutes ) ) {
+            add_msg( cycle.progress_message.translated() );
+        }
+        return;
+    }
+    vp.enabled = false;
+    set_processing_cycle_start( vp, std::nullopt );
+    for( item &it : veh.get_items( vp ) ) {
+        for( const flag_id &flag : cycle.unset_item_flags ) {
+            it.unset_flag( flag );
+        }
+        for( const flag_id &flag : cycle.set_item_flags ) {
+            it.set_flag( flag );
+        }
+        for( const std::pair<itype_id, itype_id> &transform : cycle.transform_items ) {
+            if( it.typeId() == transform.first ) {
+                it.convert( transform.second );
+                break;
+            }
+        }
+    }
+    if( !cycle.finish_message.empty() ) {
+        add_msg( cycle.finish_message.translated() );
+    }
+    if( cycle.eoc_on_finish ) {
+        run_processing_cycle_eoc( veh, part, *cycle.eoc_on_finish );
+    }
+}
+
 void vehicle::use_nl_boiler( map &here, int p )
 {
     if( g->get_dimension_prefix() == dimension_world_netherum_labyrinth_safehouse ) {
@@ -2761,6 +2878,20 @@ void vehicle::build_interact_menu( veh_menu &menu, map *here, const tripoint_bub
         .hotkey( "TOGGLE_MWS" )
         .on_submit( [this, dw_idx, here] { use_mws( *here, dw_idx ); } );
     }
+    // MAP-J03: parts with a JSON processing_cycle
+    for( vehicle_part *cycle_part : vp_parts ) {
+        if( !cycle_part->info().processing_cycle ) {
+            continue;
+        }
+        const int cycle_idx = index_of_part( cycle_part );
+        const time_duration cycle_time = cycle_part->info().processing_cycle->duration;
+        menu.add( processing_cycles::running( *cycle_part )
+                  ? string_format( _( "Stop the %s" ), cycle_part->name( false ) )
+                  : string_format( _( "Start the %1$s (%2$s)" ), cycle_part->name( false ),
+                                   to_string( cycle_time ) ) )
+        .on_submit( [this, cycle_idx] { processing_cycles::toggle( *this, cycle_idx ); } );
+    }
+
     const std::optional<vpart_reference> vp_nl_boiler = vp.avail_part_with_feature( "NL_BOILER" );
     if( vp_nl_boiler ) {
         const size_t dw_idx = vp_nl_boiler->part_index();

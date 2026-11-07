@@ -190,6 +190,22 @@ struct vpslot_toolkit {
     void deserialize( const JsonObject &jo );
 };
 
+// MAP-J03: a timed cycle a CARGO part runs on what it holds (a washer, a dryer, a sterilizer)
+struct vpslot_processing_cycle {
+    time_duration duration = 0_turns;
+    std::set<flag_id> unset_item_flags;
+    std::set<flag_id> set_item_flags;
+    // items of the first type become the second
+    std::vector<std::pair<itype_id, itype_id>> transform_items;
+    translation start_message;
+    translation progress_message;
+    translation finish_message;
+    // run with the avatar as alpha talker and the vehicle as beta; the cycle starts only if the
+    // start EOC's condition holds
+    std::optional<effect_on_condition_id> eoc_on_start;
+    std::optional<effect_on_condition_id> eoc_on_finish;
+};
+
 struct vpslot_terrain_transform {
     std::set<std::string> pre_flags;
     std::optional<ter_str_id> post_terrain;
@@ -339,6 +355,7 @@ class vpart_info
         //Enchantments
         std::vector<enchantment_id> enchantments;
         std::optional<effect_on_condition_id> activatable_eoc;
+        std::optional<vpslot_processing_cycle> processing_cycle;
 
         std::set<std::pair<itype_id, int>> get_pseudo_tools() const;
 

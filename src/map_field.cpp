@@ -769,7 +769,8 @@ void field_processor_monster_spawn( const tripoint_bub_ms &p, field_entry &cur,
     int monster_spawn_chance = int_level.monster_spawn_chance;
     int monster_spawn_count = int_level.monster_spawn_count;
     if( monster_spawn_count > 0 && monster_spawn_chance > 0 && one_in( monster_spawn_chance ) ) {
-        for( ; monster_spawn_count > 0; monster_spawn_count-- ) {
+        // GetResultFromGroup takes each monster's cost (at least 1) off the count
+        while( monster_spawn_count > 0 ) {
             std::vector<MonsterGroupResult> spawn_details =
                 MonsterGroupManager::GetResultFromGroup( int_level.monster_spawn_group, &monster_spawn_count );
             for( const MonsterGroupResult &mgr : spawn_details ) {

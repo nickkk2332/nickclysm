@@ -142,6 +142,10 @@ Use the `Home` key to return to the top.
       - [`harvest_by_season`](#harvest_by_season)
       - [`liquid_source`](#liquid_source)
       - [`roof`](#roof)
+      - [`produces_liquid`](#produces_liquid)
+      - [`rad_scorch`](#rad_scorch)
+      - [`felled`](#felled)
+      - [`churned_into`](#churned_into)
     - [Common To Furniture And Terrain](#common-to-furniture-and-terrain)
       - [`id`](#id-1)
       - [`name`](#name)
@@ -158,6 +162,7 @@ Use the `Home` key to return to the top.
       - [`sound_attenuation`](#sound_attenuation)
       - [`bonus_fire_warmth_feet`](#bonus_fire_warmth_feet)
       - [`looks_like`](#looks_like)
+      - [`item_temperature`](#item_temperature)
       - [`color` or `bgcolor`](#color-or-bgcolor)
       - [`coverage`](#coverage)
       - [`max_volume`](#max_volume)
@@ -3235,6 +3240,24 @@ with the avatar as alpha talker and the vehicle as beta talker, and gets the con
 `vpart_id` (the part's id), `vpart_variant` (its variant, or `""`) and `vpart_pos` (a location
 variable: the part's tile).  See [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md).
 
+#### The following optional field gives a CARGO part a timed processing cycle.
+```jsonc
+"processing_cycle": {
+  "duration": "60 m",                      // How long a cycle takes (mandatory)
+  "unset_item_flags": [ "FILTHY" ],        // Flags taken off every item inside when it ends
+  "set_item_flags": [ ],                   // Flags put on every item inside when it ends
+  "transform_items": [ { "from": "wet_rag", "to": "rag" } ], // Items of the first type become the second
+  "start_message": "You switch the dryer on.",   // Shown when it starts (else "You start the <part>.")
+  "progress_message": "The dryer rumbles.",      // Shown every 15 minutes while it runs
+  "finish_message": "The dryer has finished.",   // Shown when it ends
+  "eoc_on_start": "EOC_DRYER_START",       // Id or inline EOC run when the avatar starts it; the cycle
+                                           // starts only if its condition holds (its false_effect can
+                                           // say why not), and its effects can use up water, detergent...
+  "eoc_on_finish": "EOC_DRYER_DONE"        // Id or inline EOC run when it ends
+}
+```
+`e`xamining the part's tile offers "Start the <part> (<duration>)", or "Stop the <part>" while it runs. An empty part can't be started. While the cycle runs nothing can be put in or taken out of the part, as with the washing machine. The EOCs run like an `activatable_eoc`: the avatar is the alpha talker, the vehicle the beta talker, and they get the context variables `vpart_id`, `vpart_variant` and `vpart_pos`. A cycle that ran out while the vehicle was away from the player finishes when it comes back. The vanilla washing machine, dishwasher, autoclave and mobile weather station keep their own code (their flags).
+
 #### The following optional field describes pseudo tools for any part.
 Crafting stations (e.g. kitchen, welding rigs etc) have tools that they provide as part
 of forming the inventory for crafting as well as providing menu items when `e`xamining
@@ -4040,6 +4063,40 @@ Example:
 
 (Optional) The terrain of the terrain on top of this (the roof).
 
+#### `produces_liquid`
+
+(Optional) Object. A liquid the terrain makes as time passes, poured into the first container on the tile (one that would spill, or a watertight one) when the tile comes back into the reality bubble. Only what fits is kept. The tapped maple tree makes its sap this way:
+
+```jsonc
+"produces_liquid": {
+  "item": "maple_sap",   // the liquid
+  "amount": 224,         // charges made over one whole span (224 charges of sap are 56 L)
+  "active": [ 3.75, 0.5 ], // the span of the year it is made in, in seasons from the start of spring:
+                         // 0 is the start of spring, 1 of summer, 2 of autumn, 3 of winter, and 4 the
+                         // next spring. A span may run past the end of winter, as this one does
+                         // (the last quarter of winter and the first half of spring)
+  "poison_chance": 10    // (optional, default 0 for never) one fill in this many is poisoned
+}
+```
+
+A tile away for a year or more gets one whole span's worth.
+
+#### `rad_scorch`
+
+(Optional) Terrain id. What radiation on the tile scorches the terrain into, as time passes away from the player. Set it to the terrain's own id to make it immune. Without it, a few vanilla plants and trees have their own result, other `SHRUB` terrain dies into `t_dirt` and other `TREE` terrain into `t_tree_dead`. Planted crops (furniture with `PLANT`) on the tile are always destroyed first.
+
+#### `felled`
+
+(Optional) Object, for `TREE` terrain. What cutting the tree down leaves: `"trunk"` is the terrain of the fallen trunk, `"stump"` the terrain left where the tree stood. Each defaults to `t_trunk` and `t_stump`.
+
+```jsonc
+"felled": { "trunk": "t_trunk_palm", "stump": "t_stump_palm" }
+```
+
+#### `churned_into`
+
+(Optional) Terrain id. What a vehicle without enough wheels (dragged along on its frame) churns the terrain into. Set it to the terrain's own id to keep it as it is. Without it, `t_dirt` and `t_grass` become `t_dirtmound` and other terrain is left alone.
+
 ### Common To Furniture And Terrain
 
 Some values can/must be set for terrain and furniture. They have the same meaning in each case.
@@ -4170,6 +4227,10 @@ Furniture and fields set none. A mod changes a value by redefining the object wi
 #### `bonus_fire_warmth_feet`
 
 (Optional) Increase warmth received on feet from nearby fire  (default = 300)
+
+#### `item_temperature`
+
+(Optional) String. The temperature items lying on the tile keep, instead of the weather's: `"root_cellar"` (the ground's year-round temperature, as in `t_rootcellar`), `"fridge"` (no warmer than a fridge), `"freezer"` (no warmer than a freezer), `"heater"` (no colder than room temperature) or `"normal"` (the weather's; the default, and a way to remove an inherited value). Furniture's value is used before the terrain's. Items inside vehicles follow their vehicle part instead.
 
 #### `looks_like`
 

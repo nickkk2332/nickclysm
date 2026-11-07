@@ -6782,32 +6782,13 @@ void map::temp_based_phase_change_at( const tripoint_bub_ms &p, const weather_ge
     const ter_id target = chosen != ter_t_pseudo_phase && chosen != base.id() ? chosen.id() : base;
     if( target == cur ) {
         const ter_t &cur_ter = cur.obj();
-        if( has_original && cur != base && !ter_set_spawns_liquid( base_ter ) &&
-            !ter_set_spawns_liquid( cur_ter ) ) {
-            // Still frozen as it was. This used to thaw the tile and freeze it again through two
-            // full ter_set calls. Of what those left behind besides the same terrain, keep the
-            // reset of the tile's map damage, the submap marked as changed, and the trap and
-            // emission entries each call added for its terrain (ice has a trap): until the map
-            // is actualized, or if it isn't (map::load during explosions), those entries are
-            // what registers them.
-            sm->set_map_damage( l, 0 );
-            if( !mapgen_in_progress ) {
-                sm->player_adjusted_map = true;
-            }
-            for( const ter_t *set_to : {
-                     &base_ter, &cur_ter
-                 } ) {
-                if( set_to->trap != tr_null ) {
-                    traplocs[set_to->trap.to_i()].push_back( p );
-                }
-                if( !set_to->emissions.empty() ) {
-                    field_ter_locs.push_back( p );
-                }
-            }
-            return;
-        }
-        if( !has_original || cur == base ) {
-            // nothing to change
+        if( !has_original || cur == base ||
+            ( !ter_set_spawns_liquid( base_ter ) && !ter_set_spawns_liquid( cur_ter ) ) ) {
+            // Nothing to change: open water stays open, or ice stays as frozen as it was. The
+            // tile keeps its map damage and the submap isn't marked as changed by the player
+            // (MAP-B10; refreezing used to reset both and register the ice's trap again on
+            // every load). Terrain that fills itself with a finite liquid when set still goes
+            // through the thaw and refreeze below, so the liquid is refilled as before.
             return;
         }
     }

@@ -219,7 +219,8 @@ bool vehicle_part::is_cleaner_on() const
     const bool is_cleaner = info().has_flag( VPFLAG_AUTOCLAVE ) ||
                             info().has_flag( VPFLAG_DISHWASHER ) ||
                             info().has_flag( VPFLAG_WASHING_MACHINE );
-    return is_cleaner && enabled;
+    // a running processing_cycle keeps its contents shut in too (MAP-J03)
+    return ( is_cleaner && enabled ) || processing_cycles::running( *this );
 }
 
 bool vehicle_part::is_unavailable( const bool carried ) const

@@ -1247,6 +1247,24 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "coverage", coverage );
     optional( jo, was_loaded, "curtain_transform", curtain_transform );
     optional( jo, was_loaded, "emissions", emissions );
+    // MAP-J04
+    if( jo.has_member( "item_temperature" ) ) {
+        const std::string temperature = jo.get_string( "item_temperature" );
+        if( temperature == "normal" ) {
+            item_temperature.reset();
+        } else if( temperature == "root_cellar" ) {
+            item_temperature = temperature_flag::ROOT_CELLAR;
+        } else if( temperature == "fridge" ) {
+            item_temperature = temperature_flag::FRIDGE;
+        } else if( temperature == "freezer" ) {
+            item_temperature = temperature_flag::FREEZER;
+        } else if( temperature == "heater" ) {
+            item_temperature = temperature_flag::HEATER;
+        } else {
+            jo.throw_error_at( "item_temperature",
+                               R"(item_temperature must be "normal", "root_cellar", "fridge", "freezer" or "heater")" );
+        }
+    }
 
     if( jo.has_array( "harvest_by_season" ) ) {
         for( JsonObject harvest_jo : jo.get_array( "harvest_by_season" ) ) {
@@ -1437,6 +1455,41 @@ void ter_t::load( const JsonObject &jo, const std::string &src )
 
     optional( jo, was_loaded, "roof", roof, ter_str_id::NULL_ID() );
 
+    // MAP-J04
+    if( jo.has_object( "produces_liquid" ) ) {
+        const JsonObject jp = jo.get_object( "produces_liquid" );
+        ter_liquid_production production;
+        mandatory( jp, false, "item", production.item );
+        mandatory( jp, false, "amount", production.amount );
+        const JsonArray active = jp.get_array( "active" );
+        if( active.size() != 2 ) {
+            jp.throw_error_at( "active", "active must be [ start, end ], in seasons from the start of spring" );
+        }
+        production.start = active.get_float( 0 );
+        production.end = active.get_float( 1 );
+        optional( jp, false, "poison_chance", production.poison_chance, 0 );
+        if( production.amount <= 0 ) {
+            jp.throw_error_at( "amount", "amount must be more than 0" );
+        }
+        if( production.start < 0.0 || production.start >= 4.0 || production.end < 0.0 ||
+            production.end > 4.0 || production.start == production.end ) {
+            jp.throw_error_at( "active",
+                               "active must be two different times of year from 0 (spring) to 4 (the next spring)" );
+        }
+        if( production.poison_chance < 0 ) {
+            jp.throw_error_at( "poison_chance", "poison_chance must be 0 or more" );
+        }
+        produces_liquid = production;
+    }
+    optional( jo, was_loaded, "rad_scorch", rad_scorch );
+    // MAP-J05
+    if( jo.has_object( "felled" ) ) {
+        const JsonObject jf = jo.get_object( "felled" );
+        optional( jf, false, "trunk", felled_trunk );
+        optional( jf, false, "stump", felled_stump );
+    }
+    optional( jo, was_loaded, "churned_into", churned_into );
+
     optional( jo, was_loaded, "lockpick_result", lockpick_result, ter_str_id::NULL_ID() );
 
     // Phase-change fields
@@ -1599,6 +1652,25 @@ void ter_t::check() const
 
     if( !transforms_into.is_valid() ) {
         debugmsg( "invalid transforms_into %s for %s", transforms_into.c_str(), id.c_str() );
+    }
+
+    // MAP-J04, MAP-J05
+    if( produces_liquid && !produces_liquid->item.is_valid() ) {
+        debugmsg( "ter %s: produces_liquid item %s doesn't exist", id.c_str(),
+                  produces_liquid->item.c_str() );
+    }
+    for( const std::pair<const ter_str_id *, const char *> &result : {
+             std::make_pair( &rad_scorch, "rad_scorch" ), std::make_pair( &felled_trunk, "felled trunk" ),
+             std::make_pair( &felled_stump, "felled stump" ), std::make_pair( &churned_into, "churned_into" )
+         } ) {
+        if( !result.first->is_empty() && !result.first->is_valid() ) {
+            debugmsg( "ter %s: %s terrain %s doesn't exist", id.c_str(), result.second,
+                      result.first->c_str() );
+        }
+    }
+    if( ( !felled_trunk.is_empty() || !felled_stump.is_empty() ) &&
+        !has_flag( ter_furn_flag::TFLAG_TREE ) ) {
+        debugmsg( "ter %s has felled terrain but isn't a TREE", id.c_str() );
     }
 
     // Validate open/close transforms

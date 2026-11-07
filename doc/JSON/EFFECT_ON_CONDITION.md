@@ -8299,7 +8299,8 @@ Spawn a field around player or target coordinates.
 | "u_set_field", "npc_set_field" | **mandatory** | string or [variable object](#variable-object) | id of field to spawn around the player |
 | "intensity" | optional | int, [variable object](#variable-object) or value between two | default 1; intensity of field to spawn. Each field evaluate intensity separately, so `[1, 5]` would spawn fields of intensity from 1 to 5 |
 | "radius" | optional | int, [variable object](#variable-object) or value between two | default 1; radius of a field to spawn |
-| "age" | optional | int, duration, [variable object](#variable-object) or value between two | default 1 second; how long the field would last. Each field evaluate age separately |
+| "age" | optional | int, duration, [variable object](#variable-object) or value between two | default 1 second; the age the new field starts at. A field loses intensity as it ages (one level each `half_life`), so a higher age makes it fade **sooner**, not last longer. Each field evaluate age separately. Not used when an existing field is changed by `"set"` or `"max"` |
+| "mode" | optional | string | default `"add"`: the intensity is added to a field of that type already on the tile. `"set"`: the field's intensity becomes exactly this, and an intensity of 0 or less removes the field. `"max"`: the field is raised to this intensity, and one already as strong is left alone. The `field_strength` math function can also read and set one tile's field |
 | "outdoor_only"/ "indoor_only" | optional | boolean | default false; if used, field would be spawned only outside or only inside buildings |
 | "hit_player" | optional | boolean | default true; if field spawn where the player is, process like player stepped on this field |
 | "square" | optional | boolean | default false; if true, the field spawned will be a square, otherwise it will be a circle |
@@ -8309,6 +8310,11 @@ Spawn a field around player or target coordinates.
 Spawn blood 10 tiles around the player outdoor
 ```jsonc
 { "u_set_field": "fd_blood", "radius": 10, "outdoor_only": true, "intensity": 3 }
+```
+
+Put out every fire within 3 tiles of the player
+```jsonc
+{ "u_set_field": "fd_fire", "radius": 3, "intensity": 0, "mode": "set" }
 ```
 
 #### `u_emit`, `npc_emit`

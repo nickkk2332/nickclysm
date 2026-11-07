@@ -2755,4 +2755,15 @@ class MapgenRemovePartHandler : public RemovePartHandler
 std::unique_ptr<talker> get_talker_for( vehicle &me );
 std::unique_ptr<const_talker> get_talker_for( const vehicle &me );
 std::unique_ptr<talker> get_talker_for( vehicle *me );
+
+// MAP-J03: the timed cycles of parts with a processing_cycle (see vpslot_processing_cycle)
+namespace processing_cycles
+{
+// whether the part's cycle is running
+bool running( const vehicle_part &vp );
+// the avatar turns the part on (running its start EOC, which may refuse) or, if it runs, off
+void toggle( vehicle &veh, int part );
+// what the part holds is processed once its cycle's time is up; called as its items are
+void process( vehicle &veh, int part );
+} // namespace processing_cycles
 #endif // CATA_SRC_VEHICLE_H
