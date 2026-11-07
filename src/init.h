@@ -2,6 +2,7 @@
 #ifndef CATA_SRC_INIT_H
 #define CATA_SRC_INIT_H
 
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <list>
@@ -81,6 +82,7 @@ class DynamicDataLoader
 
     private:
         bool finalized = false;
+        uint64_t data_generation_ = 0;
 
         struct cached_streams;
 
@@ -228,6 +230,18 @@ class DynamicDataLoader
          */
         bool is_data_finalized() const {
             return finalized;
+        }
+
+        /**
+         * Changes whenever the game data is unloaded or finalized, or a runtime item type is
+         * made for an unknown id, so a cache built from definitions (the tiles renderer's
+         * sprite lookups follow looks_like) can tell it is stale.
+         */
+        uint64_t data_generation() const {
+            return data_generation_;
+        }
+        void data_changed() {
+            ++data_generation_;
         }
 
         /**

@@ -39,6 +39,7 @@
 #include "flexbuffer_json.h"
 #include "game_constants.h"
 #include "generic_factory.h"
+#include "init.h"
 #include "input.h"
 #include "item.h"
 #include "item_contents.h"
@@ -3368,6 +3369,8 @@ const itype *Item_factory::add_runtime( const itype_id &id, translation name,
     // Clear armor_containers cache. It is probably not needed (added runtime will not be a container),
     // but as this almost never hapens and the cost is next to none, we can afford to be correct.
     armor_containers.clear();
+    // the id is defined now, which a sprite lookup that follows looks_like can see
+    DynamicDataLoader::get_instance().data_changed();
     return def;
 }
 

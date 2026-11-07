@@ -36,6 +36,7 @@
 #include "sdl_geometry.h"
 #include "sdl_wrappers.h"
 #include "smooth_lighting.h"
+#include "tile_lookup_memo.h"
 #include "type_id.h"
 #include "units.h"
 #include "weather.h"
@@ -70,6 +71,10 @@ enum class visibility_type : int;
 
 
 /** Structures */
+// How many subtiles a multitile can have: "center", "corner", "edge", "t_connection",
+// "end_piece", "unconnected", "open" and "broken" (multitile_keys in cata_tiles.cpp).
+constexpr size_t multitile_key_count = 8;
+
 struct tile_type {
     // fg and bg are both a weighted list of lists of sprite IDs
     weighted_int_list<std::vector<int>> fg, bg;
@@ -83,6 +88,11 @@ struct tile_type {
     std::optional<smooth_lighting::light_anchor> light_anchor;
 
     std::vector<std::string> available_subtiles;
+    // For a multitile, by subtile number: the full id of the subtile (this tile's id, "_" and
+    // the subtile's key) as stored in its tileset, or nullptr if this tile lists no such
+    // subtile or the subtile wasn't loaded.  Linked once the tileset is loaded, so a draw
+    // doesn't build the id or search available_subtiles.
+    std::array<const std::string *, multitile_key_count> subtile_ids = {};
 };
 
 // Make sure to change TILE_CATEGORY_IDS if this changes!
@@ -573,6 +583,8 @@ class tileset
 
         tile_type &create_tile_type( const std::string &id, tile_type &&new_tile_type );
         const tile_type *find_tile_type( const std::string &id ) const;
+        // Fills each multitile's subtile_ids; the loader calls it once tile_ids is final.
+        void link_multitile_subtiles();
 
         /**
          * Looks up tile by id + season suffix AND just raw id
@@ -806,6 +818,14 @@ class cata_tiles
                                       std::string &draw_id );
 
     private:
+        /**
+         * find_tile_looks_like( id + suffix, category, variant ), where the suffix is nothing,
+         * "_transparent" or "_int<intensity>", answered from lookup_memo when this lookup
+         * was made before with the same tileset, game data and season.
+         */
+        std::optional<tile_lookup_res> find_tile_looks_like_memoized( const std::string &id,
+                TILE_CATEGORY category, const std::string &variant, tile_lookup_suffix suffix,
+                int intensity );
         unsigned int get_variant_seed( const tile_type &display_tile, TILE_CATEGORY category,
                                        const tripoint_bub_ms &pos, const std::string &found_id );
         bool draw_from_id_string_internal( const std::string &id, const tripoint_bub_ms &pos, int subtile,
@@ -1117,6 +1137,10 @@ class cata_tiles
         // Variant pass is process-lifetime, owned alongside the renderer.
         // Consumers reach it via get_shared_variant_pass in sdltiles.h.
         std::shared_ptr<const tileset> tileset_ptr;
+        // what the sprite lookups of draw_from_id_string_internal resolved to, misses
+        // included; see find_tile_looks_like_memoized
+        tile_lookup_memo<std::optional<tile_lookup_res>, NUM_SEASONS,
+                         static_cast<size_t>( TILE_CATEGORY::last )> lookup_memo;
 
         // the scaled default sprite width and height. in non-isometric mode,
         // the basic tile width and height equal the default sprite width and
