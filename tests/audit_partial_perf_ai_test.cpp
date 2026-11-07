@@ -3,6 +3,7 @@
 #include <functional>
 #include <initializer_list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -59,6 +60,7 @@
 // audit_partial_perf_ai.json.
 
 static const bionic_id bio_fuel_wood( "bio_fuel_wood" );
+static const bionic_id bio_razors( "bio_razors" );
 
 static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_backpack( "backpack" );
@@ -286,8 +288,10 @@ TEST_CASE( "mondt-b04_signal_hordes_looks_only_at_zone_groups_in_reach", "[audit
         rng_get_engine() = saved_rng;
     } );
 
-    // an overmap that is never generated: only its groups matter
-    overmap om( point_abs_om( 23, 31 ) );
+    // an overmap that is never generated: only its groups matter (on the heap: it is several
+    // megabytes, too big for the stack)
+    const std::unique_ptr<overmap> om_holder = std::make_unique<overmap>( point_abs_om( 23, 31 ) );
+    overmap &om = *om_holder;
     const tripoint_abs_sm corner = project_to<coords::sm>( tripoint_abs_om( om.pos(), 0 ) );
     int index = 0;
     for( int x = 0; x < 2 * OMAPX; x += 6 ) {
@@ -468,7 +472,8 @@ TEST_CASE( "inv-p02_pseudo_items_by_reference_and_the_raw_visitor", "[audit][inv
     SECTION( "pseudo items come back as the cached list itself" ) {
         const std::vector<const item *> &none = u.get_pseudo_items();
         CHECK( none.empty() );
-        u.add_bionic( bio_fuel_wood );
+        // its razor is a plain pseudo item (bio_fuel_wood's woodshed is INTEGRATED: worn, not one)
+        u.add_bionic( bio_razors );
         const std::vector<const item *> &first = u.get_pseudo_items();
         const std::vector<const item *> &second = u.get_pseudo_items();
         CHECK( &first == &second );

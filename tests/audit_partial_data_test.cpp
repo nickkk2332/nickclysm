@@ -51,6 +51,7 @@ static const field_type_str_id field_fd_smoke( "fd_smoke" );
 static const furn_str_id furn_f_vitrified_doll( "f_vitrified_doll" );
 static const furn_str_id furn_f_vitrified_sofa( "f_vitrified_sofa" );
 
+static const itype_id itype_2x4( "2x4" );
 static const itype_id itype_9mm( "9mm" );
 static const itype_id itype_battery( "battery" );
 static const itype_id itype_glock_19( "glock_19" );
@@ -58,7 +59,6 @@ static const itype_id itype_glockmag( "glockmag" );
 static const itype_id itype_heavy_battery_cell( "heavy_battery_cell" );
 static const itype_id itype_robofac30( "robofac30" );
 static const itype_id itype_robofac_gun( "robofac_gun" );
-static const itype_id itype_rock( "rock" );
 static const itype_id itype_test_multimag_gun_integral_ammo( "test_multimag_gun_integral_ammo" );
 
 static const oter_str_id oter_audit_partial_data_var_pred_omt( "audit_partial_data_var_pred_omt" );
@@ -191,24 +191,25 @@ TEST_CASE( "data-b05_mutation_types_and_removal_blacklists_reset", "[audit][mods
     CHECK_FALSE( mutation_type_exists( "audit_partial_data_b05_type" ) );
     CHECK_FALSE( mutation_type_exists( "BIOLUM" ) );
 
-    // A rock can't have charges: loading one with 3 moves the 2 extra rocks into its migration
-    // pocket, unless the rock is on the charge removal blacklist.
-    const auto rocks_migrated = []() {
-        item rock;
-        rock.deserialize( json_loader::from_string(
-                              R"({ "typeid": "rock", "charges": 3 })" ).get_object() );
-        REQUIRE( rock.typeId() == itype_rock );
-        return rock.all_items_top( pocket_type::MIGRATION ).size();
+    // A plank can't have charges: loading one with 3 moves the 2 extra planks into its migration
+    // pocket, unless the plank is on the charge removal blacklist. (A rock is sling ammo, so it
+    // may have charges and never takes this path.)
+    const auto planks_migrated = []() {
+        item plank;
+        plank.deserialize( json_loader::from_string(
+                               R"({ "typeid": "2x4", "charges": 3 })" ).get_object() );
+        REQUIRE( plank.typeId() == itype_2x4 );
+        return plank.all_items_top( pocket_type::MIGRATION ).size();
     };
     on_out_of_scope empty_blacklists( []() {
         reset_removal_blacklists();
     } );
-    REQUIRE( rocks_migrated() == 2 );
+    REQUIRE( planks_migrated() == 2 );
     load_charge_removal_blacklist( json_loader::from_string(
-                                       R"({ "type": "charge_removal_blacklist", "list": [ "rock" ] })" ), "" );
-    REQUIRE( rocks_migrated() == 0 );
+                                       R"({ "type": "charge_removal_blacklist", "list": [ "2x4" ] })" ), "" );
+    REQUIRE( planks_migrated() == 0 );
     reset_removal_blacklists();
-    CHECK( rocks_migrated() == 2 );
+    CHECK( planks_migrated() == 2 );
 }
 
 // SPAT-B10: scent_neutralization always reached exactly one tile out, and a field that doesn't
@@ -284,6 +285,8 @@ TEST_CASE( "prog-b03_npc_hobbies_come_from_the_generic_scenario", "[audit][charg
              std::vector<profession_id> { profession_driving_license } );
 
     standard_npc guy( "Audit" );
+    // randomize() gives a random NPC its profession first; a bare standard_npc has none
+    guy.prof = profession::generic();
     std::set<profession_id> npc_hobbies;
     for( int i = 0; i < 50; ++i ) {
         guy.randomize_hobbies();
@@ -319,10 +322,21 @@ TEST_CASE( "omap-b02_special_search_generates_the_overmaps_next_to_the_origin",
     params.om_special = overmap_special_test_audit_road_shack;
     params.search_range = 3;
 
+    // Making an overmap normally also makes neighbours, to hold the specials that didn't fit, so
+    // the overmaps here are made with no specials: only the search can make others.
+    const auto make_bare = []( const point_abs_om & where ) -> overmap & {
+        overmap_special_batch no_specials( where );
+        overmap_buffer.create_custom_overmap( where, no_specials );
+        overmap *made = overmap_buffer.get_existing( where );
+        REQUIRE( made != nullptr );
+        return *made;
+    };
+
     SECTION( "a match on an existing overmap keeps the search from making any" ) {
         const point_abs_om home_pos = near_avatar + point_rel_om( 31, -29 );
         const point_abs_om east_pos = home_pos + point_rel_om( 1, 0 );
-        overmap &home = overmap_buffer.get( home_pos );
+        REQUIRE( overmap_buffer.get_existing( east_pos ) == nullptr );
+        overmap &home = make_bare( home_pos );
         REQUIRE( overmap_buffer.get_existing( east_pos ) == nullptr );
         const tripoint_om_omt shack_local( OMAPX - 3, 90, 0 );
         home.place_special_forced( overmap_special_test_audit_road_shack, shack_local,
@@ -330,8 +344,10 @@ TEST_CASE( "omap-b02_special_search_generates_the_overmaps_next_to_the_origin",
         const tripoint_abs_omt origin = project_combine( home_pos, tripoint_om_omt( OMAPX - 1, 90,
                                         0 ) );
         params.existing_only = false;
+        const int overmaps_before = overmap_buffer.get_overmap_count();
         CHECK( overmap_buffer.find_closest( origin, params ) ==
                project_combine( home_pos, shack_local ) );
+        CHECK( overmap_buffer.get_overmap_count() == overmaps_before );
         CHECK( overmap_buffer.get_existing( east_pos ) == nullptr );
     }
 
@@ -339,31 +355,31 @@ TEST_CASE( "omap-b02_special_search_generates_the_overmaps_next_to_the_origin",
         const point_abs_om home_pos = near_avatar + point_rel_om( -33, 27 );
         const point_abs_om east_pos = home_pos + point_rel_om( 1, 0 );
         const point_abs_om west_pos = home_pos + point_rel_om( -1, 0 );
-        const point_abs_om north_pos = home_pos + point_rel_om( 0, -1 );
-        overmap_buffer.get( home_pos );
         REQUIRE( overmap_buffer.get_existing( east_pos ) == nullptr );
         REQUIRE( overmap_buffer.get_existing( west_pos ) == nullptr );
-        REQUIRE( overmap_buffer.get_existing( north_pos ) == nullptr );
+        make_bare( home_pos );
+        REQUIRE( overmap_buffer.get_existing( east_pos ) == nullptr );
+        REQUIRE( overmap_buffer.get_existing( west_pos ) == nullptr );
         // On the east edge, so only the east overmap is within 3 OMTs
         const tripoint_abs_omt east_edge = project_combine( home_pos, tripoint_om_omt( OMAPX - 1,
                                            90, 0 ) );
 
         params.existing_only = true;
+        const int overmaps_before = overmap_buffer.get_overmap_count();
         CHECK( overmap_buffer.find_closest( east_edge, params ).is_invalid() );
+        CHECK( overmap_buffer.get_overmap_count() == overmaps_before );
         CHECK( overmap_buffer.get_existing( east_pos ) == nullptr );
 
-        // The shack never spawns on its own, so there is still nothing to find
+        // The shack never spawns on its own, so there is still nothing to find, but the east
+        // overmap has been made (making it may make others: specials that didn't fit go next door)
         params.existing_only = false;
         CHECK( overmap_buffer.find_closest( east_edge, params ).is_invalid() );
         CHECK( overmap_buffer.get_existing( east_pos ) != nullptr );
-        CHECK( overmap_buffer.get_existing( west_pos ) == nullptr );
-        CHECK( overmap_buffer.get_existing( north_pos ) == nullptr );
 
-        // The random pick (find_all) does the same
+        // The random pick (find_all) does the same from the west edge
         const tripoint_abs_omt west_edge = project_combine( home_pos, tripoint_om_omt( 0, 90, 0 ) );
         CHECK( overmap_buffer.find_all( west_edge, params ).empty() );
         CHECK( overmap_buffer.get_existing( west_pos ) != nullptr );
-        CHECK( overmap_buffer.get_existing( north_pos ) == nullptr );
     }
 }
 
