@@ -6043,8 +6043,9 @@ NPC or character will start an activity
 | --- | --- | --- | --- |
 | "u_assign_activity" / "npc_assign_activity" | **mandatory** | string or [variable object](#variable-object), | id of activity to start |
 | "duration" | optional | int, duration or [variable object](#variable-object) | how long the activity would last; see below |
-| "target_item" | optional | `"npc"` for `u_assign_activity`, `"u"` for `npc_assign_activity` | the item to work on: the other talker, which must be an item (as in the EOCs of `u_run_inv_eocs`, `u_map_run_item_eocs` or an item's own EOCs). See [activities with a target](#activities-with-a-target) |
-| "target_loc" | optional | [variable object](#variable-object) | a location: where to put a new craft (`ACT_CRAFT`) |
+| "target_item" | optional | `"npc"` for `u_assign_activity`, `"u"` for `npc_assign_activity` | the item to work on, or the tool to work with: the other talker, which must be an item (as in the EOCs of `u_run_inv_eocs`, `u_map_run_item_eocs` or an item's own EOCs). See [activities with a target](#activities-with-a-target) |
+| "target_loc" | optional | [variable object](#variable-object) | a location: the place to work on (a door to pry, rubble to clear...), where to put a new craft (`ACT_CRAFT`) or where to move an item |
+| "target_monster" | optional | `"npc"` for `u_assign_activity`, `"u"` for `npc_assign_activity` | the monster to work on: the other talker, which must be a monster (as in a monster's own EOCs) |
 | "recipe" | optional | string or [variable object](#variable-object) | the recipe to craft (`ACT_CRAFT`) |
 | "butcher_type" | optional | string or [variable object](#variable-object) | for `ACT_BUTCHER`: `"quick"` (the default), `"full"`, `"field_dress"`, `"skin"`, `"quarter"`, `"dismember"`, `"dissect"` or `"bleed"` |
 | "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run once the activity has started (when it finishes, the `character_finished_activity` event fires) |
@@ -6078,6 +6079,12 @@ When the activity can't start, `false_eocs` run and the context value `reason` s
 has to be within reach: carried by the talker, or on (or in a container or a vehicle on) the
 talker's tile or a tile next to it, on the same level.
 
+A place (`target_loc`) has to be within reach the same way: the talker's tile or one next to it, on
+the same level; the activities that work on what is next to the talker (prying a door, chopping a
+tree...) refuse the talker's own tile. A monster (`target_monster`) has to be next to the talker.
+Where `target_item` is the tool, it is optional and has to be carried; without it, the talker
+uses the best fitting tool it carries.
+
 Usually a refused activity leaves everything as it was. A craft or a disassembly, though, uses
 up its components or its item as it starts; if it then stops at once (rare: the craft had to be
 dropped, for example), the components stay used up and the craft or disassembly in progress is
@@ -6099,9 +6106,51 @@ it does nothing.
 | `ACT_WEAR` | `target_item` | Puts the item on. Refused: already worn, it can't be worn (the reason says why), it belongs to someone else |
 | `ACT_UNLOAD` | `target_item` | Empties a container or a magazine over time. A gun or a tool gives up its magazine or ammo at once, with no activity (`true_eocs` still run). Refused: nothing in it, the contents are liquid (they would have to be poured somewhere), or there are several things to unload (gunmods, several magazines), which would need a choice |
 | `ACT_RELOAD` | `target_item` | Reloads it with the quickest ammo or magazine at hand (in a holster or an ammo pouch, the item it holds). The item has to be carried, unless it is used where it stands. Refused: it can't be reloaded now (full, or nothing fits), no ammo at hand |
+| `ACT_CONSUME` | `target_item` | Eats or drinks it. Refused: not food, drink or medicine, the talker can't eat it, anything the avatar would be asked about first (rotten, allergy, too full, cannibalism...), it belongs to someone else, and for an NPC, food it has no need of now |
+| `ACT_WIELD` | `target_item` | Wields it. Refused: already wielded, it can't be wielded (the reason says why), the talker's hands aren't free (`u_wield_item` puts away what is in them first), it belongs to someone else |
+| `ACT_DROP` | `target_item`, and optionally `target_loc` | Drops (or takes off and drops) an item the talker carries, on its tile or on `target_loc`. Refused: not carried, it can't be dropped or taken off (the reason says why), nothing can be put on the place |
+| `ACT_PICKUP` | `target_item` | The avatar picks up the item; an NPC is refused (`u_pickup_item` works for anyone). Refused: already carried, liquid or gas, frozen liquid, a container that would spill, too heavy, no room, it belongs to someone else |
+| `ACT_MOVE_ITEMS` | `target_item`, `target_loc` | Moves the item to `target_loc` (into a vehicle's cargo there, if there is one), as the advanced inventory moves it. Refused: it is there already, it's worn, liquid or gas, nothing can be put on the place, it belongs to someone else |
+| `ACT_INSERT_ITEM` | `target_item` | Puts the item into the container the talker wields, as the insert action does. Refused: no container wielded, the item is the container or holds it, it would spill, it doesn't fit, it belongs to someone else |
+| `ACT_FIRSTAID` | `target_item`: a carried healing item | The talker treats itself, on the body part the item helps most (as an NPC chooses; the avatar gets no menu). Refused: it doesn't heal, filthy, incompatible biology, nothing it can help now, mounted or underwater |
+| `ACT_GUNMOD_REMOVE` | `target_item`: the gunmod, on a carried gun | Removes it from its gun. Refused: not a gunmod on a gun, irremovable, the gun must be unloaded first (for a magazine, mechanism, loading port or bore mod), mods are attached to it, the mod itself is loaded |
+| `ACT_TOOLMOD_ADD` | `target_item`: the carried toolmod | Puts it on the tool the talker wields. Refused: not a toolmod, nothing wielded, it doesn't fit the tool (wrong ammo, already modded, integrated, power clash), the tool is loaded, the talker can't use the mod, and an irremovable mod (installing it for good would ask) |
+| `ACT_PRYING`, `ACT_BOLTCUTTING`, `ACT_HACKSAW`, `ACT_OXYTORCH` | `target_loc`, and optionally `target_item`: the tool | Pries, cuts or torches the furniture or terrain there, as the crowbar's, bolt cutters', hacksaw's or torch's use does. Refused: there is nothing to do that to there, no fitting tool (a crowbar, or a hammer for nails; bolt cutters; a saw with metal sawing 2; a torch), too little leverage, no welding goggles or not enough fuel for the torch, mounted |
+| `ACT_LOCKPICK` | `target_loc`, and optionally `target_item`: the lockpick | Picks the lock there (a door, or a vehicle's lock). Refused: nothing to pick there, no lockpick, mounted |
+| `ACT_PICKAXE`, `ACT_JACKHAMMER` | `target_loc`, and optionally `target_item`: the tool | Digs through the furniture or terrain there, as the tool's use does. Refused: it can't be mined, a vehicle is in the way, a wall for a jackhammer, no tool (or not charged), an impassable field, mounted or underwater |
+| `ACT_CHOP_TREE`, `ACT_CHOP_LOGS` | `target_loc`, and optionally `target_item`: the axe | Chops down the tree there (it falls where nobody is, with no question), or chops the tree trunk or stump there into logs. Refused: no tree, trunk or stump, no axe, mounted, and for the avatar, a tree in the territory of a faction it would anger (that would ask) |
+| `ACT_FISH` | `target_loc`, and optionally `target_item`: the rod | Fishes in the water there for 5 hours, as the rod's use does. Refused: the water can't be fished, no fishing rod, mounted |
+| `ACT_CLEAR_RUBBLE` | `target_loc` | Clears the rubble there with the shovel the talker carries. Refused: no rubble, no shovel, and anything the avatar would be asked about (a vehicle, a trap or a creature there) |
+| `ACT_HARVEST` | `target_loc` | Harvests the plant there. Refused: nothing to harvest now |
+| `ACT_PLANT_SEED` | `target_loc`, `target_item`: the carried seed | Plants it in the dirt mound there. Refused: not a seed, nothing can be planted there, something lies there, too cold, the seed needs other ground |
+| `ACT_FERTILIZE_PLANT` | `target_loc`, `target_item`: the carried fertilizer | Fertilizes the plant there. Refused: what the plant's examine refuses (no plant, already fertilized...) |
+| `ACT_PULP` | `target_loc` | Smashes the corpses there that could revive. Refused: none there, an acid corpse, one the talker can't pulp, and for the avatar, a corpse that would take long (that would ask) |
+| `ACT_BUILD` | `target_loc` | Goes on with the construction in progress there. Refused: none there, too dark, the talker lacks its skills |
+| `ACT_TENT_PLACE` | `target_item`: the carried tent, `target_loc`: its center | Puts the tent up, as its use does: its center is its radius + 1 tiles away from the talker, straight or diagonally. The tent leaves the talker's hands as it starts (it comes back on the ground if the work is cancelled), so `true_eocs` have no `npc`. Refused: not a tent, the center isn't at that distance, the area isn't clear and flat, mounted |
+| `ACT_TENT_DECONSTRUCT` | `target_loc`: the tent's center | Takes the tent down; a damaged tent packs into its damaged item. Refused: no tent there, or one too broken to pack |
+| `ACT_MILK` | `target_monster`: the pet | Milks it into the container the talker wields. Refused: not a pet, mounted, it can't be milked, no milk left, no container wielded, or it can't hold the milk |
+| `ACT_SHEARING` | `target_monster`: the pet | Shears it with the talker's shearing tool. Refused: not a pet, mounted, nothing to shear, winter, sheared too recently, no shearing tool |
+| `ACT_PLAY_WITH_PET` | `target_monster`: the pet | Plays with it. Refused: not a pet, mounted, it doesn't play |
+| `ACT_DISABLE` | `target_monster`: the robot or turret | The avatar deactivates it, as examining it does (a manhack isn't reprogrammed: that is a choice). Refused: an NPC (whether it can be done is the avatar's skill), it can't be deactivated |
+| `ACT_BASH` | `target_loc` | The avatar smashes what is there until it breaks, as the smash action does when told to keep smashing. Refused: an NPC (the smashing is the avatar's), nothing to smash, and a place in the territory of a faction it would anger (that would ask) |
+| `ACT_MOP` | `target_loc` | Mops the spill there with the mop the talker carries. Refused: nothing to mop, no mop |
+| `ACT_FORAGE` | `target_loc` | Forages through the shrub there, as examining it does. Refused: nothing to forage, and for the avatar, a shrub with items, a vehicle, a trap or a creature on it (that would ask) |
+| `ACT_CRACKING` | `target_loc` | Cracks the locked safe there by ear, as examining it does. Refused: no locked safe, nothing to listen with, deaf, listening to music |
+| `ACT_HACKING` | `target_loc`, and optionally `target_item`: the hacking tool | Hacks the card reader, gas pump or electronic gun safe there, as examining it does; starting uses a charge of the tool. Refused: nothing to hack, illiterate, no hacking tool with charges |
+| `ACT_VEHICLE_FOLD` | `target_loc` | Folds the vehicle there, as its menu does. Refused: no vehicle, it can't be folded (the folding's own checks, such as something still in it, end it at once) |
+| `ACT_BINDER_COPY_RECIPE` | `target_item`: the carried recipe book, `recipe` | Copies the recipe into it from a book at hand, as the recipe book's use does with the recipe chosen. Refused: not a recipe book, mounted or underwater, too dark, nothing to write with, no book at hand has the recipe, not enough paper or room in the book, the book has it already, the writing tools would run out |
 
-For every activity but a new craft, the item is the other talker, so the effect usually runs in
-an EOC that has the item as `npc`, with the character doing the work as `u`.
+For the activities that work on an item, the item is the other talker, so the effect usually runs
+in an EOC that has the item as `npc`, with the character doing the work as `u`. For those that
+work on a monster, the monster is the other talker the same way.
+
+These activities can't be started from an EOC, for the reason given (naming one is a load error):
+
+* They have no target, or are parts of something else: the ones listed with `duration` above, `ACT_TRY_SLEEP` (only a duration; `u_add_effect` with `sleep` puts a character to sleep), `ACT_SOCIALIZE`, `ACT_TRAIN` (parts of a dialogue), `ACT_FETCH_REQUIRED`, `ACT_MIGRATION_CANCEL` (parts of other activities), `ACT_CRAFT_WAIT` (part of `ACT_CRAFT`), `ACT_CAMP_MEAL` (part of a basecamp mission), `ACT_EXECUTION` (a scripted scene the game plays for the avatar), `ACT_FIND_MOUNT` (an NPC's own errand to its mount).
+* They are menus, or are started from one that checks what the activity doesn't: `ACT_ATM`, `ACT_AIM` (the advanced inventory), `ACT_E_FILE` (managing an e-device's files), `ACT_OPERATION` (an Autodoc operation), `ACT_VEHICLE` (the vehicle menu's install, remove, repair and refill), `ACT_HOTWIRE_CAR`, `ACT_START_ENGINES` (the vehicle controls, from the driver's seat), `ACT_WORKOUT_LIGHT`, `ACT_WORKOUT_MODERATE`, `ACT_WORKOUT_ACTIVE`, `ACT_WORKOUT_HARD` (they ask how hard and how long), `ACT_HAIRCUT` (it asks what style), `ACT_LONGSALVAGE` (the butchery menu's "cut up everything", which keeps its tool as a place in the avatar's inventory).
+* They need a choice an EOC can't give: `ACT_GUNMOD_ADD` (how to install: with or without a repair kit, at a risk), `ACT_MEND_ITEM` and the legacy `ACT_REPAIR_ITEM` (which fault to fix, and how), `ACT_FILL_LIQUID` (where the liquid goes, and from where), `ACT_BIKERACK_RACKING`, `ACT_BIKERACK_UNRACKING` (which vehicles), `ACT_EBOOKSAVE` (which books onto which e-book reader: two items), `ACT_HEATING`, `ACT_WASH` (what to heat or wash, and with what), `ACT_STASH` (which items into which pet's bag), `ACT_STUDY_SPELL` (which spell), `ACT_ROBOT_CONTROL` (the robot control tool's menus choose what to do, and which robot).
+* They are started by something else an EOC already has: `ACT_SPELLCASTING` (`u_cast_spell`), `ACT_ABILITY`, `ACT_TREE_COMMUNION`, `ACT_PULL_CREATURE` (a mutation's activation: `u_activate_trait`), `ACT_INVOKE_ITEM`, `ACT_CHURN`, `ACT_HAND_CRANK`, `ACT_VIBE`, `ACT_SHAVE`, `ACT_START_FIRE`, `ACT_VEHICLE_UNFOLD`, `ACT_REEL_CABLE` (an item's use: `u_activate` with the item as the other talker, and `target_var` for where), `ACT_OPEN_TILE`, `ACT_CLOSE_TILE`, `ACT_OPEN_GATE` (`u_examine` opens and closes doors and gates), `ACT_TRAVELLING` (`u_walk_to`).
+* They are movement: `ACT_GLIDE`, `ACT_AUTODRIVE`, `ACT_FURNITURE_MOVE` (dragging furniture).
 
 `ACT_TARGET_PRACTICE` asks the player for a gun, a round count and a target, so only the avatar
 can be given it. Giving it to an NPC (as `u` or as `npc`) is reported when the effect runs, and
@@ -6163,6 +6212,16 @@ The talker butchers a corpse lying next to it, the full way
 The talker crafts a makeshift crowbar at the workbench whose position is in the context value `bench`
 ```jsonc
 { "u_assign_activity": "ACT_CRAFT", "recipe": "makeshift_crowbar", "target_loc": { "context_val": "bench" } }
+```
+
+The talker pries open the door whose position is in the context value `door`, with the best prying tool it carries
+```jsonc
+{ "u_assign_activity": "ACT_PRYING", "target_loc": { "context_val": "door" } }
+```
+
+In a pet's own EOC (the pet is `npc`), the avatar milks it into the container it wields
+```jsonc
+{ "u_assign_activity": "ACT_MILK", "target_monster": "npc" }
 ```
 
 #### `u_cancel_activity`, `npc_cancel_activity`

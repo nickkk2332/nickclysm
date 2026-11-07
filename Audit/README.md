@@ -243,7 +243,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | VEH-B02 | fixed | `c618107c`, `93ff7b93` | `tests/audit_vehicles_activities_test.cpp` |
 | VINT-B01 | fixed | `f77455b7` | none: the bug only happens inside uilist's interactive filter loop (uilist asserts !test_mode), and veh_menu_cb lives in an anonymous namespace |
 | VINT-B02 | fixed | `38eacff3` | none: control_engines() is only reached through the interactive veh_menu (uilist asserts !test_mode); a testable helper would have meant changing vehicle.h |
-| ACT-B02 | partial | `d996679a` | `tests/audit_vehicles_activities_test.cpp`. Still open: repair_part's clear-path check is not mirrored in the zone check |
+| ACT-B02 | fixed | `d996679a`, PR D | `tests/audit_vehicles_activities_test.cpp`, `tests/audit_partial_activities_test.cpp`. The zone check now asks what `repair_part` repairs with (`veh_utils::repair_inventory`): next to the part, from where the worker stands, within `PICKUP_RANGE`, along a clear path unless it's an NPC. A part whose tools lie near it but out of the repair's reach is skipped, since the fetch counts them as there. The crafting inventory cache now tells clear-path inventories apart |
 | UIHUD-B01 | fixed | `180c285f` | `tests/audit_ui_render_test.cpp` |
 | UIHUD-B02 | fixed | `53f628dd` | `tests/audit_ui_render_test.cpp` |
 | UIHUD-B03 | fixed | `1669b081` | none: draw_ascii() is a file-static function reachable only from the interactive overmap UI loop (needs input and a window); exposing it would mean changing overmap_ui.h, which 31 files include |
@@ -265,7 +265,7 @@ Four fixes have no regression test, because the code is only reachable through i
 - Blast spells aimed past a wall explode on the near side (MAGIC-B02). Spell armor penetration works (MAGIC-B04). Killing an NPC with a split or multi-projectile spell credits the caster (MAGIC-B03).
 - Monster group entries limited to NIGHT spawn at night (MONDT-B01). Off-screen hordes stop losing zombies (MONDT-B03). Meat-absorbing monsters use up the meat (MONAI-B03).
 - Vehicle fuel tanks with explosive fuel can explode (VEH-B02). "Control individual engines" no longer starts a stopped vehicle without the normal start checks (VINT-B02).
-- Zone vehicle repair takes time per damage level and fetches enough materials (ACT-B02).
+- Zone vehicle repair takes time per damage level and fetches enough materials, and counts only the tools and materials the repair itself can reach: none behind a wall for the player, and everything within reach of where the worker stands (ACT-B02).
 - Camp missions charge food once, about half what they did. Camp fuel no longer multiplies each time the board opens, planting takes the right seeds once, and leftover seeds come back once (CAMP-B01 to B04).
 - New characters get every proficiency their profession or hobby lists (PROG-B02). Random NPCs no longer get player-only professions such as psionic knacks (PROG-B03).
 - In math, `u_addiction_turns(...) =`, `u_pain('type': 'perceived') +=` and the stat bonus setters now set or add as written. Sleeping pill withdrawal is prolonged instead of shortened (MATH-B02).
@@ -281,7 +281,7 @@ Four fixes have no regression test, because the code is only reachable through i
 | MUT-B05 | fixed | `a9089239`, `846840db`, PR D | `tests/audit_mutation_towards_test.cpp`, `tests/audit_partial_gameplay_test.cpp`. Random mutation (`mutate`, its upgrade roll, `mutate_category`) no longer picks a trait behind a threshold the character lacks; a trait still missing a prerequisite stays a candidate, since picking it mutates towards the prerequisite. Such a pick used to fail at the threshold check (after straining against, or destroying, a CBM that conflicts with the trait), and with two picks per attempt, an attempt came to nothing when both landed on such traits; filtering alone would have sped mutation up, most just before a threshold. So the attempt still comes to nothing ("You feel something straining…") with that old chance, and the pace stays the same |
 | MUT-J01 | fixed | `b65fd9a9`, PR C | `tests/audit_mutation_towards_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. Categories, `allowed_category` and dream categories are checked at load. Data: the Marloss traits lose their undefined MARLOSS category (and its dream, which could never play), Xedra defines GRACKEN, and the BombasticPerks and Isolation Protocol perks drop categories that were never defined |
 | EOC-B05 | fixed | `2f8d333f`, `0aad6359` | `tests/audit_items_npc_loading_test.cpp` |
-| UIINV-B02 | partial | `edcb168d` | none: the move goes through a uilist. Still open: routing the move through the AIM insert activity |
+| UIINV-B02 | fixed | `edcb168d`, PR D | `tests/audit_partial_activities_test.cpp`. The drag and drop starts the insert activity AIM uses (`drag_drop_start_move`), which can now put the item in the pocket chosen; the move takes its time once the menu closes |
 | ACT-B03 | fixed | `4d5bffa7`, `9c9df48a` | `tests/audit_items_npc_loading_test.cpp` |
 | NPC-B04 | fixed | `67a6f426`, `4f9a1228` | `tests/audit_items_npc_loading_test.cpp` |
 | DATA-B03 | fixed | `4862b868` | `tests/audit_items_npc_loading_test.cpp` |
@@ -302,7 +302,7 @@ Four fixes have no regression test, because the code is only reachable through i
 - Body parts from an effect or worn item (e.g. Xedra's Wings of Gossamer) go away when it ends (CHAR-J01).
 - Missions that take items (GodCo, Isherwood, robofac and others) take exactly what they need, including part of a stack (EOC-B05).
 - Zone sorting no longer carries off your own matching ammo, nails or pills (ACT-B03).
-- Inventory drag-and-drop refuses moves that used to crash or duplicate (UIINV-B02).
+- Inventory drag-and-drop refuses moves that used to crash or duplicate (UIINV-B02). It moves the item through the insert activity, as the advanced inventory does: the inventory closes and the move takes its time.
 - Previewing a spell scroll no longer teaches follow-up spells (MAGIC-P01).
 - A mod's redefinition of a core item is no longer overwritten by the core version at load (DATA-B03).
 
@@ -370,7 +370,7 @@ Modding features:
 
 | ID | Status | Commits | Regression test |
 |---|---|---|---|
-| ACT-J02 | partial | `06f6c4a4`, `13973129` | `tests/audit_activities_crafting_test.cpp`, `tests/eoc_errands_activity_test.cpp`. Activities with a target: reading, butchery, disassembly, crafting, wearing, unloading and reloading. Still open: the other activities that need a target |
+| ACT-J02 | fixed | `06f6c4a4`, `13973129`, PR D | `tests/audit_activities_crafting_test.cpp`, `tests/eoc_errands_activity_test.cpp`, `tests/audit_partial_activities_test.cpp`. Activities with a target: reading, butchery, disassembly, crafting, wearing, unloading and reloading, and now 38 more: items (eat, wield, drop, pick up, move, insert, first aid, gunmod removal, toolmod), places with an optional tool (pry, bolt cut, saw, torch, lockpick, dig, chop, fish, hack, crack a safe, clear rubble, harvest, plant, fertilize, pulp, build, tents, mop, forage, smash, fold a vehicle), recipe books, and pets and robots (`target_monster`: milk, shear, play, deactivate). The rest are listed in `doc/JSON/EFFECT_ON_CONDITION.md` with why they can't be started |
 | ACT-J03 | fixed | `2d596bc0`, `b53594ec`, PR B | `tests/audit_activities_crafting_test.cpp`. `character_finished_activity` and the completion/cancel EOCs get `outcome` (`completed`, `canceled`, `interrupted`); `u_assign_activity` takes a saved `context` for the activity's EOCs |
 | CRAFT-J02 | fixed | `e7222c8a`, PR B | `tests/audit_activities_crafting_test.cpp`. Recipe `start_eocs` and `fail_eocs`; events `character_crafts_item`, `character_disassembles_item` and `character_learns_recipe`. A failure has no event of its own; `fail_eocs` cover it per recipe |
 | TERR-J01 | fixed | `33e6f99a`, `f93e4745`, PR D | `tests/audit_construction_recipe_camp_test.cpp`, `tests/audit_partial_loading_test.cpp`. Vanilla and the shipped mods no longer use the post_specials JSON can express: `done_appliance` (90 constructions) became the new `"place_appliance": true`; `done_window_curtains` became `byproducts` and a message; `done_extract_maybe_revert_to_dirt` became the shared `EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT`; the firewood and practice-target marks, ramps, wooden stairs and `remove_above` became `post_eocs` (`set_trap`, `set_terrain` on the tile above). Every post_special still loads for mods. The ones left in C++ (grave digging and burial, stairs dug into rock, vehicles, wiring, deconstruction, tree planks, roof and matching-down) do what JSON can't; doc/JSON/JSON_INFO.md says why for each |
@@ -451,7 +451,7 @@ For modders, everything is documented in `doc/JSON/EFFECT_ON_CONDITION.md` and `
 
   The walk is saved with the character. An NPC walks it through the existing "player order" node of its decision tree, so a fight or an urgent need still comes first. `u_cancel_walk` ends a walk. `u_is_walking_to` reads one.
 - **Items.** `u_pickup_item`, `u_wield_item`, `u_wear_item` and `u_drop_item` act on the item talker, optionally walking to it first (`"walk": true`). The item talker follows the item, so "pick up, then wield" works in one EOC. Taking someone else's item counts as theft unless `allow_theft` is false.
-- **Activities with a target** (ACT-J02). `u_assign_activity` takes `target_item`, `target_loc`, `recipe` and `butcher_type` for reading, butchery, disassembly, crafting (new or in progress), wearing, unloading and reloading. `true_eocs`/`false_eocs` now work with every activity.
+- **Activities with a target** (ACT-J02). `u_assign_activity` takes `target_item`, `target_loc`, `target_monster`, `recipe` and `butcher_type` for reading, butchery, disassembly, crafting (new or in progress), wearing, unloading and reloading, and for 38 more activities on items, places and pets. `true_eocs`/`false_eocs` now work with every activity.
 - **Examine.** `u_examine` / `npc_examine` operate an adjacent tile on the same level:
   - Doors, gates and hatches open or close.
   - The avatar otherwise gets the normal examine.
@@ -464,7 +464,7 @@ For modders, everything is documented in `doc/JSON/EFFECT_ON_CONDITION.md` and `
 |---|---|---|---|
 | NPC-B17 | fixed | `4bfe5f91`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
 | NPC-B14 | fixed | `b537b04e`, `2dfcf68d` | `tests/npc_errand_test.cpp` |
-| ACT-J02 | partial | see the third-round table above | `tests/eoc_errands_activity_test.cpp` |
+| ACT-J02 | fixed | see the third-round table above | `tests/eoc_errands_activity_test.cpp`, `tests/audit_partial_activities_test.cpp` |
 
 Gameplay changes players will notice:
 - **"Move there!" orders** (NPC-B14):
