@@ -3353,6 +3353,12 @@ void load_temperature_removal_blacklist( const JsonObject &jo, std::string_view/
     temperature_removal_blacklist.insert( new_blacklist.begin(), new_blacklist.end() );
 }
 
+void reset_removal_blacklists()
+{
+    charge_removal_blacklist.clear();
+    temperature_removal_blacklist.clear();
+}
+
 template<typename Archive>
 void item::io( Archive &archive )
 {

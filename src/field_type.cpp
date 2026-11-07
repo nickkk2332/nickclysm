@@ -7,6 +7,7 @@
 #include "enums.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "scent_block.h"
 
 const field_type_str_id fd_null = field_type_str_id::NULL_ID();
 const field_type_str_id fd_acid( "fd_acid" );
@@ -312,6 +313,7 @@ void field_type::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "outdoor_age_speedup", outdoor_age_speedup, 0_turns );
     optional( jo, was_loaded, "decay_amount_factor", decay_amount_factor, 0 );
     optional( jo, was_loaded, "percent_spread", percent_spread, 0 );
+    optional( jo, was_loaded, "scent_neutralization_radius", scent_neutralization_radius, 1 );
     optional( jo, was_loaded, "apply_slime_factor", apply_slime_factor, 0 );
     optional( jo, was_loaded, "gas_absorption_factor", gas_absorption_factor, 0_turns );
     optional( jo, was_loaded, "is_splattering", is_splattering, false );
@@ -410,6 +412,19 @@ void field_type::check() const
     }
     if( bash_info ) {
         bash_info->check( "field " + id.str() );
+    }
+    // Only a gas that spreads lowers the scent around it (map::spread_gas)
+    const bool neutralizes_scent = std::any_of( intensity_levels.begin(), intensity_levels.end(),
+    []( const field_intensity_level & level ) {
+        return level.scent_neutralization > 0;
+    } );
+    if( neutralizes_scent && !gas_can_spread() ) {
+        debugmsg( "Field type \"%s\" has a scent_neutralization, which only a gas that spreads "
+                  "(phase gas and a percent_spread) applies.", id.c_str() );
+    }
+    if( scent_neutralization_radius < 0 || scent_neutralization_radius > scent_block::border ) {
+        debugmsg( "Field type \"%s\" has scent_neutralization_radius %d, outside 0 to %d.",
+                  id.c_str(), scent_neutralization_radius, scent_block::border );
     }
 }
 

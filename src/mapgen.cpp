@@ -612,12 +612,9 @@ class mapgen_basic_container
             }
         }
         void check_consistency_with( const oter_t &ter ) const {
-            // TODO: check active_mapgens_ here too. The variable-weight road four-way mapgen
-            // has a fallback_predecessor_mapgen but road_nesw_manhole, which shares it, lacks
-            // REQUIRES_PREDECESSOR: it relies on the predecessor the road it replaces pushed
-            // (overmap_city.cpp), and adding the flag would push that road and generate it twice.
-            for( const auto &mapgen_function_ptr : weights_ ) {
-                mapgen_function_ptr.first->check_consistent_with( ter );
+            // Every mapgen that can run, including those with a variable weight (MGEN-B06)
+            for( const std::shared_ptr<mapgen_function> &ptr : active_mapgens_ ) {
+                ptr->check_consistent_with( ter );
             }
         }
 
@@ -3620,9 +3617,32 @@ class jmapgen_remove_npcs : public jmapgen_piece
     public:
         std::string npc_class;
         std::string unique_id;
+        // The class names an NPC template that no longer exists, so that NPCs left in older
+        // saves are removed; skips the check that the template exists
+        bool obsolete_class = false;
         jmapgen_remove_npcs( const JsonObject &jsi, std::string_view /*context*/ ) {
             optional( jsi, false, "class", npc_class );
             optional( jsi, false, "unique_id", unique_id );
+            optional( jsi, false, "obsolete_class", obsolete_class, false );
+        }
+        void check( const std::string &context, const mapgen_parameters &,
+                    const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
+                  ) const override {
+            if( npc_class.empty() ) {
+                if( obsolete_class ) {
+                    debugmsg( "remove_npcs in %s sets obsolete_class without a class", context );
+                }
+                return;
+            }
+            const bool exists = string_id<npc_template>( npc_class ).is_valid();
+            if( !exists && !obsolete_class ) {
+                debugmsg( "Invalid NPC class \"%s\" in remove_npcs in %s (set \"obsolete_class\": true "
+                          "to remove NPCs of a class that no longer exists from older saves)",
+                          npc_class, context );
+            } else if( exists && obsolete_class ) {
+                debugmsg( "remove_npcs in %s marks NPC class \"%s\" obsolete, but it exists",
+                          context, npc_class );
+            }
         }
         void apply( const mapgendata &dat, const jmapgen_int & /*x*/, const jmapgen_int & /*y*/,
                     const jmapgen_int &z,

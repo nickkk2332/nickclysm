@@ -291,7 +291,8 @@ void map::spread_gas( field_entry &cur, const tripoint_bub_ms &p, int percent_sp
 
     if( scent_neutralize > 0 ) {
         // modify scents by neutralization value (minus)
-        for( const tripoint_bub_ms &tmp : points_in_radius( p, 1 ) ) {
+        const int radius = std::clamp( ft_id->scent_neutralization_radius, 0, scent_block::border );
+        for( const tripoint_bub_ms &tmp : points_in_radius( p, radius ) ) {
             sblk.apply_gas( tmp, scent_neutralize );
         }
     }

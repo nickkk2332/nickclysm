@@ -204,6 +204,8 @@ struct field_type {
         time_duration outdoor_age_speedup = 0_turns;
         int decay_amount_factor = 0;
         int percent_spread = 0;
+        // How far from the field scent_neutralization reaches, in tiles
+        int scent_neutralization_radius = 1;
         int apply_slime_factor = 0;
         time_duration gas_absorption_factor = 0_turns;
         bool is_splattering = false;

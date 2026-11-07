@@ -213,7 +213,12 @@ class enchantment
 
         static void load_enchantment( const JsonObject &jo, const std::string &src );
         static void finalize_all();
+        // Checks every enchantment, inline ones too (a mutation's, an effect's, ...)
+        static void check_consistency();
         static void reset();
+        // Reports the mutations, effects, spells, emitter, skills, body parts and damage types
+        // it names that don't exist
+        void check() const;
         void load( const JsonObject &jo, std::string_view src = {},
                    const std::optional<std::string> &inline_id = std::nullopt, bool is_child = false );
 

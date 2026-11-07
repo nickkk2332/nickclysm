@@ -153,7 +153,9 @@ struct overmap_with_local_coords {
  * @param cant_see If true, only terrain not seen by the player should be searched
  * @param existing_overmaps_only If true, will restrict searches to existing overmaps only. This
  * is particularly useful if we want to attempt to add a missing overmap special to an existing
- * overmap rather than creating many overmaps in an attempt to find it.
+ * overmap rather than creating many overmaps in an attempt to find it. If false, find_closest
+ * with om_special generates the missing overmaps around the origin's (one ring of them) when no
+ * existing one holds the special.
  * @param om_special If set, the terrain must be part of the specified overmap special.
 */
 struct omt_find_params {

@@ -1,9 +1,15 @@
 #include "magic_enchantment.h"
 
+#include <functional>
+#include <initializer_list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "cata_utility.h"
@@ -391,6 +397,89 @@ void enchantment::check_spell_values() const
             debugmsg( "enchantment %s: spell_values names unknown damage_type %s", id.str(),
                       f.damage_type->str() );
         }
+    }
+}
+
+void enchantment::check_consistency()
+{
+    spell_factory.check();
+}
+
+template<typename K, typename V>
+static void check_enchantment_keys( const enchantment_id &ench, const std::string_view what,
+                                    const std::map<K, V> &values,
+                                    const std::function<bool( const K & )> &is_valid )
+{
+    for( const std::pair<const K, V> &entry : values ) {
+        if( !is_valid( entry.first ) ) {
+            debugmsg( R"(enchantment %s has unknown %s "%s")", ench.str(), what, entry.first.str() );
+        }
+    }
+}
+
+void enchantment::check() const
+{
+    for( const trait_id &mut : mutations ) {
+        if( !mut.is_valid() ) {
+            debugmsg( R"(enchantment %s gives unknown mutation "%s")", id.str(), mut.str() );
+        }
+    }
+    if( emitter && !emitter->is_valid() ) {
+        debugmsg( R"(enchantment %s has unknown emitter "%s")", id.str(), emitter->str() );
+    }
+    check_enchantment_keys<efftype_id, int>( id, "ench_effects effect", ench_effects,
+    []( const efftype_id & eff ) {
+        return eff.is_valid();
+    } );
+    const std::function<bool( const skill_id & )> skill_valid = []( const skill_id & sk ) {
+        return sk.is_valid();
+    };
+    check_enchantment_keys( id, "skill", skill_values_add, skill_valid );
+    check_enchantment_keys( id, "skill", skill_values_multiply, skill_valid );
+    // "all" stands for every body part
+    const std::function<bool( const bodypart_str_id & )> part_valid = [](
+    const bodypart_str_id & bp ) {
+        return bp == body_part_all || bp.is_valid();
+    };
+    check_enchantment_keys( id, "encumbrance_modifier part", encumbrance_values_add, part_valid );
+    check_enchantment_keys( id, "encumbrance_modifier part", encumbrance_values_multiply,
+                            part_valid );
+    const std::function<bool( const damage_type_id & )> damage_valid = [](
+    const damage_type_id & dt ) {
+        return dt.is_valid();
+    };
+    check_enchantment_keys( id, "melee_damage_bonus type", damage_values_add, damage_valid );
+    check_enchantment_keys( id, "melee_damage_bonus type", damage_values_multiply, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod type", armor_values_add, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod type", armor_values_multiply, damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod_post_absorbed type", extra_damage_add,
+                            damage_valid );
+    check_enchantment_keys( id, "incoming_damage_mod_post_absorbed type", extra_damage_multiply,
+                            damage_valid );
+    for( const bodypart_changes &change : modified_bodyparts ) {
+        for( const bodypart_str_id &bp : {
+                 change.gain, change.lose
+             } ) {
+            if( !bp.is_empty() && !bp.is_valid() ) {
+                debugmsg( R"(enchantment %s has unknown modified_bodyparts body part "%s")", id.str(),
+                          bp.str() );
+            }
+        }
+    }
+    const auto check_spells = [this]( const std::string_view what,
+    const std::vector<fake_spell> &spells ) {
+        for( const fake_spell &sp : spells ) {
+            if( !sp.id.is_valid() ) {
+                debugmsg( R"(enchantment %s has unknown %s spell "%s")", id.str(), what,
+                          sp.id.str() );
+            }
+        }
+    };
+    check_spells( "hit_me_effect", hit_me_effect );
+    check_spells( "hit_you_effect", hit_you_effect );
+    for( const std::pair<const time_duration, std::vector<fake_spell>> &activation :
+         intermittent_activation ) {
+        check_spells( "intermittent_activation", activation.second );
     }
 }
 
