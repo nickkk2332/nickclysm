@@ -109,11 +109,6 @@ static const efftype_id effect_visuals( "visuals" );
 static const flag_id json_flag_ALCOHOL( "ALCOHOL" );
 static const flag_id json_flag_ALCOHOL_STRONG( "ALCOHOL_STRONG" );
 static const flag_id json_flag_ALCOHOL_WEAK( "ALCOHOL_WEAK" );
-static const flag_id json_flag_ALLERGEN_CHEESE( "ALLERGEN_CHEESE" );
-static const flag_id json_flag_ALLERGEN_EGG( "ALLERGEN_EGG" );
-static const flag_id json_flag_ALLERGEN_MEAT( "ALLERGEN_MEAT" );
-static const flag_id json_flag_ALLERGEN_MILK( "ALLERGEN_MILK" );
-static const flag_id json_flag_ANIMAL_PRODUCT( "ANIMAL_PRODUCT" );
 static const flag_id json_flag_MARLOSS( "MARLOSS" );
 
 static const item_category_id item_category_chems( "chems" );
@@ -181,7 +176,6 @@ static const trait_id trait_PICKYEATER( "PICKYEATER" );
 static const trait_id trait_PROBOSCIS( "PROBOSCIS" );
 static const trait_id trait_PROJUNK( "PROJUNK" );
 static const trait_id trait_PROJUNK2( "PROJUNK2" );
-static const trait_id trait_RUMINANT( "RUMINANT" );
 static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
 static const trait_id trait_SAPROVORE( "SAPROVORE" );
 static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
@@ -193,7 +187,6 @@ static const trait_id trait_THRESH_PLANT( "THRESH_PLANT" );
 static const trait_id trait_THRESH_URSINE( "THRESH_URSINE" );
 static const trait_id trait_TOLERANCE( "TOLERANCE" );
 static const trait_id trait_UNDINE_SLEEP_WATER( "UNDINE_SLEEP_WATER" );
-static const trait_id trait_VEGAN( "VEGAN" );
 static const trait_id trait_WATERSLEEP( "WATERSLEEP" );
 
 static const vitamin_id vitamin_bread_allergen( "bread_allergen" );
@@ -950,30 +943,14 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
                 _( "Eww.  Inedible plant stuff!" ) );
     }
 
-    if( ( has_flag( json_flag_HERBIVORE_DIET ) || has_trait( trait_RUMINANT ) ) &&
+    if( has_flag( json_flag_HERBIVORE_DIET ) &&
         food.has_any_vitamin( herbivore_blacklist ) ) {
         // Like non-cannibal, but more strict!
         return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
                 _( "The thought of eating that makes you feel sick." ) );
     }
-    const std::array<flag_id, 6> vegan_blacklist {{
-            json_flag_ALLERGEN_MEAT, json_flag_ALLERGEN_EGG,
-            json_flag_ALLERGEN_MILK, json_flag_ANIMAL_PRODUCT,
-            json_flag_ALLERGEN_CHEESE, flag_URSINE_HONEY
-        }};
-    if( has_trait( trait_VEGAN ) &&
-        food.has_any_flag( vegan_blacklist ) ) {
-        return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
-                _( "You're still not going to eat animal products." ) );
-    }
-
-    for( const trait_id &mut : get_functioning_mutations() ) {
-        if( !food.made_of_any( mut.obj().can_only_eat ) && !mut.obj().can_only_eat.empty() ) {
-            return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, _( "You can't eat this." ) );
-        }
-    }
-
-    // A mutation's eat_condition, run with the eater as u_ and the food as npc_, can veto it
+    // A mutation's eat_condition, run with the eater as u_ and the food as npc_, can veto it.
+    // Checked where VEGAN's hardcoded check was (VEGAN is one now), so the same message wins.
     // The dialogue's food talker points at food_loc, so food_loc must outlive it
     item_location food_loc;
     std::optional<const_dialogue> eat_d;
@@ -989,6 +966,12 @@ ret_val<edible_rating> Character::can_eat( const item &food ) const
         if( !tid->eat_condition( *eat_d ) ) {
             return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION,
                     tid->eat_fail_message.translated() );
+        }
+    }
+
+    for( const trait_id &mut : get_functioning_mutations() ) {
+        if( !food.made_of_any( mut.obj().can_only_eat ) && !mut.obj().can_only_eat.empty() ) {
+            return ret_val<edible_rating>::make_failure( INEDIBLE_MUTATION, _( "You can't eat this." ) );
         }
     }
 
@@ -1741,7 +1724,7 @@ bool Character::consume_effects( item &food )
         // Was used to cap nutrition and thirst, but no longer does this
         return false;
     }
-    if( ( has_flag( json_flag_HERBIVORE_DIET ) || has_trait( trait_RUMINANT ) ) &&
+    if( has_flag( json_flag_HERBIVORE_DIET ) &&
         food.has_any_vitamin( herbivore_blacklist ) ) {
         // No good can come of this.
         return false;

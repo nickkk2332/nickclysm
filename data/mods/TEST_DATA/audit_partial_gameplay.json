@@ -1,0 +1,182 @@
+[
+  {
+    "//": "MUT-B05 fixture: a category whose only trait is behind a threshold.",
+    "type": "mutation_category",
+    "id": "AUDIT_GP_MUTB05_ALONE",
+    "name": "Threshold stall test",
+    "threshold_mut": "THRESH_AUDIT_GP_MUTB05",
+    "mutagen_message": "Threshold stall test message",
+    "wip": true
+  },
+  {
+    "//": "MUT-B05 fixture: a category with a trait behind a threshold and an open one.",
+    "type": "mutation_category",
+    "id": "AUDIT_GP_MUTB05_PAIR",
+    "name": "Threshold filter test",
+    "threshold_mut": "THRESH_AUDIT_GP_MUTB05",
+    "mutagen_message": "Threshold filter test message",
+    "wip": true
+  },
+  {
+    "//": "MUT-B05 fixture: a category with two traits behind a threshold and an open one.",
+    "type": "mutation_category",
+    "id": "AUDIT_GP_MUTB05_TRIO",
+    "name": "Threshold pacing test",
+    "threshold_mut": "THRESH_AUDIT_GP_MUTB05",
+    "mutagen_message": "Threshold pacing test message",
+    "wip": true
+  },
+  {
+    "//": "MUT-B05 fixture.",
+    "type": "mutation",
+    "id": "THRESH_AUDIT_GP_MUTB05",
+    "name": { "str": "Test threshold (MUT-B05)" },
+    "points": 0,
+    "valid": false,
+    "description": "Test threshold of the MUT-B05 test categories."
+  },
+  {
+    "//": "MUT-B05 fixture.",
+    "type": "mutation",
+    "id": "TEST_GP_MUTB05_BEHIND",
+    "name": { "str": "Test trait behind a threshold" },
+    "points": 1,
+    "valid": false,
+    "category": [ "AUDIT_GP_MUTB05_ALONE", "AUDIT_GP_MUTB05_PAIR", "AUDIT_GP_MUTB05_TRIO" ],
+    "threshreq": [ "THRESH_AUDIT_GP_MUTB05" ],
+    "description": "Test trait that needs the MUT-B05 test threshold."
+  },
+  {
+    "//": "MUT-B05 fixture.",
+    "type": "mutation",
+    "id": "TEST_GP_MUTB05_BEHIND_TOO",
+    "name": { "str": "Test trait also behind a threshold" },
+    "points": 1,
+    "valid": false,
+    "category": [ "AUDIT_GP_MUTB05_TRIO" ],
+    "threshreq": [ "THRESH_AUDIT_GP_MUTB05" ],
+    "description": "Another test trait that needs the MUT-B05 test threshold."
+  },
+  {
+    "//": "MUT-B05 fixture.",
+    "type": "mutation",
+    "id": "TEST_GP_MUTB05_OPEN",
+    "name": { "str": "Test trait before a threshold" },
+    "points": 1,
+    "valid": false,
+    "category": [ "AUDIT_GP_MUTB05_PAIR", "AUDIT_GP_MUTB05_TRIO" ],
+    "description": "Test trait anyone in the MUT-B05 test categories can get."
+  },
+  {
+    "//": "MUT-B05 fixture: mutating towards TEST_GP_MUTB05_BEHIND strains against this CBM.",
+    "type": "bionic",
+    "id": "test_bio_gp_mutb05_blocker",
+    "name": { "str": "Test Mutation Blocker" },
+    "description": "Test CBM that conflicts with a trait behind a threshold.",
+    "occupied_bodyparts": [ [ "torso", 1 ] ],
+    "mutation_conflicts": [ "TEST_GP_MUTB05_BEHIND" ],
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "USE-B08 fixture: counts the uses on the user.",
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GP_USEB08_COUNT",
+    "effect": [ { "math": [ "u_test_gp_useb08_uses += 1" ] } ]
+  },
+  {
+    "//": "USE-B08 fixture: a plain item that a use spends.",
+    "id": "test_gp_useb08_token",
+    "type": "ITEM",
+    "name": { "str": "TEST spent token" },
+    "description": "Used up when used (USE-B08).",
+    "weight": "10 g",
+    "volume": "10 ml",
+    "material": [ "stone" ],
+    "symbol": "*",
+    "color": "light_gray",
+    "flags": [ "ALLOWS_REMOTE_USE" ],
+    "use_action": { "type": "effect_on_conditions", "consume": true, "effect_on_conditions": [ "EOC_TEST_GP_USEB08_COUNT" ] }
+  },
+  {
+    "//": "USE-B08 fixture: a plain item counted by charges that a use spends one of.",
+    "id": "test_gp_useb08_pebble",
+    "type": "ITEM",
+    "copy-from": "test_gp_useb08_token",
+    "name": { "str": "TEST spent pebble" },
+    "description": "One is used up per use (USE-B08).",
+    "stackable": true
+  },
+  {
+    "//": "USE-B08 fixture: a plain item whose use doesn't spend it.",
+    "id": "test_gp_useb08_keepsake",
+    "type": "ITEM",
+    "copy-from": "test_gp_useb08_token",
+    "name": { "str": "TEST keepsake" },
+    "description": "Stays when used (USE-B08).",
+    "use_action": { "type": "effect_on_conditions", "effect_on_conditions": [ "EOC_TEST_GP_USEB08_COUNT" ] }
+  },
+  {
+    "//": "MUT-B10 fixture: teaches the spell test_bio_mutb10_teacher teaches, at a higher level.",
+    "type": "bionic",
+    "id": "test_bio_gp_mutb10_master",
+    "name": { "str": "Test Master Teacher" },
+    "description": "Test CBM that teaches a spell at level 4.",
+    "learned_spells": { "test_spell_pew": 4 },
+    "included": true,
+    "//2": "not actually included, this is a trick to not have to add an item version."
+  },
+  {
+    "//": "CMBT-B13 fixture: records every hit that casts its spell, and the kind of hit.",
+    "type": "mutation",
+    "id": "TEST_GP_CMBTB13_ANY_HIT",
+    "name": { "str": "Test Any Hit" },
+    "points": 0,
+    "valid": false,
+    "description": "Test mutation whose enchantment casts a spell on every hit.",
+    "enchantments": [ { "hit_you_effect": [ { "id": "test_gp_cmbtb13_record", "hit_self": true } ] } ]
+  },
+  {
+    "//": "CMBT-B13 fixture: counts melee hits only.",
+    "type": "mutation",
+    "id": "TEST_GP_CMBTB13_MELEE_HIT",
+    "name": { "str": "Test Melee Hit" },
+    "points": 0,
+    "valid": false,
+    "description": "Test mutation whose enchantment casts a spell on melee hits only.",
+    "enchantments": [ { "hit_you_effect": [ { "id": "test_gp_cmbtb13_count_melee", "hit_self": true, "hit_types": [ "melee" ] } ] } ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_gp_cmbtb13_record",
+    "name": { "str": "Test Hit Record", "//~": "NO_I18N" },
+    "description": { "str": "Records the hits that cast it on the caster.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_GP_CMBTB13_RECORD",
+    "shape": "blast"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GP_CMBTB13_RECORD",
+    "effect": [
+      { "math": [ "u_test_gp_cmbtb13_hits += 1" ] },
+      { "set_string_var": { "context_val": "hit_type" }, "target_var": { "u_val": "test_gp_cmbtb13_type" } }
+    ]
+  },
+  {
+    "type": "SPELL",
+    "id": "test_gp_cmbtb13_count_melee",
+    "name": { "str": "Test Melee Hit Count", "//~": "NO_I18N" },
+    "description": { "str": "Counts the casts on the caster.", "//~": "NO_I18N" },
+    "valid_targets": [ "self" ],
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_TEST_GP_CMBTB13_MELEE",
+    "shape": "blast"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_GP_CMBTB13_MELEE",
+    "effect": [ { "math": [ "u_test_gp_cmbtb13_melee_hits += 1" ] } ]
+  }
+]

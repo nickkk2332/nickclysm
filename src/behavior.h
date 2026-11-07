@@ -106,6 +106,7 @@ class node_t
     private:
         friend std::vector<std::string> link_children( std::vector<node_t> &nodes );
         friend void clear_evaluation_cache();
+        friend std::vector<std::string> add_custom_need_leaves();
 
         std::vector<const node_t *> children;
         // The children named in JSON, in order. link_children() turns them into `children`.
@@ -163,6 +164,14 @@ std::vector<std::string> link_children( std::vector<node_t> &nodes );
 
 // Forgets the results every node keeps for "evaluate_every".
 void clear_evaluation_cache();
+
+/**
+ * Adds a leaf for each need content defines ("type": "npc_need", src/npc_json_goal.h) to the
+ * children of its parent node, after the ones the parent's JSON gives, and registers its goal.
+ * finalize() runs it before linking the children; running it again replaces what it added.
+ * Returns one message per need it had to leave out.
+ */
+std::vector<std::string> add_custom_need_leaves();
 
 // Deserialization support.
 void load_behavior( const JsonObject &jo, const std::string &src );

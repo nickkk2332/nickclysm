@@ -87,7 +87,11 @@ Field                 | Meaning
 
 A later mod's definition of a faction id replaces the earlier one completely.  Two definitions of one id from the same mod are an error.
 
-With `"copy-from"`, a faction starts from another faction and changes only the fields it gives.  The parent must be defined earlier (in the same mod or a mod loaded before).  The fields a full definition must give become optional, numbers take `relative` and `proportional`, and `price_rules` takes `extend` and `delete`:
+With `"copy-from"`, a faction starts from another faction and changes only the fields it gives.  The parent may be defined anywhere, also later or in a mod loaded after (the copy waits for it), and it may be an `"abstract"` faction: a template only for copying, which is never a faction in the game.  The fields a full definition must give become optional, numbers take `relative` and `proportional`, and the lists take `extend` and `delete`:
+
+- `price_rules`: `extend` adds rules; `delete` takes rules and removes the one for the same `item`, `category` or `group`.
+- `epilogues`: `extend` adds epilogues; `delete` takes snippet ids and removes every epilogue with that id.
+- `relations`: `extend` takes an object like `relations` and adds or replaces the relation to each faction it lists, as `relations` itself does on a copy; `delete` takes faction ids and removes the relation to each.
 
 ```jsonc
   {
@@ -96,7 +100,8 @@ With `"copy-from"`, a faction starts from another faction and changes only the f
     "copy-from": "free_merchants",           // a mod changing the vanilla faction
     "currency": "my_mod_coin",               // adds its 100% price rule; the old currency's rule stays
     "relative": { "likes_u": -10 },
-    "extend": { "price_rules": [ { "category": "guns", "markup": 2.0 } ] }
+    "extend": { "price_rules": [ { "category": "guns", "markup": 2.0 } ] },
+    "delete": { "relations": [ "hells_raiders" ], "epilogues": [ "epilogue_faction_free_merchants_thrive" ] }
   }
 ```
 

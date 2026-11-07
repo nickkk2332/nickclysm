@@ -23,7 +23,7 @@
         { "math": [ "u_spell_level('sylph_crash_of_lightning') >= 5" ] }
       ]
     },
-    "hit_you_effect": [ { "id": "sylph_fulgurating_strikes_lightning_fields", "hit_self": false, "once_in": 3 } ]
+    "hit_you_effect": [ { "id": "sylph_fulgurating_strikes_lightning_fields", "hit_types": [ "melee" ], "hit_self": false, "once_in": 3 } ]
   },
   {
     "type": "enchantment",

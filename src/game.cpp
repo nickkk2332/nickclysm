@@ -734,6 +734,7 @@ void game::setup()
     next_mission_id = 1;
     next_item_uid = 1;
     next_monster_uid = 1;
+    next_vehicle_uid = 1;
     // Setup replaces a session; it must not finalize old injuries into the new map/checkpoint.
     executions().reset_for_load();
     executions().end_restore();
@@ -1694,11 +1695,21 @@ void game::set_critter_died()
     critter_died = true;
 }
 
-static int maptile_field_intensity( maptile &mt, field_type_id fld )
+// The most heat a field on the tile radiates: its intensity level's heat_radiation (for
+// fd_fire, its intensity)
+static int maptile_field_heat( maptile &mt )
 {
-    const field_entry *field_ptr = mt.find_field( fld );
-
-    return field_ptr == nullptr ? 0 : field_ptr->get_field_intensity();
+    const field &fields = mt.get_field();
+    if( !fields.displayed_field_type() ) {
+        return 0;
+    }
+    int heat = 0;
+    for( const auto &fd : fields ) {
+        if( fd.second.is_field_alive() ) {
+            heat = std::max( heat, fd.first->heat_radiation( fd.second.get_field_intensity() ) );
+        }
+    }
+    return heat;
 }
 
 units::temperature_delta get_heat_radiation( const tripoint_bub_ms &location )
@@ -1706,14 +1717,12 @@ units::temperature_delta get_heat_radiation( const tripoint_bub_ms &location )
     units::temperature_delta temp_mod = units::from_kelvin_delta( 0 );
     Character &player_character = get_player_character();
     map &here = get_map();
-    // Convert it to an int id once, instead of 139 times per turn
-    const field_type_id fd_fire_int = fd_fire.id();
     for( const tripoint_bub_ms &dest : here.points_in_radius( location, 6 ) ) {
         int heat_intensity = 0;
 
         maptile mt = here.maptile_at( dest );
 
-        int ffire = maptile_field_intensity( mt, fd_fire_int );
+        int ffire = maptile_field_heat( mt );
         if( ffire > 0 ) {
             heat_intensity = ffire;
         } else  {
@@ -1749,14 +1758,12 @@ int get_best_fire( const tripoint_bub_ms &location )
     int best_fire = 0;
     Character &player_character = get_player_character();
     map &here = get_map();
-    // Convert it to an int id once, instead of 139 times per turn
-    const field_type_id fd_fire_int = fd_fire.id();
     for( const tripoint_bub_ms &dest : here.points_in_radius( location, 6 ) ) {
         int heat_intensity = 0;
 
         maptile mt = here.maptile_at( dest );
 
-        int ffire = maptile_field_intensity( mt, fd_fire_int );
+        int ffire = maptile_field_heat( mt );
         if( ffire > 0 ) {
             heat_intensity = ffire;
         } else  {
@@ -3851,6 +3858,22 @@ void game::reserve_monster_uid( int64_t uid )
     next_monster_uid = std::max( next_monster_uid, uid + 1 );
 }
 
+int64_t game::assign_vehicle_uid()
+{
+    if( next_vehicle_uid <= 0 || next_vehicle_uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Vehicle identity space exhausted" );
+    }
+    return next_vehicle_uid++;
+}
+
+void game::reserve_vehicle_uid( int64_t uid )
+{
+    if( uid == std::numeric_limits<int64_t>::max() ) {
+        throw JsonError( "Invalid saved vehicle identity" );
+    }
+    next_vehicle_uid = std::max( next_vehicle_uid, uid + 1 );
+}
+
 int64_t game::assign_item_uid()
 {
     return next_item_uid++;
@@ -4494,10 +4517,17 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
                 knockback( traj, stun, dam_mult );
                 break;
             }
-            if( here.has_flag( ter_furn_flag::TFLAG_LIQUID, pos ) && force_remaining == 0 ) {
-                avatar_action::swim( here, u, pos );
-            } else {
-                u.setpos( here,  traj[i] );
+            u.setpos( here,  traj[i] );
+            // LOOP-B11: deep water ends the flight there, with what walking into it does. It
+            // checked the starting tile, and only once the force was spent, which it never was.
+            // The map isn't re-centred here: callers go on using bubble coordinates.
+            if( here.has_flag( ter_furn_flag::TFLAG_SWIMMABLE, traj[i] ) &&
+                here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, traj[i] ) &&
+                !here.has_flag_furn( "BRIDGE", traj[i] ) && !here.veh_at( traj[i] ) &&
+                !u.has_flag( json_flag_WATERWALKING ) ) {
+                add_msg( m_bad, _( "You land in the water." ) );
+                avatar_action::enter_water( u );
+                break;
             }
         }
     }
@@ -9138,18 +9168,21 @@ bool game::grabbed_furn_move( const tripoint_rel_ms &dp )
     if( src_items > 0 ) { // Move the stuff inside.
         if( dst_item_ok && src_item_ok ) {
             // Assume contents of both cells are legal, so we can just swap contents.
+            // Upstream CleverRaven/Cataclysm-DDA#89419: the destination's items go to the
+            // furniture's old tile and its old tile's items to the destination. Before, the loop
+            // walked the old tile it was inserting into, so every second item was lost.
             std::list<item> temp;
-            map_stack ms = here.i_at( fpos );
+            map_stack ms = here.i_at( fpos ); // the tile the furniture leaves
+            map_stack dest = here.i_at( fdest ); // the tile it moves to
             std::move( ms.begin(), ms.end(),
                        std::back_inserter( temp ) );
             here.i_clear( fpos );
-            for( auto item_iter = ms.begin();
-                 item_iter != ms.end(); ++item_iter ) {
-                ms.insert( *item_iter );
+            for( item &dest_item : dest ) {
+                ms.insert( dest_item );
             }
             here.i_clear( fdest );
             for( item &cur_item : temp ) {
-                ms.insert( cur_item );
+                dest.insert( cur_item );
             }
         } else {
             add_msg( _( "Stuff spills from the %s!" ), furntype.name() );

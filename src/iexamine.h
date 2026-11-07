@@ -42,6 +42,8 @@ struct iexamine_actor {
         call( you, pos );
     }
     virtual void finalize() const = 0;
+    // Load-time checks of the actor of terrain or furniture `owner`, once all data is loaded.
+    virtual void check( const std::string &/*owner*/ ) const {}
 
     virtual std::unique_ptr<iexamine_actor> clone() const = 0;
 
@@ -129,6 +131,8 @@ void shrub_wildveggies( Character &you, const tripoint_bub_ms &examp );
 void part_con( Character &you, const tripoint_bub_ms &examp );
 void water_source( Character &, const tripoint_bub_ms &examp );
 void finite_water_source( Character &, const tripoint_bub_ms &examp );
+// Lights the process_start furniture at examp with a firestarter the character picks.
+void fire_process( Character &you, const tripoint_bub_ms &examp );
 void kiln_empty( Character &you, const tripoint_bub_ms &examp );
 bool kiln_prep( Character &you, const tripoint_bub_ms &examp );
 bool kiln_fire( Character &you, const tripoint_bub_ms &examp );

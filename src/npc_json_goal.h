@@ -11,12 +11,14 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "calendar.h"
 #include "npc_decision_category.h"
 #include "type_id.h"
 
+class Creature;
 class JsonObject;
 class npc;
 struct const_dialogue;
@@ -86,6 +88,10 @@ class npc_goal_registry
         const std::vector<npc_goal_claim> &claims() const {
             return claims_;
         }
+        // A goal made in code (a custom need's) by `source`, such as "npc_need <id>": it replaces
+        // what that source gave before. Returns why it can't be added: its id is a built-in
+        // goal's or another's goal; "" when it was added.
+        std::string add_goal( npc_json_goal goal, const std::string &source );
         // errors in the categories given by the nodes, with the categories' "goals" lists
         std::vector<std::string> check() const;
         void clear();
@@ -107,6 +113,59 @@ void refresh_ranks();
 // for tests: puts `other` in place of the loaded goals (swap back to restore)
 void swap_registry_for_test( npc_goal_registry &other );
 } // namespace npc_json_goals
+
+// A need content gives NPCs ("type": "npc_need", doc/JSON/NPC_BEHAVIOR.md#custom-needs): an
+// urgency, the urgency it acts from, and the JSON goal that answers it. Each one becomes a leaf
+// of the decision tree, by default under npc_needs next to the built-in needs, which it leaves
+// as they are.
+struct npc_custom_need {
+    string_id<npc_custom_need> id;
+    std::vector<std::pair<string_id<npc_custom_need>, mod_id>> src;
+    bool was_loaded = false;
+
+    // with the NPC as u: a number, a variable or math
+    std::function<double( const_dialogue const & )> urgency;
+    // the urgency the NPC acts on the need from
+    float act = 0.5f;
+    // only NPCs it holds for feel the need; empty: every NPC
+    std::function<bool( const_dialogue const & )> condition;
+    npc_decision_category_id category;
+    // the behavior node its leaf is added under
+    string_id<behavior::node_t> parent;
+    // what the NPC does about it: the hooks of its goal, as a JSON goal's
+    std::vector<effect_on_condition_id> on_start;
+    std::vector<effect_on_condition_id> on_turn;
+    std::vector<effect_on_condition_id> on_end;
+    std::vector<effect_on_condition_id> on_interrupt;
+    std::vector<effect_on_condition_id> on_timeout;
+    // empty: the goal is done once the need isn't felt
+    std::function<bool( const_dialogue const & )> until;
+    std::optional<time_duration> timeout;
+
+    void load( const JsonObject &jo, std::string_view src );
+    void check() const;
+
+    // its urgency for `who`, clamped to 0 to 1; 0 for a creature that isn't an NPC
+    float urgency_for( const Creature &who ) const;
+    // `who` is an NPC, the condition holds for it and the urgency is at act or above
+    bool felt_by( const Creature &who ) const;
+    // the leaf the need becomes ("npc_need_" and its id), and the goal it gives
+    string_id<behavior::node_t> node_id() const;
+    npc_json_goal goal() const;
+};
+
+namespace npc_custom_needs
+{
+void load( const JsonObject &jo, const std::string &src );
+void finalize();
+void check_consistency();
+void reset();
+const std::vector<npc_custom_need> &get_all();
+const npc_custom_need *find( std::string_view id );
+// whether `name` may name a need in npc_need_urgency(): a built-in need or a loaded custom one.
+// While data loads, a name that isn't one yet is taken and checked by check_consistency().
+bool may_name_need( const std::string &name );
+} // namespace npc_custom_needs
 
 // the tree npc::move() walks: npc_decision, or the one a test put in its place
 const behavior::node_t &npc_decision_tree();
