@@ -157,6 +157,12 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    character_dodges,
+    character_blocks,
+    character_melee_hits,
+    character_fires_gun,
+    monster_melee_attacks_character,
+    monster_melee_attacks_monster,
     num_event_types // last
 };
 
@@ -224,7 +230,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 139,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1171,6 +1177,82 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// CMBT-J04: the combat events below are sent once the action is resolved, with the other creature
+// (the attacker, the victim) as the beta talker when there is one
+
+// a character dodged a melee attack (on_dodge); beta: the attacker, if any
+template<>
+struct event_spec<event_type::character_dodges> : event_spec_character {};
+
+// a character blocked a melee hit (block_hit); "weapon" is the item blocked with ("null" for a
+// limb), "bodypart" the part that takes what is left; beta: the attacker
+template<>
+struct event_spec<event_type::character_blocks> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "weapon", cata_variant_type::itype_id },
+            { "bodypart", cata_variant_type::body_part },
+            { "damage_blocked", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character's melee attack hit, after the damage, techniques and kill are known; "damage" is
+// dealt after armor, "technique" the technique id ("tec_none" for none); beta: the victim
+template<>
+struct event_spec<event_type::character_melee_hits> {
+    static constexpr std::array<event_field, 7> fields = {{
+            { "attacker", cata_variant_type::character_id },
+            { "weapon", cata_variant_type::itype_id },
+            { "technique", cata_variant_type::string },
+            { "bodypart", cata_variant_type::body_part },
+            { "damage", cata_variant_type::int_ },
+            { "crit", cata_variant_type::bool_ },
+            { "killed", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// a character finished firing a gun: "shots" fired, of which "hits" hit a creature
+template<>
+struct event_spec<event_type::character_fires_gun> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "gun", cata_variant_type::itype_id },
+            { "ammo", cata_variant_type::itype_id },
+            { "shots", cata_variant_type::int_ },
+            { "hits", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a monster's melee attack (monster::melee_attack) on a character is over; alpha: the monster,
+// beta: the victim
+template<>
+struct event_spec<event_type::monster_melee_attacks_character> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "monster", cata_variant_type::mtype_id },
+            { "victim", cata_variant_type::character_id },
+            { "hits", cata_variant_type::bool_ },
+            { "damage", cata_variant_type::int_ },
+            { "killed", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// as monster_melee_attacks_character, on a monster
+template<>
+struct event_spec<event_type::monster_melee_attacks_monster> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "monster", cata_variant_type::mtype_id },
+            { "victim_type", cata_variant_type::mtype_id },
+            { "hits", cata_variant_type::bool_ },
+            { "damage", cata_variant_type::int_ },
+            { "killed", cata_variant_type::bool_ },
         }
     };
 };

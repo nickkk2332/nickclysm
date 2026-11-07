@@ -160,6 +160,8 @@ enum class mod : int {
     FUEL_USAGE,
     TURNING_DIFFICULTY,
     CROWD_CRUSH_RESIST,
+    BLOCK_EFFECTIVENESS,
+    BLOCK_STAMINA_COST,
     NUM_MOD
 };
 

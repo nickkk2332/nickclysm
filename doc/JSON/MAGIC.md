@@ -1039,6 +1039,8 @@ Character status value  | Description
 `BIONIC_POWER`          | Adds bionic power storage in millijoules ("add": 1000000 adds 1 kJ)
 `BLEED_STOP_BONUS`      | Affects the `bleed` level when applying medicine.
 `BLEEEDING_RATE`        | Affects the rate you lose blood when bleeding. 
+`BLOCK_EFFECTIVENESS`   | Modifies your block score when you block a melee hit, after martial art buffs' `block_effectiveness` and before the blocking limb's `block` score: a higher score blocks more of the hit (a score of 40 blocks all of it).  Your strength, melee skill and the shield's block bonus make up the score.
+`BLOCK_STAMINA_COST`    | Modifies the stamina a block costs (the external option `BLOCK_STAMINA_COST_MULT` times `PLAYER_BASE_STAMINA_BURN_RATE`, less 5% per melee level).  `"multiply": -0.5` halves it.
 `BODYTEMP_SLEEP`        | Amount of warmth (in celcius) added to you when you sleep. Default is 0, so better to use `add`
 `BONUS_BLOCK`           | Affects the number of blocks you can perform.
 `BONUS_DODGE`           | Affects the number of dodges you can perform. Do not confuse with `DODGE_CHANCE`

@@ -35,10 +35,6 @@ static const itype_id fuel_type_battery( "battery" );
 
 static const skill_id skill_gun( "gun" );
 
-static const trait_id trait_BRAWLER( "BRAWLER" );
-
-static const trait_id trait_GUNSHY( "GUNSHY" );
-
 std::vector<vehicle_part *> vehicle::turrets()
 {
     std::vector<vehicle_part *> res;
@@ -592,14 +588,24 @@ bool vehicle::turrets_aim( std::vector<vehicle_part *> &turrets )
     }
 
     avatar &player_character = get_avatar();
-    if( player_character.has_trait( trait_BRAWLER ) ) {
-        player_character.add_msg_if_player(
-            _( "Pfft.  You are a brawler; using turrets is beneath you." ) );
+    // CMBT-J03: a turret isn't held, so only CANNOT_USE_RANGED and, for a firearm,
+    // CANNOT_USE_FIREARMS turn it down (the BRAWLER and GUNSHY traits grant them)
+    std::string ban;
+    turrets.erase( std::remove_if( turrets.begin(), turrets.end(),
+    [&]( vehicle_part * t ) {
+        const item_location gun = turret_query( *t ).base();
+        const std::string reason = gun ? player_character.ranged_ban_reason( *gun, false ) :
+                                   std::string();
+        if( !reason.empty() ) {
+            ban = reason;
+            return true;
+        }
         return false;
+    } ), turrets.end() );
+    if( !ban.empty() ) {
+        player_character.add_msg_if_player( m_info, ban );
     }
-    if( player_character.has_trait( trait_GUNSHY ) ) {
-        player_character.add_msg_if_player(
-            _( "You refuse to use a firearm even when it's mounted." ) );
+    if( turrets.empty() ) {
         return false;
     }
 

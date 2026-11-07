@@ -378,6 +378,8 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```CANNOT_SLEEP``` A character with this flag cannot sleep. It does not prevent any of the negative effects of extreme tiredness.
 - ```CANNOT_TAKE_DAMAGE``` A creature with this flag cannot take any damage.
 - ```CANNOT_USE_COMPUTERS``` A creature with this flag cannot activate a computer terminal or use various computer functions (e.g. saving ebooks or reading efiles).
+- ```CANNOT_USE_FIREARMS``` You refuse to fire a firearm (any gun but a primitive one, such as a bow or a sling), in your hands or mounted on a vehicle.  NPCs with it don't fire firearms or rate them as guns either.  The `GUNSHY` trait grants it.
+- ```CANNOT_USE_RANGED``` You refuse to fire any gun: in your hands, mounted on a vehicle, or a mutation's or bionic's natural weapon.  Throwing is still possible.  NPCs with it don't fire guns or rate them as guns either.  The `BRAWLER` trait grants it.
 - ```CBQ_LEARN_BONUS``` You learn CBQ from the bionic bio_cqb faster.
 - ```CHANGING```This flag is silently given to player to detect it can mutate.
 - ```CLAIRVOYANCE_PLUS``` Gives a clairvoyance effect, used for debug purposes.
@@ -408,7 +410,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```GLARE_RESIST``` Protect your eyes from glare like sunglasses.
 - ```GLIDE``` You can glide from ledges without the use of wings, as if by magic.
 - ```GLIDING``` You are in the process of gliding.
-- ```HANDS_CANNOT_USE_FIREARMS``` Your hands (or paws, tentacles, etc) are incapable of operating a firearm
+- ```HANDS_CANNOT_USE_FIREARMS``` Your hands (or paws, tentacles, etc) are incapable of operating a firearm: you can't fire one you hold, by any means (fire, burst fire, aiming), and NPCs with it don't use one.  Mounted turrets and natural weapons are unaffected.
 - ```HARDTOHIT``` Whenever something attacks you, RNG gets rolled twice, and you get the better result.  In melee (and for grabs) the attacker rolls to hit twice and keeps the worse roll; a projectile's aim is rolled twice and the worse shot kept.  A monster gets the flag from the flags of an effect it has, and on a monster it works against melee attacks (and grabs) only.
 - ```HEATSINK``` You are resistant to extreme heat.
 - ```HEAT_IMMUNE``` Immune to very hot temperatures and fire damage.
@@ -493,7 +495,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```SUPPRESS_INVISIBILITY``` Any invisibility effects on the creature, including the `PERMANENT_INVISIBILITY` flag, are ignored for the duration of the effect with this flag
 - ```TELEPORT_LOCK``` You cannot teleport.  This has none of the protective effects of `DIMENSIONAL_ANCHOR`: something else can still teleport onto you.  Works from a trait, bionic, effect, body part or martial arts buff, and as an effect flag on monsters too.
 - ```TEMPORARY_SHAPESHIFT``` You are in another shape due to some supernatural effect.
-- ```TEMPORARY_SHAPESHIFT_NO_HANDS``` You do not have hands in your new shapeshifted form, and so cannot pick up or manipulate objects. 
+- ```TEMPORARY_SHAPESHIFT_NO_HANDS``` You do not have hands in your new shapeshifted form, and so cannot pick up or manipulate objects, or fire a gun you hold (NPCs with it don't either); a mutation's or bionic's natural weapon still works. 
 - ```THERMOMETER``` You always know what temperature it is.
 - ```TINY``` Changes your size to `creature_size::tiny`.  Checked first of the size category flags.
 - ```TREE_COMMUNION_PLUS``` Gain greatly enhanced effects from the Mycorrhizal Communion mutation.

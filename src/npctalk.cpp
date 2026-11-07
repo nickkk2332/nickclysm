@@ -5503,7 +5503,7 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
     dbl_or_var dov_max_noise;
     bool fire;
     dbl_or_var dov_shrapnel_casing_mass = dbl_or_var( 0 );
-    dbl_or_var dov_shrapnel_fragment_mass = dbl_or_var( 0.005f );
+    dbl_or_var dov_shrapnel_fragment_mass = dbl_or_var( SHRAPNEL_DEFAULT_FRAGMENT_MASS );
     dbl_or_var dov_shrapnel_recovery = dbl_or_var( 0 );
     str_or_var dov_shrapnel_drop = str_or_var( "null" );
 
@@ -5512,7 +5512,8 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
 
     JsonObject jo_explosion = jo.get_object( member );
     dov_power = get_dbl_or_var( jo_explosion, "power", false, 0 );
-    dov_distance_factor = get_dbl_or_var( jo_explosion, "distance_factor", false, 0.75f );
+    dov_distance_factor = get_dbl_or_var( jo_explosion, "distance_factor", false,
+                                          EXPLOSION_DEFAULT_DISTANCE_FACTOR );
     dov_max_noise = get_dbl_or_var( jo_explosion, "max_noise", false, 90000000 );
     fire = jo_explosion.get_bool( "fire", false );
     if( jo_explosion.has_int( "shrapnel" ) ) {
@@ -5520,7 +5521,8 @@ talk_effect_fun_t::func f_explosion( const JsonObject &jo, std::string_view memb
     } else if( jo_explosion.has_object( "shrapnel" ) ) {
         JsonObject jo_shr = jo_explosion.get_object( "shrapnel" );
         mandatory( jo_shr, false, "casing_mass", dov_shrapnel_casing_mass );
-        optional( jo_shr, false, "fragment_mass", dov_shrapnel_fragment_mass, 0.08 );
+        optional( jo_shr, false, "fragment_mass", dov_shrapnel_fragment_mass,
+                  SHRAPNEL_DEFAULT_FRAGMENT_MASS );
         optional( jo_shr, false, "recovery", dov_shrapnel_recovery, 0 );
         optional( jo_shr, false, "drop", dov_shrapnel_drop, "null" );
     }

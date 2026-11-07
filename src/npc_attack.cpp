@@ -794,6 +794,10 @@ void npc_attack_gun::use( npc &source, const tripoint_bub_ms &location ) const
 
 bool npc_attack_gun::can_use( const npc &source ) const
 {
+    // CMBT-J03: the gun would be in the NPC's hands
+    if( !source.ranged_ban_reason( *gunmode, true ).empty() ) {
+        return false;
+    }
     if( gunmode.target != &gun ) {
         // An underbarrel gunmod fires its own ammo, and use() only reloads the base gun.
         return ( source.is_wielding( gun ) || source.can_wield( gun ).success() ) &&

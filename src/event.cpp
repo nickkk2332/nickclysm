@@ -149,6 +149,12 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::var_changed: return "var_changed";
         case event_type::creature_teleported: return "creature_teleported";
         case event_type::character_hears_sound: return "character_hears_sound";
+        case event_type::character_dodges: return "character_dodges";
+        case event_type::character_blocks: return "character_blocks";
+        case event_type::character_melee_hits: return "character_melee_hits";
+        case event_type::character_fires_gun: return "character_fires_gun";
+        case event_type::monster_melee_attacks_character: return "monster_melee_attacks_character";
+        case event_type::monster_melee_attacks_monster: return "monster_melee_attacks_monster";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -171,7 +177,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 139,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -260,6 +266,11 @@ DEFINE_EVENT_FIELDS( mission_ends )
 DEFINE_EVENT_FIELDS( var_changed )
 DEFINE_EVENT_FIELDS( creature_teleported )
 DEFINE_EVENT_FIELDS( character_hears_sound )
+DEFINE_EVENT_FIELDS( character_blocks )
+DEFINE_EVENT_FIELDS( character_melee_hits )
+DEFINE_EVENT_FIELDS( character_fires_gun )
+DEFINE_EVENT_FIELDS( monster_melee_attacks_character )
+DEFINE_EVENT_FIELDS( monster_melee_attacks_monster )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )

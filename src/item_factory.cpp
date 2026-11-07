@@ -2943,6 +2943,11 @@ void Item_factory::check_definitions() const
                 msg += string_format( "unknown technique %s\n", _a.c_str() );
             }
         }
+        for( const std::pair<const damage_type_id, float> &eff : type->block.effectiveness ) {
+            if( !eff.first.is_valid() ) {
+                msg += string_format( "unknown damage type %s in block effectiveness\n", eff.first.c_str() );
+            }
+        }
         if( !type->snippet_category.empty() ) {
             if( !SNIPPET.has_category( type->snippet_category ) ) {
                 msg += string_format( "item %s: snippet category %s without any snippets\n", type->id.c_str(),
@@ -3513,6 +3518,32 @@ void islot_milling::deserialize( const JsonObject &jo )
 {
     optional( jo, was_loaded, "into", into_ );
     optional( jo, was_loaded, "recipe", recipe_ );
+}
+
+void item_block_data::deserialize( const JsonObject &jo )
+{
+    if( jo.has_member( "bonus" ) ) {
+        bonus = jo.get_int( "bonus" );
+        if( *bonus < 0 ) {
+            jo.throw_error_at( "bonus", "block bonus can't be negative" );
+        }
+    }
+    if( jo.has_member( "elemental_mult" ) ) {
+        elemental_mult = jo.get_float( "elemental_mult" );
+        if( *elemental_mult < 0.0f ) {
+            jo.throw_error_at( "elemental_mult", "elemental_mult can't be negative" );
+        }
+    }
+    if( jo.has_member( "effectiveness" ) ) {
+        effectiveness.clear();
+        for( JsonMember jm : jo.get_object( "effectiveness" ) ) {
+            const float value = jm.get_float();
+            if( value < 0.0f ) {
+                jm.throw_error( "block effectiveness can't be negative" );
+            }
+            effectiveness[damage_type_id( jm.name() )] = value;
+        }
+    }
 }
 
 void memory_card_info::deserialize( const JsonObject &jo )
@@ -4927,6 +4958,7 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "max_worn", max_worn, MAX_WORN_PER_TYPE );
 
     optional( jo, was_loaded, "techniques", techniques, auto_flags_reader<matec_id> {} );
+    optional( jo, was_loaded, "block", block );
 
     optional( jo, was_loaded, "countdown_interval", countdown_interval );
 

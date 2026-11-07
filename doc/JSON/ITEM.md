@@ -182,18 +182,20 @@ These fields can be read by any ITEM regardless of subtypes:
 "template_requirements": "nanofabricator",   // `requirement`, that needed to craft any of this templates; used as "one full requirememt per 250 ml of item's volume" - item with volume 750 ml would require three times of `requirement`, item of 2L - eight times of `requirement`
 "explosion": {                               // Physical explosion data
     "power": 10,                             // Measure of explosion power in grams of TNT equivalent explosive, affects damage and range.
-    "distance_factor": 0.9,                  // How much power is retained per traveled tile of explosion. Must be lower than 1 and higher than 0.
+    "distance_factor": 0.9,                  // How much power is retained per traveled tile of explosion. Default 0.75.  Must be below 1; 0 makes no blast, only shrapnel.  Anything else is a load error
     "max_noise": 25,                         // Maximum amount of (auditory) noise the explosion might produce.
     "fire": true,                            // Should the explosion leave fire
-    "shrapnel": 200,                         // Total mass of casing, rest of fragmentation variables set to reasonable defaults.
+    "shrapnel": 200,                         // Total mass of casing, rest of fragmentation variables set to the defaults below (fragment_mass 0.08, no recovery).
     "shrapnel": {
         "casing_mass": 200,                  // Total mass of casing, casing/power ratio determines fragment velocity.
-        "fragment_mass": 0.05,               // Mass of each fragment in grams. Large fragments hit harder, small fragments hit more often.
+        "fragment_mass": 0.05,               // Mass of each fragment in grams. Large fragments hit harder, small fragments hit more often. Default 0.08; must be above 0
         "recovery": 10,                      // Percentage chance to drop an item at landing point.
         "drop": "nail"                       // Which item to drop at landing point.
     }
 },
 ```
+
+The blast hurts a character on every main body part (torso, head, arms and legs, and tails, wings or extra limbs): the torso and head take 2 to 3 times its force, the others 2 to 3.5 times, all as bash damage against half (head and torso) or 0.4 times their armor.  A monster takes the force less half its bash resistance, times 2 to 3, as bash damage through the usual damage path (resistances, enchantments and damage type EOCs apply; a blast never hits a weak point).  The same defaults hold for an ammo effect's `explosion` and for `u_explosion`.
 
 #### To hit object
 For additional clarity, an item's `to_hit` bonus can be encoded as string of 4 fields.  All the fields are mandatory:
@@ -276,11 +278,11 @@ ammo_effects define what effect the projectile, that you shoot, would have. List
   ],
   "explosion": {             // explosion, that will happen at the tile that projectile hit
     "power": 0,              // mandatory; power of the explosion, in grams of tnt; pipebomb is about 300, grenade (without shrapnel) is 240
-    "distance_factor": 0.8,  // how fast the explosion decay, closer to 1 mean lesser "power" loss per tile, 0.8 means 20% of power loss per tile; default 0.75, value should be bigger than 0, but lesser than 1
+    "distance_factor": 0.8,  // how fast the explosion decay, closer to 1 mean lesser "power" loss per tile, 0.8 means 20% of power loss per tile; default 0.75; at least 0 and below 1, or it is a load error
     "fire": false,           // explosion create a fire, related to it's power, distance and distance_factor
     "shrapnel": {            // explosion create a shrapnel, that deal the damage, calculated by gurney equasion
       "casing_mass": 0,      // total mass of casing, casing/power ratio determines fragment velocity.
-      "fragment_mass": 0.0,  // Mass of each fragment in grams. Large fragments hit harder, small fragments hit more often.
+      "fragment_mass": 0.08, // Mass of each fragment in grams, above 0. Large fragments hit harder, small fragments hit more often; default 0.08
       "recovery": 0,         // Percentage chance to drop an item at landing point.
       "drop": "null"         // Which item to drop at landing point
     }
@@ -817,8 +819,15 @@ A `pocket_data` array replaces every pocket of the item.  An item with `copy-fro
   "length": "long",                          
   "surface": "point",                        
   "balance": "neutral"                       
+},
+"block": {             // (Optional) How the item blocks melee hits, wielded (or worn, with the BLOCK_WHILE_WORN flag)
+  "bonus": 6,          // Block strength, added to the block score.  Default: 10, 6 or 4 for the WBLOCK_3, WBLOCK_2 or WBLOCK_1 technique, 2 for BLOCK_WHILE_WORN (worn only), otherwise the item doesn't block when wielded
+  "elemental_mult": 0.5, // Part of elemental (non-physical) damage, such as heat or acid, that gets through when you block with it (a wielded block; electricity always gets through a conductive one).  Default 0.2
+  "effectiveness": { "bash": 0.5, "stab": 0 } // How well it blocks each physical damage type, as a part of its normal block: 1 (the default) blocks normally, 0.5 half as much, 0 not at all.  Martial art flat block bonuses are not affected
 }
 ```
+
+Other blocking numbers are external options in `data/core/external_options.json`: `BLOCK_MIN_STAMINA` (2000: below it you can't block), `BLOCK_SIZE_MARGIN` (1: you can't block an attacker more than this many sizes bigger, without `BLOCK_HUGE_ATTACKS`), `BLOCK_REACTION_PER_SKILL` (20: percent chance per melee level to react in time), `BLOCK_STAMINA_COST_MULT` (6) and `BLOCK_COUNTER_MAX_GLASS_PERCENT` (20: no block counter with a weapon more glass than that).  The enchantment values `BLOCK_EFFECTIVENESS` and `BLOCK_STAMINA_COST` (see [MAGIC.md](MAGIC.md)) change a character's blocks.  A negative value in `block` is a load error, as is an unknown damage type in `effectiveness`.
 ### Memory Cards
 
 Memory card information can be defined on any GENERIC item by adding an object named `memory_card`, this field does not support `extend`/`remove`, only override.

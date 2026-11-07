@@ -384,7 +384,16 @@ const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_ty
     static const std::vector<std::string> monster_hurt = {
         "victim_type", "bodypart", "damage_type"
     };
+    // CMBT-J04: one summary per amount of damage, for every hit and block, would grow every save
+    static const std::vector<std::string> hit_damage = { "damage" };
+    static const std::vector<std::string> damage_blocked = { "damage_blocked" };
     switch( type ) {
+        case event_type::character_melee_hits:
+        case event_type::monster_melee_attacks_character:
+        case event_type::monster_melee_attacks_monster:
+            return hit_damage;
+        case event_type::character_blocks:
+            return damage_blocked;
         case event_type::becomes_wanted:
         case event_type::character_smashes_tile:
         case event_type::character_triggers_trap:

@@ -1354,6 +1354,23 @@ struct memory_card_info {
     void deserialize( const JsonObject &jo );
 };
 
+/**
+ * How an item blocks melee hits (the item's "block" object; Character::block_hit).  Unset values
+ * keep the old rules: the WBLOCK_1/2/3 techniques (4, 6, 10) or BLOCK_WHILE_WORN (2) give the
+ * block strength, and an item block lets a fifth of elemental damage through.
+ */
+struct item_block_data {
+    // Block strength, in place of the WBLOCK techniques and BLOCK_WHILE_WORN
+    std::optional<int> bonus;
+    // The part of elemental (non-physical) damage that gets through an item block
+    std::optional<float> elemental_mult;
+    // How well it blocks each physical damage type, as a part of its normal block (default 1)
+    std::map<damage_type_id, float> effectiveness;
+
+    bool was_loaded = false;
+    void deserialize( const JsonObject &jo );
+};
+
 struct item_melee_damage {
     std::unordered_map<damage_type_id, float> damage_map;
     float default_value = 0.0f;  // NOLINT(cata-serialize)
@@ -1522,6 +1539,9 @@ struct itype {
         std::set<emit_id> emits;
 
         std::set<matec_id> techniques;
+
+        /** How the item blocks melee hits ("block") */
+        item_block_data block;
 
         // Minimum stat(s) or skill(s) to use the item
         std::map<skill_id, int> min_skills;

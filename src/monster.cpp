@@ -2514,6 +2514,20 @@ bool monster::melee_attack( Creature &target, float accuracy )
 
     target.check_dead_state( &here );
 
+    // CMBT-J04: the attack is over, for any EOC: the monster is alpha, the victim beta
+    if( !is_hallucination() && !target.is_hallucination() ) {
+        const bool hits = hitspread >= 0;
+        if( const Character *victim = target.as_character() ) {
+            get_event_bus().send_with_talker( this, &target,
+                                              cata::event::make<event_type::monster_melee_attacks_character>( type->id,
+                                                      victim->getID(), hits, total_dealt, target.is_dead_state() ) );
+        } else if( const monster *victim = target.as_monster() ) {
+            get_event_bus().send_with_talker( this, &target,
+                                              cata::event::make<event_type::monster_melee_attacks_monster>( type->id,
+                                                      victim->type->id, hits, total_dealt, target.is_dead_state() ) );
+        }
+    }
+
     if( is_hallucination() ) {
         if( one_in( 7 ) ) {
             die( &here, nullptr );
