@@ -183,6 +183,9 @@ class effect_type
         std::vector<effect_on_condition_id> apply_eocs;
         std::vector<effect_on_condition_id> intensity_change_eocs;
         std::vector<effect_on_condition_id> remove_eocs;
+        /** Run every tick_eocs_interval while a creature has the effect (HLTH-J07) */
+        std::vector<effect_on_condition_id> tick_eocs;
+        time_duration tick_eocs_interval = 1_turns;
     protected:
         uint32_t get_effect_modifier_key( mod_action action, uint8_t reduction_level ) const {
             return static_cast<uint8_t>( action ) << 0 |

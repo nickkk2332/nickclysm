@@ -139,7 +139,7 @@ An effect type can copy another one (or an `"abstract"` one, which nothing can a
 ```
 
 * Every field that the child leaves out keeps the parent's value.  A field the child gives replaces the parent's value.
-* `extend` and `delete` work on `flags`, `immune_flags`, `immune_bp_flags`, `resist_traits`, `resist_effects`, `removes_effects`, `blocks_effects`, `apply_eocs`, `intensity_change_eocs`, `remove_eocs` (`delete` takes EOC ids) and `enchantments` (`delete` takes enchantment ids; an inline enchantment is named `INLINE_ENCH_<effect id>_<n>`, where `n` counts that id's inline enchantments in load order across all its definitions, so one definition's are `_0`, `_1`, ...).
+* `extend` and `delete` work on `flags`, `immune_flags`, `immune_bp_flags`, `resist_traits`, `resist_effects`, `removes_effects`, `blocks_effects`, `apply_eocs`, `intensity_change_eocs`, `remove_eocs`, `tick_eocs` (`delete` takes EOC ids) and `enchantments` (`delete` takes enchantment ids; an inline enchantment is named `INLINE_ENCH_<effect id>_<n>`, where `n` counts that id's inline enchantments in load order across all its definitions, so one definition's are `_0`, `_1`, ...).
 * Numeric fields (`max_intensity`, `int_add_val`, `int_decay_step`, `dur_add_perc`, `max_duration`, ...) support `relative` and `proportional`.
 * `base_mods` and `scaling_mods` replace the parent's values one group at a time.  Each stat's keys form a group (`str_mod` alone; `pain_amount`, `pain_min`, `pain_max`, `pain_max_val`, `pain_chance`, `pain_chance_bot` and `pain_tick`; the `hurt_*` keys; the `sleep_*` keys; and so on).  Naming any key of a group, in either object, replaces the parent's whole group, base and scaling values alike: a child that only sets `pain_chance` loses the parent's `pain_min`, `pain_max` and the rest, so restate the ones to keep.  Groups the child doesn't name keep the parent's values.
 * `apply_message` replaces the parent's apply messages; a `rating` alone re-rates them.  `reduced_desc` keeps following `desc` unless the parent or the child sets it.
@@ -467,6 +467,8 @@ As defined, this will cause non-resistant characters to gain between 1 and 2 of 
 
 For `chance_kill` and `chance_kill_resist`, it accepts an array of arrays in the format described. Each entry in the array will be applied for a successive intensity level of the field. If the intensity level of the field is greater than the number of entries in the array, the last entry will be used.
 
+A few overdoses kill a character (the avatar or an NPC) outright, with their own messages and the `dies_from_drug_overdose` event, at points set by external options in `data/core/external_options.json` that a mod can change: `OVERDOSE_STIM_HIGH` (250: a stimulant level above it), `OVERDOSE_STIM_LOW` (-200: below it), `OVERDOSE_PAINKILLER` (240: a painkiller level above it), `OVERDOSE_JETINJECTOR_MINUTES` (40: `jetinjector` lasting longer), `OVERDOSE_ADRENALINE_MINUTES` (50: `adrenaline` lasting longer) and `OVERDOSE_DRUNK_INTENSITY` (5: `drunk` at this intensity or more).  For the last three, 0 turns the death off.  For example `{ "type": "EXTERNAL_OPTION", "name": "OVERDOSE_DRUNK_INTENSITY", "stype": "int", "value": 0 }`.  The symptoms of a high or low stimulant or painkiller level on the way there are still set in the game's code.
+
 ### Effect EOCs
 
 ```jsonc
@@ -480,6 +482,12 @@ Lists of effect_on_conditions (ids or inline definitions, which must be activati
 - `apply_eocs` run when the creature gains the effect (on a body part, if it has one), after the effect's first tick of effects.
 - `intensity_change_eocs` run when the intensity of an effect the creature has changes: applying it again, its decay over time (`int_decay_step`, `int_dur_factor`), or a grant or the end of one.  Setting the intensity in other ways (`effect_intensity()` in math, for example) doesn't run them.
 - `remove_eocs` run when the creature loses the effect, after it is gone: when it expires, is cured or removed, or is removed by another effect.  An effect on several body parts removed at once runs them once per body part.  They don't run when all of a creature's effects are cleared at once (the debug menu, or a reset such as a time-reverting artifact's).
+- `tick_eocs` run every `tick_eocs_interval` (a duration, default `1 turns`; at least 1 turn) while the creature has the effect, counted from when it gained it: with `"tick_eocs_interval": "1 m"`, one minute after, two minutes after, and so on, on each body part it is on.  They don't run while the effect is frozen (`FREEZE_EFFECTS`), nor on the turn it ends.  `intensity` and `old_intensity` are both its intensity.  Use them, rather than a recurring EOC that checks `u_has_effect`, for something an effect does on a schedule: they run only for the creatures that have it (monsters too), and at the same moments however long the game is played.
+
+```jsonc
+    "tick_eocs": [ { "id": "EOC_BURNING_ITCH", "effect": [ { "u_message": "The rash itches.", "type": "bad" } ] } ],
+    "tick_eocs_interval": "10 m"
+```
 
 Each EOC can read the context values `effect` (the effect id), `bodypart` (its body part, `bp_null` if it has none), `intensity` (its intensity now: 0 once lost) and `old_intensity` (before: 0 when gained), for example `{ "math": [ "_intensity > _old_intensity" ] }`.
 

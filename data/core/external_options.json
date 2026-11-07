@@ -204,6 +204,48 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_STIM_HIGH",
+    "//": "A character whose stimulant level is above this dies of a heart attack.",
+    "stype": "int",
+    "value": 250
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_STIM_LOW",
+    "//": "A character whose stimulant level is below this (a depressant overdose) stops breathing and dies.",
+    "stype": "int",
+    "value": -200
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_PAINKILLER",
+    "//": "A character whose painkiller level is above this stops breathing and dies.",
+    "stype": "int",
+    "value": 240
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_JETINJECTOR_MINUTES",
+    "//": "A character whose jet injector effect lasts more than this many minutes dies of heart failure.  0 turns the death off.",
+    "stype": "int",
+    "value": 40
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_ADRENALINE_MINUTES",
+    "//": "A character whose adrenaline effect lasts more than this many minutes dies of heart failure.  0 turns the death off.",
+    "stype": "int",
+    "value": 50
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "OVERDOSE_DRUNK_INTENSITY",
+    "//": "A character whose drunk effect reaches this intensity dies of alcohol poisoning (drunk's max_intensity is 5).  0 turns the death off.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "SPAWN_CITY_HORDE_THRESHOLD",
     "//": "Minimum city size to guarantee extra zombies are spawned in cities.  0 means all cities spawn extra zombies.  Negative values disable extra city zombies.",
     "stype": "int",

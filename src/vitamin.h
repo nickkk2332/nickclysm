@@ -105,6 +105,8 @@ class vitamin
 
         /** Check consistency of all loaded vitamins */
         static void check_consistency();
+        /** What check_consistency checks of one vitamin: the ids it refers to, its ranges */
+        void check() const;
 
         /** Clear all loaded vitamins (invalidating any pointers) */
         static void reset();

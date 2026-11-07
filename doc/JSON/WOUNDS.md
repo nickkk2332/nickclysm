@@ -56,6 +56,24 @@ Align bleed values to the ones in body_parts.json unless being instructed otherw
     "blacklist_body_part_types": [ "torso", "sensor" ], // if used, this wound cannot be applied on bodyparts of this type.
     "whitelist_bp_with_flag": [ "LIMB_UPPER" ], // only body parts with this flags can receive the wound.
     "blacklist_bp_with_flag": [ "BIONIC_LIMB" ], // Bodyparts with this flags cannot receive this wound.
+    "bleeding": true // optional: whether this wound counts as bleeding (the medical menu, `BLEEDING_RATE`, bleeding checks). Left out, a wound bleeds when one of its VITAMIN `mod_values` changes `blood` or `redcells`
+  }
+```
+
+The ids a wound refers to are checked when the game loads: `damage_types`, the `score` of `limb_scores`, the `vitamin_id` of `mod_values` (which a `VITAMIN` entry needs and other types don't use), the wounds in `wound_progression` and `progress_timer`, and that `damage_required` isn't backwards.
+
+### Wound events
+
+Effect_on_conditions can react to a character's wounds (the avatar's or an NPC's) with the events `character_gains_wound` (a new wound: a hit, `u_add_wound`, or a `wound_fix` that adds one), `character_wound_progresses` (a hit made a wound worse through its `wound_progression`, or its `progress_timer` ran out) and `character_loses_wound` (`healed` true when its `healing_time` ran out, false when a `wound_fix`, `u_remove_wound` or `u_remove_all_wounds` removed it).  Each has `character`, `bodypart` and `wound` (the wound type id); `character_wound_progresses` adds `new_wound` and `character_loses_wound` `healed`.  See the event list in [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md).
+
+```jsonc
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_SCREAM_AT_BROKEN_BONES",
+    "eoc_type": "EVENT",
+    "required_event": "character_gains_wound",
+    "condition": { "compare_string": [ "bone_broken", { "context_val": "wound" } ] },
+    "effect": [ { "u_message": "Something snaps!", "type": "bad" } ]
   }
 ```
 

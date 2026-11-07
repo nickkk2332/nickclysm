@@ -371,7 +371,11 @@ bool stats_tracker::records( const event_type type )
     // every save
     return type != event_type::npc_goal_changed && type != event_type::npc_attitude_changed &&
            type != event_type::mod_setting_changed && type != event_type::tile_destroyed &&
-           type != event_type::creature_teleported && type != event_type::character_hears_sound;
+           type != event_type::creature_teleported && type != event_type::character_hears_sound &&
+           // one per character, body part and wound (and pair or outcome), NPCs included
+           type != event_type::character_gains_wound &&
+           type != event_type::character_wound_progresses &&
+           type != event_type::character_loses_wound;
 }
 
 const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_type type )

@@ -1,5 +1,7 @@
 #include "vitamin.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <map>
 
 #include "calendar.h"
@@ -125,13 +127,46 @@ const std::map<vitamin_id, vitamin> &vitamin::all()
 void vitamin::check_consistency()
 {
     for( const vitamin &v : vitamin_factory.get_all() ) {
-        if( !( v.deficiency_.is_null() || v.deficiency_.is_valid() ) ) {
-            debugmsg( "vitamin %s has unknown deficiency %s", v.id.c_str(), v.deficiency_.c_str() );
-        }
-        if( !( v.excess_.is_null() || v.excess_.is_valid() ) ) {
-            debugmsg( "vitamin %s has unknown excess %s", v.id.c_str(), v.excess_.c_str() );
+        v.check();
+    }
+}
+
+void vitamin::check() const
+{
+    if( !( deficiency_.is_null() || deficiency_.is_valid() ) ) {
+        debugmsg( "vitamin %s has unknown deficiency %s", id.c_str(), deficiency_.c_str() );
+    }
+    if( !( excess_.is_null() || excess_.is_valid() ) ) {
+        debugmsg( "vitamin %s has unknown excess %s", id.c_str(), excess_.c_str() );
+    }
+    // HLTH-J05: the rest of what a vitamin refers to and the ranges it sets
+    if( min_ > max_ ) {
+        debugmsg( "vitamin %s has a min (%d) above its max (%d)", id.c_str(), min_, max_ );
+    }
+    for( const std::pair<vitamin_id, int> &into : decays_into_ ) {
+        if( into.first == id ) {
+            debugmsg( "vitamin %s decays into itself", id.c_str() );
+        } else if( !into.first.is_valid() ) {
+            debugmsg( "vitamin %s decays into unknown vitamin %s", id.c_str(), into.first.c_str() );
         }
     }
+    // A level stays within [min, max], so an intensity whose range lies outside it is never
+    // reached (the order of the two bounds of a range doesn't matter)
+    const auto check_ranges = [this]( const std::vector<std::pair<int, int>> &ranges,
+    const char *member ) {
+        for( size_t i = 0; i < ranges.size(); ++i ) {
+            const int low = std::min( ranges[i].first, ranges[i].second );
+            const int high = std::max( ranges[i].first, ranges[i].second );
+            if( high < min_ || low > max_ ) {
+                debugmsg( "vitamin %s: intensity %d of its \"%s\" ([%d, %d]) is outside its "
+                          "range [%d, %d] and can never be reached", id.c_str(),
+                          static_cast<int>( i ) + 1, member, ranges[i].first, ranges[i].second,
+                          min_, max_ );
+            }
+        }
+    };
+    check_ranges( disease_, "disease" );
+    check_ranges( disease_excess_, "disease_excess" );
 }
 
 void vitamin::reset()

@@ -1133,15 +1133,17 @@ std::vector<wound> &bodypart::get_wounds()
     return wounds;
 }
 
-void bodypart::add_or_worsen_wound( const wound_type_id wd )
+std::optional<wound_change> bodypart::add_or_worsen_wound( const wound_type_id wd )
 {
     wound wo = wound( wd );
-    add_or_worsen_wound( wo );
+    return add_or_worsen_wound( wo );
 }
 
-void bodypart::add_or_worsen_wound( const wound &wd )
+std::optional<wound_change> bodypart::add_or_worsen_wound( const wound &wd )
 {
     const std::vector<wound_progress> &wound_progression = wd.type->wound_progression;
+    // nothing, when the wound was there and none of its progressions succeeded
+    std::optional<wound_change> done;
 
     // todo: move one_in( 2 ) to something more reasonable
     // maybe checking hit_size of a limb against some new wound size property?
@@ -1173,6 +1175,11 @@ void bodypart::add_or_worsen_wound( const wound &wd )
                 // comparing healing progress (not initialized for newly constructed wounds)
                 remove_wound( wd.type );
                 add_wound( new_wound );
+                done.emplace();
+                done->what = wound_change::kind::progressed;
+                done->bp = id;
+                done->wound = wd.type;
+                done->new_wound = new_wound.type;
                 break;
             }
         }
@@ -1188,7 +1195,12 @@ void bodypart::add_or_worsen_wound( const wound &wd )
                      );
 
         add_wound( wd );
+        done.emplace();
+        done->what = wound_change::kind::gained;
+        done->bp = id;
+        done->wound = wd.type;
     }
+    return done;
 }
 
 void bodypart::add_wound( const wound &wd )
@@ -1238,24 +1250,29 @@ void bodypart::remove_wound( const wound wd )
     }
 }
 
-void bodypart::remove_wound( const wound_type_id wd )
+bool bodypart::remove_wound( const wound_type_id wd )
 {
     const auto it = std::find_if( wounds.begin(), wounds.end(), [wd]( const wound & existing_wound ) {
         return existing_wound.type == wd;
     } );
     if( it != wounds.end() ) {
         wounds.erase( it );
+        return true;
     }
+    return false;
 }
 
-void bodypart::remove_all_wounds_of_type( const wound_type_id wd )
+int bodypart::remove_all_wounds_of_type( const wound_type_id wd )
 {
+    const size_t before = wounds.size();
     wounds.erase( std::remove_if( wounds.begin(), wounds.end(), [wd]( const wound & existing_wound ) {
         return existing_wound.type == wd;
     } ), wounds.end() );
+    return static_cast<int>( before - wounds.size() );
 }
 
-void bodypart::update_wounds( const Character &who, time_duration time_passed )
+void bodypart::update_wounds( const Character &who, time_duration time_passed,
+                              std::vector<wound_change> *changes )
 {
     std::vector<wound> new_wounds;
     new_wounds.reserve( wounds.size() );
@@ -1270,9 +1287,25 @@ void bodypart::update_wounds( const Character &who, time_duration time_passed )
                     m_bad, string_format( it->type->get_progress_timer_message(), body_part_name( id ) ) );
 
                 new_wounds.emplace_back( it->wound_progress_timer.value().first );
+                if( changes != nullptr ) {
+                    wound_change worse;
+                    worse.what = wound_change::kind::progressed;
+                    worse.bp = id;
+                    worse.wound = it->type;
+                    worse.new_wound = new_wounds.back().type;
+                    changes->push_back( worse );
+                }
                 it = wounds.erase( it );
                 break;
             case wound_update_ret::REMOVE:
+                if( changes != nullptr ) {
+                    wound_change healed;
+                    healed.what = wound_change::kind::lost;
+                    healed.bp = id;
+                    healed.wound = it->type;
+                    healed.healed = true;
+                    changes->push_back( healed );
+                }
                 it = wounds.erase( it );
                 break;
             default:

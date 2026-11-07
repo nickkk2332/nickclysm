@@ -2326,7 +2326,8 @@ void Creature::run_effect_eocs( const effect_eoc_hook hook, const effect_type &t
 {
     const std::vector<effect_on_condition_id> &eocs =
         hook == effect_eoc_hook::apply ? type.apply_eocs :
-        hook == effect_eoc_hook::intensity_change ? type.intensity_change_eocs : type.remove_eocs;
+        hook == effect_eoc_hook::intensity_change ? type.intensity_change_eocs :
+        hook == effect_eoc_hook::tick ? type.tick_eocs : type.remove_eocs;
     if( eocs.empty() ) {
         return;
     }
@@ -2342,8 +2343,8 @@ void Creature::run_effect_eocs( const effect_eoc_hook hook, const effect_type &t
         d.set_value( "bodypart", bp.id().str() );
         d.set_value( "intensity", intensity );
         d.set_value( "old_intensity", old_intensity );
-        eoc->activate_activation_only( d, "an effect type's apply_eocs, intensity_change_eocs or "
-                                       "remove_eocs" );
+        eoc->activate_activation_only( d, "an effect type's apply_eocs, intensity_change_eocs, "
+                                       "remove_eocs or tick_eocs" );
     }
 }
 
@@ -2531,6 +2532,16 @@ void Creature::process_effects()
                 on_effect_int_change( e.get_id(), e.get_intensity(), e.get_bp() );
                 run_effect_eocs( effect_eoc_hook::intensity_change, *e.get_effect_type(), e.get_bp(),
                                  e.get_intensity(), prev_int, e.get_source() );
+            }
+
+            // HLTH-J07: every tick_eocs_interval since the effect began, while it lasts
+            const effect_type &e_type = *e.get_effect_type();
+            if( !e_type.tick_eocs.empty() && e.get_duration() > 0_turns ) {
+                const time_duration held = calendar::turn - e.get_start_time();
+                if( held > 0_turns && held % e_type.tick_eocs_interval == 0_turns ) {
+                    run_effect_eocs( effect_eoc_hook::tick, e_type, e.get_bp(), e.get_intensity(),
+                                     e.get_intensity(), e.get_source() );
+                }
             }
 
             const bool reduced = resists_effect( e );

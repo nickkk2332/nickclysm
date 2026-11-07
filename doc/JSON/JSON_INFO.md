@@ -1567,6 +1567,8 @@ A dream with an `id` can `copy-from` another one (or an `abstract` one), and a l
 | `symptoms`           | The effect applied by the disease.
 | `affected_bodyparts` | The list of bodyparts on which the effect is applied. (optional, default to bp_null)
 
+The symptoms effect, the body parts, and that neither minimum is above its maximum are checked when the game loads.  A character catches a disease from food with it in its `contamination`, or from the EOC effect `u_expose_to_disease` (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).  The common cold and the flu are not disease types: when and how a character catches them is still set in the game's code.
+
 
 ```jsonc
   {
@@ -1576,7 +1578,7 @@ A dream with an `id` can `copy-from` another one (or an `abstract` one), and a l
     "max_duration": "1 h",
     "min_intensity": 1,
     "max_intensity": 1,
-    "affected_bodyparts": [ "TORSO" ],
+    "affected_bodyparts": [ "torso" ],
     "health_threshold": 100,
     "symptoms": "foodpoison"
   }
