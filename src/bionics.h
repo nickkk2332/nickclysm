@@ -102,6 +102,8 @@ struct bionic_data {
     std::vector<enchantment_id> enchantments;
     /** kown martial arts styles */
     std::vector<matype_id> ma_styles;
+    /** Martial arts styles learned on install (and forgotten on uninstall, if it taught them) */
+    std::vector<matype_id> learned_ma_styles;
     /**
      * Proficiencies given on install (and removed on uninstall) of this bionic
      */

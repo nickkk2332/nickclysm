@@ -170,7 +170,6 @@ static const trait_id trait_RADIOPHILE( "RADIOPHILE" );
 static const trait_id trait_SHARKTEETH( "SHARKTEETH" );
 static const trait_id trait_SHELL2( "SHELL2" );
 static const trait_id trait_SHELL3( "SHELL3" );
-static const trait_id trait_SNAIL_TRAIL( "SNAIL_TRAIL" );
 static const trait_id trait_SORES( "SORES" );
 static const trait_id trait_TROGLO( "TROGLO" );
 static const trait_id trait_TROGLO2( "TROGLO2" );
@@ -179,7 +178,6 @@ static const trait_id trait_UNDINE_ABSORB_WATER( "UNDINE_ABSORB_WATER" );
 static const trait_id trait_UNSTABLE( "UNSTABLE" );
 static const trait_id trait_VOMITOUS( "VOMITOUS" );
 static const trait_id trait_WEB_SPINNER( "WEB_SPINNER" );
-static const trait_id trait_WEB_WEAVER( "WEB_WEAVER" );
 static const trait_id trait_WINGS_INSECT_active( "WINGS_INSECT_active" );
 
 static const vitamin_id vitamin_vitC( "vitC" );
@@ -1083,13 +1081,14 @@ void suffer::from_other_mutations( Character &you )
         }
     }
     //Web Weavers...weave web
-    if( you.has_active_mutation( trait_WEB_WEAVER ) && !you.in_vehicle ) {
+    if( !you.in_vehicle && you.has_active_builtin_activation( mutation_builtin_activation::web ) ) {
         // this adds intensity to if its not already there.
         here.add_field( position, fd_web, 1 );
 
     }
 
-    if( you.has_active_mutation( trait_SNAIL_TRAIL ) && !you.in_vehicle ) {
+    if( !you.in_vehicle &&
+        you.has_active_builtin_activation( mutation_builtin_activation::sludge_trail ) ) {
         here.add_field( position, fd_sludge, 1 );
 
     }

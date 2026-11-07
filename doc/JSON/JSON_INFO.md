@@ -1357,7 +1357,8 @@ mod = min( max, ( limb_score / denominator ) - subtract );
 | `upgraded_bionic`            | (_optional_) Bionic that can be upgraded by installing this one.
 | `available_upgrades`         | (_optional_) Upgrades available for this bionic, i.e. the list of bionics having this one referenced by `upgraded_bionic`.
 | `encumbrance`                | (_optional_) A list of body parts and how much this bionic encumber them.
-| `known_ma_styles`            | (_optional_) A list of martial art styles that are known to the wearer when the bionic is activated
+| `known_ma_styles`            | (_optional_) A list of martial art styles that are known to the wearer while the bionic is active.  Activating the bionic opens the style menu with these styles (for the avatar), and turning it off drops the selected style unless the character knows it otherwise or another active bionic lists it.  Only a bionic that stays on (`BIONIC_TOGGLED` or a `time`) keeps its styles; for styles that last as long as the CBM is installed, use `learned_ma_styles`.
+| `learned_ma_styles`          | (_optional_) Array of martial art style ids the character learns when installing this CBM, and forgets when uninstalling it.  As with `learned_proficiencies`, only styles this CBM taught are forgotten: one the character knew before, or that another installed CBM also teaches, stays.  An upgrade that teaches the same style takes it over.
 | `canceled_mutations`         | (_optional_) A list of mutations/traits that are removed when this bionic is installed (e.g. because it replaces the fault biological part).
 | `mutation_conflicts`         | (_optional_) A list of mutations that prevent this bionic from being installed.
 | `included_bionics`           | (_optional_) Additional bionics that are installed automatically when this bionic is installed. This can be used to install several bionics from one CBM item, which is useful as each of those can be activated independently.

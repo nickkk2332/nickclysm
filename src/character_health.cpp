@@ -218,7 +218,6 @@ static const trait_id trait_CHLOROMORPH( "CHLOROMORPH" );
 static const trait_id trait_DEBUG_LS( "DEBUG_LS" );
 static const trait_id trait_DEBUG_STAMINA( "DEBUG_STAMINA" );
 static const trait_id trait_DISRESISTANT( "DISRESISTANT" );
-static const trait_id trait_GLASSJAW( "GLASSJAW" );
 static const trait_id trait_HIBERNATE( "HIBERNATE" );
 static const trait_id trait_MASOCHIST( "MASOCHIST" );
 static const trait_id trait_M_SKIN3( "M_SKIN3" );
@@ -424,14 +423,26 @@ void Character::recalc_hp()
 void Character::calc_all_parts_hp( float hp_mod, float hp_adjustment, int str_max, int dex_max,
                                    int per_max, int int_max, int healthy_mod, int fat_to_max_hp )
 {
+    // The traits' bodypart_hp_multiplier, per body part (GLASSJAW's head)
+    std::map<bodypart_str_id, double> trait_hp_mult;
+    for( const std::pair<const trait_id, trait_data> &mut : cached_mutations ) {
+        if( mut.second.corrupted != 0 ) {
+            continue;
+        }
+        for( const std::pair<const bodypart_str_id, double> &bp_mult :
+             mut.first->bodypart_hp_multiplier ) {
+            trait_hp_mult.emplace( bp_mult.first, 1.0 ).first->second *= bp_mult.second;
+        }
+    }
     for( std::pair<const bodypart_str_id, bodypart> &part : body ) {
         int new_max = ( part.first->base_hp + str_max * part.first->hp_mods.str_mod + dex_max *
                         part.first->hp_mods.dex_mod + int_max * part.first->hp_mods.int_mod + per_max *
                         part.first->hp_mods.per_mod + part.first->hp_mods.health_mod * healthy_mod + fat_to_max_hp +
                         hp_adjustment ) * hp_mod;
 
-        if( has_trait( trait_GLASSJAW ) && part.first == body_part_head ) {
-            new_max *= 0.8;
+        const auto bp_mult = trait_hp_mult.find( part.first );
+        if( bp_mult != trait_hp_mult.end() ) {
+            new_max *= bp_mult->second;
         }
 
         new_max = std::max( 1, new_max );

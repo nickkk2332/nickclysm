@@ -72,6 +72,33 @@ class translation_list_reader : public generic_typed_reader<translation_list_rea
 };
 } // namespace
 
+namespace io
+{
+template<>
+std::string enum_to_string<mutation_builtin_activation>( mutation_builtin_activation data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case mutation_builtin_activation::none: return "none";
+        case mutation_builtin_activation::web: return "web";
+        case mutation_builtin_activation::sludge_trail: return "sludge_trail";
+        case mutation_builtin_activation::long_pull: return "long_pull";
+        case mutation_builtin_activation::burrow: return "burrow";
+        case mutation_builtin_activation::slime_split: return "slime_split";
+        case mutation_builtin_activation::vomit: return "vomit";
+        case mutation_builtin_activation::spores: return "spores";
+        case mutation_builtin_activation::blossoms: return "blossoms";
+        case mutation_builtin_activation::spores_and_blossoms: return "spores_and_blossoms";
+        case mutation_builtin_activation::echolocation: return "echolocation";
+        case mutation_builtin_activation::tree_communion: return "tree_communion";
+        // *INDENT-ON*
+        case mutation_builtin_activation::last:
+            break;
+    }
+    cata_fatal( "Invalid mutation_builtin_activation" );
+}
+} // namespace io
+
 std::map<mutation_category_id, std::vector<trait_id> > mutations_category;
 // Mutations with edible_food_flags, food_allergies, an eat_condition, food_fun or eat_eocs,
 // in load order
@@ -468,6 +495,18 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         JsonObject si = jo.get_object( "ranged_mutation" );
         optional( si, was_loaded, "type", ranged_mutation );
         optional( si, was_loaded, "message", raw_ranged_mutation_message );
+    }
+    optional( jo, was_loaded, "builtin_activation", builtin_activation,
+              mutation_builtin_activation::none );
+    if( jo.has_member( "blood_type" ) ) {
+        sets_blood_type = jo.get_enum_value<blood_type>( "blood_type" );
+    }
+    if( jo.has_member( "bodypart_hp_multiplier" ) ) {
+        bodypart_hp_multiplier.clear();
+        for( JsonArray ja : jo.get_array( "bodypart_hp_multiplier" ) ) {
+            const bodypart_str_id bp( ja.next_string() );
+            bodypart_hp_multiplier[bp] = ja.next_float();
+        }
     }
     if( jo.has_object( "transform" ) ) {
         transform = cata::make_value<mut_transform>();
@@ -1006,6 +1045,15 @@ void mutation_branch::check_consistency()
         // We need to display active mutations in the UI.
         if( mdata.activated && !mdata.player_display ) {
             debugmsg( "mutation %s is not displayed but set as active" );
+        }
+        if( mdata.builtin_activation != mutation_builtin_activation::none && !mdata.activated ) {
+            debugmsg( "mutation %s has a builtin_activation but isn't \"active\"", mid.c_str() );
+        }
+        for( const std::pair<const bodypart_str_id, double> &bp_mult : mdata.bodypart_hp_multiplier ) {
+            if( !bp_mult.first.is_valid() ) {
+                debugmsg( "mutation %s has a bodypart_hp_multiplier for undefined body part %s",
+                          mid.c_str(), bp_mult.first.c_str() );
+            }
         }
 
         check_has_cyclic_dependency( mid );

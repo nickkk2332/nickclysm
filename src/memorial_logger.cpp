@@ -1220,6 +1220,10 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::character_wound_progresses:
         case event_type::character_loses_wound:
         case event_type::loses_skill_level:
+        case event_type::activates_bionic:
+        case event_type::deactivates_bionic:
+        case event_type::activates_mutation:
+        case event_type::deactivates_mutation:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

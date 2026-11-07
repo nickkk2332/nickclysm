@@ -32,6 +32,7 @@ class JsonValue;
 class Trait_group;
 class item;
 class nc_color;
+enum class blood_type;
 struct const_dialogue;
 template <typename E> struct enum_traits;
 
@@ -225,6 +226,23 @@ struct mutation_retaliation {
     translation npc_message;
 };
 
+/** What a mutation does when activated, built into the game ("builtin_activation") */
+enum class mutation_builtin_activation : int {
+    none,
+    web,                 // spin a web here and, while on, wherever the character walks (WEB_WEAVER)
+    sludge_trail,        // the same with sludge (SNAIL_TRAIL)
+    long_pull,           // pull a creature towards the character (LONG_TONGUE2)
+    burrow,              // dig with the fake burrowing tool (BURROW)
+    slime_split,         // split off a friendly slime microbian (SLIMESPAWNER)
+    vomit,               // throw up (VOMITOUS)
+    spores,              // release spores (M_FERTILE)
+    blossoms,            // release blossoms (M_BLOOM)
+    spores_and_blossoms, // both (M_PROVENANCE)
+    echolocation,        // one echolocation pulse (ECHOLOCATION)
+    tree_communion,      // commune with the forest next to a tree (TREE_COMMUNION)
+    last
+};
+
 struct mutation_branch {
         trait_id id;
         std::vector<std::pair<trait_id, mod_id>> src;
@@ -315,6 +333,13 @@ struct mutation_branch {
 
         /** The item, if any, spawned by the mutation */
         itype_id spawn_item;
+
+        /** Built-in behaviour run on activation (MUT-J06) */
+        mutation_builtin_activation builtin_activation = mutation_builtin_activation::none;
+        /** If set, gaining the mutation gives the character this blood type (ACIDBLOOD) */
+        std::optional<blood_type> sets_blood_type;
+        /** Body parts whose maximum HP the mutation multiplies (GLASSJAW's head) */
+        std::map<bodypart_str_id, double> bodypart_hp_multiplier;
 
         /**Species ignoring character with the mutation*/
         std::vector<species_id> ignored_by;
@@ -690,6 +715,11 @@ struct traits_sorter {
 template<>
 struct enum_traits<mutagen_technique> {
     static constexpr mutagen_technique last = mutagen_technique::num_mutagen_techniques;
+};
+
+template<>
+struct enum_traits<mutation_builtin_activation> {
+    static constexpr mutation_builtin_activation last = mutation_builtin_activation::last;
 };
 
 #endif // CATA_SRC_MUTATION_H

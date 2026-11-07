@@ -177,6 +177,10 @@ enum class event_type : int {
     character_wound_progresses,
     character_loses_wound,
     loses_skill_level,
+    activates_bionic,
+    deactivates_bionic,
+    activates_mutation,
+    deactivates_mutation,
     num_event_types // last
 };
 
@@ -244,7 +248,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 153,
+static_assert( static_cast<int>( event_type::num_event_types ) == 157,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1305,6 +1309,17 @@ struct event_spec<event_type::character_falls> {
     };
 };
 
+// a character switched a bionic on or off: sent wherever its activated_eocs or deactivated_eocs
+// run (MUT-J07)
+template<>
+struct event_spec<event_type::activates_bionic> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bionic", cata_variant_type::bionic_id },
+        }
+    };
+};
+
 // a worn armor (or an ablative plate in it) took damage and wasn't destroyed
 template<>
 struct event_spec<event_type::character_armor_damaged> {
@@ -1374,6 +1389,15 @@ struct event_spec<event_type::character_armor_transformed> {
     };
 };
 
+template<>
+struct event_spec<event_type::deactivates_bionic> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bionic", cata_variant_type::bionic_id },
+        }
+    };
+};
+
 // a character used one of an item's use actions (Character::invoke_item) and it wasn't cancelled:
 // itype is the item's type before the use (a use can transform or use up the item), method the
 // action's id (its type unless the action has an "id"), charges what the use reported spending
@@ -1384,6 +1408,17 @@ struct event_spec<event_type::character_activates_item> {
             { "itype", cata_variant_type::itype_id },
             { "method", cata_variant_type::string },
             { "charges", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character switched a mutation on (once it is paid for and its activated_eocs didn't cancel
+// it) or off
+template<>
+struct event_spec<event_type::activates_mutation> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "trait", cata_variant_type::trait_id },
         }
     };
 };
@@ -1423,6 +1458,15 @@ struct event_spec<event_type::loses_skill_level> {
             { "skill", cata_variant_type::skill_id },
             { "new_level", cata_variant_type::int_ },
             { "type", cata_variant_type::string },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::deactivates_mutation> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "trait", cata_variant_type::trait_id },
         }
     };
 };

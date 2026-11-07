@@ -232,6 +232,9 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
     "type": "water_clean",                    // item to spawn
     "message": "You spawn a bottle of water." // message, that would be shown upon activation
   },
+  "builtin_activation": "web",                // a built-in effect of activating it, see Built-in activations below (default: "none")
+  "blood_type": "Acid",                       // gaining it changes the character's blood type: "O", "A", "B", "AB" or "Acid"; losing it gives another trait's blood type, or a random one (default: none)
+  "bodypart_hp_multiplier": [ [ "head", 0.8 ] ], // the maximum HP of these body parts is multiplied by the number; several traits multiply together (default: empty)
   "scent_intensity": 800,                     // int affecting the target scent toward which you current smell gravitates (default: 500).
   "scent_type": "sc_flower",                  // The scent_types you emit, as defined in scent_types.json (default: empty).
   "ignored_by": [ "ZOMBIE" ],                 // List of species ignoring you (default: empty).
@@ -429,6 +432,25 @@ There are two ways for JSON to stop an activation:
     ]
   }
 ```
+
+#### Built-in activations
+
+`builtin_activation` gives an `active` mutation one of the game's built-in activation effects.  It runs after the `activated_eocs` (and only if they didn't cancel the activation), unless the mutation has a `transform`; a mutation with one doesn't also give its `spawn_item` or fire its `ranged_mutation`.
+
+| Value | Effect | Shipped trait |
+| --- | --- | --- |
+| `none` | nothing (the default) | |
+| `web` | spins a web where the character stands, and keeps leaving web wherever they walk (not in a vehicle) while the mutation is on | `WEB_WEAVER` |
+| `sludge_trail` | the same with sludge | `SNAIL_TRAIL` |
+| `long_pull` | turns off, and after a second pulls a creature the character picks (an NPC: its last target) towards them, as the tongue or tentacle named by the mutation | `LONG_TONGUE2`, `GASTROPOD_EXTREMITY2` |
+| `burrow` | turns off and digs, as the `fake_burrowing` tool | `BURROW`, `BURROWLARGE` |
+| `slime_split` | turns off and splits off a friendly slime microbian next to the character; with no room for it, nothing happens and the cost is given back | `SLIMESPAWNER` |
+| `vomit` | turns off and throws up | `NAUSEA`, `VOMITOUS` |
+| `spores` | turns off and releases spores | `M_FERTILE` |
+| `blossoms` | turns off and releases blossoms | `M_BLOOM` |
+| `spores_and_blossoms` | both | `M_PROVENANCE` |
+| `echolocation` | sends one echolocation pulse, then turns off | `ECHOLOCATION` |
+| `tree_communion` | turns off and, next to a tree in a wooded area, starts communing with the forest: the startup time is shorter with the `TREE_COMMUNION_PLUS`, `ROOTS2`, `ROOTS3` or `CHLOROMORPH` flags.  Elsewhere nothing happens and the cost is given back | `TREE_COMMUNION`, Xedra Evolved's `ARVORE_FOREST_MAPPING` |
 
 ### Diet rules
 

@@ -102,6 +102,7 @@ struct pick_info;
 enum action_id : int;
 enum class hit_type : int;
 enum class magic_energy_type : int;
+enum class mutation_builtin_activation : int;
 enum class recipe_filter_flags : int;
 enum class steed_type : int;
 enum npc_attitude : int;
@@ -1838,6 +1839,8 @@ class Character : public Creature, public visitable
         void mutation_loss_effect( const trait_id &mut );
 
         bool has_active_mutation( const trait_id &b ) const;
+        /** Whether a mutation with this builtin_activation is on (an active web weaver's web) */
+        bool has_active_builtin_activation( mutation_builtin_activation builtin ) const;
 
         time_duration get_cost_timer( const trait_id &mut_id ) const;
         void set_cost_timer( const trait_id &mut, time_duration set );
