@@ -2084,7 +2084,9 @@ The following properties (mandatory, except if noted otherwise) are supported:
     "traits": [ "PROF_CHURL", "ILLITERATE" ],                  // (optional) Array of starting traits/mutations. For further information, see mutations.json and MUTATIONS.md. Note: "trait" is also supported, used for a single trait/mutation ID (legacy!)
     "requirement": "achievement_survive_28_days",              // (optional) String or Array of String of achievement ID(s) required to unlock this profession
     "hard_requirement": true,                                  // (optional) Defaults false. Whether or not the requirement ignores the metaprogression setting and is always required. Intended for use by mods.
-    "effect_on_conditions": [ "scenario_assassin_conv" ],      // (optional) eoc id, inline eoc, or multiple of them, that would run when scenario starts
+    "effect_on_conditions": [ "scenario_assassin_conv" ],      // (optional) eoc id, inline eoc, or multiple of them, that would run when scenario starts.  They run for the avatar; for an NPC with the profession only those with `run_for_npcs`, unless `run_eocs_for_npcs` is true
+    "run_eocs_for_npcs": true,                                 // (optional) Defaults false.  When true, an NPC with this profession (or hobby) also runs all of its effect_on_conditions when it is made, with the NPC as u
+    "forbidden_traits": [ "ILLITERATE" ],                      // (optional) Traits a character with this profession (or hobby) can't take in the character creator
     "spells": [                                                // (optional) Array of starting spell IDs the character knows upon creation. For further information, see MAGIC.md
       { "id": "magic_missile", "level": 4 },
       { "id": "summon_undead", "level": 5 },
@@ -2124,6 +2126,14 @@ Items the player starts with when selecting this profession.  One can specify di
 
 Choosing a profession in the character creator drops the hobbies it doesn't allow (with the traits only they gave) and the traits in its `forbidden_traits`, with a message for each; finishing the character checks this again.  The default background hobbies (see [Profession groups](#profession-groups)) leave out those the profession doesn't allow.
 
+#### Copying a profession
+
+A profession (or hobby) can `copy-from` another one.  `pets`, `spells` and `effect_on_conditions`, when given, replace the copied ones; `extend` adds to them and `delete` removes entries: a pet by its monster id (every one of that monster), a spell by its id, an EOC by its id.  An `extend` of a spell the copy already has changes its level.
+
+```jsonc
+{ "type": "profession", "id": "my_wizard", "copy-from": "wizard", "extend": { "spells": [ { "id": "magic_missile", "level": 6 } ] }, "delete": { "pets": [ "mon_cat" ] } }
+```
+
 
 ### Hobbies
 
@@ -2149,6 +2159,8 @@ Note: hobby fields derive from those used in professions.  The following is a no
     "spells": [ { "id": "create_atomic_light", "level": 5 } ]  // (optional) Array of starting spell IDs the character knows upon creation
   },
 ```
+
+A hobby also gives its `recipes`, `missions`, `pets`, `starting_styles` and `starting_styles_choices` (after the profession's), its `effect_on_conditions` (run as the profession's are, see `run_eocs_for_npcs` above), and adds its `starting_trauma` and `starting_cash` to the profession's.  Its `forbidden_traits` can't be picked while it is taken, and it can't be taken with one of them.  A hobby can't have `items`, `vehicle` or `no_bonus` (loading reports them): give items with an effect_on_condition (`u_spawn_item`).
 
 ### Profession groups
 
@@ -2782,10 +2794,29 @@ it is present to help catch errors.
 | `requires_any_traits` | Traits that the player needs at least one of to display the skill in the character tab. At least one trait is required |
 | `obsolete` | (Boolean) The skill is kept for old saves but isn't shown or used. (Default = false) |
 | `max_level` | _(int)_ The highest level the skill can be practiced to, learned from books and chosen in character creation, from 0 to 10. A skill at its `max_level` doesn't rust. Professions, debug tools and EOCs (`u_set_skill_level`) can still set it higher. (Default = 10) |
+| `training_multiplier` | _(float)_ Multiplies the experience practicing the skill gives (activities, crafting, combat, `u_skill_exp(..., 'practice': true)`), after focus. Not below 0. (Default = 1.0) |
+| `catchup_multiplier` | _(float)_ Multiplies how fast practice catches up to what the character already knows in theory. Not below 0. (Default = 1.0) |
+| `book_learning_multiplier` | _(float)_ Multiplies the theoretical experience reading a book for the skill gives. Not below 0. (Default = 1.0) |
+| `rust` | _(object)_ How the skill rusts, see below. |
+
+`rust` has these optional members:
+
+| Member | Purpose |
+| ---    | ---     |
+| `enabled` | _(bool)_ Whether the skill rusts at all. (Default = true) |
+| `grace_period` | _(duration)_ How long the skill must go without practice before it starts to rust. (Default = "24 h") |
+| `multiplier` | _(float)_ Multiplies the experience lost to each day's rust. Not below 0. (Default = 1.0) |
+| `max_levels` | _(float)_ Rust stops once this many levels' worth of experience (at the current level) has rusted away since the skill was last caught up. (Default = 3.0) |
+
+Rust is checked once a day.  `SKILL_RUST_RESIST` enchantments and the world's rust options apply on top of these.
+
+```jsonc
+{ "type": "skill", "id": "swimming", "copy-from": "swimming", "training_multiplier": 1.5, "rust": { "enabled": false } }
+```
 
 If neither `requires_all_traits` or `requires_any_traits` are defined, the skill will always display in the character tab
 
-A skill can `copy-from` another skill (or an `abstract` one), and a later mod changes a skill by copying it under the same id: it keeps every member it doesn't name.  `tags`, `requires_all_traits` and `requires_any_traits` take `extend` and `delete`; `time_to_attack` changes only the members it names; `companion_skill_practice` and the level descriptions, when given, replace the copied ones.  A second definition of an id without `copy-from` replaces the first one entirely (and moves the skill to the end of the skill list, as it always did).
+A skill can `copy-from` another skill (or an `abstract` one), and a later mod changes a skill by copying it under the same id: it keeps every member it doesn't name.  `tags`, `requires_all_traits` and `requires_any_traits` take `extend` and `delete`; `time_to_attack` changes only the members it names; `companion_skill_practice` and the level descriptions, when given, replace the copied ones.  A second definition of an id without `copy-from` replaces the first one entirely (and moves the skill to the end of the skill list, as it always did).  A copy's `rust` changes only the members it names.
 
 ```jsonc
 { "type": "skill", "id": "spellcraft", "copy-from": "spellcraft", "sort_rank": 9000, "extend": { "tags": [ "combat_skill" ] } }
@@ -4547,56 +4578,28 @@ The following properties (mandatory, except if noted otherwise) are supported:
 The in-game description.
 
 ## `name`
-(string or object with members "male" and "female")
+(string)
 
-The in-game name, either one gender-neutral string, or an object with gender specific names. Example:
-```jsonc
-"name": {
-    "male": "Runaway groom",
-    "female": "Runaway bride"
-}
-```
+The in-game name, one gender-neutral string (unlike a profession's, it can't be an object with "male" and "female" names).
 
 ## `points`
 (integer)
 
 Point cost of scenario. Positive values cost points and negative values grant points.
 
-## `items`
-(optional, object with optional members "both", "male" and "female")
-
-Items the player starts with when selecting this scenario. One can specify different items based on the gender of the character. Each lists of items should be an array of items ids. Ids may appear multiple times, in which case the item is created multiple times.
-
-Example:
-```jsonc
-"items": {
-    "both": [
-        "pants",
-        "rock",
-        "rock"
-    ],
-    "male": [ "briefs" ],
-    "female": [ "panties" ]
-}
-```
-This gives the player pants, two rocks and (depending on the gender) briefs or panties.
+A scenario has no `items`, `CBMs`, `skills`, `proficiencies` or `starting_cash` of its own (loading reports them): the character gets those from its profession and hobbies.  A scenario can still give them with its `forced_traits` or its `eoc` (`u_spawn_item`, `u_add_bionic`, `u_set_skill_level`...), or by allowing only professions that have them (`professions`).
 
 ## `flags`
 (optional, array of strings)
 
-A list of flags. TODO: document those flags here.
-
-## `cbms`
-(optional, array of strings)
-
-A list of CBM ids that are implanted in the character.
+A list of flags; see [Scenarios in JSON_FLAGS.md](JSON_FLAGS.md#scenarios) for those the game reads.
 
 ## `traits`, `forced_traits`, `forbidden_traits`
 (optional, array of strings)
 
 Lists of trait/mutation ids. Traits in "forbidden_traits" are forbidden and can't be selected during the character creation. Traits in "forced_traits" are automatically added to character. Traits in "traits" enables them to be chosen, even if they are not starting traits.
 
-`forced_traits` can also be specified with a variant, as `{ "trait": "trait_id", "variant": "variant_id" }` (replacing just `"trait_id"`).
+`forced_traits` can also be specified with a variant, as `{ "trait": "trait_id", "variant": "variant_id" }` (replacing just `"trait_id"`): the character gets the trait with that variant.  Loading reports a variant the trait doesn't have.  A profession's or hobby's `traits` take a variant the same way.
 
 ## `allowed_locs`
 (optional, array of strings)
@@ -4623,7 +4626,17 @@ The name that is shown for the starting location. This is useful if the scenario
 ## `professions`
 (optional, array of strings)
 
-A list of allowed professions that can be chosen when using this scenario. The first entry is the default profession. If this is empty, all professions are allowed.
+A list of allowed professions that can be chosen when using this scenario. If this is empty, all professions are allowed (except those with the `SCEN_ONLY` flag).  The profession selected when the scenario is picked is the generic one (the `GENERIC_PROFESSION_ID` option, "Unemployed") if the scenario allows it, otherwise the cheapest one the player can pick (the first listed of those that cost the same).
+
+## `blacklist_professions`
+(optional, bool)
+
+Defaults false.  When true, `professions` lists the professions that _can't_ be chosen with this scenario; every other one (except those with the `SCEN_ONLY` flag) can.
+
+## `add_professions`
+(optional, bool)
+
+Defaults false.  When true, the professions in `professions` are allowed in addition to every profession without the `SCEN_ONLY` flag, instead of only them.
 
 ## `hobbies`
 (optional, array of strings)
@@ -4637,10 +4650,24 @@ When set to false, the hobbies in `hobbies` are hobbies that _cannot_ be chosen 
 
 `professions`, `hobbies` and `whitelist_hobbies` limit the player's own character. Randomly generated NPCs take both their profession and their hobbies from the generic scenario (the `GENERIC_SCENARIO_ID` external option, `evacuee` by default, or the first scenario not blacklisted if that one is), whatever scenario the player picked.
 
-## `map_special`
+## `map_extra`
 (optional, string)
 
-Add a map special to the starting location, see JSON_FLAGS for the possible specials.
+A map extra (`"type": "map_extra"`) placed at the starting location, such as `mx_helicopter` for the helicopter crash.
+
+## `vehicle`
+(optional, string)
+
+A vehicle prototype id.  The character starts with this vehicle at the closest road, as a profession's `vehicle`, and the scenario's replaces the profession's.  `"vehicle": "null"` in a copy removes the copied one.
+
+## `surround_groups`
+(optional, array of [ monster group id, density ])
+
+The start is surrounded by monsters from these groups, each at the given density (as the "surrounded start" world option does with `GROUP_BLACK_ROAD` at 70).
+
+```jsonc
+"surround_groups": [ [ "GROUP_BLACK_ROAD", 70.0 ] ]
+```
 
 ## `requirement`
 
@@ -4728,6 +4755,14 @@ The NPC that starts next to the player (scenarios with the `LONE_START` flag hav
 `classes`              | (optional, array of [ npc class id, weight ]) The NPC's class, picked by weight. `NC_NONE` is a randomly made character.
 `chat`                 | (optional, string) The talk topic it starts conversations with. Default `TALK_SHELTER`.
 `eocs`                 | (optional, array of eoc ids or inline eocs) Run once the NPC is made, with the NPC as `u` and the avatar as `npc`.
+
+## Copying a scenario
+
+A scenario can `copy-from` another one, and keeps every member it doesn't name.  In `start_of_cataclysm` and `start_of_game` it changes only the parts it names (`{ "start_of_game": { "season": "winter" } }` keeps the copied hour, day and year).  `surround_groups`, when given, replaces the copied list; `extend` adds groups and `delete` removes them by id.  `extend` and `delete` work on `add_professions`, `allowed_locs`, `blacklist_professions`, `eoc`, `flags`, `forbidden_traits`, `forced_traits`, `hobbies`, `missions`, `professions`, `surround_groups` and `traits`; loading reports any other member in them (which would otherwise do nothing).
+
+```jsonc
+{ "type": "scenario", "id": "heli_crash", "copy-from": "heli_crash", "extend": { "professions": [ "my_pilot" ] } }
+```
 
 # Starting locations
 

@@ -69,6 +69,7 @@
 #include "power_math.h"
 #include "proficiency.h"
 #include "scent_map.h"
+#include "skill.h"
 #include "stats_tracker.h"
 #include "stomach.h"
 #include "talker.h"
@@ -1969,6 +1970,7 @@ void skill_exp_ass( double val, dialogue &d, char scope, std::vector<diag_value>
                     diag_kwargs const &kwargs )
 {
     diag_value format_value = kwargs.kwarg_or( "format", "percentage" );
+    diag_value practice_value = kwargs.kwarg_or( "practice" );
 
     skill_id skill( params[0].str( d ) );
     std::string const &format = format_value.str( d );
@@ -1976,7 +1978,130 @@ void skill_exp_ass( double val, dialogue &d, char scope, std::vector<diag_value>
         throw math::runtime_error( R"(Unknown format type "%s" for skill_exp)", format );
     }
     bool raw = format == "raw";
+    if( is_true( practice_value.dbl( d ) ) ) {
+        // Practice for the difference, as an activity does: focus, catch-up, the skill's own
+        // rules, the level-up messages and events all apply (PROG-J06)
+        Character *guy = d.actor( is_beta( scope ) )->get_character();
+        if( guy == nullptr ) {
+            return;
+        }
+        const SkillLevel &level = guy->get_skill_level_object( skill );
+        const double gain = val - level.exercise( raw );
+        const double raw_gain = raw ? gain : gain * 100.0 * ( level.level() + 1 ) * ( level.level() + 1 );
+        // Character::practice takes hundredths of raw experience, at most 1000 at a time
+        int amount = static_cast<int>( std::lround( raw_gain / 100.0 ) );
+        while( amount > 0 ) {
+            const int chunk = std::min( amount, 1000 );
+            guy->practice( skill, chunk, MAX_SKILL, true, true );
+            amount -= chunk;
+        }
+        return;
+    }
     d.actor( is_beta( scope ) )->set_skill_exp( skill, val, raw );
+}
+
+// Defined below, with time()
+double _turns_per_unit( std::string_view unit );
+double _time_in_unit( double time, std::string_view unit );
+
+// Theoretical skill, rust and the time since practice (PROG-J06)
+bool skill_format_is_raw( diag_kwargs const &kwargs, const_dialogue const &d, const char *func )
+{
+    diag_value format_value = kwargs.kwarg_or( "format", "percentage" );
+    std::string const &format = format_value.str( d );
+    if( format != "raw" && format != "percentage" ) {
+        throw math::runtime_error( R"(Unknown format type "%s" for %s)", format, func );
+    }
+    return format == "raw";
+}
+
+double skill_knowledge_eval( const_dialogue const &d, char scope,
+                             std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr ? 0 : guy->get_knowledge_level( skill_id( params[0].str( d ) ) );
+}
+
+void skill_knowledge_ass( double val, dialogue &d, char scope,
+                          std::vector<diag_value> const &params,
+                          diag_kwargs const & /* kwargs */ )
+{
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( guy == nullptr ) {
+        return;
+    }
+    const skill_id skill( params[0].str( d ) );
+    // Theory is never below the practical level
+    const int practical = guy->get_skill_level_object( skill ).level();
+    guy->set_knowledge_level( skill, std::clamp( static_cast<int>( val ), practical, MAX_SKILL ) );
+}
+
+double skill_knowledge_exp_eval( const_dialogue const &d, char scope,
+                                 std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const bool raw = skill_format_is_raw( kwargs, d, "skill_knowledge_exp" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy == nullptr ? 0 : guy->get_skill_level_object( skill_id( params[0].str(
+                d ) ) ).knowledgeExperience( raw );
+}
+
+void skill_knowledge_exp_ass( double val, dialogue &d, char scope,
+                              std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    const bool raw = skill_format_is_raw( kwargs, d, "skill_knowledge_exp" );
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( guy != nullptr ) {
+        guy->get_skill_level_object( skill_id( params[0].str( d ) ) ).set_knowledge_exercise(
+            static_cast<int>( val ), raw );
+    }
+}
+
+double skill_rust_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                        diag_kwargs const &kwargs )
+{
+    const bool raw = skill_format_is_raw( kwargs, d, "skill_rust" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0;
+    }
+    const SkillLevel &level = guy->get_skill_level_object( skill_id( params[0].str( d ) ) );
+    const double rust = level.rustAccumulator();
+    // A percentage of the current level's experience, as skill_exp reads it
+    return raw ? rust : rust / ( 100.0 * ( level.level() + 1 ) * ( level.level() + 1 ) );
+}
+
+double skill_rusty_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                         diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy != nullptr &&
+           guy->get_skill_level_object( skill_id( params[0].str( d ) ) ).isRusty() ? 1 : 0;
+}
+
+double skill_time_since_practice_eval( const_dialogue const &d, char scope,
+                                       std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    diag_value unit_val = kwargs.kwarg_or( "unit" );
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0;
+    }
+    const time_point last = guy->get_skill_level_object( skill_id( params[0].str(
+                                d ) ) ).lastPracticed();
+    return _time_in_unit( to_turns<double>( calendar::turn - last ), unit_val.str( d ) );
+}
+
+void skill_time_since_practice_ass( double val, dialogue &d, char scope,
+                                    std::vector<diag_value> const &params, diag_kwargs const &kwargs )
+{
+    diag_value unit_val = kwargs.kwarg_or( "unit" );
+    Character *guy = d.actor( is_beta( scope ) )->get_character();
+    if( guy == nullptr ) {
+        return;
+    }
+    const double turns = std::max( val, 0.0 ) * _turns_per_unit( unit_val.str( d ) );
+    guy->get_skill_level_object( skill_id( params[0].str( d ) ) ).set_last_practiced(
+        calendar::turn - time_duration::from_turns( static_cast<int>( std::lround( turns ) ) ) );
 }
 
 double spell_count_eval( const_dialogue const &d, char scope,
@@ -3809,7 +3934,12 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "get_calories_daily", { "g", 0, get_daily_calories, {}, { "type", "day" } } },
     { "quality", { "un", 1, quality_eval, {}, { "strict" } } },
     { "skill", { "un", 1, skill_eval, skill_ass } },
-    { "skill_exp", { "un", 1, skill_exp_eval, skill_exp_ass, { "format" } } },
+    { "skill_exp", { "un", 1, skill_exp_eval, skill_exp_ass, { "format", "practice" } } },
+    { "skill_knowledge", { "un", 1, skill_knowledge_eval, skill_knowledge_ass } },
+    { "skill_knowledge_exp", { "un", 1, skill_knowledge_exp_eval, skill_knowledge_exp_ass, { "format" } } },
+    { "skill_rust", { "un", 1, skill_rust_eval, {}, { "format" } } },
+    { "skill_rusty", { "un", 1, skill_rusty_eval } },
+    { "skill_time_since_practice", { "un", 1, skill_time_since_practice_eval, skill_time_since_practice_ass, { "unit" } } },
     { "ability_query", { "un", 1, power_math::ability, {}, { "field" } } },
     { "power_summons", { "un", 1, power_math::summon } },
     { "power_projection", { "un", 1, power_math::projection, {}, { "field" } } },
@@ -4015,6 +4145,11 @@ std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
     { "school_level_adjustment", { id_arg( 0, id_school ) } },
     { "skill", { id_arg( 0, id_skill ) } },
     { "skill_exp", { id_arg( 0, id_skill ) } },
+    { "skill_knowledge", { id_arg( 0, id_skill ) } },
+    { "skill_knowledge_exp", { id_arg( 0, id_skill ) } },
+    { "skill_rust", { id_arg( 0, id_skill ) } },
+    { "skill_rusty", { id_arg( 0, id_skill ) } },
+    { "skill_time_since_practice", { id_arg( 0, id_skill ) } },
     { "spell_cast_time", { id_arg( 0, id_spell ) } },
     { "spell_casting_exp", { id_arg( 0, id_spell ) } },
     { "spell_count", { id_kwarg( "school", id_school ) } },

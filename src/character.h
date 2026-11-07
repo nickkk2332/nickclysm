@@ -2759,6 +2759,8 @@ class Character : public Creature, public visitable
         int intimidation() const;
 
         void set_skills_from_hobbies( bool no_override = false );
+        /** Whether the profession or a hobby forbids @p trait */
+        bool forbids_trait_by_background( const trait_id &trait ) const;
 
         void set_bionics_from_hobbies();
 
@@ -2777,7 +2779,8 @@ class Character : public Creature, public visitable
         std::vector<display_proficiency> display_proficiencies() const;
         std::vector<proficiency_id> known_proficiencies() const;
         std::vector<proficiency_id> learning_proficiencies() const;
-        int get_proficiency_bonus( const std::string &category, proficiency_bonus_type prof_bonus ) const;
+        float get_proficiency_bonus( const std::string &category,
+                                     proficiency_bonus_type prof_bonus ) const;
         void add_default_background();
         void set_proficiencies_from_hobbies();
         void set_recipes_from_hobbies();

@@ -745,7 +745,7 @@ void Character::add_random_hobby( std::vector<profession_id> &choices )
 
     // Add or remove traits from hobby
     for( const trait_and_var &cur : hobby->get_locked_traits() ) {
-        toggle_trait( cur.trait );
+        toggle_trait( cur.trait, cur.variant );
     }
 }
 
@@ -916,10 +916,18 @@ void Character::initialize( bool learn_recipes )
 
     set_skills_from_hobbies();
 
-    set_trauma( prof->starting_trauma );
+    // Hobbies add their trauma and cash to the profession's (PROG-J04)
+    int trauma = prof->starting_trauma;
+    for( const profession *hobby : hobbies ) {
+        trauma += hobby->starting_trauma;
+    }
+    set_trauma( trauma );
 
     // setup staring bank money
     cash = prof->starting_cash().value_or( rng( -200000, 200000 ) );
+    for( const profession *hobby : hobbies ) {
+        cash += hobby->starting_cash().value_or( 0 );
+    }
 
     randomize_heartrate();
 
@@ -1016,25 +1024,30 @@ void avatar::initialize( character_type type )
     reset_death_state();
     this->as_character()->initialize();
 
-    for( const matype_id &ma : prof->ma_known() ) {
-        if( !martial_arts_data->has_martialart( ma ) ) {
-            martial_arts_data->add_martialart( ma );
-        }
-    }
-
-    if( !prof->ma_choices().empty() ) {
-        for( int i = 0; i < prof->ma_choice_amount; i++ ) {
-            std::vector<matype_id> styles;
-            for( const matype_id &ma : prof->ma_choices() ) {
-                if( !martial_arts_data->has_martialart( ma ) ) {
-                    styles.push_back( ma );
-                }
+    // The profession's styles, then each hobby's (PROG-J04)
+    std::vector<const profession *> backgrounds = { prof };
+    backgrounds.insert( backgrounds.end(), hobbies.begin(), hobbies.end() );
+    for( const profession *background : backgrounds ) {
+        for( const matype_id &ma : background->ma_known() ) {
+            if( !martial_arts_data->has_martialart( ma ) ) {
+                martial_arts_data->add_martialart( ma );
             }
-            if( !styles.empty() ) {
-                const matype_id ma_type = choose_ma_style( type, styles, *this );
-                martial_arts_data->add_martialart( ma_type );
-            } else {
-                break;
+        }
+
+        if( !background->ma_choices().empty() ) {
+            for( int i = 0; i < background->ma_choice_amount; i++ ) {
+                std::vector<matype_id> styles;
+                for( const matype_id &ma : background->ma_choices() ) {
+                    if( !martial_arts_data->has_martialart( ma ) ) {
+                        styles.push_back( ma );
+                    }
+                }
+                if( !styles.empty() ) {
+                    const matype_id ma_type = choose_ma_style( type, styles, *this );
+                    martial_arts_data->add_martialart( ma_type );
+                } else {
+                    break;
+                }
             }
         }
     }
@@ -1067,8 +1080,10 @@ void avatar::initialize( character_type type )
     }
     martial_arts_data->set_style( random_entry( selectable_styles, style_none ) );
 
-    for( const mtype_id &elem : prof->pets() ) {
-        starting_pets.push_back( elem );
+    for( const profession *background : backgrounds ) {
+        for( const mtype_id &elem : background->pets() ) {
+            starting_pets.push_back( elem );
+        }
     }
 
     const scenario *scen = get_scenario();
@@ -2231,14 +2246,15 @@ void Character::empty_skills()
 void Character::add_traits()
 {
     {
+        // With their variants (PROG-J05)
         for( const trait_and_var &tr : prof->get_locked_traits() ) {
             if( !has_trait( tr.trait ) ) {
-                toggle_trait_deps( tr.trait );
+                toggle_trait_deps( tr.trait, tr.variant );
             }
         }
         for( const trait_id &tr : get_scenario()->get_locked_traits() ) {
             if( !has_trait( tr ) ) {
-                toggle_trait_deps( tr );
+                toggle_trait_deps( tr, get_scenario()->forced_trait_variant( tr ) );
             }
         }
     }
@@ -2260,12 +2276,23 @@ trait_id Character::random_bad_trait()
     } );
 }
 
+bool Character::forbids_trait_by_background( const trait_id &trait ) const
+{
+    if( prof != nullptr && prof->is_forbidden_trait( trait ) ) {
+        return true;
+    }
+    return std::any_of( hobbies.begin(), hobbies.end(), [&trait]( const profession * hobby ) {
+        return hobby->is_forbidden_trait( trait );
+    } );
+}
+
 trait_id Character::get_random_trait( const std::function<bool( const mutation_branch & )> &func )
 {
     std::vector<trait_id> vTraits;
 
     for( const mutation_branch &traits_iter : mutation_branch::get_all() ) {
-        if( func( traits_iter ) && get_scenario()->traitquery( traits_iter.id ) ) {
+        if( func( traits_iter ) && get_scenario()->traitquery( traits_iter.id ) &&
+            !forbids_trait_by_background( traits_iter.id ) ) {
             vTraits.push_back( traits_iter.id );
         }
     }
@@ -2766,7 +2793,7 @@ void character_creator_ui::update_uilist_entries()
                 entry.text_color = u.has_trait( current_trait ) ? COL_SELECTED : COL_NOT_SELECTED;
                 entry.enabled = !( u.has_conflicting_trait( current_trait ) ||
                                    get_scenario()->is_forbidden_trait( current_trait ) ||
-                                   u.prof->is_forbidden_trait( current_trait ) );
+                                   u.forbids_trait_by_background( current_trait ) );
                 menu->addentry( entry );
             }
             break;
@@ -3313,6 +3340,16 @@ bool character_creator_uistate::hobby_conflict_check( const avatar &u )
         }
         return false;
     }
+    // A hobby's forbidden_traits (PROG-J04); deselecting it is always possible
+    if( u.hobbies.count( &*selected_hobby ) == 0 ) {
+        for( const trait_id &trait : u.get_mutations() ) {
+            if( selected_hobby->is_forbidden_trait( trait ) ) {
+                popup( _( "The background %1$s can't be taken with the trait %2$s." ),
+                       selected_hobby->gender_appropriate_name( u.male ), u.mutation_name( trait ) );
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -3823,7 +3860,7 @@ void character_creator_callback::confirm( uilist *menu )
                 const trait_id &trait = cur.trait;
                 if( enabling ) {
                     if( !u.has_trait( trait ) ) {
-                        u.toggle_trait_deps( trait );
+                        u.toggle_trait_deps( trait, cur.variant );
                     }
                     continue;
                 }
@@ -3915,6 +3952,14 @@ void character_creator_callback::confirm( uilist *menu )
             } else if( u.prof->is_forbidden_trait( cur_trait ) ) {
                 popup( _( "Your profession of %s prevents you from taking this trait." ),
                        u.prof->gender_appropriate_name( u.male ) );
+            } else if( u.forbids_trait_by_background( cur_trait ) ) {
+                for( const profession *hobby : u.hobbies ) {
+                    if( hobby->is_forbidden_trait( cur_trait ) ) {
+                        popup( _( "Your background of %s prevents you from taking this trait." ),
+                               hobby->gender_appropriate_name( u.male ) );
+                        break;
+                    }
+                }
             } else if( !cbms_blocking_trait.empty() ) {
                 // Grab a list of the names of the bionics that block this trait
                 // So that the player know what is preventing them from taking it

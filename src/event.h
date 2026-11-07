@@ -157,6 +157,7 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    loses_skill_level,
     num_event_types // last
 };
 
@@ -224,7 +225,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 134,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -873,12 +874,14 @@ struct event_spec<event_type::gains_proficiency> {
     };
 };
 
+// "type" is "practical" or "theoretical" (PROG-J06)
 template<>
 struct event_spec<event_type::gains_skill_level> {
-    static constexpr std::array<event_field, 3> fields = {{
+    static constexpr std::array<event_field, 4> fields = {{
             { "character", cata_variant_type::character_id },
             { "skill", cata_variant_type::skill_id },
             { "new_level", cata_variant_type::int_ },
+            { "type", cata_variant_type::string },
         }
     };
 };
@@ -1171,6 +1174,18 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// a character's skill level went down (rust); "type" is "practical" (PROG-J06)
+template<>
+struct event_spec<event_type::loses_skill_level> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "skill", cata_variant_type::skill_id },
+            { "new_level", cata_variant_type::int_ },
+            { "type", cata_variant_type::string },
         }
     };
 };

@@ -4552,7 +4552,9 @@ int item::get_min_str() const
         int min_str = type->min_str;
         // we really need some better check for bows than its skill
         if( type->gun->skill_used == skill_archery ) {
-            min_str -= p.get_proficiency_bonus( "archery", proficiency_bonus_type::strength );
+            // Rounded to the nearest point: a bonus of 0.5 counts (PROG-J09)
+            min_str -= static_cast<int>( std::lround( p.get_proficiency_bonus( "archery",
+                                         proficiency_bonus_type::strength ) ) );
         }
         for( const item *mod : gunmods() ) {
             min_str += mod->type->gunmod->min_str_required_mod;

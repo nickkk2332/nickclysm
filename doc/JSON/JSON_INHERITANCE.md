@@ -349,7 +349,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 | `test_data` | none |
 | `tool_quality` | copy-from |
 | `TRAIT_BLACKLIST` | none |
-| `trait_group` | none |
+| `trait_group` | merges |
 | `TRAIT_MIGRATION` | none |
 | `trap` | copy-from |
 | `trap_migration` | none |
@@ -392,6 +392,7 @@ The members most types read through the shared loading code (generic_factory) ta
 In summary, there is no "default" JSON inheritance, only shared degrees of support; check the relevant C++ if `copy-from` behavior is uncertain, and looking for an existing (and functional!) example is always a good idea.  Types whose `copy-from` support, or whose redefinitions, follow rules of their own:
 * `monstergroup` extends by default.  This prevents mods copying monstergroup definitions from replacing vanilla monstergroup lists.  To replace the *entire* list, add `"override": true` to the monstergroup object.
 * `vehicle_group` takes `copy-from`, but a second definition of a group without `copy-from` adds its `vehicles` to the group, like `monstergroup`; `"override": true` makes it replace the group, and `extend` and `delete` of `vehicles` work in a copy or a second definition (see [Vehicle Groups](JSON_INFO.md#vehicle-groups)).
+* `trait_group` merges: a second definition of a group adds its entries to it, and `"override": true` makes it replace the group.
 * `talk_topic` merges: each definition of a topic adds its responses, and `"replace_responses": true` or `"delete": { "responses": [ ... ] }` remove the earlier ones (see [NPCs.md](NPCs.md#changing-the-responses-of-an-earlier-definition)).
 * `dream` and `speech` objects need an `id` to be copied or changed: one without an `id` is added as it always was, and nothing can change it later.  Vanilla dreams have ids (`dream_<category>_<strength>`), and so do vanilla speech lines (`speech_<first speaker>_<n>`, see [Speech](JSON_INFO.md#speech)).
 * `overmap_special` and `city_building` only partially support `copy-from`: mutable specials extend `check_for_locations_area` if `check_for_locations` is not specified.

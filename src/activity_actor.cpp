@@ -2247,7 +2247,8 @@ void read_activity_actor::read_book( Character &learner,
 
     add_msg_debug( debugmode::DF_ACT_READ, "%s read exp: min_ex %d; max_ex %d",
                    learner.disp_name(), min_ex, max_ex );
-    skill_level.readBook( min_ex, max_ex, book_teaching_level( *islotbook ) );
+    skill_level.readBook( min_ex, max_ex, book_teaching_level( *islotbook ),
+                          islotbook->skill ? islotbook->skill->book_learning_multiplier() : 1.0f );
 }
 
 bool read_activity_actor::player_read( avatar &you )
@@ -2339,7 +2340,7 @@ bool read_activity_actor::player_read( avatar &you )
             // levels up the skill
             if( newSkillLevel != originalSkillLevel ) {
                 get_event_bus().send<event_type::gains_skill_level>(
-                    learner->getID(), skill, skill_level.knowledgeLevel() );
+                    learner->getID(), skill, skill_level.knowledgeLevel(), "theoretical" );
 
                 if( learner->is_avatar() ) {
                     add_msg( m_good, _( "Your theoretical knowledge of %s increases to level %d." ), skill.obj().name(),
@@ -2486,7 +2487,7 @@ bool read_activity_actor::npc_read( npc &learner )
         const int newSkillLevel = skill_level.knowledgeLevel();
         if( newSkillLevel != originalSkillLevel ) {
             get_event_bus().send<event_type::gains_skill_level>(
-                learner.getID(), skill, skill_level.knowledgeLevel() );
+                learner.getID(), skill, skill_level.knowledgeLevel(), "theoretical" );
 
             if( display_messages ) {
                 add_msg( m_good, _( "%s increases their %s level." ), learner.disp_name(),
@@ -13267,12 +13268,12 @@ void training_activity_actor::train_skill( Character &who, skill_id trained_skil
     int old_skill_level = who.get_knowledge_level( trained_skill );
     who.practice( trained_skill, 100, old_skill_level + 2 );
     int new_skill_level = who.get_knowledge_level( trained_skill );
+    // Character::practice sends gains_skill_level for the levels gained (PROG-J06)
     if( old_skill_level != new_skill_level ) {
         if( who.is_avatar() ) {
             add_msg( m_good, _( "You finish training %s to level %d." ),
                      skill_name, new_skill_level );
         }
-        get_event_bus().send<event_type::gains_skill_level>( who.getID(), trained_skill, new_skill_level );
     } else if( who.is_avatar() ) {
         add_msg( m_good, _( "You get some training in %s." ), skill_name );
     }

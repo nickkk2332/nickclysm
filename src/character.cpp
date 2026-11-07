@@ -2652,6 +2652,10 @@ bool Character::practice( const skill_id &id, int amount, int cap, bool suppress
     const skill_id savantSkill = isSavant ? highest_skill() : skill_id::NULL_ID();
 
     amount = adjust_for_focus( std::min( 1000, amount ) ) * 100.0f;
+    // The skill's own pace (PROG-J08)
+    if( skill.training_multiplier() != 1.0f ) {
+        amount = static_cast<int>( std::lround( amount * skill.training_multiplier() ) );
+    }
 
     if( has_trait( trait_PACIFIST ) && skill.is_combat_skill() ) {
         amount /= 3.0f;
@@ -2659,6 +2663,7 @@ bool Character::practice( const skill_id &id, int amount, int cap, bool suppress
 
     catchup_modifier = enchantment_cache->modify_value( enchant_vals::mod::COMBAT_CATCHUP,
                        catchup_modifier );
+    catchup_modifier *= skill.catchup_multiplier();
 
     if( isSavant && id != savantSkill ) {
         amount *= 0.5f;
@@ -2682,7 +2687,13 @@ bool Character::practice( const skill_id &id, int amount, int cap, bool suppress
         int new_theoretical_level = get_knowledge_level( id );
         std::string skill_name = skill.name();
         if( new_practical_level > old_practical_level ) {
-            get_event_bus().send<event_type::gains_skill_level>( getID(), id, new_practical_level );
+            get_event_bus().send<event_type::gains_skill_level>( getID(), id, new_practical_level,
+                    "practical" );
+        }
+        // Theory that rose by itself, not just with the practical level (PROG-J06)
+        if( new_theoretical_level > std::max( old_theoretical_level, new_practical_level ) ) {
+            get_event_bus().send<event_type::gains_skill_level>( getID(), id, new_theoretical_level,
+                    "theoretical" );
         }
         if( is_avatar() && new_practical_level > old_practical_level ) {
             add_msg( m_good, _( "Your practical skill in %s has increased to %d!" ), skill_name,
@@ -5347,6 +5358,18 @@ void Character::recalculate_enchantment_cache()
             const enchantment &ench = ench_id.obj();
             if( ench.is_active( *this, true ) ) {
                 enchantment_cache->force_add( ench, *this );
+            }
+        }
+    }
+
+    // Proficiencies apply theirs while known (PROG-J09)
+    if( proficiency::any_enchantments() ) {
+        for( const proficiency_id &prof : _proficiencies->known_profs() ) {
+            for( const enchantment_id &ench_id : prof->enchantments() ) {
+                const enchantment &ench = ench_id.obj();
+                if( ench.is_active( *this, true ) ) {
+                    enchantment_cache->force_add( ench, *this );
+                }
             }
         }
     }
@@ -8022,7 +8045,8 @@ bool Character::has_flag( const json_character_flag &flag ) const
            has_bionic_with_flag( flag ) ||
            has_effect_with_flag( flag ) ||
            has_bodypart_with_flag( flag ) ||
-           has_mabuff_flag( flag );
+           has_mabuff_flag( flag ) ||
+           _proficiencies->count_flag( flag ) > 0;
 }
 
 int Character::count_flag( const json_character_flag &flag ) const
@@ -8032,7 +8056,8 @@ int Character::count_flag( const json_character_flag &flag ) const
            count_bionic_with_flag( flag ) +
            has_effect_with_flag( flag ) +
            count_bodypart_with_flag( flag ) +
-           count_mabuff_flag( flag );
+           count_mabuff_flag( flag ) +
+           _proficiencies->count_flag( flag );
 }
 
 bool Character::empathizes_with_species( const species_id &species ) const

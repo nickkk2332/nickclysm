@@ -683,6 +683,8 @@ void npc::randomize( const npc_class_id &type, const npc_template_id &tem_id )
     if( type.is_null() || type == NC_NONE ) {
         Character::randomize( false );
         starting_inv_passtime();
+        // As a class NPC does, below (PROG-J04)
+        effect_on_conditions::load_new_character( *this );
         return;
     }
 

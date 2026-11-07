@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <initializer_list>
 #include <iterator>
 #include <utility>
 
@@ -265,6 +266,40 @@ void Skill::load( const JsonObject &jsobj, std::string_view )
     }
     optional( jsobj, was_loaded, "requires_all_traits", _requires_all_traits, string_reader{} );
     optional( jsobj, was_loaded, "requires_any_traits", _requires_any_traits, string_reader{} );
+
+    // How the skill progresses (PROG-J08); a copy's "rust" changes the members it names
+    optional( jsobj, was_loaded, "training_multiplier", _training_multiplier, 1.0f );
+    optional( jsobj, was_loaded, "catchup_multiplier", _catchup_multiplier, 1.0f );
+    optional( jsobj, was_loaded, "book_learning_multiplier", _book_learning_multiplier, 1.0f );
+    for( const char *member : {
+             "training_multiplier", "catchup_multiplier", "book_learning_multiplier"
+         } ) {
+        if( jsobj.has_member( member ) && jsobj.get_float( member ) < 0 ) {
+            jsobj.throw_error_at( member, "must not be negative" );
+        }
+    }
+    if( !was_loaded ) {
+        _rusts = true;
+        _rust_grace_period = 24_hours;
+        _rust_multiplier = 1.0f;
+        _rust_max_levels = 3.0f;
+    }
+    if( jsobj.has_object( "rust" ) ) {
+        JsonObject jo_rust = jsobj.get_object( "rust" );
+        jo_rust.read( "enabled", _rusts );
+        jo_rust.read( "grace_period", _rust_grace_period );
+        jo_rust.read( "multiplier", _rust_multiplier );
+        jo_rust.read( "max_levels", _rust_max_levels );
+        if( _rust_grace_period < 0_turns ) {
+            jo_rust.throw_error_at( "grace_period", "must not be negative" );
+        }
+        if( _rust_multiplier < 0 ) {
+            jo_rust.throw_error_at( "multiplier", "must not be negative" );
+        }
+        if( _rust_max_levels < 0 ) {
+            jo_rust.throw_error_at( "max_levels", "must not be negative" );
+        }
+    }
 }
 
 SkillDisplayType::SkillDisplayType() : SkillDisplayType( skill_displayType_id::NULL_ID(),
@@ -485,9 +520,10 @@ bool SkillLevel::isRusty() const
            _knowledgeExperience - _exercise >= pow( level() + 1, 2U ) * 10;
 }
 
-bool SkillLevel::rust( int rust_resist, float rust_multiplier )
+bool SkillLevel::rust( int rust_resist, float rust_multiplier, const time_duration &grace_period,
+                       float max_levels )
 {
-    if( ( calendar::turn - _lastPracticed ) < 24_hours ) {
+    if( ( calendar::turn - _lastPracticed ) < grace_period ) {
         // don't rust within the grace period
         return false;
     }
@@ -499,7 +535,7 @@ bool SkillLevel::rust( int rust_resist, float rust_multiplier )
 
     const int level_multiplier = pow( unadjustedLevel() + 1, 2U );
     float level_exp = level_multiplier * 10000.0f;
-    if( _rustAccumulator > level_exp * 3 ) {
+    if( _rustAccumulator > level_exp * max_levels ) {
         // at this point the numbers ahead will be too small to bother.  Just cap it off.
         return false;
     }
@@ -536,10 +572,14 @@ void SkillLevel::practice()
     _lastPracticed = calendar::turn;
 }
 
-void SkillLevel::readBook( int minimumGain, int maximumGain, int maximumLevel )
+void SkillLevel::readBook( int minimumGain, int maximumGain, int maximumLevel, float multiplier )
 {
     if( knowledgeLevel() < maximumLevel || maximumLevel < 0 ) {
-        knowledge_train( ( knowledgeLevel() + 1 ) * rng( minimumGain, maximumGain ) * 100 );
+        int amount = ( knowledgeLevel() + 1 ) * rng( minimumGain, maximumGain ) * 100;
+        if( multiplier != 1.0f ) {
+            amount = static_cast<int>( std::lround( amount * multiplier ) );
+        }
+        knowledge_train( amount );
     }
 
     practice();
@@ -554,6 +594,26 @@ void SkillLevel::set_exercise( int value, bool raw )
 {
     _exercise = raw ? value : value * ( 100 * ( level() + 1 ) * ( level() + 1 ) );
     on_exercise_change( true );
+}
+
+void SkillLevel::set_knowledge_exercise( int value, bool raw )
+{
+    const auto xp_to_level = [this]() {
+        return 100 * 100 * pow( unadjustedKnowledgeLevel() + 1, 2U );
+    };
+    _knowledgeExperience = std::max( raw ? value : value * ( 100 * ( _knowledgeLevel + 1 ) *
+                                     ( _knowledgeLevel + 1 ) ), 0 );
+    while( _knowledgeExperience >= xp_to_level() && unadjustedKnowledgeLevel() < MAX_SKILL ) {
+        _knowledgeExperience -= xp_to_level();
+        ++_knowledgeLevel;
+    }
+    if( unadjustedKnowledgeLevel() >= MAX_SKILL ) {
+        _knowledgeExperience = std::min<int>( _knowledgeExperience, xp_to_level() - 1 );
+    }
+    // Theory doesn't lag the practice it comes from
+    if( level() == knowledgeLevel() && _knowledgeExperience < _exercise ) {
+        _knowledgeExperience = _exercise;
+    }
 }
 
 void SkillLevel::on_exercise_change( bool allow_multilevel )

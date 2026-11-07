@@ -87,6 +87,10 @@ class proficiency
 
         std::map<std::string, std::vector<proficiency_bonus>> _bonuses;
 
+        // Applied while the proficiency is known (PROG-J09)
+        std::vector<enchantment_id> _enchantments;
+        std::set<json_character_flag> _flags;
+
     public:
         static void load_proficiencies( const JsonObject &jo, const std::string &src );
         static void finalize_all();
@@ -114,6 +118,12 @@ class proficiency
 
         std::vector<proficiency_bonus> get_bonuses( const std::string &category ) const;
         std::optional<float> bonus_for( const std::string &category, proficiency_bonus_type type ) const;
+
+        const std::vector<enchantment_id> &enchantments() const;
+        const std::set<json_character_flag> &flags() const;
+        /** Whether any loaded proficiency has enchantments (or flags): the checks skip otherwise */
+        static bool any_enchantments();
+        static bool any_flags();
 };
 
 // The proficiencies you know, and the ones you're learning.
@@ -154,6 +164,8 @@ class proficiency_set
         std::vector<proficiency_id> learning_profs() const;
         float get_proficiency_bonus( const std::string &category,
                                      proficiency_bonus_type prof_bonus ) const;
+        // How many known proficiencies have this flag
+        int count_flag( const json_character_flag &flag ) const;
 
         void migrate_proficiencies();
 

@@ -620,12 +620,12 @@ static void grab_pull_from_vehicle( const grab &grab_data, const monster &z, Cha
     }
     const int mph = std::abs( veh->velocity ) / 100;
     const bool muscle = veh->has_engine_type( fuel_type_muscle, true );
-    const int athlete_bonus = muscle ? foe.get_proficiency_bonus( "athlete",
-                              proficiency_bonus_type::strength ) : 0;
+    const double athlete_bonus = muscle ? static_cast<double>( foe.get_proficiency_bonus( "athlete",
+                                 proficiency_bonus_type::strength ) ) : 0.0;
     const_dialogue d( get_const_talker_for( z ), get_const_talker_for( foe ) );
     const double chance = grab_data.vehicle_pull_formula->eval( d, {
         static_cast<double>( grab_strength ), static_cast<double>( mph ), muscle ? 1.0 : 0.0,
-        static_cast<double>( athlete_bonus )
+        athlete_bonus
     } );
     add_msg_debug( debugmode::DF_MATTACK,
                    "Pull from vehicle: grab strength %d at %d mph, chance %.2f", grab_strength, mph,

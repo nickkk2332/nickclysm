@@ -151,6 +151,8 @@ Within these are the standard list of JSON objects having "type": "proficiency".
 | `required_proficiencies`    | Optional  | Array of strings | The proficiencies that must be obtained before this one can.  You cannot gain experience in a proficiency without the necessary prerequisites. |
 | `ignore_focus`              | Optional  | Bool   | Proficiency exp gain will be as if focus is `100` regardless of actual focus.        |
 | `bonuses`                   | Optional  | Object, with an array of object as values | This member is used to apply bonuses to certain activities given the player has a particular proficiency. The bonuses applied must be hardcoded to the activity in question. (see below) |
+| `enchantments`              | Optional  | Array of enchantment ids or inline enchantments | Enchantments the character has while it knows the proficiency (see [MAGIC.md](MAGIC.md#enchantments)).  Their `condition` is checked as for an effect's enchantments. |
+| `flags`                     | Optional  | Array of strings | Character flags (see JSON_FLAGS.md) the character has while it knows the proficiency, as a trait's `flags` give them.  `u_has_flag` and the game's checks see them. |
 
 ### time multiplier and skill penalty
 
@@ -189,3 +191,27 @@ Field   | Mandatory | Type   | Description
 `value` | Mandatory | Float  | What the bonus is. This can be any numeric value representable as a floating point number.  Values of the same type from all available proficiencies are summed together to produce the final bonus for a proficiency.
 
 For the `melee_attack` key, only `"type": "stamina"` is valid, and when an attack is performed using a weapon category that points to this proficiency, the final stamina cost of the attack will be multiplied by 1 - (the sum of stamina bonuses). This does not stack across categories, and only the lowest resulting stamina value will be used.
+
+The game reads three keys, and loading reports any other key, or a type the key doesn't read:
+
+Key            | Type       | Effect
+-------------- | ---------- | ---
+`archery`      | `strength` | Lowers the strength a bow (a gun using the `archery` skill) needs, by the sum rounded to the nearest point.
+`athlete`      | `strength` | Adds to the strength used to pedal or row a muscle-powered vehicle, and to resist being pulled out of one by a monster's grab.  Fractions count.
+`melee_attack` | `stamina`  | See above.
+
+A proficiency that should do something else can have `enchantments` or `flags` (see the table above), which apply while it is known:
+
+```jsonc
+  {
+    "type": "proficiency",
+    "id": "prof_parkour_demo",
+    "category": "prof_athletics",
+    "name": { "str": "Parkour" },
+    "description": "Moving over obstacles comes naturally.",
+    "can_learn": true,
+    "time_to_learn": "20 h",
+    "enchantments": [ { "values": [ { "value": "MOVE_COST", "multiply": -0.05 } ] } ],
+    "flags": [ "CLIMB_NO_LADDER" ]
+  }
+```

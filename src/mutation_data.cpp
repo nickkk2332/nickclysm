@@ -1252,6 +1252,11 @@ void mutation_branch::load_trait_group( const JsonObject &jsobj,
         jsobj.throw_error_at( "subtype", "unknown trait group type" );
     }
 
+    // A later definition adds to the group; "override": true replaces it (PROG-J07)
+    if( jsobj.get_bool( "override", false ) ) {
+        trait_groups.erase( gid );
+    }
+
     Trait_group &tg = make_group_or_throw( gid, subtype == "collection" || subtype == "old" );
 
     // TODO: (sm) Looks like this makes the new code backwards-compatible with the old format. Great if so!

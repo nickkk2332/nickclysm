@@ -64,6 +64,14 @@ class Skill
         std::optional<dbl_or_var> _training_cost;
         // Practice, books and character creation stop here (MAX_SKILL at most)
         int _max_level = MAX_SKILL;
+        // How this skill progresses (PROG-J08); the defaults are the built-in rules
+        float _training_multiplier = 1.0f;
+        float _catchup_multiplier = 1.0f;
+        float _book_learning_multiplier = 1.0f;
+        bool _rusts = true;
+        time_duration _rust_grace_period = 24_hours;
+        float _rust_multiplier = 1.0f;
+        float _rust_max_levels = 3.0f;
         // When the definition this skill holds was loaded: `skills` keeps that order, so a
         // redefinition moves the skill to the end as it always did.
         uint64_t _load_order = 0;
@@ -146,6 +154,34 @@ class Skill
         int max_level() const {
             return _max_level;
         }
+        /** Multiplies the experience practice gives (Character::practice) */
+        float training_multiplier() const {
+            return _training_multiplier;
+        }
+        /** Multiplies how fast practice catches up to theoretical knowledge */
+        float catchup_multiplier() const {
+            return _catchup_multiplier;
+        }
+        /** Multiplies the theoretical experience books give */
+        float book_learning_multiplier() const {
+            return _book_learning_multiplier;
+        }
+        /** Whether the skill rusts at all */
+        bool rusts() const {
+            return _rusts;
+        }
+        /** How long without practice before rust starts */
+        time_duration rust_grace_period() const {
+            return _rust_grace_period;
+        }
+        /** Multiplies the rust amount */
+        float rust_multiplier() const {
+            return _rust_multiplier;
+        }
+        /** Rust stops once this many levels' worth of experience has rusted away */
+        float rust_max_levels() const {
+            return _rust_max_levels;
+        }
 
         bool operator==( const Skill &b ) const {
             return this->id == b.id;
@@ -223,6 +259,13 @@ class SkillLevel
         int rustAccumulator() const {
             return _rustAccumulator;
         }
+        time_point lastPracticed() const {
+            return _lastPracticed;
+        }
+        // Sets when the skill was last practiced, which delays rust (EOCs, PROG-J06)
+        void set_last_practiced( const time_point &when ) {
+            _lastPracticed = when;
+        }
         int exercise( bool raw = false ) const {
             return raw ? _exercise : _exercise / ( 100 * ( level() + 1 ) * ( level() + 1 ) );
         }
@@ -235,12 +278,18 @@ class SkillLevel
                     bool allow_multilevel = false );
         void knowledge_train( int amount, int npc_knowledge = 0 );
         bool isRusty() const;
-        bool rust( int rust_resist, float rust_multiplier = 1 );
+        // The grace period and the cap (in levels of experience) are the skill's (PROG-J08)
+        bool rust( int rust_resist, float rust_multiplier = 1,
+                   const time_duration &grace_period = 24_hours, float max_levels = 3.0f );
         void practice();
         bool can_train() const;
         void set_exercise( int value, bool raw = false );
+        // Sets the theoretical experience toward the next knowledge level (EOCs, PROG-J06)
+        void set_knowledge_exercise( int value, bool raw = false );
 
-        void readBook( int minimumGain, int maximumGain, int maximumLevel = -1 );
+        // multiplier: the skill's book_learning_multiplier (PROG-J08)
+        void readBook( int minimumGain, int maximumGain, int maximumLevel = -1,
+                       float multiplier = 1.0f );
 
         bool operator==( const SkillLevel &b ) const {
             return this->level() == b.level() && this->_exercise == b._exercise;

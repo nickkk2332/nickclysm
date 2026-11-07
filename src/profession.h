@@ -86,6 +86,8 @@ class profession
         // the int is what level the spell starts at
         std::map<spell_id, int> _starting_spells;
         std::vector<effect_on_condition_id> effect_on_conditions;
+        // Whether effect_on_conditions also run for NPCs with this profession (PROG-J04)
+        bool _run_eocs_for_npcs = false;
         std::set<std::string> flags; // flags for some special properties of the profession
         StartingSkillList  _starting_skills;
         std::vector<mission_type_id> _missions; // starting missions for profession
@@ -149,6 +151,8 @@ class profession
         std::map<spell_id, int> spells() const;
         void learn_spells( Character &you ) const;
         std::vector<effect_on_condition_id> get_eocs() const;
+        /** Whether get_eocs() run for an NPC with this profession or hobby, not only the avatar */
+        bool eocs_run_for_npcs() const;
         //returns the profession id
         profession_id get_profession_id() const;
         bool has_hard_requirement() const;
