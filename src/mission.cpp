@@ -11,14 +11,19 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "avatar.h"
+#include "calendar.h"
+#include "character_id.h"
 #include "character.h"
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_chatbin.h"
 #include "enum_conversions.h"
+#include "event.h"
+#include "event_bus.h"
 #include "game.h"
 #include "item.h"
 #include "item_group.h"
@@ -198,8 +203,20 @@ void mission::process_all()
             std::unordered_set<itype_id>();
     bool item_filter_valid = use_item_filter;
 
-    for( auto &e : world_missions ) {
-        mission &miss = e.second;
+    // A mission that ends or fails runs its effects and the mission_ends EOCs, which can add
+    // missions: that invalidates iterators into world_missions, so this goes through the
+    // missions there were, in the same order
+    std::vector<int> uids;
+    uids.reserve( world_missions.size() );
+    for( const std::pair<const int, mission> &e : world_missions ) {
+        uids.push_back( e.first );
+    }
+    for( const int mission_uid : uids ) {
+        const auto found = world_missions.find( mission_uid );
+        if( found == world_missions.end() ) {
+            continue;
+        }
+        mission &miss = found->second;
         const bool was_in_progress = miss.in_progress();
         const bool can_skip_item_check = item_filter_valid && was_in_progress &&
                                          !miss.get_npc_id().is_valid() &&
@@ -426,6 +443,23 @@ void mission::assign( avatar &u )
     }
 }
 
+// mission_ends, with the character it was assigned to as alpha and its giver (if loaded) as beta
+static void send_mission_ends( const character_id &assignee, const character_id &giver,
+                               const mission_type_id &type, bool success )
+{
+    const cata::event e = cata::event::make<event_type::mission_ends>( assignee, giver, type.str(),
+                          success );
+    avatar &u = get_avatar();
+    Creature *alpha = assignee == u.getID() ? static_cast<Creature *>( &u ) :
+                      g->find_npc( assignee );
+    if( alpha == nullptr ) {
+        // nobody to run the EOCs on: as for send, they don't run; the statistics count it
+        get_event_bus().send( e );
+        return;
+    }
+    get_event_bus().send_with_talker( alpha, giver.is_valid() ? g->find_npc( giver ) : nullptr, e );
+}
+
 void mission::fail()
 {
     status = mission_status::failure;
@@ -437,6 +471,7 @@ void mission::fail()
     deadline = calendar::turn;
 
     type->fail( this );
+    send_mission_ends( player_id, npc_id, type->id, false );
 }
 
 void mission::set_target_to_mission_giver()
@@ -567,6 +602,7 @@ void mission::wrap_up()
     deadline = calendar::turn;
 
     type->end( this );
+    send_mission_ends( player_id, npc_id, type->id, true );
 }
 
 bool mission::is_complete( const character_id &_npc_id ) const

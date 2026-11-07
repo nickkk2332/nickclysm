@@ -360,6 +360,7 @@ The table is checked against the game's own list, `DynamicDataLoader::inheritanc
 | `vehicle_placement` | merges |
 | `vehicle_spawn` | merges |
 | `vitamin` | copy-from |
+| `watched_variable` | none |
 | `weakpoint_set` | copy-from |
 | `weapon_category` | copy-from |
 | `weather_generator` | copy-from |

@@ -2,6 +2,12 @@
 #ifndef CATA_SRC_GLOBAL_VARS_H
 #define CATA_SRC_GLOBAL_VARS_H
 
+#include <map>
+#include <set>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+
 #include "math_parser_diag_value.h"
 
 #include "json.h"
@@ -64,6 +70,9 @@ class global_variables
 
         std::map<std::string, std::string> migrations; // NOLINT(cata-serialize)
         static void load_migrations( const JsonObject &jo, std::string_view src );
+        // The variables a watched_variable entry names: writing one sends var_changed
+        std::set<std::string> watched; // NOLINT(cata-serialize)
+        static void load_watched( const JsonObject &jo, std::string_view src );
 
     private:
         impl_t global_values;

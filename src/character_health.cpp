@@ -2787,13 +2787,14 @@ void Character::apply_damage( Creature *source, bodypart_id hurt, int dam,
         g->executions().notify_damage( *this, dam_to_bodypart );
         g->abilities().notify_damage( *this, dam_to_bodypart );
     }
+    const damage_type_id dealt_type = Creature::applying_damage_type( *this );
     if( source ) {
         cata::event e = cata::event::make<event_type::character_takes_damage>( getID(), dam_to_bodypart,
-                        part_to_damage.id(), pain );
+                        part_to_damage.id(), pain, dealt_type );
         get_event_bus().send_with_talker( this, source, e );
     } else {
         get_event_bus().send<event_type::character_takes_damage>( getID(), dam_to_bodypart,
-                part_to_damage.id(), pain );
+                part_to_damage.id(), pain, dealt_type );
     }
 
     if( !weapon.is_null() && !can_wield( weapon ).success() &&
@@ -3062,7 +3063,8 @@ void Character::heal( const bodypart_id &healed, int dam )
         mod_part_hp_cur( healed, effective_heal );
         add_msg_debug( debugmode::DF_CHAR_HEALTH, "Final healing of %s = %d", body_part_name( healed ),
                        dam );
-        get_event_bus().send<event_type::character_heals_damage>( getID(), effective_heal );
+        get_event_bus().send<event_type::character_heals_damage>( getID(), effective_heal,
+                healed );
     }
 }
 
@@ -3104,11 +3106,11 @@ void Character::hurtall( int dam, Creature *source, bool disturb /*= true*/ )
 
         if( source ) {
             cata::event e = cata::event::make<event_type::character_takes_damage>( getID(), dam_to_bodypart,
-                            bp.id(), pain / body_parts.size() );
+                            bp.id(), pain / body_parts.size(), damage_type_id() );
             get_event_bus().send_with_talker( this, source == nullptr ? nullptr : source, e );
         } else {
             get_event_bus().send<event_type::character_takes_damage>( getID(), dam_to_bodypart, bp.id(),
-                    pain / body_parts.size() );
+                    pain / body_parts.size(), damage_type_id() );
         }
 
     }

@@ -1,10 +1,12 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "avatar.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "creature_ref.h"
@@ -90,7 +92,11 @@ bool avatar::finalize_death( Creature *source )
     validate_source();
     effect_on_conditions::prevent_death();
     if( is_dead_state() ) {
-        get_event_bus().send<event_type::character_dies>( getID() );
+        // the killer, if any, is the beta talker
+        const std::pair<character_id, mtype_id> killed_by = event_killer_fields( get_killer() );
+        const cata::event died = cata::event::make<event_type::character_dies>( getID(),
+                                 killed_by.first, killed_by.second );
+        get_event_bus().send_with_talker( this, get_killer(), died );
         // the body keeps this if the player leaves it below, so it doesn't send it again as an NPC
         death_event_sent = true;
     }

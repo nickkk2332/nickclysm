@@ -144,6 +144,9 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::character_disassembles_item: return "character_disassembles_item";
         case event_type::character_learns_recipe: return "character_learns_recipe";
         case event_type::tile_destroyed: return "tile_destroyed";
+        case event_type::monster_dies: return "monster_dies";
+        case event_type::mission_ends: return "mission_ends";
+        case event_type::var_changed: return "var_changed";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -166,7 +169,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 128,
+static_assert( static_cast<int>( event_type::num_event_types ) == 131,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -180,6 +183,7 @@ DEFINE_EVENT_FIELDS( activates_artifact )
 DEFINE_EVENT_FIELDS( administers_mutagen )
 DEFINE_EVENT_FIELDS( avatar_enters_omt )
 DEFINE_EVENT_FIELDS( avatar_moves )
+DEFINE_EVENT_FIELDS( becomes_wanted )
 DEFINE_EVENT_FIELDS( broken_bone )
 DEFINE_EVENT_FIELDS( broken_bone_mends )
 DEFINE_EVENT_FIELDS( buries_corpse )
@@ -216,6 +220,7 @@ DEFINE_EVENT_FIELDS( character_falls_asleep )
 DEFINE_EVENT_FIELDS( character_attempt_to_fall_asleep )
 DEFINE_EVENT_FIELDS( character_wakes_up )
 DEFINE_EVENT_FIELDS( crosses_mutation_threshold )
+DEFINE_EVENT_FIELDS( cuts_tree )
 DEFINE_EVENT_FIELDS( dies_from_drug_overdose )
 DEFINE_EVENT_FIELDS( evolves_mutation )
 DEFINE_EVENT_FIELDS( fails_to_install_cbm )
@@ -248,6 +253,9 @@ DEFINE_EVENT_FIELDS( character_crafts_item )
 DEFINE_EVENT_FIELDS( character_disassembles_item )
 DEFINE_EVENT_FIELDS( character_learns_recipe )
 DEFINE_EVENT_FIELDS( tile_destroyed )
+DEFINE_EVENT_FIELDS( monster_dies )
+DEFINE_EVENT_FIELDS( mission_ends )
+DEFINE_EVENT_FIELDS( var_changed )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )

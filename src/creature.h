@@ -517,6 +517,12 @@ class Creature : public viewer
         // increase pain, apply effects, etc
         virtual void apply_damage( Creature *source, bodypart_id bp, int amount,
                                    bool bypass_med = false ) = 0;
+        /**
+         * While deal_damage applies a hit to @p target: the damage type that dealt most of it, for
+         * the damage events. Empty for damage of no type (apply_damage called directly: bleeding,
+         * hurtall, EOCs).
+         */
+        static damage_type_id applying_damage_type( const Creature &target );
 
         virtual void heal_bp( bodypart_id bp, int dam );
 

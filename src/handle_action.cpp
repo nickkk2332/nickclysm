@@ -986,7 +986,7 @@ avatar::smash_result avatar::smash( tripoint_bub_ms &smashp )
     }
 
     get_event_bus().send<event_type::character_smashes_tile>(
-        getID(), here.ter( smashp ).id(), here.furn( smashp ).id() );
+        getID(), here.ter( smashp ).id(), here.furn( smashp ).id(), here.get_abs( smashp ).raw() );
     if( is_mounted() ) {
         monster *crit = mounted_creature.get();
         if( crit->has_flag( mon_flag_RIDEABLE_MECH ) ) {

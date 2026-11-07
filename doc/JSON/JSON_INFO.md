@@ -2379,7 +2379,37 @@ Any or all of the following alterations can be made to the event stream:
 
 * Add new fields to each event based on event field transformations.  The event
   field transformations can be found in
-  [`event_field_transformations.cpp`](/src/event_field_transformations.cpp).
+  [`event_field_transformations.cpp`](/src/event_field_transformations.cpp):
+
+  | Transformation | Input field type | New field type | New field |
+  | --- | --- | --- | --- |
+  | `category_of_itype` | `itype_id` | `item_category_id` | the item type's category (none if it has none) |
+  | `flags_of_furniture` | `furn_str_id` | `string` | one event per flag of the furniture |
+  | `flags_of_itype` | `itype_id` | `flag_id` | one event per flag of the item type |
+  | `flags_of_monster` | `mtype_id` | `string` | one event per flag of the monster type |
+  | `flags_of_terrain` | `ter_id` | `string` | one event per flag of the terrain |
+  | `flags_of_terrain_str` | `ter_str_id` | `string` | as `flags_of_terrain`, for the fields that are `ter_str_id` (`character_smashes_tile`'s `terrain`) |
+  | `is_mounted` | `mtype_id` | `bool` | whether there is a mount |
+  | `is_swimming_terrain` | `ter_id` | `bool` | deep, swimmable water |
+  | `materials_of_itype` | `itype_id` | `material_id` | one event per material of the item type |
+  | `math_abs` | `int` | `int` | the absolute value |
+  | `mutation_category_of_trait` | `trait_id` | `mutation_category_id` | one event per category of the trait |
+  | `oter_type_of_oter` | `oter_id` | `oter_type_str_id` | the overmap terrain's type |
+  | `overmap_special_at` | `tripoint` | `overmap_special_id` | see below |
+  | `overmap_special_if_any` | `overmap_special_id` | `overmap_special_id` | the field, or no event if it is empty |
+  | `species_of_monster` | `mtype_id` | `species_id` | one event per species of the monster type |
+
+  A transformation that gives several values makes one event for each; with a
+  `value_constraints` on the new field this keeps the events with that value, so
+  "kills of a monster with the `FLIES` flag" is `flags_of_monster` on
+  `victim_type` constrained to `"equals": [ "string", "FLIES" ]`.
+
+  Statistics don't keep a few fields that EVENT EOCs get, since each would make
+  the save keep a summary per tile or per monster type: the `pos` of
+  `becomes_wanted`, `character_smashes_tile`, `character_triggers_trap` and
+  `cuts_tree`, the `target` of `character_casts_spell` and `spellcasting_finish`,
+  and the `victim_type`, `bodypart` and `damage_type` of `monster_takes_damage`.
+  A statistic or transformation that names one is an error at load.
   Statistics are rebuilt from the whole event history (on every game load, for
   one), so `overmap_special_at` only sees overmaps already in memory and finds
   nothing elsewhere. For the OMTs the avatar entered, use the `overmap_special`
@@ -2499,6 +2529,31 @@ The value of the given field for the last event in the input stream:
 ```jsonc
 "stat_type": "last_value",
 "field": "avatar_id"
+```
+
+The number of different values the given field takes across all events (the
+number of distinct monster species killed, say):
+```jsonc
+"stat_type": "count_distinct",
+"field": "species"
+```
+
+The mean of the numeric value in the specified field across all events, rounded
+toward zero (0 when there are no events yet):
+```jsonc
+"stat_type": "average",
+"field": "damage"
+```
+
+The turn of the first, or of the last, event in the input stream, counted from
+the start of the calendar (turn zero; a turn is a second), or -1 when there are
+no events yet.  A requirement on it is best paired with one on a `count`, since
+-1 is below any time:
+```jsonc
+"stat_type": "first_time"
+```
+```jsonc
+"stat_type": "last_time"
 ```
 
 Regardless of `stat_type`, each `event_statistic` can also have:

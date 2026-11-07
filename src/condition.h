@@ -59,6 +59,12 @@ void write_var_value( var_type type, const std::string &name, dialogue *d,
                       const tripoint_abs_ms &value );
 void write_var_value( var_type type, const std::string &name, dialogue *d,
                       const diag_value &value );
+/**
+ * Sends var_changed if @p name is a watched variable (a watched_variable entry): @p owner is
+ * the talker it was written on, nullptr for a global. A write made by a var_changed EOC sends
+ * nothing, so an EOC that writes the variable it watches doesn't loop.
+ */
+void notify_var_written( const std::string &name, const diag_value &value, talker *owner );
 std::string get_talk_varname( const JsonObject &jo, std::string_view member );
 std::string get_talk_var_basename( const JsonObject &jo, std::string_view member,
                                    bool check_value );

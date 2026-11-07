@@ -3357,7 +3357,11 @@ void npc::die( map *here, Creature *nkiller )
     }
     // a body the player left by the death switch sent it already, when the player died in it
     if( !death_event_sent ) {
-        get_event_bus().send<event_type::character_dies>( getID() );
+        // the killer, if any, is the beta talker
+        const std::pair<character_id, mtype_id> killed_by = event_killer_fields( nkiller );
+        const cata::event died = cata::event::make<event_type::character_dies>( getID(),
+                                 killed_by.first, killed_by.second );
+        get_event_bus().send_with_talker( this, nkiller, died );
         death_event_sent = true;
     }
     // Check if npc doesn't die due to EoC as a result

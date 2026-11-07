@@ -1360,7 +1360,14 @@ static bool eat( item &food, Character &you, bool force )
         }
     }
 
-    get_event_bus().send<event_type::character_eats_item>( you.getID(), food.typeId() );
+    {
+        // The item is the beta talker; it may be anywhere (the ground, a vehicle), but its EOCs
+        // read only the item
+        item_location eaten( you, &food );
+        const cata::event e = cata::event::make<event_type::character_eats_item>( you.getID(),
+                              food.typeId() );
+        get_event_bus().send_with_talker( &you, &eaten, e );
+    }
 
     if( will_vomit ) {
         you.vomit();
@@ -2072,7 +2079,11 @@ trinary Character::consume( item &target, bool force )
 
     if( consume_med( target, *this ) || eat( target, *this, force ) ) {
 
-        get_event_bus().send<event_type::character_consumes_item>( getID(), target.typeId() );
+        // as for character_eats_item, the item is the beta talker
+        item_location consumed( *this, &target );
+        const cata::event e = cata::event::make<event_type::character_consumes_item>( getID(),
+                              target.typeId() );
+        get_event_bus().send_with_talker( this, &consumed, e );
 
         invalidate_weight_carried_cache();
         target.on_contents_changed();

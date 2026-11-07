@@ -44,6 +44,7 @@ std::string enum_to_string<cata_variant_type>( cata_variant_type type )
         case cata_variant_type::bool_: return "bool";
         case cata_variant_type::character_id: return "character_id";
         case cata_variant_type::chrono_seconds: return "chrono_seconds";
+        case cata_variant_type::damage_type_id: return "damage_type_id";
         case cata_variant_type::debug_menu_index: return "debug_menu_index";
         case cata_variant_type::dimension_id: return "dimension_id";
         case cata_variant_type::efftype_id: return "efftype_id";
@@ -54,8 +55,10 @@ std::string enum_to_string<cata_variant_type>( cata_variant_type type )
         case cata_variant_type::furn_str_id: return "furn_str_id";
         case cata_variant_type::flag_id: return "flag_id";
         case cata_variant_type::int_: return "int";
+        case cata_variant_type::item_category_id: return "item_category_id";
         case cata_variant_type::item_group_id: return "item_group_id";
         case cata_variant_type::itype_id: return "itype_id";
+        case cata_variant_type::material_id: return "material_id";
         case cata_variant_type::matype_id: return "matype_id";
         case cata_variant_type::mongroup_id: return "mongroup_id";
         case cata_variant_type::mtype_id: return "mtype_id";

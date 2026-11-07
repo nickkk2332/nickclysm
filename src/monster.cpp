@@ -2629,7 +2629,7 @@ void monster::set_hp( const int hp )
     this->hp = hp;
 }
 
-void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
+void monster::apply_damage( Creature *source, bodypart_id bp, int dam,
                             const bool /*bypass_med*/ )
 {
     const execution_combat::damage_barrier execution_damage;
@@ -2653,7 +2653,8 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
     execution_combat::record_hp_loss( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
     incapacitation::wake_on_damage( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
 
-    cata::event e = cata::event::make<event_type::monster_takes_damage>( dam, hp < 1 );
+    cata::event e = cata::event::make<event_type::monster_takes_damage>( dam, hp < 1, type->id,
+                    bp, Creature::applying_damage_type( *this ) );
     // The monster is the alpha talker, also when nothing hurt it (bleeding, fire, a fall)
     get_event_bus().send_with_talker( this, source, e );
 
@@ -3352,11 +3353,13 @@ void monster::die( map *here, Creature *nkiller )
     g->set_critter_died();
     dead = true;
     set_killer( nkiller );
+    Character *killer_character = nullptr;
     if( get_killer() != nullptr ) {
         Character *ch = get_killer()->as_character();
         if( ch == nullptr && get_killer()->get_summoner() != nullptr ) {
             ch = get_killer()->get_summoner()->as_character();
         }
+        killer_character = ch;
         if( !is_hallucination() && ch != nullptr ) {
             // Revived creatures never grant any kill xp.
             const int kill_xp = has_effect( effect_revived_marker ) ? 0 : compute_kill_xp( type->id );
@@ -3364,6 +3367,18 @@ void monster::die( map *here, Creature *nkiller )
                             kill_xp );
             get_event_bus().send_with_talker( ch, this, e );
         }
+    }
+    if( !is_hallucination() ) {
+        // Every death, also by a monster, a turret, a trap or nothing at all
+        const monster *killer_monster = get_killer() == nullptr ? nullptr :
+                                        get_killer()->as_monster();
+        const character_id killer_id = killer_character == nullptr ? character_id() :
+                                       killer_character->getID();
+        const mtype_id killer_type = killer_monster == nullptr ? mtype_id::NULL_ID() :
+                                     killer_monster->type->id;
+        cata::event died = cata::event::make<event_type::monster_dies>( type->id, killer_id,
+                           killer_type );
+        get_event_bus().send_with_talker( this, get_killer(), died );
     }
     creature_tracker &creatures = get_creature_tracker();
     // Whoever held us lets go.

@@ -12,6 +12,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 
 #include "ammo_effect.h"
 #include "anatomy.h"
@@ -1646,6 +1647,48 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
     execution_contact.resolve( dealt_dam );
 }
 
+namespace
+{
+// The hit deal_damage is applying, for applying_damage_type
+struct applying_hit {
+    const Creature *target = nullptr;
+    damage_type_id type;
+};
+applying_hit current_applying_hit;
+
+// Sets the hit being applied while it lives; a hit applied inside it gets its own
+class applying_hit_scope
+{
+    public:
+        applying_hit_scope( const Creature &target, const dealt_damage_instance &dealt ) :
+            previous( current_applying_hit ) {
+            applying_hit hit;
+            hit.target = &target;
+            int most = 0;
+            // the type that dealt the most; the first of them (in id order) on a tie
+            for( const std::pair<const damage_type_id, int> &part : dealt.dealt_dams ) {
+                if( part.second > most ) {
+                    most = part.second;
+                    hit.type = part.first;
+                }
+            }
+            current_applying_hit = hit;
+        }
+        ~applying_hit_scope() {
+            current_applying_hit = previous;
+        }
+        applying_hit_scope( const applying_hit_scope & ) = delete;
+        applying_hit_scope &operator=( const applying_hit_scope & ) = delete;
+    private:
+        applying_hit previous;
+};
+} // namespace
+
+damage_type_id Creature::applying_damage_type( const Creature &target )
+{
+    return current_applying_hit.target == &target ? current_applying_hit.type : damage_type_id();
+}
+
 dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam, const weakpoint_attack &attack, const weakpoint &wp )
 {
@@ -1720,7 +1763,10 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
 
     transaction.arm_hp_capture();
     execution_damage.arm_hp_capture( bp, dealt_dams );
-    apply_damage( source, bp, total_damage );
+    {
+        const applying_hit_scope hit( *this, dealt_dams );
+        apply_damage( source, bp, total_damage );
+    }
     execution_damage.disarm_hp_capture();
     transaction.disarm_hp_capture();
 

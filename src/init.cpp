@@ -437,6 +437,7 @@ void DynamicDataLoader::initialize()
     add( "json_flag", &json_flag::load_all );
     add( "jmath_function", &jmath_func::load_func );
     add( "var_migration", &global_variables::load_migrations );
+    add( "watched_variable", &global_variables::load_watched );
     add( "connect_group", &connect_group::load );
     add( "fault", &faults::load_fault );
     add( "pp_generator", &pp_generators::load );
@@ -892,6 +893,7 @@ const std::map<std::string, json_inheritance> &DynamicDataLoader::inheritance_su
         { "vehicle_placement", json_inheritance::merges },
         { "vehicle_spawn", json_inheritance::merges },
         { "vitamin", json_inheritance::copy_from },
+        { "watched_variable", json_inheritance::none },
         { "weakpoint_set", json_inheritance::copy_from },
         { "weapon_category", json_inheritance::copy_from },
         { "weather_generator", json_inheritance::copy_from },
@@ -1103,6 +1105,7 @@ void DynamicDataLoader::unload_data()
     gates::reset();
     // var_migration entries, which are applied to the saves being loaded
     get_globals().migrations.clear();
+    get_globals().watched.clear();
     harvest_drop_type::reset();
     harvest_list::reset();
     item_category::reset();

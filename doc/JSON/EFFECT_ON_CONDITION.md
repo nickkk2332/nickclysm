@@ -781,6 +781,16 @@ True if the world has Sky Island loaded
 { "mod_is_loaded": "sky_island" }
 ```
 
+### `timed_event_queued`
+- type: string or [variable object](#variable-object)
+- Return true if a timed event with this key is queued: the `key` an EOC gave `mapgen_update`, `revert_location`, `copy_location`, `u_transform_radius`, `place_override` or `custom_light_level` with a `time_in_future`. Events the game queues itself have no key; an empty key is never queued. Needs no talker.
+
+#### Examples
+True while the portal dungeon's entrance is still to be reverted
+```jsonc
+{ "timed_event_queued": "portal_dungeon_entrance" }
+```
+
 ### `mod_setting_on`, `mod_setting_is`
 - `mod_setting_on`: string or [variable object](#variable-object), a switch [mod setting](MOD_SETTINGS.md); true if it's on
 - `mod_setting_is`: array of two strings or [variable objects](#variable-object), `[ setting, value ]`, a choice or text mod setting; true if it's that choice id or that text
@@ -2417,6 +2427,15 @@ Every event EOC passes context vars with each of their key value pairs that the 
 
 The [`trigger_event`](#trigger_event) effect sends one of these events, with `args`, one value per field in the order of `event.h`, which is the order of the table below; an EOC with the wrong number of values fails to load.  Each value must fit its field: a whole number for `int` and `character_id`, 0 or 1 for `bool`, an existing id (or an empty string) for an id.  An event with a value that doesn't fit isn't sent, and shows an error.  `game_avatar_new`, `game_load`, `game_over`, `game_save`, `game_start` and `player_gets_achievement` can only be sent by the game: an EOC that triggers one of them fails to load.
 
+## Watched variables
+Writing a variable sends no event, except for the variables a `watched_variable` entry names: any write of one sends [`var_changed`](#event-eoc-types), however it was written (`u_add_var`, `math`, or an effect that writes a [variable object](#variable-object)) and whoever it belongs to (a character, a monster, an item, a vehicle, or a global). The name is the variable's own, without `u_`, `npc_` or the global prefix: `math` `u_foo++` writes `foo`. Several entries, in any mod, add up.
+
+```jsonc
+{ "type": "watched_variable", "variables": [ "counter_portal_storm_counter", "my_reputation" ] }
+```
+
+Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps one summary per value in the save.
+
 ## Event EOC Types:
 
 | EVENT              | Description | Context Variables | Talker(alpha/beta) |
@@ -2429,7 +2448,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | avatar_moves |  | { "mount", `mtype_id` },<br/> { "terrain", `ter_id` },<br/> { "movement_mode", `move_mode_id` },<br/> { "underwater", `bool` },<br/> { "z", `int` }, | avatar / NONE |
 | avatar_dies |  | NONE | avatar / NONE |
 | awakes_dark_wyrms | Triggers when `pedestal_wyrm` examine action is used | NONE | avatar / NONE |
-| becomes_wanted | Not currently emitted: nothing in the game sends it (only `trigger_event` can). Meant for when copbots/riot bots are spawned as part of a timed event after mon/char is photo'd by eyebot | { "character", `character_id` } | character / NONE |
+| becomes_wanted | Triggers when an eyebot that photographed the avatar (the `PHOTOGRAPH` special attack) calls for backup, 15 to 30 turns after the photograph. Nothing comes by itself: an EVENT EOC on this event spawns the robots (`u_spawn_monster` near `pos`, for example). Statistics don't keep `pos` | { "character", `character_id` },<br/> { "pos", `tripoint` } (where the photograph was taken, map squares) | character / NONE |
 | broken_bone | Triggered when any body part reaches 0 hp | { "character", `character_id` },<br/> { "part", `body_part` }, | character / NONE |
 | broken_bone_mends | Triggered when `mending` effect is removed by expiry (Character::mend) | { "character", `character_id` },<br/> { "part", `body_part` }, | character / NONE |
 | buries_corpse | Triggers when item with flag CORPSE is located on same tile as construction with post-special `done_grave` is completed | { "character", `character_id` },<br/> { "corpse_type", `mtype_id` },<br/> { "corpse_name", `string` }, | character / NONE |
@@ -2438,20 +2457,20 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | camp_upgrade_completed | Triggers when companions finish a camp upgrade, including a salt water pipe segment | { "camp_name", `string` },<br/> { "pos", `tripoint` } (location of the upgraded overmap tile, its north-west corner),<br/> { "upgrade", `string` } (id of the upgrade's recipe) | avatar / NONE |
 | causes_resonance_cascade | Triggers when resonance cascade option is activated via "old lab" finale's computer | NONE | avatar / NONE |
 | character_butchered_corpse | Triggers after succesful butchering action. Possible values of butcher_type are `ACT_BLEED`, `ACT_BUTCHER`, `ACT_BUTCHER_FULL`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT` | { "character", `character_id` }, { "monster_id", `mtype_id` }, { "butcher_type", `string` }, | character / NONE |
-| character_casts_spell | Triggers when a character casts spells. When a spell with multiple effects is cast, the number of effects will be triggered. A spell cast without a caster (by an item, for example) has an invalid `character`, and runs no EVENT EOCs | { "character", `character_id` },<br/> { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` }, | character / NONE |
-| character_consumes_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
+| character_casts_spell | Triggers when a character casts spells. When a spell with multiple effects is cast, the number of effects will be triggered. A spell cast without a caster (by an item, for example) has an invalid `character`, and runs no EVENT EOCs. Statistics don't keep `target` | { "character", `character_id` },<br/> { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` },<br/> { "target", `tripoint` } (where it was cast at, map squares) | character / NONE |
+| character_consumes_item | Triggers when a character eats, drinks or takes an item (food, medicine, a bionic's fuel) | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / the item consumed |
 | character_crafts_item | Triggers when a character finishes crafting a recipe, after its `result_eocs` and `result_item_eocs`. `quantity` is the batch size; `itype` is the recipe's result (`null` for a recipe with none) | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "itype", `itype_id` },<br/> { "quantity", `int` } | character / NONE |
 | character_disassembles_item | Triggers when a character finishes taking an item apart with a disassembly recipe, after its `disassembly_eocs` | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "itype", `itype_id` } | character / NONE |
-| character_dies |  | { "character", `character_id` }, | character / NONE |
-| character_eats_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
+| character_dies | Triggers when a character (the avatar or an NPC) dies, once per death | { "character", `character_id` },<br/> { "killer", `character_id` } (the character that killed them, or whose summoned monster did; invalid otherwise),<br/> { "killer_type", `mtype_id` } (the monster that killed them; `mon_null` otherwise) | character / the killer (character or monster), or NONE |
+| character_eats_item | Triggers when a character eats or drinks an item | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / the item eaten |
 | character_effect_intensity_changed | Triggers when adding (or granting, or taking back a grant of) an effect a character already has changes its intensity; not when the effect is gained, nor when its intensity decays over time | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` },<br/> { "intensity", `int` } (the new intensity) | character / NONE |
-| character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended and after its `completion_eoc` or `cancel_eoc`. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a drop dropped everything, or a zone job ran out of work. `outcome` is `completed`, `canceled`, or `interrupted` for a cancel that left the activity in the backlog to resume | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` },<br/> { "outcome", `string` } | character / NONE |
+| character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended and after its `completion_eoc` or `cancel_eoc`. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a construction was finished (after `character_finishes_construction`), a drop dropped everything, or a zone job ran out of work. `outcome` is `completed`, `canceled`, or `interrupted` for a cancel that left the activity in the backlog to resume | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` },<br/> { "outcome", `string` } | character / NONE |
 | character_finishes_construction | Triggers when a character finishes a construction, after its `post_special` and `post_eocs` | { "character", `character_id` },<br/> { "construction", `string` } (construction id),<br/> { "pos", `tripoint` } (location of the tile) | character / NONE |
 | character_forgets_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_gains_effect |  | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` },<br/> { "intensity", `int` } | character / NONE |
 | character_gets_headshot |  | { "character", `character_id` } | character / NONE |
 | character_grabs_creature | Triggers when a character takes hold of a creature: the grab action, `u_grab`, or anything that sets up a hold (grappling) | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "bodypart", `body_part` } (the part held; `bp_null` for a monster, which is held as a whole),<br/> { "strength", `int` } (of the hold, 1 to 100) | character (grabber) / creature (held: character or monster) |
-| character_heals_damage |  | { "character", `character_id` },<br/> { "damage", `int` }, | character / NONE |
+| character_heals_damage | | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `body_part` } (the part healed) | character / NONE |
 | character_kills_character |  | { "killer", `character_id` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` },<br/> { "victim_class", `string` } (the NPC class id of the victim; empty for the avatar), | character / NONE |
 | character_kills_monster |  | { "killer", `character_id` },<br/> { "victim_type", `mtype_id` },<br/> { "exp", `int` }, | character / monster |
 | character_learns_recipe | Triggers when a character learns a recipe it didn't know: `how` is `crafting` (memorized from a book while crafting), `disassembly` or `eoc` (`u_learn_recipe`, `u_roll_remainder`). Not sent for the recipes of a new character | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "how", `string` } | character / NONE |
@@ -2463,13 +2482,14 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | character_ranged_attacks_character | |  { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character (attacker) / character (victim) |
 | character_ranged_attacks_monster | | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/>  { "victim_type", `mtype_id` }, | character / monster |
 | character_releases_grab | Triggers when a character's hold on a creature ends, for any reason: letting go (`u_release_grab` too), the creature breaking free, a throw (before `character_throws_creature`), the hold breaking (too tired, flung, out of reach) or either side dying or leaving | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` }, | character (grabber) / creature (held) if it is still there, otherwise NONE | use `has_beta` before interacting with the beta talker; when the hold was lost with the creature gone from the map, the victim fields are empty (a creature out of reach is still named, and its side of the hold ends too)
-| character_smashes_tile | | { "character", `character_id` },<br/> { "terrain", `ter_str_id` },  { "furniture", `furn_str_id` }, | character / NONE |
+| character_smashes_tile | Triggers when a character smashes a tile, before the bash. Statistics don't keep `pos` | { "character", `character_id` },<br/> { "terrain", `ter_str_id` },  { "furniture", `furn_str_id` },<br/> { "pos", `tripoint` } (the tile, map squares) | character / NONE |
 | character_starts_activity | Triggered when character starts or resumes activity | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "resume", `bool` } | character / NONE |
 | character_takeoff_item | triggers when character removes a worn item. If using `run_inv_eocs`, remember that the event fires before the items are actually removed | { "character", `character_id` },<br/> { "itype", `itype_id` } |
-| character_takes_damage | triggers when character gets any damage from any creature | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `body_part` },<br/> { "pain", `int` }, | character / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
-| monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding | { "damage", `int` },<br/> { "dies", `bool` }, | monster (the one hurt, also when nothing hurt it) / attacker (character or monster), or NONE when there is none (bleeding, fire, a fall) | use `has_beta` condition before interacting with beta talker
+| character_takes_damage | triggers when character gets any damage from any creature | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `body_part` },<br/> { "pain", `int` },<br/> { "damage_type", `damage_type_id` } (the type that dealt most of the hit; empty for damage of no type: bleeding, `hurtall`, an EOC's damage to a part) | character / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
+| monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding. Statistics keep only `damage` and `dies`: the other fields, for every monster and damage type, would grow the save by thousands of entries in a long game (count kills by type with `character_kills_monster` or `monster_dies`, or damage with an EVENT EOC and a variable) | { "damage", `int` },<br/> { "dies", `bool` },<br/> { "victim_type", `mtype_id` },<br/> { "bodypart", `body_part` },<br/> { "damage_type", `damage_type_id` } (as for `character_takes_damage`) | monster (the one hurt, also when nothing hurt it) / attacker (character or monster), or NONE when there is none (bleeding, fire, a fall) | use `has_beta` condition before interacting with beta talker
+| monster_dies | Triggers when any monster dies, whatever killed it: a character, a pet, another monster, a turret, a trap, nothing at all. Not for hallucinations. A character's kill also sends `character_kills_monster` just before | { "victim_type", `mtype_id` },<br/> { "killer", `character_id` } (the character that killed it, or whose summoned monster did; invalid otherwise),<br/> { "killer_type", `mtype_id` } (the monster that killed it; `mon_null` otherwise) | the monster that died / its killer (character or monster), or NONE |
 | character_throws_creature | Triggers when a character has thrown the creature it held (the throw action or `u_throw_grabbed`), after it lands | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "force", `int` } (the force of the throw: it flew `force / 10` tiles at most),<br/> { "distance", `int` } (the tiles it was thrown) | character (thrower) / creature (thrown; it may be dead) |
-| character_triggers_trap | | { "character", `character_id` },<br/> { "trap", `trap_str_id` }, | character / NONE |
+| character_triggers_trap | Statistics don't keep `pos` | { "character", `character_id` },<br/> { "trap", `trap_str_id` },<br/> { "pos", `tripoint` } (the trap, map squares) | character / NONE |
 | character_wakes_up | triggers in the moment player lost it's sleep effect and wakes up | { "character", `character_id` }, | character / NONE |
 | character_attempt_to_fall_asleep | triggers in the moment character tries to fall asleep, after confirming and setting an alarm, but before "you lie down" | { "character", `character_id` }, | character / NONE |
 | character_falls_asleep | triggers in the moment character actually falls asleep; trigger includes cases where character sleep for a short time because of sleepiness or drugs; duration of the sleep can be changed mid sleep because of hurt/noise/light/pain thresholds and another factors | { "character", `character_id` }, { "duration", `int_` (in seconds) } | character / NONE |
@@ -2482,7 +2502,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | crosses_marloss_threshold | | { "character", `character_id` } | character / NONE |
 | crosses_mutation_threshold | | { "character", `character_id` },<br/> { "category", `mutation_category_id` }, | character / NONE |
 | crosses_mycus_threshold | | { "character", `character_id` } | character / NONE |
-| cuts_tree | | { "character", `character_id` } | character / NONE |
+| cuts_tree | Triggers when a character finishes chopping down a tree. Statistics don't keep `pos` | { "character", `character_id` },<br/> { "pos", `tripoint` } (the tree, map squares) | character / NONE |
 | dermatik_eggs_hatch | Not currently emitted: nothing in the game sends it (only `trigger_event` can) | { "character", `character_id` } | character / NONE |
 | dermatik_eggs_injected | Not currently emitted: nothing in the game sends it (only `trigger_event` can) | { "character", `character_id` } | character / NONE |
 | destroys_triffid_grove | Triggered *only* via spell with effect_str `ROOTS_DIE` (currently via death spell of triffid heart) | NONE | avatar / NONE |
@@ -2520,6 +2540,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | learns_martial_art | |  { "character", `character_id` },<br/> { "martial_art", `matype_id` }, | character / NONE |
 | loses_addiction | | { "character", `character_id` },<br/> { "add_type", `addiction_id` }, | character / NONE |
 | loses_mutation | |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
+| mission_ends | Triggers when a mission ends: completed and reported (`success` true) or failed (false: the deadline passed, the giver died, it was abandoned), after the mission's own end or fail effects | { "character", `character_id` } (who it was assigned to),<br/> { "npc", `character_id` } (who gave it; invalid for none),<br/> { "mission", `string` } (the mission type id),<br/> { "success", `bool` } | the character it was assigned to / the NPC who gave it, if loaded, or NONE |
 | mod_setting_changed | Triggers when a [mod setting](MOD_SETTINGS.md) of the world changes in game, in the options menu or by an EOC; setting a value it already has doesn't. The values are text: the number (`"2.50"`), `true` or `false`, the choice id, the text. Statistics don't keep it. The order when several change, and when an EOC answering it changes a setting: [MOD_SETTINGS.md](MOD_SETTINGS.md#reacting-to-changes) | { "id", `string` },<br/> { "old_value", `string` },<br/> { "new_value", `string` }, | avatar / NONE |
 | npc_attitude_changed | Triggers whenever an NPC's attitude changes, whatever changes it: an effect, the avatar, the NPC's own decisions, including each switch of a hostile NPC between fleeing and fighting. `cause` says what; see [NPC attitude events](#npc-attitude-events). Not for the attitude an NPC is made with, nor for NPCs that aren't real (a template's, a hallucination). Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "old_attitude", `string` }, an attitude id such as `NPCATT_KILL`<br/> { "new_attitude", `string` },<br/> { "cause", `string` }, | NPC / NONE |
 | npc_becomes_hostile | Triggers when an NPC grows more hostile than it was last reported: as it turns hostile (`NPCATT_MUG`, `NPCATT_WAIT_FOR_LEAVE` or `NPCATT_KILL`) from a neutral or friendly attitude, and once more if it then sets out to kill (`NPCATT_KILL`). Fleeing (`NPCATT_FLEE_TEMP`) doesn't calm it down, so a hostile NPC that keeps running and coming back is reported once; a neutral or friendly attitude does. It goes out after the change's `npc_attitude_changed`, if the NPC is still hostile then, whatever changed it ([NPC attitude events](#npc-attitude-events)). The memorial's "became hostile" comes from the `hostile` effect alone, as before. The `cause` field is new: a `trigger_event` for this event needs three arguments | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "cause", `string` }, | NPC / NONE |
@@ -2537,7 +2558,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | releases_subspace_specimens | Triggers when Release Specimens option is activated via ("old lab" finale's?) computer | NONE | avatar / NONE |
 | removes_cbm | |  { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
 | seals_hazardous_material_sarcophagus | Triggers via `srcf_seal_order` computer action | NONE | avatar / NONE |
-| spellcasting_finish | Triggers only once when a character finishes casting a spell | { "character", `character_id` },<br/> { "success", `bool` },<br/>  { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` }, | character / NONE |
+| spellcasting_finish | Triggers only once when a character finishes casting a spell. Statistics don't keep `target` | { "character", `character_id` },<br/> { "success", `bool` },<br/>  { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` },<br/> { "target", `tripoint` } (where it was cast at, map squares) | character / NONE |
 | telefrags_creature | (Unimplemented) Not currently emitted: nothing in the game sends it (only `trigger_event` can) | { "character", `character_id` },<br/> { "victim_name", `string` }, | character / NONE |
 | teleglow_teleports | Triggers when character(only avatar is actually eligible) is teleported due to teleglow effect | { "character", `character_id` } | character / NONE |
 | teleports_into_wall | Triggers when character(only avatar is actually eligible) is teleported into wall | { "character", `character_id` },<br/> { "obstacle_name", `string` }, | character / NONE |
@@ -2546,7 +2567,8 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | tile_destroyed | Triggers when a bash destroys the terrain or furniture of a tile on the main map, from any cause, after the bash's `eoc_on_destroy`. `cause` is `smash` (a creature did it), `explosion`, `fire`, `vehicle`, `collapse`, `projectile`, or `other`. Statistics don't keep it | { "location", `tripoint` },<br/> { "old_ter", `ter_str_id` },<br/> { "old_furn", `furn_str_id` },<br/> { "new_ter", `ter_str_id` },<br/> { "new_furn", `furn_str_id` },<br/> { "cause", `string` } | the creature that bashed, or an empty talker / NONE |
 | triggers_alarm | Triggers when alarm is sounded as a failure state of hacking, prying, using a computer, or (if player is sufficiently close)damaged terrain with ALARMED flag | { "character", `character_id` } | character / NONE |
 | uses_debug_menu | | { "debug_menu_option", `debug_menu_index` }, | avatar / NONE |
-| u_var_changed | | { "var", `string` },<br/> { "value", `string` }, | avatar / NONE |
+| u_var_changed | Triggers when `u_add_var` or `npc_add_var` (without `time`) sets one of the avatar's own variables. Deprecated: it doesn't see `math` or other effects, nor anyone else's variables; use `var_changed` | { "var", `string` },<br/> { "value", `string` }, | avatar / NONE |
+| var_changed | Triggers when a watched variable (named by a [`watched_variable`](#watched-variables) entry) is written, by `u_add_var`, `math` or an effect that writes a variable object, on any talker or as a global. `scope` is `character`, `monster`, `item`, `vehicle`, `other` or `global`. A write made by a `var_changed` EOC sends nothing | { "owner", `character_id` } (the character the variable belongs to; invalid for another talker or a global),<br/> { "scope", `string` },<br/> { "var", `string` } (the name, as `math` writes it: `u_foo` is `foo`),<br/> { "value", `string` } | the talker it belongs to (for a global, the avatar) / NONE |
 | npc_goal_changed | Triggers when the goal an NPC is committed to changes, built-in or [JSON](NPC_BEHAVIOR.md#reading-goals-from-eocs); `idle` stands for none. Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "old_goal", `string` },<br/> { "new_goal", `string` }, | NPC / NONE |
 | vehicle_moves | | { "avatar_on_board", `bool` },<br/> { "avatar_is_driving", `bool` },<br/> { "avatar_remote_control", `bool` },<br/> { "is_flying_aircraft", `bool` },<br/> { "is_floating_watercraft", `bool` },<br/> { "is_on_rails", `bool` },<br/> { "is_falling", `bool` },<br/> { "is_sinking", `bool` },<br/> { "is_skidding", `bool` },<br/> { "velocity", `int` }, // vehicle current velocity, mph * 100<br/> { "z", `int` }, | vehicle / avatar |
 
@@ -7696,6 +7718,18 @@ for example, if this effect would exist, and `alter_timed_events` occur, the loc
   "time_in_future": "infinite",
   "key": "portal_dungeon_entrance"
 }
+```
+
+#### `cancel_timed_events`
+Removes the queued timed events that have this key, before they happen: a delayed `mapgen_update` or `revert_location` never happens, a `place_override` or `custom_light_level` ends at once. An empty key cancels nothing. See [`timed_event_queued`](#timed_event_queued) to check for one.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "cancel_timed_events" | **mandatory** | string or [variable object](#variable-object) | the key of the events to remove |
+
+##### Examples
+```jsonc
+{ "cancel_timed_events": "portal_dungeon_entrance" }
 ```
 
 #### `lightning`

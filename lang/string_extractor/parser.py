@@ -300,6 +300,7 @@ parsers = {
     "vehicle_placement": dummy_parser,
     "vehicle_spawn": parse_vehicle_spawn,
     "vitamin": parse_vitamin,
+    "watched_variable": dummy_parser,
     "weakpoint_set": parse_weakpoint_set,
     "weapon_category": parse_weapon_category,
     "weather_type": parse_weather_type,

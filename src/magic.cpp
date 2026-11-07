@@ -2502,7 +2502,7 @@ void cast_spell_effect_casterless( const spell &sp, casterless_caster &caster,
 
     get_event_bus().send<event_type::character_casts_spell>( character_id( -1 ),
             sp.id(), sp.spell_class(),
-            0, 0, 0, sp.damage( fake_avatar ) );
+            0, 0, 0, sp.damage( fake_avatar ), get_map().get_abs( target ).raw() );
 
     sp.id()->effect( sp, fake_avatar, target );
 }
@@ -2578,7 +2578,7 @@ void spell::cast_spell_effect( Creature &source, const tripoint_bub_ms &target )
         // send casting to the event bus
         get_event_bus().send<event_type::character_casts_spell>( c_id, this->id(), this->spell_class(),
                 this->get_difficulty( source ), this->energy_cost( *caster ), this->casting_time( *caster ),
-                this->damage( source ) );
+                this->damage( source ), get_map().get_abs( target ).raw() );
     }
 
     global_variables::impl_t facts = spell_cast_context::get( *this );

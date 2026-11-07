@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "calendar.h"
 #include "cata_assert.h"
@@ -369,12 +370,48 @@ bool stats_tracker::records( const event_type type )
            type != event_type::mod_setting_changed && type != event_type::tile_destroyed;
 }
 
-void stats_tracker::notify( const cata::event &e )
+const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_type type )
 {
-    const event_type type = e.type();
+    static const std::vector<std::string> none;
+    static const std::vector<std::string> pos = { "pos" };
+    static const std::vector<std::string> target = { "target" };
+    // every monster type times every damage amount and type: thousands of summaries in a
+    // long game, where there were a few hundred
+    static const std::vector<std::string> monster_hurt = {
+        "victim_type", "bodypart", "damage_type"
+    };
+    switch( type ) {
+        case event_type::becomes_wanted:
+        case event_type::character_smashes_tile:
+        case event_type::character_triggers_trap:
+        case event_type::cuts_tree:
+            return pos;
+        case event_type::character_casts_spell:
+        case event_type::spellcasting_finish:
+            return target;
+        case event_type::monster_takes_damage:
+            return monster_hurt;
+        default:
+            return none;
+    }
+}
+
+void stats_tracker::notify( const cata::event &sent )
+{
+    const event_type type = sent.type();
     if( !records( type ) ) {
         return;
     }
+    const std::vector<std::string> &unrecorded = unrecorded_fields( type );
+    std::optional<cata::event> trimmed;
+    if( !unrecorded.empty() ) {
+        cata::event::data_type kept = sent.data();
+        for( const std::string &field : unrecorded ) {
+            kept.erase( field );
+        }
+        trimmed.emplace( type, sent.time(), std::move( kept ) );
+    }
+    const cata::event &e = trimmed ? *trimmed : sent;
     get_events( type ).add( e );
 
     auto it = event_type_watchers.find( type );

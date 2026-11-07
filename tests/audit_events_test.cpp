@@ -32,8 +32,8 @@ TEST_CASE( "evt-b02_stats_tracker_skips_unknown_event_types", "[audit][stats]" )
     b.subscribe( &s );
     const character_id u_id = get_player_character().getID();
     constexpr event_type ctd = event_type::character_takes_damage;
-    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0 );
-    b.send<ctd>( u_id, 5, bodypart_str_id::NULL_ID(), 0 );
+    b.send<ctd>( u_id, 10, bodypart_str_id::NULL_ID(), 0, damage_type_id() );
+    b.send<ctd>( u_id, 5, bodypart_str_id::NULL_ID(), 0, damage_type_id() );
     REQUIRE( s.get_events( ctd ).count() == 2 );
 
     std::ostringstream os;

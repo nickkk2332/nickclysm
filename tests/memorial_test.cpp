@@ -139,7 +139,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Awoke a group of dark wyrms!" );
 
     check_memorial<event_type::becomes_wanted>(
-        m,  "Became wanted by the police!", ch );
+        m,  "Became wanted by the police!", ch, tripoint::zero );
 
     check_memorial<event_type::broken_bone>(
         m,  "Broke her right arm.", ch, bodypart_id( "arm_r" ) );
@@ -171,7 +171,7 @@ TEST_CASE( "memorials", "[memorial]" )
         m,  "Put out the fire.", ch, bodypart_id( "arm_r" ), eff );
 
     check_memorial<event_type::character_triggers_trap>(
-        m,  "Fell in a pit.", ch, tr_pit );
+        m,  "Fell in a pit.", ch, tr_pit, tripoint::zero );
 
     check_memorial<event_type::consumes_marloss_item>(
         m,  "Consumed a Marloss seed.", ch, it );

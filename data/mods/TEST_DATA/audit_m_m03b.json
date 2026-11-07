@@ -1,0 +1,84 @@
+[
+  {
+    "//": "EVT-J07: writing these sends var_changed, however they are written",
+    "type": "watched_variable",
+    "variables": [ "audit_m03b_watched", "audit_m03b_loop" ]
+  },
+  {
+    "//": "EVT-J07: a var_changed EOC that writes the variable it watches must not loop",
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M03B_VAR_LOOP",
+    "eoc_type": "EVENT",
+    "required_event": "var_changed",
+    "condition": { "compare_string": [ "audit_m03b_loop", { "context_val": "var" } ] },
+    "effect": [
+      { "math": [ "u_audit_m03b_loop = u_audit_m03b_loop + 1" ] },
+      { "math": [ "audit_m03b_loop_runs = audit_m03b_loop_runs + 1" ] }
+    ]
+  },
+  {
+    "id": "audit_m03b_distinct_victims",
+    "type": "event_statistic",
+    "stat_type": "count_distinct",
+    "event_type": "character_kills_monster",
+    "field": "victim_type"
+  },
+  {
+    "id": "audit_m03b_average_exp",
+    "type": "event_statistic",
+    "stat_type": "average",
+    "event_type": "character_kills_monster",
+    "field": "exp"
+  },
+  {
+    "id": "audit_m03b_first_kill_time",
+    "type": "event_statistic",
+    "stat_type": "first_time",
+    "event_type": "character_kills_monster"
+  },
+  {
+    "id": "audit_m03b_last_kill_time",
+    "type": "event_statistic",
+    "stat_type": "last_time",
+    "event_type": "character_kills_monster"
+  },
+  {
+    "id": "audit_m03b_kills_clumsy",
+    "type": "event_transformation",
+    "event_type": "character_kills_monster",
+    "new_fields": { "flag": { "flags_of_monster": "victim_type" } },
+    "value_constraints": { "flag": { "equals": [ "string", "CLUMSY_ATTACKS" ] } }
+  },
+  {
+    "id": "audit_m03b_num_kills_clumsy",
+    "type": "event_statistic",
+    "stat_type": "count",
+    "event_transformation": "audit_m03b_kills_clumsy"
+  },
+  {
+    "id": "audit_m03b_eaten_with_category",
+    "type": "event_transformation",
+    "event_type": "character_eats_item",
+    "new_fields": { "category": { "category_of_itype": "itype" } }
+  },
+  {
+    "id": "audit_m03b_eaten_categories",
+    "type": "event_statistic",
+    "stat_type": "unique_value",
+    "event_transformation": "audit_m03b_eaten_with_category",
+    "field": "category"
+  },
+  {
+    "id": "audit_m03b_eaten_with_material",
+    "type": "event_transformation",
+    "event_type": "character_eats_item",
+    "new_fields": { "material": { "materials_of_itype": "itype" } }
+  },
+  {
+    "id": "audit_m03b_eaten_materials",
+    "type": "event_statistic",
+    "stat_type": "count_distinct",
+    "event_transformation": "audit_m03b_eaten_with_material",
+    "field": "material"
+  }
+]

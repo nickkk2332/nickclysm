@@ -152,6 +152,9 @@ enum class event_type : int {
     character_disassembles_item,
     character_learns_recipe,
     tile_destroyed,
+    monster_dies,
+    mission_ends,
+    var_changed,
     num_event_types // last
 };
 
@@ -219,7 +222,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 128,
+static_assert( static_cast<int>( event_type::num_event_types ) == 131,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -277,8 +280,15 @@ struct event_spec<event_type::avatar_dies> : event_spec_empty {};
 template<>
 struct event_spec<event_type::awakes_dark_wyrms> : event_spec_empty {};
 
+// pos: where the avatar was photographed (map squares)
 template<>
-struct event_spec<event_type::becomes_wanted> : event_spec_character {};
+struct event_spec<event_type::becomes_wanted> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
 
 template<>
 struct event_spec<event_type::broken_bone> {
@@ -351,22 +361,28 @@ struct event_spec<event_type::character_eats_item> : event_spec_character_item {
 
 template<>
 struct event_spec<event_type::character_casts_spell> {
-    static constexpr std::array<event_field, 7> fields = { {
+    static constexpr std::array<event_field, 8> fields = { {
             { "character", cata_variant_type::character_id },
             { "spell", cata_variant_type::spell_id },
             { "school", cata_variant_type::trait_id },
             { "difficulty", cata_variant_type::int_},
             { "cost", cata_variant_type::int_},
             { "cast_time", cata_variant_type::int_},
-            { "damage", cata_variant_type::int_}
+            { "damage", cata_variant_type::int_},
+            // where it was cast at (map squares); the statistics don't keep it
+            { "target", cata_variant_type::tripoint }
         }
     };
 };
 
+// killer: the character that killed them (invalid otherwise); killer_type: the monster that
+// did (mon_null otherwise)
 template<>
 struct event_spec<event_type::character_dies> {
-    static constexpr std::array<event_field, 1> fields = {{
-            { "character", cata_variant_type::character_id }
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "killer", cata_variant_type::character_id },
+            { "killer_type", cata_variant_type::mtype_id }
         }
     };
 };
@@ -444,9 +460,10 @@ struct event_spec<event_type::character_grabs_creature> {
 
 template<>
 struct event_spec<event_type::character_heals_damage> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "character", cata_variant_type::character_id },
             { "damage", cata_variant_type::int_ },
+            { "bodypart", cata_variant_type::body_part },
         }
     };
 };
@@ -555,10 +572,12 @@ struct event_spec<event_type::character_releases_grab> {
 
 template<>
 struct event_spec<event_type::character_smashes_tile> {
-    static constexpr std::array<event_field, 3> fields = {{
+    static constexpr std::array<event_field, 4> fields = {{
             { "character", cata_variant_type::character_id },
             { "terrain", cata_variant_type::ter_str_id },
             { "furniture", cata_variant_type::furn_str_id },
+            // map squares; the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
         }
     };
 };
@@ -573,22 +592,29 @@ struct event_spec<event_type::character_starts_activity> {
     };
 };
 
+// damage_type: the type that dealt most of the hit; empty for damage of no type (hurtall,
+// bleeding, an EOC)
 template<>
 struct event_spec<event_type::character_takes_damage> {
-    static constexpr std::array<event_field, 4> fields = {{
+    static constexpr std::array<event_field, 5> fields = {{
             { "character", cata_variant_type::character_id },
             { "damage", cata_variant_type::int_ },
             { "bodypart", cata_variant_type::body_part },
-            { "pain", cata_variant_type::int_ }
+            { "pain", cata_variant_type::int_ },
+            { "damage_type", cata_variant_type::damage_type_id }
         }
     };
 };
 
 template<>
 struct event_spec<event_type::monster_takes_damage> {
-    static constexpr std::array<event_field, 2> fields = { {
+    static constexpr std::array<event_field, 5> fields = { {
             { "damage", cata_variant_type::int_ },
             { "dies", cata_variant_type::bool_ },
+            { "victim_type", cata_variant_type::mtype_id },
+            { "bodypart", cata_variant_type::body_part },
+            // as for character_takes_damage
+            { "damage_type", cata_variant_type::damage_type_id },
         }
     };
 };
@@ -608,9 +634,11 @@ struct event_spec<event_type::character_throws_creature> {
 
 template<>
 struct event_spec<event_type::character_triggers_trap> {
-    static constexpr std::array<event_field, 2> fields = {{
+    static constexpr std::array<event_field, 3> fields = {{
             { "character", cata_variant_type::character_id },
             { "trap", cata_variant_type::trap_str_id },
+            // map squares; the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
         }
     };
 };
@@ -704,7 +732,14 @@ template<>
 struct event_spec<event_type::crosses_mycus_threshold> : event_spec_character {};
 
 template<>
-struct event_spec<event_type::cuts_tree> : event_spec_character {};
+struct event_spec<event_type::cuts_tree> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            // the tree (map squares); the statistics don't keep it
+            { "pos", cata_variant_type::tripoint },
+        }
+    };
+};
 
 template<>
 struct event_spec<event_type::dermatik_eggs_hatch> : event_spec_character {};
@@ -1070,6 +1105,46 @@ struct event_spec<event_type::tile_destroyed> {
     };
 };
 
+// Any monster that dies, whatever killed it; not a hallucination. Sent with the monster as
+// alpha and its killer (if any) as beta. killer: the character that killed it, or whose summon
+// did (invalid otherwise); killer_type: the monster that killed it (mon_null otherwise)
+template<>
+struct event_spec<event_type::monster_dies> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "victim_type", cata_variant_type::mtype_id },
+            { "killer", cata_variant_type::character_id },
+            { "killer_type", cata_variant_type::mtype_id },
+        }
+    };
+};
+
+// A mission ended: completed (success) or failed. character: who it was assigned to; npc:
+// who gave it (invalid for none); mission: the mission type id
+template<>
+struct event_spec<event_type::mission_ends> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "npc", cata_variant_type::character_id },
+            { "mission", cata_variant_type::string },
+            { "success", cata_variant_type::bool_ },
+        }
+    };
+};
+
+// A watched variable (a watched_variable entry) was written, by anything: u_add_var, math, any
+// other effect. owner: the character it belongs to (invalid for another talker or a global);
+// scope: character, monster, item, vehicle, other or global. Sent with the owner as alpha.
+template<>
+struct event_spec<event_type::var_changed> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "owner", cata_variant_type::character_id },
+            { "scope", cata_variant_type::string },
+            { "var", cata_variant_type::string },
+            { "value", cata_variant_type::string },
+        }
+    };
+};
+
 // the goal an NPC is committed to changed; "idle" for none (doc/JSON/NPC_BEHAVIOR.md)
 template<>
 struct event_spec<event_type::npc_goal_changed> {
@@ -1153,7 +1228,7 @@ struct event_spec<event_type::seals_hazardous_material_sarcophagus> : event_spec
 
 template<>
 struct event_spec<event_type::spellcasting_finish> {
-    static constexpr std::array<event_field, 8> fields = { {
+    static constexpr std::array<event_field, 9> fields = { {
             { "character", cata_variant_type::character_id },
             { "success", cata_variant_type::bool_ },
             { "spell", cata_variant_type::spell_id },
@@ -1161,7 +1236,9 @@ struct event_spec<event_type::spellcasting_finish> {
             { "difficulty", cata_variant_type::int_},
             { "cost", cata_variant_type::int_},
             { "cast_time", cata_variant_type::int_},
-            { "damage", cata_variant_type::int_}
+            { "damage", cata_variant_type::int_},
+            // as for character_casts_spell
+            { "target", cata_variant_type::tripoint }
         }
     };
 };
@@ -1204,6 +1281,8 @@ struct event_spec<event_type::uses_debug_menu> {
     };
 };
 
+// Only for the avatar's variables, and only from u_add_var and npc_add_var; var_changed
+// covers every owner and every way of writing one
 template<>
 struct event_spec<event_type::u_var_changed> {
     static constexpr std::array<event_field, 2> fields = { {

@@ -2029,6 +2029,13 @@ void global_variables::load_migrations( const JsonObject &jo, std::string_view )
     get_globals().migrations.emplace( from, to );
 }
 
+void global_variables::load_watched( const JsonObject &jo, std::string_view )
+{
+    for( const std::string &name : jo.get_as_string_array( "variables" ) ) {
+        get_globals().watched.insert( name );
+    }
+}
+
 void timed_event_manager::serialize_all( JsonOut &jsout )
 {
     jsout.start_array();
