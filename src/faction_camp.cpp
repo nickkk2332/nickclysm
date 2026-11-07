@@ -5864,7 +5864,8 @@ camp_food_portion faction_template::consume_food_supply( const nutrients &consum
     // only non-perishable food
     if( _food_supply.size() < 2 ) {
         if( _food_supply.empty() ) {
-            debugmsg( "Consuming food but no food in store??" );
+            // a larder that never held food (a new faction's) serves nothing; the caller
+            // counts the shortfall, as for one eaten empty (CAMP-B06)
             return taken;
         }
         take_from_bucket( to_supply, _food_supply.front(), taken );

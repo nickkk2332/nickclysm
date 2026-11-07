@@ -313,7 +313,8 @@ TEST_CASE( "camp-b05_companions_come_back_by_their_own_return_time", "[audit][ca
         first->companion_mission_time_ret = not_yet;
         second->companion_mission_time_ret = due;
         CHECK( recover_possible() );
-        first->companion_mission_time_ret = not_yet;
+        // neither done
+        second->companion_mission_time_ret = not_yet;
         CHECK_FALSE( recover_possible() );
     }
     SECTION( "only the one whose own time is up comes back" ) {

@@ -157,10 +157,12 @@ bool mission_type::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "item", item_id );
     optional( jo, was_loaded, "item_group", group_id );
     optional( jo, was_loaded, "count", item_count, 1 );
-    optional( jo, was_loaded, "required_container", container_id );
+    // unset is null, not an empty id: MGOAL_FIND_ITEM_GROUP took an empty id for a required
+    // container no item is ever in, so the mission never ended (CAMP-B12)
+    optional( jo, was_loaded, "required_container", container_id, itype_id::NULL_ID() );
     optional( jo, was_loaded, "remove_container", remove_container );
     //intended for situations where closed and open container are different
-    optional( jo, was_loaded, "empty_container", empty_container );
+    optional( jo, was_loaded, "empty_container", empty_container, itype_id::NULL_ID() );
     optional( jo, was_loaded, "has_generic_rewards", has_generic_rewards, true );
 
     mandatory( jo, was_loaded, "goal", goal, enum_flags_reader<mission_goal> { "mission_goal" } );
