@@ -1,5 +1,6 @@
 #include <initializer_list>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,9 +33,13 @@
 #include "weather.h"
 
 static const bodypart_str_id body_part_gastropod_tongue( "gastropod_tongue" );
+static const bodypart_str_id body_part_hand_slime_complete_l( "hand_slime_complete_l" );
+static const bodypart_str_id body_part_hand_slime_complete_r( "hand_slime_complete_r" );
 static const bodypart_str_id body_part_hand_slime_l( "hand_slime_l" );
 static const bodypart_str_id body_part_hoof_l( "hoof_l" );
 static const bodypart_str_id body_part_insect_hand_l( "insect_hand_l" );
+
+static const matec_id TECH_SLIME_PUNCH( "TECH_SLIME_PUNCH" );
 
 static const efftype_id effect_common_cold( "common_cold" );
 static const efftype_id effect_flu( "flu" );
@@ -428,4 +433,18 @@ TEST_CASE( "char-j06_frostbite_parts_and_drying_traits_are_json",
     CHECK( trait_URSINE_FUR->drying_time_mult == 4.0f );
     CHECK( trait_SLIMY->drying_time_mult == 4.0f );
     CHECK( trait_SMELLY->drying_time_mult == 1.0f );
+}
+
+// The fully slimed hands named TECH_SLIME_COMPLETE_PUNCH, which nothing defines: a full slime
+// fighting unarmed got an error.  They use the slime punch.  (Body part techniques aren't checked
+// at load: vanilla's wing_l names tech_wing_slap, which only Magiclysm and Limb_WIP define.)
+TEST_CASE( "char-j05_slime_hands_use_a_defined_technique", "[audit][character]" )
+{
+    for( const bodypart_str_id &hand : {
+             body_part_hand_slime_complete_l, body_part_hand_slime_complete_r
+         } ) {
+        CAPTURE( hand.str() );
+        CHECK( hand->techniques == std::set<matec_id> { TECH_SLIME_PUNCH } );
+        CHECK( TECH_SLIME_PUNCH.is_valid() );
+    }
 }

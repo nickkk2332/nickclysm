@@ -1210,7 +1210,7 @@
     "limb_types": "hand",
     "side": "left",
     "feels_discomfort": false,
-    "techniques": [ "TECH_SLIME_COMPLETE_PUNCH" ],
+    "techniques": [ "TECH_SLIME_PUNCH" ],
     "hot_morale_mod": 0.5,
     "cold_morale_mod": 0.5,
     "fire_warmth_bonus": 5,
