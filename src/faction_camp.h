@@ -123,8 +123,9 @@ struct camp_skill_score {
 
 /// What a camp mission brings back, rolled when its companion returns
 struct camp_mission_results {
-    // rolled once per successful attempt, unless the season has its own group
-    item_group_id item_group;
+    // rolled once per successful attempt, unless the season has its own group; null for none (a
+    // default string_id is "", not the null id, and would read as a group that isn't defined)
+    item_group_id item_group = item_group_id::NULL_ID();
     std::map<season_type, item_group_id> seasonal_item_groups;
     // corpses: each successful attempt picks one of these, weighted by the group's total frequency
     std::vector<mongroup_id> monster_groups;
