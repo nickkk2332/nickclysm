@@ -445,8 +445,11 @@ TEST_CASE( "eoc-j12_kept_talkers_that_are_gone", "[audit][eoc]" )
         jsout.start_object();
         u.store( jsout );
         jsout.end_object();
-        CHECK_THAT( saved.str(), Catch::Contains(
-                        R"("beta":"monster:)" + std::to_string( zombie.persistent_id() ) + "\"" ) );
+        // built outside the macro: MSVC's preprocessor misreads a raw string with an odd number
+        // of quotes inside a macro argument
+        const std::string expected_beta = R"("beta":"monster:)" +
+                                          std::to_string( zombie.persistent_id() ) + "\"";
+        CHECK_THAT( saved.str(), Catch::Contains( expected_beta ) );
 
         zombie.die( &here, nullptr );
         calendar::turn += 3_turns;
