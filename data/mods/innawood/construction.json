@@ -20,7 +20,7 @@
     "time": "6 m",
     "components": [ [ [ "battery_car_clay", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -32,7 +32,7 @@
     "time": "6 m",
     "components": [ [ [ "battery_clay_array", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   }
 ]

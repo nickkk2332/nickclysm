@@ -4974,6 +4974,7 @@ Allow adjust location value, obtained by `u_location_variable`, and share the sa
 | "x_adjust", "y_adjust", "z_adjust" | optional | int, float or [variable object](#variable-object) | add this amount to `x`, `y` or `z` coordinate in the end; `"x_adjust": 2` would save the coordinate with 2 tile shift to the right from targeted |
 | "z_override" | optional | boolean | default is false; if true, instead of adding up to `z` level, override it with absolute value; `"z_adjust": 3` with `"z_override": true` turn the value of `z` to `3` |
 | "overmap_tile" | optional | boolean | default is false; if true, the adjustments will be made in overmap tiles rather than map tiles |
+| "output_var" | optional | [variable object](#variable-object) | if given, the adjusted location is saved here and the variable read stays as it was |
 
 
 ##### Valid talkers:
@@ -4983,6 +4984,11 @@ Allow adjust location value, obtained by `u_location_variable`, and share the sa
 | ✔️ | ✔️ | ✔️ | ✔️ | ✔️ | ✔️ |
 
 ##### Examples
+Save the tile above a construction site (the `pos` context value of a construction's `post_eocs`) in `above`
+```jsonc
+{ "location_variable_adjust": { "context_val": "pos" }, "z_adjust": 1, "output_var": { "context_val": "above" } }
+```
+
 Move coordinates in `location_var` value one tile to the right
 ```jsonc
 { "location_variable_adjust": "location_var", "x_adjust":  1 }

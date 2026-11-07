@@ -2167,6 +2167,7 @@ The array of hobbies (listed as professions) is whitelisted to all characters, e
 "activity_level": "EXTRA_EXERCISE",                                 // Activity level of the activity, harder activities consume more calories over time. Valid values are, from easiest to most demanding of the body: `NO_EXERCISE`, `LIGHT_EXERCISE`, `MODERATE_EXERCISE`, `BRISK_EXERCISE`, `ACTIVE_EXERCISE`, `EXTRA_EXERCISE`, `EXPLOSIVE_EXERCISE`.
 "do_turn_special": "do_turn_shovel",                                // Special effect, that occur, when you perform a construction. Can be either `do_turn_shovel` (cause "hsh!" message every minute, may trigger a buried trap, if there is one) or `do_turn_exhume` (applied mood effect for gravedigging related to your traits)
 "vehicle_start": true,                                              // Hardcoded check for construction recipe, that result into vehicle frame; Can be used only with `done_vehicle`
+"place_appliance": true,                                            // The construction's one component is placed on the tile as an appliance once it is finished (default false). Not together with the post_special `done_appliance`, which does the same
 "time": "30 m",                                                     // Time required to complete construction. Integers will be read as minutes or a time string can be used.
 "components": [ [ [ "spear_wood", 4 ], [ "pointy_stick", 4 ] ] ],   // Items used in construction
 "pre_special": [ "check_empty", "check_up_OK" ],                    // Required something that isn't terrain. The syntax also allows for a square bracket enclosed list of specials which all have to be fulfilled
@@ -2262,9 +2263,29 @@ When a construction is finished, the `character_finishes_construction` event is 
 | `done_mark_practice_target`| Sets a target practice trap at the location
 | `done_ramp_low`        | Sets a t_ramp_down_low at the tile above the target
 | `done_ramp_high`       | Sets a t_ramp_down_high at the tile above the target
-| `done_matching_down_above`| The terrain on the Z level above is set to the corresponding terrain at this level, but with the "down" suffix instead
+| `add_matching_down_above`| The terrain on the Z level above is set to the corresponding terrain at this level, but with the "down" suffix instead
 | `remove_above`         | Remove the terrain at the Z level above and replace it with t_open_air
 | `add_roof`             | Add the roof specified for the terrain at the site to the tile above
+
+Every `post_special` still works, but vanilla uses JSON for the ones JSON can express:
+
+| post_special | What vanilla uses instead
+|---           |---
+| `done_appliance` | `"place_appliance": true`
+| `done_window_curtains` | `byproducts` (4 nails, 2 sheets, a stick and a string) and a `message` in `post_eocs`, see `constr_window_boarded_curtains`
+| `done_extract_maybe_revert_to_dirt` | `"post_eocs": [ "EOC_CONSTRUCTION_EXTRACT_MAYBE_REVERT_TO_DIRT" ]`: one time in ten the tile becomes `t_dirt`, then a message says what was gathered
+| `done_mark_firewood`, `done_mark_practice_target` | `post_eocs` with `set_trap` at `pos` (`"radius": 0`), see `constr_firewood_source`
+| `done_ramp_low`, `done_ramp_high`, `done_wood_stairs`, `remove_above` | `post_eocs` that `set_terrain` on the tile above: `location_variable_adjust` of `pos` with `"z_adjust": 1` into another variable, then `set_terrain` there with `"radius": 0`, see `constr_concrete_ramp_low`
+
+The others stay in C++ because they do what JSON can't:
+
+- `done_trunk_plank` cuts logs into planks with the same code as cutting a log item, whose yield depends on the character.
+- `done_grave` goes through each corpse on the tile: a message naming it, funeral morale for the `SPIRITUAL` trait and a `buries_corpse` event for each, then the prompt to inscribe the grave.
+- `done_vehicle` asks for a name and makes a new vehicle from the component; `done_wiring` places the wiring and offers to reveal all wiring nearby.
+- `done_deconstruct` drops and replaces what the furniture's or terrain's `deconstruct` data says, with the code deconstruction uses everywhere.
+- `done_dig_grave` and `done_dig_grave_nospawn` send the `exhumes_grave` event, and `done_dig_grave` also damages and soils each piece of clothing it finds by that item's own durability.
+- `done_dig_stair`, `done_mine_downstair` and `done_mine_upstair` look for lava or water beyond the rock, ask whether to go on, give back the materials when they stop, and pick stairs or a ladder by what is below.
+- `add_matching_down_above` and `add_roof` work out the terrain above from the terrain built (its `down` counterpart by id, or its `roof`), so they follow that terrain's JSON; a fixed id in an EOC wouldn't.
 
 
 ### Scent_types

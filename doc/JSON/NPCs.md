@@ -241,6 +241,7 @@ This is the JSON that creates the NPC ID that is used to spawn an NPC in "mapgen
 | `mission`     | _(mandatory)_ Based on the enum in `npc.h`. The important ones are `NULL`, `SHOPKEEP`, `GUARD`, and `GUARD_PATROL`.
 | `chat`        | _(mandatory)_ Covered in the dialogue examples below.
 | `faction`     | Set faction NPC belongs to (see [FACTIONS.md](FACTIONS.md)).
+| `mission_offered` | A mission id, or an array of them: the missions the NPC offers when it is spawned (see [MISSIONS_JSON.md](MISSIONS_JSON.md)).
 | `death_eocs`  | String `effect_on_condition` ids and/or inline `effect_on_condition`s (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)). When the npc dies all of these `eoc`s are run with the victim as u and the killer as npc. This includes a companion that dies on a camp mission or NPC job away from the player; it has no killer then.
 | `age`         | Set age of NPC.
 | `height`      | Set height of NPC. (in cm)
@@ -250,14 +251,15 @@ This is the JSON that creates the NPC ID that is used to spawn an NPC in "mapgen
 | `per`         | Set perception of NPC.
 | `personality` | Set personality of NPC. For example, positive value of `aggression` means NPC is aggressive, negative value means NPC is defensive.
 
-A later mod's definition of an `npc` id replaces the earlier one completely; two definitions of one id from the same mod are an error.  With `"copy-from"`, an NPC starts from another `npc` (defined earlier, in the same mod or a mod loaded before) and changes only the fields it gives; `attitude` and `chat` are then optional, and a given `mission_offered` or `death_eocs` replaces the parent's list:
+A later mod's definition of an `npc` id replaces the earlier one completely; two definitions of one id from the same mod are an error.  With `"copy-from"`, an NPC starts from another `npc` and changes only the fields it gives; `attitude` and `chat` are then optional.  The parent may be defined anywhere, also later or in a mod loaded after (the copy waits for it), and it may be an `"abstract"` npc: a template only for copying, which is never spawned.  A given `mission_offered` or `death_eocs` replaces the parent's list; `extend` adds to it and `delete` takes the mission ids or EOC ids to remove:
 
 ```jsonc
 {
   "type": "npc",
   "id": "thug",
   "copy-from": "thug",          // a mod changing the vanilla thug
-  "name_suffix": "Thug"
+  "name_suffix": "Thug",
+  "extend": { "death_eocs": [ "EOC_MY_MOD_THUG_DIES" ] }   // the thug's death_eocs and this one
 }
 ```
 

@@ -1,6 +1,7 @@
 #include "requirements.h"
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstdlib>
 #include <exception>
@@ -11,8 +12,11 @@
 #include <set>
 #include <sstream>
 #include <stack>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "cata_assert.h"
 #include "cata_utility.h"
@@ -495,7 +499,7 @@ requirement_data requirement_data::operator+( const std::pair<requirement_id, in
 }
 
 void requirement_data::load_requirement( const JsonObject &jsobj, const requirement_id &id,
-        const bool check_extend, const bool is_abstract )
+        const bool check_extend )
 {
     requirement_data req;
     requirement_data ext;
@@ -515,24 +519,12 @@ void requirement_data::load_requirement( const JsonObject &jsobj, const requirem
 
     if( ext.components.empty() || jsobj.has_member( "components" ) ) {
         load_obj_list( jsobj.get_array( "components" ), req.components );
-        if( is_abstract && !req.components.empty() ) {
-            debugmsg( "Abstract recipe %s has components, which cannot be inherited.  "
-                      "This is probably an error.", id.str() );
-        }
     }
     if( ext.qualities.empty() || jsobj.has_member( "qualities" ) ) {
         load_obj_list( jsobj.get_array( "qualities" ), req.qualities );
-        if( is_abstract && !req.qualities.empty() ) {
-            debugmsg( "Abstract recipe %s has qualities, which cannot be inherited.  "
-                      "This is probably an error.", id.str() );
-        }
     }
     if( ext.tools.empty() || jsobj.has_member( "tools" ) ) {
         load_obj_list( jsobj.get_array( "tools" ), req.tools );
-        if( is_abstract && !req.tools.empty() ) {
-            debugmsg( "Abstract recipe %s has tools, which cannot be inherited.  "
-                      "This is probably an error.", id.str() );
-        }
     }
 
     if( !id.is_null() ) {
@@ -550,6 +542,106 @@ void requirement_data::load_requirement( const JsonObject &jsobj, const requirem
     }
 
     save_requirement( req, string_id<requirement_data>::NULL_ID(), &ext );
+}
+
+namespace
+{
+// Takes the entries whose id is one of ids out of every group and drops the groups left empty.
+// Returns the ids no entry had.
+template<typename T>
+std::vector<std::string> delete_from_groups( std::vector<std::vector<T>> &groups,
+        const std::vector<std::string> &ids )
+{
+    std::vector<std::string> missing;
+    for( const std::string &del : ids ) {
+        bool found = false;
+        for( std::vector<T> &group : groups ) {
+            const auto removed = std::remove_if( group.begin(), group.end(), [&del]( const T & entry ) {
+                return entry.type.str() == del;
+            } );
+            found |= removed != group.end();
+            group.erase( removed, group.end() );
+        }
+        if( !found ) {
+            missing.push_back( del );
+        }
+    }
+    groups.erase( std::remove_if( groups.begin(), groups.end(), []( const std::vector<T> &group ) {
+        return group.empty();
+    } ), groups.end() );
+    return missing;
+}
+} // namespace
+
+void requirement_data::load_inline_requirement( const JsonObject &jsobj, const requirement_id &id,
+        const requirement_data &inherited, const bool was_loaded )
+{
+    requirement_data req;
+    req.components = inherited.components;
+    req.tools = inherited.tools;
+    req.qualities = inherited.qualities;
+    const auto load_group = [&jsobj]( const std::string_view member, auto & groups ) {
+        if( jsobj.has_member( member ) ) {
+            groups.clear();
+            load_obj_list( jsobj.get_array( member ), groups );
+        }
+    };
+    load_group( "components", req.components );
+    load_group( "tools", req.tools );
+    load_group( "qualities", req.qualities );
+
+    static const std::array<std::string_view, 3> members = { "components", "tools", "qualities" };
+    if( !was_loaded ) {
+        for( const std::string_view member : members ) {
+            warn_disabled_feature( jsobj, "extend", member, "no copy-from" );
+            warn_disabled_feature( jsobj, "delete", member, "no copy-from" );
+        }
+    } else {
+        if( jsobj.has_object( "extend" ) ) {
+            JsonObject jext = jsobj.get_object( "extend" );
+            jext.allow_omitted_members();
+            // each entry is a group, as in the member itself
+            if( jext.has_member( "components" ) ) {
+                load_obj_list( jext.get_array( "components" ), req.components );
+            }
+            if( jext.has_member( "tools" ) ) {
+                load_obj_list( jext.get_array( "tools" ), req.tools );
+            }
+            if( jext.has_member( "qualities" ) ) {
+                load_obj_list( jext.get_array( "qualities" ), req.qualities );
+            }
+        }
+        if( jsobj.has_object( "delete" ) ) {
+            JsonObject jdel = jsobj.get_object( "delete" );
+            jdel.allow_omitted_members();
+            const auto delete_ids = [&jdel]( const std::string_view member, auto & groups ) {
+                if( !jdel.has_member( member ) ) {
+                    return;
+                }
+                std::vector<std::string> ids;
+                for( const std::string del : jdel.get_array( member ) ) {
+                    ids.push_back( del );
+                }
+                const std::vector<std::string> missing = delete_from_groups( groups, ids );
+                if( !missing.empty() ) {
+                    jdel.throw_error_at( member, string_format( "no %s %s to delete", member,
+                                         missing.front() ) );
+                }
+            };
+            delete_ids( "components", req.components );
+            delete_ids( "tools", req.tools );
+            delete_ids( "qualities", req.qualities );
+        }
+    }
+
+    req.id_ = id;
+    if( was_loaded && inherited.id_ == id ) {
+        // a copy of itself (a mod changing a recipe): what was stored is the parent, which req
+        // already started from, so req replaces it whole and an emptied group stays empty
+        requirements_all[id] = req;
+    } else {
+        save_requirement( req );
+    }
 }
 
 void requirement_data::save_requirement( const requirement_data &req, const requirement_id &id,
