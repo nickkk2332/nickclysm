@@ -5594,6 +5594,12 @@ void Character::assign_activity( const player_activity &act )
 
         activity = act;
     }
+    // u_assign_activity's context, for this activity's EOCs
+    if( std::optional<global_variables::impl_t> context = activity_eoc_context_scope::take() ) {
+        for( std::pair<const std::string, diag_value> &value : *context ) {
+            activity.eoc_context[value.first] = std::move( value.second );
+        }
+    }
 
     activity.start_or_resume( *this, resuming );
 
@@ -5642,7 +5648,9 @@ void Character::cancel_activity()
         backlog.front().auto_resume ) {
         backlog.front().auto_resume = false;
     }
-    if( activity && activity.can_resume() ) {
+    // left in the backlog to resume, so its end is an interruption
+    const bool resumable = activity && activity.can_resume();
+    if( resumable ) {
         activity.allow_distractions();
         // Don't auto-resume after explicit cancellation.  The stamina
         // "continue after a break" path uses assign_activity() (not
@@ -5662,7 +5670,7 @@ void Character::cancel_activity()
         // nothing reads stale task mission or attitude
         guy->end_cancelled_task();
     }
-    ended.run( *this, true );
+    ended.run( *this, true, resumable );
 }
 
 void Character::resume_backlog_activity()

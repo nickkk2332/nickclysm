@@ -6293,6 +6293,16 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
     const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
     const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
             src );
+    // values the activity's own EOCs get as context
+    std::unordered_map<std::string, diag_value_or_var> context;
+    if( jo.has_member( "context" ) ) {
+        const JsonObject values = jo.get_object( "context" );
+        for( const JsonMember &value : values ) {
+            diag_value_or_var vov;
+            mandatory( values, false, value.name(), vov );
+            context[value.name()] = vov;
+        }
+    }
 
     if( jo.has_string( member ) ) {
         // A literal id can be checked now; one from a variable is checked when it runs.
@@ -6320,7 +6330,7 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
         }
     }
     return [is_npc, has_duration, dov, act, fields, target_loc, recipe, butcher_type, true_eocs,
-            false_eocs, member = std::string( member )]( dialogue & d ) {
+            false_eocs, context, member = std::string( member )]( dialogue & d ) {
         // false_eocs get the reason in the context value "reason".
         const auto refuse_in = [&]( const dialogue & from, const std::string & reason ) {
             dialogue refused( from );
@@ -6346,6 +6356,12 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
             debugmsg( "%s: %s", member, *error );
             return;
         }
+        // The activity assigned below takes the context, for its own EOCs
+        global_variables::impl_t context_values;
+        for( const std::pair<const std::string, diag_value_or_var> &value : context ) {
+            context_values[value.first] = value.second.evaluate( d );
+        }
+        const activity_eoc_context_scope with_context( std::move( context_values ) );
         if( activity_actors::takes_eoc_target( a ) ) {
             activity_actors::eoc_activity_target what;
             if( fields.item ) {

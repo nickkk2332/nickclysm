@@ -4034,7 +4034,9 @@ This terrain is the roof of the tile below it, try to destroy that too. Further 
 
 The alpha talker is the creature doing the bashing when the game knows it: the player's or an NPC's smash, a monster bashing its way through or walking over sharp terrain, a melee attack through an obstacle, a spell (its caster), a bionic (its user), crushing frozen liquid, a failed prying attempt, a monster's shriek. Other bashes (explosions, fire, vehicles, projectiles, collapses, creatures thrown into things) get an empty alpha talker with no creature in it, so check `u_is_character` or `u_is_monster` before using `u_` effects or conditions. There is no beta talker. Context variables: `loc` (location of the tile), `old_ter` and `old_furn` (ids before the bash), `new_ter` and `new_furn` (ids now; the same as before for `eoc_on_hit`).
 
-Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc` and `field` (the field type id).
+Both get the context variable `cause`, saying what bashed the tile: `smash` (a creature did it), `explosion`, `fire`, `vehicle` (a crash or a vehicle crushing what it drives into), `collapse`, `projectile`, or `other` when the game doesn't know. Whatever the cause, destroying terrain or furniture on the main map also sends the `tile_destroyed` event (see EFFECT_ON_CONDITION.md), after `eoc_on_destroy`.
+
+Fields take the same members in their `bash` object: `eoc_on_destroy` runs when bashing clears the field and `eoc_on_hit` when a smash fails to; their context variables are `loc`, `cause` and `field` (the field type id).
 
 ```jsonc
 "bash": {

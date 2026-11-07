@@ -45,6 +45,8 @@
 #include "drawing_primitives.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "execution_fatal.h"
 #include "explosion.h"
 #include "field.h"
@@ -4335,6 +4337,7 @@ int map::collapse_check( const tripoint_bub_ms &p ) const
 void map::collapse_at( const tripoint_bub_ms &p, const bool silent, const bool was_supporting,
                        const bool destroy_pos )
 {
+    const bash_cause_scope collapsing( "collapse" );
     const bool supports = was_supporting || has_flag( ter_furn_flag::TFLAG_SUPPORTS_ROOF, p );
     const bool wall_tree = was_supporting || has_flag( ter_furn_flag::TFLAG_WALL, p ) ||
                            has_flag( ter_furn_flag::TFLAG_TREE, p );
@@ -4638,6 +4641,27 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
     return false;
 }
 
+// The innermost bash_cause_scope's cause, if any
+static const char *current_bash_cause = nullptr;
+
+bash_cause_scope::bash_cause_scope( const char *cause ) : previous( current_bash_cause )
+{
+    current_bash_cause = cause;
+}
+
+bash_cause_scope::~bash_cause_scope()
+{
+    current_bash_cause = previous;
+}
+
+std::string bash_cause_scope::current( const Creature *basher )
+{
+    if( current_bash_cause != nullptr ) {
+        return current_bash_cause;
+    }
+    return basher != nullptr ? "smash" : "other";
+}
+
 // Runs a bash's eoc_on_hit or eoc_on_destroy for the tile at p, with the basher (if any) as alpha.
 // With no known basher, alpha is an empty talker (as for ammo_effect EOCs): an EOC needs at least
 // one talker. Only on the main map: mapgen bashes temporary maps, where nothing happens in the
@@ -4651,6 +4675,7 @@ static void run_bash_eoc( const map &m, const effect_on_condition_id &eoc,
     }
     dialogue d( basher ? get_talker_for( basher ) : std::make_unique<talker>(), nullptr );
     d.set_value( "loc", m.get_abs( p ) );
+    d.set_value( "cause", bash_cause_scope::current( basher ) );
     for( const std::pair<std::string, std::string> &var : context ) {
         d.set_value( var.first, var.second );
     }
@@ -4981,6 +5006,18 @@ void map::bash_ter_furn( const tripoint_bub_ms &p, bash_params &params, bool rep
         run_bash_eoc( *this, bash->eoc_on_destroy, p, params.basher,
                       ter_furn_bash_context( *this, p, terid.id, furnid.id ) );
     }
+    // Only on the main map, as for the EOCs: mapgen bashes temporary maps
+    if( this == &get_map() ) {
+        const cata::event destroyed = cata::event::make<event_type::tile_destroyed>(
+                                          get_abs( p ).raw(), terid.id, furnid.id, ter( p ).id(), furn( p ).id(),
+                                          bash_cause_scope::current( params.basher ) );
+        if( params.basher != nullptr ) {
+            get_event_bus().send_with_talker( params.basher, static_cast<Creature *>( nullptr ),
+                                              destroyed );
+        } else {
+            get_event_bus().send_without_talker( destroyed );
+        }
+    }
 }
 
 bash_params map::bash( const tripoint_bub_ms &p, const int str,
@@ -5307,6 +5344,7 @@ void map::crush( const tripoint_bub_ms &p )
 
 double map::shoot( const tripoint_bub_ms &p, projectile &proj, const bool hit_items )
 {
+    const bash_cause_scope shooting( "projectile" );
     if( !inbounds( p ) ) {
         debugmsg( "Called map::shoot on out-of-bounds tile %s", p.to_string() );
         return 0;

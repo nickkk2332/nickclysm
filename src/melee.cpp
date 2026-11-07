@@ -1022,7 +1022,7 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         // Handles effects as well; not done in melee_affect_*
         if( technique.id != tec_none ) {
             perform_technique( technique, t, d, move_cost, cur_weapon,
-                               choice.how == technique_choice::mode::chosen && technique.id == choice.tec );
+                               choice.how == technique_choice::mode::chosen && technique.id == choice.tec, &ma_ctx );
         }
 
         //player has a very small chance, based on their intelligence, to learn a style whilst using the CQB bionic
@@ -2088,7 +2088,8 @@ melee::knockback_aim_test_answer;
 
 void Character::perform_technique( const ma_technique &technique, Creature &t,
                                    damage_instance &di,
-                                   int &move_cost, item_location &cur_weapon, bool chosen )
+                                   int &move_cost, item_location &cur_weapon, bool chosen,
+                                   const ma_event_context *attack )
 {
     map &here = get_map();
     const tripoint_bub_ms pos = pos_bub( here );
@@ -2149,10 +2150,14 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
             t.add_effect( effect_stunned, rng( 1_turns, time_duration::from_turns( technique.stun_dur ) ) );
         }
 
-        for( const effect_on_condition_id &eoc : technique.eocs ) {
-            dialogue d( get_talker_for( *this ), get_talker_for( t ) );
-            eoc->activate_activation_only( d, "a technique activation", "technique being activated",
-                                           "technique" );
+        if( !technique.eocs.empty() ) {
+            // The attack's context (weapon, style, technique, body part, crit), and the damage
+            // the hit will deal before armor, now that the technique has changed it
+            ma_event_context technique_ctx = attack != nullptr ? *attack : ma_event_context();
+            technique_ctx.opponent = &t;
+            technique_ctx.technique = technique.id;
+            technique_ctx.damage = di.total_damage();
+            technique_ctx.activate( *this, technique.eocs );
         }
     }
 
@@ -2395,6 +2400,7 @@ bool Character::block_hit( Creature *source, bodypart_id &bp_hit, damage_instanc
     gethit_ctx.opponent = source;
     gethit_ctx.bp = bp_hit.id();
     gethit_ctx.damage = dam.total_damage();
+    gethit_ctx.hit_by = "melee";
     martial_arts_data->ma_ongethit_effects( *this, gethit_ctx );
 
     // Shouldn't block if player is asleep or winded

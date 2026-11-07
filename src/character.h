@@ -76,6 +76,7 @@ class enchant_cache;
 class faction;
 class known_magic;
 class ma_technique;
+struct ma_event_context;
 class map;
 class player_morale;
 class profession;
@@ -1248,9 +1249,11 @@ class Character : public Creature, public visitable
         /**
          * Applies the technique's effects to t. `chosen`: the technique was chosen in the manual
          * technique menu, so the avatar in manual combat mode aims a controlled_knockback.
+         * The technique's EOCs get the attack's context from @p attack, if given.
          */
         void perform_technique( const ma_technique &technique, Creature &t, damage_instance &di,
-                                int &move_cost, item_location &cur_weapon, bool chosen = false );
+                                int &move_cost, item_location &cur_weapon, bool chosen = false,
+                                const ma_event_context *attack = nullptr );
 
         /**
          * Sets up a melee attack and handles melee attack function calls
@@ -3783,7 +3786,12 @@ class Character : public Creature, public visitable
         // providing the recipe or a nearby allied Character knows it.
         bool has_recipe( const recipe *r ) const;
         bool knows_recipe( const recipe *rec ) const;
-        void learn_recipe( const recipe *rec, bool override_never_learn = false );
+        /**
+         * Adds the recipe to the ones this character knows. If it didn't know it and @p how is
+         * given ("crafting", "disassembly" or "eoc"), sends character_learns_recipe.
+         */
+        void learn_recipe( const recipe *rec, bool override_never_learn = false,
+                           const std::string &how = std::string() );
         void forget_recipe( const recipe *rec );
         void forget_all_recipes();
         int exceeds_recipe_requirements( const recipe &rec ) const;

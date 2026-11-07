@@ -406,6 +406,9 @@ void player_activity::serialize( JsonOut &json ) const
         json.member( "relative_placement", relative_placement );
         json.member( "values", values );
         json.member( "str_values", str_values );
+        if( !eoc_context.empty() ) {
+            json.member( "eoc_context", eoc_context );
+        }
         json.member( "auto_resume", auto_resume );
         json.member( "monsters", monsters );
     }
@@ -474,6 +477,7 @@ void player_activity::deserialize( const JsonObject &data )
     data.read( "relative_placement", relative_placement );
     values = data.get_int_array( "values" );
     str_values = data.get_string_array( "str_values" );
+    data.read( "eoc_context", eoc_context );
     data.read( "auto_resume", auto_resume );
     data.read( "monsters", monsters );
 

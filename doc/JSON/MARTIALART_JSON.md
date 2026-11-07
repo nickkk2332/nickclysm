@@ -104,7 +104,7 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
 | `oncrit_eocs` | target | same as `onhit_eocs` |
 | `onkill_eocs` | target (now dead) | same as `onhit_eocs`, plus `killed` |
 | `onmiss_eocs` | target | `weapon`, `hit` |
-| `ongethit_eocs` | attacker, if there is one | `bp`, `damage` |
+| `ongethit_eocs` | attacker, if there is one | `bp`, `damage`, `hit_by` |
 | `onblock_eocs` | attacker | `bp`, `damage` |
 | `ondodge_eocs` | attacker, if there is one | none |
 | `ongrab_eocs` | the creature you got a hold on | `grab_strength`, `grab_part` |
@@ -122,7 +122,7 @@ The event EOCs run with the martial artist as the alpha (`u_`) talker and the ot
 
 `ongrab_eocs` and `ongrabbed_eocs` run when a hold is established: your grab or an EOC's (anything that goes through the grappling code), and a monster's grab attack once the attack is over.  They run for every hold, also one you go along with (a friend's grab) or while you are asleep; a grab counter (see [Grab counters](#grab-counters)) comes after `ongrabbed_eocs`, so an `ongrabbed_buffs` buff can be what a counter requires.
 
-`onhit_eocs` run after the hit is dealt, so they see the damage; they still run when the hit deals no damage (check `_damage`). `ongethit_eocs` run for every melee hit you take, also while you are asleep, winded or driving and can't block. The beta talker can be missing (for example a hit with no attacker), so check `has_beta` before using `npc_` effects.
+`onhit_eocs` run after the hit is dealt, so they see the damage; they still run when the hit deals no damage (check `_damage`). `ongethit_eocs` run for every melee hit you take, also while you are asleep, winded or driving and can't block, and for every projectile, fragment of shrapnel and explosion that hits you. `hit_by` says which: `melee`, `projectile`, `shrapnel` or `explosion`. An explosion runs them once, with no `bp` and the blast's force as `damage`; the beta talker is whoever set it off, if anyone. The beta talker can be missing (for example a hit with no attacker), so check `has_beta` before using `npc_` effects.
 
 ```jsonc
 "onkill_eocs": [
@@ -310,7 +310,7 @@ Techniques are special attacks performed while using a given MA style.  These ar
     "You phase-strike %s",
     "<npcname> phase-strikes %s"
   ],
-  "eocs": [ "EOC_ID", { "id": "INLINE_EOC_ID" } ],    // EOCs that trigger each time this technique does, with the attacker as the speaker and the target as the listener. Syntax allows either eoc IDs or as inline blocks. They run before the hit is dealt, once per repeat
+  "eocs": [ "EOC_ID", { "id": "INLINE_EOC_ID" } ],    // EOCs that trigger each time this technique does, with the attacker as the speaker and the target as the listener. Syntax allows either eoc IDs or as inline blocks. They run before the hit is dealt, once per repeat, with the attack's context values: `weapon`, `style`, `technique` and `bp` (the target's body part), `crit` and `hit` (1 or 0), and `damage`, the damage the hit will deal before armor, with the technique's bonuses
   "post_hit_eocs": [ "EOC_ID" ],          // EOCs that run once after the hit is dealt, with the attacker as alpha and the target as beta. They get the same context values as a martial art's onkill_eocs (see Martial art event EOCs): `weapon`, `hit`, `technique`, `bp`, `crit`, `damage` (damage dealt after armor; 0 if the target died before the hit landed) and `killed` (1 if the target is dead)
   "flat_bonuses": <array>,               // Any bonuses, see Bonuses below
   "mult_bonuses": <array>,

@@ -1004,6 +1004,7 @@ void vehicle::crash_terrain_around( map &here )
         if( crush_target.z() != -OVERMAP_LAYERS ) {
             velocity = 0;
             cruise_velocity = 0;
+            const bash_cause_scope crushing( "vehicle" );
             here.destroy( crush_target );
             if( &here == &reality_bubble() ) { // TODO: Make sound handling map aware
                 sounds::sound( crush_target, 500, sounds::sound_t::combat, _( "Clanggggg!" ), false,
