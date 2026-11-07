@@ -269,8 +269,9 @@ TEST_CASE( "vint-j01_repair_vehicle_parts", "[audit][vehicle][eoc]" )
     const std::vector<int> wheels = parts_of( car, vpart_wheel );
     REQUIRE( wheels.size() == 4 );
     const int durability = car.part( wheels[0] ).info().durability;
-    car.set_hp( car.part( wheels[0] ), 0, true );
-    car.set_hp( car.part( wheels[1] ), durability / 2, true );
+    // no degradation, which a spawned part may have and which caps a repair
+    car.set_hp( car.part( wheels[0] ), 0, true, 0 );
+    car.set_hp( car.part( wheels[1] ), durability / 2, true, 0 );
     REQUIRE( car.part( wheels[0] ).is_broken() );
 
     // broken parts are left alone by default: the game replaces them
@@ -290,8 +291,8 @@ TEST_CASE( "vint-j01_repair_vehicle_parts", "[audit][vehicle][eoc]" )
     CHECK( eval_math( d, "u_vehicle_part_count('part': 'wheel')" ) == 4 );
 
     // "count" repairs that many of the damaged parts that match
-    car.set_hp( car.part( wheels[2] ), durability / 2, true );
-    car.set_hp( car.part( wheels[3] ), durability / 2, true );
+    car.set_hp( car.part( wheels[2] ), durability / 2, true, 0 );
+    car.set_hp( car.part( wheels[3] ), durability / 2, true, 0 );
     run_effect( d,
                 R"({ "u_repair_vehicle_parts": 100, "percent": true, "flag": "WHEEL", "count": 1 })" );
     CHECK( context( d, "vehicle_parts_repaired" ) == 1 );

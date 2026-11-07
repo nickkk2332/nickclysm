@@ -138,10 +138,10 @@ struct process_message {
 struct process_time_message {
     // With %s for the time left.
     translation exact;
-    // Plural forms with %d.
-    translation hours;
+    // Plural forms with %d: they must be plural translations, or "str_pl" is a load error.
+    translation hours{ translation::plural_tag() };
     translation less_than_an_hour;
-    translation minutes;
+    translation minutes{ translation::plural_tag() };
 
     void print( const time_duration &left ) const;
     void deserialize( const JsonValue &jv );

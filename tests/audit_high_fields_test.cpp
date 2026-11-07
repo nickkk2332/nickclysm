@@ -317,7 +317,8 @@ TEST_CASE( "map-j02_vanilla_fields_pick_their_processors_in_json", "[audit][fiel
 // Each is a contact processor now, picked in JSON. The vanilla fields hurt as before: a small
 // fire doesn't, a raging one burns everything but the head of someone standing in it, acid burns
 // the feet, electricity the whole body. A test field reusing a processor hurts exactly as the
-// vanilla field does from the same seed.
+// vanilla field does from the same seed. Feet and hands have no HP of their own: what burns
+// them comes off the leg or arm they belong to.
 TEST_CASE( "map-j02_vanilla_contact_damage_is_unchanged_and_reusable", "[audit][field]" )
 {
     clear_map_without_vision();
@@ -328,8 +329,7 @@ TEST_CASE( "map-j02_vanilla_contact_damage_is_unchanged_and_reusable", "[audit][
     const bodypart_id torso( "torso" );
     const bodypart_id arm_l( "arm_l" );
     const bodypart_id leg_l( "leg_l" );
-    const bodypart_id foot_l( "foot_l" );
-    const bodypart_id foot_r( "foot_r" );
+    const bodypart_id leg_r( "leg_r" );
     const std::map<bodypart_id, int> full = part_hp( avatar_alone_at( tripoint_bub_ms( 60, 60,
                                             0 ) ) );
 
@@ -341,7 +341,7 @@ TEST_CASE( "map-j02_vanilla_contact_damage_is_unchanged_and_reusable", "[audit][
         CHECK( raging.at( torso ) < full.at( torso ) );
         CHECK( raging.at( arm_l ) < full.at( arm_l ) );
         CHECK( raging.at( leg_l ) < full.at( leg_l ) );
-        CHECK( raging.at( foot_l ) < full.at( foot_l ) );
+        CHECK( raging.at( leg_r ) < full.at( leg_r ) );
         CHECK( hp_after_contact( field_audit_high_fields_hellfire.id(), 3 ) == raging );
         CHECK( hp_after_contact( field_audit_high_fields_hellfire.id(), 1 ) == full );
 
@@ -352,11 +352,11 @@ TEST_CASE( "map-j02_vanilla_contact_damage_is_unchanged_and_reusable", "[audit][
 
     SECTION( "acid" ) {
         const std::map<bodypart_id, int> burnt = hp_after_contact( fd_acid.id(), 3 );
-        CHECK( burnt.at( foot_l ) < full.at( foot_l ) );
-        CHECK( burnt.at( foot_r ) < full.at( foot_r ) );
+        CHECK( burnt.at( leg_l ) < full.at( leg_l ) );
+        CHECK( burnt.at( leg_r ) < full.at( leg_r ) );
         CHECK( burnt.at( torso ) == full.at( torso ) );
         CHECK( burnt.at( head ) == full.at( head ) );
-        CHECK( burnt.at( leg_l ) == full.at( leg_l ) );
+        CHECK( burnt.at( arm_l ) == full.at( arm_l ) );
     }
 
     SECTION( "electricity" ) {
@@ -507,14 +507,15 @@ TEST_CASE( "map-j02_contact_damage_and_eoc_on_contact", "[audit][field][eoc]" )
     clear_creatures();
     get_globals().clear_global_values();
     const bodypart_id torso( "torso" );
-    const bodypart_id foot_l( "foot_l" );
+    const bodypart_id leg_l( "leg_l" );
     const bodypart_id head( "head" );
     const std::map<bodypart_id, int> full = part_hp( u );
 
     REQUIRE( here.add_field( p, field_audit_high_fields_tar, 1, 0_turns, false ) );
     here.creature_in_field( u );
     std::map<bodypart_id, int> hp = part_hp( u );
-    CHECK( hp.at( foot_l ) < full.at( foot_l ) );
+    // the ground-contact parts are the feet, whose damage comes off the legs
+    CHECK( hp.at( leg_l ) < full.at( leg_l ) );
     CHECK( hp.at( torso ) == full.at( torso ) );
     CHECK( hp.at( head ) == full.at( head ) );
     CHECK( tar_global( "audit_high_fields_tar_count" ).dbl() == 1 );
@@ -528,7 +529,7 @@ TEST_CASE( "map-j02_contact_damage_and_eoc_on_contact", "[audit][field][eoc]" )
     here.creature_in_field( u );
     const std::map<bodypart_id, int> boiled = part_hp( u );
     CHECK( boiled.at( torso ) < full.at( torso ) );
-    CHECK( boiled.at( foot_l ) == hp.at( foot_l ) );
+    CHECK( boiled.at( leg_l ) == hp.at( leg_l ) );
     CHECK( tar_global( "audit_high_fields_tar_count" ).dbl() == 2 );
     CHECK( tar_global( "audit_high_fields_tar_intensity" ).dbl() == 2 );
 

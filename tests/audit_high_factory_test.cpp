@@ -184,7 +184,7 @@ TEST_CASE( "data-j02_skills_support_copy_from", "[audit][json]" )
 TEST_CASE( "data-j02_vanilla_skills_keep_their_order", "[audit][json]" )
 {
     std::vector<skill_id> vanilla;
-    const JsonValue jv = json_loader::from_path( PATH_INFO::jsondir() / "skills.json" );
+    const JsonValue jv = json_loader::from_path( PATH_INFO::datadir_path() / "json" / "skills.json" );
     for( JsonObject jo : jv.get_array() ) {
         jo.allow_omitted_members();
         if( jo.get_string( "type" ) != "skill" ) {
@@ -268,7 +268,8 @@ TEST_CASE( "data-j02_vehicle_groups_support_copy_from", "[audit][json]" )
 TEST_CASE( "data-j02_vanilla_vehicle_groups_are_unchanged", "[audit][json]" )
 {
     std::map<std::string, std::vector<vproto_id>> vanilla;
-    const JsonValue jv = json_loader::from_path( PATH_INFO::jsondir() / "vehicle_groups.json" );
+    const JsonValue jv = json_loader::from_path( PATH_INFO::datadir_path() / "json" /
+                         "vehicle_groups.json" );
     for( JsonObject jo : jv.get_array() ) {
         jo.allow_omitted_members();
         if( jo.get_string( "type" ) != "vehicle_group" ) {
@@ -319,7 +320,7 @@ TEST_CASE( "data-j02_dreams_support_copy_from", "[audit][json]" )
 // DATA-J02: the vanilla dreams got ids; they load as before, in the same order.
 TEST_CASE( "data-j02_vanilla_dreams_are_unchanged", "[audit][json]" )
 {
-    const JsonValue jv = json_loader::from_path( PATH_INFO::jsondir() / "dreams.json" );
+    const JsonValue jv = json_loader::from_path( PATH_INFO::datadir_path() / "json" / "dreams.json" );
     size_t i = 0;
     for( JsonObject jo : jv.get_array() ) {
         jo.allow_omitted_members();

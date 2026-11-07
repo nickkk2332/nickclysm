@@ -892,6 +892,9 @@ TEST_CASE( "mondt-j02_butchery_trains_proficiencies_as_before", "[audit][butcher
                 const auto run = [&]( bool old ) {
                     clear_avatar();
                     Character &you = get_player_character();
+                    // both runs start alike: practice scales by focus and drains it
+                    you.set_focus( 100 );
+                    rng_set_engine_seed( 4242 );
                     if( knows_basic ) {
                         you.add_proficiency( proficiency_prof_butchering_basic, true );
                         you.add_proficiency( proficiency_prof_skinning_basic, true );

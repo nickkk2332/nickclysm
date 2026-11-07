@@ -403,6 +403,32 @@ TEST_CASE( "spat-j01_vanilla_content_muffles_nothing", "[audit][sound]" )
     }
 }
 
+namespace
+{
+// override_option restores an option from its text value, which external options don't have,
+// so it would leave them at 0 for every test after; this keeps the number itself.
+class override_external_int_option
+{
+    public:
+        override_external_int_option( const std::string &name, const int value ) : name( name ),
+            old_value( get_option<int>( name ) ) {
+            set( value );
+        }
+        override_external_int_option( const override_external_int_option & ) = delete;
+        override_external_int_option &operator=( const override_external_int_option & ) = delete;
+        ~override_external_int_option() {
+            set( old_value );
+        }
+    private:
+        void set( const int value ) const {
+            get_options().get_option( name ).setValue( value );
+            options_manager::update_options_cache();
+        }
+        std::string name;
+        int old_value;
+};
+} // namespace
+
 TEST_CASE( "spat-j01_vertical_sound_options_default_to_the_old_constants", "[audit][sound]" )
 {
     CHECK( get_option<int>( "SOUND_Z_LEVEL_MULT" ) == 5 );
@@ -419,13 +445,13 @@ TEST_CASE( "spat-j01_vertical_sound_options_default_to_the_old_constants", "[aud
 
     const tripoint_bub_ms ground( 60, 66, 0 );
     SECTION( "SOUND_Z_LEVEL_MULT scales every level" ) {
-        override_option opt( "SOUND_Z_LEVEL_MULT", "10" );
+        override_external_int_option opt( "SOUND_Z_LEVEL_MULT", 10 );
         CHECK( sounds::sound_distance( ground, ground + tripoint::above ) == 10 );
         CHECK( sounds::sound_distance( ground, ground + tripoint::below ) == 50 );
     }
     SECTION( "the underground multipliers at 1 make underground like the surface" ) {
-        override_option shallow( "SOUND_UNDERGROUND_MULT", "1" );
-        override_option deep( "SOUND_DEEP_UNDERGROUND_MULT", "1" );
+        override_external_int_option shallow( "SOUND_UNDERGROUND_MULT", 1 );
+        override_external_int_option deep( "SOUND_DEEP_UNDERGROUND_MULT", 1 );
         CHECK( sounds::sound_distance( ground, ground + tripoint( 0, 0, -3 ) ) == 15 );
         CHECK( sounds::sound_distance( ground, ground + tripoint( 0, 0, 3 ) ) == 15 );
     }
