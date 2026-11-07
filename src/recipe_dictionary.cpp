@@ -959,7 +959,7 @@ bool is_known_recipe_flag( const std::string_view flag )
     static const std::set<std::string, std::less<>> known = {
         "AFFECTED_BY_PAIN", "ALLOW_ROTTEN", "ALWAYS_START_ON_GROUND", "BLIND_EASY", "BLIND_HARD",
         "FULL_MAGAZINE", "NEED_FULL_MAGAZINE", "NO_BENCH", "NO_ENCHANTMENT", "NO_FOOD_REQ",
-        "NO_MANIP", "NO_RESIZE", "SECRET"
+        "NO_MANIP", "NO_NPC_CRAFT", "NO_RESIZE", "SECRET"
     };
     if( known.find( flag ) != known.end() ) {
         return true;

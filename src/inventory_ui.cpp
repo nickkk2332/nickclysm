@@ -2558,8 +2558,9 @@ bool inventory_selector::highlight( const item_location &loc, bool hidden, bool 
                 if( !parent ) {
                     continue;
                 }
+                // the parent can be hidden too (filtered out)
                 inventory_entry *pent = elem->find_by_location( parent );
-                if( elem != nullptr ) {
+                if( pent != nullptr ) {
                     elem->set_collapsed( *pent, false );
                     prepare_layout();
                     found = elem->highlight( loc, true );
@@ -2589,9 +2590,16 @@ item_location inventory_selector::get_collation_next() const
     }
 
     item_location const &loc_cur = ent.locations.front();
-    inventory_entry const &p_ent = *col.find_by_location( ent.collation_meta->tip );
-    auto iter = std::find( p_ent.locations.begin(), p_ent.locations.end(), loc_cur );
-    if( iter == --p_ent.locations.end() ) {
+    // the header is not shown when the filter matches this copy but not the first one
+    inventory_entry const *p_ent = col.find_by_location( ent.collation_meta->tip );
+    if( p_ent == nullptr || p_ent->locations.size() < 2 ) {
+        return {};
+    }
+    auto iter = std::find( p_ent->locations.begin(), p_ent->locations.end(), loc_cur );
+    if( iter == p_ent->locations.end() ) {
+        return {};
+    }
+    if( iter == --p_ent->locations.end() ) {
         return *--iter;
     }
 
@@ -5501,10 +5509,7 @@ std::pair<item_location, bool> unload_selector::execute()
         } else if( input.action == "CONFIRM" ) {
             const inventory_entry &highlighted = get_active_column().get_highlighted();
             if( highlighted && highlighted.is_selectable() ) {
-                item to_unload = *highlighted.any_item();
-                if( !avatar_action::check_stealing( get_player_character(), to_unload ) ) {
-                    return { item_location(), uistate.unload_auto_contain };
-                }
+                // Character::unload asks before taking what isn't ours, whichever key chose it
                 return { highlighted.any_item(), uistate.unload_auto_contain };
             }
         } else if( input.action == "CONTAIN_MODE" ) {

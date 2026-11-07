@@ -1538,7 +1538,7 @@ void crafting_ui_impl::draw_modifier_table( const recipe &recp, const recipe_pan
 
                 if( std::abs( int_delta ) > 0.01f ) {
                     cond_source();
-                    ImGui::Text( "%s %d", _( "intelligence" ), panel.intelligence );
+                    ImGui::Text( "%s %d", panel.crafting_stat_name.c_str(), panel.intelligence );
                     cond_source_end();
                     dash_cell();
                     skill_mod_cell( int_delta );
@@ -2609,6 +2609,9 @@ int choose_crafter( const std::vector<Character *> &crafting_group, int crafter_
             std::string dummy;
             if( chara->is_npc() && !rec->npc_can_craft( dummy ) ) {
                 reasons.emplace_back( _( "is NPC" ) );
+            }
+            if( !rec->meets_condition( *chara ) ) {
+                reasons.emplace_back( _( "condition" ) );
             }
 
             entry.emplace_back(

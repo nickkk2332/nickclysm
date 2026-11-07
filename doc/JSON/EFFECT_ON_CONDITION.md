@@ -4010,7 +4010,11 @@ Run EOCs on items in your or NPC's inventory. For an item talker (a bag, a toolb
 | "u_run_inv_eocs" / "npc_run_inv_eocs" | **mandatory** | string or [variable object](#variable-object) | way the item would be picked; <br/>values can be:<br/>`all` - all items that match the conditions are picked;<br/> `random` - from all items that match the conditions, one picked;<br/>`manual` - menu is open with all items that can be picked, and you can choose one;<br/>`manual_mult` - same as `manual`, but multiple items can be picked |
 | "search_data" | optional | `search_data` | sets the condition(s) for the target item; lack of search_data means any item can be picked; see [search_data](#search_data) for syntax |
 | "title" | optional | string or [variable object](#variable-object) | name of the menu, that would be shown, if `manual` or `manual_mult` is used |
-| "true_eocs" / "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if item was picked successfully, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run; picked item is returned as npc; for example, `n_hp()` return hp of an item |
+| "hint" | optional | string or [variable object](#variable-object) | a line shown under the title of the `manual` and `manual_mult` menus |
+| "none_message" | optional | string or [variable object](#variable-object) | what the `manual` and `manual_mult` menus say when nothing can be picked (default "You don't have the necessary item at hand.") |
+| "denial" | optional | array of objects | items the menus show greyed out, with the reason, and don't let you pick: each object has a `"condition"` ([dialogue condition](#possible-conditions)) and a `"message"` (string or [variable object](#variable-object)); the first entry whose condition is true denies the item. u is the talker of this effect and npc the item. `all` and `random` ignore it |
+| "columns" | optional | array of objects | extra columns of the menus: each object has a `"title"` and a `"value"` (number, [variable object](#variable-object) or math), read with u = the talker and npc = the item; shown without decimals when whole |
+| "true_eocs" / "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if item was picked successfully, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run; picked item is returned as npc; for example, `n_hp()` return hp of an item. With `manual_mult`, the context value `_count` is how many of the item were marked (of a stack, or charges) |
 
 ##### Valid talkers:
 
@@ -4044,6 +4048,24 @@ Pick a wooden item with `DURABLE_MELEE` and `ALWAYS_TWOHAND` flags, and run `EOC
       "search_data": [ { "material": "wood", "flags": [ "DURABLE_MELEE", "ALWAYS_TWOHAND" ] } ],
       "true_eocs": [ "EOC_DO_SOMETHING_WITH_ITEM" ],
       "false_eocs": [ { "id": "EOC_NO_SUCH_ITEM", "effect": [ { "u_message": "You don't have an item i need" } ] } ]
+    }
+  ]
+}
+```
+Offer reagents: items without the `MAGIC_FOCUS` flag are shown but can't be picked, a column shows each item's `cost` variable, and `EOC_OFFER` learns how many were marked
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_OFFER_REAGENTS",
+  "effect": [
+    {
+      "u_run_inv_eocs": "manual_mult",
+      "title": "Offer reagents",
+      "hint": "Each reagent adds 10 mana",
+      "none_message": "You have nothing to offer.",
+      "denial": [ { "condition": { "not": { "npc_has_flag": "MAGIC_FOCUS" } }, "message": "inert" } ],
+      "columns": [ { "title": "COST", "value": { "math": [ "n_cost" ] } } ],
+      "true_eocs": [ { "id": "EOC_OFFER", "effect": [ { "math": [ "u_offered += _count" ] } ] } ]
     }
   ]
 }
@@ -4188,7 +4210,11 @@ Search items around you on the map, and run EoC on them
 | "title" | optional | string or [variable object](#variable-object) | name of the menu that would be shown, if `manual` or `manual_mult` values are used |
 | "search_data" | optional | `search_data` | sets the condition(s) for the target item; lack of search_data means any item can be picked; see [search_data](#search_data) for syntax |
 | "accessible" | optional | boolean | if true or unspecified then only accessible items are found |
-| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if item was picked successfully, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run; picked item is returned as npc |
+| "hint" | optional | string or [variable object](#variable-object) | a line shown under the title of the `manual` and `manual_mult` menus |
+| "none_message" | optional | string or [variable object](#variable-object) | what the `manual` and `manual_mult` menus say when nothing can be picked (default "You don't have the necessary item at hand.") |
+| "denial" | optional | array of objects | items the menus show greyed out, with the reason, and don't let you pick: each object has a `"condition"` ([dialogue condition](#possible-conditions)) and a `"message"` (string or [variable object](#variable-object)); the first entry whose condition is true denies the item. u is the talker of this effect and npc the item. `all` and `random` ignore it |
+| "columns" | optional | array of objects | extra columns of the menus: each object has a `"title"` and a `"value"` (number, [variable object](#variable-object) or math), read with u = the talker and npc = the item; shown without decimals when whole |
+| "true_eocs", "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | if item was picked successfully, all EoCs from `true_eocs` are run, otherwise all EoCs from `false_eocs` are run; picked item is returned as npc. With `manual_mult`, the context value `_count` is how many of the item were marked |
 
 ##### Valid talkers:
 
@@ -5848,6 +5874,25 @@ You forget a recipe, that was passes by `recipe_id` context value
 { "u_forget_recipe": { "context_val": "recipe_id" } }
 ```
 
+#### `u_open_crafting_menu`, `npc_open_crafting_menu`
+Opens the crafting menu, as the craft key does, when the talker is the avatar (for anyone else it does nothing). It can start with a search, in the crafting menu's search syntax (`p:fabrication`, `c:leather`, `q:CUT`, several joined with commas...), and on a recipe. The menu lets the player choose a follower to craft, as it always does. To know whether a recipe can be crafted now, use the math function `can_craft('recipe')`.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_open_crafting_menu" / "npc_open_crafting_menu" | **mandatory** | object | `"filter"`: optional string or [variable object](#variable-object), the search to start with; `"recipe"`: optional string or [variable object](#variable-object), the recipe to show first (an unknown one is an error, and the menu opens without it) |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+Open the crafting menu on the fabrication recipes, showing `forge_sword` first
+```jsonc
+{ "u_open_crafting_menu": { "filter": "p:fabrication", "recipe": "forge_sword" } }
+```
+
 
 #### `u_set_chatbin_topic`, `npc_set_chatbin_topic`
 Changes which topic an NPC (You or NPC) opens a conversation with in a situation, as the [`npc` template fields](NPCs.md#writing-dialogues) of the same names set it; the change is saved with the NPC. `first_topic` is the template's `chat`, what [`npc_first_topic`](#npc_first_topic) sets. The others are `talk_radio`, `talk_leader`, `talk_friend`, `talk_stole_item`, `talk_wake_up`, `talk_mug`, `talk_stranger_aggressive`, `talk_stranger_scared`, `talk_stranger_wary`, `talk_stranger_friendly`, `talk_stranger_neutral`, `talk_friend_guard`, `talk_mission_inquire` and `talk_mission_describe_urgent`.  Any other name is an error.
@@ -6682,7 +6727,7 @@ it does nothing.
 | `ACT_DISASSEMBLE` | `target_item` | Takes the item apart; a stack counted by charges is taken apart whole. Refused: it can't be disassembled (no recipe, missing tools), it's a favorite, it's worn, it belongs to someone else |
 | `ACT_CRAFT` | `recipe`, and optionally `target_loc`; or `target_item` | With `recipe`, starts a new craft of one: in hand, or at `target_loc` (the talker's tile or a tile next to it). As with the crafting menu, a workbench next to the talker is used if there is one. Components and tools are chosen as an NPC chooses them; rotten components may be used, favorited ones aren't. With `target_item`, goes on with that craft in progress, where it is, using up any components it is missing without asking (as when the player agrees to). Refused: the talker doesn't know the recipe (`u_learn_recipe` teaches it), lacks its proficiencies or requirements, the components or tools aren't at hand (for a craft in progress, the components it is missing), too dark, not in the mood |
 | `ACT_WEAR` | `target_item` | Puts the item on. Refused: already worn, it can't be worn (the reason says why), it belongs to someone else |
-| `ACT_UNLOAD` | `target_item` | Empties a container or a magazine over time. A gun or a tool gives up its magazine or ammo at once, with no activity (`true_eocs` still run). Refused: nothing in it, the contents are liquid (they would have to be poured somewhere), or there are several things to unload (gunmods, several magazines), which would need a choice |
+| `ACT_UNLOAD` | `target_item` | Empties a container or a magazine over time. A gun or a tool gives up its magazine or ammo at once, with no activity (`true_eocs` still run). Refused: nothing in it, the contents are liquid (they would have to be poured somewhere), there are several things to unload (gunmods, several magazines), which would need a choice, or it belongs to someone else |
 | `ACT_RELOAD` | `target_item` | Reloads it with the quickest ammo or magazine at hand (in a holster or an ammo pouch, the item it holds). The item has to be carried, unless it is used where it stands. Refused: it can't be reloaded now (full, or nothing fits), no ammo at hand |
 | `ACT_CONSUME` | `target_item` | Eats or drinks it. Refused: not food, drink or medicine, the talker can't eat it, anything the avatar would be asked about first (rotten, allergy, too full, cannibalism...), it belongs to someone else, and for an NPC, food it has no need of now |
 | `ACT_WIELD` | `target_item` | Wields it. Refused: already wielded, it can't be wielded (the reason says why), the talker's hands aren't free (`u_wield_item` puts away what is in them first), it belongs to someone else |

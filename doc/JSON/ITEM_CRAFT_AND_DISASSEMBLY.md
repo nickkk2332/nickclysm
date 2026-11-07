@@ -174,6 +174,18 @@ When a recipe with `copy-from` defines `character_requirements`, the entire inhe
 
 Unlocking a recipe is still done by teaching it (`u_learn_recipe`); `condition` is for recipes that are known but only sometimes possible.
 
+`"hide_if_condition_fails": true` keeps the crafting menu from listing the recipe at all while its condition fails.
+
+#### `knowledge_ratio`
+
+`knowledge_ratio` (default 0.8, from 0 to 1) is the share of the recipe's difficulty that the crafter's theoretical knowledge of `skill_used` must reach, rounded down: below it the menu says the crafter lacks the theoretical knowledge, and a helper who knows the recipe can't explain it.
+
+```jsonc
+"knowledge_ratio": 1.0
+```
+
+A recipe with the `NO_NPC_CRAFT` flag can't be crafted by NPCs (followers included); use `condition` for more particular rules.
+
 #### Changing proficiencies and requirements with `copy-from`
 
 A recipe with `copy-from` inherits its parent's `proficiencies`. Giving `proficiencies` replaces the whole list; `extend` and `delete` change it by proficiency id:

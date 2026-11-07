@@ -67,6 +67,7 @@ static const morale_type morale_fun_craft( "morale_fun_craft" );
 static const morale_type morale_shitty_craft( "morale_shitty_craft" );
 
 static const std::string flag_FULL_MAGAZINE( "FULL_MAGAZINE" );
+static const std::string flag_NO_NPC_CRAFT( "NO_NPC_CRAFT" );
 
 namespace
 {
@@ -520,6 +521,14 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
             // single requirement
             required_skills[skill_id( sk.get_string( 0 ) )] = sk.get_int( 1 );
         }
+    }
+
+    // UIINV-J03: hiding a recipe whose condition (CRAFT-J06, below) fails, and the share of the
+    // difficulty theoretical knowledge must reach
+    optional( jo, was_loaded, "hide_if_condition_fails", hide_if_condition_fails_, false );
+    optional( jo, was_loaded, "knowledge_ratio", knowledge_ratio_, 0.8f );
+    if( knowledge_ratio_ < 0.0f || knowledge_ratio_ > 1.0f ) {
+        jo.throw_error_at( "knowledge_ratio", "must be from 0 to 1" );
     }
 
     if( jo.has_member( "character_requirements" ) ) {
@@ -1887,6 +1896,11 @@ bool recipe::character_meets_requirements( const Character &character ) const
     return meets_condition( character );
 }
 
+int recipe::required_knowledge_level( const Character &crafter ) const
+{
+    return static_cast<int>( get_difficulty( crafter ) * knowledge_ratio_ );
+}
+
 bool recipe::has_character_requirements() const
 {
     return !character_requirements_.empty() || has_condition_;
@@ -2107,8 +2121,13 @@ void recipe::apply_positive_morale_mods( Character &guy ) const
     }
 }
 
-bool recipe::npc_can_craft( std::string & ) const
+bool recipe::npc_can_craft( std::string &reason ) const
 {
+    // UIINV-J03: NPCs can't craft it, followers or not ("condition" can say more)
+    if( has_flag( flag_NO_NPC_CRAFT ) ) {
+        reason = _( "NPCs can't craft this." );
+        return false;
+    }
     return true;
 }
 

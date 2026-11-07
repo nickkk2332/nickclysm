@@ -524,6 +524,95 @@ struct item_search_data {
         return true;
     }
 };
+
+// UIINV-J01: what the item menus of u_run_inv_eocs and u_map_run_item_eocs show besides the
+// title. Denials and columns are read with u = the EOC's talker and npc = the item.
+struct item_menu_options {
+    struct denial_entry {
+        std::function<bool( const_dialogue const & )> condition;
+        translation_or_var message;
+    };
+    struct column_entry {
+        translation title;
+        dbl_or_var value;
+    };
+    std::optional<translation_or_var> hint;
+    std::optional<translation_or_var> none_message;
+    std::vector<denial_entry> denials;
+    std::vector<column_entry> columns;
+
+    explicit item_menu_options( const JsonObject &jo ) {
+        optional( jo, false, "hint", hint );
+        optional( jo, false, "none_message", none_message );
+        for( const JsonObject denial_jo : jo.get_array( "denial" ) ) {
+            denial_entry entry;
+            read_condition( denial_jo, "condition", entry.condition, false );
+            mandatory( denial_jo, false, "message", entry.message );
+            denials.push_back( std::move( entry ) );
+        }
+        for( const JsonObject column_jo : jo.get_array( "columns" ) ) {
+            column_entry entry;
+            mandatory( column_jo, false, "title", entry.title );
+            entry.value = get_dbl_or_var( column_jo, "value", true );
+            columns.push_back( std::move( entry ) );
+        }
+    }
+
+    std::string hint_text( const_dialogue const &d ) const {
+        return hint ? hint->evaluate( d ).translated() : std::string();
+    }
+    // empty: the menu's own
+    std::string none_text( const_dialogue const &d ) const {
+        return none_message ? none_message->evaluate( d ).translated() : std::string();
+    }
+};
+
+// whole numbers without decimals
+std::string item_menu_number( double value )
+{
+    if( std::abs( value - std::round( value ) ) < 0.005 ) {
+        return string_format( "%.0f", value );
+    }
+    return string_format( "%.2f", value );
+}
+
+class eoc_item_menu_preset : public inventory_filter_preset
+{
+    public:
+        eoc_item_menu_preset( const item_location_filter &filter, const item_menu_options &opts,
+                              const dialogue &d, bool is_npc ) :
+            inventory_filter_preset( filter ), opts( opts ), d( d ), is_npc( is_npc ) {
+            for( const item_menu_options::column_entry &column : opts.columns ) {
+                const dbl_or_var value = column.value;
+                append_cell( [this, value]( const item_location & loc ) {
+                    return item_menu_number( value.evaluate( item_dialogue( loc ) ) );
+                }, column.title.translated() );
+            }
+        }
+
+        std::string get_denial( const item_location &loc ) const override {
+            if( opts.denials.empty() ) {
+                return std::string();
+            }
+            const const_dialogue dial = item_dialogue( loc );
+            for( const item_menu_options::denial_entry &denial : opts.denials ) {
+                if( denial.condition( dial ) ) {
+                    return denial.message.evaluate( dial ).translated();
+                }
+            }
+            return std::string();
+        }
+
+    private:
+        const_dialogue item_dialogue( const item_location &loc ) const {
+            return const_dialogue( d.const_actor( is_npc )->const_clone(), get_const_talker_for( loc ),
+                                   d.get_conditionals(), d.get_context() );
+        }
+
+        const item_menu_options &opts;
+        const dialogue &d;
+        bool is_npc;
+};
 } // namespace
 
 #define dbg(x) DebugLog((x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
@@ -3713,12 +3802,17 @@ struct item_eoc_runner {
         } );
     }
 
-    void run_eoc( item_location &loc, const std::vector<effect_on_condition_id> &eocs ) {
+    // @p count: the amount chosen in a manual_mult menu, as context value _count (UIINV-J01)
+    void run_eoc( item_location &loc, const std::vector<effect_on_condition_id> &eocs,
+                  std::optional<int> count = std::nullopt ) {
         for( const effect_on_condition_id &eoc : eocs ) {
             // Check if item is outdated.
             if( loc.get_item() ) {
                 dialogue newDialog( d.actor( is_npc )->clone(), get_talker_for( loc ),
                                     d.get_conditionals(), d.get_context() );
+                if( count ) {
+                    newDialog.set_value( "count", *count );
+                }
                 eoc->activate( newDialog );
             }
         }
@@ -3753,15 +3847,15 @@ struct item_eoc_runner {
                 return filter( loc );
             } );
             for( item_location target : true_items ) {
-                bool true_eoc = false;
+                std::optional<int> count;
                 for( const drop_location &dloc : selected ) {
                     if( target == dloc.first ) {
-                        true_eoc = true;
+                        count = dloc.second;
                         break;
                     }
                 }
-                if( true_eoc ) {
-                    run_eoc( target, true_eocs );
+                if( count ) {
+                    run_eoc( target, true_eocs, count );
                 }
             }
             if( true_items.empty() ) {
@@ -6455,6 +6549,33 @@ talk_effect_fun_t::func f_learn_recipe( const JsonObject &jo, std::string_view m
     return [learned_recipe_id, is_npc]( dialogue const & d ) {
         const recipe_id &r = recipe_id( learned_recipe_id.evaluate( d ) );
         d.actor( is_npc )->learn_recipe( r );
+    };
+}
+
+// UIINV-J02: the avatar's crafting menu, with a starting search and a recipe to go to
+talk_effect_fun_t::func f_open_crafting_menu( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const JsonObject menu_jo = jo.get_object( member );
+    std::optional<str_or_var> filter;
+    std::optional<str_or_var> goto_recipe;
+    optional( menu_jo, false, "filter", filter );
+    optional( menu_jo, false, "recipe", goto_recipe );
+    return [filter, goto_recipe, is_npc]( dialogue const & d ) {
+        Character *guy = d.actor( is_npc )->get_character();
+        if( guy == nullptr || !guy->is_avatar() ) {
+            return;
+        }
+        const std::string filterstring = filter ? filter->evaluate( d ) : std::string();
+        recipe_id goto_id;
+        if( goto_recipe ) {
+            goto_id = recipe_id( goto_recipe->evaluate( d ) );
+            if( !goto_id.is_empty() && !goto_id.is_valid() ) {
+                debugmsg( "u_open_crafting_menu: no recipe %s", goto_id.str() );
+                goto_id = recipe_id();
+            }
+        }
+        guy->craft( std::nullopt, goto_id, filterstring );
     };
 }
 
@@ -10192,15 +10313,20 @@ talk_effect_fun_t::func f_run_inv_eocs( const JsonObject &jo,
     }
     translation_or_var title;
     optional( jo, false, "title", title );
+    const item_menu_options menu_opts( jo );
 
-    return [option, true_eocs, false_eocs, data, is_npc, title]( dialogue & d ) {
+    return [option, true_eocs, false_eocs, data, is_npc, title, menu_opts]( dialogue & d ) {
         Character *guy = d.actor( is_npc )->get_character();
         if( guy ) {
-            const auto f = [d, guy, title]( const item_location_filter & filter ) {
-                return game_menus::inv::titled_filter_menu( filter, *guy, title.evaluate( d ).translated() );
+            const auto f = [d, guy, title, &menu_opts, is_npc]( const item_location_filter & filter ) {
+                const eoc_item_menu_preset preset( filter, menu_opts, d, is_npc );
+                return game_menus::inv::titled_preset_menu( preset, *guy, title.evaluate( d ).translated(), -1,
+                        menu_opts.none_text( d ), menu_opts.hint_text( d ) );
             };
-            const auto f_mul = [d, guy, title]( const item_location_filter & filter ) {
-                return game_menus::inv::titled_multi_filter_menu( filter, *guy, title.evaluate( d ).translated() );
+            const auto f_mul = [d, guy, title, &menu_opts, is_npc]( const item_location_filter & filter ) {
+                const eoc_item_menu_preset preset( filter, menu_opts, d, is_npc );
+                return game_menus::inv::titled_multi_preset_menu( preset, *guy,
+                        title.evaluate( d ).translated(), -1, menu_opts.none_text( d ), menu_opts.hint_text( d ) );
             };
             item_eoc_runner handler( d, data, true_eocs, false_eocs, f, f_mul, option.evaluate( d ), is_npc );
             handler.load_items( *guy );
@@ -10214,30 +10340,36 @@ talk_effect_fun_t::func f_run_inv_eocs( const JsonObject &jo,
         }
         Character &viewer = get_player_character();
         const item_location holder = *container;
-        const auto f = [d, &viewer, title, holder]( const item_location_filter & filter ) {
-            inventory_filter_preset preset( filter );
+        const auto f = [d, &viewer, title, holder, &menu_opts, is_npc]( const item_location_filter &
+        filter ) {
+            const eoc_item_menu_preset preset( filter, menu_opts, d, is_npc );
             inventory_pick_selector inv_s( viewer, preset );
             inv_s.set_title( title.evaluate( d ).translated() );
+            inv_s.set_hint( menu_opts.hint_text( d ) );
             inv_s.set_display_stats( false );
             inv_s.clear_items();
             item_location shown = holder;
             inv_s.add_contained_items( shown );
             if( inv_s.empty() ) {
-                popup( _( "You don't have the necessary item at hand." ), PF_GET_KEY );
+                const std::string none = menu_opts.none_text( d );
+                popup( none.empty() ? _( "You don't have the necessary item at hand." ) : none, PF_GET_KEY );
                 return item_location();
             }
             return inv_s.execute();
         };
-        const auto f_mul = [d, &viewer, title, holder]( const item_location_filter & filter ) {
-            inventory_filter_preset preset( filter );
+        const auto f_mul = [d, &viewer, title, holder, &menu_opts, is_npc]( const item_location_filter &
+        filter ) {
+            const eoc_item_menu_preset preset( filter, menu_opts, d, is_npc );
             inventory_multiselector inv_s( viewer, preset );
             inv_s.set_title( title.evaluate( d ).translated() );
+            inv_s.set_hint( menu_opts.hint_text( d ) );
             inv_s.set_display_stats( false );
             inv_s.clear_items();
             item_location shown = holder;
             inv_s.add_contained_items( shown );
             if( inv_s.empty() ) {
-                popup( _( "You don't have the necessary item at hand." ), PF_GET_KEY );
+                const std::string none = menu_opts.none_text( d );
+                popup( none.empty() ? _( "You don't have the necessary item at hand." ) : none, PF_GET_KEY );
                 return drop_locations();
             }
             return inv_s.execute();
@@ -10271,9 +10403,10 @@ talk_effect_fun_t::func f_map_run_item_eocs( const JsonObject &jo, std::string_v
     dbl_or_var dov_min_radius = get_dbl_or_var( jo, "min_radius", false, 0 );
     dbl_or_var dov_max_radius = get_dbl_or_var( jo, "max_radius", false, 0 );
     bool accessible = jo.get_bool( "accessible", true );
+    const item_menu_options menu_opts( jo );
 
     return [is_npc, option, true_eocs, false_eocs, data, loc_var, dov_min_radius, dov_max_radius,
-            title, accessible]( dialogue & d ) {
+            title, accessible, menu_opts]( dialogue & d ) {
         tripoint_abs_ms target_location;
         if( loc_var ) {
             target_location = read_var_value( *loc_var, d ).tripoint();
@@ -10295,10 +10428,11 @@ talk_effect_fun_t::func f_map_run_item_eocs( const JsonObject &jo, std::string_v
         Character *guy = d.actor( is_npc )->get_character();
         guy = guy ? guy : &get_player_character();
         const auto f = [d, guy, title, center, min_radius,
-           max_radius, accessible, &here]( const item_location_filter & filter ) {
-            inventory_filter_preset preset( filter );
+           max_radius, accessible, &here, &menu_opts, is_npc]( const item_location_filter & filter ) {
+            const eoc_item_menu_preset preset( filter, menu_opts, d, is_npc );
             inventory_pick_selector inv_s( *guy, preset );
             inv_s.set_title( title.evaluate( d ).translated() );
+            inv_s.set_hint( menu_opts.hint_text( d ) );
             inv_s.set_display_stats( false );
             inv_s.clear_items();
             for( const tripoint_bub_ms &pos : here.points_in_radius( center, max_radius ) ) {
@@ -10311,16 +10445,18 @@ talk_effect_fun_t::func f_map_run_item_eocs( const JsonObject &jo, std::string_v
                 }
             }
             if( inv_s.empty() ) {
-                popup( _( "You don't have the necessary item at hand." ), PF_GET_KEY );
+                const std::string none = menu_opts.none_text( d );
+                popup( none.empty() ? _( "You don't have the necessary item at hand." ) : none, PF_GET_KEY );
                 return item_location();
             }
             return inv_s.execute();
         };
         const item_menu_mul f_mul = [d, guy, title, center, min_radius,
-           max_radius, accessible, &here]( const item_location_filter & filter ) {
-            inventory_filter_preset preset( filter );
+           max_radius, accessible, &here, &menu_opts, is_npc]( const item_location_filter & filter ) {
+            const eoc_item_menu_preset preset( filter, menu_opts, d, is_npc );
             inventory_multiselector inv_s( *guy, preset );
             inv_s.set_title( title.evaluate( d ).translated() );
+            inv_s.set_hint( menu_opts.hint_text( d ) );
             inv_s.set_display_stats( false );
             inv_s.clear_items();
             for( const tripoint_bub_ms &pos : here.points_in_radius( center, max_radius ) ) {
@@ -10333,7 +10469,8 @@ talk_effect_fun_t::func f_map_run_item_eocs( const JsonObject &jo, std::string_v
                 }
             }
             if( inv_s.empty() ) {
-                popup( _( "You don't have the necessary item at hand." ), PF_GET_KEY );
+                const std::string none = menu_opts.none_text( d );
+                popup( none.empty() ? _( "You don't have the necessary item at hand." ) : none, PF_GET_KEY );
                 return drop_locations();
             }
             return inv_s.execute();
@@ -12912,6 +13049,7 @@ parsers = {
     { "u_level_spell_class", "npc_level_spell_class", jarg::member, &talk_effect_fun::f_level_spell_class },
     { "u_learn_recipe", "npc_learn_recipe", jarg::member, &talk_effect_fun::f_learn_recipe },
     { "u_forget_recipe", "npc_forget_recipe", jarg::member, &talk_effect_fun::f_forget_recipe },
+    { "u_open_crafting_menu", "npc_open_crafting_menu", jarg::object, &talk_effect_fun::f_open_crafting_menu },
     { "u_message", "npc_message", jarg::member, &talk_effect_fun::f_message },
     { "u_add_wet", "npc_add_wet", jarg::member | jarg::array, &talk_effect_fun::f_add_wet },
     { "u_set_move_mode", "npc_set_move_mode", jarg::member, &talk_effect_fun::f_set_move_mode },

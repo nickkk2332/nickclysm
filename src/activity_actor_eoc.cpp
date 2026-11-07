@@ -540,9 +540,19 @@ refusal start_craft( const activity_id &, Character &who, const eoc_activity_tar
         return string_format( _( "%1$s lacks the proficiencies to make %2$s." ), who.get_name(),
                               making.result_name() );
     }
+    // the recipe's condition (CRAFT-J06) with its own message, before the stat requirements
+    // (character_meets_requirements() checks it too)
+    if( !making.meets_condition( who ) ) {
+        return making.condition_fail_text();
+    }
     if( !making.character_meets_requirements( who ) ) {
         return string_format( _( "%1$s doesn't meet the requirements to make %2$s." ),
                               who.get_name(), making.result_name() );
+    }
+    // UIINV-J03: NO_NPC_CRAFT
+    std::string npc_reason;
+    if( who.is_npc() && !making.npc_can_craft( npc_reason ) ) {
+        return npc_reason;
     }
     if( !who.has_morale_to_craft() ) {
         return std::string( _( "Not in the mood to craft." ) );
@@ -793,6 +803,10 @@ refusal start_unload( const activity_id &, Character &who, const eoc_activity_ta
             return string_format( _( "The %s has several things to unload; which one is a "
                                      "choice." ), name );
         }
+    }
+    // Character::unload asks the avatar before taking what isn't theirs.
+    if( refusal no = ownership_refusal( who, obj ) ) {
+        return no;
     }
     // A container or a magazine is emptied over time; a gun or tool gives up its magazine or
     // ammo at once, with no activity.

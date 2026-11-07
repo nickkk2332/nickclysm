@@ -110,9 +110,6 @@ static const activity_id ACT_CRAFT( "ACT_CRAFT" );
 static const activity_id ACT_CRAFT_WAIT( "ACT_CRAFT_WAIT" );
 static const activity_id ACT_DISASSEMBLE( "ACT_DISASSEMBLE" );
 
-static const efftype_id effect_contacts( "contacts" );
-static const efftype_id effect_transition_contacts( "transition_contacts" );
-
 static const furn_str_id furn_f_fake_bench_hands( "f_fake_bench_hands" );
 static const furn_str_id furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
 
@@ -124,16 +121,12 @@ static const itype_id itype_shovel( "shovel" );
 static const itype_id itype_water_faucet( "water_faucet" );
 
 static const json_character_flag json_flag_CRAFT_IN_DARKNESS( "CRAFT_IN_DARKNESS" );
-static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 
 static const limb_score_id limb_score_manip( "manip" );
 
 static const morale_type morale_failure( "morale_failure" );
 
 static const quality_id qual_BOIL( "BOIL" );
-
-static const skill_id skill_electronics( "electronics" );
-static const skill_id skill_tailor( "tailor" );
 
 static const trait_id trait_BURROW( "BURROW" );
 static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
@@ -460,10 +453,11 @@ void Character::recraft( const std::optional<tripoint_bub_ms> &loc )
 }
 
 void Character::long_craft( const std::optional<tripoint_bub_ms> &loc,
-                            const recipe_id &goto_recipe )
+                            const recipe_id &goto_recipe, const std::string &filterstring )
 {
     int batch_size = 0;
-    const auto [crafter, rec] = select_crafter_and_crafting_recipe( batch_size, goto_recipe, this );
+    const auto [crafter, rec] = select_crafter_and_crafting_recipe( batch_size, goto_recipe, this,
+                                filterstring );
     if( rec ) {
         if( crafting_allowed( *crafter, *rec ) ) {
             crafter->make_all_craft( rec->ident(), batch_size, loc );
@@ -657,6 +651,19 @@ bool Character::can_make( const recipe *r, int batch_size ) const
 
     return r->deduped_requirements().can_make_with_inventory(
                this, crafting_inv, r->get_component_filter(), batch_size );
+}
+
+bool Character::can_craft_now( const recipe &making, int batch_size ) const
+{
+    if( making.is_null() || making.obsolete || making.is_nested() || !has_recipe( &making ) ) {
+        return false;
+    }
+    std::string reason;
+    if( is_npc() && !making.npc_can_craft( reason ) ) {
+        return false;
+    }
+    return has_morale_to_craft() && lighting_craft_speed_multiplier( making ) > 0.0f &&
+           can_start_craft( &making, recipe_filter_flags::none, std::max( batch_size, 1 ) );
 }
 
 bool Character::can_start_craft( const recipe *rec, recipe_filter_flags flags,
@@ -3421,6 +3428,22 @@ bool Character::craft_proficiency_gain( const item &craft, const time_duration &
 
 
 
+// UIINV-J04: the recipe's primary skill sets both; without one (an invalid skill) there is no
+// vision penalty and the stat is intelligence / 4
+float Character::crafting_vision_penalty( const recipe &making ) const
+{
+    if( !has_uncorrected_farsight() ) {
+        return 0.0f;
+    }
+    return making.skill_used->vision_penalty();
+}
+
+float Character::crafting_stat_bonus( const recipe &making ) const
+{
+    const Skill &skill = making.skill_used.obj();
+    return get_primary_stat_value( skill.crafting_stat() ) / skill.crafting_stat_divisor();
+}
+
 float Character::get_recipe_weighted_skill_average( const recipe &making ) const
 {
     float secondary_skill_total = 0;
@@ -3449,19 +3472,8 @@ float Character::get_recipe_weighted_skill_average( const recipe &making ) const
 
     float total_skill_modifiers = 0.0f;
 
-    // farsightedness can impose a penalty on electronics and tailoring success
-    // This should be changed to a json-defined penalty by skill (vision_penalty) in skills.json
-    if( has_flag( json_flag_HYPEROPIC ) && !worn_with_flag( flag_FIX_FARSIGHT ) &&
-        !has_effect( effect_contacts ) &&
-        !has_effect( effect_transition_contacts ) ) {
-        float vision_penalty = 0.0f;
-        if( making.skill_used == skill_electronics ) {
-            vision_penalty = 2.0f;
-        } else if( making.skill_used == skill_tailor ) {
-            vision_penalty = 1.0f;
-        }
-        total_skill_modifiers -= vision_penalty;
-    }
+    // farsightedness can impose a penalty, set by the skill's vision_penalty
+    total_skill_modifiers -= crafting_vision_penalty( making );
 
     // Mutations can define specific skill bonuses and penalties.  Gotta include those.
     for( const trait_id &mut : get_functioning_mutations() ) {
@@ -3472,12 +3484,13 @@ float Character::get_recipe_weighted_skill_average( const recipe &making ) const
         }
     }
 
-    // TO DO: Attribute role should also be data-driven either in skills.json or in the recipe itself.
-    // For now let's just use Intelligence.  For the average intelligence of 8, give +2.  Inc/dec by 0.25 per stat point.
-    // This ensures that at parity, where skill = difficulty, you have a roughly 85% chance of success at average intelligence.
-    total_skill_modifiers += get_int() / 4.0f;
-    add_msg_debug( debugmode::DF_CRAFTING, "Total skill modifiers: %g (+%g from int)",
-                   total_skill_modifiers, get_int() / 4.f );
+    // The skill's crafting stat, intelligence by default.  For the average intelligence of 8, give +2.
+    // Inc/dec by 0.25 per stat point.  This ensures that at parity, where skill = difficulty, you have
+    // a roughly 85% chance of success at average intelligence.
+    const float stat_bonus = crafting_stat_bonus( making );
+    total_skill_modifiers += stat_bonus;
+    add_msg_debug( debugmode::DF_CRAFTING, "Total skill modifiers: %g (+%g from stat)",
+                   total_skill_modifiers, stat_bonus );
 
     // Missing proficiencies penalize skill level
     for( const recipe_proficiency &recip : making.get_proficiencies() ) {

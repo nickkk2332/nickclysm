@@ -176,6 +176,8 @@ struct furn_workbench_info {
     // Mass/volume allowed before a crafting speed penalty is applied
     units::mass allowed_mass;
     units::volume allowed_volume;
+    // The crafting menu opened here starts with this search (UIINV-J02)
+    std::string recipe_filter;
     furn_workbench_info();
     bool load( const JsonObject &jsobj, std::string_view member );
 };

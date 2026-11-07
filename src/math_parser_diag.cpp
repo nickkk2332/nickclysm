@@ -76,6 +76,7 @@
 #include "point.h"
 #include "power_math.h"
 #include "proficiency.h"
+#include "recipe.h"
 #include "relic.h"
 #include "scent_map.h"
 #include "skill.h"
@@ -1299,6 +1300,23 @@ void trait_cooldown_ass( double val, dialogue &d, char scope,
                                          to_turns<double>( calendar::INDEFINITELY_LONG_DURATION ) );
         guy->set_cost_timer( trait, time_duration::from_turns<double>( turns ) );
     }
+}
+
+// UIINV-J02: can_craft('recipe', 'batch': n): 1 if the character could start crafting the recipe
+// now (Character::can_craft_now); 0 for a talker that isn't a character
+double can_craft_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
+                       diag_kwargs const &kwargs )
+{
+    const recipe_id rec( params[0].str( d ) );
+    if( !rec.is_valid() ) {
+        throw math::runtime_error( "can_craft(): unknown recipe \"%s\"", rec.str() );
+    }
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    const int batch = static_cast<int>( kwargs.kwarg_or( "batch", 1 ).dbl( d ) );
+    return guy->can_craft_now( rec.obj(), std::max( batch, 1 ) ) ? 1.0 : 0.0;
 }
 
 // has_active_trait('SHELL2'): 1 if the character has the trait and it is switched on
@@ -4783,6 +4801,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "sum_traits_of_category", { "un", 1, sum_traits_of_category_eval, {}, { "type" } } },
     { "sum_traits_of_category_char_has", { "un", 1, sum_traits_of_category_char_has_eval, {}, { "type" } } },
     { "has_active_trait", { "un", 1, has_active_trait_eval } },
+    { "can_craft", { "un", 1, can_craft_eval, {}, { "batch" } } },
     { "bionic_count", { "un", 1, bionic_count_eval } },
     { "has_active_bionic", { "un", 1, has_active_bionic_eval } },
     { "bionic_charge", { "un", 1, bionic_charge_eval, bionic_charge_ass } },
@@ -5009,6 +5028,7 @@ const literal_id_kind id_mtype{ "monster", &is_known_id<mtype_id> };
 const literal_id_kind id_mutation_category{ "mutation category", &is_known_id<mutation_category_id> };
 const literal_id_kind id_proficiency{ "proficiency", &is_known_id<proficiency_id> };
 const literal_id_kind id_quality{ "quality", &is_known_id<quality_id> };
+const literal_id_kind id_recipe{ "recipe", &is_known_id<recipe_id> };
 const literal_id_kind id_school{ "magic school", &is_known_school };
 const literal_id_kind id_skill{ "skill", &is_known_id<skill_id> };
 const literal_id_kind id_species{ "species", &is_known_id<species_id> };
@@ -5048,6 +5068,7 @@ std::map<std::string_view, std::vector<literal_id_arg>> const literal_id_args{
     { "bionic_count", { id_arg( 0, id_bionic_or_any ) } },
     { "bionic_incapacitated", { id_arg( 0, id_bionic ) } },
     { "bionic_safe_fuel", { id_arg( 0, id_bionic ) } },
+    { "can_craft", { id_arg( 0, id_recipe ) } },
     { "charge_count", { id_arg( 0, id_itype ) } },
     { "consumption_count", { id_arg( 0, id_itype ) } },
     { "coverage", { id_arg( 0, id_bodypart ) } },

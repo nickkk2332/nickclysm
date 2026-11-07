@@ -257,6 +257,7 @@
     "companion_industry_rank_factor": 1,
     "display_category": "display_crafting",
     "sort_rank": 20000,
+    "vision_penalty": 1,
     "level_descriptions_theory": [
       { "level": 0, "description": "You know nothing about tailoring." },
       { "level": 1, "description": "You know the very basics of how to sew a patch over a small hole." },
@@ -315,6 +316,7 @@
     "description": "Your skill in dealing with electrical systems, used in the craft and repair of objects with electrical components.  This skill is an important part of installing and managing bionic implants.",
     "companion_industry_rank_factor": 1,
     "display_category": "display_crafting",
+    "vision_penalty": 2,
     "level_descriptions_theory": [
       {
         "level": 0,

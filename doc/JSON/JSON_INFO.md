@@ -2906,6 +2906,9 @@ it is present to help catch errors.
 | `catchup_multiplier` | _(float)_ Multiplies how fast practice catches up to what the character already knows in theory. Not below 0. (Default = 1.0) |
 | `book_learning_multiplier` | _(float)_ Multiplies the theoretical experience reading a book for the skill gives. Not below 0. (Default = 1.0) |
 | `rust` | _(object)_ How the skill rusts, see below. |
+| `vision_penalty` | _(float)_ Taken off the effective skill when crafting a recipe with this as its primary skill, for a farsighted (`HYPEROPIC`) crafter without correction: no worn `FIX_FARSIGHT` item, no trait, bionic or effect with the `FIX_FARSIGHT` flag, no contact lenses. Not below 0. Shipped: 2 for electronics, 1 for tailoring. (Default = 0) |
+| `crafting_stat` | The stat that adds to the effective skill when crafting a recipe with this as its primary skill: `"str"`, `"dex"`, `"int"` or `"per"`. Recipes without a skill use intelligence. (Default = `"int"`) |
+| `crafting_stat_divisor` | _(float)_ The crafting stat adds stat / this to the effective skill; the crafting menu shows the difference from a stat of 8. More than 0. (Default = 4) |
 
 `rust` has these optional members:
 
@@ -4068,7 +4071,7 @@ Strength required to move the furniture around. Negative values indicate an unmo
 
 #### `workbench`
 
-(Optional) Can craft here.  Must specify a speed multiplier, allowed mass, and allowed volume.  Mass/volume over these limits incur a speed penalty.  Must be paired with a `"workbench"` `examine_action` to function.
+(Optional) Can craft here.  Must specify a speed multiplier, allowed mass, and allowed volume.  Mass/volume over these limits incur a speed penalty.  Must be paired with a `"workbench"` `examine_action` to function.  An optional `"recipe_filter"` (a string in the crafting menu's search syntax, such as `"p:fabrication"` or `"q:ANVIL"`) is the search the crafting menu starts with when it is opened at this workbench ("Craft items" and "Craft as long as possible"); the player can clear it.  A vehicle part's `workbench` takes the same `"recipe_filter"`.
 
 #### `plant_data`
 

@@ -27,6 +27,7 @@ class Character;
 class JsonObject;
 class JsonValue;
 class cata_variant;
+class const_dialogue;
 class item;
 class item_components;
 class recipe;
@@ -354,6 +355,15 @@ class recipe
         // "condition_fail_message", or a default
         std::string condition_fail_text() const;
 
+        // UIINV-J03: not listed in the crafting menu while the condition (CRAFT-J06) fails.
+        bool hide_if_condition_fails() const {
+            return hide_if_condition_fails_;
+        }
+        // The theoretical knowledge of the primary skill a crafter needs to understand the
+        // recipe when a helper knows it, and to see what it lacks: "knowledge_ratio" (0.8 by
+        // default) of the difficulty, rounded down.
+        int required_knowledge_level( const Character &crafter ) const;
+
         // Create a string list to describe the skill requirements for this recipe
         // Format: skill_name(level/amount), skill_name(level/amount)
         // Character object (if provided) used to color levels
@@ -542,6 +552,10 @@ class recipe
         std::function<bool( const_dialogue const & )> condition_;
         bool has_condition_ = false;
         translation condition_fail_message_;
+        /** UIINV-J03: "hide_if_condition_fails" */
+        bool hide_if_condition_fails_ = false;
+        /** Share of the difficulty the primary skill's knowledge must reach (UIINV-J03) */
+        float knowledge_ratio_ = 0.8f;
 
         /** Combined requirements cached when recipe finalized */
         requirement_data requirements_;

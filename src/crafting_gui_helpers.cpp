@@ -50,13 +50,6 @@
 #include "uistate.h"
 #include "vitamin.h"
 
-static const efftype_id effect_contacts( "contacts" );
-
-static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
-
-static const skill_id skill_electronics( "electronics" );
-static const skill_id skill_tailor( "tailor" );
-
 bool cannot_gain_skill_or_prof( const Character &crafter, const recipe &recp )
 {
     if( recp.skill_used &&
@@ -140,9 +133,10 @@ static recipe_gate gate_recipe( const Character &crafter, const recipe &recp,
         const float difficulty = recp.get_difficulty( crafter );
         g.has_all_skills = crafter.get_skill_level( recp.skill_used ) >= difficulty;
         g.crafter_has_primary_skill = crafter.get_knowledge_level( recp.skill_used ) >=
-                                      static_cast<int>( difficulty * 0.8f );
+                                      recp.required_knowledge_level( crafter );
     }
     g.has_proficiencies = recp.character_has_required_proficiencies( crafter );
+    // character_meets_requirements() includes the recipe's JSON condition (CRAFT-J06)
     g.base_requirements = ( !recp.is_practice() || g.has_all_skills ) && g.has_proficiencies &&
                           recp.character_meets_requirements( crafter );
     std::string npc_reason;
@@ -500,6 +494,9 @@ std::vector<std::string> recipe_info(
 
     if( !can_craft_this && npc_cant ) {
         oss << colorize( reason, c_red ) << "\n";
+    }
+    if( !can_craft_this && !recp.meets_condition( avail.crafter ) ) {
+        oss << colorize( recp.condition_fail_text(), c_red ) << "\n";
     }
 
     const bool disp_prof_msg = avail.has_proficiencies && !recp.is_nested();
@@ -1112,6 +1109,12 @@ recipe_list_data build_recipe_list(
 {
     recipe_list_data result;
 
+    // UIINV-J03: recipes hidden by their JSON condition aren't listed, not even as hidden ones
+    picking.erase( std::remove_if( picking.begin(), picking.end(),
+    [&crafter]( const recipe * r ) {
+        return r->hide_if_condition_fails() && !r->meets_condition( crafter );
+    } ), picking.end() );
+
     if( skip_hidden_filter ) {
         result.entries = std::move( picking );
     } else {
@@ -1326,6 +1329,7 @@ bool recipe_panel::operator==( const recipe_panel &rhs ) const
            morale_mult == rhs.morale_mult && light_mult == rhs.light_mult &&
            pain_mult == rhs.pain_mult && limb_mult == rhs.limb_mult && mut_mult == rhs.mut_mult &&
            mut_skill_bonus == rhs.mut_skill_bonus && intelligence == rhs.intelligence &&
+           crafting_stat_name == rhs.crafting_stat_name &&
            int_delta == rhs.int_delta && has_farsight == rhs.has_farsight &&
            vision_penalty == rhs.vision_penalty && total_time == rhs.total_time &&
            success == rhs.success && destruction == rhs.destruction && darkness == rhs.darkness &&
@@ -1691,20 +1695,14 @@ recipe_panel build_recipe_panel( const recipe &recp, const availability &avail, 
                 }
             }
         }
-        panel.intelligence = crafter.get_int();
-        const float int_bonus = crafter.get_int() / 4.0f;
-        const float baseline_int = 2.0f; // INT 8 / 4
-        panel.int_delta = int_bonus - baseline_int;
-        if( crafter.has_flag( json_flag_HYPEROPIC ) &&
-            !crafter.worn_with_flag( flag_FIX_FARSIGHT ) &&
-            !crafter.has_effect( effect_contacts ) ) {
-            if( recp.skill_used == skill_electronics ) {
-                panel.vision_penalty = 2.0f;
-            } else if( recp.skill_used == skill_tailor ) {
-                panel.vision_penalty = 1.0f;
-            }
-            panel.has_farsight = panel.vision_penalty > 0.0f;
-        }
+        // UIINV-J04: what the roll adds, against an average stat of 8
+        const Skill &crafting_skill = recp.skill_used.obj();
+        panel.crafting_stat_name = character_stat_name( crafting_skill.crafting_stat() );
+        panel.intelligence = crafter.get_primary_stat_value( crafting_skill.crafting_stat() );
+        panel.int_delta = crafter.crafting_stat_bonus( recp ) -
+                          8.0f / crafting_skill.crafting_stat_divisor();
+        panel.vision_penalty = crafter.crafting_vision_penalty( recp );
+        panel.has_farsight = panel.vision_penalty > 0.0f;
         panel.too_dark = panel.light_mult <= 0.0f;
 
         panel.total_time = to_string( time_duration::from_turns( expected_turns ) );

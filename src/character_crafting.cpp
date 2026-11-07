@@ -188,8 +188,8 @@ recipe_subset Character::get_available_recipes( const temp_crafting_inventory &c
             res.include( get_recipes_from_books( guy->crafting_inventory( tripoint_bub_ms::zero, -1 ) ) );
             // Being told what to do
             res.include_if( guy->get_learned_recipes(), [ this ]( const recipe & r ) {
-                return get_knowledge_level( r.skill_used ) >= static_cast<int>( r.get_difficulty(
-                            *this ) * 0.8f ); // Skilled enough to understand
+                // Skilled enough to understand
+                return get_knowledge_level( r.skill_used ) >= r.required_knowledge_level( *this );
             } );
         }
     }
