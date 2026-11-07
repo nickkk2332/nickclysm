@@ -1845,7 +1845,7 @@ bool talk_function::scavenging_raid_return( npc &p )
     }
     Character &player_character = get_player_character();
     tripoint_abs_omt loot_location = player_character.pos_abs_omt();
-    std::set<item> all_returned_items;
+    std::vector<item> all_returned_items;
 
     for( int i = 0; i < rng( 2, 3 ); i++ ) {
         tripoint_abs_omt site = overmap_buffer.find_closest(
@@ -1875,8 +1875,9 @@ bool talk_function::scavenging_raid_return( npc &p )
             }
 
             overmap_buffer.reveal( site, 2 );
-            std::set<item> returned_items = loot_building( site, looted_replacement );
-            all_returned_items.insert( returned_items.begin(), returned_items.end() );
+            std::vector<item> returned_items = loot_building( site, looted_replacement );
+            all_returned_items.insert( all_returned_items.end(), returned_items.begin(),
+                                       returned_items.end() );
         }
     }
 
@@ -1953,7 +1954,7 @@ bool talk_function::hospital_raid_return( npc &p )
     }
     Character &player_character = get_player_character();
     tripoint_abs_omt loot_location = player_character.pos_abs_omt();
-    std::set<item> all_returned_items;
+    std::vector<item> all_returned_items;
     for( int i = 0; i < rng( 2, 3 ); i++ ) {
         tripoint_abs_omt site = overmap_buffer.find_closest(
                                     loot_location, "hospital", 0, false, ot_match_type::prefix );
@@ -1977,8 +1978,9 @@ bool talk_function::hospital_raid_return( npc &p )
                 }
 
                 overmap_buffer.reveal( site, 2 );
-                std::set<item> returned_items = loot_building( site, looted_replacement );
-                all_returned_items.insert( returned_items.begin(), returned_items.end() );
+                std::vector<item> returned_items = loot_building( site, looted_replacement );
+                all_returned_items.insert( all_returned_items.end(), returned_items.begin(),
+                                           returned_items.end() );
             }
         }
     }
@@ -2753,7 +2755,8 @@ npc_ptr talk_function::companion_choose_return( const tripoint_abs_omt &omt_pos,
         const mission_id &miss_id,
         const time_point &deadline,
         const bool by_mission,
-        const bool ignore_parameters )
+        const bool ignore_parameters,
+        const bool until_planned_return )
 {
     std::vector<npc_ptr> available;
     Character &player_character = get_player_character();
@@ -2774,10 +2777,16 @@ npc_ptr talk_function::companion_choose_return( const tripoint_abs_omt &omt_pos,
             }
         }
 
-        if( player_character.has_trait( trait_DEBUG_HS ) ||
-            guy->companion_mission_time <= deadline ||
-            ( deadline == calendar::before_time_starts &&
-              guy->companion_mission_time_ret <= calendar::turn ) ) {
+        if( player_character.has_trait( trait_DEBUG_HS ) ) {
+            available.push_back( guy );
+        } else if( until_planned_return ) {
+            if( guy->companion_mission_time <= deadline &&
+                guy->companion_mission_time_ret <= calendar::turn ) {
+                available.push_back( guy );
+            }
+        } else if( guy->companion_mission_time <= deadline ||
+                   ( deadline == calendar::before_time_starts &&
+                     guy->companion_mission_time_ret <= calendar::turn ) ) {
             available.push_back( guy );
         }
     }
@@ -2810,7 +2819,7 @@ npc_ptr talk_function::companion_choose_return( comp_list &npc_list )
 }
 
 //Smash stuff, steal valuables, and change map marker
-std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
+std::vector<item> talk_function::loot_building( const tripoint_abs_omt &site,
         const oter_str_id &looted_replacement )
 {
     tinymap bay;
@@ -2818,7 +2827,9 @@ std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
     // Redundant as long as map operations aren't using get_map() in a transitive call chain. Added for future proofing.
     swap_map swap( *bay.cast_to_map() );
     creature_tracker &creatures = get_creature_tracker();
-    std::set<item> return_items;
+    const Character &player_character = get_player_character();
+    // every item taken comes back: a set kept one of each equal-looking item (CAMP-B07)
+    std::vector<item> return_items;
     for( const tripoint_omt_ms &p : bay.points_on_zlevel() ) {
         const ter_id &t = bay.ter( p );
         //Open all the doors, doesn't need to be exhaustive
@@ -2873,8 +2884,10 @@ std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
             }
         }
         //Kill zombies!  Only works against pre-spawned enemies at the moment...
-        Creature *critter = creatures.creature_at( rebase_bub( p ) );
-        if( critter != nullptr ) {
+        // Only hostile monsters: never the avatar, an NPC or a pet (CAMP-B07)
+        monster *critter = creatures.creature_at<monster>( rebase_bub( p ) );
+        if( critter != nullptr &&
+            critter->attitude_to( player_character ) == Creature::Attitude::HOSTILE ) {
             critter->die( bay.cast_to_map(), nullptr );
         }
         //Hoover up tasty items!
@@ -2883,7 +2896,7 @@ std::set<item> talk_function::loot_building( const tripoint_abs_omt &site,
             if( !it->made_of( phase_id::LIQUID ) &&
                 ( ( ( it->is_food() || it->is_food_container() ) && !one_in( 8 ) ) ||
                   ( it->price( true ) > 1000 && !one_in( 4 ) ) || one_in( 5 ) ) ) {
-                return_items.insert( *it );
+                return_items.push_back( *it );
                 it = items.erase( it );
             } else {
                 ++it;

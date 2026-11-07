@@ -532,9 +532,26 @@ bool mission_util::set_update_mapgen( const JsonObject &jo,
 
     if( jo.has_member( "om_terrain" ) ) {
         const std::string om_terrain = jo.get_string( "om_terrain" );
-        auto mission_func = [update_map = std::move( update_map ), om_terrain]( mission * miss ) {
-            tripoint_abs_omt update_pos3 = mission_util::reveal_om_ter( miss->has_target() ? miss->get_target()
-                                           : get_player_character().pos_abs_omt(), om_terrain, 1, false );
+        // the closest om_terrain of this overmap special, as MISSIONS_JSON.md says (CAMP-B11)
+        std::optional<overmap_special_id> om_special;
+        if( jo.has_member( "om_special" ) ) {
+            om_special = overmap_special_id( jo.get_string( "om_special" ) );
+        }
+        auto mission_func = [update_map = std::move( update_map ), om_terrain,
+                   om_special]( mission * miss ) {
+            const tripoint_abs_omt origin = miss->has_target() ? miss->get_target() :
+                                            get_player_character().pos_abs_omt();
+            // searched from the target's own z-level
+            tripoint_abs_omt update_pos3;
+            if( om_special ) {
+                update_pos3 = overmap_buffer.find_closest( origin, om_terrain, 0, false,
+                              ot_match_type::type, false, om_special );
+                if( !update_pos3.is_invalid() ) {
+                    overmap_buffer.reveal( update_pos3, 1 );
+                }
+            } else {
+                update_pos3 = mission_util::reveal_om_ter( origin, om_terrain, 1, false, origin.z() );
+            }
             update_map( update_pos3, miss );
         };
         funcs.emplace_back( std::move( mission_func ) );

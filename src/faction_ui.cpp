@@ -210,7 +210,13 @@ bool faction_ui::execute()
                     hide_ui = true;
 
                     if( picked_follower->has_companion_mission() ) {
-                        talk_function::basecamp_mission( *picked_follower );
+                        // only a camp mission opens a camp board, and only the camp it is from;
+                        // the radio flag is this contact's, not the last conversation's (CAMP-B08)
+                        if( !talk_function::camp_board_for_companion( *picked_follower,
+                                !interactable ) ) {
+                            popup( _( "%s is away on a job and can't take orders right now." ),
+                                   picked_follower->get_name() );
+                        }
                         return true;
                     } else {
                         get_avatar().talk_to( get_talker_for( *picked_follower ), true, false, false,

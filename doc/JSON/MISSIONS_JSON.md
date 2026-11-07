@@ -9,7 +9,10 @@
     - [deadline](#deadline)
     - [description](#description)
     - [urgent](#urgent)
+    - [difficulty](#difficulty)
     - [goal](#goal)
+    - [item_group, count, required_container, remove_container, empty_container](#item_group-count-required_container-remove_container-empty_container)
+    - [recruit_class](#recruit_class)
     - [monster_species](#monster_species)
     - [monster_type](#monster_type)
     - [monster_kill_goal](#monster_kill_goal)
@@ -108,6 +111,10 @@ This system may be expanded in the future to allow referring to other mission pa
 ### urgent
 If true, the NPC giving this mission will refuse to speak on any other topics besides completing this mission while it is active.
 
+### difficulty
+Optional integer, default 0.  Of an NPC's urgent missions, the one it presses is the first of the
+highest difficulty; a difficulty of 0 is pressed too when it is the only urgent one.
+
 ### goal
 Must be included, and must be one of these strings:
 
@@ -117,6 +124,7 @@ Goal string               | Goal conditions
 `MGOAL_GO_TO_TYPE`        | Reach any instance of a specified overmap tile type
 `MGOAL_COMPUTER_TOGGLE`   | Activating the correct terminal will complete the mission
 `MGOAL_FIND_ITEM`         | Find 1 or more items of a given type
+`MGOAL_FIND_ITEM_GROUP`   | Find `count` items of any types in `item_group`, optionally in a `required_container`
 `MGOAL_FIND_ANY_ITEM`     | Find 1 or more items of a given type, tagged for this mission
 `MGOAL_FIND_MONSTER`      | Find and retrieve a friendly monster
 `MGOAL_FIND_NPC`          | Find a specific NPC
@@ -133,6 +141,26 @@ Goal string               | Goal conditions
 Missions with goals `MGOAL_GO_TO` and `MGOAL_GO_TO_TYPE` behave differently depending on whether the player gets them from an NPC or from another source (e.g. from a starting scenario):
 * When given by an NPC the mission is an escort quest: to complete it the player has to talk to the quest giver while standing at the destination. Note: make sure to set the quest giver to follow the player or the mission will be impossible to complete.
 * Otherwise the mission is simple traversal - to complete it the player only has to reach the destination
+
+Some goals need a field to be completed at all, and loading reports a mission that lacks it:
+`MGOAL_GO_TO_TYPE` needs `destination` (an overmap terrain type), `MGOAL_FIND_ITEM` needs `item`,
+`MGOAL_FIND_ITEM_GROUP` needs `item_group`, `MGOAL_KILL_MONSTER_TYPE` needs `monster_type` and
+`MGOAL_KILL_MONSTER_SPEC` needs `monster_species` (both with a `monster_kill_goal` above 0), and
+`MGOAL_RECRUIT_NPC_CLASS` needs `recruit_class`.  The ids in `item`, `item_group`,
+`required_container`, `empty_container`, `monster_type`, `monster_species`, `followup` and
+`recruit_class` must exist.
+
+### item_group, count, required_container, remove_container, empty_container
+For "MGOAL_FIND_ITEM_GROUP": `count` (default 1) items of any of the types `item_group` can give
+must be carried or within reach.  A stack counts as many as it holds, and what a matching item
+holds is not counted again.  With `required_container`, only matches inside a container of that
+type count.  Turning the mission in takes exactly `count` of them, of each type in turn (by id).
+With `remove_container`, it also takes `count` of `empty_container` (or of `required_container`
+when there is none).
+
+### recruit_class
+For "MGOAL_RECRUIT_NPC_CLASS", the `npc_class` of the NPC to recruit: the mission is complete
+once an NPC of that class within 100 submaps follows the player.
 
 ### monster_species
 For "MGOAL_KILL_MONSTER_SPEC", sets the target monster species.
@@ -299,7 +327,7 @@ The `update_mapgen` object or array provides a way to modify existing overmap ti
 
 As an array, `update_mapgen` consists of two or more `update_mapgen` objects.
 
-As an object, `update_mapgen` contains any valid JSON mapgen objects.  The objects are placed on the mission target terrain from "assign_mission_target" or optionally the closest overmap terrain specified by the `om_terrain` and `om_special` fields.  If "mapgen_update_id" is specified, the "mapge_update" object with the matching "mapgen_update_id" will be executed.
+As an object, `update_mapgen` contains any valid JSON mapgen objects.  The objects are placed on the mission target terrain from "assign_mission_target" or optionally the closest overmap terrain specified by the `om_terrain` and `om_special` fields.  If "mapgen_update_id" is specified, the "mapge_update" object with the matching "mapgen_update_id" will be executed.  With `om_terrain`, the search starts from the mission target (or the player when there is none), on its z-level; with `om_special` as well (a string), only that terrain within an instance of that overmap special is used.
 
 See [MAPGEN.md](MAPGEN.md) for more details on JSON mapgen and `update_mapgen`.
 

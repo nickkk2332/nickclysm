@@ -220,7 +220,10 @@
         "text": "I brought 'em.",
         "topic": "TALK_MISSION_SUCCESS",
         "condition": {
-          "and": [ "mission_complete", { "mission_goal": "MGOAL_RECRUIT_NPC" }, { "mission_goal": "MGOAL_RECRUIT_NPC_CLASS" } ]
+          "and": [
+            "mission_complete",
+            { "or": [ { "mission_goal": "MGOAL_RECRUIT_NPC" }, { "mission_goal": "MGOAL_RECRUIT_NPC_CLASS" } ] }
+          ]
         },
         "switch": true,
         "effect": "mission_success"

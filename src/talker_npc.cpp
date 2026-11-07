@@ -136,12 +136,15 @@ std::vector<std::string> talker_npc::get_topics( bool radio_contact ) const
         add_topics.emplace_back( me_npc->chatbin.talk_stole_item );
     }
     int most_difficult_mission = 0;
+    // an urgent mission of difficulty 0 is pressed too, unless a harder one is (CAMP-J04)
+    bool chose_urgent = false;
     for( mission *&mission : me_npc->chatbin.missions ) {
         const mission_type &type = mission->get_type();
-        if( type.urgent && type.difficulty > most_difficult_mission ) {
+        if( type.urgent && ( !chose_urgent || type.difficulty > most_difficult_mission ) ) {
             add_topics.emplace_back( me_npc->chatbin.talk_mission_describe_urgent );
             me_npc->chatbin.mission_selected = mission;
             most_difficult_mission = type.difficulty;
+            chose_urgent = true;
         }
     }
     most_difficult_mission = 0;

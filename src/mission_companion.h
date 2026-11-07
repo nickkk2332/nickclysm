@@ -250,9 +250,12 @@ npc_ptr companion_choose( const std::map<skill_id, int> &required_skills = {}, b
                               false );
 npc_ptr companion_choose_return( const npc &p, const mission_id &miss_id,
                                  const time_point &deadline, bool ignore_parameters = false );
+/// @param until_planned_return also wait for each companion's own planned return time
+/// (companion_mission_time_ret), as camp missions with a variable length need
 npc_ptr companion_choose_return( const tripoint_abs_omt &omt_pos, const std::string &role_id,
                                  const mission_id &miss_id, const time_point &deadline,
-                                 bool by_mission = true, bool ignore_parameters = false );
+                                 bool by_mission = true, bool ignore_parameters = false,
+                                 bool until_planned_return = false );
 npc_ptr companion_choose_return( comp_list &npc_list );
 
 //Return NPC to your party
@@ -268,7 +271,10 @@ void send_companion_mission_finished( const npc &comp, const std::string &outcom
  */
 bool companion_mission_death( npc &comp );
 //Smash stuff, steal valuables, and change map marker
-std::set<item> loot_building( const tripoint_abs_omt &site, const oter_str_id &looted_replacement );
+/// Opens and smashes up @ref site, kills the hostile monsters loaded there and takes much of
+/// its loot; returns every item taken
+std::vector<item> loot_building( const tripoint_abs_omt &site,
+                                 const oter_str_id &looted_replacement );
 
 } // namespace talk_function
 #endif // CATA_SRC_MISSION_COMPANION_H

@@ -64,7 +64,6 @@ struct expansion_data {
     std::string type;
     std::vector<itype_id> available_pseudo_items;
     std::map<std::string, int> provides;
-    std::map<std::string, int> in_progress;
     tripoint_abs_omt pos;
     // legacy camp level, replaced by provides map and set to -1
     int cur_level = 0;
@@ -229,7 +228,9 @@ class basecamp
                            int level = 0 ) const;
         void update_resources( const std::string &bldg );
         void update_provides( const std::string &bldg, expansion_data &e_data );
-        void update_in_progress( const std::string &bldg, const point_rel_omt &dir );
+        /// Whether companions out at @ref dir are building @ref making (in any variant) or
+        /// something that provides what rules it out; reads camp_workers
+        bool upgrade_in_progress( const recipe &making, const point_rel_omt &dir ) const;
 
         // Returns a basecamp pointer if any basecamp exists in range to claim the specified OMT. Otherwise, returns nullptr
         static basecamp *any_claim_at( tripoint_abs_omt there );
