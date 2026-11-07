@@ -17,6 +17,9 @@
 #include <vector>
 
 #include "debug.h"
+#if defined(TILES)
+#include "sdl_wrappers.h"
+#endif
 
 #define dbg(x) DebugLog((x), D_SDL) << __FILE__ << ":" << __LINE__ << ": "
 
@@ -71,6 +74,12 @@ std::vector<oneshot_entry> g_oneshots;
 // superseded stopped callbacks no-op.
 std::atomic<uint32_t> g_music_generation{0};
 std::vector<std::unique_ptr<uint32_t>> g_music_generation_tokens;
+// REND-B06: the generation whose track ran out, 0 for none. The stopped
+// callback fires on the mixer's audio thread, and the finished callback
+// (sdlsound's musicFinished) changes main-thread music state and starts the
+// next track, so the callback only records it here and poll_music() runs the
+// finished callback on the main thread.
+std::atomic<uint32_t> g_music_finished_generation{0};
 
 const char *tag_for_group( sfx::group g )
 {
@@ -120,9 +129,13 @@ void music_stopped_cb( void *userdata, MIX_Track * /*track*/ )
     if( captured == nullptr || *captured != g_music_generation.load() ) {
         return;
     }
-    if( g_music_finished_cb != nullptr ) {
-        g_music_finished_cb();
-    }
+    // Runs on the mixer's audio thread, with the mixer locked: leave the
+    // finished callback to poll_music() on the main thread, and wake an input
+    // wait so the next track starts while the game waits for a key.
+    g_music_finished_generation.store( *captured );
+#if defined(TILES)
+    PushWakeEvent();
+#endif
 }
 
 float volume_to_gain( int vol )
@@ -196,6 +209,7 @@ bool init( int frequency, int out_channels, int chunk_size,
     }
 
     g_music_track = MIX_CreateTrack( g_mixer );
+    g_music_finished_generation.store( 0 );
     return true;
 }
 
@@ -227,6 +241,7 @@ void shutdown()
         g_music_track = nullptr;
     }
     g_music_generation_tokens.clear();
+    g_music_finished_generation.store( 0 );
     if( g_mixer != nullptr ) {
         MIX_DestroyMixer( g_mixer );
         g_mixer = nullptr;
@@ -498,6 +513,41 @@ sfx_audio *make_synthetic_sfx_audio()
     a->audio = audio;
     return a;
 }
+music_source *make_synthetic_music()
+{
+    if( g_mixer == nullptr ) {
+        return nullptr;
+    }
+    static const float silent_frame[2] = { 0.0f, 0.0f };
+    SDL_AudioSpec spec{};
+    spec.freq = 44100;
+    spec.format = SDL_AUDIO_F32;
+    spec.channels = 2;
+    MIX_Audio *audio = MIX_LoadRawAudio( g_mixer, silent_frame,
+                                         sizeof( silent_frame ), &spec );
+    if( audio == nullptr ) {
+        return nullptr;
+    }
+    music_source *m = new music_source{};
+    m->audio = audio;
+    return m;
+}
+bool mix_memory_frames( int frames )
+{
+    if( g_mixer == nullptr || frames <= 0 ) {
+        return false;
+    }
+    SDL_AudioSpec spec{};
+    if( !MIX_GetMixerFormat( g_mixer, &spec ) ) {
+        return false;
+    }
+    const int frame_bytes = static_cast<int>( SDL_AUDIO_FRAMESIZE( spec ) );
+    if( frame_bytes <= 0 ) {
+        return false;
+    }
+    std::vector<uint8_t> buffer( static_cast<size_t>( frames ) * static_cast<size_t>( frame_bytes ) );
+    return MIX_Generate( g_mixer, buffer.data(), static_cast<int>( buffer.size() ) ) >= 0;
+}
 } // namespace testing
 
 void stop_all_sfx( int fade_out_ms )
@@ -569,6 +619,19 @@ void poll()
     }
     for( const std::pair<MIX_Track *, float> &r : to_retune ) {
         MIX_SetTrackFrequencyRatio( r.first, r.second );
+    }
+    poll_music();
+}
+
+void poll_music()
+{
+    const uint32_t finished = g_music_finished_generation.exchange( 0 );
+    // a play_music or stop_music since the track ended superseded it
+    if( finished == 0 || finished != g_music_generation.load() ) {
+        return;
+    }
+    if( g_music_finished_cb != nullptr ) {
+        g_music_finished_cb();
     }
 }
 

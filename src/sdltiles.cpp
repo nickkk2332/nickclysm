@@ -5800,6 +5800,11 @@ static void CheckMessages()
     bool text_refresh = false;
     bool is_repeat = false;
 
+#if defined(SDL_SOUND)
+    // REND-B06: a music track that ended on the mixer's audio thread starts the next one
+    // here; the audio thread wakes a blocked input wait for it
+    sound_backend::poll_music();
+#endif
     drain_renderer_recovery();
     // drain blanked the buffer; nothing else draws while input waits
     if( renderer_coordinator.take_repaint_request() ) {

@@ -73,14 +73,29 @@ float last_oneshot_frequency_ratio();
 // that play_reserved and play_oneshot will accept. Used by tests
 // that need to exercise the play path without loading a real file.
 sfx_audio *make_synthetic_sfx_audio();
+// The same single silent frame as music, for play_music. Null without a
+// mixer; free with free_music.
+music_source *make_synthetic_music();
+// Mix `frames` frames of a memory-only mixer (init_options::memory_only), on
+// the calling thread, as the audio device's thread does for a device mixer:
+// a track that runs out stops and fires its stopped callback here. False
+// without a mixer or on a mixing error.
+bool mix_memory_frames( int frames );
 } // namespace testing
 
 void stop_all_sfx( int fade_out_ms );
 void fade_group( sfx::group g, int ms );
 
+// Main thread, every frame: retunes slow-time pitch, reaps finished one-shots
+// and runs poll_music().
 void poll();
 
 using music_finished_cb = void ( * )();
+// Main thread: runs the music finished callback if the music track ran out
+// since the last call (the mixer's audio thread only records that; see
+// set_music_finished_cb), unless a play_music or stop_music came since.
+void poll_music();
+// The callback poll_music() runs on the main thread when a music track ends.
 void set_music_finished_cb( music_finished_cb );
 bool play_music( music_source *m, int loops, int fade_in_ms );
 void stop_music( int fade_out_ms );
