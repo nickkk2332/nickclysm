@@ -5,6 +5,7 @@
 
 #include "avatar.h"
 #include "bodypart.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
@@ -334,6 +335,10 @@ TEST_CASE( "npc-j05_has_fac_relation_reads_the_talkers_factions", "[audit][npc][
 TEST_CASE( "mondt-j01_group_spawn_data_gives_effects_variables_and_faction",
            "[audit][monster][mongroup]" )
 {
+    // a group entry spawns only after the cataclysm started; a test before may have left the
+    // clock earlier
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    calendar::turn = calendar::start_of_cataclysm + 1_days;
     clear_avatar();
     clear_map();
     on_out_of_scope cleanup( []() {
@@ -388,6 +393,10 @@ TEST_CASE( "mondt-j01_group_spawn_data_gives_effects_variables_and_faction",
 
 TEST_CASE( "mondt-j01_group_conditions_see_the_spawn_location", "[audit][monster][mongroup]" )
 {
+    // a group entry spawns only after the cataclysm started; a test before may have left the
+    // clock earlier
+    restore_on_out_of_scope restore_turn( calendar::turn );
+    calendar::turn = calendar::start_of_cataclysm + 1_days;
     clear_avatar();
     clear_map();
     map &here = get_map();
