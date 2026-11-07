@@ -27,12 +27,11 @@ class Character;
 class JsonObject;
 class JsonValue;
 class cata_variant;
-class const_dialogue;
+struct const_dialogue;
 class item;
 class item_components;
 class recipe;
 class temp_crafting_inventory;
-struct const_dialogue;
 template <typename E> struct enum_traits;
 
 enum scaling_stat : int;

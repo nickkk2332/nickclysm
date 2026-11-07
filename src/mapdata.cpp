@@ -1820,6 +1820,7 @@ void ter_t::check() const
     }
     if( !plant_result.is_empty() && !plant_result.is_valid() ) {
         debugmsg( "ter %s: plant_result %s doesn't exist", id.c_str(), plant_result.c_str() );
+    }
     // ACT-J07
     if( !lockpick_jam_result.is_empty() && !lockpick_jam_result.is_valid() ) {
         debugmsg( "ter %s: lockpick_jam_result terrain %s doesn't exist", id.c_str(),
