@@ -372,14 +372,17 @@ bool stats_tracker::records( const event_type type )
     return type != event_type::npc_goal_changed && type != event_type::npc_attitude_changed &&
            type != event_type::mod_setting_changed && type != event_type::tile_destroyed &&
            type != event_type::creature_teleported && type != event_type::character_hears_sound &&
-           type != event_type::omt_generated && type != event_type::map_extra_spawned;
+           type != event_type::omt_generated && type != event_type::map_extra_spawned &&
+           // every monster's every cast (MAGIC-J10)
+           type != event_type::monster_casts_spell;
 }
 
 const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_type type )
 {
     static const std::vector<std::string> none;
     static const std::vector<std::string> pos = { "pos" };
-    static const std::vector<std::string> target = { "target" };
+    // where and at what level (MAGIC-J10) a spell was cast
+    static const std::vector<std::string> target = { "target", "level" };
     // every monster type times every damage amount and type: thousands of summaries in a
     // long game, where there were a few hundred
     static const std::vector<std::string> monster_hurt = {

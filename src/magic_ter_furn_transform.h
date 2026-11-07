@@ -26,6 +26,11 @@ class ter_furn_data
         weighted_int_list<T> list;
         translation message;
         bool message_good = false;
+        // MAGIC-J06: percent chance this entry changes a tile it matches; one that fails leaves
+        // the tile as if the entry didn't match it
+        int chance = 100;
+        // MAGIC-J06: for fields, the intensity of the new field instead of the old one's
+        std::optional<int> intensity;
         ter_furn_data() = default;
         ter_furn_data( const weighted_int_list<T> &list, const translation &message,
                        const bool message_good ) :

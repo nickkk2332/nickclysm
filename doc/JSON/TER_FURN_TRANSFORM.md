@@ -76,6 +76,19 @@ You can also use flags instead of specific IDs for furniture, terrain and traps.
 
 A `ter_furn_transform` can have field, furniture, terrain, and trap fields.  It treats them separately, so no "if dirt, add chair".
 
+Every entry can also have:
+
+| Member | Default | Meaning
+|---|---|---
+| `chance` | 100 | Percent chance, from 0 to 100, that the entry changes a tile it matches.  When it doesn't, the tile is left as if the entry didn't match it, so a later `valid_flags` entry may still change it.
+| `intensity` | the old field's | `field` entries only: the intensity (1 or more) of the new field.  A field turned into the same field type gets this intensity.
+
+```jsonc
+"field": [
+  { "result": "fd_smoke", "valid_field": [ "fd_fire" ], "intensity": 1, "chance": 50, "message": "Half of the fires turn to smoke." }
+]
+```
+
 Every id is checked when the game loads: each `result` and `valid_*` id must exist and be of its block's kind (a furniture id under `"terrain"` is an error), a terrain or furniture `valid_flags` entry must be a flag some loaded terrain (or furniture) has, and a trap flag must be a `json_flag`.
 
 

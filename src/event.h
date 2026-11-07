@@ -159,6 +159,8 @@ enum class event_type : int {
     character_hears_sound,
     omt_generated,
     map_extra_spawned,
+    character_levels_spell,
+    monster_casts_spell,
     num_event_types // last
 };
 
@@ -226,7 +228,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 135,
+static_assert( static_cast<int>( event_type::num_event_types ) == 137,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -365,7 +367,7 @@ struct event_spec<event_type::character_eats_item> : event_spec_character_item {
 
 template<>
 struct event_spec<event_type::character_casts_spell> {
-    static constexpr std::array<event_field, 8> fields = { {
+    static constexpr std::array<event_field, 9> fields = { {
             { "character", cata_variant_type::character_id },
             { "spell", cata_variant_type::spell_id },
             { "school", cata_variant_type::trait_id },
@@ -374,6 +376,23 @@ struct event_spec<event_type::character_casts_spell> {
             { "cast_time", cata_variant_type::int_},
             { "damage", cata_variant_type::int_},
             // where it was cast at (map squares); the statistics don't keep it
+            { "target", cata_variant_type::tripoint },
+            // the level it was cast at (MAGIC-J10); the statistics don't keep it
+            { "level", cata_variant_type::int_ }
+        }
+    };
+};
+
+// MAGIC-J10: a monster cast a spell (each of its effects, as character_casts_spell). The
+// monster is the EOC's alpha and the creature at the target, if any, its beta
+template<>
+struct event_spec<event_type::monster_casts_spell> {
+    static constexpr std::array<event_field, 6> fields = { {
+            { "monster_type", cata_variant_type::mtype_id },
+            { "spell", cata_variant_type::spell_id },
+            { "school", cata_variant_type::trait_id },
+            { "level", cata_variant_type::int_ },
+            { "damage", cata_variant_type::int_ },
             { "target", cata_variant_type::tripoint }
         }
     };
@@ -1263,6 +1282,19 @@ struct event_spec<event_type::player_levels_spell> {
     };
 };
 
+// MAGIC-J05: as player_levels_spell, for every character (the avatar and NPCs)
+template<>
+struct event_spec<event_type::character_levels_spell> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "spell", cata_variant_type::spell_id },
+            { "old_level", cata_variant_type::int_ },
+            { "new_level", cata_variant_type::int_ },
+            { "school", cata_variant_type::trait_id },
+        }
+    };
+};
+
 template<>
 struct event_spec<event_type::reads_book> : event_spec_character_item {};
 
@@ -1280,7 +1312,7 @@ struct event_spec<event_type::seals_hazardous_material_sarcophagus> : event_spec
 
 template<>
 struct event_spec<event_type::spellcasting_finish> {
-    static constexpr std::array<event_field, 9> fields = { {
+    static constexpr std::array<event_field, 10> fields = { {
             { "character", cata_variant_type::character_id },
             { "success", cata_variant_type::bool_ },
             { "spell", cata_variant_type::spell_id },
@@ -1290,7 +1322,8 @@ struct event_spec<event_type::spellcasting_finish> {
             { "cast_time", cata_variant_type::int_},
             { "damage", cata_variant_type::int_},
             // as for character_casts_spell
-            { "target", cata_variant_type::tripoint }
+            { "target", cata_variant_type::tripoint },
+            { "level", cata_variant_type::int_ }
         }
     };
 };

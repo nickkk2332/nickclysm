@@ -2858,6 +2858,10 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
                     spell_being_cast.consume_spell_cost( who, false );
                 }
                 dialogue character_talker( get_talker_for( who ), nullptr );
+                // MAGIC-J10: which spell failed, and at what level
+                character_talker.set_value( "spell_id", sp.str() );
+                character_talker.set_value( "spell_level",
+                                            static_cast<double>( spell_being_cast.get_effective_level() ) );
                 std::vector<effect_on_condition_id> failure_eocs = spell_being_cast.get_failure_eoc_ids();
                 for( effect_on_condition_id failure_eoc : failure_eocs ) {
                     failure_eoc->activate( character_talker );
@@ -2865,7 +2869,8 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
                 get_event_bus().send<event_type::spellcasting_finish>( who.getID(), false, sp,
                         spell_being_cast.spell_class(), spell_being_cast.get_difficulty( who ),
                         spell_being_cast.energy_cost( who ), spell_being_cast.casting_time( who ),
-                        spell_being_cast.damage( who ), get_map().get_abs( *target ).raw() );
+                        spell_being_cast.damage( who ), get_map().get_abs( *target ).raw(),
+                        spell_being_cast.get_effective_level() );
                 return;
             }
 
@@ -2895,6 +2900,8 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
                 }
             }
 
+            // the event's level is the one it was cast at, before the cast's experience
+            const int cast_level = spell_being_cast.get_effective_level();
             spell_being_cast.cast_all_effects( who, *target );
 
             if( !is_fake_spell ) {
@@ -2919,7 +2926,7 @@ void spellcasting_activity_actor::finish( player_activity &act, Character &who )
             get_event_bus().send<event_type::spellcasting_finish>( who.getID(), true, sp,
                     spell_being_cast.spell_class(), spell_being_cast.get_difficulty( who ),
                     spell_being_cast.energy_cost( who ), spell_being_cast.casting_time( who ),
-                    spell_being_cast.damage( who ), get_map().get_abs( *target ).raw() );
+                    spell_being_cast.damage( who ), get_map().get_abs( *target ).raw(), cast_level );
         }
         who.last_magic_target_pos = get_map().get_abs( *target );
         if( spell_being_cast.is_channeling_spell() ) {

@@ -27,6 +27,7 @@
 #include "damage_transaction.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "event.h"
@@ -35,6 +36,7 @@
 #include "execution_fatal.h"
 #include "field.h"
 #include "flexbuffer_json.h"
+#include "game.h"
 #include "game_constants.h"
 #include "generic_factory.h"
 #include "global_vars.h"
@@ -471,6 +473,36 @@ void spell_type::load( const JsonObject &jo, std::string_view src )
             spell_tags.set( f.value() );
         }
     }
+    // MAGIC-B16: a copy-from spell keeps its parent's flags ("flags" adds to them); "delete"
+    // removes some and "extend" adds some, which used to be ignored
+    if( was_loaded ) {
+        const auto change_flags = [this]( const JsonObject & change, const bool add ) {
+            change.allow_omitted_members();
+            if( !change.has_member( "flags" ) ) {
+                return;
+            }
+            for( const std::string &flag : change.get_as_string_array( "flags" ) ) {
+                const std::optional<spell_flag> f = io::string_to_enum_optional<spell_flag>( flag );
+                if( add ) {
+                    flags.insert( flag );
+                    if( f.has_value() ) {
+                        spell_tags.set( f.value() );
+                    }
+                } else {
+                    flags.erase( flag );
+                    if( f.has_value() ) {
+                        spell_tags.reset( f.value() );
+                    }
+                }
+            }
+        };
+        if( jo.has_object( "delete" ) ) {
+            change_flags( jo.get_object( "delete" ), false );
+        }
+        if( jo.has_object( "extend" ) ) {
+            change_flags( jo.get_object( "extend" ), true );
+        }
+    }
 
     optional( jo, was_loaded, "effect_str", effect_str, effect_str_default );
 
@@ -541,6 +573,12 @@ void spell_type::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "get_level_formula_id", get_level_formula_id );
     optional( jo, was_loaded, "exp_for_level_formula_id", exp_for_level_formula_id );
     optional( jo, was_loaded, "magic_type", magic_type );
+    if( jo.has_member( "failure_eocs" ) ) {
+        failure_eocs.clear();
+        for( JsonValue jv : jo.get_array( "failure_eocs" ) ) {
+            failure_eocs.emplace_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
     optional( jo, was_loaded, "max_book_level", max_book_level );
     if( ( get_level_formula_id.has_value() && !exp_for_level_formula_id.has_value() ) ||
         ( !get_level_formula_id.has_value() && exp_for_level_formula_id.has_value() ) ) {
@@ -697,6 +735,11 @@ static void check_spell_references( const spell_type &sp_t )
         debugmsg( R"(spell %s has unknown magic_type "%s")", sp_t.id.c_str(),
                   sp_t.magic_type->c_str() );
     }
+    for( const effect_on_condition_id &eoc : sp_t.failure_eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( R"(spell %s has unknown failure_eocs entry "%s")", sp_t.id.c_str(), eoc.c_str() );
+        }
+    }
 }
 
 void spell_type::check_consistency()
@@ -811,9 +854,21 @@ skill_id spell::skill() const
     return type->skill;
 }
 
+// MAGIC-J07: the context a spell's own values (damage, range, cost, conditions...) are evaluated
+// in: the cast's context plus the context vals spell_id and spell_level (the level the spell is
+// cast at), so a formula can read "_spell_level" instead of u_spell_level('its own id'), which is
+// wrong for item, enchantment, monster and EOC casts and for copy-from spells
+static global_variables::impl_t spell_formula_context( const spell &sp )
+{
+    global_variables::impl_t context = spell_cast_context::get( sp );
+    context["spell_id"] = diag_value{ sp.id().str() };
+    context["spell_level"] = diag_value{ static_cast<double>( sp.get_effective_level() ) };
+    return context;
+}
+
 int spell::field_intensity( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return std::min( static_cast<int>( type->max_field_intensity.evaluate( d ) ),
                      static_cast<int>( type->min_field_intensity.evaluate( d ) + std::round( get_effective_level() *
                                        type->field_intensity_increment.evaluate( d ) ) ) );
@@ -821,7 +876,7 @@ int spell::field_intensity( const Creature &caster ) const
 
 double spell::bash_scaling( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const double leveled_scaling = type->min_bash_scaling.evaluate( d ) +  get_effective_level() *
                                    type->bash_scaling_increment.evaluate( d );
     if( has_flag( spell_flag::RANDOM_DAMAGE ) ) {
@@ -845,7 +900,7 @@ float spell::get_eoc_damage_multiplier() const
 
 int spell::min_leveled_damage( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return type->min_damage.evaluate( d ) + std::round( get_effective_level() *
             type->damage_increment.evaluate(
                 d ) );
@@ -873,7 +928,7 @@ static int enchanted_spell_value( const spell &sp, const Creature &caster,
 
 int spell::damage( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const int leveled_damage = min_leveled_damage( caster );
     const auto max_damage = [&]() {
         return static_cast<int>( type->max_damage.evaluate( d ) );
@@ -906,7 +961,7 @@ int spell::damage( const Creature &caster ) const
 static float spell_armor_penetration( const spell &sp, const Creature &caster )
 {
     const spell_type &type = sp.id().obj();
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( sp ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( sp ) );
     const float min_pierce = type.min_pierce.evaluate( d );
     const float max_pierce = type.max_pierce.evaluate( d );
     const float leveled_pierce = min_pierce + sp.get_effective_level() *
@@ -918,14 +973,14 @@ static float spell_armor_penetration( const spell &sp, const Creature &caster )
 
 int spell::min_leveled_accuracy( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return type->min_accuracy.evaluate( d ) + std::round( get_effective_level() *
             type->accuracy_increment.evaluate( d ) );
 }
 
 int spell::accuracy( Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const int leveled_accuracy = min_leveled_accuracy( caster );
     if( type->min_accuracy.evaluate( d ) >= 0 ||
         type->max_accuracy.evaluate( d ) >= type->min_accuracy.evaluate( d ) ) {
@@ -937,14 +992,14 @@ int spell::accuracy( Creature &caster ) const
 
 double spell::min_leveled_dot( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return type->min_dot.evaluate( d ) + std::round( get_effective_level() *
             type->dot_increment.evaluate( d ) );
 }
 
 double spell::damage_dot( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const double leveled_dot = min_leveled_dot( caster );
     if( type->min_dot.evaluate( d ) >= 0.0 ||
         type->max_dot.evaluate( d ) >= type->min_dot.evaluate( d ) ) {
@@ -968,7 +1023,7 @@ damage_over_time_data spell::damage_over_time( const std::vector<bodypart_id> &b
 std::string spell::damage_string( const Character &caster ) const
 {
     std::string damage_string;
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     if( has_flag( spell_flag::RANDOM_DAMAGE ) ) {
         damage_string = string_format( "%d-%d", min_leveled_damage( caster ),
                                        static_cast<int>( type->max_damage.evaluate( d ) ) );
@@ -1044,14 +1099,14 @@ std::optional<tripoint_bub_ms> spell::select_target( Creature *source )
 
 int spell::min_leveled_aoe( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return type->min_aoe.evaluate( d ) + std::round( get_effective_level() *
             type->aoe_increment.evaluate( d ) );
 }
 
 int spell::aoe( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const int leveled_aoe = min_leveled_aoe( caster );
     int return_value;
 
@@ -1084,7 +1139,7 @@ std::set<tripoint_bub_ms> spell::effect_area( const tripoint_bub_ms &source,
 bool spell::in_aoe( const tripoint_bub_ms &source, const tripoint_bub_ms &target,
                     const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     if( has_flag( spell_flag::RANDOM_AOE ) ) {
         return rl_dist( source, target ) <= type->max_aoe.evaluate( d );
     } else {
@@ -1094,7 +1149,7 @@ bool spell::in_aoe( const tripoint_bub_ms &source, const tripoint_bub_ms &target
 
 std::string spell::aoe_string( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     if( has_flag( spell_flag::RANDOM_AOE ) ) {
         return string_format( "%d-%d", min_leveled_aoe( caster ),
                               static_cast<int>( type->max_aoe.evaluate( d ) ) );
@@ -1105,7 +1160,7 @@ std::string spell::aoe_string( const Creature &caster ) const
 
 int spell::range( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const int leveled_range = type->min_range.evaluate( d ) + std::round( get_effective_level() *
                               type->range_increment.evaluate( d ) );
     float range;
@@ -1159,14 +1214,14 @@ std::vector<tripoint_bub_ms> spell::targetable_locations( const Character &sourc
 
 int spell::min_leveled_duration( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return type->min_duration.evaluate( d ) + std::round( get_effective_level() *
             type->duration_increment.evaluate( d ) );
 }
 
 int spell::duration( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const int leveled_duration = min_leveled_duration( caster );
     int return_value;
     if( has_flag( spell_flag::RANDOM_DURATION ) ) {
@@ -1187,7 +1242,7 @@ int spell::duration( const Creature &caster ) const
 
 std::string spell::duration_string( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     if( has_flag( spell_flag::RANDOM_DURATION ) ) {
         return string_format( "%s - %s", moves_to_string( min_leveled_duration( caster ) ),
                               moves_to_string( type->max_duration.evaluate( d ) ) );
@@ -1228,7 +1283,7 @@ void spell::set_level( const Character &guy, int nlevel )
 
 bool spell::is_max_level( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return get_level() >= type->max_level.evaluate( d );
 }
 
@@ -1242,14 +1297,21 @@ bool spell::can_learn( const Character &guy ) const
 
 int spell::get_amount_of_projectiles( const Creature &guy ) const
 {
-    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_formula_context( *this ) );
     return type->multiple_projectiles.evaluate( d );
+}
+
+// MAGIC-J09: the encumbrance rules of the spell's magic_type, or the defaults
+static const spell_encumbrance &encumbrance_rules( const spell_type &sp_type )
+{
+    static const spell_encumbrance defaults;
+    return sp_type.magic_type.has_value() ? sp_type.magic_type.value()->encumbrance : defaults;
 }
 
 int spell::energy_cost( const Character &guy ) const
 {
     int cost;
-    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_formula_context( *this ) );
     if( type->base_energy_cost.evaluate( d ) < type->final_energy_cost.evaluate( d ) ) {
         cost = std::min( static_cast<int>( type->final_energy_cost.evaluate( d ) ),
                          static_cast<int>( std::round( type->base_energy_cost.evaluate( d ) +
@@ -1267,19 +1329,11 @@ int spell::energy_cost( const Character &guy ) const
     }
     if( !no_hands() && !guy.has_flag( json_flag_SUBTLE_SPELL ) ) {
         // the first 10 points of combined encumbrance is ignored, but quickly adds up
+        const spell_encumbrance &encumbrance = encumbrance_rules( type.obj() );
         const int hands_encumb = std::max( 0,
-                                           guy.avg_encumb_of_limb_type( bp_type::hand ) - 5 );
-        switch( type->get_energy_source() ) {
-            default:
-                cost += 10 * hands_encumb * temp_somatic_difficulty_multiplyer;
-                break;
-            case magic_energy_type::hp:
-                cost += hands_encumb * temp_somatic_difficulty_multiplyer;
-                break;
-            case magic_energy_type::stamina:
-                cost += 100 * hands_encumb * temp_somatic_difficulty_multiplyer;
-                break;
-        }
+                                           guy.avg_encumb_of_limb_type( bp_type::hand ) - encumbrance.hands_free );
+        cost += encumbrance.cost_per_hand_point( type->get_energy_source() ) * hands_encumb *
+                temp_somatic_difficulty_multiplyer;
     }
     return enchanted_spell_value( *this, guy, enchant_vals::spell_mod::COST,
                                   std::max( cost * temp_spell_cost_multiplyer, 0.0f ) );
@@ -1408,7 +1462,7 @@ int spell_type::get_difficulty( const Creature &caster ) const
 
 int spell::get_difficulty( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const double base = type->difficulty.evaluate( d ) + temp_difficulty_adjustment;
     // not clamped at 0, unlike the other spell values: a difficulty can be below 0
     return static_cast<int>( std::lround( caster.enchantment_cache->modify_spell_value(
@@ -1424,7 +1478,7 @@ int spell::casting_time( const Character &guy, bool ignore_encumb ) const
 {
     // casting time in moves
     int casting_time = 0;
-    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_formula_context( *this ) );
     if( type->base_casting_time.evaluate( d ) < type->final_casting_time.evaluate( d ) ) {
         casting_time = std::min( static_cast<int>( type->final_casting_time.evaluate( d ) ),
                                  static_cast<int>( std::round( type->base_casting_time.evaluate( d ) +
@@ -1443,17 +1497,18 @@ int spell::casting_time( const Character &guy, bool ignore_encumb ) const
                    casting_time );
 
     if( !ignore_encumb && temp_somatic_difficulty_multiplyer > 0 ) {
+        const spell_encumbrance &encumbrance = encumbrance_rules( type.obj() );
         if( !has_flag( spell_flag::NO_LEGS ) ) {
             // the first 20 points of encumbrance combined is ignored
             const int legs_encumb = std::max( 0,
-                                              guy.avg_encumb_of_limb_type( bp_type::leg ) - 10 );
-            casting_time += legs_encumb * 3 * temp_somatic_difficulty_multiplyer;
+                                              guy.avg_encumb_of_limb_type( bp_type::leg ) - encumbrance.legs_free );
+            casting_time += legs_encumb * encumbrance.legs_time * temp_somatic_difficulty_multiplyer;
         }
         if( has_flag( spell_flag::SOMATIC ) && !guy.has_flag( json_flag_SUBTLE_SPELL ) ) {
             // the first 20 points of encumbrance combined is ignored
             const int arms_encumb = std::max( 0,
-                                              guy.avg_encumb_of_limb_type( bp_type::arm ) - 10 );
-            casting_time += arms_encumb * 2 * temp_somatic_difficulty_multiplyer;
+                                              guy.avg_encumb_of_limb_type( bp_type::arm ) - encumbrance.arms_free );
+            casting_time += arms_encumb * encumbrance.arms_time * temp_somatic_difficulty_multiplyer;
         }
     }
     return enchanted_spell_value( *this, guy, enchant_vals::spell_mod::CAST_TIME,
@@ -1559,7 +1614,7 @@ float spell::spell_fail_unenchanted( const Character &guy ) const
 
     float fail_chance = 0;
     if( has_type_fail_chance ) {
-        const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
+        const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_formula_context( *this ) );
         d.set_value( "spell_id", id().str() );
         fail_chance = type->magic_type.value()->failure_chance_formula_id.value()->eval( d );
     } else if( is_psi ) {
@@ -1569,20 +1624,22 @@ float spell::spell_fail_unenchanted( const Character &guy ) const
     }
 
     if( !is_psi ) {
+        const spell_encumbrance &encumbrance = encumbrance_rules( type.obj() );
         if( has_flag( spell_flag::SOMATIC ) &&
             !guy.has_flag( json_flag_SUBTLE_SPELL ) && temp_somatic_difficulty_multiplyer > 0 ) {
             // the first 20 points of encumbrance combined is ignored
             const int arms_encumb = std::max( 0,
-                                              guy.avg_encumb_of_limb_type( bp_type::arm ) - 10 );
+                                              guy.avg_encumb_of_limb_type( bp_type::arm ) - encumbrance.arms_free );
             // each encumbrance point beyond the "gray" color counts as half an additional fail %
-            fail_chance += ( arms_encumb / 200.0f ) * temp_somatic_difficulty_multiplyer;
+            fail_chance += ( arms_encumb * encumbrance.arms_fail / 100.0f ) *
+                           temp_somatic_difficulty_multiplyer;
         }
         if( has_flag( spell_flag::VERBAL ) &&
             !guy.has_flag( json_flag_SILENT_SPELL ) && temp_sound_multiplyer > 0 ) {
             // a little bit of mouth encumbrance is allowed, but not much
             const int mouth_encumb = std::max( 0,
-                                               guy.avg_encumb_of_limb_type( bp_type::mouth ) - 5 );
-            fail_chance += ( mouth_encumb / 100.0f ) * temp_sound_multiplyer;
+                                               guy.avg_encumb_of_limb_type( bp_type::mouth ) - encumbrance.mouth_free );
+            fail_chance += ( mouth_encumb * encumbrance.mouth_fail / 100.0f ) * temp_sound_multiplyer;
         }
     }
 
@@ -1639,6 +1696,11 @@ void spell::gain_exp( const Character &guy, int nxp )
 {
     int oldLevel = get_level();
     experience += nxp;
+    if( oldLevel != get_level() ) {
+        // MAGIC-J05: for every character; its learn_spells handler teaches them follow-up spells
+        get_event_bus().send<event_type::character_levels_spell>( guy.getID(), id(), oldLevel,
+                get_level(), spell_class() );
+    }
     if( guy.is_avatar() && oldLevel != get_level() ) {
         get_event_bus().send<event_type::player_levels_spell>( guy.getID(), id(), get_level(),
                 spell_class() );
@@ -1724,7 +1786,7 @@ void spell::create_field( const tripoint_bub_ms &at, Creature &caster ) const
     if( !type->field ) {
         return;
     }
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     const int intensity = field_intensity( caster ) + rng( -type->field_intensity_variance.evaluate(
                               d ) * field_intensity( caster ),
                           type->field_intensity_variance.evaluate( d ) * field_intensity( caster ) );
@@ -1803,7 +1865,7 @@ bool spell::valid_target_condition( const Creature &caster, const vehicle &veh )
 {
     if( type->has_target_condition ) {
         const_dialogue d( get_const_talker_for( caster ), get_talker_for( veh ), {},
-                          spell_cast_context::get( *this ) );
+                          spell_formula_context( *this ) );
         return type->target_condition( d );
     } else {
         return true;
@@ -1814,7 +1876,7 @@ bool spell::valid_target_condition( const Creature &caster, const Creature &targ
 {
     if( type->has_target_condition ) {
         const_dialogue d( get_const_talker_for( caster ), get_const_talker_for( target ), {},
-                          spell_cast_context::get( *this ) );
+                          spell_formula_context( *this ) );
         return type->target_condition( d );
     } else {
         return true;
@@ -1824,7 +1886,7 @@ bool spell::valid_target_condition( const Creature &caster, const Creature &targ
 bool spell::valid_caster_condition( const Creature &caster ) const
 {
     if( type->has_caster_condition ) {
-        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
         return type->caster_condition( d );
     } else {
         return true;
@@ -2033,7 +2095,7 @@ std::optional<jmath_func_id> spell_type::overall_exp_for_level_formula_id() cons
 double spell::get_failure_cost_percent( Creature &caster ) const
 {
     if( type->magic_type.has_value() ) {
-        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
         return type->magic_type.value()->failure_cost_percent.evaluate( d );
     } else {
         return 0.0f;
@@ -2043,7 +2105,7 @@ double spell::get_failure_cost_percent( Creature &caster ) const
 double spell::get_failure_exp_percent( Creature &caster ) const
 {
     if( type->magic_type.has_value() ) {
-        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+        const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
         return type->magic_type.value()->failure_exp_percent.evaluate( d );
     } else {
         return 0.2f;
@@ -2140,11 +2202,12 @@ void spell::consume_spell_cost( Character &caster, bool cast_success ) const
 
 std::vector<effect_on_condition_id> spell::get_failure_eoc_ids() const
 {
+    std::vector<effect_on_condition_id> eocs;
     if( type->magic_type.has_value() ) {
-        return type->magic_type.value()->failure_eocs;
-    } else {
-        return std::vector<effect_on_condition_id> {};
+        eocs = type->magic_type.value()->failure_eocs;
     }
+    eocs.insert( eocs.end(), type->failure_eocs.begin(), type->failure_eocs.end() );
+    return eocs;
 }
 
 int spell::get_level() const
@@ -2172,7 +2235,7 @@ int spell::get_effective_level() const
 
 int spell::get_max_level( const Creature &caster ) const
 {
-    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
+    const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_formula_context( *this ) );
     return type->max_level.evaluate( d );
 }
 
@@ -2282,7 +2345,7 @@ int spell::casting_exp( const Character &guy ) const
 {
     double exp;
     if( type->magic_type.has_value() && type->magic_type.value()->casting_xp_formula_id.has_value() ) {
-        const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
+        const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_formula_context( *this ) );
         d.set_value( "spell_id", id().str() );
         exp = std::round( type->magic_type.value()->casting_xp_formula_id.value()->eval( d ) );
     } else {
@@ -2504,7 +2567,8 @@ void cast_spell_effect_casterless( const spell &sp, casterless_caster &caster,
 
     get_event_bus().send<event_type::character_casts_spell>( character_id( -1 ),
             sp.id(), sp.spell_class(),
-            0, 0, 0, sp.damage( fake_avatar ), get_map().get_abs( target ).raw() );
+            0, 0, 0, sp.damage( fake_avatar ), get_map().get_abs( target ).raw(),
+            sp.get_effective_level() );
 
     sp.id()->effect( sp, fake_avatar, target );
 }
@@ -2580,7 +2644,16 @@ void spell::cast_spell_effect( Creature &source, const tripoint_bub_ms &target )
         // send casting to the event bus
         get_event_bus().send<event_type::character_casts_spell>( c_id, this->id(), this->spell_class(),
                 this->get_difficulty( source ), this->energy_cost( *caster ), this->casting_time( *caster ),
-                this->damage( source ), get_map().get_abs( target ).raw() );
+                this->damage( source ), get_map().get_abs( target ).raw(), get_effective_level() );
+    } else if( monster *mon = source.as_monster() ) {
+        // MAGIC-J10: monster casts sent no event. A RANDOM_DAMAGE spell's damage here is its
+        // leveled damage, so that sending the event draws no random number.
+        const int dmg = has_flag( spell_flag::RANDOM_DAMAGE ) ? min_leveled_damage( source ) :
+                        damage( source );
+        const cata::event cast = cata::event::make<event_type::monster_casts_spell>( mon->type->id,
+                                 id(), spell_class(), get_effective_level(), dmg, get_map().get_abs( target ).raw() );
+        get_event_bus().send_with_talker( mon, get_creature_tracker().creature_at<Creature>( target ),
+                                          cast );
     }
 
     global_variables::impl_t facts = spell_cast_context::get( *this );
@@ -2871,6 +2944,10 @@ void known_magic::set_spell_exp( const spell_id &sp, int new_exp, const Characte
             spell &temp_sp = get_spell( sp );
             int old_level = temp_sp.get_level();
             temp_sp.set_exp( new_exp );
+            if( old_level != temp_sp.get_level() ) {
+                get_event_bus().send<event_type::character_levels_spell>( guy->getID(), sp->id, old_level,
+                        temp_sp.get_level(), sp->spell_class );
+            }
             if( guy->is_avatar() && old_level != temp_sp.get_level() ) {
                 get_event_bus().send<event_type::player_levels_spell>( guy->getID(), sp->id, temp_sp.get_level(),
                         sp->spell_class );
@@ -3082,6 +3159,11 @@ void known_magic::clear_opens_spellbook_data()
 
 void known_magic::evaluate_opens_spellbook_data()
 {
+    evaluate_opens_spellbook_data( get_player_character() );
+}
+
+void known_magic::evaluate_opens_spellbook_data( const Character &guy )
+{
     for( spell *sp : get_spells() ) {
         double raw_level_adjust = caster_level_adjustment + sp->get_temp_level_adjustment();
         std::map<trait_id, double>::iterator school_it =
@@ -3094,8 +3176,9 @@ void known_magic::evaluate_opens_spellbook_data()
         if( spell_it != caster_level_adjustment_by_spell.end() ) {
             raw_level_adjust += spell_it->second;
         }
+        // MAGIC-J05: against the owner's max level, not the avatar's (NPCs call this too)
         int final_level = clamp( sp->get_level() + static_cast<int>( raw_level_adjust ), 0,
-                                 sp->get_max_level( get_player_character() ) );
+                                 sp->get_max_level( guy ) );
         sp->set_temp_level_adjustment( final_level - sp->get_level() );
     }
 }
@@ -4190,7 +4273,19 @@ spell fake_spell::get_spell() const
 void spell_events::notify( const cata::event &e )
 {
     switch( e.type() ) {
-        case event_type::player_levels_spell: {
+        case event_type::character_levels_spell: {
+            // MAGIC-J05: the character who leveled the spell learns its follow-up spells. This
+            // was player_levels_spell, which only the avatar sends, and it taught the avatar.
+            const character_id who = e.get<cata_variant_type::character_id>( "character" );
+            Character *guy = nullptr;
+            if( who == get_avatar().getID() ) {
+                guy = &get_avatar();
+            } else if( who.is_valid() ) {
+                guy = g->find_npc( who );
+            }
+            if( guy == nullptr ) {
+                break;
+            }
             spell_id sid = e.get<spell_id>( "spell" );
             int slvl = e.get<int>( "new_level" );
             spell_type spell_cast = spell_factory.obj( sid );
@@ -4198,12 +4293,11 @@ void spell_events::notify( const cata::event &e )
                  it != spell_cast.learn_spells.end(); ++it ) {
                 int learn_at_level = it->second;
                 const std::string learn_spell_id = it->first;
-                if( learn_at_level <= slvl && !get_player_character().magic->knows_spell( learn_spell_id ) &&
-                    get_player_character().magic->can_learn_spell( get_player_character(), spell_id( learn_spell_id ),
-                            true ) ) {
-                    get_player_character().magic->learn_spell( learn_spell_id, get_player_character(), true );
+                if( learn_at_level <= slvl && !guy->magic->knows_spell( learn_spell_id ) &&
+                    guy->magic->can_learn_spell( *guy, spell_id( learn_spell_id ), true ) ) {
+                    guy->magic->learn_spell( learn_spell_id, *guy, true );
                     spell_type spell_learned = spell_factory.obj( spell_id( learn_spell_id ) );
-                    add_msg(
+                    guy->add_msg_if_player(
                         _( "Your experience and knowledge in creating and manipulating magical energies to cast %s have opened your eyes to new possibilities, you can now cast %s." ),
                         spell_cast.name,
                         spell_learned.name );

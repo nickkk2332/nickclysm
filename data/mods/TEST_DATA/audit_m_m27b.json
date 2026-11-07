@@ -1,0 +1,207 @@
+[
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_flags_parent",
+    "//": "MAGIC-B16: a copy-from child extends and deletes these flags.",
+    "name": "Flags Parent",
+    "description": "A spell whose copy changes its flags.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "flags": [ "VERBAL", "SOMATIC" ],
+    "min_damage": 1,
+    "max_damage": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_flags_child",
+    "copy-from": "audit_m27b_flags_parent",
+    "extend": { "flags": [ "RANDOM_DAMAGE" ] },
+    "delete": { "flags": [ "VERBAL" ] }
+  },
+  {
+    "type": "magic_type",
+    "id": "audit_m27b_heavy_magic",
+    "//": "MAGIC-J09: every point of hand encumbrance costs 100 mana.  MAGIC-B16: a copy extends its flags.",
+    "energy_source": "MANA",
+    "cannot_cast_flags": "NO_SPELLCASTING",
+    "failure_eocs": [ "AUDIT_M27B_TYPE_FAIL_EOC" ],
+    "encumbrance": { "hands_free": 0, "hands_cost": 100 }
+  },
+  {
+    "type": "magic_type",
+    "id": "audit_m27b_heavy_magic_copy",
+    "copy-from": "audit_m27b_heavy_magic",
+    "extend": { "cannot_cast_flags": [ "NO_PSIONICS" ] }
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_cost_default",
+    "//": "MAGIC-J09: a spell with the default encumbrance rules.",
+    "name": "Default Cost",
+    "description": "Costs 10 mana, more when the hands are encumbered.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "energy_source": "MANA",
+    "base_energy_cost": 10,
+    "final_energy_cost": 10,
+    "min_damage": 1,
+    "max_damage": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_cost_heavy",
+    "//": "MAGIC-J09 and MAGIC-J10: the same with audit_m27b_heavy_magic's rules, and a failure EOC of its own.",
+    "copy-from": "audit_m27b_cost_default",
+    "magic_type": "audit_m27b_heavy_magic",
+    "failure_eocs": [ "AUDIT_M27B_FAIL_EOC" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "AUDIT_M27B_TYPE_FAIL_EOC",
+    "effect": [ { "math": [ "audit_m27b_type_failed = 1" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "AUDIT_M27B_FAIL_EOC",
+    "effect": [ { "math": [ "audit_m27b_spell_failed = 1" ] } ]
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_level_formula",
+    "//": "MAGIC-J07: damage from the level the spell is cast at.",
+    "name": "Level Formula",
+    "description": "Its damage is three times its level, plus one.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "max_level": 10,
+    "min_damage": { "math": [ "_spell_level * 3 + 1" ] },
+    "max_damage": 100,
+    "damage_increment": 0
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_level_formula_copy",
+    "copy-from": "audit_m27b_level_formula",
+    "name": "Level Formula Copy"
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_teacher_spell",
+    "//": "MAGIC-J05: teaches audit_m27b_learned_spell at level 2.",
+    "name": "Teacher",
+    "description": "Leveling it teaches another spell.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "max_level": 5,
+    "min_damage": 1,
+    "max_damage": 1,
+    "learn_spells": { "audit_m27b_learned_spell": 2 }
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_learned_spell",
+    "name": "Learned",
+    "description": "Taught by audit_m27b_teacher_spell.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "min_damage": 1,
+    "max_damage": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_owner_max_level",
+    "//": "MAGIC-J05: its max level is the caster's audit_m27b_cap variable.",
+    "name": "Owner Max Level",
+    "description": "Each caster has its own max level.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "max_level": { "math": [ "u_audit_m27b_cap" ] },
+    "min_damage": 1,
+    "max_damage": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_stats_spell",
+    "//": "MAGIC-J10: fixed values for the spell math functions.",
+    "name": "Stats",
+    "description": "A spell with known values.",
+    "effect": "attack",
+    "shape": "blast",
+    "valid_targets": [ "hostile" ],
+    "max_level": 20,
+    "min_damage": 10,
+    "damage_increment": 5,
+    "max_damage": 100,
+    "min_range": 5,
+    "range_increment": 1,
+    "max_range": 30,
+    "min_aoe": 2,
+    "max_aoe": 2,
+    "min_duration": 300,
+    "max_duration": 300
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_m27b_monster_cast",
+    "//": "MAGIC-J10: a monster casts it on itself.",
+    "name": "Monster Cast",
+    "description": "Runs an EOC that does nothing that lasts.",
+    "effect": "effect_on_condition",
+    "effect_str": "AUDIT_M27B_NOOP_EOC",
+    "shape": "blast",
+    "valid_targets": [ "self" ],
+    "max_level": 10,
+    "min_damage": 4,
+    "max_damage": 4
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "AUDIT_M27B_NOOP_EOC",
+    "effect": [ { "math": [ "audit_m27b_monster_cast_ran = 1" ] } ]
+  },
+  {
+    "type": "enchantment",
+    "id": "audit_m27b_kills_ench",
+    "//": "MAGIC-J08: speed from the item's audit_m27b_kills variable.",
+    "has": "HELD",
+    "condition": "ALWAYS",
+    "values": [ { "value": "SPEED", "add": { "math": [ "n_audit_m27b_kills" ] } } ]
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "ARTIFACT" ],
+    "id": "audit_m27b_kill_counter",
+    "copy-from": "test_item_ench",
+    "name": "audit_m27b_kill_counter",
+    "passive_effects": [ { "id": "audit_m27b_kills_ench" } ]
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_m27b_source_effect",
+    "//": "MAGIC-J08: speed twice its intensity.",
+    "name": [ "Audit Source Effect" ],
+    "desc": [ "Its enchantment reads its intensity." ],
+    "max_intensity": 5,
+    "max_duration": "1 h",
+    "enchantments": [ { "values": [ { "value": "SPEED", "add": { "math": [ "_source_intensity * 2" ] } } ] } ]
+  },
+  {
+    "type": "ter_furn_transform",
+    "id": "audit_m27b_transform",
+    "//": "MAGIC-J06: chances of 0 and 100, and field intensities.",
+    "terrain": [
+      { "result": "t_dirt", "valid_terrain": [ "t_grass" ], "chance": 0 },
+      { "result": "t_floor", "valid_terrain": [ "t_sand" ], "chance": 100 }
+    ],
+    "field": [
+      { "result": "fd_smoke", "valid_field": [ "fd_fire" ], "intensity": 1 },
+      { "result": "fd_blood", "valid_field": [ "fd_blood" ], "intensity": 3 }
+    ]
+  }
+]

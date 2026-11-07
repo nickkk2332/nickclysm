@@ -137,12 +137,7 @@
     "rating": "good",
     "max_duration": 40000,
     "enchantments": [
-      {
-        "values": [
-          { "value": "NIGHT_VIS", "add": { "math": [ "((u_spell_level('dark_sight')) + 3)" ] } },
-          { "value": "NIGHT_VIS", "add": { "math": [ "((u_spell_level('dark_sight')) + 3)" ] } }
-        ]
-      },
+      { "values": [ { "value": "NIGHT_VIS", "add": { "math": [ "((u_spell_level('dark_sight')) + 3)" ] } } ] },
       {
         "condition": { "and": [ { "not": "is_day" }, { "math": [ "u_spell_level('dark_sight') >= 4" ] } ] },
         "values": [ { "value": "OVERMAP_SIGHT", "add": { "math": [ "u_spell_level('dark_sight') / 4" ] } } ]

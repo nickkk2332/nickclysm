@@ -151,6 +151,8 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::character_hears_sound: return "character_hears_sound";
         case event_type::omt_generated: return "omt_generated";
         case event_type::map_extra_spawned: return "map_extra_spawned";
+        case event_type::character_levels_spell: return "character_levels_spell";
+        case event_type::monster_casts_spell: return "monster_casts_spell";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -173,7 +175,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 135,
+static_assert( static_cast<int>( event_type::num_event_types ) == 137,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -264,6 +266,8 @@ DEFINE_EVENT_FIELDS( creature_teleported )
 DEFINE_EVENT_FIELDS( character_hears_sound )
 DEFINE_EVENT_FIELDS( omt_generated )
 DEFINE_EVENT_FIELDS( map_extra_spawned )
+DEFINE_EVENT_FIELDS( character_levels_spell )
+DEFINE_EVENT_FIELDS( monster_casts_spell )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )

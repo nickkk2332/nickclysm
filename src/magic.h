@@ -240,6 +240,8 @@ class spell_type
         skill_id skill;
 
         std::optional<magic_type_id> magic_type;
+        // MAGIC-J10: run when a cast of this spell fails, after its magic_type's failure_eocs
+        std::vector<effect_on_condition_id> failure_eocs;
 
         requirement_id spell_components;
 
@@ -837,8 +839,10 @@ class known_magic
         bool has_enough_energy( const Character &guy, const spell &sp ) const;
         // Clears old data written by EoC triggered by the events player_opens_spellbook or npc_opens_spellbook
         void clear_opens_spellbook_data();
-        // uses data received from EoC
+        // uses data received from EoC; the levels are capped at the spells' max levels for @p guy,
+        // the owner of this known_magic (the avatar without it)
         void evaluate_opens_spellbook_data();
+        void evaluate_opens_spellbook_data( const Character &guy );
         void channel_magic( Character &guy );
         void break_channeling( Character &guy );
 

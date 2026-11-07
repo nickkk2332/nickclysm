@@ -2689,7 +2689,7 @@ void npc::evaluate_best_attack( const Creature *target )
     if( magic->spells().empty() ) {
         magic->clear_opens_spellbook_data();
         get_event_bus().send<event_type::opens_spellbook>( getID() );
-        magic->evaluate_opens_spellbook_data();
+        magic->evaluate_opens_spellbook_data( *this );
     }
     for( const spell_id &sp : magic->spells() ) {
         compare( std::make_shared<npc_attack_spell>( sp ), sp.c_str(), nullptr );
