@@ -662,6 +662,9 @@ struct event_transformation_impl : public event_transformation::impl {
 
     void check( const std::string &name ) const override {
         const cata::event::fields_type input_fields = source_->fields();
+        // match_and_transform applies the constraints after adding the new fields, so they may
+        // constrain those too
+        cata::event::fields_type constrainable_fields = input_fields;
 
         for( const std::pair<std::string, new_field> &p : new_fields_ ) {
             if( input_fields.count( p.first ) ) {
@@ -669,13 +672,14 @@ struct event_transformation_impl : public event_transformation::impl {
                           "with that name already exists", name, p.first );
             }
             p.second.check( name, input_fields );
+            constrainable_fields.emplace( p.first, p.second.type( constrainable_fields ) );
         }
 
         for( const std::pair<std::string, value_constraint> &p : constraints_ ) {
-            auto it = input_fields.find( p.first );
-            if( it == input_fields.end() ) {
+            auto it = constrainable_fields.find( p.first );
+            if( it == constrainable_fields.end() ) {
                 debugmsg( "event_transformation %s applies constraint to field %s, but no field "
-                          "with that name exists in the input", name, p.first );
+                          "with that name exists in the input or the new fields", name, p.first );
             } else {
                 p.second.check( name, it->second );
             }
