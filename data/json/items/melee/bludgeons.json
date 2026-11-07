@@ -736,7 +736,7 @@
     "description": "A sledge hammer with a notably shorter handle.  This makes it worse as a melee weapon, but a more portable tool.",
     "looks_like": "hammer_sledge",
     "flags": [ "DURABLE_MELEE", "NONCONDUCTIVE", "ALLOWS_BODY_BLOCK" ],
-    "faults": [ { "fault_group": "handle_short" } ],
+    "extend": { "faults": [ { "fault_group": "handle_short" } ] },
     "to_hit": { "grip": "weapon", "length": "hand", "surface": "any", "balance": "clumsy" },
     "relative": {
       "melee_damage": { "bash": -15 },
@@ -754,7 +754,7 @@
     "name": { "str": "engineer's hammer" },
     "description": "A stout and hefty hammer, more akin to a sledge than a typical ball-peen.  Useful for portable demolition work, but very unwieldy as a weapon.",
     "flags": [ "DURABLE_MELEE", "NONCONDUCTIVE", "BELT_CLIP" ],
-    "faults": [ { "fault_group": "handle_short" } ],
+    "extend": { "faults": [ { "fault_group": "handle_short" } ] },
     "techniques": [ "WBLOCK_1" ],
     "to_hit": { "grip": "solid", "length": "hand", "surface": "any", "balance": "uneven" },
     "proportional": {

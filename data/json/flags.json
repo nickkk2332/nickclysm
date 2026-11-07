@@ -285,7 +285,9 @@
   },
   {
     "id": "FIELD_DRESS",
-    "type": "json_flag"
+    "type": "json_flag",
+    "//": "a field dressed corpse rots slower",
+    "rot_multiplier": 0.75
   },
   {
     "id": "FIELD_DRESS_FAILED",
@@ -845,12 +847,14 @@
   },
   {
     "id": "MUSHY",
-    "type": "json_flag"
+    "type": "json_flag",
+    "rot_multiplier": 3
   },
   {
     "id": "IRRADIATED",
     "type": "json_flag",
-    "info": "This food item has been irradiated, and will spoil 4 times slower."
+    "info": "This food item has been irradiated, and will spoil 4 times slower.",
+    "rot_multiplier": 0.25
   },
   {
     "id": "FREEZERBURN",

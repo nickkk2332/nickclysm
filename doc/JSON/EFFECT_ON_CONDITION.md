@@ -2489,7 +2489,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 
 | EVENT              | Description | Context Variables | Talker(alpha/beta) |
 | ------------------ | ----------- | ----------------- | ------------------ |
-| activates_artifact | Not currently emitted: nothing in the game sends it (only `trigger_event` can). Meant for when the player activates an artifact | { "character", `character_id` },<br/> { "item_name", `string` }, | character / NONE |
+| activates_artifact | Triggers when the player activates a relic (artifact) through its "Use relic" action, after its spells are cast | { "character", `character_id` },<br/> { "item_name", `string` },<br/> { "itype", `itype_id` }, | character / NONE |
 | activates_mininuke | Triggers when any character arms a mininuke | { "character", `character_id` } | character / NONE |
 | administers_mutagen |  | { "character", `character_id` },<br/> { "technique", `mutagen_technique` }, | character / NONE |
 | angers_amigara_horrors | Triggers when amigara horrors are spawned as part of a mine finale | NONE | avatar / NONE |
@@ -8427,12 +8427,12 @@ Subtract this many turns from the alpha talker's moves.
 | ✔️ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 
-#### `transform_item`
-Convert the beta talker (which must be an item) into a different item, optionally activating it. Works similarly to the "transform" use_action.
+#### `u_transform_item`, `npc_transform_item`
+Convert the talker (which must be an item) into a different item, optionally activating it. Works similarly to the "transform" use_action. `transform_item` is the older spelling of `npc_transform_item`.
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
-| "transform_item" | **mandatory** | string or [variable object](#variable-object) | item ID to transform to |
+| "u_transform_item" / "npc_transform_item" / "transform_item" | **mandatory** | string or [variable object](#variable-object) | item ID to transform to |
 | "active" | optional | boolean | if true, activate the item |
 
 ##### Examples

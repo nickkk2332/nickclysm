@@ -2068,6 +2068,9 @@ void item_pocket::process( map &here, Character *carrier, const tripoint_bub_ms 
                            temperature_flag flag, float spoil_multiplier_parent, bool watertight_container )
 {
     for( auto iter = contents.begin(); iter != contents.end(); ) {
+        // a stack counted by charges that processing converts into a type that isn't (a countdown
+        // into a solid) stands for one item per charge it had
+        const int stack_size = iter->count_by_charges() ? iter->charges : 0;
         if( iter->process( here, carrier, pos, insulation, flag,
                            // spoil multipliers on pockets are not additive or multiplicative: the
                            // best one below 1 counts, or else the worst one above 1
@@ -2076,7 +2079,14 @@ void item_pocket::process( map &here, Character *carrier, const tripoint_bub_ms 
             iter->spill_contents( pos );
             iter = contents.erase( iter );
         } else {
+            const bool split = stack_size > 1 && !iter->count_by_charges();
+            const item &converted = *iter;
             ++iter;
+            if( split ) {
+                // the copies go right after it, so this loop doesn't process them again this turn
+                // (and nothing restacks here: that could erase the item iter points to)
+                contents.insert( iter, stack_size - 1, converted );
+            }
         }
     }
 }

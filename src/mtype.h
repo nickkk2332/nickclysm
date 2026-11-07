@@ -372,6 +372,14 @@ struct mtype {
 
         std::vector<revive_type> revive_types;
 
+        /** its corpse's shelf life: how long until the corpse is rotten */
+        time_duration corpse_shelf_life = 24_hours;
+        /** how much rot its corpse takes to rot away, unless it can revive */
+        time_duration corpse_rot_away = 10_days;
+        /** a reviving corpse doesn't get up until this old, and surely does once revive_guaranteed old */
+        time_duration revive_min_age = 6_hours;
+        time_duration revive_guaranteed = 48_hours;
+
         mtype_id zombify_into; // mtype_id this monster zombifies into
         mtype_id fungalize_into; // mtype_id this monster fungalize into
 

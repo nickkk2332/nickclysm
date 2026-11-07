@@ -455,7 +455,7 @@ time_duration item::get_shelf_life() const
         if( is_comestible() ) {
             return get_comestible()->spoils;
         } else if( is_corpse() ) {
-            return 24_hours;
+            return corpse->corpse_shelf_life;
         }
     }
     return 0_turns;
@@ -602,22 +602,18 @@ void item::calc_rot( units::temperature temp, const float spoil_modifier,
         return;
     }
 
-    // rot modifier
-    float factor = spoil_modifier;
-    if( is_corpse() && has_flag( flag_FIELD_DRESS ) ) {
-        factor *= 0.75;
-    }
-    if( has_own_flag( flag_MUSHY ) ) {
-        factor *= 3.0;
-    }
-    // Food irradiation can quadruple the shelf life.
+    // rot modifier: the rot_multiplier of the item's own flags (flags.json), such as FIELD_DRESS
+    // (corpses), MUSHY and IRRADIATED.  Food irradiation can quadruple the shelf life.
     // "Shelf life of ground beef patties treated by gamma radiation":
     // > Beef patties treated at 1.0 and 3.0 kGy [spoiled] by day 14 and 21, ...
     // > patties treated at 5.0 kGy did not spoil until 42 days.
     // > The nonirradiated control samples for both batches of ground beef spoiled within 7 days
     // We get 0.5, 0.33, and 0.167. 0.25 seems reasonable for irradiation
-    if( has_own_flag( flag_IRRADIATED ) ) {
-        factor *= 0.25;
+    float factor = spoil_modifier;
+    for( const std::pair<flag_id, float> &mult : json_flag::rot_multipliers() ) {
+        if( has_own_flag( mult.first ) ) {
+            factor *= mult.second;
+        }
     }
 
     if( has_own_flag( flag_COLD ) ) {
@@ -1281,7 +1277,7 @@ bool item::will_explode_in_fire() const
 bool item::has_rotten_away() const
 {
     if( is_corpse() && !can_revive() ) {
-        return get_rot() > 10_days;
+        return get_rot() > corpse->corpse_rot_away;
     } else {
         return get_relative_rot() > 2.0;
     }

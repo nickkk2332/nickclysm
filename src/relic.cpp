@@ -10,6 +10,8 @@
 #include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
@@ -19,9 +21,11 @@
 #include "magic.h"
 #include "magic_enchantment.h"
 #include "map.h"
+#include "map_selector.h"
 #include "omdata.h"
 #include "overmapbuffer.h"
 #include "rng.h"
+#include "talker.h"
 #include "translations.h"
 #include "type_id.h"
 #include "weather.h"
@@ -72,6 +76,7 @@ std::string enum_to_string<relic_recharge_type>( relic_recharge_type type )
         case relic_recharge_type::FOREST: return "forest";
         case relic_recharge_type::UNDERGROUND: return "underground";
         case relic_recharge_type::PORTAL_STORM: return "portal_storm";
+        case relic_recharge_type::CONDITION: return "condition";
         case relic_recharge_type::NUM: break;
     }
     // *INDENT-ON*
@@ -338,6 +343,7 @@ void relic_charge_template::load( const JsonObject &jo )
     power_level += tmp_power;
 
     jo.read( "recharge_type", type );
+    jo.read( "recharge_eoc", recharge_eoc );
     jo.read( "time", time );
 }
 
@@ -349,6 +355,7 @@ relic_charge_info relic_charge_template::generate() const
     ret.charges = std::min( rng( init_charges.first, init_charges.second ), ret.max_charges );
     ret.activation_time = rng( time.first, time.second );
     ret.type = type;
+    ret.recharge_eoc = recharge_eoc;
     ret.power = power_level;
     return ret;
 }
@@ -365,6 +372,7 @@ void relic_charge_info::load( const JsonObject &jo )
     jo.read( "max_charges", max_charges );
     jo.read( "recharge_type", type );
     jo.read( "recharge_condition", has );
+    jo.read( "recharge_eoc", recharge_eoc );
     jo.read( "regenerate_ammo", regenerate_ammo );
     jo.read( "activation_accumulator", activation_accumulator );
     jo.read( "time", activation_time );
@@ -379,6 +387,9 @@ void relic_charge_info::serialize( JsonOut &jsout ) const
     jsout.member( "regenerate_ammo", regenerate_ammo );
     jsout.member( "recharge_type", type );
     jsout.member( "recharge_condition", has );
+    if( !recharge_eoc.is_null() ) {
+        jsout.member( "recharge_eoc", recharge_eoc );
+    }
     jsout.member( "activation_accumulator", activation_accumulator );
     jsout.member( "time", activation_time );
     jsout.end_object();
@@ -465,6 +476,10 @@ void relic::load( const JsonObject &jo )
 
 void relic::finalize()
 {
+    if( charge.type == relic_recharge_type::CONDITION && !charge.recharge_eoc.is_valid() ) {
+        debugmsg( "relic with recharge_type condition needs a valid recharge_eoc, not '%s'",
+                  charge.recharge_eoc.str() );
+    }
     // add the enchantments that we couldn't earlier in the load
     for( const enchantment_id &ench : passive_enchant_ids ) {
         add_passive_effect( ench.obj() );
@@ -532,6 +547,11 @@ int relic::activate( Creature &caster, const tripoint_bub_ms &target )
 int relic::charges() const
 {
     return charge.charges;
+}
+
+void relic::set_charges( int qty )
+{
+    charge.charges = std::max( charge.max_charges > 0 ? std::min( qty, charge.max_charges ) : qty, 0 );
 }
 
 int relic::charges_per_use() const
@@ -647,6 +667,19 @@ void relic::try_recharge( item &parent, Character *carrier, const tripoint_bub_m
         }
         case relic_recharge_type::PORTAL_STORM: {
             if( get_weather().weather_id == weather_portal_storm ) {
+                charge.accumulate_charge( parent );
+            }
+            return;
+        }
+        case relic_recharge_type::CONDITION: {
+            if( !charge.recharge_eoc.is_valid() ) {
+                return;
+            }
+            item_location loc = carrier != nullptr ? item_location( *carrier, &parent ) :
+                                item_location( map_cursor( &get_map(), pos ), &parent );
+            const const_dialogue d( get_const_talker_for( loc ),
+                                    carrier != nullptr ? get_const_talker_for( *carrier ) : nullptr );
+            if( charge.recharge_eoc->test_condition( d ) ) {
                 charge.accumulate_charge( parent );
             }
             return;

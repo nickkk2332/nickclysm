@@ -1027,6 +1027,14 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "mount_items", mount_items );
 
     optional( jo, was_loaded, "revive_forms", revive_types );
+    optional( jo, was_loaded, "corpse_shelf_life", corpse_shelf_life, 24_hours );
+    optional( jo, was_loaded, "corpse_rot_away", corpse_rot_away, 10_days );
+    if( jo.has_object( "revive_delay" ) ) {
+        // a member left out keeps the inherited (or default) value
+        JsonObject delay = jo.get_object( "revive_delay" );
+        optional( delay, true, "min", revive_min_age );
+        optional( delay, true, "guaranteed", revive_guaranteed );
+    }
 
     optional( jo, was_loaded, "zombify_into", zombify_into, string_id_reader<::mtype> {},
               mtype_id() );
@@ -1434,6 +1442,10 @@ void MonsterGenerator::check_monster_definitions() const
         }
         if( mon.harvest.is_null() && !mon.has_flag( mon_flag_ELECTRONIC ) && !mon.id.is_null() ) {
             debugmsg( "monster %s has no harvest entry", mon.id.c_str(), mon.harvest.c_str() );
+        }
+        if( mon.corpse_shelf_life <= 0_turns ) {
+            debugmsg( "monster %s has a corpse_shelf_life of %s: it must be positive", mon.id.c_str(),
+                      to_string( mon.corpse_shelf_life ) );
         }
         if( mon.has_flag( mon_flag_MILKABLE ) && mon.starting_ammo.empty() ) {
             debugmsg( "monster %s is flagged milkable, but has no starting ammo", mon.id.c_str() );

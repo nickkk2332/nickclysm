@@ -1666,7 +1666,12 @@ struct itype {
     private:
         /** maximum amount of damage to a non- count_by_charges item */
         static constexpr int damage_max_ = 4000;
-        int degrade_increments_ = 50;
+        /** degradation increments of an item with a degradation_multiplier of 1 */
+        static constexpr int base_degrade_increments_ = 50;
+        int degrade_increments_ = base_degrade_increments_;
+        /** "degradation_multiplier" as written (or inherited): the increments are derived from it
+         * on each load, so copy-from doesn't apply a parent's multiplier twice */
+        std::optional<float> degrade_mult_;
 
     public:
         /** Damage output in melee for zero or more damage types */

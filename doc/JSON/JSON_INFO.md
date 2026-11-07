@@ -1744,7 +1744,9 @@ Fault fixes are methods to fix faults, the fixes can optionally add other faults
   "mod_damage": 1000, // damage to modify on item when fix is applied, can be negative to repair
   "mod_degradation": 50, // degradation to modify on item when fix is applied, can be negative to reduce degradation
   "time_save_profs": { "prof_gun_cleaning": 0.5, "prof_welding": 0.5, }, // those proficiencies change how fast you fix the item
-  "time_save_flags": { "EASY_CLEAN": 0.5 } // This flag on the item change how fast you fix this item
+  "time_save_flags": { "EASY_CLEAN": 0.5 }, // This flag on the item change how fast you fix this item
+  "condition": { "u_has_trait": "GUNSMITH" }, // (optional) dialogue condition: the fix is only offered while it is true; the mender is `u` and the item `npc`
+  "effect_on_conditions": [ "EOC_GUN_CLEANED" ] // (optional) EOCs (ids or inline) run once the fix is applied, with the mender as `u` and the item as `npc`
 }
 ```
 
@@ -4465,6 +4467,7 @@ Flags, that can be used in different entries, can also be made in json, allowing
   "restriction": "Item must be an armored skirt", // for pocket restriction, this information would be shown in `restrictions` field in pocket info
   "conflicts": "STURDY", // if something with this flag will met something with conflict flag, only one will be applied
   "taste_mod": -5, // for consumables, it will add -5 to taste, that can't be removed with cooking
+  "rot_multiplier": 0.25, // an item with this flag of its own (not from its type) rots this many times as fast; default 1. Vanilla uses it for IRRADIATED (0.25), MUSHY (3) and FIELD_DRESS (0.75)
   "inherit": true, // is this flag inherited to another thing if it's attached/equipped, like if you put ESAPI plate into plate carrier, their `CANT_WEAR` flag won't be applied to plate carrier, and you could wear it as usually
   "craft_inherit": true, // if true, if you craft something with this flag, this flag would be applied to result also
   "item_prefix": "[...",

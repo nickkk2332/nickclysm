@@ -65,6 +65,7 @@
 #include "item_factory.h"
 #include "item_group.h"
 #include "item_location.h"
+#include "item_pocket.h"
 #include "item_wakeup.h"
 #include "itype.h"
 #include "iuse.h"
@@ -6461,11 +6462,52 @@ void map::update_lum( item_location &loc, bool add )
     set_lightmap_cache_dirty( loc.pos_bub( *this ).z() );
 }
 
+// Registers the items in @p top (on the map or in a vehicle) that need processing
+static void make_active_in( map &here, const map_cursor &cur, item &top )
+{
+    item_location loc( cur, &top );
+    here.make_active( loc );
+}
+
+static void make_active_in( map &, const vehicle_cursor &cur, item &top )
+{
+    item_location loc( cur, &top );
+    loc.make_active();
+}
+
+// A stack counted by charges that processing converted into a type that isn't (a countdown into a
+// solid) stands for one item per charge it had: puts the other @p copies next to it.
+template <typename veh_or_map_cursor>
+static void split_converted_stack( map &here, item_stack &items, const item &converted,
+                                   item *parent, const veh_or_map_cursor &cur, int copies )
+{
+    if( parent == nullptr ) {
+        for( int i = 0; i < copies; i++ ) {
+            items.insert( here, converted );
+        }
+        return;
+    }
+    item_pocket *const pocket = parent->contained_where( converted );
+    if( pocket == nullptr ) {
+        return;
+    }
+    std::vector<item *> added;
+    pocket->add( converted, copies, added );
+    // the copies are processed like the item: register them through the item on the tile
+    for( item &top : items ) {
+        if( top.has_item( *parent ) ) {
+            make_active_in( here, cur, top );
+            break;
+        }
+    }
+}
+
 template <typename veh_or_map_cursor>
 static bool process_map_items( map &here, item_stack &items, safe_reference<item> &item_ref,
                                item *parent, const tripoint_bub_ms &location, const veh_or_map_cursor &cur, float insulation,
                                temperature_flag flag, float spoil_multiplier, bool watertight_container )
 {
+    const int stack_size = item_ref->count_by_charges() ? item_ref->charges : 0;
     if( item_ref->process( here, nullptr, location, insulation, flag, spoil_multiplier,
                            watertight_container, false ) ) {
         // Item is to be destroyed so erase it from the map stack
@@ -6484,6 +6526,9 @@ static bool process_map_items( map &here, item_stack &items, safe_reference<item
         return true;
     }
     // Item not destroyed
+    if( item_ref && stack_size > 1 && !item_ref->count_by_charges() ) {
+        split_converted_stack( here, items, *item_ref, parent, cur, stack_size - 1 );
+    }
     return false;
 }
 

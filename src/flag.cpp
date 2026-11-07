@@ -402,6 +402,8 @@ namespace
 generic_factory<json_flag> json_flags_all( "json_flags" );
 // Flags with blocked_actions, for game::do_regular_action
 std::vector<flag_id> action_blocking_flags;
+// the flags with a rot_multiplier, filled in finalize_all
+std::vector<std::pair<flag_id, float>> rot_multiplier_flags;
 } // namespace
 
 /** @relates string_id */
@@ -439,6 +441,7 @@ void json_flag::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "craft_inherit", craft_inherit_, false );
     optional( jo, was_loaded, "requires_flag", requires_flag_ );
     optional( jo, was_loaded, "taste_mod", taste_mod_ );
+    optional( jo, was_loaded, "rot_multiplier", rot_multiplier_, 1.0f );
     optional( jo, was_loaded, "restriction", restriction_ );
     optional( jo, was_loaded, "name", name_ );
     optional( jo, was_loaded, "item_prefix", item_prefix_ );
@@ -471,6 +474,7 @@ void json_flag::reset()
 {
     json_flags_all.reset();
     action_blocking_flags.clear();
+    rot_multiplier_flags.clear();
 }
 
 void json_flag::load_all( const JsonObject &jo, const std::string &src )
@@ -485,6 +489,9 @@ void json_flag::check() const
             debugmsg( "flag definition %s specifies unknown conflicting field %s", id.str(),
                       conflicting );
         }
+    }
+    if( rot_multiplier_ < 0.0f ) {
+        debugmsg( "flag definition %s has a negative rot_multiplier", id.str() );
     }
     if( vehicle_toggle_ && vehicle_toggle_name_.empty() && !vehicle_toggle_hotkey_.empty() ) {
         debugmsg( "flag definition %s has a vehicle_toggle hotkey but no name to show it with",
@@ -503,9 +510,13 @@ void json_flag::finalize_all()
 {
     json_flags_all.finalize();
     action_blocking_flags.clear();
+    rot_multiplier_flags.clear();
     for( const json_flag &f : json_flags_all.get_all() ) {
         if( !f.blocked_actions_.empty() ) {
             action_blocking_flags.push_back( f.id );
+        }
+        if( f.rot_multiplier_ != 1.0f ) {
+            rot_multiplier_flags.emplace_back( f.id, f.rot_multiplier_ );
         }
     }
 }
@@ -513,6 +524,11 @@ void json_flag::finalize_all()
 const std::vector<flag_id> &json_flag::get_action_blocking()
 {
     return action_blocking_flags;
+}
+
+const std::vector<std::pair<flag_id, float>> &json_flag::rot_multipliers()
+{
+    return rot_multiplier_flags;
 }
 
 bool json_flag::is_ready()

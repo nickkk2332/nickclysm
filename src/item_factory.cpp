@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -25,6 +26,7 @@
 #include "cata_utility.h"
 #include "catacharset.h"
 #include "color.h"
+#include "condition.h"
 #include "coords_fwd.h"
 #include "damage.h"
 #include "debug.h"
@@ -2980,6 +2982,10 @@ void Item_factory::check_definitions() const
             }
         }
 
+        if( type->degrade_mult_ && *type->degrade_mult_ > 0.0f && type->count_by_charges() ) {
+            msg += "degradation_multiplier does nothing: items counted by charges can't be damaged\n";
+        }
+
         for( const auto &f : type->faults ) {
             if( !f.first.is_valid() ) {
                 msg += string_format( "invalid item fault %s\n", f.first.c_str() );
@@ -4101,8 +4107,31 @@ void islot_comestible::deserialize( const JsonObject &jo )
     optional( jo, was_loaded, "addiction_type", addictions,
               weighted_string_id_reader<addiction_id, int> {default_addict_potential} );
 
-    for( JsonValue jv : jo.get_array( "consumption_effect_on_conditions" ) ) {
-        consumption_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+    // the list replaces the one copy-from inherited; "extend" adds to it and "delete" removes ids
+    if( jo.has_array( "consumption_effect_on_conditions" ) ) {
+        consumption_eocs.clear();
+        for( JsonValue jv : jo.get_array( "consumption_effect_on_conditions" ) ) {
+            consumption_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        if( del.has_array( "consumption_effect_on_conditions" ) ) {
+            for( const std::string &doomed : del.get_string_array( "consumption_effect_on_conditions" ) ) {
+                consumption_eocs.erase( std::remove( consumption_eocs.begin(), consumption_eocs.end(),
+                                                     effect_on_condition_id( doomed ) ), consumption_eocs.end() );
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        if( ext.has_array( "consumption_effect_on_conditions" ) ) {
+            for( JsonValue jv : ext.get_array( "consumption_effect_on_conditions" ) ) {
+                consumption_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+            }
+        }
     }
     optional( jo, was_loaded, "rot_spawn", rot_spawn );
 
@@ -4848,16 +4877,19 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "explosion", explosion );
     using_legacy_to_hit = false; //required for inherited but undefined "to_hit" field
     optional( jo, was_loaded, "to_hit", m_to_hit, melee_accuracy_reader{ *this }, -2 );
-    float degrade_mult = 1.0f;
-    optional( jo, false, "degradation_multiplier", degrade_mult, 1.0f );
-    // TODO: remove condition once degradation is ready to be applied to all items
-    if( count_by_charges() || category_force != item_category_veh_parts ) {
-        degrade_mult = 0.0f;
+    if( jo.has_member( "degradation_multiplier" ) ) {
+        degrade_mult_ = static_cast<float>( jo.get_float( "degradation_multiplier" ) );
     }
+    // Without an explicit (or inherited) multiplier only vehicle parts degrade for now.
+    // TODO: default to 1.0 for all items once degradation is ready to be applied to them
+    // Items counted by charges have no damage, so nothing to degrade.
+    float degrade_mult = count_by_charges() ? 0.0f : degrade_mult_.value_or(
+                             category_force == item_category_veh_parts ? 1.0f : 0.0f );
     if( ( degrade_mult * itype::damage_max_ ) <= 0.5f ) {
         degrade_increments_ = 0;
     } else {
-        float adjusted_inc = std::max( degrade_increments_ / degrade_mult, 1.0f );
+        // derived from the base each time, so a child's multiplier doesn't stack on its parent's
+        float adjusted_inc = std::max( base_degrade_increments_ / degrade_mult, 1.0f );
         degrade_increments_ = std::isnan( adjusted_inc ) ? 0 : std::round( adjusted_inc );
     }
 
@@ -4902,8 +4934,9 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "flags", item_tags, auto_flags_reader<flag_id> {} );
     optional( jo, was_loaded, "source_monster", source_monster, mtype_id::NULL_ID() );
 
-    if( jo.has_array( "faults" ) ) {
-        for( JsonObject jo_f : jo.get_array( "faults" ) ) {
+    // "faults" replaces the list copy-from inherited, "extend" adds to it and "delete" removes from it
+    const auto read_fault_entries = [this]( const JsonArray & entries ) {
+        for( JsonObject jo_f : entries ) {
             if( jo_f.has_string( "fault" ) ) {
                 const int fault_weight = jo_f.has_float( "weight" ) ? jo_f.get_float( "weight" ) : 100;
                 faults.add( fault_id( jo_f.get_string( "fault" ) ), fault_weight );
@@ -4916,6 +4949,44 @@ void itype::load( const JsonObject &jo, std::string_view src )
             } else {
                 jo_f.throw_error( R"("faults" should specify either a "fault" or a "fault_group")" );
             }
+        }
+    };
+    if( jo.has_array( "faults" ) ) {
+        faults.clear();
+        fault_groups.clear();
+        read_fault_entries( jo.get_array( "faults" ) );
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        if( del.has_array( "faults" ) ) {
+            // a fault id, or { "fault": id } or { "fault_group": id } like the entries
+            for( const JsonValue entry : del.get_array( "faults" ) ) {
+                if( entry.test_string() ) {
+                    faults.remove( fault_id( entry.get_string() ) );
+                    continue;
+                }
+                JsonObject jo_f = entry.get_object();
+                jo_f.allow_omitted_members();
+                if( jo_f.has_string( "fault" ) ) {
+                    faults.remove( fault_id( jo_f.get_string( "fault" ) ) );
+                } else if( jo_f.has_string( "fault_group" ) ) {
+                    const std::string group = jo_f.get_string( "fault_group" );
+                    fault_groups.erase( std::remove_if( fault_groups.begin(), fault_groups.end(),
+                    [&group]( const std::tuple<int, int, float, std::string> &g ) {
+                        return std::get<3>( g ) == group;
+                    } ), fault_groups.end() );
+                } else {
+                    jo_f.throw_error( R"("faults" should specify either a "fault" or a "fault_group")" );
+                }
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        if( ext.has_array( "faults" ) ) {
+            read_fault_entries( ext.get_array( "faults" ) );
         }
     }
 
@@ -5323,10 +5394,16 @@ void Item_factory::add_entry( Item_group &ig, const JsonObject &obj,
                                              ig.with_magazine, context, event );
         jarr = obj.get_array( "distribution" );
     }
+    // the entry spawns only while this is true (checked at spawn time, the avatar is u)
+    std::function<bool( const_dialogue const & )> condition;
+    if( obj.has_member( "condition" ) ) {
+        read_condition( obj, "condition", condition, false );
+    }
     if( gptr ) {
         for( const JsonObject job2 : jarr ) {
             add_entry( *gptr, job2, subcontext );
         }
+        gptr->condition = condition;
         ig.add_entry( std::move( gptr ) );
         return;
     }
@@ -5343,6 +5420,7 @@ void Item_factory::add_entry( Item_group &ig, const JsonObject &obj,
     if( !sptr ) {
         return;
     }
+    sptr->condition = condition;
 
     if( obj.has_member( "artifact" ) ) {
         sptr->artifact = cata::make_value<Item_spawn_data::relic_generator>();
@@ -5486,6 +5564,26 @@ void Item_factory::load_item_group( const JsonObject &jsobj, const item_group_id
     Item_group *ig = make_group_or_throw( group_id, isd, type, jsobj.get_int( "ammo", 0 ),
                                           jsobj.get_int( "magazine", 0 ), context );
 
+    // With copy-from, "delete" removes the entries (not nested ones) that spawn these items or
+    // groups, before "extend" adds new ones
+    if( jsobj.has_member( "copy-from" ) && jsobj.has_object( "delete" ) ) {
+        const JsonObject del = jsobj.get_object( "delete" );
+        for( const std::string_view member : {
+                 "items", "groups"
+             } ) {
+            if( !del.has_array( member ) ) {
+                continue;
+            }
+            const Single_item_creator::Type entry_type = member == "items" ?
+                    Single_item_creator::S_ITEM : Single_item_creator::S_ITEM_GROUP;
+            for( const std::string &doomed : del.get_string_array( member ) ) {
+                if( !ig->remove_entries( doomed, entry_type ) ) {
+                    del.throw_error_at( member, string_format( "item group %s has no entry for %s to delete",
+                                        group_id.str(), doomed ) );
+                }
+            }
+        }
+    }
     // If it extends, read from the extends block (and extend our itemgroup)
     // Otherwise, read from the object into the fresh itemgroup
     // And don't read if it has copy-from because it will not handle that correctly.
