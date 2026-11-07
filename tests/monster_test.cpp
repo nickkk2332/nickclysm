@@ -1026,7 +1026,9 @@ static void walk_toward_monster_off_the_map( tripoint_abs_omt origin, point offs
             wipe_map_terrain();
         }
         for( monster &critter : g->all_monsters() ) {
-            if( critter.type->id != id ) {
+            // Mapgen can place other monsters of the target's type (dormant zombies come from
+            // map extras): only the one at the spot the test chose is the target.
+            if( critter.type->id != id || square_dist( critter.pos_abs(), monster_pos ) > 1 ) {
                 critter.die( &here, nullptr );
             }
         }
@@ -1045,11 +1047,13 @@ static void walk_toward_monster_off_the_map( tripoint_abs_omt origin, point offs
     CAPTURE( here.ter( expected_local ) );
     CAPTURE( here.furn( expected_local ) );
     CAPTURE( here.move_cost( expected_local ) );
+    // The target is the monster of its type nearest the spot it was put on.
     monster *tgt_monster = nullptr;
     for( monster &critter : g->all_monsters() ) {
-        if( critter.type->id == id ) {
+        if( critter.type->id == id && ( tgt_monster == nullptr ||
+                                        square_dist( critter.pos_abs(), monster_pos ) <
+                                        square_dist( tgt_monster->pos_abs(), monster_pos ) ) ) {
             tgt_monster = &critter;
-            break;
         }
     }
     REQUIRE( tgt_monster != nullptr );
