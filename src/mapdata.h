@@ -31,6 +31,7 @@
 class Character;
 class JsonObject;
 class JsonValue;
+enum class creature_size : int;
 struct connect_group;
 struct furn_t;
 struct itype;
@@ -594,6 +595,8 @@ struct map_data_common_t {
         int fall_damage_reduction = 0;
         // Volume a sound loses passing through this tile, on top of its distance
         int sound_attenuation = 0;
+        // The biggest creature that fits on this tile ("max_creature_size"), if it is limited
+        std::optional<creature_size> max_creature_size;
         // Maximal volume of items that can be stored in/on this furniture/terrain
         units::volume max_volume = DEFAULT_TILE_VOLUME;
 
@@ -635,6 +638,11 @@ struct map_data_common_t {
         bool has_flag( const std::string &flag ) const {
             return flags.count( flag ) > 0;
         }
+
+        // The biggest creature that fits on this tile: max_creature_size, and medium for
+        // SMALL_PASSAGE, whichever is smaller; unset if any size fits
+        std::optional<creature_size> max_fitting_size() const;
+        bool fits_creature_size( creature_size size ) const;
 
         bool has_flag( const ter_furn_flag flag ) const {
             return bitflags[flag];

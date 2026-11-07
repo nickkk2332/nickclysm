@@ -3633,6 +3633,16 @@ bool map::has_flag_ter_or_furn( const ter_furn_flag flag, const tripoint_bub_ms 
            current_submap->get_furn( l ).obj().has_flag( flag );
 }
 
+bool map::fits_creature_size( const tripoint_bub_ms &p, creature_size size ) const
+{
+    if( !inbounds( p ) ) {
+        return true;
+    }
+    const const_maptile tile = maptile_at( p );
+    return tile.get_ter_t().fits_creature_size( size ) &&
+           tile.get_furn_t().fits_creature_size( size );
+}
+
 bool map::on_matching_stairs( const tripoint_bub_ms &a, const tripoint_bub_ms &b ) const
 {
     if( a.xy() != b.xy() ) {
@@ -12576,7 +12586,9 @@ void map::update_pathfinding_cache( const tripoint_bub_ms &p ) const
         cur_value |= PathfindingFlag::Slow;
     } else if( cost <= 0 ) {
         cur_value |= PathfindingFlag::Obstacle;
-        if( terrain.has_flag( ter_furn_flag::TFLAG_CLIMBABLE ) ) {
+        // Climbing goes over furniture too (sandbag walls, barricades), as moving does
+        if( terrain.has_flag( ter_furn_flag::TFLAG_CLIMBABLE ) ||
+            furniture.has_flag( ter_furn_flag::TFLAG_CLIMBABLE ) ) {
             cur_value |= PathfindingFlag::Climbable;
         }
     }
@@ -12618,12 +12630,30 @@ void map::update_pathfinding_cache( const tripoint_bub_ms &p ) const
         cur_value |= PathfindingFlag::GoesDown | PathfindingFlag::RampDown;
     }
 
-    if( terrain.has_flag( ter_furn_flag::TFLAG_SHARP ) && !this->has_vehicle_floor( p ) ) {
+    if( ( terrain.has_flag( ter_furn_flag::TFLAG_SHARP ) ||
+          furniture.has_flag( ter_furn_flag::TFLAG_SHARP ) ) && !this->has_vehicle_floor( p ) ) {
         cur_value |= PathfindingFlag::Sharp;
     }
 
-    if( terrain.has_flag( ter_furn_flag::TFLAG_SMALL_PASSAGE ) ) {
-        cur_value |= ( PathfindingFlag::RestrictLarge | PathfindingFlag::RestrictHuge );
+    // Each size too big for the tile (SMALL_PASSAGE, max_creature_size) is kept off it
+    std::optional<creature_size> fit = terrain.max_fitting_size();
+    const std::optional<creature_size> furn_fit = furniture.max_fitting_size();
+    if( furn_fit && ( !fit || *furn_fit < *fit ) ) {
+        fit = furn_fit;
+    }
+    if( fit ) {
+        if( *fit < creature_size::small ) {
+            cur_value |= PathfindingFlag::RestrictSmall;
+        }
+        if( *fit < creature_size::medium ) {
+            cur_value |= PathfindingFlag::RestrictMedium;
+        }
+        if( *fit < creature_size::large ) {
+            cur_value |= PathfindingFlag::RestrictLarge;
+        }
+        if( *fit < creature_size::huge ) {
+            cur_value |= PathfindingFlag::RestrictHuge;
+        }
     }
 
     cache.special[p.x()][p.y()] = cur_value;

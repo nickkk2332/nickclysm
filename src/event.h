@@ -152,6 +152,8 @@ enum class event_type : int {
     character_disassembles_item,
     character_learns_recipe,
     tile_destroyed,
+    creature_teleported,
+    character_hears_sound,
     num_event_types // last
 };
 
@@ -219,7 +221,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 128,
+static_assert( static_cast<int>( event_type::num_event_types ) == 130,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -615,10 +617,13 @@ struct event_spec<event_type::character_triggers_trap> {
     };
 };
 
+// "cause": "noise", "alarm" (an internal chronometer), "damage", "rested" (slept enough) or
+// "other" (character.h, wake_up_cause_scope)
 template<>
 struct event_spec<event_type::character_wakes_up> {
-    static constexpr std::array<event_field, 1> fields = {{
+    static constexpr std::array<event_field, 2> fields = {{
             { "character", cata_variant_type::character_id },
+            { "cause", cata_variant_type::string },
         }
     };
 };
@@ -1066,6 +1071,31 @@ struct event_spec<event_type::tile_destroyed> {
             { "new_ter", cata_variant_type::ter_str_id },
             { "new_furn", cata_variant_type::furn_str_id },
             { "cause", cata_variant_type::string },
+        }
+    };
+};
+
+// a creature (the avatar, an NPC or a monster) arrived alive somewhere by teleport; its EOCs get
+// the creature as alpha
+template<>
+struct event_spec<event_type::creature_teleported> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "from", cata_variant_type::tripoint },
+            { "to", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// a character heard a sound (heard_volume > 0, after hearing ability, the weather, the distance
+// and what muffles it); "volume" is the sound's own, "location" where it was made
+template<>
+struct event_spec<event_type::character_hears_sound> {
+    static constexpr std::array<event_field, 5> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "volume", cata_variant_type::int_ },
+            { "heard_volume", cata_variant_type::int_ },
+            { "category", cata_variant_type::string },
+            { "location", cata_variant_type::tripoint },
         }
     };
 };

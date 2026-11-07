@@ -7823,17 +7823,16 @@ bool game::walk_move( const tripoint_bub_ms &dest_loc, const bool via_ramp,
 
     const tripoint_abs_ms dest_loc_abs = here.get_abs( dest_loc );
 
-    if( here.has_flag_ter( ter_furn_flag::TFLAG_SMALL_PASSAGE, dest_loc ) ) {
-        if( u.get_size() > creature_size::medium ) {
-            add_msg( m_warning, _( "You can't fit there." ) );
-            return false; // character too large to fit through a tight passage
-        }
-        if( u.is_mounted() ) {
-            monster *mount = u.mounted_creature.get();
-            if( mount->get_size() > creature_size::medium ) {
-                add_msg( m_warning, _( "Your mount can't fit there." ) );
-                return false; // char's mount is too large for tight passages
-            }
+    // tight passages: SMALL_PASSAGE, and terrain or furniture with a max_creature_size
+    if( !here.fits_creature_size( dest_loc, u.get_size() ) ) {
+        add_msg( m_warning, _( "You can't fit there." ) );
+        return false; // character too large to fit through a tight passage
+    }
+    if( u.is_mounted() ) {
+        monster *mount = u.mounted_creature.get();
+        if( !here.fits_creature_size( dest_loc, mount->get_size() ) ) {
+            add_msg( m_warning, _( "Your mount can't fit there." ) );
+            return false; // char's mount is too large for tight passages
         }
     }
 

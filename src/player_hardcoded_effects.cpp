@@ -1154,6 +1154,8 @@ static void eff_fun_sleep( Character &u, effect &it )
     // A bit of a hack: check if we are about to wake up for any reason, including regular
     // timing out of sleep
     if( it.get_duration() == 1_turns || woke_up ) {
+        // light, cold, heat or a hostile seen is "other"; sleep that ran its course "rested"
+        const wake_up_cause_scope cause( woke_up ? nullptr : "rested" );
         u.wake_up();
     }
 }
@@ -1540,6 +1542,7 @@ void Character::hardcoded_effects( effect &it )
                                has_bionic( bio_sleep_shutdown ) ) {
                         // Secure the flag before wake_up() clears the effect
                         bool slept_through = has_effect( effect_slept_through_alarm );
+                        const wake_up_cause_scope cause( "alarm" );
                         wake_up();
                         if( slept_through ) {
                             add_msg_if_player( _( "Your internal chronometer finally wakes you up." ) );

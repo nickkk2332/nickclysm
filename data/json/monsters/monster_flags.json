@@ -115,6 +115,11 @@
     "//": "Digs through the ground"
   },
   {
+    "id": "DIMENSIONAL_ANCHOR",
+    "type": "monster_flag",
+    "//": "Can't be teleported, and a teleport onto it fails"
+  },
+  {
     "id": "CAN_DIG",
     "type": "monster_flag",
     "//": "Can dig and walk"

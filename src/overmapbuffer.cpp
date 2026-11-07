@@ -13,6 +13,7 @@
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 
 #include "basecamp.h"
 #include "calendar.h"
@@ -1055,6 +1056,17 @@ overmap_path_params overmap_path_params::for_aircraft()
     return ret;
 }
 
+int overmap_path_params::min_cost() const
+{
+    std::optional<int> lowest;
+    for( const std::pair<const oter_travel_cost_type, int> &cost : travel_cost_per_type ) {
+        if( cost.second >= 0 && ( !lowest || cost.second < *lowest ) ) {
+            lowest = cost.second;
+        }
+    }
+    return lowest.value_or( 0 );
+}
+
 // For the for-loop in the below function.
 using enum_traits_int = std::underlying_type_t<oter_travel_cost_type>;
 static constexpr enum_traits_int max = static_cast<enum_traits_int>
@@ -1123,7 +1135,8 @@ pf::simple_path<tripoint_abs_omt> overmapbuffer::get_travel_path(
 
     constexpr int radius = 4 * OMAPX; // radius of search in OMTs = 4 overmaps
     const pf::simple_path<tripoint_abs_omt> &path = pf::find_overmap_path( src, dest, radius, estimate,
-            game::display_om_pathfinding_progress, std::nullopt, params.allow_diagonal );
+            game::display_om_pathfinding_progress, std::nullopt, params.allow_diagonal,
+            params.min_cost() );
     return path;
 }
 

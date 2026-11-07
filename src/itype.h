@@ -32,6 +32,7 @@
 #include "item.h"
 #include "item_pocket.h"
 #include "item_transformation.h"
+#include "lightmap.h"
 #include "iuse.h" // use_function
 #include "mapdata.h"
 #include "material.h"
@@ -1639,6 +1640,8 @@ struct itype {
         bool using_legacy_to_hit = false;
 
         unsigned light_emission = 0;   // Exactly the same as item_tags LIGHT_*, this is for lightmap.
+        // The colour of that light on the map ("light_color"); none is white
+        light_color_rgb light_color{};
 
         nc_color color = c_white; // Color on the map (color.h)
 

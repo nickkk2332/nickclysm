@@ -391,7 +391,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```CRAFT_IN_DARKNESS``` You can craft anything regardless of light levels.
 - ```CUT_IMMUNE``` You are immune to cutting damage.
 - ```DEAF``` Makes you deaf.
-- ```DIMENSIONAL_ANCHOR``` You can't be teleported.  Also protects you from any dangerous effects of portal storms.
+- ```DIMENSIONAL_ANCHOR``` You can't be teleported, and a teleport onto your tile fails.  Also protects you from any dangerous effects of portal storms.  Works from a trait, bionic, effect, body part, martial arts buff or worn item; monsters have a monster flag of the same name.
 - ```DISTRIBUTED_DAMAGE``` All damage you take is divided equally among your bodyparts.
 - ```DOWNED_RECOVERY``` Always has 50% chance to recover from downing, regardless of limb scores / stats.
 - ```ECTOTHERM``` For ectothermic mutations, like `COLDBLOOD4` and `DRAGONBLOOD3` (Black Dragon from Magiclysm).
@@ -488,7 +488,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```SUPER_CLAIRVOYANCE``` Gives a super clairvoyance effect (works with multiple z-levels), used for debug purposes.
 - ```SAFECRACK_NO_TOOL``` Allows to open safes without stethoscope.
 - ```SUPPRESS_INVISIBILITY``` Any invisibility effects on the creature, including the `PERMANENT_INVISIBILITY` flag, are ignored for the duration of the effect with this flag
-- ```TELEPORT_LOCK``` You cannot teleport.  This has none of the protective effects of `DIMENSIONAL_ANCHOR`.
+- ```TELEPORT_LOCK``` You cannot teleport.  This has none of the protective effects of `DIMENSIONAL_ANCHOR`: something else can still teleport onto you.  Works from a trait, bionic, effect, body part or martial arts buff, and as an effect flag on monsters too.
 - ```TEMPORARY_SHAPESHIFT``` You are in another shape due to some supernatural effect.
 - ```TEMPORARY_SHAPESHIFT_NO_HANDS``` You do not have hands in your new shapeshifted form, and so cannot pick up or manipulate objects. 
 - ```THERMOMETER``` You always know what temperature it is.
@@ -757,7 +757,7 @@ Can also be used as `pre_flags` for `construction`.
 - ```SIGN_ALWAYS``` Shows a message to indicate nothing is written here and lets you add a message if examined without a signage/snippet present.
 - ```SIGN``` Show written message on examine.
 - ```SMALL_HIDE``` Small creatures such as cockroaches and rats can hide under or inside of this furniture.  Should not be applied to anything bigger than a housecat unless it is particularly flexible, IE a snake.
-- ```SMALL_PASSAGE``` This terrain or furniture is too small for large or huge creatures to pass through.
+- ```SMALL_PASSAGE``` This terrain or furniture is too small for large or huge creatures to pass through: the same as `"max_creature_size": "MEDIUM"` (see JSON_INFO.md).
 - ```SPAWN_WITH_LIQUID``` This terrain will place liquid (once) on its own spawn.  Type of liquid is defined by other flags.  For example, it spawns fresh water via `FRESH_WATER` flag.
 - ```SUN_ROOF_ABOVE``` This furniture (terrain is not supported currently) has a "fake roof" above, that blocks sunlight.  Special hack for #44421, to be removed later.
 - ```SUPPORTS_ROOF``` Used as a boundary for roof construction.
@@ -1188,6 +1188,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```DEADLY_VIRUS``` This monster can inflict the `zombie_virus` effect.  Used by the Dark Days of the Dead and Deadly Zombie Virus mods.
 - ```DESTROYS``` Bashes down walls and more (2.5x bash multiplier, where base is the critter's max melee bashing).
 - ```DIGS``` Digs through the ground.  Will not travel through non-diggable terrain such as roads.
+- ```DIMENSIONAL_ANCHOR``` Can't be teleported, and a teleport onto its tile fails.
 - ```DOGFOOD``` Can be ordered to attack with a dog whistle.
 - ```DRIPS_GASOLINE``` Occasionally drips gasoline on move.
 - ```DRIPS_NAPALM``` Occasionally drips napalm on move.

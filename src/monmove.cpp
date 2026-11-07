@@ -240,9 +240,8 @@ bool monster::will_move_to( map *here, const tripoint_bub_ms &p ) const
         return false;
     }
 
-    if( get_size() > creature_size::medium &&
-        here->has_flag_ter( ter_furn_flag::TFLAG_SMALL_PASSAGE, p ) ) {
-        return false; // if a large critter, can't move through tight passages
+    if( !here->fits_creature_size( p, get_size() ) ) {
+        return false; // too big for a tight passage (SMALL_PASSAGE, max_creature_size)
     }
 
     return true;

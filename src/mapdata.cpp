@@ -14,6 +14,7 @@
 #include "calendar.h"
 #include "character.h"
 #include "color.h"
+#include "creature.h"
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
@@ -1219,6 +1220,21 @@ static constexpr std::array<std::string_view, 4> tool_activities = {
     "oxytorch", "boltcut", "hacksaw", "prying"
 };
 
+std::optional<creature_size> map_data_common_t::max_fitting_size() const
+{
+    std::optional<creature_size> ret = max_creature_size;
+    if( has_flag( ter_furn_flag::TFLAG_SMALL_PASSAGE ) && ( !ret || *ret > creature_size::medium ) ) {
+        ret = creature_size::medium;
+    }
+    return ret;
+}
+
+bool map_data_common_t::fits_creature_size( creature_size size ) const
+{
+    const std::optional<creature_size> fit = max_fitting_size();
+    return !fit || size <= *fit;
+}
+
 void map_data_common_t::load( const JsonObject &jo, const std::string &src )
 {
     mandatory( jo, was_loaded, "name", name_ );
@@ -1231,6 +1247,16 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     optional( jo, was_loaded, "comfort", comfort, 0 );
     optional( jo, was_loaded, "sound_attenuation", sound_attenuation,
               numeric_bound_reader<int> { 0, 1000 }, 0 );
+    if( jo.has_member( "max_creature_size" ) ) {
+        const std::string size_name = jo.get_string( "max_creature_size" );
+        const auto size_found = Creature::size_map.find( size_name );
+        if( size_found == Creature::size_map.end() ) {
+            jo.throw_error_at( "max_creature_size",
+                               string_format( "Invalid creature size \"%s\": use TINY, SMALL, MEDIUM, LARGE or HUGE",
+                                              size_name ) );
+        }
+        max_creature_size = size_found->second;
+    }
 
     if( jo.has_member( "connect_groups" ) ) {
         connect_groups.reset();

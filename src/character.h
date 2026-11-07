@@ -533,6 +533,23 @@ struct intrinsic_quality_source {
     int level = 0;
 };
 
+/**
+ * Why a character wakes up while this lives: "noise", "alarm", "damage" or "rested". The
+ * character_wakes_up event gets it as its "cause"; "other" when none is given.
+ */
+class wake_up_cause_scope
+{
+    public:
+        explicit wake_up_cause_scope( const char *cause );
+        ~wake_up_cause_scope();
+        wake_up_cause_scope( const wake_up_cause_scope & ) = delete;
+        wake_up_cause_scope &operator=( const wake_up_cause_scope & ) = delete;
+        /** The cause of a wake-up now */
+        static std::string current();
+    private:
+        const char *previous;
+};
+
 class Character : public Creature, public visitable
 {
     public:

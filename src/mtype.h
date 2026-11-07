@@ -16,6 +16,7 @@
 #include "color.h"
 #include "damage.h"
 #include "enum_bitset.h"
+#include "lightmap.h"
 #include "magic.h"
 #include "mattack_common.h"
 #include "pathfinding.h"
@@ -533,6 +534,8 @@ struct mtype {
         int absorb_move_cost_max = -1;
 
         float luminance = 0;       // 0 is default, >0 gives luminance to lightmap
+        // The colour of that light ("light_color"); none is white
+        light_color_rgb light_color{};
         // Vision range is linearly scaled depending on lighting conditions
         int vision_day = 40;    /** vision range in bright light */
         int vision_night = 1;   /** vision range in total darkness */
@@ -567,6 +570,9 @@ struct mtype {
         std::optional<time_duration> biosig_timer;
 
         pathfinding_settings path_settings;
+        // path_settings "climb_cost" and "size" as written in JSON; unset, finalize works them out
+        std::optional<int> path_climb_cost;
+        std::optional<creature_size> path_size;
 
         // All the bools together for space efficiency
         //

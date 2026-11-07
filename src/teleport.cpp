@@ -55,6 +55,24 @@ static const itype_id itype_power_cord( "power_cord" );
 
 static const std::string flag_WIRING( "WIRING" );
 
+// Whether something holds the creature where it is: DIMENSIONAL_ANCHOR from a worn item, an
+// effect, or (Character::has_flag) a trait, bionic, body part or martial arts buff, or the
+// monster flag of that name. A TELEPORT_LOCK stops only the creature's own teleport
+// (include_lock), not one that lands on it.
+static bool is_teleport_anchored( const Creature &critter, bool include_lock )
+{
+    if( critter.has_flag( json_flag_DIMENSIONAL_ANCHOR ) ||
+        critter.has_effect_with_flag( json_flag_DIMENSIONAL_ANCHOR ) ) {
+        return true;
+    }
+    if( include_lock && ( critter.has_flag( json_flag_TELEPORT_LOCK ) ||
+                          critter.has_effect_with_flag( json_flag_TELEPORT_LOCK ) ) ) {
+        return true;
+    }
+    const Character *const guy = critter.as_character();
+    return guy != nullptr && guy->worn_with_flag( json_flag_DIMENSIONAL_ANCHOR );
+}
+
 static bool TestForVehicleTeleportCollision( vehicle &veh, map &here, map *dest,
         const tripoint_abs_ms &dp )
 {
@@ -217,10 +235,8 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
         return false;
     }
     //The teleportee is dimensionally anchored so nothing happens
-    if( !force && !force_safe && p && ( p->worn_with_flag( json_flag_DIMENSIONAL_ANCHOR ) ||
-                                        p->has_effect_with_flag( json_flag_DIMENSIONAL_ANCHOR ) ||
-                                        p->has_effect_with_flag( json_flag_TELEPORT_LOCK ) ) ) {
-        if( display_message ) {
+    if( !force && !force_safe && is_teleport_anchored( critter, true ) ) {
+        if( display_message && p ) {
             p->add_msg_if_player( m_warning, _( "You feel a strange, inward force." ) );
         }
         return false;
@@ -299,12 +315,12 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
             }
             let_go();
             critter.apply_damage( nullptr, bodypart_id( "torso" ), 9999 );
-            if( c_is_u ) {
+            if( p != nullptr ) {
                 get_event_bus().send<event_type::teleports_into_wall>( p->getID(),
                         dest->obstacle_name( dest_target ) );
-                if( display_message ) {
-                    add_msg( m_bad, _( "You die after teleporting into a solid." ) );
-                }
+            }
+            if( c_is_u && display_message ) {
+                add_msg( m_bad, _( "You die after teleporting into a solid." ) );
             }
             critter.check_dead_state( &here );
         }
@@ -361,10 +377,8 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
                 return false;
             }
             //if the thing that was going to be teleported into has a dimensional anchor, break out early and don't teleport.
-            if( poor_soul->as_character() &&
-                ( poor_soul->as_character()->worn_with_flag( json_flag_DIMENSIONAL_ANCHOR ) ||
-                  poor_soul->as_character()->has_effect_with_flag( json_flag_DIMENSIONAL_ANCHOR ) ) ) {
-                poor_soul->as_character()->add_msg_if_player( m_warning, _( "You feel disjointed." ) );
+            if( is_teleport_anchored( *poor_soul, false ) ) {
+                poor_soul->add_msg_if_player( m_warning, _( "You feel disjointed." ) );
                 restore_map_on_failure();
                 return false;
             }
@@ -457,6 +471,12 @@ bool teleport::teleport_to_point( Creature &critter, tripoint_bub_ms target, boo
         if( !critter.is_dead_state() ) {
             cata_event_dispatch::avatar_changes_omt( old_abs_pos );
         }
+    }
+    // Any creature that arrives alive: the avatar, an NPC or a monster, as the alpha talker
+    if( !critter.is_dead_state() ) {
+        const cata::event teleported = cata::event::make<event_type::creature_teleported>(
+                                           old_abs_pos.raw(), critter.pos_abs().raw() );
+        get_event_bus().send_with_talker( &critter, static_cast<Creature *>( nullptr ), teleported );
     }
 
     return true;

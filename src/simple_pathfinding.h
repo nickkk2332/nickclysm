@@ -130,11 +130,15 @@ using omt_scoring_fn = std::function<omt_score( tripoint_abs_omt )>;
  * @param radius Maximum search radius
  * @param scorer function that returns the omt_score for the given OMT
  * @param max_cost Maximum path cost (optional)
+ * @param allow_diagonal Whether the path may move diagonally
+ * @param min_node_cost The lowest node_cost the scorer gives a passable OMT. The search estimates
+ *        each OMT still to cross at this cost: set it higher and it may miss a cheaper route.
  */
 simple_path<tripoint_abs_omt> find_overmap_path( const tripoint_abs_omt &source,
         const tripoint_abs_omt &dest, int radius, const omt_scoring_fn &scorer,
         const std::function<void( size_t, size_t )> &progress_fn,
-        const std::optional<int> &max_cost = std::nullopt, bool allow_diagonal = false );
+        const std::optional<int> &max_cost = std::nullopt, bool allow_diagonal = false,
+        int min_node_cost = 24 );
 
 } // namespace pf
 

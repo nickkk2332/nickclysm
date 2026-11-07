@@ -64,6 +64,7 @@
 #include "point.h"
 #include "power_math.h"
 #include "proficiency.h"
+#include "scent_map.h"
 #include "stats_tracker.h"
 #include "stomach.h"
 #include "talker.h"
@@ -395,6 +396,32 @@ double light_level_eval( const_dialogue const &d, char /* scope */,
     tripoint_abs_ms loc_val = params[0].tripoint( d );
 
     return static_cast<double>( here.light_at( here.get_bub( loc_val ) ) );
+}
+
+// SPAT-J05: the noise meter, the loudest sound heard this turn on or next to the character
+double noise_level_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const Character *guy = d.const_actor( is_beta( scope ) )->get_const_character();
+    return guy != nullptr ? guy->volume : 0;
+}
+
+// SPAT-J07: the scent left at a location, 0 outside the reality bubble. Setting it keeps the one
+// scent type the bubble has.
+constexpr int max_eoc_scent = 10000;
+
+double scent_eval( const_dialogue const &d, char /* scope */,
+                   std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    return get_scent().get( get_map().get_bub( params[0].tripoint( d ) ) );
+}
+
+void scent_ass( double val, dialogue &d, char /* scope */, std::vector<diag_value> const &params,
+                diag_kwargs const & /* kwargs */ )
+{
+    const int value = static_cast<int>( std::lround( std::clamp( val, 0.0,
+                                        static_cast<double>( max_eoc_scent ) ) ) );
+    get_scent().set( get_map().get_bub( params[0].tripoint( d ) ), value );
 }
 
 double distance_eval( const_dialogue const &d, char /* scope */,
@@ -3364,6 +3391,8 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "degradation", { "un", 0, degradation_eval, degradation_ass } },
     { "distance", { "g", 2, distance_eval } },
     { "light_level", { "g", 1, light_level_eval } },
+    { "noise_level", { "un", 0, noise_level_eval } },
+    { "scent", { "g", 1, scent_eval, scent_ass } },
     { "effect_intensity", { "un", 1, effect_intensity_eval, effect_intensity_ass, { "bodypart" } } },
     { "effect_duration", { "un", 1, effect_duration_eval, effect_duration_ass, { "bodypart", "unit" } } },
     { "limb_score", { "un", 1, limb_score_eval, {}, { "type" } } },

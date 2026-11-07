@@ -1,0 +1,114 @@
+[
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m07a_path",
+    "copy-from": "mon_test_base",
+    "name": { "str_sp": "path settings test monster" },
+    "description": "SPAT-J02: sets every path_settings field the loader reads.",
+    "flags": [ "CLIMBS" ],
+    "path_settings": { "max_dist": 10, "allow_unlock_doors": true, "avoid_rough_terrain": true, "climb_cost": 7, "size": "HUGE" }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m07a_large",
+    "copy-from": "mon_test_base",
+    "name": { "str_sp": "large path test monster" },
+    "description": "SPAT-J02: paths as a large creature, too big for open windows.",
+    "path_settings": { "max_dist": 30, "size": "LARGE" }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m07a_anchored",
+    "copy-from": "mon_test_base",
+    "name": { "str_sp": "anchored test monster" },
+    "description": "SPAT-J04: a monster with the DIMENSIONAL_ANCHOR monster flag.",
+    "flags": [ "DIMENSIONAL_ANCHOR" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_audit_m07a_glow",
+    "copy-from": "mon_test_base",
+    "name": { "str_sp": "blue glow test monster" },
+    "description": "SPAT-J06: a monster that glows blue.",
+    "luminance": 10,
+    "light_color": [ 0, 0, 255 ]
+  },
+  {
+    "type": "ITEM",
+    "id": "audit_m07a_red_lamp",
+    "copy-from": "test_lamp",
+    "name": { "str": "red test lamp" },
+    "description": "SPAT-J06: a test lamp with red light.",
+    "light_color": [ 255, 0, 0 ]
+  },
+  {
+    "type": "furniture",
+    "id": "test_f_audit_m07a_cat_flap",
+    "name": "test cat flap",
+    "description": "SPAT-J03: open furniture only small and tiny creatures fit through.",
+    "symbol": "o",
+    "color": "brown",
+    "move_cost_mod": 0,
+    "required_str": -1,
+    "max_creature_size": "SMALL",
+    "flags": [ "TRANSPARENT" ]
+  },
+  {
+    "type": "effect_type",
+    "id": "audit_m07a_teleport_lock",
+    "name": [ "test teleport lock" ],
+    "desc": [ "SPAT-J04: you cannot teleport." ],
+    "flags": [ "TELEPORT_LOCK" ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_AUDIT_M07A_ANCHOR",
+    "name": { "str": "Test Dimensional Anchor" },
+    "points": 0,
+    "description": "SPAT-J04: a trait that holds its owner in place.",
+    "flags": [ "DIMENSIONAL_ANCHOR" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M07A_TELEPORTED",
+    "//": "SPAT-J04: records creature_teleported while a test listens.",
+    "eoc_type": "EVENT",
+    "required_event": "creature_teleported",
+    "condition": { "math": [ "audit_m07a_listen == 1" ] },
+    "effect": [
+      { "math": [ "audit_m07a_teleports += 1" ] },
+      {
+        "if": "u_is_monster",
+        "then": [ { "math": [ "audit_m07a_teleported_monster = 1" ] } ],
+        "else": [ { "math": [ "audit_m07a_teleported_monster = 0" ] } ]
+      },
+      { "copy_var": { "context_val": "from" }, "target_var": { "global_val": "audit_m07a_teleport_from" } },
+      { "copy_var": { "context_val": "to" }, "target_var": { "global_val": "audit_m07a_teleport_to" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M07A_HEARS",
+    "//": "SPAT-J05: records character_hears_sound for alarms while a test listens.",
+    "eoc_type": "EVENT",
+    "required_event": "character_hears_sound",
+    "condition": {
+      "and": [ { "math": [ "audit_m07a_listen == 1" ] }, { "compare_string": [ { "context_val": "category" }, "alarm" ] } ]
+    },
+    "effect": [
+      { "math": [ "audit_m07a_heard += 1" ] },
+      { "copy_var": { "context_val": "volume" }, "target_var": { "global_val": "audit_m07a_heard_raw" } },
+      { "copy_var": { "context_val": "heard_volume" }, "target_var": { "global_val": "audit_m07a_heard_volume" } },
+      { "copy_var": { "context_val": "location" }, "target_var": { "global_val": "audit_m07a_heard_loc" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M07A_WAKES",
+    "//": "SPAT-J05: records why a character woke up while a test listens.",
+    "eoc_type": "EVENT",
+    "required_event": "character_wakes_up",
+    "condition": { "math": [ "audit_m07a_listen == 1" ] },
+    "effect": [ { "copy_var": { "context_val": "cause" }, "target_var": { "global_val": "audit_m07a_wake_cause" } } ]
+  }
+]

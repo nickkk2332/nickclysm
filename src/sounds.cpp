@@ -20,6 +20,8 @@
 #include "debug.h"
 #include "effect.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "field_type.h"
 #include "game.h"
 #include "game_constants.h"
@@ -692,6 +694,7 @@ void sounds::process_sound_markers( Character *you )
     const float volume_multiplier = you->hearing_ability();
     const int weather_vol = get_weather().weather_id->sound_attn;
     const vertical_falloff falloff = current_vertical_falloff();
+    const std::size_t sounds_heard_before = sounds_since_last_turn.size();
     // NOLINTNEXTLINE(modernize-loop-convert)
     for( std::size_t i = 0; i < sounds_since_last_turn.size(); i++ ) {
         // copy values instead of making references here to fix use-after-free error
@@ -755,6 +758,15 @@ void sounds::process_sound_markers( Character *you )
             you->volume = std::max( you->volume, heard_volume );
         }
 
+        // Not for a sound made while these are heard (by an EOC of the event, say): one that
+        // answers every sound it hears would never let this loop end
+        if( heard_volume > 0 && i < sounds_heard_before ) {
+            const cata::event heard = cata::event::make<event_type::character_hears_sound>(
+                                          you->getID(), raw_volume, heard_volume,
+                                          io::enum_to_string( sound.category ), here.get_abs( pos ).raw() );
+            get_event_bus().send_with_talker( you, static_cast<Creature *>( nullptr ), heard );
+        }
+
         // Noises from vehicle player is in.
         if( you->controlling_vehicle ) {
             vehicle *veh = veh_pointer_or_null( here.veh_at( you->pos_abs() ) );
@@ -778,6 +790,7 @@ void sounds::process_sound_markers( Character *you )
                 !you->has_effect( effect_narcosis ) &&
                 !you->has_bionic( bio_sleep_shutdown ) ) {
                 //Not kidding about sleep-through-firefight
+                const wake_up_cause_scope cause( "noise" );
                 you->wake_up();
                 if( listener ) {
                     listener->note_noise( true );
