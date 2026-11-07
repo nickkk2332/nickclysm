@@ -1463,6 +1463,8 @@ void DynamicDataLoader::check_consistency()
             { _( "Overmap locations" ), &overmap_locations::check_consistency },
             { _( "Cities" ), &city::check_consistency },
             { _( "Overmap specials" ), &overmap_specials::check_consistency },
+            { _( "Region settings" ), &region_settings::check_consistency },
+            { _( "Dimensions" ), &dimension_world::check_consistency },
             { _( "Map extras" ), &MapExtras::check_consistency },
             { _( "Scenarios" ), &scenario::check_all },
             { _( "Shop rates" ), &shopkeeper_cons_rates::check_all },

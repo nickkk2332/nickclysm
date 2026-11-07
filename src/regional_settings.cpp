@@ -1,6 +1,7 @@
 #include "regional_settings.h"
 
 #include <algorithm>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -20,6 +21,13 @@
 #include "string_formatter.h"
 
 class mapgendata;
+
+static const mongroup_id GROUP_OCEAN_DEEP( "GROUP_OCEAN_DEEP" );
+static const mongroup_id GROUP_OCEAN_SHORE( "GROUP_OCEAN_SHORE" );
+static const mongroup_id GROUP_RIVER( "GROUP_RIVER" );
+static const mongroup_id GROUP_SUBWAY_CITY( "GROUP_SUBWAY_CITY" );
+static const mongroup_id GROUP_SWAMP( "GROUP_SWAMP" );
+static const mongroup_id GROUP_ZOMBIE_HORDE( "GROUP_ZOMBIE_HORDE" );
 
 static const oter_str_id oter_lake_bed( "lake_bed" );
 static const oter_str_id oter_lake_shore( "lake_shore" );
@@ -582,6 +590,76 @@ void region_settings_city::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "houses", houses.buildings, building_bin_reader );
     optional( jo, was_loaded, "shops", shops.buildings, building_bin_reader );
     optional( jo, was_loaded, "parks", parks.buildings, building_bin_reader );
+    // City layout (OMAP-J04).  Absent fields keep the inherited value, or the default.
+    optional( jo, true, "empty_lot_chance", empty_lot_chance );
+    optional( jo, true, "min_size", min_size );
+    optional( jo, true, "max_size", max_size );
+    optional( jo, true, "size_variations", size_variations );
+    optional( jo, true, "max_spacing", max_spacing );
+    optional( jo, true, "block_width", block_width );
+    optional( jo, true, "street_shrink", street_shrink );
+    optional( jo, true, "extra_branch_chance", extra_branch_chance );
+    optional( jo, true, "megacity_size", megacity_size );
+    optional( jo, true, "megacity_seeds", megacity_seeds );
+}
+
+void region_settings_city::size_variation::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "weight", weight, 1 );
+    optional( jo, false, "multiply", multiply, 1 );
+    optional( jo, false, "divide", divide, 1 );
+}
+
+static const mongroup_id &group_or_default( const mongroup_id &group,
+        const mongroup_id &default_group )
+{
+    return group.is_empty() ? default_group : group;
+}
+
+const mongroup_id &region_settings_worldgen_monsters::city_horde() const
+{
+    return group_or_default( city_horde_group, GROUP_ZOMBIE_HORDE );
+}
+
+const mongroup_id &region_settings_worldgen_monsters::swamp() const
+{
+    return group_or_default( swamp_group, GROUP_SWAMP );
+}
+
+const mongroup_id &region_settings_worldgen_monsters::river() const
+{
+    return group_or_default( river_group, GROUP_RIVER );
+}
+
+const mongroup_id &region_settings_worldgen_monsters::ocean_deep() const
+{
+    return group_or_default( ocean_deep_group, GROUP_OCEAN_DEEP );
+}
+
+const mongroup_id &region_settings_worldgen_monsters::ocean_shore() const
+{
+    return group_or_default( ocean_shore_group, GROUP_OCEAN_SHORE );
+}
+
+const mongroup_id &region_settings_worldgen_monsters::subway_city() const
+{
+    return group_or_default( subway_city_group, GROUP_SUBWAY_CITY );
+}
+
+void region_settings_worldgen_monsters::deserialize( const JsonObject &jo )
+{
+    // Absent fields keep the inherited value, or the default.
+    optional( jo, true, "city_horde", city_horde_group );
+    optional( jo, true, "city_horde_pack_size", city_horde_pack_size );
+    optional( jo, true, "swamp", swamp_group );
+    optional( jo, true, "river", river_group );
+    optional( jo, true, "ocean_deep", ocean_deep_group );
+    optional( jo, true, "ocean_shore", ocean_shore_group );
+    optional( jo, true, "water_min_tiles", water_min_tiles );
+    optional( jo, true, "water_population_per_tile", water_population_per_tile );
+    optional( jo, true, "deep_ocean_threshold", deep_ocean_threshold );
+    optional( jo, true, "subway_city", subway_city_group );
+    optional( jo, true, "subway_z", subway_z );
 }
 
 void region_settings_map_extras::load( const JsonObject &jo, std::string_view )
@@ -634,6 +712,10 @@ void region_settings::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "place_railroads_before_roads", place_railroads_before_roads, false );
     optional( jo, was_loaded, "place_specials", place_specials, true );
     optional( jo, was_loaded, "neighbor_connections", neighbor_connections, true );
+    // OMAP-J04 and OMAP-J09.  Absent fields keep the inherited value, or the default.
+    optional( jo, true, "special_sector_size", special_sector_size );
+    optional( jo, true, "special_attempts_per_sector", special_attempts_per_sector );
+    optional( jo, true, "worldgen_monsters", worldgen_monsters );
 
     optional( jo, was_loaded, "npc_spawntime", npc_spawn_time, 4.0 );
 
@@ -672,6 +754,203 @@ void region_settings::finalize_all()
     if( !DEFAULT_REGION.is_valid() ) {
         debugmsg( "id: `default` region settings were not loaded or failed to load" );
     }
+}
+
+// OMAP-J05: bad ids in region settings used to show up only during worldgen, as debugmsgs or
+// crashes.  These run with the other consistency checks after loading.
+template<typename Id>
+static void check_region_id( const std::string_view owner, const std::string_view member,
+                             const Id &id )
+{
+    if( !id.is_valid() ) {
+        debugmsg( "%s: %s \"%s\" does not exist", owner, member, id.str() );
+    }
+}
+
+// The same, but an empty id is fine (the field wasn't given)
+template<typename Id>
+static void check_optional_region_id( const std::string_view owner, const std::string_view member,
+                                      const Id &id )
+{
+    if( !id.is_empty() ) {
+        check_region_id( owner, member, id );
+    }
+}
+
+void region_settings::check() const
+{
+    const std::string owner = "region_settings " + id.str();
+    for( const oter_str_id &oter : default_oter ) {
+        check_region_id( owner, "default_oter", oter );
+    }
+    if( city_spec ) {
+        check_region_id( owner, "cities", *city_spec );
+    }
+    check_region_id( owner, "forest_composition", forest_composition );
+    if( forest_trail ) {
+        check_region_id( owner, "forest_trails", *forest_trail );
+    }
+    check_region_id( owner, "weather", weather );
+    if( overmap_forest ) {
+        check_region_id( owner, "forests", *overmap_forest );
+    }
+    if( overmap_river ) {
+        check_region_id( owner, "rivers", *overmap_river );
+    }
+    if( overmap_lake ) {
+        check_region_id( owner, "lakes", *overmap_lake );
+    }
+    if( overmap_ocean ) {
+        check_region_id( owner, "ocean", *overmap_ocean );
+    }
+    if( overmap_highway ) {
+        check_region_id( owner, "highways", *overmap_highway );
+    }
+    if( overmap_ravine ) {
+        check_region_id( owner, "ravines", *overmap_ravine );
+    }
+    check_region_id( owner, "terrain_furniture", region_terrain_and_furniture );
+    check_region_id( owner, "map_extras", region_extras );
+
+    const region_settings_overmap_connection &con = overmap_connection;
+    check_optional_region_id( owner, "trail_connection", con.trail_connection );
+    check_optional_region_id( owner, "sewer_connection", con.sewer_connection );
+    check_optional_region_id( owner, "subway_connection", con.subway_connection );
+    check_optional_region_id( owner, "intra_city_road_connection", con.intra_city_road_connection );
+    check_optional_region_id( owner, "inter_city_road_connection", con.inter_city_road_connection );
+    // Only the railroads mod defines the vanilla rail connection, and turns railroads on.
+    if( place_railroads ) {
+        check_region_id( owner, "rail_connection", con.rail_connection );
+    }
+
+    for( const mongroup_id *group : {
+             &worldgen_monsters.city_horde(), &worldgen_monsters.swamp(), &worldgen_monsters.river(),
+             &worldgen_monsters.ocean_deep(), &worldgen_monsters.ocean_shore(),
+             &worldgen_monsters.subway_city()
+         } ) {
+        if( !group->is_null() ) {
+            check_region_id( owner, "worldgen_monsters", *group );
+        }
+    }
+    if( worldgen_monsters.water_population_per_tile[0] < 0 ||
+        worldgen_monsters.water_population_per_tile[1] < worldgen_monsters.water_population_per_tile[0] ) {
+        debugmsg( "%s: worldgen_monsters water_population_per_tile must be [ min, max ] with "
+                  "0 <= min <= max", owner );
+    }
+    if( worldgen_monsters.subway_z >= 0 || worldgen_monsters.subway_z < -OVERMAP_DEPTH ) {
+        debugmsg( "%s: worldgen_monsters subway_z (%d) must be an underground level, -1 to -%d", owner,
+                  worldgen_monsters.subway_z, OVERMAP_DEPTH );
+    }
+    if( special_sector_size < 1 || special_sector_size > std::min( OMAPX, OMAPY ) ) {
+        debugmsg( "%s: special_sector_size (%d) must be 1 to %d", owner, special_sector_size,
+                  std::min( OMAPX, OMAPY ) );
+    }
+    if( special_attempts_per_sector < 1 ) {
+        debugmsg( "%s: special_attempts_per_sector (%d) must be 1 or more", owner,
+                  special_attempts_per_sector );
+    }
+}
+
+void region_settings_city::check() const
+{
+    // The building bins' ids were checked when they were finalized.
+    if( city_size > 0 && houses.buildings.empty() ) {
+        debugmsg( "region_settings_city %s places cities (city_size %d) but has no houses", id.str(),
+                  city_size );
+    }
+}
+
+void region_settings_lake::check() const
+{
+    const std::string owner = "region_settings_lake " + id.str();
+    check_region_id( owner, "surface_ter", surface );
+    check_region_id( owner, "shore_ter", shore );
+    check_region_id( owner, "interior_ter", interior );
+    check_region_id( owner, "bed_ter", bed );
+    for( const oter_str_id &oter : shore_extendable_overmap_terrain ) {
+        check_region_id( owner, "shore_extendable_overmap_terrain", oter );
+    }
+    for( const shore_extendable_overmap_terrain_alias &alias :
+         shore_extendable_overmap_terrain_aliases ) {
+        check_region_id( owner, "shore_extendable_overmap_terrain_aliases", alias.alias );
+    }
+}
+
+void region_settings_ravine::check() const
+{
+    check_region_id( "region_settings_ravine " + id.str(), "ravine_bottom_terrain_id",
+                     ravine_bottom_terrain_str_id );
+}
+
+void region_settings_highway::check() const
+{
+    const std::string owner = "region_settings_highway " + id.str();
+    for( const oter_type_str_id *oter : {
+             &reserved_terrain_id, &reserved_terrain_water_id, &symbolic_ramp_up_id,
+             &symbolic_ramp_down_id, &symbolic_overpass_road_id, &fallback_supports
+         } ) {
+        check_optional_region_id( owner, "terrain", *oter );
+    }
+    for( const overmap_special_id *special : {
+             &segment_flat, &segment_ramp, &segment_road_bridge, &segment_bridge,
+             &segment_bridge_supports, &segment_overpass, &clockwise_slant, &counterclockwise_slant,
+             &fallback_onramp, &fallback_bend, &fallback_three_way_intersection,
+             &fallback_four_way_intersection
+         } ) {
+        check_optional_region_id( owner, "special", *special );
+    }
+}
+
+void region_settings_forest_mapgen::check() const
+{
+    for( const forest_biome_mapgen_id &biome : biomes ) {
+        check_region_id( "region_settings_forest_mapgen " + id.str(), "biomes", biome );
+    }
+}
+
+void forest_biome_mapgen::check() const
+{
+    const std::string owner = "forest_biome_mapgen " + id.str();
+    for( const oter_type_str_id &oter : terrains ) {
+        check_region_id( owner, "terrains", oter );
+    }
+    // Unknown components were reported when the biome was finalized.
+    check_optional_region_id( owner, "item_group", item_group );
+}
+
+void region_settings_map_extras::check() const
+{
+    for( const map_extra_collection_id &collection : extras ) {
+        check_region_id( "region_settings_map_extras " + id.str(), "extras", collection );
+    }
+}
+
+void map_extra_collection::check() const
+{
+    for( const std::pair<map_extra_id, int> &extra : values ) {
+        check_region_id( "map_extra_collection " + id.str(), "extras", extra.first );
+    }
+}
+
+void region_settings_terrain_furniture::check() const
+{
+    for( const region_terrain_furniture_id &tf : ter_furn ) {
+        check_region_id( "region_settings_terrain_furniture " + id.str(), "ter_furn", tf );
+    }
+}
+
+void region_settings::check_consistency()
+{
+    forest_biome_mapgen_factory.check();
+    map_extra_collection_factory.check();
+    region_settings_lake_factory.check();
+    region_settings_ravine_factory.check();
+    region_settings_highway_factory.check();
+    region_settings_forest_mapgen_factory.check();
+    region_settings_city_factory.check();
+    region_settings_map_extras_factory.check();
+    region_settings_terrain_furniture_factory.check();
+    region_settings_factory.check();
 }
 
 void groundcover_extra::finalize()   // FIXME: return bool for failure
@@ -761,7 +1040,7 @@ ter_furn_id forest_biome_mapgen::pick() const
     // If a given component does not roll as success, proceed to the next feature in sequence until
     // a feature is picked or none are picked, in which case an empty feature is returned.
     const ter_furn_id *result = nullptr;
-    for( const forest_biome_component_id &pr : biome_components ) {
+    for( const forest_biome_component_id &pr : components_in_sequence ) {
         if( one_in( pr->chance ) ) {
             result = pr->types.pick();
             break;
@@ -780,6 +1059,24 @@ void forest_biome_mapgen::finalize()
     for( auto &pr : terrain_dependent_furniture ) {
         pr.second.finalize();
     }
+    // The components are rolled in their "sequence" order, ties broken by id. The set they
+    // are loaded into is ordered by when each id was first read, so that set's order ignored
+    // "sequence" (OMAP-J03).
+    components_in_sequence.clear();
+    for( const forest_biome_component_id &component : biome_components ) {
+        if( !component.is_valid() ) {
+            debugmsg( "forest_biome_mapgen %s has an unknown component %s", id.str(), component.str() );
+            continue;
+        }
+        components_in_sequence.push_back( component );
+    }
+    std::sort( components_in_sequence.begin(), components_in_sequence.end(),
+    []( const forest_biome_component_id & lhs, const forest_biome_component_id & rhs ) {
+        if( lhs->sequence != rhs->sequence ) {
+            return lhs->sequence < rhs->sequence;
+        }
+        return lhs.str() < rhs.str();
+    } );
 }
 
 void region_settings_forest_mapgen::finalize()
@@ -807,6 +1104,44 @@ void region_settings_city::finalize()
         debugmsg( "region_settings_city(%s) city_spacing(%d) is outside the bounds of 0 to 8", id.c_str(),
                   city_spacing );
         city_size = std::clamp( city_spacing, 0, 8 );
+    }
+    // City layout (OMAP-J04).  A city must fit in the middle of its overmap.
+    const int largest_size = std::min( OMAPX, OMAPY ) / 2 - 1;
+    if( min_size < 1 || min_size > largest_size ) {
+        debugmsg( "region_settings_city(%s) min_size(%d) is outside the bounds of 1 to %d", id.c_str(),
+                  min_size, largest_size );
+        min_size = std::clamp( min_size, 1, largest_size );
+    }
+    if( max_size < min_size || max_size > largest_size ) {
+        debugmsg( "region_settings_city(%s) max_size(%d) is outside the bounds of min_size(%d) to %d",
+                  id.c_str(), max_size, min_size, largest_size );
+        max_size = std::clamp( max_size, min_size, largest_size );
+    }
+    for( size_variation &variation : size_variations ) {
+        if( variation.divide < 1 || variation.multiply < 0 ) {
+            debugmsg( "region_settings_city(%s) has a size variation of %d / %d; it must multiply by 0 or "
+                      "more and divide by 1 or more", id.c_str(), variation.multiply, variation.divide );
+            variation.multiply = std::max( variation.multiply, 0 );
+            variation.divide = std::max( variation.divide, 1 );
+        }
+    }
+    const auto check_range = [this]( std::array<int, 2> &range, const char *name ) {
+        if( range[0] < 0 || range[1] < range[0] ) {
+            debugmsg( "region_settings_city(%s) %s is [ %d, %d ]; it must be [ min, max ] with "
+                      "0 <= min <= max", id.c_str(), name, range[0], range[1] );
+            range[0] = std::max( range[0], 0 );
+            range[1] = std::max( range[1], range[0] );
+        }
+    };
+    check_range( block_width, "block_width" );
+    check_range( street_shrink, "street_shrink" );
+    for( point &seed : megacity_seeds ) {
+        if( seed.x < 0 || seed.x >= OMAPX || seed.y < 0 || seed.y >= OMAPY ) {
+            debugmsg( "region_settings_city(%s) has a megacity seed at %s, off the overmap", id.c_str(),
+                      seed.to_string() );
+            seed.x = std::clamp( seed.x, 0, OMAPX - 1 );
+            seed.y = std::clamp( seed.y, 0, OMAPY - 1 );
+        }
     }
     houses.finalize();
     shops.finalize();

@@ -120,6 +120,8 @@ struct mission_fail {
 
 struct mission_target_params {
     str_or_var overmap_terrain;
+    // More terrains the search also matches, after overmap_terrain in "om_terrain" (OMAP-J06)
+    std::vector<str_or_var> other_overmap_terrains;
     ot_match_type overmap_terrain_match_type = ot_match_type::type;
     mission *mission_pointer = nullptr;
 
@@ -137,6 +139,10 @@ struct mission_target_params {
     bool create_if_necessary = true;
     dbl_or_var search_range;
     std::optional<dbl_or_var> z;
+    // Levels the search looks at; unset, a closest search looks at every level and a random one
+    // at the origin's (OMAP-J06)
+    std::optional<dbl_or_var> min_z;
+    std::optional<dbl_or_var> max_z;
     npc *guy = nullptr;
 };
 
@@ -162,6 +168,9 @@ mission_target_params parse_mission_om_target( const JsonObject &jo );
 std::optional<tripoint_abs_omt> assign_mission_target( const mission_target_params
         &params, dialogue &d );
 tripoint_abs_omt get_om_terrain_pos( const mission_target_params &params, dialogue &d );
+// As get_om_terrain_pos, but nothing when the params search for a terrain and none is found
+std::optional<tripoint_abs_omt> find_om_terrain_pos( const mission_target_params &params,
+        dialogue &d );
 void set_assign_om_target( const JsonObject &jo,
                            std::vector<std::function<void( mission *miss )>> &funcs );
 bool set_update_mapgen( const JsonObject &jo,

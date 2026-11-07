@@ -4116,6 +4116,23 @@ Write or remove an overmap note.
 { "delete_overmap_note": { "context_val": "loc" } }
 ```
 
+#### `add_radio_station`, `remove_radio_station`
+Start a radio station broadcasting from an overmap tile, or take down the stations there.  Radios
+receive it like the stations worldgen places (see `radio` in [OVERMAP.md](OVERMAP.md)).
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "add_radio_station" / "remove_radio_station" | **mandatory** | [variable object](#variable-object) | location variable of the tile |
+| "message" | optional | string or [variable object](#variable-object) | what the station broadcasts |
+| "strength" | optional | int or [variable object](#variable-object) | signal strength, 1 to 360 (default 180); it is heard about that many submaps away |
+| "weather" | optional | boolean | default false; if true, the station broadcasts weather reports instead of the message |
+| "frequency_var" | optional | [variable object](#variable-object) | the new station's frequency is saved here |
+
+```jsonc
+{ "add_radio_station": { "context_val": "loc" }, "message": "This is the Rivertown free radio.  Traders welcome.", "strength": 200 },
+{ "remove_radio_station": { "context_val": "loc" } }
+```
+
 #### `reveal_route`
 Reveal the route between two location variables, using closest roads
 
@@ -5296,7 +5313,7 @@ Search a specific coordinates of map around `u_`, `npc_` or `target_params` and 
 | "min_radius", "max_radius" | optional | int, float or [variable object](#variable-object) | default 0; radius around the player or NPC, where the location would be searched |
 | "outdoor_only" | optional | boolean | default false; if true, only outdoor values would be picked |
 | "passable_only" | optional | boolean | default false; if true, only passable values would be picked |
-| "target_params" | optional | assign_mission_target | if used, the search would be performed not from `u_` or `npc_` location, but from `mission_target`. it uses an [assign_mission_target](MISSIONS_JSON.md) syntax |
+| "target_params" | optional | assign_mission_target | if used, the search would be performed not from `u_` or `npc_` location, but from `mission_target`. it uses an [assign_mission_target](MISSIONS_JSON.md) syntax.  If it finds no such terrain (for example with `"create_if_necessary": false` and a `search_range`), `false_eocs` run and no location is saved |
 | "x_adjust", "y_adjust", "z_adjust" | optional | int, float or [variable object](#variable-object) | add this amount to `x`, `y` or `z` coordinate in the end; `"x_adjust": 2` would save the coordinate with 2 tile shift to the right from targeted |
 | "z_override" | optional | boolean | default is false; if true, instead of adding up to `z` level, override it with absolute value; `"z_adjust": 3` with `"z_override": true` turn the value of `z` to `3` |
 | "terrain" / "furniture" / "field" / "trap" / "monster" / "zone" / "npc" | optional | string or [variable object](#variable-object) | if used, search the entity with corresponding id between `target_min_radius` and `target_max_radius`; if empty string is used (e.g. `"monster": ""`), return any entity from the same radius  |

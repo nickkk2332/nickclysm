@@ -5114,7 +5114,16 @@ talk_effect_fun_t::func f_location_variable( const JsonObject &jo, std::string_v
         tripoint_abs_ms talker_pos = target->pos_abs();
         tripoint_abs_ms target_pos = talker_pos;
         if( target_params.has_value() ) {
-            const tripoint_abs_omt omt_pos = mission_util::get_om_terrain_pos( target_params.value(), d );
+            // A search that finds no such terrain (say none within "search_range", with
+            // "create_if_necessary": false) gives no location (OMAP-J06).  This used to carry on
+            // from the talker's own position.
+            const std::optional<tripoint_abs_omt> found_omt =
+                mission_util::find_om_terrain_pos( target_params.value(), d );
+            if( !found_omt.has_value() ) {
+                run_eoc_vector( false_eocs, d );
+                return;
+            }
+            const tripoint_abs_omt omt_pos = *found_omt;
             target_pos = tripoint_abs_ms( project_to<coords::ms>( omt_pos ).x(),
                                           project_to<coords::ms>( omt_pos ).y(),
                                           project_to<coords::ms>( omt_pos ).z() );
@@ -11194,6 +11203,44 @@ talk_effect_fun_t::func f_delete_overmap_note( const JsonObject &jo, std::string
     };
 }
 
+// OMAP-J08: radio stations from EOCs
+talk_effect_fun_t::func f_add_radio_station( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    translation_or_var message;
+    if( jo.has_member( "message" ) ) {
+        message = get_translation_or_var( jo.get_member( "message" ), "message", false );
+    }
+    dbl_or_var strength = get_dbl_or_var( jo, "strength", false, RADIO_MAX_STRENGTH / 2 );
+    const bool weather = jo.get_bool( "weather", false );
+    std::optional<var_info> frequency_var;
+    optional( jo, false, "frequency_var", frequency_var );
+    return [target_var, message, strength, weather, frequency_var]( dialogue & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( read_var_value( target_var,
+                                     d ).tripoint() );
+        const int signal = std::clamp( static_cast<int>( strength.evaluate( d ) ), 1,
+                                       RADIO_MAX_STRENGTH );
+        const int frequency = overmap_buffer.add_radio_station( omt, signal,
+                              message.evaluate( d ).translated(),
+                              weather );
+        if( frequency_var ) {
+            write_var_value( frequency_var->type, frequency_var->name, &d,
+                             static_cast<double>( frequency ) );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_remove_radio_station( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    return [target_var]( dialogue & d ) {
+        overmap_buffer.remove_radio_stations( project_to<coords::omt>( read_var_value( target_var,
+                                              d ).tripoint() ) );
+    };
+}
+
 talk_effect_fun_t::func f_reveal_route( const JsonObject &jo, std::string_view member,
                                         std::string_view )
 {
@@ -11818,6 +11865,8 @@ parsers = {
     { "place_overmap_special", jarg::member, &talk_effect_fun::f_place_overmap_special },
     { "add_overmap_note", jarg::object, &talk_effect_fun::f_add_overmap_note },
     { "delete_overmap_note", jarg::object, &talk_effect_fun::f_delete_overmap_note },
+    { "add_radio_station", jarg::object, &talk_effect_fun::f_add_radio_station },
+    { "remove_radio_station", jarg::object, &talk_effect_fun::f_remove_radio_station },
     { "reveal_route", jarg::object, &talk_effect_fun::f_reveal_route },
     { "closest_city", jarg::object, &talk_effect_fun::f_closest_city },
     { "u_spend_cash", jarg::member | jarg::array, &talk_effect_fun::f_u_spend_cash },

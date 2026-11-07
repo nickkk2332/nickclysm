@@ -615,6 +615,14 @@ class overmapbuffer
          * All entries in the returned vector are valid (have a valid tower pointer).
          */
         std::vector<radio_tower_reference> find_all_radio_stations();
+        /**
+         * Adds a radio station at the overmap terrain p (it broadcasts from its first submap) and
+         * returns its frequency (OMAP-J08).  A weather station ignores the message.
+         */
+        int add_radio_station( const tripoint_abs_omt &p, int strength, const std::string &message,
+                               bool weather );
+        /** Removes the radio stations on the overmap terrain p; returns how many (OMAP-J08). */
+        int remove_radio_stations( const tripoint_abs_omt &p );
         std::vector<camp_reference> get_camps_near( const tripoint_abs_sm &location, int radius );
         /**
          * Find all cities within the specified @ref radius.

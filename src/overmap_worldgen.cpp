@@ -301,6 +301,79 @@ void dimension_region_layout::finalize_all()
     dimension_regions_factory.finalize();
 }
 
+// OMAP-J05: unknown ids in dimensions and region layouts used to show up only in worldgen.
+static void check_layout_region( const std::string &owner, const region_settings_id &region )
+{
+    if( !region.is_valid() ) {
+        debugmsg( "%s: region settings \"%s\" do not exist", owner, region.str() );
+    }
+}
+
+void dimension_world::check() const
+{
+    if( !region_layout.is_valid() ) {
+        debugmsg( "dimension %s: region layout \"%s\" does not exist", id.str(), region_layout.str() );
+    }
+}
+
+void dimension_world::check_consistency()
+{
+    dimension_factory.check();
+    dimension_regions_factory.check();
+}
+
+void dimension_region_layout::check() const
+{
+    // A layout without a generator is reported when a world uses it.
+    if( layout_generator ) {
+        layout_generator->check( "dimension_region_layout " + id.str() );
+    }
+}
+
+void region_point_set::check( const std::string &owner ) const
+{
+    for( const std::pair<region_settings_id, int> &region : regions_weighted ) {
+        check_layout_region( owner, region.first );
+    }
+    if( !default_region.is_empty() ) {
+        check_layout_region( owner, default_region );
+    }
+}
+
+void dimension_region_layout_static::check( const std::string &owner ) const
+{
+    if( !layout_out_of_bounds.is_valid() ) {
+        debugmsg( "%s: layout_out_of_bounds \"%s\" does not exist", owner, layout_out_of_bounds.str() );
+    }
+}
+
+void dimension_region_layout_generator_uniform::check( const std::string &owner ) const
+{
+    check_layout_region( owner, uniform_region );
+}
+
+void dimension_region_layout_generator_manual::check( const std::string &owner ) const
+{
+    dimension_region_layout_static::check( owner );
+    for( const region_point_set &point_set : region_point_sets ) {
+        point_set.check( owner );
+    }
+}
+
+void dimension_region_layout_generator_random::check( const std::string &owner ) const
+{
+    for( const std::pair<region_settings_id, int> &region : random_regions ) {
+        check_layout_region( owner, region.first );
+    }
+}
+
+void dimension_region_layout_generator_angles::check( const std::string &owner ) const
+{
+    for( const region_settings_id &region : angles_regions ) {
+        check_layout_region( owner, region );
+    }
+}
+
 template<typename T>
 static void load_layout_generator( const JsonObject &jo,
                                    std::shared_ptr<dimension_region_layout_generator> &layout_generator )

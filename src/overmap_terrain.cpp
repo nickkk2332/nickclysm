@@ -16,6 +16,7 @@
 #include "mapgen.h"
 #include "output.h"
 #include "string_formatter.h"
+#include "text_snippets.h"
 
 class pp_generator;
 
@@ -432,7 +433,41 @@ std::string enum_to_string<oter_flags>( oter_flags data )
     cata_fatal( "Invalid oter_flags" );
 }
 
+template<>
+std::string enum_to_string<oter_radio_station::station_type>( oter_radio_station::station_type
+        data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case oter_radio_station::station_type::broadcast: return "broadcast";
+        case oter_radio_station::station_type::weather: return "weather";
+        case oter_radio_station::station_type::none: return "none";
+        // *INDENT-ON*
+        case oter_radio_station::station_type::last:
+            break;
+    }
+    cata_fatal( "Invalid oter_radio_station::station_type" );
+}
+
 } // namespace io
+
+void oter_radio_station::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "type", type, station_type::broadcast );
+    optional( jo, false, "weight", weight, 1 );
+    if( jo.has_array( "strength" ) ) {
+        JsonArray strength = jo.get_array( "strength" );
+        if( strength.size() != 2 ) {
+            strength.throw_error( "strength should be a number or [ min, max ]" );
+        }
+        min_strength = strength.get_int( 0 );
+        max_strength = strength.get_int( 1 );
+    } else if( jo.has_member( "strength" ) ) {
+        min_strength = max_strength = jo.get_int( "strength" );
+    }
+    optional( jo, false, "message", message );
+    optional( jo, false, "snippet_category", snippet_category );
+}
 
 std::string oter_type_t::get_symbol() const
 {
@@ -589,6 +624,19 @@ void oter_type_t::load( const JsonObject &jo, const std::string_view )
     optional( jo, was_loaded, "entry_eoc", entry_EOC );
     optional( jo, was_loaded, "exit_eoc", exit_EOC );
     optional( jo, was_loaded, "spawns", static_spawns );
+    // One station or a list to pick from by weight; [] removes an inherited one (OMAP-J08)
+    if( jo.has_array( "radio" ) ) {
+        radio_stations.clear();
+        for( const JsonObject station_jo : jo.get_array( "radio" ) ) {
+            oter_radio_station station;
+            station.deserialize( station_jo );
+            radio_stations.push_back( station );
+        }
+    } else if( jo.has_object( "radio" ) ) {
+        oter_radio_station station;
+        station.deserialize( jo.get_object( "radio" ) );
+        radio_stations = { station };
+    }
     optional( jo, was_loaded, "color", color, nc_color_reader{} );
     optional( jo, was_loaded, "land_use_code", land_use_code, overmap_land_use_code_id::NULL_ID() );
 
@@ -666,6 +714,18 @@ void oter_type_t::check() const
     for( const pp_generator_id &gen : post_process_generators ) {
         if( !gen.is_valid() ) {
             debugmsg( "Invalid post_process_generators id '%s' for '%s'", gen.str(), id.str() );
+        }
+    }
+    for( const oter_radio_station &station : radio_stations ) {
+        if( station.min_strength < 1 || station.max_strength < station.min_strength ||
+            station.max_strength > RADIO_MAX_STRENGTH ) {
+            debugmsg( "'%s' has a radio station of strength %d to %d; it must be 1 to %d, min <= max",
+                      id.str(), station.min_strength, station.max_strength, RADIO_MAX_STRENGTH );
+        }
+        if( !station.snippet_category.empty() &&
+            !SNIPPET.has_category( station.snippet_category ) ) {
+            debugmsg( "'%s' has a radio station with unknown snippet category '%s'", id.str(),
+                      station.snippet_category );
         }
     }
     if( !post_process_generators.empty() && has_flag( oter_flags::road ) ) {

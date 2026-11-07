@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -155,26 +156,36 @@ static std::optional<tripoint_abs_omt> find_or_create_om_terrain(
         return project_to<coords::omt>( read_var_value( *params.target_var, d ).tripoint() );
     }
 
-    omt_find_params find_params;
-    std::vector<std::pair<std::string, ot_match_type>> temp_types;
-    std::pair<std::string, ot_match_type> temp_pair;
-    temp_pair.first = params.overmap_terrain.evaluate( d );
-    temp_pair.second = params.overmap_terrain_match_type;
-    temp_types.push_back( temp_pair );
-    find_params.types = temp_types;
-    find_params.search_range = params.search_range.evaluate( d );
-    find_params.min_distance = params.min_distance.evaluate( d );
-    find_params.must_see = params.must_see;
-    find_params.cant_see = params.cant_see;
-    find_params.existing_only = true;
+    // The search as the params give it.  Each search below starts from a copy, so the
+    // replacement terrain of one can't leak into the next (OMAP-J06).
+    omt_find_params base_params;
+    base_params.types.emplace_back( params.overmap_terrain.evaluate( d ),
+                                    params.overmap_terrain_match_type );
+    for( const str_or_var &other : params.other_overmap_terrains ) {
+        base_params.types.emplace_back( other.evaluate( d ), params.overmap_terrain_match_type );
+    }
+    base_params.search_range = params.search_range.evaluate( d );
+    base_params.min_distance = params.min_distance.evaluate( d );
+    base_params.must_see = params.must_see;
+    base_params.cant_see = params.cant_see;
+    base_params.existing_only = true;
+    const bool z_range = params.min_z.has_value() || params.max_z.has_value();
+    if( params.min_z.has_value() ) {
+        base_params.min_z = std::max( static_cast<int>( params.min_z->evaluate( d ) ),
+                                      -OVERMAP_DEPTH );
+    }
+    if( params.max_z.has_value() ) {
+        base_params.max_z = std::min( static_cast<int>( params.max_z->evaluate( d ) ),
+                                      OVERMAP_HEIGHT );
+    }
 
     if( params.overmap_special.has_value() ) {
         const overmap_special_id special_id = static_cast<overmap_special_id>(
                 ( *params.overmap_special ).evaluate( d ) );
-        find_params.om_special = special_id;
+        base_params.om_special = special_id;
 
         if( overmap_buffer.contains_unique_special( special_id ) ) {
-            target_pos = overmap_buffer.find_existing_globally_unique( origin_pos, find_params );
+            target_pos = overmap_buffer.find_existing_globally_unique( origin_pos, base_params );
             if( target_pos.is_invalid() ) {
                 debugmsg( "Couldn't find placed overmap special %s???", special_id.str() );
                 return std::nullopt;
@@ -182,10 +193,36 @@ static std::optional<tripoint_abs_omt> find_or_create_om_terrain(
             return target_pos;
         }
     }
-    auto get_target_position = [&]() {
+
+    // A random match: on the origin's level (a search for a special: on any level), or on the
+    // levels min_z..max_z when the params give them.
+    const auto find_random_match = [&]( const omt_find_params & find_params ) {
+        if( !z_range ) {
+            return overmap_buffer.find_random( origin_pos, find_params );
+        }
+        std::vector<tripoint_abs_omt> found;
+        if( find_params.om_special.has_value() ) {
+            for( const tripoint_abs_omt &p : overmap_buffer.find_all( origin_pos, find_params ) ) {
+                if( p.z() >= find_params.min_z && p.z() <= find_params.max_z ) {
+                    found.push_back( p );
+                }
+            }
+        } else {
+            for( int z = find_params.min_z; z <= find_params.max_z; z++ ) {
+                const std::vector<tripoint_abs_omt> level = overmap_buffer.find_all(
+                            tripoint_abs_omt( origin_pos.xy(), z ), find_params );
+                found.insert( found.end(), level.begin(), level.end() );
+            }
+        }
+        return random_entry( found, tripoint_abs_omt::invalid );
+    };
+
+    const auto get_target_position = [&]( const bool existing_only ) {
+        omt_find_params find_params = base_params;
+        find_params.existing_only = existing_only;
         // Either find a random or closest match, based on the criteria.
         if( params.random ) {
-            target_pos = overmap_buffer.find_random( origin_pos, find_params );
+            target_pos = find_random_match( find_params );
         } else {
             target_pos = overmap_buffer.find_closest( origin_pos, find_params );
         }
@@ -208,16 +245,16 @@ static std::optional<tripoint_abs_omt> find_or_create_om_terrain(
                 }
             } else if( params.replaceable_overmap_terrain ) {
                 // This terrain wasn't part of an overmap special, but we do have a replacement
-                // terrain specified. Find a random location of that replacement type.
-                find_params.must_see = false;
-                find_params.types.front().first = ( *params.replaceable_overmap_terrain ).evaluate( d );
-                target_pos = overmap_buffer.find_random( origin_pos, find_params );
-
-                // We didn't find it, so allow this search to create new overmaps and try again.
-                find_params.existing_only = true;
-                if( target_pos.is_invalid() ) {
-                    target_pos = overmap_buffer.find_random( origin_pos, find_params );
-                }
+                // terrain specified. Find a random location of that replacement type: on the
+                // existing overmaps in the first pass, on new ones too in the second.  (A second
+                // existing-only search of the same here did nothing.)
+                omt_find_params replace_params = find_params;
+                replace_params.must_see = false;
+                replace_params.types.clear();
+                replace_params.types.emplace_back(
+                    ( *params.replaceable_overmap_terrain ).evaluate( d ),
+                    params.overmap_terrain_match_type );
+                target_pos = find_random_match( replace_params );
 
                 // We found a match, so set this position (which was our replacement terrain)
                 // to our desired mission terrain.
@@ -229,20 +266,22 @@ static std::optional<tripoint_abs_omt> find_or_create_om_terrain(
     };
 
     // First try to get the position where we only allow existing overmaps.
-    get_target_position();
+    get_target_position( true );
 
     if( target_pos.is_invalid() ) {
         // If it's invalid, then that means we couldn't find it or create it (if allowed) on
         // our current overmap. We'll now go ahead and try again but allow it to create new overmaps.
-        find_params.existing_only = false;
-        get_target_position();
+        get_target_position( false );
     }
 
     // If we got here and this is still invalid, it means that we couldn't find it nor create it
-    // on any overmap (new or existing) within the allowed search range.
+    // on any overmap (new or existing) within the allowed search range.  A search that may not
+    // create its target fails quietly: the caller decides what that means.
     if( target_pos.is_invalid() ) {
-        debugmsg( "Unable to find and assign mission target %s within %d tiles.",
-                  params.overmap_terrain.evaluate( d ), find_params.search_range );
+        if( params.create_if_necessary ) {
+            debugmsg( "Unable to find and assign mission target %s within %d tiles.",
+                      params.overmap_terrain.evaluate( d ), base_params.search_range );
+        }
         return std::nullopt;
     }
     return target_pos;
@@ -294,8 +333,9 @@ std::optional<tripoint_abs_omt> mission_util::assign_mission_target(
     return target_pos;
 }
 
-tripoint_abs_omt mission_util::get_om_terrain_pos( const mission_target_params &params,
-        dialogue &d )
+// fall_back: when the search fails, use the origin (else return nothing)
+static std::optional<tripoint_abs_omt> om_terrain_pos( const mission_target_params &params,
+        dialogue &d, const bool fall_back )
 {
     // use the player or NPC's current position, adjust for the z value if any
     tripoint_abs_omt origin_pos = get_mission_om_origin( params, d );
@@ -304,6 +344,8 @@ tripoint_abs_omt mission_util::get_om_terrain_pos( const mission_target_params &
         std::optional<tripoint_abs_omt> temp_pos = find_or_create_om_terrain( origin_pos, params, d );
         if( temp_pos ) {
             target_pos = *temp_pos;
+        } else if( !fall_back ) {
+            return std::nullopt;
         }
     }
 
@@ -317,6 +359,18 @@ tripoint_abs_omt mission_util::get_om_terrain_pos( const mission_target_params &
     }
 
     return target_pos;
+}
+
+tripoint_abs_omt mission_util::get_om_terrain_pos( const mission_target_params &params,
+        dialogue &d )
+{
+    return *om_terrain_pos( params, d, true );
+}
+
+std::optional<tripoint_abs_omt> mission_util::find_om_terrain_pos(
+    const mission_target_params &params, dialogue &d )
+{
+    return om_terrain_pos( params, d, false );
 }
 
 /**
@@ -366,7 +420,23 @@ tripoint_abs_omt mission_util::target_om_ter_random( const std::string &omter, i
 mission_target_params mission_util::parse_mission_om_target( const JsonObject &jo )
 {
     mission_target_params p;
-    optional( jo, false, "om_terrain", p.overmap_terrain );
+    // One terrain, or a list of them: the target is any of them, and a replacement becomes the
+    // first (OMAP-J06).
+    if( jo.has_array( "om_terrain" ) ) {
+        bool first = true;
+        for( const JsonValue &jv : jo.get_array( "om_terrain" ) ) {
+            str_or_var terrain;
+            terrain.deserialize( jv );
+            if( first ) {
+                p.overmap_terrain = terrain;
+                first = false;
+            } else {
+                p.other_overmap_terrains.push_back( terrain );
+            }
+        }
+    } else {
+        optional( jo, false, "om_terrain", p.overmap_terrain );
+    }
     if( jo.has_member( "om_terrain_match_type" ) ) {
         p.overmap_terrain_match_type = jo.get_enum_value<ot_match_type>( "om_terrain_match_type" );
     }
@@ -379,21 +449,24 @@ mission_target_params mission_util::parse_mission_om_target( const JsonObject &j
     if( jo.has_member( "must_see" ) ) {
         p.must_see = jo.get_bool( "must_see" );
     }
+    // "exclude_seen" is an old name of "cant_see".  It read a key "exclude" (and set "random"),
+    // so using it threw (OMAP-J06).
+    if( jo.has_member( "exclude_seen" ) ) {
+        p.cant_see = jo.get_bool( "exclude_seen" );
+    }
     if( jo.has_member( "cant_see" ) ) {
         p.cant_see = jo.get_bool( "cant_see" );
-    }
-    if( jo.has_member( "exclude_seen" ) ) {
-        p.random = jo.get_bool( "exclude" );
     }
     if( jo.has_member( "random" ) ) {
         p.random = jo.get_bool( "random" );
     }
-    if( !p.random && jo.has_member( "search_range" ) ) {
-        jo.throw_error_at( "search_range",
-                           "There's no reason to change max search range if your search isn't random." );
-    }
+    // A closest search stops at search_range too: "the nearest X within 20 tiles, else fail"
+    // (OMAP-J06).  It used to be refused here.
     optional( jo, false, "search_range", p.search_range, OMAPX * 3 );
     optional( jo, false, "min_distance", p.min_distance );
+    optional( jo, false, "create_if_necessary", p.create_if_necessary, true );
+    optional( jo, false, "min_z", p.min_z );
+    optional( jo, false, "max_z", p.max_z );
 
     if( jo.has_member( "offset_x" ) || jo.has_member( "offset_y" ) || jo.has_member( "offset_z" ) ) {
         tripoint_rel_omt offset;
