@@ -45,6 +45,8 @@
 static const bionic_id bio_power_storage( "bio_power_storage" );
 static const bionic_id test_bio_mutj03_toggle( "test_bio_mutj03_toggle" );
 
+static const bodypart_str_id body_part_test_tail( "test_tail" );
+
 static const effect_on_condition_id
 effect_on_condition_EOC_TEST_DAMAGE_ALL_WHEELS( "EOC_TEST_DAMAGE_ALL_WHEELS" );
 static const effect_on_condition_id
@@ -83,8 +85,6 @@ static const ter_str_id ter_t_grass( "t_grass" );
 static const trait_id trait_TEST_SPELL_TRICKS( "TEST_SPELL_TRICKS" );
 
 static const vproto_id vehicle_prototype_car( "car" );
-
-static const bodypart_str_id body_part_test_tail( "test_tail" );
 
 namespace
 {
