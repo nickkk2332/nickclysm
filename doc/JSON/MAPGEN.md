@@ -34,6 +34,7 @@
   - [Spawn an entire group of monsters with "place_monsters"](#spawn-an-entire-group-of-monsters-with-place_monsters)
   - [Spawn npcs with "place_npcs"](#spawn-npcs-with-place_npcs)
   - [Set variables with "place_variables"](#set-variables-with-place_variables)
+  - [Run EOCs with "place_eocs"](#run-eocs-with-place_eocs)
   - [Spawn specific items with a "place_item" array](#spawn-specific-items-with-a-place_item-array)
   - [Place loot](#place-loot)
   - [Set the owner of items in a given area with "faction_owner"](#set-the-owner-of-items-in-a-given-area-with-faction_owner)
@@ -716,9 +717,36 @@ Using `place_variables` to set a group of variables.
 
 |Field|Description  |
 |--|--|
-| x, y        | Coordinates. Value: 0-23. A range `[ a, b ]` is not rolled: the variable is set to `a`.
+| x, y        | Coordinates. Value: 0-23, or a range `[ a, b ]` for a random value in it, as for other pieces.
 | z           | (optional) Relative Z coordinate for placement at a different Z level than the nominal one. Value from `-20 to 20`. Also note that range is not supported.
 | name        | The name of the global variable to set with the absolute coordinates of x and y.
+
+## Run EOCs with "place_eocs"
+`place_eocs` queues an effect_on_condition at a point of the map. It runs once the map is made,
+with the next queued EOCs (at the latest at the start of the next turn), not during map
+generation: an EOC can then change the map it was placed in, spawn things there or record the
+place. The avatar is alpha. Its context variables:
+
+| Context variable | Value
+| --               | --
+| `loc`            | The point, an absolute location. Turned and mirrored with the map, as for `place_variables`.
+| `oter_id`        | The overmap terrain the mapgen made, such as `house_04_north`.
+
+```jsonc
+"place_eocs": [ { "eoc": "EOC_REGISTER_SHRINE", "x": 12, "y": 12 } ]
+```
+
+|Field|Description  |
+|--|--|
+| eoc         | An EOC id, or an inline EOC (with an `id`). It must be global or of type `ACTIVATION` (the default), so that it can be queued.
+| x, y        | Coordinates. Value: 0-23, or a range `[ a, b ]` for a random value in it.
+| z           | (optional) Relative Z coordinate, as for `place_variables`.
+| repeat      | (optional) As for other pieces.
+
+In a palette or a mapgen's own mappings the key is `"eocs"`: `"eocs": { "S": { "eoc": "EOC_REGISTER_SHRINE" } }`.
+
+The `omt_generated` and `map_extra_spawned` events (see EFFECT_ON_CONDITION.md) tell global
+EOCs about every overmap tile made and every map extra placed, also once map generation is over.
 
 ## Spawn specific items with a "place_item" array
 **optional** A list of *specific* things to add. WIP: Monsters and vehicles will be here too
@@ -1375,6 +1403,10 @@ Example for placing computer console (either by using a character in the rows ar
 
 ## Mapgen parameters
 
+The parameters a nested chunk declares (with `omt` or `overmap_special` scope) reach the mapgen
+that places it, however deep the chunk is nested: a chunk placed by a chunk placed by the
+mapgen counts too, and so does every possible choice of a `chunks` list, `"null"` included.
+
 Parameters consist of a key identifier and a value that can be of various types.  They are used to roll one value out of several possible but then to use that result multiple times at a chosen scope without the value being rerolled.
 The value will be determined when it's needed the first time.
 
@@ -1557,6 +1589,15 @@ Rotates the generated map after all the other mapgen stuff has been done. The va
 (out of which a value will be randomly chosen). Example: `"rotation": [ 0, 3 ]`
 
 Values are 90° steps.
+
+A nested chunk turns by its `"rotation"` only if it also sets `"allow_rotation": true`. Many
+chunks ask for a rotation (often `[ 0, 3 ]`) but were drawn for one orientation, such as a shop
+front facing the street, so without `allow_rotation` the rotation is ignored and the chunk is
+placed as drawn. A turned chunk turns everything it places: its rows, `set` points, lines and
+squares, the pieces of its `place_*` lists (vehicles turn their facing too), and the chunks it
+places, which turn with it on top of their own rotation. Nested chunks are square, so a turned
+chunk covers the same square. Terrain and furniture ids are not changed: a door or a window that
+only looks right one way keeps its id.
 
 
 ## Pre-load a base mapgen with `"predecessor_mapgen"`
@@ -1753,6 +1794,11 @@ Map extras can be used to place environmental objects and structures that can he
 | color               | (_optional_) The color of the symbol identifying this extra on the overmap. Defaults to white.
 | autonote_visibility | (_optional_) When to automatically mark this extra on the overmap. Defaults to "none", never marking it on the overmap. Other options listed below.
 | flags               | (_optional_) List of flags that identify this extra. These flags can be listed in `overmap_feature_flag_settings` to blacklist or whitelist map extras.
+| condition           | (_optional_) A dialogue condition (see EFFECT_ON_CONDITION.md) that must be true for the extra to be picked. The avatar is alpha; the context variable `loc` is the overmap tile's north-west tile and `oter_id` its overmap terrain. Example: `{ "math": [ "time_since('cataclysm', 'unit':'days') < 30" ] }`.
+| eocs                | (_optional_) EOCs (ids or inline) queued once the extra is placed, as `place_eocs` are: they run after map generation, with the avatar as alpha and the context variables `loc` (the overmap tile's north-west tile) and `map_extra` (this extra's id). They must be global or of type `ACTIVATION`.
+
+An EOC can place an extra with `place_map_extra` and ask whether a tile has one with `map_has_extra`
+(see EFFECT_ON_CONDITION.md). Placing one also sends the `map_extra_spawned` event.
 
 The `generator` can use one of 3 methods:
 

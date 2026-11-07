@@ -262,6 +262,11 @@ struct region_settings_river {
     double river_branch_chance = 64;
     double river_branch_remerge_chance = 4;
     double river_branch_scale_decrease = 1;
+    // The terrain the built-in river mapgen draws; empty: vanilla's (MGEN-J04)
+    ter_str_id mapgen_deep_water;
+    ter_str_id mapgen_shallow_water;
+    weighted_int_list<ter_id> mapgen_bank;
+    weighted_int_list<ter_id> mapgen_bank_detail;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
@@ -285,6 +290,9 @@ struct region_settings_lake {
     std::vector<oter_str_id> shore_extendable_overmap_terrain;
     std::vector<shore_extendable_overmap_terrain_alias> shore_extendable_overmap_terrain_aliases;
     bool invert_lakes = false;
+    // The terrain the built-in lake shore mapgen draws; empty: vanilla's (MGEN-J04)
+    ter_str_id mapgen_deep_water;
+    ter_str_id mapgen_shallow_water;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
@@ -306,6 +314,11 @@ struct region_settings_ocean {
     std::optional<int> ocean_start_west;
     std::optional<int> ocean_start_south;
     int sandy_beach_width = 2;
+    // The terrain the built-in ocean shore mapgen draws; empty: vanilla's (MGEN-J04)
+    ter_str_id mapgen_deep_water;
+    ter_str_id mapgen_shallow_water;
+    ter_str_id mapgen_surf;
+    ter_str_id mapgen_beach;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );

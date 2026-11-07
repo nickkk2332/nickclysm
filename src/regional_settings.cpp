@@ -497,6 +497,8 @@ void region_settings_lake::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "shore_ter", shore, oter_lake_shore );
     optional( jo, was_loaded, "interior_ter", interior, oter_lake_water_cube );
     optional( jo, was_loaded, "bed_ter", bed, oter_lake_bed );
+    optional( jo, was_loaded, "mapgen_deep_water", mapgen_deep_water );
+    optional( jo, was_loaded, "mapgen_shallow_water", mapgen_shallow_water );
 }
 
 void shore_extendable_overmap_terrain_alias::deserialize( const JsonObject &jo )
@@ -513,6 +515,10 @@ void region_settings_river::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "river_branch_chance", river_branch_chance );
     optional( jo, was_loaded, "river_branch_remerge_chance", river_branch_remerge_chance );
     optional( jo, was_loaded, "river_branch_scale_decrease", river_branch_scale_decrease );
+    optional( jo, was_loaded, "mapgen_deep_water", mapgen_deep_water );
+    optional( jo, was_loaded, "mapgen_shallow_water", mapgen_shallow_water );
+    optional( jo, was_loaded, "mapgen_bank", mapgen_bank, ter_reader );
+    optional( jo, was_loaded, "mapgen_bank_detail", mapgen_bank_detail, ter_reader );
 }
 
 void region_settings_ocean::load( const JsonObject &jo, std::string_view )
@@ -525,6 +531,10 @@ void region_settings_ocean::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "ocean_start_west", ocean_start_west );
     optional( jo, was_loaded, "ocean_start_south", ocean_start_south );
     optional( jo, was_loaded, "sandy_beach_width", sandy_beach_width );
+    optional( jo, was_loaded, "mapgen_deep_water", mapgen_deep_water );
+    optional( jo, was_loaded, "mapgen_shallow_water", mapgen_shallow_water );
+    optional( jo, was_loaded, "mapgen_surf", mapgen_surf );
+    optional( jo, was_loaded, "mapgen_beach", mapgen_beach );
 }
 
 void region_settings_highway::load( const JsonObject &jo, std::string_view )

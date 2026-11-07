@@ -40,6 +40,8 @@
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "field_type.h"
 #include "flat_set.h"
 #include "game.h"
@@ -95,6 +97,7 @@
 #include "trap.h"
 #include "uilist.h"
 #include "units.h"
+#include "units_utility.h"
 #include "value_ptr.h"
 #include "veh_type.h"
 #include "vehicle.h"
@@ -303,7 +306,8 @@ void map::generate( const tripoint_abs_omt &p, const time_point &when, bool save
                         debugmsg( "failed to pick extra for type %s (ter = %s)", terrain_type->get_extras(),
                                   terrain_type->get_type_id().str() );
                     } else {
-                        MapExtras::apply_function( *ex.values.pick(), *this, tripoint_abs_sm( abs_sub ) );
+                        // The extra just checked, not a second pick (MGEN-J03)
+                        MapExtras::apply_function( *extra, *this, tripoint_abs_sm( abs_sub ) );
                     }
                 }
             }
@@ -346,6 +350,14 @@ void map::generate( const tripoint_abs_omt &p, const time_point &when, bool save
                     }
                 }
             }
+        }
+
+        // An OMT the world keeps was made: sent once the map is done (MGEN-J01). Not for the
+        // uniform terrain (open air, solid rock) that has no mapgen.
+        if( any_missing && save_results && !terrain_type->has_uniform_terrain() ) {
+            const tripoint_abs_omt omt_point( p.xy(), gridz );
+            queue_mapgen_event( cata::event::make<event_type::omt_generated>(
+                                    project_to<coords::ms>( omt_point ).raw(), terrain_type ) );
         }
 
         // Apply post-process generators
@@ -752,6 +764,42 @@ static mapgen_factory oter_mapgen;
 std::map<nested_mapgen_id, nested_mapgen> nested_mapgens;
 std::map<update_mapgen_id, update_mapgen> update_mapgens;
 static std::unordered_map<std::string, tripoint_abs_ms> queued_points;
+
+namespace
+{
+// An EOC a mapgen "place_eocs" queued, and where: moved with the map like queued_points,
+// and queued to run by set_queued_points() (MGEN-J01)
+struct queued_mapgen_eoc {
+    effect_on_condition_id eoc;
+    tripoint_abs_ms loc;
+    oter_id oter;
+};
+} // namespace
+static std::vector<queued_mapgen_eoc> queued_mapgen_eocs;
+// Events from map generation, sent at the start of the next turn: an EOC they run may change
+// the map, which must not happen while it is being generated (MGEN-J01)
+static std::vector<cata::event> queued_mapgen_events;
+
+void queue_mapgen_event( const cata::event &e )
+{
+    queued_mapgen_events.push_back( e );
+}
+
+void send_queued_mapgen_events()
+{
+    // Taken first: what the events run may generate maps, which queue more for next time
+    std::vector<cata::event> events;
+    events.swap( queued_mapgen_events );
+    for( const cata::event &e : events ) {
+        get_event_bus().send( e );
+    }
+}
+
+void clear_queued_mapgen_events()
+{
+    queued_mapgen_events.clear();
+    queued_mapgen_eocs.clear();
+}
 
 template<>
 bool string_id<nested_mapgen>::is_valid() const
@@ -1305,7 +1353,16 @@ void mapgen_function_json_base::setup_setmap( const JsonArray &parray )
 
 void mapgen_function_json_base::finalize_parameters_common()
 {
+    // Each nested chunk this places finalizes itself first (jmapgen_nested), so the
+    // parameters of chunks nested in nested chunks reach the top mapgen. A chunk that places
+    // itself, directly or not, merges what it has so far.
+    if( parameters_finalized_ || parameters_finalizing_ ) {
+        return;
+    }
+    parameters_finalizing_ = true;
     objects.merge_parameters_into( parameters, context_ );
+    parameters_finalizing_ = false;
+    parameters_finalized_ = true;
 }
 
 mapgen_arguments mapgen_function_json_base::get_args(
@@ -1410,6 +1467,57 @@ bool jmapgen_place_filter::test( const map &m, const tripoint_bub_ms &p ) const
         return false;
     }
     return true;
+}
+
+// A coordinate range [ val, valmax ] seen from the other side of an axis of @p size
+static jmapgen_int reflected( const jmapgen_int &v, int size )
+{
+    return jmapgen_int( size - 1 - v.valmax, size - 1 - v.val );
+}
+
+// Turns the point ranges x, y clockwise by quarter turns, as point::rotate turns a point
+static void rotate_ranges( jmapgen_int &x, jmapgen_int &y, int turns, int size )
+{
+    const jmapgen_int old_x = x;
+    const jmapgen_int old_y = y;
+    switch( ( turns % 4 + 4 ) % 4 ) {
+        case 1:
+            x = reflected( old_y, size );
+            y = old_x;
+            break;
+        case 2:
+            x = reflected( old_x, size );
+            y = reflected( old_y, size );
+            break;
+        case 3:
+            x = old_y;
+            y = reflected( old_x, size );
+            break;
+        default:
+            break;
+    }
+}
+
+void jmapgen_place::rotate( int turns, int size )
+{
+    rotate_ranges( x, y, turns, size );
+}
+
+jmapgen_setmap jmapgen_setmap::rotated( int turns, int size ) const
+{
+    jmapgen_setmap result = *this;
+    rotate_ranges( result.x, result.y, turns, size );
+    rotate_ranges( result.x2, result.y2, turns, size );
+    // A square goes from its smaller corner to its larger one: the turn can swap them
+    if( op > JMAPGEN_SETMAP_OPTYPE_SQUARE ) {
+        if( result.x.val > result.x2.val ) {
+            std::swap( result.x, result.x2 );
+        }
+        if( result.y.val > result.y2.val ) {
+            std::swap( result.y, result.y2 );
+        }
+    }
+    return result;
 }
 
 void jmapgen_place::offset( const tripoint_rel_ms &offset )
@@ -3057,7 +3165,12 @@ class jmapgen_vehicle : public jmapgen_piece_with_has_vehicle_collision
                 return;
             }
             tripoint_bub_ms const dst( x.get(), y.get(), dat.zlevel() + z.get() );
-            vehicle *veh = dat.m.add_vehicle( chosen_id->pick(), dst, random_entry( rotation ),
+            // A turned nested chunk turns its vehicles with it (MGEN-B08)
+            units::angle facing = random_entry( rotation );
+            if( dat.nest_rotation() != 0 ) {
+                facing = normalize( facing + dat.nest_rotation() * 90_degrees );
+            }
+            vehicle *veh = dat.m.add_vehicle( chosen_id->pick(), dst, facing,
                                               fuel, static_cast<veh_spawn_status>( status ) );
             if( veh && !faction.empty() ) {
                 veh->set_owner( faction_id( faction ) );
@@ -3787,8 +3900,54 @@ class jmapgen_variable : public jmapgen_piece
         }
         void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
                     const std::string &/*context*/ ) const override {
-            queued_points[name] = dat.m.get_abs( tripoint_bub_ms( int( x.val ), int( y.val ),
+            // A range [ a, b ] is rolled, as for other pieces (MGEN-J01)
+            queued_points[name] = dat.m.get_abs( tripoint_bub_ms( x.get(), y.get(),
                                                  dat.zlevel() + z.get() ) );
+        }
+};
+
+/**
+ * Queue an EOC to run at a point once the map is made (MGEN-J01)
+ */
+class jmapgen_eoc : public jmapgen_piece
+{
+    public:
+        effect_on_condition_id eoc;
+        jmapgen_eoc( const JsonObject &jsi, std::string_view /*context*/ ) {
+            const JsonValue jv = jsi.get_member( "eoc" );
+            if( jv.test_object() ) {
+                // Each tile of a multi-tile mapgen sets up the same JSON: an inline EOC is
+                // added once (a second definition from the same source is an error)
+                JsonObject jeoc = jv.get_object();
+                const effect_on_condition_id id( jeoc.get_string( "id" ) );
+                if( id.is_valid() ) {
+                    jeoc.allow_omitted_members();
+                    eoc = id;
+                    return;
+                }
+            }
+            // Mapgen is set up after the EOCs are loaded: an inline EOC is added then, and
+            // credited to the base game
+            eoc = effect_on_conditions::load_inline_eoc( jv, "dda" );
+        }
+        mapgen_phase phase() const override {
+            return mapgen_phase::zones;
+        }
+        void apply( const mapgendata &dat, const jmapgen_int &x, const jmapgen_int &y, const jmapgen_int &z,
+                    const std::string &/*context*/ ) const override {
+            queued_mapgen_eocs.push_back( { eoc, dat.m.get_abs( tripoint_bub_ms( x.get(), y.get(),
+                                            dat.zlevel() + z.get() ) ), dat.terrain_type() } );
+        }
+        void check( const std::string &oter_name, const mapgen_parameters &/*parameters*/,
+                    const jmapgen_int &/*x*/, const jmapgen_int &/*y*/, const jmapgen_int &/*z*/
+                  ) const override {
+            if( !eoc.is_valid() ) {
+                debugmsg( "mapgen '%s' places unknown EOC %s", oter_name, eoc.str() );
+            } else if( !eoc->global && eoc->type != eoc_type::ACTIVATION &&
+                       eoc->type != eoc_type::RECURRING ) {
+                debugmsg( "mapgen '%s' places EOC %s, which can't be queued: it must be global or of "
+                          "type ACTIVATION", oter_name, eoc.str() );
+            }
         }
 };
 
@@ -4165,16 +4324,19 @@ class jmapgen_nested : public jmapgen_piece
                                     const std::string &outer_context ) const override {
             auto merge_from = [&]( const mapgen_value<nested_mapgen_id> &val ) {
                 for( const nested_mapgen_id &id : val.all_possible_results( params ) ) {
+                    // A "null" choice places nothing: the other choices still count (MGEN-B09)
                     if( id.is_null() ) {
-                        return;
+                        continue;
                     }
                     const auto iter = nested_mapgens.find( id );
                     if( iter == nested_mapgens.end() ) {
                         debugmsg( "Unknown nested mapgen function id '%s'", id.str() );
-                        return;
+                        continue;
                     }
                     using Obj = std::pair<std::shared_ptr<mapgen_function_json_nested>, int>;
                     for( const Obj &nested : iter->second.funcs() ) {
+                        // Bottom-up, so what the chunk's own chunks declare comes along
+                        nested.first->finalize_parameters();
                         nested.first->merge_non_nest_parameters_into( params, outer_context );
                     }
                 }
@@ -4855,6 +5017,7 @@ mapgen_palette mapgen_palette::load_internal( const JsonObject &jo, std::string_
     new_pal.load_place_mapings<jmapgen_corpse>( jo, "corpses", format_placings, c );
     new_pal.load_place_mapings<jmapgen_graffiti>( jo, "graffiti", format_placings, c );
     new_pal.load_place_mapings<jmapgen_zone>( jo, "zones", format_placings, c );
+    new_pal.load_place_mapings<jmapgen_eoc>( jo, "eocs", format_placings, c );
     new_pal.load_place_mapings<jmapgen_ter_furn_transform>( jo, "ter_furn_transforms",
             format_placings, c );
 
@@ -4921,6 +5084,7 @@ bool mapgen_function_json_nested::setup_internal( const JsonObject &jo )
     if( jo.has_member( "rotation" ) ) {
         rotation = jmapgen_int( jo, "rotation" );
     }
+    jo.read( "allow_rotation", allow_rotation_ );
 
     // Nested mapgen is always halal because it can assume underlying map is.
     return true;
@@ -5134,6 +5298,7 @@ bool mapgen_function_json_base::setup_common( const JsonObject &jo )
     objects.load_objects<jmapgen_zone>( jo, "place_zones", context_ );
     objects.load_objects<jmapgen_ter_furn_transform>( jo, "place_ter_furn_transforms", context_ );
     objects.load_objects<jmapgen_variable>( jo, "place_variables", context_ );
+    objects.load_objects<jmapgen_eoc>( jo, "place_eocs", context_ );
     // Needs to be last as it affects other placed items
     objects.load_objects<jmapgen_faction>( jo, "faction_owner", context_ );
 
@@ -6675,10 +6840,15 @@ static ret_val<void> apply_mapgen_in_phases(
             continue;
         }
         for( ; setmap_point != setmap_points.end(); ++setmap_point ) {
-            const jmapgen_setmap &elem = *setmap_point;
-            if( elem.phase() != phase ) {
+            if( setmap_point->phase() != phase ) {
                 break;
             }
+            // Turned with its nested chunk (MGEN-B08)
+            std::optional<jmapgen_setmap> turned;
+            if( md.nest_rotation() != 0 ) {
+                turned = setmap_point->rotated( md.nest_rotation(), md.nest_size() );
+            }
+            const jmapgen_setmap &elem = turned ? *turned : *setmap_point;
             const ret_val<void> has_vehicle_collision = elem.has_vehicle_collision( md, offset );
             if( verify && !has_vehicle_collision.success() ) {
                 return has_vehicle_collision;
@@ -6784,15 +6954,27 @@ mapgen_parameters mapgen_function_json::get_mapgen_params( mapgen_parameter_scop
 void mapgen_function_json_nested::nest( const mapgendata &md, const tripoint_rel_ms &offset,
                                         const std::string &outer_context ) const
 {
-    // TODO: Make rotation work for submaps, then pass this value into elem & objects apply.
-    //int chosen_rotation = rotation.get() % 4;
+    // A chunk placed by a turned chunk turns with it: its corner at offset is turned too, so it
+    // starts size - 1 tiles further west and/or north (MGEN-B08)
+    const int outer_rotation = md.nest_rotation();
+    const int size = mapgensize.x();
+    tripoint_rel_ms turned_offset = offset;
+    if( outer_rotation == 1 || outer_rotation == 2 ) {
+        turned_offset.x() -= size - 1;
+    }
+    if( outer_rotation == 2 || outer_rotation == 3 ) {
+        turned_offset.y() -= size - 1;
+    }
+    // Its own rotation, only when it allows one
+    const int own_rotation = allow_rotation_ ? ( rotation.get() % 4 + 4 ) % 4 : 0;
 
     mapgendata md_with_params( md, get_args( md, mapgen_parameter_scope::nest ), flags_ );
+    md_with_params.set_nest_rotation( ( outer_rotation + own_rotation ) % 4, size );
 
     std::string context = context_;
     context += " in ";
     context += outer_context;
-    apply_mapgen_in_phases( md_with_params, setmap_points, objects, offset, context );
+    apply_mapgen_in_phases( md_with_params, setmap_points, objects, turned_offset, context );
 }
 
 /*
@@ -6860,6 +7042,9 @@ void jmapgen_objects::apply( const mapgendata &dat, mapgen_phase phase,
     for( auto it = range_at_phase.first; it != range_at_phase.second; ++it ) {
         const jmapgen_obj &obj = *it;
         jmapgen_place where = obj.first;
+        if( dat.nest_rotation() != 0 ) {
+            where.rotate( dat.nest_rotation(), dat.nest_size() );
+        }
         where.offset( tripoint_rel_ms( -offset.raw() ) );
         const jmapgen_piece &what = *obj.second;
 
@@ -6894,6 +7079,9 @@ ret_val<void> jmapgen_objects::has_vehicle_collision( const mapgendata &dat,
 {
     for( const jmapgen_obj &obj : objects ) {
         jmapgen_place where = obj.first;
+        if( dat.nest_rotation() != 0 ) {
+            where.rotate( dat.nest_rotation(), dat.nest_size() );
+        }
         where.offset( tripoint_rel_ms( - offset.raw() ) );
         const auto &what = *obj.second;
         const ret_val<void> has_vehicle_collision = what.has_vehicle_collision( dat,
@@ -7734,6 +7922,21 @@ void map::rotate( int turns )
         const point_omt_ms rotated = pos_in_omt.rotate( turns, { SEEX * 2, SEEY * 2 } );
         queued_point.second = tripoint_abs_ms( project_combine( pos_omt, rotated ), pos.z() );
     }
+    // And the places of the queued "place_eocs" (MGEN-J01)
+    for( queued_mapgen_eoc &queued : queued_mapgen_eocs ) {
+        const tripoint_abs_ms &pos = queued.loc;
+        if( pos.z() != abs_sub.z() && !zlevels ) {
+            continue;
+        }
+        point_abs_omt pos_omt;
+        point_omt_ms pos_in_omt;
+        std::tie( pos_omt, pos_in_omt ) = project_remain<coords::omt>( pos.xy() );
+        if( pos_omt != abs_omt.xy() ) {
+            continue;
+        }
+        const point_omt_ms rotated = pos_in_omt.rotate( turns, { SEEX * 2, SEEY * 2 } );
+        queued.loc = tripoint_abs_ms( project_combine( pos_omt, rotated ), pos.z() );
+    }
 }
 
 /**
@@ -7747,6 +7950,33 @@ void map::mirror( bool mirror_horizontal, bool mirror_vertical )
     }
 
     const tripoint_abs_sm &abs_sub = get_abs_sub();
+    const tripoint_abs_omt abs_omt = project_to<coords::omt>( abs_sub );
+    // The same point in the mirrored tile (MGEN-B10: everything map::rotate turns is mirrored)
+    const auto mirror_point = [mirror_horizontal, mirror_vertical]( point p ) {
+        if( mirror_horizontal ) {
+            p.x = SEEX * 2 - 1 - p.x;
+        }
+        if( mirror_vertical ) {
+            p.y = SEEY * 2 - 1 - p.y;
+        }
+        return p;
+    };
+
+    const std::vector<shared_ptr_fast<npc>> npcs = overmap_buffer.get_npcs_near_omt( abs_omt, 0 );
+    for( const shared_ptr_fast<npc> &i : npcs ) {
+        npc &np = *i;
+        const tripoint_abs_ms sq( np.pos_abs() );
+        if( sq.z() != abs_sub.z() && !zlevels ) {
+            continue;
+        }
+        const point_bub_ms old( get_bub( np.pos_abs().xy() ) );
+        const point_bub_ms new_pos( mirror_point( old.raw() ) );
+        np.spawn_at_precise( get_abs( tripoint_bub_ms( new_pos, sq.z() ) ) );
+    }
+
+    clear_vehicle_level_caches();
+
+    zone_manager::get_manager().mirror_zones( *this, mirror_horizontal, mirror_vertical );
 
     for( int z_level = zlevels ? -OVERMAP_DEPTH : abs_sub.z();
          z_level <= ( zlevels ? OVERMAP_HEIGHT : abs_sub.z() ); z_level++ ) {
@@ -7758,6 +7988,7 @@ void map::mirror( bool mirror_horizontal, bool mirror_vertical )
         if( pz == nullptr || pse == nullptr || pe == nullptr || ps == nullptr ) {
             debugmsg( "Tried to mirror map at (%d, %d, %d) but the submap is not loaded", point::zero.x,
                       point::zero.y, z_level );
+            rebuild_vehicle_level_caches();
             return;
         }
 
@@ -7788,8 +8019,36 @@ void map::mirror( bool mirror_horizontal, bool mirror_vertical )
                 if( mirror_vertical ) {
                     sm->mirror( false );
                 }
+
+                // The vehicles stay in the level's list (the submaps swapped their contents):
+                // only their submap and the position caches change
+                for( auto &veh : sm->vehicles ) {
+                    veh->sm_pos = { abs_sub.xy() + p, z_level };
+                }
             }
         }
+    }
+    rebuild_vehicle_level_caches();
+
+    // The queued mapgen variable points and EOCs in this overmap tile, as map::rotate does
+    const auto mirror_queued = [&]( tripoint_abs_ms & pos ) {
+        if( pos.z() != abs_sub.z() && !zlevels ) {
+            return;
+        }
+        point_abs_omt pos_omt;
+        point_omt_ms pos_in_omt;
+        std::tie( pos_omt, pos_in_omt ) = project_remain<coords::omt>( pos.xy() );
+        if( pos_omt != abs_omt.xy() ) {
+            return;
+        }
+        const point_omt_ms mirrored( mirror_point( pos_in_omt.raw() ) );
+        pos = tripoint_abs_ms( project_combine( pos_omt, mirrored ), pos.z() );
+    };
+    for( std::pair<const std::string, tripoint_abs_ms> &queued_point : queued_points ) {
+        mirror_queued( queued_point.second );
+    }
+    for( queued_mapgen_eoc &queued : queued_mapgen_eocs ) {
+        mirror_queued( queued.loc );
     }
 }
 
@@ -8088,7 +8347,8 @@ bool update_mapgen_function_json::setup_internal( const JsonObject &/*jo*/ )
 
 ret_val<void> update_mapgen_function_json::update_map(
     const tripoint_abs_omt &omt_pos, const mapgen_arguments &args, const tripoint_rel_ms &offset,
-    mission *miss, bool verify, bool mirror_horizontal, bool mirror_vertical, int rotation ) const
+    mission *miss, bool verify, bool mirror_horizontal, bool mirror_vertical, int rotation,
+    const std::optional<point_omt_ms> &anchor ) const
 {
     if( omt_pos.is_invalid() ) {
         debugmsg( "Mapgen update function called with invalid tripoint" );
@@ -8105,7 +8365,26 @@ ret_val<void> update_mapgen_function_json::update_map(
     mapgendata md_base( omt_pos, *update_smap.cast_to_map(), 0.0f, calendar::start_of_cataclysm, miss );
     mapgendata md( md_base, args );
 
-    ret_val<void> const u = update_map( md, offset, verify );
+    tripoint_rel_ms used_offset = offset;
+    if( anchor ) {
+        // Where the anchor tile is once the map is turned as above, then as rotation_guard
+        // turns it, so the update's ( 0, 0 ) lands on it
+        const point dim( SEEX * 2, SEEY * 2 );
+        point p = anchor->raw().rotate( ( 4 - rotation % 4 ) % 4, dim );
+        if( mirror_horizontal ) {
+            p.x = dim.x - 1 - p.x;
+        }
+        if( mirror_vertical ) {
+            p.y = dim.y - 1 - p.y;
+        }
+        const int oter_rotation = oter_get_rotation( md.terrain_type() );
+        if( oter_rotation != 0 && !flags_.test( jmapgen_flags::no_underlying_rotate ) ) {
+            p = p.rotate( oter_rotation, dim );
+        }
+        used_offset = tripoint_rel_ms( p.x, p.y, offset.z() );
+    }
+
+    ret_val<void> const u = update_map( md, used_offset, verify );
     update_smap.mirror( mirror_horizontal, mirror_vertical );
     update_smap.rotate( rotation );
 
@@ -8226,6 +8505,52 @@ ret_val<void> run_mapgen_update_func(
                              mirror_horizontal, mirror_vertical, rotation );
 }
 
+ret_val<void> run_mapgen_update_func(
+    const update_mapgen_id &update_mapgen_id, const tripoint_abs_omt &omt_pos,
+    const mapgen_arguments &args, const std::optional<point_omt_ms> &anchor, mission *miss,
+    bool cancel_on_collision, bool mirror_horizontal, bool mirror_vertical, int rotation )
+{
+    const auto update_function = update_mapgens.find( update_mapgen_id );
+    const update_mapgen_function_json *const func = update_function == update_mapgens.end() ?
+            nullptr : update_function->second.pick();
+    if( func == nullptr ) {
+        return ret_val<void>::make_failure( _( missing_update_operation ) );
+    }
+    return func->update_map( omt_pos, args, tripoint_rel_ms::zero, miss, cancel_on_collision,
+                             mirror_horizontal, mirror_vertical, rotation, anchor );
+}
+
+mapgen_arguments update_mapgen_arguments( const update_mapgen_id &update_mapgen_id,
+        const std::map<std::string, std::string> &values )
+{
+    mapgen_arguments result;
+    if( values.empty() ) {
+        return result;
+    }
+    const auto update_function = update_mapgens.find( update_mapgen_id );
+    if( update_function == update_mapgens.end() ) {
+        return result;
+    }
+    for( const std::pair<const std::string, std::string> &value : values ) {
+        // Definitions sharing an id may declare different parameters: the first that has it
+        const mapgen_parameter *param = nullptr;
+        for( const std::unique_ptr<update_mapgen_function_json> &func :
+             update_function->second.funcs() ) {
+            const auto it = func->get_parameters().map.find( value.first );
+            if( it != func->get_parameters().map.end() ) {
+                param = &it->second;
+                break;
+            }
+        }
+        if( param == nullptr ) {
+            debugmsg( "mapgen_update %s has no parameter %s", update_mapgen_id.str(), value.first );
+            continue;
+        }
+        result.add( value.first, cata_variant::from_string( param->type(), std::string( value.second ) ) );
+    }
+    return result;
+}
+
 ret_val<void> run_mapgen_update_func( const update_mapgen_id &update_mapgen_id, mapgendata &dat,
                                       const bool cancel_on_collision )
 {
@@ -8245,6 +8570,16 @@ void set_queued_points()
         globvars.set_global_value( queued_point.first, queued_point.second );
     }
     queued_points.clear();
+    // The EOCs "place_eocs" queued run with the next queued EOCs, after map generation, with
+    // their place in "loc" and the overmap terrain in "oter_id" (MGEN-J01)
+    std::vector<queued_mapgen_eoc> eocs;
+    eocs.swap( queued_mapgen_eocs );
+    for( const queued_mapgen_eoc &queued : eocs ) {
+        global_variables::impl_t context;
+        context["loc"] = diag_value( queued.loc );
+        context["oter_id"] = diag_value( queued.oter.id().str() );
+        effect_on_conditions::queue_effect_on_condition( 0_turns, queued.eoc, get_avatar(), context );
+    }
 }
 
 bool apply_construction_marker( const update_mapgen_id &update_mapgen_id,

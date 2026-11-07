@@ -112,10 +112,12 @@
 #include "magic.h"
 #include "magic_teleporter_list.h"
 #include "map.h"
+#include "map_extras.h"
 #include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "map_selector.h"
 #include "mapbuffer.h"
+#include "mapgen.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
 #include "martialarts.h"
@@ -5808,8 +5810,20 @@ talk_effect_fun_t::func f_clear_dimension( const JsonObject &jo, std::string_vie
     };
 }
 
+// A bool, or a number or math expression that mirrors when it isn't 0 (MGEN-J02)
+static dbl_or_var read_mapgen_update_flag( const JsonObject &jo, std::string_view member )
+{
+    dbl_or_var flag;
+    if( jo.has_bool( member ) ) {
+        flag = jo.get_bool( member ) ? 1.0 : 0.0;
+    } else {
+        flag = get_dbl_or_var( jo, member, false, 0.0 );
+    }
+    return flag;
+}
+
 talk_effect_fun_t::func f_mapgen_update( const JsonObject &jo, std::string_view member,
-        std::string_view )
+        std::string_view src )
 {
     mission_target_params target_params = mission_util::parse_mission_om_target( jo );
     std::vector<str_or_var> update_ids;
@@ -5826,12 +5840,41 @@ talk_effect_fun_t::func f_mapgen_update( const JsonObject &jo, std::string_view 
     optional( jo, false, "target_var", target_var );
     str_or_var key;
     optional( jo, false, "key", key );
+    // What faction camps can ask of an update (MGEN-J02)
+    std::map<std::string, str_or_var> parameters;
+    if( jo.has_object( "parameters" ) ) {
+        const JsonObject jparams = jo.get_object( "parameters" );
+        for( const JsonMember &jv : jparams ) {
+            parameters.emplace( jv.name(), get_str_or_var( jparams.get_member( jv.name() ),
+                                jv.name() ) );
+        }
+    }
+    const dbl_or_var rotation = get_dbl_or_var( jo, "rotation", false, 0.0 );
+    const dbl_or_var mirror_horizontal = read_mapgen_update_flag( jo, "mirror_horizontal" );
+    const dbl_or_var mirror_vertical = read_mapgen_update_flag( jo, "mirror_vertical" );
+    bool offset_from_target = false;
+    optional( jo, false, "offset_from_target", offset_from_target, false );
+    if( offset_from_target && !target_var ) {
+        jo.throw_error_at( "offset_from_target", "offset_from_target needs a target_var" );
+    }
+    bool ignore_vehicle_collision = false;
+    optional( jo, false, "ignore_vehicle_collision", ignore_vehicle_collision, false );
+    const std::vector<effect_on_condition_id> success_eocs = load_eoc_vector( jo, "success_eocs",
+            src );
+    const std::vector<effect_on_condition_id> failure_eocs = load_eoc_vector( jo, "failure_eocs",
+            src );
 
-    return [target_params, update_ids, target_var, dov_time_in_future, key]( dialogue & d ) {
+    return [target_params, update_ids, target_var, dov_time_in_future, key, parameters, rotation,
+                           mirror_horizontal, mirror_vertical, offset_from_target, ignore_vehicle_collision,
+                   success_eocs, failure_eocs]( dialogue & d ) {
         tripoint_abs_omt omt_pos;
+        timed_mapgen_update how;
         if( target_var.has_value() ) {
             const tripoint_abs_ms abs_ms = read_var_value( *target_var, d ).tripoint();
             omt_pos = project_to<coords::omt>( abs_ms );
+            if( offset_from_target ) {
+                how.anchor = project_remain<coords::omt>( abs_ms.xy() ).remainder;
+            }
         } else {
             mission_target_params update_params = target_params;
             if( d.has_beta ) {
@@ -5839,23 +5882,72 @@ talk_effect_fun_t::func f_mapgen_update( const JsonObject &jo, std::string_view 
             }
             omt_pos = mission_util::get_om_terrain_pos( update_params, d );
         }
+        for( const std::pair<const std::string, str_or_var> &param : parameters ) {
+            how.parameters.emplace( param.first, param.second.evaluate( d ) );
+        }
+        how.rotation = ( static_cast<int>( rotation.evaluate( d ) ) % 4 + 4 ) % 4;
+        how.mirror_horizontal = mirror_horizontal.evaluate( d ) != 0.0;
+        how.mirror_vertical = mirror_vertical.evaluate( d ) != 0.0;
+        how.cancel_on_collision = !ignore_vehicle_collision;
         time_duration future = dov_time_in_future.evaluate( d );
         if( future > 0_seconds ) {
             time_point tif = calendar::turn + future + 1_seconds;
             //Timed events happen before the player turn and eocs are during so we add a second here to sync them up using the same variable
             for( const str_or_var &mapgen_update_id : update_ids ) {
-                get_timed_events().add( timed_event_type::UPDATE_MAPGEN, tif, -1, project_to<coords::ms>( omt_pos ),
-                                        0, mapgen_update_id.evaluate( d ), key.evaluate( d ) );
+                get_timed_events().add_mapgen_update( tif, project_to<coords::ms>( omt_pos ),
+                                                      mapgen_update_id.evaluate( d ), key.evaluate( d ), how );
             }
 
         } else {
             for( const str_or_var &mapgen_update_id : update_ids ) {
-                run_mapgen_update_func( update_mapgen_id( mapgen_update_id.evaluate( d ) ), omt_pos, {},
-                                        d.actor( d.has_beta )->selected_mission() );
+                const update_mapgen_id update( mapgen_update_id.evaluate( d ) );
+                const bool exists = has_update_mapgen_for( update );
+                const ret_val<void> result = run_mapgen_update_func( update, omt_pos,
+                                             update_mapgen_arguments( update, how.parameters ), how.anchor,
+                                             d.actor( d.has_beta )->selected_mission(), how.cancel_on_collision,
+                                             how.mirror_horizontal, how.mirror_vertical, how.rotation );
                 set_queued_points();
+                // The update's id in "update_id"; why it did nothing in "reason":
+                // "no_update" (no such update), or "vehicle_collision" with the vehicle's name in
+                // "vehicle"
+                dialogue outcome( d );
+                outcome.set_value( "update_id", update.str() );
+                if( result.success() ) {
+                    run_eoc_vector( success_eocs, outcome );
+                } else {
+                    outcome.set_value( "reason", exists ? "vehicle_collision" : "no_update" );
+                    if( exists ) {
+                        outcome.set_value( "vehicle", result.str() );
+                    }
+                    run_eoc_vector( failure_eocs, outcome );
+                }
             }
             reality_bubble().invalidate_map_cache( omt_pos.z() );
         }
+    };
+}
+
+// Places a map extra on an OMT, as map generation would (MGEN-J03)
+talk_effect_fun_t::func f_place_map_extra( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    str_or_var extra = get_str_or_var( jo.get_member( member ), member, true );
+    std::optional<var_info> target_var;
+    optional( jo, false, "target_var", target_var );
+    return [extra, target_var]( dialogue & d ) {
+        const tripoint_abs_omt omt = project_to<coords::omt>( target_var ?
+                                     read_var_value( *target_var, d ).tripoint() : d.actor( false )->pos_abs() );
+        const map_extra_id id( extra.evaluate( d ) );
+        if( !id.is_valid() ) {
+            debugmsg( "place_map_extra: there is no map extra %s.  %s", id.str(), d.get_callstack() );
+            return;
+        }
+        smallmap mx_map;
+        swap_map swap( *mx_map.cast_to_map() );
+        mx_map.load( omt, false );
+        MapExtras::apply_function( id, mx_map, omt );
+        g->load_npcs();
+        reality_bubble().invalidate_map_cache( omt.z() );
     };
 }
 
@@ -12493,6 +12585,7 @@ parsers = {
     { "map_spawn_item", jarg::member, &talk_effect_fun::f_spawn_item },
     { "clear_dimension", jarg::member, &talk_effect_fun::f_clear_dimension },
     { "mapgen_update", jarg::member, &talk_effect_fun::f_mapgen_update },
+    { "place_map_extra", jarg::member, &talk_effect_fun::f_place_map_extra },
     { "set_weather", jarg::member, &talk_effect_fun::f_set_weather },
     { "clear_weather_override", jarg::member, &talk_effect_fun::f_clear_weather_override },
     { "alter_timed_events", jarg::member, &talk_effect_fun::f_alter_timed_events },

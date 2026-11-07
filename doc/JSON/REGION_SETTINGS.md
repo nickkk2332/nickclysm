@@ -153,6 +153,8 @@ are interpreted.
 | `surface_ter`                              | Overmap terrain id of surface terrain, placed on z = 0. |
 | `interior_ter`                             | Overmap terrain id of interior terrain, placed between surface terrain and bed terrain. |
 | `bed_ter`                                  | Overmap terrain id of bed terrain, placed on bottom of the lake. |
+| `mapgen_deep_water`                        | (_optional_) Terrain id the built-in lake shore mapgen fills the lake side with. Default `t_water_dp`. |
+| `mapgen_shallow_water`                     | (_optional_) Terrain id of the lake shore mapgen's shallow edge. Default `t_water_sh`. |
 
 ### Example
 
@@ -172,6 +174,43 @@ are interpreted.
     ]
 }
 ```
+
+## Water Terrain of the Built-in Mapgen
+
+The rivers, lake shores and ocean shores are drawn by built-in (C++) mapgen. These optional fields
+of **region_settings_river**, **region_settings_lake** (above) and **region_settings_ocean** set the
+terrain it draws, so a desert, swamp or frozen region doesn't get temperate water and banks. Left
+out, the mapgen draws what it always has. A region with no river settings (`"rivers": null`) gets
+the defaults.
+
+| Settings                | Field                  | Default                                  | Description |
+| ----------------------- | ---------------------- | ---------------------------------------- | ----------- |
+| `region_settings_river` | `mapgen_deep_water`    | `t_water_moving_dp`                      | The river's middle. |
+| `region_settings_river` | `mapgen_shallow_water` | `t_water_moving_sh`                      | The shallows along the banks. |
+| `region_settings_river` | `mapgen_bank`          | `t_grass` (1 in 4) or `t_dirt`           | Weighted list of the bank's terrain, as `[ [ "t_sand", 3 ], [ "t_dirt", 1 ] ]`. |
+| `region_settings_river` | `mapgen_bank_detail`   | `t_sand` (1 in 16) or `t_clay`           | Weighted list for the odd tile between the bank and the water. |
+| `region_settings_lake`  | `mapgen_deep_water`    | `t_water_dp`                             | See above. |
+| `region_settings_lake`  | `mapgen_shallow_water` | `t_water_sh`                             | See above. |
+| `region_settings_ocean` | `mapgen_deep_water`    | `t_swater_dp`                            | The sea side of an ocean shore. |
+| `region_settings_ocean` | `mapgen_shallow_water` | `t_swater_sh`                            | The shallows. |
+| `region_settings_ocean` | `mapgen_surf`          | `t_swater_surf`                          | The surf between the shallows and the beach. |
+| `region_settings_ocean` | `mapgen_beach`         | `t_sand`                                 | The beach. |
+
+The lists can name region pseudo terrain such as `t_region_groundcover`: it is resolved with the
+rest of the map.
+
+```jsonc
+{
+  "type": "region_settings_river",
+  "id": "desert_rivers",
+  "copy-from": "default",
+  "mapgen_shallow_water": "t_water_murky",
+  "mapgen_bank": [ [ "t_sand", 3 ], [ "t_dirt", 1 ] ],
+  "mapgen_bank_detail": [ [ "t_clay", 1 ] ]
+}
+```
+
+The forest's tuning values and the subway layouts are still fixed in C++.
 
 ## Region Forest Settings
 

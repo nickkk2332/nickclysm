@@ -1506,6 +1506,19 @@ conditional_t::func f_map_in_overmap_special( const JsonObject &jo, std::string_
     };
 }
 
+// The map extra recorded on the OMT at "loc" (or alpha's) is this one (MGEN-J03)
+conditional_t::func f_map_has_extra( const JsonObject &jo, std::string_view member )
+{
+    str_or_var extra = get_str_or_var( jo.get_member( member ), member, true );
+    std::optional<var_info> loc_var;
+    optional( jo, false, "loc", loc_var );
+    return [extra, loc_var]( const_dialogue const & d ) {
+        const tripoint_abs_omt omt = read_omt_or_alpha( loc_var, d );
+        return overmap_buffer.has_extra( omt ) &&
+               overmap_buffer.extra( omt ).str() == extra.evaluate( d );
+    };
+}
+
 conditional_t::func f_map_omt_seen( const JsonObject &jo, std::string_view member )
 {
     om_vision_level level = om_vision_level::full;
@@ -3856,6 +3869,7 @@ parsers = {
     {"math", jarg::member, &conditional_fun::f_math },
     {"overmap_at_point", jarg::member, &conditional_fun::f_overmap_at_point },
     {"map_in_overmap_special", jarg::member, &conditional_fun::f_map_in_overmap_special },
+    {"map_has_extra", jarg::member, &conditional_fun::f_map_has_extra },
     {"map_omt_seen", jarg::member, &conditional_fun::f_map_omt_seen },
     {"compare_string", jarg::member, &conditional_fun::f_compare_string },
     {"compare_string_match_all", jarg::member, &conditional_fun::f_compare_string_match_all },

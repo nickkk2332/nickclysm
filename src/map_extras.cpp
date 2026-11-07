@@ -15,13 +15,19 @@
 #include "cellular_automata.h"
 #include "character_id.h"
 #include "coordinates.h"
+#include "avatar.h"
+#include "condition.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "event.h"
 #include "enums.h"
 #include "field_type.h"
 #include "flexbuffer_json.h"
 #include "fungal_effects.h"
 #include "generic_factory.h"
+#include "global_vars.h"
 #include "item_group.h"
 #include "line.h"
 #include "map.h"
@@ -31,6 +37,7 @@
 #include "mapgen.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
+#include "math_parser_diag_value.h"
 #include "omdata.h"
 #include "overmap.h"
 #include "overmapbuffer.h"
@@ -40,6 +47,7 @@
 #include "rng.h"
 #include "sets_intersect.h"
 #include "string_formatter.h"
+#include "talker.h"
 #include "translations.h"
 #include "type_id.h"
 #include "uilist.h"
@@ -1142,6 +1150,23 @@ std::vector<map_extra_id> get_all_function_names()
     return all_function_names;
 }
 
+// What follows a placed extra: its event and EOCs, run after map generation (MGEN-J01)
+static void map_extra_placed( const map_extra &extra, const tripoint_abs_omt &abs_omt )
+{
+    const tripoint_abs_ms loc = project_to<coords::ms>( abs_omt );
+    queue_mapgen_event( cata::event::make<event_type::map_extra_spawned>( loc.raw(),
+                        extra.id.str() ) );
+    if( extra.eocs.empty() ) {
+        return;
+    }
+    global_variables::impl_t context;
+    context["loc"] = diag_value( loc );
+    context["map_extra"] = diag_value( extra.id.str() );
+    for( const effect_on_condition_id &eoc : extra.eocs ) {
+        effect_on_conditions::queue_effect_on_condition( 0_turns, eoc, get_avatar(), context );
+    }
+}
+
 void apply_function( const map_extra_id &id, map &m, const tripoint_abs_sm &abs_sub )
 {
     bool applied_successfully = false;
@@ -1178,6 +1203,7 @@ void apply_function( const map_extra_id &id, map &m, const tripoint_abs_sm &abs_
     }
 
     overmap_buffer.add_extra( project_to<coords::omt>( abs_sub ), id );
+    map_extra_placed( extra, project_to<coords::omt>( abs_sub ) );
 }
 
 void apply_function( const map_extra_id &id, tinymap &m, const tripoint_abs_omt &abs_omt )
@@ -1216,6 +1242,7 @@ void apply_function( const map_extra_id &id, tinymap &m, const tripoint_abs_omt 
     }
 
     overmap_buffer.add_extra( abs_omt, id );
+    map_extra_placed( extra, abs_omt );
 }
 
 FunctionMap all_functions()
@@ -1317,6 +1344,16 @@ bool map_extra::is_valid_for( const mapgendata &md ) const
             return false;
         }
     }
+    if( has_condition_ ) {
+        // The avatar is alpha; "loc" is the OMT's north-west tile (MGEN-J03)
+        global_variables::impl_t context;
+        context["loc"] = diag_value( project_to<coords::ms>( md.pos() ) );
+        context["oter_id"] = diag_value( md.terrain_type().id().str() );
+        const dialogue d( get_talker_for( get_avatar() ), nullptr, {}, context );
+        if( !condition_( d ) ) {
+            return false;
+        }
+    }
 
     return true;
 }
@@ -1344,7 +1381,7 @@ bool map_extra::potentially_visible_at( om_vision_level vis ) const
     return false;
 }
 
-void map_extra::load( const JsonObject &jo, std::string_view )
+void map_extra::load( const JsonObject &jo, std::string_view src )
 {
     mandatory( jo, was_loaded, "name", name_ );
     mandatory( jo, was_loaded, "description", description_ );
@@ -1360,6 +1397,16 @@ void map_extra::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "autonote_visibility", visibility, map_extra_visibility::none );
     optional( jo, was_loaded, "min_max_zlevel", min_max_zlevel_ );
     optional( jo, was_loaded, "flags", flags_, string_reader{} );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition_, true );
+        has_condition_ = true;
+    }
+    if( jo.has_array( "eocs" ) ) {
+        eocs.clear();
+        for( const JsonValue jv : jo.get_array( "eocs" ) ) {
+            eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
     if( was_loaded && jo.has_member( "extend" ) ) {
         JsonObject joe = jo.get_object( "extend" );
         for( auto &flag : joe.get_string_array( "flags" ) ) {
@@ -1404,5 +1451,13 @@ void map_extra::check() const
         case map_extra_method::null:
         default:
             break;
+    }
+    for( const effect_on_condition_id &eoc : eocs ) {
+        // Queued like a delayed EOC (MGEN-J01)
+        if( eoc.is_valid() && !eoc->global && eoc->type != eoc_type::ACTIVATION &&
+            eoc->type != eoc_type::RECURRING ) {
+            debugmsg( "map extra %s has EOC %s in \"eocs\", which can't be queued: it must be "
+                      "global or of type ACTIVATION", id.str(), eoc.str() );
+        }
     }
 }

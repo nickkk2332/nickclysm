@@ -1960,6 +1960,21 @@ void timed_event_manager::unserialize_all( const JsonArray &ja )
         if( jo.has_object( "explosion" ) ) {
             jo.read( "explosion", added.expl_data );
         }
+        // Written only for an update with settings (MGEN-J02)
+        if( jo.has_object( "mapgen_update" ) ) {
+            const JsonObject jm = jo.get_object( "mapgen_update" );
+            timed_mapgen_update &how = added.mapgen_update;
+            jm.read( "parameters", how.parameters );
+            jm.read( "rotation", how.rotation );
+            jm.read( "mirror_horizontal", how.mirror_horizontal );
+            jm.read( "mirror_vertical", how.mirror_vertical );
+            if( jm.has_member( "anchor" ) ) {
+                point_omt_ms anchor;
+                jm.read( "anchor", anchor );
+                how.anchor = anchor;
+            }
+            jm.read( "cancel_on_collision", how.cancel_on_collision );
+        }
         // Not written for the main dimension, nor by older builds
         added.dimension = dimension_world_default;
         jo.read( "dimension", added.dimension );
@@ -2152,6 +2167,20 @@ void timed_event_manager::serialize_all( JsonOut &jsout )
             jsout.member( "recovery", ex.shrapnel.recovery );
             jsout.member( "drop", ex.shrapnel.drop );
             jsout.end_object();
+            jsout.end_object();
+        }
+        if( elem.type == timed_event_type::UPDATE_MAPGEN && !elem.mapgen_update.is_default() ) {
+            const timed_mapgen_update &how = elem.mapgen_update;
+            jsout.member( "mapgen_update" );
+            jsout.start_object();
+            jsout.member( "parameters", how.parameters );
+            jsout.member( "rotation", how.rotation );
+            jsout.member( "mirror_horizontal", how.mirror_horizontal );
+            jsout.member( "mirror_vertical", how.mirror_vertical );
+            if( how.anchor ) {
+                jsout.member( "anchor", *how.anchor );
+            }
+            jsout.member( "cancel_on_collision", how.cancel_on_collision );
             jsout.end_object();
         }
         if( elem.revert.is_uniform() ) {

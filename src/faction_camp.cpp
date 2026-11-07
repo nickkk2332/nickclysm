@@ -3259,8 +3259,9 @@ std::pair<size_t, std::string> basecamp::farm_action( const point_rel_omt &dir, 
                             debugmsg( "farm_action failed to apply the %1$s map update to %2$s, collision with %3$s vehicle/appliance.",
                                       provide.first, omt_id, has_vehicle_collision.str() );
                         }
-                        farm_json->rotate( rotation );
+                        // Undone in reverse order: a mirror and a quarter turn don't commute
                         farm_json->mirror( mirror_horizontal, mirror_vertical );
+                        farm_json->rotate( rotation );
                     }
                 }
                 // Needs to be plowed to match json

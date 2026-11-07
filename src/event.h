@@ -157,6 +157,8 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    omt_generated,
+    map_extra_spawned,
     num_event_types // last
 };
 
@@ -224,7 +226,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 135,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1171,6 +1173,26 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// an overmap tile the world keeps was generated (MGEN-J01); location is its north-west tile
+template<>
+struct event_spec<event_type::omt_generated> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "location", cata_variant_type::tripoint },
+            { "oter_id", cata_variant_type::oter_id },
+        }
+    };
+};
+
+// a map extra was placed on an overmap tile (MGEN-J01); location is the tile's north-west tile
+template<>
+struct event_spec<event_type::map_extra_spawned> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "location", cata_variant_type::tripoint },
+            { "map_extra", cata_variant_type::string },
         }
     };
 };

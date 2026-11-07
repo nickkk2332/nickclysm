@@ -12,6 +12,7 @@
 #include "tileray.h"
 #include "trap.h"
 #include "units.h"
+#include "units_utility.h"
 #include "vehicle.h"
 
 static furn_id f_null;
@@ -319,6 +320,28 @@ void submap::mirror( bool horizontally )
             mirror_comp.emplace( point( elem.first.x(), -elem.first.y() ) + point( 0, SEEY - 1 ), elem.second );
         }
         computers = mirror_comp;
+    }
+
+    // Monster spawns and vehicles move with their tiles, as in rotate() (MGEN-B10)
+    const auto mirror_point = [horizontally]( const point_sm_ms & p ) {
+        return horizontally ? point_sm_ms( SEEX - 1 - p.x(), p.y() ) :
+               point_sm_ms( p.x(), SEEY - 1 - p.y() );
+    };
+    for( spawn_point &elem : spawns ) {
+        elem.pos = mirror_point( elem.pos );
+    }
+    for( auto &elem : vehicles ) {
+        // A vehicle's position is its pivot's: mirror it and reflect the facing. The parts
+        // keep their mounts, so an asymmetric vehicle turns rather than becoming its mirror
+        // image; mirroring twice gives back the vehicle as it was.
+        elem->pos = mirror_point( elem->pos );
+        const auto reflect = [horizontally]( units::angle dir ) {
+            return normalize( horizontally ? 180_degrees - dir : -dir );
+        };
+        elem->turn_dir = reflect( elem->turn_dir );
+        elem->face = tileray( elem->turn_dir );
+        elem->move = tileray( reflect( elem->move.dir() ) );
+        elem->precalc_mounts( 0, elem->turn_dir, elem->pivot_anchor[0] );
     }
 }
 
