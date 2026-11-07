@@ -1,5 +1,7 @@
 #include "talker_item.h"
 
+#include <climits>
+#include <list>
 #include <vector>
 
 #include "bodypart.h"
@@ -13,9 +15,12 @@
 #include "ammo.h"
 #include "itype.h"
 #include "magic_enchantment.h"
+#include "map.h"
 #include "math_parser_diag_value.h"
 #include "messages.h"
+#include "pocket_type.h"
 #include "units.h"
+#include "visitable.h"
 
 static const ammotype ammo_battery( "battery" );
 
@@ -37,6 +42,12 @@ const item *alive( const item_location *loc )
 item *alive( item_location *loc )
 {
     return loc != nullptr ? loc->get_item() : nullptr;
+}
+
+// a sum of counts that stops at INT_MAX instead of wrapping
+int add_capped( int a, int b )
+{
+    return b > 0 && a > INT_MAX - b ? INT_MAX : a + b;
 }
 } // namespace
 
@@ -276,4 +287,142 @@ int talker_item_const::get_price_postapoc() const
 {
     const item *it = alive( me_it_const );
     return it != nullptr ? it->price( true ) : 0;
+}
+
+// INV-J07: an item talker's inventory is what the item holds (its container, magazine and
+// magazine well pockets, and whatever is nested in their containers); the item itself doesn't
+// count. A bag answers how many bandages are in it, a flashlight how much battery it holds.
+
+int talker_item_const::charges_of( const itype_id &item_id ) const
+{
+    const item *it = alive( me_it_const );
+    if( it == nullptr ) {
+        return 0;
+    }
+    int total = 0;
+    for( const item *content : it->all_items_top() ) {
+        total = add_capped( total, content->charges_of( item_id ) );
+    }
+    return total;
+}
+
+bool talker_item_const::has_charges( const itype_id &item_id, int count ) const
+{
+    return charges_of( item_id ) >= count;
+}
+
+bool talker_item_const::has_charges( const itype_id &item_id, int count, bool in_tools ) const
+{
+    if( !in_tools ) {
+        return has_charges( item_id, count );
+    }
+    const item *it = alive( me_it_const );
+    if( it == nullptr ) {
+        return count <= 0;
+    }
+    int total = 0;
+    for( const item *content : it->all_items_top() ) {
+        total = add_capped( total, content->charges_of( item_id, INT_MAX, return_true<item>,
+                            nullptr, true ) );
+    }
+    return total >= count;
+}
+
+bool talker_item_const::has_amount( const itype_id &item_id, int count ) const
+{
+    return get_amount( item_id ) >= count;
+}
+
+int talker_item_const::get_amount( const itype_id &item_id ) const
+{
+    const item *it = alive( me_it_const );
+    if( it == nullptr ) {
+        return 0;
+    }
+    int total = 0;
+    for( const item *content : it->all_items_top() ) {
+        total = add_capped( total, content->amount_of( item_id ) );
+    }
+    return total;
+}
+
+bool talker_item_const::has_item_with_flag( const flag_id &flag ) const
+{
+    const item *it = alive( me_it_const );
+    if( it == nullptr ) {
+        return false;
+    }
+    return it->has_item_with( [it, &flag]( const item & content ) {
+        return &content != it && content.has_flag( flag );
+    } );
+}
+
+std::vector<const item *> talker_item_const::const_items_with( const
+        std::function<bool( const item & )> &filter ) const
+{
+    const item *it = alive( me_it_const );
+    if( it == nullptr ) {
+        return {};
+    }
+    return it->items_with( [it, &filter]( const item & content ) {
+        return &content != it && filter( content );
+    } );
+}
+
+std::vector<item *> talker_item::items_with( const std::function<bool( const item & )> &filter )
+{
+    std::vector<item *> res;
+    item *it = alive( me_it );
+    if( it == nullptr ) {
+        return res;
+    }
+    it->visit_items( [it, &filter, &res]( item * content, item * ) {
+        if( content != it && filter( *content ) ) {
+            res.push_back( content );
+        }
+        return VisitResponse::NEXT;
+    } );
+    return res;
+}
+
+void talker_item::i_add( const item &new_item )
+{
+    item *it = alive( me_it );
+    if( it == nullptr ) {
+        return;
+    }
+    item payload( new_item );
+    // the pockets holding this item must have room for what goes into it too
+    if( it->is_container() && me_it->parents_can_contain_recursive( &payload ).success() &&
+        it->put_in( payload, pocket_type::CONTAINER, false, nullptr, true ).success() ) {
+        me_it->on_contents_changed();
+        return;
+    }
+    map &here = get_map();
+    const tripoint_bub_ms pos = me_it->pos_bub( here );
+    if( here.inbounds( pos ) ) {
+        here.add_item_or_charges( pos, payload );
+    }
+}
+
+void talker_item::i_add_or_drop( item &new_item, bool )
+{
+    i_add( new_item );
+}
+
+void talker_item::remove_items_with( const std::function<bool( const item & )> &filter )
+{
+    item *it = alive( me_it );
+    if( it == nullptr ) {
+        return;
+    }
+    int count = INT_MAX;
+    std::list<item> removed;
+    it->remove_internal( [&filter]( item & content ) {
+        return filter( content );
+    }, count, removed );
+    if( !removed.empty() ) {
+        it->on_contents_changed();
+        me_it->on_contents_changed();
+    }
 }

@@ -52,6 +52,7 @@
 #include "iuse.h"
 #include "iuse_actor.h"
 #include "line.h"
+#include "magic_enchantment.h"
 #include "map.h"
 #include "mapdata.h"
 #include "map_iterator.h"
@@ -90,9 +91,10 @@ static const bionic_id bio_ground_sonar( "bio_ground_sonar" );
 static const efftype_id effect_incorporeal( "incorporeal" );
 static const efftype_id effect_subaquatic_sonar( "subaquatic_sonar" );
 
+static const flag_id json_flag_BINDS_HANDS( "BINDS_HANDS" );
+
 static const itype_id itype_apparatus( "apparatus" );
 static const itype_id itype_battery( "battery" );
-static const itype_id itype_e_handcuffs( "e_handcuffs" );
 static const itype_id itype_fire( "fire" );
 static const itype_id itype_pickaxe( "pickaxe" );
 static const itype_id itype_shovel( "shovel" );
@@ -1440,7 +1442,8 @@ int Character::item_handling_cost( const item &it, bool penalties, int base_cost
         mv += std::min( 200, it.volume( false, false, charges_in_it ) / 20_ml );
     }
 
-    if( weapon.typeId() == itype_e_handcuffs ) {
+    if( weapon.has_flag( json_flag_BINDS_HANDS ) ) {
+        // the wielded item (electronic handcuffs) holds the hands together
         mv *= 4;
     } else if( penalties && has_flag( json_flag_GRAB ) ) {
         // Grabbed penalty scales for grabbed arms/hands
@@ -1473,6 +1476,16 @@ int Character::item_handling_cost( const item &it, bool penalties, int base_cost
     return std::max( mv, 0 );
 }
 
+// The handling cost of storing an item in a holster or container, or drawing it from one,
+// lowered by the skill the item uses; enchantments come on top.
+static int skilled_handling_cost( const Character &you, const item &it, bool penalties,
+                                  int base_cost )
+{
+    const float lvl = you.get_skill_level( it.is_gun() ? it.gun_skill() : it.melee_skill() );
+    return static_cast<int>( you.item_handling_cost( it, penalties, base_cost ) /
+                             ( ( lvl + 10.0f ) / 10.0f ) );
+}
+
 int Character::item_store_cost( const item &it, const item & /* container */, bool penalties,
                                 int base_cost ) const
 {
@@ -1484,14 +1497,16 @@ int Character::item_store_cost( const item &it, const item & /* container */, bo
     /** @EFFECT_STABBING decreases time taken to store a stabbing weapon */
     /** @EFFECT_CUTTING decreases time taken to store a cutting weapon */
     /** @EFFECT_BASHING decreases time taken to store a bashing weapon */
-    float lvl = get_skill_level( it.is_gun() ? it.gun_skill() : it.melee_skill() );
-    return item_handling_cost( it, penalties, base_cost ) / ( ( lvl + 10.0f ) / 10.0f );
+    const int mv = skilled_handling_cost( *this, it, penalties, base_cost );
+    return std::max( 0, static_cast<int>( enchantment_cache->modify_value(
+            enchant_vals::mod::STORE_COST_MULTIPLIER, mv ) ) );
 }
 
-int Character::item_retrieve_cost( const item &it, const item &container, bool penalties,
+int Character::item_retrieve_cost( const item &it, const item & /* container */, bool penalties,
                                    int base_cost ) const
 {
-    // Drawing from a holster use the same formula as storing an item for now
+    // Drawing from a holster uses the same formula as storing an item, with the enchantments
+    // for taking an item out (OBTAIN_COST_MULTIPLIER) instead of those for putting one in
     /**
          * @EFFECT_PISTOL decreases time taken to draw pistols from holsters
          * @EFFECT_SMG decreases time taken to draw smgs from holsters
@@ -1502,7 +1517,9 @@ int Character::item_retrieve_cost( const item &it, const item &container, bool p
          * @EFFECT_CUTTING decreases time taken to draw cutting weapons from scabbards
          * @EFFECT_BASHING decreases time taken to draw bashing weapons from holsters
          */
-    return item_store_cost( it, container, penalties, base_cost );
+    const int mv = skilled_handling_cost( *this, it, penalties, base_cost );
+    return std::max( 0, static_cast<int>( enchantment_cache->modify_value(
+            enchant_vals::mod::OBTAIN_COST_MULTIPLIER, mv ) ) );
 }
 
 ret_val<void> Character::can_wield( const item &it ) const
@@ -3152,6 +3169,8 @@ void Character::store( item &container, item &put, bool penalties, int base_cost
     // with a destination elsewhere must thread in its own location.
     const item_location container_loc( *this, &container );
     mod_moves( -item_store_cost( put, container, penalties, base_cost ) );
+    const itype_id stored_type = put.typeId();
+    const int stored_count = put.count();
     if( check_best_pkt && pk_type == pocket_type::CONTAINER &&
         container.get_container_pockets().size() > 1 ) {
         // Bypass pocket settings (assuming the item is manually stored)
@@ -3162,6 +3181,11 @@ void Character::store( item &container, item &put, bool penalties, int base_cost
     }
     craft_relocated( container_loc );
     calc_encumbrance();
+    // INV-J08
+    item_location stored_in = container_loc;
+    const cata::event e = cata::event::make<event_type::character_stores_item>( getID(),
+                          stored_type, stored_count, container.typeId() );
+    get_event_bus().send_with_talker( this, &stored_in, e );
 }
 
 void Character::store( item_pocket *pocket, item &put, bool penalties, int base_cost )
@@ -3178,8 +3202,15 @@ void Character::store( item_pocket *pocket, item &put, bool penalties, int base_
     }
     mod_moves( -std::max( item_store_cost( put, null_item_reference(), penalties, base_cost ),
                           pocket->obtain_cost( put ) ) );
+    const itype_id stored_type = put.typeId();
+    const int stored_count = put.count();
     ret_val<item *> result = pocket->insert_item( i_rem( &put ) );
     result.value()->on_pickup( *this );
     craft_relocated( item_location( *this, result.value() ) );
     calc_encumbrance();
+    // INV-J08: this pocket has no container item of its own to give (it is an attached
+    // pocket), so the event's container is null and it has no beta talker
+    const cata::event e = cata::event::make<event_type::character_stores_item>( getID(),
+                          stored_type, stored_count, itype_id::NULL_ID() );
+    get_event_bus().send_with_talker( this, static_cast<Creature *>( nullptr ), e );
 }

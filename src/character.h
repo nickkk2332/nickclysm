@@ -2235,7 +2235,8 @@ class Character : public Creature, public visitable
                                 int base_cost = INVENTORY_HANDLING_PENALTY, int charges_in_it = -1, bool bulk_cost = false ) const;
 
         /**
-         * Calculate (but do not deduct) the number of moves required when storing an item in a container
+         * Calculate (but do not deduct) the number of moves required when storing an item in a container,
+         * with the character's STORE_COST_MULTIPLIER enchantments
          * @param it Item to calculate storage cost for
          * @param container Container to store item in
          * @param penalties Whether item volume and temporary effects (e.g. GRABBED, DOWNED) should be considered.
@@ -2246,7 +2247,8 @@ class Character : public Creature, public visitable
                              int base_cost = INVENTORY_HANDLING_PENALTY ) const;
 
         /**
-         * Calculate (but do not deduct) the number of moves required when drawing a weapon from a holster or sheath
+         * Calculate (but do not deduct) the number of moves required when drawing a weapon from a holster or sheath,
+         * with the character's OBTAIN_COST_MULTIPLIER enchantments
          * @param it Item to calculate retrieve cost for
          * @param container Container where the item is
          * @param penalties Whether item volume and temporary effects (e.g. GRABBED, DOWNED) should be considered.

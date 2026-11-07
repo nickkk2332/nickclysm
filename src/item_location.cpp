@@ -901,22 +901,20 @@ class item_location::impl::item_in_container : public item_location::impl
                 return 0;
             }
 
-            int primary_cost = ch.item_handling_cost( *target(), true, container_mv, qty );
-            primary_cost = ch.enchantment_cache->modify_value( enchant_vals::mod::OBTAIN_COST_MULTIPLIER,
-                           primary_cost );
-            int parent_obtain_cost = container.obtain_cost( ch, qty );
             if( container->get_use( "holster" ) ) {
+                // item_retrieve_cost applies OBTAIN_COST_MULTIPLIER itself. For holsters, we
+                // should not include the cost of wielding the holster itself.
                 if( ch.is_worn( *container ) ) {
-                    primary_cost = ch.item_retrieve_cost( *target(), *container, false, container_mv );
-                } else {
-                    primary_cost = ch.item_retrieve_cost( *target(), *container );
+                    return ch.item_retrieve_cost( *target(), *container, false, container_mv );
                 }
-                // for holsters, we should not include the cost of wielding the holster itself
-                parent_obtain_cost = 0;
-            } else if( container.where() != item_location::type::container ) {
-                // Worn items don't need to be retrieved, just accessed.
-                parent_obtain_cost = 0;
+                return ch.item_retrieve_cost( *target(), *container );
             }
+            const int primary_cost = static_cast<int>( ch.enchantment_cache->modify_value(
+                                         enchant_vals::mod::OBTAIN_COST_MULTIPLIER,
+                                         ch.item_handling_cost( *target(), true, container_mv, qty ) ) );
+            // Worn items don't need to be retrieved, just accessed.
+            const int parent_obtain_cost = container.where() == item_location::type::container ?
+                                           container.obtain_cost( ch, qty ) : 0;
             return primary_cost + parent_obtain_cost;
         }
 

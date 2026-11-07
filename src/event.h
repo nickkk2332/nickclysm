@@ -165,6 +165,9 @@ enum class event_type : int {
     character_removes_gunmod,
     character_armor_damaged,
     character_armor_transformed,
+    character_picks_up_item,
+    character_drops_item,
+    character_stores_item,
     num_event_types // last
 };
 
@@ -232,7 +235,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 141,
+static_assert( static_cast<int>( event_type::num_event_types ) == 144,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1099,6 +1102,44 @@ struct event_spec<event_type::character_learns_recipe> {
             { "character", cata_variant_type::character_id },
             { "recipe", cata_variant_type::string },
             { "how", cata_variant_type::string },
+        }
+    };
+};
+
+// INV-J08: the avatar picked an item up (pickup menu or auto-pickup); count is the number of
+// items, or of charges for an item counted by charges. Its EOCs get the item, where it went,
+// as beta.
+template<>
+struct event_spec<event_type::character_picks_up_item> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "count", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character dropped an item with the drop activity (onto the ground or into vehicle cargo);
+// count as for character_picks_up_item. Its EOCs get the item where it landed as beta.
+template<>
+struct event_spec<event_type::character_drops_item> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "count", cata_variant_type::int_ },
+        }
+    };
+};
+
+// a character put an item into a container, holster or sheath (holstering, "Store in", the
+// insert activity); count as for character_picks_up_item. Its EOCs get the container as beta.
+template<>
+struct event_spec<event_type::character_stores_item> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "itype", cata_variant_type::itype_id },
+            { "count", cata_variant_type::int_ },
+            { "container", cata_variant_type::itype_id },
         }
     };
 };

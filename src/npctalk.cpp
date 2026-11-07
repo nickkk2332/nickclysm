@@ -4518,13 +4518,34 @@ void receive_item( const itype_id &item_id, int count, const itype_id &container
         }
     } else {
         item container( container_id, calendar::turn );
-        new_item.charges = count;
-        container.put_in( new_item,
-                          pocket_type::CONTAINER );
+        // INV-J07: what doesn't fit in the container is given (or placed) on its own, not lost
+        std::vector<item> overflow;
+        const auto put_in_or_keep = [&container, &overflow]( const item & payload ) {
+            if( !container.put_in( payload, pocket_type::CONTAINER, false, nullptr, true ).success() ) {
+                overflow.push_back( payload );
+            }
+        };
+        if( new_item.count_by_charges() ) {
+            new_item.charges = count;
+            put_in_or_keep( new_item );
+        } else {
+            if( !new_item.ammo_default().is_null() ) {
+                new_item.ammo_set( new_item.ammo_default() );
+            }
+            for( int i_cnt = 0; i_cnt < count; i_cnt++ ) {
+                put_in_or_keep( new_item );
+            }
+        }
         if( add_talker ) {
             d.actor( false )->i_add_or_drop( container, force_equip );
+            for( item &extra : overflow ) {
+                d.actor( false )->i_add_or_drop( extra, force_equip );
+            }
         } else {
             map_add_item( container, p );
+            for( item &extra : overflow ) {
+                map_add_item( extra, p );
+            }
         }
         if( add_talker && !suppress_message && d.has_beta && !d.actor( true )->disp_name().empty() ) {
             //~ %1%s is the NPC name, %2$s is an item
@@ -9876,7 +9897,51 @@ talk_effect_fun_t::func f_run_inv_eocs( const JsonObject &jo,
             item_eoc_runner handler( d, data, true_eocs, false_eocs, f, f_mul, option.evaluate( d ), is_npc );
             handler.load_items( *guy );
             handler.execute();
+            return;
         }
+        // INV-J07: an item talker offers what it holds; menus are shown to the avatar
+        item_location *container = d.actor( is_npc )->get_item();
+        if( container == nullptr || !*container ) {
+            return;
+        }
+        Character &viewer = get_player_character();
+        const item_location holder = *container;
+        const auto f = [d, &viewer, title, holder]( const item_location_filter & filter ) {
+            inventory_filter_preset preset( filter );
+            inventory_pick_selector inv_s( viewer, preset );
+            inv_s.set_title( title.evaluate( d ).translated() );
+            inv_s.set_display_stats( false );
+            inv_s.clear_items();
+            item_location shown = holder;
+            inv_s.add_contained_items( shown );
+            if( inv_s.empty() ) {
+                popup( _( "You don't have the necessary item at hand." ), PF_GET_KEY );
+                return item_location();
+            }
+            return inv_s.execute();
+        };
+        const auto f_mul = [d, &viewer, title, holder]( const item_location_filter & filter ) {
+            inventory_filter_preset preset( filter );
+            inventory_multiselector inv_s( viewer, preset );
+            inv_s.set_title( title.evaluate( d ).translated() );
+            inv_s.set_display_stats( false );
+            inv_s.clear_items();
+            item_location shown = holder;
+            inv_s.add_contained_items( shown );
+            if( inv_s.empty() ) {
+                popup( _( "You don't have the necessary item at hand." ), PF_GET_KEY );
+                return drop_locations();
+            }
+            return inv_s.execute();
+        };
+        std::vector<item_location> contents;
+        holder.visit_contents( [&contents]( const item_location & loc ) {
+            contents.push_back( loc );
+            return VisitResponse::NEXT;
+        } );
+        item_eoc_runner handler( d, data, true_eocs, false_eocs, f, f_mul, option.evaluate( d ), is_npc );
+        handler.load_items( contents );
+        handler.execute();
     };
 }
 

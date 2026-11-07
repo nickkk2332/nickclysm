@@ -368,14 +368,27 @@ bool stats_tracker::records( const event_type type )
 {
     // one summary per NPC and pair of goals or attitudes (and cause), or per mod setting and
     // pair of values, or per tile destroyed, teleport, sound heard or overmap tile generated, or
-    // per reload (and ammo count) or unload, or per armor hit on each part, kept for good, would
-    // grow every save
-    return type != event_type::npc_goal_changed && type != event_type::npc_attitude_changed &&
-           type != event_type::mod_setting_changed && type != event_type::tile_destroyed &&
-           type != event_type::creature_teleported && type != event_type::character_hears_sound &&
-           type != event_type::omt_generated && type != event_type::map_extra_spawned &&
-           type != event_type::character_reloads_item && type != event_type::character_unloads_item &&
-           type != event_type::character_armor_damaged;
+    // per reload (and ammo count) or unload, or per armor hit on each part, or per item type and
+    // count moved, kept for good, would grow every save
+    switch( type ) {
+        case event_type::npc_goal_changed:
+        case event_type::npc_attitude_changed:
+        case event_type::mod_setting_changed:
+        case event_type::tile_destroyed:
+        case event_type::creature_teleported:
+        case event_type::character_hears_sound:
+        case event_type::omt_generated:
+        case event_type::map_extra_spawned:
+        case event_type::character_reloads_item:
+        case event_type::character_unloads_item:
+        case event_type::character_armor_damaged:
+        case event_type::character_picks_up_item:
+        case event_type::character_drops_item:
+        case event_type::character_stores_item:
+            return false;
+        default:
+            return true;
+    }
 }
 
 const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_type type )

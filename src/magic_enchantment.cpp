@@ -143,6 +143,7 @@ namespace io
             case enchant_vals::mod::VITAMIN_ABSORB_MOD: return "VITAMIN_ABSORB_MOD";
             case enchant_vals::mod::MELEE_STAMINA_CONSUMPTION: return "MELEE_STAMINA_CONSUMPTION";
             case enchant_vals::mod::OBTAIN_COST_MULTIPLIER: return "OBTAIN_COST_MULTIPLIER";
+            case enchant_vals::mod::STORE_COST_MULTIPLIER: return "STORE_COST_MULTIPLIER";
             case enchant_vals::mod::CASTING_TIME_MULTIPLIER: return "CASTING_TIME_MULTIPLIER";
             case enchant_vals::mod::CRAFTING_SPEED_MULTIPLIER: return "CRAFTING_SPEED_MULTIPLIER";
             case enchant_vals::mod::BIONIC_MANA_PENALTY: return "BIONIC_MANA_PENALTY";
