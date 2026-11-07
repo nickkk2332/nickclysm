@@ -182,6 +182,10 @@ std::string enum_to_string<event_type>( event_type data )
         case event_type::monster_upgrades: return "monster_upgrades";
         case event_type::monster_reproduces: return "monster_reproduces";
         case event_type::monster_uses_special: return "monster_uses_special";
+        case event_type::monster_tamed: return "monster_tamed";
+        case event_type::monster_milked: return "monster_milked";
+        case event_type::monster_sheared: return "monster_sheared";
+        case event_type::character_mounts_monster: return "character_mounts_monster";
         // *INDENT-ON*
         case event_type::num_event_types:
             break;
@@ -204,7 +208,7 @@ DEFINE_EVENT_HELPER_FIELDS( event_spec_empty )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character )
 DEFINE_EVENT_HELPER_FIELDS( event_spec_character_item )
 
-static_assert( static_cast<int>( event_type::num_event_types ) == 166,
+static_assert( static_cast<int>( event_type::num_event_types ) == 170,
                "This static_assert is a reminder to add a definition below when you add a new "
                "event_type.  If your event_spec specialization inherits from another struct for "
                "its fields definition then you probably don't need a definition here." );
@@ -324,6 +328,10 @@ DEFINE_EVENT_FIELDS( monster_melee_attacks_monster )
 DEFINE_EVENT_FIELDS( monster_upgrades )
 DEFINE_EVENT_FIELDS( monster_reproduces )
 DEFINE_EVENT_FIELDS( monster_uses_special )
+DEFINE_EVENT_FIELDS( monster_tamed )
+DEFINE_EVENT_FIELDS( monster_milked )
+DEFINE_EVENT_FIELDS( monster_sheared )
+DEFINE_EVENT_FIELDS( character_mounts_monster )
 DEFINE_EVENT_FIELDS( opens_spellbook )
 DEFINE_EVENT_FIELDS( player_fails_conduct )
 DEFINE_EVENT_FIELDS( player_gets_achievement )

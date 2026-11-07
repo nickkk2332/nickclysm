@@ -45,6 +45,10 @@ struct species_type {
     std::map<efftype_id, int> effect_immunities;
     // MONAI-J07: "bleed_effect", what its monsters get instead of "bleed" (null for "bleed")
     efftype_id bleed_effect = efftype_id::NULL_ID();
+    // MONDT-J11: the gibs field of its monsters that have no gib_field of their own
+    field_type_str_id gibs = field_type_str_id::NULL_ID();
+    // MONDT-J14: for its monsters, after their own (an id they have too is theirs)
+    std::vector<pet_interaction> pet_interactions;
     std::string get_footsteps() const {
         return footsteps.translated();
     }

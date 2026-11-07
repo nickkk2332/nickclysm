@@ -1596,6 +1596,11 @@ void Character::mount_creature( monster &z )
     }
 
     mod_moves( -100 );
+
+    // MONDT-J14: the steed is beta
+    const cata::event mounted = cata::event::make<event_type::character_mounts_monster>( getID(),
+                                z.type->id );
+    get_event_bus().send_with_talker( this, &z, mounted );
 }
 
 bool Character::check_mount_will_move( const tripoint_bub_ms &dest_loc )

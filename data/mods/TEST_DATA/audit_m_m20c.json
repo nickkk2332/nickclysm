@@ -1,0 +1,160 @@
+[
+  {
+    "type": "material",
+    "id": "test_m20c_chitin",
+    "copy-from": "bone",
+    "name": "Test Chitin",
+    "//": "MONDT-J11: a modded material a creature made of counts as flesh and fire resistant, and doesn't breathe",
+    "creature_flesh": true,
+    "creature_flammability": "resistant"
+  },
+  {
+    "type": "SPECIES",
+    "id": "TEST_M20C",
+    "description": "a test animal",
+    "//": "MONDT-J11: gibs for its monsters.  MONDT-J14: pet interactions for them",
+    "gibs": "fd_gibs_insect",
+    "pet_interactions": [
+      { "id": "pat", "name": "Pat the %s", "effect": [ { "math": [ "audit_m20c_patted = 1" ] } ] },
+      {
+        "id": "brush",
+        "name": "Brush the %s (the species' way)",
+        "effect": [ { "math": [ "audit_m20c_species_brushed = 1" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "MONSTER_FACTION",
+    "name": "test_m20c_yrax_child",
+    "//": "MONDT-J12: follows a change of yrax's attitudes",
+    "base_faction": "yrax"
+  },
+  {
+    "type": "MONSTER_FACTION",
+    "name": "test_m20c_yrax_own",
+    "//": "MONDT-J12: keeps its own attitude to the mi-go",
+    "base_faction": "yrax",
+    "friendly": [ "mi-go" ]
+  },
+  {
+    "type": "MONSTER_FACTION",
+    "name": "test_m20c_migo_child",
+    "//": "MONDT-J12: treated as the mi-go are",
+    "base_faction": "mi-go"
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m20c_fields",
+    "name": { "str_sp": "monster with blood and gib fields" },
+    "description": "MONDT-J11 test monster.",
+    "default_faction": "herbivore",
+    "material": [ "flesh" ],
+    "symbol": "B",
+    "volume": "30000 ml",
+    "weight": "30000 g",
+    "hp": 20,
+    "speed": 100,
+    "blood_field": "fd_bile",
+    "gib_field": "fd_gibs_veggy",
+    "flags": [ "WARM" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m20c_bloodless",
+    "copy-from": "mon_test_m20c_fields",
+    "name": { "str_sp": "monster without blood" },
+    "blood_field": "fd_null"
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m20c_chitin",
+    "copy-from": "mon_test_m20c_fields",
+    "name": { "str_sp": "monster of test chitin" },
+    "material": [ "test_m20c_chitin" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m20c_pet",
+    "name": { "str_sp": "test pet" },
+    "description": "MONDT-J11, MONDT-J12 and MONDT-J14 test monster.",
+    "default_faction": "herbivore",
+    "species": [ "TEST_M20C" ],
+    "material": [ "flesh" ],
+    "symbol": "B",
+    "volume": "30000 ml",
+    "weight": "30000 g",
+    "hp": 20,
+    "speed": 100,
+    "flags": [ "WARM", "SEES", "HEARS", "ANIMAL", "PET_WONT_FOLLOW" ],
+    "petfood": {
+      "food": [ "DOGFOOD" ],
+      "condition": { "math": [ "audit_m20c_allow == 1" ] },
+      "on_tame_eocs": [
+        {
+          "id": "EOC_AUDIT_M20C_TAMED",
+          "effect": [ { "math": [ "audit_m20c_tamed = 1" ] }, { "math": [ "n_audit_m20c_owner = 1" ] } ]
+        }
+      ],
+      "on_fail_eocs": [ "EOC_AUDIT_M20C_FAILED" ]
+    },
+    "pet_interactions": [
+      {
+        "id": "brush",
+        "name": "Brush the %s",
+        "key": "B",
+        "condition": { "math": [ "audit_m20c_brush_ok == 1" ] },
+        "effect": [ { "math": [ "audit_m20c_brushed = 1" ] } ]
+      },
+      {
+        "id": "groom",
+        "name": "Groom the %s",
+        "effect": [ { "math": [ "n_audit_m20c_groomed = 1" ] }, { "math": [ "u_audit_m20c_groomer = 1" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m20c_wary",
+    "copy-from": "mon_test_m20c_pet",
+    "name": { "str_sp": "wary test pet" },
+    "petfood": { "food": [ "DOGFOOD" ], "chance": 0, "on_fail_eocs": [ "EOC_AUDIT_M20C_FAILED" ] }
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_m20c_biter",
+    "copy-from": "mon_test_m20c_pet",
+    "name": { "str_sp": "biting test pet" },
+    "petfood": { "food": [ "DOGFOOD" ], "bite_on_feed": true, "on_fail_eocs": [ "EOC_AUDIT_M20C_FAILED" ] }
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M20C_FAILED",
+    "effect": [ { "math": [ "audit_m20c_failed++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M20C_YRAX_HATES_MIGO",
+    "effect": [ { "set_monfaction_attitude": "yrax", "to": "mi-go", "attitude": "HATE" } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M20C_YRAX_MIGO_DEFAULT",
+    "effect": [ { "set_monfaction_attitude": "yrax", "to": "mi-go", "attitude": "DEFAULT", "mutual": true } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M20C_VAR_ATTITUDE",
+    "effect": [
+      {
+        "set_monfaction_attitude": { "global_val": "audit_m20c_from" },
+        "to": "mi-go",
+        "attitude": { "global_val": "audit_m20c_attitude" }
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M20C_MON_TYPE",
+    "effect": [ { "set_string_var": { "mutator": "u_monster_type" }, "target_var": { "global_val": "audit_m20c_type" } } ]
+  }
+]

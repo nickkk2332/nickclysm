@@ -1,7 +1,6 @@
 #include "mtype.h"
 
 #include <algorithm>
-#include <cmath>
 #include <initializer_list>
 #include <unordered_map>
 
@@ -11,32 +10,17 @@
 #include "enums.h"
 #include "field_type.h"
 #include "game_constants.h"
-#include "item.h"
-#include "itype.h"
 #include "monstergenerator.h"
 #include "translations.h"
 #include "units.h"
 
 static const harvest_id harvest_list_human( "human" );
 
-static const itype_id itype_bone( "bone" );
-static const itype_id itype_bone_tainted( "bone_tainted" );
-static const itype_id itype_fish( "fish" );
-static const itype_id itype_human_flesh( "human_flesh" );
-static const itype_id itype_meat( "meat" );
-static const itype_id itype_meat_tainted( "meat_tainted" );
-static const itype_id itype_veggy( "veggy" );
-static const itype_id itype_veggy_tainted( "veggy_tainted" );
-
-static const material_id material_bone( "bone" );
 static const material_id material_flesh( "flesh" );
-static const material_id material_hflesh( "hflesh" );
 static const material_id material_iflesh( "iflesh" );
 static const material_id material_veggy( "veggy" );
 
 static const skill_id skill_survival( "survival" );
-
-static const species_id species_MOLLUSK( "MOLLUSK" );
 
 // NOLINTNEXTLINE(cata-static-int_id-constants)
 mon_flag_id mon_flag_ACIDPROOF,
@@ -493,6 +477,10 @@ bool mtype::same_species( const mtype &other ) const
 
 field_type_id mtype::bloodType() const
 {
+    // MONDT-J11: a blood_field in JSON wins over the flags, materials and species
+    if( blood_field ) {
+        return *blood_field;
+    }
     if( has_flag( mon_flag_ACID_BLOOD ) )
         //A monster that has the death effect "ACID" does not need to have acid blood.
     {
@@ -518,8 +506,15 @@ field_type_id mtype::bloodType() const
 
 field_type_id mtype::gibType() const
 {
-    if( in_species( species_MOLLUSK ) ) {
-        return fd_gibs_invertebrate;
+    // MONDT-J11: a gib_field in JSON, then the first species with "gibs" (MOLLUSK's are
+    // fd_gibs_invertebrate), then the materials
+    if( gib_field ) {
+        return *gib_field;
+    }
+    for( const species_id &s : species ) {
+        if( !s->gibs.is_null() ) {
+            return s->gibs;
+        }
     }
     if( made_of( material_veggy ) ) {
         return fd_gibs_veggy;
@@ -542,46 +537,6 @@ int mtype::get_total_difficulty() const
 int mtype::get_difficulty_adjustment() const
 {
     return difficulty_adjustment;
-}
-
-itype_id mtype::get_meat_itype() const
-{
-    if( has_flag( mon_flag_POISON ) ) {
-        if( made_of( material_flesh ) || made_of( material_hflesh ) ||
-            //In the future, insects could drop insect flesh rather than plain ol' meat.
-            made_of( material_iflesh ) ) {
-            return itype_meat_tainted;
-        } else if( made_of( material_veggy ) ) {
-            return itype_veggy_tainted;
-        } else if( made_of( material_bone ) ) {
-            return itype_bone_tainted;
-        }
-    } else {
-        if( made_of( material_flesh ) || made_of( material_hflesh ) ) {
-            if( has_flag( mon_flag_HUMAN ) ) {
-                return itype_human_flesh;
-            } else if( has_flag( mon_flag_AQUATIC ) ) {
-                return itype_fish;
-            } else {
-                return itype_meat;
-            }
-        } else if( made_of( material_iflesh ) ) {
-            //In the future, insects could drop insect flesh rather than plain ol' meat.
-            return itype_meat;
-        } else if( made_of( material_veggy ) ) {
-            return itype_veggy;
-        } else if( made_of( material_bone ) ) {
-            return itype_bone;
-        }
-    }
-    return itype_id::NULL_ID();
-}
-
-int mtype::get_meat_chunks_count() const
-{
-    const float ch = to_gram( weight ) * ( 0.40f - 0.02f * std::log10( to_gram( weight ) ) );
-    const itype *chunk = item::find_type( get_meat_itype() );
-    return static_cast<int>( ch / to_gram( chunk->weight ) );
 }
 
 std::string mtype::get_description() const

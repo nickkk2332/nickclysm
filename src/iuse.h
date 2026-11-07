@@ -89,6 +89,9 @@ std::optional<int> inhaler( Character *p, item *it, const tripoint_bub_ms & );
 std::optional<int> meditate( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> meth( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> petfood( Character *p, item *it, const tripoint_bub_ms & );
+// MONDT-J14: feeds food_item to animal, as PETFOOD does once the animal is chosen; false when the
+// animal takes no pet food at all
+bool feed_pet( Character &feeder, item &food_item, monster &animal );
 std::optional<int> plantblech( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> poison( Character *, item *, const tripoint_bub_ms & );
 std::optional<int> prozac( Character *, item *, const tripoint_bub_ms & );

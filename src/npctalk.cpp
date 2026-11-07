@@ -132,6 +132,7 @@
 #include "mission.h"
 #include "mod_setting.h"
 #include "mod_setting_values.h"
+#include "monfaction.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "monstergenerator.h"
@@ -7597,6 +7598,57 @@ talk_effect_fun_t::func f_set_monster_faction( const JsonObject &jo, std::string
     };
 }
 
+// MONDT-J12: how one monster faction treats another from now on in this game, saved with it
+talk_effect_fun_t::func f_set_monfaction_attitude( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    str_or_var from = get_str_or_var( jo.get_member( member ), member, true );
+    str_or_var to = get_str_or_var( jo.get_member( "to" ), "to", true );
+    str_or_var attitude = get_str_or_var( jo.get_member( "attitude" ), "attitude", true );
+    const bool mutual = jo.get_bool( "mutual", false );
+    if( attitude.is_constant() ) {
+        std::optional<mf_attitude> att;
+        if( !monfactions::parse_attitude( attitude.constant(), att ) ) {
+            jo.throw_error_at( "attitude", string_format( "unknown monster faction attitude \"%s\": "
+                               "BY_MOOD, NEUTRAL, FRIENDLY, HATE or DEFAULT", attitude.constant() ) );
+        }
+    }
+    const std::string context = jo.get_member( member ).get_root_source_path();
+    for( const str_or_var *faction : {
+             &from, &to
+         } ) {
+        if( faction->is_constant() ) {
+            effect_on_conditions::add_load_check( [name = faction->constant(), context]() {
+                if( !mfaction_str_id( name ).is_valid() ) {
+                    debugmsg( "Monster faction \"%s\" (used by set_monfaction_attitude in %s) does "
+                              "not exist", name, context );
+                }
+            } );
+        }
+    }
+    return [from, to, attitude, mutual]( dialogue const & d ) {
+        const mfaction_str_id from_faction( from.evaluate( d ) );
+        const mfaction_str_id to_faction( to.evaluate( d ) );
+        const std::string attitude_name = attitude.evaluate( d );
+        std::optional<mf_attitude> att;
+        if( !from_faction.is_valid() || !to_faction.is_valid() ) {
+            debugmsg( "set_monfaction_attitude: unknown monster faction \"%s\" or \"%s\".  %s",
+                      from_faction.str(), to_faction.str(), d.get_callstack() );
+            return;
+        }
+        if( !monfactions::parse_attitude( attitude_name, att ) ) {
+            debugmsg( "set_monfaction_attitude: unknown attitude \"%s\".  %s", attitude_name,
+                      d.get_callstack() );
+            return;
+        }
+        monfactions::set_attitude_override( from_faction, to_faction, att );
+        if( mutual ) {
+            monfactions::set_attitude_override( to_faction, from_faction, att );
+        }
+        get_creature_tracker().invalidate_reachability_cache();
+    };
+}
+
 // MONAI-J01: u_set_monster_destination and u_set_monster_target force a destination or a
 // target on a monster, which its AI follows instead of its own plans (monster::plan()).
 std::optional<duration_or_var> read_forced_goal_duration( const JsonObject &jo )
@@ -12791,6 +12843,7 @@ parsers = {
     { "u_spawn_monster", "npc_spawn_monster", jarg::member, &talk_effect_fun::f_spawn_monster },
     { "u_spawn_npc", "npc_spawn_npc", jarg::member, &talk_effect_fun::f_spawn_npc },
     { "set_trap", jarg::member, &talk_effect_fun::f_set_trap },
+    { "set_monfaction_attitude", jarg::member, &talk_effect_fun::f_set_monfaction_attitude },
     { "set_terrain", jarg::member, &talk_effect_fun::f_set_terrain },
     { "set_furniture", jarg::member, &talk_effect_fun::f_set_furniture },
     { "u_set_field", "npc_set_field", jarg::member, &talk_effect_fun::f_field },

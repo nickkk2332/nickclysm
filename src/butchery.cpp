@@ -37,6 +37,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "npc_opinion.h"
+#include "options.h"
 #include "output.h"
 #include "player_activity.h"
 #include "pocket_type.h"
@@ -213,10 +214,11 @@ static bool check_anger_empathetic_npcs_with_cannibalism( const Character &you,
     for( npc &guy : g->all_npcs() ) {
         if( guy.is_active() && guy.sees( here, you ) && guy.empathizes_with_monster( monster ) ) {
             guy.say( _( "<swear!>?  Are you butchering them?  That's not okay, <name_b>." ) );
-            // massive opinion penalty
-            guy.op_of_u.trust -= 5;
-            guy.op_of_u.value -= 5;
-            guy.op_of_u.anger += 5;
+            // massive opinion penalty (MONDT-J13: an EXTERNAL_OPTION)
+            const int opinion_penalty = get_option<int>( "BUTCHERY_EMPATHY_NPC_OPINION" );
+            guy.op_of_u.trust -= opinion_penalty;
+            guy.op_of_u.value -= opinion_penalty;
+            guy.op_of_u.anger += opinion_penalty;
             if( guy.turned_hostile() ) {
                 guy.make_angry();
             }
@@ -348,9 +350,11 @@ bool set_up_butchery( player_activity &act, Character &you, butchery_data bd )
                     // give us a message indicating we are dissecting without the stomach for it, but not actually butchering. lower morale penalty.
                     you.add_msg_if_player( m_good, SNIPPET.random_from_category(
                                                "msg_human_dissection_no_prof" ).value_or( translation() ).translated() );
-                    you.add_morale( morale_butcher, -40, 0, 1_days, 2_hours );
+                    // MONDT-J13: EXTERNAL_OPTIONs
+                    you.add_morale( morale_butcher, get_option<int>( "DISSECT_EMPATHY_MORALE" ), 0,
+                                    1_days, 2_hours );
                     // Some trauma. You are methodically cutting a person up.
-                    you.mod_trauma( 5 );
+                    you.mod_trauma( get_option<int>( "DISSECT_EMPATHY_TRAUMA" ) );
                 }
             } else {
                 // standard refusal to butcher
@@ -364,9 +368,11 @@ bool set_up_butchery( player_activity &act, Character &you, butchery_data bd )
                 // give the player a random message showing their disgust and cause morale penalty.
                 you.add_msg_if_player( m_good, SNIPPET.random_from_category(
                                            "msg_human_butchery" ).value_or( translation() ).translated() );
-                you.add_morale( morale_butcher, -50, 0, 2_days, 3_hours );
+                // MONDT-J13: EXTERNAL_OPTIONs
+                you.add_morale( morale_butcher, get_option<int>( "BUTCHERY_EMPATHY_MORALE" ), 0,
+                                2_days, 3_hours );
                 // LOTS of trauma. You are butchering a person.
-                you.mod_trauma( 10 );
+                you.mod_trauma( get_option<int>( "BUTCHERY_EMPATHY_TRAUMA" ) );
             }
         } else {
             if( you.has_proficiency( proficiency_prof_dissect_humans ) ) {
@@ -1007,8 +1013,17 @@ void destroy_the_carcass( const butchery_data &bd, Character &you )
     corpse_item.erase_var( butcher_progress_var( action ) );
     corpse_item.erase_var( butcher_progress_time_var() );
 
+    // MONDT-J13: every outcome sends character_butchered_corpse, with the corpse as beta while it
+    // still exists (an EOC of the event may take it away, so removals check it is still there)
+    const auto send_butchered = [&]( const bool succeeded ) {
+        const cata::event e = cata::event::make<event_type::character_butchered_corpse>( you.getID(),
+                              corpse->id, "ACT_" + io::enum_to_string<butcher_type>( action ), succeeded );
+        get_event_bus().send_with_talker( &you, &target, e );
+    };
+
     if( action == butcher_type::QUARTER ) {
         butchery_quarter( &corpse_item, you );
+        send_butchered( true );
         return;
     }
 
@@ -1023,8 +1038,11 @@ void destroy_the_carcass( const butchery_data &bd, Character &you )
         add_msg( m_warning, SNIPPET.random_from_category( "harvest_drop_default_dissect_failed" ).value_or(
                      translation() ).translated() );
 
+        send_butchered( false );
         // Remove the target from the map
-        target.remove_item();
+        if( target ) {
+            target.remove_item();
+        }
 
         here.add_splatter( type_gib, corpse_pos, rng( corpse->size + 2, ( corpse->size + 1 ) * 2 ) );
         here.add_splatter( type_blood, corpse_pos, rng( corpse->size + 2, ( corpse->size + 1 ) * 2 ) );
@@ -1041,26 +1059,26 @@ void destroy_the_carcass( const butchery_data &bd, Character &you )
     }
 
     //end messages and effects
+    bool success = true;
+    // removed after the event, so that its EOCs still see the corpse
+    bool remove_corpse = false;
     switch( action ) {
         case butcher_type::QUARTER:
             break;
         case butcher_type::QUICK:
             add_msg( m_good, SNIPPET.random_from_category( "harvest_drop_default_quick_butcher" ).value_or(
                          translation() ).translated() );
-            // Remove the target from the map
-            target.remove_item();
+            remove_corpse = true;
             break;
         case butcher_type::FULL:
             add_msg( m_good, SNIPPET.random_from_category( "harvest_drop_default_full_butcher" ).value_or(
                          translation() ).translated() );
-
-            // Remove the target from the map
-            target.remove_item();
+            remove_corpse = true;
             break;
         case butcher_type::FIELD_DRESS: {
-            bool success = roll_butchery_dissect( round( you.get_average_skill_level( skill_survival ) ),
-                                                  you.get_dex(),
-                                                  you.max_quality( qual_BUTCHER, PICKUP_RANGE ) ) > 0;
+            success = roll_butchery_dissect( round( you.get_average_skill_level( skill_survival ) ),
+                                             you.get_dex(),
+                                             you.max_quality( qual_BUTCHER, PICKUP_RANGE ) ) > 0;
             add_msg( success ? m_good : m_warning,
                      SNIPPET.random_from_category( success ? "harvest_drop_default_field_dress_success" :
                                                    "harvest_drop_default_field_dress_failed" ).value_or( translation() ).translated() );
@@ -1090,15 +1108,12 @@ void destroy_the_carcass( const butchery_data &bd, Character &you )
         case butcher_type::DISMEMBER:
             add_msg( m_good, SNIPPET.random_from_category( "harvest_drop_default_dismember" ).value_or(
                          translation() ).translated() );
-            // Remove the target from the map
-            target.remove_item();
+            remove_corpse = true;
             break;
         case butcher_type::DISSECT:
             add_msg( m_good, SNIPPET.random_from_category( "harvest_drop_default_dissect_success" ).value_or(
                          translation() ).translated() );
-
-            // Remove the target from the map
-            target.remove_item();
+            remove_corpse = true;
             break;
         case butcher_type::NUM_TYPES:
             debugmsg( "ERROR: Invalid butcher_type" );
@@ -1107,9 +1122,10 @@ void destroy_the_carcass( const butchery_data &bd, Character &you )
 
     you.recoil = MAX_RECOIL;
 
-    get_event_bus().send<event_type::character_butchered_corpse>( you.getID(),
-            corpse->id, "ACT_" + io::enum_to_string<butcher_type>( action ) );
-
+    send_butchered( success );
+    if( remove_corpse && target ) {
+        target.remove_item();
+    }
 }
 
 // Butchery sub-menu and time calculation
