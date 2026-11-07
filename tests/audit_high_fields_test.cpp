@@ -26,6 +26,7 @@
 #include "map_scale_constants.h"
 #include "math_parser_diag_value.h"
 #include "monster.h"
+#include "mtype.h"
 #include "options_helpers.h"
 #include "overmap_ui.h"
 #include "player_helpers.h"
@@ -33,6 +34,7 @@
 #include "rng.h"
 #include "type_id.h"
 #include "units.h"
+#include "weakpoint.h"
 
 static const field_type_str_id field_audit_high_fields_conveyor( "audit_high_fields_conveyor" );
 static const field_type_str_id field_audit_high_fields_hellfire( "audit_high_fields_hellfire" );
@@ -535,9 +537,11 @@ TEST_CASE( "map-j02_contact_damage_and_eoc_on_contact", "[audit][field][eoc]" )
     CHECK( tar_global( "audit_high_fields_tar_count" ).dbl() == 2 );
     CHECK( tar_global( "audit_high_fields_tar_intensity" ).dbl() == 2 );
 
-    // A monster takes the damage times monster_mult, and is u in the EOC
+    // A monster takes the damage times monster_mult, and is u in the EOC. It has no weak points:
+    // a zombie's would multiply the damage on some rolls (seen on CI, and locally on some seeds).
     const tripoint_bub_ms zombie_tile = p + tripoint_rel_ms( 0, 5, 0 );
-    monster &zombie = spawn_test_monster( "mon_test_zombie", zombie_tile );
+    monster &zombie = spawn_test_monster( "mon_test_non_shearable", zombie_tile );
+    REQUIRE( zombie.type->weakpoints.weakpoint_list.empty() );
     const int zombie_hp = zombie.get_hp();
     REQUIRE( here.add_field( zombie_tile, field_audit_high_fields_tar, 1, 0_turns, false ) );
     here.creature_in_field( zombie );
