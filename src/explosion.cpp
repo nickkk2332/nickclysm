@@ -22,6 +22,7 @@
 #include "calendar.h"
 #include "cata_utility.h"
 #include "character.h"
+#include "character_martial_arts.h"
 #include "color.h"
 #include "coordinates.h"
 #include "creature.h"
@@ -46,6 +47,7 @@
 #include "map_scale_constants.h"
 #include "map_selector.h"
 #include "mapdata.h"
+#include "martialarts.h"
 #include "math_defines.h"
 #include "mdarray.h"
 #include "messages.h"
@@ -54,6 +56,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "options.h"
+#include "pimpl.h"
 #include "point.h"
 #include "projectile.h"
 #include "rng.h"
@@ -197,6 +200,7 @@ float gurney_spherical( const double charge, const double mass )
 static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, const float power,
                       const float distance_factor, const bool fire )
 {
+    const bash_cause_scope blasting( "explosion" );
     const float tile_dist = 1.0f;
     const float diag_dist = trigdist ? M_SQRT2 * tile_dist : 1.0f * tile_dist;
     const float zlev_dist = 2.0f; // Penalty for going up/down
@@ -389,6 +393,14 @@ static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, 
                                        _( "<npcname> is caught in the explosion!" ) );
         }
 
+        // The martial-art ongethit hooks, once per blast: the damage is the blast's force here,
+        // as no single part is hit
+        ma_event_context gethit_ctx;
+        gethit_ctx.opponent = mutable_source;
+        gethit_ctx.damage = force;
+        gethit_ctx.hit_by = "explosion";
+        pl->martial_arts_data->ma_ongethit_effects( *pl, gethit_ctx );
+
         struct blastable_part {
             bodypart_id bp;
             float low_mul = 0.0f;
@@ -428,6 +440,7 @@ static std::vector<tripoint_bub_ms> shrapnel( map *m, const Creature *source,
         const tripoint_bub_ms &src, int power,
         int casing_mass, float per_fragment_mass, int range = -1 )
 {
+    const bash_cause_scope fragments( "explosion" );
     // The gurney equation wants the total mass of the casing.
     const float fragment_velocity = gurney_spherical( power, casing_mass );
     fragment_mass = per_fragment_mass;

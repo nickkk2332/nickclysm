@@ -44,7 +44,6 @@
 #include "cata_lazy.h"
 #include "cata_path.h"
 #include "cata_utility.h"
-#include "cata_variant.h"
 #include "catacharset.h"
 #include "character.h"
 #include "character_id.h"
@@ -104,6 +103,7 @@
 #include "item_group.h"
 #include "item_location.h"
 #include "item_uid.h"
+#include "item_wakeup.h"
 #include "itype.h"
 #include "kill_tracker.h"
 #include "line.h"
@@ -175,6 +175,7 @@
 #include "translation_gendered.h"
 #include "translations.h"
 #include "trap.h"
+#include "try_parse_integer.h"
 #include "ui_manager.h"
 #include "uilist.h"
 #include "uistate.h"
@@ -192,6 +193,7 @@
 #include "wound.h"
 
 class recipe_subset;
+enum class cata_variant_type : int;
 
 static const activity_id ACT_AIM( "ACT_AIM" );
 static const activity_id ACT_SOCIALIZE( "ACT_SOCIALIZE" );
@@ -219,6 +221,8 @@ static const trait_id trait_DEBUG_MIND_CONTROL( "DEBUG_MIND_CONTROL" );
 static const trait_id trait_HALLUCINATION( "HALLUCINATION" );
 static const trait_id trait_PROF_CHURL( "PROF_CHURL" );
 static const trait_id trait_PROF_FOODP( "PROF_FOODP" );
+
+static const vpart_location_id vpart_location_structure( "structure" );
 
 static const zone_type_id zone_type_NPC_INVESTIGATE_ONLY( "NPC_INVESTIGATE_ONLY" );
 static const zone_type_id zone_type_NPC_NO_INVESTIGATE( "NPC_NO_INVESTIGATE" );
@@ -3350,6 +3354,134 @@ talk_effect_fun_t::likely_rewards_t &talk_effect_fun_t::get_likely_rewards()
     return likely_rewards;
 }
 
+// The handle u_set_talker stores and run_eocs' alpha_talker/beta_talker read back.  A character's
+// is its character id, as before; the others name the monster, item or vehicle by its uid, so the
+// handle still finds it after it moves and across saves.  An item's also says where it was, to
+// look there first.
+static std::string talker_handle( talker &who )
+{
+    if( who.get_character() != nullptr ) {
+        return std::to_string( who.getID().get_value() );
+    }
+    if( const monster *mon = who.get_monster() ) {
+        return "monster:" + std::to_string( mon->persistent_id() );
+    }
+    if( const vehicle *veh = who.get_vehicle() ) {
+        return "vehicle:" + std::to_string( veh->persistent_id() );
+    }
+    const item_location *it = who.get_item();
+    if( it == nullptr || !*it || !( *it )->uid().is_valid() ) {
+        return {};
+    }
+    std::string handle = "item:" + std::to_string( ( *it )->uid().get_value() );
+    const item_locator_hint hint = hint_from_location( *it );
+    if( const character_id *who_has = std::get_if<character_id>( &hint.location ) ) {
+        handle += "@character:" + std::to_string( who_has->get_value() );
+    } else {
+        const tripoint_abs_ms *where = std::get_if<tripoint_abs_ms>( &hint.location );
+        const vehicle_hint *in_vehicle = std::get_if<vehicle_hint>( &hint.location );
+        if( in_vehicle != nullptr ) {
+            where = &in_vehicle->cargo_square;
+        }
+        if( where != nullptr ) {
+            handle += string_format( "@%s:%d,%d,%d", in_vehicle != nullptr ? "vehicle" : "map",
+                                     where->x(), where->y(), where->z() );
+        }
+    }
+    return handle;
+}
+
+// The uid after `prefix` in a handle; 0 if there's none
+static int64_t handle_uid( std::string_view handle, std::string_view prefix )
+{
+    if( handle.substr( 0, prefix.size() ) != prefix ) {
+        return 0;
+    }
+    handle.remove_prefix( prefix.size() );
+    handle = handle.substr( 0, handle.find( '@' ) );
+    const ret_val<long long> uid = try_parse_integer<long long>( handle, false );
+    return uid.success() && uid.value() > 0 ? static_cast<int64_t>( uid.value() ) : 0;
+}
+
+// The x,y,z of a position in a handle
+static std::optional<tripoint_abs_ms> handle_point( std::string_view text )
+{
+    std::array<int, 3> pos{};
+    for( int &coord : pos ) {
+        const size_t comma = text.find( ',' );
+        const ret_val<int> parsed = try_parse_integer<int>( text.substr( 0, comma ), false );
+        if( !parsed.success() ) {
+            return std::nullopt;
+        }
+        coord = parsed.value();
+        text = comma == std::string_view::npos ? std::string_view() : text.substr( comma + 1 );
+    }
+    return tripoint_abs_ms( pos[0], pos[1], pos[2] );
+}
+
+// Where an item's handle says it was, to look there first
+static item_locator_hint handle_hint( std::string_view handle )
+{
+    item_locator_hint hint;
+    const size_t at = handle.find( '@' );
+    if( at == std::string_view::npos ) {
+        return hint;
+    }
+    const std::string_view where = handle.substr( at + 1 );
+    const auto after = [where]( std::string_view prefix ) {
+        return where.substr( 0, prefix.size() ) == prefix ? where.substr( prefix.size() ) :
+               std::string_view();
+    };
+    if( const std::string_view id = after( "character:" ); !id.empty() ) {
+        const ret_val<int> parsed = try_parse_integer<int>( id, false );
+        if( parsed.success() ) {
+            hint.where = item_locator_hint::place::character;
+            hint.location = character_id( parsed.value() );
+        }
+    } else if( const std::optional<tripoint_abs_ms> pos = handle_point( after( "map:" ) ) ) {
+        hint.where = item_locator_hint::place::map;
+        hint.location = *pos;
+    } else if( const std::optional<tripoint_abs_ms> pos = handle_point( after( "vehicle:" ) ) ) {
+        hint.where = item_locator_hint::place::vehicle;
+        vehicle_hint in_vehicle;
+        in_vehicle.cargo_square = *pos;
+        hint.location = in_vehicle;
+    }
+    return hint;
+}
+
+// Whether `str` is a monster, item or vehicle handle.  If it is and that is still around (in the
+// reality bubble), `found` is its talker.  An item found is kept in `items`.
+static bool talker_from_handle( const std::string_view str, std::unique_ptr<talker> &found,
+                                std::list<item_location> &items )
+{
+    if( const int64_t uid = handle_uid( str, "monster:" ) ) {
+        const shared_ptr_fast<monster> mon = get_creature_tracker().find_by_uid( uid );
+        if( mon && !mon->is_dead() ) {
+            found = get_talker_for( *mon );
+        }
+        return true;
+    }
+    if( const int64_t uid = handle_uid( str, "vehicle:" ) ) {
+        for( const wrapped_vehicle &veh : get_map().get_vehicles() ) {
+            if( veh.v != nullptr && veh.v->assigned_persistent_id() == uid ) {
+                found = get_talker_for( *veh.v );
+                break;
+            }
+        }
+        return true;
+    }
+    if( const int64_t uid = handle_uid( str, "item:" ) ) {
+        item_location it = find_item_by_uid( uid, handle_hint( str ) );
+        if( it ) {
+            items.push_back( std::move( it ) );
+            found = get_talker_for( items.back() );
+        }
+        return true;
+    }
+    return false;
+}
+
 static Character *get_character_from_id( const std::string &id_str, game *g )
 {
     // Return the character with character_id, return nullptr if counldn't find the character with character_id
@@ -3851,7 +3983,9 @@ talk_effect_fun_t::func toggle_bionic_effect( const JsonObject &jo, std::string_
     str_or_var bionic_name = get_str_or_var( jo.get_member( member ), member, true );
     std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
     std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
-    return [is_npc, activate, bionic_name, true_eocs, false_eocs]( dialogue & d ) {
+    // neither the power needed nor the power paid matters
+    const bool ignore_cost = jo.get_bool( "ignore_cost", false );
+    return [is_npc, activate, bionic_name, true_eocs, false_eocs, ignore_cost]( dialogue & d ) {
         const std::string name = bionic_name.evaluate( d );
         const bionic_id bio_id( name );
         if( !bio_id.is_valid() ) {
@@ -3863,7 +3997,8 @@ talk_effect_fun_t::func toggle_bionic_effect( const JsonObject &jo, std::string_
         if( Character *guy = d.actor( is_npc )->get_character() ) {
             for( bionic &bio : *guy->my_bionics ) {
                 if( bio.id == bio_id && bio.powered != activate ) {
-                    success = activate ? guy->activate_bionic( bio ) : guy->deactivate_bionic( bio );
+                    success = activate ? guy->activate_bionic( bio, false, nullptr, ignore_cost ) :
+                              guy->deactivate_bionic( bio, false, ignore_cost );
                     break;
                 }
             }
@@ -4025,6 +4160,59 @@ talk_effect_fun_t::func f_add_wound( const JsonObject &jo, std::string_view memb
 
         bp->add_or_worsen_wound( wound_to_be_added );
     };
+}
+
+// u_add_body_part / u_lose_body_part (and npc_): the body gains or loses a part until an EOC
+// changes it back. false_eocs get the reason as the context value "reason".
+talk_effect_fun_t::func f_change_body_part( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc, bool add )
+{
+    str_or_var bodypart_var;
+    mandatory( jo, false, member, bodypart_var );
+    if( jo.has_string( member ) ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name = jo.get_string( member ), context]() {
+            if( !bodypart_str_id( name ).is_valid() ) {
+                debugmsg( "Body part \"%s\" (in %s) does not exist", name, context );
+            }
+        } );
+    }
+    const bool force = jo.get_bool( "force", false );
+    const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
+            src );
+    return [is_npc, bodypart_var, force, add, true_eocs, false_eocs]( dialogue & d ) {
+        Character *guy = require_character( d, is_npc, add ? "add_body_part" : "lose_body_part" );
+        if( guy == nullptr ) {
+            return;
+        }
+        const bodypart_str_id bp( bodypart_var.evaluate( d ) );
+        if( !bp.is_valid() ) {
+            debugmsg( "%s_body_part: unknown body part \"%s\"\n%s", add ? "add" : "lose",
+                      bp.str(), d.get_callstack() );
+        }
+        const std::optional<std::string> refused = add ? guy->add_body_part_by_eoc( bp ) :
+                guy->lose_body_part_by_eoc( bp, force );
+        if( refused ) {
+            dialogue why( d );
+            why.set_value( "reason", *refused );
+            run_eoc_vector( false_eocs, why );
+        } else {
+            run_eoc_vector( true_eocs, d );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_add_body_part( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    return f_change_body_part( jo, member, src, is_npc, true );
+}
+
+talk_effect_fun_t::func f_lose_body_part( const JsonObject &jo, std::string_view member,
+        std::string_view src, bool is_npc )
+{
+    return f_change_body_part( jo, member, src, is_npc, false );
 }
 
 talk_effect_fun_t::func f_remove_wound( const JsonObject &jo, std::string_view member,
@@ -6130,8 +6318,12 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
     fields.loc = jo.has_member( "target_loc" );
     fields.recipe = jo.has_member( "recipe" );
     fields.butcher_type = jo.has_member( "butcher_type" );
+    fields.creature = jo.has_member( "target_monster" );
     if( fields.item ) {
         check_other_talker( jo, "target_item", is_npc );
+    }
+    if( fields.creature ) {
+        check_other_talker( jo, "target_monster", is_npc );
     }
     std::optional<var_info> target_loc;
     if( fields.loc ) {
@@ -6163,6 +6355,16 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
     const std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
     const std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs",
             src );
+    // values the activity's own EOCs get as context
+    std::unordered_map<std::string, diag_value_or_var> context;
+    if( jo.has_member( "context" ) ) {
+        const JsonObject values = jo.get_object( "context" );
+        for( const JsonMember &value : values ) {
+            diag_value_or_var vov;
+            mandatory( values, false, value.name(), vov );
+            context[value.name()] = vov;
+        }
+    }
 
     if( jo.has_string( member ) ) {
         // A literal id can be checked now; one from a variable is checked when it runs.
@@ -6190,7 +6392,7 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
         }
     }
     return [is_npc, has_duration, dov, act, fields, target_loc, recipe, butcher_type, true_eocs,
-            false_eocs, member = std::string( member )]( dialogue & d ) {
+            false_eocs, context, member = std::string( member )]( dialogue & d ) {
         // false_eocs get the reason in the context value "reason".
         const auto refuse_in = [&]( const dialogue & from, const std::string & reason ) {
             dialogue refused( from );
@@ -6216,6 +6418,12 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
             debugmsg( "%s: %s", member, *error );
             return;
         }
+        // The activity assigned below takes the context, for its own EOCs
+        global_variables::impl_t context_values;
+        for( const std::pair<const std::string, diag_value_or_var> &value : context ) {
+            context_values[value.first] = value.second.evaluate( d );
+        }
+        const activity_eoc_context_scope with_context( std::move( context_values ) );
         if( activity_actors::takes_eoc_target( a ) ) {
             activity_actors::eoc_activity_target what;
             if( fields.item ) {
@@ -6226,6 +6434,15 @@ talk_effect_fun_t::func f_assign_activity( const JsonObject &jo, std::string_vie
                     return;
                 }
                 what.item = *it;
+            }
+            if( fields.creature ) {
+                monster *const mon = d.has_actor( !is_npc ) ? d.actor( !is_npc )->get_monster() :
+                                     nullptr;
+                if( mon == nullptr ) {
+                    refuse( _( "There is no creature to work on." ) );
+                    return;
+                }
+                what.creature = mon;
             }
             if( target_loc ) {
                 what.loc = read_var_value( *target_loc, d ).tripoint();
@@ -6505,6 +6722,43 @@ talk_effect_fun_t::func f_signal_hordes( const JsonObject &jo, std::string_view 
         tripoint_abs_sm loc_sm = project_to<coords::sm>( loc_ms );
 
         overmap_buffer.signal_hordes( loc_sm, signal_power.evaluate( d ) );
+    };
+}
+
+// OMAP-J01: places an overmap horde, as the debug menu's "Spawn horde" does.
+talk_effect_fun_t::func f_spawn_overmap_horde( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    str_or_var group = get_str_or_var( jo.get_member( member ), member, true );
+    if( group.is_constant() ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name = group.constant(), context]() {
+            if( !mongroup_id( name ).is_valid() ) {
+                debugmsg( "Monster group \"%s\" (used by spawn_overmap_horde in %s) does not exist",
+                          name, context );
+            }
+        } );
+    }
+    var_info target_var = read_var_info( jo.get_object( "target_var" ) );
+    dbl_or_var population = get_dbl_or_var( jo, "population", false, 1 );
+    return [group, target_var, population]( dialogue & d ) {
+        const mongroup_id group_id( group.evaluate( d ) );
+        if( !group_id.is_valid() ) {
+            debugmsg( "spawn_overmap_horde: unknown monster group \"%s\".  %s", group_id.str(),
+                      d.get_callstack() );
+            return;
+        }
+        const int count = static_cast<int>( population.evaluate( d ) );
+        if( count <= 0 ) {
+            return;
+        }
+        const tripoint_abs_sm sm = project_to<coords::sm>( read_var_value( target_var,
+                                   d ).tripoint() );
+        overmap_buffer.spawn_mongroup( sm, group_id, count );
+        // On the loaded map they would only show up once it is loaded again
+        if( get_map().inbounds( project_to<coords::ms>( sm ) ) ) {
+            overmap_buffer.spawn_monster( sm );
+        }
     };
 }
 
@@ -6873,6 +7127,75 @@ talk_effect_fun_t::func f_set_monster_faction( const JsonObject &jo, std::string
         mon->faction = new_faction.id();
         // Monsters find their targets through a cache sorted by faction
         get_creature_tracker().invalidate_reachability_cache();
+    };
+}
+
+// MONAI-J01: u_set_monster_destination and u_set_monster_target force a destination or a
+// target on a monster, which its AI follows instead of its own plans (monster::plan()).
+std::optional<duration_or_var> read_forced_goal_duration( const JsonObject &jo )
+{
+    std::optional<duration_or_var> duration;
+    if( jo.has_member( "duration" ) ) {
+        duration = get_duration_or_var( jo, "duration", true );
+    }
+    return duration;
+}
+
+time_point forced_goal_end( const std::optional<duration_or_var> &duration,
+                            const_dialogue const &d )
+{
+    if( duration ) {
+        // 0 or less from a variable: no time limit
+        const time_duration length = duration->evaluate( d );
+        if( length > 0_turns ) {
+            return calendar::turn + length;
+        }
+    }
+    return calendar::turn_max;
+}
+
+talk_effect_fun_t::func f_set_monster_destination( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    dbl_or_var range = get_dbl_or_var( jo, "range", false, 0 );
+    const std::optional<duration_or_var> duration = read_forced_goal_duration( jo );
+    return [target_var, range, duration, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon == nullptr ) {
+            return;
+        }
+        mon->force_destination( read_var_value( target_var, d ).tripoint(),
+                                static_cast<int>( range.evaluate( d ) ), forced_goal_end( duration, d ) );
+    };
+}
+
+talk_effect_fun_t::func f_set_monster_target( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    const std::optional<duration_or_var> duration = read_forced_goal_duration( jo );
+    return [target_var, duration, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon == nullptr ) {
+            return;
+        }
+        const tripoint_abs_ms loc = read_var_value( target_var, d ).tripoint();
+        const Creature *target = get_creature_tracker().creature_at<Creature>( loc );
+        if( target == nullptr || target == mon ) {
+            return;
+        }
+        mon->force_target( *target, forced_goal_end( duration, d ) );
+    };
+}
+
+talk_effect_fun_t::func f_clear_monster_goal( bool is_npc )
+{
+    return [is_npc]( dialogue const & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon != nullptr ) {
+            mon->clear_forced_goal();
+        }
     };
 }
 
@@ -7686,9 +8009,14 @@ void run_eocs( const std::vector<eoc_entry> &eocs, dialogue &d, dialogue newDial
     }
 }
 
+// The talker an alpha_talker/beta_talker or alpha_loc/beta_loc names.  `missing` is set when it
+// names one that isn't there (a dead NPC, a monster or item that's gone, a vehicle out of the
+// reality bubble, an empty tile).  An item found is kept in `items`, which must outlive the talker.
 std::unique_ptr<talker> get_talker( dialogue const &d, std::optional<str_or_var> const &var,
-                                    std::optional<var_info> loc, bool parent_beta )
+                                    std::optional<var_info> loc, bool parent_beta, bool &missing,
+                                    std::list<item_location> &items )
 {
+    missing = false;
     if( !var && !loc ) {
         if( d.has_actor( parent_beta ) ) {
             return d.actor( parent_beta )->clone();
@@ -7709,10 +8037,21 @@ std::unique_ptr<talker> get_talker( dialogue const &d, std::optional<str_or_var>
             return d.actor( true )->clone();
         } else if( str == "avatar" ) {
             return get_talker_for( get_avatar() );
-        } else {
-            crit = get_character_from_id( str, g.get() );
         }
-
+        std::unique_ptr<talker> found;
+        if( talker_from_handle( str, found, items ) ) {
+            missing = !found;
+            return found;
+        }
+        crit = get_character_from_id( str, g.get() );
+        if( crit == nullptr ) {
+            if( try_parse_integer<int>( str, false ).success() ) {
+                missing = true;
+                return {};
+            }
+            debugmsg( R"(run_eocs error: "%s" is not a talker\n%s)", str, d.get_callstack() );
+            return {};
+        }
     } else if( loc ) {
         crit = get_creature_tracker().creature_at( read_var_value( *loc, d ).tripoint() );
     }
@@ -7720,8 +8059,7 @@ std::unique_ptr<talker> get_talker( dialogue const &d, std::optional<str_or_var>
     if( crit != nullptr ) {
         return get_talker_for( *crit );
     }
-
-    debugmsg( R"(run_eocs error: no valid talker\n%s)", d.get_callstack() );
+    missing = true;
     return {};
 }
 
@@ -7786,9 +8124,15 @@ talk_effect_fun_t::func f_run_eocs( const JsonObject &jo, std::string_view membe
     return [eocs, cond, iterations, dov_time, random_time, alpha_var, beta_var, alpha_loc,
           beta_loc, false_eocs, context]( dialogue & d ) {
 
-        std::unique_ptr<talker> alpha = get_talker( d, alpha_var, alpha_loc, false );
-        std::unique_ptr<talker> beta = get_talker( d, beta_var, beta_loc, true );
-        if( !alpha && !beta ) {
+        // the items the talkers point to, for as long as the EOCs run
+        std::list<item_location> items;
+        bool alpha_missing = false;
+        bool beta_missing = false;
+        std::unique_ptr<talker> alpha = get_talker( d, alpha_var, alpha_loc, false, alpha_missing,
+                                        items );
+        std::unique_ptr<talker> beta = get_talker( d, beta_var, beta_loc, true, beta_missing,
+                                       items );
+        if( alpha_missing || beta_missing || ( !alpha && !beta ) ) {
             run_eoc_vector( false_eocs, d );
             return;
         }
@@ -8357,6 +8701,560 @@ talk_effect_fun_t::func f_run_monster_eocs( const JsonObject &jo,
     };
 }
 
+// The talker's vehicle, if it is still on the map: a vehicle talker is a pointer that a map
+// shift earlier in the chain could have left behind
+vehicle *vehicle_on_map( dialogue &d, bool is_npc, std::string_view func )
+{
+    vehicle *veh = d.actor( is_npc )->get_vehicle();
+    if( veh == nullptr ) {
+        debugmsg( "%s: the talker isn't a vehicle\n%s", func, d.get_callstack() );
+        return nullptr;
+    }
+    for( const wrapped_vehicle &on_map : get_map().get_vehicles() ) {
+        if( on_map.v == veh ) {
+            return veh;
+        }
+    }
+    return nullptr;
+}
+
+// The filters the vehicle part effects share: "flag", "part", "loc" and, where it applies,
+// "count".
+struct vehicle_part_filter {
+    std::optional<str_or_var> flag;
+    std::optional<str_or_var> part;
+    std::optional<var_info> loc;
+    std::optional<dbl_or_var> count;
+
+    vehicle_part_filter( const JsonObject &jo, bool with_count ) {
+        if( jo.has_member( "flag" ) ) {
+            flag = get_str_or_var( jo.get_member( "flag" ), "flag", true );
+        }
+        if( jo.has_member( "part" ) ) {
+            part = get_str_or_var( jo.get_member( "part" ), "part", true );
+        }
+        if( jo.has_member( "loc" ) ) {
+            loc = read_var_info( jo.get_object( "loc" ) );
+        }
+        if( with_count && jo.has_member( "count" ) ) {
+            count = get_dbl_or_var( jo, "count" );
+        }
+    }
+
+    // What the filters are for one run of the effect.
+    struct values {
+        std::string flag;
+        std::optional<vpart_id> part;
+        std::optional<tripoint_bub_ms> where;
+
+        bool matches( const map &here, const vehicle &veh, const vehicle_part &vp ) const {
+            return ( flag.empty() || vp.info().has_flag( flag ) ) &&
+                   ( !part || vp.info().id == *part ) &&
+                   ( !where || veh.bub_part_pos( here, vp ) == *where );
+        }
+    };
+
+    values evaluate( dialogue &d, const map &here ) const {
+        values ret;
+        ret.flag = flag ? flag->evaluate( d ) : std::string();
+        if( part ) {
+            ret.part = vpart_id( part->evaluate( d ) );
+        }
+        if( loc ) {
+            ret.where = here.get_bub( read_var_value( *loc, d ).tripoint() );
+        }
+        return ret;
+    }
+
+    // With "count": shuffles the targets and returns how many of them to take at most.
+    std::optional<int> most( dialogue &d, std::vector<int> &targets ) const {
+        if( !count ) {
+            return std::nullopt;
+        }
+        const int limit = std::max( 0, static_cast<int>( count->evaluate( d ) ) );
+        std::shuffle( targets.begin(), targets.end(), rng_get_engine() );
+        return limit;
+    }
+};
+
+// Whether the vehicle has a part left: once the last one is removed, the vehicle goes at the
+// end of the turn.
+bool any_vehicle_part_left( const vehicle &veh )
+{
+    for( int idx = 0; idx < veh.part_count(); idx++ ) {
+        if( !veh.part( idx ).removed && !veh.part( idx ).is_fake ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// VEH-J01: u_damage_vehicle_parts / npc_damage_vehicle_parts. Damages the talker vehicle's
+// parts that match the filters. Parts already broken are skipped unless "tear_off" is set, so
+// by default the vehicle can't split or vanish mid-EOC. With it, parts torn off and pieces split
+// away are only cleaned up at the end of the turn, so the talker stays usable meanwhile.
+talk_effect_fun_t::func f_damage_vehicle_parts( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const dbl_or_var amount = get_dbl_or_var( jo, member );
+    std::optional<str_or_var> damage_type;
+    if( jo.has_member( "damage_type" ) ) {
+        damage_type = get_str_or_var( jo.get_member( "damage_type" ), "damage_type", true );
+    }
+    const vehicle_part_filter filter( jo, true );
+    const bool armor = jo.get_bool( "armor", false );
+    const bool tear_off = jo.get_bool( "tear_off", false );
+    return [is_npc, amount, damage_type, filter, armor, tear_off]( dialogue & d ) {
+        vehicle *veh = vehicle_on_map( d, is_npc, "damage_vehicle_parts" );
+        if( veh == nullptr ) {
+            return;
+        }
+        map &here = get_map();
+        const damage_type_id dtype( damage_type ? damage_type->evaluate( d ) : std::string( "pure" ) );
+        if( !dtype.is_valid() ) {
+            debugmsg( "damage_vehicle_parts: unknown damage_type %s\n%s", dtype.str(),
+                      d.get_callstack() );
+            return;
+        }
+        const vehicle_part_filter::values match = filter.evaluate( d, here );
+        // indices, not references: damage can reallocate the vehicle's parts
+        std::vector<int> targets;
+        for( int idx = 0; idx < veh->part_count(); idx++ ) {
+            const vehicle_part &vp = veh->part( idx );
+            if( vp.removed || vp.is_fake || vp.has_flag( vp_flag::carried_flag ) ||
+                ( vp.is_broken() && !tear_off ) || !match.matches( here, *veh, vp ) ) {
+                continue;
+            }
+            targets.push_back( idx );
+        }
+        if( const std::optional<int> limit = filter.most( d, targets ) ) {
+            if( static_cast<int>( targets.size() ) > *limit ) {
+                targets.resize( *limit );
+            }
+        }
+        std::sort( targets.rbegin(), targets.rend() );
+        const int dmg = std::max( 0, static_cast<int>( amount.evaluate( d ) ) );
+        int damaged = 0;
+        int broken = 0;
+        int removed = 0;
+        for( const int idx : targets ) {
+            if( idx >= veh->part_count() || veh->part( idx ).removed ) {
+                continue;
+            }
+            const bool was_broken = veh->part( idx ).is_broken();
+            if( armor ) {
+                veh->damage( here, idx, dmg, dtype, true );
+            } else {
+                veh->damage_direct( here, veh->part( idx ), dmg, dtype );
+            }
+            damaged++;
+            if( idx < veh->part_count() ) {
+                const vehicle_part &after = veh->part( idx );
+                removed += after.removed ? 1 : 0;
+                broken += !after.removed && !was_broken && after.is_broken() ? 1 : 0;
+            }
+        }
+        d.set_value( "vehicle_parts_damaged", damaged );
+        d.set_value( "vehicle_parts_broken", broken );
+        d.set_value( "vehicle_parts_removed", removed );
+        d.set_value( "vehicle_destroyed", any_vehicle_part_left( *veh ) ? 0 : 1 );
+    };
+}
+
+// VINT-J01: u_repair_vehicle_parts / npc_repair_vehicle_parts. Gives HP back to the talker
+// vehicle's damaged parts that match the filters, as far as their wear allows. Broken parts are
+// left alone (the game replaces them) unless "fix_broken" is set, which mends them in place.
+talk_effect_fun_t::func f_repair_vehicle_parts( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const dbl_or_var amount = get_dbl_or_var( jo, member );
+    const vehicle_part_filter filter( jo, true );
+    const bool percent = jo.get_bool( "percent", false );
+    const bool fix_broken = jo.get_bool( "fix_broken", false );
+    return [is_npc, amount, filter, percent, fix_broken]( dialogue & d ) {
+        vehicle *veh = vehicle_on_map( d, is_npc, "repair_vehicle_parts" );
+        if( veh == nullptr ) {
+            return;
+        }
+        map &here = get_map();
+        const vehicle_part_filter::values match = filter.evaluate( d, here );
+        std::vector<int> targets;
+        for( int idx = 0; idx < veh->part_count(); idx++ ) {
+            const vehicle_part &vp = veh->part( idx );
+            // a part worn down to its degradation has nothing left to repair
+            if( vp.removed || vp.is_fake || vp.has_flag( vp_flag::carried_flag ) ||
+                vp.info().durability <= 0 || vp.damage() <= vp.degradation() ||
+                ( vp.is_broken() && !fix_broken ) || !match.matches( here, *veh, vp ) ) {
+                continue;
+            }
+            targets.push_back( idx );
+        }
+        if( const std::optional<int> limit = filter.most( d, targets ) ) {
+            if( static_cast<int>( targets.size() ) > *limit ) {
+                targets.resize( *limit );
+            }
+        }
+        const double amt = std::max( 0.0, amount.evaluate( d ) );
+        int repaired = 0;
+        int fixed = 0;
+        for( const int idx : targets ) {
+            vehicle_part &vp = veh->part( idx );
+            const int durability = vp.info().durability;
+            const double hp = std::min<double>( percent ? amt * durability / 100.0 : amt, durability );
+            const bool was_broken = vp.is_broken();
+            // a part that works again refreshes the vehicle, so look it up afresh after
+            if( veh->restore_part_hp( here, vp, static_cast<int>( std::lround( hp ) ) ) ) {
+                repaired++;
+                fixed += was_broken && !veh->part( idx ).is_broken() ? 1 : 0;
+            }
+        }
+        d.set_value( "vehicle_parts_repaired", repaired );
+        d.set_value( "vehicle_parts_fixed", fixed );
+    };
+}
+
+// The mount point of the vehicle at a map location: one of its tiles, or a tile next to one
+// that a new frame could go on.
+std::optional<point_rel_ms> vehicle_mount_at( const vehicle &veh, const tripoint_abs_ms &where )
+{
+    std::set<point_rel_ms> seen;
+    for( const vpart_reference &vp : veh.get_all_parts() ) {
+        if( vp.part().removed ) {
+            continue;
+        }
+        for( const point &offset : five_cardinal_directions ) {
+            const point_rel_ms mount = vp.mount_pos() + offset;
+            if( seen.insert( mount ).second && veh.mount_to_tripoint_abs( mount ) == where ) {
+                return mount;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// VINT-J01: u_install_vehicle_part / npc_install_vehicle_part. Installs a new part on the talker
+// vehicle at "loc", or at the mount point "mount_x", "mount_y", where the vehicle menu would let
+// it go, without tools, skills or components.
+talk_effect_fun_t::func f_install_vehicle_part( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const str_or_var part = get_str_or_var( jo.get_member( member ), member, true );
+    std::optional<var_info> loc;
+    if( jo.has_member( "loc" ) ) {
+        loc = read_var_info( jo.get_object( "loc" ) );
+    }
+    std::optional<dbl_or_var> mount_x;
+    std::optional<dbl_or_var> mount_y;
+    if( jo.has_member( "mount_x" ) || jo.has_member( "mount_y" ) ) {
+        mount_x = get_dbl_or_var( jo, "mount_x" );
+        mount_y = get_dbl_or_var( jo, "mount_y" );
+    }
+    if( loc.has_value() == mount_x.has_value() ) {
+        jo.throw_error_at( member, R"(needs either "loc" or "mount_x" and "mount_y")" );
+    }
+    std::optional<str_or_var> variant;
+    if( jo.has_member( "variant" ) ) {
+        variant = get_str_or_var( jo.get_member( "variant" ), "variant", true );
+    }
+    return [is_npc, part, loc, mount_x, mount_y, variant]( dialogue & d ) {
+        d.set_value( "vehicle_part_installed", 0 );
+        vehicle *veh = vehicle_on_map( d, is_npc, "install_vehicle_part" );
+        if( veh == nullptr ) {
+            return;
+        }
+        map &here = get_map();
+        const vpart_id id( part.evaluate( d ) );
+        if( !id.is_valid() ) {
+            debugmsg( "install_vehicle_part: unknown vehicle part %s\n%s", id.str(), d.get_callstack() );
+            return;
+        }
+        const vpart_info &vpi = *id;
+        std::string variant_id = vpi.variant_default;
+        if( variant ) {
+            variant_id = variant->evaluate( d );
+            if( vpi.variants.count( variant_id ) == 0 ) {
+                debugmsg( "install_vehicle_part: %s has no variant %s\n%s", id.str(), variant_id,
+                          d.get_callstack() );
+                return;
+            }
+        }
+        point_rel_ms mount;
+        if( loc ) {
+            const std::optional<point_rel_ms> found =
+                vehicle_mount_at( *veh, read_var_value( *loc, d ).tripoint() );
+            if( !found ) {
+                return;
+            }
+            mount = *found;
+        } else {
+            mount = point_rel_ms( static_cast<int>( std::lround( mount_x->evaluate( d ) ) ),
+                                  static_cast<int>( std::lround( mount_y->evaluate( d ) ) ) );
+        }
+        // what the vehicle menu checks before it offers a part for a tile (veh_interact)
+        const tripoint_bub_ms pos = veh->mount_to_tripoint( &here, mount );
+        if( !here.inbounds( pos ) || here.impassable_ter_furn( pos ) ) {
+            return;
+        }
+        const optional_vpart_position other = here.veh_at( pos );
+        if( ( other && &other->vehicle() != veh ) ||
+            ( vpi.has_flag( VPFLAG_OBSTACLE ) && get_creature_tracker().creature_at( pos ) ) ||
+            !veh->can_mount( mount, vpi ).success() ) {
+            return;
+        }
+        const int idx = veh->install_part( here, mount, id );
+        if( idx < 0 ) {
+            return;
+        }
+        veh->part( idx ).variant = variant_id;
+        here.add_vehicle_to_cache( veh );
+        if( vpi.has_flag( VPFLAG_BOARDABLE ) ) {
+            if( Character *const who = get_creature_tracker().creature_at<Character>( pos ) ) {
+                here.board_vehicle( pos, who );
+            }
+        }
+        d.set_value( "vehicle_part_installed", 1 );
+    };
+}
+
+// VINT-J01: u_remove_vehicle_parts / npc_remove_vehicle_parts. Takes the talker vehicle's parts
+// that match the filters off it, by the vehicle menu's rules (what is attached to a part goes
+// first) and, unless "split" is set, never one that would split the vehicle. "salvage" drops
+// what uninstalling a part gives, "destroy" nothing. Removed parts and split-off pieces are only
+// cleaned up at the end of the turn, so the talker stays usable for the rest of the EOC.
+talk_effect_fun_t::func f_remove_vehicle_parts( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const str_or_var mode = get_str_or_var( jo.get_member( member ), member, true );
+    const vehicle_part_filter filter( jo, true );
+    const bool split = jo.get_bool( "split", false );
+    return [is_npc, mode, filter, split]( dialogue & d ) {
+        d.set_value( "vehicle_parts_removed", 0 );
+        vehicle *veh = vehicle_on_map( d, is_npc, "remove_vehicle_parts" );
+        if( veh == nullptr ) {
+            return;
+        }
+        const std::string how = mode.evaluate( d );
+        if( how != "salvage" && how != "destroy" ) {
+            debugmsg( "remove_vehicle_parts: \"%s\" is neither \"salvage\" nor \"destroy\"\n%s", how,
+                      d.get_callstack() );
+            return;
+        }
+        map &here = get_map();
+        const vehicle_part_filter::values match = filter.evaluate( d, here );
+        // cables lead to another vehicle or to what is towed; the vehicle menu unlinks them first
+        const auto is_cable = []( const vehicle_part & vp ) {
+            return vp.info().has_flag( VPFLAG_POWER_TRANSFER ) || vp.info().has_flag( "TOW_CABLE" );
+        };
+        // last installed first: what is attached to a part comes after it
+        std::vector<int> targets;
+        for( int idx = veh->part_count() - 1; idx >= 0; idx-- ) {
+            const vehicle_part &vp = veh->part( idx );
+            if( !vp.removed && !vp.is_fake && !is_cable( vp ) && match.matches( here, *veh, vp ) ) {
+                targets.push_back( idx );
+            }
+        }
+        const int limit = filter.most( d, targets ).value_or( INT_MAX );
+        int removed = 0;
+        // a removal can free another part: a seat once its seatbelt is gone, a frame once bare
+        for( bool progress = true; progress && removed < limit; ) {
+            progress = false;
+            for( int &idx : targets ) {
+                if( idx < 0 || removed >= limit ) {
+                    continue;
+                }
+                vehicle_part &vp = veh->part( idx );
+                if( vp.removed ) {
+                    idx = -1;
+                    continue;
+                }
+                const bool structure = vp.info().location == vpart_location_structure;
+                if( !veh->can_unmount( vp, split ).success() ) {
+                    continue;
+                }
+                if( structure ) {
+                    const std::vector<int> on_tile = veh->parts_at_relative( vp.mount, false );
+                    if( std::any_of( on_tile.begin(), on_tile.end(), [veh, &is_cable]( int other ) {
+                    return is_cable( veh->part( other ) );
+                    } ) ) {
+                        continue;
+                    }
+                }
+                if( how == "salvage" && !veh->magic ) {
+                    const tripoint_bub_ms pos = veh->bub_part_pos( here, vp );
+                    if( vp.is_broken() || vp.info().has_flag( "SMASH_REMOVE" ) ) {
+                        for( const item &piece : vp.pieces_for_broken_part() ) {
+                            here.add_item_or_charges( pos, piece );
+                        }
+                    } else {
+                        here.add_item_or_charges( pos, veh->removed_part( here, vp ) );
+                        for( const item &it : vp.get_salvageable() ) {
+                            here.add_item_or_charges( pos, it );
+                        }
+                    }
+                }
+                veh->remove_part( vp );
+                if( structure && split ) {
+                    veh->find_and_split_vehicles( here, { idx } );
+                }
+                idx = -1;
+                removed++;
+                progress = true;
+            }
+        }
+        d.set_value( "vehicle_parts_removed", removed );
+        d.set_value( "vehicle_destroyed", any_vehicle_part_left( *veh ) ? 0 : 1 );
+    };
+}
+
+// VINT-J01: u_toggle_vehicle_parts / npc_toggle_vehicle_parts: "on", "off" or "toggle" (as the
+// electronics menu does: all on when none is on, else all off) for the talker vehicle's working
+// parts that match the filters. A part that can't be on now stays off.
+talk_effect_fun_t::func f_toggle_vehicle_parts( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const str_or_var state = get_str_or_var( jo.get_member( member ), member, true );
+    const vehicle_part_filter filter( jo, false );
+    return [is_npc, state, filter]( dialogue & d ) {
+        d.set_value( "vehicle_parts_toggled", 0 );
+        vehicle *veh = vehicle_on_map( d, is_npc, "toggle_vehicle_parts" );
+        if( veh == nullptr ) {
+            return;
+        }
+        const std::string how = state.evaluate( d );
+        if( how != "on" && how != "off" && how != "toggle" ) {
+            debugmsg( "toggle_vehicle_parts: \"%s\" is not \"on\", \"off\" or \"toggle\"\n%s", how,
+                      d.get_callstack() );
+            return;
+        }
+        map &here = get_map();
+        const vehicle_part_filter::values match = filter.evaluate( d, here );
+        std::vector<int> targets;
+        for( int idx = 0; idx < veh->part_count(); idx++ ) {
+            const vehicle_part &vp = veh->part( idx );
+            if( !vp.removed && !vp.is_fake && vp.is_available() && match.matches( here, *veh, vp ) ) {
+                targets.push_back( idx );
+            }
+        }
+        const auto is_on = [veh]( int idx ) {
+            return veh->part( idx ).enabled;
+        };
+        const bool turn_on = how == "toggle" ? std::none_of( targets.begin(), targets.end(), is_on ) :
+                             how == "on";
+        std::vector<int> toggled;
+        bool engines_changed = false;
+        for( const int idx : targets ) {
+            vehicle_part &vp = veh->part( idx );
+            if( vp.enabled == turn_on || ( turn_on && !veh->can_enable( here, vp ) ) ) {
+                continue;
+            }
+            vp.enabled = turn_on;
+            toggled.push_back( idx );
+            if( vp.is_engine() ) {
+                engines_changed = true;
+                if( turn_on && veh->engine_on ) {
+                    // as vehicle::start_engine() does, so it runs on a fuel there is
+                    veh->auto_select_fuel( here, vp );
+                }
+            }
+        }
+        if( !toggled.empty() ) {
+            if( engines_changed && veh->engine_on &&
+                std::none_of( veh->engines.begin(), veh->engines.end(), is_on ) ) {
+                veh->stop_engines( here );
+            }
+            // smart controllers, extra drag and the like are worked out from what is on; it also
+            // sets cameras by the camera system and turns off turrets without turret controls
+            veh->refresh( false );
+            here.set_lightmap_cache_dirty( veh->pos_bub( here ).z() );
+        }
+        // refresh() can switch a part back
+        int changed = 0;
+        for( const int idx : toggled ) {
+            changed += veh->part( idx ).enabled == turn_on ? 1 : 0;
+        }
+        d.set_value( "vehicle_parts_toggled", changed );
+    };
+}
+
+// VINT-J01: u_add_vehicle_chat_topic / u_remove_vehicle_chat_topic (and the npc_ forms): the
+// talker vehicle's own chat topics, which its "Talk to" entry and open_dialogue start with.
+talk_effect_fun_t::func f_vehicle_chat_topic( const JsonObject &jo, std::string_view member,
+        bool is_npc, bool add )
+{
+    const str_or_var topic = get_str_or_var( jo.get_member( member ), member, true );
+    if( add && topic.is_constant() ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name = topic.constant(), context]() {
+            if( !talk_topic_exists( name ) ) {
+                debugmsg( "Chat topic \"%s\" (added to a vehicle in %s) does not exist", name, context );
+            }
+        } );
+    }
+    return [is_npc, topic, add]( dialogue & d ) {
+        vehicle *veh = vehicle_on_map( d, is_npc, add ? "add_vehicle_chat_topic" :
+                                       "remove_vehicle_chat_topic" );
+        if( veh == nullptr ) {
+            return;
+        }
+        const std::string name = topic.evaluate( d );
+        std::vector<std::string> &topics = veh->chat_topics;
+        topics.erase( std::remove( topics.begin(), topics.end(), name ), topics.end() );
+        if( add ) {
+            veh->add_chat_topic( name );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_add_vehicle_chat_topic( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    return f_vehicle_chat_topic( jo, member, is_npc, true );
+}
+
+talk_effect_fun_t::func f_remove_vehicle_chat_topic( const JsonObject &jo,
+        std::string_view member, std::string_view, bool is_npc )
+{
+    return f_vehicle_chat_topic( jo, member, is_npc, false );
+}
+
+// VEH-J01: u_set_vehicle_owner / npc_set_vehicle_owner: the faction that owns the talker
+// vehicle; "" or "NULL" leaves it unowned. "owner_from": the other talker's faction, which
+// must be a character.
+talk_effect_fun_t::func f_set_vehicle_owner( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    const str_or_var owner = get_str_or_var( jo.get_member( member ), member, true );
+    return [is_npc, owner]( dialogue & d ) {
+        vehicle *veh = vehicle_on_map( d, is_npc, "set_vehicle_owner" );
+        if( veh == nullptr ) {
+            return;
+        }
+        const std::string name = owner.evaluate( d );
+        if( name == "npc" || name == "u" ) {
+            const bool other_is_npc = name == "npc";
+            const Character *who = d.has_actor( other_is_npc ) ?
+                                   d.actor( other_is_npc )->get_character() : nullptr;
+            if( who == nullptr ) {
+                debugmsg( "set_vehicle_owner: the %s talker isn't a character\n%s", name,
+                          d.get_callstack() );
+                return;
+            }
+            veh->set_owner( *who );
+        } else if( name.empty() || name == "NULL" ) {
+            veh->set_owner( faction_id::NULL_ID() );
+        } else {
+            const faction_id fac( name );
+            if( g->faction_manager_ptr->get( fac, false ) == nullptr ) {
+                debugmsg( "set_vehicle_owner: unknown faction %s\n%s", name, d.get_callstack() );
+                return;
+            }
+            veh->set_owner( fac );
+        }
+        // a pending theft would hand it back to the old owner otherwise
+        veh->remove_old_owner();
+    };
+}
+
 talk_effect_fun_t::func f_run_vehicle_eocs( const JsonObject &jo,
         std::string_view member, std::string_view src, bool is_npc )
 {
@@ -8606,9 +9504,13 @@ talk_effect_fun_t::func f_set_talker( const JsonObject &jo, std::string_view mem
     var_type type = var.type;
     std::string var_name = var.name;
     return [is_npc, var, type, var_name]( dialogue & d ) {
-        int id = d.actor( is_npc )->getID().get_value();
-        // stringify for `run_eocs` - see get_talker() above
-        write_var_value( type, var_name, &d, std::to_string( id ) );
+        // read back by `run_eocs` - see get_talker() above
+        const std::string handle = talker_handle( *d.actor( is_npc ) );
+        if( handle.empty() ) {
+            debugmsg( "%s_set_talker: only a character, monster, item or vehicle has a handle to "
+                      "store\n%s", is_npc ? "npc" : "u", d.get_callstack() );
+        }
+        write_var_value( type, var_name, &d, handle );
     };
 }
 
@@ -10304,36 +11206,58 @@ talk_effect_fun_t::func f_reveal_route( const JsonObject &jo, std::string_view m
 }
 
 talk_effect_fun_t::func f_closest_city( const JsonObject &jo, std::string_view member,
-                                        std::string_view )
+                                        std::string_view src )
 {
     var_info var = read_var_info( jo.get_object( member ) );
-    var_type type = var.type;
-    std::string var_name = var.name;
     bool known = jo.get_bool( "known", true );
+    // OMAP-J01: filters, and EOCs for whether a city was found
+    std::optional<dbl_or_var> min_size;
+    if( jo.has_member( "min_size" ) ) {
+        min_size = get_dbl_or_var( jo, "min_size" );
+    }
+    std::optional<dbl_or_var> max_size;
+    if( jo.has_member( "max_size" ) ) {
+        max_size = get_dbl_or_var( jo, "max_size" );
+    }
+    std::optional<dbl_or_var> max_distance;
+    if( jo.has_member( "max_distance" ) ) {
+        max_distance = get_dbl_or_var( jo, "max_distance" );
+    }
+    str_or_var name;
+    optional( jo, false, "name", name );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
 
-    return [var, type, var_name, known]( dialogue & d ) {
+    return [var, known, min_size, max_size, max_distance, name, true_eocs,
+         false_eocs]( dialogue & d ) {
         tripoint_abs_ms loc_ms = read_var_value( var, d ).tripoint();
         tripoint_abs_sm loc_sm = project_to<coords::sm>( loc_ms );
 
-        if( known ) {
-            city_reference city = overmap_buffer.closest_known_city( loc_sm );
-            if( city ) {
-                tripoint_abs_omt city_center_omt = project_to<coords::omt>( city.abs_sm_pos );
-                write_var_value( type, var_name, &d, tripoint_abs_ms{ city_center_omt.raw() } );
-                write_var_value( var_type::context, "city_name", &d, city.city->name );
-                write_var_value( var_type::context, "city_size", &d, city.city->size );
-            } else {
-                return;
-            }
-        } else {
-            city_reference city = overmap_buffer.closest_city( loc_sm );
-            if( city ) {
-                tripoint_abs_omt city_center_omt = project_to<coords::omt>( city.abs_sm_pos );
-                write_var_value( type, var_name, &d, tripoint_abs_ms{ city_center_omt.raw() } );
-                write_var_value( var_type::context, "city_name", &d, city.city->name );
-                write_var_value( var_type::context, "city_size", &d, city.city->size );
-            }
+        city_filter filter;
+        filter.known_only = known;
+        if( min_size ) {
+            filter.min_size = static_cast<int>( min_size->evaluate( d ) );
         }
+        if( max_size ) {
+            filter.max_size = std::max( 0, static_cast<int>( max_size->evaluate( d ) ) );
+        }
+        if( max_distance ) {
+            filter.max_distance = std::max( 0, static_cast<int>( max_distance->evaluate( d ) ) );
+        }
+        filter.name = name.evaluate( d );
+        const city_reference city = overmap_buffer.closest_city( loc_sm, filter );
+        if( !city ) {
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        const tripoint_abs_omt city_center_omt = project_to<coords::omt>( city.abs_sm_pos );
+        // The city's center tile, in map squares as any location
+        write_var_value( var.type, var.name, &d, project_to<coords::ms>( city_center_omt ) );
+        write_var_value( var_type::context, "city_name", &d, city.city->name );
+        write_var_value( var_type::context, "city_size", &d, city.city->size );
+        write_var_value( var_type::context, "city_distance", &d,
+                         rl_dist( city_center_omt.xy(), project_to<coords::omt>( loc_ms ).xy() ) );
+        run_eoc_vector( true_eocs, d );
     };
 }
 
@@ -10779,6 +11703,14 @@ parsers = {
     { "u_run_npc_eocs", "npc_run_npc_eocs", jarg::array, &talk_effect_fun::f_run_npc_eocs },
     { "u_run_monster_eocs", "npc_run_monster_eocs", jarg::array, &talk_effect_fun::f_run_monster_eocs },
     { "u_run_vehicle_eocs", "npc_run_vehicle_eocs", jarg::array, &talk_effect_fun::f_run_vehicle_eocs },
+    { "u_damage_vehicle_parts", "npc_damage_vehicle_parts", jarg::member, &talk_effect_fun::f_damage_vehicle_parts },
+    { "u_set_vehicle_owner", "npc_set_vehicle_owner", jarg::member, &talk_effect_fun::f_set_vehicle_owner },
+    { "u_repair_vehicle_parts", "npc_repair_vehicle_parts", jarg::member, &talk_effect_fun::f_repair_vehicle_parts },
+    { "u_install_vehicle_part", "npc_install_vehicle_part", jarg::member, &talk_effect_fun::f_install_vehicle_part },
+    { "u_remove_vehicle_parts", "npc_remove_vehicle_parts", jarg::member, &talk_effect_fun::f_remove_vehicle_parts },
+    { "u_toggle_vehicle_parts", "npc_toggle_vehicle_parts", jarg::member, &talk_effect_fun::f_toggle_vehicle_parts },
+    { "u_add_vehicle_chat_topic", "npc_add_vehicle_chat_topic", jarg::member, &talk_effect_fun::f_add_vehicle_chat_topic },
+    { "u_remove_vehicle_chat_topic", "npc_remove_vehicle_chat_topic", jarg::member, &talk_effect_fun::f_remove_vehicle_chat_topic },
     { "u_run_fixed_zone_eocs", "npc_run_fixed_zone_eocs", jarg::array, &talk_effect_fun::f_run_fixed_zone_eocs },
     { "u_run_inv_eocs", "npc_run_inv_eocs", jarg::member, &talk_effect_fun::f_run_inv_eocs },
     { "u_roll_remainder", "npc_roll_remainder", jarg::member, &talk_effect_fun::f_roll_remainder },
@@ -10812,6 +11744,14 @@ parsers = {
     {
         "u_set_monster_faction", "npc_set_monster_faction", jarg::member,
         &talk_effect_fun::f_set_monster_faction
+    },
+    {
+        "u_set_monster_destination", "npc_set_monster_destination", jarg::object,
+        &talk_effect_fun::f_set_monster_destination
+    },
+    {
+        "u_set_monster_target", "npc_set_monster_target", jarg::object,
+        &talk_effect_fun::f_set_monster_target
     },
     { "u_die", "npc_die", jarg::object, &talk_effect_fun::f_die_advanced},
     { "u_spawn_monster", "npc_spawn_monster", jarg::member, &talk_effect_fun::f_spawn_monster },
@@ -10883,6 +11823,8 @@ parsers = {
     { "u_spawn_item", jarg::member, &talk_effect_fun::f_spawn_item },
     { "u_pick_bodypart", "npc_pick_bodypart", jarg::member, &talk_effect_fun::f_pick_bodypart },
     { "u_add_wound", "npc_add_wound", jarg::member, &talk_effect_fun::f_add_wound },
+    { "u_add_body_part", "npc_add_body_part", jarg::member, &talk_effect_fun::f_add_body_part },
+    { "u_lose_body_part", "npc_lose_body_part", jarg::member, &talk_effect_fun::f_lose_body_part },
     { "u_remove_wound", "npc_remove_wound", jarg::member, &talk_effect_fun::f_remove_wound },
     { "u_remove_all_wounds", "npc_remove_all_wounds", jarg::member, &talk_effect_fun::f_remove_all_wounds },
     { "toggle_npc_rule", jarg::member, &talk_effect_fun::f_toggle_npc_rule },
@@ -10941,6 +11883,7 @@ parsers = {
     { "turn_cost", jarg::member, &talk_effect_fun::f_turn_cost },
     { "transform_item", jarg::member, &talk_effect_fun::f_transform_item },
     { "signal_hordes", jarg::member, &talk_effect_fun::f_signal_hordes },
+    { "spawn_overmap_horde", jarg::member, &talk_effect_fun::f_spawn_overmap_horde },
     { "set_browsed", jarg::member, &talk_effect_fun::f_set_browsed },
     // since parser checks all effects in order, having "message" field in any another effect (like in f_roll_remainder)
     // would cause parser to think it's a "message" effect
@@ -11114,6 +12057,12 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     if( effect_id == "u_cancel_walk" || effect_id == "npc_cancel_walk" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_cancel_walk( effect_id == "npc_cancel_walk",
                                        false ) ) );
+        return;
+    }
+
+    if( effect_id == "u_clear_monster_goal" || effect_id == "npc_clear_monster_goal" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_clear_monster_goal(
+                                           effect_id == "npc_clear_monster_goal" ) ) );
         return;
     }
 
@@ -11648,11 +12597,20 @@ void json_talk_topic::load( const JsonObject &jo, std::string_view src )
             }
         }
     }
+    // A later definition of the topic keeps the portrait an earlier one gave unless it names one.
     if( jo.has_member( "portrait_override" ) ) {
         portrait_override = character_portrait_id( jo.get_member( "portrait_override" ) );
-    } else {
-        // FIXME: Use real null IDs not std::optional juggling :(
-        portrait_override = std::nullopt;
+    }
+    // Earlier definitions' responses: "replace_responses" drops them all, "delete" the ones
+    // matched by text and/or topic (DATA-J02).
+    if( jo.get_bool( "replace_responses", false ) ) {
+        responses.clear();
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        for( const JsonObject match : del.get_array( "responses" ) ) {
+            delete_responses( match );
+        }
     }
     bool insert_above_bottom = false;
     if( jo.has_bool( "insert_before_standard_exits" ) ) {
@@ -11688,6 +12646,30 @@ void json_talk_topic::load( const JsonObject &jo, std::string_view src )
     }
     replace_built_in_responses = jo.get_bool( "replace_built_in_responses",
                                  replace_built_in_responses );
+}
+
+void json_talk_topic::delete_responses( const JsonObject &match )
+{
+    const bool by_text = match.has_member( "text" );
+    const bool by_topic = match.has_string( "topic" );
+    if( !by_text && !by_topic ) {
+        match.throw_error( "a response to delete needs a \"text\", a \"topic\" or both" );
+    }
+    translation text;
+    if( by_text ) {
+        match.read( "text", text, true );
+    }
+    const std::string topic = by_topic ? match.get_string( "topic" ) : std::string();
+    const auto doomed = [&]( const json_talk_response & r ) {
+        const talk_response &resp = r.get_actual_response();
+        return ( !by_text || resp.truetext == text ) &&
+               ( !by_topic || resp.success.next_topic.id == topic );
+    };
+    const auto removed = std::remove_if( responses.begin(), responses.end(), doomed );
+    if( removed == responses.end() ) {
+        match.throw_error( "the talk topic has no such response to delete" );
+    }
+    responses.erase( removed, responses.end() );
 }
 
 bool json_talk_topic::gen_responses( dialogue &d )
@@ -11747,7 +12729,7 @@ cata::flat_set<std::string> json_talk_topic::get_directly_reachable_topics(
     return cata::flat_set<std::string>( result.begin(), result.end() );
 }
 
-std::vector<json_talk_response> json_talk_topic::get_responses()
+std::vector<json_talk_response> json_talk_topic::get_responses() const
 {
     return responses;
 }

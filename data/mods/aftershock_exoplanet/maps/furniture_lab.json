@@ -29,7 +29,22 @@
         { "item": "afs_circuitry_1", "count": [ 2, 4 ] }
       ]
     },
-    "examine_action": "autoclave_empty",
+    "examine_action": {
+      "type": "process_start",
+      "accepts": { "bionic": true },
+      "reject_if_contains": { "flags": [ "FILTHY" ] },
+      "contains_message": {
+        "text": "Some of those CBMs are filthy, you should wash them first for the sterilization process to work properly.",
+        "type": "bad"
+      },
+      "reject_message": "You need to remove all non-CBM items from the autoclave to start the program.",
+      "empty_message": "This autoclave is empty…",
+      "requirements": "autoclave",
+      "query": "Start the autoclave?",
+      "reset_age": true,
+      "success_message": "You start the autoclave.",
+      "furn_set": "f_autoclave_full"
+    },
     "bash": {
       "str_min": 40,
       "str_max": 80,
@@ -80,7 +95,18 @@
         { "item": "afs_circuitry_1", "count": [ 2, 4 ] }
       ]
     },
-    "examine_action": "autoclave_full",
+    "examine_action": {
+      "type": "process_finish",
+      "duration": "90 minutes",
+      "empty_message": "This autoclave is empty…",
+      "accepts": { "bionic": true },
+      "reject_message": "ERROR Autoclave can't process non CBM items.",
+      "examine_message": "The autoclave is running.",
+      "time_left_message": "The cycle will be complete in %s.",
+      "sterilize_cbms": true,
+      "done_message": { "text": "The cycle is complete, the CBMs are now sterile.", "type": "good" },
+      "furn_set": "f_autoclave"
+    },
     "bash": {
       "str_min": 40,
       "str_max": 80,

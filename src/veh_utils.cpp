@@ -104,6 +104,12 @@ vehicle_part *most_repairable_part( vehicle &veh, Character &who )
     return vp_most_damaged != nullptr ? vp_most_damaged : vp_broken;
 }
 
+const temp_crafting_inventory &repair_inventory( const Character &who, const tripoint_bub_ms &pos,
+        const int radius )
+{
+    return who.crafting_inventory( pos, radius, !who.is_npc() );
+}
+
 bool repair_part( map &here, vehicle &veh, vehicle_part &pt, Character &who )
 {
     const vpart_info &vp = pt.info();
@@ -112,8 +118,7 @@ bool repair_part( map &here, vehicle &veh, vehicle_part &pt, Character &who )
                                   ? vp.install_requirements()
                                   : vp.repair_requirements() * pt.get_base().repairable_levels();
 
-    const temp_crafting_inventory &inv = who.crafting_inventory( who.pos_bub(), PICKUP_RANGE,
-                                         !who.is_npc() );
+    const temp_crafting_inventory &inv = repair_inventory( who, who.pos_bub(), PICKUP_RANGE );
     temp_crafting_inventory map_inv;
     // allow NPCs to use welding rigs they can't see ( on the other side of a vehicle )
     // as they have the handicap of not being able to use the veh interaction menu

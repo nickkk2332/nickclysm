@@ -229,6 +229,17 @@ std::string enum_to_string<magic_energy_type>( magic_energy_type data )
     }
     cata_fatal( "Invalid magic_energy_type" );
 }
+template<>
+std::string enum_to_string<hit_type>( hit_type data )
+{
+    switch( data ) {
+    case hit_type::melee: return "melee";
+    case hit_type::ranged: return "ranged";
+    case hit_type::thrown: return "thrown";
+    case hit_type::last: break;
+    }
+    cata_fatal( "Invalid hit_type" );
+}
 // *INDENT-ON*
 
 } // namespace io
@@ -1396,7 +1407,10 @@ int spell_type::get_difficulty( const Creature &caster ) const
 int spell::get_difficulty( const Creature &caster ) const
 {
     const_dialogue d( get_const_talker_for( caster ), nullptr, {}, spell_cast_context::get( *this ) );
-    return type->difficulty.evaluate( d ) + temp_difficulty_adjustment;
+    const double base = type->difficulty.evaluate( d ) + temp_difficulty_adjustment;
+    // not clamped at 0, unlike the other spell values: a difficulty can be below 0
+    return static_cast<int>( std::lround( caster.enchantment_cache->modify_spell_value(
+            enchant_vals::spell_mod::DIFFICULTY, *this, base ) ) );
 }
 
 mod_id spell::get_src() const
@@ -1474,6 +1488,16 @@ std::string spell::message() const
 }
 
 float spell::spell_fail( const Character &guy ) const
+{
+    if( has_flag( spell_flag::NO_FAIL ) ) {
+        return 0.0f;
+    }
+    const double enchanted = guy.enchantment_cache->modify_spell_value( enchant_vals::spell_mod::FAIL,
+                             *this, spell_fail_unenchanted( guy ) );
+    return static_cast<float>( std::clamp( enchanted, 0.0, 1.0 ) );
+}
+
+float spell::spell_fail_unenchanted( const Character &guy ) const
 {
     if( has_flag( spell_flag::NO_FAIL ) ) {
         return 0.0f;
@@ -1725,7 +1749,8 @@ int spell::sound_volume( const Creature &caster ) const
             loudness += 1 + damage( caster ) / 3;
         }
     }
-    return std::max( loudness * temp_sound_multiplyer, 0.0f );
+    return enchanted_spell_value( *this, caster, enchant_vals::spell_mod::SOUND,
+                                  std::max( loudness * temp_sound_multiplyer, 0.0f ) );
 }
 
 void spell::make_sound( const tripoint_bub_ms &target, Creature &caster ) const
@@ -2253,15 +2278,19 @@ float spell::exp_modifier( const Character &guy ) const
 
 int spell::casting_exp( const Character &guy ) const
 {
+    double exp;
     if( type->magic_type.has_value() && type->magic_type.value()->casting_xp_formula_id.has_value() ) {
         const_dialogue d( get_const_talker_for( guy ), nullptr, {}, spell_cast_context::get( *this ) );
         d.set_value( "spell_id", id().str() );
-        return std::round( type->magic_type.value()->casting_xp_formula_id.value()->eval( d ) );
+        exp = std::round( type->magic_type.value()->casting_xp_formula_id.value()->eval( d ) );
     } else {
         // the amount of xp you would get with no modifiers
         const int base_casting_xp = 75;
-        return std::round( guy.adjust_for_focus( base_casting_xp * exp_modifier( guy ) ) );
+        exp = std::round( guy.adjust_for_focus( base_casting_xp * exp_modifier( guy ) ) );
     }
+    // the caster's EXP enchantments change what a cast teaches, not what study does
+    return static_cast<int>( std::round( guy.enchantment_cache->modify_spell_value(
+            enchant_vals::spell_mod::EXP, *this, exp ) ) );
 }
 
 std::string spell::enumerate_targets() const
@@ -2403,21 +2432,140 @@ int spell::heal( const tripoint_bub_ms &target, Creature &caster ) const
     return -1;
 }
 
-void spell::cast_spell_effect( const tripoint_bub_ms &target ) const
+namespace
 {
-    map &here = get_map();
 
-    avatar fake_avatar;
-    // a temporary caster: never record it as an attacker or killer
-    fake_avatar.set_fake( true );
-    fake_avatar.setpos( here, target );
-    const execution_combat::effect_scope execution_effect( fake_avatar, *this, true );
+int casterless_casters_built_count = 0;
+
+// A casterless cast (an item spell with no one holding the item, a projectile with no source)
+// and every spell it casts in turn share one fake caster, standing at the target. A spell
+// effect can change its caster, so after one has run the caster is put back as it was built
+// before the next spell uses it.
+class casterless_caster
+{
+    public:
+        explicit casterless_caster( const tripoint_bub_ms &target ) : pos( target ) {
+            ++casterless_casters_built_count;
+            // a temporary caster: never record it as an attacker or killer
+            guy.set_fake( true );
+            guy.setpos( get_map(), pos );
+            built_moves = guy.get_moves();
+            built_pain = guy.get_pain();
+            built_stamina = guy.get_stamina();
+            built_values = guy.get_values();
+        }
+        // The caster, as built, for a use that doesn't change it.
+        avatar &get() {
+            if( changed ) {
+                reset();
+            }
+            return guy;
+        }
+        // The caster, as built, for a spell effect, which may change it.
+        avatar &for_effect() {
+            avatar &caster = get();
+            changed = true;
+            return caster;
+        }
+    private:
+        // Undoes what spell effects and their EOCs change on a caster: its position (teleports,
+        // swaps, dashes), moves, hit points, pain and stamina, effects and variables.
+        void reset() {
+            changed = false;
+            if( guy.pos_bub() != pos ) {
+                guy.setpos( get_map(), pos );
+            }
+            guy.set_moves( built_moves );
+            guy.set_all_parts_hp_to_max();
+            if( guy.get_pain() != built_pain ) {
+                guy.set_pain( built_pain );
+            }
+            guy.set_stamina( built_stamina );
+            guy.clear_effects();
+            guy.get_values() = built_values;
+        }
+
+        avatar guy;
+        tripoint_bub_ms pos;
+        int built_moves = 0;
+        int built_pain = 0;
+        int built_stamina = 0;
+        global_variables::impl_t built_values;
+        bool changed = false;
+};
+
+void cast_spell_effect_casterless( const spell &sp, casterless_caster &caster,
+                                   const tripoint_bub_ms &target )
+{
+    avatar &fake_avatar = caster.for_effect();
+    const execution_combat::effect_scope execution_effect( fake_avatar, sp, true );
 
     get_event_bus().send<event_type::character_casts_spell>( character_id( -1 ),
-            this->id(), this->spell_class(),
-            0, 0, 0, this->damage( fake_avatar ) );
+            sp.id(), sp.spell_class(),
+            0, 0, 0, sp.damage( fake_avatar ) );
 
-    type->effect( *this, fake_avatar, target );
+    sp.id()->effect( sp, fake_avatar, target );
+}
+
+void cast_all_effects_casterless( const spell &sp, casterless_caster &caster,
+                                  const tripoint_bub_ms &target );
+
+void cast_extra_spell_effects_casterless( const spell &sp, casterless_caster &caster,
+        const tripoint_bub_ms &target )
+{
+    for( const fake_spell &extra_spell : sp.id()->additional_spells ) {
+        spell child = extra_spell.get_spell_with_context( caster.get(), sp.get_effective_level(), sp );
+        const spell_cast_context child_context( child, spell_cast_context::get( sp ) );
+        cast_all_effects_casterless( child, caster, target );
+    }
+}
+
+void cast_all_effects_casterless( const spell &sp, casterless_caster &caster,
+                                  const tripoint_bub_ms &target )
+{
+    const execution_combat::effect_scope execution_cast( caster.get(), sp, false );
+
+    if( sp.has_flag( spell_flag::WONDER ) ) {
+        const std::vector<fake_spell> &additional_spells = sp.id()->additional_spells;
+        const auto iter = additional_spells.begin();
+        for( int num_spells = std::abs( sp.damage( caster.get() ) ); num_spells > 0; num_spells-- ) {
+            if( additional_spells.empty() ) {
+                debugmsg( "ERROR: %s has WONDER flag but no spells to choose from!", sp.id().c_str() );
+                return;
+            }
+            const int rand_spell = rng( 0, additional_spells.size() - 1 );
+            spell child = ( iter + rand_spell )->get_spell_with_context( caster.get(),
+                          sp.get_effective_level(), sp );
+            const spell_cast_context child_context( child, spell_cast_context::get( sp ) );
+
+            // This spell flag makes it so the message of the spell that's cast using this spell will be sent.
+            // if a message is added to the casting spell, it will be sent as well.
+            add_msg( child.message() );
+
+            cast_all_effects_casterless( child, caster, target );
+        }
+    } else {
+        if( sp.has_flag( spell_flag::EXTRA_EFFECTS_FIRST ) ) {
+            cast_extra_spell_effects_casterless( sp, caster, target );
+            cast_spell_effect_casterless( sp, caster, target );
+        } else {
+            cast_spell_effect_casterless( sp, caster, target );
+            cast_extra_spell_effects_casterless( sp, caster, target );
+        }
+    }
+}
+
+} // namespace
+
+int spell::casterless_casters_built()
+{
+    return casterless_casters_built_count;
+}
+
+void spell::cast_spell_effect( const tripoint_bub_ms &target ) const
+{
+    casterless_caster caster( target );
+    cast_spell_effect_casterless( *this, caster, target );
 }
 
 void spell::cast_spell_effect( Creature &source, const tripoint_bub_ms &target ) const
@@ -2443,41 +2591,8 @@ void spell::cast_spell_effect( Creature &source, const tripoint_bub_ms &target )
 
 void spell::cast_all_effects( const tripoint_bub_ms &target ) const
 {
-    map &here = get_map();
-
-    avatar fake_avatar;
-    // a temporary caster: never record it as an attacker or killer
-    fake_avatar.set_fake( true );
-    fake_avatar.setpos( here, target );
-    const execution_combat::effect_scope execution_cast( fake_avatar, *this, false );
-
-    if( has_flag( spell_flag::WONDER ) ) {
-        const auto iter = type->additional_spells.begin();
-        for( int num_spells = std::abs( damage( fake_avatar ) ); num_spells > 0; num_spells-- ) {
-            if( type->additional_spells.empty() ) {
-                debugmsg( "ERROR: %s has WONDER flag but no spells to choose from!", type->id.c_str() );
-                return;
-            }
-            const int rand_spell = rng( 0, type->additional_spells.size() - 1 );
-            spell sp = ( iter + rand_spell )->get_spell_with_context( fake_avatar, get_effective_level(),
-                       *this );
-            const spell_cast_context child_context( sp, spell_cast_context::get( *this ) );
-
-            // This spell flag makes it so the message of the spell that's cast using this spell will be sent.
-            // if a message is added to the casting spell, it will be sent as well.
-            add_msg( sp.message() );
-
-            sp.cast_all_effects( target );
-        }
-    } else {
-        if( has_flag( spell_flag::EXTRA_EFFECTS_FIRST ) ) {
-            cast_extra_spell_effects( target );
-            cast_spell_effect( target );
-        } else {
-            cast_spell_effect( target );
-            cast_extra_spell_effects( target );
-        }
-    }
+    casterless_caster caster( target );
+    cast_all_effects_casterless( *this, caster, target );
 }
 
 void spell::cast_all_effects( Creature &source, const tripoint_bub_ms &target ) const
@@ -2525,17 +2640,8 @@ void spell::cast_all_effects( Creature &source, const tripoint_bub_ms &target ) 
 
 void spell::cast_extra_spell_effects( const tripoint_bub_ms &target ) const
 {
-    map &here = get_map();
-
-    avatar fake_avatar;
-    // a temporary caster: never record it as an attacker or killer
-    fake_avatar.set_fake( true );
-    fake_avatar.setpos( here, target );
-    for( const fake_spell &extra_spell : type->additional_spells ) {
-        spell sp = extra_spell.get_spell_with_context( fake_avatar, get_effective_level(), *this );
-        const spell_cast_context child_context( sp, spell_cast_context::get( *this ) );
-        sp.cast_all_effects( target );
-    }
+    casterless_caster caster( target );
+    cast_extra_spell_effects_casterless( *this, caster, target );
 }
 
 void spell::cast_extra_spell_effects( Creature &source, const tripoint_bub_ms &target ) const
@@ -4004,6 +4110,11 @@ void fake_spell::load( const JsonObject &jo )
     if( jo.has_string( "level" ) ) {
         debugmsg( "level member for fake_spell was renamed to min_level.  id: %s", id.c_str() );
     }
+    optional( jo, false, "hit_types", hit_types, enum_flags_reader<hit_type> { "hit_types" },
+              hit_types_default );
+    if( hit_types.none() ) {
+        jo.throw_error_at( "hit_types", "hit_types must name at least one kind of hit" );
+    }
 }
 
 void fake_spell::serialize( JsonOut &json ) const
@@ -4014,6 +4125,9 @@ void fake_spell::serialize( JsonOut &json ) const
     json.member( "once_in", trigger_once_in, trigger_once_in_default );
     json.member( "max_level", max_level, max_level_default );
     json.member( "min_level", level, level_default );
+    if( hit_types != hit_types_default ) {
+        json.member( "hit_types", hit_types );
+    }
     json.end_object();
 }
 

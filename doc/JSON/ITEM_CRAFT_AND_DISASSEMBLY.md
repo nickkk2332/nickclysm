@@ -95,6 +95,8 @@ Crafting recipes are defined as a JSON object with the following fields:
 ], 
 "result_item_eocs": [ "EOC_MARK_MY_BLADE" ], // List of inline effect_on_conditions or effect_on_condition ids run once for each result item, after the results are placed and after `result_eocs`.  The crafter is the alpha talker and the item is the beta talker (`npc_`), so the EOC can tag, rename or change it.  Context values: `_recipe_id`, `_batch_size`.  A result counted by charges that merged into a stack passes the whole stack; liquids poured into containers are not passed.  Needs a `result`; not allowed on practice or uncraft recipes.
 "disassembly_eocs": [ "EOC_COUNT_TAKEN_APART" ], // List of inline effect_on_conditions or effect_on_condition ids run when an item is disassembled with this recipe (an uncraft recipe, or the disassembly a reversible recipe creates), after its components are placed.  The character is the alpha talker; there is no beta talker, as the item is gone.  Context values: `_recipe_id`, `_item_id` (the disassembled item's id), `_count` (how many were disassembled, for items counted by charges; otherwise 1).
+"start_eocs": [ "EOC_FORGE_LIT" ], // List of inline effect_on_conditions or effect_on_condition ids run once when the craft starts (not when an existing craft is resumed).  The crafter is the alpha talker and the craft in progress is the beta talker.  Context values: `_recipe_id`, `_batch_size`.  Not allowed on uncraft recipes.
+"fail_eocs": [ "EOC_FORGE_SPOILED" ], // List of inline effect_on_conditions or effect_on_condition ids run each time the craft fails partway (the per-step failure roll that destroys components and loses progress).  The crafter is the alpha talker and the craft in progress is the beta talker, still there even when nothing is left to craft from.  Context values: `_recipe_id`, `_batch_size`, `_components_lost`, `_progress_lost` (percent of the whole craft), `_destroyed` (1 when the craft is used up and stops).  Not allowed on uncraft recipes.
 "name" : "%s with quern", // optional string to further describe recipe where %s is the recipe result name. Example if the result name is "flour", the final name will be "flour with quern". Especially useful for recipes with "id_suffix" that produce the same result as other recipes.
 "description": "foobar.  your name is <u_name>" // if crafting result is not an item, this text will be shown. Support color and NPC tags
 "construction_blueprint": "camp", // an optional string containing an update_mapgen_id.  Used by faction camps to upgrade their buildings
@@ -178,7 +180,28 @@ When both are given, `extend` is applied before `delete`. Neither is allowed wit
 }
 ```
 
-`using` can be extended and deleted too. The inline `components`, `tools` and `qualities` of a recipe are not inherited, so a recipe with `copy-from` must restate them; `extend` or `delete` of them is a load error.
+`using` can be extended and deleted too.
+
+#### Inheriting and changing `components`, `tools` and `qualities` with `copy-from`
+
+A recipe with `copy-from` inherits its parent's inline `components`, `tools` and `qualities`, an `abstract` parent's too. Each of the three that the recipe gives replaces the inherited list whole. `extend` and `delete` change one:
+
+- `"extend": { "components": [ ... ] }` (or `tools`, `qualities`) takes groups in the same format as the member and adds them at the end. Each group is one more requirement, not more alternatives for a group the recipe already has. (The `extend` of a `"type": "requirement"` object is different: it adds alternatives to its groups.)
+- `"delete": { "components": [ ... ] }` takes item ids (for `tools` tool ids, for `qualities` quality ids; a `LIST` entry is deleted by its requirement id) and removes every entry with that id from every group. A group left empty is dropped. Deleting an id that no group has is a load error.
+
+`extend` is applied before `delete`. Neither is allowed without `copy-from`. A recipe that gives its own `steps` doesn't inherit its parent's root `components`.
+
+```jsonc
+{
+  "type": "recipe",
+  "result": "my_mod_nailed_club",
+  "copy-from": "club_wooden",                   // a 2x4 and a CUT 1 quality
+  "extend": { "components": [ [ [ "nail", 6 ] ] ], "tools": [ [ [ "hammer", -1 ] ] ] },
+  "delete": { "qualities": [ "CUT" ] }          // a 2x4, 6 nails and a hammer
+}
+```
+
+Inline requirements are stored by recipe id. A recipe that copies itself (a mod changing a recipe with `"copy-from"` naming that same recipe) replaces them: a group it empties stays empty. A definition of a recipe id that doesn't copy that same id keeps, for each of the three that it leaves out or empty, the list of the earlier definition of the id, as it always has; give `"copy-from"` the recipe's own id to drop one.
 
 #### `batch_time_factors`
 
@@ -216,7 +239,7 @@ Step recipes support `"copy-from"` and `"abstract"`.
 
 - If a child recipe uses `"copy-from"` pointing to a step recipe and does **not** include a `"steps"` array, it inherits the base's steps.  The child can override root-level fields like `"difficulty"`, `"skill_used"`, `"components"`, etc.
 - If the child **does** include a `"steps"` array, its steps replace the base's.  Root-level `"using"` from the base is preserved; the child can override it by providing its own `"using"`.
-- An `"abstract"` recipe with steps serves as a template.  Concrete children inherit steps and provide their own `"components"` and `"result"`.
+- An `"abstract"` recipe with steps serves as a template.  Concrete children inherit steps and root `"components"` and provide their own `"result"`.
 
 ### Step fields
 

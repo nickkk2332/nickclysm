@@ -1,0 +1,115 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_p01_root",
+    "//": "MAGIC-P01 test (tests/audit_partial_perf_ai_test.cpp): counts the runs of the casterless spell tree's own effect.",
+    "effect": [ { "math": [ "audit_p01_roots++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_p01_mark_caster",
+    "//": "MAGIC-P01 test: counts its runs, records the mark its caster (the npc talker) already carries, then marks it.",
+    "effect": [
+      { "math": [ "audit_p01_marks++" ] },
+      { "math": [ "audit_p01_mark_before = n_audit_p01_mark" ] },
+      { "math": [ "n_audit_p01_mark = n_audit_p01_mark + 1" ] }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_audit_p01_read_caster",
+    "//": "MAGIC-P01 test: counts its runs and records the mark its caster carries.",
+    "effect": [ { "math": [ "audit_p01_reads++" ] }, { "math": [ "audit_p01_seen_mark = n_audit_p01_mark" ] } ]
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_p01_mark",
+    "name": "MAGIC-P01 mark",
+    "description": "MAGIC-P01 test: marks its caster.",
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_audit_p01_mark_caster",
+    "shape": "blast",
+    "valid_targets": [ "ground" ],
+    "flags": [ "SILENT", "NO_HANDS", "NO_PROJECTILE" ],
+    "max_level": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_p01_read",
+    "name": "MAGIC-P01 read",
+    "description": "MAGIC-P01 test: reads the mark its caster carries.",
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_audit_p01_read_caster",
+    "shape": "blast",
+    "valid_targets": [ "ground" ],
+    "flags": [ "SILENT", "NO_HANDS", "NO_PROJECTILE" ],
+    "max_level": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_p01_tree",
+    "name": "MAGIC-P01 tree",
+    "description": "MAGIC-P01 test: its own effect, then one spell that marks its caster and one that reads the mark.",
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_audit_p01_root",
+    "shape": "blast",
+    "valid_targets": [ "ground" ],
+    "flags": [ "SILENT", "NO_HANDS", "NO_PROJECTILE" ],
+    "extra_effects": [ { "id": "audit_p01_mark" }, { "id": "audit_p01_read" } ],
+    "max_level": 1
+  },
+  {
+    "type": "SPELL",
+    "id": "audit_p01_wonder",
+    "name": "MAGIC-P01 wonder",
+    "description": "MAGIC-P01 test: casts its one extra spell, the mark, three times.",
+    "effect": "effect_on_condition",
+    "effect_str": "EOC_audit_p01_root",
+    "shape": "blast",
+    "valid_targets": [ "ground" ],
+    "flags": [ "SILENT", "NO_HANDS", "NO_PROJECTILE", "WONDER" ],
+    "extra_effects": [ { "id": "audit_p01_mark" } ],
+    "min_damage": 3,
+    "max_damage": 3,
+    "max_level": 1
+  },
+  {
+    "type": "npc_class",
+    "id": "audit_j10_tuned",
+    "//": "NPC-J10 test: the embark urgencies, the cold body temperature and the noise wake window moved off their defaults.",
+    "name": { "str": "AI tuning tester, part two" },
+    "job_description": "I test how NPCs are tuned.",
+    "common": false,
+    "ai_tuning": {
+      "urgency": { "embark": 0.3, "embark_seated": 0.05 },
+      "cold_body_temperature": "34 C",
+      "sleep": { "restless_window": "5 minutes" }
+    }
+  },
+  {
+    "type": "behavior",
+    "id": "audit_j10_needs",
+    "//": "NPC-J10 test: a copy of npc_needs, for a custom need to go under next to the built-in needs.",
+    "copy-from": "npc_needs"
+  },
+  {
+    "type": "npc_need",
+    "id": "audit_j10_need",
+    "//": "NPC-J10 test: felt by NPCs whose audit_j10_need_on is 1, as urgent as their audit_j10_urgency.",
+    "urgency": { "math": [ "u_audit_j10_urgency" ] },
+    "act": 0.4,
+    "condition": { "math": [ "u_audit_j10_need_on == 1" ] },
+    "parent": "audit_j10_needs",
+    "on_start": [ { "id": "EOC_audit_j10_need_start", "effect": [ { "math": [ "audit_j10_starts++" ] } ] } ],
+    "on_turn": [ { "id": "EOC_audit_j10_need_turn", "effect": [ { "math": [ "audit_j10_turns++" ] } ] } ],
+    "on_end": [
+      {
+        "id": "EOC_audit_j10_need_end",
+        "effect": [
+          { "math": [ "audit_j10_ends++" ] },
+          { "copy_var": { "context_val": "reason" }, "target_var": { "global_val": "audit_j10_end_reason" } }
+        ]
+      }
+    ]
+  }
+]

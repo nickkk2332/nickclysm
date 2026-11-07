@@ -232,6 +232,27 @@
   },
   {
     "type": "EXTERNAL_OPTION",
+    "name": "SOUND_Z_LEVEL_MULT",
+    "//": "How many tiles of distance one z-level between a sound and its hearer counts as, after the underground multipliers.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "SOUND_UNDERGROUND_MULT",
+    "//": "When the lower of a sound and its hearer is underground, how many z-levels the first level between them counts as.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "SOUND_DEEP_UNDERGROUND_MULT",
+    "//": "When the lower of a sound and its hearer is underground, how many z-levels each further underground level between them counts as.",
+    "stype": "int",
+    "value": 21
+  },
+  {
+    "type": "EXTERNAL_OPTION",
     "name": "SPAWN_ANIMAL_DENSITY",
     "//": "A scaling factor that determines density of wild, formerly domesticated and mutated animal spawns.",
     "stype": "float",

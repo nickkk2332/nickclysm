@@ -8,7 +8,7 @@
     "time": "2 m",
     "components": [ [ [ "box_battery_charger", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -20,7 +20,7 @@
     "time": "4 m",
     "components": [ [ [ "foot_locker_recharge_station", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "MODERATE_EXERCISE"
   },
   {
@@ -32,7 +32,7 @@
     "time": "5 m",
     "components": [ [ [ "air_compressor", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -44,7 +44,7 @@
     "time": "5 m",
     "components": [ [ [ "ammonia_machine_pipework", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance"
+    "place_appliance": true
   },
   {
     "type": "construction",
@@ -55,7 +55,7 @@
     "time": "5 m",
     "components": [ [ [ "ammonia_machine_reactor", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance"
+    "place_appliance": true
   },
   {
     "type": "construction",
@@ -66,7 +66,7 @@
     "time": "5 m",
     "components": [ [ [ "apartment_freezer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -78,7 +78,7 @@
     "time": "5 m",
     "components": [ [ [ "arcade_machine", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -91,7 +91,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 1 } ] ],
     "components": [ [ [ "compact_ASRG_containment", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -103,7 +103,7 @@
     "time": "6 m",
     "components": [ [ [ "autoclave", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "MODERATE_EXERCISE"
   },
   {
@@ -115,7 +115,7 @@
     "time": "5 m",
     "components": [ [ [ "bandsaw", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -127,7 +127,7 @@
     "time": "6 m",
     "components": [ [ [ "storage_battery", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -139,7 +139,7 @@
     "time": "6 m",
     "components": [ [ [ "battery_car", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -151,7 +151,7 @@
     "time": "6 m",
     "components": [ [ [ "battery_motorbike", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -163,7 +163,7 @@
     "time": "6 m",
     "components": [ [ [ "battery_motorbike_small", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -175,7 +175,7 @@
     "time": "6 m",
     "components": [ [ [ "large_storage_battery", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -187,7 +187,7 @@
     "time": "6 m",
     "components": [ [ [ "medium_storage_battery", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -199,7 +199,7 @@
     "time": "6 m",
     "components": [ [ [ "small_storage_battery", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -211,7 +211,7 @@
     "time": "5 m",
     "components": [ [ [ "big_portable_freezer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -223,7 +223,7 @@
     "time": "5 m",
     "components": [ [ [ "big_portable_fridge", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -237,7 +237,7 @@
     "time": "40 m",
     "components": [ [ [ "catalytic_cracking_reactor", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -249,7 +249,7 @@
     "time": "5 m",
     "components": [ [ [ "chest_freezer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -261,7 +261,7 @@
     "time": "6 m",
     "components": [ [ [ "household_dishwasher", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -273,7 +273,7 @@
     "time": "5 m",
     "components": [ [ [ "display_freezer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -285,7 +285,7 @@
     "time": "5 m",
     "components": [ [ [ "display_fridge", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -297,7 +297,7 @@
     "time": "5 m",
     "components": [ [ [ "drill_press", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -309,7 +309,7 @@
     "time": "20 m",
     "components": [ [ [ "power_hammer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -321,7 +321,7 @@
     "time": "5 m",
     "components": [ [ [ "steel_kiln", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -333,7 +333,7 @@
     "time": "5 m",
     "components": [ [ [ "arc_furnace", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -345,7 +345,7 @@
     "time": "5 m",
     "components": [ [ [ "glassblowers_crucible", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -357,7 +357,7 @@
     "time": "5 m",
     "components": [ [ [ "forge", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -369,7 +369,7 @@
     "time": "5 m",
     "components": [ [ [ "electrolyzer_makeshift", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance"
+    "place_appliance": true
   },
   {
     "type": "construction",
@@ -380,7 +380,7 @@
     "time": "5 m",
     "components": [ [ [ "apartment_fridge", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -392,7 +392,7 @@
     "time": "5 m",
     "components": [ [ [ "glass_freezer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -404,7 +404,7 @@
     "time": "5 m",
     "components": [ [ [ "glass_fridge", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -416,7 +416,7 @@
     "time": "5 m",
     "components": [ [ [ "glass_fridge_double", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -429,7 +429,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 1 } ] ],
     "components": [ [ [ "ground_solar_panel", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -442,7 +442,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 1 } ] ],
     "components": [ [ [ "ground_solar_panel_v2", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -454,7 +454,7 @@
     "time": "5 m",
     "components": [ [ [ "hd_compressor_unit", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -466,7 +466,7 @@
     "time": "5 m",
     "components": [ [ [ "large_space_heater", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -478,7 +478,7 @@
     "time": "5 m",
     "components": [ [ [ "small_space_heater", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -490,7 +490,7 @@
     "time": "5 m",
     "components": [ [ [ "heavy_duty_freezer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -502,7 +502,7 @@
     "time": "5 m",
     "components": [ [ [ "heavy_duty_fridge", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -514,7 +514,7 @@
     "time": "5 m",
     "components": [ [ [ "hydraulic_press", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -526,7 +526,7 @@
     "time": "5 m",
     "components": [ [ [ "jointer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -538,7 +538,7 @@
     "time": "5 m",
     "components": [ [ [ "kiln", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -550,7 +550,7 @@
     "time": "1 m",
     "components": [ [ [ "microwave", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -562,7 +562,7 @@
     "time": "5 m",
     "components": [ [ [ "minifreezer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -574,7 +574,7 @@
     "time": "5 m",
     "components": [ [ [ "minifridge", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -586,7 +586,7 @@
     "time": "5 m",
     "components": [ [ [ "mitresaw", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -598,7 +598,7 @@
     "time": "20 m",
     "components": [ [ [ "mobile_weather_station", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -610,7 +610,7 @@
     "time": "20 m",
     "components": [ [ [ "xedra_mobile_weather_station", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -622,7 +622,7 @@
     "time": "20 m",
     "components": [ [ [ "robofac_mobile_weather_station", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -634,7 +634,7 @@
     "time": "5 m",
     "components": [ [ [ "nitrogen_generator", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance"
+    "place_appliance": true
   },
   {
     "type": "construction",
@@ -645,7 +645,7 @@
     "time": "5 m",
     "components": [ [ [ "oxygen_concentrator", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -657,7 +657,7 @@
     "time": "5 m",
     "components": [ [ [ "planer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -669,7 +669,7 @@
     "time": "5 m",
     "components": [ [ [ "oven", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -682,7 +682,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 1 } ] ],
     "components": [ [ [ "reinforced_solar_panel", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -695,7 +695,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 1 } ] ],
     "components": [ [ [ "reinforced_solar_panel_v2", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -707,7 +707,7 @@
     "time": "5 m",
     "components": [ [ [ "router", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -720,7 +720,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 1 } ] ],
     "components": [ [ [ "solar_panel", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -733,7 +733,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 1 } ] ],
     "components": [ [ [ "solar_panel_v2", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -745,7 +745,7 @@
     "time": "5 s",
     "components": [ [ [ "standing_directed_floodlight", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -757,7 +757,7 @@
     "time": "5 s",
     "components": [ [ [ "standing_floodlight", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -769,7 +769,7 @@
     "time": "5 s",
     "components": [ [ [ "standing_lamp", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -781,7 +781,7 @@
     "time": "5 s",
     "components": [ [ [ "exodii_lamp", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -793,7 +793,7 @@
     "time": "5 s",
     "components": [ [ [ "nl_exodii_lamp", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -805,7 +805,7 @@
     "time": "5 m",
     "components": [ [ [ "tablesaw", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -817,7 +817,7 @@
     "time": "5 m",
     "components": [ [ [ "stereo", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance"
+    "place_appliance": true
   },
   {
     "type": "construction",
@@ -828,7 +828,7 @@
     "time": "5 m",
     "components": [ [ [ "veh_tools_kitchen", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -840,7 +840,7 @@
     "time": "5 m",
     "components": [ [ [ "veh_tools_workshop", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -852,7 +852,7 @@
     "time": "5 s",
     "components": [ [ [ "wall_light", 1 ] ] ],
     "pre_flags": "WALL",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -893,7 +893,7 @@
     "time": "6 m",
     "components": [ [ [ "household_washing_machine", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -905,7 +905,7 @@
     "time": "5 m",
     "components": [ [ [ "stationary_water_purifier", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   },
   {
@@ -918,7 +918,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 2 } ] ],
     "components": [ [ [ "water_wheel", 1 ] ] ],
     "pre_terrain": "t_water_moving_sh",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "MODERATE_EXERCISE"
   },
   {
@@ -931,7 +931,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 2 } ] ],
     "components": [ [ [ "wind_turbine", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "MODERATE_EXERCISE"
   },
   {
@@ -944,7 +944,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 2 } ] ],
     "components": [ [ [ "xl_water_wheel", 1 ] ] ],
     "pre_terrain": "t_water_moving_sh",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "MODERATE_EXERCISE"
   },
   {
@@ -957,7 +957,7 @@
     "qualities": [ [ { "id": "WRENCH", "level": 2 } ] ],
     "components": [ [ [ "xl_wind_turbine", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "MODERATE_EXERCISE"
   },
   {
@@ -969,7 +969,7 @@
     "time": "5 m",
     "components": [ [ [ "lathe", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -981,7 +981,7 @@
     "time": "5 m",
     "components": [ [ [ "mill_vertical", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -993,7 +993,7 @@
     "time": "5 m",
     "components": [ [ [ "deep_fryer", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -1005,7 +1005,7 @@
     "time": "5 m",
     "components": [ [ [ "oil_press_electric", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "LIGHT_EXERCISE"
   },
   {
@@ -1017,7 +1017,7 @@
     "time": "5 s",
     "components": [ [ [ "nl_safehouse_boiler", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "NO_EXERCISE"
   },
   {
@@ -1029,7 +1029,7 @@
     "time": "10 m",
     "components": [ [ [ "bulk_liquid_tank", 1 ] ] ],
     "pre_special": "check_empty",
-    "post_special": "done_appliance",
+    "place_appliance": true,
     "activity_level": "BRISK_EXERCISE"
   }
 ]

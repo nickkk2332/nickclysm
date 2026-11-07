@@ -1545,7 +1545,7 @@ void build_construction_activity_actor::complete_construction( player_activity &
 
     // partial_con contains components for vehicle and appliance construction
     // it's removal is handled in done_appliance() / done_vehicle
-    if( pc->id->category != construction_category_APPLIANCE &&
+    if( !built.place_appliance && pc->id->category != construction_category_APPLIANCE &&
         pc->id->id != construction_constr_veh ) {
         here.partial_con_remove( terp );
     }
@@ -1595,6 +1595,9 @@ void build_construction_activity_actor::complete_construction( player_activity &
     const tripoint_abs_ms site_abs = construction_location;
     // This comes after clearing the activity, in case the function interrupts
     // activities
+    if( built.place_appliance ) {
+        construct::done_appliance( terp, you );
+    }
     for( const auto &special : built.post_specials ) {
         special( terp, you );
     }
@@ -2522,6 +2525,7 @@ void construction::load( const JsonObject &jo, const std::string_view src )
               fallback_deconstruct ? construct::failure_deconstruct : construct::failure_standard );
 
     optional( jo, was_loaded, "vehicle_start", vehicle_start, false );
+    optional( jo, was_loaded, "place_appliance", place_appliance, false );
     optional( jo, was_loaded, "on_display", on_display, true );
     optional( jo, was_loaded, "dark_craftable", dark_craftable, false );
     optional( jo, was_loaded, "strict", strict, false );
@@ -2614,6 +2618,11 @@ void construction::check() const
         } else if( !ter_str_id( post_terrain ).is_valid() ) {
             debugmsg( "Unknown post_terrain (terrain) %s in %s", post_terrain, display_name );
         }
+    }
+    if( place_appliance && std::find( post_specials.begin(), post_specials.end(),
+                                      construct::done_appliance ) != post_specials.end() ) {
+        debugmsg( "%s has place_appliance and the post_special done_appliance, which would place "
+                  "the appliance twice", display_name );
     }
     const auto check_eocs = [&display_name]( std::string_view member,
     const std::vector<effect_on_condition_id> &eocs ) {

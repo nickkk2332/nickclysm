@@ -69,7 +69,13 @@ class horde_map
         std::optional<std::unordered_map<tripoint_abs_ms, horde_entity>::iterator> spawn_entity(
             const tripoint_abs_ms &p,
             const monster &mon );
-        void signal_entities( const tripoint_abs_ms &origin, int volume );
+        /**
+         * Sends a signal of the given volume (in submaps) to the active and idle entities in reach.
+         * Looks up only the submap buckets within volume - 1 submaps of origin, unless that box
+         * holds more submaps than the map has buckets, in which case it walks every bucket.
+         * @return how many buckets were looked at.
+         */
+        int signal_entities( const tripoint_abs_ms &origin, int volume );
         void insert( node_type &&node );
         void clear();
         void clear_chunk( const tripoint_om_sm &p );

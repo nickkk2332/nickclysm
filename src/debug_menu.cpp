@@ -3936,8 +3936,8 @@ static void spawn_named_npc()
 
     std::vector<npc_template_id> npc_list;
 
-    for( const auto &e : npc_template::get_npc_templates() ) {
-        npc_list.emplace_back( e.first );
+    for( const npc_template &e : npc_template::get_all() ) {
+        npc_list.emplace_back( e.id );
     }
 
     std::sort( npc_list.begin(), npc_list.end(), localized_compare );

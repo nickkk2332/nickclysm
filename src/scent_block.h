@@ -11,8 +11,11 @@
 class scent_map;
 
 struct scent_block {
+    // How many tiles past its submap a block reaches: the widest scent_neutralization_radius
+    static constexpr int border = 3;
+
     template<typename T>
-    using data_block = std::array < std::array < T, SEEY + 2 >, SEEX + 2 >;
+    using data_block = std::array < std::array < T, SEEY + 2 * border >, SEEX + 2 * border >;
 
     enum class data_mode : int {
         NONE = 0,

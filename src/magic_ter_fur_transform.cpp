@@ -1,5 +1,6 @@
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -8,14 +9,17 @@
 #include "avatar.h"
 #include "coordinates.h"
 #include "creature.h"
+#include "debug.h"
 #include "enums.h"
 #include "field.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "int_id.h"
 #include "magic_ter_furn_transform.h"
 #include "map.h"
 #include "mapdata.h"
 #include "point.h"
+#include "string_id.h"
 #include "submap.h"
 #include "translation.h"
 #include "trap.h"
@@ -53,6 +57,96 @@ void ter_furn_transform::finalize_all()
 void ter_furn_transform::reset_all()
 {
     ter_furn_transform_factory.reset();
+}
+
+void ter_furn_transform::check_all()
+{
+    // A flag no terrain (or furniture) has can never match
+    std::set<std::string> terrain_flags;
+    for( const ter_t &ter : mapdata::terrain_data.get_all() ) {
+        terrain_flags.insert( ter.get_flags().begin(), ter.get_flags().end() );
+    }
+    std::set<std::string> furniture_flags;
+    for( const furn_t &furn : mapdata::furniture_data.get_all() ) {
+        furniture_flags.insert( furn.get_flags().begin(), furn.get_flags().end() );
+    }
+    for( const ter_furn_transform &transform : get_all() ) {
+        transform.check( terrain_flags, furniture_flags );
+    }
+}
+
+template<typename T>
+static const std::string &transform_id_name( const string_id<T> &id )
+{
+    return id.str();
+}
+
+template<typename T>
+static const std::string &transform_id_name( const int_id<T> &id )
+{
+    return id.id().str();
+}
+
+template<class T>
+static void check_transform_results( const std::string &transform, const std::string_view what,
+                                     const ter_furn_data<T> &data )
+{
+    for( const std::pair<T, int> &result : data.list ) {
+        if( !result.first.is_valid() ) {
+            debugmsg( R"(ter_furn_transform %s has unknown %s "%s" as a result)", transform, what,
+                      transform_id_name( result.first ) );
+        }
+    }
+}
+
+template<class K, class T>
+static void check_transform_ids( const std::string &transform, const std::string_view what,
+                                 const std::map<K, ter_furn_data<T>> &transforms )
+{
+    for( const std::pair<const K, ter_furn_data<T>> &entry : transforms ) {
+        if( !entry.first.is_valid() ) {
+            debugmsg( R"(ter_furn_transform %s has unknown %s "%s" to transform)", transform, what,
+                      transform_id_name( entry.first ) );
+        }
+        check_transform_results( transform, what, entry.second );
+    }
+}
+
+template<class T, class Valid>
+static void check_transform_flags( const std::string &transform, const std::string_view what,
+                                   const std::map<std::string, ter_furn_data<T>> &transforms,
+                                   const std::string_view why, const Valid &flag_is_valid )
+{
+    for( const std::pair<const std::string, ter_furn_data<T>> &entry : transforms ) {
+        if( !flag_is_valid( entry.first ) ) {
+            debugmsg( R"(ter_furn_transform %s matches %s flag "%s", %s)", transform, what,
+                      entry.first, why );
+        }
+        check_transform_results( transform, what, entry.second );
+    }
+}
+
+void ter_furn_transform::check( const std::set<std::string> &terrain_flags,
+                                const std::set<std::string> &furniture_flags ) const
+{
+    const std::string &name = id.str();
+    check_transform_ids( name, "terrain", ter_transform );
+    check_transform_ids( name, "furniture", furn_transform );
+    check_transform_ids( name, "trap", trap_transform );
+    check_transform_ids( name, "field", field_transform );
+    check_transform_flags( name, "terrain", ter_flag_transform, "which no terrain has",
+    [&terrain_flags]( const std::string & flag ) {
+        return terrain_flags.count( flag ) > 0;
+    } );
+    check_transform_flags( name, "furniture", furn_flag_transform, "which no furniture has",
+    [&furniture_flags]( const std::string & flag ) {
+        return furniture_flags.count( flag ) > 0;
+    } );
+    // Trap flags are json flags (trap::has_flag)
+    check_transform_flags( name, "trap", trap_flag_transform, "which is not a json_flag",
+    []( const std::string & flag ) {
+        return flag_id( flag ).is_valid();
+    } );
 }
 
 bool ter_furn_transform::is_valid() const

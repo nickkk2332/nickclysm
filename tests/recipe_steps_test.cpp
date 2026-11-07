@@ -1666,18 +1666,18 @@ TEST_CASE( "step_recipe_copy_from_child_using_replaces_base_using", "[recipe][st
     CHECK_FALSE( has_sew );
 }
 
-TEST_CASE( "step_recipe_copy_from_missing_components_absent", "[recipe][steps]" )
+TEST_CASE( "step_recipe_copy_from_inherits_missing_components", "[recipe][steps]" )
 {
-    // Base has root components (2x4). Child omits components.
-    // The debugmsg about missing components is expected.
+    // Base has root components (2x4). Child omits components, so it inherits them (CRAFT-J01;
+    // before, a copy lost its parent's inline requirements and a debugmsg said so).
     recipe r;
-    capture_debugmsg_during( [&]() {
+    CHECK( capture_debugmsg_during( [&]() {
         r = load_base_then_child( step_base_json, R"({
             "type": "recipe", "result": "cudgel", "id_suffix": "test_no_comp",
             "category": "CC_WEAPON", "subcategory": "CSC_WEAPON_BASHING",
             "skill_used": "fabrication", "difficulty": 1
         })" );
-    } );
+    } ).empty() );
     r.finalize();
 
     bool has_2x4 = false;
@@ -1689,7 +1689,7 @@ TEST_CASE( "step_recipe_copy_from_missing_components_absent", "[recipe][steps]" 
             }
         }
     }
-    CHECK_FALSE( has_2x4 );
+    CHECK( has_2x4 );
 }
 
 TEST_CASE( "step_recipe_abstract_base_to_concrete_child", "[recipe][steps]" )

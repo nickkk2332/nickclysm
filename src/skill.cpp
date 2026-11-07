@@ -12,6 +12,7 @@
 #include "debug.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"
+#include "generic_factory.h"
 #include "item.h"
 #include "options.h"
 #include "recipe.h"
@@ -52,6 +53,13 @@ std::vector<SkillDisplayType> SkillDisplayType::skillTypes;
 static const Skill invalid_skill;
 static const SkillDisplayType invalid_skill_type;
 
+namespace
+{
+// Holds every skill definition; Skill::skills and Skill::contextual_skills are built from it.
+generic_factory<Skill> skill_factory( "skill" );
+uint64_t next_skill_load_order = 0;
+} // namespace
+
 /** @relates string_id */
 template<>
 const Skill &string_id<Skill>::obj() const
@@ -85,8 +93,8 @@ Skill::Skill() : Skill( skill_id::NULL_ID(), to_translation( "nothing" ),
 
 Skill::Skill( const skill_id &ident, const translation &name, const translation &description,
               const std::set<std::string> &tags, skill_displayType_id display_type )
-    : _ident( ident ), _name( name ), _description( description ), _tags( tags ),
-      _display_type( display_type )
+    : _name( name ), _description( description ), _tags( tags ), _display_type( display_type ),
+      id( ident )
 {
 }
 
@@ -130,8 +138,10 @@ std::vector<const Skill *> Skill::get_skills_sorted_by(
 
 void Skill::reset()
 {
+    skill_factory.reset();
     skills.clear();
     contextual_skills.clear();
+    next_skill_load_order = 0;
 }
 
 void Skill::check_consistency()
@@ -157,70 +167,96 @@ void Skill::check_consistency()
     }
 }
 
-void Skill::load_skill( const JsonObject &jsobj )
+void Skill::load_skill( const JsonObject &jsobj, const std::string &src_name )
 {
-    skill_id ident = skill_id( jsobj.get_string( "id" ) );
-    skills.erase( std::remove_if( begin( skills ), end( skills ), [&]( const Skill & s ) {
-        return s._ident == ident;
-    } ), end( skills ) );
+    skill_factory.load( jsobj, src_name );
+    update_skill_lists();
+}
 
-    translation name;
-    jsobj.read( "name", name );
-    translation desc;
-    jsobj.read( "description", desc );
-    std::unordered_map<std::string, int> companion_skill_practice;
-    for( JsonObject jo_csp : jsobj.get_array( "companion_skill_practice" ) ) {
-        companion_skill_practice.emplace( jo_csp.get_string( "skill" ), jo_csp.get_int( "weight" ) );
+void Skill::finalize_all()
+{
+    skill_factory.finalize();
+    update_skill_lists();
+}
+
+void Skill::update_skill_lists()
+{
+    skills.clear();
+    std::set<skill_id> contextual_ids;
+    for( const Skill &sk : skill_factory.get_all() ) {
+        if( sk.is_contextual_skill() ) {
+            // assigned in place, so references to the skills that stay remain valid
+            contextual_skills[sk.ident()] = sk;
+            contextual_ids.insert( sk.ident() );
+        } else {
+            skills.push_back( sk );
+        }
     }
-    std::map<int, translation> level_descriptions_theory;
-    std::map<int, translation> level_descriptions_practice;
-    for( JsonObject jo : jsobj.get_array( "level_descriptions_theory" ) ) {
-        translation desc;
-        jo.read( "description", desc );
-        level_descriptions_theory.emplace( jo.get_int( "level" ), desc );
+    for( auto it = contextual_skills.begin(); it != contextual_skills.end(); ) {
+        it = contextual_ids.count( it->first ) > 0 ? std::next( it ) : contextual_skills.erase( it );
     }
-    for( JsonObject jo : jsobj.get_array( "level_descriptions_practice" ) ) {
-        translation desc;
-        jo.read( "description", desc );
-        level_descriptions_practice.emplace( jo.get_int( "level" ), desc );
+    std::stable_sort( skills.begin(), skills.end(), []( const Skill & a, const Skill & b ) {
+        return a._load_order < b._load_order;
+    } );
+}
+
+// A copy (or a later mod's "copy-from" of the same id) keeps every member it doesn't name
+// (DATA-J02).
+void Skill::load( const JsonObject &jsobj, std::string_view )
+{
+    _load_order = next_skill_load_order++;
+
+    optional( jsobj, was_loaded, "name", _name );
+    optional( jsobj, was_loaded, "description", _description );
+    if( jsobj.has_member( "companion_skill_practice" ) ) {
+        _companion_skill_practice.clear();
+        for( JsonObject jo_csp : jsobj.get_array( "companion_skill_practice" ) ) {
+            _companion_skill_practice.emplace( jo_csp.get_string( "skill" ), jo_csp.get_int( "weight" ) );
+        }
     }
-    time_info_t time_to_attack;
+    const auto read_level_descriptions = [&jsobj]( const std::string_view member,
+    std::map<int, translation> &descriptions ) {
+        if( !jsobj.has_member( member ) ) {
+            return;
+        }
+        descriptions.clear();
+        for( JsonObject jo : jsobj.get_array( member ) ) {
+            translation desc;
+            jo.read( "description", desc );
+            descriptions.emplace( jo.get_int( "level" ), desc );
+        }
+    };
+    read_level_descriptions( "level_descriptions_theory", _level_descriptions_theory );
+    read_level_descriptions( "level_descriptions_practice", _level_descriptions_practice );
+    // a copy's "time_to_attack" changes the members it names
+    if( !was_loaded ) {
+        _time_to_attack = time_info_t();
+    }
     if( jsobj.has_object( "time_to_attack" ) ) {
         JsonObject jso_tta = jsobj.get_object( "time_to_attack" );
-        jso_tta.read( "min_time", time_to_attack.min_time );
-        jso_tta.read( "base_time", time_to_attack.base_time );
-        jso_tta.read( "time_reduction_per_level", time_to_attack.time_reduction_per_level );
+        jso_tta.read( "min_time", _time_to_attack.min_time );
+        jso_tta.read( "base_time", _time_to_attack.base_time );
+        jso_tta.read( "time_reduction_per_level", _time_to_attack.time_reduction_per_level );
     }
-    skill_displayType_id display_type = skill_displayType_id( jsobj.get_string( "display_category" ) );
-    Skill sk( ident, name, desc, jsobj.get_tags( "tags" ), display_type );
+    mandatory( jsobj, was_loaded, "display_category", _display_type );
+    optional( jsobj, was_loaded, "tags", _tags, string_reader{} );
     if( jsobj.has_int( "sort_rank" ) ) {
-        sk._sort_rank = jsobj.get_int( "sort_rank" );
-    } else {
-        sk._sort_rank = 1000000;
-        debugmsg( "skill '%s' missing 'sort_rank' field.", ident.str() );
+        _sort_rank = jsobj.get_int( "sort_rank" );
+    } else if( !was_loaded ) {
+        _sort_rank = 1000000;
+        debugmsg( "skill '%s' missing 'sort_rank' field.", id.str() );
     }
 
-    if( jsobj.has_bool( "consumes_focus" ) ) {
-        sk.consumes_focus = jsobj.get_bool( "consumes_focus" );
-    }
-
-    sk._time_to_attack = time_to_attack;
-    sk._companion_combat_rank_factor = jsobj.get_int( "companion_combat_rank_factor", 0 );
-    sk._companion_survival_rank_factor = jsobj.get_int( "companion_survival_rank_factor", 0 );
-    sk._companion_industry_rank_factor = jsobj.get_int( "companion_industry_rank_factor", 0 );
-    sk._companion_skill_practice = companion_skill_practice;
-    sk._level_descriptions_theory = level_descriptions_theory;
-    sk._level_descriptions_practice = level_descriptions_practice;
-    sk._obsolete = jsobj.get_bool( "obsolete", false );
-    sk._teachable = jsobj.get_bool( "teachable", true );
-    sk._requires_all_traits = jsobj.get_tags( "requires_all_traits" );
-    sk._requires_any_traits = jsobj.get_tags( "requires_any_traits" );
-
-    if( sk.is_contextual_skill() ) {
-        contextual_skills[sk.ident()] = sk;
-    } else {
-        skills.push_back( sk );
-    }
+    optional( jsobj, was_loaded, "consumes_focus", consumes_focus, true );
+    optional( jsobj, was_loaded, "companion_combat_rank_factor", _companion_combat_rank_factor, 0 );
+    optional( jsobj, was_loaded, "companion_survival_rank_factor", _companion_survival_rank_factor,
+              0 );
+    optional( jsobj, was_loaded, "companion_industry_rank_factor", _companion_industry_rank_factor,
+              0 );
+    optional( jsobj, was_loaded, "obsolete", _obsolete, false );
+    optional( jsobj, was_loaded, "teachable", _teachable, true );
+    optional( jsobj, was_loaded, "requires_all_traits", _requires_all_traits, string_reader{} );
+    optional( jsobj, was_loaded, "requires_any_traits", _requires_any_traits, string_reader{} );
 }
 
 SkillDisplayType::SkillDisplayType() : SkillDisplayType( skill_displayType_id::NULL_ID(),

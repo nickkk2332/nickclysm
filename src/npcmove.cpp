@@ -328,7 +328,8 @@ static std::optional<decision_category> danger_reaction_category( const danger_r
 
 namespace
 {
-// The installed bionics whose JSON "npc_use" is `use`, each id once, in installation order.
+// The installed bionics whose JSON "npc_use" is `use`, each id once, highest "priority" first,
+// then in installation order.
 // Ids rather than references: switching one on runs its EOCs, which may add or remove bionics.
 std::vector<bionic_id> npc_cbms_for( const Character &guy, bionic_npc_use use )
 {
@@ -339,6 +340,9 @@ std::vector<bionic_id> npc_cbms_for( const Character &guy, bionic_npc_use use )
             ret.push_back( bio.id );
         }
     }
+    std::stable_sort( ret.begin(), ret.end(), []( const bionic_id & a, const bionic_id & b ) {
+        return a->npc_use_priority > b->npc_use_priority;
+    } );
     return ret;
 }
 
@@ -369,10 +373,14 @@ std::vector<bionic_id> npc_weapon_cbms( const Character &guy )
 }
 
 // Switches on the NPC's bionics with this "npc_use"; true if any of them is on afterwards.
+// A spell CBM casts its spell (bionic::activate_spell()); only the first one that can.
 bool use_npc_cbms( npc &guy, bionic_npc_use use )
 {
     bool any_on = false;
     for( const bionic_id &bio_id : npc_cbms_for( guy, use ) ) {
+        if( bio_id->spell_on_activate && guy.Character::has_activity( ACT_SPELLCASTING ) ) {
+            continue;
+        }
         if( guy.use_bionic_by_id( bio_id ) ) {
             any_on = true;
         }
@@ -2315,7 +2323,10 @@ void npc::execute_action( npc_action action )
             if( can_use_offensive_cbm() ) {
                 use_npc_cbms( *this, bionic_npc_use::melee );
             }
-            reach_attack( tar );
+            // A spell CBM it started casting is its attack this turn
+            if( !Character::has_activity( ACT_SPELLCASTING ) ) {
+                reach_attack( tar );
+            }
             break;
         case npc_melee:
             update_path( tar );
@@ -2326,7 +2337,10 @@ void npc::execute_action( npc_action action )
                     if( can_use_offensive_cbm() ) {
                         use_npc_cbms( *this, bionic_npc_use::melee );
                     }
-                    melee_attack( *cur, true );
+                    // A spell CBM it started casting is its attack this turn
+                    if( !Character::has_activity( ACT_SPELLCASTING ) ) {
+                        melee_attack( *cur, true );
+                    }
                 }
             } else {
                 look_for_player( player_character );
@@ -2642,7 +2656,10 @@ void npc::evaluate_best_attack( const Creature *target )
             }
             same_type.push_back( it );
         }
-        if( can_wield( *it ).success() ) {
+        // NPC-B01: a CBM weapon the NPC has out (a bionic gun or blade) is NO_UNWIELD and
+        // BIONIC_WEAPON, so can_wield() refuses it, but the attacks only need it in hand
+        const bool wielded_cbm_weapon = is_using_bionic_weapon() && is_wielding( *it );
+        if( wielded_cbm_weapon || can_wield( *it ).success() ) {
             // you can theoretically melee with anything.
             compare( std::make_shared<npc_attack_melee>( *it ), "(as MELEE) ", it.get_item() );
             if( !is_wielding( *it ) || !it->has_flag( flag_NO_UNWIELD ) ) {
@@ -5572,7 +5589,7 @@ static float rate_food( const Character &who, const item &it, int want_nutr,
     }
 
     // Reject tainted/poisonous items (saprophages/saprovores can handle it)
-    if( it.type->use_methods.count( "POISON" ) && !can_consume_rot ) {
+    if( it.type->can_use( "POISON" ) && !can_consume_rot ) {
         return 0.0f;
     }
 
@@ -5981,8 +5998,8 @@ void npc::mug_player( Character &mark )
     }
     double best_value = minimum_item_value() * value_mod;
     item *to_steal = nullptr;
-    std::vector<const item *> pseudo_items = mark.get_pseudo_items();
-    const auto inv_valuables = mark.items_with( [this, pseudo_items]( const item & itm ) {
+    const std::vector<const item *> &pseudo_items = mark.get_pseudo_items();
+    const auto inv_valuables = mark.items_with( [this, &pseudo_items]( const item & itm ) {
         return std::find( pseudo_items.begin(), pseudo_items.end(), &itm ) == pseudo_items.end() &&
                !craft_reservation::contains_reserved( itm ) &&
                !itm.has_flag( flag_INTEGRATED ) && !itm.has_flag( flag_NO_TAKEOFF ) && value( itm ) > 0;

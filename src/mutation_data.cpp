@@ -52,13 +52,26 @@ static trait_replacement trait_migration_remove{ std::nullopt, std::nullopt, tru
 namespace
 {
 generic_factory<mutation_branch> trait_factory( "trait" );
+generic_factory<mutation_category_trait> mutation_category_factory( "mutation category" );
+generic_factory<dream> dream_factory( "dream" );
+// How many dreams without an id have loaded, to name each one
+int anonymous_dreams = 0;
+
+// Reads a list of translations, with "extend" and "delete" in a copy
+class translation_list_reader : public generic_typed_reader<translation_list_reader>
+{
+    public:
+        translation get_next( const JsonValue &jv ) const {
+            translation msg;
+            jv.read( msg, true );
+            return msg;
+        }
+};
 } // namespace
 
-std::vector<dream> dreams;
 std::map<mutation_category_id, std::vector<trait_id> > mutations_category;
 // Mutations with edible_food_flags, food_allergies or an eat_condition, in load order
 static std::vector<trait_id> diet_traits;
-static std::map<mutation_category_id, mutation_category_trait> mutation_category_traits;
 
 template<>
 const mutation_branch &string_id<mutation_branch>::obj() const
@@ -78,26 +91,33 @@ bool string_id<Trait_group>::is_valid() const
     return trait_groups.count( *this );
 }
 
-void mutation_category_trait::load( const JsonObject &jsobj )
+void mutation_category_trait::load_all( const JsonObject &jsobj, const std::string &src_name )
 {
-    mutation_category_trait new_category;
-    jsobj.read( "id", new_category.id, true );
-    jsobj.get_member( "name" ).read( new_category.raw_name );
-    new_category.threshold_mut = trait_id( jsobj.get_string( "threshold_mut" ) );
+    mutation_category_factory.load( jsobj, src_name );
+}
 
-    jsobj.get_member( "mutagen_message" ).read( new_category.raw_mutagen_message );
-    new_category.wip = jsobj.get_bool( "wip", false );
-    new_category.skip_test = jsobj.get_bool( "skip_test", false );
+// A copy (or a later mod's "copy-from" of the same id) keeps every member it doesn't name
+// (DATA-J02).
+void mutation_category_trait::load( const JsonObject &jsobj, std::string_view )
+{
+    mandatory( jsobj, was_loaded, "name", raw_name );
+    mandatory( jsobj, was_loaded, "threshold_mut", threshold_mut );
+    mandatory( jsobj, was_loaded, "mutagen_message", raw_mutagen_message );
+    optional( jsobj, was_loaded, "wip", wip, false );
+    optional( jsobj, was_loaded, "skip_test", skip_test, false );
     static_cast<void>( translate_marker_context( "memorial_male", "Crossed a threshold" ) );
     static_cast<void>( translate_marker_context( "memorial_female", "Crossed a threshold" ) );
-    optional( jsobj, false, "memorial_message", new_category.raw_memorial_message,
+    optional( jsobj, was_loaded, "memorial_message", raw_memorial_message,
               text_style_check_reader(), "Crossed a threshold" );
-    new_category.vitamin = vitamin_id( jsobj.get_string( "vitamin", "null" ) );
-    optional( jsobj, false, "threshold_min", new_category.threshold_min, 2200 );
-    optional( jsobj, false, "base_removal_chance", new_category.base_removal_chance, 100 );
-    optional( jsobj, false, "base_removal_cost_mul", new_category.base_removal_cost_mul, 3.0f );
+    optional( jsobj, was_loaded, "vitamin", vitamin, vitamin_id( "null" ) );
+    optional( jsobj, was_loaded, "threshold_min", threshold_min, 2200 );
+    optional( jsobj, was_loaded, "base_removal_chance", base_removal_chance, 100 );
+    optional( jsobj, was_loaded, "base_removal_cost_mul", base_removal_cost_mul, 3.0f );
+}
 
-    mutation_category_traits[new_category.id] = new_category;
+void mutation_category_trait::finalize_all()
+{
+    mutation_category_factory.finalize();
 }
 
 std::string mutation_category_trait::name() const
@@ -122,7 +142,18 @@ std::string mutation_category_trait::memorial_message_female() const
 
 const std::map<mutation_category_id, mutation_category_trait> &mutation_category_trait::get_all()
 {
-    return mutation_category_traits;
+    // By id, as they always were; rebuilt when the factory changes (npc classes read it while
+    // the data loads).
+    static std::map<mutation_category_id, mutation_category_trait> by_id;
+    static generic_factory<mutation_category_trait>::Version built;
+    if( !mutation_category_factory.is_valid( built ) ) {
+        by_id.clear();
+        for( const mutation_category_trait &cat : mutation_category_factory.get_all() ) {
+            by_id.emplace( cat.id, cat );
+        }
+        built = mutation_category_factory.get_version();
+    }
+    return by_id;
 }
 
 static mutation_category_trait make_null_mutation_category()
@@ -135,28 +166,32 @@ static mutation_category_trait make_null_mutation_category()
 const mutation_category_trait &mutation_category_trait::get_category(
     const mutation_category_id &category_id )
 {
-    const auto iter = mutation_category_traits.find( category_id );
-    if( iter == mutation_category_traits.end() ) {
+    if( !mutation_category_factory.is_valid( category_id ) ) {
         // Dereferencing end() here was undefined behavior.
         debugmsg( "Tried to get invalid mutation category \"%s\"", category_id.str() );
         static const mutation_category_trait null_category = make_null_mutation_category();
         return null_category;
     }
-    return iter->second;
+    return mutation_category_factory.obj( category_id );
 }
 
 void mutation_category_trait::reset()
 {
-    mutation_category_traits.clear();
+    mutation_category_factory.reset();
 }
 
 void mutation_category_trait::check_consistency()
 {
-    for( const auto &pr : mutation_category_traits ) {
-        const mutation_category_trait &cat = pr.second;
+    for( const mutation_category_trait &cat : mutation_category_factory.get_all() ) {
         if( !cat.threshold_mut.is_empty() && !cat.threshold_mut.is_valid() ) {
             debugmsg( "Mutation category %s has threshold mutation %s, which does not exist",
                       cat.id.c_str(), cat.threshold_mut.c_str() );
+        }
+    }
+    // a dream of an undefined category is never dreamed
+    for( const dream &d : dream::get_all() ) {
+        if( !mutation_category_is_valid( d.category ) ) {
+            debugmsg( "A dream has undefined mutation category %s", d.category.c_str() );
         }
     }
 }
@@ -743,6 +778,18 @@ void mutation_branch::check_consistency()
                           mid.c_str(), allergy.second.c_str() );
             }
         }
+        // MUT-J01: a category that isn't defined is ignored when mutating, and an undefined
+        // allowed_category stops every category mutation
+        for( const mutation_category_id &cat : mdata.category ) {
+            if( !mutation_category_is_valid( cat ) ) {
+                debugmsg( "mutation %s has undefined mutation category %s", mid.c_str(), cat.c_str() );
+            }
+        }
+        for( const mutation_category_id &cat : mdata.allowed_category ) {
+            if( !mutation_category_is_valid( cat ) ) {
+                debugmsg( "mutation %s has undefined allowed_category %s", mid.c_str(), cat.c_str() );
+            }
+        }
         // Suppress these onload warnings for overlapping mods
         for( const trait_id &replacement : mdata.replacements ) {
             const mutation_branch &rdata = replacement.obj();
@@ -942,15 +989,45 @@ std::vector<std::string> dream::messages() const
     return ret;
 }
 
-void dream::load( const JsonObject &jsobj )
+void dream::load_all( const JsonObject &jsobj, const std::string &src )
 {
-    dream newdream;
+    if( jsobj.has_member( "id" ) || jsobj.has_member( "abstract" ) ) {
+        dream_factory.load( jsobj, src );
+        return;
+    }
+    if( jsobj.has_member( "copy-from" ) ) {
+        jsobj.throw_error_at( "copy-from", "a dream needs an \"id\" to copy from another" );
+    }
+    // Without an id, as dreams always were: added, and no later JSON can change it.
+    dream anonymous;
+    anonymous.id = string_id<dream>( string_format( "<dream without id %d>", anonymous_dreams++ ) );
+    anonymous.load( jsobj, src );
+    dream_factory.insert( anonymous );
+}
 
-    newdream.strength = jsobj.get_int( "strength" );
-    jsobj.read( "category", newdream.category, true );
-    jsobj.read( "messages", newdream.raw_messages );
+// A copy (or a later mod's "copy-from" of the same id) keeps every member it doesn't name
+// (DATA-J02).
+void dream::load( const JsonObject &jsobj, std::string_view )
+{
+    mandatory( jsobj, was_loaded, "strength", strength );
+    mandatory( jsobj, was_loaded, "category", category );
+    optional( jsobj, was_loaded, "messages", raw_messages, translation_list_reader{} );
+}
 
-    dreams.push_back( newdream );
+const std::vector<dream> &dream::get_all()
+{
+    return dream_factory.get_all();
+}
+
+void dream::finalize_all()
+{
+    dream_factory.finalize();
+}
+
+void dream::reset()
+{
+    dream_factory.reset();
+    anonymous_dreams = 0;
 }
 
 bool trait_var_display_sort( const trait_and_var &a, const trait_and_var &b ) noexcept
@@ -1232,13 +1309,13 @@ std::vector<trait_group::Trait_group_tag> mutation_branch::get_all_group_names()
 
 bool mutation_category_is_valid( const mutation_category_id &cat )
 {
-    return mutation_category_traits.count( cat );
+    return mutation_category_factory.is_valid( cat );
 }
 
 template<>
 bool string_id<mutation_category_trait>::is_valid() const
 {
-    return mutation_category_traits.count( *this );
+    return mutation_category_factory.is_valid( *this );
 }
 
 bool mutation_is_in_category( const trait_id &mut, const mutation_category_id &cat )
