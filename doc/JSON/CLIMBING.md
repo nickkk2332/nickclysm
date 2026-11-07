@@ -92,6 +92,10 @@ Optional.  Boolean.  Default true.  Whether this climbing aid may be used to cli
 
 Note:  Due to limited implementation, this should only be set to `false` for climbing aids that use `deploy_furn`, otherwise the player may be prevented from climbing.  A grayed-out menu option with `menu_cant` text will be displayed when an aid is disabled by this rule.
 
+#### `down` › `sheer_drop`
+
+Optional.  Boolean.  Default false.  Whether this climbing aid is also offered when the player takes stairs down (`>`) and the stairs have no counterpart below, ending in a sheer drop.  Only aids whose condition is of type `character`, `trait` or `item` can be used there.  The game first offers its built-in ways down (`WEB_RAPPEL`, `VINES2`/`VINES3`, a grappling hook, a long rope); when none applies, the safest aid with `sheer_drop` (lowest `slip_chance_mod`) is offered instead of jumping.  The prompt is "There is a sheer drop halfway down." followed by `confirm_text` (don't use `%s` in it).  On yes: `msg_before`, the item is used up (for `item` aids with `uses`), `cost` is paid once, then `msg_after`.  With `easy_climb_back_up` above 0 the aid leaves a way back up: its `deploy_furn` (on the tile you land on), or a rope (`f_rope_up`) when it has none.  There is no slip check.
+
 #### `down` › `easy_climb_back_up`
 
 Optional.  Integer.  Default 0.  When climbing down this many stories or fewer, the player will be told it should be easy to climb back up.  This bypasses the normal estimation of climbing difficulty.  Typically set to the same value as `max_height` for climbing aids that leave climbable furniture behind.

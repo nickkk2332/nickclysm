@@ -2213,6 +2213,12 @@ void read_activity_actor::do_turn( player_activity &act, Character &who )
     }
 }
 
+// The level a book teaches its skill up to: no higher than the skill's max_level
+static int book_teaching_level( const islot_book &book )
+{
+    return book.skill ? std::min( book.level, book.skill->max_level() ) : book.level;
+}
+
 void read_activity_actor::read_book( Character &learner,
                                      const cata::value_ptr<islot_book> &islotbook,
                                      SkillLevel &skill_level, double penalty )
@@ -2241,7 +2247,7 @@ void read_activity_actor::read_book( Character &learner,
 
     add_msg_debug( debugmode::DF_ACT_READ, "%s read exp: min_ex %d; max_ex %d",
                    learner.disp_name(), min_ex, max_ex );
-    skill_level.readBook( min_ex, max_ex, islotbook->level );
+    skill_level.readBook( min_ex, max_ex, book_teaching_level( *islotbook ) );
 }
 
 bool read_activity_actor::player_read( avatar &you )
@@ -2320,7 +2326,7 @@ bool read_activity_actor::player_read( avatar &you )
         }
 
         if( skill &&
-            learner->get_knowledge_level( skill ) < islotbook->level &&
+            learner->get_knowledge_level( skill ) < book_teaching_level( *islotbook ) &&
             learner->get_skill_level_object( skill ).can_train() ) {
 
             SkillLevel &skill_level = learner->get_skill_level_object( skill );
@@ -2356,7 +2362,7 @@ bool read_activity_actor::player_read( avatar &you )
                 }
             }
 
-            if( skill_level == islotbook->level || !skill_level.can_train() ||
+            if( skill_level == book_teaching_level( *islotbook ) || !skill_level.can_train() ||
                 learner->schizo_symptoms( 25 ) ) {
                 if( learner->is_avatar() ) {
                     add_msg( m_info, _( "You can no longer learn from %s." ), book->type_name() );
@@ -2468,7 +2474,7 @@ bool read_activity_actor::npc_read( npc &learner )
     book->mark_chapter_as_read( learner );
 
     if( skill &&
-        learner.get_knowledge_level( skill ) < islotbook->level &&
+        learner.get_knowledge_level( skill ) < book_teaching_level( *islotbook ) &&
         learner.get_skill_level_object( skill ).can_train() ) {
 
         SkillLevel &skill_level = learner.get_skill_level_object( skill );
@@ -2497,7 +2503,8 @@ bool read_activity_actor::npc_read( npc &learner )
         }
 
         if( display_messages &&
-            ( skill_level == islotbook->level || !skill_level.can_train() || learner.schizo_symptoms( 25 ) ) ) {
+            ( skill_level == book_teaching_level( *islotbook ) || !skill_level.can_train() ||
+              learner.schizo_symptoms( 25 ) ) ) {
             add_msg( m_info, _( "%s can no longer learn from %s." ), learner.disp_name(),
                      book->type_name() );
         }
@@ -2624,7 +2631,7 @@ std::string read_activity_actor::get_progress_message( const player_activity & )
     const skill_id &skill = islotbook->skill;
 
     if( skill &&
-        you.get_knowledge_level( skill ) < islotbook->level &&
+        you.get_knowledge_level( skill ) < book_teaching_level( *islotbook ) &&
         you.get_skill_level_object( skill ).can_train() &&
         you.has_identified( book->typeId() ) ) {
         const SkillLevel &skill_level = you.get_skill_level_object( skill );

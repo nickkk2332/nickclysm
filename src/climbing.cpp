@@ -197,6 +197,7 @@ void climbing_aid::down_t::deserialize( const JsonObject &jo )
     optional( jo, true, "max_height", max_height );
     optional( jo, true, "easy_climb_back_up", easy_climb_back_up );
     optional( jo, true, "allow_remaining_height", allow_remaining_height );
+    optional( jo, true, "sheer_drop", sheer_drop );
 
     if( enabled() ) {
         // Mechanics.  Deploying changes presentation of menus.
@@ -305,6 +306,31 @@ const climbing_aid &climbing_aid::get_safest(
 const climbing_aid &climbing_aid::get_default()
 {
     return *climbing_aid_default_ptr;
+}
+
+const climbing_aid *climbing_aid::get_sheer_drop_aid( Character &you )
+{
+    const climbing_aid *choice = nullptr;
+    const auto choose_safest = [&choice]( const condition &, const climbing_aid & aid ) {
+        if( !aid.down.sheer_drop || !aid.down.enabled() ) {
+            return;
+        }
+        // The lowest slip chance, then the id, so the lookup's order doesn't matter
+        if( choice == nullptr || aid.slip_chance_mod < choice->slip_chance_mod ||
+            ( aid.slip_chance_mod == choice->slip_chance_mod && aid.id.str() < choice->id.str() ) ) {
+            choice = &aid;
+        }
+    };
+    // Only what the character brings: the terrain below a sheer drop can't be reached
+    condition_list conditions;
+    for( const condition &cond : detect_conditions( you, you.pos_bub() ) ) {
+        if( cond.cat == category::character || cond.cat == category::trait ||
+            cond.cat == category::item ) {
+            conditions.push_back( cond );
+        }
+    }
+    for_each_aid_condition( conditions, choose_safest );
+    return choice;
 }
 
 template< typename Test >

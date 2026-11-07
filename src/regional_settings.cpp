@@ -11,6 +11,7 @@
 #include <variant>
 
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "mapdata.h"
@@ -636,15 +637,57 @@ void region_settings::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "neighbor_connections", neighbor_connections, true );
 
     optional( jo, was_loaded, "npc_spawntime", npc_spawn_time, 4.0 );
+    optional( jo, was_loaded, "random_npcs", random_npcs );
 
     optional( jo, was_loaded, "max_urbanity", max_urban, 8 );
     optional( jo, was_loaded, "urbanity_increase", urban_increase, { 0, 0, 0, 0 } );
+}
+
+void region_settings_random_npcs::deserialize( const JsonObject &jo )
+{
+    optional( jo, false, "radius", radius, 90 );
+    if( radius < 0 ) {
+        jo.throw_error_at( "radius", "radius must not be negative" );
+    }
+    crowding_factor = static_cast<float>( jo.get_float( "crowding_factor", 0.8 ) );
+    if( crowding_factor < 0 ) {
+        jo.throw_error_at( "crowding_factor", "crowding_factor must not be negative" );
+    }
+    classes.clear();
+    if( jo.has_array( "classes" ) ) {
+        for( JsonArray entry : jo.get_array( "classes" ) ) {
+            classes.add( npc_class_id( entry.get_string( 0 ) ), entry.get_int( 1 ) );
+        }
+    }
+    optional( jo, false, "common_classes", common_classes, false );
+    spawn_eocs.clear();
+    if( jo.has_array( "spawn_eocs" ) ) {
+        for( JsonValue jv : jo.get_array( "spawn_eocs" ) ) {
+            spawn_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, "" ) );
+        }
+    }
+}
+
+void region_settings_random_npcs::check( const std::string &region ) const
+{
+    for( const std::pair<npc_class_id, int> &cls : classes ) {
+        if( !cls.first.is_valid() ) {
+            debugmsg( "region_settings %s: random_npcs class %s does not exist", region,
+                      cls.first.str() );
+        }
+    }
+    for( const effect_on_condition_id &eoc : spawn_eocs ) {
+        if( !eoc.is_valid() ) {
+            debugmsg( "region_settings %s: random_npcs spawn_eoc %s does not exist", region, eoc.str() );
+        }
+    }
 }
 
 void region_settings::finalize()
 {
     // So the data definition goes from z = OVERMAP_HEIGHT to z = OVERMAP_DEPTH
     std::reverse( default_oter.begin(), default_oter.end() );
+    random_npcs.check( id.str() );
 }
 
 void region_settings::finalize_all()

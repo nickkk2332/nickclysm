@@ -1058,6 +1058,7 @@ Character status value  | Description
 `EXTRA_ELEC_PAIN`       | Multiplier on electric damage received, the result is applied as extra pain.
 `EVASION`               | Flat chance for your character to dodge incoming attacks regardless of other modifiers.  From 0.0 (no evasion chance) to 1.0 (100% evasion chance).
 `FALL_DAMAGE`           | Affects the amount of fall damage you take.  Dexterity and dodge never cut it below 10% (about 6.7% with the parkour proficiency); only this value or `FEATHER_FALL` can make every fall harmless.  While the modifier is below 1/6, a fall of one story is still a perfect landing.
+`CLIMB_SLIP_CHANCE`     | Changes the final chance (in percent) of slipping while climbing up or down, after traits, proficiencies, stats, wetness, load, stamina and the climbing aid.  `add` is percentage points; `multiply` -0.5 halves the chance.
 `FAT_TO_MAX_HP`         | Changes the amount of HP, that is given to you by your fat. Formula is `((your_calories/7716.17)/((your_height_in_cm/100)^2))*hitsize_of_all_non_bionic_bodyparts`. Using `add` works just as adding HP, so use `multiply` instead
 `FOOTSTEP_NOISE`        | 
 `FORCEFIELD`            | Chance your character reduces incoming damage to 0. From 0.0 (no chance), to 1.0 (100% chance to avoid attacks).

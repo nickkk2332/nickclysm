@@ -56,6 +56,8 @@ class Skill
         bool consumes_focus = true;
         std::set<std::string> _requires_all_traits;
         std::set<std::string> _requires_any_traits;
+        // Practice, books and character creation stop here (MAX_SKILL at most)
+        int _max_level = MAX_SKILL;
         // When the definition this skill holds was loaded: `skills` keeps that order, so a
         // redefinition moves the skill to the end as it always did.
         uint64_t _load_order = 0;
@@ -127,6 +129,10 @@ class Skill
         }
         bool is_teachable() const {
             return _teachable;
+        }
+        /** The highest level practice, books and character creation can take this skill to */
+        int max_level() const {
+            return _max_level;
         }
 
         bool operator==( const Skill &b ) const {

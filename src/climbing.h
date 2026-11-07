@@ -82,6 +82,11 @@ class climbing_aid
 
         static const climbing_aid &get_default();
         static const climbing_aid &get_safest( const condition_list &cond, bool no_deploy = true );
+        /**
+         * The safest aid with down.sheer_drop that the character brings (an ability, trait or item),
+         * for stairs that end in a sheer drop; nullptr if there is none.
+         */
+        static const climbing_aid *get_sheer_drop_aid( Character &you );
 
 
         /**
@@ -167,6 +172,9 @@ class climbing_aid
             // Whether this aid can be used to climb down partway to ground.  Default true.
             //   Note that climbing down partway usually means the player will fall...
             bool        allow_remaining_height = true;
+
+            // Whether this aid is offered when stairs lead down to a sheer drop.  Default false.
+            bool        sheer_drop = false;
 
             // Menu text.  Menus normally display all deploy aids and the safest non-deploy aid.
             translation menu_text;

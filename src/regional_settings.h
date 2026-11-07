@@ -453,6 +453,23 @@ struct region_terrain_furniture {
     static void reset();
 };
 
+/** How random NPCs appear in a region (game::perhaps_add_random_npc) */
+struct region_settings_random_npcs {
+    // Overmap tiles around the avatar they appear within, and are counted within
+    int radius = 90;
+    // Each NPC already within the radius multiplies the hourly chance by this
+    float crowding_factor = 0.8f;
+    // npc classes to pick from, by weight; empty: a randomly made character, as before
+    weighted_int_list<npc_class_id> classes;
+    // With no classes: pick from the npc classes' "common" and "common_spawn_weight"
+    bool common_classes = false;
+    // Run with the new NPC as alpha (u_) and the avatar as beta (npc_)
+    std::vector<effect_on_condition_id> spawn_eocs;
+
+    void deserialize( const JsonObject &jo );
+    void check( const std::string &region ) const;
+};
+
 /*
  * Spatially relevant overmap and mapgen variables grouped into a set of suggested defaults;
  * eventually region mapping will modify as required and allow for transitions of biomes / demographics in a smooth fashion
@@ -485,6 +502,7 @@ struct region_settings {
     bool neighbor_connections;
 
     double npc_spawn_time;
+    region_settings_random_npcs random_npcs;
 
     float max_urban;
     // increase nesw

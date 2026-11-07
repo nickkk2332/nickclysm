@@ -3196,7 +3196,7 @@ double weather_eval( const_dialogue const &d, char /* scope */,
         return weather.weather_precise->pressure;
     }
     if( aspect == "precipitation" ) {
-        return precip_mm_per_hour( weather.weather_id->precip );
+        return weather.weather_id->get_precip_rate();
     }
     if( aspect == "duration_left" ) {
         const double left = std::max( 0.0,

@@ -7,6 +7,7 @@
 
 #include "achievement.h"
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "localized_comparator.h"
@@ -167,6 +168,27 @@ void scenario::load( const JsonObject &jo, std::string_view )
         _surround_groups.emplace_back( mongroup_id( ja.get_string( 0 ) ),
                                        static_cast<float>( ja.get_float( 1 ) ) );
     }
+
+    if( jo.has_object( "starting_npc" ) ) {
+        scenario_starting_npc npc_def;
+        npc_def.deserialize( jo.get_object( "starting_npc" ) );
+        _starting_npc = npc_def;
+    }
+}
+
+void scenario_starting_npc::deserialize( const JsonObject &jo )
+{
+    if( jo.has_array( "classes" ) ) {
+        for( JsonArray entry : jo.get_array( "classes" ) ) {
+            classes.add( npc_class_id( entry.get_string( 0 ) ), entry.get_int( 1 ) );
+        }
+    }
+    optional( jo, false, "chat", chat );
+    if( jo.has_array( "eocs" ) ) {
+        for( JsonValue jv : jo.get_array( "eocs" ) ) {
+            eocs.push_back( effect_on_conditions::load_inline_eoc( jv, "" ) );
+        }
+    }
 }
 
 const scenario *scenario::generic()
@@ -271,6 +293,19 @@ void scenario::check() const
     for( const start_location_id &l : _allowed_locs ) {
         if( !l.is_valid() ) {
             debugmsg( "starting location %s for scenario %s does not exist", l.c_str(), id.c_str() );
+        }
+    }
+
+    if( _starting_npc ) {
+        for( const std::pair<npc_class_id, int> &cls : _starting_npc->classes ) {
+            if( !cls.first.is_valid() ) {
+                debugmsg( "starting_npc class %s for scenario %s does not exist", cls.first.str(), id.str() );
+            }
+        }
+        for( const effect_on_condition_id &eoc : _starting_npc->eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "starting_npc eoc %s for scenario %s does not exist", eoc.str(), id.str() );
+            }
         }
     }
 
@@ -778,6 +813,11 @@ const std::vector<effect_on_condition_id> &scenario::eoc() const
 {
     return _eoc;
 }
+const std::optional<scenario_starting_npc> &scenario::starting_npc() const
+{
+    return _starting_npc;
+}
+
 const std::vector<std::pair<mongroup_id, float>> &scenario::surround_groups() const
 {
     return _surround_groups;

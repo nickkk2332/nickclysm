@@ -17,6 +17,7 @@
 #include "options.h"
 #include "recipe.h"
 #include "rng.h"
+#include "string_formatter.h"
 
 static const skill_id skill_archery( "archery" );
 static const skill_id skill_bashing( "bashing" );
@@ -255,6 +256,11 @@ void Skill::load( const JsonObject &jsobj, std::string_view )
               0 );
     optional( jsobj, was_loaded, "obsolete", _obsolete, false );
     optional( jsobj, was_loaded, "teachable", _teachable, true );
+    optional( jsobj, was_loaded, "max_level", _max_level, MAX_SKILL );
+    if( _max_level < 0 || _max_level > MAX_SKILL ) {
+        jsobj.throw_error_at( "max_level", string_format( "max_level must be between 0 and %d",
+                              MAX_SKILL ) );
+    }
     optional( jsobj, was_loaded, "requires_all_traits", _requires_all_traits, string_reader{} );
     optional( jsobj, was_loaded, "requires_any_traits", _requires_any_traits, string_reader{} );
 }

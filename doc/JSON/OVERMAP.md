@@ -322,6 +322,7 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 | `travel_cost_type` | How to treat this location when planning a route using autotravel on the overmap. Valid values are `road`,`field`,`dirt_road`,`trail`,`forest`,`shore`,`swamp`,`water`,`air`,`structure`,`roof`,`basement`,`tunnel`,`impassable`,`other`. Some types are harder to travel through with different types of vehicles, or on foot. |
 | `extras`          | Reference to a named `map_extras` in region_settings, defines which map extras can be applied.   |
 | `mondensity`      | Summed with values for adjacent overmap terrains to influence density of monsters spawned here.  |
+| `wind_factor`     | Optional, multiplier to the wind on this terrain (outdoors, before height and adjacent walls). Defaults to 0.5 for `forest` and `forest_water` and 1 for everything else. |
 | `spawns`          | Spawns added once at mapgen. Monster group, % chance, population range (min/max).                |
 | `flags`           | See `Overmap terrains` in [JSON_FLAGS.md](JSON_FLAGS.md).                                        |
 | `uniform_terrain` | Specifies the terrain that should fill this overmap terrain in place of a JSON mapgen with fill ter for very common maps to save on load time. |

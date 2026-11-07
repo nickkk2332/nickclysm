@@ -179,7 +179,7 @@ bool is_wind_blocker( const tripoint_bub_ms &location );
 weather_type_id current_weather( const tripoint_abs_ms &location,
                                  const time_point &t = calendar::turn );
 
-void glare( const weather_type_id &w );
+void glare( Character &target, const weather_type_id &w );
 /**
  * Amount of sunlight incident at the ground, taking weather and time of day
  * into account.

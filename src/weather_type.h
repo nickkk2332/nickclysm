@@ -75,6 +75,23 @@ struct weather_animation_t {
     void deserialize( const JsonObject &jo );
 };
 
+/**
+ * One kind of glare a weather type can cause in the eyes of characters out in the sun.
+ * The first entry of a weather type whose irradiance and condition are met is applied.
+ */
+struct weather_glare {
+    efftype_id effect;
+    // The sun's irradiance (W/m2, after the weather's sun_multiplier) must be above this
+    float min_irradiance = 0.0f;
+    // How long the effect lasts when first applied, and when it is renewed
+    time_duration duration = 20_turns;
+    time_duration repeat_duration = 10_turns;
+    // Checked with the character as alpha; empty means always
+    std::function<bool( const_dialogue const & )> condition;
+
+    void load( const JsonObject &jo );
+};
+
 struct weather_type {
     public:
         friend class generic_factory<weather_type>;
@@ -111,6 +128,20 @@ struct weather_type {
         precip_class precip = precip_class::none;
         // Whether said precipitation falls as rain.
         bool rains = false;
+        // Optional JSON overrides of what precip implies; unset ones follow precip
+        // (see get_precip_rate(), get_wetness(), get_field_decay() and get_glare()).
+        std::optional<double> precip_rate_override;
+        std::optional<int> wetness_override;
+        std::optional<time_duration> field_decay_override;
+        std::optional<std::vector<weather_glare>> glare_override;
+        /** Rainfall-equivalent precipitation in mm/h: funnels, snow, weather('precipitation') */
+        double get_precip_rate() const;
+        /** How hard the rain wets characters out in it (wet_character's amount) */
+        int get_wetness() const;
+        /** How much the rain ages outdoor fields and scent each turn */
+        time_duration get_field_decay() const;
+        /** The glare this weather can cause, first match wins */
+        const std::vector<weather_glare> &get_glare() const;
         // string for tiles animation
         std::string tiles_animation;
         // Information for weather animations
