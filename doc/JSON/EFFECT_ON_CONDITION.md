@@ -95,7 +95,7 @@ For example, `{ "npc_has_effect": "Shadow_Reveal" }`, used by shadow lieutenant,
 | addiction_type: "effect_on_condition"            | character (Character)       | NONE                        |
 | bionics: "activated_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id; `act_cost`, int, cost of activation of item
 | bionics: "deactivated_eocs"                      | character (Character)       | NONE                        | `this`, string, the bionic id
-| bionics: "processed_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id
+| bionics: "processed_eocs"                        | character (Character)       | NONE                        | `this`, string, the bionic id; `trigger_cost`, int, the bionic's `trigger_cost` in mJ
 | effect_type: "apply_eocs"                        | creature that gained the effect (Creature) | the creature that caused it, if it can be found (a character), otherwise NONE | `effect`, string, the effect id; `bodypart`, string, its body part (`bp_null` if none); `intensity`, int; `old_intensity`, int, 0
 | effect_type: "intensity_change_eocs"             | creature with the effect (Creature) | the creature that caused the change (or the effect), if it can be found, otherwise NONE | `effect`, `bodypart` as above; `intensity`, int, the new intensity; `old_intensity`, int, the one before
 | effect_type: "remove_eocs"                       | creature that lost the effect (Creature) | the creature that caused the effect, if it can be found, otherwise NONE | `effect`, `bodypart` as above; `intensity`, int, 0; `old_intensity`, int, the intensity it had
@@ -2711,7 +2711,7 @@ Other EOCs have some variables as well that they have access to, they are as fol
 | mutation: "activation_condition" | { "this", `mutation_id` } |
 | bionics: "activation_condition" | { "this", `bionic_id` } |
 | bionics: "activated_eocs" | { "this", `bionic_id` }, { "act_cost", `int` activation cost in mJ } |
-| bionics: "processed_eocs" | { "this", `bionic_id` } |
+| bionics: "processed_eocs" | { "this", `bionic_id` }, { "trigger_cost", `int` the bionic's `trigger_cost` in mJ } |
 | bionics: "deactivated_eocs" | { "this", `bionic_id` } |
 | damage_type: "ondamage_eocs" | { "bp", `bodypart_id` }, { "damage_taken", `double` damage the character will take post mitigation }, { "total_damage", `double` damage pre mitigation } |
 | terrain/furniture: "examine_action" | `this`: examined layer ID; `terrain`, `furniture`: both tile IDs; `examined_layer`: `terrain` or `furniture`; `pos`: absolute coordinates |

@@ -2132,6 +2132,10 @@
     "type": "json_flag"
   },
   {
+    "id": "SURGICAL_TRAINING",
+    "type": "json_flag"
+  },
+  {
     "id": "TACK",
     "type": "json_flag"
   },

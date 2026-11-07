@@ -1,5 +1,6 @@
 #include "magic_enchantment.h"
 
+#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <map>
@@ -34,6 +35,7 @@
 #include "monster.h"
 #include "rng.h"
 #include "spell_cast_context.h"
+#include "string_formatter.h"
 #include "talker.h"
 #include "units.h"
 #include "vehicle.h"
@@ -206,6 +208,8 @@ namespace io
             case enchant_vals::mod::WAKE_RESISTANCE: return "WAKE_RESISTANCE";
             case enchant_vals::mod::WAKE_PAIN_THRESHOLD: return "WAKE_PAIN_THRESHOLD";
             case enchant_vals::mod::BOOK_FUN: return "BOOK_FUN";
+            case enchant_vals::mod::BIONIC_SURGERY_SKILL: return "BIONIC_SURGERY_SKILL";
+            case enchant_vals::mod::MUT_OUT_OF_TREE_INSTABILITY_MULT: return "MUT_OUT_OF_TREE_INSTABILITY_MULT";
             case enchant_vals::mod::NUM_MOD: break;
         }
         cata_fatal( "Invalid enchant_vals::mod" );
@@ -518,6 +522,51 @@ enchantment_id enchantment::load_inline_enchantment( const JsonValue &jv,
         return enchantment_id( inline_id );
     } else {
         jv.throw_error( "Enchantment needs to be either string or enchantment object." );
+    }
+}
+
+void enchantment::load_enchantment_list( const JsonObject &jo, const bool was_loaded,
+        const std::string_view member, const std::string &owner, int &inline_count,
+        const std::string_view src, std::vector<enchantment_id> &list )
+{
+    const auto load_all = [&]( const JsonArray & ja ) {
+        for( const JsonValue jv : ja ) {
+            std::string inline_id = "INLINE_ENCH_" + owner + "_" + std::to_string( inline_count++ );
+            list.push_back( load_inline_enchantment( jv, src, inline_id ) );
+        }
+    };
+    warn_disabled_feature( jo, "relative", member, "not supported for enchantments" );
+    warn_disabled_feature( jo, "proportional", member, "not supported for enchantments" );
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", member, "no copy-from" );
+        warn_disabled_feature( jo, "delete", member, "no copy-from" );
+    }
+    if( jo.has_member( member ) ) {
+        list.clear();
+        load_all( jo.get_array( member ) );
+        return;
+    }
+    if( !was_loaded ) {
+        return;
+    }
+    // delete first, so that deleting and extending the same id replaces it
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const JsonValue jv : del.get_array( member ) ) {
+            const enchantment_id doomed( jv.get_string() );
+            const auto iter = std::find( list.begin(), list.end(), doomed );
+            if( iter == list.end() ) {
+                jv.throw_error( string_format( "%s has no enchantment %s to delete", owner,
+                                               doomed.str() ) );
+            }
+            list.erase( iter );
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        load_all( extend.get_array( member ) );
     }
 }
 

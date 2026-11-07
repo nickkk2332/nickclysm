@@ -12,13 +12,13 @@
 #include "enums.h"
 #include "input_context.h"
 #include "inventory.h"
-#include "magic.h"
 #include "mutation.h"
 #include "output.h"
 #include "popup.h"
 #include "string_formatter.h"
 #include "translations.h"
 #include "ui_manager.h"
+#include "units.h"
 namespace
 {
 enum class mutation_menu_mode {
@@ -311,44 +311,39 @@ void avatar::power_mutations()
                 mvwputch( wBio, point( second_column, list_start_y + i - scroll_position ),
                           type, td.key );
                 std::string mut_desc;
-                std::string resource_unit;
-                int number_of_resource = 0;
-                if( md.hunger ) {
-                    resource_unit += _( " kcal" );
-                    number_of_resource++;
-                }
-                if( md.thirst ) {
-                    if( number_of_resource > 0 ) {
-                        //~ Resources consumed by a mutation: "kcal & thirst & sleepiness & mana & stamina"
-                        resource_unit += _( " &" );
+                // Each resource with its own amount (MUT-J11)
+                std::string resource_costs;
+                const auto add_cost = [&resource_costs]( const std::string & resource_cost ) {
+                    if( !resource_costs.empty() ) {
+                        //~ Resources consumed by a mutation: "10 kcal & 5 thirst & 20 mana"
+                        resource_costs += _( " & " );
                     }
-                    resource_unit += _( " thirst" );
-                    number_of_resource++;
+                    resource_costs += resource_cost;
+                };
+                if( md.hunger && md.kcal_cost > 0 ) {
+                    add_cost( string_format( _( "%d kcal" ), md.kcal_cost ) );
                 }
-                if( md.sleepiness ) {
-                    if( number_of_resource > 0 ) {
-                        //~ Resources consumed by a mutation: "kcal & thirst & sleepiness & mana & stamina"
-                        resource_unit += _( " &" );
-                    }
-                    resource_unit += _( " sleepiness" );
+                if( md.thirst && md.thirst_cost > 0 ) {
+                    add_cost( string_format( _( "%d thirst" ), md.thirst_cost ) );
                 }
-                if( md.stamina ) {
-                    if( number_of_resource > 0 ) {
-                        //~ Resources consumed by a mutation: "kcal & thirst & sleepiness & mana & stamina"
-                        resource_unit += _( " &" );
-                    }
-                    resource_unit += _( " stamina" );
+                if( md.sleepiness && md.sleepiness_cost > 0 ) {
+                    add_cost( string_format( _( "%d sleepiness" ), md.sleepiness_cost ) );
                 }
-                if( md.mana ) {
-                    resource_unit += _( " mana" );
-                    number_of_resource++;
+                if( md.stamina && md.stamina_cost > 0 ) {
+                    add_cost( string_format( _( "%d stamina" ), md.stamina_cost ) );
+                }
+                if( md.mana && md.mana_cost > 0 ) {
+                    add_cost( string_format( _( "%d mana" ), md.mana_cost ) );
+                }
+                if( md.power_cost > 0_kJ ) {
+                    add_cost( units::display( md.power_cost ) );
                 }
                 mut_desc += mutation_name( md.id );
-                if( md.cost > 0 && md.cooldown > 0_turns ) {
-                    mut_desc += string_format( _( " - %d%s / %s" ),
-                                               md.cost, resource_unit, to_string_clipped( md.cooldown ) );
-                } else if( md.cost > 0 ) {
-                    mut_desc += string_format( _( " - %d%s" ), md.cost, resource_unit );
+                if( !resource_costs.empty() && md.cooldown > 0_turns ) {
+                    mut_desc += string_format( _( " - %s / %s" ),
+                                               resource_costs, to_string_clipped( md.cooldown ) );
+                } else if( !resource_costs.empty() ) {
+                    mut_desc += string_format( _( " - %s" ), resource_costs );
                 } else if( md.cooldown > 0_turns ) {
                     mut_desc += string_format( _( " - %s" ), to_string_clipped( md.cooldown ) );
                 }
@@ -454,11 +449,8 @@ void avatar::power_mutations()
                                 deactivate_mutation( mut_id );
                                 // Action done, leave screen
                                 exit = true;
-                            } else if( ( !mut_data.hunger || get_kcal_percent() >= 0.8f ) &&
-                                       ( !mut_data.thirst || get_thirst() <= 400 ) &&
-                                       ( !mut_data.sleepiness || get_sleepiness() <= 400 ) &&
-                                       ( !mut_data.mana || magic->available_mana() >= mut_data.cost ) &&
-                                       ( !mut_data.stamina || get_stamina() >= mut_data.cost ) ) {
+                            } else if( can_power_mutation( mut_id ) ) {
+                                // The same check as triggers and EOCs (MUT-J11)
                                 add_msg_if_player( m_neutral,
                                                    string_format( mut_data.activation_msg.translated(), mutation_name( mut_data.id ) ) );
                                 // Reset menu in advance
@@ -630,10 +622,8 @@ void avatar::power_mutations()
                                     deactivate_mutation( mut_id );
                                     // Action done, leave screen
                                     exit = true;
-                                } else if( ( !mut_data.hunger || get_kcal_percent() >= 0.8f ) &&
-                                           ( !mut_data.thirst || get_thirst() <= 400 ) &&
-                                           ( !mut_data.sleepiness || get_sleepiness() <= 400 ) &&
-                                           ( !mut_data.mana || magic->available_mana() >= mut_data.cost ) ) {
+                                } else if( can_power_mutation( mut_id ) ) {
+                                    // The same check as triggers and EOCs (MUT-J11)
                                     add_msg_if_player( m_neutral,
                                                        string_format( mut_data.activation_msg.translated(), mutation_name( mut_data.id ) ) );
                                     // Reset menu in advance

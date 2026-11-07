@@ -294,6 +294,17 @@ struct mutation_branch {
         int visibility = 0;
         int ugliness   = 0;
         int cost       = 0;
+        // MUT-J11: what an activation, and each cooldown of upkeep, takes of each resource the
+        // trait uses (the flags above; bionic power when power_cost is above 0).  The legacy
+        // "cost" sets every used resource's amount to it; "costs" names each one.
+        int kcal_cost = 0;
+        int thirst_cost = 0;
+        int sleepiness_cost = 0;
+        int mana_cost = 0;
+        int stamina_cost = 0;
+        units::energy power_cost = 0_kJ;
+        // Whether activating or running it takes anything (a used resource with an amount)
+        bool has_cost() const;
         // costs are consumed every cooldown turns,
         time_duration cooldown   = 0_turns;
         // bodytemp elements:
@@ -634,10 +645,13 @@ struct mutation_category_trait {
         translation raw_mutagen_message;
         // Memorial message when you cross a threshold
         std::string raw_memorial_message;
+        // Message when you cross this category's threshold
+        translation raw_threshold_message;
 
     public:
         std::string name() const;
         std::string mutagen_message() const;
+        std::string threshold_message() const;
         std::string memorial_message_male() const;
         std::string memorial_message_female() const;
 
@@ -659,6 +673,13 @@ struct mutation_category_trait {
         int base_removal_chance = 100;
         // Multiplier of vitamin costs when mutating this category removes starting traits
         float base_removal_cost_mul = 3.0f;
+        // MUT-J10: the chance that a mutation in this category is a bad one is
+        // bad_mutation_chance_scale * instability / good traits in the category, at most
+        // bad_mutation_chance_cap
+        float bad_mutation_chance_scale = 0.5f;
+        float bad_mutation_chance_cap = 0.67f;
+        // The character's level in this category needed to try crossing its threshold
+        int threshold_breach_min_level = 30;
 
         static const std::map<mutation_category_id, mutation_category_trait> &get_all();
         static const mutation_category_trait &get_category(

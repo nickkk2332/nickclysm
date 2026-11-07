@@ -9,12 +9,16 @@
 #include <functional>
 #include <iterator>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "action.h"
 #include "activity_actor_definitions.h"
@@ -95,7 +99,6 @@ static const ammo_effect_str_id ammo_effect_JET( "JET" );
 static const ammo_effect_str_id ammo_effect_NO_DAMAGE_SCALING( "NO_DAMAGE_SCALING" );
 static const ammo_effect_str_id ammo_effect_NO_ITEM_DAMAGE( "NO_ITEM_DAMAGE" );
 
-static const bionic_id afs_bio_dopamine_stimulators( "afs_bio_dopamine_stimulators" );
 static const bionic_id bio_blood_anal( "bio_blood_anal" );
 static const bionic_id bio_emp( "bio_emp" );
 static const bionic_id bio_evap( "bio_evap" );
@@ -149,6 +152,7 @@ static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_MANUAL_CBM_INSTALLATION( "MANUAL_CBM_INSTALLATION" );
 static const json_character_flag json_flag_NO_CBM_INSTALLATION( "NO_CBM_INSTALLATION" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
+static const json_character_flag json_flag_SURGICAL_TRAINING( "SURGICAL_TRAINING" );
 
 static const material_id fuel_type_metabolism( "metabolism" );
 static const material_id fuel_type_sun_light( "sunlight" );
@@ -163,8 +167,6 @@ static const material_id material_muscle( "muscle" );
 static const material_id material_qt_steel( "qt_steel" );
 static const material_id material_steel( "steel" );
 
-static const morale_type morale_feeling_good( "morale_feeling_good" );
-
 static const requirement_id requirement_data_anesthetic( "anesthetic" );
 
 static const skill_id skill_computer( "computer" );
@@ -176,8 +178,6 @@ static const trait_id trait_CENOBITE( "CENOBITE" );
 static const trait_id trait_DEBUG_BIONICS( "DEBUG_BIONICS" );
 static const trait_id trait_MASOCHIST_MED( "MASOCHIST_MED" );
 static const trait_id trait_NONE( "NONE" );
-static const trait_id trait_PROF_AUTODOC( "PROF_AUTODOC" );
-static const trait_id trait_PROF_MED( "PROF_MED" );
 static const trait_id trait_THRESH_MEDICAL( "THRESH_MEDICAL" );
 
 struct Character::bionic_fuels {
@@ -190,7 +190,34 @@ struct Character::bionic_fuels {
 namespace
 {
 generic_factory<bionic_data> bionic_factory( "bionic" );
+// Every BIONIC_FAULTY bionic, the pool a failed installation draws from (rebuilt when the
+// bionics are finalized, so a copy-from that adds or drops the flag counts once)
 std::vector<bionic_id> faulty_bionics;
+// How many inline enchantments each bionic id has loaded, to name the next one
+std::map<bionic_id, int> inline_enchantment_counts;
+
+// activated_eocs, processed_eocs and deactivated_eocs: EOC ids or inline EOCs.  Given, a list
+// replaces the inherited one; in a copy, "extend" adds to it and "delete" takes EOC ids out
+// (MUT-J08).
+class bionic_eoc_reader : public generic_typed_reader<bionic_eoc_reader>
+{
+    public:
+        explicit bionic_eoc_reader( const std::string_view source ) : src( source ) {}
+        effect_on_condition_id get_next( const JsonValue &jv ) const {
+            return effect_on_conditions::load_inline_eoc( jv, src );
+        }
+        template<typename C>
+        void erase_next( const JsonValue &jv, C &container ) const {
+            const effect_on_condition_id eoc( jv.get_string() );
+            const auto found = std::find( container.begin(), container.end(), eoc );
+            if( found == container.end() ) {
+                jv.throw_error( string_format( "no effect_on_condition %s to delete", eoc.str() ) );
+            }
+            container.erase( found );
+        }
+    private:
+        std::string src;
+};
 } //namespace
 
 std::function<int()> bionic_menus::remote_test_choice;
@@ -341,6 +368,10 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
     mandatory( jsobj, was_loaded, "id", id );
     mandatory( jsobj, was_loaded, "name", name );
     mandatory( jsobj, was_loaded, "description", description );
+    if( !was_loaded ) {
+        // A copy keeps the hardcoded effects of the bionic it copies (MUT-J12)
+        hardcoded_behavior = id;
+    }
 
     optional( jsobj, was_loaded, "cant_remove_reason", cant_remove_reason );
     optional( jsobj, was_loaded, "react_cost", power_over_time,
@@ -396,6 +427,7 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
     optional( jsobj, was_loaded, "dupes_allowed", dupes_allowed, false );
 
     optional( jsobj, was_loaded, "auto_deactivates", autodeactivated_bionics );
+    optional( jsobj, was_loaded, "faulty_pool", faulty_pool, string_id_reader<bionic_data> {} );
 
     optional( jsobj, was_loaded, "activated_close_ui", activated_close_ui, false );
 
@@ -405,17 +437,9 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
     if( activate_remove_cbm ) {
         activated_close_ui = true;
     }
-    for( JsonValue jv : jsobj.get_array( "activated_eocs" ) ) {
-        activated_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-
-    for( JsonValue jv : jsobj.get_array( "processed_eocs" ) ) {
-        processed_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-
-    for( JsonValue jv : jsobj.get_array( "deactivated_eocs" ) ) {
-        deactivated_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
+    optional( jsobj, was_loaded, "activated_eocs", activated_eocs, bionic_eoc_reader( src ) );
+    optional( jsobj, was_loaded, "processed_eocs", processed_eocs, bionic_eoc_reader( src ) );
+    optional( jsobj, was_loaded, "deactivated_eocs", deactivated_eocs, bionic_eoc_reader( src ) );
 
     if( jsobj.has_member( "activation_condition" ) ) {
         read_condition( jsobj, "activation_condition", activation_condition, false );
@@ -430,11 +454,10 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
         optional( jsobj, was_loaded, "npc_use", npc_use, bionic_npc_use::none );
     }
 
-    int enchant_num = 0;
-    for( JsonValue jv : jsobj.get_array( "enchantments" ) ) {
-        std::string enchant_name = "INLINE_ENCH_" + name + "_" + std::to_string( enchant_num++ );
-        enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
-    }
+    // Inline enchantments are named after the bionic's id, not its (translated) name, which two
+    // bionics can share (MUT-J08).
+    enchantment::load_enchantment_list( jsobj, was_loaded, "enchantments", id.str(),
+                                        inline_enchantment_counts[id], src, enchantments );
 
     if( jsobj.has_array( "encumbrance" ) ) {
         // clear data first so that copy-from can override it
@@ -478,10 +501,6 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
                 spell_on_activate ||
                 charge_time > 0_turns;
 
-    if( has_flag( json_flag_BIONIC_FAULTY ) ) {
-        faulty_bionics.push_back( id );
-    }
-
     if( has_flag( json_flag_BIONIC_GUN ) && power_activate != 0_kJ ) {
         debugmsg( "Bionic %s attribute power_activate is ignored due to BIONIC_GUN flag.", id.c_str() );
     }
@@ -519,6 +538,12 @@ void bionic_data::load_bionic_migration( const JsonObject &jo, std::string_view 
 void bionic_data::finalize_bionic()
 {
     bionic_factory.finalize();
+    faulty_bionics.clear();
+    for( const bionic_data &bio : bionic_factory.get_all() ) {
+        if( bio.has_flag( json_flag_BIONIC_FAULTY ) ) {
+            faulty_bionics.push_back( bio.id );
+        }
+    }
 }
 
 const std::vector<bionic_data> &bionic_data::get_all()
@@ -591,9 +616,20 @@ void bionic_data::check_bionic_consistency()
                 debugmsg( "Bionic %s teaches undefined martial art %s", bio.id.c_str(), style.c_str() );
             }
         }
+        std::set<enchantment_id> seen_enchantments;
         for( const enchantment_id &eid : bio.id->enchantments ) {
             if( !eid.is_valid() ) {
                 debugmsg( "Bionic %s uses undefined enchantment %s", bio.id.c_str(), eid.c_str() );
+            }
+            // MUT-J08: an enchantment listed twice applies twice
+            if( !seen_enchantments.insert( eid ).second ) {
+                debugmsg( "Bionic %s lists enchantment %s more than once", bio.id.c_str(), eid.c_str() );
+            }
+        }
+        for( const bionic_id &faulty : bio.faulty_pool ) {
+            if( !faulty.is_valid() ) {
+                debugmsg( "Bionic %s has undefined bionic %s in its faulty_pool", bio.id.c_str(),
+                          faulty.c_str() );
             }
         }
         for( const bionic_id &bid : bio.included_bionics ) {
@@ -827,9 +863,10 @@ static bool bionic_activation_allowed( Character &you, const bionic &bio, bool s
 // player and act on the player.  NPCs fire gun CBMs through npc::check_or_use_weapon_cbm.
 static bool activation_needs_avatar( const bionic &bio )
 {
-    return bio.info().has_flag( json_flag_BIONIC_GUN ) || bio.id == bio_lighter ||
-           bio.id == bio_emp || bio.id == bio_lockpick || bio.id == bio_water_extractor ||
-           bio.id == bio_remote;
+    const bionic_id &behavior = bio.info().hardcoded_behavior;
+    return bio.info().has_flag( json_flag_BIONIC_GUN ) || behavior == bio_lighter ||
+           behavior == bio_emp || behavior == bio_lockpick || behavior == bio_water_extractor ||
+           behavior == bio_remote;
 }
 
 bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics_ui,
@@ -996,7 +1033,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         set_wielded_item( bio.get_weapon() );
         get_wielded_item()->invlet = '#';
         weapon_bionic_uid = bio.get_uid();
-    } else if( bio.id == bio_evap ) {
+    } else if( bio.info().hardcoded_behavior == bio_evap ) {
         if( player_character.is_underwater() ) {
             add_msg_if_player( m_info,
                                _( "There's a lot of water around you already, no need to use your %s." ), bio.info().name );
@@ -1029,7 +1066,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             add_msg_if_player( m_info, _( "You change your mind and turn it off." ) );
             return false;
         }
-    } else if( bio.id == bio_resonator ) {
+    } else if( bio.info().hardcoded_behavior == bio_resonator ) {
         add_msg_activate();
         //~Sound of a bionic sonic-resonator shaking the area
         sounds::sound( pos_bub(), 30, sounds::sound_t::combat, _( "VRRRRMP!" ), false, "bionic",
@@ -1042,7 +1079,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         }
 
         mod_moves( -100 );
-    } else if( bio.id == bio_teleport ) {
+    } else if( bio.info().hardcoded_behavior == bio_teleport ) {
         if( mounted ) {
             refund_power();
             add_msg_if_player( m_info, _( "You cannot activate %s while mounted." ), bio.info().name );
@@ -1052,10 +1089,10 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
 
         teleport::teleport_creature( *this );
         mod_moves( -100 );
-    } else if( bio.id == bio_blood_anal ) {
+    } else if( bio.info().hardcoded_behavior == bio_blood_anal ) {
         add_msg_activate();
         conduct_blood_analysis();
-    } else if( bio.id == bio_torsionratchet ) {
+    } else if( bio.info().hardcoded_behavior == bio_torsionratchet ) {
         add_msg_activate();
         bool has_bionic_limbs = false;
         for( const bodypart_id &bp : get_all_body_parts() ) {
@@ -1067,10 +1104,10 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         if( has_bionic_limbs ) {
             add_msg_if_player( m_bad, _( "Your torsion ratchets are straining your bionic limbs!" ) );
         }
-    } else if( bio.id == bio_jointservo ) {
+    } else if( bio.info().hardcoded_behavior == bio_jointservo ) {
         add_msg_activate();
         add_msg_if_player( m_info, _( "You can now run faster, assisted by joint servomotors." ) );
-    } else if( bio.id == bio_lighter ) {
+    } else if( bio.info().hardcoded_behavior == bio_lighter ) {
         const std::optional<tripoint_bub_ms> pnt = choose_adjacent( _( "Start a fire where?" ) );
         if( pnt && here.is_flammable( *pnt ) && !here.get_field( *pnt, fd_fire ) ) {
             add_msg_activate();
@@ -1084,17 +1121,17 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             add_msg_if_player( m_info, _( "There's nothing to light there." ) );
             return false;
         }
-    } else if( bio.id == bio_geiger ) {
+    } else if( bio.info().hardcoded_behavior == bio_geiger ) {
         add_msg_activate();
         add_msg_if_player( m_info, _( "Your radiation level: %d" ), get_rad() );
-    } else if( bio.id == bio_radscrubber ) {
+    } else if( bio.info().hardcoded_behavior == bio_radscrubber ) {
         add_msg_activate();
         if( get_rad() > 4 ) {
             mod_rad( -5 );
         } else {
             set_rad( 0 );
         }
-    } else if( bio.id == bio_emp ) {
+    } else if( bio.info().hardcoded_behavior == bio_emp ) {
         if( const std::optional<tripoint_bub_ms> pnt = choose_adjacent(
                     _( "Create an EMP where?" ) ) ) {
             add_msg_activate();
@@ -1104,7 +1141,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             refund_power();
             return false;
         }
-    } else if( bio.id == bio_water_extractor ) {
+    } else if( bio.info().hardcoded_behavior == bio_water_extractor ) {
         bool no_target = true;
         bool extracted = false;
         for( item &it : here.i_at( pos_bub() ) ) {
@@ -1134,7 +1171,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             refund_power();
             return false;
         }
-    } else if( bio.id == bio_magnet ) {
+    } else if( bio.info().hardcoded_behavior == bio_magnet ) {
         add_msg_activate();
         static const std::set<material_id> affected_materials =
         { material_iron, material_steel, material_lc_steel, material_mc_steel, material_hc_steel, material_ch_steel, material_qt_steel, material_budget_steel };
@@ -1174,7 +1211,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         }
 
         mod_moves( -100 );
-    } else if( bio.id == bio_lockpick ) {
+    } else if( bio.info().hardcoded_behavior == bio_lockpick ) {
         // Avatar only, see activation_needs_avatar().
         std::optional<tripoint_bub_ms> target = lockpick_activity_actor::select_location(
                 player_character );
@@ -1188,16 +1225,16 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
             refund_power();
             return false;
         }
-    } else if( bio.id == bio_flashbang ) {
+    } else if( bio.info().hardcoded_behavior == bio_flashbang ) {
         add_msg_activate();
         explosion_handler::flashbang( pos_bub(), true );
         mod_moves( -100 );
-    } else if( bio.id == bio_shockwave ) {
+    } else if( bio.info().hardcoded_behavior == bio_shockwave ) {
         add_msg_activate();
         explosion_handler::shockwave( pos_bub(), 3, 4, 2, 8, true );
         add_msg_if_player( m_neutral, _( "You unleash a powerful shockwave!" ) );
         mod_moves( -100 );
-    } else if( bio.id == bio_meteorologist ) {
+    } else if( bio.info().hardcoded_behavior == bio_meteorologist ) {
         add_msg_activate();
         // Calculate local wind power
         int vehwindspeed = 0;
@@ -1227,7 +1264,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
                                               weatherPoint.humidity,  windpower ) ) );
         std::string dirstring = get_dirstring( weather.winddirection );
         add_msg_if_player( m_info, _( "Wind Direction: From the %s." ), dirstring );
-    } else if( bio.id == bio_remote ) {
+    } else if( bio.info().hardcoded_behavior == bio_remote ) {
         // The menu comes first: the activation message only if a function was picked
         int choice = -1;
         if( test_mode ) {
@@ -1314,16 +1351,18 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         }
     } else {
         add_msg_activate();
+    }
 
-        const std::vector<bionic_id> &deactivated_bionics = bio.info().autodeactivated_bionics;
-        if( !deactivated_bionics.empty() ) {
-            for( bionic &it : *my_bionics ) {
-                if( std::find( deactivated_bionics.begin(), deactivated_bionics.end(),
-                               it.id ) != deactivated_bionics.end() ) {
-                    if( it.powered ) {
-                        it.powered = false;
-                        add_msg_if_player( m_info, _( "Your %s automatically turn off." ), it.info().name );
-                    }
+    // Whichever kind of bionic this is, a successful activation switches off the ones it lists
+    // (it used to be only bionics without hardcoded effects) (MUT-J12)
+    const std::vector<bionic_id> &deactivated_bionics = bio.info().autodeactivated_bionics;
+    if( !deactivated_bionics.empty() ) {
+        for( bionic &it : *my_bionics ) {
+            if( std::find( deactivated_bionics.begin(), deactivated_bionics.end(),
+                           it.id ) != deactivated_bionics.end() ) {
+                if( it.powered ) {
+                    it.powered = false;
+                    add_msg_if_player( m_info, _( "Your %s automatically turn off." ), it.info().name );
                 }
             }
         }
@@ -1453,7 +1492,7 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only, bool ignore_cost 
         if( !still_known ) {
             martial_arts_data->selected_style_check();
         }
-    } else if( deactivated_id == bio_remote ) {
+    } else if( deactivated_id->hardcoded_behavior == bio_remote ) {
         if( g->remoteveh() != nullptr && !has_active_item( itype_remotevehcontrol ) ) {
             g->setremoteveh( nullptr );
         } else if( maybe_get_value( "remote_controlling" ) &&
@@ -1775,6 +1814,9 @@ void Character::process_bionic( bionic &bio )
             for( const effect_on_condition_id &eoc : passive_id->processed_eocs ) {
                 dialogue d( get_talker_for( *this ), nullptr );
                 d.set_value( "this", passive_id.str() );
+                // For EOCs to charge for what they do (MUT-J12)
+                write_var_value( var_type::context, "trigger_cost", &d,
+                                 units::to_millijoule( passive_id->power_trigger ) );
                 eoc->activate_activation_only( d, "a bionic process", "bionic being activated", "bionic" );
             }
         }
@@ -1836,6 +1878,9 @@ void Character::process_bionic( bionic &bio )
     for( const effect_on_condition_id &eoc : processed_id->processed_eocs ) {
         dialogue d( get_talker_for( *this ), nullptr );
         d.set_value( "this", processed_id.str() );
+        // For EOCs to charge for what they do (MUT-J12)
+        write_var_value( var_type::context, "trigger_cost", &d,
+                         units::to_millijoule( processed_id->power_trigger ) );
         eoc->activate_activation_only( d, "a bionic process", "bionic being activated", "bionic" );
     }
     bionic *still_installed = &bio;
@@ -1850,13 +1895,13 @@ void Character::process_bionic( bionic &bio )
     bionic &active = *still_installed;
 
     // Bionic effects on every turn they are active go here.
-    if( active.id == bio_remote ) {
+    if( active.info().hardcoded_behavior == bio_remote ) {
         if( g->remoteveh() == nullptr && !maybe_get_value( "remote_controlling" ) ) {
             active.powered = false;
             add_msg_if_player( m_warning, _( "Your %s has lost connection and is turning off." ),
                                active.info().name );
         }
-    } else if( active.id == bio_nanobots ) {
+    } else if( active.info().hardcoded_behavior == bio_nanobots ) {
         std::forward_list<bodypart_id> bleeding_bp_parts;
         for( const bodypart_id &bp : get_all_body_parts() ) {
             if( has_effect( effect_bleed, bp.id() ) ) {
@@ -1892,7 +1937,7 @@ void Character::process_bionic( bionic &bio )
                 mod_stored_kcal( -5 );
             }
         }
-    } else if( active.id == bio_painkiller ) {
+    } else if( active.info().hardcoded_behavior == bio_painkiller ) {
         const int pkill = get_painkiller();
         const int pain = get_pain();
         const units::energy trigger_cost = active.info().power_trigger;
@@ -1909,7 +1954,7 @@ void Character::process_bionic( bionic &bio )
             mod_stim( -1 );
             mod_power_level( -trigger_cost );
         }
-    } else if( active.id == bio_gills ) {
+    } else if( active.info().hardcoded_behavior == bio_gills ) {
         const units::energy trigger_cost = active.info().power_trigger / 8;
         if( has_effect( effect_asthma ) && get_power_level() >= trigger_cost ) {
             add_msg_if_player( m_good,
@@ -1918,7 +1963,7 @@ void Character::process_bionic( bionic &bio )
             remove_effect( effect_asthma );
             mod_power_level( -trigger_cost );
         }
-    } else if( active.id == bio_evap ) {
+    } else if( active.info().hardcoded_behavior == bio_evap ) {
         if( is_underwater() ) {
             add_msg_if_player( m_info,
                                _( "Your %s deactivates after it finds itself completely submerged in water." ),
@@ -1956,10 +2001,8 @@ void Character::process_bionic( bionic &bio )
                                active.info().name );
             deactivate_bionic( active );
         }
-    } else if( active.id == afs_bio_dopamine_stimulators ) {
-        // Aftershock
-        add_morale( morale_feeling_good, 20, 20, 30_minutes, 20_minutes, true );
     }
+    // Aftershock's afs_bio_dopamine_stimulators does its part in its processed_eocs (MUT-J12)
 }
 
 void Character::roll_critical_bionics_failure( const bodypart_id &bp )
@@ -2249,15 +2292,10 @@ int Character::bionics_pl_skill( bool autodoc, int skill_level ) const
         pl_skill = 12 * skill_level;
     }
 
-    // Medical residents have some idea what they're doing
-    if( has_trait( trait_PROF_MED ) ) {
-        pl_skill += 3;
-    }
-
-    // People trained in bionics gain an additional advantage towards using it
-    if( has_trait( trait_PROF_AUTODOC ) ) {
-        pl_skill += 7;
-    }
+    // Medical training (the MD and Autodoc Specialist traits), surgery-boosting CBMs or drugs:
+    // the BIONIC_SURGERY_SKILL enchantment value (MUT-J09)
+    pl_skill = static_cast<float>( enchantment_cache->modify_value(
+                                       enchant_vals::mod::BIONIC_SURGERY_SKILL, static_cast<double>( pl_skill ) ) );
     return round( pl_skill );
 }
 
@@ -2765,8 +2803,9 @@ bool Character::install_bionics( const itype &type, Character &installer, bool a
                          bioid->canceled_mutations, pos_bub() );
         return true;
     }
-    const std::string installer_name = installer.has_trait( trait_PROF_MED ) ||
-                                       installer.has_trait( trait_PROF_AUTODOC ) ? installer.disp_name() : "NOT_MED";
+    // Surgeons (SURGICAL_TRAINING) keep a failure's complications down (MUT-J09)
+    const std::string installer_name = installer.has_flag( json_flag_SURGICAL_TRAINING ) ?
+                                       installer.disp_name() : "NOT_MED";
 
     assign_activity( bionic_operation_activity_actor( true, success, autodoc, pl_skill,
                      difficulty, bioid, upbio_uid, installer_name ) );
@@ -2964,15 +3003,18 @@ void Character::bionics_install_failure( const bionic_id &bid, const std::string
             case 2:
             case 3: {
                 add_msg( m_bad, _( "The installation is faulty!" ) );
+                // The bionic's own faulty_pool, or any faulty bionic (MUT-J09)
+                const std::vector<bionic_id> &pool = bid->faulty_pool.empty() ? faulty_bionics :
+                                                     bid->faulty_pool;
                 std::vector<bionic_id> valid;
-                std::copy_if( begin( faulty_bionics ), end( faulty_bionics ), std::back_inserter( valid ),
+                std::copy_if( begin( pool ), end( pool ), std::back_inserter( valid ),
                 [&]( const bionic_id & id ) {
                     return !has_bionic( id ) && !id->dupes_allowed;
                 } );
 
                 if( valid.empty() ) {
                     // No unique faulty bionics left. Pick one that allows dupes
-                    std::copy_if( begin( faulty_bionics ), end( faulty_bionics ), std::back_inserter( valid ),
+                    std::copy_if( begin( pool ), end( pool ), std::back_inserter( valid ),
                     [&]( const bionic_id & id ) {
                         return id->dupes_allowed;
                     } );
@@ -3432,6 +3474,7 @@ void reset_bionics()
 {
     bionic_data::migrations.clear();
     faulty_bionics.clear();
+    inline_enchantment_counts.clear();
     bionic_factory.reset();
 }
 

@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -28,6 +30,7 @@
 #include "trait_group.h"
 #include "translations.h"
 #include "uilist.h"
+#include "units.h"
 #include "weighted_list.h"
 
 static const json_character_flag json_flag_ATTUNEMENT( "ATTUNEMENT" );
@@ -70,6 +73,77 @@ class translation_list_reader : public generic_typed_reader<translation_list_rea
             return msg;
         }
 };
+
+// activated_eocs, processed_eocs and deactivated_eocs: EOC ids or inline EOCs.  Given, a list
+// replaces the inherited one; in a copy, "extend" adds to it and "delete" takes EOC ids out
+// (MUT-J08).
+class mutation_eoc_reader : public generic_typed_reader<mutation_eoc_reader>
+{
+    public:
+        explicit mutation_eoc_reader( const std::string_view source ) : src( source ) {}
+        effect_on_condition_id get_next( const JsonValue &jv ) const {
+            return effect_on_conditions::load_inline_eoc( jv, src );
+        }
+        template<typename C>
+        void erase_next( const JsonValue &jv, C &container ) const {
+            const effect_on_condition_id eoc( jv.get_string() );
+            const auto found = std::find( container.begin(), container.end(), eoc );
+            if( found == container.end() ) {
+                jv.throw_error( string_format( "no effect_on_condition %s to delete", eoc.str() ) );
+            }
+            container.erase( found );
+        }
+    private:
+        std::string src;
+};
+
+// How many inline enchantments each trait id has loaded, to name the next one
+std::map<trait_id, int> inline_enchantment_counts;
+
+// A list of [ key, value ] pairs read into a map (vitamin_rates, spells_learned, ...).  Given,
+// it replaces the inherited map (the first of two equal keys wins, as it always did); in a
+// copy, "extend" adds pairs, replacing the value of a key already there, and "delete" takes
+// keys out (MUT-J08).
+template<typename K, typename V, typename ReadValue>
+void load_keyed_values( const JsonObject &jo, const bool was_loaded, const std::string_view member,
+                        std::map<K, V> &values, ReadValue read_value )
+{
+    warn_disabled_feature( jo, "relative", member, "not supported for this list" );
+    warn_disabled_feature( jo, "proportional", member, "not supported for this list" );
+    if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", member, "no copy-from" );
+        warn_disabled_feature( jo, "delete", member, "no copy-from" );
+    }
+    if( jo.has_member( member ) ) {
+        values.clear();
+        for( JsonArray pair : jo.get_array( member ) ) {
+            const K key( pair.next_string() );
+            values.emplace( key, read_value( pair ) );
+        }
+        return;
+    }
+    if( !was_loaded ) {
+        return;
+    }
+    if( jo.has_object( "delete" ) ) {
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const JsonValue jv : del.get_array( member ) ) {
+            const K key( jv.get_string() );
+            if( values.erase( key ) == 0 ) {
+                jv.throw_error( string_format( "no %s entry %s to delete", member, key.str() ) );
+            }
+        }
+    }
+    if( jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        for( JsonArray pair : extend.get_array( member ) ) {
+            const K key( pair.next_string() );
+            values.insert_or_assign( key, read_value( pair ) );
+        }
+    }
+}
 } // namespace
 
 namespace io
@@ -144,6 +218,12 @@ void mutation_category_trait::load( const JsonObject &jsobj, std::string_view )
     optional( jsobj, was_loaded, "threshold_min", threshold_min, 2200 );
     optional( jsobj, was_loaded, "base_removal_chance", base_removal_chance, 100 );
     optional( jsobj, was_loaded, "base_removal_cost_mul", base_removal_cost_mul, 3.0f );
+    // MUT-J10: progression tuning that was fixed in C++
+    optional( jsobj, was_loaded, "bad_mutation_chance_scale", bad_mutation_chance_scale, 0.5f );
+    optional( jsobj, was_loaded, "bad_mutation_chance_cap", bad_mutation_chance_cap, 0.67f );
+    optional( jsobj, was_loaded, "threshold_breach_min_level", threshold_breach_min_level, 30 );
+    optional( jsobj, was_loaded, "threshold_message", raw_threshold_message,
+              to_translation( "Something strains mightily for a moment… and then… you're… FREE!" ) );
 }
 
 void mutation_category_trait::finalize_all()
@@ -159,6 +239,11 @@ std::string mutation_category_trait::name() const
 std::string mutation_category_trait::mutagen_message() const
 {
     return raw_mutagen_message.translated();
+}
+
+std::string mutation_category_trait::threshold_message() const
+{
+    return raw_threshold_message.translated();
 }
 
 std::string mutation_category_trait::memorial_message_male() const
@@ -217,6 +302,11 @@ void mutation_category_trait::check_consistency()
         if( !cat.threshold_mut.is_empty() && !cat.threshold_mut.is_valid() ) {
             debugmsg( "Mutation category %s has threshold mutation %s, which does not exist",
                       cat.id.c_str(), cat.threshold_mut.c_str() );
+        }
+        if( cat.bad_mutation_chance_scale < 0.0f || cat.bad_mutation_chance_cap < 0.0f ||
+            cat.bad_mutation_chance_cap > 1.0f ) {
+            debugmsg( "Mutation category %s needs a bad_mutation_chance_scale of 0 or more and a "
+                      "bad_mutation_chance_cap from 0 to 1", cat.id.c_str() );
         }
     }
     // a dream of an undefined category is never dreamed
@@ -468,6 +558,42 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "sleepiness", sleepiness, false );
     optional( jo, was_loaded, "mana", mana, false );
     optional( jo, was_loaded, "stamina", stamina, false );
+    // MUT-J11: "costs" gives each resource its own amount, the legacy "cost" one amount for
+    // every resource flagged above.  Resources "costs" doesn't name are not used.
+    if( jo.has_object( "costs" ) ) {
+        for( const std::string_view legacy : {
+                 "cost", "kcal", "thirst", "sleepiness", "mana", "stamina"
+             } ) {
+            if( jo.has_member( legacy ) ) {
+                jo.throw_error_at( legacy, "use either \"costs\" or \"cost\" with resource flags, not both" );
+            }
+        }
+        JsonObject costs = jo.get_object( "costs" );
+        const auto read_cost = [&costs]( const std::string_view resource, bool & used, int &amount ) {
+            used = costs.has_member( resource );
+            amount = used ? costs.get_int( resource ) : 0;
+        };
+        read_cost( "kcal", hunger, kcal_cost );
+        read_cost( "thirst", thirst, thirst_cost );
+        read_cost( "sleepiness", sleepiness, sleepiness_cost );
+        read_cost( "mana", mana, mana_cost );
+        read_cost( "stamina", stamina, stamina_cost );
+        power_cost = 0_kJ;
+        optional( costs, false, "power", power_cost, 0_kJ );
+        if( kcal_cost < 0 || thirst_cost < 0 || sleepiness_cost < 0 || mana_cost < 0 ||
+            stamina_cost < 0 || power_cost < 0_kJ ) {
+            costs.throw_error( "costs can't be negative" );
+        }
+        cost = 0;
+    } else if( !was_loaded || jo.has_member( "cost" ) || jo.has_member( "kcal" ) ||
+               jo.has_member( "thirst" ) || jo.has_member( "sleepiness" ) ||
+               jo.has_member( "mana" ) || jo.has_member( "stamina" ) ) {
+        kcal_cost = hunger ? cost : 0;
+        thirst_cost = thirst ? cost : 0;
+        sleepiness_cost = sleepiness ? cost : 0;
+        mana_cost = mana ? cost : 0;
+        stamina_cost = stamina ? cost : 0;
+    }
     optional( jo, was_loaded, "valid", valid, true );
     optional( jo, was_loaded, "purifiable", purifiable, true );
 
@@ -539,10 +665,9 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "vanity", vanity, false );
     optional( jo, was_loaded, "dummy", dummy, false );
 
-    for( JsonArray pair : jo.get_array( "vitamin_rates" ) ) {
-        vitamin_rates.emplace( vitamin_id( pair.get_string( 0 ) ),
-                               time_duration::from_turns( pair.get_int( 1 ) ) );
-    }
+    load_keyed_values( jo, was_loaded, "vitamin_rates", vitamin_rates, []( JsonArray & pair ) {
+        return time_duration::from_turns( pair.next_int() );
+    } );
 
     for( JsonArray pair : jo.get_array( "vitamins_absorb_multi" ) ) {
         std::map<vitamin_id, double> vit;
@@ -626,21 +751,13 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "inactive_flags", inactive_flags, flag_reader{} );
     optional( jo, was_loaded, "types", types, string_reader{} );
 
-    for( JsonArray pair : jo.get_array( "moncams" ) ) {
-        moncams.insert( std::pair<mtype_id, int>( mtype_id( pair.get_string( 0 ) ), pair.get_int( 1 ) ) );
-    }
+    load_keyed_values( jo, was_loaded, "moncams", moncams, []( JsonArray & pair ) {
+        return pair.next_int();
+    } );
 
-    for( JsonValue jv : jo.get_array( "activated_eocs" ) ) {
-        activated_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-
-    for( JsonValue jv : jo.get_array( "processed_eocs" ) ) {
-        processed_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
-
-    for( JsonValue jv : jo.get_array( "deactivated_eocs" ) ) {
-        deactivated_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
-    }
+    optional( jo, was_loaded, "activated_eocs", activated_eocs, mutation_eoc_reader( src ) );
+    optional( jo, was_loaded, "processed_eocs", processed_eocs, mutation_eoc_reader( src ) );
+    optional( jo, was_loaded, "deactivated_eocs", deactivated_eocs, mutation_eoc_reader( src ) );
 
     optional( jo, was_loaded, "activated_is_setup", activated_is_setup, false );
     if( jo.has_member( "activation_condition" ) ) {
@@ -648,11 +765,8 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     }
     optional( jo, was_loaded, "activation_fail_message", activation_fail_message );
 
-    int enchant_num = 0;
-    for( JsonValue jv : jo.get_array( "enchantments" ) ) {
-        std::string enchant_name = "INLINE_ENCH_" + id.str() + "_" + std::to_string( enchant_num++ );
-        enchantments.push_back( enchantment::load_inline_enchantment( jv, src, enchant_name ) );
-    }
+    enchantment::load_enchantment_list( jo, was_loaded, "enchantments", id.str(),
+                                        inline_enchantment_counts[id], src, enchantments );
 
     optional( jo, was_loaded, "comfort", comfort );
 
@@ -662,30 +776,26 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
 
     optional( jo, was_loaded, "category", category, string_id_reader<mutation_category_trait> {} );
 
-    for( JsonArray ja : jo.get_array( "spells_learned" ) ) {
-        const spell_id sp( ja.next_string() );
-        spells_learned.emplace( sp, ja.next_int() );
-    }
+    load_keyed_values( jo, was_loaded, "spells_learned", spells_learned, []( JsonArray & ja ) {
+        return ja.next_int();
+    } );
 
-    for( JsonArray ja : jo.get_array( "craft_skill_bonus" ) ) {
-        const skill_id skid( ja.next_string() );
-        if( skid.is_valid() ) {
-            craft_skill_bonus.emplace( skid, ja.next_int() );
-        } else {
+    load_keyed_values( jo, was_loaded, "craft_skill_bonus", craft_skill_bonus, []( JsonArray & ja ) {
+        return ja.next_int();
+    } );
+    for( const std::pair<const skill_id, int> &bonus : craft_skill_bonus ) {
+        if( !bonus.first.is_valid() ) {
             jo.throw_error( "invalid skill_id" );
         }
     }
 
-    for( JsonArray ja : jo.get_array( "lumination" ) ) {
-        const bodypart_str_id bp = bodypart_str_id( ja.next_string() );
-        lumination.emplace( bp, static_cast<float>( ja.next_float() ) );
-    }
+    load_keyed_values( jo, was_loaded, "lumination", lumination, []( JsonArray & ja ) {
+        return static_cast<float>( ja.next_float() );
+    } );
 
-    for( JsonArray ja : jo.get_array( "anger_relations" ) ) {
-        const species_id spe = species_id( ja.next_string() );
-        anger_relations.emplace( spe, ja.next_int() );
-
-    }
+    load_keyed_values( jo, was_loaded, "anger_relations", anger_relations, []( JsonArray & ja ) {
+        return ja.next_int();
+    } );
 
     for( JsonObject wp : jo.get_array( "wet_protection" ) ) {
         int ignored = wp.get_int( "ignored", 0 );
@@ -739,7 +849,22 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "unwearable_flags", unwearable_flags, string_id_reader<json_flag> {} );
     optional( jo, was_loaded, "unwearable_message", unwearable_message );
 
-    for( JsonObject ao : jo.get_array( "armor" ) ) {
+    // Given, "armor" replaces the inherited values; in a copy, "extend" adds to them (MUT-J08).
+    warn_disabled_feature( jo, "delete", "armor", "restate \"armor\" instead" );
+    warn_disabled_feature( jo, "relative", "armor", "use \"extend\"" );
+    warn_disabled_feature( jo, "proportional", "armor", "not supported for armor" );
+    JsonArray armor_ja;
+    if( jo.has_member( "armor" ) ) {
+        armor.clear();
+        armor_ja = jo.get_array( "armor" );
+    } else if( was_loaded && jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        armor_ja = extend.get_array( "armor" );
+    } else if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", "armor", "no copy-from" );
+    }
+    for( JsonObject ao : armor_ja ) {
         std::set<std::string> ignored_by_resist = { "part_types", "parts" };
         const resistances res = load_resistances_instance( ao, ignored_by_resist );
         // Set damage resistances for all body parts of the specified type(s)
@@ -758,22 +883,44 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         }
     }
 
-    for( const JsonValue jv : jo.get_array( "integrated_armor" ) ) {
-        integrated_armor.emplace_back( jv );
-    }
+    optional( jo, was_loaded, "integrated_armor", integrated_armor, string_id_reader<itype> {} );
 
     for( JsonMember member : jo.get_object( "bionic_slot_bonuses" ) ) {
         bionic_slot_bonuses[bodypart_str_id( member.name() )] = member.get_int();
     }
 
-    if( jo.has_array( "attacks" ) ) {
-        for( JsonObject ao : jo.get_array( "attacks" ) ) {
-            attacks_granted.emplace_back( load_mutation_attack( ao ) );
+    // Given, "attacks" (an object or a list of them) replaces the inherited attacks; in a copy,
+    // "extend" adds to them (MUT-J08).
+    warn_disabled_feature( jo, "delete", "attacks", "restate \"attacks\" instead" );
+    warn_disabled_feature( jo, "relative", "attacks", "not supported for attacks" );
+    warn_disabled_feature( jo, "proportional", "attacks", "not supported for attacks" );
+    const auto load_attacks = [this]( const JsonObject & from ) {
+        if( from.has_array( "attacks" ) ) {
+            for( JsonObject ao : from.get_array( "attacks" ) ) {
+                attacks_granted.emplace_back( load_mutation_attack( ao ) );
+            }
+        } else if( from.has_object( "attacks" ) ) {
+            JsonObject attack = from.get_object( "attacks" );
+            attacks_granted.emplace_back( load_mutation_attack( attack ) );
         }
-    } else if( jo.has_object( "attacks" ) ) {
-        JsonObject attack = jo.get_object( "attacks" );
-        attacks_granted.emplace_back( load_mutation_attack( attack ) );
+    };
+    if( jo.has_member( "attacks" ) ) {
+        attacks_granted.clear();
+        load_attacks( jo );
+    } else if( was_loaded && jo.has_object( "extend" ) ) {
+        JsonObject extend = jo.get_object( "extend" );
+        extend.allow_omitted_members();
+        load_attacks( extend );
+    } else if( !was_loaded ) {
+        warn_disabled_feature( jo, "extend", "attacks", "no copy-from" );
     }
+}
+
+bool mutation_branch::has_cost() const
+{
+    return ( hunger && kcal_cost > 0 ) || ( thirst && thirst_cost > 0 ) ||
+           ( sleepiness && sleepiness_cost > 0 ) || ( mana && mana_cost > 0 ) ||
+           ( stamina && stamina_cost > 0 ) || power_cost > 0_kJ;
 }
 
 int mutation_branch::bionic_slot_bonus( const bodypart_str_id &part ) const
@@ -944,6 +1091,13 @@ void mutation_branch::check_consistency()
         for( const effect_on_condition_id &eoc : mdata.eat_eocs ) {
             if( !eoc.is_valid() ) {
                 debugmsg( "mutation %s has undefined eat_eocs EOC %s", mid.c_str(), eoc.c_str() );
+            }
+        }
+        // MUT-J08: an enchantment listed twice applies twice
+        std::set<enchantment_id> seen_enchantments;
+        for( const enchantment_id &ench : mdata.enchantments ) {
+            if( !seen_enchantments.insert( ench ).second ) {
+                debugmsg( "mutation %s lists enchantment %s more than once", mid.c_str(), ench.c_str() );
             }
         }
         // MUT-J01: a category that isn't defined is ignored when mutating, and an undefined
@@ -1147,6 +1301,7 @@ const std::vector<mutation_branch> &mutation_branch::get_all()
 
 void mutation_branch::reset_all()
 {
+    inline_enchantment_counts.clear();
     mutations_category.clear();
     diet_traits.clear();
     trait_factory.reset();

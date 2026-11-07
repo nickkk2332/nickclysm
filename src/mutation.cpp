@@ -197,6 +197,11 @@ int Character::get_instability_per_category( const mutation_category_id &categ )
 {
     int mut_count = 0;
     bool robust = has_flag( json_flag_ROBUST_GENETIC );
+    // How much a mutation outside the tree counts, per step of height: 2, or what the
+    // MUT_OUT_OF_TREE_INSTABILITY_MULT enchantment value makes of it (MUT-J10)
+    const double out_of_tree = enchantment_cache->modify_value(
+                                   enchant_vals::mod::MUT_OUT_OF_TREE_INSTABILITY_MULT, 2.0 );
+    double out_of_tree_count = 0.0;
     // For each and every trait we have...
     for( const trait_id &mut : get_mutations( true, true ) ) {
         // only count muts that have 0 or more points, aren't a threshold, have a category, and aren't a base trait.
@@ -217,10 +222,11 @@ int Character::get_instability_per_category( const mutation_category_id &categ )
             if( in_categ || robust ) {
                 mut_count += height * 1;
             } else {
-                mut_count += height * 2;
+                out_of_tree_count += height * out_of_tree;
             }
         }
     }
+    mut_count += static_cast<int>( std::lround( std::max( out_of_tree_count, 0.0 ) ) );
     mut_count = enchantment_cache->modify_value( enchant_vals::mod::MUT_INSTABILITY_MOD, mut_count );
     mut_count = std::max( mut_count, 0 );
     return mut_count;
@@ -410,13 +416,16 @@ void Character::switch_mutations( const trait_id &switched, const trait_id &targ
 
 bool Character::can_power_mutation( const trait_id &mut ) const
 {
+    // The one check for switching a trait on: the mutations menu, triggers and EOCs use it
+    // (MUT-J11)
     bool hunger = mut->hunger && get_kcal_percent() < 0.5f;
     bool thirst = mut->thirst && get_thirst() >= 260;
     bool sleepiness = mut->sleepiness && get_sleepiness() >= sleepiness_levels::EXHAUSTED;
-    bool mana = mut->mana && magic->available_mana() <= mut->cost;
-    bool stamina = mut->stamina && get_stamina() <= mut->cost;
+    bool mana = mut->mana && magic->available_mana() <= mut->mana_cost;
+    bool stamina = mut->stamina && get_stamina() <= mut->stamina_cost;
+    bool power = mut->power_cost > 0_kJ && get_power_level() < mut->power_cost;
 
-    return !hunger && !sleepiness && !thirst && !mana && !stamina;
+    return !hunger && !sleepiness && !thirst && !mana && !stamina && !power;
 }
 
 void Character::mutation_reflex_trigger( const trait_id &mut )
@@ -906,7 +915,6 @@ void Character::activate_cached_mutation( const trait_id &mut )
             it->second.powered = powered;
         }
     };
-    int cost = mdata.cost;
     // You can take yourself halfway to Near Death levels of hunger/thirst.
     // Sleepiness can go to Exhausted.
     if( !can_power_mutation( mut ) ) {
@@ -943,19 +951,22 @@ void Character::activate_cached_mutation( const trait_id &mut )
         }
         if( mdata.hunger ) {
             // burn some energy
-            mod_stored_kcal( -cost );
+            mod_stored_kcal( -mdata.kcal_cost );
         }
         if( mdata.thirst ) {
-            mod_thirst( cost );
+            mod_thirst( mdata.thirst_cost );
         }
         if( mdata.sleepiness ) {
-            mod_sleepiness( cost );
+            mod_sleepiness( mdata.sleepiness_cost );
         }
         if( mdata.mana ) {
-            magic->mod_mana( *this, -cost );
+            magic->mod_mana( *this, -mdata.mana_cost );
         }
         if( mdata.stamina ) {
-            mod_stamina( -cost );
+            mod_stamina( -mdata.stamina_cost );
+        }
+        if( mdata.power_cost > 0_kJ ) {
+            mod_power_level( -mdata.power_cost );
         }
         tdata.powered = true;
         recalc_sight_limits();
@@ -964,6 +975,36 @@ void Character::activate_cached_mutation( const trait_id &mut )
     if( !mut->enchantments.empty() ) {
         recalculate_enchantment_cache();
     }
+
+    // What this activation paid goes back when an activation EOC cancels it, or a built-in
+    // effect fails before doing anything
+    const auto refund_activation = [&]() {
+        const auto it = cached_mutations.find( mut );
+        if( it != cached_mutations.end() ) {
+            it->second.charge = charge_before;
+        }
+        if( !paid_cost ) {
+            return;
+        }
+        if( mdata.hunger ) {
+            mod_stored_kcal( mdata.kcal_cost );
+        }
+        if( mdata.thirst ) {
+            mod_thirst( -mdata.thirst_cost );
+        }
+        if( mdata.sleepiness ) {
+            mod_sleepiness( -mdata.sleepiness_cost );
+        }
+        if( mdata.mana ) {
+            magic->mod_mana( *this, mdata.mana_cost );
+        }
+        if( mdata.stamina ) {
+            mod_stamina( mdata.stamina_cost );
+        }
+        if( mdata.power_cost > 0_kJ ) {
+            mod_power_level( mdata.power_cost );
+        }
+    };
 
     if( !mut->activated_eocs.empty() ) {
         const auto powered_now = [this, &mut]() {
@@ -980,26 +1021,8 @@ void Character::activate_cached_mutation( const trait_id &mut )
             // An activation EOC turned the mutation off (u_deactivate_trait): respect that
             // and cancel the rest of the activation, giving back what it cost.  Not when the
             // EOC removed the mutation: that's the activation's effect, not a cancel.
-            const auto it = cached_mutations.find( mut );
-            if( it != cached_mutations.end() ) {
-                it->second.charge = charge_before;
-                if( paid_cost ) {
-                    if( mdata.hunger ) {
-                        mod_stored_kcal( cost );
-                    }
-                    if( mdata.thirst ) {
-                        mod_thirst( -cost );
-                    }
-                    if( mdata.sleepiness ) {
-                        mod_sleepiness( -cost );
-                    }
-                    if( mdata.mana ) {
-                        magic->mod_mana( *this, cost );
-                    }
-                    if( mdata.stamina ) {
-                        mod_stamina( cost );
-                    }
-                }
+            if( cached_mutations.count( mut ) ) {
+                refund_activation();
             }
             return;
         }
@@ -1024,32 +1047,6 @@ void Character::activate_cached_mutation( const trait_id &mut )
         }
         return;
     }
-
-    // A built-in effect that fails before doing anything gives back what this activation paid
-    const auto refund_activation = [&]() {
-        const auto it = cached_mutations.find( mut );
-        if( it != cached_mutations.end() ) {
-            it->second.charge = charge_before;
-        }
-        if( !paid_cost ) {
-            return;
-        }
-        if( mdata.hunger ) {
-            mod_stored_kcal( cost );
-        }
-        if( mdata.thirst ) {
-            mod_thirst( -cost );
-        }
-        if( mdata.sleepiness ) {
-            mod_sleepiness( -cost );
-        }
-        if( mdata.mana ) {
-            magic->mod_mana( *this, cost );
-        }
-        if( mdata.stamina ) {
-            mod_stamina( cost );
-        }
-    };
 
     // The built-in effects, keyed by "builtin_activation" (MUT-J06)
     switch( mdata.builtin_activation ) {
@@ -1291,9 +1288,13 @@ bool Character::mutation_ok( const trait_id &mutation, bool allow_good, bool all
 
 bool Character::roll_bad_mutation( const mutation_category_id &categ ) const
 {
-    // We will never have worse odds than this no matter our instability
-    float MAX_BAD_CHANCE = 0.67;
-    // or, if we have Robust, cap it lower.
+    // The category's scale and cap (by default 0.5 and 0.67): we will never have worse odds
+    // than the cap no matter our instability (MUT-J10)
+    // (an undefined category, which EOCs can name, keeps the defaults)
+    static const mutation_category_trait default_category;
+    const mutation_category_trait &category = mutation_category_is_valid( categ ) ?
+            mutation_category_trait::get_category( categ ) : default_category;
+    const float max_bad_chance = category.bad_mutation_chance_cap;
 
     bool ret = false;
 
@@ -1307,8 +1308,9 @@ bool Character::roll_bad_mutation( const mutation_category_id &categ ) const
         return ret;
     } else {
         // When we have a total instability score equal to the number of non-bad mutations in the tree, our odds of good/bad are 50/50.
-        float chance = 0.5 * static_cast<float>( insta_actual ) / static_cast<float>( muts_max );
-        chance = std::min( chance, MAX_BAD_CHANCE );
+        float chance = static_cast<float>( static_cast<double>( category.bad_mutation_chance_scale ) *
+                                           static_cast<float>( insta_actual ) / static_cast<float>( muts_max ) );
+        chance = std::min( chance, max_bad_chance );
         ret = rng_float( 0, 1 ) < chance;
         add_msg_debug( debugmode::DF_MUTATION,
                        "%s is the instability category chosen, which has %d total good traits.  Adjusted instability score for the category is %d, giving a chance of bad mut of %.3f.",
@@ -2719,8 +2721,8 @@ bool Character::can_cross_threshold( const mutation_category_id &mutation_catego
     // Threshold-breaching
     int breach_power = mutation_category_level[mutation_category];
     add_msg_debug( debugmode::DF_MUTATION, "test_crossing_treshold: breach power %d", breach_power );
-    // You're required to have hit third-stage dreams first.
-    if( breach_power >= 30 &&
+    // You're required to have hit third-stage dreams first (by default level 30).
+    if( breach_power >= m_category.threshold_breach_min_level &&
         vitamin_get( m_category.vitamin ) >= mutation_thresh.obj().vitamin_cost ) {
         return true;
     }
@@ -2738,8 +2740,7 @@ void Character::cross_threshold( const mutation_category_id &mutation_category )
 
     const mutation_branch &thrdata = mutation_thresh.obj();
     vitamin_mod( m_category.vitamin, -thrdata.vitamin_cost );
-    add_msg_if_player( m_good,
-                       _( "Something strains mightily for a moment… and then… you're… FREE!" ) );
+    add_msg_if_player( m_good, m_category.threshold_message() );
     // Thresholds can cancel unpurifiable traits
     for( const trait_id &canceled : thrdata.cancels ) {
         if( my_mutations.count( canceled ) == 0 ) {
