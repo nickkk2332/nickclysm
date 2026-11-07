@@ -599,9 +599,9 @@ void Character::randomize( const bool random_scenario, bool play_now )
                 const skill_id aSkill = Skill::random_skill();
                 const int level = get_skill_level( aSkill );
 
-                if( level < p.skill_points_left && level < MAX_SKILL && loops > 10000 ) {
+                if( level < p.skill_points_left && level < aSkill->max_level() && loops > 10000 ) {
                     // For balance reasons, increasing a skill from level 0 gives you 1 extra level for free
-                    set_skill_level( aSkill, ( level == 0 ? 2 : level + 1 ) );
+                    set_skill_level( aSkill, std::min( level == 0 ? 2 : level + 1, aSkill->max_level() ) );
                 }
                 break;
         }
@@ -3512,7 +3512,7 @@ bool character_creator_ui::handle_action( const std::string &action )
     auto mod_skill = [&you]( int mod_value ) {
         const skill_id selected_skill = cc_uistate.get_selected_skill();
         if( ( you.get_skill_level( selected_skill ) == MIN_SKILL && mod_value < 0 ) ||
-            ( you.get_skill_level( selected_skill ) == MAX_SKILL && mod_value > 0 ) ) {
+            ( you.get_skill_level( selected_skill ) >= selected_skill->max_level() && mod_value > 0 ) ) {
             return;
         }
         you.mod_skill_level( selected_skill, mod_value );
@@ -3951,10 +3951,11 @@ void character_creator_callback::confirm( uilist *menu )
             int previous_skill_level = u.get_skill_level( skill_queried );
             number_input_popup<int> skill_query( 0, previous_skill_level,
                                                  string_format( _( "Set new %s skill level (between %d and %d):" ),
-                                                         skill_queried->name(), MIN_SKILL, MAX_SKILL ) );
+                                                         skill_queried->name(), MIN_SKILL, skill_queried->max_level() ) );
             int skill_queried_result = skill_query.query();
             if( skill_queried_result != previous_skill_level ) {
-                const int skill_result_clamped = std::clamp( skill_queried_result, MIN_SKILL, MAX_SKILL );
+                const int skill_result_clamped = std::clamp( skill_queried_result, MIN_SKILL,
+                                                 skill_queried->max_level() );
                 u.set_skill_level( skill_queried, skill_result_clamped );
                 u.set_knowledge_level( skill_queried, skill_result_clamped );
             }

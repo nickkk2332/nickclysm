@@ -163,6 +163,7 @@ namespace io
             case enchant_vals::mod::KNOCKBACK_RESIST: return "KNOCKBACK_RESIST";
             case enchant_vals::mod::KNOCKDOWN_RESIST: return "KNOCKDOWN_RESIST";
             case enchant_vals::mod::FALL_DAMAGE: return "FALL_DAMAGE";
+            case enchant_vals::mod::CLIMB_SLIP_CHANCE: return "CLIMB_SLIP_CHANCE";
             case enchant_vals::mod::FORCEFIELD: return "FORCEFIELD";
             case enchant_vals::mod::EVASION: return "EVASION";
             case enchant_vals::mod::OVERKILL_DAMAGE: return "OVERKILL_DAMAGE";

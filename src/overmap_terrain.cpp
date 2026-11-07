@@ -28,6 +28,9 @@ static const string_id<map_data_summary> map_data_summary_full_omt( "full_omt" )
 static const string_id<map_data_summary>
 map_data_summary_scattered_obstacles_omt( "scattered_obstacles_omt" );
 
+static const string_id<oter_type_t> oter_type_forest( "forest" );
+static const string_id<oter_type_t> oter_type_forest_water( "forest_water" );
+
 using oter_type_id = int_id<oter_type_t>;
 using oter_type_str_id = string_id<oter_type_t>;
 
@@ -586,6 +589,12 @@ void oter_type_t::load( const JsonObject &jo, const std::string_view )
     mandatory( jo, was_loaded, "see_cost", see_cost );
     optional( jo, was_loaded, "extras", extras, "none" );
     optional( jo, was_loaded, "mondensity", mondensity, 0 );
+    if( jo.has_member( "wind_factor" ) ) {
+        wind_factor = jo.get_float( "wind_factor" );
+        if( *wind_factor < 0 ) {
+            jo.throw_error_at( "wind_factor", "wind_factor must not be negative" );
+        }
+    }
     optional( jo, was_loaded, "entry_eoc", entry_EOC );
     optional( jo, was_loaded, "exit_eoc", exit_EOC );
     optional( jo, was_loaded, "spawns", static_spawns );
@@ -778,6 +787,15 @@ std::string oter_t::get_mapgen_id() const
     return type->has_flag( oter_flags::line_drawing )
            ? type->id.str() + om_lines::mapgen_suffixes[om_lines::all[line].mapgen]
            : type->id.str();
+}
+
+float oter_t::get_wind_factor() const
+{
+    if( type->wind_factor ) {
+        return *type->wind_factor;
+    }
+    // Forests halved the wind by id before wind_factor; they still do by default
+    return type->id == oter_type_forest || type->id == oter_type_forest_water ? 0.5f : 1.0f;
 }
 
 oter_id oter_t::get_rotated( om_direction::type dir ) const

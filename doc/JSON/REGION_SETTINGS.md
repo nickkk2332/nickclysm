@@ -22,7 +22,8 @@ see their info later in this document.
 | `place_specials`         | boolean                             | Controls placement of overmap specials |
 | `neighbor_connections`   | boolean                             | Generate connections between neighboring overmaps |
 | `max_urbanity`           | integer                             | Max urbanity (a multiplier on city size) |
-| `npc_spawntime`          | float                               | How long between each random NPC spawn, roughly in days. Default 4.0  |
+| `npc_spawntime`          | float                               | How long between each random NPC spawn, roughly in days. Default 4.0. 0 means no random NPCs. |
+| `random_npcs`            | object                              | Optional, how random NPCs appear; see [Random NPCs](#random-npcs). |
 | `urbanity_increase`      | array of numbers                    | Increase in urbanity to the [ north, east, south, west ] of overmap (0,0) |
 | `rivers`                 | `region_settings_river`             | River generation parameters; Use `null` to disable river generation.  |
 | `lakes`                  | `region_settings_lake`              | Defines parameters for generating lakes in the region. `null` to disable. |
@@ -553,6 +554,30 @@ See above.
 }
 ```
 
+## Random NPCs
+
+**random_npcs** sets how the random NPCs that turn up over time (an hourly chance, see `npc_spawntime`) are made. They appear on the surface, on land, somewhere within `radius` overmap tiles of the player, each with its own faction.
+
+### Fields
+
+|    Identifier     |                                              Description                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `radius`          | Optional integer, overmap tiles around the player they appear within. NPCs within it count for `crowding_factor`. Default 90. |
+| `crowding_factor` | Optional number, each NPC already within the radius multiplies the hourly chance by this. Default 0.8. |
+| `classes`         | Optional array of `[ npc class id, weight ]`, the class of each new NPC, picked by weight. `NC_NONE` is a randomly made character. Default: none, every NPC is a randomly made character. |
+| `common_classes`  | Optional boolean. With no `classes`: pick the class by the npc classes' `common` and `common_spawn_weight` (see [NPCs](NPCs.md)). Default false. |
+| `spawn_eocs`      | Optional array of eoc ids or inline eocs, run for each new NPC with the NPC as `u` and the player as `npc`. The NPC is usually outside the reality bubble. |
+
+### Example
+
+```jsonc
+"random_npcs": {
+  "radius": 60,
+  "crowding_factor": 0.5,
+  "classes": [ [ "NC_NONE", 80 ], [ "NC_BANDIT", 20 ] ]
+}
+```
+
 ## Weather
 
 **weather** defines the base weather attributes used for the region.
@@ -561,14 +586,25 @@ See above.
 
 |     Identifier                 |                              Description                              |
 | ------------------------------ | --------------------------------------------------------------------- |
-| `base_temperature`             | Base temperature for the region in degrees Celsius.                   |
+| `base_temperature`             | Base temperature for the region: a plain number of degrees Celsius, or a string with units such as `"6.5 C"`. |
 | `base_humidity`                | Base humidity for the region in relative humidity %                   |
 | `base_pressure`                | Base pressure for the region in millibars.  Increasing it decreases the wind strength |
 | `base_wind`                    | Base wind for the region in mph units. Roughly the yearly average.    |
 | `base_wind_distrib_peaks`      | How high the wind peaks can go. Higher values produce windier days.   |
 | `base_wind_season_variation`   | How the wind varies with season. Increases wind speed in the summer, decreases wind speed in the winter. Larger values amplify effects, negative values reverse effects.  |
-| `weather_black_list`           | Ids of weather types not allowed in this region.                      |
-| `weather_white_list`           | Ids of the only weather types allowed in this region.                 |
+| `spring_temp_manual_mod`, `summer_temp_manual_mod`, `autumn_temp_manual_mod`, `winter_temp_manual_mod` | Optional integers, degrees Celsius added to the temperature in that season. Default 0. |
+| `spring_humidity_manual_mod`, `summer_humidity_manual_mod`, `autumn_humidity_manual_mod`, `winter_humidity_manual_mod` | Optional integers, percent added to the relative humidity in that season. Default 0. |
+| `weather_black_list`           | Ids of weather types not allowed in this region. Each must be a loaded weather type. |
+| `weather_white_list`           | Ids of the only weather types allowed in this region (`clear` is always allowed). Each must be a loaded weather type. Mutually exclusive with `weather_black_list`. |
+| `seasonal_amplitude`           | Optional, the greatest change from the year's average temperature: colder by this much at midwinter, warmer at midsummer. A temperature difference such as `"12 C"` (a plain number is kelvins). Default `"12 C"`. |
+| `daily_amplitude`              | Optional, the greatest change from the day's average temperature, colder at `coldest_hour` and warmer twelve hours later. Default `"5 C"`. |
+| `daily_seasonal_range`         | Optional, how much the daily swing grows towards midwinter (up to this much more) and shrinks towards midsummer. Default `"2 C"`. |
+| `coldest_hour`                 | Optional, the coldest hour of the day, 0 to 24. Default 5. |
+| `temperature_noise`            | Optional, the greatest random change from the day's temperature. Default `"6 C"`. |
+| `seasonal_noise`               | Optional, how much stronger the noise is in midwinter than midsummer: 0.5 makes it 1.5 times as strong. Default 0.5. |
+| `underground_temperature`      | Optional, the temperature below ground (z < 0), e.g. `"10 C"`. Defaults to `base_temperature`. |
+| `water_temperature`            | Optional object, the temperature of water (swimming, thermometers): `mean` (the year's average, default about `"13.6 C"`), `seasonal_amplitude` (coldest in late winter, warmest in late summer; default `"11.5 C"`) and `daily_amplitude` (default about `"1.1 C"`; the water is coolest at dawn and warmest in the afternoon). Each member is optional. |
+| `wind_direction_weights`       | Optional object with members `spring`, `summer`, `autumn` and `winter` (each optional): 16 non-negative integers, the relative chance of the wind blowing from each compass point, starting from north and going clockwise (N, NNE, NE ... NNW). Defaults to New England's prevailing winds. |
 | `snow`                         | Optional, how snow piles up, melts and slows movement here; see below. |
 
 `snow` (all members optional; a `copy-from` child keeps the members it doesn't name):
@@ -595,6 +631,24 @@ See [Snow on the ground](WEATHER_TYPE.md#snow-on-the-ground) for how snow depth 
     "base_wind_distrib_peaks": 80,
     "base_wind_season_variation": 50,
     "snow": { "melt_rate": 3.0, "max_depth": 1500 }
+}
+```
+
+A tropical region with a small seasonal swing and warm water:
+
+```jsonc
+{
+    "type": "weather_generator",
+    "id": "tropical",
+    "base_temperature": "26 C",
+    "base_humidity": 80.0,
+    "base_pressure": 1012.0,
+    "base_wind": 4.0,
+    "seasonal_amplitude": "2 C",
+    "daily_amplitude": "4 C",
+    "underground_temperature": "24 C",
+    "water_temperature": { "mean": "27 C", "seasonal_amplitude": "1 C" },
+    "weather_black_list": [ "flurries", "snowing", "snowstorm" ]
 }
 ```
 

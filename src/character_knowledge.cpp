@@ -258,6 +258,10 @@ void Character::do_skill_rust()
     for( std::pair<const skill_id, SkillLevel> &pair : *_skills ) {
         const Skill &aSkill = *pair.first;
         SkillLevel &skill_level_obj = pair.second;
+        if( aSkill.max_level() < MAX_SKILL && skill_level_obj.level() >= aSkill.max_level() ) {
+            // Like any skill at MAX_SKILL, one at its own cap doesn't rust
+            continue;
+        }
 
         if( aSkill.is_combat_skill() &&
             ( ( has_flag( json_flag_PRED2 ) && calendar::once_every( 8_hours ) ) ||

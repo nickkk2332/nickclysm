@@ -179,6 +179,7 @@
 #include "mtype.h"
 #include "npc.h"
 #include "npc_attitude_cause.h"
+#include "npc_class.h"
 #include "npc_follower_list.h"
 #include "npctrade.h"
 #include "omdata.h"
@@ -1378,9 +1379,14 @@ void game::create_starting_npcs()
         return; //There is already an NPC in this starting location
     }
 
+    const std::optional<scenario_starting_npc> &npc_def = get_scenario()->starting_npc();
     shared_ptr_fast<npc> tmp = make_shared_fast<npc>();
     tmp->normalize();
-    tmp->randomize( one_in( 2 ) ? NC_DOCTOR : npc_class_id::NULL_ID() );
+    if( npc_def && !npc_def->classes.empty() ) {
+        tmp->randomize( *npc_def->classes.pick() );
+    } else {
+        tmp->randomize( one_in( 2 ) ? NC_DOCTOR : npc_class_id::NULL_ID() );
+    }
     // hardcoded, consistent NPC position
     // start_loc::place_player relies on this and must be updated if this is changed
     tmp->spawn_at_precise( u.pos_abs() + point::north_west );
@@ -1393,12 +1399,18 @@ void game::create_starting_npcs()
     }
     //This sets the NPC mission. This NPC remains in the starting location.
     tmp->mission = NPC_MISSION_SHELTER;
-    tmp->chatbin.first_topic = "TALK_SHELTER";
+    tmp->chatbin.first_topic = npc_def && !npc_def->chat.empty() ? npc_def->chat : "TALK_SHELTER";
     tmp->toggle_trait( trait_NPC_STARTING_NPC );
     tmp->set_fac( faction_no_faction );
     //One random starting NPC mission
     tmp->add_new_mission( mission::reserve_random( ORIGIN_OPENER_NPC, tmp->pos_abs_omt(),
                           tmp->getID() ) );
+    if( npc_def && !npc_def->eocs.empty() ) {
+        dialogue d( get_talker_for( *tmp ), get_talker_for( u ) );
+        for( const effect_on_condition_id &eoc : npc_def->eocs ) {
+            eoc->activate( d );
+        }
+    }
 }
 
 static int veh_lumi( vehicle &veh )
@@ -9813,6 +9825,10 @@ static std::optional<tripoint_bub_ms> find_empty_spot_nearby( const tripoint_bub
     return std::nullopt;
 }
 
+// The furniture a JSON sheer-drop climbing aid leaves at the bottom, from find_or_make_stairs to
+// vertical_move; empty for the usual rope, web or vine
+static furn_str_id sheer_drop_deploy_furn;
+
 void game::vertical_move( int movez, bool force, bool peeking )
 {
     if( u.has_flag( json_flag_CANNOT_MOVE ) ) {
@@ -10091,6 +10107,7 @@ void game::vertical_move( int movez, bool force, bool peeking )
 
     // Find the corresponding staircase
     bool rope_ladder = false;
+    sheer_drop_deploy_furn = furn_str_id();
     // TODO: Remove the stairfinding, make the mapgen gen aligned maps
     if( !force && !climbing && !swimming ) {
         const std::optional<tripoint_bub_ms> pnt = find_or_make_stairs( here, z_after, rope_ladder, peeking,
@@ -10228,7 +10245,10 @@ void game::vertical_move( int movez, bool force, bool peeking )
     }
 
     if( rope_ladder ) {
-        if( u.has_flag( json_flag_WEB_RAPPEL ) ) {
+        if( !sheer_drop_deploy_furn.is_empty() ) {
+            here.furn_set( pos, sheer_drop_deploy_furn );
+            sheer_drop_deploy_furn = furn_str_id();
+        } else if( u.has_flag( json_flag_WEB_RAPPEL ) ) {
             here.furn_set( pos, furn_f_web_up );
         } else if( u.has_flag( json_flag_VINE_RAPPEL ) ) {
             here.furn_set( pos, furn_f_vine_up );
@@ -10751,6 +10771,43 @@ std::optional<tripoint_bub_ms> game::find_or_make_stairs( map &mp, const int z_a
         } else {
             return std::nullopt;
         }
+    } else if( const climbing_aid *aid = climbing_aid::get_sheer_drop_aid( u ) ) {
+        // A JSON climbing aid with "sheer_drop"
+        const std::string confirm = aid->down.confirm_text.empty() ? _( "Climb down?" ) :
+                                    aid->down.confirm_text.translated();
+        if( !query_yn( _( "There is a sheer drop halfway down.  %s" ), confirm ) ) {
+            return std::nullopt;
+        }
+        if( !aid->down.msg_before.empty() ) {
+            add_msg( aid->down.msg_before.translated() );
+        }
+        if( aid->base_condition.cat == climbing_aid::category::item &&
+            aid->base_condition.uses_item > 0 ) {
+            for( item &used_item : u.use_amount( itype_id( aid->base_condition.flag ),
+                                                 aid->base_condition.uses_item ) ) {
+                used_item.spill_contents( u );
+            }
+        }
+        if( aid->down.cost.damage > 0 ) {
+            u.apply_damage( nullptr, bodypart_id( "torso" ), aid->down.cost.damage );
+        }
+        if( aid->down.cost.pain > 0 ) {
+            u.mod_pain( aid->down.cost.pain );
+        }
+        if( aid->down.cost.kcal > 0 ) {
+            u.mod_stored_kcal( -aid->down.cost.kcal );
+        }
+        if( aid->down.cost.thirst > 0 ) {
+            u.mod_thirst( aid->down.cost.thirst );
+        }
+        // An aid that is easy to climb back up leaves a way up: its furniture, or a rope
+        rope_ladder = aid->down.easy_climb_back_up > 0;
+        if( rope_ladder && aid->down.deploys_furniture() ) {
+            sheer_drop_deploy_furn = aid->down.deploy_furn;
+        }
+        if( !aid->down.msg_after.empty() ) {
+            add_msg( aid->down.msg_after.translated() );
+        }
     } else if( !query_yn( _( "There is a sheer drop halfway down.  Jump?" ) ) ) {
         return std::nullopt;
     }
@@ -11036,16 +11093,18 @@ void game::perhaps_add_random_npc( bool ignore_spawn_timers_and_rates )
     }
     // Create a new NPC?
 
-    const double spawn_time = overmap_buffer.get_settings( u.pos_abs_omt() ).npc_spawn_time;
+    const region_settings &region = overmap_buffer.get_settings( u.pos_abs_omt() );
+    const double spawn_time = region.npc_spawn_time;
     if( !ignore_spawn_timers_and_rates && spawn_time == 0.0 ) {
         return;
     }
+    const region_settings_random_npcs &random_npcs = region.random_npcs;
 
     // spawn algorithm is a chance per hour, but the config is specified in average days
     // actual chance per hour is (100 / 24 ) / days
     static constexpr double days_to_rate_factor = 100.0 / 24;
     double spawn_rate = days_to_rate_factor / spawn_time;
-    static constexpr int radius_spawn_range = 90;
+    const int radius_spawn_range = random_npcs.radius;
     std::vector<shared_ptr_fast<npc>> npcs = overmap_buffer.get_npcs_near_player( radius_spawn_range );
     size_t npc_num = npcs.size();
     for( auto &npc : npcs ) {
@@ -11056,7 +11115,7 @@ void game::perhaps_add_random_npc( bool ignore_spawn_timers_and_rates )
 
     if( npc_num > 0 ) {
         // 100%, 80%, 64%, 52%, 41%, 33%...
-        spawn_rate *= std::pow( 0.8f, npc_num );
+        spawn_rate *= std::pow( random_npcs.crowding_factor, npc_num );
     }
 
     if( !ignore_spawn_timers_and_rates && !x_in_y( spawn_rate, 100 ) ) {
@@ -11083,7 +11142,13 @@ void game::perhaps_add_random_npc( bool ignore_spawn_timers_and_rates )
     }
     shared_ptr_fast<npc> tmp = make_shared_fast<npc>();
     tmp->normalize();
-    tmp->randomize();
+    if( !random_npcs.classes.empty() ) {
+        tmp->randomize( *random_npcs.classes.pick() );
+    } else if( random_npcs.common_classes ) {
+        tmp->randomize( npc_class::random_common() );
+    } else {
+        tmp->randomize();
+    }
 
     if( one_in( 100 ) ) {
         // Same chances and duration of flu vs. cold as for the player.
@@ -11113,6 +11178,13 @@ void game::perhaps_add_random_npc( bool ignore_spawn_timers_and_rates )
                           tmp->getID() ) );
     // This will make the new NPC active- if its nearby to the player
     load_npcs();
+    if( !random_npcs.spawn_eocs.empty() ) {
+        // The NPC is usually far away, outside the reality bubble
+        dialogue d( get_talker_for( *tmp ), get_talker_for( u ) );
+        for( const effect_on_condition_id &eoc : random_npcs.spawn_eocs ) {
+            eoc->activate( d );
+        }
+    }
 }
 
 // Redraw window and show spinner, so cata window doesn't look frozen while pathfinding on overmap
@@ -11552,8 +11624,11 @@ float game::slip_down_chance( climb_maneuver, climbing_aid_id aid_id,
         }
     }
 
-    add_msg_debug( debugmode::DF_GAME, "After affordance modifier, final slip chance %.0f%%",
-                   slip );
+    add_msg_debug( debugmode::DF_GAME, "After affordance modifier, slip chance %.0f%%", slip );
+
+    // Enchantments (traits, bionics, items, effects) may change the final chance
+    slip = u.calculate_by_enchantment( slip, enchant_vals::mod::CLIMB_SLIP_CHANCE );
+    add_msg_debug( debugmode::DF_GAME, "After enchantments, final slip chance %.0f%%", slip );
 
     return slip;
 }

@@ -1,6 +1,8 @@
 #include "flag.h"
 
+#include "action.h"
 #include "debug.h"
+#include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "type_id.h"
 
@@ -398,6 +400,8 @@ const flag_id flag_NULL = json_flag_null; // intentionally invalid flag
 namespace
 {
 generic_factory<json_flag> json_flags_all( "json_flags" );
+// Flags with blocked_actions, for game::do_regular_action
+std::vector<flag_id> action_blocking_flags;
 } // namespace
 
 /** @relates string_id */
@@ -447,6 +451,15 @@ void json_flag::load( const JsonObject &jo, std::string_view )
         optional( toggle, false, "name", vehicle_toggle_name_ );
         optional( toggle, false, "hotkey", vehicle_toggle_hotkey_ );
     }
+    if( jo.has_member( "blocked_actions" ) ) {
+        blocked_actions_.clear();
+        for( JsonObject jb : jo.get_array( "blocked_actions" ) ) {
+            blocked_actions_t entry;
+            mandatory( jb, false, "actions", entry.actions );
+            mandatory( jb, false, "message", entry.message );
+            blocked_actions_.push_back( entry );
+        }
+    }
 }
 
 void json_flag::check_consistency()
@@ -457,6 +470,7 @@ void json_flag::check_consistency()
 void json_flag::reset()
 {
     json_flags_all.reset();
+    action_blocking_flags.clear();
 }
 
 void json_flag::load_all( const JsonObject &jo, const std::string &src )
@@ -476,11 +490,29 @@ void json_flag::check() const
         debugmsg( "flag definition %s has a vehicle_toggle hotkey but no name to show it with",
                   id.str() );
     }
+    for( const blocked_actions_t &entry : blocked_actions_ ) {
+        for( const std::string &act : entry.actions ) {
+            if( look_up_action( act ) == ACTION_NULL ) {
+                debugmsg( "flag definition %s blocks unknown action \"%s\"", id.str(), act );
+            }
+        }
+    }
 }
 
 void json_flag::finalize_all()
 {
     json_flags_all.finalize();
+    action_blocking_flags.clear();
+    for( const json_flag &f : json_flags_all.get_all() ) {
+        if( !f.blocked_actions_.empty() ) {
+            action_blocking_flags.push_back( f.id );
+        }
+    }
+}
+
+const std::vector<flag_id> &json_flag::get_action_blocking()
+{
+    return action_blocking_flags;
 }
 
 bool json_flag::is_ready()

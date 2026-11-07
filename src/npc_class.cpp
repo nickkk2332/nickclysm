@@ -391,13 +391,13 @@ const npc_class_id &npc_class::random_common()
         }
     }
 
-    const npc_class_id *chosen_class = *weighted_classes.pick();
-
-    if( !chosen_class ) {
+    // No common classes at all leaves nothing to pick
+    const npc_class_id *const *picked = weighted_classes.pick();
+    if( picked == nullptr || *picked == nullptr ) {
         return npc_class_id::NULL_ID();
     }
 
-    return *chosen_class;
+    return **picked;
 }
 
 std::string npc_class::get_name() const

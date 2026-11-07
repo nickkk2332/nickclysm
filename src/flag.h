@@ -525,6 +525,17 @@ class json_flag
             return vehicle_toggle_hotkey_;
         }
 
+        /** Actions (keybinding ids) a character with this flag can't take, and what they're told */
+        struct blocked_actions_t {
+            std::vector<std::string> actions;
+            translation message;
+        };
+        const std::vector<blocked_actions_t> &blocked_actions() const {
+            return blocked_actions_;
+        }
+        /** The flags with blocked_actions, set when flags are finalized */
+        static const std::vector<flag_id> &get_action_blocking();
+
         /** Is this a valid (non-null) flag */
         explicit operator bool() const;
 
@@ -549,6 +560,7 @@ class json_flag
         bool vehicle_toggle_ = false;
         translation vehicle_toggle_name_;
         std::string vehicle_toggle_hotkey_;
+        std::vector<blocked_actions_t> blocked_actions_;
 
         /** Load flag definition from JSON */
         void load( const JsonObject &jo, std::string_view src );

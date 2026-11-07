@@ -2774,6 +2774,7 @@ it is present to help catch errors.
 | `requires_all_traits` | Traits that the player is required to have to display the skill in the character tab. All traits are required |
 | `requires_any_traits` | Traits that the player needs at least one of to display the skill in the character tab. At least one trait is required |
 | `obsolete` | (Boolean) The skill is kept for old saves but isn't shown or used. (Default = false) |
+| `max_level` | _(int)_ The highest level the skill can be practiced to, learned from books and chosen in character creation, from 0 to 10. A skill at its `max_level` doesn't rust. Professions, debug tools and EOCs (`u_set_skill_level`) can still set it higher. (Default = 10) |
 
 If neither `requires_all_traits` or `requires_any_traits` are defined, the skill will always display in the character tab
 
@@ -4395,7 +4396,8 @@ Flags, that can be used in different entries, can also be made in json, allowing
   "craft_inherit": true, // if true, if you craft something with this flag, this flag would be applied to result also
   "item_prefix": "[...",
   "item_suffix": "...]", // `item_prefix` and `item_suffix` will be added to the prefix and suffix of the item name
-  "vehicle_toggle": { "name": "force field" } // vehicle parts with this flag can be switched on and off together, see below
+  "vehicle_toggle": { "name": "force field" }, // vehicle parts with this flag can be switched on and off together, see below
+  "blocked_actions": [ { "actions": [ "fire", "throw" ], "message": "You have sworn not to fight." } ] // a character with this flag can't take these actions, see below
 },
 
 ```
@@ -4424,6 +4426,28 @@ A switched-on part draws its `epower` when it has `ENABLED_DRAINS_EPOWER`, and e
   "epower": "-500 W",
   "flags": [ "FORCE_FIELD", "ENABLED_DRAINS_EPOWER" ]
   // plus the usual vehicle part fields
+}
+```
+
+#### Blocked actions
+
+A flag with `blocked_actions` stops a character who has it (from a trait or mutation, a bionic, an effect, a body part or a martial arts buff, as `has_flag` checks) from taking some of the avatar's keyed actions. Each entry has `actions`, a list of action ids as they are in the keybindings (`data/raw/keybindings.json`, e.g. `"pickup"`, `"craft"`, `"fire"`, `"throw"`, `"open"`, `"control_vehicle"`), and `message`, shown when the action is refused. An unknown action id is reported at load. The first entry of any of the character's flags that names the action is used. `TEMPORARY_SHAPESHIFT_NO_HANDS` blocks the hand-using actions this way. The in-shell (`SHELL2`/`SHELL3`), incorporeal and riding blocks, and the `BRAWLER`/`GUNSHY` refusals to fire, are still in the game's code.
+
+A trait for a vow of non-violence:
+
+```jsonc
+{
+  "type": "json_flag",
+  "id": "VOW_OF_PEACE",
+  "blocked_actions": [ { "actions": [ "fire", "throw" ], "message": "You have sworn not to fight." } ]
+},
+{
+  "type": "mutation",
+  "id": "PEACEFUL_VOW",
+  "name": "Vow of Peace",
+  "points": -1,
+  "description": "You will not shoot or throw things at anyone.",
+  "flags": [ "VOW_OF_PEACE" ]
 }
 ```
 
@@ -4612,6 +4636,25 @@ Allows customization of game start date. If `start_of_game` is not set the corre
 `day`                  | (optional, integer) Day of the season. Default value is 61.
 `season`               | (optional, integer) Season of the year. Default value is `spring`.
 `year`                 | (optional, integer) Year. Default value is 1.
+
+## `starting_npc`
+(optional, object)
+
+The NPC that starts next to the player (scenarios with the `LONE_START` flag have none). It stays at the start as a shelter NPC and offers a mission. Without this object it is an `NC_DOCTOR` half of the time and a randomly made character otherwise, and talks with `TALK_SHELTER`.
+
+```jsonc
+"starting_npc": {
+  "classes": [ [ "NC_HUNTER", 2 ], [ "NC_SCAVENGER", 1 ] ],
+  "chat": "TALK_MY_SHELTER_NPC",
+  "eocs": [ "EOC_MY_STARTING_NPC" ]
+}
+```
+
+ Identifier            | Description
+---                    | ---
+`classes`              | (optional, array of [ npc class id, weight ]) The NPC's class, picked by weight. `NC_NONE` is a randomly made character.
+`chat`                 | (optional, string) The talk topic it starts conversations with. Default `TALK_SHELTER`.
+`eocs`                 | (optional, array of eoc ids or inline eocs) Run once the NPC is made, with the NPC as `u` and the avatar as `npc`.
 
 # Starting locations
 

@@ -440,6 +440,8 @@ struct oter_type_t {
             oter_travel_cost_type::other;  // Affects the pathfinding and travel times
         std::string extras = "none";
         int mondensity = 0;
+        // Multiplier to the wind on this terrain; unset: 0.5 for forest and forest_water, else 1
+        std::optional<float> wind_factor;
         effect_on_condition_id entry_EOC;
         effect_on_condition_id exit_EOC;
         // Spawns are added to the submaps *once* upon mapgen of the submaps
@@ -573,6 +575,8 @@ struct oter_t {
         int get_mondensity() const {
             return type->mondensity;
         }
+
+        float get_wind_factor() const;
 
         effect_on_condition_id get_entry_EOC() const {
             return type->entry_EOC;

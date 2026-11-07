@@ -15,11 +15,24 @@
 #include "ret_val.h"
 #include "translation.h"
 #include "type_id.h"
+#include "weighted_list.h"
 
 class JsonObject;
 class profession;
 template<typename T>
 class generic_factory;
+
+/** The NPC a scenario starts next to the player (unless it has the LONE_START flag) */
+struct scenario_starting_npc {
+    // npc classes to pick from, by weight; empty: NC_DOCTOR or a randomly made character, 50/50
+    weighted_int_list<npc_class_id> classes;
+    // The first talk topic; empty: TALK_SHELTER
+    std::string chat;
+    // Run with the NPC as alpha (u_) and the avatar as beta (npc_)
+    std::vector<effect_on_condition_id> eocs;
+
+    void deserialize( const JsonObject &jo );
+};
 
 class scenario
 {
@@ -78,6 +91,8 @@ class scenario
         vproto_id _starting_vehicle = vproto_id::NULL_ID();
 
         std::vector<std::pair<mongroup_id, float>> _surround_groups;
+
+        std::optional<scenario_starting_npc> _starting_npc;
 
         void load( const JsonObject &jo, std::string_view src );
         bool scenario_traits_conflict_with_profession_traits( const profession &p ) const;
@@ -166,6 +181,8 @@ class scenario
         const std::vector<mission_type_id> &missions() const;
         const std::vector<effect_on_condition_id> &eoc() const;
         const std::vector<std::pair<mongroup_id, float>> &surround_groups() const;
+        /** The scenario's "starting_npc", if it has one */
+        const std::optional<scenario_starting_npc> &starting_npc() const;
 
         std::vector<std::pair<string_id<scenario>, mod_id>> src;
 };
