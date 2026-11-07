@@ -1,0 +1,238 @@
+[
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "test_fu_left_bad_food",
+    "name": { "str_sp": "TEST bad-tasting food" },
+    "description": "HLTH-J03 fixture: plain food that tastes bad.",
+    "comestible_type": "FOOD",
+    "material": [ "test_material" ],
+    "weight": "100 g",
+    "volume": "250 ml",
+    "symbol": "%",
+    "color": "brown",
+    "calories": 100,
+    "fun": -10
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "test_fu_left_bad_drink",
+    "name": { "str_sp": "TEST bad-tasting drink" },
+    "description": "HLTH-J03 fixture: a plain drink that tastes bad.",
+    "comestible_type": "DRINK",
+    "material": [ "test_material" ],
+    "weight": "250 g",
+    "volume": "250 ml",
+    "symbol": "~",
+    "color": "brown",
+    "quench": 10,
+    "fun": -10
+  },
+  {
+    "type": "ITEM",
+    "subtypes": [ "COMESTIBLE" ],
+    "id": "test_fu_left_good_food",
+    "name": { "str_sp": "TEST tasty food" },
+    "description": "HLTH-J03 fixture: plain food that tastes good and spoils in a day.",
+    "comestible_type": "FOOD",
+    "material": [ "test_material" ],
+    "weight": "100 g",
+    "volume": "250 ml",
+    "symbol": "%",
+    "color": "brown",
+    "spoils_in": "1 days",
+    "calories": 100,
+    "fun": 6
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_FU_LEFT_FOOD_FUN",
+    "name": { "str": "Test Food Fun" },
+    "points": 0,
+    "description": "HLTH-J03 fixture: doubles good taste and halves bad taste, without changing the cap of bad taste.",
+    "food_fun": { "positive": 2, "negative": 0.5 }
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_FU_LEFT_REFUSE_FIRST",
+    "name": { "str": "Test Refuse First" },
+    "points": 0,
+    "description": "HLTH-J03 fixture: refuses food before the frozen check.",
+    "eat_condition": {
+      "condition": { "not": { "npc_comestible_type": "FOOD" } },
+      "fail_message": "Test: refused first.",
+      "checked": "first"
+    }
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_FU_LEFT_REFUSE_LAST",
+    "name": { "str": "Test Refuse Last" },
+    "points": 0,
+    "description": "HLTH-J03 fixture: refuses food after every other check.",
+    "eat_condition": [
+      { "condition": { "not": { "npc_comestible_type": "FOOD" } }, "fail_message": "Test: refused last.", "checked": "last" }
+    ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_FU_LEFT_EAT_EOC",
+    "name": { "str": "Test Eat EOC" },
+    "points": 0,
+    "description": "HLTH-J03 fixture: counts what it swallows.",
+    "eat_eocs": [
+      {
+        "id": "EOC_TEST_FU_LEFT_ATE",
+        "effect": [
+          { "math": [ "u_fu_left_ate += 1" ] },
+          { "if": { "npc_comestible_type": "FOOD" }, "then": [ { "math": [ "u_fu_left_ate_food = 1" ] } ] }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_FU_LEFT_SAPROVORE_DIET",
+    "name": { "str": "Test Saprovore Diet" },
+    "points": 0,
+    "description": "HLTH-J03 fixture: has the saprovore's diet without being a saprovore.",
+    "flags": [ "SAPROVORE_DIET" ]
+  },
+  {
+    "type": "mutation",
+    "id": "TEST_FU_LEFT_SAPROPHAGE_DIET",
+    "name": { "str": "Test Saprophage Diet" },
+    "points": 0,
+    "description": "HLTH-J03 fixture: has the saprophage's diet without being a saprophage.",
+    "flags": [ "SAPROPHAGE_DIET" ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FU_LEFT_START_ENTRY",
+    "//": "LOOP-J02: the entry_eoc of the OMT a game starts in.",
+    "effect": [
+      { "math": [ "fu_left_start_entries += 1" ] },
+      { "copy_var": { "context_val": "omt_pos" }, "target_var": { "global_val": "fu_left_start_omt_pos" } },
+      { "copy_var": { "context_val": "entered_oter_id" }, "target_var": { "global_val": "fu_left_start_entered" } },
+      {
+        "if": { "compare_string": [ "", { "context_val": "left_oter_id" } ] },
+        "then": [ { "math": [ "fu_left_start_left_empty = 1" ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FU_LEFT_START_EXIT",
+    "//": "LOOP-J02: the exit_eoc of the start OMT, which must not run.",
+    "effect": [ { "math": [ "fu_left_start_exits += 1" ] } ]
+  },
+  {
+    "type": "overmap_terrain",
+    "id": "test_fu_left_start",
+    "name": "OMT start hook test",
+    "sym": ".",
+    "color": "white",
+    "vision_levels": "always_full",
+    "travel_cost_type": "field",
+    "see_cost": "none",
+    "flags": [ "NO_ROTATE", "SHOULD_NOT_SPAWN" ],
+    "entry_eoc": "EOC_TEST_FU_LEFT_START_ENTRY",
+    "exit_eoc": "EOC_TEST_FU_LEFT_START_EXIT",
+    "uniform_terrain": "t_grass"
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FU_LEFT_CORPSE",
+    "//": "MONDT-J05: tags the corpse its monster just left.",
+    "effect": [
+      { "copy_var": { "context_val": "corpse_loc" }, "target_var": { "global_val": "fu_left_corpse_loc" } },
+      {
+        "npc_map_run_item_eocs": "all",
+        "loc": { "context_val": "corpse_loc" },
+        "search_data": [ { "id": "corpse" } ],
+        "true_eocs": [ { "id": "EOC_TEST_FU_LEFT_TAG_CORPSE", "effect": [ { "math": [ "n_fu_left_tagged = 1" ] } ] } ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FU_LEFT_REMOVE_CORPSE",
+    "//": "MONDT-J05: stops its monster's corpse, now that the corpse exists when it runs.",
+    "effect": [ { "npc_die": { "remove_corpse": true } } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_FU_LEFT_MONSTER_HURT",
+    "//": "MONDT-J05: records the damage type and body part of monster damage while fu_left_watch_damage is 1.",
+    "eoc_type": "EVENT",
+    "required_event": "monster_takes_damage",
+    "condition": { "math": [ "fu_left_watch_damage == 1" ] },
+    "effect": [
+      { "copy_var": { "context_val": "damage_type" }, "target_var": { "global_val": "fu_left_damage_type" } },
+      { "copy_var": { "context_val": "bodypart" }, "target_var": { "global_val": "fu_left_bodypart" } }
+    ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_fu_left_corpse",
+    "name": { "str": "TEST corpse tagging monster" },
+    "description": "MONDT-J05: its death EOC tags its corpse.",
+    "default_faction": "zombie",
+    "material": [ "flesh" ],
+    "harvest": "mon_test_bovine",
+    "symbol": "Z",
+    "color": "red",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 20,
+    "speed": 50,
+    "death_function": { "message": "The %s dies.", "eoc": "EOC_TEST_FU_LEFT_CORPSE" },
+    "flags": [ "SEES", "HEARS" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_fu_left_remove_corpse",
+    "name": { "str": "TEST corpse removing monster" },
+    "description": "MONDT-J05: its death EOC removes its corpse.",
+    "default_faction": "zombie",
+    "material": [ "flesh" ],
+    "harvest": "mon_test_bovine",
+    "symbol": "Z",
+    "color": "red",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 20,
+    "speed": 50,
+    "death_function": { "message": "The %s dies.", "eoc": "EOC_TEST_FU_LEFT_REMOVE_CORPSE" },
+    "flags": [ "SEES", "HEARS" ]
+  },
+  {
+    "type": "MONSTER",
+    "id": "mon_test_fu_left_target",
+    "name": { "str": "TEST damage target" },
+    "description": "MONDT-J05: takes damage for the monster_takes_damage tests.",
+    "default_faction": "zombie",
+    "material": [ "flesh" ],
+    "harvest": "mon_test_bovine",
+    "symbol": "Z",
+    "color": "red",
+    "volume": "62500 ml",
+    "weight": "81500 g",
+    "hp": 500,
+    "speed": 50,
+    "flags": [ "SEES", "HEARS" ]
+  },
+  {
+    "type": "furniture",
+    "id": "f_test_fu_left_crate",
+    "name": "TEST drag crate",
+    "description": "UPSTREAM-89419: a light container that can be dragged.",
+    "symbol": "X",
+    "color": "brown",
+    "move_cost_mod": 2,
+    "required_str": 1,
+    "flags": [ "TRANSPARENT", "CONTAINER", "PLACE_ITEM" ],
+    "bash": { "str_min": 1, "str_max": 2, "furn_set": "f_null" }
+  }
+]

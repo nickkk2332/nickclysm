@@ -2628,7 +2628,7 @@ void monster::set_hp( const int hp )
     this->hp = hp;
 }
 
-void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
+void monster::apply_damage( Creature *source, bodypart_id bp, int dam,
                             const bool /*bypass_med*/ )
 {
     const execution_combat::damage_barrier execution_damage;
@@ -2652,7 +2652,10 @@ void monster::apply_damage( Creature *source, bodypart_id /*bp*/, int dam,
     execution_combat::record_hp_loss( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
     incapacitation::wake_on_damage( *this, std::max( 0, hp_before ) - std::max( 0, hp ) );
 
-    cata::event e = cata::event::make<event_type::monster_takes_damage>( dam, hp < 1 );
+    // MONDT-J05: with the damage type (from deal_damage, a fall or fire; "" when the damage has
+    // none) and the body part
+    cata::event e = cata::event::make<event_type::monster_takes_damage>( dam, hp < 1,
+                    applied_damage_type_scope::of( *this ), bp );
     // The monster is the alpha talker, also when nothing hurt it (bleeding, fire, a fall)
     get_event_bus().send_with_talker( this, source, e );
 
@@ -3116,13 +3119,17 @@ int monster::impact( const int force, const tripoint_bub_ms &p )
     if( get_map().has_flag( ter_furn_flag::TFLAG_SHARP, p ) ) {
         const int cut_damage = std::max( 0.0f, 10 * mod - get_armor_type( damage_cut,
                                          bodypart_id( "torso" ) ) );
+        const applied_damage_type_scope type_scope( *this, damage_cut );
         apply_damage( nullptr, bodypart_id( "torso" ), cut_damage );
         total_dealt += 10 * mod;
     }
 
     const int bash_damage = std::max( 0.0f, force * mod - get_armor_type( damage_bash,
                                       bodypart_id( "torso" ) ) );
-    apply_damage( nullptr, bodypart_id( "torso" ), bash_damage );
+    {
+        const applied_damage_type_scope type_scope( *this, damage_bash );
+        apply_damage( nullptr, bodypart_id( "torso" ), bash_damage );
+    }
     total_dealt += force * mod;
 
     add_effect( effect_downed, time_duration::from_turns( rng( 0, mod * 3 + 1 ) ) );
@@ -3455,21 +3462,6 @@ void monster::die( map *here, Creature *nkiller )
         set_hp( current_hp );
     }
 
-    // The death EOC runs before the corpse is made, so that it can still stop the corpse
-    // (npc_die with remove_corpse) or change the monster it is made from.
-    if( type->mdeath_effect.eoc.has_value() ) {
-        //Not a hallucination, go process the death effects.
-        if( type->mdeath_effect.eoc.value().is_valid() ) {
-            dialogue d( killer == nullptr ? nullptr : get_talker_for( killer ), get_talker_for( *this ) );
-            d.set_value( "loc", pos_abs() );
-            // How far below 0 HP the monster went, which decides how damaged its corpse is
-            d.set_value( "overkill", static_cast<double>( std::max( 0, -get_hp() ) ) );
-            type->mdeath_effect.eoc.value()->activate( d );
-        } else {
-            debugmsg( "eoc id %s is not valid", type->mdeath_effect.eoc.value().str() );
-        }
-    }
-
     item_location corpse;
 
     // If this monster dies underwater in swim-under terrain and is aquatic (fish),
@@ -3496,6 +3488,30 @@ void monster::die( map *here, Creature *nkiller )
                 break;
             default:
                 break;
+        }
+    }
+
+    // MONDT-J05: the death EOC runs once the corpse exists, so it can change it (it lies at
+    // corpse_loc), and before the drops are made, so npc_die with remove_corpse still stops both.
+    if( type->mdeath_effect.eoc.has_value() ) {
+        //Not a hallucination, go process the death effects.
+        if( type->mdeath_effect.eoc.value().is_valid() ) {
+            const bool had_drops = death_drops;
+            dialogue d( killer == nullptr ? nullptr : get_talker_for( killer ), get_talker_for( *this ) );
+            d.set_value( "loc", pos_abs() );
+            // How far below 0 HP the monster went, which decided how damaged its corpse is
+            d.set_value( "overkill", static_cast<double>( std::max( 0, -get_hp() ) ) );
+            if( corpse ) {
+                d.set_value( "corpse_loc", corpse.pos_abs() );
+            }
+            type->mdeath_effect.eoc.value()->activate( d );
+            // remove_corpse (death_drops turned off) stopped a NORMAL corpse when the EOC ran first
+            if( had_drops && !death_drops && corpse &&
+                type->mdeath_effect.corpse_type == mdeath_type::NORMAL ) {
+                corpse.remove_item();
+            }
+        } else {
+            debugmsg( "eoc id %s is not valid", type->mdeath_effect.eoc.value().str() );
         }
     }
 
@@ -3812,6 +3828,7 @@ void monster::process_one_effect( effect &it, bool is_new )
 
         dam -= get_armor_type( damage_heat, bodypart_id( "torso" ) );
         if( dam > 0 ) {
+            const applied_damage_type_scope type_scope( *this, damage_heat );
             apply_damage( it.get_source().resolve_creature(), bodypart_id( "torso" ), dam );
         } else {
             it.set_duration( 0_turns );

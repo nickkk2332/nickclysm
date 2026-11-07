@@ -559,10 +559,11 @@ How the monster behaves on death.
 }
 ```
 
-The `eoc` runs after the death spell and before the corpse and the monster's drops are made, so it can still stop the corpse (`npc_die` with `remove_corpse`), but it can't change the corpse itself.  It gets these context variables:
+The `eoc` runs after the death spell and after the corpse is made, so it can change the corpse (find it at `corpse_loc`, for example with `map_run_item_eocs`), but before the monster's drops and inventory are added to the corpse or the ground.  `npc_die` with `remove_corpse` on the monster still removes a `NORMAL` corpse and stops the drops, as it did when the EOC ran first; the monster's "dies" message and blood are already there by then.  It gets these context variables:
 
 - `loc`: the location where the monster died.
 - `overkill`: how far below 0 HP the monster went (0 if it died with HP left, as with `npc_die`), after the killer's `OVERKILL_DAMAGE` enchantments.  The more overkill, the more damaged the corpse is, and a lot of it splatters the monster instead.
+- `corpse_loc`: the location of the corpse item (`NORMAL`, or the gibbed corpse of `SPLATTER`), usually `loc`.  Not set when no corpse item was made: `NO_CORPSE` and `BROKEN` (whose broken item isn't a corpse), a fish dying underwater, or a monster killed by `npc_die` with `remove_corpse`.
 
 ## "emit_fields"
 (array of objects of emit_id and time_duration, optional)

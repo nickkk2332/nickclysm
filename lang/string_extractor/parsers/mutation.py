@@ -1,3 +1,4 @@
+from .effect import parse_effect_on_condition
 from .enchant import parse_enchant
 from ..helper import get_singular_name
 from ..write_text import write_text
@@ -77,3 +78,15 @@ def parse_mutation(json, origin):
         write_text(json["activation_fail_message"], origin,
                    comment=f"Message when mutation '{name}' fails its "
                    "activation condition")
+
+    eat_conditions = json.get("eat_condition", [])
+    if type(eat_conditions) is dict:
+        eat_conditions = [eat_conditions]
+    for eat_condition in eat_conditions:
+        if "fail_message" in eat_condition:
+            write_text(eat_condition["fail_message"], origin,
+                       comment=f"Message when mutation '{name}' refuses "
+                       "food")
+
+    for eoc in json.get("eat_eocs", []):
+        parse_effect_on_condition(eoc, origin)

@@ -388,6 +388,24 @@ double consumption_count_total_eval( const_dialogue const &d, char scope,
     return count;
 }
 
+// HLTH-J03: how the food tastes to the one eating it: the other talker, when it is a character
+double food_fun_eval( const_dialogue const &d, char scope,
+                      std::vector<diag_value> const & /* params */,
+                      diag_kwargs const & /* kwargs */ )
+{
+    const bool beta = is_beta( scope );
+    item_location const *loc = d.const_actor( beta )->get_const_item();
+    if( loc == nullptr || !*loc || !( *loc )->is_comestible() ) {
+        return 0;
+    }
+    const Character *eater = d.has_actor( !beta ) ?
+                             d.const_actor( !beta )->get_const_character() : nullptr;
+    if( eater == nullptr ) {
+        return ( *loc )->get_comestible_fun();
+    }
+    return eater->fun_for( **loc ).first;
+}
+
 double light_level_eval( const_dialogue const &d, char /* scope */,
                          std::vector<diag_value> const &params, diag_kwargs const &/* kwargs */ )
 {
@@ -3358,6 +3376,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "charge_count", { "un", 1, charge_count_eval } },
     { "consumption_count", { "un", 1, consumption_count_eval, {}, { "hours" } } },
     { "consumption_count_total", { "un", 0, consumption_count_total_eval, {}, { "hours" } } },
+    { "food_fun", { "un", 0, food_fun_eval } },
     { "coverage", { "un", 1, coverage_eval } },
     { "daily_health", { "un", 0, daily_health_eval, daily_health_ass, { "cap" } } },
     { "damage_level", { "un", 0, damage_level_eval } },

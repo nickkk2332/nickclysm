@@ -125,7 +125,9 @@ static const itype_id itype_stick( "stick" );
 static const itype_id itype_string_36( "string_36" );
 static const itype_id itype_wall_wiring( "wall_wiring" );
 
+static const json_character_flag json_flag_EATDEAD_DIET( "EATDEAD_DIET" );
 static const json_character_flag json_flag_PSYCHOPATH( "PSYCHOPATH" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
 
 static const morale_type morale_funeral( "morale_funeral" );
 static const morale_type morale_gravedigger( "morale_gravedigger" );
@@ -155,10 +157,8 @@ static const ter_str_id ter_t_stairs_up( "t_stairs_up" );
 static const ter_str_id ter_t_wood_stairs_down( "t_wood_stairs_down" );
 
 static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
-static const trait_id trait_EATDEAD( "EATDEAD" );
 static const trait_id trait_NUMB( "NUMB" );
 static const trait_id trait_PAINRESIST_TROGLO( "PAINRESIST_TROGLO" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 static const trait_id trait_SPIRITUAL( "SPIRITUAL" );
 static const trait_id trait_STOCKY_TROGLO( "STOCKY_TROGLO" );
 
@@ -2341,7 +2341,8 @@ void construct::do_turn_exhume( const tripoint_bub_ms &p, Character &who )
         } else if( who.has_trait( trait_NUMB ) ) {
             who.add_msg_if_player( m_bad, _( "You wonder if you dig up anything useful." ) );
             who.add_morale( morale_gravedigger, -25, -50, 2_hours, 1_hours );
-        } else if( !who.has_trait( trait_EATDEAD ) && !who.has_trait( trait_SAPROVORE ) ) {
+        } else if( !who.has_flag( json_flag_EATDEAD_DIET ) &&
+                   !who.has_flag( json_flag_SAPROVORE_DIET ) ) {
             who.add_msg_if_player( m_bad, _( "Exhuming this grave is utterly disgusting!" ) );
             who.add_morale( morale_gravedigger, -25, -50, 2_hours, 1_hours );
             if( one_in( 5 ) ) {

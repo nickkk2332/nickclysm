@@ -207,6 +207,8 @@ static const json_character_flag json_flag_BIONIC_WEAPON( "BIONIC_WEAPON" );
 static const json_character_flag json_flag_CANNOT_ATTACK( "CANNOT_ATTACK" );
 static const json_character_flag json_flag_CANNOT_MOVE( "CANNOT_MOVE" );
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
+static const json_character_flag json_flag_SAPROPHAGE_DIET( "SAPROPHAGE_DIET" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
 
 static const move_mode_id move_mode_run( "run" );
 static const move_mode_id move_mode_walk( "walk" );
@@ -220,8 +222,6 @@ static const string_id<behavior::node_t> behavior_node_t_npc_needs( "npc_needs" 
 static const trait_id trait_IGNORE_SOUND( "IGNORE_SOUND" );
 static const trait_id trait_NPC_STASIS( "NPC_STASIS" );
 static const trait_id trait_RETURN_TO_START_POS( "RETURN_TO_START_POS" );
-static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 
 static const zone_type_id zone_type_NO_NPC_PICKUP( "NO_NPC_PICKUP" );
 static const zone_type_id zone_type_NPC_NO_GO( "NPC_NO_GO" );
@@ -5561,8 +5561,8 @@ static float rate_food( const Character &who, const item &it, int want_nutr,
         return 0.0f;
     }
 
-    const bool can_consume_rot = who.has_trait( trait_SAPROPHAGE ) ||
-                                 who.has_trait( trait_SAPROVORE );
+    const bool can_consume_rot = who.has_flag( json_flag_SAPROPHAGE_DIET ) ||
+                                 who.has_flag( json_flag_SAPROVORE_DIET );
 
     // Don't eat it if it's filled with parasites (saprophages/saprovores are fine with it)
     if( food->parasites && !it.has_flag( flag_NO_PARASITES ) && !can_consume_rot ) {

@@ -234,7 +234,9 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "can_only_eat": [ "junk" ],                 // List of comestible materials (default: empty).
   "edible_food_flags": [ "CATTLE" ],          // Food with any of these flags is edible even if INEDIBLE, and doesn't taste bad.  See Diet rules (default: empty).
   "food_allergies": [ { "vitamin": "meat_allergen", "morale": "morale_antimeat" } ], // Food containing the vitamin is an allergen: eating it gives the morale penalty.  See Diet rules (default: empty).
-  "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "You only eat cooked food." }, // Food can only be eaten while the condition is true.  See Diet rules (default: none).
+  "eat_condition": { "condition": { "not": { "npc_has_flag": "RAW" } }, "fail_message": "You only eat cooked food." }, // Food can only be eaten while the condition is true; an object or an array of them.  See Diet rules (default: none).
+  "food_fun": { "positive": 1.5, "positive_max": 3, "negative": 0.5, "negative_max": 1 }, // Changes how good or bad food tastes.  See Diet rules (default: none).
+  "eat_eocs": [ "EOC_ATE_SOMETHING" ],        // EOCs run when food is swallowed.  See Diet rules (default: empty).
   "can_only_heal_with": [ "bandage" ],        // List of `MED` you are restricted to, includes mutagen, serum, aspirin, bandages etc. (default: empty).
   "can_heal_with": [ "caramel_ointement" ],   // List of `MED` that will work for you but not for anyone else.  See `CANT_HEAL_EVERYONE` flag for items (default: empty).
   "allowed_category": [ "ALPHA" ],            // List of categories you can mutate into (default: empty).
@@ -422,15 +424,23 @@ There are two ways for JSON to stop an activation:
 
 ### Diet rules
 
-Three fields let a mutation change what its owner can eat, without C++. They apply while the character has the trait.
+These fields let a mutation change what its owner can eat, how it tastes and what eating it does, without C++. They apply while the character has the trait.
 
 - `edible_food_flags`: array of item flag ids. Food that has any of them can be eaten even with the `INEDIBLE` flag, and its taste is adjusted like a threshold animal's: negative fun is turned positive and halved, and zero fun becomes 2. The animal thresholds use it: `THRESH_CATTLE` lists `CATTLE`, `THRESH_LUPINE` lists `LUPINE`, and so on.
 - `food_allergies`: array of `{ "vitamin": <vitamin id>, "morale": <morale type id> }`. Food that contains the vitamin is an allergen: the eat menu warns about it, eating it gives the morale (-75, down to -400). When several allergies match, the first one in load order wins. `VEGETARIAN`, `MEATARIAN`, `LACTOSE`, `ANTIFRUIT`, `ANTIJUNK` and `ANTIWHEAT` use it.
-- `eat_condition`: object with a mandatory `condition` and an optional `fail_message` (default "You can't eat that."). The condition runs with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker, every time the game checks whether the food can be eaten (eat menu, NPC food choice, forced eating), for every comestible including drinks and medicine. When it is false, the food can't be eaten and `fail_message` is shown. Unlike `consumption_effect_on_conditions` on the food, it runs before anything is eaten.
+- `eat_condition`: an object, or an array of objects that are each checked on their own, with a mandatory `condition`, an optional `fail_message` (default "You can't eat that.") and an optional `checked` (default `"after_diet"`). The condition runs with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker, every time the game checks whether the food can be eaten (eat menu, NPC food choice, forced eating), for every comestible including drinks and medicine. When it is false, the food can't be eaten and `fail_message` is shown. Unlike `consumption_effect_on_conditions` on the food, it runs before anything is eaten. `checked` says when, among the game's own checks, so you choose which message wins when several checks refuse the same food:
+  - `"first"`: before the frozen, drug and tool checks (after the inedible, dirt and underwater ones). The Mycus traits use it.
+  - `"before_diet"`: after those, before the `CARNIVORE_DIET` and `HERBIVORE_DIET` refusals. `PROBOSCIS` uses it.
+  - `"after_diet"`: after those, before `can_only_eat`. `VEGAN` uses it.
+  - `"last"`: after `can_only_eat`, the last check. `PICKYEATER` uses it.
 
-Unknown flag, vitamin and morale ids are reported at load.
+  Within one stage, the mutations go in load order and each one's conditions in the order written. Useful conditions on the food: `npc_has_flag`, `npc_comestible_type` (`"FOOD"`, `"DRINK"` or `"MED"`; a drink with the `USE_EAT_VERB` flag is eaten, not drunk) and the math function `n_food_fun()`, how the food tastes to the eater (after rot, monotony and the eater's traits, like the eat menu's taste).
+- `food_fun`: object that changes how good or bad food tastes to the eater, after every other taste adjustment of the food and the eater's mutations, except the taste-related bionics. Taste above 0 is multiplied by `positive` and the most morale it can give by `positive_max`; taste below -1 is multiplied by `negative`, and if `negative_max` is given, the most (negative) morale it can give becomes the taste before `negative` was applied times `negative_max`. All default to 1 (no change). `GOURMAND` uses `{ "positive": 1.5, "positive_max": 3, "negative": 0.5, "negative_max": 1 }`.
+- `eat_eocs`: array of EOC ids or inline EOCs, run whenever the character swallows something they consume (food, drink or medicine taken by mouth; not `NO_INGEST` items such as chewing gum or injections), while the food's morale is applied: after the taste and allergy morale, before the carnivore's junk food penalty. They run with the eater as the alpha (`u_`) talker and the food as the beta (`npc_`) talker. `PROJUNK` and `PROJUNK2` use them for their sweet tooth.
 
-Vanilla uses them: `VEGETARIAN`, `MEATARIAN`, `ANTIFRUIT`, `LACTOSE`, `ANTIJUNK` and `ANTIWHEAT` are `food_allergies`, the animal thresholds are `edible_food_flags`, and `VEGAN` is an `eat_condition`. `RUMINANT` gets its herbivore diet from the `HERBIVORE_DIET` character flag. The other diet traits are still C++, because these fields can't express them: `PICKYEATER` (it refuses by taste, with separate messages for food and drink), `GOURMAND` (it changes taste and its cap), `SAPROPHAGE`, `SAPROVORE` and `EATDEAD` (they change calories, morale and food poisoning from rot), `PROBOSCIS`, `M_DEPENDENT` and the Mycus traits (checked before frozen food and drugs, for food and drink only), and `PROJUNK` (a morale bonus).
+Unknown flag, vitamin, morale and EOC ids are reported at load.
+
+Vanilla uses them: `VEGETARIAN`, `MEATARIAN`, `ANTIFRUIT`, `LACTOSE`, `ANTIJUNK` and `ANTIWHEAT` are `food_allergies`; the animal thresholds are `edible_food_flags`; `VEGAN`, `PICKYEATER`, `PROBOSCIS`, `M_DEPENDENT`, `MARLOSS_AVOID` and `THRESH_MYCUS` are `eat_condition`s; `GOURMAND` is a `food_fun`; and `PROJUNK` and `PROJUNK2` are `eat_eocs`. The rest of the diet rules are character flags, which any mutation, bionic or effect can give: `RUMINANT` gets its herbivore diet from `HERBIVORE_DIET`, and `SAPROPHAGE`, `SAPROVORE` and `EATDEAD` get theirs from `SAPROPHAGE_DIET`, `SAPROVORE_DIET` and `EATDEAD_DIET` (see [JSON_FLAGS.md](JSON_FLAGS.md)).
 
 ```jsonc
   {

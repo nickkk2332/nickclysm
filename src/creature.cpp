@@ -1646,6 +1646,48 @@ void Creature::deal_projectile_attack( map *here, Creature *source, dealt_projec
     execution_contact.resolve( dealt_dam );
 }
 
+namespace
+{
+// The innermost open applied_damage_type_scope
+const Creature *applied_damage_target = nullptr;
+damage_type_id applied_damage_type;
+
+// The damage type that dealt the most, the first one when several tie (or when nothing got
+// through), or "" for no damage units
+damage_type_id main_damage_type( const damage_instance &d, const dealt_damage_instance &dealt )
+{
+    damage_type_id ret;
+    int most = -1;
+    for( const damage_unit &du : d.damage_units ) {
+        const int amount = dealt.type_damage( du.type );
+        if( amount > most ) {
+            ret = du.type;
+            most = amount;
+        }
+    }
+    return ret;
+}
+} // namespace
+
+applied_damage_type_scope::applied_damage_type_scope( const Creature &target,
+        const damage_type_id &type ) : saved_target( applied_damage_target ),
+    saved_type( applied_damage_type )
+{
+    applied_damage_target = &target;
+    applied_damage_type = type;
+}
+
+applied_damage_type_scope::~applied_damage_type_scope()
+{
+    applied_damage_target = saved_target;
+    applied_damage_type = saved_type;
+}
+
+damage_type_id applied_damage_type_scope::of( const Creature &target )
+{
+    return applied_damage_target == &target ? applied_damage_type : damage_type_id();
+}
+
 dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
         const damage_instance &dam, const weakpoint_attack &attack, const weakpoint &wp )
 {
@@ -1720,7 +1762,11 @@ dealt_damage_instance Creature::deal_damage( Creature *source, bodypart_id bp,
 
     transaction.arm_hp_capture();
     execution_damage.arm_hp_capture( bp, dealt_dams );
-    apply_damage( source, bp, total_damage );
+    {
+        // MONDT-J05: monster_takes_damage reports the type that dealt the most
+        const applied_damage_type_scope type_scope( *this, main_damage_type( d, dealt_dams ) );
+        apply_damage( source, bp, total_damage );
+    }
     execution_damage.disarm_hp_capture();
     transaction.disarm_hp_capture();
 

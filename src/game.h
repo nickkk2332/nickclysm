@@ -1465,6 +1465,10 @@ void avatar_moves( const tripoint_abs_ms &old_abs_pos, const avatar &u, const ma
 // avatar_move_scope is open: the move that opened it reports the change once, when it ends.
 void avatar_changes_omt( const tripoint_abs_ms &old_abs_pos );
 
+// For a new game: sends avatar_enters_omt for the avatar's OMT and runs that OMT's entry_eoc
+// once, with the context of an OMT change from nowhere (left_oter_id is empty).
+void avatar_starts_in_omt();
+
 // Open while a move of the avatar is under way (a step, stairs, a teleport, vehicle travel).
 // An OMT change made by a move nested inside it, such as a teleport trap stepped on, is left to
 // the outer move, which reports it from where it started.

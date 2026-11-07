@@ -89,6 +89,8 @@ static const itype_id itype_water_clean( "water_clean" );
 
 static const json_character_flag json_flag_MANUAL_CBM_INSTALLATION( "MANUAL_CBM_INSTALLATION" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
+static const json_character_flag json_flag_SAPROPHAGE_DIET( "SAPROPHAGE_DIET" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
 
 static const quality_id qual_ANESTHESIA( "ANESTHESIA" );
 
@@ -97,8 +99,6 @@ static const requirement_id requirement_data_anesthetic( "anesthetic" );
 static const skill_id skill_computer( "computer" );
 
 static const trait_id trait_DEBUG_BIONICS( "DEBUG_BIONICS" );
-static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 
 using item_filter = std::function<bool ( const item & )>;
 using item_location_filter = std::function<bool ( const item_location & )>;
@@ -871,7 +871,8 @@ class comestible_inventory_preset : public inventory_selector_preset
             if( loc->typeId() == itype_water_clean ) {
                 return 0;
             } else if( loc->rotten() ) {
-                if( you.has_trait( trait_SAPROPHAGE ) || you.has_trait( trait_SAPROVORE ) ) {
+                if( you.has_flag( json_flag_SAPROPHAGE_DIET ) ||
+                    you.has_flag( json_flag_SAPROVORE_DIET ) ) {
                     return 1;
                 } else {
                     return 5;

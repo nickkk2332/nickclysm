@@ -318,6 +318,7 @@ static const itype_id itype_wax( "wax" );
 static const itype_id itype_weather_reader( "weather_reader" );
 
 static const json_character_flag json_flag_CANNOT_USE_COMPUTERS( "CANNOT_USE_COMPUTERS" );
+static const json_character_flag json_flag_EATDEAD_DIET( "EATDEAD_DIET" );
 static const json_character_flag json_flag_ENHANCED_VISION( "ENHANCED_VISION" );
 static const json_character_flag json_flag_HYPEROPIC( "HYPEROPIC" );
 static const json_character_flag json_flag_PAIN_IMMUNE( "PAIN_IMMUNE" );
@@ -376,7 +377,6 @@ static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
 static const trait_id trait_ACIDPROOF( "ACIDPROOF" );
 static const trait_id trait_CHLOROMORPH( "CHLOROMORPH" );
 static const trait_id trait_DHAMPIR_TRAIT( "DHAMPIR_TRAIT" );
-static const trait_id trait_EATDEAD( "EATDEAD" );
 static const trait_id trait_EATPOISON( "EATPOISON" );
 static const trait_id trait_GILLS( "GILLS" );
 static const trait_id trait_ILLITERATE( "ILLITERATE" );
@@ -899,7 +899,7 @@ std::optional<int> iuse::flu_vaccine( Character *p, item *it, const tripoint_bub
 
 std::optional<int> iuse::poison( Character *p, item *it, const tripoint_bub_ms & )
 {
-    if( p->has_trait( trait_EATDEAD ) ) {
+    if( p->has_flag( json_flag_EATDEAD_DIET ) ) {
         return 1;
     }
 

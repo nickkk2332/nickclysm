@@ -177,6 +177,32 @@ struct mutation_variant {
     void load( const JsonObject &jo );
 };
 
+/** Where Character::can_eat checks a mutation's eat_condition, among its built-in checks */
+enum class eat_check_stage : int {
+    first,       // before the frozen, drug and tool checks (the Mycus traits)
+    before_diet, // before the CARNIVORE_DIET and HERBIVORE_DIET refusals (PROBOSCIS)
+    after_diet,  // after those, before can_only_eat (the default; VEGAN)
+    last         // after can_only_eat, the last check (PICKYEATER)
+};
+
+/** Food can only be eaten while condition is true, with the eater as u_ and the food as npc_ */
+struct mutation_eat_condition {
+    std::function<bool( const_dialogue const & )> condition;
+    translation fail_message;
+    eat_check_stage stage = eat_check_stage::after_diet;
+};
+
+/** How a mutation changes the taste of food (GOURMAND) */
+struct mutation_food_fun {
+    // Positive fun and, for positive fun, its cap are multiplied by these
+    float positive = 1.0f;
+    float positive_max = 1.0f;
+    // Fun below -1 is multiplied by this
+    float negative = 1.0f;
+    // If set, the cap of fun below -1 becomes the fun before negative was applied, times this
+    std::optional<float> negative_max;
+};
+
 struct mutation_branch {
         trait_id id;
         std::vector<std::pair<trait_id, mod_id>> src;
@@ -278,10 +304,12 @@ struct mutation_branch {
         std::set<flag_id> edible_food_flags;
         /** Food containing the vitamin is an allergen: eating it gives the morale penalty */
         std::vector<std::pair<vitamin_id, morale_type>> food_allergies;
-        /** Food can only be eaten while this is true, with the eater as u_ and the food as npc_ */
-        std::function<bool( const_dialogue const & )> eat_condition;
-        bool has_eat_condition = false;
-        translation eat_fail_message;
+        /** Food can only be eaten while each of these is true (see mutation_eat_condition) */
+        std::vector<mutation_eat_condition> eat_conditions;
+        /** Changes how good or bad food tastes */
+        std::optional<mutation_food_fun> food_fun;
+        /** Run when food is swallowed, as its morale applies; eater as u_, food as npc_ */
+        std::vector<effect_on_condition_id> eat_eocs;
         /** Mutations with any of the diet rules above, in load order */
         static const std::vector<trait_id> &get_diet_traits();
 

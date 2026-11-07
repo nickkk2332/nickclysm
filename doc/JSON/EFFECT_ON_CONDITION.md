@@ -2318,6 +2318,22 @@ Only fire the tool's effect when it is loaded
 { "if": "npc_is_sealed", "then": { "u_message": "The lid is still on." } }
 ```
 
+### `u_comestible_type`, `npc_comestible_type`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is a comestible item of this `comestible_type`: `"FOOD"`, `"DRINK"`, `"MED"` or `"INVALID"`. False for talkers that are not comestible items. The game eats a `"DRINK"` with the `USE_EAT_VERB` flag (like soup) rather than drinking it.
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+
+#### Examples
+Is the food a drink the eater drinks, in a mutation's `eat_condition`?
+```jsonc
+{ "and": [ { "npc_comestible_type": "DRINK" }, { "not": { "npc_has_flag": "USE_EAT_VERB" } } ] }
+```
+
 ### `u_contains_item`, `npc_contains_item`
 - type: string or [variable object](#variable-object)
 - return true if alpha or beta talker is an item that holds an item of this id anywhere in its container pockets, inside nested containers too. A container does not contain itself. False for talkers that are not items. An unknown item id is reported as an error.
@@ -2467,7 +2483,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | character_starts_activity | Triggered when character starts or resumes activity | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "resume", `bool` } | character / NONE |
 | character_takeoff_item | triggers when character removes a worn item. If using `run_inv_eocs`, remember that the event fires before the items are actually removed | { "character", `character_id` },<br/> { "itype", `itype_id` } |
 | character_takes_damage | triggers when character gets any damage from any creature | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `body_part` },<br/> { "pain", `int` }, | character / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
-| monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding | { "damage", `int` },<br/> { "dies", `bool` }, | monster (the one hurt, also when nothing hurt it) / attacker (character or monster), or NONE when there is none (bleeding, fire, a fall) | use `has_beta` condition before interacting with beta talker
+| monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding | { "damage", `int` },<br/> { "dies", `bool` },<br/> { "damage_type", `damage_type_id` },<br/> { "bodypart", `body_part` }, `damage_type` is the type that dealt the most of the hit (the first of the attack's types when none got through), `bash`/`cut` for a fall and `heat` for burning; empty for damage with no type, like bleeding | monster (the one hurt, also when nothing hurt it) / attacker (character or monster), or NONE when there is none (bleeding, fire, a fall) | use `has_beta` condition before interacting with beta talker
 | character_throws_creature | Triggers when a character has thrown the creature it held (the throw action or `u_throw_grabbed`), after it lands | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "force", `int` } (the force of the throw: it flew `force / 10` tiles at most),<br/> { "distance", `int` } (the tiles it was thrown) | character (thrower) / creature (thrown; it may be dead) |
 | character_triggers_trap | | { "character", `character_id` },<br/> { "trap", `trap_str_id` }, | character / NONE |
 | character_wakes_up | triggers in the moment player lost it's sleep effect and wakes up | { "character", `character_id` }, | character / NONE |

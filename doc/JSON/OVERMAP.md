@@ -339,9 +339,10 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 ### `entry_eoc` and `exit_eoc`
 
 These run when the avatar moves from one overmap terrain tile (OMT) to another: on foot, up or
-down stairs, by teleport, or carried by a vehicle (driving or a vehicle teleport).  NPCs and
-monsters don't run them, and neither do the avatar's first OMT at game start, travel to another
-dimension or the debug menu's overmap teleport.  When the avatar crosses a boundary, the
+down stairs, by teleport, or carried by a vehicle (driving or a vehicle teleport).  The
+`entry_eoc` of the OMT a new game starts in also runs, once, when the game starts (before the
+scenario's and profession's EOCs).  NPCs and monsters don't run them, and neither do travel to
+another dimension or the debug menu's overmap teleport.  When the avatar crosses a boundary, the
 `exit_eoc` of the terrain being left runs first, then the `entry_eoc` of the terrain being
 entered.  If the avatar is moved again during a move (a teleport trap stepped on, a fall), they
 run once, from where the move started to where it ended.
@@ -352,7 +353,7 @@ beta talker, and get these context variables:
 | Variable          | Description |
 | ----------------- | ----------- |
 | `omt_pos`         | Location variable: the north-west corner, at the OMT's z-level, of the OMT this EOC belongs to (the one being entered for `entry_eoc`, the one being left for `exit_eoc`). |
-| `left_oter_id`    | Id of the overmap terrain being left, with its rotation or line suffix, e.g. `"house_north"`. |
+| `left_oter_id`    | Id of the overmap terrain being left, with its rotation or line suffix, e.g. `"house_north"`.  Empty at game start, when no terrain is left. |
 | `entered_oter_id` | Id of the overmap terrain being entered, in the same form. |
 
 Read them as context variables, e.g. `{ "context_val": "omt_pos" }`.  Both EOC ids are checked

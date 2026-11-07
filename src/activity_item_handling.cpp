@@ -121,6 +121,9 @@ static const itype_id itype_soldering_iron( "soldering_iron" );
 static const itype_id itype_water_faucet( "water_faucet" );
 static const itype_id itype_welder( "welder" );
 
+static const json_character_flag json_flag_SAPROPHAGE_DIET( "SAPROPHAGE_DIET" );
+static const json_character_flag json_flag_SAPROVORE_DIET( "SAPROVORE_DIET" );
+
 static const quality_id qual_AXE( "AXE" );
 static const quality_id qual_BUTCHER( "BUTCHER" );
 static const quality_id qual_DIG( "DIG" );
@@ -143,9 +146,6 @@ static const requirement_id requirement_data_multi_fishing( "multi_fishing" );
 
 static const ter_str_id ter_t_stump( "t_stump" );
 static const ter_str_id ter_t_trunk( "t_trunk" );
-
-static const trait_id trait_SAPROPHAGE( "SAPROPHAGE" );
-static const trait_id trait_SAPROVORE( "SAPROVORE" );
 
 static const trap_str_id tr_firewood_source( "tr_firewood_source" );
 
@@ -4616,7 +4616,8 @@ static int get_comestible_order( Character &you, const item_location &loc,
                                  const time_duration &time )
 {
     if( loc->rotten() ) {
-        if( you.has_trait( trait_SAPROPHAGE ) || you.has_trait( trait_SAPROVORE ) ) {
+        if( you.has_flag( json_flag_SAPROPHAGE_DIET ) ||
+            you.has_flag( json_flag_SAPROVORE_DIET ) ) {
             return 1;
         } else {
             return 5;

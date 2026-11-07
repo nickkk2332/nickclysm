@@ -55,6 +55,7 @@
 #include "item.h"
 #include "item_category.h"
 #include "item_location.h"
+#include "itype.h"
 #include "map.h"
 #include "map_iterator.h"
 #include "map_scale_constants.h"
@@ -95,6 +96,7 @@
 #include "translation.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vehicle.h"
 #include "viewer.h"
 #include "vpart_position.h"
@@ -2528,6 +2530,18 @@ conditional_t::func f_is_container_empty( bool is_npc )
     };
 }
 
+// HLTH-J03: the comestible type ("FOOD", "DRINK", "MED" or "INVALID") of an item talker
+conditional_t::func f_comestible_type( const JsonObject &jo, std::string_view member,
+                                       bool is_npc )
+{
+    str_or_var type = get_str_or_var( jo.get_member( member ), member, true );
+    return [type, is_npc]( const_dialogue const & d ) {
+        item const *it = talker_item_or_null( d, is_npc );
+        return it != nullptr && it->is_comestible() &&
+               it->get_comestible()->comesttype == type.evaluate( d );
+    };
+}
+
 conditional_t::func f_contains_item( const JsonObject &jo, std::string_view member,
                                      bool is_npc )
 {
@@ -3689,6 +3703,7 @@ parsers = {
     {"u_vehicle_owner", "npc_vehicle_owner", jarg::member, &conditional_fun::f_vehicle_owner },
     {"u_vehicle_type", "npc_vehicle_type", jarg::member, &conditional_fun::f_vehicle_type },
     {"u_has_fac_relation", "npc_has_fac_relation", jarg::string, &conditional_fun::f_has_fac_relation },
+    {"u_comestible_type", "npc_comestible_type", jarg::member, &conditional_fun::f_comestible_type },
     {"u_contains_item", "npc_contains_item", jarg::member, &conditional_fun::f_contains_item },
     {"u_is_contained_in", "npc_is_contained_in", jarg::member, &conditional_fun::f_is_contained_in },
     {"u_has_fault", "npc_has_fault", jarg::member, &conditional_fun::f_has_fault },

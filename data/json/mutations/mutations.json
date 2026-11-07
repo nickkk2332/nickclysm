@@ -1570,7 +1570,23 @@
     "cancels": [ "ANTIJUNK" ],
     "points": 1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "eat_eocs": [
+      {
+        "id": "EOC_PROJUNK_ATE_JUNK",
+        "condition": { "npc_has_flag": "ALLERGEN_JUNK" },
+        "effect": [
+          { "u_message": "Mmm, junk food.", "type": "good" },
+          {
+            "u_add_morale": "morale_sweettooth",
+            "bonus": 5,
+            "max_bonus": 30,
+            "duration": "30 minutes",
+            "decay_start": "24 minutes"
+          }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1584,7 +1600,27 @@
     "points": 2,
     "purifiable": false,
     "vitamin_cost": 160,
-    "flags": [ "SKIP_HEALTH" ]
+    "flags": [ "SKIP_HEALTH" ],
+    "eat_eocs": [
+      {
+        "id": "EOC_PROJUNK2_ATE_JUNK",
+        "condition": { "npc_has_flag": "ALLERGEN_JUNK" },
+        "effect": [
+          {
+            "if": { "x_in_y_chance": { "x": 1, "y": 100 } },
+            "then": { "u_message": "They may do what they must… you've already won.", "type": "good" },
+            "else": { "u_message": "When life's got you down, there's always sugar.", "type": "good" }
+          },
+          {
+            "u_add_morale": "morale_sweettooth",
+            "bonus": 10,
+            "max_bonus": 50,
+            "duration": "1 hours",
+            "decay_start": "50 minutes"
+          }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1601,7 +1637,8 @@
       {
         "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 1 }, { "value": "CONSUME_TIME_MOD", "multiply": -0.25 } ]
       }
-    ]
+    ],
+    "food_fun": { "positive": 1.5, "positive_max": 3, "negative": 0.5, "negative_max": 1 }
   },
   {
     "type": "mutation",
@@ -1626,7 +1663,35 @@
     "cancels": [ "GOURMAND" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "eat_condition": [
+      {
+        "condition": {
+          "or": [
+            { "and": [ { "npc_comestible_type": "DRINK" }, { "not": { "npc_has_flag": "USE_EAT_VERB" } } ] },
+            { "npc_comestible_type": "MED" },
+            { "math": [ "n_food_fun() >= 0" ] },
+            { "u_has_effect": "hunger_near_starving" },
+            { "u_has_effect": "hunger_starving" },
+            { "u_has_effect": "hunger_famished" }
+          ]
+        },
+        "fail_message": "You deserve better food than this.",
+        "checked": "last"
+      },
+      {
+        "condition": {
+          "or": [
+            { "not": { "and": [ { "npc_comestible_type": "DRINK" }, { "not": { "npc_has_flag": "USE_EAT_VERB" } } ] } },
+            { "npc_comestible_type": "MED" },
+            { "math": [ "n_food_fun() >= 0" ] },
+            { "math": [ "u_val('thirst') >= 240" ] }
+          ]
+        },
+        "fail_message": "You are not going to drink this.",
+        "checked": "last"
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -2842,7 +2907,7 @@
     "category": [ "TROGLOBITE", "CHIMERA", "GASTROPOD", "MOUSE" ],
     "points": 2,
     "vitamin_cost": 160,
-    "flags": [ "IMMUNE_SPOIL" ]
+    "flags": [ "IMMUNE_SPOIL", "SAPROVORE_DIET" ]
   },
   {
     "type": "mutation",
@@ -2881,7 +2946,7 @@
     "cancels": [ "VEGETARIAN", "HERBIVORE", "RUMINANT", "GRAZER" ],
     "points": 4,
     "vitamin_cost": 190,
-    "flags": [ "IMMUNE_SPOIL" ],
+    "flags": [ "IMMUNE_SPOIL", "EATDEAD_DIET" ],
     "vitamins_absorb_multi": [ [ "all", [ [ "mutant_toxin", 0.25 ] ] ] ]
   },
   {
@@ -6155,7 +6220,17 @@
     "visibility": 5,
     "ugliness": 7,
     "restricts_gear": [ "mouth" ],
-    "enchantments": [ { "condition": "ALWAYS", "modified_bodyparts": [ { "lose": "mouth" }, { "gain": "insect_proboscis" } ] } ]
+    "enchantments": [ { "condition": "ALWAYS", "modified_bodyparts": [ { "lose": "mouth" }, { "gain": "insect_proboscis" } ] } ],
+    "eat_condition": {
+      "condition": {
+        "or": [
+          { "and": [ { "npc_comestible_type": "DRINK" }, { "not": { "npc_has_flag": "USE_EAT_VERB" } } ] },
+          { "npc_comestible_type": "MED" }
+        ]
+      },
+      "fail_message": "Ugh, you can't drink that!",
+      "checked": "before_diet"
+    }
   },
   {
     "type": "mutation",
@@ -7603,7 +7678,7 @@
     "vitamin_cost": 160,
     "visibility": 5,
     "ugliness": 9,
-    "flags": [ "IMMUNE_SPOIL" ]
+    "flags": [ "IMMUNE_SPOIL", "SAPROPHAGE_DIET" ]
   },
   {
     "type": "mutation",

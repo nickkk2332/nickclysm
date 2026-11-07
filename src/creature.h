@@ -1406,4 +1406,21 @@ class Creature : public viewer
 std::unique_ptr<talker> get_talker_for( Creature &me );
 std::unique_ptr<const_talker> get_const_talker_for( const Creature &me );
 std::unique_ptr<talker> get_talker_for( Creature *me );
+
+// MONDT-J05: while open, tells an apply_damage on target which damage type the damage is, for the
+// monster_takes_damage event (apply_damage itself has no damage type). Scopes nest, and each one
+// only applies to the creature it names.
+class applied_damage_type_scope
+{
+    public:
+        applied_damage_type_scope( const Creature &target, const damage_type_id &type );
+        ~applied_damage_type_scope();
+        applied_damage_type_scope( const applied_damage_type_scope & ) = delete;
+        applied_damage_type_scope &operator=( const applied_damage_type_scope & ) = delete;
+        // The type the innermost open scope gives target, or "" (no type) when it gives none
+        static damage_type_id of( const Creature &target );
+    private:
+        const Creature *saved_target;
+        damage_type_id saved_type;
+};
 #endif // CATA_SRC_CREATURE_H

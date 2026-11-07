@@ -394,6 +394,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```DIMENSIONAL_ANCHOR``` You can't be teleported.  Also protects you from any dangerous effects of portal storms.
 - ```DISTRIBUTED_DAMAGE``` All damage you take is divided equally among your bodyparts.
 - ```DOWNED_RECOVERY``` Always has 50% chance to recover from downing, regardless of limb scores / stats.
+- ```EATDEAD_DIET``` The diet of the `EATDEAD` trait: poisonous food (food with a `poison` value, and anything with the `POISON` use action, like tainted meat) doesn't poison you, and exhuming a grave doesn't disgust you.
 - ```ECTOTHERM``` For ectothermic mutations, like `COLDBLOOD4` and `DRAGONBLOOD3` (Black Dragon from Magiclysm).
 - ```ETHEREAL```  You will not drop your items if you gain the `incorporeal` effect.
 - ```ELECTRIC_IMMUNE``` You are immune to electric damage.
@@ -468,6 +469,8 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```ROOTS2``` Gain enhanced effects from the Mycorrhizal Communion mutation.
 - ```ROOTS3``` Gain enhanced effects from the Mycorrhizal Communion mutation (slightly faster than `ROOTS2`).
 - ```SAPIOVORE``` Butcher humans without a morale penalty.
+- ```SAPROPHAGE_DIET``` The diet of the `SAPROPHAGE` trait: you get all the calories of rotten food, it doesn't taste worse for being rotten, and eating it says it tastes delicious instead of giving food poisoning.  Food you eat rather than drink that isn't rotten yet gives a morale penalty (-75, down to -400), and the eat menu warns about it.  The eat menu doesn't warn about rot or parasites and lists rotten food first, and NPCs with it prefer rotten food and also eat food with parasites and poisonous food.  Pair it with `IMMUNE_SPOIL` (the trait does) to also avoid the health loss from rot.
+- ```SAPROVORE_DIET``` The diet of the `SAPROVORE` trait: rotten food doesn't taste worse for being rotten, the eat menu doesn't warn about rot or parasites and lists rotten food first, NPCs with it prefer rotten food, also eat food with parasites and poisonous food, and accept rotten food you give them, schizophrenia doesn't make fresh food look rotten, and exhuming a grave doesn't disgust you.  It doesn't stop food poisoning from rot: pair it with `IMMUNE_SPOIL` (the trait does).
 - ```SEESLEEP``` You can see while sleeping, and aren't bothered by light when trying to fall asleep.
 - ```SHAPESHIFT_SIZE_HUGE``` Changes your size to `creature_size::huge`.  Checked last of the shapeshift size category flags and before any normal size flag.  This and other shapeshift size flags must be paired with the ```TEMPORARY_SHAPESHIFT``` flag.
 - ```SHAPESHIFT_SIZE_LARGE``` Changes your size to `creature_size::large`.  Checked third of the shapeshift size category flags and before any normal size flag.

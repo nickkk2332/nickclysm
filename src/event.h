@@ -586,9 +586,11 @@ struct event_spec<event_type::character_takes_damage> {
 
 template<>
 struct event_spec<event_type::monster_takes_damage> {
-    static constexpr std::array<event_field, 2> fields = { {
+    static constexpr std::array<event_field, 4> fields = { {
             { "damage", cata_variant_type::int_ },
             { "dies", cata_variant_type::bool_ },
+            { "damage_type", cata_variant_type::damage_type_id },
+            { "bodypart", cata_variant_type::body_part },
         }
     };
 };

@@ -6,6 +6,7 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -70,7 +71,8 @@ class translation_list_reader : public generic_typed_reader<translation_list_rea
 } // namespace
 
 std::map<mutation_category_id, std::vector<trait_id> > mutations_category;
-// Mutations with edible_food_flags, food_allergies or an eat_condition, in load order
+// Mutations with edible_food_flags, food_allergies, an eat_condition, food_fun or eat_eocs,
+// in load order
 static std::vector<trait_id> diet_traits;
 
 template<>
@@ -348,6 +350,32 @@ void mutation_variant::deserialize( const JsonObject &jo )
     load( jo );
 }
 
+// One object of a mutation's "eat_condition" (HLTH-J03)
+static mutation_eat_condition load_eat_condition( const JsonObject &eat_jo )
+{
+    if( !eat_jo.has_member( "condition" ) ) {
+        eat_jo.throw_error( "eat_condition needs a \"condition\"" );
+    }
+    mutation_eat_condition ret;
+    read_condition( eat_jo, "condition", ret.condition, true );
+    optional( eat_jo, false, "fail_message", ret.fail_message,
+              to_translation( "You can't eat that." ) );
+    static const std::map<std::string, eat_check_stage> stages = {
+        { "first", eat_check_stage::first },
+        { "before_diet", eat_check_stage::before_diet },
+        { "after_diet", eat_check_stage::after_diet },
+        { "last", eat_check_stage::last }
+    };
+    const std::string stage = eat_jo.get_string( "checked", "after_diet" );
+    const auto found = stages.find( stage );
+    if( found == stages.end() ) {
+        eat_jo.throw_error_at( "checked", "checked must be \"first\", \"before_diet\", "
+                               "\"after_diet\" or \"last\"" );
+    }
+    ret.stage = found->second;
+    return ret;
+}
+
 void mutation_branch::load( const JsonObject &jo, std::string_view src )
 {
     mandatory( jo, was_loaded, "name", raw_name );
@@ -457,15 +485,32 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
                                          morale_type( allergy.get_string( "morale" ) ) );
         }
     }
-    if( jo.has_object( "eat_condition" ) ) {
-        JsonObject eat_jo = jo.get_object( "eat_condition" );
-        if( !eat_jo.has_member( "condition" ) ) {
-            eat_jo.throw_error( "eat_condition needs a \"condition\"" );
+    // An object, or an array of them, each checked on its own
+    if( jo.has_array( "eat_condition" ) ) {
+        eat_conditions.clear();
+        for( JsonObject eat_jo : jo.get_array( "eat_condition" ) ) {
+            eat_conditions.push_back( load_eat_condition( eat_jo ) );
         }
-        read_condition( eat_jo, "condition", eat_condition, true );
-        optional( eat_jo, false, "fail_message", eat_fail_message,
-                  to_translation( "You can't eat that." ) );
-        has_eat_condition = true;
+    } else if( jo.has_object( "eat_condition" ) ) {
+        eat_conditions.clear();
+        eat_conditions.push_back( load_eat_condition( jo.get_object( "eat_condition" ) ) );
+    }
+    if( jo.has_object( "food_fun" ) ) {
+        JsonObject fun_jo = jo.get_object( "food_fun" );
+        mutation_food_fun fun;
+        optional( fun_jo, false, "positive", fun.positive, 1.0f );
+        optional( fun_jo, false, "positive_max", fun.positive_max, 1.0f );
+        optional( fun_jo, false, "negative", fun.negative, 1.0f );
+        if( fun_jo.has_member( "negative_max" ) ) {
+            fun.negative_max = static_cast<float>( fun_jo.get_float( "negative_max" ) );
+        }
+        food_fun = fun;
+    }
+    if( jo.has_array( "eat_eocs" ) ) {
+        eat_eocs.clear();
+        for( JsonValue jv : jo.get_array( "eat_eocs" ) ) {
+            eat_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
     }
     optional( jo, was_loaded, "can_only_heal_with", can_only_heal_with );
     optional( jo, was_loaded, "can_heal_with", can_heal_with );
@@ -776,6 +821,11 @@ void mutation_branch::check_consistency()
             if( !allergy.second.is_valid() ) {
                 debugmsg( "mutation %s has a food allergy with undefined morale type %s",
                           mid.c_str(), allergy.second.c_str() );
+            }
+        }
+        for( const effect_on_condition_id &eoc : mdata.eat_eocs ) {
+            if( !eoc.is_valid() ) {
+                debugmsg( "mutation %s has undefined eat_eocs EOC %s", mid.c_str(), eoc.c_str() );
             }
         }
         // MUT-J01: a category that isn't defined is ignored when mutating, and an undefined
@@ -1124,7 +1174,7 @@ void mutation_branch::finalize_all()
             mutations_category[mutation_category_ANY].emplace_back( branch.id );
         }
         if( !branch.edible_food_flags.empty() || !branch.food_allergies.empty() ||
-            branch.has_eat_condition ) {
+            !branch.eat_conditions.empty() || branch.food_fun || !branch.eat_eocs.empty() ) {
             diet_traits.emplace_back( branch.id );
         }
     }
