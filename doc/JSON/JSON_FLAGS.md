@@ -1769,7 +1769,7 @@ These flags apply to the `use_action` field, instead of the `flags` field.  Many
 - ```CONVECTS_TEMPERATURE``` This trap convects temperature, like lava.
 - ```PIT``` This trap is a version of the pit terrain.
 - ```SONAR_DETECTABLE``` This trap can be identified with ground-penetrating `SONAR`.
-- ```UNCONSUMED``` If this trap is a spell type it will not be removed after activation.
+- ```UNCONSUMED``` If this trap is a `spell` or `eocs` type it will not be removed after activation.  An `eocs` trap without it is removed before its EOCs run, so an EOC can put a trap back at `trap_location` with `set_trap`.
 - ```UNDODGEABLE``` This trap can't be dodged.
 
 

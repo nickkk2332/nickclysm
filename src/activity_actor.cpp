@@ -10762,11 +10762,16 @@ void chop_planks_activity_actor::finish( player_activity &act, Character &who )
         target_log.remove_item();
     }
     const int max_planks = 10;
-    /** @EFFECT_FABRICATION increases number of planks cut from a log */
-    int planks = normal_roll( 2 + who.get_skill_level( skill_fabrication ), 1 );
-    int wasted_planks = max_planks - planks;
-    int scraps = rng( wasted_planks, wasted_planks * 3 );
-    planks = std::min( planks, max_planks );
+    int planks = 0;
+    int scraps = 0;
+    // each log is cut on its own (TERR-B07)
+    for( int i = 0; i < logs; ++i ) {
+        /** @EFFECT_FABRICATION increases number of planks cut from a log */
+        const int log_planks = normal_roll( 2 + who.get_skill_level( skill_fabrication ), 1 );
+        const int wasted_planks = max_planks - log_planks;
+        scraps += std::max( 0, rng( wasted_planks, wasted_planks * 3 ) );
+        planks += std::clamp( log_planks, 0, max_planks );
+    }
 
     map &here = get_map();
     if( planks > 0 ) {
@@ -10779,7 +10784,7 @@ void chop_planks_activity_actor::finish( player_activity &act, Character &who )
         who.add_msg_if_player( m_good, n_gettext( "You produce %d splinter.", "You produce %d splinters.",
                                scraps ), scraps );
     }
-    if( planks < max_planks / 2 ) {
+    if( planks < max_planks * logs / 2 ) {
         who.add_msg_if_player( m_bad, _( "You waste a lot of the wood." ) );
     }
     act.set_to_null();
@@ -10792,6 +10797,7 @@ void chop_planks_activity_actor::serialize( JsonOut &jsout ) const
     jsout.member( "moves", moves );
     jsout.member( "log", target_log );
     jsout.member( "uses_log", uses_log );
+    jsout.member( "logs", logs );
 
     jsout.end_object();
 }
@@ -10805,6 +10811,8 @@ std::unique_ptr<activity_actor> chop_planks_activity_actor::deserialize( JsonVal
     data.read( "moves", actor.moves );
     data.read( "log", actor.target_log );
     data.read( "uses_log", actor.uses_log );
+    // older saves cut one log
+    data.read( "logs", actor.logs );
 
     return actor.clone();
 }

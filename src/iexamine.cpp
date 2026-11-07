@@ -243,7 +243,6 @@ static const proficiency_id proficiency_prof_safecracking( "prof_safecracking" )
 static const proficiency_id proficiency_prof_traps( "prof_traps" );
 static const proficiency_id proficiency_prof_trapsetting( "prof_trapsetting" );
 
-static const quality_id qual_ANESTHESIA( "ANESTHESIA" );
 static const quality_id qual_DIG( "DIG" );
 static const quality_id qual_DRILL( "DRILL" );
 static const quality_id qual_GRASS_CUT( "GRASS_CUT" );
@@ -1039,6 +1038,23 @@ void iexamine::atm( Character &you, const tripoint_bub_ms & )
     atm_menu {you}.start();
 }
 
+bool iexamine::vending_pay( Character &you, const int price, const bool use_bank )
+{
+    // The cards pay first, then the bank: a price equal to the cards' balance was free, and on
+    // a networked machine the bank paid all of any price the cards couldn't (TERR-B11)
+    const int card = you.charges_of( itype_cash_card );
+    const int from_bank = use_bank ? std::max( 0, price - card ) : 0;
+    if( price - from_bank > card || ( from_bank > 0 && from_bank > you.cash ) ) {
+        return false;
+    }
+    const int from_cards = price - from_bank;
+    if( from_cards > 0 ) {
+        you.use_charges( itype_cash_card, from_cards );
+    }
+    you.cash -= from_bank;
+    return true;
+}
+
 /**
  * Generates vending machine UI and allows players to purchase contained items with a cash card.
  */
@@ -1208,14 +1224,12 @@ void iexamine::vending( Character &you, const tripoint_bub_ms &examp )
                 you.mod_moves( -moves_cost );
             }
 
+            if( !vending_pay( you, iprice, use_bank ) ) {
+                popup( _( "You can't afford that item." ) );
+                continue;
+            }
             money -= iprice;
 
-            if( iprice < you.charges_of( itype_cash_card ) ) {
-                // necessary to check just your cash card charges here because aftershock charges your cards first then your bank
-                you.use_charges( itype_cash_card, iprice );
-            } else if( use_bank ) {
-                you.cash -= iprice;
-            }
             you.i_add_or_drop( *cur_item );
 
             vend_items.erase( cur_item );
@@ -4243,6 +4257,16 @@ bool iexamine::has_keg( const tripoint_bub_ms &pos )
     return get_keg_capacity( pos ) > 0_ml;
 }
 
+item *iexamine::keg_liquid( const tripoint_bub_ms &pos )
+{
+    for( item &it : get_map().i_at( pos ) ) {
+        if( it.made_of_from_type( phase_id::LIQUID ) ) {
+            return &it;
+        }
+    }
+    return nullptr;
+}
+
 static void displace_items_except_one_liquid( const tripoint_bub_ms &examp )
 {
     map &here = get_map();
@@ -4276,16 +4300,11 @@ void iexamine::keg( Character &you, const tripoint_bub_ms &examp )
     const std::string keg_name = here.name( examp );
     const units::volume keg_cap = get_keg_capacity( examp );
 
-    const bool has_container_with_liquid = map_cursor( tripoint_bub_ms( examp ) ).has_item_with( [](
-    const item & it ) {
-        return !it.is_container_empty() && it.can_unload();
-    } );
-    const bool liquid_present = map_cursor( tripoint_bub_ms( examp ) ).has_item_with( [](
-    const item & it ) {
-        return it.made_of_from_type( phase_id::LIQUID );
-    } );
+    // Only the liquid poured in counts: a full canteen dropped in a bathtub of water left it
+    // "empty", and filling it deleted the water (TERR-B04)
+    const bool liquid_present = keg_liquid( examp ) != nullptr;
 
-    if( !liquid_present || has_container_with_liquid ) {
+    if( !liquid_present ) {
         add_msg( m_info, _( "It is empty." ) );
         // Get list of all drinks
         auto drinks_inv = you.items_with( [&you]( const item & it ) {
@@ -4355,7 +4374,7 @@ void iexamine::keg( Character &you, const tripoint_bub_ms &examp )
                      keg_name, item::nname( drink_type ) );
         }
         you.mod_moves( -to_moves<int>( 10_seconds ) );
-        here.i_clear( examp );
+        // there was no liquid, and everything else was moved out
         here.add_item( examp, drink );
         return;
     } else {
@@ -4441,17 +4460,22 @@ bool iexamine::pour_into_keg( const tripoint_bub_ms &pos, item &liquid, bool sil
     map &here = get_map();
     const std::string keg_name = here.name( pos );
 
-    map_stack stack = here.i_at( pos );
-    if( stack.empty() ) {
-        here.add_item( pos, liquid );
-        here.i_at( pos ).only_item().charges = 0; // Will be set later
-    } else if( stack.only_item().typeId() != liquid.typeId() ) {
+    // Other things can lie in it (a bathtub takes items): only its liquid counts (TERR-B04)
+    item *stored = keg_liquid( pos );
+    if( stored == nullptr ) {
+        item &added = here.add_item( pos, liquid );
+        if( added.is_null() ) {
+            return false;
+        }
+        added.charges = 0; // Will be set later
+        stored = &added;
+    } else if( stored->typeId() != liquid.typeId() ) {
         add_msg( _( "The %s already contains some %s, you can't add a different liquid to it." ),
-                 keg_name, item::nname( stack.only_item().typeId() ) );
+                 keg_name, item::nname( stored->typeId() ) );
         return false;
     }
 
-    item &drink = stack.only_item();
+    item &drink = *stored;
     if( drink.volume() >= keg_cap ) {
         add_msg( _( "The %s is full." ), keg_name );
         return false;
@@ -5461,7 +5485,16 @@ void iexamine::pay_gas( Character &you, const tripoint_bub_ms &examp )
                         fuelTypeStr, maximum_liters ) || liters <= 0 ) {
             return;
         }
-        clamp( liters, 0, maximum_liters );
+        // The amount typed was pumped whatever the cards held (TERR-B10)
+        liters = std::clamp( liters, 0, maximum_liters );
+        if( liters <= 0 ) {
+            return;
+        }
+        if( liters * pricePerUnit > you.charges_of( itype_cash_card ) ) {
+            popup( str_to_illiterate_str(
+                       _( "Not enough money, please refill your cash card." ) ) );
+            return;
+        }
 
         const std::optional<tripoint_bub_ms> pGasPump = getGasPumpByNumber( examp,
                 uistate.ags_pay_gas_selected_pump );
@@ -5924,21 +5957,10 @@ void iexamine::autodoc( Character &you, const tripoint_bub_ms &examp )
     amenu.query();
 
     bool needs_anesthesia = true;
-    std::vector<tool_comp> anesth_kit;
 
     if( patient.has_flag( json_flag_PAIN_IMMUNE ) || patient.has_bionic( bio_painkiller ) ||
         amenu.ret > 1 ) {
         needs_anesthesia = false;
-    } else {
-        const temp_crafting_inventory &crafting_inv = you.crafting_inventory();
-        std::vector<const item *> a_filter = crafting_inv.items_with( []( const item & it ) {
-            return it.get_quality( qual_ANESTHESIA ) > 0;
-        } );
-        for( const item *anesthesia_item : a_filter ) {
-            if( anesthesia_item->ammo_remaining( ) >= 1 ) {
-                anesth_kit.emplace_back( anesthesia_item->typeId(), 1 );
-            }
-        }
     }
 
     switch( amenu.ret ) {
@@ -6021,11 +6043,22 @@ void iexamine::autodoc( Character &you, const tripoint_bub_ms &examp )
             }
 
             const bionic_id &bid = bio_list[bionic_index];
-            const int difficulty =  bid->itype()->bionic->difficulty;
-            const float volume_anesth = difficulty * 20 * 2; // 2ml/min
+            const itype &cbm = *bid->itype();
+            const int difficulty = cbm.bionic->difficulty;
 
             Character &installer = best_installer( you, null_player, difficulty );
             if( &installer == &null_player ) {
+                return;
+            }
+
+            // The same anesthetic as installing it, checked before the operation: the
+            // uninstall used to go ahead, with full narcosis, when there was none (TERR-B05)
+            if( needs_anesthesia && !you.has_enough_anesth( cbm, patient ) ) {
+                const int weight = units::to_kilogram( patient.bodyweight() ) / 10;
+                const requirement_data req_anesth = *requirement_data_anesthetic *
+                                                    difficulty * 2 * weight;
+                popup( _( "You don't have enough anesthetic to perform the uninstallation.\n%s" ),
+                       req_anesth.list_missing() );
                 return;
             }
 
@@ -6033,7 +6066,7 @@ void iexamine::autodoc( Character &you, const tripoint_bub_ms &examp )
                 const time_duration duration = difficulty * 20_minutes;
                 patient.introduce_into_anesthesia( duration, installer, needs_anesthesia );
                 if( needs_anesthesia ) {
-                    you.consume_tools( anesth_kit, volume_anesth );
+                    you.consume_anesth_requirement( cbm, patient );
                 }
                 installer.mod_moves( -to_moves<int>( 1_minutes ) );
                 patient.uninstall_bionic( *bionics[bionic_index], installer, true );
