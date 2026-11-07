@@ -6507,6 +6507,43 @@ talk_effect_fun_t::func f_signal_hordes( const JsonObject &jo, std::string_view 
     };
 }
 
+// OMAP-J01: places an overmap horde, as the debug menu's "Spawn horde" does.
+talk_effect_fun_t::func f_spawn_overmap_horde( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    str_or_var group = get_str_or_var( jo.get_member( member ), member, true );
+    if( group.is_constant() ) {
+        const std::string context = jo.get_member( member ).get_root_source_path();
+        effect_on_conditions::add_load_check( [name = group.constant(), context]() {
+            if( !mongroup_id( name ).is_valid() ) {
+                debugmsg( "Monster group \"%s\" (used by spawn_overmap_horde in %s) does not exist",
+                          name, context );
+            }
+        } );
+    }
+    var_info target_var = read_var_info( jo.get_object( "target_var" ) );
+    dbl_or_var population = get_dbl_or_var( jo, "population", false, 1 );
+    return [group, target_var, population]( dialogue & d ) {
+        const mongroup_id group_id( group.evaluate( d ) );
+        if( !group_id.is_valid() ) {
+            debugmsg( "spawn_overmap_horde: unknown monster group \"%s\".  %s", group_id.str(),
+                      d.get_callstack() );
+            return;
+        }
+        const int count = static_cast<int>( population.evaluate( d ) );
+        if( count <= 0 ) {
+            return;
+        }
+        const tripoint_abs_sm sm = project_to<coords::sm>( read_var_value( target_var,
+                                   d ).tripoint() );
+        overmap_buffer.spawn_mongroup( sm, group_id, count );
+        // On the loaded map they would only show up once it is loaded again
+        if( get_map().inbounds( project_to<coords::ms>( sm ) ) ) {
+            overmap_buffer.spawn_monster( sm );
+        }
+    };
+}
+
 talk_effect_fun_t::func f_request_ability( const JsonObject &jo, std::string_view member,
         std::string_view source )
 {
@@ -6872,6 +6909,75 @@ talk_effect_fun_t::func f_set_monster_faction( const JsonObject &jo, std::string
         mon->faction = new_faction.id();
         // Monsters find their targets through a cache sorted by faction
         get_creature_tracker().invalidate_reachability_cache();
+    };
+}
+
+// MONAI-J01: u_set_monster_destination and u_set_monster_target force a destination or a
+// target on a monster, which its AI follows instead of its own plans (monster::plan()).
+std::optional<duration_or_var> read_forced_goal_duration( const JsonObject &jo )
+{
+    std::optional<duration_or_var> duration;
+    if( jo.has_member( "duration" ) ) {
+        duration = get_duration_or_var( jo, "duration", true );
+    }
+    return duration;
+}
+
+time_point forced_goal_end( const std::optional<duration_or_var> &duration,
+                            const_dialogue const &d )
+{
+    if( duration ) {
+        // 0 or less from a variable: no time limit
+        const time_duration length = duration->evaluate( d );
+        if( length > 0_turns ) {
+            return calendar::turn + length;
+        }
+    }
+    return calendar::turn_max;
+}
+
+talk_effect_fun_t::func f_set_monster_destination( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    dbl_or_var range = get_dbl_or_var( jo, "range", false, 0 );
+    const std::optional<duration_or_var> duration = read_forced_goal_duration( jo );
+    return [target_var, range, duration, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon == nullptr ) {
+            return;
+        }
+        mon->force_destination( read_var_value( target_var, d ).tripoint(),
+                                static_cast<int>( range.evaluate( d ) ), forced_goal_end( duration, d ) );
+    };
+}
+
+talk_effect_fun_t::func f_set_monster_target( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    var_info target_var = read_var_info( jo.get_object( member ) );
+    const std::optional<duration_or_var> duration = read_forced_goal_duration( jo );
+    return [target_var, duration, is_npc]( dialogue & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon == nullptr ) {
+            return;
+        }
+        const tripoint_abs_ms loc = read_var_value( target_var, d ).tripoint();
+        const Creature *target = get_creature_tracker().creature_at<Creature>( loc );
+        if( target == nullptr || target == mon ) {
+            return;
+        }
+        mon->force_target( *target, forced_goal_end( duration, d ) );
+    };
+}
+
+talk_effect_fun_t::func f_clear_monster_goal( bool is_npc )
+{
+    return [is_npc]( dialogue const & d ) {
+        monster *mon = d.actor( is_npc )->get_monster();
+        if( mon != nullptr ) {
+            mon->clear_forced_goal();
+        }
     };
 }
 
@@ -10252,36 +10358,58 @@ talk_effect_fun_t::func f_reveal_route( const JsonObject &jo, std::string_view m
 }
 
 talk_effect_fun_t::func f_closest_city( const JsonObject &jo, std::string_view member,
-                                        std::string_view )
+                                        std::string_view src )
 {
     var_info var = read_var_info( jo.get_object( member ) );
-    var_type type = var.type;
-    std::string var_name = var.name;
     bool known = jo.get_bool( "known", true );
+    // OMAP-J01: filters, and EOCs for whether a city was found
+    std::optional<dbl_or_var> min_size;
+    if( jo.has_member( "min_size" ) ) {
+        min_size = get_dbl_or_var( jo, "min_size" );
+    }
+    std::optional<dbl_or_var> max_size;
+    if( jo.has_member( "max_size" ) ) {
+        max_size = get_dbl_or_var( jo, "max_size" );
+    }
+    std::optional<dbl_or_var> max_distance;
+    if( jo.has_member( "max_distance" ) ) {
+        max_distance = get_dbl_or_var( jo, "max_distance" );
+    }
+    str_or_var name;
+    optional( jo, false, "name", name );
+    std::vector<effect_on_condition_id> true_eocs = load_eoc_vector( jo, "true_eocs", src );
+    std::vector<effect_on_condition_id> false_eocs = load_eoc_vector( jo, "false_eocs", src );
 
-    return [var, type, var_name, known]( dialogue & d ) {
+    return [var, known, min_size, max_size, max_distance, name, true_eocs,
+         false_eocs]( dialogue & d ) {
         tripoint_abs_ms loc_ms = read_var_value( var, d ).tripoint();
         tripoint_abs_sm loc_sm = project_to<coords::sm>( loc_ms );
 
-        if( known ) {
-            city_reference city = overmap_buffer.closest_known_city( loc_sm );
-            if( city ) {
-                tripoint_abs_omt city_center_omt = project_to<coords::omt>( city.abs_sm_pos );
-                write_var_value( type, var_name, &d, tripoint_abs_ms{ city_center_omt.raw() } );
-                write_var_value( var_type::context, "city_name", &d, city.city->name );
-                write_var_value( var_type::context, "city_size", &d, city.city->size );
-            } else {
-                return;
-            }
-        } else {
-            city_reference city = overmap_buffer.closest_city( loc_sm );
-            if( city ) {
-                tripoint_abs_omt city_center_omt = project_to<coords::omt>( city.abs_sm_pos );
-                write_var_value( type, var_name, &d, tripoint_abs_ms{ city_center_omt.raw() } );
-                write_var_value( var_type::context, "city_name", &d, city.city->name );
-                write_var_value( var_type::context, "city_size", &d, city.city->size );
-            }
+        city_filter filter;
+        filter.known_only = known;
+        if( min_size ) {
+            filter.min_size = static_cast<int>( min_size->evaluate( d ) );
         }
+        if( max_size ) {
+            filter.max_size = std::max( 0, static_cast<int>( max_size->evaluate( d ) ) );
+        }
+        if( max_distance ) {
+            filter.max_distance = std::max( 0, static_cast<int>( max_distance->evaluate( d ) ) );
+        }
+        filter.name = name.evaluate( d );
+        const city_reference city = overmap_buffer.closest_city( loc_sm, filter );
+        if( !city ) {
+            run_eoc_vector( false_eocs, d );
+            return;
+        }
+        const tripoint_abs_omt city_center_omt = project_to<coords::omt>( city.abs_sm_pos );
+        // The city's center tile, in map squares as any location
+        write_var_value( var.type, var.name, &d, project_to<coords::ms>( city_center_omt ) );
+        write_var_value( var_type::context, "city_name", &d, city.city->name );
+        write_var_value( var_type::context, "city_size", &d, city.city->size );
+        write_var_value( var_type::context, "city_distance", &d,
+                         rl_dist( city_center_omt.xy(), project_to<coords::omt>( loc_ms ).xy() ) );
+        run_eoc_vector( true_eocs, d );
     };
 }
 
@@ -10739,6 +10867,14 @@ parsers = {
         "u_set_monster_faction", "npc_set_monster_faction", jarg::member,
         &talk_effect_fun::f_set_monster_faction
     },
+    {
+        "u_set_monster_destination", "npc_set_monster_destination", jarg::object,
+        &talk_effect_fun::f_set_monster_destination
+    },
+    {
+        "u_set_monster_target", "npc_set_monster_target", jarg::object,
+        &talk_effect_fun::f_set_monster_target
+    },
     { "u_die", "npc_die", jarg::object, &talk_effect_fun::f_die_advanced},
     { "u_spawn_monster", "npc_spawn_monster", jarg::member, &talk_effect_fun::f_spawn_monster },
     { "u_spawn_npc", "npc_spawn_npc", jarg::member, &talk_effect_fun::f_spawn_npc },
@@ -10865,6 +11001,7 @@ parsers = {
     { "turn_cost", jarg::member, &talk_effect_fun::f_turn_cost },
     { "transform_item", jarg::member, &talk_effect_fun::f_transform_item },
     { "signal_hordes", jarg::member, &talk_effect_fun::f_signal_hordes },
+    { "spawn_overmap_horde", jarg::member, &talk_effect_fun::f_spawn_overmap_horde },
     { "set_browsed", jarg::member, &talk_effect_fun::f_set_browsed },
     // since parser checks all effects in order, having "message" field in any another effect (like in f_roll_remainder)
     // would cause parser to think it's a "message" effect
@@ -11038,6 +11175,12 @@ void talk_effect_t::parse_string_effect( const std::string &effect_id, const Jso
     if( effect_id == "u_cancel_walk" || effect_id == "npc_cancel_walk" ) {
         set_effect( talk_effect_fun_t( talk_effect_fun::f_cancel_walk( effect_id == "npc_cancel_walk",
                                        false ) ) );
+        return;
+    }
+
+    if( effect_id == "u_clear_monster_goal" || effect_id == "npc_clear_monster_goal" ) {
+        set_effect( talk_effect_fun_t( talk_effect_fun::f_clear_monster_goal(
+                                           effect_id == "npc_clear_monster_goal" ) ) );
         return;
     }
 

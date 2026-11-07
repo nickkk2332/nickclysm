@@ -582,6 +582,10 @@ void monster::plan()
     if( get_power_actors().plan( *this ) ) {
         return;
     }
+    // A destination or target an EOC forced on the monster comes before its own plans.
+    if( follow_forced_goal() ) {
+        return;
+    }
     monster_plan mon_plan( *this );
 
     map &here = get_map();
@@ -1021,7 +1025,8 @@ void monster::move()
     if( get_power_actors().take_turn( *this ) ) {
         return;
     }
-    const bool commanded = get_power_actors().owner_of( *this ).has_value();
+    // A forced destination or target (see plan()) is followed like a bond's order.
+    const bool commanded = get_power_actors().owner_of( *this ).has_value() || has_forced_goal();
     map &here = get_map();
 
     add_msg_debug( debugmode::DF_MONMOVE,
