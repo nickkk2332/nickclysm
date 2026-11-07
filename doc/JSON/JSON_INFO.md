@@ -104,6 +104,7 @@ Use the `Home` key to return to the top.
       - [`entries`](#entries)
       - [`leftovers`](#leftovers)
     - [Harvest Drop Type](#harvest-drop-type)
+      - [Butchery yield rules](#butchery-yield-rules)
     - [Weapon Category](#weapon-category)
     - [Connect group definitions](#connect-group-definitions)
     - [Furniture](#furniture)
@@ -3353,7 +3354,7 @@ Array of dictionaries defining possible items produced on butchering and their l
 `drop` value should be the `id` string of the item to be produced.
 
 `type` value should refer to an existing `harvest_drop_type` associated with body part the item comes from.
-    Acceptable values are as follows:
+    The vanilla values are as follows (the drop type's rules decide how each butchery treats it, see [Harvest Drop Type](#harvest-drop-type)):
     `flesh`: the "meat" of the creature.
     `offal`: the "organs" of the creature. these are removed when field dressing.
     `skin`: the "skin" of the creature. this is what is ruined while quartering.
@@ -3408,6 +3409,53 @@ Harvest drop types are used in harvest drop entries to control how the drop is p
 - `"msg_butcher_success"`
 - `"msg_dissect_fail"`
 - `"msg_dissect_success"`
+
+#### Butchery yield rules
+
+A drop type also says how much of its drops each kind of butchery gives, and what earlier butchery or damage to the corpse takes away. These are the rules of the vanilla `skin` type:
+
+```jsonc
+{
+  "type": "harvest_drop_type",
+  "id": "skin",
+  "action_yield": { "FULL": 1, "QUICK": { "mult": 0.5, "min_size": "MEDIUM" }, "SKIN": 1, "DISMEMBER": 0, "DISSECT": 1 },
+  "corpse_damage_yield": [ 1, 1, 0.75, 0.5, 0, 1 ],
+  "gib_yield": 1,
+  "survives_splatter": false,
+  "enables_action": [ "SKIN" ],
+  "corpse_flag_yield": [
+    { "flags": [ "SKINNED", "QUARTERED" ], "skip": true },
+    { "flags": [ "FIELD_DRESS_FAILED" ], "actions": [ "FULL", "QUICK", "SKIN" ], "yield": { "mult": 0, "random": [ 0, 1 ] } }
+  ],
+  "proficiency_penalties": [ { "proficiency": "prof_skinning_basic", "penalty": 2 }, { "proficiency": "prof_skinning_adv", "penalty": 0.15 } ],
+  "trains_proficiencies": [ { "proficiencies": [ "prof_skinning_basic", "prof_skinning_adv" ], "time_fraction": { "FULL": 0.4, "QUICK": 0.15, "SKIN": 1 } } ]
+}
+```
+
+Butchery actions are named `QUICK`, `FULL`, `FIELD_DRESS`, `SKIN`, `BLEED`, `QUARTER`, `DISMEMBER` and `DISSECT` (quartering gives no drops).
+
+A **yield** is either a number, which multiplies the amount, or an object:
+- `mult` (number, default 1): multiplies the amount.
+- `random` (array of two numbers, optional): adds a random amount, between the amount times the first number and the amount times the second.
+- `min_size` (creature size, optional, only in `action_yield`): creatures smaller than this (`TINY`, `SMALL`, `MEDIUM`, `LARGE`, `HUGE`) give nothing of this drop type.
+
+Each part is rounded down. The amount is the number of items, or the weight in grams for entries with `mass_ratio`.
+
+For each harvest entry, the rules apply in this order to the amount rolled from the entry:
+1. `corpse_damage_yield` (array of numbers, optional): multiplier by the corpse's damage level, from 0 (undamaged) to 5 (the most damage); levels past the end of the array use its last number. The result is rounded to the nearest whole number. Without the field the corpse's damage takes nothing away. The entry still gives at least its `base_num` minimum, unless it uses `mass_ratio`.
+2. `gib_yield` (number, default 1): multiplier when the corpse was gibbed.
+3. `proficiency_penalties` (array, optional): each `{ "proficiency": ..., "penalty": ... }` divides the amount by 1 + penalty × (1 − the butcher's practice of the proficiency, from 0 to 1), rounding down.
+4. `action_yield` (object, optional): a yield for each butchery action. **An action not listed gives nothing of this drop type, silently**; a yield of 0 still tries and says that it failed (as dismembering does). Without the field: `FULL`, `FIELD_DRESS` and `DISSECT` give full yield, `DISMEMBER` gives 0 and the others give nothing, which is how drop types worked before they had rules.
+5. `corpse_flag_yield` (array, optional), in order: each rule applies when the corpse has any of its `flags` (any corpse, when there are none) and the action is one of its `actions` (any action, when there are none). It has either a `yield`, or `"skip": true` to give nothing.
+6. A quartered corpse gives a quarter of everything.
+
+`enables_action` (array of `FIELD_DRESS`, `SKIN` or `BLEED`, optional): the butchery menu only offers field dressing, skinning and bleeding when the corpse has an entry of a drop type that enables it. Field dressing is then also offered only before the corpse is field dressed or quartered, skinning only before it is skinned, and bleeding only for a creature that bleeds, before it is bled, field dressed or quartered. A creature with a drop type that enables `FIELD_DRESS` must be field dressed before it can be quartered.
+
+`survives_splatter` (boolean, default false): when the monster dies splattered, drops of this type are scattered around as chunks.
+
+`trains_proficiencies` (array, optional): each `{ "proficiencies": [ ... ], "time_fraction": { "<action>": fraction } }` trains the first proficiency in the list the butcher doesn't have (the last one when they have all of them) for that fraction of the butchery time, when butchering a creature with a drop of this type with one of the listed actions. A list shared by several drop types of the same creature trains once.
+
+The vanilla `flesh`, `bone`, `skin`, `offal` and `blood` types in `data/json/harvest_drop_type.json` carry the rules butchery always had; `mutagen` and `bionic` have none.
 
 ### Weapon Category
 

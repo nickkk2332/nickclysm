@@ -1210,6 +1210,8 @@ void init_mapdata()
     add_actor( std::make_unique<cardreader_examine_actor>() );
     add_actor( std::make_unique<eoc_examine_actor>() );
     add_actor( std::make_unique<mortar_examine_actor>() );
+    add_actor( std::make_unique<process_start_examine_actor>() );
+    add_actor( std::make_unique<process_finish_examine_actor>() );
 }
 
 // The tool activity blocks of terrain and furniture, see load_tool_activity
@@ -1571,6 +1573,9 @@ bool ter_t::is_smashable() const
 void ter_t::check() const
 {
     map_data_common_t::check();
+    for( const cata::clone_ptr<iexamine_actor> &actor : examine_actor ) {
+        actor->check( id.str() );
+    }
     if( bash ) {
         bash->check( id.c_str() );
     }
@@ -1714,6 +1719,9 @@ bool furn_t::is_smashable() const
 void furn_t::check() const
 {
     map_data_common_t::check();
+    for( const cata::clone_ptr<iexamine_actor> &actor : examine_actor ) {
+        actor->check( id.str() );
+    }
     if( bash ) {
         bash->check( id.c_str() );
     }

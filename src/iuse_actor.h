@@ -502,7 +502,12 @@ class firestarter_actor : public iuse_actor
             FIRE,
             SMOKER,
             KILN,
+            // furniture with a process_start examine action lit by a firestarter
+            PROCESS,
         };
+
+        // What lighting a fire at the furniture starts: a smoker, a kiln, a process or a fire.
+        static start_type furniture_start_type( const furn_id &furn );
 
         static start_type prep_firestarter_use( Character &p, map *here, tripoint_bub_ms &pos );
         // a firewood source trap or a SOURCE_FIREWOOD zone: the pile a fire is fed from

@@ -140,9 +140,6 @@ static const efftype_id effect_pet( "pet" );
 static const efftype_id effect_sheared( "sheared" );
 static const efftype_id effect_tied( "tied" );
 
-static const harvest_drop_type_id harvest_drop_blood( "blood" );
-static const harvest_drop_type_id harvest_drop_offal( "offal" );
-static const harvest_drop_type_id harvest_drop_skin( "skin" );
 
 static const flag_id json_flag_MOP( "MOP" );
 
@@ -424,29 +421,15 @@ refusal butchery_refusal( Character &you, const item &corpse_item, const butcher
         if( corpse_item.has_flag( flag_QUARTERED ) ) {
             return std::string( _( "This is already quartered." ) );
         }
-        if( !dressed && corpse->harvest->has_entry_type( harvest_drop_offal ) ) {
+        if( !dressed && butchery_needs_field_dressing( *corpse ) ) {
             return std::string( _( "You need to perform field dressing before quartering." ) );
         }
     }
 
     // As butcher_submenu: something to remove.
-    bool has_blood = false;
-    bool has_skin = false;
-    bool has_organs = false;
-    for( const harvest_entry &entry : corpse->harvest.obj() ) {
-        if( entry.type == harvest_drop_skin && !corpse_item.has_flag( flag_SKINNED ) ) {
-            has_skin = true;
-        }
-        if( entry.type == harvest_drop_offal && !( corpse_item.has_flag( flag_QUARTERED ) ||
-                dressed ) ) {
-            has_organs = true;
-        }
-        if( entry.type == harvest_drop_blood && corpse->bleed_rate > 0 &&
-            !( corpse_item.has_flag( flag_QUARTERED ) || dressed ||
-               corpse_item.has_flag( flag_BLED ) ) ) {
-            has_blood = true;
-        }
-    }
+    const bool has_blood = butchery_has_target( corpse_item, butcher_type::BLEED );
+    const bool has_skin = butchery_has_target( corpse_item, butcher_type::SKIN );
+    const bool has_organs = butchery_has_target( corpse_item, butcher_type::FIELD_DRESS );
     if( action == butcher_type::FIELD_DRESS && !has_organs ) {
         return string_format( _( "The %s has no organs." ), corpse_item.tname() );
     }

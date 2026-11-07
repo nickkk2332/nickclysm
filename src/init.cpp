@@ -1484,6 +1484,7 @@ void DynamicDataLoader::check_consistency()
                 }
             },
             { _( "Butchery requirements" ), &butchery_requirements::check_consistency },
+            { _( "Harvest drop types" ), &harvest_drop_type::check_consistency },
             { _( "Harvest lists" ), &harvest_list::check_consistency },
             { _( "NPC templates" ), &npc_template::check_consistency },
             { _( "Body parts" ), &body_part_type::check_consistency },
