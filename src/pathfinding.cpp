@@ -286,7 +286,8 @@ int map::cost_to_pass( const tripoint_bub_ms &cur, const tripoint_bub_ms &p,
 {
     constexpr PathfindingFlags non_normal = PathfindingFlag::Slow |
                                             PathfindingFlag::Obstacle | PathfindingFlag::Vehicle | PathfindingFlag::DangerousTrap |
-                                            PathfindingFlag::Sharp;
+                                            PathfindingFlag::Sharp | PathfindingFlag::RestrictSmall | PathfindingFlag::RestrictMedium |
+                                            PathfindingFlag::RestrictLarge | PathfindingFlag::RestrictHuge;
     if( !( p_special & non_normal ) ) {
         // Boring flat dirt - the most common case above the ground
         return 2;
@@ -386,11 +387,10 @@ int map::cost_to_pass( const tripoint_bub_ms &cur, const tripoint_bub_ms &p,
 
     // If terrain/furniture is openable but we can't fit through the open version, ignore the tile
     if( settings.size && allow_open_doors &&
-        ( ( terrain.open && terrain.open->has_flag( ter_furn_flag::TFLAG_SMALL_PASSAGE ) ) ||
-          ( furniture.open && furniture.open->has_flag( ter_furn_flag::TFLAG_SMALL_PASSAGE ) ) ||
+        ( ( terrain.open && !terrain.open->fits_creature_size( *settings.size ) ) ||
+          ( furniture.open && !furniture.open->fits_creature_size( *settings.size ) ) ||
           // Windows with curtains need to be opened twice
-          ( terrain.open->open && terrain.open->open->has_flag( ter_furn_flag::TFLAG_SMALL_PASSAGE ) ) ) &&
-        settings.size > creature_size::medium
+          ( terrain.open->open && !terrain.open->open->fits_creature_size( *settings.size ) ) )
       ) {
         return PF_IMPASSABLE;
     }

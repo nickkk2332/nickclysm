@@ -2523,6 +2523,23 @@ void Character::cough( bool harmful, int loudness )
     add_effect( effect_disrupted_sleep, 5_minutes );
 }
 
+static const char *current_wake_up_cause = nullptr;
+
+wake_up_cause_scope::wake_up_cause_scope( const char *cause ) : previous( current_wake_up_cause )
+{
+    current_wake_up_cause = cause;
+}
+
+wake_up_cause_scope::~wake_up_cause_scope()
+{
+    current_wake_up_cause = previous;
+}
+
+std::string wake_up_cause_scope::current()
+{
+    return current_wake_up_cause != nullptr ? current_wake_up_cause : "other";
+}
+
 void Character::wake_up()
 {
     //Can't wake up if under anesthesia
@@ -2537,7 +2554,8 @@ void Character::wake_up()
 
     if( has_effect( effect_sleep ) ) {
         get_effect( effect_sleep ).set_duration( 0_turns );
-        get_event_bus().send<event_type::character_wakes_up>( getID() );
+        get_event_bus().send<event_type::character_wakes_up>( getID(),
+                wake_up_cause_scope::current() );
     }
     remove_effect( effect_slept_through_alarm );
     remove_effect( effect_lying_down );
@@ -3147,6 +3165,7 @@ void Character::on_hurt( Creature *source, bool disturb /*= true*/ )
 
     if( disturb ) {
         if( in_sleep_state() && !has_bionic( bio_sleep_shutdown ) ) {
+            const wake_up_cause_scope cause( "damage" );
             wake_up();
         }
         if( uistate.distraction_attack && !is_npc() && !has_effect( effect_narcosis ) ) {

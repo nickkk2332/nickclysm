@@ -160,6 +160,8 @@ Use the `Home` key to return to the top.
       - [`floor_bedding_warmth`](#floor_bedding_warmth)
       - [`fall_damage_reduction`](#fall_damage_reduction)
       - [`sound_attenuation`](#sound_attenuation)
+      - [`max_creature_size`](#max_creature_size)
+      - [`light_color`](#light_color)
       - [`bonus_fire_warmth_feet`](#bonus_fire_warmth_feet)
       - [`looks_like`](#looks_like)
       - [`item_temperature`](#item_temperature)
@@ -3036,6 +3038,8 @@ Vehicle components when installed on a vehicle.
                               // light part intensity
                               // recharger part charging speed in watts
                               // funnel part water collection area in mm^2
+"light_color": [ 255, 0, 0 ], // (Optional) colour of a light part's light, red, green and blue
+                              // from 0 to 255; white if unset
 "color": "dark_gray",         // Color used when part is working
 "broken_color": "light_gray", // Color used when part is broken
 "location": "fuel_source",    // Optional. One of the checks used when determining if a part 
@@ -4224,6 +4228,14 @@ Vanilla values, by what the wall, door or window is made of (most are set on the
 
 Furniture and fields set none. A mod changes a value by redefining the object with a `copy-from` of its own id, which keeps everything else the same: `{ "type": "terrain", "id": "t_wall", "copy-from": "t_wall", "sound_attenuation": 12 }` (or a vehicle part's `{ "type": "vehicle_part", "id": "board", "copy-from": "board", "sound_attenuation": 0 }`). A copy takes the value of what it copies when it loads, so redefining an abstract wall in a mod changes only the mod's own copies of it, not the vanilla walls already loaded. The external option `SOUND_ATTENUATION_PERCENT` (`data/core/external_options.json`, default 100) scales every sum: 50 halves what everything muffles, 0 turns muffling off (sounds then skip the walk), 200 doubles it; a mod sets it with `{ "type": "EXTERNAL_OPTION", "name": "SOUND_ATTENUATION_PERCENT", "stype": "int", "value": 50 }`. With nothing loaded that muffles, sounds skip the walk too. The cost of a sound between z-levels comes from the external options `SOUND_Z_LEVEL_MULT` (5: each level counts as 5 tiles), `SOUND_UNDERGROUND_MULT` (5: when the lower of the two is underground, the first level between them counts as 5 levels) and `SOUND_DEEP_UNDERGROUND_MULT` (21: each further level between them below the surface counts as 21); see `data/core/external_options.json`.
 
+#### `max_creature_size`
+
+(Optional, one of `TINY`, `SMALL`, `MEDIUM`, `LARGE` or `HUGE`) The biggest creature that fits on a tile of this terrain or furniture: anything bigger can't move there (the avatar and its mount, monsters, a creature being dragged), and the pathfinder routes it around. The smaller of the terrain's and the furniture's counts, and `SMALL_PASSAGE` is the same as `"MEDIUM"`. A cat flap: `{ "type": "furniture", "id": "f_cat_flap", ..., "max_creature_size": "SMALL" }`.
+
+#### `light_color`
+
+(Optional, array of three integers from 0 to 255) The colour of the `light_emitted`, red, green and blue: `"light_color": [ 255, 120, 40 ]`. Without one the light is white. Colour shows in the tiles version. Field intensity levels, vehicle parts (`light_color` next to `bonus`), items (`light_color` next to `light`) and monsters (next to `luminance`) take the same array.
+
 #### `bonus_fire_warmth_feet`
 
 (Optional) Increase warmth received on feet from nearby fire  (default = 300)
@@ -4951,6 +4963,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "monster_spawn_radius": 15,
         "monster_spawn_group": "GROUP_NETHER", // 1-in-spawn_chance roll to spawn spawn_count entries from spawn_group monstergroup and place them in a spawn_radius radius around the field
         "light_emitted": 2.5, // light level emitted by this intensity
+        "light_color": [ 0, 255, 0 ], // (optional) its colour, red, green and blue from 0 to 255; white if unset
         "light_override": 3.7 }, //light level on the tile occupied by this field will be set at 3.7 no matter the ambient light.
         "translucency": 2.0, // How much light the field blocks (higher numbers mean less light can penetrate through)
         "concentration": 1, // How concentrated this intensity of gas is. Generally the thin/hazy cloud intensity will be 1, the standard gas will be 2, and thick gas will be 4. The amount of time a gas mask filter will last will be divided by this value.

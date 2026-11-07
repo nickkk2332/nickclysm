@@ -64,6 +64,9 @@ struct overmap_path_params {
         auto it = travel_cost_per_type.find( type );
         return it != travel_cost_per_type.end() ? it->second : -1;
     }
+    // The cheapest cost of any passable type (0 if none is): the overmap path search estimates
+    // the OMTs left to cross at this cost.
+    int min_cost() const;
     static constexpr int standard_cost = 10;
     static overmap_path_params for_player();
     static overmap_path_params for_npc();

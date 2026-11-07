@@ -619,7 +619,7 @@ TEST_CASE( "achievements_tracker", "[stats]" )
         calendar::turn = calendar::start_of_game;
 
         const cata::event avatar_wakes_up =
-            cata::event::make<event_type::character_wakes_up>( u_id );
+            cata::event::make<event_type::character_wakes_up>( u_id, std::string( "other" ) );
 
         achievement_id a_survive_one_day( "achievement_survive_one_day" );
 

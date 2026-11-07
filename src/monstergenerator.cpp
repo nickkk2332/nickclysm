@@ -611,12 +611,18 @@ void MonsterGenerator::finalize_pathfinding_settings( mtype &mon )
         mon.path_settings.bash_strength = mon.bash_skill;
     }
 
-    if( mon.move_skills.climb.has_value() ) {
+    if( mon.path_climb_cost ) {
+        mon.path_settings.climb_cost = *mon.path_climb_cost;
+    } else if( mon.move_skills.climb.has_value() ) {
         mon.path_settings.climb_cost = move_skills_data::max_movemod_penalty -
                                        ( mon.move_skills.climb.value() * ( move_skills_data::max_movemod_penalty / 10 ) );
     } else if( mon.has_flag( mon_flag_CLIMBS ) ) {
         mon.path_settings.climb_cost = 3;
     }
+
+    // The pathfinder keeps creatures too big for a tile (SMALL_PASSAGE, max_creature_size) off it,
+    // as moving there does.
+    mon.path_settings.size = mon.path_size.value_or( mon.size );
 }
 
 void MonsterGenerator::init_phases()
@@ -1006,6 +1012,12 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
 
     optional( jo, was_loaded, "starting_ammo", starting_ammo );
     optional( jo, was_loaded, "luminance", luminance, 0 );
+    if( jo.has_array( "light_color" ) ) {
+        JsonArray jarr = jo.get_array( "light_color" );
+        light_color.r = jarr.get_int( 0 ) / 255.0f;
+        light_color.g = jarr.get_int( 1 ) / 255.0f;
+        light_color.b = jarr.get_int( 2 ) / 255.0f;
+    }
     optional( jo, was_loaded, "revert_to_itype", revert_to_itype, itype_id() );
     optional( jo, was_loaded, "broken_itype", broken_itype, itype_id() );
     optional( jo, was_loaded, "mech_weapon", mech_weapon, itype_id() );
@@ -1209,6 +1221,19 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
         optional( jop, was_loaded, "allow_climb_stairs", path_settings.allow_climb_stairs, true );
         optional( jop, was_loaded, "avoid_sharp", path_settings.avoid_sharp, false );
         optional( jop, was_loaded, "avoid_dangerous_fields", path_settings.avoid_dangerous_fields, false );
+        optional( jop, was_loaded, "allow_unlock_doors", path_settings.allow_unlock_doors, false );
+        optional( jop, was_loaded, "avoid_rough_terrain", path_settings.avoid_rough_terrain, false );
+        // Unset, these come from move_skills and the CLIMBS flag, and from the monster's size
+        optional( jop, was_loaded, "climb_cost", path_climb_cost );
+        if( jop.has_member( "size" ) ) {
+            const std::string size_name = jop.get_string( "size" );
+            const auto size_found = Creature::size_map.find( size_name );
+            if( size_found == Creature::size_map.end() ) {
+                jop.throw_error_at( "size", string_format( "Invalid creature size \"%s\": use TINY, "
+                                    "SMALL, MEDIUM, LARGE or HUGE", size_name ) );
+            }
+            path_size = size_found->second;
+        }
     }
 }
 
@@ -1426,6 +1451,15 @@ void MonsterGenerator::check_monster_definitions() const
             if( !spec.is_valid() ) {
                 debugmsg( "monster %s has invalid species %s", mon.id.c_str(), spec.c_str() );
             }
+        }
+        if( mon.path_settings.max_length < mon.path_settings.max_dist ) {
+            debugmsg( "monster %s has path_settings max_length %d shorter than its max_dist %d: "
+                      "no path that far fits", mon.id.c_str(), mon.path_settings.max_length,
+                      mon.path_settings.max_dist );
+        }
+        if( mon.path_climb_cost && *mon.path_climb_cost < 0 ) {
+            debugmsg( "monster %s has a negative path_settings climb_cost %d (0 for none)",
+                      mon.id.c_str(), *mon.path_climb_cost );
         }
         if( !mon.death_drops.is_empty() && !item_group::group_is_defined( mon.death_drops ) ) {
             debugmsg( "monster %s has unknown death drop item group: %s", mon.id.c_str(),

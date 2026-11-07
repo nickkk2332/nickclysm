@@ -27,6 +27,7 @@
 #include "game.h"
 #include "item.h"
 #include "item_stack.h"
+#include "itype.h"
 #include "level_cache.h"
 #include "line.h"
 #include "map.h"
@@ -131,10 +132,11 @@ void map::add_item_light_recursive( const tripoint_bub_ms &p, const item &it )
     units::angle iwidth = 0_degrees; // 0-360 degrees. 0 is a circular light_source
     units::angle idir = 0_degrees;   // otherwise, it's a light_arc pointed in this direction
     if( it.getlight( ilum, iwidth, idir ) ) {
+        // SPAT-J06: the item's own colour; none (zero) is white
         if( iwidth > 0_degrees ) {
-            apply_light_arc( p, idir, ilum, iwidth );
+            apply_light_arc( p, idir, ilum, iwidth, it.type->light_color );
         } else {
-            add_light_source( p, ilum );
+            add_light_source( p, ilum, it.type->light_color );
         }
     }
 
@@ -776,7 +778,13 @@ void map::generate_lightmap( const int zlev )
             // TODO: [lightmap] Allow creatures to have facing and arc lights
             const float critter_luminance = critter.luminance();
             if( critter_luminance > 0 ) {
-                apply_light_source( mp, critter_luminance );
+                const light_color_rgb &critter_color = critter.type->light_color;
+                if( critter_color.is_colored() ) {
+                    // SPAT-J06: buffered like a coloured lamp, so it casts in its own colour
+                    add_light_source( mp, critter_luminance, critter_color );
+                } else {
+                    apply_light_source( mp, critter_luminance );
+                }
             }
         }
     }

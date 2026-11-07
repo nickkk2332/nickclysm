@@ -100,6 +100,7 @@ class map;
 
 class weather_generator;
 
+enum class creature_size : int;
 enum class ter_furn_flag : int;
 struct pathfinding_cache;
 struct pathfinding_settings;
@@ -1240,6 +1241,9 @@ class map
         bool has_flag_furn( ter_furn_flag flag, const tripoint_bub_ms &p ) const;
         // Checks terrain or furniture
         bool has_flag_ter_or_furn( ter_furn_flag flag, const tripoint_bub_ms &p ) const;
+        // Whether a creature of this size fits on the tile: its terrain and furniture both let it
+        // (SMALL_PASSAGE, max_creature_size)
+        bool fits_creature_size( const tripoint_bub_ms &p, creature_size size ) const;
 
         // Returns true if a and b are on matching stairs connecting them
         // across exactly one z-level (one has GOES_UP, the other GOES_DOWN).

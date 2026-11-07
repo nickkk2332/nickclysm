@@ -972,8 +972,7 @@ std::optional<std::string> grapple::drag_refusal( const Character &grabber,
     }
     const std::vector<field_type_id> fields = here.get_impassable_field_type_ids_at( from );
     if( !here.passable( from ) || ( !fields.empty() && !victim.is_immune_fields( fields ) ) ||
-        ( here.has_flag_ter( ter_furn_flag::TFLAG_SMALL_PASSAGE, from ) &&
-          victim.get_size() > creature_size::medium ) ||
+        !here.fits_creature_size( from, victim.get_size() ) ||
         ( mon != nullptr && mon->is_aquatic_danger( from ) ) ) {
         return string_format( _( "You can't drag %s there." ), victim.disp_name() );
     }

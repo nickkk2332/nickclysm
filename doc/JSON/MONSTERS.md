@@ -36,6 +36,7 @@
   - ["families"](#families)
   - ["vision_day", "vision_night"](#vision_day-vision_night)
   - ["luminance"](#luminance)
+  - ["light_color"](#light_color)
   - ["hp"](#hp)
   - ["bleed_rate"](#bleed_rate)
   - ["death_drops"](#death_drops)
@@ -135,6 +136,7 @@ Property                 | Description
 `tracking_distance`      | (integer) Amount of tiles the monster will keep between itself and its current tracked enemy or followed leader. Defaults to `3`.
 `trap_avoids`            | (array of strings) trap_id of traps that are not triggered by this monster. Default behaviour is to trigger all traps.
 `luminance`              | (float) Amount of light passively emitted by the monster, must be >0 to have any effect
+`light_color`            | (array of three ints) Colour of that light, red, green and blue from 0 to 255
 `death_drops`            | (string or item group) Item group to spawn when the monster dies
 `death_function`         | (object) How the monster behaves on death: its corpse, death message, spell and EOC. See [death_function](#death_function)
 `emit_fields`            | (array of objects) What field the monster emits, and how frequently
@@ -526,6 +528,11 @@ Vision range in full daylight and in total darkness.  Defaults to 40 tiles for d
 
 Amount of light passively output by monster. Ranges from 0 to 10.
 
+## "light_color"
+(array of three integers, optional)
+
+The colour of the monster's `luminance`, red, green and blue from 0 to 255: `"light_color": [ 80, 255, 120 ]`. Without one the light is white. As for terrain, colour shows in the tiles version.
+
 ## "bash_skill"
 (object `{ damage_type_id: int }`, optional)
 
@@ -780,15 +787,21 @@ Field           | Description
 Field                | Description
 ---                  | ---
 `max_dist`           | (int, default 0) Maximum direct distance of path
-`max_length`         | (int, default -1) Maximum total length of path
-`bash_strength`      | (int, default -1) Monster strength when bashing through an obstacle
+`max_length`         | (int, default 5 times `max_dist`) Maximum total length of path. Shorter than `max_dist` is an error at load
+`bash_strength`      | (object `{ damage_type_id: int }`, default the monster's `bash_skill`) Damage the pathfinder expects the monster to do bashing through an obstacle, e.g. `{ "bash": 10 }`
+`climb_cost`         | (int, 0 or more) Path cost of climbing over a `CLIMBABLE` obstacle (2 is a step on flat ground); 0 means the path never climbs. Unset, it comes from `move_skills` `climb`, or is 3 with the `CLIMBS` flag, or 0
+`size`               | (string: `TINY`, `SMALL`, `MEDIUM`, `LARGE` or `HUGE`, default the monster's own size) The size the pathfinder plans for: no path goes through a tile too small for it (`SMALL_PASSAGE`, or terrain or furniture with a `max_creature_size`), as the monster can't move there either
 `allow_open_doors`   | (bool, default false) Monster knows how to open doors
-`allow_unlock_doors` | (bool, default false) Monster knows how to unlock doors
+`allow_unlock_doors` | (bool, default false) Monster knows how to unlock (vehicle) doors; it also needs the `CAN_OPEN_DOORS` flag to do it
 `avoid_traps`        | (bool, default false) Monster avoids stepping into traps
 `allow_climb_stairs` | (bool, default true) Monster may climb stairs
-`avoid_rough_terrain` | (bool, default false) Monster may avoid rough terrain like rubble
+`avoid_rough_terrain` | (bool, default false) The path keeps to plain open ground: no slow or obstructed tile, vehicle, trap, sharp tile or tile some sizes don't fit
 `avoid_sharp`        | (bool, default false) Monster may avoid sharp things like barbed wire
 `avoid_dangerous_fields` | (bool, default false) Monster may avoid dangerous fields like fire or acid
+
+```jsonc
+"path_settings": { "max_dist": 45, "allow_open_doors": true, "allow_unlock_doors": true, "climb_cost": 3, "bash_strength": { "bash": 10 } }
+```
 
 ## "move_skills"
 (object, optional)

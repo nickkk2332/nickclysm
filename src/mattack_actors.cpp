@@ -250,8 +250,7 @@ bool leap_actor::call( monster &z ) const
                 add_msg_debug( debugmode::DF_MATTACK, "Path blocked, candidate discarded" );
                 blocked_path = true;
                 break;
-            } else if( here.has_flag_ter( ter_furn_flag::TFLAG_SMALL_PASSAGE, i ) &&
-                       z.get_size() > creature_size::medium ) {
+            } else if( !here.fits_creature_size( i, z.get_size() ) ) {
                 add_msg_debug( debugmode::DF_MATTACK, "Small passage can't pass, candidate discarded" );
                 blocked_path = true;
                 break;
