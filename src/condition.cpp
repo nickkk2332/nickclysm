@@ -113,8 +113,6 @@
 #include "worldfactory.h"
 #include "wound.h"
 
-// IWYU pragma: no_forward_declare cardinal_direction // need its enum_traits
-class recipe;
 struct mapgen_arguments;
 
 static const efftype_id effect_currently_busy( "currently_busy" );

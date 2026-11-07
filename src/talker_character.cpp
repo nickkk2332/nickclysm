@@ -22,6 +22,7 @@
 #include "creature.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue_helpers.h"
 #include "effect.h"
 #include "faction.h"
 #include "grapple.h"

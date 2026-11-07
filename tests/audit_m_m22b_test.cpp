@@ -1,10 +1,12 @@
+#include <plf/list.h>
 #include <algorithm>
 #include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
-#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
@@ -12,12 +14,13 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "cata_variant.h"
 #include "character.h"
+#include "character_id.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "event.h"
 #include "event_bus.h"
 #include "faction.h"
@@ -31,22 +34,23 @@
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "map_iterator.h"
 #include "map_scale_constants.h"
+#include "mapdata.h"
 #include "math_parser.h"
 #include "math_parser_diag_value.h"
-#include "memory_fast.h"
 #include "mission_companion.h"
 #include "npc.h"
-#include "omdata.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "regional_settings.h"
 #include "shop_cons_rate.h"
-#include "skill.h"
 #include "stomach.h"
 #include "talker.h"
+#include "translation.h"
 #include "type_id.h"
+#include "value_ptr.h"
 #include "visitable.h"
 
 static const faction_id faction_free_merchants( "free_merchants" );

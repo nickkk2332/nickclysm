@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -33,8 +34,9 @@
 #include "string_input_popup.h"
 #include "translation.h"
 #include "translations.h"
-#include "uilist.h"
+#include "type_id.h"
 #include "ui_manager.h"
+#include "uilist.h"
 #include "worldfactory.h"
 
 safemode &get_safemode()

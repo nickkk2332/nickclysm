@@ -1,10 +1,12 @@
+#include <functional>
+#include <list>
 #include <string>
+#include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "construction.h"
 #include "coordinates.h"
 #include "flexbuffer_json.h"
@@ -15,6 +17,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "npc.h"
 #include "player_activity.h"

@@ -30,6 +30,7 @@
 #include "magic.h"
 #include "magic_enchantment.h"
 #include "map.h"
+#include "memory_fast.h"
 #include "monster.h"
 #include "npc.h"
 #include "output.h"

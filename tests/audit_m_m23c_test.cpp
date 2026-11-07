@@ -1,4 +1,6 @@
 #include <cstdint>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -8,6 +10,7 @@
 #include "character.h"
 #include "coordinates.h"
 #include "effect_source.h"
+#include "enums.h"
 #include "global_vars.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -18,7 +21,6 @@
 #include "units.h"
 #include "veh_type.h"
 #include "vehicle.h"
-#include "vpart_position.h"
 
 static const damage_type_id damage_pure( "pure" );
 

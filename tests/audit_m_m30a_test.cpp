@@ -1,15 +1,18 @@
+#include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "avatar.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
+#include "color.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "debug.h"
@@ -17,13 +20,12 @@
 #include "dialogue_helpers.h"
 #include "display.h"
 #include "flexbuffer_json.h"
-#include "global_vars.h"
 #include "input.h"
 #include "input_enums.h"
 #include "json.h"
 #include "json_loader.h"
 #include "map_helpers.h"
-#include "omdata.h"
+#include "overmap.h"
 #include "overmapbuffer.h"
 #include "panels.h"
 #include "player_helpers.h"

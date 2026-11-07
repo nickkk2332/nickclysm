@@ -5,6 +5,7 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "coordinates.h"
+#include "dialogue_helpers.h"
 #include "faction.h"
 #include "item.h"
 #include "item_location.h"

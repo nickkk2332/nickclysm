@@ -1,4 +1,6 @@
+#include <functional>
 #include <initializer_list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -8,15 +10,14 @@
 #include <vector>
 
 #include "avatar.h"
-#include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "cata_variant.h"
-#include "character.h"
+#include "character_id.h"
 #include "coordinates.h"
-#include "creature.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
@@ -24,7 +25,6 @@
 #include "global_vars.h"
 #include "item.h"
 #include "item_location.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "magic_enchantment.h"
@@ -36,11 +36,12 @@
 #include "math_parser.h"
 #include "math_parser_diag_value.h"
 #include "monster.h"
-#include "mtype.h"
 #include "npc.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "stats_tracker.h"
+#include "talker.h"
 #include "type_id.h"
 
 static const effect_on_condition_id

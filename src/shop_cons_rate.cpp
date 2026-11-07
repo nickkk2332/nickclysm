@@ -15,7 +15,6 @@
 #include "itype.h"
 #include "npc.h"
 #include "string_formatter.h"
-#include "talker.h"
 
 namespace
 {

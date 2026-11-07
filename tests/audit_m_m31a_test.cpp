@@ -1,8 +1,7 @@
-#include "cata_catch.h"
-
 #if defined(SDL_SOUND)
 #include <string>
 
+#include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "debug.h"
 #include "sound_backend.h"
@@ -22,6 +21,7 @@
 
 #include "atlas_bake_plan.h"
 #include "avatar.h"
+#include "cata_catch.h"
 #include "cata_path.h"
 #include "cata_scope_helpers.h"
 #include "cata_tiles.h"

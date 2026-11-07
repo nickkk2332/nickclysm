@@ -41,7 +41,7 @@
 #include "options.h"
 #include "rng.h"
 #include "sounds.h"
-#include "string_formatter.h"
+#include "translation.h"
 #include "translations.h"
 #include "trap.h"
 #include "units.h"

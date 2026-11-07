@@ -16,16 +16,14 @@
 #include "point.h"
 #include "type_id.h"
 
-template <typename E> struct enum_traits;
-
 class Character;
 class Creature;
 class avatar;
 class mood_face;
-class time_point;
 class translation;
 class vehicle;
 enum class cardinal_direction : int;
+template <typename E> struct enum_traits;
 
 // These are the supported data variables for coloring bodygraphs.
 enum class bodygraph_var : int {

@@ -6,9 +6,9 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
-#include "activity_type.h"
 #include "advanced_inv.h"
 #include "advanced_inv_area.h"
 #include "advanced_inv_listitem.h"
@@ -19,11 +19,11 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
-#include "character_attire.h"
+#include "color.h"
 #include "coordinates.h"
 #include "crafting_gui_helpers.h"
+#include "creature.h"
 #include "dialogue.h"
-#include "effect_on_condition.h"
 #include "inventory_ui.h"
 #include "item.h"
 #include "item_category.h"
@@ -34,13 +34,16 @@
 #include "map_selector.h"
 #include "mapdata.h"
 #include "math_parser.h"
+#include "math_parser_diag_value.h"
 #include "npc.h"
 #include "options_helpers.h"
 #include "player_activity.h"
 #include "player_helpers.h"
+#include "pocket_type.h"
 #include "point.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
+#include "ret_val.h"
 #include "skill.h"
 #include "talker.h"
 #include "type_id.h"

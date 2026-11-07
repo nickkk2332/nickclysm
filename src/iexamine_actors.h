@@ -26,6 +26,7 @@ class time_duration;
 struct const_dialogue;
 struct dialogue;
 struct furn_t;
+struct map_data_common_t;
 
 class appliance_convert_examine_actor : public iexamine_actor
 {

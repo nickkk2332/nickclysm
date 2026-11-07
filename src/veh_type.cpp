@@ -39,6 +39,7 @@
 #include "json.h"
 #include "magic_enchantment.h"
 #include "map.h"
+#include "math_parser_diag_value.h"
 #include "npctalk.h"
 #include "output.h"
 #include "pocket_type.h"

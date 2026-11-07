@@ -1,3 +1,6 @@
+#include <functional>
+#include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -6,12 +9,12 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_id.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
@@ -45,6 +48,8 @@
 #include "weather.h"
 #include "weather_type.h"
 #include "widget.h"
+
+class Character;
 
 static const itype_id itype_rock( "rock" );
 

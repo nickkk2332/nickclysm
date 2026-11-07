@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
-#include <cstdint>
+#include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <set>
@@ -11,9 +12,9 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "cata_variant.h"
 #include "coordinates.h"
 #include "damage.h"
+#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
@@ -24,6 +25,7 @@
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "monster.h"
 #include "player_helpers.h"
 #include "point.h"

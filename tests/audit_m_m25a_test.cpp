@@ -1,5 +1,5 @@
+#include <cstdint>
 #include <functional>
-#include <list>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -10,7 +10,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_attire.h"
 #include "condition.h"
 #include "coordinates.h"
@@ -23,10 +22,10 @@
 #include "flexbuffer_json.h"
 #include "global_vars.h"
 #include "item.h"
+#include "item_components.h"
 #include "item_location.h"
 #include "item_wakeup.h"
 #include "itype.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -37,6 +36,7 @@
 #include "npc.h"
 #include "player_helpers.h"
 #include "point.h"
+#include "proficiency.h"
 #include "recipe.h"
 #include "recipe_dictionary.h"
 #include "requirements.h"

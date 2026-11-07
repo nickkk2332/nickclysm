@@ -36,6 +36,7 @@
 #include "damage.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_source.h"
 #include "enum_traits.h"
 #include "enums.h"

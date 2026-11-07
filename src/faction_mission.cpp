@@ -3,6 +3,7 @@
 #include <functional>
 #include <initializer_list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,7 +27,6 @@
 #include "game_constants.h"
 #include "generic_factory.h"
 #include "item_group.h"
-#include "mapdata.h"
 #include "mission_companion.h"
 #include "omdata.h"
 #include "overmapbuffer.h"
@@ -37,6 +37,8 @@
 #include "translation.h"
 #include "translations.h"
 #include "type_id.h"
+
+struct ter_t;
 
 static const skill_id skill_speech( "speech" );
 static const skill_id skill_survival( "survival" );

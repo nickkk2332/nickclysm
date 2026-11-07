@@ -30,7 +30,6 @@
 #include "memory_fast.h"
 #include "point.h"
 #include "requirements.h"
-#include "talker.h"
 #include "temp_crafting_inventory.h"
 #include "translation.h"
 #include "translations.h"
@@ -40,6 +39,8 @@
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "vpart_range.h"
+
+class talker;
 
 static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
 

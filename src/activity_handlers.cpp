@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -37,9 +38,7 @@
 #include "overmap_ui.h"
 #include "pathfinding.h"
 #include "player_activity.h"
-#include "pocket_type.h"
 #include "point.h"
-#include "ret_val.h"
 #include "skill.h"
 #include "string_formatter.h"
 #include "temp_crafting_inventory.h"
@@ -47,6 +46,7 @@
 #include "type_id.h"
 #include "uilist.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 #include "weather.h"

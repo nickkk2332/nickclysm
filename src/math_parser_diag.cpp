@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
 #include <list>
 #include <map>
@@ -61,6 +60,8 @@
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "melee.h"
+#include "memory_fast.h"
+#include "mission_companion.h"
 #include "mod_manager.h"
 #include "mod_setting.h"
 #include "mongroup.h"
@@ -77,7 +78,6 @@
 #include "point.h"
 #include "power_math.h"
 #include "proficiency.h"
-#include "recipe.h"
 #include "relic.h"
 #include "scent_map.h"
 #include "skill.h"

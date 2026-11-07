@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <climits>
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,7 +15,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "enums.h"
@@ -27,12 +28,9 @@
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"
-#include "json_error.h"
 #include "json_loader.h"
-#include "magic_enchantment.h"
 #include "map.h"
 #include "map_helpers.h"
-#include "mapdata.h"
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "point.h"

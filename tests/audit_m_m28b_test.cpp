@@ -1,6 +1,8 @@
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -13,7 +15,7 @@
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "cata_variant.h"
-#include "character.h"
+#include "clone_ptr.h"
 #include "computer.h"
 #include "condition.h"
 #include "construction.h"
@@ -30,7 +32,6 @@
 #include "item.h"
 #include "item_location.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"

@@ -22,6 +22,7 @@
 #include "color.h"
 #include "condition.h"
 #include "crafting_gui.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"

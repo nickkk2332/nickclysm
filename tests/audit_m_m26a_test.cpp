@@ -1,7 +1,14 @@
+#include <functional>
+#include <list>
+#include <map>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "activity_actor_definitions.h"
@@ -12,7 +19,6 @@
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "clzones.h"
-#include "construction.h"
 #include "coordinates.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
@@ -24,6 +30,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_scale_constants.h"
 #include "mapdata.h"
 #include "mapgen_functions.h"
 #include "mapgendata.h"
@@ -32,10 +39,12 @@
 #include "player_helpers.h"
 #include "point.h"
 #include "requirements.h"
+#include "ret_val.h"
 #include "rng.h"
 #include "sounds.h"
 #include "type_id.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 

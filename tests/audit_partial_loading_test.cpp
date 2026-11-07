@@ -18,6 +18,7 @@
 #include "coordinates.h"
 #include "debug.h"
 #include "dialogue_chatbin.h"
+#include "dialogue_helpers.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
 #include "global_vars.h"

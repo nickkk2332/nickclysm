@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <exception>
 #include <functional>
+#include <initializer_list>
 #include <locale>
 #include <optional>
 #include <set>

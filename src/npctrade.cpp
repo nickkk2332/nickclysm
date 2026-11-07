@@ -1,9 +1,9 @@
 #include "npctrade.h"
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdlib>
-#include <climits>
 #include <functional>
 #include <iterator>
 #include <list>
@@ -17,6 +17,7 @@
 #include "character.h"
 #include "character_attire.h"
 #include "debug.h"
+#include "dialogue_helpers.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"

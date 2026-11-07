@@ -9,7 +9,6 @@
 #include "activity_actor_definitions.h"
 #include "calendar.h"
 #include "character.h"
-#include "clone_ptr.h"
 #include "coordinates.h"
 #include "game.h"
 #include "gates.h"

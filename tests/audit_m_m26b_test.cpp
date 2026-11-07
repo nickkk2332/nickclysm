@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -9,7 +11,6 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
-#include "character.h"
 #include "clzones.h"
 #include "condition.h"
 #include "coordinates.h"
@@ -26,6 +27,7 @@
 #include "map.h"
 #include "map_helpers.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "player_activity.h"
 #include "player_helpers.h"
 #include "pocket_type.h"

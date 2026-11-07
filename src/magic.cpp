@@ -16,6 +16,7 @@
 #include "calendar.h"
 #include "cata_imgui.h"
 #include "cata_utility.h"
+#include "cata_variant.h"
 #include "catacharset.h"
 #include "character.h"
 #include "character_id.h"

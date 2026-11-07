@@ -7,6 +7,7 @@
 #include "condition.h"
 #include "debug.h"
 #include "effect_on_condition.h"
+#include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "item.h"
