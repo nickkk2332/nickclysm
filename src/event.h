@@ -663,21 +663,24 @@ struct event_spec<event_type::character_wields_item> : event_spec_character_item
 
 template<>
 struct event_spec<event_type::companion_mission_finished> {
-    static constexpr std::array<event_field, 4> fields = {{
+    static constexpr std::array<event_field, 5> fields = {{
             { "npc", cata_variant_type::character_id },
             { "mission", cata_variant_type::string },
             { "pos", cata_variant_type::tripoint },
             { "outcome", cata_variant_type::string },
+            // the faction_mission id of a camp mission from JSON, empty for the others
+            { "camp_mission", cata_variant_type::string },
         }
     };
 };
 
 template<>
 struct event_spec<event_type::companion_mission_started> {
-    static constexpr std::array<event_field, 3> fields = {{
+    static constexpr std::array<event_field, 4> fields = {{
             { "npc", cata_variant_type::character_id },
             { "mission", cata_variant_type::string },
             { "pos", cata_variant_type::tripoint },
+            { "camp_mission", cata_variant_type::string },
         }
     };
 };
