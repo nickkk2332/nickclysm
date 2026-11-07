@@ -4161,8 +4161,14 @@ bool map::has_adjacent_furniture_with( const tripoint_bub_ms &p,
 bool map::has_nearby_fire( const tripoint_bub_ms &p, int radius ) const
 {
     for( const tripoint_bub_ms &pt : points_in_radius( p, radius ) ) {
-        if( has_field_at( pt, fd_fire ) ) {
-            return true;
+        // A field with has_fire that radiates heat at its intensity, such as fd_fire
+        if( has_field_at( pt ) ) {
+            for( const auto &fd : field_at( pt ) ) {
+                if( fd.second.is_field_alive() &&
+                    fd.first->is_usable_fire( fd.second.get_field_intensity() ) ) {
+                    return true;
+                }
+            }
         }
         if( has_flag_ter_or_furn( ter_furn_flag::TFLAG_USABLE_FIRE, pt ) ) {
             return true;
@@ -7772,9 +7778,9 @@ bool map::add_field( const tripoint_bub_ms &p, const field_type_id &type_id, int
         return false;
     }
 
-    // Hacky way to force electricity fields to become unlit electricity fields
-    const field_type_id &converted_type_id = ( type_id == fd_electricity ||
-            type_id == fd_electricity_unlit ) ? get_applicable_electricity_field( p ) : type_id;
+    // A field with an opaque_variant is placed as that on a tile that isn't transparent, and the
+    // variant turns back into it on a transparent one (fd_electricity and fd_electricity_unlit)
+    const field_type_id converted_type_id = placed_field_type( p, type_id );
     const field_type &fd_type = *converted_type_id;
 
     intensity = std::min( intensity, fd_type.get_max_intensity() );

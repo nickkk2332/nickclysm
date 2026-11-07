@@ -1,13 +1,27 @@
 #include "field_type.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "debug.h"
+#include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "scent_block.h"
+#include "string_formatter.h"
+
+static const damage_type_id damage_bash( "bash" );
+
+static const furn_str_id furn_f_ash( "f_ash" );
+
+static const itype_id itype_ash( "ash" );
+
+static const ter_str_id ter_t_dirt( "t_dirt" );
 
 const field_type_str_id fd_null = field_type_str_id::NULL_ID();
 const field_type_str_id fd_acid( "fd_acid" );
@@ -107,6 +121,90 @@ std::string enum_to_string<description_affix>( description_affix data )
     return "invalid";
 }
 
+template<>
+std::string enum_to_string<field_decay_mode>( field_decay_mode data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case field_decay_mode::exponential: return "exponential";
+        case field_decay_mode::linear: return "linear";
+        case field_decay_mode::fire: return "fire";
+        // *INDENT-ON*
+        case field_decay_mode::last:
+            break;
+    }
+    cata_fatal( "Invalid field_decay_mode" );
+}
+
+template<>
+std::string enum_to_string<field_contact_body_parts>( field_contact_body_parts data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case field_contact_body_parts::ground_contact: return "ground_contact";
+        case field_contact_body_parts::all: return "all";
+        case field_contact_body_parts::list: return "list";
+        // *INDENT-ON*
+        case field_contact_body_parts::last:
+            break;
+    }
+    cata_fatal( "Invalid field_contact_body_parts" );
+}
+
+template<>
+std::string enum_to_string<field_processor_type>( field_processor_type data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case field_processor_type::fire: return "fire";
+        case field_processor_type::fungicide: return "fungicide";
+        case field_processor_type::fall: return "fall";
+        case field_processor_type::extinguish: return "extinguish";
+        case field_processor_type::arc: return "arc";
+        case field_processor_type::push_items: return "push_items";
+        case field_processor_type::vent_cycle: return "vent_cycle";
+        case field_processor_type::shock_vent: return "shock_vent";
+        case field_processor_type::acid_vent: return "acid_vent";
+        case field_processor_type::incendiary: return "incendiary";
+        case field_processor_type::fungal_haze: return "fungal_haze";
+        case field_processor_type::last_known: return "last_known";
+        // *INDENT-ON*
+        case field_processor_type::last:
+            break;
+    }
+    cata_fatal( "Invalid field_processor_type" );
+}
+
+template<>
+std::string enum_to_string<field_contact_type>( field_contact_type data )
+{
+    switch( data ) {
+        // *INDENT-OFF*
+        case field_contact_type::acid: return "acid";
+        case field_contact_type::sap: return "sap";
+        case field_contact_type::sludge: return "sludge";
+        case field_contact_type::fire: return "fire";
+        case field_contact_type::tear_gas: return "tear_gas";
+        case field_contact_type::fungal_haze: return "fungal_haze";
+        case field_contact_type::flame_burst: return "flame_burst";
+        case field_contact_type::electricity: return "electricity";
+        case field_contact_type::teleport: return "teleport";
+        case field_contact_type::shut_off: return "shut_off";
+        case field_contact_type::incendiary: return "incendiary";
+        case field_contact_type::fungicidal_gas: return "fungicidal_gas";
+        case field_contact_type::insecticidal_gas: return "insecticidal_gas";
+        case field_contact_type::smoke: return "smoke";
+        case field_contact_type::relax_gas: return "relax_gas";
+        case field_contact_type::dazzling: return "dazzling";
+        case field_contact_type::toxic_gas: return "toxic_gas";
+        case field_contact_type::nuke_gas: return "nuke_gas";
+        // *INDENT-ON*
+        case field_contact_type::last:
+            break;
+    }
+    cata_fatal( "Invalid field_contact_type" );
+}
+
 } // namespace io
 
 generic_factory<field_type> &get_all_field_types()
@@ -170,6 +268,208 @@ int_id<field_type> string_id<field_type>::id() const
 template<>
 int_id<field_type>::int_id( const string_id<field_type> &id ) : _id( id.id() )
 {
+}
+
+// Reads an enum from a JSON string, as a JSON error naming the value if it is unknown
+template<typename E>
+static E read_field_enum( const JsonValue &jv, const char *what )
+{
+    const std::string name = jv.get_string();
+    const std::optional<E> value = io::string_to_enum_optional<E>( name );
+    if( !value ) {
+        jv.throw_error( string_format( "unknown %s \"%s\"", what, name ) );
+    }
+    return *value;
+}
+
+void field_processor_def::set_defaults()
+{
+    // The values the vanilla field using this processor had in C++
+    switch( type ) {
+        case field_processor_type::fire:
+            smoke_field = fd_smoke;
+            fuel_field = fd_web;
+            ash_item = itype_ash;
+            ash_furniture = furn_f_ash;
+            break;
+        case field_processor_type::fungicide:
+            terrain = ter_t_dirt;
+            break;
+        case field_processor_type::push_items:
+            damage_type = damage_bash;
+            break;
+        case field_processor_type::shock_vent:
+            field = fd_electricity;
+            break;
+        case field_processor_type::acid_vent:
+            field = fd_acid;
+            break;
+        case field_processor_type::incendiary:
+            field = fd_fire;
+            break;
+        case field_processor_type::fall:
+        case field_processor_type::extinguish:
+        case field_processor_type::arc:
+        case field_processor_type::vent_cycle:
+        case field_processor_type::fungal_haze:
+        case field_processor_type::last_known:
+        case field_processor_type::last:
+            break;
+    }
+}
+
+void field_processor_def::load( const JsonValue &jv )
+{
+    if( jv.test_string() ) {
+        type = read_field_enum<field_processor_type>( jv, "field processor" );
+        if( type == field_processor_type::extinguish || type == field_processor_type::vent_cycle ) {
+            jv.throw_error( string_format( "the %s processor needs an object with its %s",
+                                           jv.get_string(), type == field_processor_type::extinguish ? "fields" : "next_field" ) );
+        }
+        set_defaults();
+        return;
+    }
+    const JsonObject jo = jv.get_object();
+    type = read_field_enum<field_processor_type>( jo.get_member( "type" ), "field processor" );
+    set_defaults();
+    // Each type reads only its own members, so a member another type takes is an error
+    switch( type ) {
+        case field_processor_type::fire:
+            optional( jo, true, "spread_chance", spread_chance );
+            optional( jo, true, "smoke_field", smoke_field );
+            optional( jo, true, "fuel_field", fuel_field );
+            optional( jo, true, "ash_item", ash_item );
+            optional( jo, true, "ash_furniture", ash_furniture );
+            break;
+        case field_processor_type::fungicide:
+            optional( jo, true, "terrain", terrain );
+            break;
+        case field_processor_type::extinguish:
+            mandatory( jo, false, "fields", fields );
+            break;
+        case field_processor_type::arc:
+            optional( jo, true, "field", field );
+            optional( jo, true, "grounded_weight", grounded_weight );
+            optional( jo, true, "creature_weight", creature_weight );
+            optional( jo, true, "other_weight", other_weight );
+            break;
+        case field_processor_type::push_items:
+            optional( jo, true, "items", items );
+            optional( jo, true, "damage_type", damage_type );
+            optional( jo, true, "damage", damage );
+            break;
+        case field_processor_type::vent_cycle:
+            mandatory( jo, false, "next_field", field );
+            optional( jo, true, "weaken_chance", weaken_chance );
+            optional( jo, true, "next_intensity", next_intensity );
+            break;
+        case field_processor_type::shock_vent:
+        case field_processor_type::acid_vent:
+        case field_processor_type::incendiary:
+            optional( jo, true, "field", field );
+            break;
+        case field_processor_type::last_known:
+            optional( jo, true, "max_age", max_age );
+            break;
+        case field_processor_type::fall:
+        case field_processor_type::fungal_haze:
+        case field_processor_type::last:
+            break;
+    }
+}
+
+// A field id as an int id, or fd_null when it is empty or unknown (check() reports those)
+static field_type_id resolve_field_id( const field_type_str_id &fd )
+{
+    return !fd.is_empty() && fd.is_valid() ? fd.id() : fd_null.id();
+}
+
+void field_processor_def::finalize( const field_type_id &owner )
+{
+    smoke_field_id = resolve_field_id( smoke_field );
+    // An arc spreads as its own field unless told otherwise
+    field_id = type == field_processor_type::arc &&
+               field.is_empty() ? owner : resolve_field_id( field );
+    fuel_field_id = resolve_field_id( fuel_field );
+    field_ids.clear();
+    for( const field_type_str_id &fd : fields ) {
+        field_ids.emplace_back( resolve_field_id( fd ) );
+    }
+}
+
+void field_processor_def::check( const field_type_str_id &owner ) const
+{
+    const std::string name = io::enum_to_string( type );
+    const auto check_field = [&]( const field_type_str_id & fd, const char *member ) {
+        if( !fd.is_empty() && !fd.is_null() && !fd.is_valid() ) {
+            debugmsg( "Field type \"%s\": the %s processor's %s \"%s\" isn't a field type.",
+                      owner.c_str(), name, member, fd.c_str() );
+        }
+    };
+    check_field( smoke_field, "smoke_field" );
+    check_field( field, type == field_processor_type::vent_cycle ? "next_field" : "field" );
+    check_field( fuel_field, "fuel_field" );
+    for( const field_type_str_id &fd : fields ) {
+        check_field( fd, "fields" );
+    }
+    if( !ash_item.is_empty() && !ash_item.is_valid() ) {
+        debugmsg( "Field type \"%s\": the %s processor's ash_item \"%s\" isn't an item.",
+                  owner.c_str(), name, ash_item.c_str() );
+    }
+    if( !ash_furniture.is_empty() && !ash_furniture.is_valid() ) {
+        debugmsg( "Field type \"%s\": the %s processor's ash_furniture \"%s\" isn't furniture.",
+                  owner.c_str(), name, ash_furniture.c_str() );
+    }
+    if( !terrain.is_empty() && !terrain.is_valid() ) {
+        debugmsg( "Field type \"%s\": the %s processor's terrain \"%s\" isn't terrain.",
+                  owner.c_str(), name, terrain.c_str() );
+    }
+    for( const itype_id &it : items ) {
+        if( !it.is_valid() ) {
+            debugmsg( "Field type \"%s\": the %s processor's items has \"%s\", which isn't an item.",
+                      owner.c_str(), name, it.c_str() );
+        }
+    }
+    if( !damage_type.is_empty() && !damage_type.is_valid() ) {
+        debugmsg( "Field type \"%s\": the %s processor's damage_type \"%s\" isn't a damage type.",
+                  owner.c_str(), name, damage_type.c_str() );
+    }
+    if( weaken_chance < 1 ) {
+        debugmsg( "Field type \"%s\": the %s processor's weaken_chance must be at least 1.",
+                  owner.c_str(), name );
+    }
+}
+
+void field_contact_damage::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "damage_type", type );
+    if( jo.has_array( "amount" ) ) {
+        const JsonArray ja = jo.get_array( "amount" );
+        if( ja.size() != 2 ) {
+            ja.throw_error( "amount must be a number or [ min, max ]" );
+        }
+        min_amount = ja.get_int( 0 );
+        max_amount = ja.get_int( 1 );
+    } else {
+        mandatory( jo, false, "amount", min_amount );
+        max_amount = min_amount;
+    }
+    if( max_amount < min_amount ) {
+        jo.throw_error_at( "amount", "the maximum amount is below the minimum" );
+    }
+    if( jo.has_array( "body_parts" ) ) {
+        body_parts = field_contact_body_parts::list;
+        mandatory( jo, false, "body_parts", parts );
+    } else if( jo.has_member( "body_parts" ) ) {
+        body_parts = read_field_enum<field_contact_body_parts>( jo.get_member( "body_parts" ),
+                     "body_parts" );
+        if( body_parts == field_contact_body_parts::list ) {
+            jo.throw_error_at( "body_parts", "list the body parts in an array" );
+        }
+    }
+    optional( jo, false, "monster_mult", monster_mult, 1.0f );
+    optional( jo, false, "message", message );
+    optional( jo, false, "message_npc", message_npc );
 }
 
 const field_intensity_level &field_type::get_intensity_level( int level ) const
@@ -290,6 +590,25 @@ void field_type::load( const JsonObject &jo, std::string_view src )
                   fallback_intensity_level.scent_neutralization );
         optional( jao, false, "sound_attenuation", intensity_level.sound_attenuation,
                   numeric_bound_reader<int> { 0, 1000 }, fallback_intensity_level.sound_attenuation );
+        optional( jao, false, "heat_radiation", intensity_level.heat_radiation,
+                  fallback_intensity_level.heat_radiation );
+        optional( jao, false, "hot_air_field", intensity_level.hot_air_field,
+                  fallback_intensity_level.hot_air_field );
+        if( jao.has_array( "contact_damage" ) ) {
+            for( const JsonObject jcd : jao.get_array( "contact_damage" ) ) {
+                field_contact_damage cd;
+                cd.deserialize( jcd );
+                intensity_level.contact_damage.emplace_back( cd );
+            }
+        } else {
+            intensity_level.contact_damage = fallback_intensity_level.contact_damage;
+        }
+        if( jao.has_member( "eoc_on_contact" ) ) {
+            intensity_level.eoc_on_contact = effect_on_conditions::load_inline_eoc(
+                                                 jao.get_member( "eoc_on_contact" ), src );
+        } else {
+            intensity_level.eoc_on_contact = fallback_intensity_level.eoc_on_contact;
+        }
         intensity_levels.emplace_back( intensity_level );
     }
     if( intensity_levels.empty() ) {
@@ -327,7 +646,18 @@ void field_type::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "moppable", moppable, false );
     optional( jo, was_loaded, "priority", priority, 0 );
     optional( jo, was_loaded, "half_life", half_life, 0_turns );
-    optional( jo, was_loaded, "linear_half_life", linear_half_life, false );
+    if( jo.has_member( "linear_half_life" ) ) {
+        // The older spelling of "decay_mode": "linear"
+        if( jo.has_member( "decay_mode" ) ) {
+            jo.throw_error_at( "linear_half_life", "give either linear_half_life or decay_mode" );
+        }
+        decay_mode = jo.get_bool( "linear_half_life" ) ? field_decay_mode::linear :
+                     field_decay_mode::exponential;
+    } else if( jo.has_member( "decay_mode" ) ) {
+        decay_mode = read_field_enum<field_decay_mode>( jo.get_member( "decay_mode" ), "decay_mode" );
+    } else if( !was_loaded ) {
+        decay_mode = field_decay_mode::exponential;
+    }
     optional( jo, was_loaded, "indestructible", indestructible, false );
     const auto description_affix_reader = enum_flags_reader<description_affix> { "description affixes" };
     optional( jo, was_loaded, "description_affix", desc_affix, description_affix_reader,
@@ -344,6 +674,23 @@ void field_type::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "mopsafe", mopsafe, false );
 
     optional( jo, was_loaded, "decrease_intensity_on_contact", decrease_intensity_on_contact, false );
+    optional( jo, was_loaded, "opaque_variant", opaque_variant, field_type_str_id::NULL_ID() );
+    // A list given replaces the inherited one
+    if( jo.has_array( "processors" ) ) {
+        processor_defs.clear();
+        for( const JsonValue jv : jo.get_array( "processors" ) ) {
+            field_processor_def def;
+            def.load( jv );
+            processor_defs.emplace_back( def );
+        }
+    }
+    if( jo.has_array( "contact_processors" ) ) {
+        contact_processors.clear();
+        for( const JsonValue jv : jo.get_array( "contact_processors" ) ) {
+            contact_processors.emplace_back( read_field_enum<field_contact_type>( jv,
+                                             "contact processor" ) );
+        }
+    }
     if( jo.has_object( "bash" ) ) {
         if( !bash_info ) {
             bash_info.emplace();
@@ -388,6 +735,40 @@ void field_type::finalize()
         }
     }
 
+    radiates_heat = std::any_of( intensity_levels.begin(), intensity_levels.end(),
+    []( const field_intensity_level & elem ) {
+        return elem.heat_radiation > 0;
+    } );
+    for( field_intensity_level &level : intensity_levels ) {
+        level.hot_air_field_id = resolve_field_id( level.hot_air_field );
+    }
+    contact_mask = 0;
+    for( const field_contact_type contact : contact_processors ) {
+        contact_mask |= static_cast<uint32_t>( 1 ) << static_cast<int>( contact );
+    }
+
+    // Placed as opaque_variant on opaque tiles, and as the field naming this one as its
+    // opaque_variant on transparent tiles
+    const field_type_id self = id.id();
+    transparent_variant_id = self;
+    opaque_variant_id = self;
+    has_variants = false;
+    if( !opaque_variant.is_empty() && !opaque_variant.is_null() && opaque_variant.is_valid() &&
+        opaque_variant != id ) {
+        opaque_variant_id = opaque_variant.id();
+        has_variants = true;
+    }
+    for( const field_type &other : get_all_field_types().get_all() ) {
+        if( other.opaque_variant == id && other.id != id ) {
+            transparent_variant_id = other.id.id();
+            has_variants = true;
+        }
+    }
+
+    for( field_processor_def &def : processor_defs ) {
+        def.finalize( self );
+    }
+
     // should be the last operation for the type
     processors = map_field_processing::processors_for_type( *this );
 }
@@ -415,6 +796,47 @@ void field_type::check() const
             debugmsg( "Intensity level %d of field type \"%s\" has invalid monster group \"%s\".",
                       i, id.c_str(), group.c_str() );
         }
+        const field_type_str_id &hot_air = intensity_level.hot_air_field;
+        if( !hot_air.is_empty() && !hot_air.is_valid() ) {
+            debugmsg( "Intensity level %d of field type \"%s\" has invalid hot_air_field \"%s\".",
+                      i, id.c_str(), hot_air.c_str() );
+        }
+        for( const field_contact_damage &cd : intensity_level.contact_damage ) {
+            if( !cd.type.is_valid() ) {
+                debugmsg( "Intensity level %d of field type \"%s\" has contact_damage of invalid "
+                          "damage type \"%s\".", i, id.c_str(), cd.type.c_str() );
+            }
+            for( const bodypart_str_id &bp : cd.parts ) {
+                if( !bp.is_valid() ) {
+                    debugmsg( "Intensity level %d of field type \"%s\" has contact_damage on invalid "
+                              "body part \"%s\".", i, id.c_str(), bp.c_str() );
+                }
+            }
+        }
+        const effect_on_condition_id &eoc = intensity_level.eoc_on_contact;
+        if( !eoc.is_empty() && !eoc.is_valid() ) {
+            debugmsg( "Intensity level %d of field type \"%s\" has invalid eoc_on_contact \"%s\".",
+                      i, id.c_str(), eoc.c_str() );
+        }
+    }
+    if( !opaque_variant.is_empty() && !opaque_variant.is_null() ) {
+        if( !opaque_variant.is_valid() ) {
+            debugmsg( "Field type \"%s\" has invalid opaque_variant \"%s\".", id.c_str(),
+                      opaque_variant.c_str() );
+        } else if( opaque_variant == id || ( !opaque_variant->opaque_variant.is_empty() &&
+                                             !opaque_variant->opaque_variant.is_null() ) ) {
+            debugmsg( "Field type \"%s\" has opaque_variant \"%s\", which is itself or has an "
+                      "opaque_variant of its own.", id.c_str(), opaque_variant.c_str() );
+        }
+        for( const field_type &other : get_all_field_types().get_all() ) {
+            if( other.id != id && other.opaque_variant == opaque_variant ) {
+                debugmsg( "Field types \"%s\" and \"%s\" both have opaque_variant \"%s\".",
+                          id.c_str(), other.id.c_str(), opaque_variant.c_str() );
+            }
+        }
+    }
+    for( const field_processor_def &def : processor_defs ) {
+        def.check( id );
     }
     if( bash_info ) {
         bash_info->check( "field " + id.str() );

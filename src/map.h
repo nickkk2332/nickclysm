@@ -484,16 +484,14 @@ class map
                 int );
 
         //FIXME some field processor use private methods
-        friend void field_processor_fd_fire( const tripoint_bub_ms &, field_entry &, field_proc_data & );
+        friend void field_processor_fire( const tripoint_bub_ms &, field_entry &, field_proc_data & );
         friend void field_processor_spread_gas( const tripoint_bub_ms &, field_entry &, field_proc_data & );
         friend void field_processor_wandering_field( const tripoint_bub_ms &, field_entry &,
                 field_proc_data & );
-        friend void field_processor_fd_fire_vent( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
-        friend void field_processor_fd_flame_burst( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
-        friend void field_processor_fd_incendiary( const tripoint_bub_ms &, field_entry &,
-                field_proc_data & );
+        friend void field_processor_vent_cycle( const tripoint_bub_ms &, field_entry &,
+                                                field_proc_data & );
+        friend void field_processor_incendiary( const tripoint_bub_ms &, field_entry &,
+                                                field_proc_data & );
         friend void field_processor_monster_spawn( const tripoint_bub_ms &, field_entry &,
                 field_proc_data & );
 
@@ -714,10 +712,10 @@ class map
         void spread_gas( field_entry &cur, const tripoint_bub_ms &p, int percent_spread,
                          const time_duration &outdoor_age_speedup, scent_block &sblk,
                          const oter_id &om_ter );
-        void create_hot_air( const tripoint_bub_ms &p, int intensity );
+        // Spreads the hot_air_field of the field's current intensity around p
+        void create_hot_air( const tripoint_bub_ms &p, const field_entry &cur );
         bool gas_can_spread_to( field_entry &cur, const maptile &dst );
         void gas_spread_to( field_entry &cur, maptile &dst, const tripoint_bub_ms &p );
-        int burn_body_part( Character &you, field_entry &cur, const bodypart_id &bp, int scale );
     public:
 
         // Movement and LOS
@@ -1800,9 +1798,11 @@ class map
         void clear_fields( const tripoint_bub_ms &p );
 
         /**
-         * Get applicable fd_electricity field type for a given point
+         * The field placed at p for the given type: its opaque_variant on a tile that isn't
+         * transparent, the field it is the opaque_variant of on a transparent one, else itself
+         * (fd_electricity and fd_electricity_unlit).
          */
-        const field_type_str_id &get_applicable_electricity_field( const tripoint_bub_ms &p ) const;
+        field_type_id placed_field_type( const tripoint_bub_ms &p, const field_type_id &type ) const;
 
     private:
         // Is called when field intensity is changed.
