@@ -90,8 +90,9 @@ std::optional<int> character_oracle_t::cache_key() const
 status_t character_oracle_t::needs_temperature_regulation( std::string_view ) const
 {
     // Use player::temp_conv to predict whether the Character is "in trouble".
+    const units::temperature too_cold = ai_tuning_of( *subject ).cold_body_temperature;
     for( const bodypart_id &bp : subject->get_all_body_parts() ) {
-        if( subject->get_part_temp_conv( bp ) <= BODYTEMP_VERY_COLD ) {
+        if( subject->get_part_temp_conv( bp ) <= too_cold ) {
             return status_t::running;
         }
     }
@@ -515,10 +516,11 @@ float character_oracle_t::npc_embark_urgency( std::string_view ) const
     }
     // already on a belted seat or bed: low enough that a tired passenger sleeps
     const npc *n = dynamic_cast<const npc *>( subject );
+    const npc_ai_tuning &tuning = ai_tuning_of( *subject );
     if( n != nullptr && n->in_vehicle_bed() ) {
-        return 0.15f;
+        return tuning.embark_seated;
     }
-    return 0.6f;
+    return tuning.embark;
 }
 
 status_t character_oracle_t::npc_has_goto_order( std::string_view ) const

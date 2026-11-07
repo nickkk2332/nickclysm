@@ -315,8 +315,8 @@
       "remove_npcs": [
         { "class": "roabofac_free_merchant", "x": 0, "y": 0 },
         { "class": "guard", "x": 0, "y": 0 },
-        { "class": "NC_ROBOFAC_FREE_MERCHANT", "x": 0, "y": 0 },
-        { "class": "NC_BOUNTY_HUNTER", "x": 0, "y": 0 }
+        { "class": "NC_ROBOFAC_FREE_MERCHANT", "obsolete_class": true, "x": 0, "y": 0 },
+        { "class": "NC_BOUNTY_HUNTER", "obsolete_class": true, "x": 0, "y": 0 }
       ]
     }
   },

@@ -236,7 +236,7 @@ static void dispatch_actualize( item &it, item_wakeup_kind kind, time_point now,
 
 // Persistable hint for find_item_by_uid on next dispatch.  Walks parent
 // containers to the topmost holder so uid lookup can recurse from there.
-static item_locator_hint hint_from_location( const item_location &loc )
+item_locator_hint hint_from_location( const item_location &loc )
 {
     item_locator_hint h;
     if( !loc ) {

@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -10,6 +11,8 @@
 #include "calendar.h"
 #include "coordinates.h"
 #include "character.h"
+#include "event.h"
+#include "event_bus.h"
 #include "item.h"
 #include "item_contents.h"
 #include "item_location.h"
@@ -33,12 +36,18 @@ bool Character::knows_recipe( const recipe *rec ) const
     return get_learned_recipes().contains( rec );
 }
 
-void Character::learn_recipe( const recipe *const rec, bool override_never_learn )
+void Character::learn_recipe( const recipe *const rec, bool override_never_learn,
+                              const std::string &how )
 {
     if( rec->never_learn && !override_never_learn ) {
         return;
     }
+    const bool newly_learned = !how.empty() && !knows_recipe( rec );
     learned_recipes->include( rec );
+    if( newly_learned ) {
+        get_event_bus().send<event_type::character_learns_recipe>( getID(), rec->ident().str(),
+                how );
+    }
 }
 
 void Character::forget_recipe( const recipe *const rec )

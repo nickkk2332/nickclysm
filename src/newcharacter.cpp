@@ -708,7 +708,10 @@ void Character::ensure_portrait_valid()
 void Character::randomize_hobbies()
 {
     hobbies.clear();
-    std::vector<profession_id> choices = get_scenario()->permitted_hobbies( is_npc() );
+    // The same scenario the profession came from (randomize): the player's own for the avatar,
+    // the generic one for NPCs, whom the player's scenario choices don't concern.
+    const scenario *scenario_from = is_avatar() ? get_scenario() : scenario::generic();
+    std::vector<profession_id> choices = scenario_from->permitted_hobbies( is_npc() );
     choices.erase( std::remove_if( choices.begin(), choices.end(),
     [this]( const string_id<profession> &hobby ) {
         return !prof->allows_hobby( hobby );

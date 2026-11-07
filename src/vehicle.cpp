@@ -246,6 +246,46 @@ units::volume vehicle_stack::stored_volume() const
 
 // Vehicle class methods.
 
+vehicle_uid::vehicle_uid( const vehicle_uid & )
+{
+}
+
+vehicle_uid &vehicle_uid::operator=( const vehicle_uid &other )
+{
+    if( this != &other ) {
+        value = 0;
+    }
+    return *this;
+}
+
+vehicle_uid::vehicle_uid( vehicle_uid &&other ) noexcept : value( std::exchange( other.value, 0 ) )
+{
+}
+
+vehicle_uid &vehicle_uid::operator=( vehicle_uid &&other ) noexcept
+{
+    if( this != &other ) {
+        value = std::exchange( other.value, 0 );
+    }
+    return *this;
+}
+
+int64_t vehicle_uid::get() const
+{
+    if( value == 0 && g ) {
+        value = g->assign_vehicle_uid();
+    }
+    return value;
+}
+
+void vehicle_uid::load( int64_t saved )
+{
+    value = saved > 0 ? saved : 0;
+    if( value != 0 && g ) {
+        g->reserve_vehicle_uid( value );
+    }
+}
+
 vehicle::vehicle( const vproto_id &proto_id )
 {
     face.init( 0_degrees );
@@ -8244,6 +8284,36 @@ int vehicle::damage_direct( map &here, vehicle_part &vp, int dmg, const damage_t
     }
 
     return std::max( overkill_dmg, 0 );
+}
+
+bool vehicle::restore_part_hp( map &here, vehicle_part &vp, int hp )
+{
+    const int durability = vp.info().durability;
+    if( vp.removed || vp.is_fake || hp <= 0 || durability <= 0 ) {
+        return false;
+    }
+    const int damage_before = vp.damage();
+    const bool was_broken = vp.is_broken();
+    // mod_hp() scales by the durability, so more than that would only risk an overflow
+    mod_hp( vp, std::min( hp, durability ) );
+    if( vp.damage() >= damage_before ) {
+        return false;
+    }
+    const tripoint_bub_ms vppos = bub_part_pos( here, vp );
+    here.memory_cache_dec_set_dirty( vppos, true );
+    if( vp.has_fake && vp.fake_part_at < static_cast<int>( parts.size() ) ) {
+        parts[vp.fake_part_at].base = vp.base;
+    }
+    if( was_broken && !vp.is_broken() ) {
+        // undo what breaking it changed in damage_direct()
+        insides_dirty = true;
+        pivot_dirty = true;
+        invalidate_mass();
+        coeff_air_changed = true;
+        refresh( false );
+        here.set_transparency_cache_dirty( vppos );
+    }
+    return true;
 }
 
 void vehicle::leak_fuel( map &here, vehicle_part &pt ) const

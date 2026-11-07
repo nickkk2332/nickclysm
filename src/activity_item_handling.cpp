@@ -84,6 +84,7 @@
 #include "value_ptr.h"
 #include "veh_interact.h"
 #include "veh_type.h"
+#include "veh_utils.h"
 #include "vehicle.h"
 #include "vehicle_selector.h"
 #include "visitable.h"
@@ -2301,10 +2302,24 @@ activity_reason_info multi_vehicle_repair_activity_actor::multi_activity_can_do(
         // repair_part() consumes one set of requirements per repairable level.
         const requirement_data reqs = vpinfo.repair_requirements() *
                                       part_elem->get_base().repairable_levels();
-        const temp_crafting_inventory &inv =
-            you.crafting_inventory( src_loc, PICKUP_RANGE - 1, false );
-        const bool can_make = reqs.can_make_with_inventory( &you, inv, is_crafting_component );
+        // What the fetch counts as at the work spot already: what lies near the part, reachable
+        // or not. Until `you` stand next to the part, it stands for what repair_part() will
+        // repair with there; the check is made again once `you` are there.
+        const bool near_part = reqs.can_make_with_inventory( &you,
+                               you.crafting_inventory( src_loc, PICKUP_RANGE - 1, false ), is_crafting_component );
+        // Next to the part, the repair is done from where `you` stand, with what it accepts
+        // (veh_utils::repair_inventory: along a clear path, unless `you` are an NPC).
+        const bool at_work_spot = square_dist( you.pos_bub(), src_loc ) <= 1;
+        const bool can_make = at_work_spot ? reqs.can_make_with_inventory( &you,
+                              veh_utils::repair_inventory( you, you.pos_bub(), PICKUP_RANGE ),
+                              is_crafting_component ) : near_part;
         you.set_value( "veh_index_type", vpinfo.name() );
+        if( !can_make && near_part ) {
+            // What's needed is near the part but out of the repair's reach (behind a wall, say).
+            // Fetching would bring nothing, as it counts it there already: skip the part.
+            you.activity_vehicle_part_index = -1;
+            return activity_reason_info::fail( do_activity_reason::BLOCKING_TILE );
+        }
         // temporarily store the intended index, we do this so two NPCs don't try and work on the same part at same time.
         you.activity_vehicle_part_index = vpindex;
         if( !can_make ) {

@@ -28,6 +28,9 @@ void level_cache::clear()
 
     transparency_cache_dirty.set();
     vision_transparency_dirty.set();
+    // the memset above zeroed the grid and its counts
+    sound_attenuation_dirty.set();
+    sound_attenuating_total = 0;
     // a new cache is dirty everywhere, so a level whose dirty setters ran before it had
     // a cache (they skip it) is still built in full on first use
     outside_cache_dirty = true;
