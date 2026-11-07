@@ -661,6 +661,32 @@ void body_part_type::check() const
     if( !no_power_effect.is_valid() ) {
         debugmsg( "Body part %s has invalid no_power_effect %s", id.c_str(), no_power_effect.c_str() );
     }
+
+    // Ids a typo would leave unknown until the part is hit, worn or compared (CHAR-J05).
+    // Techniques aren't checked: vanilla wing_l lists tech_wing_slap, which only mods define.
+    for( const bp_onhit_effect &eff : effects_on_hit ) {
+        if( !eff.id.is_valid() ) {
+            debugmsg( "Body part %s has invalid effects_on_hit effect %s", id.c_str(), eff.id.c_str() );
+        }
+        if( !eff.dtype.is_null() && !eff.dtype.is_valid() ) {
+            debugmsg( "Body part %s has invalid effects_on_hit dmg_type %s", id.c_str(),
+                      eff.dtype.c_str() );
+        }
+    }
+    for( const bp_qualities_provided &qual : qualities ) {
+        if( !qual.quality.is_valid() ) {
+            debugmsg( "Body part %s has invalid quality %s", id.c_str(), qual.quality.c_str() );
+        }
+    }
+    for( const sub_bodypart_str_id &sbp : sub_parts ) {
+        if( !sbp.is_valid() ) {
+            debugmsg( "Body part %s has invalid sub part %s", id.c_str(), sbp.c_str() );
+        }
+    }
+    if( similar_bodypart.has_value() && !similar_bodypart->is_valid() ) {
+        debugmsg( "Body part %s has invalid similar_bodypart %s", id.c_str(),
+                  similar_bodypart->c_str() );
+    }
 }
 
 float body_part_type::get_limb_score( const limb_score_id &id ) const

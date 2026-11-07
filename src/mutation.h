@@ -233,6 +233,12 @@ struct mutation_branch {
         // bodytemp elements:
         units::temperature_delta bodytemp_min = 0_C_delta;
         units::temperature_delta bodytemp_max = 0_C_delta;
+        // Multiplies the time a wet body takes to dry (fur and slime hold water); the largest
+        // among a character's traits applies (CHAR-J06)
+        float drying_time_mult = 1.0f;
+        // Tiles of night vision while the trait is active (always for one that can't be
+        // activated); the best among a character's traits counts (CHAR-J03)
+        float night_vision_range = 0.0f;
         // Additional bonuses
         std::optional<int> scent_intensity;
 
@@ -377,6 +383,10 @@ struct mutation_branch {
         std::set<sub_bodypart_str_id> remove_rigid_subparts;
         // item flags that allow wearing gear even if its body part is restricted
         std::set<flag_id> allowed_items;
+        // Items made of these materials or with these flags can't be worn (CHAR-J02)
+        std::set<material_id> unwearable_materials;
+        std::set<flag_id> unwearable_flags;
+        translation unwearable_message;
         std::map<bodypart_str_id, resistances> armor; // Modifiers to protection values
         std::vector<itype_id> integrated_armor; // Armor pseudo-items that are put on by this mutation
         std::vector<matype_id>
@@ -417,6 +427,11 @@ struct mutation_branch {
          * Returns true if a character with this mutation has to take off rigid items at the location.
          */
         bool conflicts_with_item_rigid( const item &it ) const;
+        /**
+         * Returns true if the item is made of one of unwearable_materials or has one of
+         * unwearable_flags.
+         */
+        bool refuses_to_wear( const item &it ) const;
         /**
          * Returns damage resistance on a given body part granted by this mutation.
          */

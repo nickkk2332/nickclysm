@@ -32,6 +32,10 @@ def parse_mutation(json, origin):
                    comment="Message when NPC with mutation"
                    f" '{name}' attacks")
 
+    write_text(json.get("unwearable_message"), origin,
+               comment="Message when a character with mutation"
+               f" '{name}' can't wear an item")
+
     if "ranged_mutation" in json:
         write_text(json["ranged_mutation"].get("message"), origin,
                    comment="Message when firing ranged attack"

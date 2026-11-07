@@ -94,6 +94,8 @@ class material_type
         bool _rotting = false;
         bool _soft = false;
         bool _uncomfortable = false;
+        // Share of the warmth wetness takes away that clothing of this material keeps (CHAR-J02)
+        float _wet_warmth_retention = 0.0f;
         bool _conductive = false; // If this material conducts electricity
 
         // the thickness that sheets of this material come in, anything that uses it should be a multiple of this
@@ -160,6 +162,7 @@ class material_type
         bool rotting() const;
         bool soft() const;
         bool uncomfortable() const;
+        float wet_warmth_retention() const;
 
         double vitamin( const vitamin_id &id ) const {
             const auto iter = _vitamins.find( id );

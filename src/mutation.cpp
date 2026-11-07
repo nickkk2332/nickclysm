@@ -511,6 +511,18 @@ bool mutation_branch::conflicts_with_item( const item &it ) const
     return false;
 }
 
+bool mutation_branch::refuses_to_wear( const item &it ) const
+{
+    // The item's type flags count too, not only those of this item (CHAR-J02)
+    return std::any_of( unwearable_flags.begin(), unwearable_flags.end(),
+    [&it]( const flag_id & f ) {
+        return it.has_flag( f );
+    } ) || std::any_of( unwearable_materials.begin(), unwearable_materials.end(),
+    [&it]( const material_id & mat ) {
+        return it.made_of( mat );
+    } );
+}
+
 bool mutation_branch::conflicts_with_item_rigid( const item &it ) const
 {
     for( const bodypart_str_id &bp : remove_rigid ) {

@@ -418,6 +418,9 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         bodytemp_min = units::from_legacy_bodypart_temp_delta( bodytemp_array.get_int( 0 ) );
         bodytemp_max = units::from_legacy_bodypart_temp_delta( bodytemp_array.get_int( 1 ) );
     }
+    optional( jo, was_loaded, "drying_time_mult", drying_time_mult,
+              numeric_bound_reader<float> { 0.01f }, 1.0f );
+    optional( jo, was_loaded, "night_vision_range", night_vision_range, 0.0f );
 
     optional( jo, was_loaded, "threshold", threshold, false );
     optional( jo, was_loaded, "threshold_substitutes", threshold_substitutes );
@@ -600,6 +603,11 @@ void mutation_branch::load( const JsonObject &jo, std::string_view src )
         allowed_items.insert( flag_id( line ) );
     }
 
+    optional( jo, was_loaded, "unwearable_materials", unwearable_materials,
+              string_id_reader<material_type> {} );
+    optional( jo, was_loaded, "unwearable_flags", unwearable_flags, string_id_reader<json_flag> {} );
+    optional( jo, was_loaded, "unwearable_message", unwearable_message );
+
     for( JsonObject ao : jo.get_array( "armor" ) ) {
         std::set<std::string> ignored_by_resist = { "part_types", "parts" };
         const resistances res = load_resistances_instance( ao, ignored_by_resist );
@@ -741,6 +749,18 @@ void mutation_branch::check_consistency()
         for( const auto &style : mdata.initial_ma_styles ) {
             if( !style.is_valid() ) {
                 debugmsg( "mutation %s refers to undefined martial art style %s", mid.c_str(), style.c_str() );
+            }
+        }
+        for( const material_id &mat : mdata.unwearable_materials ) {
+            if( !mat.is_valid() ) {
+                debugmsg( "mutation %s has undefined unwearable_materials entry %s", mid.c_str(),
+                          mat.c_str() );
+            }
+        }
+        for( const flag_id &flag : mdata.unwearable_flags ) {
+            if( !flag.is_valid() ) {
+                debugmsg( "mutation %s has undefined unwearable_flags entry %s", mid.c_str(),
+                          flag.c_str() );
             }
         }
         for( const std::string &type : mdata.types ) {

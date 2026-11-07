@@ -1093,7 +1093,7 @@ reference at least one body part or sub body part.
 | `limb_scores`          | (_optional_) List of arrays defining limb scores. Each array contains 2 mandatory values and 1 optional value. Value 1 is a reference to a `limb_score` id. Value 2 is a float defining the limb score's value. (optional) Value 3 is a float defining the limb score's maximum value (mostly just used for manipulator score).
 | `effects_on_hit`       | (_optional_) Array of effects that can apply whenever the limb is damaged.  For details see below.
 | `unarmed_damage`       | (_optional_) An array of objects, each detailing the amount of unarmed damage the bodypart contributes to unarmed attacks and their armor penetration. The unarmed damages of each limb are summed and added to the base unarmed damage. Should be used for limbs the character is expected to *always* attack with, for special attacks use a dedicated technique.
-| `similar_bodyparts`           | (_optional_) Array of (sub)bodypart ids.  Armor coverage is automatically extended to these bodyparts - Ex: any armor covering the bodypart `arm_l` will cover `arm_bear_l` with the same coverage in the below example.  Sublocations will need a similar definition as well to ensure correct function.  Currently bodyparts can only point at bodyparts and sub-bodyparts at sub-bodyparts. 
+| `similar_bodypart`     | (_optional_) A (sub)bodypart id, which must exist.  Armor coverage is automatically extended between the two bodyparts, both ways - Ex: any armor covering the bodypart `arm_l` will cover `arm_bear_l` with the same coverage in the below example.  Sublocations will need a similar definition as well to ensure correct function.  Currently bodyparts can only point at bodyparts and sub-bodyparts at sub-bodyparts. 
   Only one step of substitution occurs ( Ie. an armor covering `arm_l` will cover `arm_bear_l`, but not any similar bps defined in `arm_bear_l` ).
   Any coverage of a similar sbp will imply coverage of the substitute subpart's parent for the sub-part in question:  Armor covering the elbows will cover similar elbows on other limbs, but not any of the other locations.
 | `armor`                | (_optional_) An object containing damage resistance values. Ex: `"armor": { "bash": 2, "cut": 1 }`. See [Part Resistance](#part-resistance) for details.
@@ -1130,11 +1130,21 @@ reference at least one body part or sub body part.
   "drench_capacity": 10,
   "smash_message": "You elbow-smash the %s.",
   "bionic_slots": 20,
-  "similar_bodyparts": [ "arm_bear_l" ],
+  "similar_bodypart": "arm_bear_l",
   "qualities": [ { "quality": "HAMMER", "level": 1, "disable_percent": 0.5 }, { "quality": "BUTCHER", "level": 2 } ],
   "sub_parts": [ "arm_shoulder_l", "arm_upper_l", "arm_elbow_l", "arm_lower_l" ]
 }
 ```
+
+The ids in `effects_on_hit`, `qualities`, `sub_parts` and `similar_bodypart` must exist; loading reports one that doesn't.  So must a sub body part's `parent`, `opposite`, `locations_under`, `similar_bodypart` and `unarmed_damage` types.
+
+An `anatomy` lists the body parts a creature has in `parts`.  A mod can add parts to an existing anatomy, or take some away, without repeating the list:
+
+```jsonc
+{ "type": "anatomy", "id": "human_anatomy", "copy-from": "human_anatomy", "extend": { "parts": [ "tail_long" ] } }
+```
+
+A part listed twice is a load error.
 
 List of possible limb types:
 ```jsonc
@@ -1790,6 +1800,7 @@ The list of possible faults, their weight and actual chances can be checked in i
 | `salvaged_into`        | Item, into which this material could be salvaged
 | `sheet_thickness`      | Clothes, made out of this material, has this thickness, meaning clothes thickness should be multiple of this value; layered kevlar has `"sheet_thickness": 4.4,`, meaning all clothes that uses layered kevlar should be either 4.4, 8.8, 13.2 etc milimeters thick; unless `"ignore_sheet_thickness": true` is used for this clothes
 | `uncomfortable`        | Clothes made out of this material is always uncomfortable, no matter of it's properties
+| `wet_warmth_retention` | 0.0-1.0. How much of the warmth wetness takes away clothing made, even in part, of this material keeps: wet clothes lose up to 66% of their warmth, times (1 - this).  The best of an item's materials counts.  `wool` has 1.0, so wet wool stays as warm.  Default 0.
 | `soft`                 | True for pliable materials, whose length doesn't prevent fitting into a container, or through the opening of a container. Default is false.
 | `conductive`           | True if the material conducts electricity, defaults to false
 | `reinforces`           | Optional boolean. Default is false.

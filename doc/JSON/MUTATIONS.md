@@ -123,6 +123,8 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "ugliness": 0,                              // Ugliness of the trait for purposes of NPC interaction (default: 0).
   "provided_qualities": { "BUTCHER": 4, "HAMMER": 1 }, // Tool qualities that are granted by this mutation, at these levels; each mutation counts as one tool with them
   "bodytemp_modifiers": [ 100, 150 ],           // Range of additional bodytemp units (these units are described in 'weather.h'.  First value is used if the person is already overheated, second one if it's not.
+  "drying_time_mult": 2.0,                    // Multiplies the time the character's wet body takes to dry, as fur and slime hold water.  The largest among the character's traits applies (default: 1.0, at least 0.01).
+  "night_vision_range": 4.5,                 // Tiles of night vision while the trait is active (always, for a trait that can't be activated).  Only the best among the character's traits counts, so Night Vision (2), High Night Vision (4.5) and Full Night Vision (10) don't add up; NIGHT_VIS enchantments add to it (default: 0).
   "initial_ma_styles": [ "style_crane" ],     // (optional) A list of IDs of martial art styles of which the player can choose one when starting a game.
   "mixed_effect": false,                      // Whether the trait has both positive and negative effects.  This is purely declarative and is only used for the user interface (default: false).
   "description": "Nothing gets you down!",    // In-game description. Supports snippets and u/global variables
@@ -218,6 +220,9 @@ Specific mutations are extremely versatile. A mutation only needs to have a few 
   "active_flags": [ "BLIND" ],                // while the mutation is active, the character who has it (avatar or NPC) gets this flag
   "inactive_flags": [ "DEAF" ],               // while the mutation is inactive, the character who has it (avatar or NPC) gets this flag
   "allowed_items": [ "ALLOWS_TAIL" ],         // you can wear items with this flag with this mutation, bypassing restricts_gear restriction
+  "unwearable_materials": [ "wool" ],         // the character can't wear items made, even in part, of any of these materials (Wool Allergy, Vegan).  allowed_items and OVERSIZE don't lift this
+  "unwearable_flags": [ "wooled" ],           // the character can't wear items with any of these flags, on the item or its type (FILTHY for Squeamish, ANIMAL_PRODUCT for Vegan)
+  "unwearable_message": "Can't wear that, it's made of wool!", // shown when unwearable_materials or unwearable_flags refuse an item (default: "Your <mutation> mutation prevents you from wearing your <item>.")
   "integrated_armor": [ "integrated_fur" ],   // this item is worn on your character forever, until you get rid of this mutation
   "ranged_mutation": {                        // activation of the mutation allow you to shoot a fake gun
     "type": "pseudo_shotgun",                 // fake gun that is used to shoot

@@ -58,7 +58,7 @@
     "visibility": 8,
     "ugliness": 2,
     "allow_soft_gear": true,
-    "restricts_gear": [ "head_crown" ],
+    "restricts_gear": [ "head" ],
     "integrated_armor": [ "integrated_horns_pointed" ]
   },
   {
@@ -74,7 +74,7 @@
     "visibility": 10,
     "ugliness": 3,
     "allow_soft_gear": true,
-    "restricts_gear": [ "head_crown" ],
+    "restricts_gear": [ "head" ],
     "integrated_armor": [ "integrated_antlers" ]
   },
   {
