@@ -60,6 +60,7 @@ static const mtype_id mon_dog_zombie_brute( "mon_dog_zombie_brute" );
 static const mtype_id mon_test_zombie( "mon_test_zombie" );
 static const mtype_id pseudo_dormant_mon_zombie_fat( "pseudo_dormant_mon_zombie_fat" );
 
+static const oter_str_id oter_empty_rock( "empty_rock" );
 static const oter_str_id oter_field( "field" );
 
 static const ter_str_id ter_t_fence( "t_fence" );
@@ -984,6 +985,11 @@ static void clear_area( const tripoint_abs_omt &start, const tripoint_abs_omt &e
     clear_overmaps();
     for( const tripoint_abs_omt &to_flatten : tripoint_range<tripoint_abs_omt>( start, end ) ) {
         overmap_buffer.ter_set( to_flatten, oter_field );
+        // Under the fields too: a basement or bunker left there puts its NPCs in the solid
+        // rock wipe_map_terrain() lays at z -1, and placing them fails with a debugmsg.
+        for( int z = -1; z >= -OVERMAP_DEPTH; --z ) {
+            overmap_buffer.ter_set( tripoint_abs_omt( to_flatten.xy(), z ), oter_empty_rock );
+        }
     }
 }
 
