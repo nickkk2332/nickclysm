@@ -1,4 +1,7 @@
+#include <stddef.h>
+#include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -8,6 +11,7 @@
 
 #include "activity_type.h"
 #include "avatar.h"
+#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
@@ -18,7 +22,6 @@
 #include "global_vars.h"
 #include "item.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "math_parser_diag_value.h"
 #include "mission.h"

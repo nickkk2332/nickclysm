@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <list>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -11,17 +13,17 @@
 #include "calendar.h"
 #include "cata_catch.h"
 #include "character.h"
+#include "character_id.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_chatbin.h"
 #include "effect.h"
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"
-#include "game.h"
 #include "global_vars.h"
 #include "item_group.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"
@@ -30,6 +32,7 @@
 #include "mission.h"
 #include "monster.h"
 #include "monstergenerator.h"
+#include "mtype.h"
 #include "npc.h"
 #include "npctalk.h"
 #include "player_helpers.h"

@@ -16,6 +16,7 @@
 #include "generic_factory.h"
 #include "item_group.h"
 #include "npc.h"
+#include "npc_ai_ids.h"
 #include "npctalk.h"
 #include "rng.h"
 #include "shop_cons_rate.h"

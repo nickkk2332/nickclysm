@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <string>
 #include <string_view>
@@ -7,6 +8,7 @@
 #include "avatar.h"
 #include "cata_catch.h"
 #include "condition.h"
+#include "coordinates.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"

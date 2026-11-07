@@ -1,4 +1,8 @@
 #include <algorithm>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,8 +15,8 @@
 #include "cata_variant.h"
 #include "character.h"
 #include "coordinates.h"
-#include "creature.h"
 #include "damage.h"
+#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_subscriber.h"
@@ -25,11 +29,11 @@
 #include "math_parser_diag_value.h"
 #include "monster.h"
 #include "mutation.h"
-#include "omdata.h"
 #include "overmapbuffer.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "ret_val.h"
+#include "stomach.h"
 #include "type_id.h"
 
 static const damage_type_id damage_bash( "bash" );

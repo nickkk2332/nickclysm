@@ -38,12 +38,10 @@
 #include "string_formatter.h"
 #include "string_id.h"
 #include "units.h"
+#include "weighted_list.h"
 
 class quantity;
-
 template <typename E> class enum_bitset;
-template<typename T> struct weighted_int_list;
-template <typename T, typename W> struct weighted_list;
 
 /**
 A generic class to store objects identified by a `string_id`.
@@ -2290,6 +2288,7 @@ public:
 };
 
 class nc_color;
+
 class nc_color_reader : public generic_typed_reader<nc_color_reader>
 {
     public:

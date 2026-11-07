@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +29,7 @@
 #include "mapdata.h"
 #include "math_parser.h"
 #include "math_parser_diag_value.h"
+#include "mdarray.h"
 #include "monster.h"
 #include "mtype.h"
 #include "options_helpers.h"

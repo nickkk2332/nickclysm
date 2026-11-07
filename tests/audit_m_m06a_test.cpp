@@ -1,4 +1,7 @@
 #include <cmath>
+#include <functional>
+#include <initializer_list>
+#include <list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -20,10 +23,10 @@
 #include "global_vars.h"
 #include "item.h"
 #include "json_loader.h"
-#include "line.h"
 #include "map.h"
 #include "map_helpers.h"
 #include "map_helpers_tests.h"
+#include "map_iterator.h"
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "math_parser.h"
@@ -36,7 +39,6 @@
 #include "submap.h"
 #include "talker.h"
 #include "type_id.h"
-#include "units.h"
 #include "veh_appliance.h"
 #include "veh_type.h"
 #include "vehicle.h"

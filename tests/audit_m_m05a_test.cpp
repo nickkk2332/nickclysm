@@ -1,16 +1,19 @@
 #include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 #include "avatar.h"
-#include "calendar.h"
 #include "cata_catch.h"
 #include "cata_scope_helpers.h"
 #include "character.h"
 #include "coordinates.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "map.h"
 #include "map_helpers.h"

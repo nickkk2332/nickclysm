@@ -15,6 +15,7 @@
 
 #include "avatar.h"
 #include "cata_utility.h"
+#include "debug.h"
 #include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "game_constants.h"

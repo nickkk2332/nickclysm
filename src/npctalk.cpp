@@ -125,6 +125,7 @@
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "mattack_actors.h"
+#include "mattack_common.h"
 #include "melee.h"
 #include "memorial_logger.h"
 #include "memory_fast.h"

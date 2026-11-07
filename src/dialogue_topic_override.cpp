@@ -5,7 +5,6 @@
 
 #include "condition.h"
 #include "debug.h"
-#include "dialogue.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
 #include "npctalk.h"

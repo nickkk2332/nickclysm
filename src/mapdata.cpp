@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <exception>
+#include <initializer_list>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -18,6 +19,7 @@
 #include "debug.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
+#include "enums.h"
 #include "flag.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"

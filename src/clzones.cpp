@@ -35,19 +35,20 @@
 #include "map.h"
 #include "map_iterator.h"
 #include "map_selector.h"
+#include "math_parser_diag_value.h"
 #include "memory_fast.h"
 #include "output.h"
 #include "path_info.h"
 #include "string_formatter.h"
+#include "study_zone_ui.h"
+#include "talker.h"
+#include "talker_zone.h"
 #include "translations.h"
 #include "uilist.h"
 #include "value_ptr.h"
 #include "vehicle.h"
 #include "visitable.h"
 #include "vpart_position.h"
-#include "talker.h"
-#include "talker_zone.h"
-#include "study_zone_ui.h"
 
 static const faction_id faction_your_followers( "your_followers" );
 

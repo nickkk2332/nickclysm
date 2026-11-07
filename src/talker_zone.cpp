@@ -4,6 +4,7 @@
 
 #include "clzones.h"
 #include "coordinates.h"
+#include "math_parser_diag_value.h"
 
 std::string talker_zone_const::disp_name() const
 {

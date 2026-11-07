@@ -1,5 +1,6 @@
 #include "event_statistics.h"
 
+#include <stddef.h>
 #include <algorithm>
 #include <cstdint>
 #include <list>

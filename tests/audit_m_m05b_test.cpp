@@ -1,7 +1,10 @@
+#include <stddef.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -14,7 +17,6 @@
 #include "cata_scope_helpers.h"
 #include "climbing.h"
 #include "coordinates.h"
-#include "flag.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "game_constants.h"
@@ -24,6 +26,7 @@
 #include "math_defines.h"
 #include "npc.h"
 #include "omdata.h"
+#include "overmap_ui.h"
 #include "phase_change.h"
 #include "player_helpers.h"
 #include "point.h"
@@ -35,6 +38,7 @@
 #include "weather.h"
 #include "weather_gen.h"
 #include "weather_type.h"
+#include "weighted_list.h"
 
 static const climbing_aid_id climbing_aid_test_m05b_sheer_drop_aid( "test_m05b_sheer_drop_aid" );
 

@@ -4,6 +4,7 @@
 #include <list>
 #include <vector>
 
+#include "ammo.h"
 #include "bodypart.h"
 #include "cata_utility.h"
 #include "character.h"
@@ -12,7 +13,6 @@
 #include "flag.h"
 #include "item.h"
 #include "item_location.h"
-#include "ammo.h"
 #include "itype.h"
 #include "magic_enchantment.h"
 #include "map.h"
@@ -20,6 +20,7 @@
 #include "messages.h"
 #include "pocket_type.h"
 #include "units.h"
+#include "value_ptr.h"
 #include "visitable.h"
 
 static const ammotype ammo_battery( "battery" );

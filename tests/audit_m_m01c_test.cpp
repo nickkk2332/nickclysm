@@ -1,5 +1,8 @@
+#include <functional>
 #include <initializer_list>
+#include <list>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -16,12 +19,12 @@
 #include "creature.h"
 #include "dialogue.h"
 #include "dialogue_chatbin.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "flexbuffer_json.h"
 #include "game.h"
 #include "global_vars.h"
 #include "json.h"
-#include "json_error.h"
 #include "json_loader.h"
 #include "magic.h"
 #include "map.h"
@@ -32,6 +35,7 @@
 #include "npc.h"
 #include "npctalk.h"
 #include "overmapbuffer.h"
+#include "pimpl.h"
 #include "player_helpers.h"
 #include "point.h"
 #include "skill.h"

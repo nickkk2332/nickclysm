@@ -6,8 +6,10 @@
 #include <functional>
 #include <list>
 #include <map>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include "avatar.h"
@@ -15,6 +17,7 @@
 #include "cata_utility.h"
 #include "condition.h"
 #include "coordinates.h"
+#include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
 #include "drawing_primitives.h"
@@ -34,6 +37,7 @@
 #include "overmapbuffer.h"
 #include "point.h"
 #include "rng.h"
+#include "talker.h"
 #include "type_id.h"
 #include "vehicle.h"
 #include "vpart_position.h"

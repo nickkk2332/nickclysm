@@ -12,7 +12,6 @@
 
 #include "calendar.h"
 #include "faction.h"
-#include "npc_ai_ids.h"
 #include "npc_ai_tuning.h"
 #include "translation.h"
 #include "type_id.h"
@@ -21,10 +20,11 @@ class JsonObject;
 class Trait_group;
 class item;
 class npc;
+enum npc_attitude : int;
 struct const_dialogue;
 struct shopkeeper_blacklist;
-struct shopkeeper_whitelist;
 struct shopkeeper_cons_rates;
+struct shopkeeper_whitelist;
 
 namespace trait_group
 {

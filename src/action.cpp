@@ -37,10 +37,11 @@
 #include "point.h"
 #include "popup.h"
 #include "ret_val.h"
+#include "translation.h"
 #include "translations.h"
 #include "type_id.h"
-#include "uilist.h"
 #include "ui_manager.h"
+#include "uilist.h"
 #include "vehicle.h"
 #include "vpart_position.h"
 

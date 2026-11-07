@@ -1,7 +1,9 @@
 #include "math_parser_jmath.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
 #include <map>
 #include <memory>
@@ -21,6 +23,7 @@
 #include "math_parser_lex.h"
 #include "math_parser_type.h"
 #include "string_formatter.h"
+#include "talker.h"
 
 namespace
 {

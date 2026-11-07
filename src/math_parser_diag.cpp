@@ -38,7 +38,6 @@
 #include "damage.h"
 #include "debug.h"
 #include "dialogue.h"
-#include "dialogue_helpers.h"
 #include "dispersion.h"
 #include "effect.h"
 #include "enum_conversions.h"

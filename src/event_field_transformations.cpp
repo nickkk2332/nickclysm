@@ -1,6 +1,7 @@
 #include "event_field_transformations.h"
 
 #include <cstdlib>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>

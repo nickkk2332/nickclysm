@@ -1,9 +1,11 @@
 #include <functional>
 #include <initializer_list>
+#include <map>
 #include <memory>
-#include <optional>
+#include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -22,13 +24,14 @@
 #include "creature.h"
 #include "damage.h"
 #include "dialogue.h"
+#include "enums.h"
 #include "event.h"
 #include "event_bus.h"
 #include "event_statistics.h"
 #include "event_subscriber.h"
 #include "flexbuffer_json.h"
-#include "game.h"
 #include "global_vars.h"
+#include "hash_utils.h"
 #include "item.h"
 #include "item_location.h"
 #include "itype.h"

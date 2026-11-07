@@ -4,7 +4,6 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "activity_actor.h"

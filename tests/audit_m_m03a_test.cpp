@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
-#include <ostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -17,7 +16,6 @@
 #include "cata_scope_helpers.h"
 #include "cata_utility.h"
 #include "cata_variant.h"
-#include "character.h"
 #include "character_id.h"
 #include "coordinates.h"
 #include "creature.h"

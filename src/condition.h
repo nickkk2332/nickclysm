@@ -15,8 +15,9 @@
 
 class JsonObject;
 class JsonValue;
-template <typename T> struct enum_traits;
+class talker;
 struct diag_value;
+template <typename T> struct enum_traits;
 
 namespace dialogue_data
 {

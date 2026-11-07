@@ -1,5 +1,3 @@
-#include "character.h"
-
 #include <algorithm>
 #include <climits>
 #include <cmath>
@@ -14,6 +12,7 @@
 
 #include "bionics.h"
 #include "calendar.h"
+#include "character.h"
 #include "character_martial_arts.h"
 #include "construction.h"
 #include "coordinates.h"
@@ -24,6 +23,7 @@
 #include "event.h"
 #include "event_bus.h"
 #include "flag.h"
+#include "game_constants.h"
 #include "item.h"
 #include "itype.h"
 #include "magic.h"

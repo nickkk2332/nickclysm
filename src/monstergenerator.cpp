@@ -27,6 +27,7 @@
 #include "incapacitation.h"
 #include "item.h"
 #include "item_group.h"
+#include "lightmap.h"
 #include "magic.h"
 #include "math_parser_jmath.h"
 #include "mattack_actors.h"

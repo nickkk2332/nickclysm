@@ -52,6 +52,7 @@
 #include "item_transformation.h"
 #include "itype.h"
 #include "iuse_actor.h"
+#include "lightmap.h"
 #include "mapdata.h"
 #include "material.h"
 #include "math_defines.h"

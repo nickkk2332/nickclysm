@@ -26,6 +26,8 @@
 #include "translation_cache.h"
 #include "type_id.h"
 
+struct diag_value;
+
 namespace catacurses
 {
 class window;
@@ -34,11 +36,11 @@ class window;
 class JsonObject;
 class JsonOut;
 class JsonValue;
+class const_talker;
 class input_context;
 class item;
 class map;
 class talker;
-class const_talker;
 struct construction;
 
 inline const faction_id your_fac( "your_followers" );
