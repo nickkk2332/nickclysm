@@ -505,7 +505,7 @@ For mod usage to insert dialogue above the `TALK_DONE` and `TALK_NONE` lines. De
 ```
 
 #### `id`
-The topic id can be one of the built-in topics or a new id. If several talk topics *in json* have the same id, they are merged in load order: each definition adds its `responses`, `repeat_responses` and `speaker_effect`, and the `dynamic_line`, `portrait_override` and `replace_built_in_responses` it has replace the earlier ones.
+The topic id can be one of the built-in topics or a new id. A response's `topic`, `failure_topic`, the `topic` of its `success` and `failure`, an NPC's `chat` and `talk_*` topics, and a literal topic in `npc_first_topic` or `open_dialogue` must name a topic that exists once all mods are loaded, else it is a load error.  A response that leads to another mod's topic only when that mod is loaded needs a topic of that id in its own mod (which the other mod can replace with `replace_responses`), or must be added in a `mod_interactions` folder. If several talk topics *in json* have the same id, they are merged in load order: each definition adds its `responses`, `repeat_responses` and `speaker_effect`, and the `dynamic_line`, `portrait_override` and `replace_built_in_responses` it has replace the earlier ones.
 
 The topic id can also be an array of strings. This is loaded as if several topics with the exact same content have been given in json, each associated with an id from the `id`, array. Note that loading from json will append responses and, if defined in json, override the `dynamic_line`, the `portrait_override` and the `replace_built_in_responses` setting. This allows adding responses to several topics at once (see [Changing the responses of an earlier definition](#changing-the-responses-of-an-earlier-definition) to remove or replace them).
 
@@ -838,7 +838,7 @@ The `difficulty` is only required if type is not `"NONE"` or `"CONDITION"` and, 
 
 `"CONDITION"` trials take a mandatory `condition` instead of `difficulty`.  The `success` object is chosen if the `condition` is true and the `failure` is chosen otherwise.
 
-`"SKILL_CHECK"` trials check the user's level in a skill, whose ID is read from the string object `skill_required`. The `success` object is chosen if the skill level is equal to or greater than `difficulty`, and `failure` is chosen otherwise.
+`"SKILL_CHECK"` trials check the user's level in a skill, whose ID is read from the string object `skill_required` (a skill that doesn't exist is a load error). The `success` object is chosen if the skill level is equal to or greater than `difficulty`, and `failure` is chosen otherwise.
 
 Sample trials:
 ```jsonc
@@ -1102,6 +1102,7 @@ Effect | Description
 Condition | Type | Description
 --- | --- | ---
 `"u_has_mission"` | string or [variable object](#variable-object) | `true` if the mission is assigned to the player character.
+`"u_mission_status"`, `"status"` | string or [variable object](#variable-object), and `"active"`, `"completed"` or `"failed"` | `true` if the player character has a mission of this type with that status: one they are doing, one they completed, or one they failed.  A repeatable mission can be both completed and active; a mission type with `invisible_on_complete` isn't remembered once it ends.  For example `{ "u_mission_status": "MISSION_GET_BOOK", "status": "completed" }`.
 `"u_has_cash"` | int  or [variable object](#variable-object) | `true` if the player character has at least `u_has_cash` cash available.  *Deprecated*  Previously used to check if the player could buy something, but NPCs shouldn't use e-cash for trades anymore.
 `"u_are_owed"` | int or [variable object](#variable-object) | `true` if the NPC's op_of_u.owed is at least `u_are_owed`.  Can be used to check if the player can buy something from the NPC without needing to barter anything.
 `"u_has_camp"` | simple string | `true` is the player has one or more active base camps.

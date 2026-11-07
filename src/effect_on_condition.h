@@ -16,8 +16,10 @@
 #include "type_id.h"
 
 class Character;
+class Creature;
 class JsonObject;
 class JsonValue;
+class monster;
 class time_duration;
 enum class event_type : int;
 struct effect_on_condition;
@@ -31,6 +33,7 @@ enum eoc_type {
     NPC_DEATH,
     PREVENT_DEATH,
     EVENT,
+    PREVENT_MONSTER_DEATH,
     NUM_EOC_TYPES
 };
 
@@ -65,6 +68,9 @@ struct effect_on_condition {
         bool has_condition = false;
         bool has_false_effect = false;
         event_type required_event;
+        // For an EVENT EOC: the mod-defined event (trigger_custom_event) it runs on instead of
+        // required_event; empty for one on a game event (EOC-J06)
+        std::string custom_event;
         duration_or_var recurrence;
         /**
          * @param on_done if set, called with the copy of @p d the effects ran on (not the
@@ -120,6 +126,18 @@ void write_global_eocs_to_file();
 void prevent_death();
 /** Run all avatar death eocs */
 void avatar_death();
+/** The EVENT EOCs that run on the mod-defined event @p name, in load order (EOC-J06) */
+const std::vector<effect_on_condition_id> &custom_event_eocs( const std::string &name );
+/**
+ * Runs the PREVENT_MONSTER_DEATH EOCs for @p mon, which is about to die, with the killer as
+ * beta (EOC-J10).  Returns true if one of them prevented the death (u_prevent_death).
+ */
+bool prevent_monster_death( monster &mon, Creature *killer );
+/**
+ * Puts the RECURRING @p eoc back in the queue if it was deactivated (EOC-J04): the global
+ * queue for a global EOC, else @p you's.  Returns false if it wasn't deactivated.
+ */
+bool reactivate( const effect_on_condition_id &eoc, Character &you, dialogue &d );
 } // namespace effect_on_conditions
 
 template<>

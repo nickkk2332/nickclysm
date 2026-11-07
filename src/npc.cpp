@@ -13,6 +13,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "activity_actor_definitions.h"
@@ -573,6 +574,27 @@ void npc_template::check_consistency()
     for( const npc_template &tem : npc_template_factory.get_all() ) {
         if( !tem.myclass.is_valid() ) {
             debugmsg( "Invalid NPC class %s", tem.myclass.c_str() );
+        }
+        // EOC-J03: the topics the NPC starts talking with exist
+        const dialogue_chatbin &cb = tem.chatbin;
+        const std::vector<std::pair<const char *, const std::string *>> chatbin_topics = {
+            { "chat", &cb.first_topic }, { "talk_radio", &cb.talk_radio },
+            { "talk_leader", &cb.talk_leader }, { "talk_friend", &cb.talk_friend },
+            { "talk_stole_item", &cb.talk_stole_item }, { "talk_wake_up", &cb.talk_wake_up },
+            { "talk_mug", &cb.talk_mug }, { "talk_stranger_aggressive", &cb.talk_stranger_aggressive },
+            { "talk_stranger_scared", &cb.talk_stranger_scared },
+            { "talk_stranger_wary", &cb.talk_stranger_wary },
+            { "talk_stranger_friendly", &cb.talk_stranger_friendly },
+            { "talk_stranger_neutral", &cb.talk_stranger_neutral },
+            { "talk_friend_guard", &cb.talk_friend_guard },
+            { "talk_mission_inquire", &cb.talk_mission_inquire },
+            { "talk_mission_describe_urgent", &cb.talk_mission_describe_urgent }
+        };
+        for( const std::pair<const char *, const std::string *> &field : chatbin_topics ) {
+            if( !talk_topic_exists( *field.second ) ) {
+                debugmsg( R"(NPC template "%s": the "%s" talk topic "%s" does not exist)", tem.id.str(),
+                          field.first, *field.second );
+            }
         }
         const std::string &first_topic = tem.chatbin.first_topic;
         if( const json_talk_topic *topic = get_talk_topic( first_topic ) ) {

@@ -132,7 +132,7 @@
     "responses": [
       {
         "text": "Are there any other settlements around?",
-        "topic": "TALK_GREAT_LIBRARY_LIBRARIAN_Robofac",
+        "topic": "TALK_GREAT_LIBRARY_LIBRARIAN_OutsideWorld2",
         "condition": { "not": { "compare_string": [ "yes", { "u_val": "general_free_merchants_u_hub01_breadcrumb_accepted" } ] } }
       },
       {

@@ -1487,6 +1487,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Harvest drop types" ), &harvest_drop_type::check_consistency },
             { _( "Harvest lists" ), &harvest_list::check_consistency },
             { _( "NPC templates" ), &npc_template::check_consistency },
+            { _( "Talk topics" ), &check_talk_topic_consistency },
             { _( "Body parts" ), &body_part_type::check_consistency },
             { _( "Body graphs" ), &bodygraph::check_all },
             { _( "Anatomies" ), &anatomy::check_consistency },

@@ -915,6 +915,25 @@ conditional_t::func f_u_has_mission( const JsonObject &jo, std::string_view memb
     };
 }
 
+// EOC-J09: whether the avatar has a mission of this type that is active, completed or failed
+conditional_t::func f_u_mission_status( const JsonObject &jo, std::string_view member )
+{
+    str_or_var mission_type = get_str_or_var( jo.get_member( member ), member, true );
+    const std::string status = jo.get_string( "status" );
+    if( status != "active" && status != "completed" && status != "failed" ) {
+        jo.throw_error_at( "status", R"(status must be "active", "completed" or "failed")" );
+    }
+    return [mission_type, status]( const_dialogue const & d ) {
+        const avatar &u = get_avatar();
+        const std::vector<mission *> missions = status == "active" ? u.get_active_missions() :
+                                                status == "completed" ? u.get_completed_missions() : u.get_failed_missions();
+        const mission_type_id type( mission_type.evaluate( d ) );
+        return std::any_of( missions.begin(), missions.end(), [&type]( const mission * miss ) {
+            return miss->mission_id() == type;
+        } );
+    };
+}
+
 conditional_t::func f_u_monsters_in_direction( const JsonObject &jo,
         std::string_view member )
 {
@@ -3595,6 +3614,7 @@ parsers = {
     {"u_is_grabbing", "npc_is_grabbing", jarg::member, &conditional_fun::f_is_grabbing },
     {"u_is_grabbed", "npc_is_grabbed", jarg::member, &conditional_fun::f_is_grabbed },
     {"u_has_mission", jarg::string, &conditional_fun::f_u_has_mission },
+    {"u_mission_status", jarg::member, &conditional_fun::f_u_mission_status },
     {"u_monsters_in_direction", jarg::string, &conditional_fun::f_u_monsters_in_direction },
     {"u_safe_mode_trigger", jarg::member, &conditional_fun::f_u_safe_mode_trigger },
     {"u_has_strength", "npc_has_strength", jarg::member | jarg::array, &conditional_fun::f_has_strength },

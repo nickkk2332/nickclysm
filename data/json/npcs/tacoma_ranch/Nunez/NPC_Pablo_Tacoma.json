@@ -84,11 +84,6 @@
       { "text": "Hi, Pablo!  How are things going here?", "topic": "TALK_TACOMA_Pablo_2" },
       { "text": "Hello, Pablo!  What's with the trailer?", "topic": "TALK_TACOMA_Pablo_Trailer1" },
       {
-        "text": "Hey, Pablo!  I heard you might be willing to trade for propane?",
-        "topic": "TALK_TACOMA_Pablo_Propane1",
-        "condition": { "compare_string": [ "knows", { "u_val": "knowledge_propane_scavenging" } ] }
-      },
-      {
         "text": "Hey, Pablo!  Dana said you had some plans to build a bakery?",
         "topic": "TALK_TACOMA_Pablo_Bakery1",
         "condition": { "compare_string": [ "knows", { "u_val": "knowledge_tacoma_bakery" } ] }
@@ -221,11 +216,6 @@
     "//": "table of contents",
     "insert_before_standard_exits": true,
     "responses": [
-      {
-        "text": "I heard you might be willing to trade for propane?",
-        "topic": "TALK_TACOMA_Pablo_Propane1",
-        "condition": { "compare_string": [ "knows", { "u_val": "knowledge_propane_scavenging" } ] }
-      },
       {
         "text": "Dana said you had some plans to build a bakery?",
         "topic": "TALK_TACOMA_Pablo_Bakery1",

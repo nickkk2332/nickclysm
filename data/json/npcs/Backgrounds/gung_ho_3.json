@@ -64,7 +64,7 @@
       "relevant_genders": [ "npc" ]
     },
     "responses": [
-      { "text": "How could that have caused everything that went down?", "topic": "BGSS_GUNG_HO_3_IDEAS2" },
+      { "text": "How could that have caused everything that went down?", "topic": "CWH_GUNG_HO_3_IDEAS2" },
       { "text": "<done_conversation_section>", "topic": "TALK_FRIEND_CONVERSATION" },
       { "text": "<end_talking>", "topic": "TALK_DONE" }
     ]

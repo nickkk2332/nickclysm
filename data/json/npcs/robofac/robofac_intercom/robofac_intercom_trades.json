@@ -313,7 +313,7 @@
           { "math": [ "u_broken_yrax_delta_sold++" ] },
           { "u_spend_cash": -200 }
         ],
-        "topic": "TALK_ROBOFAC_INTERCOM_BROKEN_YRAX_DELTA"
+        "topic": "TALK_ROBOFAC_INTERCOM_SELL_BROKEN_YRAX_DELTA"
       },
       {
         "text": "[Drag in broken quadraphract leg.]",

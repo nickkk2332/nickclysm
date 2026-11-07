@@ -3345,6 +3345,16 @@ void monster::die( map *here, Creature *nkiller )
     if( execution_fatal::before_death( *this, here, nkiller ) ) {
         return;
     }
+    // EOC-J10: a PREVENT_MONSTER_DEATH EOC can stop the death (not a hallucination's, and not
+    // one of these EOCs causes)
+    if( !is_hallucination() && !running_prevent_death_eocs ) {
+        running_prevent_death_eocs = true;
+        const bool prevented = effect_on_conditions::prevent_monster_death( *this, nkiller );
+        running_prevent_death_eocs = false;
+        if( prevented || dead ) {
+            return;
+        }
+    }
     // We were carrying a creature, deposit the rider
     if( has_effect( effect_ridden ) && mounted_player ) {
         mounted_player->forced_dismount();
@@ -3655,6 +3665,14 @@ void monster::generate_inventory( bool disableDrops )
         inv.push_back( it );
     }
     no_extra_death_drops = disableDrops;
+}
+
+void monster::prevent_death()
+{
+    death_prevented = true;
+    if( get_hp() < 1 ) {
+        set_hp( 1 );
+    }
 }
 
 void monster::drop_items_on_death( map *here, item *corpse ) const

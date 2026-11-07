@@ -1,0 +1,59 @@
+[
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M01B_J04_RECUR",
+    "//": "EOC-J04: a RECURRING EOC for u_reactivate_eocs; its condition is false unless a test sets the variable",
+    "recurrence": "7 days",
+    "condition": { "math": [ "audit_m01b_j04_on == 1" ] },
+    "deactivate_condition": { "math": [ "audit_m01b_j04_on != 1" ] },
+    "effect": [ { "math": [ "audit_m01b_j04_ran++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M01B_J06_LISTENER_A",
+    "//": "EOC-J06: runs on trigger_custom_event audit_m01b_ping",
+    "eoc_type": "EVENT",
+    "custom_event": "audit_m01b_ping",
+    "effect": [
+      { "math": [ "audit_m01b_j06_total += _amount" ] },
+      { "if": "u_is_avatar", "then": { "math": [ "audit_m01b_j06_avatar++" ] } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M01B_J06_LISTENER_B",
+    "eoc_type": "EVENT",
+    "custom_event": "audit_m01b_ping",
+    "effect": [ { "math": [ "audit_m01b_j06_second++" ] } ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M01B_J10_PREVENT",
+    "//": "EOC-J10: the avatar's PREVENT_DEATH sees the killer; only while a test sets the variable",
+    "eoc_type": "PREVENT_DEATH",
+    "condition": { "math": [ "audit_m01b_j10_armed == 1" ] },
+    "effect": [
+      { "if": { "and": [ "has_beta", "npc_is_monster" ] }, "then": { "math": [ "audit_m01b_j10_killer_seen = 1" ] } },
+      "u_prevent_death"
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M01B_J10_PREVENT_MONSTER",
+    "//": "EOC-J10: a monster's death is prevented; only while a test sets the variable",
+    "eoc_type": "PREVENT_MONSTER_DEATH",
+    "condition": { "math": [ "audit_m01b_j10_armed == 1" ] },
+    "effect": [
+      { "math": [ "audit_m01b_j10_monster_saves++" ] },
+      { "if": "has_beta", "then": { "math": [ "audit_m01b_j10_monster_killer = 1" ] } },
+      "u_prevent_death"
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_AUDIT_M01B_J10_NPC_DEATH",
+    "//": "EOC-J10: added to an NPC with u_add_death_eoc",
+    "eoc_type": "NPC_DEATH",
+    "effect": [ { "math": [ "audit_m01b_j10_npc_deaths++" ] } ]
+  }
+]

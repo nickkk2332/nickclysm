@@ -107,7 +107,6 @@
     "type": "effect_on_condition",
     "id": "INCREASE_BERSERKER",
     "condition": { "u_has_items": { "item": "dreamforged_knuckle_berserk", "count": 1 } },
-    "deactivate_condition": { "not": { "u_has_items": { "item": "dreamforged_knuckle_berserk", "count": 1 } } },
     "effect": [ { "u_message": "BERSERK +1.", "type": "debug" }, { "math": [ "BERSERKER++" ] } ]
   },
   {

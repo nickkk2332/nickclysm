@@ -20,7 +20,7 @@
     ]
   },
   {
-    "id": "BGSS_GANGEER_1_STORY3",
+    "id": "BGSS_GANGER_1_STORY3",
     "type": "talk_topic",
     "dynamic_line": "I guess it prepared me for everyone dying yesterday.",
     "responses": [ { "text": "<done_conversation_section>", "topic": "TALK_FRIEND" }, { "text": "<end_talking>", "topic": "TALK_DONE" } ]

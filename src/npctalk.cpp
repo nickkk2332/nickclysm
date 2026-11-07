@@ -67,6 +67,7 @@
 #include "dialogue_chatbin.h"
 #include "dialogue_helpers.h"
 #include "dialogue_imgui.h"
+#include "effect.h"
 #include "effect_on_condition.h"
 #include "enum_conversions.h"
 #include "enum_traits.h"
@@ -120,6 +121,7 @@
 #include "martialarts.h"
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
+#include "mattack_actors.h"
 #include "melee.h"
 #include "memorial_logger.h"
 #include "memory_fast.h"
@@ -129,6 +131,7 @@
 #include "mod_setting_values.h"
 #include "mongroup.h"
 #include "monster.h"
+#include "monstergenerator.h"
 #include "mtype.h"
 #include "mutation.h"
 #include "npc.h"
@@ -6157,10 +6160,25 @@ talk_effect_fun_t::func f_turn_cost( const JsonObject &jo, std::string_view memb
     };
 }
 
+// EOC-J03: a literal talk topic must exist once everything is loaded
+void check_topic_at_load( const str_or_var &topic, const JsonValue &jv, std::string_view effect )
+{
+    if( !topic.is_constant() ) {
+        return;
+    }
+    effect_on_conditions::add_load_check( [name = topic.constant(), context = jv.get_root_source_path(),
+         effect = std::string( effect )]() {
+        if( !talk_topic_exists( name ) ) {
+            debugmsg( R"(Talk topic "%s" (used by %s in %s) does not exist)", name, effect, context );
+        }
+    } );
+}
+
 talk_effect_fun_t::func f_npc_first_topic( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
     str_or_var chat_topic = get_str_or_var( jo.get_member( member ), member, true );
+    check_topic_at_load( chat_topic, jo.get_member( member ), member );
     return [chat_topic]( dialogue const & d ) {
         d.actor( true )->set_first_topic( chat_topic.evaluate( d ) );
     };
@@ -6592,6 +6610,7 @@ talk_effect_fun_t::func f_open_dialogue( const JsonObject &jo, std::string_view 
         true_eocs = load_eoc_vector( innerJo, "true_eocs", src );
         false_eocs = load_eoc_vector( innerJo, "false_eocs", src );
         topic = get_str_or_var( innerJo.get_member( "topic" ), "topic" );
+        check_topic_at_load( topic, innerJo.get_member( "topic" ), member );
     }
     return [true_eocs, false_eocs, topic, has_member]( dialogue const & d ) {
         std::string actual_topic;
@@ -7207,6 +7226,17 @@ talk_effect_fun_t::func f_ranged_attack( bool is_npc )
         talker *target = d.actor( !is_npc );
         Character *attacker = d.actor( is_npc )->get_character();
         Creature *c = target->get_creature();
+        // EOC-J08: a monster fires its first gun special attack (by name), as u_attack would
+        const monster *mon = d.actor( is_npc )->get_monster();
+        if( c && mon ) {
+            for( const auto &attack : mon->type->special_attacks ) {
+                if( dynamic_cast<const gun_actor *>( attack.second.get() ) != nullptr ) {
+                    d.actor( is_npc )->attack_target( *c, true, matec_id( attack.first ), true, -1 );
+                    break;
+                }
+            }
+            return;
+        }
 
         // Only characters can fire a wielded gun; monster and item talkers have none
         if( c && attacker ) {
@@ -7278,6 +7308,9 @@ talk_effect_fun_t::func f_prevent_death( bool is_npc )
         Character *ch = d.actor( is_npc )->get_character();
         if( ch ) {
             ch->prevent_death();
+        } else if( monster *mon = d.actor( is_npc )->get_monster() ) {
+            // EOC-J08/J10: works in a PREVENT_MONSTER_DEATH EOC
+            mon->prevent_death();
         }
     };
 }
@@ -7576,12 +7609,35 @@ talk_effect_fun_t::func f_assign_mission( const JsonObject &jo, std::string_view
 {
     str_or_var mission_name = get_str_or_var( jo.get_member( member ), member, true );
     dbl_or_var deadline = get_dbl_or_var( jo, "deadline", false );
-    return [mission_name, deadline]( dialogue & d ) {
+    // EOC-J09: the NPC the mission is turned in to, "u" or "npc"
+    std::optional<bool> giver_is_npc;
+    if( jo.has_member( "giver" ) ) {
+        const std::string giver = jo.get_string( "giver" );
+        if( giver != "u" && giver != "npc" ) {
+            jo.throw_error_at( "giver", R"(giver must be "u" or "npc")" );
+        }
+        giver_is_npc = giver == "npc";
+    }
+    return [mission_name, deadline, giver_is_npc]( dialogue & d ) {
         avatar &player_character = get_avatar();
 
         const mission_type_id &mission_type = mission_type_id( mission_name.evaluate( d ) );
-        mission *new_mission = mission::reserve_new( mission_type, character_id() );
+        npc *giver = nullptr;
+        if( giver_is_npc ) {
+            giver = d.has_actor( *giver_is_npc ) ? d.actor( *giver_is_npc )->get_npc() : nullptr;
+            if( giver == nullptr ) {
+                debugmsg( "assign_mission: the giver of %s (%s) isn't an NPC.  %s", mission_type.str(),
+                          *giver_is_npc ? "npc" : "u", d.get_callstack() );
+                return;
+            }
+        }
+        mission *new_mission = mission::reserve_new( mission_type,
+                               giver != nullptr ? giver->getID() : character_id() );
         new_mission->assign( player_character );
+        if( giver != nullptr ) {
+            // as the assign_mission talk function does: the giver can be told it's done
+            giver->chatbin.missions_assigned.push_back( new_mission );
+        }
         // mission::assign assigns the type's deadline (which is often 0!), so if we want our specific
         // deadline to be kept, it must always be done after assignment
         const double deadline_dbl = deadline.evaluate( d );
@@ -8148,6 +8204,61 @@ talk_effect_fun_t::func f_run_eocs( const JsonObject &jo, std::string_view membe
             queue_eocs( eocs, d, newDialog, *dov_time, random_time );
         } else {
             run_eocs( eocs, d, newDialog, iterations, cond );
+        }
+    };
+}
+
+// EOC-J06: runs the EVENT EOCs whose "custom_event" is the name, with talkers and context
+// variables chosen as for run_eocs
+talk_effect_fun_t::func f_trigger_custom_event( const JsonObject &jo, std::string_view member,
+        std::string_view )
+{
+    const str_or_var name = get_str_or_var( jo.get_member( member ), member, true );
+    std::unordered_map<std::string, diag_value_or_var> context;
+    if( jo.has_object( "variables" ) ) {
+        const JsonObject &variables = jo.get_object( "variables" );
+        for( const JsonMember &jv : variables ) {
+            diag_value_or_var vov;
+            mandatory( variables, false, jv.name(), vov );
+            context[jv.name()] = vov;
+        }
+    }
+    std::optional<str_or_var> alpha_var;
+    std::optional<str_or_var> beta_var;
+    if( jo.has_member( "alpha_talker" ) ) {
+        alpha_var = get_str_or_var( jo.get_member( "alpha_talker" ), "alpha_talker" );
+    }
+    if( jo.has_member( "beta_talker" ) ) {
+        beta_var = get_str_or_var( jo.get_member( "beta_talker" ), "beta_talker" );
+    }
+    return [name, context, alpha_var, beta_var]( dialogue & d ) {
+        // a copy: the EOCs run outside the cache
+        const std::vector<effect_on_condition_id> eocs =
+            effect_on_conditions::custom_event_eocs( name.evaluate( d ) );
+        if( eocs.empty() ) {
+            return;
+        }
+        std::list<item_location> items;
+        bool alpha_missing = false;
+        bool beta_missing = false;
+        std::unique_ptr<talker> alpha = get_talker( d, alpha_var, std::nullopt, false, alpha_missing,
+                                        items );
+        std::unique_ptr<talker> beta = get_talker( d, beta_var, std::nullopt, true, beta_missing,
+                                       items );
+        if( alpha_missing || beta_missing ) {
+            return;
+        }
+        if( !alpha && !beta ) {
+            // as for a game event about no one
+            alpha = get_talker_for( get_avatar() );
+        }
+        global_variables::impl_t values;
+        for( const auto &val : context ) {
+            values[val.first] = val.second.evaluate( d );
+        }
+        for( const effect_on_condition_id &eoc : eocs ) {
+            dialogue each( alpha ? alpha->clone() : nullptr, beta ? beta->clone() : nullptr, {}, values );
+            eoc->activate( each );
         }
     };
 }
@@ -9594,50 +9705,151 @@ talk_effect_fun_t::func f_switch( const JsonObject &jo, std::string_view member,
     };
 }
 
+// The ids of every loaded object of a kind, for foreach "ids" (EOC-J05)
+std::vector<std::string> foreach_all_ids( const std::string &target )
+{
+    std::vector<std::string> list;
+    if( target == "bodypart" ) {
+        for( const body_part_type &bp : body_part_type::get_all() ) {
+            list.push_back( bp.id.str() );
+        }
+    } else if( target == "flag" ) {
+        for( const json_flag &f : json_flag::get_all() ) {
+            list.push_back( f.id.str() );
+        }
+    } else if( target == "trait" ) {
+        for( const mutation_branch &m : mutation_branch::get_all() ) {
+            list.push_back( m.id.str() );
+        }
+    } else if( target == "vitamin" ) {
+        for( const std::pair<const vitamin_id, vitamin> &v : vitamin::all() ) {
+            list.push_back( v.first.str() );
+        }
+    } else if( target == "effect" ) {
+        for( const std::pair<const efftype_id, effect_type> &e : get_effect_types() ) {
+            list.push_back( e.first.str() );
+        }
+    } else if( target == "skill" ) {
+        for( const Skill &sk : Skill::skills ) {
+            list.push_back( sk.ident().str() );
+        }
+    } else if( target == "spell" ) {
+        for( const spell_type &sp : spell_type::get_all() ) {
+            list.push_back( sp.id.str() );
+        }
+    } else if( target == "proficiency" ) {
+        for( const proficiency &prof : proficiency::get_all() ) {
+            list.push_back( prof.prof_id().str() );
+        }
+    } else if( target == "martial_art" ) {
+        for( const matype_id &ma : all_martialart_types() ) {
+            list.push_back( ma.str() );
+        }
+    } else if( target == "monster" ) {
+        for( const mtype &mt : MonsterGenerator::generator().get_all_mtypes() ) {
+            list.push_back( mt.id.str() );
+        }
+    } else if( target == "bionic" ) {
+        for( const bionic_data &bio : bionic_data::get_all() ) {
+            list.push_back( bio.id.str() );
+        }
+    }
+    return list;
+}
+
+// What a talker has, for the foreach "u_traits", "u_effects"... lists (EOC-J05), sorted by id
+std::vector<std::string> foreach_owned_ids( const std::string &kind, talker &who )
+{
+    std::vector<std::string> list;
+    Character *ch = who.get_character();
+    if( kind == "traits" && ch != nullptr ) {
+        for( const trait_id &tr : ch->get_mutations() ) {
+            list.push_back( tr.str() );
+        }
+    } else if( kind == "bionics" && ch != nullptr ) {
+        for( const bionic_id &bio : ch->get_bionics() ) {
+            list.push_back( bio.str() );
+        }
+    } else if( kind == "spells" && ch != nullptr ) {
+        for( const spell *sp : ch->magic->get_spells() ) {
+            list.push_back( sp->id().str() );
+        }
+    } else if( kind == "effects" && who.get_creature() != nullptr ) {
+        for( const effect &eff : who.get_creature()->get_effects() ) {
+            list.push_back( eff.get_id().str() );
+        }
+    }
+    std::sort( list.begin(), list.end() );
+    // an effect on several body parts, or a bionic installed twice, is listed once
+    list.erase( std::unique( list.begin(), list.end() ), list.end() );
+    return list;
+}
+
 talk_effect_fun_t::func f_foreach( const JsonObject &jo, std::string_view member,
                                    std::string_view src )
 {
-    std::string type = jo.get_string( member );
+    // EOC-J05: an unknown list or id kind is a load error, not an empty loop
+    static const std::vector<std::string> id_targets = {
+        "bodypart", "flag", "trait", "vitamin", "effect", "skill", "spell", "proficiency",
+        "martial_art", "monster", "bionic"
+    };
+    static const std::vector<std::string> owned_kinds = { "traits", "effects", "bionics", "spells" };
+    const std::string type = jo.get_string( member );
     var_info itr = read_var_info( jo.get_object( "var" ) );
     talk_effect_t effect;
     effect.load_effect( jo, "effect", src );
     std::string target;
+    std::optional<str_or_var> group;
     std::vector<str_or_var> array;
-    if( jo.has_string( "target" ) ) {
+    // for "u_traits" and the like: whose, and what
+    bool owner_is_npc = false;
+    std::string owned;
+    if( type == "ids" ) {
         target = jo.get_string( "target" );
-    } else if( jo.has_array( "target" ) ) {
+        if( std::find( id_targets.begin(), id_targets.end(), target ) == id_targets.end() ) {
+            jo.throw_error_at( "target", string_format( R"(unknown "ids" target "%s"; it can be %s)",
+                               target, string_join( id_targets, ", " ) ) );
+        }
+    } else if( type == "item_group" || type == "monstergroup" ) {
+        group = get_str_or_var( jo.get_member( "target" ), "target" );
+        if( group->is_constant() ) {
+            effect_on_conditions::add_load_check( [type, name = group->constant(),
+                  context = jo.get_member( "target" ).get_root_source_path()]() {
+                const bool valid = type == "item_group" ? item_group::group_is_defined( item_group_id( name ) ) :
+                                   MonsterGroupManager::isValidMonsterGroup( mongroup_id( name ) );
+                if( !valid ) {
+                    debugmsg( R"(foreach: no %s "%s" (in %s))", type, name, context );
+                }
+            } );
+        }
+    } else if( type == "array" ) {
         for( const JsonValue &jv : jo.get_array( "target" ) ) {
             array.emplace_back( get_str_or_var( jv, "target" ) );
         }
+    } else {
+        const size_t sep = type.find( '_' );
+        const std::string who = type.substr( 0, sep );
+        owned = sep == std::string::npos ? std::string() : type.substr( sep + 1 );
+        owner_is_npc = who == "npc";
+        if( ( who != "u" && who != "npc" ) ||
+            std::find( owned_kinds.begin(), owned_kinds.end(), owned ) == owned_kinds.end() ) {
+            jo.throw_error_at( member, string_format( R"(unknown foreach list "%s"; it can be "ids", )"
+                               R"("item_group", "monstergroup", "array", or "u_" or "npc_" and one of %s)",
+                               type, string_join( owned_kinds, ", " ) ) );
+        }
     }
-    return [type, itr, effect, target, array]( dialogue & d ) {
+    return [type, itr, effect, target, group, array, owner_is_npc, owned]( dialogue & d ) {
         std::vector<std::string> list;
 
         if( type == "ids" ) {
-            if( target == "bodypart" ) {
-                for( const body_part_type &bp : body_part_type::get_all() ) {
-                    list.push_back( bp.id.str() );
-                }
-            } else if( target == "flag" ) {
-                for( const json_flag &f : json_flag::get_all() ) {
-                    list.push_back( f.id.str() );
-                }
-            } else if( target == "trait" ) {
-                for( const mutation_branch &m : mutation_branch::get_all() ) {
-                    list.push_back( m.id.str() );
-                }
-            } else if( target == "vitamin" ) {
-                for( const std::pair<const vitamin_id, vitamin> &v : vitamin::all() ) {
-                    list.push_back( v.first.str() );
-                }
-            }
+            list = foreach_all_ids( target );
         } else if( type == "item_group" ) {
-            item_group_id ig( target );
+            item_group_id ig( group->evaluate( d ) );
             for( const itype *type : item_group::every_possible_item_from( ig ) ) {
                 list.push_back( type->get_id().str() );
             }
         } else if( type == "monstergroup" ) {
-            mongroup_id mg( target );
+            mongroup_id mg( group->evaluate( d ) );
             for( const auto &m : MonsterGroupManager::GetMonstersFromGroup( mg, true ) ) {
                 list.push_back( m.str() );
             }
@@ -9645,6 +9857,8 @@ talk_effect_fun_t::func f_foreach( const JsonObject &jo, std::string_view member
             for( const str_or_var &v : array ) {
                 list.emplace_back( v.evaluate( d ) );
             }
+        } else if( d.has_actor( owner_is_npc ) ) {
+            list = foreach_owned_ids( owned, *d.actor( owner_is_npc ) );
         }
 
         for( std::string_view str : list ) {
@@ -11518,6 +11732,103 @@ std::string trigger_event_arg( diag_value const &v )
     return v.to_string();
 }
 
+// EOC-J04: puts deactivated RECURRING EOCs back in their queue
+talk_effect_fun_t::func f_reactivate_eocs( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    std::vector<str_or_var> eocs;
+    if( jo.has_array( member ) ) {
+        for( const JsonValue &jv : jo.get_array( member ) ) {
+            eocs.push_back( get_str_or_var( jv, member ) );
+        }
+    } else {
+        eocs.push_back( get_str_or_var( jo.get_member( member ), member ) );
+    }
+    for( const str_or_var &eoc : eocs ) {
+        if( !eoc.is_constant() ) {
+            continue;
+        }
+        effect_on_conditions::add_load_check( [name = eoc.constant(),
+             context = jo.get_member( member ).get_root_source_path()]() {
+            const effect_on_condition_id id( name );
+            if( !id.is_valid() ) {
+                debugmsg( R"(reactivate_eocs: no effect_on_condition "%s" (in %s))", name, context );
+            } else if( id->type != eoc_type::RECURRING ) {
+                debugmsg( R"(reactivate_eocs: effect_on_condition "%s" (in %s) isn't RECURRING, so it )"
+                          "is never deactivated", name, context );
+            }
+        } );
+    }
+    return [eocs, is_npc]( dialogue & d ) {
+        Character *ch = d.has_actor( is_npc ) ? d.actor( is_npc )->get_character() : nullptr;
+        int reactivated = 0;
+        for( const str_or_var &name : eocs ) {
+            const effect_on_condition_id eoc( name.evaluate( d ) );
+            if( !eoc.is_valid() ) {
+                debugmsg( R"(reactivate_eocs: no effect_on_condition "%s".  %s)", eoc.str(),
+                          d.get_callstack() );
+                continue;
+            }
+            // a global EOC is in the global list, whoever runs this
+            Character *owner = eoc->global ? &get_avatar() : ch;
+            if( owner != nullptr && effect_on_conditions::reactivate( eoc, *owner, d ) ) {
+                reactivated++;
+            }
+        }
+        d.set_value( "eocs_reactivated", reactivated );
+    };
+}
+
+// EOC-J10: an NPC_DEATH EOC that runs when this character dies as an NPC; saved with it
+talk_effect_fun_t::func f_death_eoc( const JsonObject &jo, std::string_view member, bool is_npc,
+                                     bool add )
+{
+    const str_or_var eoc = get_str_or_var( jo.get_member( member ), member, true );
+    if( add && eoc.is_constant() ) {
+        effect_on_conditions::add_load_check( [name = eoc.constant(),
+             context = jo.get_member( member ).get_root_source_path()]() {
+            const effect_on_condition_id id( name );
+            if( !id.is_valid() ) {
+                debugmsg( R"(add_death_eoc: no effect_on_condition "%s" (in %s))", name, context );
+            } else if( id->type != eoc_type::NPC_DEATH ) {
+                debugmsg( R"(add_death_eoc: effect_on_condition "%s" (in %s) must be of type NPC_DEATH)",
+                          name, context );
+            }
+        } );
+    }
+    return [eoc, is_npc, add]( dialogue & d ) {
+        Character *ch = d.has_actor( is_npc ) ? d.actor( is_npc )->get_character() : nullptr;
+        if( ch == nullptr ) {
+            return;
+        }
+        const effect_on_condition_id id( eoc.evaluate( d ) );
+        std::vector<effect_on_condition_id> &death_eocs = ch->death_eocs;
+        const auto it = std::find( death_eocs.begin(), death_eocs.end(), id );
+        if( !add ) {
+            if( it != death_eocs.end() ) {
+                death_eocs.erase( it );
+            }
+        } else if( !id.is_valid() || id->type != eoc_type::NPC_DEATH ) {
+            debugmsg( R"(add_death_eoc: "%s" isn't an NPC_DEATH effect_on_condition.  %s)", id.str(),
+                      d.get_callstack() );
+        } else if( it == death_eocs.end() ) {
+            death_eocs.push_back( id );
+        }
+    };
+}
+
+talk_effect_fun_t::func f_add_death_eoc( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    return f_death_eoc( jo, member, is_npc, true );
+}
+
+talk_effect_fun_t::func f_remove_death_eoc( const JsonObject &jo, std::string_view member,
+        std::string_view, bool is_npc )
+{
+    return f_death_eoc( jo, member, is_npc, false );
+}
+
 talk_effect_fun_t::func f_trigger_event( const JsonObject &jo, std::string_view member,
         std::string_view )
 {
@@ -11555,14 +11866,25 @@ talk_effect_fun_t::func f_trigger_event( const JsonObject &jo, std::string_view 
         args.emplace_back( vov );
     }
 
-    return [type, args]( dialogue & d ) {
+    // EOC-J06: the EOC's own u and npc are the event's talkers
+    const bool with_talkers = jo.get_bool( "with_talkers", false );
+
+    return [type, args, with_talkers]( dialogue & d ) {
         std::vector<std::string> args_str;
         args_str.reserve( args.size() );
         std::transform( args.cbegin(), args.cend(),
         std::back_inserter( args_str ), [&d]( diag_value_or_var const & sov ) {
             return trigger_event_arg( sov.evaluate( d ) );
         } );
-        get_event_bus().send( cata::event::make_dyn( type, args_str ) );
+        const cata::event e = cata::event::make_dyn( type, args_str );
+        Creature *alpha = with_talkers && d.has_alpha ? d.actor( false )->get_creature() : nullptr;
+        // a malformed event goes to send(), which rejects it
+        if( alpha != nullptr && e.type() != event_type::num_event_types ) {
+            get_event_bus().send_with_talker( alpha, d.has_beta ? d.actor( true )->get_creature() : nullptr,
+                                              e );
+        } else {
+            get_event_bus().send( e );
+        }
     };
 }
 
@@ -11733,6 +12055,9 @@ parsers = {
     { "u_activate_bionic", "npc_activate_bionic", jarg::member, &talk_effect_fun::f_activate_bionic },
     { "u_deactivate_bionic", "npc_deactivate_bionic", jarg::member, &talk_effect_fun::f_deactivate_bionic },
     { "u_attack", "npc_attack", jarg::member, &talk_effect_fun::f_attack },
+    { "u_reactivate_eocs", "npc_reactivate_eocs", jarg::member, &talk_effect_fun::f_reactivate_eocs },
+    { "u_add_death_eoc", "npc_add_death_eoc", jarg::member, &talk_effect_fun::f_add_death_eoc },
+    { "u_remove_death_eoc", "npc_remove_death_eoc", jarg::member, &talk_effect_fun::f_remove_death_eoc },
     {
         "u_choose_technique", "npc_choose_technique", jarg::member,
         &talk_effect_fun::f_choose_technique
@@ -11878,6 +12203,7 @@ parsers = {
     { "open_dialogue", jarg::member, &talk_effect_fun::f_open_dialogue },
     { "take_control", jarg::member, &talk_effect_fun::f_take_control },
     { "trigger_event", jarg::member, &talk_effect_fun::f_trigger_event },
+    { "trigger_custom_event", jarg::member, &talk_effect_fun::f_trigger_custom_event },
     { "add_debt", jarg::array, &talk_effect_fun::f_add_debt },
     { "u_set_talker", "npc_set_talker", jarg::member, &talk_effect_fun::f_set_talker },
     { "turn_cost", jarg::member, &talk_effect_fun::f_turn_cost },
@@ -12749,10 +13075,39 @@ std::optional<character_portrait_id> json_talk_topic::get_portrait_override() co
     return portrait_override;
 }
 
-void json_talk_topic::check_consistency() const
+void json_talk_topic::check_consistency( const std::string &id ) const
 {
-    // TODO: check that all referenced topic actually exist. This is currently not possible
-    // as they only exist as built in strings, not in the json_talk_topics map.
+    // EOC-J03: every topic a response leads to exists, and a skill check's skill
+    const auto check_response = [&id]( const json_talk_response & r ) {
+        const talk_response &resp = r.get_actual_response();
+        const std::string text = resp.truetext.translated();
+        for( const std::string *topic : {
+                 &resp.success.next_topic.id, &resp.failure.next_topic.id, &r.get_failure_topic()
+             } ) {
+            if( !topic->empty() && !talk_topic_exists( *topic ) ) {
+                debugmsg( R"(Talk topic "%s": the response "%s" leads to talk topic "%s", which )"
+                          "does not exist", id, text, *topic );
+            }
+        }
+        if( resp.trial.type == TALK_TRIAL_SKILL_CHECK &&
+            !skill_id( resp.trial.skill_required ).is_valid() ) {
+            debugmsg( R"(Talk topic "%s": the response "%s" checks the skill "%s", which does not )"
+                      "exist", id, text, resp.trial.skill_required );
+        }
+    };
+    for( const json_talk_response &r : responses ) {
+        check_response( r );
+    }
+    for( const json_talk_repeat_response &r : repeat_responses ) {
+        check_response( r.response );
+    }
+}
+
+void check_talk_topic_consistency()
+{
+    for( const std::pair<const std::string, json_talk_topic> &topic : json_talk_topics ) {
+        topic.second.check_consistency( topic.first );
+    }
 }
 
 void unload_talk_topics()

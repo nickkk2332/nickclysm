@@ -84,11 +84,6 @@
       { "text": "Hi Dana, how are things here?", "topic": "TALK_TACOMA_Dana_2" },
       { "text": "Got any bread for sale?", "topic": "TALK_TACOMA_Dana_Baking" },
       { "text": "Hello, Dana!  What's with the trailer?", "topic": "TALK_TACOMA_Dana_Trailer1" },
-      {
-        "text": "Hey, Pablo!  Dana said you had some plans to build a bakery?",
-        "topic": "TALK_TACOMA_Dana_Bakery1",
-        "condition": { "compare_string": [ "knows", { "u_val": "knowledge_tacoma_bakery" } ] }
-      },
       { "text": "Nice to see you Dana, I'm just checking in.", "topic": "TALK_DONE" }
     ]
   },

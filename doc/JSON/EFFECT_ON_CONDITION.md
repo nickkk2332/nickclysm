@@ -33,13 +33,14 @@ An effect_on_condition is an object allowing the combination of dialog condition
 |--------------------- | --------- | ----------- |
 |`recurrence`          | int or variable object or array | The effect_on_condition is automatically invoked (activated) with this many seconds in-between. If it is an object it must have strings `name`, `type`, and `context`. `default` can be either an int or a string describing a time span. `global` is an optional bool (default false), if it is true the variable used will always be from the player character rather than the target of the dialog.  If it is an array it must have two values which are either ints or variable_objects.
 |`condition`           | condition  | The condition(s) under which this effect_on_condition, upon activation, will cause its effect.  See the "Dialogue conditions" section of [NPCs](NPCs.md) for the full syntax.
-| `deactivate_condition`| condition  | *optional* When an effect_on_condition is automatically activated (invoked) and fails its condition(s), `deactivate_condition` will be tested if it exists and there is no `false_effect` entry.  If it returns true, this effect_on_condition will no longer be invoked automatically every `recurrence` seconds.  Whenever the player/npc gains/loses a trait or bionic all deactivated effect_on_conditions will have `deactivate_condition` run; on a return of false, the effect_on_condition will start being run again.  This is to allow adding effect_on_conditions for specific traits or bionics that don't waste time running when you don't have the target bionic/trait.  See the "Dialogue conditions" section of [NPCs](NPCs.md) for the full syntax.
+| `deactivate_condition`| condition  | *optional* When an effect_on_condition is automatically activated (invoked) and fails its condition(s), `deactivate_condition` will be tested if it exists and there is no `false_effect` entry.  If it returns true, this effect_on_condition will no longer be invoked automatically every `recurrence` seconds.  Whenever the player/npc gains/loses a trait or bionic all deactivated effect_on_conditions will have `deactivate_condition` run; on a return of false, the effect_on_condition will start being run again.  This is to allow adding effect_on_conditions for specific traits or bionics that don't waste time running when you don't have the target bionic/trait.  To start one again when something else changes (a variable, an effect, a place), use [`u_reactivate_eocs`](#u_reactivate_eocs-npc_reactivate_eocs).  Only a `RECURRING` EOC without a `false_effect` is ever deactivated: a `deactivate_condition` on any other EOC is a load error.  See the "Dialogue conditions" section of [NPCs](NPCs.md) for the full syntax.
 | `required_event`      | cata_event | The event that when it triggers, this EOC does as well. Only relevant for an EVENT type EOC.
+| `custom_event`        | string     | Instead of `required_event`, for an EVENT type EOC: the name of a mod-defined event, which [`trigger_custom_event`](#trigger_custom_event) raises.  Any name will do; prefix it with your mod's id so it doesn't clash with another mod's.
 | `effect`              | effect     | The effect(s) caused if `condition` returns true upon activation.  See the "Dialogue Effects" section of [NPCs](NPCs.md) for the full syntax.
 | `false_effect`        | effect     | The effect(s) caused if `condition` returns false upon activation.  See the "Dialogue Effects" section of [NPCs](NPCs.md) for the full syntax.
 | `global`              | bool       | If this is true, this recurring eoc will be run on the player and every npc from a global queue.  Deactivate conditions will work based on the avatar. If it is false the avatar and every character will have their own copy and their own deactivated list. Defaults to false.
 | `run_for_npcs`        | bool       | Can only be true if global is true. If false the EOC will only be run against the avatar. If true the eoc will be run against the avatar and all loaded npcs (those in the reality bubble; NPCs elsewhere in the world are skipped).  Defaults to false.
-| `EOC_TYPE`            | string     | Can be one of `ACTIVATION`, `RECURRING`, `AVATAR_DEATH`, `NPC_DEATH`, `PREVENT_DEATH`, `EVENT` (see details below). It defaults to `ACTIVATION` unless `recurrence` is provided in which case it defaults to `RECURRING`.
+| `EOC_TYPE`            | string     | Can be one of `ACTIVATION`, `RECURRING`, `AVATAR_DEATH`, `NPC_DEATH`, `PREVENT_DEATH`, `PREVENT_MONSTER_DEATH`, `EVENT` (see details below). It defaults to `ACTIVATION` unless `recurrence` is provided in which case it defaults to `RECURRING`.
 
  ### EOC types
 
@@ -47,10 +48,11 @@ An effect_on_condition is an object allowing the combination of dialog condition
 
 * `ACTIVATION` - activated manually.
 * `RECURRING` - activated automatically on schedule (see `recurrence`)
-* `AVATAR_DEATH` - automatically invoked whenever the current avatar dies (it will be run with the avatar as `u`), if after it the player is no longer dead they will not die, if there are multiple EOCs they all be run until the player is not dead.
-* `NPC_DEATH` - EOCs can only be assigned to run on the death of an npc, in which case u will be the dying npc and npc will be the killer. If after it npc is no longer dead they will not die, if there are multiple they all be run until npc is not dead.
-* `PREVENT_DEATH` - whenever the current avatar dies it will be run with the avatar as `u`, if after it the player is no longer dead they will not die, if there are multiple they all be run until the player is not dead.
-* `EVENT` - EOCs trigger when a specific event given by "required_event" takes place.
+* `AVATAR_DEATH` - automatically invoked whenever the current avatar dies (it will be run with the avatar as `u` and the killer, if any, as `npc`), if after it the player is no longer dead they will not die, if there are multiple EOCs they all be run until the player is not dead.  They run before the death screen.
+* `NPC_DEATH` - EOCs can only be assigned to run on the death of an npc (its template's `death_eocs`, or [`u_add_death_eoc`](#u_add_death_eoc-npc_add_death_eoc-u_remove_death_eoc-npc_remove_death_eoc)), in which case u will be the dying npc and npc will be the killer. All of the NPC's death EOCs run; if after them the npc is no longer dead (`u_prevent_death`), it doesn't die.  For every NPC's death, use an EVENT EOC on `character_dies`.
+* `PREVENT_DEATH` - whenever the current avatar dies it will be run with the avatar as `u` and the killer, if any, as `npc`; if after it the player is no longer dead they will not die, if there are multiple they all be run until the player is not dead.
+* `PREVENT_MONSTER_DEATH` - run whenever a monster (not a hallucination) is about to die, with the monster as `u` and the killer, if any, as `npc`.  If one of them uses `u_prevent_death`, the monster doesn't die: it keeps at least 1 HP, and nothing of its death happens (no corpse, death effects, kill events or mission progress).  They run in load order until one prevents the death.  A death that one of these EOCs causes (`u_die`) isn't prevented again.  Use `condition` to pick the monsters, for example `{ "u_is_mtype": "mon_my_boss" }`.
+* `EVENT` - EOCs trigger when a specific event given by "required_event" takes place, or the mod-defined event given by "custom_event" is raised.
 
 ## Alpha and Beta Talkers
 
@@ -2412,6 +2414,24 @@ The code base supports the use of reusable EOCs, you can use these to get guaran
 # EVENT EOCs:
 EVENT EOCs trigger on in game events specified in the event_type enum in `event.h`. Unless the event gives its own talkers (see the table), the alpha talker is the character the event is about: the first of the fields "avatar_id", "character", "attacker", "killer" and "npc" that the event has and that holds a valid character, the avatar or an NPC. An event that has none of these fields runs its EOCs on the avatar. An event that has one of them, but whose character can't be found (a spell cast without a caster, an NPC that isn't loaded), runs no EVENT EOCs.
 
+## Custom events
+A mod can define its own events, for other EOCs (in the same mod or in others) to run on, without overriding anyone's EOCs.  An EVENT EOC with `custom_event` instead of `required_event` runs whenever an effect raises that event with [`trigger_custom_event`](#trigger_custom_event).  Nothing has to declare the event first: an event that no EOC runs on does nothing.  The EOCs run in load order, each with the talkers and context variables `trigger_custom_event` gives.
+
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_mymod_reward_boss",
+  "eoc_type": "EVENT",
+  "custom_event": "mymod_boss_defeated",
+  "effect": [ { "u_message": "The <context_val:boss> is dead!" } ]
+},
+{
+  "type": "effect_on_condition",
+  "id": "EOC_mymod_boss_dies",
+  "effect": [ { "trigger_custom_event": "mymod_boss_defeated", "variables": { "boss": "Dread Lord" } } ]
+}
+```
+
 ## Event Context Vars:
 Every event EOC passes context vars with each of their key value pairs that the event has in C++.  They are all converted to strings when made context variables but their original types are included for reference below.  At some point this documentation may go out of sync, The up to date info for each event can be found in event.h
 
@@ -2782,8 +2802,9 @@ Sends an event, as if the game had: statistics, scores, achievements, the memori
 | --- | --- | --- | --- |
 | "trigger_event" | **mandatory** | string | the event type, from the [event table](#event-eoc-types) |
 | "args" | **mandatory** | array of strings, numbers or [variable objects](#variable-object) | the event's fields, one value per field, in the order of the event table (which is the order of the fields in `src/event.h`); the values have no names, only their place. An EOC with the wrong number of values fails to load, with an error that lists the fields in order |
+| "with_talkers" | optional | boolean | default false.  If true, and this EOC's alpha (`u`) is a creature, the event is sent with this EOC's `u` as its alpha talker and `npc` (if it is a creature) as its beta, instead of the talkers its fields give |
 
-Each value must fit its field: a whole number for `int` and `character_id` (get a character's id with [`u_set_talker`](#u_set_talker-npc_set_talker)), 0 or 1 for `bool`, an existing id (or an empty string) for an id.  An event with a value that doesn't fit isn't sent, and shows an error.  `game_avatar_new`, `game_load`, `game_over`, `game_save`, `game_start` and `player_gets_achievement` can only be sent by the game: an EOC that triggers one of them fails to load.  The event is sent without talkers: the EVENT EOCs it runs get theirs from its fields, as for an event the game sends.
+Each value must fit its field: a whole number for `int` and `character_id` (get a character's id with [`u_set_talker`](#u_set_talker-npc_set_talker)), 0 or 1 for `bool`, an existing id (or an empty string) for an id.  An event with a value that doesn't fit isn't sent, and shows an error.  `game_avatar_new`, `game_load`, `game_over`, `game_save`, `game_start` and `player_gets_achievement` can only be sent by the game: an EOC that triggers one of them fails to load.  Unless `with_talkers` is true, the event is sent without talkers: the EVENT EOCs it runs get theirs from its fields, as for an event the game sends.  For an event of your own, use [`trigger_custom_event`](#trigger_custom_event).
 
 ##### Valid talkers:
 
@@ -2806,6 +2827,27 @@ The avatar's variable `portal_storm_counter` changed: `u_var_changed` has the fi
 { "trigger_event": "u_var_changed", "args": [ "portal_storm_counter", { "u_val": "counter_portal_storm_counter" } ] }
 ```
 
+#### `trigger_custom_event`
+Raises a mod-defined event: runs every EVENT EOC whose `custom_event` is this name (see [Custom events](#custom-events)), in load order.  An event no EOC runs on does nothing.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "trigger_custom_event" | **mandatory** | string or [variable object](#variable-object) | the event's name |
+| "variables" | optional | object | context variables the EOCs get, as for `run_eocs`; they don't get this EOC's own context variables |
+| "alpha_talker","beta_talker" | optional | string or [variable object](#variable-object) | the EOCs' alpha and beta, as for [`run_eocs`](#run_eocs); default this EOC's `u` and `npc`.  If neither exists, the avatar is the alpha.  If one of them names a character or handle that can't be found, the EOCs don't run |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ✔️ | ✔️ | ✔️ | ✔️ |
+
+##### Examples
+Tell every EOC that listens that this NPC (the beta) was recruited, by the avatar
+```jsonc
+{ "trigger_custom_event": "mymod_npc_recruited", "variables": { "camp": "north" } }
+```
+
 `assign_mission: `string or [variable object](#variable-object)   Will assign mission to the player.
 
 #### `assign_mission`
@@ -2815,6 +2857,7 @@ Will assign mission to the player
 | --- | --- | --- | --- |
 | "assign_mission" | **mandatory** | string or [variable object](#variable-object) | Mission that would be assigned to the player |
 | "deadline" | optional | string or [variable object](#variable-object) | Time point when mission will be failed automatically if not already complete |
+| "giver" | optional | `"u"` or `"npc"` | The NPC who gives the mission: the player turns it in to them, they appear as its giver, and the mission's start effects see them.  Without it the mission has no giver.  If that talker isn't an NPC, an error is shown and no mission is assigned |
 
 ##### Valid talkers:
 
@@ -2826,6 +2869,11 @@ Will assign mission to the player
 Assign you a `MISSION_REACH_FAKE_DAVE` mission which must be completed within the next 17 hours
 ```jsonc
 { "assign_mission": "MISSION_REACH_FAKE_DAVE", "deadline": { "math": [ "time('now') + time(' 17 h')" ] } }
+```
+
+The NPC you are talking to gives you a mission that you turn in to them
+```jsonc
+{ "assign_mission": "MISSION_GET_BOOK", "giver": "npc" }
 ```
 
 #### `remove_active_mission`
@@ -3197,6 +3245,26 @@ runs `EOC_POWER_TOGGLE_REMOVE_EFFECTS`, but current beta talker would be made al
   },
 ```
 
+#### `u_reactivate_eocs`, `npc_reactivate_eocs`
+Puts deactivated `RECURRING` EOCs (see `deactivate_condition`) back in their queue, to run again after their `recurrence`, whatever their `deactivate_condition` says now.  The game only tests deactivated EOCs again when a trait or bionic is gained or lost, or the weather changes; use this when something else their `deactivate_condition` checks has changed.  A global EOC is put back in the global queue; any other in the queue of the talker (`u` or `npc`), which must be a character.  An EOC that wasn't deactivated is left as it is.  Sets the context variable `eocs_reactivated` to the number of EOCs put back.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_reactivate_eocs" / "npc_reactivate_eocs" | **mandatory** | string, [variable object](#variable-object), or an array of them | the ids of the EOCs. A literal id that doesn't exist, or that isn't a `RECURRING` EOC, is a load error |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+The avatar's hunger EOC was deactivated by its `deactivate_condition` on a variable; the variable changed, so it may be needed again
+```jsonc
+{ "u_add_var": "mymod_hunger_active", "value": "yes" },
+{ "u_reactivate_eocs": [ "EOC_MYMOD_HUNGER" ] }
+```
+
 #### `u_set_talker`, `npc_set_talker`
 Store a handle to You or NPC in a variable object. `run_eocs` reads it back as `alpha_talker` or `beta_talker`, so a later EOC (one queued with `time_in_future`, an EVENT EOC, or one run on someone else) can act on the same character, monster, item or vehicle.
 
@@ -3327,19 +3395,23 @@ Executes the effect repeatedly while storing the values ​​of a specific list
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
-| "foreach" | **mandatory** | string | Type of list. `"ids"`, `"item_group"`, `"monstergroup"`, `"array"` are available. |
+| "foreach" | **mandatory** | string | Type of list. `"ids"`, `"item_group"`, `"monstergroup"`, `"array"`, and the talker's own `"u_traits"`, `"u_effects"`, `"u_bionics"`, `"u_spells"` (or `npc_` for the beta) are available.  Any other value is a load error. |
 | "var" | **mandatory** | [variable objects](#variable-object) | Variable to store value in the list. |
 | "effect" | **mandatory** | effect | Effect(s) executed. |
-| "target" | **mandatory** | See below | Changes depending on the value of "foreach". See below. |
+| "target" | See below | See below | Changes depending on the value of "foreach". See below.  Not used by the talker's own lists. |
 
 The correspondence between "foreach" and "target" is as follows.
 
 | "foreach" | Value | Info |
 | --- | --- | --- |
-| "ids" | string | List the IDs of objects that appear in the game. `"bodypart"`, `"flag"`, `"trait"`, `"vitamin"` are available. |
-| "item_group" | string | List the IDs of items in the item group. |
-| "monstergroup" | string | List the IDs of monsters in the monster group. |
+| "ids" | string | List the IDs of objects that appear in the game. `"bodypart"`, `"flag"`, `"trait"`, `"vitamin"`, `"effect"`, `"skill"`, `"spell"`, `"proficiency"`, `"martial_art"`, `"monster"` (monster types) and `"bionic"` are available; any other is a load error. |
+| "item_group" | string or [variable object](#variable-object) | List the IDs of items in the item group. A literal group that doesn't exist is a load error. |
+| "monstergroup" | string or [variable object](#variable-object) | List the IDs of monsters in the monster group. A literal group that doesn't exist is a load error. |
 | "array" | array of strings or [variable objects](#variable-object) | List simple strings. |
+| "u_traits", "npc_traits" | none | The traits and mutations the talker has, sorted by id.  Empty for a talker that isn't a character. |
+| "u_effects", "npc_effects" | none | The effects the talker (a character or monster) has, each once however many body parts it is on, sorted by id. |
+| "u_bionics", "npc_bionics" | none | The bionics the talker has installed, each once, sorted by id. |
+| "u_spells", "npc_spells" | none | The spells the talker knows, sorted by id. |
 
 ##### Valid talkers:
 
@@ -3356,6 +3428,11 @@ Resets all of your vitamins.
   "target": "vitamin",
   "effect": [ { "math": [ "u_vitamin(_id) = 0" ] } ]
 }
+```
+
+Lists the effects the NPC has.
+```jsonc
+{ "foreach": "npc_effects", "var": { "context_val": "id" }, "effect": [ { "u_message": "<context_val:id>" } ] }
 ```
 
 #### `u_pickup_items`, `npc_pickup_items`
@@ -7143,13 +7220,13 @@ NPC or monster's fatal injury is reserved by a scene. Avatar scenes require the
 definition's explicit `allow_avatar_fatal_target` opt-in. These read-only conditions never
 replace missing talkers with the avatar. [Fatal execution rules](EXECUTIONS.md#fatal-hit-rules)
 describe reservation and normal death/prevention ordering.
-You or NPC will be prevented from death. Intended for use in EoCs has `NPC_DEATH` or `EVENT(character_dies)` type (Take care that u will be the dying npc in these events).
+You or NPC will be prevented from death. Intended for use in EoCs has `NPC_DEATH` or `EVENT(character_dies)` type (Take care that u will be the dying npc in these events).  A monster is prevented from death only in a `PREVENT_MONSTER_DEATH` EOC (see [EOC types](#eoc-types)): there it keeps at least 1 HP and doesn't die.
 
 ##### Valid talkers:
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
 
 ##### Examples
 
@@ -7175,6 +7252,40 @@ NPC is prevented from death.
   "condition": { "u_has_trait": "DEBUG_PREVENT_DEATH" },
   "effect": [ "u_prevent_death" ]
 }
+```
+
+A boss monster that survives its first death
+```jsonc
+{
+  "type": "effect_on_condition",
+  "id": "EOC_mymod_boss_second_life",
+  "eoc_type": "PREVENT_MONSTER_DEATH",
+  "condition": { "and": [ { "u_is_mtype": "mon_mymod_boss" }, { "not": { "u_has_effect": "mymod_second_life_used" } } ] },
+  "effect": [
+    "u_prevent_death",
+    { "u_add_effect": "mymod_second_life_used", "duration": "PERMANENT" },
+    { "npc_message": "The Dread Lord refuses to die!", "type": "bad" }
+  ]
+}
+```
+
+#### `u_add_death_eoc`, `npc_add_death_eoc`, `u_remove_death_eoc`, `npc_remove_death_eoc`
+Adds an `NPC_DEATH` EOC to the ones that run when this character dies as an NPC (as an NPC template's `death_eocs` do), or removes one.  It is saved with the character.  Adding one it already has does nothing.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_add_death_eoc" / "npc_add_death_eoc" / "u_remove_death_eoc" / "npc_remove_death_eoc" | **mandatory** | string or [variable object](#variable-object) | id of the EOC, which must be of type `NPC_DEATH`. For `add`, a literal id that doesn't exist or isn't `NPC_DEATH` is a load error |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+The NPC you recruit tells your camp when they die
+```jsonc
+{ "npc_add_death_eoc": "EOC_MYMOD_FOLLOWER_DIED" }
 ```
 
 #### `u_attack`, `npc_attack`
@@ -7402,13 +7513,13 @@ The monster walks to the altar, and its other EOC sends it back to its own busin
 ```
 
 #### `u_ranged_attack`, `npc_ranged_attack`
-Alpha or beta talker fires its wielded gun, in its current gun mode, at the other talker. Takes no parameters, and is written as a plain string. Nothing happens if the attacker is not a character, wields no gun, does not have enough ammo, or if the other talker is not a creature.
+Alpha or beta talker fires its wielded gun, in its current gun mode, at the other talker. Takes no parameters, and is written as a plain string. Nothing happens if the attacker wields no gun, does not have enough ammo, or if the other talker is not a creature.  A monster uses the first of its own `gun` special attacks (in the order of their names), as `u_attack` with that attack's name would; nothing happens if it has none.  Item, furniture and vehicle talkers can't attack.
 
 ##### Valid talkers:
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ✔️ | ❌ | ❌ | ❌ |
 
 ##### Examples
 Alpha talker shoots at the beta talker

@@ -475,6 +475,9 @@ class json_talk_response
         explicit json_talk_response( const JsonObject &jo, std::string_view src );
 
         const talk_response &get_actual_response() const;
+        const std::string &get_failure_topic() const {
+            return failure_topic;
+        }
         bool has_condition() const {
             return has_condition_;
         }
@@ -549,7 +552,8 @@ class json_talk_topic
         std::vector<json_dynamic_line_effect> get_speaker_effects() const;
         std::optional<character_portrait_id> get_portrait_override() const;
 
-        void check_consistency() const;
+        // Reports topics and skills the responses name that don't exist; @p id is this topic's
+        void check_consistency( const std::string &id ) const;
         /**
          * Callback from @ref dialogue::gen_responses, it should add the response from here
          * into the list of possible responses (that will be presented to the player).
@@ -566,6 +570,8 @@ class json_talk_topic
 
 void unload_talk_topics();
 void load_talk_topic( const JsonObject &jo, std::string_view src );
+/** Checks the loaded talk topics' references, once all data is loaded (EOC-J03) */
+void check_talk_topic_consistency();
 void get_raw_debug_fields( const JsonObject &jo, std::map<std::string, std::string> &debug_info );
 
 #endif // CATA_SRC_DIALOGUE_H
