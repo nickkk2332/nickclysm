@@ -22,6 +22,7 @@
 #include "creature.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue_helpers.h" // IWYU pragma: keep
 #include "effect.h"
 #include "faction.h"
 #include "grapple.h"

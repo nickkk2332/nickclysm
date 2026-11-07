@@ -17,6 +17,7 @@
 #include "character.h"
 #include "character_attire.h"
 #include "debug.h"
+#include "dialogue_helpers.h" // IWYU pragma: keep
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
