@@ -1772,6 +1772,19 @@ conditional_t::func f_is_knocked_out( bool is_npc )
     };
 }
 
+// HLTH-J14: asleep, lying down or trying to sleep, or unconscious: the opposite of the "while
+// awake" the C++ trait effects used, for the processed_eocs that replace them
+conditional_t::func f_in_sleep_state( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        if( !d.has_actor( is_npc ) ) {
+            return false;
+        }
+        const Creature *who = d.const_actor( is_npc )->get_const_creature();
+        return who && who->in_sleep_state();
+    };
+}
+
 conditional_t::func f_can_be_knocked_out( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
@@ -3935,6 +3948,7 @@ parsers_simple = {
     {"u_in_execution", "npc_in_execution", &conditional_fun::f_in_execution },
     {"u_in_ability", "npc_in_ability", &conditional_fun::f_in_ability },
     {"u_is_knocked_out", "npc_is_knocked_out", &conditional_fun::f_is_knocked_out },
+    {"u_in_sleep_state", "npc_in_sleep_state", &conditional_fun::f_in_sleep_state },
     {"u_death_pending", "npc_death_pending", &conditional_fun::f_death_pending },
     {"u_can_be_knocked_out", "npc_can_be_knocked_out", &conditional_fun::f_can_be_knocked_out },
     {"u_is_avatar", "npc_is_avatar", &conditional_fun::f_is_avatar },

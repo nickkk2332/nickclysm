@@ -1,6 +1,7 @@
 #include "addiction.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <memory>
@@ -17,6 +18,7 @@
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "generic_factory.h"
+#include "magic_enchantment.h"
 #include "rng.h"
 #include "talker.h"
 #include "text_snippets.h"
@@ -346,6 +348,56 @@ static const std::map<std::string, std::function<bool( Character &, addiction & 
     {"crack_effect",       ::crack_effect}
 };
 
+// A time changed by an enchantment value, to the nearest turn and never negative, so that a
+// multiplier such as 2/3 written to six places gives the time it means.
+static time_duration enchanted_duration( const Character &u, const enchant_vals::mod value,
+        const time_duration &base )
+{
+    const double turns = u.enchantment_cache->modify_value( value, to_turns<double>( base ) );
+    return time_duration::from_turns( std::max( 0, static_cast<int>( std::round( turns ) ) ) );
+}
+
+time_duration add_type::dose_satiation_for( const Character &u ) const
+{
+    return enchanted_duration( u, enchant_vals::mod::ADDICTION_SATIATION, _dose_satiation );
+}
+
+time_duration add_type::recovery_time_for( const Character &u ) const
+{
+    return enchanted_duration( u, enchant_vals::mod::ADDICTION_RECOVERY, _recovery_time );
+}
+
+int addiction_strength_for( const Character &u, const int strength )
+{
+    // Truncated toward zero, as Addiction Resistant's strength / 2 was.
+    return static_cast<int>( u.enchantment_cache->modify_value(
+                                 enchant_vals::mod::ADDICTION_STRENGTH, strength ) );
+}
+
+bool addiction::recover( const Character &u )
+{
+    sated -= 1_turns;
+    // An addiction of no known type (an old save's "none") keeps the default lifecycle.
+    time_duration decay = 10_minutes;
+    time_duration recovery = 6_hours;
+    int remove_below = MIN_ADDICTION_LEVEL;
+    if( type.is_valid() ) {
+        const add_type &add = type.obj();
+        decay = add.get_intensity_decay();
+        recovery = add.recovery_time_for( u );
+        remove_below = add.get_remove_below();
+    }
+    // Higher intensity addictions heal faster
+    if( sated - decay * intensity < -recovery ) {
+        if( intensity < remove_below ) {
+            return true;
+        }
+        intensity--;
+        sated = 0_turns;
+    }
+    return false;
+}
+
 bool addiction::run_effect( Character &u )
 {
     bool ret = false;
@@ -371,6 +423,11 @@ void add_type::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "craving_morale", _craving_morale, morale_type::NULL_ID() );
     optional( jo, was_loaded, "effect_on_condition", _effect );
     optional( jo, was_loaded, "builtin", _builtin );
+    optional( jo, was_loaded, "dose_satiation", _dose_satiation, 2_hours );
+    optional( jo, was_loaded, "recovery_time", _recovery_time, 6_hours );
+    optional( jo, was_loaded, "intensity_decay", _intensity_decay, 10_minutes );
+    optional( jo, was_loaded, "max_intensity", _max_intensity, MAX_ADDICTION_LEVEL );
+    optional( jo, was_loaded, "remove_below", _remove_below, MIN_ADDICTION_LEVEL );
 }
 
 void add_type::check_add_types()
@@ -382,6 +439,19 @@ void add_type::check_add_types()
         }
         if( !add._builtin.empty() && builtin_map.find( add._builtin ) == builtin_map.end() ) {
             debugmsg( "invalid builtin \"%s\" for addiction_type \"%s\"", add._builtin, add.id.c_str() );
+        }
+        if( add._dose_satiation < 0_turns || add._recovery_time < 0_turns ||
+            add._intensity_decay < 0_turns ) {
+            debugmsg( "addiction_type \"%s\" has a negative dose_satiation, recovery_time or "
+                      "intensity_decay", add.id.c_str() );
+        }
+        if( add._max_intensity < 1 ) {
+            debugmsg( "addiction_type \"%s\" has max_intensity %d; it must be at least 1",
+                      add.id.c_str(), add._max_intensity );
+        }
+        if( add._remove_below < 1 ) {
+            debugmsg( "addiction_type \"%s\" has remove_below %d; it must be at least 1, or the "
+                      "addiction would never go away", add.id.c_str(), add._remove_below );
         }
     }
 }

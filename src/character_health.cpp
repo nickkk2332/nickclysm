@@ -218,8 +218,6 @@ static const trait_id trait_DEBUG_LS( "DEBUG_LS" );
 static const trait_id trait_DEBUG_STAMINA( "DEBUG_STAMINA" );
 static const trait_id trait_DISRESISTANT( "DISRESISTANT" );
 static const trait_id trait_GLASSJAW( "GLASSJAW" );
-static const trait_id trait_HEAVYSLEEPER( "HEAVYSLEEPER" );
-static const trait_id trait_HEAVYSLEEPER2( "HEAVYSLEEPER2" );
 static const trait_id trait_HIBERNATE( "HIBERNATE" );
 static const trait_id trait_MASOCHIST( "MASOCHIST" );
 static const trait_id trait_M_SKIN3( "M_SKIN3" );
@@ -322,16 +320,27 @@ void Character::react_to_felt_pain( int intensity )
 
         if( has_bionic( bio_sleep_shutdown ) ) {
             pain_thresh += 999;
-        } else if( has_trait( trait_HEAVYSLEEPER ) ) {
-            pain_thresh += 2;
-        } else if( has_trait( trait_HEAVYSLEEPER2 ) ) {
-            pain_thresh += 5;
+        } else {
+            // HLTH-J12: Heavy Sleeper +2, Very Heavy Sleeper +5
+            pain_thresh += static_cast<int>( enchantment_cache->modify_value(
+                                                 enchant_vals::mod::WAKE_PAIN_THRESHOLD, 0.0 ) );
         }
 
         if( intensity >= pain_thresh ) {
             wake_up();
         }
     }
+}
+
+int Character::wake_dice() const
+{
+    return std::max( 0, static_cast<int>( enchantment_cache->modify_value(
+            enchant_vals::mod::WAKE_RESISTANCE, 2.0 ) ) );
+}
+
+double Character::sleep_light_tolerance() const
+{
+    return enchantment_cache->modify_value( enchant_vals::mod::SLEEP_LIGHT_TOLERANCE, 1.0 );
 }
 
 bool Character::is_dead_state() const
@@ -1562,9 +1571,16 @@ void Character::update_needs( int rate_multiplier )
 
             }
         }
+        // HLTH-J12: only while resting in water, as Aqueous Repose and Embrace of the Waters say.
+        // The sleep effect used to take the same 3 off again, wherever its sleeper lay.
         if( calendar::once_every( 10_minutes ) &&
             ( has_trait( trait_WATERSLEEP ) || has_trait( trait_UNDINE_SLEEP_WATER ) ) ) {
-            mod_sleepiness( -3 ); // Fish sleep less in water
+            map &here = get_map();
+            const tripoint_bub_ms pos = pos_bub( here );
+            if( is_underwater() || here.has_flag_ter( ter_furn_flag::TFLAG_SWIMMABLE, pos ) ||
+                here.has_flag_ter( ter_furn_flag::TFLAG_DEEP_WATER, pos ) ) {
+                mod_sleepiness( -3 ); // Fish sleep less in water
+            }
         }
     }
 

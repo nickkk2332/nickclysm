@@ -27,6 +27,7 @@
     - [Intensities](#intensities)
     - [Miss messages](#miss-messages)
     - [Decay messages](#decay-messages)
+    - [Periodic messages](#periodic-messages)
     - [Targeting modifiers](#targeting-modifiers)
     - [Effect modifiers](#effect-modifiers)
     - [Vitamin Mods](#vitamin-mods)
@@ -143,7 +144,7 @@ An effect type can copy another one (or an `"abstract"` one, which nothing can a
 * Numeric fields (`max_intensity`, `int_add_val`, `int_decay_step`, `dur_add_perc`, `max_duration`, ...) support `relative` and `proportional`.
 * `base_mods` and `scaling_mods` replace the parent's values one group at a time.  Each stat's keys form a group (`str_mod` alone; `pain_amount`, `pain_min`, `pain_max`, `pain_max_val`, `pain_chance`, `pain_chance_bot` and `pain_tick`; the `hurt_*` keys; the `sleep_*` keys; and so on).  Naming any key of a group, in either object, replaces the parent's whole group, base and scaling values alike: a child that only sets `pain_chance` loses the parent's `pain_min`, `pain_max` and the rest, so restate the ones to keep.  Groups the child doesn't name keep the parent's values.
 * `apply_message` replaces the parent's apply messages; a `rating` alone re-rates them.  `reduced_desc` keeps following `desc` unless the parent or the child sets it.
-* `int_dur_factor`, `miss_messages`, `decay_messages`, `apply_message`, `rating`, `reduced_desc`, `base_mods` and `scaling_mods` can only be replaced; using `relative`, `proportional`, `extend` or `delete` on them is a load error.
+* `int_dur_factor`, `miss_messages`, `decay_messages`, `periodic_messages`, `pkill_addict_reduces`, `apply_message`, `rating`, `reduced_desc`, `base_mods` and `scaling_mods` can only be replaced; using `relative`, `proportional`, `extend` or `delete` on them is a load error.
 * The parent may be defined later than the child: the child loads as soon as the parent does.  A parent that is never defined is reported when the game checks its data.
 
 ## Optional fields
@@ -408,6 +409,19 @@ so on. The messages will print whenever the intensity decreases to their matchin
 whether through decay ticks or through "int_dur_factor". So if it decayed to intensity 2 from 3+ it would display
 "OOGA-BOOGA.  You feel AWFUL!" as a bad message to the player.
 
+### Periodic messages
+```jsonc
+    "periodic_messages": [
+        { "text": "Your bowels ache.", "chance": 3072, "rating": "bad" },
+        { "text": "Your head pounds.", "chance": 600, "rating": "bad", "min_intensity": 2, "max_intensity": 3 }
+    ]
+```
+Flavour messages the effect shows to the player now and then: each turn the effect is processed (and
+when it is first applied), each message whose intensity range holds the effect's intensity shows with
+a chance of one in `chance` (mandatory, at least 1).  `rating` is `"good"`, `"neutral"` (the default),
+`"bad"` or `"mixed"`; `min_intensity` defaults to 1 and `max_intensity` to no limit.  NPCs don't show
+them.  The parasites (`tapeworm`, `bloodworms`, `paincysts`, `brainworms`) and `tetanus` use them.
+
 ### Targeting modifiers
 ```jsonc
     "main_parts_only": true // Defaults to false
@@ -418,12 +432,16 @@ main part (arms, head, legs, etc.).
 ### Effect modifiers
 ```jsonc
     "pkill_addict_reduces": true, // Defaults to false
+    // or name the addiction and how strongly each of its levels weakens the painkiller:
+    "pkill_addict_reduces": { "addiction": "opiate", "per_intensity": 2.0 },
     "pain_sizing": true,          // Defaults to false
     "hurt_sizing": true,          // Defaults to false
     "harmful_cough": true         // Defaults to false
 ```
 "pkill_addict_reduces" makes a player's addiction to painkillers reduce the chance of the effect giving
-them more pkill. "pain_sizing" and "hurt_sizing" cause large/huge mutations to affect the chance of pain
+them more pkill: the chance is divided by the addiction's intensity times `per_intensity` (at least 1).
+`true` means the `opiate` addiction with `per_intensity` 2; the object form names any `addiction_type`
+(`per_intensity` defaults to 2). "pain_sizing" and "hurt_sizing" cause large/huge mutations to affect the chance of pain
 and hurt effects triggering. "harmful_cough" means that the coughs caused by this effect can hurt the player.
 
 ### Vitamin Mods

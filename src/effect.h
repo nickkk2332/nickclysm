@@ -3,6 +3,7 @@
 #define CATA_SRC_EFFECT_H
 
 #include <array>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -100,6 +101,18 @@ struct effect_dur_mod {
     bool same_bp;
 
     void load( const JsonObject &jo );
+    void deserialize( const JsonObject &jo );
+};
+
+// HLTH-J13: a flavour message an effect shows now and then, one turn in `chance`, while its
+// intensity is between `min_intensity` and `max_intensity`.
+struct effect_periodic_message {
+    translation text;
+    game_message_type type = game_message_type::m_neutral;
+    int chance = 1;
+    int min_intensity = 1;
+    int max_intensity = INT_MAX;
+
     void deserialize( const JsonObject &jo );
 };
 
@@ -222,13 +235,16 @@ class effect_type
         std::vector<efftype_id> blocks_effects;
 
         std::vector<std::pair<translation, int>> miss_msgs;
+        std::vector<effect_periodic_message> periodic_msgs;
 
         bool pain_sizing = false;
         bool hurt_sizing = false;
         bool harmful_cough = false;
-        // TODO: Once addictions are JSON-ized it should be trivial to convert this to a
-        // "generic" addiction reduces value
+        // An addiction that makes the painkiller work less, by 1 / ( intensity * scale )
+        // (HLTH-J11: true means opiate and 2)
         bool pkill_addict_reduces = false;
+        addiction_id pkill_addiction;
+        double pkill_addict_scale = 2.0;
         // This flag is hard-coded for specific IDs now
         // It needs to be set for monster::move_effects
         bool impairs_movement = false;
@@ -443,6 +459,10 @@ class effect
 
         /** Returns the modifier caused by addictions. Currently only handles painkiller addictions. */
         double get_addict_mod( const std::string &arg, int addict_level ) const;
+        /** The addiction whose intensity get_addict_mod( "PKILL" ) wants; null if none. */
+        const addiction_id &get_pkill_addiction() const;
+        /** Flavour messages this effect shows now and then (HLTH-J13). */
+        const std::vector<effect_periodic_message> &get_periodic_msgs() const;
         /** Returns true if the coughs caused by an effect can harm the player directly. */
         bool get_harmful_cough() const;
         /** Returns the percentage value by further applications of existing effects' duration is multiplied by. */

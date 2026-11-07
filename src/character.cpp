@@ -144,7 +144,6 @@ static const activity_id ACT_WAIT_FOLLOWERS( "ACT_WAIT_FOLLOWERS" );
 static const activity_id ACT_WAIT_NPC( "ACT_WAIT_NPC" );
 static const activity_id ACT_WAIT_STAMINA( "ACT_WAIT_STAMINA" );
 
-static const addiction_id addiction_opiate( "opiate" );
 static const addiction_id addiction_sleeping_pill( "sleeping pill" );
 
 static const anatomy_id anatomy_human_anatomy( "human_anatomy" );
@@ -7170,6 +7169,14 @@ void Character::process_one_effect( effect &it, bool is_new )
         add_miss_reason( i.first.translated(), static_cast<unsigned>( i.second ) );
     }
 
+    // HLTH-J13: flavour messages from the effect's JSON (tapeworms, tetanus...)
+    for( const effect_periodic_message &msg : it.get_periodic_msgs() ) {
+        if( it.get_intensity() >= msg.min_intensity && it.get_intensity() <= msg.max_intensity &&
+            one_in( msg.chance ) ) {
+            add_msg_if_player( msg.type, msg.text );
+        }
+    }
+
     // Handle vitamins
     for( const vitamin_applied_effect &vit : it.vit_effects( reduced ) ) {
         if( vit.tick && vit.rate && calendar::once_every( *vit.tick ) ) {
@@ -7342,7 +7349,7 @@ void Character::process_one_effect( effect &it, bool is_new )
     // Handle painkillers
     val = get_effect( "PKILL", reduced );
     if( val != 0 ) {
-        mod = it.get_addict_mod( "PKILL", addiction_level( addiction_opiate ) );
+        mod = it.get_addict_mod( "PKILL", addiction_level( it.get_pkill_addiction() ) );
         if( is_new || it.activated( calendar::turn, "PKILL", val, reduced, mod ) ) {
             mod_painkiller( bound_mod_to_vals( get_painkiller(), val, it.get_max_val( "PKILL", reduced ), 0 ) );
         }

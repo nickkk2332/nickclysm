@@ -4102,7 +4102,8 @@
     "rating": "bad",
     "resist_traits": [ "VOMITSTOMACH" ],
     "base_mods": { "hunger_chance": [ 50 ], "hunger_min": [ 1 ] },
-    "blood_analysis_description": "Intestinal Parasite"
+    "blood_analysis_description": "Intestinal Parasite",
+    "periodic_messages": [ { "text": "Your bowels ache.", "chance": 3072, "rating": "bad" } ]
   },
   {
     "type": "effect_type",
@@ -4117,7 +4118,8 @@
       "h_mod_min": [ -10 ],
       "cough_chance": [ 300, 0 ]
     },
-    "blood_analysis_description": "Hemolytic Parasites"
+    "blood_analysis_description": "Hemolytic Parasites",
+    "periodic_messages": [ { "text": "Your veins itch.", "chance": 3072, "rating": "bad" } ]
   },
   {
     "type": "effect_type",
@@ -4127,6 +4129,7 @@
     "rating": "bad",
     "base_mods": { "pain_chance": [ 512 ], "pain_min": [ 2 ], "pain_max": [ 8 ], "h_mod_chance": [ 512 ], "h_mod_min": [ -10 ] },
     "blood_analysis_description": "Intracranial Parasites",
+    "periodic_messages": [ { "text": "Your head aches faintly.", "chance": 1536, "rating": "bad" } ],
     "flags": [ "NO_PSIONICS" ]
   },
   {
@@ -4136,7 +4139,8 @@
     "desc": [ "You aren't sure what's wrong with you but you don't feel well." ],
     "rating": "bad",
     "base_mods": { "pain_chance": [ 256 ], "pain_min": [ 1 ], "pain_max": [ 4 ], "sleepiness_chance": [ 256 ], "sleepiness_min": [ 1 ] },
-    "blood_analysis_description": "Intramuscular Parasites"
+    "blood_analysis_description": "Intramuscular Parasites",
+    "periodic_messages": [ { "text": "Your muscles feel like they're knotted and tired.", "chance": 3072, "rating": "bad" } ]
   },
   {
     "type": "effect_type",
@@ -4147,7 +4151,8 @@
     "rating": "bad",
     "resist_effects": [ "valium" ],
     "base_mods": { "dex_mod": [ -4, 0 ] },
-    "blood_analysis_description": "Clostridium tetani Infection"
+    "blood_analysis_description": "Clostridium tetani Infection",
+    "periodic_messages": [ { "text": "Your muscles are tight and sore.", "chance": 1536, "rating": "bad" } ]
   },
   {
     "type": "effect_type",

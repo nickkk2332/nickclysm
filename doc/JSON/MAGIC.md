@@ -1042,6 +1042,9 @@ Character status value  | Description
 `BODYTEMP_SLEEP`        | Amount of warmth (in celcius) added to you when you sleep. Default is 0, so better to use `add`
 `BONUS_BLOCK`           | Affects the number of blocks you can perform.
 `BONUS_DODGE`           | Affects the number of dodges you can perform. Do not confuse with `DODGE_CHANCE`
+`ADDICTION_RECOVERY`    | Multiplies how long an addiction takes to lose a level once its satiation runs out (its `addiction_type`'s `recovery_time`, 6 hours by default).  Use `multiply`; the result is rounded to the turn.  Vanilla: Addictive Personality (`0.666667`, 10 hours), Addiction Resistant (`-0.5`, 3 hours).
+`ADDICTION_SATIATION`   | Multiplies how long a dose of an addictive substance sates its addiction (its `addiction_type`'s `dose_satiation`, 2 hours by default).  Use `multiply`; the result is rounded to the turn.  Vanilla: Addictive Personality (`-0.5`, 1 hour), Addiction Resistant (`2`, 6 hours).
+`ADDICTION_STRENGTH`    | Multiplies the strength of each dose of an addictive substance: the chance to become addicted, and how easily a dose raises the intensity.  The result is truncated toward zero.  Vanilla: Addictive Personality (`multiply` 1, twice as strong), Addiction Resistant (`multiply` -0.5, half).
 `CARDIO_MULTIPLIER`     | Affects total cardio fitness by this amount.  Since it's a percent, using `multiply` is recommended.
 `CARRY_WEIGHT`          | Affect the summary weight player can carry. `"add": 1000` adds 1 kg of weight to carry.
 `CASTING_TIME_MULTIPLIER`   | Same as mutation `casting_time_multiplier` field, changes your casting speed. Since it's a percent, using `multiply` is recommended. `"multiply": 2"` triples the casting speed 
@@ -1125,6 +1128,7 @@ Character status value  | Description
 `SKILL_RUST_RESIST`     | when `add`, chance / 100 to resist skill rust; when `multiply`, multiplier for skill rust amount - the smaller, the less experience you will rust
 `SLEEPINESS`               | Affects how fast your sleepiness grows over time - bigger value makes you tired faster. Since it's a percent, using `multiply` is recommended.
 `SLEEPINESS_REGEN`         | Affects how much of your sleepiness and sleep deprivation drops when resting. Since it's a percent, using `multiply` is recommended.
+`SLEEP_LIGHT_TOLERANCE` | Multiplies the random roll that the light at your spot must beat to wake you (1 by default), so use `multiply`.  Vanilla: Very Heavy Sleeper (0.25) and Hibernation (3.75, on top of Very Heavy Sleeper, its prerequisite: 5 in all).
 `SLEEPY`                | The higher this the easier you fall asleep.
 `SMASH_BONUS`           | The higher this is, the better you are at smashing things.  Unlike increasing strength or boosting melee damage, this doesn't increase damage against enemies.
 `SOCIAL_INTIMIDATE`     | Affects your ability to intimidate.
@@ -1144,6 +1148,8 @@ Character status value  | Description
 `UGLINESS`              | Affects your `ugliness` stat, which affects NPCs' initial opinion of you.
 `VITAMIN_ABSORB_MOD`    | Increases amount of vitamins obtained from the food
 `VOMIT_MUL`             | Affects your chances to vomit.
+`WAKE_PAIN_THRESHOLD`   | Added to the pain (3 to 5) a sudden burst must reach to wake you.  Use `add`.  Vanilla: Heavy Sleeper (+2), Very Heavy Sleeper (+5).  The Sleep Shutdown bionic still stops pain waking you at all.
+`WAKE_RESISTANCE`       | Extra d15 dice that a noise or an alarm must beat to wake you; it rolls 2d15 by default.  Use `add`.  Vanilla: Heavy Sleeper (+1, 3d15), Very Heavy Sleeper (+4, 6d15).
 `WEAKNESS_TO_WATER`     | Amount of damage character gets when wet, once per second; scales with wetness, being 50% wet deal only half of damage; negative values restore hp; flat number with default value of 0, so `multiply` is useful only in combination with `add`; Works with float numbers, so `"add": -0.3` would result in restoring 1 hp with 30% change, and 70% chance to do nothing
 `WEAKPOINT_ACCURACY`    | Increases the coverage of every weakpoint you hit, therefore, increasing chances to hit said weakpoint. Works only if weakpoint has `"is_good": true` (all weakpoints have it true by default)
 `WEAPON_DISPERSION`     | Positive value increase the dispersion, negative decrease one.

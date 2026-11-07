@@ -366,11 +366,12 @@ Conditions have the following fields. `type` is mandatory and determines which o
 
 | Identifier  | Type    | Description
 |-------------|---------|-------------
-| `type`      | string  | One of `"terrain"`, `"furniture"`, `"trap"`, `"field"`, `"vehicle"`, `"character"`, or `"trait"`. Always mandatory.
+| `type`      | string  | One of `"terrain"`, `"furniture"`, `"trap"`, `"field"`, `"vehicle"`, `"character"`, `"trait"`, or `"condition"`. Always mandatory.
 | `id`        | string  | The ID of a terrain, furniture, trap, field, or trait.
 | `flag`      | string  | A terrain, furniture, vehicle part, or character flag.
 | `intensity` | integer | A field's intensity.
 | `active`    | boolean | If a trait must be active.
+| `condition` | object  | A [dialogue condition](NPCs.md#dialogue-conditions).
 | `invert`    | boolean | If a condition should pass when it would fail and fail when it would pass. Always optional.
 
 #### Types
@@ -386,6 +387,7 @@ A condition's `type` determines what it checks for in a location. A condition pa
 | `vehicle`   |                | `flag`      | Passes if in/on a part of a vehicle. If `flag` is defined, the part must have the given `flag` and cannot be broken.
 | `character` | `flag`         |             | Passes if the character has the given `flag`.
 | `trait`     | `id`           | `active`    | Passes if the character has a trait with the given `id`. If `active` is defined, the trait must be active.
+| `condition` | `condition`    |             | Passes if the dialogue condition is true, with the sleeper as `u` and the spot rated in the context variable `loc` (NPCs rate spots around them, not only their own), e.g. `{ "type": "condition", "condition": { "math": [ "u_val('pain') < 20" ] } }`.
 | all types   |                | `invert`    | Passes if the condition would fail. Fails if the condition would pass.
 
 ### EOC details

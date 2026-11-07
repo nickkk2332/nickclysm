@@ -66,6 +66,10 @@ def parse_effect_type(json, origin):
         write_text(msg[0], origin,
                    comment=f"Decay message of effect '{effect_name}'")
 
+    for msg in json.get("periodic_messages", []):
+        write_text(msg["text"], origin,
+                   comment=f"Periodic message of effect '{effect_name}'")
+
     write_text(json.get("apply_memorial_log"), origin,
                context="memorial_male",
                comment=f"Male memorial apply log of effect '{effect_name}'")

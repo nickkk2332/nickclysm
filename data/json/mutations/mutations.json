@@ -1028,7 +1028,8 @@
     "changes_to": [ "HEAVYSLEEPER2" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "enchantments": [ { "values": [ { "value": "WAKE_RESISTANCE", "add": 1 }, { "value": "WAKE_PAIN_THRESHOLD", "add": 2 } ] } ]
   },
   {
     "type": "mutation",
@@ -1038,7 +1039,16 @@
     "category": [ "BEAST", "LUPINE", "URSINE", "INTERSTICE" ],
     "prereqs": [ "HEAVYSLEEPER" ],
     "points": -2,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "enchantments": [
+      {
+        "values": [
+          { "value": "WAKE_RESISTANCE", "add": 4 },
+          { "value": "WAKE_PAIN_THRESHOLD", "add": 5 },
+          { "value": "SLEEP_LIGHT_TOLERANCE", "multiply": 0.25 }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1713,7 +1723,16 @@
     "cancels": [ "ADDICTIVE" ],
     "points": 1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "enchantments": [
+      {
+        "values": [
+          { "value": "ADDICTION_STRENGTH", "multiply": -0.5 },
+          { "value": "ADDICTION_SATIATION", "multiply": 2 },
+          { "value": "ADDICTION_RECOVERY", "multiply": -0.5 }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1724,7 +1743,16 @@
     "cancels": [ "NONADDICTIVE" ],
     "points": -2,
     "starting_trait": true,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "enchantments": [
+      {
+        "values": [
+          { "value": "ADDICTION_STRENGTH", "multiply": 1 },
+          { "value": "ADDICTION_SATIATION", "multiply": -0.5 },
+          { "value": "ADDICTION_RECOVERY", "multiply": 0.666667 }
+        ]
+      }
+    ]
   },
   {
     "type": "mutation",
@@ -1792,7 +1820,8 @@
     "points": -3,
     "starting_trait": true,
     "chargen_allow_npc": false,
-    "vitamin_cost": 160
+    "vitamin_cost": 160,
+    "processed_eocs": [ "EOC_TRAIT_NARCOLEPTIC" ]
   },
   {
     "type": "mutation",
@@ -2139,7 +2168,8 @@
     "category": [ "MEDICAL", "ELFA" ],
     "points": -1,
     "starting_trait": true,
-    "vitamin_cost": 60
+    "vitamin_cost": 60,
+    "processed_eocs": [ "EOC_TRAIT_MOODSWINGS" ]
   },
   {
     "type": "mutation",
@@ -3030,7 +3060,8 @@
     "changes_to": [ "SHOUT2" ],
     "points": -2,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 2 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 2 } ] } ],
+    "processed_eocs": [ "EOC_TRAIT_SHOUT1" ]
   },
   {
     "type": "mutation",
@@ -3042,7 +3073,8 @@
     "changes_to": [ "SHOUT3" ],
     "points": -3,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 5 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 1 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 5 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 1 } ] } ],
+    "processed_eocs": [ "EOC_TRAIT_SHOUT2" ]
   },
   {
     "type": "mutation",
@@ -3053,7 +3085,8 @@
     "prereqs": [ "SHOUT2" ],
     "points": -4,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 10 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 2 } ] } ]
+    "enchantments": [ { "values": [ { "value": "SHOUT_NOISE", "add": 10 }, { "value": "SHOUT_NOISE_STR_MULT", "add": 2 } ] } ],
+    "processed_eocs": [ "EOC_TRAIT_SHOUT3" ]
   },
   {
     "type": "mutation",
@@ -4455,7 +4488,11 @@
     "active": true,
     "cost": 0,
     "vitamin_cost": 160,
-    "enchantments": [ { "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 2 } ] } ]
+    "enchantments": [
+      {
+        "values": [ { "value": "STOMACH_SIZE_MULTIPLIER", "multiply": 2 }, { "value": "SLEEP_LIGHT_TOLERANCE", "multiply": 3.75 } ]
+      }
+    ]
   },
   {
     "type": "mutation",
