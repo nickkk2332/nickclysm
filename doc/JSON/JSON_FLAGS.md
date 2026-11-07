@@ -1554,6 +1554,7 @@ Techniques may be used by tools, armors, weapons and anything else that can be w
 - ```ACT_ON_RANGED_HIT```  The item should activate when thrown or fired, then immediately get processed if it spawns on the ground.
 - ```ALLOWS_REMOTE_USE``` This item can be activated or reloaded from adjacent tile without picking it up.
 - ```BELT_CLIP``` The item can be clipped or hooked on to a belt loop of the appropriate size (belt loops are limited by their max_volume and max_weight properties).
+- ```BINDS_HANDS``` While this item is wielded, handling any item (picking it up, taking it out of a container or holster, storing it) takes four times as long, as with electronic handcuffs.
 - ```BOMB``` It can be a remote controlled bomb.
 - ```CABLE_SPOOL``` This item is a spool of cable and must be processed as such.  It should usually have a "link_up" iuse_action, which it has special behavior for.
 - ```CANNIBALISM``` The item is a food that contains human flesh, and applies all applicable effects when consumed.

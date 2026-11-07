@@ -758,7 +758,7 @@ Any Item can be a container. To add the ability to contain things to an item, yo
     "material_restriction": [ "material_id" ],       // Only items that are mainly made of this material can enter.
 	// If multiple of "flag_restriction", "material_restriction" and "item_restriction" are used simultaneously then any item that matches any of them will be accepted.
     "insulation": 1.0,                // Insulation value provided to items in this pocket.
-    "sealed_data": { "spoil_multiplier": 0.0 },   // If a pocket has sealed_data, it will be sealed when the item spawns.  The sealed version of the pocket will override the unsealed version of the same datatype.
+    "sealed_data": { "spoil_multiplier": 0.0 },   // If a pocket has sealed_data, it will be sealed when the item spawns.  While sealed, the values given here replace the pocket's own: "spoil_multiplier" (default 1.0), and optionally "watertight", "airtight", "transparent", "insulation" and "moves" (the moves to take an item out, which breaks the seal; at least 1).  Members left out keep the unsealed pocket's value, except that a sealed pocket never spills and an "open_container" pocket is not transparent while sealed.  Taking an item out or putting one in breaks the seal.
 
     "inherits_flags": true // Items in this pocket pass their flags to the parent item.
   }

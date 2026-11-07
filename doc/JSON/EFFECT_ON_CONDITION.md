@@ -901,12 +901,13 @@ check is you have a torso
 - type: string or [variable object](#variable-object)
 - return true if item or items are presented in your or NPC inventory;
 - `_has_items` require `count` or `charges` to define how much copies of items (for `count`) or charges inside item (for `charges`) alpha or beta talker has
+- for an item talker, they look at what the item holds (its pockets and the containers in them), not at the item itself: a bag "has" the bandages in it, a flashlight the battery charges in it
 
 #### Valid talkers:
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ | ❌ |
 
 #### Examples
 check do you have a guitar
@@ -923,12 +924,13 @@ check do you have 6 ropes
 - type: string or [variable object](#variable-object)
 - return true if alpha or beta talker have items of specific category;
 - `count` can be used to check amount of items bigger than 1
+- for an item talker, it looks at what the item holds, not at the item itself
 
 #### Valid talkers:
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ | ❌ |
 
 #### Examples
 check do you have manual in inventory
@@ -1303,12 +1305,13 @@ check do you memorize `meat_hunk` recipe
 ### `u_has_item_with_flag`, `npc_has_item_with_flag`
 - type: string or [variable object](#variable-object)
 - return true if alpha or beta talker has any item with specific flag
+- for an item talker, it looks at what the item holds, not at the item itself
 
 #### Valid talkers:
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ | ❌ |
 
 #### Examples
 
@@ -2443,6 +2446,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | character_crafts_item | Triggers when a character finishes crafting a recipe, after its `result_eocs` and `result_item_eocs`. `quantity` is the batch size; `itype` is the recipe's result (`null` for a recipe with none) | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "itype", `itype_id` },<br/> { "quantity", `int` } | character / NONE |
 | character_disassembles_item | Triggers when a character finishes taking an item apart with a disassembly recipe, after its `disassembly_eocs` | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "itype", `itype_id` } | character / NONE |
 | character_dies |  | { "character", `character_id` }, | character / NONE |
+| character_drops_item | Triggers when a character drops an item with the drop activity, onto the ground or into vehicle cargo, once for each item or stack. `count` is the number of items, or of charges for an item counted by charges. Statistics don't keep it | { "character", `character_id` },<br/> { "itype", `itype_id` },<br/> { "count", `int` } | character / the item where it landed |
 | character_eats_item |  | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / NONE |
 | character_effect_intensity_changed | Triggers when adding (or granting, or taking back a grant of) an effect a character already has changes its intensity; not when the effect is gained, nor when its intensity decays over time | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` },<br/> { "intensity", `int` } (the new intensity) | character / NONE |
 | character_finished_activity | Triggered when character finished or canceled activity, after the activity has ended and after its `completion_eoc` or `cancel_eoc`. `canceled` is false when it completed: it ran out of moves, a craft or disassembly finished its item, a drop dropped everything, or a zone job ran out of work. `outcome` is `completed`, `canceled`, or `interrupted` for a cancel that left the activity in the backlog to resume | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "canceled", `bool` },<br/> { "outcome", `string` } | character / NONE |
@@ -2454,6 +2458,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | character_heals_damage |  | { "character", `character_id` },<br/> { "damage", `int` }, | character / NONE |
 | character_kills_character |  | { "killer", `character_id` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` },<br/> { "victim_class", `string` } (the NPC class id of the victim; empty for the avatar), | character / NONE |
 | character_kills_monster |  | { "killer", `character_id` },<br/> { "victim_type", `mtype_id` },<br/> { "exp", `int` }, | character / monster |
+| character_picks_up_item | Triggers when the avatar picks an item up (the pickup menu or auto-pickup), once for each item or stack taken. `count` is the number of items, or of charges for an item counted by charges. Statistics don't keep it | { "character", `character_id` },<br/> { "itype", `itype_id` },<br/> { "count", `int` } | character / the item where it went, or NONE if it was spread over stacks already carried |
 | character_learns_recipe | Triggers when a character learns a recipe it didn't know: `how` is `crafting` (memorized from a book while crafting), `disassembly` or `eoc` (`u_learn_recipe`, `u_roll_remainder`). Not sent for the recipes of a new character | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "how", `string` } | character / NONE |
 | character_learns_spell |  | { "character", `character_id` },<br/> { "spell", `spell_id` } | character / NONE |
 | character_loses_effect |  | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` } | character / NONE |
@@ -2465,6 +2470,7 @@ The [`trigger_event`](#trigger_event) effect sends one of these events, with `ar
 | character_releases_grab | Triggers when a character's hold on a creature ends, for any reason: letting go (`u_release_grab` too), the creature breaking free, a throw (before `character_throws_creature`), the hold breaking (too tired, flung, out of reach) or either side dying or leaving | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` }, | character (grabber) / creature (held) if it is still there, otherwise NONE | use `has_beta` before interacting with the beta talker; when the hold was lost with the creature gone from the map, the victim fields are empty (a creature out of reach is still named, and its side of the hold ends too)
 | character_smashes_tile | | { "character", `character_id` },<br/> { "terrain", `ter_str_id` },  { "furniture", `furn_str_id` }, | character / NONE |
 | character_starts_activity | Triggered when character starts or resumes activity | { "character", `character_id` },<br/> { "activity", `activity_id` },<br/> { "resume", `bool` } | character / NONE |
+| character_stores_item | Triggers when a character puts an item into a container, holster or sheath: holstering, "Store in", and moving items into a container (the insert activity, as the advanced inventory and the inventory's drag and drop do). `count` as for `character_picks_up_item`; `container` is the container's type, or `null` for a pocket attached to worn gear (PALS/MOLLE), which also gives no beta talker. Statistics don't keep it | { "character", `character_id` },<br/> { "itype", `itype_id` },<br/> { "count", `int` },<br/> { "container", `itype_id` } | character / the container, or NONE |
 | character_takeoff_item | triggers when character removes a worn item. If using `run_inv_eocs`, remember that the event fires before the items are actually removed | { "character", `character_id` },<br/> { "itype", `itype_id` } |
 | character_takes_damage | triggers when character gets any damage from any creature | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `body_part` },<br/> { "pain", `int` }, | character / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
 | monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding | { "damage", `int` },<br/> { "dies", `bool` }, | monster (the one hurt, also when nothing hurt it) / attacker (character or monster), or NONE when there is none (bleeding, fire, a fall) | use `has_beta` condition before interacting with beta talker
@@ -3720,7 +3726,7 @@ Drain a little fuel from every vehicle within 30 tiles of the player that is not
 ```
 
 #### `u_run_inv_eocs`, `npc_run_inv_eocs`
-Run EOCs on items in your or NPC's inventory
+Run EOCs on items in your or NPC's inventory. For an item talker (a bag, a toolbox), the items it holds are offered, and the `manual` menus are shown to the player
 
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
@@ -3733,7 +3739,7 @@ Run EOCs on items in your or NPC's inventory
 
 | Avatar | NPC | Monster | Furniture | Item | Vehicle |
 | ------ | --------- | ---- | ------- | --- | ---- |
-| ❌ | ❌ | ❌ | ❌ | ✔️ | ❌ |
+| ✔️ | ✔️ | ❌ | ❌ | ✔️ | ❌ |
 
 ##### Examples
 Picks an item in character's hands, and run `EOC_DESTROY_ITEM` EoC on it
@@ -5738,13 +5744,15 @@ removes morale type, delivered by `morale_id`
 Consumes the items `_has_items_sum` counts (what you carry, items you may take within reach, and the cargo of nearby or owned vehicles), treating count as weight and stopping once the requirement is covered
 Effect does not validate do player actually has enough items to consume, use `_has_items_sum`
 Pseudo items (such as a nearby fire, or tools provided by furniture) can satisfy `_has_items_sum` but can't be consumed, so don't ask for them as payment
+Part of a stack counted by charges (nails, thread, money) is taken off the stack; a whole item is removed. A consumed item that is a container drops its contents where it was (on your tile, for an item you carry), so ask for the contents, not the container, if they matter
+Items reserved by a craft in progress are left alone
 See examples for more info
 
 | Syntax | Optionality | Value  | Info |
 | ------ | ----------- | ------ | ---- |
-| "u_unset_flag" / "npc_unset_flag" | **mandatory** | array of pairs, in pair is string or [variable object](#variable-object) | runs the effect |
+| "u_consume_item_sum" / "npc_consume_item_sum" | **mandatory** | array of objects, each with `item` and `amount` | runs the effect |
 | "item"  | **mandatory** | string or [variable object](#variable-object) | id of item that should be removed |
-| "amount"  | **mandatory** | int or [variable object](#variable-object) | amount of items or charges that should be removed |
+| "amount"  | **mandatory** | int or [variable object](#variable-object) | amount of items or charges of this id that would cover the whole requirement on their own |
 
 ##### Valid talkers:
 

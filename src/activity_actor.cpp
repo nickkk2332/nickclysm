@@ -7659,9 +7659,25 @@ void drop_activity_actor::do_turn( player_activity &act, Character &who )
 {
     map &here = get_map();
     const tripoint_bub_ms pos = placement + who.pos_bub();
-    put_into_vehicle_or_drop( who, item_drop_reason::deliberate,
-                              obtain_activity_items( items, handler, who, current_bulk_unload ),
-                              &here, pos, force_ground );
+    const std::list<item> dropping = obtain_activity_items( items, handler, who,
+                                     current_bulk_unload );
+    std::vector<item_location> dropped = put_into_vehicle_or_drop( who,
+                                         item_drop_reason::deliberate, dropping, &here, pos, force_ground );
+    // INV-J08: one event for each item or stack, with where it landed when that is known
+    const bool landed_known = dropped.size() == dropping.size();
+    auto landed = dropped.begin();
+    for( const item &it : dropping ) {
+        const cata::event e = cata::event::make<event_type::character_drops_item>( who.getID(),
+                              it.typeId(), it.count() );
+        if( landed_known && *landed ) {
+            get_event_bus().send_with_talker( &who, &*landed, e );
+        } else {
+            get_event_bus().send_with_talker( &who, static_cast<Creature *>( nullptr ), e );
+        }
+        if( landed_known ) {
+            ++landed;
+        }
+    }
     // Cancel activity if items is empty. Otherwise, we modified in place and we will continue
     // to resolve the drop next turn. This is different from the pickup logic which creates
     // a brand new activity every turn and cancels the old activity
@@ -8518,6 +8534,24 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
 {
     bool success = false;
     bool bulk_load = false;
+    // INV-J08: what went in, for character_stores_item once this step is done
+    itype_id stored_type = itype_id::NULL_ID();
+    int stored_count = 0;
+    const auto announce_stored = [&]() {
+        if( stored_type.is_null() || !holster ) {
+            return;
+        }
+        item_location container = holster;
+        const cata::event e = cata::event::make<event_type::character_stores_item>( who.getID(),
+                              stored_type, stored_count, container->typeId() );
+        get_event_bus().send_with_talker( &who, &container, e );
+    };
+    if( !holster ) {
+        // the container is gone: destroyed, or used up by an EOC of an earlier step
+        handler.handle_by( who );
+        act.set_to_null();
+        return;
+    }
     Character *carrier = holster.carrier();
     drop_location &holstered_item = items.front();
     if( holstered_item.first ) {
@@ -8539,6 +8573,8 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
                 //~ %1$s: item to put in the container, %2$s: container to put item in
                 who.add_msg_if_player( string_format( _( "You put your %1$s into the %2$s." ),
                                                       holstered_item.first->display_name(), holster->type->nname( 1 ) ) );
+                stored_type = it.typeId();
+                stored_count = it.count();
                 handler.add_unsealed( holster );
                 handler.unseal_pocket_containing( holstered_item.first );
                 holstered_item.first.remove_item();
@@ -8556,6 +8592,8 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
                 //~ %1$s: item to put in the container, %2$s: container to put item in
                 who.add_msg_if_player( string_format( _( "You put your %1$s into the %2$s." ),
                                                       copy.display_name(), holster->type->nname( 1 ) ) );
+                stored_type = it.typeId();
+                stored_count = charges_added;
                 handler.add_unsealed( holster );
                 handler.unseal_pocket_containing( holstered_item.first );
                 it.charges -= charges_added;
@@ -8596,6 +8634,7 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
         holster.make_active();
         handler.handle_by( who );
         act.set_to_null();
+        announce_stored();
         if( !items_remain.empty() ) {
             g->insert_item( items_remain );
         }
@@ -8606,6 +8645,7 @@ void insert_item_activity_actor::finish( player_activity &act, Character &who )
     const int total_moves = item_move_cost( who, items.front().first, bulk_load );
     act.moves_left = total_moves;
     act.moves_total = total_moves;
+    announce_stored();
 }
 
 void insert_item_activity_actor::canceled( player_activity &/*act*/, Character &who )

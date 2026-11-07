@@ -213,6 +213,24 @@ void pocket_data::load( const JsonObject &jo )
 void sealable_data::load( const JsonObject &jo )
 {
     optional( jo, was_loaded, "spoil_multiplier", spoil_multiplier, 1.0f );
+    if( jo.has_member( "watertight" ) ) {
+        watertight = jo.get_bool( "watertight" );
+    }
+    if( jo.has_member( "airtight" ) ) {
+        airtight = jo.get_bool( "airtight" );
+    }
+    if( jo.has_member( "transparent" ) ) {
+        transparent = jo.get_bool( "transparent" );
+    }
+    if( jo.has_member( "insulation" ) ) {
+        insulation = static_cast<float>( jo.get_float( "insulation" ) );
+    }
+    if( jo.has_member( "moves" ) ) {
+        moves = jo.get_int( "moves" );
+        if( *moves < 1 ) {
+            jo.throw_error_at( "moves", "sealed_data moves must be at least 1" );
+        }
+    }
 }
 
 void pocket_noise::load( const JsonObject &jo )
@@ -716,12 +734,18 @@ float item_pocket::spoil_multiplier() const
 
 float item_pocket::insulation() const
 {
+    if( sealed() && data->sealed_data->insulation ) {
+        return *data->sealed_data->insulation;
+    }
     return data->insulation;
 }
 
 int item_pocket::moves() const
 {
     if( data ) {
+        if( sealed() && data->sealed_data->moves ) {
+            return *data->sealed_data->moves;
+        }
         return data->moves;
     } else {
         return -1;
@@ -2174,11 +2198,17 @@ bool item_pocket::rigid() const
 
 bool item_pocket::watertight() const
 {
+    if( sealed() && data->sealed_data->watertight ) {
+        return *data->sealed_data->watertight;
+    }
     return data->watertight;
 }
 
 bool item_pocket::transparent() const
 {
+    if( sealed() && data->sealed_data->transparent ) {
+        return *data->sealed_data->transparent;
+    }
     return data->transparent || ( data->open_container && !sealed() );
 }
 
@@ -2201,6 +2231,9 @@ bool item_pocket::is_forbidden() const
 
 bool item_pocket::airtight() const
 {
+    if( sealed() && data->sealed_data->airtight ) {
+        return *data->sealed_data->airtight;
+    }
     return data->airtight;
 }
 

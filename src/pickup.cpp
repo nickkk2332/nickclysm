@@ -19,6 +19,8 @@
 #include "contents_change_handler.h"
 #include "debug.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "faction.h"
 #include "flexbuffer_json.h"
 #include "game.h"
@@ -216,6 +218,8 @@ static bool pick_one_up( item_location &loc, int quantity, bool &got_water, bool
     Pickup::pick_info pre_info( info );
 
     pickup_answer option = CANCEL;
+    // where the item went, for character_picks_up_item
+    item_location picked_loc;
 
     // We already checked in do_pickup if this was a nullptr
     // Make copies so the original remains untouched if we bail out
@@ -314,6 +318,9 @@ static bool pick_one_up( item_location &loc, int quantity, bool &got_water, bool
             break;
         case WIELD:
             picked_up = player_character.wield( newit );
+            if( picked_up ) {
+                picked_loc = player_character.get_wielded_item();
+            }
             break;
         case SPILL:
             if( newit.is_container_empty() ) {
@@ -361,6 +368,7 @@ static bool pick_one_up( item_location &loc, int quantity, bool &got_water, bool
             if( picked_up ) {
                 // Update info
                 info.set_dst( added_it );
+                picked_loc = added_it;
             }
             break;
         }
@@ -400,6 +408,15 @@ static bool pick_one_up( item_location &loc, int quantity, bool &got_water, bool
         const tripoint_abs_omt note_pos = player_character.pos_abs_omt();
         if( overmap_buffer.note( note_pos ) == newit.display_name() ) {
             overmap_buffer.delete_note( note_pos );
+        }
+
+        // INV-J08: last, as its EOCs may change the inventory
+        const cata::event e = cata::event::make<event_type::character_picks_up_item>(
+                                  player_character.getID(), newit.typeId(), newit.count() );
+        if( picked_loc && picked_loc != item_location::nowhere ) {
+            get_event_bus().send_with_talker( &player_character, &picked_loc, e );
+        } else {
+            get_event_bus().send_with_talker( &player_character, static_cast<Creature *>( nullptr ), e );
         }
     }
 
