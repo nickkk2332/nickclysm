@@ -9168,18 +9168,21 @@ bool game::grabbed_furn_move( const tripoint_rel_ms &dp )
     if( src_items > 0 ) { // Move the stuff inside.
         if( dst_item_ok && src_item_ok ) {
             // Assume contents of both cells are legal, so we can just swap contents.
+            // Upstream CleverRaven/Cataclysm-DDA#89419: the destination's items go to the
+            // furniture's old tile and its old tile's items to the destination. Before, the loop
+            // walked the old tile it was inserting into, so every second item was lost.
             std::list<item> temp;
-            map_stack ms = here.i_at( fpos );
+            map_stack ms = here.i_at( fpos ); // the tile the furniture leaves
+            map_stack dest = here.i_at( fdest ); // the tile it moves to
             std::move( ms.begin(), ms.end(),
                        std::back_inserter( temp ) );
             here.i_clear( fpos );
-            for( auto item_iter = ms.begin();
-                 item_iter != ms.end(); ++item_iter ) {
-                ms.insert( *item_iter );
+            for( item &dest_item : dest ) {
+                ms.insert( dest_item );
             }
             here.i_clear( fdest );
             for( item &cur_item : temp ) {
-                ms.insert( cur_item );
+                dest.insert( cur_item );
             }
         } else {
             add_msg( _( "Stuff spills from the %s!" ), furntype.name() );
