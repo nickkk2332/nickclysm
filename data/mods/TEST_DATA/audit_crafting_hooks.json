@@ -42,7 +42,84 @@
         "id": "EOC_TEST_CRAFT_RESULT_ITEM",
         "effect": [ { "math": [ "craft_result_items++" ] }, { "npc_add_var": "made_by_eoc", "value": "yes" } ]
       }
+    ],
+    "start_eocs": [
+      {
+        "id": "EOC_TEST_CRAFT_START",
+        "effect": [
+          { "math": [ "craft_start_runs++" ] },
+          { "math": [ "craft_start_batch = _batch_size" ] },
+          { "copy_var": { "context_val": "recipe_id" }, "target_var": { "global_val": "craft_start_recipe" } },
+          { "if": "has_beta", "then": [ { "math": [ "craft_start_had_beta = 1" ] } ] }
+        ]
+      }
     ]
+  },
+  {
+    "//": "CRAFT-J02: far too hard for the test avatar, so it fails on its first step.",
+    "type": "recipe",
+    "activity_level": "NO_EXERCISE",
+    "result": "cudgel",
+    "id_suffix": "test_craft_fail",
+    "category": "CC_WEAPON",
+    "subcategory": "CSC_WEAPON_BASHING",
+    "skill_used": "fabrication",
+    "difficulty": 10,
+    "time": "1 m",
+    "components": [ [ [ "2x4", 1 ] ] ],
+    "fail_eocs": [
+      {
+        "id": "EOC_TEST_CRAFT_FAIL",
+        "effect": [
+          { "math": [ "craft_fail_runs++" ] },
+          { "math": [ "craft_fail_components_lost += _components_lost" ] },
+          { "math": [ "craft_fail_destroyed = _destroyed" ] },
+          { "copy_var": { "context_val": "recipe_id" }, "target_var": { "global_val": "craft_fail_recipe" } },
+          { "if": "has_beta", "then": [ { "math": [ "craft_fail_had_beta = 1" ] } ] }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CRAFT_EVENTS_CRAFTED",
+    "//": "CRAFT-J02: records character_crafts_item.",
+    "eoc_type": "EVENT",
+    "required_event": "character_crafts_item",
+    "effect": [
+      { "math": [ "crafted_events++" ] },
+      { "copy_var": { "context_val": "recipe" }, "target_var": { "global_val": "crafted_recipe" } },
+      { "copy_var": { "context_val": "itype" }, "target_var": { "global_val": "crafted_itype" } },
+      { "copy_var": { "context_val": "quantity" }, "target_var": { "global_val": "crafted_quantity" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CRAFT_EVENTS_DISASSEMBLED",
+    "//": "CRAFT-J02: records character_disassembles_item.",
+    "eoc_type": "EVENT",
+    "required_event": "character_disassembles_item",
+    "effect": [
+      { "math": [ "disassembled_events++" ] },
+      { "copy_var": { "context_val": "itype" }, "target_var": { "global_val": "disassembled_event_itype" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_CRAFT_EVENTS_LEARNED",
+    "//": "CRAFT-J02: records character_learns_recipe.",
+    "eoc_type": "EVENT",
+    "required_event": "character_learns_recipe",
+    "effect": [
+      { "math": [ "learned_events++" ] },
+      { "copy_var": { "context_val": "recipe" }, "target_var": { "global_val": "learned_recipe" } },
+      { "copy_var": { "context_val": "how" }, "target_var": { "global_val": "learned_how" } }
+    ]
+  },
+  {
+    "type": "effect_on_condition",
+    "id": "EOC_TEST_LEARN_THE_FAIL_RECIPE",
+    "effect": [ { "u_learn_recipe": "cudgel_test_craft_fail" } ]
   },
   {
     "id": "test_audit_hook_widget",

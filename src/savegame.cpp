@@ -1662,6 +1662,10 @@ void game::unserialize_master( const JsonValue &jv )
             int64_t saved = 1;
             jsin.read( saved );
             next_monster_uid = std::max( next_monster_uid, saved );
+        } else if( name == "next_vehicle_uid" ) {
+            int64_t saved = 1;
+            jsin.read( saved );
+            next_vehicle_uid = std::max( next_vehicle_uid, saved );
         } else if( name == "next_item_uid" ) {
             jsin.read( next_item_uid );
         } else if( name == "active_missions" ) {
@@ -1714,6 +1718,10 @@ void game::unserialize_dimension_data( const JsonValue &jv )
             int64_t saved = 1;
             jsin.read( saved );
             next_monster_uid = std::max( next_monster_uid, saved );
+        } else if( name == "next_vehicle_uid" ) {
+            int64_t saved = 1;
+            jsin.read( saved );
+            next_vehicle_uid = std::max( next_vehicle_uid, saved );
         } else if( name == "next_item_uid" ) {
             // Dimension travel saves this with the maps, but not the master save
             int64_t saved = 0;
@@ -1948,6 +1956,7 @@ void game::serialize_master( std::ostream &fout )
         json.member( "next_npc_id", next_npc_id );
         json.member( "next_item_uid", next_item_uid );
         json.member( "next_monster_uid", next_monster_uid );
+        json.member( "next_vehicle_uid", next_vehicle_uid );
 
         json.member( "active_missions" );
         mission::serialize_all( json );
@@ -1988,6 +1997,7 @@ void game::serialize_dimension_data( std::ostream &fout )
         // items saved in the maps
         json.member( "next_item_uid", next_item_uid );
         json.member( "next_monster_uid", next_monster_uid );
+        json.member( "next_vehicle_uid", next_vehicle_uid );
 
         json.end_object();
     } catch( const JsonError &e ) {

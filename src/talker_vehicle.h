@@ -9,6 +9,7 @@
 #include "coords_fwd.h"
 #include "talker.h"
 #include "type_id.h"
+#include "units_fwd.h"
 
 class vehicle;
 
@@ -45,8 +46,8 @@ class talker_vehicle_const: public const_talker_cloner<talker_vehicle_const>
         std::vector<std::string> get_topics( bool radio_contact ) const override;
         bool will_talk_to_u( const Character &you, bool force ) const override;
 
-        int get_weight() const override;
-        int get_unloaded_weight() const override;
+        units::mass get_weight() const override;
+        units::mass get_unloaded_weight() const override;
         bool is_driven() const override;
         int get_vehicle_facing() const override;
         bool can_fly() const override;

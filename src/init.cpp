@@ -1218,6 +1218,7 @@ void DynamicDataLoader::check_consistency()
             { _( "Professions" ), &profession::check_definitions },
             { _( "Profession groups" ), &profession_group::check_profession_group_consistency },
             { _( "Martial arts" ), &check_martialarts },
+            { _( "Martial arts techniques" ), &ma_technique::verify_ma_techniques },
             { _( "Climbing aid" ), &climbing_aid::check_consistency },
             { _( "Mutations" ), &mutation_branch::check_consistency },
             { _( "Mutation categories" ), &mutation_category_trait::check_consistency },
@@ -1248,6 +1249,7 @@ void DynamicDataLoader::check_consistency()
                     item_action_generator::generator().check_consistency();
                 }
             },
+            { _( "Butchery requirements" ), &butchery_requirements::check_consistency },
             { _( "Harvest lists" ), &harvest_list::check_consistency },
             { _( "NPC templates" ), &npc_template::check_consistency },
             { _( "Body parts" ), &body_part_type::check_consistency },

@@ -99,14 +99,15 @@ bool talker_vehicle_const::will_talk_to_u( const Character &you, bool ) const
     return !you.is_dead_state();
 }
 
-int talker_vehicle_const::get_weight() const
+// cargo and passengers included
+units::mass talker_vehicle_const::get_weight() const
 {
-    return units::to_milligram( me_veh_const->total_mass( get_map() ) );
+    return me_veh_const->total_mass( get_map() );
 }
 
-int talker_vehicle_const::get_unloaded_weight() const
+units::mass talker_vehicle_const::get_unloaded_weight() const
 {
-    return units::to_milligram( me_veh_const->unloaded_mass() );
+    return me_veh_const->unloaded_mass();
 }
 
 // vehicle::remote_controlled() also drops the remote link, with a message, when the avatar

@@ -1074,6 +1074,7 @@ void field_processor_fd_fire( const tripoint_bub_ms &p, field_entry &cur, field_
             smoke += static_cast<int>( windpower / 5 );
             if( cur.get_field_intensity() > 1 &&
                 one_in( 200 - cur.get_field_intensity() * 50 ) ) {
+                const bash_cause_scope burning( "fire" );
                 here.bash( p, 999, false, true, true );
             }
 
@@ -1085,6 +1086,7 @@ void field_processor_fd_fire( const tripoint_bub_ms &p, field_entry &cur, field_
             smoke += static_cast<int>( windpower / 5 );
             if( cur.get_field_intensity() > 1 &&
                 one_in( 200 - cur.get_field_intensity() * 50 ) ) {
+                const bash_cause_scope burning( "fire" );
                 here.bash( p, 999, false, true, true );
             }
 
@@ -1095,6 +1097,7 @@ void field_processor_fd_fire( const tripoint_bub_ms &p, field_entry &cur, field_
             smoke += static_cast<int>( windpower / 5 );
             if( cur.get_field_intensity() > 1 &&
                 one_in( 200 - cur.get_field_intensity() * 50 ) ) {
+                const bash_cause_scope burning( "fire" );
                 here.bash( p, 999, false, true, true );
                 here.spawn_item( p, itype_ash, 1, rng( 10, 1000 ) );
             }

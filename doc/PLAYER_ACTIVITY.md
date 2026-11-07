@@ -144,6 +144,13 @@ with `activity_actor::hook_target()`. Context values:
 | `_moves_total` | the moves the activity takes in all |
 | `_moves_left` | the moves still left; for completion_eoc and cancel_eoc, what was left when it ended |
 | `_resume` | start_eoc only: 1 when the activity resumes, 0 when it starts |
+| `_outcome` | completion_eoc and cancel_eoc only: `completed`, `canceled`, or `interrupted` for a cancel that left the activity in the backlog to resume |
+
+An activity started by `u_assign_activity` with a `context` object also gives
+its EOCs those values (see EFFECT_ON_CONDITION.md). The activity keeps them,
+in saves and when it is interrupted and resumed; the values above win over one
+of the same name. The `character_finished_activity` event has the same
+`outcome` field.
 
 An activity completes when it runs out of moves, and also when its actor ends
 it after finishing its work: a craft that is done, each item disassembled, a

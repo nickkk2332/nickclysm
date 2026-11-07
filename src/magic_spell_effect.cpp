@@ -15,6 +15,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -60,6 +61,7 @@
 #include "monstergenerator.h"
 #include "mtype.h"
 #include "npc.h"
+#include "output.h"
 #include "overmapbuffer.h"
 #include "pickup.h"
 #include "pimpl.h"
@@ -1755,29 +1757,40 @@ void spell_effect::recover_energy( const spell &sp, Creature &caster,
     sp.make_sound( caster.pos_bub(), caster );
 }
 
+std::optional<timed_event_type> spell_effect::timed_event_from_effect_str(
+    const std::string_view effect_str )
+{
+    // The events a spell can start: the others do nothing when they happen, or need a location
+    // or data that a spell doesn't give
+    static const std::map<std::string, timed_event_type> timed_event_map{
+        { "amigara", timed_event_type::AMIGARA },
+        { "artifact_light", timed_event_type::ARTIFACT_LIGHT },
+        { "dim", timed_event_type::DIM },
+        { "help", timed_event_type::HELP },
+        { "roots_die", timed_event_type::ROOTS_DIE },
+        { "spawn_wyrms", timed_event_type::SPAWN_WYRMS },
+        { "temple_flood", timed_event_type::TEMPLE_FLOOD },
+        { "temple_open", timed_event_type::TEMPLE_OPEN },
+        { "temple_spawn", timed_event_type::TEMPLE_SPAWN }
+    };
+    const auto iter = timed_event_map.find( to_lower_case( effect_str ) );
+    if( iter == timed_event_map.end() ) {
+        return std::nullopt;
+    }
+    return iter->second;
+}
+
 void spell_effect::timed_event( const spell &sp, Creature &caster, const tripoint_bub_ms & )
 {
-    const std::map<std::string, timed_event_type> timed_event_map{
-        { "help", timed_event_type::HELP },
-        { "spawn_wyrms", timed_event_type::SPAWN_WYRMS },
-        { "amigara", timed_event_type::AMIGARA },
-        { "roots_die", timed_event_type::ROOTS_DIE },
-        { "temple_open", timed_event_type::TEMPLE_OPEN },
-        { "temple_flood", timed_event_type::TEMPLE_FLOOD },
-        { "temple_spawn", timed_event_type::TEMPLE_SPAWN },
-        { "dim", timed_event_type::DIM },
-        { "artifact_light", timed_event_type::ARTIFACT_LIGHT }
-    };
-
-    timed_event_type spell_event = timed_event_type::NONE;
-
-    const auto iter = timed_event_map.find( sp.effect_data() );
-    if( iter != timed_event_map.cend() ) {
-        spell_event = iter->second;
+    const std::optional<timed_event_type> spell_event =
+        timed_event_from_effect_str( sp.effect_data() );
+    if( !spell_event ) {
+        debugmsg( R"(spell %s: unknown timed_event "%s")", sp.id().c_str(), sp.effect_data() );
+        return;
     }
 
     sp.make_sound( caster.pos_bub(), caster );
-    get_timed_events().add( spell_event, calendar::turn + sp.duration_turns( caster ) );
+    get_timed_events().add( *spell_event, calendar::turn + sp.duration_turns( caster ) );
 }
 
 static bool is_summon_friendly( const spell &sp )

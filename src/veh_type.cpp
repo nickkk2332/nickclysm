@@ -943,6 +943,14 @@ void vpart_info::check() const
                       id.c_str() );
         }
     }
+    if( has_flag( "EOC_ACTIVATION" ) != activatable_eoc.has_value() ) {
+        debugmsg( "vehicle part %s must have both the EOC_ACTIVATION flag and an activatable_eoc, "
+                  "or neither", id.str() );
+    }
+    if( activatable_eoc && !activatable_eoc->is_valid() ) {
+        debugmsg( "vehicle part %s has unknown activatable_eoc %s", id.str(),
+                  activatable_eoc->str() );
+    }
     if( !!transform_terrain_info && !( transform_terrain_info->post_terrain ||
                                        transform_terrain_info->post_furniture ||
                                        transform_terrain_info->post_field ) ) {

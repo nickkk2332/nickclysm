@@ -39,6 +39,8 @@ struct const_dialogue;
 struct dealt_projectile_attack;
 struct requirement_data;
 
+enum class timed_event_type : int;
+
 namespace spell_effect
 {
 struct override_parameters;
@@ -598,6 +600,8 @@ class spell
         // how often does the spell fail
         // based on difficulty, level of spell, spellcraft skill, intelligence
         float spell_fail( const Character &guy ) const;
+        // spell_fail before the caster's FAIL enchantments
+        float spell_fail_unenchanted( const Character &guy ) const;
         std::string colorized_fail_percent( const Character &guy ) const;
         // how long does it take to cast the spell
         int casting_time( const Character &guy, bool ignore_encumb = false ) const;
@@ -886,6 +890,8 @@ void fertilize_plant( const spell &sp, Creature &caster, const tripoint_bub_ms &
 void translocate( const spell &sp, Creature &caster, const tripoint_bub_ms &target );
 // adds a timed event to the caster only
 void timed_event( const spell &sp, Creature &caster, const tripoint_bub_ms & );
+// The event a timed_event spell's effect_str names (case-insensitive), or nullopt if it names none
+std::optional<timed_event_type> timed_event_from_effect_str( std::string_view effect_str );
 void transform_blast( const spell &sp, Creature &caster, const tripoint_bub_ms &target );
 void noise( const spell &sp, Creature &, const tripoint_bub_ms &target );
 void vomit( const spell &sp, Creature &caster, const tripoint_bub_ms &target );

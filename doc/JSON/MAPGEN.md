@@ -657,9 +657,12 @@ This places "mon_secubot" at random coordinate (7-18, 7-18). The monster is plac
 repeated by random number of times `[1-3]`. The monster will spawn with 20-30 5.56x45mm rounds.
 
 ### "spawn_data" for monsters
-This optional object can have two fields:
+This optional object can have these fields. The same object works on a monster group entry (see JSON_INFO.md); a `place_monster` with a group adds its own spawn_data on top of the entry's: its ammo and variables win, its effects add to the entry's, and its patrol and faction replace the entry's. Spawn data is kept, in saves too, until the monster is placed.
 | Field       | Description
 | ---         | ---
+| effects     | A list of objects, each with an effect `"id"`, a `"duration"` in turns (a number or a range, default 1), an `"intensity"` (a number or a range, default 1) and `"permanent"` (default false). The monster spawns with them.
+| variables   | An object of variable names and values, text or numbers. The monster spawns with them, as `mon_variables` gives `u_spawn_monster`'s monsters.
+| faction     | A monster faction id. The monster spawns in that faction instead of its type's.
 | ammo        | A list of objects, each of which has an `"ammo_id"` field and a `"qty"` list of two integers. The monster will spawn with items of "ammo_id", with at least the first number in the "qty" and no more than the second.
 | patrol      | A list of objects, each of which has an `"x"` field and a `"y"` field. Either value can be a range or a single number. The x,y co-ordinates define a patrol point as a relative mapsquare point offset from the (0, 0) local mapsquare of the overmap terrain tile that the monster spawns in. Patrol points are converted to absolute mapsquare tripoints inside the monster generator.
 
