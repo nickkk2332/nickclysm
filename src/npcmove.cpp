@@ -6701,6 +6701,18 @@ void npc::do_reload( const item_location &it )
     mod_moves( -reload_time );
     recoil = MAX_RECOIL;
 
+    {
+        // The item reloaded may be the magazine in the gun
+        item_location reloaded = &target == it.get_item() ? it : item_location( it, &target );
+        cata::event e = cata::event::make<event_type::character_reloads_item>( getID(),
+                        target.typeId(), target.ammo_current(), target.ammo_remaining() );
+        get_event_bus().send_with_talker( this, &reloaded, e );
+        // An EOC may have used the item up
+        if( !it ) {
+            return;
+        }
+    }
+
     if( get_player_view().sees( here, *this ) ) {
         add_msg( _( "%1$s reloads their %2$s." ), get_name(), it->tname() );
         sfx::play_variant_sound( "reload", it->typeId().str(), sfx::get_heard_volume( pos_bub() ),

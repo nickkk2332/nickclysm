@@ -1461,8 +1461,8 @@ void npc::starting_weapon( const npc_class_id &type )
             }
             //You should be able to wield your starting weapon
             if( !meets_stat_requirements( *weapon ) ) {
-                if( weapon->get_min_str() > get_str() ) {
-                    set_str_base( weapon->get_min_str() );
+                if( weapon->get_min_str( *this ) > get_str() ) {
+                    set_str_base( weapon->get_min_str( *this ) );
                 }
                 if( weapon->type->min_dex > get_dex() ) {
                     set_dex_base( weapon->type->min_dex );

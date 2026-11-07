@@ -1209,7 +1209,9 @@
     "mod_targets": [ "smg", "rifle", "pistol", "shotgun", "launcher" ],
     "install_time": "10 m",
     "min_skills": [ [ "weapon", 2 ] ],
-    "flags": [ "WATERPROOF_GUN" ]
+    "flags": [ "WATERPROOF_GUN" ],
+    "blacklist_gun_flags": [ "WATERPROOF_GUN" ],
+    "blacklist_message": "is already waterproof"
   },
   {
     "id": "gun_crossbow",

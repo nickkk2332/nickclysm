@@ -100,16 +100,10 @@ static const item_category_id item_category_spare_parts( "spare_parts" );
 static const item_category_id item_category_tools( "tools" );
 static const item_category_id item_category_weapons( "weapons" );
 
-static const itype_id itype_arredondo_chute( "arredondo_chute" );
 static const itype_id itype_barrel_small( "barrel_small" );
 static const itype_id itype_battery( "battery" );
-static const itype_id itype_brass_catcher( "brass_catcher" );
 static const itype_id itype_bullet_crossbow( "bullet_crossbow" );
-static const itype_id itype_hand_crossbow( "hand_crossbow" );
 static const itype_id itype_power_cord( "power_cord" );
-static const itype_id itype_stock_none( "stock_none" );
-static const itype_id itype_tuned_mechanism( "tuned_mechanism" );
-static const itype_id itype_waterproof_gunmod( "waterproof_gunmod" );
 
 static const matec_id RAPID( "RAPID" );
 
@@ -1402,7 +1396,7 @@ int item::gun_range( const Character *p ) const
 
     // Reduce bow range until player has twice minimum required strength
     if( has_flag( flag_STR_DRAW ) ) {
-        ret += std::max( 0.0, ( p->get_str() - get_min_str() ) * 0.5 );
+        ret += std::max( 0.0, ( p->get_str() - get_min_str( *p ) ) * 0.5 );
     }
 
     ret = p->enchantment_cache->modify_value( enchant_vals::mod::RANGE, ret );
@@ -1724,7 +1718,8 @@ int item::remaining_ammo_capacity( int well_idx ) const
     return mag ? mag->remaining_ammo_capacity() : 0;
 }
 
-int item::ammo_capacity( const ammotype &ammo, bool include_linked ) const
+int item::ammo_capacity( const ammotype &ammo, bool include_linked,
+                         const Character *carrier ) const
 {
     map &here = get_map();
 
@@ -1763,7 +1758,8 @@ int item::ammo_capacity( const ammotype &ammo, bool include_linked ) const
         return mag->ammo_capacity( ammo );
     }
     if( has_flag( flag_USES_BIONIC_POWER ) ) {
-        return units::to_kilojoule( get_player_character().get_max_power_level() );
+        const Character &holder = carrier != nullptr ? *carrier : get_player_character();
+        return units::to_kilojoule( holder.get_max_power_level() );
     }
 
     if( contents.has_pocket_type( pocket_type::MAGAZINE ) ) {
@@ -1874,7 +1870,7 @@ int item::ammo_consume( int qty, map &here, const tripoint_bub_ms &pos, Characte
     // Consume charges loaded in the item or its magazines
     if( is_magazine() || uses_magazine() ) {
         qty -= contents.ammo_consume( qty, &here, pos );
-        if( ammo_capacity( ammo_battery ) == 0 && carrier != nullptr ) {
+        if( carrier != nullptr && ammo_capacity( ammo_battery, false, carrier ) == 0 ) {
             carrier->invalidate_weight_carried_cache();
         }
     }
@@ -3054,7 +3050,12 @@ ret_val<void> item::is_gunmod_compatible( const item &mod ) const
         debugmsg( "Tried checking compatibility of non-gunmod" );
         return ret_val<void>::make_failure();
     }
-    static const gun_type_type pistol_gun_type( translate_marker_context( "gun_type_type", "pistol" ) );
+    const islot_gunmod &gunmod = *mod.type->gunmod;
+    // The mod's blacklist_message if it has one
+    const auto blacklisted = [&gunmod]( const std::string & fallback ) {
+        return ret_val<void>::make_failure( "%s", gunmod.blacklist_message.empty() ? fallback :
+                                            gunmod.blacklist_message.translated() );
+    };
 
     if( !is_gun() ) {
         return ret_val<void>::make_failure( _( "isn't a weapon" ) );
@@ -3076,36 +3077,28 @@ ret_val<void> item::is_gunmod_compatible( const item &mod ) const
                !mod.type->gunmod->usable.count( gun_type_type( typeId().str() ) ) ) {
         return ret_val<void>::make_failure( _( "cannot have a %s" ), mod.tname() );
 
-    } else if( typeId() == itype_hand_crossbow &&
-               !mod.type->gunmod->usable.count( pistol_gun_type ) ) {
+    } else if( !type->gun->required_mod_targets.empty() &&
+               std::none_of( type->gun->required_mod_targets.begin(), type->gun->required_mod_targets.end(),
+    [&gunmod]( const std::string & target ) {
+    return gunmod.usable.count( gun_type_type( target ) ) > 0;
+    } ) ) {
         return ret_val<void>::make_failure( _( "isn't big enough to use that mod" ) );
 
-    } else if( mod.type->gunmod->location.str() == "underbarrel" &&
+    } else if( gunmod.location.str() == "underbarrel" &&
                !mod.has_flag( flag_PUMP_RAIL_COMPATIBLE ) && has_flag( flag_PUMP_RAIL ) ) {
         return ret_val<void>::make_failure( _( "can only accept small mods on that slot" ) );
 
-    } else if( mod.typeId() == itype_waterproof_gunmod && has_flag( flag_WATERPROOF_GUN ) ) {
-        return ret_val<void>::make_failure( _( "is already waterproof" ) );
+    } else if( std::any_of( gunmod.blacklist_gun_flags.begin(), gunmod.blacklist_gun_flags.end(),
+    [this]( const flag_id & f ) {
+    return has_flag( f );
+    } ) ) {
+        return blacklisted( _( "is incompatible with that mod" ) );
 
-    } else if( mod.typeId() == itype_tuned_mechanism && has_flag( flag_NEVER_JAMS ) ) {
-        return ret_val<void>::make_failure( _( "is already eminently reliable" ) );
-
-    } else if( mod.typeId() == itype_brass_catcher && has_flag( flag_RELOAD_EJECT ) ) {
-        return ret_val<void>::make_failure( _( "cannot have a brass catcher" ) );
-
-    } else if( ( mod.type->gunmod->location.str() == "magazine" ||
-                 mod.type->gunmod->location.str() == "mechanism" ||
-                 mod.type->gunmod->location.str() == "loading port" ||
-                 mod.type->gunmod->location.str() == "bore" ) &&
-               ( ammo_remaining( ) > 0 || magazine_current() ) ) {
+    } else if( gunmod.needs_unloaded() && ( ammo_remaining( ) > 0 || magazine_current() ) ) {
         return ret_val<void>::make_failure( _( "must be unloaded before installing this mod" ) );
 
-    } else if( gunmod_find( itype_stock_none ) &&
-               mod.type->gunmod->location.str() == "stock accessory" ) {
-        return ret_val<void>::make_failure( _( "doesn't have a stock to attach this mod" ) );
-
-    } else if( mod.typeId() == itype_arredondo_chute ) {
-        return ret_val<void>::make_failure( _( "chute needs modification before attaching" ) );
+    } else if( !gunmod.installable ) {
+        return blacklisted( _( "can't take that mod as it is" ) );
 
         // Acceptable_ammo check is kinda weird now, if it is passed, checks after it will be ignored.
         // Moved it here as a workaround.
@@ -3122,17 +3115,17 @@ ret_val<void> item::is_gunmod_compatible( const item &mod ) const
         }
     }
 
-    for( const gunmod_location &slot : mod.type->gunmod->blacklist_slot ) {
+    for( const gunmod_location &slot : gunmod.blacklist_slot ) {
         if( get_mod_locations().count( slot ) ) {
-            return ret_val<void>::make_failure( _( "cannot be installed on a weapon with a \"%s\"" ),
-                                                slot.name() );
+            return blacklisted( string_format( _( "cannot be installed on a weapon with a \"%s\"" ),
+                                               slot.name() ) );
         }
     }
 
-    for( const itype_id &testmod : mod.type->gunmod->blacklist_mod ) {
+    for( const itype_id &testmod : gunmod.blacklist_mod ) {
         if( gunmod_find( testmod ) ) {
-            return ret_val<void>::make_failure( _( "cannot be installed on a weapon with a \"%s\"" ),
-                                                ( testmod->nname( 1 ) ) );
+            return blacklisted( string_format( _( "cannot be installed on a weapon with a \"%s\"" ),
+                                               testmod->nname( 1 ) ) );
         }
     }
 
@@ -4547,7 +4540,11 @@ int item::get_to_hit() const
 
 int item::get_min_str() const
 {
-    const Character &p = get_player_character();
+    return get_min_str( get_player_character() );
+}
+
+int item::get_min_str( const Character &p ) const
+{
     if( type->gun ) {
         int min_str = type->min_str;
         // we really need some better check for bows than its skill

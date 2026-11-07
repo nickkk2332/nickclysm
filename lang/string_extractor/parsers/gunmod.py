@@ -13,3 +13,8 @@ def parse_gunmod(json, origin):
     for target in json.get("mod_targets", []):
         write_text(target, origin, context="gun_type_type",
                    comment="Target of gun mod")
+
+    if "blacklist_message" in json:
+        write_text(json["blacklist_message"], origin,
+                   comment="Why a gun can't take gun mod \"{}\"".format(
+                       json.get("id", "")))

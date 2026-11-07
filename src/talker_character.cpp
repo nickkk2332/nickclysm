@@ -885,7 +885,8 @@ int talker_character_const::perceived_pain_cur() const
 
 double talker_character_const::armor_at( damage_type_id &dt, bodypart_id &bp ) const
 {
-    return me_chr_const->worn.damage_resist( dt, bp );
+    // What protects them in combat, not only their worn armor
+    return me_chr_const->get_armor_type( dt, bp );
 }
 
 int talker_character_const::coverage_at( bodypart_id &id ) const

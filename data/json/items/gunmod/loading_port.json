@@ -17,6 +17,8 @@
     "location": "loading port",
     "mod_targets": [ "pistol", "shotgun" ],
     "acceptable_ammo": [ "shot" ],
+    "installable": false,
+    "blacklist_message": "chute needs modification before attaching",
     "min_skills": [ [ "weapon", 2 ], [ "mechanics", 1 ] ]
   },
   {
@@ -26,6 +28,7 @@
     "name": { "str": "speedloader chute, 4-round waterfowl shotgun" },
     "description": "A metal ramp that is installed near a shotgun's feeding port to index speedloader tubes.  This one is for 4-round waterfowl shotgun.",
     "copy-from": "arredondo_chute",
+    "installable": true,
     "mod_targets": [ "benelli_sa" ],
     "pocket_mods": [
       {
@@ -43,6 +46,7 @@
     "name": { "str": "speedloader chute, 4-round breaching shotgun" },
     "description": "A metal ramp that is installed near a shotgun's feeding port to index speedloader tubes.  This one is for 4-round breaching shotgun.",
     "copy-from": "arredondo_chute",
+    "installable": true,
     "mod_targets": [  ],
     "//": "Will be fixed in future PR",
     "pocket_mods": [
@@ -61,6 +65,7 @@
     "name": { "str": "speedloader chute, 5-round hunting shotgun" },
     "description": "A metal ramp that is installed near a shotgun's feeding port to index speedloader tubes.  This one is for 5-round hunting shotgun.",
     "copy-from": "arredondo_chute",
+    "installable": true,
     "mod_targets": [ "remington_870" ],
     "pocket_mods": [
       {
@@ -78,6 +83,7 @@
     "name": { "str": "speedloader chute, 6-round combat shotgun" },
     "description": "A metal ramp that is installed near a shotgun's feeding port to index speedloader tubes.  This one is for 6-round combat shotgun.",
     "copy-from": "arredondo_chute",
+    "installable": true,
     "mod_targets": [ "mossberg_500" ],
     "pocket_mods": [
       {
@@ -95,6 +101,7 @@
     "name": { "str": "speedloader chute, 8-round auto-loading shotgun" },
     "description": "A metal ramp that is installed near a shotgun's feeding port to index speedloader tubes.  This one is for 8-round auto-loading shotgun.",
     "copy-from": "arredondo_chute",
+    "installable": true,
     "mod_targets": [ "mossberg_930" ],
     "pocket_mods": [
       {
@@ -112,6 +119,7 @@
     "name": { "str": "speedloader chute, 9-round combat shotgun" },
     "description": "A metal ramp that is installed near a shotgun's feeding port to index speedloader tubes.  This one is for 9-round combat shotgun.",
     "copy-from": "arredondo_chute",
+    "installable": true,
     "mod_targets": [ "mossberg_590" ],
     "pocket_mods": [
       {

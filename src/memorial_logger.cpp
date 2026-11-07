@@ -1192,6 +1192,12 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::character_hears_sound:
         case event_type::omt_generated:
         case event_type::map_extra_spawned:
+        case event_type::character_reloads_item:
+        case event_type::character_unloads_item:
+        case event_type::character_installs_gunmod:
+        case event_type::character_removes_gunmod:
+        case event_type::character_armor_damaged:
+        case event_type::character_armor_transformed:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

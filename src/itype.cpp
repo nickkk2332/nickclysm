@@ -31,6 +31,16 @@ std::string gunmod_location::name() const
     return _( _id );
 }
 
+bool islot_gunmod::needs_unloaded() const
+{
+    if( requires_unloaded.has_value() ) {
+        return *requires_unloaded;
+    }
+    // Mods that change what the gun loads or how it feeds
+    const std::string &loc = location.str();
+    return loc == "magazine" || loc == "mechanism" || loc == "loading port" || loc == "bore";
+}
+
 void gun_modifier_data::deserialize( const JsonObject &jo )
 {
     mandatory( jo, false, "name", name_ );

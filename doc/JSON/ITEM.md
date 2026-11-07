@@ -363,6 +363,7 @@ Armor can be defined like this:
 "energy_shield_max_hp" : false,     // Determines the inital value for the `ENERGY_SHIELD_HP` and `ENERGY_SHIELD_MAX_HP` item variables used by energy shields. The field has no effect for armor pieces without the `ENERGY_SHIELD` flag.
 "non_functional" : "destroyed",     //this is the itype_id of an item that this turns into when destroyed. Currently only works for ablative armor.
 "damage_verb": "makes a crunch, something has shifted", // if an item uses non-functional this will be the description when it turns into its non functional variant.
+"active_form": "my_suit_engaged",   // (optional) The item this armor turns into when activated: its info shows the protection of that form under "When active". Without it, power armor uses the target of its "transform" use action, or an item named "<id>_on" if there is one; other armor shows nothing.
 "valid_mods" : ["steel_padded"],    // List of valid clothing mods. Note that if the clothing mod doesn't have "restricted" listed, this isn't needed.
 "armor": [ /* ... */ ]
 ```
@@ -898,6 +899,7 @@ Guns can be defined like this:
 "reload_noise_volume": 4,  // how loud the reloading is
 "built_in_mods": ["m203"], //An array of mods that will be integrated in the weapon using the IRREMOVABLE tag.
 "default_mods": ["m203"]   //An array of mods that will be added to a weapon on spawn.
+"required_mod_targets": [ "pistol" ], // Optional. Gunmods must also list one of these in their "mod_targets" to be installed (a pistol crossbow takes only gunmods made for pistols).
 "barrel_volume": "30 mL",  // Amount of volume lost when the barrel is sawn. Approximately 250 ml per inch is a decent approximation.
 "valid_mod_locations": [ [ "brass catcher", 1 ], [ "grip", 1 ] ],  // The valid locations for gunmods and the mount of slots for that location.
 "loudness": 10             // Amount of noise produced by this gun when firing. If no value is defined, then it's calculated based on loudness value from loaded ammo. Final loudness is calculated as gun loudness + gunmod loudness + ammo loudness. If final loudness is 0, then the gun is completely silent.
@@ -958,6 +960,10 @@ Gun mods can be defined like this:
 "is_visible_when_installed": false,   // optional, if true, this gunmod is shown in your inventory akin to items in pockets, making it possible to interact with it in 
 "blacklist_slot": [ "rail", "underbarrel" ],      // prevents installation of the gunmod if the specified slot(s) are present on the gun.
 "blacklist_mod": [ "m203", "m320" ],      // prevents installation of the gunmod if the specified mods(s) are present on the gun.
+"blacklist_gun_flags": [ "WATERPROOF_GUN" ], // prevents installation of the gunmod on a gun with any of these flags (e.g. a waterproofing kit on a gun that is already waterproof).
+"blacklist_message": "is already waterproof", // Optional. Why the gun can't take this mod, shown after the gun's name when a blacklist or "installable" refuses it. Without it, a default reason.
+"installable": false,                     // Optional, default true. False for a template that has to be modified (crafted into another mod) before it can be installed. Inherited by copy-from: a child that can be installed says "installable": true.
+"requires_unloaded": true,                // Optional. Whether the gun must be unloaded to install or remove this mod. Defaults to true for the "magazine", "mechanism", "loading port" and "bore" locations, false for the others.
 "to_hit_mod": -1                          // increases or decreases the item to_hit value
 ```
 

@@ -656,6 +656,11 @@
     "inherit": false
   },
   {
+    "id": "NO_ACTIVE_SUFFIX",
+    "type": "json_flag",
+    "//": "The item's name doesn't get \" (active)\" while it is active, as if its id ended in _on."
+  },
+  {
     "id": "NO_CLEAN",
     "type": "json_flag",
     "//": "items that are impossible to clean no matter how hard you try",

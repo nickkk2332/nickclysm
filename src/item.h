@@ -2692,8 +2692,11 @@ class item
          * ammo capacity for a specific ammo
          * @param ammo The ammo type to get the capacity for
          * @param include_linked If linked up, return linked electricity grid's capacity
+         * @param carrier Who holds the item: a USES_BIONIC_POWER item holds their bionic power.
+         *                Without one, the avatar's is used (item info).
          */
-        int ammo_capacity( const ammotype &ammo, bool include_linked = false ) const;
+        int ammo_capacity( const ammotype &ammo, bool include_linked = false,
+                           const Character *carrier = nullptr ) const;
 
         /**
          * how much more ammo can fit into this item
@@ -3212,6 +3215,13 @@ class item
         bool is_old_owner( const Character &c, bool available_to_take = false ) const;
         std::string get_old_owner_name() const;
         std::string get_owner_name() const;
+        /**
+         * Strength needed to use this item.  For a gun it depends on who uses it: their archery
+         * proficiency lowers a bow's requirement and their posture applies the prone modifiers
+         * of the gunmods.
+         */
+        int get_min_str( const Character &who ) const;
+        /** As above, for the avatar (item info and other UI). */
         int get_min_str() const;
 
         const cata::value_ptr<islot_comestible> &get_comestible() const;
@@ -3790,8 +3800,8 @@ class item
 
         void set_favorite( bool favorite );
         bool has_clothing_mod() const;
+        /** Encumbrance or warmth the clothing mods (flags) of the item add. */
         float get_clothing_mod_val( clothing_mod_type type ) const;
-        void update_clothing_mod_val();
 };
 
 extern template float item::resist<bodypart_id>( const damage_type_id &dmg_type, bool to_self,

@@ -26,6 +26,7 @@
 #include "cata_utility.h"
 #include "cata_variant.h"
 #include "character.h"
+#include "character_attire.h"
 #include "character_id.h"
 #include "character_oracle.h"
 #include "city.h"
@@ -347,11 +348,32 @@ void hunger_ass( double val, dialogue &d, char scope,
 }
 
 double armor_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
-                   diag_kwargs const & /* kwargs */ )
+                   diag_kwargs const &kwargs )
 {
     damage_type_id dt( params[0].str( d ) );
     bodypart_id bp( params[1].str( d ) );
-    return d.const_actor( is_beta( scope ) )->armor_at( dt, bp );
+    const_talker const *actor = d.const_actor( is_beta( scope ) );
+    // An item: the protection it gives its wearer on that part.  The roll is the coverage roll
+    // the materials are checked against: 0 counts every material of the part, 99 only those
+    // covering all of it.
+    if( item_location const *it = actor->get_const_item(); it != nullptr && *it ) {
+        if( !( *it )->covers( bp ) ) {
+            return 0.0;
+        }
+        const int roll = clamp( static_cast<int>( kwargs.kwarg_or( "roll", 0 ).dbl( d ) ), 0, 99 );
+        return ( *it )->resist( dt, false, bp, roll );
+    }
+    // A character: everything that protects them in combat (worn armor, armor bonuses, bionics,
+    // mutations, the body part itself), or only what they wear
+    const std::string source = kwargs.kwarg_or( "source", "all" ).str( d );
+    if( source == "worn" ) {
+        Character const *guy = actor->get_const_character();
+        return guy != nullptr ? guy->worn.damage_resist( dt, bp ) : 0.0;
+    }
+    if( source != "all" ) {
+        throw math::runtime_error( R"(armor(): source must be "all" or "worn", not "%s")", source );
+    }
+    return actor->armor_at( dt, bp );
 }
 
 double arm_strength_eval( const_dialogue const &d, char scope,
@@ -938,6 +960,96 @@ double gun_damage_eval( const_dialogue const &d, char scope, std::vector<diag_va
         return ( *it )->gun_damage( true ).total_damage();
     }
     return ( *it )->gun_damage( true ).type_damage( damage_type_id( dt_str ) );
+}
+
+// The item a gun or ammo function is about
+item const *gun_talker( const_dialogue const &d, char scope, std::string_view func )
+{
+    item_location const *it = d.const_actor( is_beta( scope ) )->get_const_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "For %s(), talker must be an item", func );
+    }
+    return it->get_item();
+}
+
+item *gun_talker( dialogue &d, char scope, std::string_view func )
+{
+    item_location *it = d.actor( is_beta( scope ) )->get_item();
+    if( it == nullptr || !*it ) {
+        throw math::runtime_error( "For %s(), talker must be an item", func );
+    }
+    return it->get_item();
+}
+
+double ammo_remaining_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    return gun_talker( d, scope, "ammo_remaining" )->ammo_remaining();
+}
+
+void ammo_remaining_ass( double val, dialogue &d, char scope,
+                         std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    item *it = gun_talker( d, scope, "ammo_remaining" );
+    // Refill or empty what it has: its integral magazine or the magazine in it, with the ammo
+    // it is loaded with (or its default ammo).  Nothing is added where it has no magazine.
+    if( !it->magazine_integral() && it->magazine_current() == nullptr ) {
+        return;
+    }
+    itype_id ammo = it->ammo_current();
+    if( ammo.is_null() ) {
+        ammo = it->ammo_default();
+    }
+    if( ammo.is_null() || !ammo.is_valid() || !ammo->ammo ) {
+        return;
+    }
+    const int capacity = it->ammo_capacity( ammo->ammo->type );
+    it->ammo_set( ammo, clamp( static_cast<int>( std::lround( val ) ), 0, capacity ) );
+}
+
+double ammo_capacity_eval( const_dialogue const &d, char scope,
+                           std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    item const *it = gun_talker( d, scope, "ammo_capacity" );
+    const std::string &at_str = params[0].str( d );
+    ammotype at( at_str );
+    if( at_str.empty() ) {
+        // The ammo it is loaded with, or its default ammo
+        itype_id ammo = it->ammo_current();
+        if( ammo.is_null() ) {
+            ammo = it->ammo_default();
+        }
+        if( ammo.is_null() || !ammo.is_valid() || !ammo->ammo ) {
+            return 0.0;
+        }
+        at = ammo->ammo->type;
+    } else if( !at.is_valid() ) {
+        throw math::runtime_error( "ammo_capacity(): unknown ammo type \"%s\"", at_str );
+    }
+    return it->ammo_capacity( at );
+}
+
+double has_gunmod_eval( const_dialogue const &d, char scope,
+                        std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    item const *it = gun_talker( d, scope, "has_gunmod" );
+    return it->gunmod_find( itype_id( params[0].str( d ) ) ) != nullptr ? 1.0 : 0.0;
+}
+
+double gun_heat_eval( const_dialogue const &d, char scope,
+                      std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    return gun_talker( d, scope, "gun_heat" )->get_var( "gun_heat", 0.0 );
+}
+
+void gun_heat_ass( double val, dialogue &d, char scope,
+                   std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    item *it = gun_talker( d, scope, "gun_heat" );
+    if( it->is_gun() ) {
+        it->set_var( "gun_heat", std::max( 0.0, val ) );
+    }
 }
 
 double has_trait_eval( const_dialogue const &d, char scope, std::vector<diag_value> const &params,
@@ -3867,7 +3979,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "addiction_intensity", { "un", 1, addiction_intensity_eval } },
     { "addiction_turns", { "un", 1, addiction_turns_eval, addiction_turns_ass } },
     { "activity_moves_left", { "un", 0, activity_moves_left_eval, activity_moves_left_ass } },
-    { "armor", { "un", 2, armor_eval } },
+    { "armor", { "un", 2, armor_eval, {}, { "source", "roll" } } },
     { "arm_strength", { "un", 0, arm_strength_eval } },
     { "ammo_count", { "un", 0, ammo_count_eval } },
     { "artifact_resonance", { "un", 0, artifact_resonance_eval } },
@@ -3908,6 +4020,10 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "map_radiation", { "ung", 0, map_radiation_eval, map_radiation_ass, { "location" } } },
     { "gender", { "un", 0, gender_eval, gender_ass } },
     { "gun_damage", { "un", 1, gun_damage_eval } },
+    { "gun_heat", { "un", 0, gun_heat_eval, gun_heat_ass } },
+    { "ammo_remaining", { "un", 0, ammo_remaining_eval, ammo_remaining_ass } },
+    { "ammo_capacity", { "un", 1, ammo_capacity_eval } },
+    { "has_gunmod", { "un", 1, has_gunmod_eval } },
     { "game_option", { "g", 1, option_eval } },
     { "has_flag", { "un", 1, has_flag_eval } },
     { "has_trait", { "un", 1, has_trait_eval } },

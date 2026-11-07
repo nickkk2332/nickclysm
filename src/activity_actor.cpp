@@ -960,6 +960,10 @@ void gunmod_remove_activity_actor::gunmod_remove( Character &who, item_location 
     //~ %1$s - gunmod, %2$s - gun.
     who.add_msg_if_player( _( "You remove your %1$s from your %2$s." ), modtype->nname( 1 ),
                            gun->tname() );
+
+    cata::event e = cata::event::make<event_type::character_removes_gunmod>( who.getID(),
+                    gun->typeId(), modtype->get_id() );
+    get_event_bus().send_with_talker( &who, &gun, e );
 }
 
 void gunmod_remove_activity_actor::serialize( JsonOut &jsout ) const
@@ -6762,6 +6766,16 @@ void unload_activity_actor::unload( Character &who, item_location &target )
         who.add_msg_if_player( _( "You unload your %s." ), it.tname() );
     }
 
+    if( actually_unloaded ) {
+        cata::event e = cata::event::make<event_type::character_unloads_item>( who.getID(),
+                        it.typeId() );
+        get_event_bus().send_with_talker( &who, &target, e );
+        // An EOC may have used the item up
+        if( !target ) {
+            return;
+        }
+    }
+
     if( it.has_flag( flag_MAG_DESTROY ) && it.ammo_remaining( ) == 0 ) {
         target.remove_item();
     }
@@ -8756,6 +8770,17 @@ void reload_activity_actor::reload( player_activity &act, Character &who, int lo
         add_msg( m_neutral, _( "You manage to loosen some debris and make your %s somewhat operational." ),
                  reloadable_name );
         reloadable.set_var( "dirt", ( reloadable.get_var( "dirt", 0 ) - rng( 790, 2750 ) ) );
+    }
+
+    {
+        cata::event e = cata::event::make<event_type::character_reloads_item>( who.getID(),
+                        reloadable.typeId(), reloadable.ammo_current(), reloadable.ammo_remaining() );
+        item_location reloaded = target_loc;
+        get_event_bus().send_with_talker( &who, &reloaded, e );
+        // An EOC may have used the item up
+        if( !target_loc ) {
+            return;
+        }
     }
 
     who.recoil = MAX_RECOIL;
@@ -11593,6 +11618,11 @@ void gunmod_add_activity_actor::finish( player_activity &act, Character &who )
 
     item &gun = *act.targets.at( 0 );
     item &mod = *act.targets.at( 1 );
+    // For the event, sent once it's over: the gun may be gone by then
+    item_location gun_loc = act.targets.at( 0 );
+    const itype_id gun_type = gun.typeId();
+    const itype_id mod_type = mod.typeId();
+    bool success = false;
 
     // chance of success (%)
     const int roll = act.values[1];
@@ -11617,6 +11647,7 @@ void gunmod_add_activity_actor::finish( player_activity &act, Character &who )
                  gun.tname() );
         gun.put_in( who.i_rem( &mod ), pocket_type::MOD );
         gun.on_contents_changed();
+        success = true;
 
     } else if( rng( 0, 100 ) <= risk ) {
         if( gun.inc_damage() ) {
@@ -11637,6 +11668,10 @@ void gunmod_add_activity_actor::finish( player_activity &act, Character &who )
     } else {
         add_msg( m_info, _( "You failed at installing the %s." ), mod.tname() );
     }
+
+    cata::event e = cata::event::make<event_type::character_installs_gunmod>( who.getID(), gun_type,
+                    mod_type, success );
+    get_event_bus().send_with_talker( &who, &gun_loc, e );
 }
 
 void gunmod_add_activity_actor::serialize( JsonOut &jsout ) const

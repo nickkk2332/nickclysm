@@ -506,6 +506,11 @@ struct islot_armor {
          */
         itype_id non_functional;
         /**
+         * What this armor turns into when activated, for the "When active" part of its info.
+         * Unset: for power armor, the target of its transform use action or a "<id>_on" item.
+         */
+        itype_id active_form;
+        /**
          * The verb for what happens when the item transforms to non-functional
          */
         translation damage_verb;
@@ -889,6 +894,11 @@ struct islot_gun : common_ranged_data {
     *Default mods, string is id of mod. These mods are removable but are default on the weapon.
     */
     std::set<itype_id> default_mods;
+    /**
+     * Gunmods must also be usable on one of these gun types (untranslated "mod_targets" names)
+     * to be installed: a hand crossbow takes only mods that fit pistols.  Empty: no limit.
+     */
+    std::set<std::string> required_mod_targets;
 
     /** Firing modes are supported by the gun. Always contains at least DEFAULT mode */
     std::map<gun_mode_id, gun_modifier_data> modes;
@@ -1079,6 +1089,24 @@ struct islot_gunmod : common_ranged_data {
 
     /** Not compatible on weapons that have these mods */
     std::set<itype_id> blacklist_mod;
+
+    /** Not compatible on weapons that have any of these flags (an already waterproof gun) */
+    std::set<flag_id> blacklist_gun_flags;
+
+    /** Reason shown when a blacklist or "installable" refuses the mod; empty: a default one */
+    translation blacklist_message;
+
+    /** False for a template that has to be modified before it can be installed */
+    bool installable = true;
+
+    /** Whether the gun has to be unloaded to install or remove this mod; unset: see needs_unloaded() */
+    std::optional<bool> requires_unloaded;
+
+    /**
+     * Whether the gun has to be unloaded to install or remove this mod: requires_unloaded, or
+     * by default for mods in the magazine, mechanism, loading port and bore locations.
+     */
+    bool needs_unloaded() const;
     // hard coded barrel length from this mod
     units::length barrel_length = 0_mm;
 
