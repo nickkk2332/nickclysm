@@ -41,6 +41,19 @@ struct enum_traits<breathability_rating> {
     static constexpr breathability_rating last = breathability_rating::last;
 };
 
+// MONDT-J11: how fire treats a creature made of a material (fire and incendiary damage)
+enum class creature_flammability : int {
+    normal = 0,
+    high,       // burns easily: paper, wood, cloth, powder
+    resistant,  // resists fire: stone, steel, kevlar
+    last
+};
+
+template<>
+struct enum_traits<creature_flammability> {
+    static constexpr creature_flammability last = creature_flammability::last;
+};
+
 struct fuel_explosion_data {
     int explosion_chance_hot = 0;
     int explosion_chance_cold = 0;
@@ -95,6 +108,10 @@ class material_type
         bool _soft = false;
         bool _uncomfortable = false;
         bool _conductive = false; // If this material conducts electricity
+        // MONDT-J11: what a creature made of it counts as (Creature::cmat_flesh and friends)
+        bool _creature_flesh = false;
+        bool _breathes = false;
+        creature_flammability _creature_flammability = creature_flammability::normal;
 
         // the thickness that sheets of this material come in, anything that uses it should be a multiple of this
         float _sheet_thickness = 0.0f;
@@ -160,6 +177,9 @@ class material_type
         bool rotting() const;
         bool soft() const;
         bool uncomfortable() const;
+        bool creature_flesh() const;
+        bool breathes() const;
+        creature_flammability get_creature_flammability() const;
 
         double vitamin( const vitamin_id &id ) const {
             const auto iter = _vitamins.find( id );
@@ -181,6 +201,14 @@ void reset();
 
 material_list get_all();
 const std::set<material_id> &get_rotting();
+
+// MONDT-J11: the materials with "creature_flesh", "breathes", or "creature_flammability" "high"
+// or "resistant": a creature made of any of them counts as flesh, breathes (gases hurt it), burns
+// easily or resists fire. Rebuilt when the materials are finalized; the references stay valid.
+const std::set<material_id> &creature_flesh();
+const std::set<material_id> &creature_breathing();
+const std::set<material_id> &creature_flammable();
+const std::set<material_id> &creature_flame_resistant();
 
 } // namespace materials
 

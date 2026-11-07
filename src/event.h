@@ -157,6 +157,10 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    monster_tamed,
+    monster_milked,
+    monster_sheared,
+    character_mounts_monster,
     num_event_types // last
 };
 
@@ -224,7 +228,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 137,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -673,12 +677,16 @@ struct event_spec<event_type::character_attempt_to_fall_asleep> {
     };
 };
 
+// MONDT-J13: sent for every butchery outcome, quartering and fatal failures included, with the
+// corpse as beta while it still exists; success is false for a fatal failure or a failed field
+// dressing
 template<>
 struct event_spec<event_type::character_butchered_corpse> {
-    static constexpr std::array<event_field, 3> fields = { {
+    static constexpr std::array<event_field, 4> fields = { {
             { "character", cata_variant_type::character_id },
             { "monster_id", cata_variant_type::mtype_id },
             { "butcher_type", cata_variant_type::string },
+            { "success", cata_variant_type::bool_ },
         }
     };
 };
@@ -1171,6 +1179,50 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// MONDT-J14: a character made a monster its pet, by feeding it ("petfood") or with a CHARM_PET
+// spell ("spell"); the monster is beta
+template<>
+struct event_spec<event_type::monster_tamed> {
+    static constexpr std::array<event_field, 3> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+            { "method", cata_variant_type::string },
+        }
+    };
+};
+
+// MONDT-J14: a character finished milking a monster (beta), "amount" units of "itype"
+template<>
+struct event_spec<event_type::monster_milked> {
+    static constexpr std::array<event_field, 4> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+            { "itype", cata_variant_type::itype_id },
+            { "amount", cata_variant_type::int_ },
+        }
+    };
+};
+
+// MONDT-J14: a character finished shearing a monster (beta)
+template<>
+struct event_spec<event_type::monster_sheared> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
+        }
+    };
+};
+
+// MONDT-J14: a character climbed on a monster (beta) to ride it, a mech included
+template<>
+struct event_spec<event_type::character_mounts_monster> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "monster_id", cata_variant_type::mtype_id },
         }
     };
 };

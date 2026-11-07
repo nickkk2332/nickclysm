@@ -161,7 +161,8 @@
     "description": "a mollusk",
     "fear_triggers": [ "HURT", "FIRE" ],
     "//": "Despite having nonstandard blood, mollusks have circulatory systems similar to fish and reptiles, so no DRACULIN_IMMUNE",
-    "bleeds": "fd_blood_invertebrate"
+    "bleeds": "fd_blood_invertebrate",
+    "gibs": "fd_gibs_invertebrate"
   },
   {
     "type": "SPECIES",

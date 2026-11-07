@@ -3,6 +3,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,6 +17,7 @@
 #include "coordinates.h"
 #include "creature.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "enums.h"
 #include "flag.h"
 #include "game.h"
@@ -31,6 +33,7 @@
 #include "mapdata.h"
 #include "messages.h"
 #include "monster.h"
+#include "monstergenerator.h"
 #include "mtype.h"
 #include "output.h"
 #include "pathfinding.h"
@@ -683,7 +686,9 @@ bool monexamine::pet_menu( monster &z )
         check_bat,
         attack,
         talk_to,
-        stop_bleeding
+        stop_bleeding,
+        // MONDT-J14: the pet_interactions from JSON follow
+        json_interaction
     };
 
     uilist amenu;
@@ -827,6 +832,14 @@ bool monexamine::pet_menu( monster &z )
             amenu.addentry( insert_bat, false, 'x', _( "You need a %s to power this mech" ), type.nname( 1 ) );
         }
     }
+    const std::vector<const pet_interaction *> json_interactions =
+        monexamine::offered_pet_interactions( z, player_character );
+    for( size_t i = 0; i < json_interactions.size(); ++i ) {
+        const pet_interaction &interaction = *json_interactions[i];
+        amenu.addentry( json_interaction + static_cast<int>( i ), true,
+                        interaction.key < 0 ? MENU_AUTOASSIGN : interaction.key,
+                        string_format( interaction.name.translated(), pet_name ) );
+    }
     amenu.query();
     int choice = amenu.ret;
 
@@ -925,9 +938,51 @@ bool monexamine::pet_menu( monster &z )
             bandage_animal( z );
             break;
         default:
+            if( choice >= json_interaction &&
+                choice - json_interaction < static_cast<int>( json_interactions.size() ) ) {
+                monexamine::run_pet_interaction( *json_interactions[choice - json_interaction], z,
+                                                 player_character );
+            }
             break;
     }
     return true;
+}
+
+std::vector<const pet_interaction *> monexamine::offered_pet_interactions( monster &z,
+        Character &who )
+{
+    std::vector<const pet_interaction *> offered;
+    std::set<std::string> ids;
+    const auto consider = [&]( const pet_interaction & interaction ) {
+        if( !ids.insert( interaction.id ).second ) {
+            return;
+        }
+        if( interaction.condition ) {
+            const dialogue d( get_talker_for( who ), get_talker_for( z ) );
+            if( !interaction.condition( d ) ) {
+                return;
+            }
+        }
+        offered.push_back( &interaction );
+    };
+    for( const pet_interaction &interaction : z.type->pet_interactions ) {
+        consider( interaction );
+    }
+    for( const species_id &spec : z.type->species ) {
+        for( const pet_interaction &interaction : spec->pet_interactions ) {
+            consider( interaction );
+        }
+    }
+    return offered;
+}
+
+void monexamine::run_pet_interaction( const pet_interaction &interaction, monster &z,
+                                      Character &who )
+{
+    if( interaction.effect ) {
+        dialogue d( get_talker_for( who ), get_talker_for( z ) );
+        interaction.effect->apply( d );
+    }
 }
 
 bool monexamine::mech_hack( monster &z )

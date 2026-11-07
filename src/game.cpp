@@ -172,6 +172,7 @@
 #include "mission.h"
 #include "mod_manager.h"
 #include "monexamine.h"
+#include "monfaction.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "monstergenerator.h"
@@ -782,6 +783,8 @@ void game::setup()
     remoteveh_cache = nullptr;
     global_variables &globvars = get_globals();
     globvars.clear_global_values();
+    // MONDT-J12: set_monfaction_attitude belongs to the game it was made in
+    monfactions::clear_attitude_overrides();
     unique_npcs.clear();
     get_weather().weather_override = WEATHER_NULL;
     // Tutorial and debug overrides (and the previous world's snow) must not leak into the

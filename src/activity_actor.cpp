@@ -9001,6 +9001,7 @@ void milk_activity_actor::finish( player_activity &act, Character &who )
     }
     item milk( milked_item->first, calendar::turn, milked_item->second );
     milk.set_item_temperature( units::from_celsius( 38.6 ) );
+    const int milk_before = milked_item->second;
     if( liquid_handler::handle_liquid( milk, target, nullptr, 1, nullptr, nullptr, -1,
                                        source_mon ) ) {
         milked_item->second = 0;
@@ -9008,6 +9009,13 @@ void milk_activity_actor::finish( player_activity &act, Character &who )
             milked_item->second = milk.charges;
         } else {
             who.add_msg_if_player( _( "The %s's udders run dry." ), source_mon->get_name() );
+        }
+        // MONDT-J14: the monster is beta
+        const int milk_taken = milk_before - milked_item->second;
+        if( milk_taken > 0 ) {
+            const cata::event milked = cata::event::make<event_type::monster_milked>( who.getID(),
+                                       source_mon->type->id, milked_item->first, milk_taken );
+            get_event_bus().send_with_talker( &who, source_mon, milked );
         }
     }
     // if the monster was not manually tied up, but needed to be fixed in place temporarily then
@@ -9215,6 +9223,11 @@ void shearing_activity_actor::finish( player_activity &act, Character &who )
     }
 
     act.set_to_null();
+
+    // MONDT-J14: the monster is beta
+    const cata::event sheared = cata::event::make<event_type::monster_sheared>( who.getID(),
+                                mon->type->id );
+    get_event_bus().send_with_talker( &who, mon, sheared );
 }
 
 void shearing_activity_actor::canceled( player_activity &, Character & )

@@ -39,6 +39,7 @@
   - ["light_color"](#light_color)
   - ["hp"](#hp)
   - ["bleed_rate"](#bleed_rate)
+  - ["blood_field", "gib_field"](#blood_field-gib_field)
   - ["death_drops"](#death_drops)
   - ["death_function"](#death_function)
   - ["emit_fields"](#emit_fields)
@@ -58,6 +59,7 @@
   - ["shearing"](#shearing)
   - ["speed_description"](#speed_description)
   - ["petfood"](#petfood)
+  - ["pet_interactions"](#pet_interactions)
   - ["special_when_hit"](#special_when_hit)
   - ["attack_effs"](#attack_effs)
   - ["path_settings"](#path_settings)
@@ -548,6 +550,21 @@ Monster hit points.
 
 Percent multiplier on all bleed effects' duration applied to the monster. Values below the default of 100 mean a resistance to bleed, values above 100 make the monster bleed longer and more intensive. 0 translates to bleed immunity.
 
+## "blood_field", "gib_field"
+(string, optional)
+
+The field type its blood leaves (when it bleeds, is hit or dies, and on its corpse when butchered) and the one its gibs leave (when it is torn apart or butchered). `"fd_null"` for none. Without them the game works them out:
+
+- blood: `fd_acid` with the `ACID_BLOOD` flag, `fd_bile` with `BILE_BLOOD`, `fd_blood_invertebrate` with `ARTHROPOD_BLOOD`, `fd_blood_veggy` when made of `veggy` or with `PLANT_BLOOD`, `fd_blood_insect` when made of `iflesh`, `fd_blood` when `WARM` and made of `flesh`, else the `"bleeds"` field of its first species (none with a `bleed_rate` of 0).
+- gibs: the `"gibs"` field of its first species that has one (`MOLLUSK`'s are `fd_gibs_invertebrate`), else `fd_gibs_veggy` when made of `veggy`, `fd_gibs_insect` when made of `iflesh`, `fd_gibs_flesh` when made of `flesh`, else none.
+
+A `SPECIES` takes `"bleeds"` and `"gibs"` (field type ids) for its monsters.
+
+```jsonc
+"blood_field": "fd_blood_insect",
+"gib_field": "fd_gibs_insect"
+```
+
 ## "death_drops"
 (string or item group, optional)
 
@@ -740,8 +757,39 @@ Decides whether this monster can be tamed. `%s` is the monster name.
 "petfood": {
     "food": [ "CATFOOD", "YULECATFOOD" ], // food categories this monster accepts
     "feed": "The gigantic %s decides not to maul you today.", // (optional) message when feeding the monster the food
-    "pet": "The %s is enjoying hunting the red laser dot." // (optional) message when playing with pet
+    "pet": "The %s is enjoying hunting the red laser dot.", // (optional) message when playing with pet
+    "chance": 50, // (optional) percent chance that a feeding tames it; otherwise it eats the food for nothing.  Default 100
+    "condition": { "u_has_trait": "ANIMALEMPATH" }, // (optional) it takes food only while this is true (alpha the feeder, beta the monster)
+    "on_tame_eocs": [ "EOC_PET_TAMED" ], // (optional) EOCs (ids or inline) run when it is tamed, after the messages
+    "on_fail_eocs": [ "EOC_PET_REFUSED" ], // (optional) EOCs run when it bites, refuses the food (condition false) or isn't tamed by it (chance)
+    "bite_on_feed": true // (optional) it bites the feeding hand instead (sometimes taking the food) and is never tamed by food.  Default false
 }
+```
+A `petfood` object replaces the one copied from a `copy-from` monster: every field it leaves out gets its default. The EOCs get the feeder as alpha and the monster as beta; a hallucinated monster runs them too (`is_hallucination()` tells). A tame sends the `monster_tamed` event (not for hallucinations).
+
+## "pet_interactions"
+(array of objects, optional)
+
+Extra entries in the menu shown when you examine your pet (a monster with the `pet` effect). The player is alpha and the pet beta in the condition and the effect. A `SPECIES` can have `pet_interactions` too: its monsters offer them after their own, except one whose `id` their type also has. An array replaces the one copied from a `copy-from` monster.
+
+| Field | Optionality | Info |
+| --- | --- | --- |
+| `id` | **mandatory** | string, unique among the monster's (and its species') interactions |
+| `name` | **mandatory** | the menu text; `%s` is the pet's name |
+| `key` | optional | a single character, the menu key; picked by the menu when left out |
+| `condition` | optional | a [dialogue condition](NPCs.md#dialogue-conditions); the entry is offered only while it is true |
+| `effect` | **mandatory** | effects run when the entry is picked, as an EOC's `effect`: an object, an array of them, an EOC id (`{ "run_eocs": "..." }`) or a string effect. For an action that takes time, start an activity with `u_assign_activity` |
+
+```jsonc
+"pet_interactions": [
+  {
+    "id": "brush",
+    "name": "Brush the %s",
+    "key": "B",
+    "condition": { "u_has_item_with_flag": "BRUSH" },
+    "effect": [ { "u_message": "You brush your pet until its coat shines." }, { "npc_add_effect": "brushed", "duration": "1 d" } ]
+  }
+]
 ```
 
 ## "special_when_hit"

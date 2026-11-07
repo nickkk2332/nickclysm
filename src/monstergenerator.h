@@ -41,6 +41,10 @@ struct species_type {
     enum_bitset<mon_trigger> fear;
     enum_bitset<mon_trigger> placate;
     field_type_str_id bleeds;
+    // MONDT-J11: the gibs field of its monsters that have no gib_field of their own
+    field_type_str_id gibs = field_type_str_id::NULL_ID();
+    // MONDT-J14: for its monsters, after their own (an id they have too is theirs)
+    std::vector<pet_interaction> pet_interactions;
     std::string get_footsteps() const {
         return footsteps.translated();
     }

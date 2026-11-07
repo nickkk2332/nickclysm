@@ -1799,6 +1799,9 @@ The list of possible faults, their weight and actual chances can be checked in i
 | `uncomfortable`        | Clothes made out of this material is always uncomfortable, no matter of it's properties
 | `soft`                 | True for pliable materials, whose length doesn't prevent fitting into a container, or through the opening of a container. Default is false.
 | `conductive`           | True if the material conducts electricity, defaults to false
+| `creature_flesh`       | A creature (monster or character) made of it counts as flesh: fire, lava and incendiary ammo hurt it more, and attacks and traps that only work on flesh affect it. Optional boolean, default false (true for `flesh` and `iflesh` in vanilla).
+| `breathes`             | A creature made of it breathes: tear gas and relaxation gas affect it unless it has the `NO_BREATHE` flag. Optional boolean, default false (true for `flesh`, `iflesh` and `veggy` in vanilla).
+| `creature_flammability` | How fire treats a creature made of it: `high` (fire, lava and incendiary ammo hurt it more and set it on fire more easily), `normal` (the default) or `resistant` (fire hurts it less, and burning fields don't set it on fire). In vanilla `high` for `paper`, `powder`, `wood`, `cotton` and `wool`, `resistant` for `stone`, `kevlar` and `steel`.
 | `reinforces`           | Optional boolean. Default is false.
 
 There are seven -resist parameters: acid, bash, chip, cut, elec, fire, and bullet. These are integer values; the default is 0 and they can be negative to take more damage.
@@ -3499,6 +3502,12 @@ For `type`s with "dissect_only" (see below), the following entries can scale the
 #### `leftovers`
 
 itype_id of the item dropped as leftovers after butchery or when the monster is gibbed.  Default as "ruined_chunks".
+
+#### `butchery_requirements`
+
+Id of the `butchery_requirement` that says which tools and surfaces each kind of butchery needs for each creature size (default `default`, in `data/json/butchery_requirements.json`). Its keys (`"1.0"`, `"1.2"`, ...) multiply the butchery time: the game picks the requirement with the lowest key that the butcher meets. That makes the butchery time of the monsters using this harvest moddable: a requirement with a `"2.0"` key alone doubles it. The time it multiplies comes from the creature size (a huge one takes 12 times as long as a tiny one), the butchering quality of the tools, the proficiencies of the butcher and the kind of butchery.
+
+Butchering a creature the butcher empathizes with (a human, for most characters) costs morale and trauma, and angers the NPCs who see it and empathize too. The amounts are `EXTERNAL_OPTION`s in `data/core/external_options.json`: `BUTCHERY_EMPATHY_MORALE` (-50) and `BUTCHERY_EMPATHY_TRAUMA` (10) for butchering, `DISSECT_EMPATHY_MORALE` (-40) and `DISSECT_EMPATHY_TRAUMA` (5) for dissecting without `prof_dissect_humans`, `BUTCHERY_EMPATHY_NPC_OPINION` (5) for the NPCs' trust, value and anger. Every butchery sends the `character_butchered_corpse` event with the corpse as beta (see [EFFECT_ON_CONDITION.md](EFFECT_ON_CONDITION.md)).
 
 ### Harvest Drop Type
 ```jsonc

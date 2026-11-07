@@ -1190,6 +1190,10 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::var_changed:
         case event_type::creature_teleported:
         case event_type::character_hears_sound:
+        case event_type::monster_tamed:
+        case event_type::monster_milked:
+        case event_type::monster_sheared:
+        case event_type::character_mounts_monster:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

@@ -47,7 +47,9 @@
 #include "cursesdef.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect.h" // for weed_msg
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "event.h"
 #include "event_bus.h"
@@ -333,7 +335,6 @@ static const morale_type morale_music( "morale_music" );
 static const morale_type morale_wet( "morale_wet" );
 
 static const mtype_id mon_blob( "mon_blob" );
-static const mtype_id mon_dog_thing( "mon_dog_thing" );
 static const mtype_id mon_hallu_multicooker( "mon_hallu_multicooker" );
 static const mtype_id mon_hologram( "mon_hologram" );
 static const mtype_id mon_spore( "mon_spore" );
@@ -1223,8 +1224,6 @@ std::optional<int> iuse::purify_smart( Character *p, item *it, const tripoint_bu
 
 std::optional<int> iuse::petfood( Character *p, item *it, const tripoint_bub_ms & )
 {
-    map &here = get_map();
-
     if( !it->is_comestible() ) {
         p->add_msg_if_player( _( "You doubt someone would want to eat %1$s." ), it->tname() );
         return std::nullopt;
@@ -1240,71 +1239,112 @@ std::optional<int> iuse::petfood( Character *p, item *it, const tripoint_bub_ms 
     creature_tracker &creatures = get_creature_tracker();
     monster *const mon = creatures.creature_at<monster>( *pnt, true );
 
-    if( mon != nullptr && !mon->type->petfood.food.empty() ) {
-        p->mod_moves( -to_moves<int>( 1_seconds ) );
+    if( mon == nullptr || !iuse::feed_pet( *p, *it, *mon ) ) {
+        p->add_msg_if_player( _( "There is nothing to be fed here." ) );
+    }
+    return std::nullopt;
+}
 
-        bool can_feed = false;
-        const pet_food_data &petfood = mon->type->petfood;
-        const std::set<std::string> &itemfood = it->get_comestible()->petfood;
-        for( const std::string &food : petfood.food ) {
-            if( itemfood.find( food ) != itemfood.end() ) {
-                can_feed = true;
-                break;
-            }
+// MONDT-J14: what PETFOOD does once the animal is chosen, apart so that tests can call it
+bool iuse::feed_pet( Character &feeder, item &food_item, monster &animal )
+{
+    if( animal.type->petfood.food.empty() || !food_item.is_comestible() ) {
+        return false;
+    }
+    map &here = get_map();
+    Character *const p = &feeder;
+    item *const it = &food_item;
+    monster *const mon = &animal;
+    p->mod_moves( -to_moves<int>( 1_seconds ) );
+
+    bool can_feed = false;
+    const pet_food_data &petfood = mon->type->petfood;
+    const std::set<std::string> &itemfood = it->get_comestible()->petfood;
+    for( const std::string &food : petfood.food ) {
+        if( itemfood.find( food ) != itemfood.end() ) {
+            can_feed = true;
+            break;
         }
+    }
 
-        if( !can_feed ) {
-            p->add_msg_if_player( _( "The %s doesn't want that kind of food." ), mon->get_name() );
-            return std::nullopt;
+    if( !can_feed ) {
+        p->add_msg_if_player( _( "The %s doesn't want that kind of food." ), mon->get_name() );
+        return true;
+    }
+
+    bool halluc = mon->is_hallucination();
+    // MONDT-J14: the condition and the EOCs get the feeder as alpha, the monster as beta
+    dialogue d( get_talker_for( p ), get_talker_for( mon ) );
+    const auto run_eocs = [&d]( const std::vector<effect_on_condition_id> &eocs ) {
+        for( const effect_on_condition_id &eoc : eocs ) {
+            eoc->activate( d );
         }
-
-        bool halluc = mon->is_hallucination();
-
-        if( mon->type->id == mon_dog_thing ) {
-            if( !halluc ) {
-                p->deal_damage( mon, bodypart_id( "hand_r" ), damage_instance( damage_cut, rng( 1, 10 ) ) );
-            }
-            p->add_msg_if_player( m_bad, _( "You want to feed it the dog food, but it bites your fingers!" ) );
-            if( one_in( 5 ) ) {
-                p->add_msg_if_player(
-                    _( "Apparently, it's more interested in your flesh than the dog food in your hand!" ) );
-                if( halluc ) {
-                    item drop_me = p->reduce_charges( it, 1 );
-                    p->i_drop_at( drop_me );
-                } else {
-                    p->consume_charges( *it, 1 );
-                }
-            }
-            return std::nullopt;
-        }
-
-        if( halluc && one_in( 4 ) ) {
-            p->add_msg_if_player( _( "You try to feed the %1$s some %2$s, but it vanishes!" ),
-                                  mon->type->nname(), it->tname() );
-            mon->die( &here, nullptr );
-            return std::nullopt;
-        }
-
-        p->add_msg_if_player( _( "You feed your %1$s to the %2$s." ), it->tname(), mon->get_name() );
-
-        if( petfood.feed.empty() ) {
-            p->add_msg_if_player( m_good, _( "The %1$s is your pet now!" ), mon->get_name() );
-        } else {
-            p->add_msg_if_player( m_good, _( petfood.feed ), mon->get_name() );
-        }
-
-        mon->friendly = -1;
-        mon->add_effect( effect_pet, 1_turns, true );
+    };
+    const auto eat_one = [&]() {
         if( halluc ) {
             item drop_me = p->reduce_charges( it, 1 );
             p->i_drop_at( drop_me );
         } else {
             p->consume_charges( *it, 1 );
         }
-        return std::nullopt;
+    };
+
+    if( petfood.bite_on_feed ) {
+        if( !halluc ) {
+            p->deal_damage( mon, bodypart_id( "hand_r" ), damage_instance( damage_cut, rng( 1, 10 ) ) );
+        }
+        p->add_msg_if_player( m_bad, _( "You want to feed it the dog food, but it bites your fingers!" ) );
+        if( one_in( 5 ) ) {
+            p->add_msg_if_player(
+                _( "Apparently, it's more interested in your flesh than the dog food in your hand!" ) );
+            eat_one();
+        }
+        run_eocs( petfood.on_fail_eocs );
+        return true;
     }
-    p->add_msg_if_player( _( "There is nothing to be fed here." ) );
-    return std::nullopt;
+
+    if( petfood.condition && !petfood.condition( d ) ) {
+        p->add_msg_if_player( _( "The %s won't take food from you." ), mon->get_name() );
+        run_eocs( petfood.on_fail_eocs );
+        return true;
+    }
+
+    if( halluc && one_in( 4 ) ) {
+        p->add_msg_if_player( _( "You try to feed the %1$s some %2$s, but it vanishes!" ),
+                              mon->type->nname(), it->tname() );
+        mon->die( &here, nullptr );
+        return true;
+    }
+
+    // no roll at 100, the default, so that feeding draws no random number it didn't before;
+    // none at 0 either, which never tames
+    if( petfood.chance < 100 && ( petfood.chance <= 0 || !x_in_y( petfood.chance, 100 ) ) ) {
+        //~ %1$s - monster name, %2$s - food name
+        p->add_msg_if_player( _( "The %1$s eats the %2$s, but doesn't trust you yet." ),
+                              mon->get_name(), it->tname() );
+        eat_one();
+        run_eocs( petfood.on_fail_eocs );
+        return true;
+    }
+
+    p->add_msg_if_player( _( "You feed your %1$s to the %2$s." ), it->tname(), mon->get_name() );
+
+    if( petfood.feed.empty() ) {
+        p->add_msg_if_player( m_good, _( "The %1$s is your pet now!" ), mon->get_name() );
+    } else {
+        p->add_msg_if_player( m_good, _( petfood.feed ), mon->get_name() );
+    }
+
+    mon->friendly = -1;
+    mon->add_effect( effect_pet, 1_turns, true );
+    eat_one();
+    run_eocs( petfood.on_tame_eocs );
+    if( !halluc ) {
+        const cata::event tamed = cata::event::make<event_type::monster_tamed>( p->getID(),
+                                  mon->type->id, std::string( "petfood" ) );
+        get_event_bus().send_with_talker( p, mon, tamed );
+    }
+    return true;
 }
 
 std::optional<int> iuse::radio_mod( Character *p, item *, const tripoint_bub_ms & )

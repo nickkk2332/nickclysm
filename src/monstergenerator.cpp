@@ -16,6 +16,8 @@
 #include "creature.h"
 #include "damage.h"
 #include "debug.h"
+#include "dialogue.h"
+#include "effect_on_condition.h"
 #include "enums.h"
 #include "execution_fatal.h"
 #include "field_type.h"
@@ -866,6 +868,42 @@ struct special_attacks_reader : generic_typed_reader<special_attacks_reader> {
     }
 };
 
+// MONDT-J14: "pet_interactions" of a monster or a species; an array replaces the inherited one
+static void load_pet_interactions( const JsonObject &jo, bool was_loaded, std::string_view src,
+                                   std::vector<pet_interaction> &interactions )
+{
+    if( jo.has_array( "pet_interactions" ) ) {
+        interactions.clear();
+        for( const JsonObject entry : jo.get_array( "pet_interactions" ) ) {
+            pet_interaction interaction;
+            interaction.load( entry, src );
+            interactions.push_back( interaction );
+        }
+    } else if( !was_loaded ) {
+        interactions.clear();
+    }
+}
+
+void pet_interaction::load( const JsonObject &jo, std::string_view src )
+{
+    mandatory( jo, false, "id", id );
+    mandatory( jo, false, "name", name );
+    if( jo.has_member( "key" ) ) {
+        const std::string key_str = jo.get_string( "key" );
+        if( key_str.size() != 1 ) {
+            jo.throw_error_at( "key", "pet interaction key must be a single character" );
+        }
+        key = static_cast<unsigned char>( key_str[0] );
+    }
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, true );
+    }
+    if( !jo.has_member( "effect" ) ) {
+        jo.throw_error( "pet interaction needs an \"effect\"" );
+    }
+    effect = std::make_shared<const talk_effect_t>( jo, "effect", src );
+}
+
 void mtype::load( const JsonObject &jo, const std::string_view src )
 {
     MonsterGenerator &gen = MonsterGenerator::generator();
@@ -995,8 +1033,16 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "no_absorb_material", no_absorb_material );
 
     optional( jo, was_loaded, "bleed_rate", bleed_rate, 100 );
+    optional( jo, was_loaded, "blood_field", blood_field );
+    optional( jo, was_loaded, "gib_field", gib_field );
 
-    optional( jo, was_loaded, "petfood", petfood );
+    if( jo.has_object( "petfood" ) ) {
+        petfood = pet_food_data();
+        petfood.load( jo.get_object( "petfood" ), src );
+    } else if( !was_loaded ) {
+        petfood = pet_food_data();
+    }
+    load_pet_interactions( jo, was_loaded, src, pet_interactions );
 
     optional( jo, was_loaded, "move_skills", move_skills );
 
@@ -1247,7 +1293,7 @@ void species_type::finalize_all()
     MonsterGenerator::generator().mon_species->finalize();
 }
 
-void species_type::load( const JsonObject &jo, std::string_view )
+void species_type::load( const JsonObject &jo, std::string_view src )
 {
     optional( jo, was_loaded, "description", description );
     optional( jo, was_loaded, "footsteps", footsteps, to_translation( "footsteps." ) );
@@ -1260,6 +1306,8 @@ void species_type::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "fear_triggers", fear, trigger_reader );
 
     optional( jo, was_loaded, "bleeds", bleeds, string_id_reader<::field_type> {}, fd_null );
+    optional( jo, was_loaded, "gibs", gibs, string_id_reader<::field_type> {}, fd_null );
+    load_pet_interactions( jo, was_loaded, src, pet_interactions );
 }
 
 void mon_flag::load_mon_flags( const JsonObject &jo, const std::string &src )
@@ -1424,6 +1472,14 @@ void MonsterGenerator::load_monster_attack( const JsonObject &jo, const std::str
 
 void MonsterGenerator::check_monster_definitions() const
 {
+    for( const species_type &spec : mon_species->get_all() ) {
+        if( !spec.bleeds.is_empty() && !spec.bleeds.is_valid() ) {
+            debugmsg( "species %s has unknown bleeds field: %s", spec.id.c_str(), spec.bleeds.c_str() );
+        }
+        if( !spec.gibs.is_empty() && !spec.gibs.is_valid() ) {
+            debugmsg( "species %s has unknown gibs field: %s", spec.id.c_str(), spec.gibs.c_str() );
+        }
+    }
     for( const mtype &mon : mon_templates->get_all() ) {
         if( !mon.src.empty() && mon.src.back().second.str() == "dda" ) {
             std::string mon_id = mon.id.str();
@@ -1469,6 +1525,13 @@ void MonsterGenerator::check_monster_definitions() const
             if( m.first.str() == "null" || !m.first.is_valid() ) {
                 debugmsg( "monster %s has unknown material: %s", mon.id.c_str(), m.first.c_str() );
             }
+        }
+        if( mon.blood_field && !mon.blood_field->is_valid() ) {
+            debugmsg( "monster %s has unknown blood_field: %s", mon.id.c_str(),
+                      mon.blood_field->c_str() );
+        }
+        if( mon.gib_field && !mon.gib_field->is_valid() ) {
+            debugmsg( "monster %s has unknown gib_field: %s", mon.id.c_str(), mon.gib_field->c_str() );
         }
         if( !mon.revert_to_itype.is_empty() && !item::type_is_defined( mon.revert_to_itype ) ) {
             debugmsg( "monster %s has unknown revert_to_itype: %s", mon.id.c_str(),
@@ -1670,16 +1733,31 @@ void monster_death_effect::deserialize( const JsonObject &data )
     load( data );
 }
 
-void pet_food_data::load( const JsonObject &jo )
+void pet_food_data::load( const JsonObject &jo, std::string_view src )
 {
     optional( jo, was_loaded, "food", food );
     optional( jo, was_loaded, "feed", feed );
     optional( jo, was_loaded, "pet", pet );
-}
-
-void pet_food_data::deserialize( const JsonObject &data )
-{
-    load( data );
+    // MONDT-J14
+    optional( jo, was_loaded, "chance", chance, numeric_bound_reader<int> { 0, 100 }, 100 );
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, true );
+    } else {
+        condition = nullptr;
+    }
+    on_tame_eocs.clear();
+    if( jo.has_array( "on_tame_eocs" ) ) {
+        for( const JsonValue jv : jo.get_array( "on_tame_eocs" ) ) {
+            on_tame_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    on_fail_eocs.clear();
+    if( jo.has_array( "on_fail_eocs" ) ) {
+        for( const JsonValue jv : jo.get_array( "on_fail_eocs" ) ) {
+            on_fail_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
+    optional( jo, was_loaded, "bite_on_feed", bite_on_feed, false );
 }
 
 void move_skills_data::load( const JsonObject &jo )

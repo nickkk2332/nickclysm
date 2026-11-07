@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -34,6 +35,7 @@ enum class phase_id : int;
 
 struct const_dialogue;
 struct dealt_projectile_attack;
+struct talk_effect_t;
 template <typename E> struct enum_traits;
 
 using mon_action_death  = void ( * )( monster & );
@@ -253,10 +255,18 @@ struct pet_food_data {
     std::set<std::string> food;
     std::string pet;
     std::string feed;
+    // MONDT-J14: percent chance that a feeding tames it; otherwise it eats the food for nothing
+    int chance = 100;
+    // alpha the feeder, beta the monster: false and it won't take the food (none: always true)
+    std::function<bool( const_dialogue const & )> condition;
+    // alpha the feeder, beta the monster
+    std::vector<effect_on_condition_id> on_tame_eocs;
+    std::vector<effect_on_condition_id> on_fail_eocs;
+    // it bites the hand that feeds it instead, and is never tamed by food
+    bool bite_on_feed = false;
 
     bool was_loaded = false;
-    void load( const JsonObject &jo );
-    void deserialize( const JsonObject &data );
+    void load( const JsonObject &jo, std::string_view src );
 };
 
 struct monster_block_data {
@@ -340,6 +350,21 @@ struct revive_type {
     mongroup_id revive_monster_group = mongroup_id::NULL_ID();
 
     void deserialize( const JsonObject &jo );
+};
+
+// MONDT-J14: an entry from JSON in the pet menu of a monster ("pet_interactions" of its type or
+// of its species); the player is alpha, the pet beta
+struct pet_interaction {
+    std::string id;
+    // "%s" is the pet's name
+    translation name;
+    // the menu key, -1 for one the menu picks
+    int key = -1;
+    // offered only while this is true (none: always)
+    std::function<bool( const_dialogue const & )> condition;
+    std::shared_ptr<const talk_effect_t> effect;
+
+    void load( const JsonObject &jo, std::string_view src );
 };
 
 struct mtype {
@@ -461,6 +486,7 @@ struct mtype {
 
         // Pet food category this monster is in
         pet_food_data petfood;
+        std::vector<pet_interaction> pet_interactions;
     private:
 
         behavior::node_t goals;
@@ -518,6 +544,11 @@ struct mtype {
 
         // Bleed rate in percent, 0 makes the monster immune to bleeding
         int bleed_rate = 100;
+
+        // MONDT-J11: the field its blood and its gibs leave ("fd_null" for none); unset works it
+        // out from its flags, materials and species (bloodType(), gibType())
+        std::optional<field_type_str_id> blood_field;
+        std::optional<field_type_str_id> gib_field;
 
         // The amount of volume in milliliters that this monster needs to absorb to gain 1 HP (default 250)
         int absorb_ml_per_hp = 250;
@@ -618,10 +649,6 @@ struct mtype {
         //Used for corpses.
         field_type_id bloodType() const;
         field_type_id gibType() const;
-        // The item id of the meat items that are produced by this monster (or "null")
-        // if there is no matching item type. e.g. "veggy" for plant monsters.
-        itype_id get_meat_itype() const;
-        int get_meat_chunks_count() const;
         std::string get_description() const;
         ascii_art_id get_picture_id() const;
         std::string get_footsteps() const;

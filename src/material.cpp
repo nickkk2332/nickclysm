@@ -57,6 +57,22 @@ std::string enum_to_string<breathability_rating>( breathability_rating data )
     }
     cata_fatal( "Invalid breathability" );
 }
+
+template<>
+std::string enum_to_string<creature_flammability>( creature_flammability data )
+{
+    switch( data ) {
+        case creature_flammability::normal:
+            return "normal";
+        case creature_flammability::high:
+            return "high";
+        case creature_flammability::resistant:
+            return "resistant";
+        case creature_flammability::last:
+            break;
+    }
+    cata_fatal( "Invalid creature_flammability" );
+}
 } // namespace io
 
 material_type::material_type() :
@@ -115,6 +131,10 @@ void material_type::load( const JsonObject &jsobj, std::string_view )
     optional( jsobj, was_loaded, "rotting", _rotting, false );
     optional( jsobj, was_loaded, "soft", _soft, false );
     optional( jsobj, was_loaded, "uncomfortable", _uncomfortable, false );
+    optional( jsobj, was_loaded, "creature_flesh", _creature_flesh, false );
+    optional( jsobj, was_loaded, "breathes", _breathes, false );
+    optional( jsobj, was_loaded, "creature_flammability", _creature_flammability,
+              creature_flammability::normal );
 
     optional( jsobj, was_loaded, "vitamins", _vitamins, weighted_string_id_reader<vitamin_id, double> { 1.0 } );
 
@@ -137,9 +157,51 @@ void material_type::finalize()
     finalize_damage_map( _resistances.resist_vals );
 }
 
+namespace
+{
+
+struct creature_material_sets {
+    std::set<material_id> flesh;
+    std::set<material_id> breathing;
+    std::set<material_id> flammable;
+    std::set<material_id> flame_resistant;
+
+    void clear() {
+        flesh.clear();
+        breathing.clear();
+        flammable.clear();
+        flame_resistant.clear();
+    }
+};
+
+// One object for the whole run, so that Creature::cmat_* can refer to its sets
+creature_material_sets &get_creature_material_sets()
+{
+    static creature_material_sets sets;
+    return sets;
+}
+
+} // namespace
+
 void material_type::finalize_all()
 {
     material_data.finalize();
+
+    creature_material_sets &sets = get_creature_material_sets();
+    sets.clear();
+    for( const material_type &m : material_data.get_all() ) {
+        if( m._creature_flesh ) {
+            sets.flesh.emplace( m.id );
+        }
+        if( m._breathes ) {
+            sets.breathing.emplace( m.id );
+        }
+        if( m._creature_flammability == creature_flammability::high ) {
+            sets.flammable.emplace( m.id );
+        } else if( m._creature_flammability == creature_flammability::resistant ) {
+            sets.flame_resistant.emplace( m.id );
+        }
+    }
 }
 
 void material_type::check() const
@@ -334,6 +396,21 @@ bool material_type::uncomfortable() const
     return _uncomfortable;
 }
 
+bool material_type::creature_flesh() const
+{
+    return _creature_flesh;
+}
+
+bool material_type::breathes() const
+{
+    return _breathes;
+}
+
+creature_flammability material_type::get_creature_flammability() const
+{
+    return _creature_flammability;
+}
+
 fuel_data material_type::get_fuel_data() const
 {
     return fuel;
@@ -362,11 +439,32 @@ void materials::check()
 void materials::reset()
 {
     material_data.reset();
+    get_creature_material_sets().clear();
 }
 
 material_list materials::get_all()
 {
     return material_data.get_all();
+}
+
+const std::set<material_id> &materials::creature_flesh()
+{
+    return get_creature_material_sets().flesh;
+}
+
+const std::set<material_id> &materials::creature_breathing()
+{
+    return get_creature_material_sets().breathing;
+}
+
+const std::set<material_id> &materials::creature_flammable()
+{
+    return get_creature_material_sets().flammable;
+}
+
+const std::set<material_id> &materials::creature_flame_resistant()
+{
+    return get_creature_material_sets().flame_resistant;
 }
 
 const std::set<material_id> &materials::get_rotting()

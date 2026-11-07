@@ -63,6 +63,7 @@
 #include "map_scale_constants.h"
 #include "mapdata.h"
 #include "martialarts.h"
+#include "material.h"
 #include "mattack_common.h"
 #include "mdarray.h"
 #include "messages.h"
@@ -161,17 +162,7 @@ static const json_character_flag json_flag_SUPPRESS_INVISIBILITY( "SUPPRESS_INVI
 static const json_character_flag json_flag_TEEPSHIELD( "TEEPSHIELD" );
 static const json_character_flag json_flag_TRUE_SEEING( "TRUE_SEEING" );
 
-static const material_id material_cotton( "cotton" );
-static const material_id material_flesh( "flesh" );
-static const material_id material_iflesh( "iflesh" );
-static const material_id material_kevlar( "kevlar" );
-static const material_id material_paper( "paper" );
-static const material_id material_powder( "powder" );
-static const material_id material_steel( "steel" );
-static const material_id material_stone( "stone" );
 static const material_id material_veggy( "veggy" );
-static const material_id material_wood( "wood" );
-static const material_id material_wool( "wool" );
 
 static const species_id species_ROBOT( "ROBOT" );
 
@@ -185,19 +176,11 @@ const std::map<std::string, creature_size> Creature::size_map = {
     {"HUGE",   creature_size::huge}
 };
 
-const std::set<material_id> Creature::cmat_flesh{
-    material_flesh, material_iflesh
-};
-const std::set<material_id> Creature::cmat_fleshnveg{
-    material_flesh,  material_iflesh, material_veggy
-};
-const std::set<material_id> Creature::cmat_flammable{
-    material_paper, material_powder, material_wood,
-    material_cotton, material_wool
-};
-const std::set<material_id> Creature::cmat_flameres{
-    material_stone, material_kevlar, material_steel
-};
+// MONDT-J11: built from the material JSON when the materials are finalized
+const std::set<material_id> &Creature::cmat_flesh = materials::creature_flesh();
+const std::set<material_id> &Creature::cmat_fleshnveg = materials::creature_breathing();
+const std::set<material_id> &Creature::cmat_flammable = materials::creature_flammable();
+const std::set<material_id> &Creature::cmat_flameres = materials::creature_flame_resistant();
 
 Creature::Creature()
 {

@@ -3390,6 +3390,13 @@ static std::function<T( const_dialogue const & )> get_get_str_( const JsonObject
             const monster *mon = d.const_actor( is_npc )->get_const_monster();
             return ret_func( mon != nullptr ? mon->faction.id().str() : std::string() );
         };
+    } else if( mutator == "u_monster_type" || mutator == "npc_monster_type" ) {
+        // MONDT-J12: the monster's type id (u_is_mtype tests it), "" for a talker that isn't one
+        const bool is_npc = mutator == "npc_monster_type";
+        return [is_npc, ret_func]( const_dialogue const & d ) {
+            const monster *mon = d.const_actor( is_npc )->get_const_monster();
+            return ret_func( mon != nullptr ? mon->type->id.str() : std::string() );
+        };
     } else if( mutator == "u_loaded_ammo" || mutator == "npc_loaded_ammo" ) {
         // MATH-J07: the id of the ammo loaded in the item, "" for none or another talker
         const bool is_npc = mutator == "npc_loaded_ammo";

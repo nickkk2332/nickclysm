@@ -36,6 +36,8 @@
 #include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "enums.h"
+#include "event.h"
+#include "event_bus.h"
 #include "execution_combat.h"
 #include "explosion.h"
 #include "field.h"
@@ -2084,6 +2086,14 @@ void spell_effect::charm_monster( const spell &sp, Creature &caster, const tripo
             if( mon->friendly != -1 && sp.has_flag( spell_flag::CHARM_PET ) ) {
                 mon->friendly = -1;
                 mon->add_effect( effect_pet, 1_turns, true );
+                // MONDT-J14: the caster is alpha (a monster caster has no character id)
+                if( !mon->is_hallucination() ) {
+                    const Character *who = caster.as_character();
+                    const cata::event tamed = cata::event::make<event_type::monster_tamed>(
+                                                  who != nullptr ? who->getID() : character_id(), mon->type->id,
+                                                  std::string( "spell" ) );
+                    get_event_bus().send_with_talker( &caster, mon, tamed );
+                }
             }
             success = true;
         }

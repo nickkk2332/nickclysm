@@ -646,5 +646,40 @@
     "//": "Crowd crush: added to the resist chance while you're prone (and not downed, since the downed effect carries its own CROWD_CRUSH_RESIST penalty).",
     "stype": "float",
     "value": -4
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_EMPATHY_MORALE",
+    "//": "Morale for butchering (any way but dismembering) a corpse of a creature you empathize with, such as a human.  Lasts 2 days, decaying after 3 hours.",
+    "stype": "int",
+    "value": -50
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_EMPATHY_TRAUMA",
+    "//": "Trauma for butchering (any way but dismembering) a corpse of a creature you empathize with.",
+    "stype": "int",
+    "value": 10
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "DISSECT_EMPATHY_MORALE",
+    "//": "Morale for dissecting a corpse of a creature you empathize with, without the prof_dissect_humans proficiency.  Lasts 1 day, decaying after 2 hours.",
+    "stype": "int",
+    "value": -40
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "DISSECT_EMPATHY_TRAUMA",
+    "//": "Trauma for dissecting a corpse of a creature you empathize with, without the prof_dissect_humans proficiency.",
+    "stype": "int",
+    "value": 5
+  },
+  {
+    "type": "EXTERNAL_OPTION",
+    "name": "BUTCHERY_EMPATHY_NPC_OPINION",
+    "//": "How much an NPC who sees you butcher or dissect a creature it empathizes with loses trust and value for you, and gains anger.",
+    "stype": "int",
+    "value": 5
   }
 ]

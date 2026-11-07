@@ -1431,6 +1431,7 @@ Mutator Name | Required Keys | Description
 `"u_/npc_vehicle_type"` | | Returns the [vehicle prototype](VEHICLES_JSON.md) id the alpha/beta talker was spawned from (`none` for a vehicle built in the game or split off another), or an empty string when the talker isn't a vehicle. See also the `u_vehicle_type` condition.
 `"u_/npc_activity"` | | Returns the id of the alpha/beta talker's current activity (`ACT_READ`, ...), or an empty string without one or for a talker that isn't a character. See also the `u_has_activity` condition.
 `"u_/npc_monster_faction"` | | Returns the faction of the alpha/beta talker's monster: its own, which `u_set_monster_faction` changes, not its type's default (see `mon_faction`). An empty string for a talker that isn't a monster.
+`"u_/npc_monster_type"` | | Returns the monster type id (`mon_zombie`, ...) of the alpha/beta talker's monster, or an empty string for a talker that isn't a monster. The `u_is_mtype` condition tests it directly.
 `"u_/npc_loaded_ammo"` | | Returns the id of the ammo loaded in the alpha/beta talker's item, or an empty string when nothing is loaded or the talker isn't an item.
 `"u_/npc_zone_type"` | | Returns the zone type id of the alpha/beta talker's zone (see `u_run_fixed_zone_eocs`), or an empty string when the talker isn't a zone.
 

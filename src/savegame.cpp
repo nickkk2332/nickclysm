@@ -40,6 +40,7 @@
 #include "mapgen_post_process.h"
 #include "messages.h"
 #include "mission.h"
+#include "monfaction.h"
 #include "mongroup.h"
 #include "monster.h"
 #include "mtype.h"
@@ -1684,6 +1685,7 @@ void game::unserialize_master( const JsonValue &jv )
     // Reset state that has no clear-on-load hook of its own; otherwise a
     // save without the field inherits the previous game's queue.
     get_item_wakeups().clear();
+    monfactions::clear_attitude_overrides();
     JsonObject game_json = jv;
     for( JsonMember jsin : game_json ) {
         std::string name = jsin.name();
@@ -1713,6 +1715,9 @@ void game::unserialize_master( const JsonValue &jv )
             timed_event_manager::unserialize_all( jsin );
         } else if( name == "item_wakeups" ) {
             get_item_wakeups().deserialize( jsin );
+        } else if( name == "monfaction_attitudes" ) {
+            // MONDT-J12: set_monfaction_attitude
+            monfactions::deserialize_attitude_overrides( jsin );
         } else if( name == "overmapbuffer" ) {
             overmap_buffer.global_state.deserialize( jsin );
         } else if( name == "placed_unique_specials" ) {
@@ -1993,6 +1998,9 @@ void game::serialize_master( std::ostream &fout )
 
         json.member( "item_wakeups" );
         get_item_wakeups().serialize( json );
+
+        json.member( "monfaction_attitudes" );
+        monfactions::serialize_attitude_overrides( json );
 
         json.member( "factions", *faction_manager_ptr );
         json.member( "seed", seed );

@@ -2497,7 +2497,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | camp_taken_over | Triggers any faction's camp is taken over | { "old_owner", `faction_id` }, <br/> { "new_owner", `faction_id` }, <br/> { "camp_name", `string` }, <br/> { "was_violent", `bool` },<br/> { "pos", `tripoint` } (location of the camp's overmap tile, its north-west corner) | avatar / NONE |
 | camp_upgrade_completed | Triggers when companions finish a camp upgrade, including a salt water pipe segment | { "camp_name", `string` },<br/> { "pos", `tripoint` } (location of the upgraded overmap tile, its north-west corner),<br/> { "upgrade", `string` } (id of the upgrade's recipe) | avatar / NONE |
 | causes_resonance_cascade | Triggers when resonance cascade option is activated via "old lab" finale's computer | NONE | avatar / NONE |
-| character_butchered_corpse | Triggers after succesful butchering action. Possible values of butcher_type are `ACT_BLEED`, `ACT_BUTCHER`, `ACT_BUTCHER_FULL`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT` | { "character", `character_id` }, { "monster_id", `mtype_id` }, { "butcher_type", `string` }, | character / NONE |
+| character_butchered_corpse | Triggers when a butchering action ends, whatever its outcome. Possible values of butcher_type are `ACT_QUICK`, `ACT_FULL`, `ACT_FIELD_DRESS`, `ACT_SKIN`, `ACT_BLEED`, `ACT_QUARTER`, `ACT_DISMEMBER`, `ACT_DISSECT`. `success` is false when the butchery failed fatally (the corpse is ruined, nothing is harvested) and for a failed field dressing. The corpse is beta, and is still there: one that the action uses up is removed after the event | { "character", `character_id` },<br/> { "monster_id", `mtype_id` },<br/> { "butcher_type", `string` },<br/> { "success", `bool` }, | character / the corpse |
 | character_casts_spell | Triggers when a character casts spells. When a spell with multiple effects is cast, the number of effects will be triggered. A spell cast without a caster (by an item, for example) has an invalid `character`, and runs no EVENT EOCs. Statistics don't keep `target` | { "character", `character_id` },<br/> { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` },<br/> { "target", `tripoint` } (where it was cast at, map squares) | character / NONE |
 | character_consumes_item | Triggers when a character eats, drinks or takes an item (food, medicine, a bionic's fuel) | { "character", `character_id` },<br/> { "itype", `itype_id` }, | character / the item consumed |
 | character_crafts_item | Triggers when a character finishes crafting a recipe, after its `result_eocs` and `result_item_eocs`. `quantity` is the batch size; `itype` is the recipe's result (`null` for a recipe with none) | { "character", `character_id` },<br/> { "recipe", `string` },<br/> { "itype", `itype_id` },<br/> { "quantity", `int` } | character / NONE |
@@ -2520,6 +2520,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | character_loses_effect |  | { "character", `character_id` },<br/> { "bodypart", `body_part` },<br/> { "effect", `efftype_id` } | character / NONE |
 | character_melee_attacks_character |  | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "hits", `bool` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character (attacker) / character (victim) |
 | character_melee_attacks_monster | | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "hits", `bool` },<br/> { "victim_type", `mtype_id` },| character / monster |
+| character_mounts_monster | Triggers when a character climbs on a monster to ride it: a pet animal or a mech | { "character", `character_id` },<br/> { "monster_id", `mtype_id` }, | character / the monster |
 | character_radioactively_mutates | triggered when a character mutates due to being irradiated | { "character", `character_id` }, | character / NONE |
 | character_ranged_attacks_character | |  { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/> { "victim", `character_id` },<br/> { "victim_name", `string` }, | character (attacker) / character (victim) |
 | character_ranged_attacks_monster | | { "attacker", `character_id` },<br/> { "weapon", `itype_id` },<br/> { "ammo", `itype_id` },<br/> { "is_throw", `bool` },<br/>  { "victim_type", `mtype_id` }, | character / monster |
@@ -2530,6 +2531,9 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | character_takes_damage | triggers when character gets any damage from any creature | { "character", `character_id` },<br/> { "damage", `int` },<br/> { "bodypart", `body_part` },<br/> { "pain", `int` },<br/> { "damage_type", `damage_type_id` } (the type that dealt most of the hit; empty for damage of no type: bleeding, `hurtall`, an EOC's damage to a part) | character / attacker if exists, otherwise NONE(character or monster) | use `has_beta` conditon before interacting with beta talker
 | monster_takes_damage | triggers when monster gets any damage from any creature. Includes damages from effects like bleeding. Statistics keep only `damage` and `dies`: the other fields, for every monster and damage type, would grow the save by thousands of entries in a long game (count kills by type with `character_kills_monster` or `monster_dies`, or damage with an EVENT EOC and a variable) | { "damage", `int` },<br/> { "dies", `bool` },<br/> { "victim_type", `mtype_id` },<br/> { "bodypart", `body_part` },<br/> { "damage_type", `damage_type_id` } (the type that dealt the most of the hit, the first of the attack's types when none got through; `bash`/`cut` for a fall and `heat` for burning; empty for damage with no type, like bleeding) | monster (the one hurt, also when nothing hurt it) / attacker (character or monster), or NONE when there is none (bleeding, fire, a fall) | use `has_beta` condition before interacting with beta talker
 | monster_dies | Triggers when any monster dies, whatever killed it: a character, a pet, another monster, a turret, a trap, nothing at all. Not for hallucinations. A character's kill also sends `character_kills_monster` just before | { "victim_type", `mtype_id` },<br/> { "killer", `character_id` } (the character that killed it, or whose summoned monster did; invalid otherwise),<br/> { "killer_type", `mtype_id` } (the monster that killed it; `mon_null` otherwise) | the monster that died / its killer (character or monster), or NONE |
+| monster_tamed | Triggers when a character makes a monster its pet: by feeding it its `petfood` (`method` is `petfood`; after the food's `on_tame_eocs`) or with a `CHARM_PET` spell (`method` is `spell`). Not for hallucinations | { "character", `character_id` },<br/> { "monster_id", `mtype_id` },<br/> { "method", `string` }, | character / the monster |
+| monster_milked | Triggers when a character finishes milking a monster and gets some milk: `amount` units (charges) of `itype` | { "character", `character_id` },<br/> { "monster_id", `mtype_id` },<br/> { "itype", `itype_id` },<br/> { "amount", `int` }, | character / the monster |
+| monster_sheared | Triggers when a character finishes shearing a monster | { "character", `character_id` },<br/> { "monster_id", `mtype_id` }, | character / the monster |
 | character_throws_creature | Triggers when a character has thrown the creature it held (the throw action or `u_throw_grabbed`), after it lands | { "character", `character_id` },<br/> { "victim", `character_id` } (invalid for a monster),<br/> { "victim_type", `mtype_id` } (`mon_null` for a character),<br/> { "victim_name", `string` },<br/> { "force", `int` } (the force of the throw: it flew `force / 10` tiles at most),<br/> { "distance", `int` } (the tiles it was thrown) | character (thrower) / creature (thrown; it may be dead) |
 | character_triggers_trap | Statistics don't keep `pos` | { "character", `character_id` },<br/> { "trap", `trap_str_id` },<br/> { "pos", `tripoint` } (the trap, map squares) | character / NONE |
 | character_wakes_up | triggers in the moment a character loses its sleep effect and wakes up. `cause` says why: `noise` (a sound woke it), `alarm` (an internal chronometer, the `ALARMCLOCK` flag; an alarm clock item is a sound, so `noise`), `damage` (it was hurt), `rested` (the sleep ran its course) or `other` (light, cold, heat, a hostile seen, pain, a script and the rest). This second field is new: a `trigger_event` for this event needs two arguments | { "character", `character_id` },<br/> { "cause", `string` }, | character / NONE |
@@ -7594,6 +7598,28 @@ Moves a monster to another monster faction, which changes which monsters it figh
 The charmed monster (beta) joins the bees
 ```jsonc
 { "npc_set_monster_faction": "bee" }
+```
+
+#### `set_monfaction_attitude`
+Changes how the monsters of one monster faction treat those of another, for the rest of the game (saved with it). It acts as if the first faction's JSON listed the other under `by_mood`, `neutral`, `friendly` or `hate` (see `"default_faction"` in [MONSTERS.md](MONSTERS.md) and `data/json/monster_factions.json`): factions whose `base_faction` is the first one follow the change unless their own JSON lists the other faction, and the change also covers factions based on the other one, unless the first faction lists them. `"DEFAULT"` removes the change, going back to the JSON. A new game starts without changes.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "set_monfaction_attitude" | **mandatory** | string or [variable object](#variable-object) | id of the monster faction whose attitude changes |
+| "to" | **mandatory** | string or [variable object](#variable-object) | id of the monster faction it is about |
+| "attitude" | **mandatory** | string or [variable object](#variable-object) | `BY_MOOD` (hostile when angry), `NEUTRAL`, `FRIENDLY`, `HATE` (attacks on sight) or `DEFAULT` |
+| "mutual" | optional | bool | if true, also sets the attitude of `to` toward the first faction. Default false |
+
+A literal faction id that doesn't exist, or an unknown literal attitude, is a load error. Monsters see the change on their next turn. The `u_monster_faction` mutator reads a monster's own faction, `u_set_monster_faction` moves one monster.
+
+##### Valid talkers:
+
+No talker is needed.
+
+##### Examples
+The mi-go and the triffids become enemies
+```jsonc
+{ "set_monfaction_attitude": "mi-go", "to": "triffid", "attitude": "HATE", "mutual": true }
 ```
 
 #### `u_set_monster_destination`, `npc_set_monster_destination`, `u_set_monster_target`, `npc_set_monster_target`, `u_clear_monster_goal`, `npc_clear_monster_goal`
