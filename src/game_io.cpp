@@ -49,6 +49,7 @@
 #include "debug.h"
 #include "dependency_tree.h"
 #include "diary.h"
+#include "display.h"
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "event.h"
@@ -330,6 +331,8 @@ bool game::load( const save_t &name )
     map &here = get_map();
     // results kept for "evaluate_every" belong to the previous game's NPCs
     behavior::clear_evaluation_cache();
+    // and the sidebar's overmap to the previous game's world
+    display::invalidate_overmap_cache();
 
     const cata_path worldpath = PATH_INFO::world_base_save_path();
     const cata_path save_file_path = PATH_INFO::world_base_save_path() /

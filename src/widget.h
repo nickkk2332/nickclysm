@@ -4,6 +4,7 @@
 
 #include <climits>
 #include <functional>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -190,6 +191,9 @@ struct widget_clause {
         std::function<bool( const_dialogue const & )> condition;
         bool meets_condition( const std::string &opt_var = "" ) const;
         bool meets_condition( const std::set<bodypart_id> &bps ) const;
+        // If parse_tags is set, expands the tags in txt (text or sym) with the dialogue the
+        // condition sees: context var "widget" is the first of bps the condition holds for
+        void parse_text( std::string &txt, const std::set<bodypart_id> &bps ) const;
 
         static const widget_clause *get_clause_for_id( const std::string &clause_id, const widget_id &wgt,
                 int thresh_val = INT_MIN, bool skip_condition = false );
@@ -224,6 +228,16 @@ struct widget_clause {
                                           const widget_id &wgt, bool skip_condition = false );
 };
 
+// "sidebar_section": puts a widget into sidebars as a section of its own, after one of theirs
+struct widget_sidebar_section {
+    // Sidebars to add the section to; empty for every sidebar ("*")
+    std::vector<widget_id> sidebars;
+    // The sidebar's section to put it after; at the end when null or not in that sidebar
+    widget_id after = widget_id::NULL_ID();
+
+    bool applies_to( const widget_id &sidebar ) const;
+};
+
 // A specified variable object or math expression for use with "var": "custom".
 struct widget_custom_var {
     dbl_or_var::part_t value;
@@ -249,6 +263,8 @@ class widget
         bool was_loaded = false;
         const widget_clause *get_clause( const std::string &clause_id = "" ) const;
         std::vector<const widget_clause *> get_clauses() const;
+        // Child widgets of a layout, from "widgets" and every clause
+        std::vector<widget_id> child_widgets() const;
 
     public:
         widget() = default;
@@ -299,6 +315,15 @@ class widget
         std::string _fill;
         // String values mapped to numeric values or ranges
         translation _string;
+        // Whether to expand the tags in _string (as clauses' "parse_tags" does)
+        bool _parse_tags = false;
+        // Which true clauses are shown: "all", "first" or "threshold" (the one with the
+        // largest value not above the var's)
+        std::string _clause_mode = "all";
+        // Var value the "threshold" clause_mode compares the clause values with
+        int _clause_value = INT_MIN;
+        // Sidebars this widget adds itself to as a section
+        std::optional<widget_sidebar_section> _sidebar_section;
         // Colors mapped to values or ranges
         std::vector<nc_color> _colors;
         // Optional color breaks in percent of the value's range; length = length(colors) - 1
@@ -328,6 +353,15 @@ class widget
         // Finalize anything that must wait until all widgets are loaded
         static void finalize_all();
         void finalize();
+        // Report widgets that would draw wrong or crash (unknown style, missing children...)
+        static void check_consistency();
+        // Adds the widgets whose "sidebar_section" applies to this sidebar to its sections
+        // (rows), each after its "after" section, in load order; ones already there are kept
+        static void add_sidebar_sections( const widget_id &sidebar, std::vector<widget_id> &rows );
+        // A sidebar's sections: its "widgets" and the sections added to it; else "widgets"
+        std::vector<widget_id> sidebar_sections() const;
+        // Load-time checks of this widget; drawn: it is reachable from a sidebar
+        void check( bool drawn ) const;
         // Recursively derive _label_width for nested layouts in this widget
         static int finalize_label_width_recursive( const widget_id &id );
         // Recursively derive _separator for nested layouts in this widget

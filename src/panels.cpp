@@ -378,8 +378,9 @@ static std::vector<window_panel> initialize_default_custom_panels( const widget 
     // Use defined width, or at least 16
     const int width = std::max( wgt._width, 16 );
 
-    // Add window panel for each child widget
-    for( const widget_id &row_wid : wgt._widgets ) {
+    // Add window panel for each child widget, and for the widgets that add themselves to
+    // this sidebar ("sidebar_section")
+    for( const widget_id &row_wid : wgt.sidebar_sections() ) {
         widget row_widget = row_wid.obj();
         ret.emplace_back( row_widget.get_window_panel( width ) );
     }
@@ -410,13 +411,19 @@ static std::map<std::string, panel_layout> initialize_default_panel_layouts()
     return ret;
 }
 
-panel_manager::panel_manager()
+// The sidebar used when the saved one isn't loaded
+static std::string default_layout_id()
 {
 #if defined(__ANDROID__)
-    current_layout_id = "sidebar-mobile";
+    return "sidebar-mobile";
 #else
-    current_layout_id = "legacy_labels_sidebar";
+    return "legacy_labels_sidebar";
 #endif
+}
+
+panel_manager::panel_manager()
+{
+    current_layout_id = default_layout_id();
     // Set empty layouts; these will be populated by load()
     layouts = std::map<std::string, panel_layout>();
 }
@@ -427,9 +434,18 @@ panel_layout &panel_manager::get_current_layout()
     if( kv != layouts.end() ) {
         return kv->second;
     }
-    debugmsg( "Invalid current panel layout, defaulting to classic" );
-    current_layout_id = "legacy_classic_sidebar";
-    return get_current_layout();
+    // Not loaded (its mod isn't in this world): the platform default, else the first one
+    kv = layouts.find( default_layout_id() );
+    if( kv == layouts.end() ) {
+        kv = layouts.begin();
+    }
+    if( kv == layouts.end() ) {
+        debugmsg( "No sidebar layout is loaded" );
+        static panel_layout no_layout( translation(), {} );
+        return no_layout;
+    }
+    current_layout_id = kv->first;
+    return kv->second;
 }
 
 widget *panel_manager::get_current_sidebar()
@@ -476,7 +492,9 @@ void panel_manager::init()
 {
     layouts = initialize_default_panel_layouts();
     load();
-    update_offsets( get_current_layout().panels().begin()->get_width() );
+    if( !get_current_layout().panels().empty() ) {
+        update_offsets( get_current_layout().panels().begin()->get_width() );
+    }
     if( get_current_sidebar() != nullptr ) {
         widget::finalize_inherited_fields_recursive( get_current_sidebar()->getId(),
                 get_current_sidebar()->_separator, get_current_sidebar()->_padding );
@@ -499,6 +517,7 @@ bool panel_manager::save()
 
 bool panel_manager::load()
 {
+    unloaded_layouts.clear();
     return read_from_file_optional_json( PATH_INFO::panel_options(), [&]( const JsonArray & jsin ) {
         deserialize( jsin );
     } );
@@ -534,6 +553,23 @@ void panel_manager::serialize( JsonOut &json )
         json.end_array();
         json.end_object();
     }
+    for( const auto &kv : unloaded_layouts ) {
+        if( layouts.count( kv.first ) ) {
+            continue;
+        }
+        json.start_object();
+        json.member( "layout_id", kv.first );
+        json.member( "panels" );
+        json.start_array();
+        for( const std::pair<std::string, bool> &panel : kv.second ) {
+            json.start_object();
+            json.member( "name", panel.first );
+            json.member( "toggle", panel.second );
+            json.end_object();
+        }
+        json.end_array();
+        json.end_object();
+    }
 
     json.end_array();
 
@@ -544,21 +580,25 @@ void panel_manager::serialize( JsonOut &json )
 void panel_manager::deserialize( const JsonArray &ja )
 {
     JsonObject joLayouts = ja.get_object( 0 );
+    unloaded_layouts.clear();
 
-    current_layout_id = joLayouts.get_string( "current_layout_id" );
-    if( layouts.find( current_layout_id ) == layouts.end() ) {
-        // Layout id updated between loads.
-        // Shouldn't happen unless custom sidebar id's were modified or removed.
-        joLayouts.allow_omitted_members();
-        current_layout_id = "labels";
-        return;
-    }
+    // The options are shared by every world, but a layout can come from a mod that this
+    // world doesn't load: then the default layout is used, and every layout's settings
+    // are still read
+    const std::string saved_layout_id = joLayouts.get_string( "current_layout_id" );
+    current_layout_id = layouts.count( saved_layout_id ) ? saved_layout_id : default_layout_id();
 
     for( JsonObject joLayout : joLayouts.get_array( "layouts" ) ) {
         std::string layout_id = joLayout.get_string( "layout_id" );
         const auto &cur_layout = layouts.find( layout_id );
         if( cur_layout == layouts.end() ) {
-            joLayout.allow_omitted_members();
+            // Kept for the worlds that have it
+            std::vector<std::pair<std::string, bool>> &kept = unloaded_layouts[layout_id];
+            kept.clear();
+            for( JsonObject joPanel : joLayout.get_array( "panels" ) ) {
+                const std::string name = joPanel.get_string( "name" );
+                kept.emplace_back( name, joPanel.get_bool( "toggle" ) );
+            }
             continue;
         }
 
@@ -597,7 +637,7 @@ static void dummy_wgt_render( const widget_id &wid, int width )
         return;
     }
     if( wid->_style == "sidebar" ) {
-        for( const widget_id &subw : wid->_widgets ) {
+        for( const widget_id &subw : wid->sidebar_sections() ) {
             dummy_wgt_render( subw, width );
         }
     }

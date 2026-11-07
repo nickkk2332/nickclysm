@@ -2540,6 +2540,8 @@ class Character : public Creature, public visitable
 
         /* maximum you should ever be able to pick up */
         units::mass max_pickup_capacity() const;
+        /** Weight carried as a percentage of weight_capacity(); 100 when the capacity is zero. */
+        int weight_carried_percent() const;
         // total capacity of pockets in the player's top level of inventory.
         // bags-of-holding aside, this is the max volume the character can carry without changing what they're wearing/wielding.
         units::volume volume_capacity( const std::function<bool( const item_pocket & )> &include_pocket =

@@ -2266,8 +2266,11 @@ int Character::move_mode_switch_cost( const move_mode_id &old_mode,
 {
     const int standing_crouch_base_cost = 50;
     const int crouch_prone_base_cost = 100;
-    float weight_ratio = static_cast<float>( weight_carried().value() ) /
-                         static_cast<float>( weight_capacity().value() );
+    // A capacity of 0 counts as fully loaded, as in weight_carried_percent()
+    const units::mass capacity = weight_capacity();
+    const float weight_ratio = capacity > 0_gram ?
+                               static_cast<float>( weight_carried().value() ) /
+                               static_cast<float>( capacity.value() ) : 1.0f;
     int move_cost = 0;
     if( ( old_mode->type() == move_mode_type::PRONE && new_mode->type() == move_mode_type::WALKING ) ||
         ( old_mode->type() == move_mode_type::PRONE && new_mode->type() == move_mode_type::RUNNING ) ||
@@ -2971,6 +2974,16 @@ units::mass Character::weight_capacity() const
 units::mass Character::max_pickup_capacity() const
 {
     return weight_capacity() * 4;
+}
+
+int Character::weight_carried_percent() const
+{
+    // Stacked negative CARRY_WEIGHT enchantments can bring the capacity down to 0
+    const units::mass capacity = weight_capacity();
+    if( capacity <= 0_gram ) {
+        return 100;
+    }
+    return static_cast<int>( ( 100 * weight_carried() ) / capacity );
 }
 
 bool Character::can_use( const item &it, const item &context ) const

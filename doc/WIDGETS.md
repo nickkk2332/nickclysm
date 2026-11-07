@@ -137,6 +137,9 @@ linked sections:
 | [label](#label)         | string or translation | Visible descriptor or heading
 | [string](#string)       | string or translation | Visible descriptor or heading. Used as a last resort by "text" style widgets. Mandatory if the widget has no clauses.
 | [clauses](#clauses-and-conditions) | list of objects | Arbitrary conditional expressions mapped to colored text, symbols, or numbers
+| [clause_mode](#clause-modes) | string           | Which clauses with true conditions are shown: "all" (default), "first" or "threshold"
+| parse_tags              | bool                  | Default false. If true, tags like `<u_val:x>` in `string` are expanded (see [Special Custom Entries](JSON/NPCs.md#special-custom-entries))
+| [sidebar_section](#adding-a-section-to-every-sidebar) | object | Adds this widget to sidebars as a section of its own
 | [style](#style)         | string                | Sub-type or visual theme: "number", "graph", "text", "layout"
 | symbols                 | string                | For [graph style](#graph-style), text characters for ascending values
 | var                     | string                | Variable name from `widget_var`; see [Variables](#variables)
@@ -377,17 +380,9 @@ the all-zero state, and one state as each position up to "width" (3) is filled b
 === 111
 ```
 
-The simplest possible graph is one character wide, with one symbol. It always shows the same value,
-so is not very useful:
-
-```jsonc
-{
-  "width": 1,
-  "symbols": "X"
-}
-```
-
-The simplest *useful* graph is one character wide, with two symbols:
+A graph needs at least two symbols (the first one is the empty cell) and, when a sidebar shows
+it, a `width` (or a `height`, for a vertical graph) above 0; loading reports one that hasn't.
+The simplest graph is one character wide, with two symbols:
 
 ```jsonc
 {
@@ -851,7 +846,11 @@ For example, you may want the stamina bar to turn red at much higher values alre
 ```
 
 Breaks are percentages in the spectrum across the widget's values (`var_min` to `var_max`).
-So, 0 stands for `var_min` and 100 for `var_max`. Values <0 and >100 are allowed.
+So, 0 stands for `var_min` and 100 for `var_max`. Values <0 and >100 are allowed. They must be in
+ascending order; loading reports breaks that aren't, or that don't number one less than the colors.
+
+A widget that sets `colors` without `breaks` has no breaks, even if it copies them from another
+widget. A copy can set `breaks` alone and keep the colors it copied.
 
 ## flags
 
@@ -900,6 +899,13 @@ how to display them. These take the form of a nested object containing several o
 
 In the above example, the widget is simply used as a template for other widgets to `copy-from`,
 which provides text and color definitions for different bodypart status conditions.
+A template that is only copied can be an `"abstract"` (give `"abstract": "its_id"` instead of
+`"id"`), or use `"style": "clause"`; a sidebar can't show a widget of style "clause".
+
+A copy can change single clauses by their `id`, instead of repeating all of them:
+`"delete": { "clauses": [ "bitten" ] }` removes the clauses with that id, and
+`"extend": { "clauses": [ ... ] }` adds clauses, replacing in place a clause with the same id.
+`"bodyparts"` can be extended and deleted the same way.
 
 | JSON Field  | Description
 |---          |---
@@ -910,7 +916,7 @@ which provides text and color definitions for different bodypart status conditio
 | `value`     | A numeric value for this "clause", which may be interpreted differently based on the context of the parent widget.
 | `widgets`   | For "layout" style widgets, the child widgets used for this "clause".
 | `condition` | A dialogue condition (see [Dialogue conditions](JSON/NPCs.md#dialogue-conditions)) that dictates whether this clause will be used or not. If the condition is true (or when no condition is defined), the clause can be used to its text/symbol/color in the widget's value.
-| `parse_tags`| default false. If true, parse custom entries in `text` before displaying it. This can be used to display global_val or u_val.(see [Special Custom Entries](JSON/NPCs.md#special-custom-entries) for details) You can also use `<color_XXX></color>` to modify the color of your text.
+| `parse_tags`| default false. If true, parse custom entries in `text` and `sym` before displaying them (also in the `default_clause`). This can be used to display global_val or u_val.(see [Special Custom Entries](JSON/NPCs.md#special-custom-entries) for details) You can also use `<color_XXX></color>` to modify the color of your text. `<context_val:widget>` is the body part the clause is shown for (the first of the widget's `bodyparts` its condition holds for), as in the condition. Whole numbers are shown in full (`1234567`, not `1.23457e+06`).
 
 ## Conditions
 
@@ -929,6 +935,34 @@ widget is interpreted as either a "text", "number", "symbol", or "legend" depend
 Widgets using the `legend` style can be multiple lines high using a `height` > 1 (and optionally, the `W_DYNAMIC_HEIGHT` flag), so that the generated list can span the given vertical space.
 
 Some conditions can be specific to certain bodyparts. In order to simplify clauses, these conditions can pull from the parent widget's `bodypart` field (or `bodyparts` field if defining multiple). This allows the same clauses to be `copy-from`'d to multiple widgets, and each widget can display the clauses depending on whether its bodypart(s) passes the condition (assuming the condition relies on a bodypart).
+
+## Clause modes
+
+`clause_mode` chooses which of the clauses with true conditions (or no condition) are shown:
+
+| clause_mode   | Shown
+|---            |---
+| `"all"`       | Every one (the default), as in the table above.
+| `"first"`     | Only the first one in the list.
+| `"threshold"` | The one with the largest `value` that isn't above the widget's `var` value (the first of those with equal values). A clause without a `value` comes below every other. If none fits, the `default_clause` is shown.
+
+With "threshold", mutually exclusive bands need only their lower bound:
+
+```jsonc
+{
+  "id": "my_sleepiness_desc",
+  "type": "widget",
+  "style": "text",
+  "var": "sleepiness",
+  "clause_mode": "threshold",
+  "clauses": [
+    { "text": "Rested", "value": 0 },
+    { "text": "Tired", "value": 191, "color": "yellow" },
+    { "text": "Dead tired", "value": 383, "color": "light_red" },
+    { "text": "Exhausted", "value": 575, "color": "red" }
+  ]
+}
+```
 
 
 ## Default clause
@@ -1276,3 +1310,44 @@ few custom widgets, then using "copy-from" and "extend" on the custom sidebar ob
 
 These two extra widgets, "current_max_mana_nums_layout" and "mana_graph_layout", will be appended to
 the custom sidebar sections whenever a game with the Magiclysm mod is loaded.
+
+## Adding a section to every sidebar
+
+Extending sidebars one by one misses those you didn't list, including other mods' sidebars. A
+widget with `sidebar_section` adds itself to sidebars as a section of its own, which the player can
+move or toggle in the Sidebar Options like any other:
+
+```jsonc
+{
+  "id": "my_mana_graph_layout",
+  "type": "widget",
+  "style": "layout",
+  "arrange": "columns",
+  "widgets": [ "my_mana_graph" ],
+  "sidebar_section": { "sidebars": [ "*" ], "after": "stats_layout" }
+}
+```
+
+| field      | description
+| --         | --
+| `sidebars` | Ids of the sidebars to add it to, or `[ "*" ]` (the default) for every sidebar. Sidebars that aren't loaded are skipped.
+| `after`    | Id of the sidebar section to put it after. In a sidebar without that section (or with no `after`), it goes last, before the message log. Sections added after the same one keep their load order.
+
+A sidebar that already lists the widget keeps it where it is. `W_DISABLED_BY_DEFAULT` starts the
+section switched off. A copy inherits the field like any other; `"sidebar_section": false` drops it.
+
+## Load checks
+
+When the game loads, widgets are checked. These are reported for every widget:
+
+- an unknown `style`, `fill`, `arrange` or `clause_mode`;
+- a graph with fewer than 2 symbols;
+- `breaks` that aren't one less than the `colors`, or not in ascending order;
+- an unknown `body_graph` for the body graph vars.
+
+These only for widgets a sidebar shows (directly, through layouts and clauses, or as a
+`sidebar_section`), since others may be templates or layouts a mod fills in:
+
+- a child widget id (in `widgets` or a clause's `widgets`) that doesn't exist, or is a template of
+  style "clause";
+- a graph without a `width` (or a `height`, for vertical graphs).

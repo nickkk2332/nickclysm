@@ -1729,6 +1729,10 @@ No talker is needed.
 - type: string or [variable object](#variable-object)
 - return true if the overmap terrain at `loc` (a location [variable object](#variable-object); default: alpha talker's position) has this overmap terrain flag: an engine flag (`SOURCE_FOOD`, `RISK_HIGH`, `WATER`...) or a mod's own flag from the terrain's `flags`, e.g. `{ "map_omt_has_flag": "SOURCE_FOOD", "loc": { "context_val": "loc" } }`
 
+### `map_has_note`
+- type: location [variable object](#variable-object)
+- return true if the overmap tile at the location has a map note. With `"text"` (string or [variable object](#variable-object)), only a note with that text (what follows its `S:color;` prefix), e.g. `{ "map_has_note": { "context_val": "loc" }, "text": "Bandit camp" }`. `map_note_danger()` in math reads its danger radius.
+
 ### `map_omt_seen`
 - type: `unseen`, `vague`, `outlines`, `details` or `full`
 - return true if the player has seen the overmap tile at `loc` (a location [variable object](#variable-object); default: alpha talker's position) at least at this level, e.g. `{ "map_omt_seen": "outlines", "loc": { "context_val": "loc" } }`
@@ -4365,11 +4369,15 @@ Write or remove an overmap note.
 | "symbol" | optional | string or [variable object](#variable-object) | one character shown on the overmap; default `N` |
 | "color" | optional | string or [variable object](#variable-object) | note color code, as in the note editor (`R`, `r`, `G`, `g`, `B`, `b`, `W`, `br`, `lg`, `dg`, ...); default yellow |
 | "danger_radius" | optional | int or [variable object](#variable-object) | if set, the note is marked dangerous with this radius, so auto travel avoids it |
+| "overwrite" | optional | bool | add only; default true. If false, a note already on the tile (the player's, or an earlier one) is kept and nothing is written |
+| "only_if_text" | optional | string or [variable object](#variable-object) | delete only; only delete a note with this text (what follows its `S:color;` prefix), so an EOC removes its own note and not the player's |
 
 ```jsonc
-{ "add_overmap_note": { "context_val": "loc" }, "text": "Bandit camp", "symbol": "B", "color": "R", "danger_radius": 2 },
-{ "delete_overmap_note": { "context_val": "loc" } }
+{ "add_overmap_note": { "context_val": "loc" }, "text": "Bandit camp", "symbol": "B", "color": "R", "danger_radius": 2, "overwrite": false },
+{ "delete_overmap_note": { "context_val": "loc" }, "only_if_text": "Bandit camp" }
 ```
+
+The [`map_has_note`](#map_has_note) condition and the `map_note_danger()` math function read notes.
 
 #### `add_radio_station`, `remove_radio_station`
 Start a radio station broadcasting from an overmap tile, or take down the stations there.  Radios
