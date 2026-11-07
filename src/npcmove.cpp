@@ -5998,8 +5998,8 @@ void npc::mug_player( Character &mark )
     }
     double best_value = minimum_item_value() * value_mod;
     item *to_steal = nullptr;
-    std::vector<const item *> pseudo_items = mark.get_pseudo_items();
-    const auto inv_valuables = mark.items_with( [this, pseudo_items]( const item & itm ) {
+    const std::vector<const item *> &pseudo_items = mark.get_pseudo_items();
+    const auto inv_valuables = mark.items_with( [this, &pseudo_items]( const item & itm ) {
         return std::find( pseudo_items.begin(), pseudo_items.end(), &itm ) == pseudo_items.end() &&
                !craft_reservation::contains_reserved( itm ) &&
                !itm.has_flag( flag_INTEGRATED ) && !itm.has_flag( flag_NO_TAKEOFF ) && value( itm ) > 0;

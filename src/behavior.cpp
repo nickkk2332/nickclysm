@@ -225,6 +225,8 @@ namespace
 generic_factory<behavior::node_t> behavior_factory( "behavior" );
 // What link_children() found at finalization, reported by check_consistency().
 std::vector<std::string> link_problems;
+// The leaves add_custom_need_leaves() made, which it may replace.
+std::unordered_set<string_id<node_t>> custom_need_leaves;
 
 // The subject as u. The beta is an empty talker, so beta conditions are false and beta math
 // reads 0 (a null beta would crash them).
@@ -728,6 +730,78 @@ std::vector<std::string> behavior::link_children( std::vector<node_t> &nodes )
     return problems;
 }
 
+std::vector<std::string> behavior::add_custom_need_leaves()
+{
+    std::vector<std::string> problems;
+    for( const npc_custom_need &need : npc_custom_needs::get_all() ) {
+        const string_id<node_t> leaf_id = need.node_id();
+        const std::string &need_id = need.id.str();
+        if( behavior_factory.is_valid( leaf_id ) && custom_need_leaves.count( leaf_id ) == 0 ) {
+            problems.push_back( string_format( "npc_need \"%s\" would add behavior \"%s\", which is "
+                                               "defined already, so the need is left out.", need_id, leaf_id.str() ) );
+            continue;
+        }
+        if( !behavior_factory.is_valid( need.parent ) ) {
+            problems.push_back( string_format( "npc_need \"%s\" goes under behavior \"%s\", which "
+                                               "doesn't exist, so the need is left out.", need_id, need.parent.str() ) );
+            continue;
+        }
+        const std::string refused = npc_json_goals::registry().add_goal( need.goal(),
+                                    "npc_need " + need_id );
+        if( !refused.empty() ) {
+            problems.push_back( string_format( "npc_need \"%s\": %s, so the need is left out.",
+                                               need_id, refused ) );
+            continue;
+        }
+        // the leaf keeps its own copy, so it doesn't depend on where the need is stored
+        const std::shared_ptr<const npc_custom_need> held =
+            std::make_shared<const npc_custom_need>( need );
+        node_t leaf;
+        leaf.id = leaf_id;
+        leaf.was_loaded = true;
+        const auto felt = [held]( const oracle_t *subject, const std::string & ) {
+            const Creature *who = subject == nullptr ? nullptr : subject->creature();
+            if( who == nullptr ) {
+                return status_t::failure;
+            }
+            // like the built-in needs: nothing to do while it isn't felt
+            return held->felt_by( *who ) ? status_t::running : status_t::success;
+        };
+        leaf.conditions.push_back( { "npc_need", felt, need_id, false } );
+        leaf.score_function_.emplace( [held]( const oracle_t *subject, std::string_view ) {
+            const Creature *who = subject == nullptr ? nullptr : subject->creature();
+            return who == nullptr ? 0.0f : held->urgency_for( *who );
+        }, "" );
+        leaf.score_label_ = "npc_need";
+        leaf._goal = need_id;
+        if( !need.src.empty() ) {
+            leaf.src.emplace_back( leaf_id, need.src.back().second );
+        }
+        if( custom_need_leaves.count( leaf_id ) == 0 ) {
+            behavior_factory.insert( leaf );
+            custom_need_leaves.insert( leaf_id );
+        } else {
+            // added by an earlier finalization: put back as the need gives it now
+            for( node_t &earlier : behavior_factory.get_all_mod() ) {
+                if( earlier.id == leaf_id ) {
+                    earlier = leaf;
+                    break;
+                }
+            }
+        }
+        for( node_t &parent : behavior_factory.get_all_mod() ) {
+            if( parent.id == need.parent ) {
+                if( std::find( parent.child_ids.begin(), parent.child_ids.end(),
+                               leaf_id ) == parent.child_ids.end() ) {
+                    parent.child_ids.push_back( leaf_id );
+                }
+                break;
+            }
+        }
+    }
+    return problems;
+}
+
 void behavior::clear_evaluation_cache()
 {
     for( const node_t &n : behavior_factory.get_all() ) {
@@ -738,13 +812,16 @@ void behavior::clear_evaluation_cache()
 void behavior::reset()
 {
     link_problems.clear();
+    custom_need_leaves.clear();
     behavior_factory.reset();
 }
 
 void behavior::finalize()
 {
     behavior_factory.finalize();
+    const std::vector<std::string> need_problems = add_custom_need_leaves();
     link_problems = link_children( behavior_factory.get_all_mod() );
+    link_problems.insert( link_problems.end(), need_problems.begin(), need_problems.end() );
 }
 
 void behavior::check_consistency()

@@ -100,21 +100,25 @@ Format:
     "goto": 0.65,                               // walking where it was ordered to
     "camp_work": 0.4,
     "return_to_camp": 0.5,
-    "free_time": 0.35
+    "free_time": 0.35,
+    "embark": 0.6,                              // boarding the avatar's parked vehicle
+    "embark_seated": 0.15                       // once on a belted seat or bed in it
   },
   "starvation_hunger": 300,                     // hunger from which an NPC burning stored calories counts as starving
   "camp_meal_kcal": 500,                        // the least a camp serves a merely hungry NPC
+  "cold_body_temperature": "31 C",              // a body part this cold or colder needs warming
   "sleep": {
     "settle_interval": "3 minutes",             // a settling NPC tries to fall asleep this often
     "settle_timeout": "30 minutes",             // and gives the spot up after this long
     "stall_wakes": 3,                           // woken this often
     "stall_window": "30 minutes",               // within this long, its sleep stalls
-    "stall_duration": "30 minutes"              // and steps aside for other work this long
+    "stall_duration": "30 minutes",             // and steps aside for other work this long
+    "restless_window": "30 minutes"             // noise wakes within this long of the last hold sleep back
   }
 }
 ```
 
-Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. The set of needs is fixed: a mod can't add one here.
+Out-of-range numbers, levels of a need that go down, `duty` above `duty_max`, an unknown need, `stall_wakes` below 1 and a sleep time under a turn are load errors. `needs` tunes the four built-in needs; a mod adds needs of its own with [`npc_need`](NPC_BEHAVIOR.md#custom-needs).
 
 ### Shopkeeper NPC configuration
 `npc_class` supports several properties for configuring the behavior of NPCs that behave as shopkeepers:
@@ -1561,7 +1565,7 @@ _some functions support array arguments or kwargs, denoted with square brackets 
 | npc_anger()    |  ✅   |  ✅   | u, n  | Return NPC anger toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_anger() > 2" ] }`|
 | npc_fear()    |  ✅   |  ✅   | u, n  | Return NPC fear toward opposite talker. <br/><br/>Example:<br/> `{ "math": [ "n_npc_fear() < 2" ] }`|
 | npc_danger()    |  ✅   |  ❌   | u, n  | Return the danger the NPC's AI rates around it, as the behavior predicate `npc_in_danger` reads it (above 0 is danger); 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_danger() > 5" ] }`|
-| npc_need_urgency(`s`/`v`)    |  ✅   |  ❌   | u, n  | Return how urgent a need is, 0 to 1, as the NPC's arbitration and the built-in scores have it (see [NPC behavior](NPC_BEHAVIOR.md#built-in-scores)). Argument is the need: `drink_water`, `eat_food`, `go_to_sleep` or `regulate_temperature`; another name written out is a load error. 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_need_urgency('drink_water') > 0.5" ] }`|
+| npc_need_urgency(`s`/`v`)    |  ✅   |  ❌   | u, n  | Return how urgent a need is, 0 to 1, as the NPC's arbitration and the built-in scores have it (see [NPC behavior](NPC_BEHAVIOR.md#built-in-scores)). Argument is the need: `drink_water`, `eat_food`, `go_to_sleep`, `regulate_temperature` or the id of an [`npc_need`](NPC_BEHAVIOR.md#custom-needs), whose urgency it gives as its own `urgency` does, clamped to 0 to 1; another name written out is an error once the game data has loaded. 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_need_urgency('drink_water') > 0.5" ] }`|
 | npc_panic()    |  ✅   |  ❌   | u, n  | Return how panicked the NPC is in a fight: it rises as it judges the fight lost, and the NPC runs, without regard for cover once it's high; 0 for a talker that isn't an NPC. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "npc_panic() > 10" ] }`|
 | npc_personality(`s`/`v`)    |  ✅   |  ✅   | u, n  | Return or set a personality trait of the NPC, -10 to 10: `aggression`, `bravery`, `collector` or `altruism`; another name written out is a load error. A value set is clamped to -10 to 10. 0 for a talker that isn't an NPC, which setting leaves alone. Callable without a prefix for u. <br/><br/>Example:<br/> `{ "math": [ "n_npc_personality('bravery') += 2" ] }`|
 | npc_goal_turns()    |  ✅   |  ❌   | u, n  | Return the turns since the NPC's current goal started; 0 when it has none, or isn't an NPC. Callable without a prefix for u. See [JSON goals](NPC_BEHAVIOR.md#reading-goals-from-eocs). <br/><br/>Example:<br/> `{ "math": [ "npc_goal_turns() > 100" ] }`|

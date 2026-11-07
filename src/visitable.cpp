@@ -2,11 +2,11 @@
 
 #include <algorithm>
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -73,6 +73,12 @@ static VisitResponse visit_items_unlocated( const T &self,
     } );
 }
 
+VisitResponse read_only_visitable::visit_items_raw(
+    const std::function<VisitResponse( const item & )> &func ) const
+{
+    return visit_items_unlocated( *this, func );
+}
+
 /** @relates visitable */
 item *read_only_visitable::find_parent( const item &it ) const
 {
@@ -102,7 +108,7 @@ std::vector<item *> read_only_visitable::parents( const item &it ) const
 /** @relates visitable */
 bool read_only_visitable::has_item( const item &it ) const
 {
-    return visit_items_unlocated( *this, [&it]( const item & node ) {
+    return visit_items_raw( [&it]( const item & node ) {
         return &node == &it ? VisitResponse::ABORT : VisitResponse::NEXT;
     } ) == VisitResponse::ABORT;
 }
@@ -110,7 +116,7 @@ bool read_only_visitable::has_item( const item &it ) const
 /** @relates visitable */
 bool read_only_visitable::has_item_with( const item_filter &filter ) const
 {
-    return visit_items_unlocated( *this, [&filter]( const item & node ) {
+    return visit_items_raw( [&filter]( const item & node ) {
         return filter( node ) ? VisitResponse::ABORT : VisitResponse::NEXT;
     } ) == VisitResponse::ABORT;
 }
@@ -472,17 +478,9 @@ std::vector<item *> read_only_visitable::items_with(
     return items_with_internal<item *>( *this, filter );
 }
 
-// The pockets a visit walks unless told otherwise, as one shared set: a default argument of
-// {pocket_type::CONTAINER} would build (and allocate) a set for every top-level item visited.
-static const std::set<pocket_type> &container_pockets()
-{
-    static const std::set<pocket_type> pockets = { pocket_type::CONTAINER };
-    return pockets;
-}
-
 static VisitResponse visit_internal( const std::function<VisitResponse( const item_location & )>
                                      &func,
-                                     const item_location &node, const std::set<pocket_type> &allowed_pockets = container_pockets() )
+                                     const item_location &node, pocket_type_set allowed_pockets = { pocket_type::CONTAINER } )
 {
     if( !node.valid() ) {
         return VisitResponse::NEXT;
@@ -507,14 +505,14 @@ static VisitResponse visit_internal( const std::function<VisitResponse( const it
 
 VisitResponse item_location::visit_contents( const
         std::function<VisitResponse( const item_location & )>
-        &func, const std::set<pocket_type> &allowed_pockets ) const
+        &func, pocket_type_set allowed_pockets ) const
 {
     return const_cast<item *>( get_item() )->visit_contents( func, *this, allowed_pockets );
 }
 
 static VisitResponse visit_internal_legacy( const std::function<VisitResponse( item *, item * )>
         &func, const item *node, item *parent = nullptr,
-        const std::set<pocket_type> &allowed_pockets = container_pockets() )
+        pocket_type_set allowed_pockets = { pocket_type::CONTAINER } )
 {
     // hack to avoid repetition
     item *m_node = const_cast<item *>( node );
@@ -556,20 +554,20 @@ std::vector<const item *> item::items_with( const item_filter &filter ) const
 }
 
 VisitResponse item::visit_contents_legacy( const std::function<VisitResponse( item *, item * )>
-        &func, item *parent, const std::set<pocket_type> &allowed_pockets )
+        &func, item *parent, pocket_type_set allowed_pockets )
 {
     return contents.visit_contents_legacy( func, parent, allowed_pockets );
 }
 
 VisitResponse item::visit_contents( const std::function<VisitResponse( const item_location & )>
-                                    &func, const item_location &parent, const std::set<pocket_type> &allowed_pockets )
+                                    &func, const item_location &parent, pocket_type_set allowed_pockets )
 {
     return contents.visit_contents( func, parent, allowed_pockets );
 }
 
 VisitResponse item_contents::visit_contents_legacy( const
         std::function<VisitResponse( item *, item * )>
-        &func, item *parent, const std::set<pocket_type> &allowed_pockets )
+        &func, item *parent, pocket_type_set allowed_pockets )
 {
     for( item_pocket &pocket : contents ) {
         if( !pocket.is_type( allowed_pockets ) ) {
@@ -584,7 +582,7 @@ VisitResponse item_contents::visit_contents_legacy( const
 
 VisitResponse item_contents::visit_contents( const
         std::function<VisitResponse( const item_location & )>
-        &func, const item_location &parent, const std::set<pocket_type> &allowed_pockets )
+        &func, const item_location &parent, pocket_type_set allowed_pockets )
 {
     for( item_pocket &pocket : contents ) {
         if( !pocket.is_type( allowed_pockets ) ) {
@@ -603,7 +601,7 @@ VisitResponse item_contents::visit_contents( const
 
 VisitResponse item_pocket::visit_contents_legacy( const
         std::function<VisitResponse( item *, item * )>
-        &func, item *parent, const std::set<pocket_type> &allowed_pockets )
+        &func, item *parent, pocket_type_set allowed_pockets )
 {
     for( item &e : contents ) {
         switch( visit_internal_legacy( func, &e, parent, allowed_pockets ) ) {
@@ -618,7 +616,7 @@ VisitResponse item_pocket::visit_contents_legacy( const
 
 VisitResponse item_pocket::visit_contents( const
         std::function<VisitResponse( const item_location & )>
-        &func, const item_location &parent, const std::set<pocket_type> &allowed_pockets )
+        &func, const item_location &parent, pocket_type_set allowed_pockets )
 {
     for( item &e : contents ) {
         switch( visit_internal( func, item_location( parent, &e ), allowed_pockets ) ) {
@@ -712,9 +710,13 @@ const
         return VisitResponse::ABORT;
     }
 
-    for( const item *e : get_pseudo_items() ) {
+    // By index: func may run code that rebuilds the cached list (see get_pseudo_items()), which
+    // would leave an iterator dangling.
+    const std::vector<const item *> &pseudos = get_pseudo_items();
+    // NOLINTNEXTLINE(modernize-loop-convert)
+    for( size_t i = 0; i < pseudos.size(); ++i ) {
         if( visit_internal( func, item_location( const_cast<Character &>( *this ),
-                            const_cast<item *>( e ) ) ) == VisitResponse::ABORT ) {
+                            const_cast<item *>( pseudos[i] ) ) ) == VisitResponse::ABORT ) {
             return VisitResponse::ABORT;
         }
     }
