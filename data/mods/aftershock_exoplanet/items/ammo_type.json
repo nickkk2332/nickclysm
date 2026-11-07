@@ -75,7 +75,8 @@
     "type": "ammunition_type",
     "id": "metal_rail",
     "name": "ferrous rail projectile",
-    "default": "steel_rail"
+    "default": "steel_rail",
+    "fire_sound": { "volume": 24, "message": "tz-CRACKck!" }
   },
   {
     "type": "ammunition_type",

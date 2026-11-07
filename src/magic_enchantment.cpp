@@ -454,6 +454,7 @@ void enchantment::check() const
     };
     check_enchantment_keys( id, "skill", skill_values_add, skill_valid );
     check_enchantment_keys( id, "skill", skill_values_multiply, skill_valid );
+    check_enchantment_keys( id, "skill_floor skill", skill_floor, skill_valid );
     // "all" stands for every body part
     const std::function<bool( const bodypart_str_id & )> part_valid = [](
     const bodypart_str_id & bp ) {
@@ -822,6 +823,14 @@ void enchantment::load( const JsonObject &jo, std::string_view,
     load_add_and_multiply_dbl_or_var<skill_id>( jo, "skills", "value", skill_values_add,
             skill_values_multiply );
 
+    // CMBT-J08: "skill_floor": { "melee": 5 } makes the skill count as at least 5
+    if( jo.has_object( "skill_floor" ) ) {
+        const JsonObject floors = jo.get_object( "skill_floor" );
+        for( const JsonMember member : floors ) {
+            skill_floor.emplace( skill_id( member.name() ), get_dbl_or_var( floors, member.name() ) );
+        }
+    }
+
     load_add_and_multiply_dbl_or_var<bodypart_str_id>( jo, "encumbrance_modifier", "part",
             encumbrance_values_add, encumbrance_values_multiply );
 
@@ -908,6 +917,11 @@ void enchant_cache::load( const JsonObject &jo, std::string_view,
 
     load_add_and_multiply<skill_id>( jo, "skills", "value",
                                      skill_values_add, skill_values_multiply );
+    if( jo.has_object( "skill_floor" ) ) {
+        for( const JsonMember member : jo.get_object( "skill_floor" ) ) {
+            skill_floor.emplace( skill_id( member.name() ), member.get_float() );
+        }
+    }
 
     load_add_and_multiply<bodypart_str_id>( jo, "encumbrance_modifier", "part",
                                             encumbrance_values_add, encumbrance_values_multiply );
@@ -1029,6 +1043,14 @@ void enchant_cache::serialize( JsonOut &jsout ) const
 
     save_add_and_multiply<skill_id>( jsout, "skills", "value", skill_values_add,
                                      skill_values_multiply );
+    if( !skill_floor.empty() ) {
+        jsout.member( "skill_floor" );
+        jsout.start_object();
+        for( const std::pair<const skill_id, double> &lowest : skill_floor ) {
+            jsout.member( lowest.first.str(), lowest.second );
+        }
+        jsout.end_object();
+    }
 
     save_add_and_multiply<bodypart_str_id>( jsout, "encumbrance_modifier", "part",
                                             encumbrance_values_add, encumbrance_values_multiply );
@@ -1114,6 +1136,13 @@ void enchant_cache::force_add( const enchant_cache &rhs )
         // values do not multiply against each other, they add.
         // so +10% and -10% will add to 0%
         skill_values_multiply[pair_values.first] += pair_values.second;
+    }
+    // floors don't add up: the highest counts
+    for( const std::pair<const skill_id, double> &pair_values : rhs.skill_floor ) {
+        const auto ins = skill_floor.emplace( pair_values.first, pair_values.second );
+        if( !ins.second ) {
+            ins.first->second = std::max( ins.first->second, pair_values.second );
+        }
     }
 
     for( const std::pair<const damage_type_id, double> &pair_values : rhs.damage_values_add ) {
@@ -1236,6 +1265,14 @@ void enchant_cache::force_add_with_dialogue( const enchantment &rhs, const const
         // values do not multiply against each other, they add.
         // so +10% and -10% will add to 0%
         skill_values_multiply[pair_values.first] += pair_values.second.evaluate( d );
+    }
+    // floors don't add up: the highest counts
+    for( const std::pair<const skill_id, dbl_or_var> &pair_values : rhs.skill_floor ) {
+        const double floor_value = pair_values.second.evaluate( d );
+        const auto ins = skill_floor.emplace( pair_values.first, floor_value );
+        if( !ins.second ) {
+            ins.first->second = std::max( ins.first->second, floor_value );
+        }
     }
 
     for( const std::pair<const bodypart_str_id, dbl_or_var> &pair_values :
@@ -1451,6 +1488,11 @@ double enchant_cache::get_skill_value_multiply( const skill_id &value ) const
     return get_value<skill_id>( value, skill_values_multiply );
 }
 
+double enchant_cache::get_skill_floor( const skill_id &value ) const
+{
+    return get_value<skill_id>( value, skill_floor );
+}
+
 double enchant_cache::get_encumbrance_multiply( const bodypart_str_id &value ) const
 {
     return get_value<bodypart_str_id>( value,
@@ -1544,6 +1586,11 @@ double enchant_cache::modify_value( const skill_id &mod_val, double value ) cons
 {
     value += get_skill_value_add( mod_val );
     value *= 1.0 + get_skill_value_multiply( mod_val );
+    // CMBT-J08: a floor only ever raises the skill (an unset one leaves negative skills alone)
+    const auto lowest = skill_floor.find( mod_val );
+    if( lowest != skill_floor.end() ) {
+        value = std::max( value, lowest->second );
+    }
     return value;
 }
 
@@ -1786,6 +1833,7 @@ void enchant_cache::clear()
     values_multiply.clear();
     skill_values_add.clear();
     skill_values_multiply.clear();
+    skill_floor.clear();
     damage_values_add.clear();
     damage_values_multiply.clear();
     armor_values_add.clear();

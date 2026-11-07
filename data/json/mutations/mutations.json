@@ -3838,6 +3838,7 @@
     "vitamin_cost": 400,
     "visibility": 10,
     "ugliness": 10,
+    "flags": [ "FLASH_RESIST_ERRATIC" ],
     "enchantments": [
       {
         "values": [ { "value": "HEARING_MULT", "multiply": { "math": [ "rng(-0.75, 1)" ] } }, { "value": "PERCEPTION", "add": -8 } ]
@@ -3860,7 +3861,7 @@
     "vitamin_cost": 400,
     "visibility": 10,
     "ugliness": 10,
-    "flags": [ "EYE_MEMBRANE" ],
+    "flags": [ "EYE_MEMBRANE", "FLASH_RESIST_RETRACTABLE" ],
     "enchantments": [ { "values": [ { "value": "PERCEPTION", "add": 5 } ] } ]
   },
   {

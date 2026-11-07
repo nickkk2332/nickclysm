@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -58,14 +57,7 @@
 #include "units_utility.h"
 #include "weather.h"
 
-static const bionic_id bio_cqb( "bio_cqb" );
-
-static const skill_id skill_bashing( "bashing" );
-static const skill_id skill_cutting( "cutting" );
 static const skill_id skill_dodge( "dodge" );
-static const skill_id skill_melee( "melee" );
-static const skill_id skill_stabbing( "stabbing" );
-static const skill_id skill_unarmed( "unarmed" );
 
 static const trait_id trait_TROGLO( "TROGLO" );
 static const trait_id trait_TROGLO2( "TROGLO2" );
@@ -267,19 +259,6 @@ static std::vector<std::string> get_encumbrance_description( const Character &yo
         }
     }
     return s;
-}
-
-static bool is_cqb_skill( const skill_id &id )
-{
-    // TODO: this skill list here is used in other places as well. Useless redundancy and
-    // dependency. Maybe change it into a flag of the skill that indicates it's a skill used
-    // by the bionic?
-    static const std::array<skill_id, 5> cqb_skills = { {
-            skill_melee, skill_unarmed, skill_cutting,
-            skill_bashing, skill_stabbing,
-        }
-    };
-    return std::find( cqb_skills.begin(), cqb_skills.end(), id ) != cqb_skills.end();
 }
 
 namespace
@@ -822,11 +801,12 @@ static void draw_skills_tab( ui_adaptor &ui, const catacurses::window &w_skills,
             const bool can_train = level.can_train();
             const bool skill_gap = level_num > level.level();
             const bool skill_small_gap = exercise > level.exercise();
-            bool locked = false;
-            if( you.has_active_bionic( bio_cqb ) && is_cqb_skill( aSkill->ident() ) ) {
-                level_num = 5;
+            // A skill an enchantment's "skill_floor" holds up (the CQB bionic's, for one) shows
+            // the floor, locked
+            const double skill_floor = you.enchantment_cache->get_skill_floor( aSkill->ident() );
+            const bool locked = skill_floor > 0.0 && level_num < skill_floor;
+            if( locked ) {
                 exercise = 0;
-                locked = true;
             }
             level_num = you.enchantment_cache->modify_value( aSkill->ident(), level_num );
             if( is_current_tab && i == static_cast<int>( line ) ) {

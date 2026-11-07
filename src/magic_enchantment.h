@@ -317,6 +317,8 @@ class enchantment
         // the exact same as above, though specifically for skills
         std::map<skill_id, dbl_or_var> skill_values_add; // NOLINT(cata-serialize)
         std::map<skill_id, dbl_or_var> skill_values_multiply; // NOLINT(cata-serialize)
+        // the least each skill counts as, after the values above (CMBT-J08)
+        std::map<skill_id, dbl_or_var> skill_floor; // NOLINT(cata-serialize)
 
         std::map<bodypart_str_id, dbl_or_var> encumbrance_values_add; // NOLINT(cata-serialize)
         std::map<bodypart_str_id, dbl_or_var> encumbrance_values_multiply; // NOLINT(cata-serialize)
@@ -425,6 +427,8 @@ class enchant_cache : public enchantment
         int get_encumbrance_add( const bodypart_str_id &value ) const;
         int get_extra_damage_add( const damage_type_id &value ) const;
         double get_skill_value_multiply( const skill_id &value ) const;
+        // the least the skill counts as (0 if no enchantment sets one)
+        double get_skill_floor( const skill_id &value ) const;
         double get_damage_multiply( const damage_type_id &value ) const;
         double get_armor_multiply( const damage_type_id &value ) const;
         double get_encumbrance_multiply( const bodypart_str_id &value ) const;
@@ -506,6 +510,8 @@ class enchant_cache : public enchantment
         // the exact same as above, though specifically for skills
         std::map<skill_id, double> skill_values_add; // NOLINT(cata-serialize)
         std::map<skill_id, double> skill_values_multiply; // NOLINT(cata-serialize)
+        // the highest floor of each skill among the enchantments
+        std::map<skill_id, double> skill_floor; // NOLINT(cata-serialize)
 
         std::map<bodypart_str_id, double> encumbrance_values_add; // NOLINT(cata-serialize)
         std::map<bodypart_str_id, double> encumbrance_values_multiply; // NOLINT(cata-serialize)

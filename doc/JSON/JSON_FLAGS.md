@@ -359,6 +359,8 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```ALARMCLOCK``` You always can set alarms.
 - ```ALBINO``` Cause you to have painful sunburns.
 - ```ALLOW_ADVANCED_SPELLS``` Allows you to learn advanced versions of spells even if this mutation would normaly conflict with said spell.
+- ```ARMORED_ARMS``` Martial arts with `arm_block_with_bio_armor_arms` (or this flag in `arm_block_char_flags`) let you arm block at any skill.  Given by the Subcutaneous Protective Mesh - Arms CBM.
+- ```ARMORED_LEGS``` The same for leg blocks (`leg_block_with_bio_armor_legs`).  Given by the Subcutaneous Protective Mesh - Legs CBM.
 - ```ATTUNEMENT``` Turns a mutation with this flag green on the list.  Currently used in mods for mutations that grant spellcasting or other supernatural powers.
 - ```BARKY``` Makes you considered to be made of bark for the purposes of making blistering harder.
 - ```BASH_IMMUNE``` You are immune to bashing damage.
@@ -392,6 +394,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```COLDBLOOD3``` For cold-blooded mutations.
 - ```COLDBLOOD``` For heat dependent mutations.
 - ```COLD_IMMUNE``` You are immune to cold damage.
+- ```CQB_LEARNING``` While you fight with a martial art style you can use but don't know (one the CQB bionic gives you), each hit has a small chance, better with intelligence, to teach it to you; `CBQ_LEARN_BONUS` doubles the chance.  Given by the active CQB bionic.
 - ```CRAFT_IN_DARKNESS``` You can craft anything regardless of light levels.
 - ```CUT_IMMUNE``` You are immune to cutting damage.
 - ```DEAF``` Makes you deaf.
@@ -409,6 +412,8 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```FEATHER_FALL``` You are immune to fall damage.
 - ```FREEZE_EFFECTS``` Effects do not progress in duration.  An effect with this flag is ignored and will progress normally.
 - ```GILLS``` You can breathe underwater.
+- ```FLASH_RESIST_ERRATIC``` Your eyes come and go: half the time, a flashbang's flash blinds you less (as much as blindfolds or flash protection would).  Given by the Sensory Disintegration trait.  Checked before `FLASH_RESIST_RETRACTABLE`, `GLARE_RESIST` and `HIGH_GLARE`.
+- ```FLASH_RESIST_RETRACTABLE``` You can retract your eyes from a flashbang's flash: it blinds you much less, and better than `GLARE_RESIST`.  Given by the Distributed Senses trait.
 - ```GLARE_RESIST``` Protect your eyes from glare like sunglasses.
 - ```GLIDE``` You can glide from ledges without the use of wings, as if by magic.
 - ```GLIDING``` You are in the process of gliding.
@@ -451,6 +456,7 @@ Character flags can be `trait_id`, `json_flag_id` or `flag_id`.  Some of these a
 - ```NO_BODY_HEAT``` Your temperature is indistinguishable from the surrounding environmental temperature, making you not show up on infrared.
 - ```NO_CBM_INSTALLATION``` You are unable to install any CBMs.
 - ```NO_DISEASE``` This mutation grants immunity to diseases.
+- ```NO_MELEE_PRACTICE``` Your melee attacks don't train melee, unarmed or weapon skills.  Given by the active CQB bionic.
 - ```NO_RADIATION``` This mutation grants immunity to radiations.
 - ```NO_SCENT``` You have no scent.
 - ```NO_SPELLCASTING``` Mutations with this flag blocks you from casting spells with the spellcasting menu.  No effect on other spells sources such as activated items, mutations and bionics.  Does not block spells with the `PSIONIC` flag.
@@ -1016,7 +1022,7 @@ These can be applied to guns or gunmods, adding different effects to the guns.
 - ```PRIMITIVE_RANGED_WEAPON``` Allows using non-gunsmith tools to repair (but not reinforce) it.
 - ```PUMP_RAIL``` Gun has rails on its pump action, allowing to install only mods with `PUMP_RAIL_COMPATIBLE` flag on underbarrel slot.
 - ```PUMP_RAIL_COMPATIBLE``` Mod can be installed on underbarrel slot of guns with rails on their pump action.
-- ```BOLT_ACTION```  this gun uses bolt-action mechanism, this applies major penalty (1.6 seconds) of time and aim between each shot (can be mitigated by skill, up to 50%)
+- ```BOLT_ACTION```  this gun uses bolt-action mechanism, this applies major penalty (1.6 seconds) of time and aim between each shot (can be mitigated by skill, up to 50%).  A gun's `cycle_time` replaces the time of these four flags.
 - ```PUMP_ACTION``` same as BOLT_ACTION, but minor penalty (1.2 seconds)
 - ```SINGLE_ACTION``` same as BOLT_ACTION, but minor penalty (1 second)
 - ```LEVER_ACTION``` same as BOLT_ACTION, but minor penalty (0.8 seconds)
@@ -1215,7 +1221,7 @@ Used to describe monster characteristics and set their properties and abilities.
 - ```FIREY``` Burns stuff and is immune to fire.
 - ```FISHABLE``` This monster can be fished.
 - ```FLAMMABLE``` Monster catches fire, burns, and spreads fire to nearby objects.
-- ```FLASHBANGPROOF``` Monster is unaffected by flashbangs.
+- ```FLASHBANGPROOF``` Monster is unaffected by flashbangs.  Robots have it through their species (`ROBOT`); a monster of another species without the flag is affected.
 - ```FLIES``` Can fly over open air without dropping z-level, over water, etc.
 - ```GOODHEARING``` Pursues sounds more than most monsters.
 - ```GRABS``` Its attacks may grab you!

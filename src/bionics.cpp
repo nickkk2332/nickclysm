@@ -1063,6 +1063,10 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
         const avatar *you = as_avatar();
         if( you && !martial_arts_data->pick_style( *you ) ) {
             bio.powered = false;
+            // its skill floors (CMBT-J08) went on with it
+            if( !bio.id->enchantments.empty() ) {
+                recalculate_enchantment_cache();
+            }
             add_msg_if_player( m_info, _( "You change your mind and turn it off." ) );
             return false;
         }

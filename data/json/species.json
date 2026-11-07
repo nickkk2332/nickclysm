@@ -203,7 +203,7 @@
     "description": "a robot",
     "footsteps": "mechanical whirring.",
     "bleeds": "fd_mechanical_fluid",
-    "flags": [ "VENOM_IMMUNE" ]
+    "flags": [ "VENOM_IMMUNE", "FLASHBANGPROOF" ]
   },
   {
     "type": "SPECIES",

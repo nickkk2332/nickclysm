@@ -39,12 +39,14 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "dialogue_helpers.h"
+#include "dispersion.h"
 #include "effect.h"
 #include "enum_conversions.h"
 #include "enums.h"
 #include "faction.h"
 #include "field.h"
 #include "game.h"
+#include "game_constants.h"
 #include "input_popup.h"
 #include "item.h"
 #include "item_location.h"
@@ -53,6 +55,7 @@
 #include "magic.h"
 #include "map.h"
 #include "map_iterator.h"
+#include "melee.h"
 #include "math_parser_diag_value.h"
 #include "math_parser_type.h"
 #include "mod_manager.h"
@@ -1873,6 +1876,151 @@ double melee_damage_eval( const_dialogue const &d, char scope,
         } );
     }
     return ( *it )->damage_melee( damage_type_id( dt_str ) );
+}
+
+// CMBT-J10: combat state for EOCs. These read creatures; any other talker is an error.
+Creature const &combat_creature( const_dialogue const &d, char scope,
+                                 std::string_view func )
+{
+    Creature const *critter = d.const_actor( is_beta( scope ) )->get_const_creature();
+    if( critter == nullptr ) {
+        throw math::runtime_error( "%s(): talker must be a creature", func );
+    }
+    return *critter;
+}
+
+Creature &combat_creature( dialogue &d, char scope, std::string_view func )
+{
+    Creature *critter = d.actor( is_beta( scope ) )->get_creature();
+    if( critter == nullptr ) {
+        throw math::runtime_error( "%s(): talker must be a creature", func );
+    }
+    return *critter;
+}
+
+// The center of the melee hit roll: what a defender's dodge roll is compared against
+double melee_to_hit_eval( const_dialogue const &d, char scope,
+                          std::vector<diag_value> const & /* params */,
+                          diag_kwargs const & /* kwargs */ )
+{
+    Creature const &critter = combat_creature( d, scope, "melee_to_hit" );
+    if( Character const *guy = critter.as_character() ) {
+        return guy->get_melee_hit_base();
+    }
+    return critter.get_hit();
+}
+
+double dodge_eval( const_dialogue const &d, char scope,
+                   std::vector<diag_value> const & /* params */,
+                   diag_kwargs const & /* kwargs */ )
+{
+    return combat_creature( d, scope, "dodge" ).get_dodge();
+}
+
+// Chance (0 to 1) of a melee critical with the wielded weapon against a target whose dodge is
+// "dodge" (default 0), with a hit roll of "hit" (default the attacker's melee_to_hit()).
+// Only characters score melee criticals; other creatures give 0.
+double crit_chance_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const & /* params */, diag_kwargs const &kwargs )
+{
+    Character const *guy = combat_creature( d, scope, "crit_chance" ).as_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    const diag_value hit_val = kwargs.kwarg_or( "hit" );
+    const float hit = hit_val.is_empty() ? guy->get_melee_hit_base() :
+                      static_cast<float>( hit_val.dbl( d ) );
+    const float target_dodge = static_cast<float>( kwargs.kwarg_or( "dodge", 0 ).dbl( d ) );
+    const item_location weapon = guy->used_weapon();
+    // crit_chance() counts its calls in the melee debug statistics; asking isn't attacking
+    const melee_statistic_data saved_stats = melee::melee_stats;
+    const double chance = guy->crit_chance( hit, target_dodge,
+                                            weapon ? *weapon : null_item_reference() );
+    melee::melee_stats = saved_stats;
+    return std::clamp( chance, 0.0, 1.0 );
+}
+
+double blocks_left_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    Creature const &critter = combat_creature( d, scope, "blocks_left" );
+    if( Character const *guy = critter.as_character() ) {
+        return guy->blocks_left;
+    }
+    if( monster const *mon = critter.as_monster() ) {
+        return mon->blocks_left;
+    }
+    return 0.0;
+}
+
+void blocks_left_ass( double val, dialogue &d, char scope,
+                      std::vector<diag_value> const & /* params */,
+                      diag_kwargs const & /* kwargs */ )
+{
+    Creature &critter = combat_creature( d, scope, "blocks_left" );
+    const int blocks = std::max( 0, static_cast<int>( std::lround( val ) ) );
+    if( Character *guy = critter.as_character() ) {
+        guy->blocks_left = blocks;
+    } else if( monster *mon = critter.as_monster() ) {
+        mon->blocks_left = blocks;
+    }
+}
+
+double dodges_left_eval( const_dialogue const &d, char scope,
+                         std::vector<diag_value> const & /* params */,
+                         diag_kwargs const & /* kwargs */ )
+{
+    Character const *guy = combat_creature( d, scope, "dodges_left" ).as_character();
+    return guy == nullptr ? 0.0 : guy->get_dodges_left();
+}
+
+void dodges_left_ass( double val, dialogue &d, char scope,
+                      std::vector<diag_value> const & /* params */,
+                      diag_kwargs const & /* kwargs */ )
+{
+    Character *guy = combat_creature( d, scope, "dodges_left" ).as_character();
+    if( guy == nullptr ) {
+        throw math::runtime_error( "dodges_left(): only characters count their dodges" );
+    }
+    guy->set_dodges_left( std::max( 0, static_cast<int>( std::lround( val ) ) ) );
+}
+
+// Aim penalty of the next shot, in MOA; aiming lowers it and shooting raises it.
+// Non-characters have none.
+double recoil_eval( const_dialogue const &d, char scope,
+                    std::vector<diag_value> const & /* params */,
+                    diag_kwargs const & /* kwargs */ )
+{
+    Character const *guy = combat_creature( d, scope, "recoil" ).as_character();
+    return guy == nullptr ? 0.0 : guy->recoil;
+}
+
+void recoil_ass( double val, dialogue &d, char scope,
+                 std::vector<diag_value> const & /* params */,
+                 diag_kwargs const & /* kwargs */ )
+{
+    Character *guy = combat_creature( d, scope, "recoil" ).as_character();
+    if( guy == nullptr ) {
+        throw math::runtime_error( "recoil(): talker must be a character" );
+    }
+    guy->recoil = std::clamp( val, 0.0, MAX_RECOIL );
+}
+
+// Average dispersion of the wielded gun in the character's hands, before recoil; 0 without a gun
+double weapon_dispersion_eval( const_dialogue const &d, char scope,
+                               std::vector<diag_value> const & /* params */,
+                               diag_kwargs const & /* kwargs */ )
+{
+    Character const *guy = combat_creature( d, scope, "weapon_dispersion" ).as_character();
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    const item_location weapon = guy->get_wielded_item();
+    if( !weapon || !weapon->is_gun() ) {
+        return 0.0;
+    }
+    return guy->get_weapon_dispersion( *weapon ).avg();
 }
 
 double mod_order_eval( const_dialogue const &d, char /* scope */,
@@ -4477,6 +4625,14 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "item_temperature", { "un", 0, item_temperature_eval, item_temperature_ass } },
     { "item_wetness", { "un", 0, item_wetness_eval, item_wetness_ass } },
     { "melee_damage", { "un", 1, melee_damage_eval } },
+    // CMBT-J10: combat state
+    { "melee_to_hit", { "un", 0, melee_to_hit_eval } },
+    { "dodge", { "un", 0, dodge_eval } },
+    { "crit_chance", { "un", 0, crit_chance_eval, {}, { "hit", "dodge" } } },
+    { "blocks_left", { "un", 0, blocks_left_eval, blocks_left_ass } },
+    { "dodges_left", { "un", 0, dodges_left_eval, dodges_left_ass } },
+    { "recoil", { "un", 0, recoil_eval, recoil_ass } },
+    { "weapon_dispersion", { "un", 0, weapon_dispersion_eval } },
     { "mod_load_order", { "g", 1, mod_order_eval } },
     { "mod_setting", { "g", 1, mod_setting_eval, mod_setting_ass, {}, mod_setting_check, mod_setting_assign_check } },
     { "monsters_nearby", { "ung", -1, monsters_nearby_eval, {}, { "radius", "attitude", "location", "allow_hallucinations" } } },

@@ -24,6 +24,27 @@ class JsonValue;
 class item;
 class monster;
 
+// CMBT-J12: what a melee critical hit does with a damage type, each part scaled by the target's
+// critical factor (1 for most body parts)
+struct melee_crit_data {
+    // damage is multiplied by 1 + damage_mult + damage_mult_per_skill * the attack's skill
+    double damage_mult = 0.0;
+    double damage_mult_per_skill = 0.0;
+    // the share of the target's armor ignored (0 to 1)
+    double armor_ignored = 0.0;
+    // flat armor penetration added
+    double arpen = 0.0;
+};
+
+// CMBT-J12: the kind of melee attack a damage type makes, when it is the main damage of the
+// hit, for weak points and weak point skill
+enum class melee_weakpoint_kind : int {
+    none,
+    bash,
+    cut,
+    stab
+};
+
 struct damage_type {
     damage_type_id id;
     translation name;
@@ -42,6 +63,13 @@ struct damage_type {
     bool edged = false;
     bool env = false;
     bool material_required = false;
+    // CMBT-J12: "melee_crit", "weakpoint_attack" and "embed_weight"
+    melee_crit_data melee_crit;
+    melee_weakpoint_kind weakpoint_attack = melee_weakpoint_kind::none;
+    // How much each point of this damage dealt helps a projectile embed in a monster (it
+    // embeds if the weighted sum, each type's part rounded toward zero, beats the item's size
+    // and a roll); negative weights hinder it
+    double embed_weight = 0.0;
     bool was_loaded = false;
 
     // Applies damage type on-hit effects

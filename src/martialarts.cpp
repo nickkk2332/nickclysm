@@ -27,8 +27,8 @@
 #include "effect_on_condition.h"
 #include "enums.h"
 #include "execution_fatal.h"
+#include "flag.h"
 #include "flexbuffer_json.h"
-#include "game_constants.h"
 #include "generic_factory.h"
 #include "input_context.h"
 #include "item.h"
@@ -49,15 +49,11 @@
 #include "value_ptr.h"
 #include "weighted_list.h"
 
-class json_flag;
-
-static const bionic_id bio_armor_arms( "bio_armor_arms" );
-static const bionic_id bio_armor_legs( "bio_armor_legs" );
-static const bionic_id bio_cqb( "bio_cqb" );
-
 static const flag_id json_flag_PROVIDES_TECHNIQUES( "PROVIDES_TECHNIQUES" );
 
 static const json_character_flag json_flag_ALWAYS_BLOCK( "ALWAYS_BLOCK" );
+static const json_character_flag json_flag_ARMORED_ARMS( "ARMORED_ARMS" );
+static const json_character_flag json_flag_ARMORED_LEGS( "ARMORED_LEGS" );
 static const json_character_flag json_flag_GRAB( "GRAB" );
 static const json_character_flag json_flag_GRAB_FILTER( "GRAB_FILTER" );
 static const json_character_flag json_flag_MA_BASIC_FALLBACK( "MA_BASIC_FALLBACK" );
@@ -646,8 +642,15 @@ void martialart::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "arm_block", arm_block, 99 );
     optional( jo, was_loaded, "nonstandard_block", nonstandard_block, 99 );
 
-    optional( jo, was_loaded, "arm_block_with_bio_armor_arms", arm_block_with_bio_armor_arms, false );
-    optional( jo, was_loaded, "leg_block_with_bio_armor_legs", leg_block_with_bio_armor_legs, false );
+    optional( jo, was_loaded, "arm_block_char_flags", arm_block_char_flags );
+    optional( jo, was_loaded, "leg_block_char_flags", leg_block_char_flags );
+    // The older fields: the flags of the Arms and Legs Alloy Plating CBMs
+    if( jo.get_bool( "arm_block_with_bio_armor_arms", false ) ) {
+        arm_block_char_flags.insert( json_flag_ARMORED_ARMS );
+    }
+    if( jo.get_bool( "leg_block_with_bio_armor_legs", false ) ) {
+        leg_block_char_flags.insert( json_flag_ARMORED_LEGS );
+    }
 }
 
 // Not implemented on purpose (martialart objects have no integer id)
@@ -881,7 +884,6 @@ technique_rejection ma_requirements::check_character( const Character &u,
     //to all weapons (such as Ninjutsu sneak attacks or innate weapon techniques like RAPID)
     //or if the weapon is flagged as being compatible with the style. Some techniques have
     //further restrictions on required weapon properties (is_valid_weapon).
-    bool cqb = u.has_active_bionic( bio_cqb );
     // There are 4 different cases of "armedness":
     // Truly unarmed, unarmed weapon, style-allowed weapon, generic weapon
     const item_location weapon = u.get_wielded_item();
@@ -907,7 +909,8 @@ technique_rejection ma_requirements::check_character( const Character &u,
     }
 
     for( const auto &pr : min_skill ) {
-        if( ( cqb ? 5 : static_cast<int>( u.get_skill_level( pr.first ) ) ) < pr.second ) {
+        // an enchantment's "skill_floor" (the CQB bionic's) is part of the level
+        if( static_cast<int>( u.get_skill_level( pr.first ) ) < pr.second ) {
             return technique_rejection::skill;
         }
     }
@@ -1000,9 +1003,6 @@ std::string ma_requirements::get_description( bool buff ) const
         min_skill.end(), []( const std::pair<skill_id, int>  &pr ) {
             Character &u = get_player_character();
             int player_skill = u.get_skill_level( skill_id( pr.first ) );
-            if( u.has_active_bionic( bio_cqb ) ) {
-                player_skill = BIO_CQB_LEVEL;
-            }
             return required_skill_as_string( pr.first, pr.second, player_skill );
         }, enumeration_conjunction::none ) + "\n";
     }
@@ -2127,18 +2127,23 @@ damage_instance character_martial_arts::calculate_vector_damage( const Character
     return ret;
 }
 
+// Whether the character has any of the flags (CMBT-J08: blocking with the alloy plating CBMs)
+static bool has_any_flag( const Character &owner, const std::set<json_character_flag> &flags )
+{
+    return std::any_of( flags.begin(), flags.end(), [&owner]( const json_character_flag & flag ) {
+        return owner.has_flag( flag );
+    } );
+}
+
 bool character_martial_arts::can_leg_block( const Character &owner ) const
 {
     const martialart &ma = style_selected.obj();
     ///\EFFECT_UNARMED increases ability to perform leg block
-    const int unarmed_skill = owner.has_active_bionic( bio_cqb ) ? 5 : owner.get_skill_level(
-                                  skill_unarmed );
+    const int unarmed_skill = owner.get_skill_level( skill_unarmed );
 
     // Before we check our legs, can you block at all?
     const bool block_with_skill = unarmed_skill >= ma.leg_block;
-    const bool block_with_bio_armor = ma.leg_block_with_bio_armor_legs &&
-                                      owner.has_bionic( bio_armor_legs );
-    if( !( block_with_skill || block_with_bio_armor ) ) {
+    if( !( block_with_skill || has_any_flag( owner, ma.leg_block_char_flags ) ) ) {
         return false;
     }
 
@@ -2166,14 +2171,11 @@ bool character_martial_arts::can_arm_block( const Character &owner ) const
 {
     const martialart &ma = style_selected.obj();
     ///\EFFECT_UNARMED increases ability to perform arm block
-    const int unarmed_skill = owner.has_active_bionic( bio_cqb ) ? 5 : owner.get_skill_level(
-                                  skill_unarmed );
+    const int unarmed_skill = owner.get_skill_level( skill_unarmed );
 
     // before we check our arms, can you block at all?
     const bool block_with_skill = unarmed_skill >= ma.arm_block;
-    const bool block_with_bio_armor = ma.arm_block_with_bio_armor_arms &&
-                                      owner.has_bionic( bio_armor_arms );
-    if( !( block_with_skill || block_with_bio_armor ) ) {
+    if( !( block_with_skill || has_any_flag( owner, ma.arm_block_char_flags ) ) ) {
         return false;
     }
 
@@ -2813,26 +2815,33 @@ void ma_details_ui_impl::init_data()
             general_info_text.emplace_back( _( "This is an <bold>armed</bold> combat style." ) );
         }
 
-        if( ma.arm_block_with_bio_armor_arms || ma.arm_block != 99 ||
-            ma.leg_block_with_bio_armor_legs || ma.leg_block != 99 ||
+        if( !ma.arm_block_char_flags.empty() || ma.arm_block != 99 ||
+            !ma.leg_block_char_flags.empty() || ma.leg_block != 99 ||
             ma.nonstandard_block != 99 ) {
             Character &u = get_player_character();
             int unarmed_skill = u.get_skill_level( skill_unarmed );
-            if( u.has_active_bionic( bio_cqb ) ) {
-                unarmed_skill = BIO_CQB_LEVEL;
-            }
-            if( ma.arm_block_with_bio_armor_arms ) {
-                general_info_text.emplace_back(
-                    _( "You can <info>arm block</info> by installing the <info>Arms Alloy Plating CBM</info>" ) );
+            // What has a flag that lets you block: the name the flag's definition gives it, if any
+            const auto flag_text = []( const json_character_flag & flag ) {
+                return flag.is_valid() && !flag->name().empty() ? flag->name() : flag.str();
+            };
+            if( !ma.arm_block_char_flags.empty() ) {
+                for( const json_character_flag &flag : ma.arm_block_char_flags ) {
+                    general_info_text.emplace_back( flag == json_flag_ARMORED_ARMS ?
+                                                    _( "You can <info>arm block</info> by installing the <info>Arms Alloy Plating CBM</info>" ) :
+                                                    string_format( _( "You can <info>arm block</info> with <info>%s</info>" ), flag_text( flag ) ) );
+                }
             } else if( ma.arm_block != 99 ) {
                 general_info_text.emplace_back( string_format(
                                                     _( "You can <info>arm block</info> at %s" ),
                                                     required_skill_as_string( skill_unarmed, ma.arm_block, unarmed_skill ) ) );
             }
 
-            if( ma.leg_block_with_bio_armor_legs ) {
-                general_info_text.emplace_back(
-                    _( "You can <info>leg block</info> by installing the <info>Legs Alloy Plating CBM</info>" ) );
+            if( !ma.leg_block_char_flags.empty() ) {
+                for( const json_character_flag &flag : ma.leg_block_char_flags ) {
+                    general_info_text.emplace_back( flag == json_flag_ARMORED_LEGS ?
+                                                    _( "You can <info>leg block</info> by installing the <info>Legs Alloy Plating CBM</info>" ) :
+                                                    string_format( _( "You can <info>leg block</info> with <info>%s</info>" ), flag_text( flag ) ) );
+                }
             } else if( ma.leg_block != 99 ) {
                 general_info_text.emplace_back( string_format(
                                                     _( "You can <info>leg block</info> at %s" ),

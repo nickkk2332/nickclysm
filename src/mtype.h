@@ -393,6 +393,11 @@ struct mtype {
          * of this type (if it's friendly).
          */
         itype_id revert_to_itype;
+        /**
+         * One in this many EMP blasts switch an ELECTRONIC monster off, turning it into its
+         * revert_to_itype (CMBT-J11); 0 never. -1 (the default): 6 if tiny, 3 if small, else never.
+         */
+        int emp_deactivate_one_in = -1;
 
         /**
          * If this is not empty, the monster will become this item when mdeath::BROKEN

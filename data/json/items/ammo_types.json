@@ -81,31 +81,36 @@
     "type": "ammunition_type",
     "id": "bolt_ballista",
     "name": "ballista bolts",
-    "default": "bolt_ballista_steel"
+    "default": "bolt_ballista_steel",
+    "fire_sound": { "message": "thonk!" }
   },
   {
     "type": "ammunition_type",
     "id": "bolt",
     "name": "bolts",
-    "default": "bolt_wood"
+    "default": "bolt_wood",
+    "fire_sound": { "message": "thonk!" }
   },
   {
     "type": "ammunition_type",
     "id": "arrow",
     "name": "arrows",
-    "default": "arrow_wood"
+    "default": "arrow_wood",
+    "fire_sound": { "message": "whizz!" }
   },
   {
     "type": "ammunition_type",
     "id": "strange_arrow",
     "name": "strange arrows",
-    "default": "arrow_meteor"
+    "default": "arrow_meteor",
+    "fire_sound": { "message": "Crack!" }
   },
   {
     "type": "ammunition_type",
     "id": "atlatl",
     "name": "atlatl spears",
-    "default": "steel_atlatl_spear"
+    "default": "steel_atlatl_spear",
+    "fire_sound": { "message": "swoosh!" }
   },
   {
     "type": "ammunition_type",
@@ -303,37 +308,47 @@
     "type": "ammunition_type",
     "id": "40x46mm",
     "name": "40x46mm grenade",
-    "default": "40x46mm_m433"
+    "default": "40x46mm_m433",
+    "fire_sound": { "volume": 8, "message": "Thunk!" }
   },
   {
     "type": "ammunition_type",
     "id": "40x53mm",
     "name": "40x53mm grenade",
-    "default": "40x53mm_m430a1"
+    "default": "40x53mm_m430a1",
+    "fire_sound": { "volume": 8, "message": "Thunk!" }
   },
   {
     "type": "ammunition_type",
     "id": "66mm",
     "name": "66mm HEAT",
-    "default": "66mm_HEAT"
+    "default": "66mm_HEAT",
+    "fire_sound": { "volume": 4, "message": "Fwoosh!" },
+    "satisfies_pyromania": true
   },
   {
     "type": "ammunition_type",
     "id": "120mm",
     "name": "120mm HEAT",
-    "default": "120mm_HEAT"
+    "default": "120mm_HEAT",
+    "fire_sound": { "volume": 4, "message": "Fwoosh!" },
+    "satisfies_pyromania": true
   },
   {
     "type": "ammunition_type",
     "id": "84x246mm",
     "name": "84x245mm cartridge",
-    "default": "84x246mm_he"
+    "default": "84x246mm_he",
+    "fire_sound": { "volume": 4, "message": "Fwoosh!" },
+    "satisfies_pyromania": true
   },
   {
     "type": "ammunition_type",
     "id": "m235",
     "name": "M235 66mm Incendiary TPA",
-    "default": "m235tpa"
+    "default": "m235tpa",
+    "fire_sound": { "volume": 4, "message": "Fwoosh!" },
+    "satisfies_pyromania": true
   },
   {
     "type": "ammunition_type",
@@ -508,7 +523,8 @@
     "type": "ammunition_type",
     "id": "12mm",
     "name": "12mm slug",
-    "default": "12mm"
+    "default": "12mm",
+    "fire_sound": { "volume": 24, "message": "tz-CRACKck!" }
   },
   {
     "type": "ammunition_type",
@@ -520,7 +536,10 @@
     "type": "ammunition_type",
     "id": "flammable",
     "name": "flammable liquid",
-    "default": "napalm"
+    "default": "napalm",
+    "fire_sound": { "volume": 4, "message": "Fwoosh!" },
+    "satisfies_pyromania": true,
+    "pyromania_message": "You feel a surge of euphoria as flames roar out of the %s!"
   },
   {
     "type": "ammunition_type",
@@ -743,13 +762,17 @@
     "type": "ammunition_type",
     "id": "homebrew_rocket",
     "name": "homebrew rocket",
-    "default": "spiked_rocket"
+    "default": "spiked_rocket",
+    "fire_sound": { "volume": 4, "message": "Fwoosh!" },
+    "satisfies_pyromania": true
   },
   {
     "type": "ammunition_type",
     "id": "atgm",
     "name": "152mm anti-tank guided missile",
-    "default": "atgm_heat"
+    "default": "atgm_heat",
+    "fire_sound": { "volume": 4, "message": "Fwoosh!" },
+    "satisfies_pyromania": true
   },
   {
     "type": "ammunition_type",

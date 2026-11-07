@@ -619,8 +619,11 @@ class martialart
         int arm_block = 0;
         int leg_block = 0;
         int nonstandard_block = 0;
-        bool arm_block_with_bio_armor_arms = false;
-        bool leg_block_with_bio_armor_legs = false;
+        // Character flags that let you arm or leg block at any skill (CMBT-J08); the older
+        // "arm_block_with_bio_armor_arms" and "leg_block_with_bio_armor_legs" add the flags of
+        // the alloy plating bionics
+        std::set<json_character_flag> arm_block_char_flags;
+        std::set<json_character_flag> leg_block_char_flags;
         std::set<matec_id> techniques; // all available techniques
         std::set<itype_id> weapons; // all style weapons
         std::set<weapon_category_id> weapon_category; // all style weapon categories

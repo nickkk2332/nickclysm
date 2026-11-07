@@ -38,7 +38,7 @@
     "id": "ROBOT",
     "description": "a robot",
     "footsteps": "mechanical whirring.",
-    "flags": [ "ALL_SEEING", "NEMESIS" ],
+    "flags": [ "ALL_SEEING", "NEMESIS", "FLASHBANGPROOF" ],
     "bleeds": "fd_mechanical_fluid"
   },
   {
