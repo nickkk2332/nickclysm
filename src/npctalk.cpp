@@ -10114,8 +10114,10 @@ talk_effect_fun_t::func f_run_vehicle_eocs( const JsonObject &jo,
         tripoint_abs_ms actor_pos = d.actor( is_npc )->pos_abs();
         int z_min = z_span.min.evaluate( d );
         int z_max = z_span.max.evaluate( d );
-        const std::optional<int> range = has_vehicle_range ?
-                                         std::optional<int>( vehicle_range.evaluate( d ) ) : std::nullopt;
+        // No range means any distance. A plain int, not an optional: GCC 9 reports a
+        // maybe-uninitialized optional inside this lambda.
+        const int range = has_vehicle_range ? vehicle_range.evaluate( d ) :
+                          INT_MAX;
         for( wrapped_vehicle &elem : get_map().get_vehicles() ) {
             vehicle &veh = *elem.v;
             const tripoint_abs_ms &pos_abs = veh.pos_abs();
@@ -10125,7 +10127,7 @@ talk_effect_fun_t::func f_run_vehicle_eocs( const JsonObject &jo,
             if( z_span.has_max && pos_abs.z() > z_max ) {
                 continue;
             }
-            if( !range.has_value() || rl_dist( actor_pos, veh.pos_abs() ) <= range.value() ) {
+            if( rl_dist( actor_pos, veh.pos_abs() ) <= range ) {
                 for( const effect_on_condition_id &eoc : eocs ) {
                     dialogue newDialog( get_talker_for( veh ), nullptr, d.get_conditionals(), d.get_context() );
                     eoc->activate( newDialog );
@@ -10171,8 +10173,9 @@ talk_effect_fun_t::func f_run_fixed_zone_eocs( const JsonObject &jo,
         tripoint_abs_ms actor_pos = d.actor( is_npc )->pos_abs();
         int z_min = z_span.min.evaluate( d );
         int z_max = z_span.max.evaluate( d );
-        const std::optional<int> range = has_zone_range ?
-                                         std::optional<int>( zone_range.evaluate( d ) ) : std::nullopt;
+        // No range means any distance (a plain int: see the vehicle version above)
+        const int range = has_zone_range ? zone_range.evaluate( d ) :
+                          INT_MAX;
         for( zone_data &zone : mgr.get_zones( faction_id( zone_faction.evaluate( d ) ) ) ) {
             if( zone.get_is_personal() || zone.get_is_vehicle() ) {
                 continue;
@@ -10188,7 +10191,7 @@ talk_effect_fun_t::func f_run_fixed_zone_eocs( const JsonObject &jo,
             if( z_span.has_max && pos_abs.z() > z_max ) {
                 continue;
             }
-            if( !range.has_value() || rl_dist( actor_pos, zone.get_start_point() ) <= range.value() ) {
+            if( rl_dist( actor_pos, zone.get_start_point() ) <= range ) {
                 for( const effect_on_condition_id &eoc : eocs ) {
                     dialogue newDialog( get_talker_for( zone ), nullptr, d.get_conditionals(), d.get_context() );
                     // the zone's corners, for EOCs that work on its tiles
