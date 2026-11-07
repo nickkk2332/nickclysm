@@ -4501,16 +4501,18 @@ struct queued_vehicle_event {
 
 void vehicle::send_event( const cata::event &e )
 {
-    const std::unique_ptr<talker> alpha = get_talker_for( this );
-    get_event_bus().send_with_talkers( alpha.get(), nullptr, e );
+    // A talker on the stack: GCC 16 mis-reports deleting a heap talker_vehicle through its
+    // talker base (-Wfree-nonheap-object) when this is inlined into a std::function.
+    talker_vehicle alpha( this );
+    get_event_bus().send_with_talkers( &alpha, nullptr, e );
 }
 
 void vehicle::queue_event( const cata::event &e, std::unique_ptr<talker> beta )
 {
     const std::shared_ptr<talker> shared_beta( std::move( beta ) );
     queue_action( [e, shared_beta]( vehicle & veh ) {
-        const std::unique_ptr<talker> alpha = get_talker_for( veh );
-        get_event_bus().send_with_talkers( alpha.get(), shared_beta.get(), e );
+        talker_vehicle alpha( &veh );
+        get_event_bus().send_with_talkers( &alpha, shared_beta.get(), e );
     } );
 }
 
