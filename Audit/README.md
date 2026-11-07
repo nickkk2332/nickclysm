@@ -173,11 +173,11 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | EVT-B02 | fixed | `bc57ebfb`, `b2997abd` | `tests/audit_events_test.cpp`. Still open: renaming a `cata_variant_type` or achievement state still fails the save load (now with an error message instead of a crash) |
 | DATA-B02 | fixed | `9a8b2c7b` | `tests/audit_saves_options_test.cpp` |
 | LOOP-B03 | fixed | `90c08ef9` | none: `game::setup()` cannot run inside the test harness |
-| EVT-B01 | partial | `90c08ef9` | none: `is_game_over()` is private and reached only through the input loop. Still open: `character_dies` can fire twice when a follower death-switch takes over the body |
+| EVT-B01 | fixed | `90c08ef9`, PR C | `tests/audit_gameplay_fixes_test.cpp`. The follower death switch works again (a guard added for executions refused it while the death was finalized), the AVATAR_DEATH EOCs stop once the player isn't dead, and `character_dies` is sent once per death: the body left behind doesn't send it again when it dies as an NPC |
 | USE-B04 | fixed | `0706a779` | `tests/audit_item_use_test.cpp` |
 | CHAR-B02 | fixed | `7ce602d6` | `tests/audit_frostbite_move_mode_test.cpp` |
 | CHAR-B03 | fixed | `7ce602d6` | `tests/audit_frostbite_move_mode_test.cpp` |
-| NPC-B01 | partial | `1966b6c1` | `tests/audit_npc_attack_gun_test.cpp`. Still open: NPCs cannot use wielded CBM pseudo-guns |
+| NPC-B01 | fixed | `1966b6c1`, PR C | `tests/audit_npc_attack_gun_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. NPCs rate and fire the CBM gun they hold (its NO_UNWIELD pseudo-item failed `can_wield`), and put a gun with no power left away |
 | IINF-B01 | fixed | `1129cda8` | `tests/audit_ablative_armor_test.cpp` |
 | CRAFT-B01 | fixed | `04e8cea9` | `tests/audit_craft_failure_test.cpp` |
 | LOOP-B01 | fixed | `90c08ef9` | `tests/audit_game_loop_test.cpp` |
@@ -217,7 +217,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | MUT-B02 | fixed | `11685f59` | `tests/audit_character_mutation_combat_test.cpp` |
 | MUT-B03 | fixed | `9c2914c4` | `tests/audit_character_mutation_combat_test.cpp` |
 | MUT-B04 | fixed | `45143af4` | `tests/audit_character_mutation_combat_test.cpp` |
-| CMBT-B02 | partial | `097c8831` | `tests/audit_character_mutation_combat_test.cpp`. Still open: on_damage still checks damage before armor |
+| CMBT-B02 | fixed | `097c8831`, PR C | `tests/audit_character_mutation_combat_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. A technique effect with `on_damage` is applied once the hit is dealt, if damage got through armor and blocks |
 | CMBT-B03 | fixed | `0631addd` | `tests/audit_character_mutation_combat_test.cpp` |
 | MONAI-B02 | fixed | `1c6d9845`, `c2c461f7` | `tests/audit_monsters_test.cpp` |
 | MONAI-B03 | fixed | `bd329db5`, `128718b5` | `tests/audit_monsters_test.cpp`. The test then showed absorb_meat never used the meat up (a range-0 flood fill returned no tiles); fixed in `128718b5` |
@@ -277,9 +277,9 @@ Four fixes have no regression test, because the code is only reachable through i
 |---|---|---|---|
 | CHAR-B04 | fixed | `a5a4b6e1` | `tests/audit_character_effects_test.cpp` |
 | HLTH-J01 | fixed | `291add8b` | `tests/audit_character_effects_test.cpp` |
-| CHAR-J01 | partial | `30c665af` | `tests/audit_character_effects_test.cpp`. Still open: `u_add_body_part` / `u_lose_body_part` EOC effects |
+| CHAR-J01 | fixed | `30c665af`, PR C | `tests/audit_character_effects_test.cpp`, `tests/audit_modding_gaps_test.cpp`. `u_add_body_part` / `u_lose_body_part` (with npc_ forms): the change outlasts body rebuilds and saves; losing a part takes the parts connected through it, the root, vital parts and parts holding a bionic (unless `force`) can't be lost, and worn items left covering nothing fall off |
 | MUT-B05 | partial | `a9089239`, `846840db` | `tests/audit_mutation_towards_test.cpp`. Still open: filtering mutation candidates with unmet thresholds (would change mutation pacing) |
-| MUT-J01 | partial | `b65fd9a9` | `tests/audit_mutation_towards_test.cpp`. Still open: validating every trait's category at load (core Mycus traits and mods use undefined categories) |
+| MUT-J01 | fixed | `b65fd9a9`, PR C | `tests/audit_mutation_towards_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. Categories, `allowed_category` and dream categories are checked at load. Data: the Marloss traits lose their undefined MARLOSS category (and its dream, which could never play), Xedra defines GRACKEN, and the BombasticPerks and Isolation Protocol perks drop categories that were never defined |
 | EOC-B05 | fixed | `2f8d333f`, `0aad6359` | `tests/audit_items_npc_loading_test.cpp` |
 | UIINV-B02 | partial | `edcb168d` | none: the move goes through a uilist. Still open: routing the move through the AIM insert activity |
 | ACT-B03 | fixed | `4d5bffa7`, `9c9df48a` | `tests/audit_items_npc_loading_test.cpp` |
@@ -377,21 +377,21 @@ Modding features:
 | CRAFT-J01 | partial | `b33ebcb7` | `tests/audit_construction_recipe_camp_test.cpp`. Still open: inheriting inline requirements and extending or deleting component, tool and quality groups |
 | CAMP-J01 | fixed | `bda202de` | `tests/audit_construction_recipe_camp_test.cpp` |
 | MUT-J02 | partial | `baea3c27` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: a refund channel for cancelled activations, and a menu pre-check before the activation message |
-| MUT-J03 | partial | `eceb79dd`, `e3212448` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: bionic math functions, an ignore-cost option, and access to per-bionic state |
+| MUT-J03 | fixed | `eceb79dd`, `e3212448`, PR C | `tests/audit_mutation_bionic_activation_test.cpp`, `tests/audit_modding_gaps_test.cpp`. Math `bionic_count`, `has_active_bionic`, `bionic_charge`, `bionic_incapacitated`, `bionic_safe_fuel` (the last three assignable), `bionic_cost`, `bionic_power` (assignable), `bionic_power_max`; `u_activate_bionic`'s `ignore_cost`. Running costs (`react_cost`) are still paid |
 | NPC-J01 | partial | `90eb6d45` | `tests/audit_mutation_bionic_activation_test.cpp`. Still open: giving other toggled bionics an `npc_use` (a content decision), priorities, and NPC use of spell bionics |
 | CMBT-J01 | fixed | `7dfdc8e4`, PR B | `tests/audit_martial_art_events_test.cpp`. `ongethit_eocs` also run for projectile, shrapnel and explosion hits, with `hit_by`; technique `eocs` get the attack's context. Technique EOCs still can't change the hit's damage |
-| HLTH-J03 | partial | `79ed5939` | `tests/audit_diet_rules_test.cpp`. Still open: moving vanilla diet traits (vegan, gourmand, picky eater, ruminant and others) to these fields |
-| MAGIC-J02 | partial | `5c4fb57a` | `tests/audit_spell_enchant_test.cpp`. Still open: fail chance, difficulty, spell XP and sound values |
+| HLTH-J03 | partly fixed | `79ed5939`, PR C | `tests/audit_diet_rules_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. VEGAN is an `eat_condition` now and RUMINANT uses the `HERBIVORE_DIET` flag; the six allergy traits and the animal thresholds already were data. Still C++, because the fields can't express them: PICKYEATER, GOURMAND, SAPROPHAGE, SAPROVORE, EATDEAD, PROBOSCIS, M_DEPENDENT and the Mycus traits, PROJUNK (doc/JSON/MUTATIONS.md lists why) |
+| MAGIC-J02 | fixed | `5c4fb57a`, PR C | `tests/audit_spell_enchant_test.cpp`, `tests/audit_modding_gaps_test.cpp`. `spell_values` kinds `FAIL`, `DIFFICULTY`, `EXP` and `SOUND`; math `spell_fail`, `spell_casting_exp`, `spell_sound`, `spell_energy_cost`, `spell_cast_time`, `spell_exp_to_next_level` |
 | INV-J03 | fixed | `35ca98d9` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
-| VEH-J01 | partial | `ae836b32`, `398d4f09`, `673b3770` | `tests/audit_eoc_inventory_vehicle_test.cpp`. Still open: damaging vehicle parts from an EOC (it can split or delete the vehicle mid-EOC), owner, and weight (VINT-J04) |
+| VEH-J01 | fixed | `ae836b32`, `398d4f09`, `673b3770`, PR C | `tests/audit_eoc_inventory_vehicle_test.cpp`, `tests/audit_modding_gaps_test.cpp`. `u_damage_vehicle_parts` (filters, and broken parts left alone unless `tear_off`, so the vehicle can't split mid-EOC by default; removal is cleaned up at the end of the turn), `u_set_vehicle_owner` and the `u_vehicle_owner` condition. Weight: VINT-J04 |
 | VINT-J02 | fixed | `f28f99e1`, `743f2e40` | `tests/audit_eoc_inventory_vehicle_test.cpp` |
 | LOOP-J01 | fixed | `a17a8639`, `ccfba742`, `374ce76a` | `tests/audit_weather_eoc_test.cpp` |
 | MAP-J01 | fixed | `210feefe`, `85598110`, `f4d64d6b`, PR B | `tests/audit_bash_eoc_test.cpp`. Every bash has a `cause` (`smash`, `explosion`, `fire`, `vehicle`, `collapse`, `projectile`, `other`), and destroying terrain or furniture sends `tile_destroyed`. `character_smashes_tile` is unchanged: still sent before the bash, without its outcome |
 | MONAI-J01 | partial | `e08fb87c`, `54d15f8c`, `530d442b` | `tests/audit_monster_eoc_test.cpp`. Still open: forcing a monster's target or destination (the monster AI replaces both every turn) |
 | INV-J02 | fixed | `ca101f02`, `0dcb820a` | `tests/audit_mod_overrides_test.cpp` |
-| HLTH-J02 | partial | `c47dbf59`, `58e3fada` | `tests/audit_mod_overrides_test.cpp`. Still open: validating resist, remove and block lists in effects, because shipped data still has stale ids there |
+| HLTH-J02 | fixed | `c47dbf59`, `58e3fada`, PR C | `tests/audit_mod_overrides_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. The resist, remove and block lists are checked at load, after fixing the 16 stale ids shipped data had (core: cureall, rat_bite_fever, smoke_eyes, the star vampire effects; Magiclysm, MindOverMatter, Xedra Evolved and Aftershock) |
 | NPC-J02 | partial | `92f0de07` | `tests/audit_mod_overrides_test.cpp`. Still open: moving NPC templates and factions onto `generic_factory`, and `extend`/`delete` on their lists |
-| MONDT-J01 | partial | `eb828cdb` | `tests/audit_mod_validation_test.cpp`. Still open: a location context value, and spawn data such as effects, variables and factions on group entries |
+| MONDT-J01 | fixed | `eb828cdb`, PR C | `tests/audit_mod_validation_test.cpp`, `tests/audit_modding_gaps_test.cpp`. Group entry `spawn_data` takes `effects`, `variables` and `faction` (and mapgen's `patrol`, which nothing applied before); a mapgen group adds its own spawn data on top of the entry's instead of replacing it; a pending spawn keeps its spawn data in a save; entry conditions get `loc`, the spawn location, for mapgen spawns. Hordes and overmap spawns still ignore spawn_data |
 | MAGIC-J03 | partial | `9c38b68a`, `e15db0f0`, `12c7974f` | `tests/audit_mod_validation_test.cpp`. Still open: enchantment and terrain-transform consistency checks (MAGIC-J06) |
 | USE-J01 | partial | `9ee18e2d`, `4cbf0b89` | `tests/audit_mod_validation_test.cpp`. Still open: `_method` and `_item_pos` context values (they need USE-J02, several use actions per item) |
 
@@ -540,7 +540,7 @@ For modders, everything is documented with examples in `doc/JSON/NPC_BEHAVIOR.md
 | ID | Status | Commits | Regression test or benchmark |
 |---|---|---|---|
 | NPC-J03 | fixed | `f2cc3d53`, `e2f62418`, `844f4cb0`, `a31114d8`, `950645fc`, `d22af887`, `52725bb8` | `tests/npc_behavior_tree_test.cpp`, `tests/npc_json_goal_test.cpp`; benchmark `npc_decision` |
-| NPC-J05 | partial | `e58bc280` | `tests/npc_json_goal_test.cpp`. An NPC's goal is readable. Still open: attitude, personality and faction relations |
+| NPC-J05 | fixed | `e58bc280` | `tests/npc_json_goal_test.cpp`. An NPC's goal is readable. Attitude, personality and faction relations were done later (see the row below); PR C adds `u_has_fac_relation`, the relation between the two talkers' factions |
 
 Vanilla NPCs decide as before:
 - A test pins every node of `npc_decision`: its strategy, conditions, score and goal.
@@ -604,7 +604,7 @@ For modders (documented in `doc/JSON/EFFECT_ON_CONDITION.md`, `NPCs.md`, `NPC_BE
 | DATA-B09 | fixed | `3cbe8ccc`, `f67fe1f3` | `tests/audit_data_sweep_test.cpp` |
 | LOOP-B05, LOOP-B12 | already fixed | by EVT-B01 (`90c08ef9`) and MAP-B03 | existing tests |
 | LOOP-B06 to LOOP-B09, LOOP-B13 to LOOP-B15 | fixed | `12247a06` to `d27488aa`, follow-ups `858c62d4` to `e37c37f7` | `tests/audit_loop_sweep_test.cpp` (LOOP-B07 is a menu and is checked by reading) |
-| LOOP-B11 | partial | `6fcccdc6` | `tests/audit_loop_sweep_test.cpp`. Still open: the avatar's water landing after knockback (needs design: which water, swim cost, map shift) |
+| LOOP-B11 | fixed | `6fcccdc6`, PR C | `tests/audit_loop_sweep_test.cpp`, `tests/audit_gameplay_fixes_test.cpp`. The avatar knocked into deep water lands in the first deep tile, swimming, wet, and sinking if unable to swim, as walking in does; no move cost, and the map isn't re-centred mid-knockback. NPCs knocked into water are still unhandled |
 
 Gameplay changes players will notice:
 - **Seasons for water and maple sap** were 81 days early.

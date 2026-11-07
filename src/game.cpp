@@ -4511,10 +4511,17 @@ void game::knockback( std::vector<tripoint_bub_ms> &traj, int stun, int dam_mult
                 knockback( traj, stun, dam_mult );
                 break;
             }
-            if( here.has_flag( ter_furn_flag::TFLAG_LIQUID, pos ) && force_remaining == 0 ) {
-                avatar_action::swim( here, u, pos );
-            } else {
-                u.setpos( here,  traj[i] );
+            u.setpos( here,  traj[i] );
+            // LOOP-B11: deep water ends the flight there, with what walking into it does. It
+            // checked the starting tile, and only once the force was spent, which it never was.
+            // The map isn't re-centred here: callers go on using bubble coordinates.
+            if( here.has_flag( ter_furn_flag::TFLAG_SWIMMABLE, traj[i] ) &&
+                here.has_flag( ter_furn_flag::TFLAG_DEEP_WATER, traj[i] ) &&
+                !here.has_flag_furn( "BRIDGE", traj[i] ) && !here.veh_at( traj[i] ) &&
+                !u.has_flag( json_flag_WATERWALKING ) ) {
+                add_msg( m_bad, _( "You land in the water." ) );
+                avatar_action::enter_water( u );
+                break;
             }
         }
     }

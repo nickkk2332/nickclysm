@@ -595,6 +595,23 @@ Beta talker is a vehicle with a stereo which is activated
 { "npc_has_part_flag": "STEREO", "enabled" : true }
 ```
 
+### `u_vehicle_owner`, `npc_vehicle_owner`
+- type: string or [variable object](#variable-object)
+- return true if alpha or beta talker is a vehicle owned by that faction; `"NULL"` (or `""`) is true for an unowned vehicle
+
+#### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+#### Examples
+
+The vehicle belongs to the player's faction
+```jsonc
+{ "u_vehicle_owner": "your_followers" }
+```
+
 ### `u_has_species`, `npc_has_species`
 - type: string or [variable object](#variable-object)
 - true if alpha or beta talker has the defined species
@@ -1904,6 +1921,17 @@ You (an NPC) keep a shop
 The Free Merchants shoot raiders on sight
 ```jsonc
 { "faction_has_relation": [ "free_merchants", "hells_raiders", "kill on sight" ] }
+```
+
+### `u_has_fac_relation`, `npc_has_fac_relation`
+- type: string
+- return true if the alpha (or, for `npc_has_fac_relation`, beta) talker's faction has the relation toward the other talker's faction; the relation is one of the ones `faction_has_relation` takes, and one that isn't is a load error
+- false when either talker has no faction, or there is no other talker
+
+#### Examples
+The NPC's faction shoots the player's on sight
+```jsonc
+{ "npc_has_fac_relation": "kill on sight" }
 ```
 
 ### `u_can_reach`, `npc_can_reach`
@@ -3445,6 +3473,49 @@ Run EOC_KILL_SHADOW on any mon_zombie_dog, mon_dog_zombie_cop or mon_dog_zombie_
   }
 ```
 
+#### `u_damage_vehicle_parts`, `npc_damage_vehicle_parts`
+Damages the parts of the alpha or beta talker, which must be a vehicle. Every part is hit unless filters narrow it down; carried vehicles and fake parts are never hit.
+
+Parts already broken are skipped unless `tear_off` is true, so by default the vehicle can't break apart while the EOC runs. With `tear_off`, damaging a broken part tears it off, which can split the vehicle or leave nothing of it. Parts torn off and pieces split away are only cleaned up at the end of the turn, so the talker can still be used for the rest of the EOC. Split-off pieces are new vehicles: reach them with `u_run_vehicle_eocs` or a handle.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_damage_vehicle_parts" / "npc_damage_vehicle_parts" | **mandatory** | int or [variable object](#variable-object) | how much damage each part takes |
+| "damage_type" | optional | string or [variable object](#variable-object) | the damage type, `pure` by default |
+| "flag" | optional | string or [variable object](#variable-object) | only parts with this flag |
+| "part" | optional | string or [variable object](#variable-object) | only parts of this vehicle part id |
+| "loc" | optional | [variable object](#variable-object) | only parts on this tile |
+| "count" | optional | int or [variable object](#variable-object) | at most this many of the matching parts, picked at random |
+| "armor" | optional | bool | when true, the damage hits the tile's armor first and a random part there, as a collision does; when false (the default), it goes straight to each part |
+| "tear_off" | optional | bool | also hit parts already broken, tearing them off |
+
+The EOC's context gets `vehicle_parts_damaged`, `vehicle_parts_broken` (parts that broke now), `vehicle_parts_removed` and `vehicle_destroyed` (1 when no part is left).
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --------- | ---- | ------- | --- | ---- |
+| ❌ | ❌ | ❌ | ❌ | ❌ | ✔️ |
+
+##### Examples
+Two random wheels take 40 bash damage
+```jsonc
+{ "u_damage_vehicle_parts": 40, "damage_type": "bash", "flag": "WHEEL", "count": 2 }
+```
+
+#### `u_set_vehicle_owner`, `npc_set_vehicle_owner`
+Sets the faction that owns the alpha or beta talker, which must be a vehicle: a faction id, `""` or `"NULL"` for none, or `"u"` / `"npc"` for that talker's faction (it must be a character). Taking ownership this way ends a theft in progress.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_set_vehicle_owner" / "npc_set_vehicle_owner" | **mandatory** | string or [variable object](#variable-object) | the owner |
+
+##### Examples
+The vehicle in beta now belongs to the player
+```jsonc
+{ "npc_set_vehicle_owner": "u" }
+```
+
 #### `u_run_vehicle_eocs`, `npc_run_vehicle_eocs`
 Vehicles run EoCs, provided by this effect; only vehicles inside the reality bubble are affected. Each vehicle is the alpha talker of its EoC (there is no beta talker), so `u_vehicle_fuel('gasoline')`, `u_is_driven` and the other vehicle functions and conditions read it. The context variables of the calling EoC are passed on.
 
@@ -4220,6 +4291,39 @@ Removes all wounds from all body parts
   }
 ```
 
+#### `u_add_body_part`, `npc_add_body_part`, `u_lose_body_part`, `npc_lose_body_part`
+
+Gives the body a part, or takes one away, until another of these effects changes it back. The change lasts through saves and outlives whatever the anatomy, mutations and enchantments say: a part an EOC took away stays gone even if a mutation would grow it, and one an EOC gave stays when the enchantment that also gave it ends.
+
+- Adding needs the part the new one connects to (its `connected_to`) to be there already. Adding a part the body already has records it, so it outlasts its enchantment, but counts as a failure.
+- Losing a part also loses every part connected to the body through it: losing `arm_l` takes `hand_l` with it. The root part (the head) and vital parts can't be lost, and neither can a part an installed bionic is in, unless `force` is true.
+- Worn items left covering none of the remaining parts fall off. Effects on a lost part end.
+
+| Syntax | Optionality | Value  | Info |
+| --- | --- | --- | --- |
+| "u_add_body_part", "npc_add_body_part", "u_lose_body_part", "npc_lose_body_part" | **mandatory** | string or [variable object](#variable-object) | id of the body part |
+| "force" | optional | bool | for losing: also lose a part a bionic is in. Default false |
+| "true_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when the part was added or lost |
+| "false_eocs" | optional | array of strings, [variable objects](#variable-object) or inline EOCs | run when it wasn't; the context value `reason` says why |
+
+##### Valid talkers:
+
+| Avatar | NPC | Monster | Furniture | Item | Vehicle |
+| ------ | --- | ---- | ------- | --- | ---- |
+| ✔️ | ✔️ | ❌ | ❌ | ❌ | ❌ |
+
+##### Examples
+
+Grows a tail, unless the body already has one
+```jsonc
+{ "u_add_body_part": "tail", "false_eocs": [ { "id": "EOC_TAIL_ALREADY", "effect": { "u_message": "Nothing happens." } } ] }
+```
+
+Loses the left arm and the hand with it
+```jsonc
+{ "u_lose_body_part": "arm_l" }
+```
+
 #### Power ownership commands
 
 `apply_power_application`, `end_power_application`, `dispel_power_applications`,
@@ -4448,6 +4552,7 @@ Switch an installed bionic on or off.  This goes through the same code as the bi
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_activate_bionic" / "npc_activate_bionic" / "u_deactivate_bionic" / "npc_deactivate_bionic" | **mandatory** | string or [variable object](#variable-object) | id of the bionic to switch; an unknown id is reported as an error |
+| "ignore_cost" | optional | bool | when true, the bionic is switched without the power it costs, and without needing that power: `act_cost` (or `deact_cost`) isn't paid, and the activation EOCs see an `act_cost` of 0. Fuel, the `activation_condition` and the rest still apply, and so do running costs (`react_cost`). Default false |
 | "true_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when the bionic was switched |
 | "false_eocs" | optional | string, [variable object](#variable-object), inline EoC, or range of all of them | EoCs run when nothing was switched: the bionic isn't installed, is already in that state, or the (de)activation was refused |
 

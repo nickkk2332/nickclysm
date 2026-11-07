@@ -2642,7 +2642,10 @@ void npc::evaluate_best_attack( const Creature *target )
             }
             same_type.push_back( it );
         }
-        if( can_wield( *it ).success() ) {
+        // NPC-B01: a CBM weapon the NPC has out (a bionic gun or blade) is NO_UNWIELD and
+        // BIONIC_WEAPON, so can_wield() refuses it, but the attacks only need it in hand
+        const bool wielded_cbm_weapon = is_using_bionic_weapon() && is_wielding( *it );
+        if( wielded_cbm_weapon || can_wield( *it ).success() ) {
             // you can theoretically melee with anything.
             compare( std::make_shared<npc_attack_melee>( *it ), "(as MELEE) ", it.get_item() );
             if( !is_wielding( *it ) || !it->has_flag( flag_NO_UNWIELD ) ) {

@@ -76,6 +76,7 @@
 #include "map_selector.h"
 #include "mapbuffer.h"
 #include "mapdata.h"
+#include "math_parser_diag_value.h"
 #include "mapgen.h"
 #include "material.h"
 #include "math_defines.h"
@@ -4639,6 +4640,30 @@ static bool furn_is_supported( const map &m, const tripoint_bub_ms &p )
     }
 
     return false;
+}
+
+void spawn_data::apply( monster &placed ) const
+{
+    if( !patrol_points_rel_ms.empty() ) {
+        placed.set_patrol_route( patrol_points_rel_ms );
+    }
+    for( const spawn_effect &eff : effects ) {
+        if( !eff.id.is_valid() ) {
+            continue;
+        }
+        placed.add_effect( eff.id, time_duration::from_turns( eff.duration.get() ), eff.permanent,
+                           eff.intensity.get() );
+    }
+    for( const std::pair<const std::string, std::string> &var : str_variables ) {
+        placed.set_value( var.first, diag_value( var.second ) );
+    }
+    for( const std::pair<const std::string, double> &var : num_variables ) {
+        placed.set_value( var.first, diag_value( var.second ) );
+    }
+    if( !faction.is_empty() && faction.is_valid() ) {
+        placed.faction = faction.id();
+        get_creature_tracker().invalidate_reachability_cache();
+    }
 }
 
 // The innermost bash_cause_scope's cause, if any
@@ -10557,7 +10582,13 @@ void map::spawn_monsters_submap( const tripoint_rel_sm &gp, bool ignore_sight, b
 
             // This can fail, but there isn't much we can do about it if it does. We could output some
             // kind of info message, but, again, it's unlikely to result in anything that can be acted on.
-            g->place_critter_at_or_within( make_shared_fast<monster>( tmp ), this, center, points );
+            monster *placed = g->place_critter_at_or_within( make_shared_fast<monster>( tmp ), this,
+                              center, points );
+            // the rest of the spawn data needs the monster where it is: a patrol route is relative
+            // to its overmap tile
+            if( placed != nullptr ) {
+                i.data.apply( *placed );
+            }
         }
     }
     current_submap->spawns.clear();

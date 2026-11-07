@@ -396,7 +396,7 @@ A technique with `"controlled_knockback": true` (from Cataclysm-BN) lets you aim
       "duration": 15,                    // Duration of the effect in turns
       "intensity": 2,                    // Intensity to set the effect to, capped at its max_intensity (default: 0, the effect's normal starting intensity)
       "target": "target",                // Who gets the effect: "target" (default) or "self", the martial artist. "hit_self": true is accepted as "target": "self"
-      "on_damage": true,                 // If true the effect will only be applied if the attack succeeded in doing damage (default: true)
+      "on_damage": true,                 // If true the effect will only be applied if the attack succeeded in doing damage (after armor and blocks) (default: true)
       "condition": "ANY",                // conditions necessary for the technique to apply the effect. `u` is the martial artist, `npc` is the target, whoever gets the effect
       "message": "Example"               // The message to print if you successfully apply the effect, %s is replaced by the name of whoever gets it
     }

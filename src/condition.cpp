@@ -651,6 +651,45 @@ conditional_t::func f_has_part_flag( const JsonObject &jo, std::string_view memb
     };
 }
 
+// VEH-J01: u_vehicle_owner: "your_followers" - the vehicle talker is owned by that faction;
+// "NULL" when it is unowned. False for a talker that isn't a vehicle.
+conditional_t::func f_vehicle_owner( const JsonObject &jo, std::string_view member,
+                                     bool is_npc )
+{
+    str_or_var owner = get_str_or_var( jo.get_member( member ), member, true );
+    return [owner, is_npc]( const_dialogue const & d ) {
+        const vehicle *veh = d.const_actor( is_npc )->get_const_vehicle();
+        if( veh == nullptr ) {
+            return false;
+        }
+        std::string name = owner.evaluate( d );
+        if( name.empty() ) {
+            name = "NULL";
+        }
+        return veh->get_owner().str() == name;
+    };
+}
+
+// NPC-J05: u_has_fac_relation: "kill on sight" - the u_ talker's faction has that relation
+// to the npc_ talker's faction (see faction_has_relation for two named factions)
+conditional_t::func f_has_fac_relation( const JsonObject &jo, std::string_view member,
+                                        bool is_npc )
+{
+    const std::string relation = jo.get_string( std::string( member ) );
+    if( npc_factions::relation_strs.count( relation ) == 0 ) {
+        jo.throw_error_at( member, string_format( "unknown faction relation \"%s\"", relation ) );
+    }
+    const npc_factions::relationship rel = npc_factions::relation_strs.at( relation );
+    return [rel, is_npc]( const_dialogue const & d ) {
+        if( !d.has_actor( !is_npc ) ) {
+            return false;
+        }
+        const faction *from = d.const_actor( is_npc )->get_faction();
+        const faction *to = d.const_actor( !is_npc )->get_faction();
+        return from != nullptr && to != nullptr && from->has_relationship( to->id, rel );
+    };
+}
+
 conditional_t::func f_has_species( const JsonObject &jo, std::string_view member,
                                    bool is_npc )
 {
@@ -3627,6 +3666,8 @@ parsers = {
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },
     {"test_eoc", jarg::member, &conditional_fun::f_test_eoc },
     {"u_has_part_flag", "npc_has_part_flag", jarg::string, &conditional_fun::f_has_part_flag },
+    {"u_vehicle_owner", "npc_vehicle_owner", jarg::member, &conditional_fun::f_vehicle_owner },
+    {"u_has_fac_relation", "npc_has_fac_relation", jarg::string, &conditional_fun::f_has_fac_relation },
     {"u_contains_item", "npc_contains_item", jarg::member, &conditional_fun::f_contains_item },
     {"u_is_contained_in", "npc_is_contained_in", jarg::member, &conditional_fun::f_is_contained_in },
     {"u_has_fault", "npc_has_fault", jarg::member, &conditional_fun::f_has_fault },

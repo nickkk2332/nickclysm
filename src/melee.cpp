@@ -1011,6 +1011,9 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         }
 
         const ma_technique &technique = attack_id.obj();
+        // CMBT-B02: the technique's effects that need the hit to do damage, applied once it
+        // is known whether it got through armor and blocks
+        std::vector<const tech_effect_data *> effects_after_hit;
         ma_ctx.weapon = cur_weap.typeId();
         ma_ctx.weapon_uid = cur_weapon ? cur_weapon->uid().get_value() : 0;
         ma_ctx.technique = technique.id;
@@ -1022,7 +1025,8 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
         // Handles effects as well; not done in melee_affect_*
         if( technique.id != tec_none ) {
             perform_technique( technique, t, d, move_cost, cur_weapon,
-                               choice.how == technique_choice::mode::chosen && technique.id == choice.tec, &ma_ctx );
+                               choice.how == technique_choice::mode::chosen && technique.id == choice.tec, &ma_ctx,
+                               &effects_after_hit );
         }
 
         //player has a very small chance, based on their intelligence, to learn a style whilst using the CQB bionic
@@ -1056,6 +1060,11 @@ bool Character::melee_attack_abstract( Creature &t, bool allow_special,
                 execution_contact.set_critical( critical_hit );
                 const execution_combat::primary_hit_scope primary( execution_contact );
                 t.deal_melee_hit( this, hit_spread, critical_hit, d, dealt_dam, attack, &target_bp );
+            }
+            if( dealt_dam.total_damage() > 0 ) {
+                for( const tech_effect_data *eff : effects_after_hit ) {
+                    apply_tech_effect( *eff, t );
+                }
             }
             execution_contact.resolve( true, critical_hit, dealt_dam );
             ma_ctx.damage = dealt_dam.total_damage();
@@ -2086,10 +2095,20 @@ std::optional<std::string> melee::knockback_aim_refusal( const Character &attack
 std::function<std::optional<tripoint_bub_ms>( const Creature &, int )>
 melee::knockback_aim_test_answer;
 
+void Character::apply_tech_effect( const tech_effect_data &eff, Creature &t )
+{
+    // "target": "self" (TLG's hit_self) puts the effect on the attacker
+    Creature &recipient = eff.on_self ? static_cast<Creature &>( *this ) : t;
+    recipient.add_effect( eff.id, time_duration::from_turns( eff.duration ), eff.permanent,
+                          eff.intensity );
+    add_msg_if_player( m_good, _( eff.message ), recipient.disp_name() );
+}
+
 void Character::perform_technique( const ma_technique &technique, Creature &t,
                                    damage_instance &di,
                                    int &move_cost, item_location &cur_weapon, bool chosen,
-                                   const ma_event_context *attack )
+                                   const ma_event_context *attack,
+                                   std::vector<const tech_effect_data *> *after_hit )
 {
     map &here = get_map();
     const tripoint_bub_ms pos = pos_bub( here );
@@ -2123,15 +2142,18 @@ void Character::perform_technique( const ma_technique &technique, Creature &t,
     for( int i = 0; i < rep; i++ ) {
         for( const tech_effect_data &eff : technique.tech_effects ) {
             const_dialogue d( get_const_talker_for( *this ), get_const_talker_for( t ) );
-            // Add the tech's effects if it rolls the chance and either did damage or ignores it
-            if( x_in_y( eff.chance, 100 ) && ( di.total_damage() != 0 || !eff.on_damage ) ) {
+            // Add the tech's effects if it rolls the chance and either did damage or ignores it.
+            // Whether it did damage is only known after armor and blocks: with after_hit, an
+            // "on_damage" effect waits there for the caller.
+            const bool deferred = eff.on_damage && after_hit != nullptr;
+            if( x_in_y( eff.chance, 100 ) && ( deferred || di.total_damage() != 0 || !eff.on_damage ) ) {
                 // An effect without a condition always applies
                 if( !eff.has_condition || eff.condition( d ) ) {
-                    // "target": "self" (TLG's hit_self) puts the effect on the attacker
-                    Creature &recipient = eff.on_self ? static_cast<Creature &>( *this ) : t;
-                    recipient.add_effect( eff.id, time_duration::from_turns( eff.duration ),
-                                          eff.permanent, eff.intensity );
-                    add_msg_if_player( m_good, _( eff.message ), recipient.disp_name() );
+                    if( deferred ) {
+                        after_hit->push_back( &eff );
+                    } else {
+                        apply_tech_effect( eff, t );
+                    }
                 }
             }
         }

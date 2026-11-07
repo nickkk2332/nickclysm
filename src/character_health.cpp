@@ -523,6 +523,8 @@ void Character::die( map *here, Creature *nkiller )
 
 void Character::prevent_death()
 {
+    // this death didn't happen, so a later one is reported again
+    death_event_sent = false;
     for( const bodypart_id &bp : get_all_body_parts( get_body_part_flags::only_main ) ) {
         if( bp->is_vital ) {
             if( get_part_hp_cur( bp ) <= 0 ) {
