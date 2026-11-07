@@ -33,8 +33,9 @@ Each scenario builds a fixed, seeded setup without timing it, then times a fixed
 of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones marked
 *combat* (`tests/benchmark_scenarios_combat_test.cpp`), *load*
 (`tests/benchmark_scenarios_load_test.cpp`), *world*
-(`tests/benchmark_scenarios_world_test.cpp`) and *npc*
-(`tests/benchmark_scenarios_npc_test.cpp`).
+(`tests/benchmark_scenarios_world_test.cpp`), *npc*
+(`tests/benchmark_scenarios_npc_test.cpp`) and *sound*
+(`tests/benchmark_scenarios_sound_test.cpp`).
 
 | Scenario | Work timed | Audit findings it covers |
 |---|---|---|
@@ -71,6 +72,9 @@ of work. Scenarios are in `tests/benchmark_scenarios_test.cpp`, except the ones 
 | `npc_decision` (*npc*) | 300 turns of the `npc_decision` behavior tree for 20 NPCs (5 followers, 5 guards, 5 thirsty carrying water, 5 idle), as `npc::move()` walks it | NPC-J03 |
 | `npc_decision_condition_math` (*npc*) | the same, with 4 condition and math nodes added to the priorities (`data/mods/TEST_DATA/npc_behavior_bench.json`) | NPC-J03 |
 | `npc_decision_condition_math_cached` (*npc*) | the same, with those 4 nodes evaluated every 5 turns | NPC-J03 |
+| `sound_open_ground` (*sound*) | 100 turns of 20 sounds and 100 footsteps, heard by 300 zombies (`process_sounds`) and the avatar (`process_sound_markers`), on open ground | SPAT-J01 |
+| `sound_vanilla_walls` (*sound*) | the same among a grid of brick walls, which muffle nothing: the muffling walk is skipped, so it should cost what `sound_open_ground` costs | SPAT-J01 |
+| `sound_muffling_walls` (*sound*) | the same among walls with a `sound_attenuation` (TEST_DATA), so every hearer in earshot walks the line to each sound cluster | SPAT-J01 |
 | `data_load` | test binary start until "Game data loaded" (core and test data) | ITEM-P01 |
 
 The monster loop mirrors `monmove()` in `src/do_turn.cpp` (process turn, then

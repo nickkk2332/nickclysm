@@ -125,6 +125,8 @@ struct field_intensity_level {
     int concentration = 0;
     int convection_temperature_mod = 0;
     int scent_neutralization = 0;
+    // Volume a sound loses passing through a tile with this field
+    int sound_attenuation = 0;
     std::vector<field_effect> field_effects;
 };
 
@@ -210,6 +212,8 @@ struct field_type {
         time_duration gas_absorption_factor = 0_turns;
         bool is_splattering = false;
         bool dirty_transparency_cache = false;
+        // set in finalize: some intensity level has a sound_attenuation
+        bool muffles_sound = false;
         bool has_fire = false;
         bool has_acid = false;
         bool has_elec = false;

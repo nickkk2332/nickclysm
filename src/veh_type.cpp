@@ -276,6 +276,8 @@ void vpart_info::load( const JsonObject &jo, const std::string_view src )
     optional( jo, was_loaded, "color", color, nc_color_reader{}, c_light_gray );
     optional( jo, was_loaded, "broken_color", color_broken, nc_color_reader{}, c_light_gray );
     optional( jo, was_loaded, "comfort", comfort, 0 );
+    optional( jo, was_loaded, "sound_attenuation", sound_attenuation,
+              numeric_bound_reader<int> { 0, 1000 }, 0 );
     optional( jo, was_loaded, "floor_bedding_warmth", floor_bedding_warmth, 0_C_delta );
     optional( jo, was_loaded, "bonus_fire_warmth_feet", bonus_fire_warmth_feet, 0.6_C_delta );
     optional( jo, was_loaded, "activatable_eoc", activatable_eoc );

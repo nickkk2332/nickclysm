@@ -153,6 +153,7 @@ Use the `Home` key to return to the top.
       - [`comfort`](#comfort)
       - [`floor_bedding_warmth`](#floor_bedding_warmth)
       - [`fall_damage_reduction`](#fall_damage_reduction)
+      - [`sound_attenuation`](#sound_attenuation)
       - [`bonus_fire_warmth_feet`](#bonus_fire_warmth_feet)
       - [`looks_like`](#looks_like)
       - [`color` or `bgcolor`](#color-or-bgcolor)
@@ -2950,6 +2951,11 @@ Vehicle components when installed on a vehicle.
     "all" : 10,
     "physical" : 5
 },
+"sound_attenuation": 15,      // (Optional, default 0, at most 1000) Volume a sound loses crossing
+                              // this part's tile, as for terrain (see `sound_attenuation` under
+                              // "Common To Furniture And Terrain"). Not while the part is broken,
+                              // or open if it is OPENABLE (doors, hatches, curtains). The parts
+                              // on one tile add up.
 "qualities": [ [ "SELF_JACK", 17 ] ], // (Optional) A list of lists, with each list being a tool
                               // quality and the quality level, that the vehicle part provides.
                               // Only the "LIFT", "JACK", and "SELF_JACK" qualities are valid.
@@ -3942,6 +3948,16 @@ Move cost to move through. A value of 0 means it's impassable (e.g. wall). You s
 
 (Optional) Flat damage reduction or increase if negative number. Like falling on a bush or soft chair or mattress or sofa.
 
+#### `sound_attenuation`
+
+(Optional, integer from 0 to 1000, default 0) Volume a sound loses crossing a tile of this terrain or furniture on its way to whoever hears it, on top of what the distance costs (1 per tile). A sound of volume 40 heard 10 tiles away through one wall with `"sound_attenuation": 15` arrives at 40 - 10 - 15 = 15.
+
+What muffles a sound is added up along the straight line from the sound to the listener: the terrain, furniture and fields (`sound_attenuation` of the field's intensity level) of every tile strictly between them, plus the vehicle parts there (`sound_attenuation` of each part that is neither broken nor open). The sound's own tile and the listener's never count, so a wall muffles only what is on its other side, and a field has to cover the tiles between to muffle anything.
+
+This applies to monsters hearing sounds (and so to what they follow), sound-triggered traps, NPCs, and the avatar: the messages, the sound markers on the map, deafening and waking up, `can_hear` checks such as shouted orders to followers, and the volume of sound effects. Horde signals outside the reality bubble ignore it.
+
+No vanilla terrain, furniture, field or vehicle part sets it, and with none loaded sounds skip the walk. The cost of a sound between z-levels comes from the external options `SOUND_Z_LEVEL_MULT` (5: each level counts as 5 tiles), `SOUND_UNDERGROUND_MULT` (5: when the lower of the two is underground, the first level between them counts as 5 levels) and `SOUND_DEEP_UNDERGROUND_MULT` (21: each further level between them below the surface counts as 21); see `data/core/external_options.json`.
+
 #### `bonus_fire_warmth_feet`
 
 (Optional) Increase warmth received on feet from nearby fire  (default = 300)
@@ -4629,6 +4645,7 @@ Fields can exist on top of terrain/furniture, and support different intensity le
         "convection_temperature_mod": 12, // Heat given off by this level of intensity
         "effects": [  ] // List of effects applied to any creatures within the field as long as they aren't immune to the effect or the field itself. See field_effect below for syntax
         "scent_neutralization": 3, // Each turn a spreading gas field of this intensity lowers the scent on the tiles within scent_neutralization_radius of it by this value. Only a field with the gas phase and a percent_spread does this; on any other field it is an error at load
+        "sound_attenuation": 5, // (default 0, at most 1000) Volume a sound loses crossing a tile with this intensity of the field, added to the terrain's and furniture's (see `sound_attenuation` under "Common To Furniture And Terrain")
     ],
     "npc_complain": { "chance": 20, "issue": "weed_smoke", "duration": "10 minutes", "speech": "<weed_smoke>" }, // NPCs in this field will complain about being in it once per <duration> if a 1-in-<chance> roll succeeds, giving off a <speech> bark that supports snippets
     "immunity_data": {...} // See Immunity Data below

@@ -88,6 +88,22 @@ std::vector<tripoint_bub_ms> get_footstep_markers();
 std::pair<std::vector<tripoint_bub_ms>, std::vector<tripoint_bub_ms>> get_monster_sounds();
 // retrieve the sound event(s?) at a location.
 std::string sound_at( const tripoint_bub_ms &location );
+
+/**
+ * How far a sound carries from source to sink, in tiles of volume lost: the horizontal
+ * distance plus the vertical penalty the SOUND_Z_LEVEL_MULT, SOUND_UNDERGROUND_MULT and
+ * SOUND_DEEP_UNDERGROUND_MULT external options set. Terrain muffling is not included
+ * (see map::sound_attenuation_between).
+ */
+int sound_distance( const tripoint_bub_ms &source, const tripoint_bub_ms &sink );
+
+// After data loading: notes whether any terrain, furniture or field type, and whether any
+// vehicle part, has a sound_attenuation. With none, sounds skip the muffling walk.
+void finalize_muffling();
+// Some loaded terrain, furniture or field type muffles sound
+bool terrain_can_muffle();
+// Some loaded vehicle part muffles sound
+bool vehicles_can_muffle();
 /** Tells us if sound has been enabled in options */
 extern bool sound_enabled;
 } // namespace sounds

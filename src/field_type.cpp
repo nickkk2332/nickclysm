@@ -288,6 +288,8 @@ void field_type::load( const JsonObject &jo, std::string_view src )
         }
         optional( jao, false, "scent_neutralization", intensity_level.scent_neutralization,
                   fallback_intensity_level.scent_neutralization );
+        optional( jao, false, "sound_attenuation", intensity_level.sound_attenuation,
+                  numeric_bound_reader<int> { 0, 1000 }, fallback_intensity_level.sound_attenuation );
         intensity_levels.emplace_back( intensity_level );
     }
     if( intensity_levels.empty() ) {
@@ -363,6 +365,10 @@ void field_type::finalize()
     transparent = std::all_of( intensity_levels.begin(), intensity_levels.end(),
     []( const field_intensity_level & elem ) {
         return elem.transparent;
+    } );
+    muffles_sound = std::any_of( intensity_levels.begin(), intensity_levels.end(),
+    []( const field_intensity_level & elem ) {
+        return elem.sound_attenuation > 0;
     } );
 
     if( !wandering_field.is_valid() ) {

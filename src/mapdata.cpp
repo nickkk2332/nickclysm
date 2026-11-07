@@ -1227,6 +1227,8 @@ void map_data_common_t::load( const JsonObject &jo, const std::string &src )
     }
     optional( jo, was_loaded, "looks_like", looks_like );
     optional( jo, was_loaded, "comfort", comfort, 0 );
+    optional( jo, was_loaded, "sound_attenuation", sound_attenuation,
+              numeric_bound_reader<int> { 0, 1000 }, 0 );
 
     if( jo.has_member( "connect_groups" ) ) {
         connect_groups.reset();
