@@ -368,10 +368,12 @@ bool stats_tracker::records( const event_type type )
 {
     // one summary per NPC and pair of goals or attitudes (and cause), or per mod setting and
     // pair of values, or per tile destroyed, teleport or sound heard, kept for good, would grow
-    // every save
+    // every save; so would one per NPC and bionic or trait switched on or off
     return type != event_type::npc_goal_changed && type != event_type::npc_attitude_changed &&
            type != event_type::mod_setting_changed && type != event_type::tile_destroyed &&
-           type != event_type::creature_teleported && type != event_type::character_hears_sound;
+           type != event_type::creature_teleported && type != event_type::character_hears_sound &&
+           type != event_type::activates_bionic && type != event_type::deactivates_bionic &&
+           type != event_type::activates_mutation && type != event_type::deactivates_mutation;
 }
 
 const std::vector<std::string> &stats_tracker::unrecorded_fields( const event_type type )

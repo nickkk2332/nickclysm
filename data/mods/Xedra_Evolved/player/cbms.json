@@ -95,7 +95,7 @@
     "activate_remove_cbm": true,
     "installation_requirement": "data_core_install",
     "occupied_bodyparts": [ [ "data_shunt", 3 ] ],
-    "known_ma_styles": [ "style_muay_thai" ]
+    "learned_ma_styles": [ "style_muay_thai" ]
   },
   {
     "id": "xe_bio_dataslot_helicopter_pilot",

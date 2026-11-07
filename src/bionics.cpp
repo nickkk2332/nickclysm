@@ -97,7 +97,6 @@ static const ammo_effect_str_id ammo_effect_NO_ITEM_DAMAGE( "NO_ITEM_DAMAGE" );
 
 static const bionic_id afs_bio_dopamine_stimulators( "afs_bio_dopamine_stimulators" );
 static const bionic_id bio_blood_anal( "bio_blood_anal" );
-static const bionic_id bio_cqb( "bio_cqb" );
 static const bionic_id bio_emp( "bio_emp" );
 static const bionic_id bio_evap( "bio_evap" );
 static const bionic_id bio_flashbang( "bio_flashbang" );
@@ -376,6 +375,7 @@ void bionic_data::load( const JsonObject &jsobj, std::string_view src )
     optional( jsobj, was_loaded, "is_remote_fueled", is_remote_fueled );
 
     optional( jsobj, was_loaded, "known_ma_styles", ma_styles );
+    optional( jsobj, was_loaded, "learned_ma_styles", learned_ma_styles );
     optional( jsobj, was_loaded, "learned_spells", learned_spells );
     optional( jsobj, was_loaded, "learned_proficiencies", proficiencies );
     optional( jsobj, was_loaded, "canceled_mutations", canceled_mutations );
@@ -584,6 +584,11 @@ void bionic_data::check_bionic_consistency()
         for( const trait_id &mid : bio.canceled_mutations ) {
             if( !mid.is_valid() ) {
                 debugmsg( "Bionic %s cancels undefined mutation %s", bio.id.c_str(), mid.c_str() );
+            }
+        }
+        for( const matype_id &style : bio.learned_ma_styles ) {
+            if( !style.is_valid() ) {
+                debugmsg( "Bionic %s teaches undefined martial art %s", bio.id.c_str(), style.c_str() );
             }
         }
         for( const enchantment_id &eid : bio.id->enchantments ) {
@@ -1015,7 +1020,8 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
                                _( "Your %s issues a low humidity warning.  Efficiency will be reduced." ),
                                bio.info().name );
         }
-    } else if( bio.id == bio_cqb ) {
+    } else if( !bio.info().ma_styles.empty() ) {
+        // A bionic that knows martial arts styles (bio_cqb): pick one of them
         add_msg_activate();
         const avatar *you = as_avatar();
         if( you && !martial_arts_data->pick_style( *you ) ) {
@@ -1343,6 +1349,7 @@ bool Character::activate_bionic( bionic &bio, bool eff_only, bool *close_bionics
                          ignore_cost ? 0 : units::to_millijoule( activated_id->power_activate ) );
         eoc->activate_activation_only( d, "a bionic activation", "bionic being activated", "bionic" );
     }
+    get_event_bus().send<event_type::activates_bionic>( getID(), activated_id );
 
     return true;
 }
@@ -1434,8 +1441,18 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only, bool ignore_cost 
             weapon_bionic_uid = 0;
             cached_info.erase( "weapon_value" );
         }
-    } else if( deactivated_id == bio_cqb ) {
-        martial_arts_data->selected_style_check();
+    } else if( !deactivated_id->ma_styles.empty() ) {
+        // Its styles go with it, unless another active bionic still knows the selected one
+        const matype_id &selected = martial_arts_data->selected_style();
+        const bool still_known = std::any_of( my_bionics->begin(), my_bionics->end(),
+        [&]( const bionic & other ) {
+            return &other != still_installed && other.powered &&
+                   std::find( other.id->ma_styles.begin(), other.id->ma_styles.end(),
+                              selected ) != other.id->ma_styles.end();
+        } );
+        if( !still_known ) {
+            martial_arts_data->selected_style_check();
+        }
     } else if( deactivated_id == bio_remote ) {
         if( g->remoteveh() != nullptr && !has_active_item( itype_remotevehcontrol ) ) {
             g->setremoteveh( nullptr );
@@ -1457,6 +1474,7 @@ bool Character::deactivate_bionic( bionic &bio, bool eff_only, bool ignore_cost 
         invalidate_pseudo_items();
         invalidate_crafting_inventory();
     }
+    get_event_bus().send<event_type::deactivates_bionic>( getID(), deactivated_id );
 
     return true;
 }
@@ -2775,6 +2793,13 @@ static std::string granted_proficiency_tag( const proficiency_id &taught )
     return "cbm_granted_proficiency:" + taught.str();
 }
 
+// A martial arts style (learned_ma_styles) the bionic taught. Older bionics never taught one,
+// so without the tag the style is the character's own.
+static std::string granted_ma_style_tag( const matype_id &taught )
+{
+    return "cbm_granted_ma_style:" + taught.str();
+}
+
 namespace
 {
 // What a bionic about to be upgraded hands over to the upgrade: the tags of what it taught and
@@ -2821,6 +2846,15 @@ static bionic_grants take_grants_shared_with( bionic &base, const bionic_id &upg
         if( base.has_flag( tag ) &&
             std::find( upgrade->proficiencies.begin(), upgrade->proficiencies.end(),
                        taught ) != upgrade->proficiencies.end() ) {
+            base.remove_flag( tag );
+            shared.tags.push_back( tag );
+        }
+    }
+    for( const matype_id &taught : base.id->learned_ma_styles ) {
+        const std::string tag = granted_ma_style_tag( taught );
+        if( base.has_flag( tag ) &&
+            std::find( upgrade->learned_ma_styles.begin(), upgrade->learned_ma_styles.end(),
+                       taught ) != upgrade->learned_ma_styles.end() ) {
             base.remove_flag( tag );
             shared.tags.push_back( tag );
         }
@@ -3160,6 +3194,12 @@ bionic_uid Character::add_bionic( const bionic_id &b, bionic_uid parent_uid,
             }
         }
     }
+    for( const matype_id &learned : b->learned_ma_styles ) {
+        if( !martial_arts_data->has_martialart( learned ) ) {
+            martial_arts_data->add_martialart( learned );
+            grants.push_back( granted_ma_style_tag( learned ) );
+        }
+    }
     // Look the bionic up again: installing the included bionics may have moved it.
     if( const std::optional<bionic *> added = find_bionic_by_uid( bio_uid ) ) {
         for( const std::string &tag : grants ) {
@@ -3319,6 +3359,23 @@ void Character::remove_bionic( const bionic &bio )
             lose_proficiency( taught );
             if( practiced < taught->time_to_learn() ) {
                 set_proficiency_practiced_time( taught, to_turns<int>( practiced ) );
+            }
+        }
+        for( const matype_id &taught : removed.id->learned_ma_styles ) {
+            const std::string tag = granted_ma_style_tag( taught );
+            if( !removed.has_flag( tag ) || !martial_arts_data->has_martialart( taught ) ) {
+                continue;
+            }
+            const auto keeper = std::find_if( new_my_bionics.begin(), new_my_bionics.end(),
+            [&taught]( const bionic & other ) {
+                return std::find( other.id->learned_ma_styles.begin(), other.id->learned_ma_styles.end(),
+                                  taught ) != other.id->learned_ma_styles.end();
+            } );
+            if( keeper != new_my_bionics.end() ) {
+                keeper->set_flag( tag );
+            } else {
+                // Also drops it as the selected style
+                martial_arts_data->clear_style( taught );
             }
         }
     }

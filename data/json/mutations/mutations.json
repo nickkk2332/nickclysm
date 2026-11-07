@@ -541,6 +541,7 @@
   {
     "type": "mutation",
     "id": "GLASSJAW",
+    "bodypart_hp_multiplier": [ [ "head", 0.8 ] ],
     "name": { "str": "Glass Jaw" },
     "description": "Your head can't take much abuse.  Its maximum HP is 20% lower than usual.  Your apparent fragility makes you less intimidating.",
     "category": [ "BIRD", "RAPTOR" ],
@@ -1382,6 +1383,7 @@
   {
     "type": "mutation",
     "id": "NAUSEA",
+    "builtin_activation": "vomit",
     "name": { "str": "Nausea" },
     "description": "You feel nauseated almost constantly, and are more liable to throw up from food poisoning, alcohol, etc.  You can, if desired, think yourself into vomiting, too.",
     "category": [
@@ -1409,6 +1411,7 @@
   {
     "type": "mutation",
     "id": "VOMITOUS",
+    "builtin_activation": "vomit",
     "name": { "str": "Vomitous" },
     "description": "You have a major digestive disorder.  Though it causes you to vomit frequently, you have found that you can trigger your vomit reflex on demand, too.",
     "category": [
@@ -4052,6 +4055,7 @@
   {
     "type": "mutation",
     "id": "ACIDBLOOD",
+    "blood_type": "Acid",
     "name": { "str": "Acid Blood" },
     "description": "Your body has developed a wonderful defense mechanism.  Instead of normal blood, you bleed a strong molecular acid which will damage any creature foolish enough to harm you.",
     "category": [ "INSECT", "CHIMERA", "MEDICAL", "SLIME" ],
@@ -4884,6 +4888,7 @@
   {
     "type": "mutation",
     "id": "BURROW",
+    "builtin_activation": "burrow",
     "name": { "str": "Burrowing" },
     "description": "Your dextrous paws and long teeth allow you to dig through dirt and rubble with ease.",
     "category": [ "RAT", "RABBIT" ],
@@ -4898,6 +4903,7 @@
   {
     "type": "mutation",
     "id": "BURROWLARGE",
+    "builtin_activation": "burrow",
     "name": { "str": "Burrowing" },
     "description": "Your tough paws allow you to dig through dirt and rubble with ease.",
     "category": [ "LUPINE", "URSINE" ],
@@ -5061,6 +5067,7 @@
   {
     "type": "mutation",
     "id": "ECHOLOCATION",
+    "builtin_activation": "echolocation",
     "name": { "str": "Echolocation" },
     "description": "You've learned how to hunt without sight.  Activate this mutation to make a quiet chirp that can reveal obstacles and enemies by its echo.",
     "category": [ "CHIROPTERAN" ],
@@ -5323,6 +5330,7 @@
   {
     "type": "mutation",
     "id": "GASTROPOD_EXTREMITY2",
+    "builtin_activation": "long_pull",
     "name": { "str": "Rasping Tongue" },
     "description": "You've developed an extremely long and mobile tongue capped with teeth.  You may use it to attack your enemies and pull them towards you.",
     "category": [ "GASTROPOD" ],
@@ -5340,6 +5348,7 @@
   {
     "type": "mutation",
     "id": "GASTROPOD_EXTREMITY3",
+    "builtin_activation": "long_pull",
     "name": { "str": "Harpoon Tongue" },
     "description": "Your tongue has increased its length and mobility.  You may use it to pull your enemies towards you.",
     "category": [ "GASTROPOD" ],
@@ -5443,6 +5452,7 @@
   {
     "type": "mutation",
     "id": "SNAIL_TRAIL",
+    "builtin_activation": "sludge_trail",
     "name": { "str": "Snail Trail" },
     "description": "You've developed some ability to control your slime emissions.  As a result of this you can leave trails of slime anywhere you walk.",
     "category": [ "GASTROPOD" ],
@@ -5681,6 +5691,7 @@
   {
     "type": "mutation",
     "id": "LONG_TONGUE2",
+    "builtin_activation": "long_pull",
     "name": { "str": "Whipping Tongue" },
     "description": "You've developed an extremely long and mobile tongue.  You may use it to pull your enemies towards you.",
     "category": [ "BATRACHIAN" ],
@@ -6349,6 +6360,7 @@
   {
     "type": "mutation",
     "id": "WEB_WEAVER",
+    "builtin_activation": "web",
     "name": { "str": "Web Weaver" },
     "description": "You've developed the necessary anatomy and techniques to control your web-generation.  Activate this to start or stop weaving webs.",
     "category": [ "SPIDER" ],
@@ -7067,6 +7079,7 @@
   {
     "type": "mutation",
     "id": "SLIMESPAWNER",
+    "builtin_activation": "slime_split",
     "name": { "str": "Omnicellular" },
     "description": "Your body is more or less one consistent whole: a single, giant, omni-cell that alters itself as needed.",
     "category": [ "SLIME" ],
@@ -7637,6 +7650,7 @@
   {
     "type": "mutation",
     "id": "TREE_COMMUNION",
+    "builtin_activation": "tree_communion",
     "name": { "str": "Mycorrhizal Communion" },
     "description": "You have gained the ability to commune with trees and comprehend their ancient wisdom.  Activate next to a tree to gradually gain overmap vision through connected forests.",
     "category": [ "PLANT", "ELFA" ],

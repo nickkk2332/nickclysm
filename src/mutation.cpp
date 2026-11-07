@@ -85,26 +85,8 @@ static const mtype_id mon_player_blob( "mon_player_blob" );
 
 static const mutation_category_id mutation_category_ANY( "ANY" );
 
-static const trait_id trait_ACIDBLOOD( "ACIDBLOOD" );
-static const trait_id trait_ARVORE_FOREST_MAPPING( "ARVORE_FOREST_MAPPING" );
-static const trait_id trait_BURROW( "BURROW" );
-static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
 static const trait_id trait_CHAOTIC( "CHAOTIC" );
 static const trait_id trait_CHAOTIC_BAD( "CHAOTIC_BAD" );
-static const trait_id trait_ECHOLOCATION( "ECHOLOCATION" );
-static const trait_id trait_GASTROPOD_EXTREMITY2( "GASTROPOD_EXTREMITY2" );
-static const trait_id trait_GASTROPOD_EXTREMITY3( "GASTROPOD_EXTREMITY3" );
-static const trait_id trait_GLASSJAW( "GLASSJAW" );
-static const trait_id trait_LONG_TONGUE2( "LONG_TONGUE2" );
-static const trait_id trait_M_BLOOM( "M_BLOOM" );
-static const trait_id trait_M_FERTILE( "M_FERTILE" );
-static const trait_id trait_M_PROVENANCE( "M_PROVENANCE" );
-static const trait_id trait_NAUSEA( "NAUSEA" );
-static const trait_id trait_SLIMESPAWNER( "SLIMESPAWNER" );
-static const trait_id trait_SNAIL_TRAIL( "SNAIL_TRAIL" );
-static const trait_id trait_TREE_COMMUNION( "TREE_COMMUNION" );
-static const trait_id trait_VOMITOUS( "VOMITOUS" );
-static const trait_id trait_WEB_WEAVER( "WEB_WEAVER" );
 
 static const std::string trait_type_eye_color( "eye_color" );
 static const std::string trait_type_facial_hair( "facial_hair" );
@@ -593,17 +575,17 @@ void Character::mutation_effect( const trait_id &mut, const bool worn_destroyed_
         return;
     }
 
-    if( mut == trait_ACIDBLOOD ) {
-        my_blood_type = blood_type::blood_acid;
+    const mutation_branch &branch = mut.obj();
+
+    if( branch.sets_blood_type ) {
+        my_blood_type = *branch.sets_blood_type;
     }
 
-    if( mut == trait_GLASSJAW ) {
+    if( !branch.bodypart_hp_multiplier.empty() ) {
         recalc_hp();
     }
     trait_flag_cache.clear();
     recalculate_size();
-
-    const mutation_branch &branch = mut.obj();
 
     for( const itype_id &armor : branch.integrated_armor ) {
         if( is_wearing( armor ) ) {
@@ -696,18 +678,29 @@ void Character::mutation_loss_effect( const trait_id &mut )
         return;
     }
 
-    // give the player a random new blood type, regardless of what it was before
-    if( mut == trait_ACIDBLOOD ) {
-        randomize_blood();
+    const mutation_branch &branch = mut.obj();
+
+    if( branch.sets_blood_type ) {
+        // Another trait's blood type, or a random new one, regardless of what it was before
+        std::optional<blood_type> kept;
+        for( const trait_id &other : get_functioning_mutations() ) {
+            if( other != mut && other->sets_blood_type ) {
+                kept = other->sets_blood_type;
+                break;
+            }
+        }
+        if( kept ) {
+            my_blood_type = *kept;
+        } else {
+            randomize_blood();
+        }
     }
 
-    if( mut == trait_GLASSJAW ) {
+    if( !branch.bodypart_hp_multiplier.empty() ) {
         recalc_hp();
     }
     trait_flag_cache.clear();
     recalculate_size();
-
-    const mutation_branch &branch = mut.obj();
 
     for( const itype_id &popped_armor : branch.integrated_armor ) {
         std::list<item> removed_items = remove_worn_items_with( [&]( const item & armor ) {
@@ -736,6 +729,14 @@ bool Character::has_active_mutation( const trait_id &b ) const
 {
     const auto iter = cached_mutations.find( b );
     return iter != cached_mutations.end() && iter->second.powered;
+}
+
+bool Character::has_active_builtin_activation( const mutation_builtin_activation builtin ) const
+{
+    return std::any_of( cached_mutations.begin(), cached_mutations.end(),
+    [builtin]( const std::pair<const trait_id, trait_data> &mut ) {
+        return mut.second.powered && mut.first->builtin_activation == builtin;
+    } );
 }
 
 time_duration Character::get_cost_timer( const trait_id &mut ) const
@@ -993,6 +994,7 @@ void Character::activate_cached_mutation( const trait_id &mut )
         // if the activation EOCs are not just setup for processing then turn the mutation off
         set_powered( mut->activated_is_setup );
     }
+    get_event_bus().send<event_type::activates_mutation>( getID(), mut );
 
     // The enchantment recalculation or an activation EOC may have removed this mutation,
     // in which case there is nothing left to activate.
@@ -1011,101 +1013,141 @@ void Character::activate_cached_mutation( const trait_id &mut )
         return;
     }
 
-    if( mut == trait_WEB_WEAVER ) {
-        here.add_field( pos_bub(), fd_web, 1 );
-        add_msg_if_player( _( "You start spinning web with your spinnerets!" ) );
-    } else if( mut == trait_LONG_TONGUE2 ||
-               mut == trait_GASTROPOD_EXTREMITY2 ||
-               mut == trait_GASTROPOD_EXTREMITY3 ) {
-        set_powered( false );
-        assign_activity( pull_creature_activity_actor( 1_seconds, mut ) );
-        return;
-    } else if( mut == trait_SNAIL_TRAIL ) {
-        here.add_field( pos_bub(), fd_sludge, 1 );
-        add_msg_if_player( _( "You start leaving a trail of sludge as you go." ) );
-    } else if( mut == trait_BURROW || mut == trait_BURROWLARGE ) {
-        set_powered( false );
-        item burrowing_item( itype_fake_burrowing );
-        invoke_item( &burrowing_item );
-        return;  // handled when the activity finishes
-    } else if( mut == trait_SLIMESPAWNER ) {
-        monster *const slime = g->place_critter_around( mon_player_blob, pos_bub(), 1 );
-        if( !slime ) {
-            // Oops, no room to divide!
-            add_msg_if_player( m_bad, _( "You focus, but are too hemmed in to birth a new slime microbian!" ) );
+    // A built-in effect that fails before doing anything gives back what this activation paid
+    const auto refund_activation = [&]() {
+        const auto it = cached_mutations.find( mut );
+        if( it != cached_mutations.end() ) {
+            it->second.charge = charge_before;
+        }
+        if( !paid_cost ) {
+            return;
+        }
+        if( mdata.hunger ) {
+            mod_stored_kcal( cost );
+        }
+        if( mdata.thirst ) {
+            mod_thirst( -cost );
+        }
+        if( mdata.sleepiness ) {
+            mod_sleepiness( -cost );
+        }
+        if( mdata.mana ) {
+            magic->mod_mana( *this, cost );
+        }
+        if( mdata.stamina ) {
+            mod_stamina( cost );
+        }
+    };
+
+    // The built-in effects, keyed by "builtin_activation" (MUT-J06)
+    switch( mdata.builtin_activation ) {
+        case mutation_builtin_activation::web:
+            here.add_field( pos_bub(), fd_web, 1 );
+            add_msg_if_player( _( "You start spinning web with your spinnerets!" ) );
+            return;
+        case mutation_builtin_activation::long_pull:
+            set_powered( false );
+            assign_activity( pull_creature_activity_actor( 1_seconds, mut ) );
+            return;
+        case mutation_builtin_activation::sludge_trail:
+            here.add_field( pos_bub(), fd_sludge, 1 );
+            add_msg_if_player( _( "You start leaving a trail of sludge as you go." ) );
+            return;
+        case mutation_builtin_activation::burrow: {
+            set_powered( false );
+            item burrowing_item( itype_fake_burrowing );
+            invoke_item( &burrowing_item );
+            return;  // handled when the activity finishes
+        }
+        case mutation_builtin_activation::slime_split: {
+            monster *const slime = g->place_critter_around( mon_player_blob, pos_bub(), 1 );
+            if( !slime ) {
+                // Oops, no room to divide!
+                add_msg_if_player( m_bad, _( "You focus, but are too hemmed in to birth a new slime microbian!" ) );
+                set_powered( false );
+                refund_activation();
+                return;
+            }
+            add_msg_if_player( m_good,
+                               _( "You focus, and with a pleasant splitting feeling, birth a new slime microbian!" ) );
+            slime->friendly = -1;
+            add_msg_if_player( m_good, SNIPPET.random_from_category( "slime_generate" ).value_or(
+                                   translation() ).translated() );
             set_powered( false );
             return;
         }
-        add_msg_if_player( m_good,
-                           _( "You focus, and with a pleasant splitting feeling, birth a new slime microbian!" ) );
-        slime->friendly = -1;
-        add_msg_if_player( m_good, SNIPPET.random_from_category( "slime_generate" ).value_or(
-                               translation() ).translated() );
-        set_powered( false );
-        return;
-    } else if( mut == trait_NAUSEA || mut == trait_VOMITOUS ) {
-        vomit();
-        set_powered( false );
-        return;
-    } else if( mut == trait_M_FERTILE ) {
-        spores();
-        set_powered( false );
-        return;
-    } else if( mut == trait_M_BLOOM ) {
-        blossoms();
-        set_powered( false );
-        return;
-    } else if( mut == trait_M_PROVENANCE ) {
-        spores(); // double trouble!
-        blossoms();
-        set_powered( false );
-        return;
-    } else if( mut == trait_ECHOLOCATION ) {
-        echo_pulse();
-        deactivate_mutation( mut );
-    } else if( mut == trait_TREE_COMMUNION || mut == trait_ARVORE_FOREST_MAPPING ) {
-        set_powered( false );
-        if( !overmap_buffer.ter( pos_abs_omt() ).obj().is_wooded() ) {
-            add_msg_if_player( m_info, _( "You can only do that in a wooded area." ) );
+        case mutation_builtin_activation::vomit:
+            vomit();
+            set_powered( false );
             return;
-        }        // Check for adjacent trees.
-        bool adjacent_tree = false;
-        for( const tripoint_bub_ms &p2 : here.points_in_radius( pos_bub(), 1 ) ) {
-            if( here.has_flag( ter_furn_flag::TFLAG_TREE, p2 ) ) {
-                adjacent_tree = true;
+        case mutation_builtin_activation::spores:
+            spores();
+            set_powered( false );
+            return;
+        case mutation_builtin_activation::blossoms:
+            blossoms();
+            set_powered( false );
+            return;
+        case mutation_builtin_activation::spores_and_blossoms:
+            spores(); // double trouble!
+            blossoms();
+            set_powered( false );
+            return;
+        case mutation_builtin_activation::echolocation:
+            echo_pulse();
+            deactivate_mutation( mut );
+            return;
+        case mutation_builtin_activation::tree_communion: {
+            set_powered( false );
+            if( !overmap_buffer.ter( pos_abs_omt() ).obj().is_wooded() ) {
+                add_msg_if_player( m_info, _( "You can only do that in a wooded area." ) );
+                refund_activation();
+                return;
+            }        // Check for adjacent trees.
+            bool adjacent_tree = false;
+            for( const tripoint_bub_ms &p2 : here.points_in_radius( pos_bub(), 1 ) ) {
+                if( here.has_flag( ter_furn_flag::TFLAG_TREE, p2 ) ) {
+                    adjacent_tree = true;
+                }
             }
-        }
 
-        if( !adjacent_tree ) {
-            add_msg_if_player( m_info, _( "You can only do that next to a tree." ) );
+            if( !adjacent_tree ) {
+                add_msg_if_player( m_info, _( "You can only do that next to a tree." ) );
+                refund_activation();
+                return;
+            }
+
+            if( has_flag( json_flag_TREE_COMMUNION_PLUS ) ) {
+                add_msg_if_player( _( "You close your eyes and reach out to the spirits of the forest." ) );
+            } else if( has_flag( json_flag_ROOTS2 ) || has_flag( json_flag_ROOTS3 ) ||
+                       has_flag( json_flag_CHLOROMORPH ) ) {
+                add_msg_if_player( _( "You reach out to the trees with your roots." ) );
+            } else {
+                set_movement_mode( move_mode_prone );
+                add_msg_if_player(
+                    _( "You lay next to the trees letting your hair roots tangle with the trees." ) );
+            }
+
+            time_duration startup_time;
+            if( has_flag( json_flag_TREE_COMMUNION_PLUS ) ) {
+                startup_time = rng( 10_minutes, 20_minutes );
+            } else if( has_flag( json_flag_ROOTS2 ) || has_flag( json_flag_ROOTS3 ) ||
+                       has_flag( json_flag_CHLOROMORPH ) ) {
+                startup_time = ( has_flag( json_flag_ROOTS3 ) ||
+                                 has_flag( json_flag_CHLOROMORPH ) ) ? rng( 15_minutes,
+                                         30_minutes ) : rng( 60_minutes, 90_minutes );
+            } else {
+                startup_time = rng( 120_minutes, 180_minutes );
+            }
+            assign_activity( tree_communion_activity_actor( to_turns<int>( startup_time ) ) );
             return;
         }
+        case mutation_builtin_activation::none:
+        case mutation_builtin_activation::last:
+            break;
+    }
 
-        if( has_flag( json_flag_TREE_COMMUNION_PLUS ) ) {
-            add_msg_if_player( _( "You close your eyes and reach out to the spirits of the forest." ) );
-        } else if( has_flag( json_flag_ROOTS2 ) || has_flag( json_flag_ROOTS3 ) ||
-                   has_flag( json_flag_CHLOROMORPH ) ) {
-            add_msg_if_player( _( "You reach out to the trees with your roots." ) );
-        } else {
-            set_movement_mode( move_mode_prone );
-            add_msg_if_player(
-                _( "You lay next to the trees letting your hair roots tangle with the trees." ) );
-        }
-
-        time_duration startup_time;
-        if( has_flag( json_flag_TREE_COMMUNION_PLUS ) ) {
-            startup_time = rng( 10_minutes, 20_minutes );
-        } else if( has_flag( json_flag_ROOTS2 ) || has_flag( json_flag_ROOTS3 ) ||
-                   has_flag( json_flag_CHLOROMORPH ) ) {
-            startup_time = ( has_flag( json_flag_ROOTS3 ) ||
-                             has_flag( json_flag_CHLOROMORPH ) ) ? rng( 15_minutes,
-                                     30_minutes ) : rng( 60_minutes, 90_minutes );
-        } else {
-            startup_time = rng( 120_minutes, 180_minutes );
-        }
-        assign_activity( tree_communion_activity_actor( to_turns<int>( startup_time ) ) );
-        return;
-    } else if( !mdata.spawn_item.is_empty() ) {
+    if( !mdata.spawn_item.is_empty() ) {
         item tmpitem( mdata.spawn_item );
         i_add_or_drop( tmpitem );
         add_msg_if_player( mdata.spawn_item_message() );
@@ -1155,6 +1197,7 @@ void Character::deactivate_mutation( const trait_id &mut )
         eoc->activate_activation_only( d, "a mutation deactivation", "mutation being activated",
                                        "mutation" );
     }
+    get_event_bus().send<event_type::deactivates_mutation>( getID(), mut );
 
     if( mdata.transform && !mdata.transform->msg_transform.empty() ) {
         add_msg_if_player( m_neutral, mdata.transform->msg_transform );
@@ -2256,8 +2299,9 @@ bool Character::mutate_towards( const trait_id &mut, const mutation_category_id 
                                    gained_name );
             do_interrupt = true;
         }
-        get_event_bus().send<event_type::gains_mutation>( getID(), mdata.id );
     }
+    // An evolution gains the new trait too (MUT-J07)
+    get_event_bus().send<event_type::gains_mutation>( getID(), mdata.id );
 
     // If the mutation is a dummy mutation, back out at the last minute
     if( !mdata.dummy ) {
@@ -2686,10 +2730,17 @@ void Character::cross_threshold( const mutation_category_id &mutation_category )
                        _( "Something strains mightily for a moment… and then… you're… FREE!" ) );
     // Thresholds can cancel unpurifiable traits
     for( const trait_id &canceled : thrdata.cancels ) {
+        if( my_mutations.count( canceled ) == 0 ) {
+            continue;
+        }
         get_event_bus().send<event_type::loses_mutation>( getID(), canceled );
         unset_mutation( canceled );
     }
+    const bool had_threshold = my_mutations.count( mutation_thresh ) > 0;
     set_mutation( mutation_thresh );
+    if( !had_threshold ) {
+        get_event_bus().send<event_type::gains_mutation>( getID(), mutation_thresh );
+    }
     get_event_bus().send<event_type::crosses_mutation_threshold>( getID(), m_category.id );
 }
 

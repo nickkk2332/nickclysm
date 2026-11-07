@@ -3888,8 +3888,10 @@ talk_effect_fun_t::func f_add_trait( const JsonObject &jo, std::string_view memb
     str_or_var new_variant;
 
     optional( jo, false, "variant", new_variant );
+    // Send gains_mutation (and loses_mutation for the traits it replaces), as mutating does
+    const bool send_event = jo.get_bool( "send_event", false );
 
-    return [is_npc, new_trait, new_variant]( dialogue const & d ) {
+    return [is_npc, new_trait, new_variant, send_event]( dialogue const & d ) {
         const trait_id trait = trait_id( new_trait.evaluate( d ) );
         const mutation_variant *variant = trait->variant( new_variant.evaluate( d ) );
 
@@ -3914,12 +3916,19 @@ talk_effect_fun_t::func f_add_trait( const JsonObject &jo, std::string_view memb
                     match = new_types.find( t ) != new_types.end();
                 }
                 if( match ) {
+                    if( send_event ) {
+                        get_event_bus().send<event_type::loses_mutation>( guy->getID(), existing );
+                    }
                     guy->unset_mutation( existing );
                     break;
                 }
             }
         }
 
+        // Like mutate_towards, the event goes just before the change
+        if( send_event && !guy->has_permanent_trait( trait ) ) {
+            get_event_bus().send<event_type::gains_mutation>( guy->getID(), trait );
+        }
         d.actor( is_npc )->set_mutation( trait, variant );
     };
 }
@@ -3946,8 +3955,17 @@ talk_effect_fun_t::func f_remove_trait( const JsonObject &jo, std::string_view m
                                         std::string_view, bool is_npc )
 {
     str_or_var old_trait = get_str_or_var( jo.get_member( member ), member, true );
-    return [is_npc, old_trait]( dialogue const & d ) {
-        d.actor( is_npc )->unset_mutation( trait_id( old_trait.evaluate( d ) ) );
+    // Send loses_mutation, as losing a mutation does
+    const bool send_event = jo.get_bool( "send_event", false );
+    return [is_npc, old_trait, send_event]( dialogue const & d ) {
+        const trait_id trait( old_trait.evaluate( d ) );
+        if( send_event ) {
+            const Character *guy = d.actor( is_npc )->get_const_character();
+            if( guy && guy->has_permanent_trait( trait ) ) {
+                get_event_bus().send<event_type::loses_mutation>( guy->getID(), trait );
+            }
+        }
+        d.actor( is_npc )->unset_mutation( trait );
     };
 }
 
@@ -4094,8 +4112,24 @@ talk_effect_fun_t::func f_add_bionic( const JsonObject &jo, std::string_view mem
                                       std::string_view, bool is_npc )
 {
     str_or_var new_bionic = get_str_or_var( jo.get_member( member ), member, true );
-    return [is_npc, new_bionic]( dialogue const & d ) {
-        d.actor( is_npc )->add_bionic( bionic_id( new_bionic.evaluate( d ) ) );
+    // As a successful operation: upgrades, canceled_mutations and installs_cbm (MUT-J07)
+    const bool as_surgery = jo.get_bool( "as_surgery", false );
+    return [is_npc, new_bionic, as_surgery]( dialogue const & d ) {
+        const bionic_id bid( new_bionic.evaluate( d ) );
+        Character *guy = d.actor( is_npc )->get_character();
+        if( as_surgery && guy ) {
+            bionic_uid upbio_uid = 0;
+            if( bid->upgraded_bionic ) {
+                if( std::optional<bionic *> upbio = guy->find_bionic_by_type( bid->upgraded_bionic ) ) {
+                    upbio_uid = ( *upbio )->get_uid();
+                }
+            }
+            // a success: the difficulty and skill only matter for a failure
+            guy->perform_install( bid, upbio_uid, 0, 1, 0, "NOT_MED", bid->canceled_mutations,
+                                  guy->pos_bub() );
+            return;
+        }
+        d.actor( is_npc )->add_bionic( bid );
     };
 }
 
@@ -4103,8 +4137,19 @@ talk_effect_fun_t::func f_lose_bionic( const JsonObject &jo, std::string_view me
                                        std::string_view, bool is_npc )
 {
     str_or_var old_bionic = get_str_or_var( jo.get_member( member ), member, true );
-    return [is_npc, old_bionic]( dialogue const & d ) {
-        d.actor( is_npc )->remove_bionic( bionic_id( old_bionic.evaluate( d ) ) );
+    // As a successful operation: removes_cbm, the bionics on a replaced body part,
+    // give_mut_on_removal and the removed CBM on the ground (MUT-J07)
+    const bool as_surgery = jo.get_bool( "as_surgery", false );
+    return [is_npc, old_bionic, as_surgery]( dialogue const & d ) {
+        const bionic_id bid( old_bionic.evaluate( d ) );
+        Character *guy = d.actor( is_npc )->get_character();
+        if( as_surgery && guy ) {
+            if( std::optional<bionic *> bio = guy->find_bionic_by_type( bid ) ) {
+                guy->perform_uninstall( **bio, 0, 1, 0 );
+            }
+            return;
+        }
+        d.actor( is_npc )->remove_bionic( bid );
     };
 }
 

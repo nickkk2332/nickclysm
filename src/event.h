@@ -157,6 +157,10 @@ enum class event_type : int {
     var_changed,
     creature_teleported,
     character_hears_sound,
+    activates_bionic,
+    deactivates_bionic,
+    activates_mutation,
+    deactivates_mutation,
     num_event_types // last
 };
 
@@ -224,7 +228,7 @@ struct event_spec_character_item {
 // stats_tracker::deserialize), so removing or renaming an event type drops its saved
 // statistics instead of making those files unloadable. Achievements, scores and EOCs that
 // refer to a removed event type still need updating.
-static_assert( static_cast<int>( event_type::num_event_types ) == 133,
+static_assert( static_cast<int>( event_type::num_event_types ) == 137,
                "This static_assert is to remind you to add a specialization for your new "
                "event_type below" );
 
@@ -1171,6 +1175,46 @@ struct event_spec<event_type::character_hears_sound> {
             { "heard_volume", cata_variant_type::int_ },
             { "category", cata_variant_type::string },
             { "location", cata_variant_type::tripoint },
+        }
+    };
+};
+
+// a character switched a bionic on or off: sent wherever its activated_eocs or deactivated_eocs
+// run (MUT-J07)
+template<>
+struct event_spec<event_type::activates_bionic> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bionic", cata_variant_type::bionic_id },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::deactivates_bionic> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "bionic", cata_variant_type::bionic_id },
+        }
+    };
+};
+
+// a character switched a mutation on (once it is paid for and its activated_eocs didn't cancel
+// it) or off
+template<>
+struct event_spec<event_type::activates_mutation> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "trait", cata_variant_type::trait_id },
+        }
+    };
+};
+
+template<>
+struct event_spec<event_type::deactivates_mutation> {
+    static constexpr std::array<event_field, 2> fields = {{
+            { "character", cata_variant_type::character_id },
+            { "trait", cata_variant_type::trait_id },
         }
     };
 };

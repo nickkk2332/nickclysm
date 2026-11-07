@@ -126,6 +126,7 @@
   {
     "type": "mutation",
     "id": "M_PROVENANCE",
+    "builtin_activation": "spores_and_blossoms",
     "name": { "str": "Mycus Provenance" },
     "description": "Local spore sacs and blossoms have merged into a single, symbiotic form.  Acting as one, they germinate together to cement rapid growth across a large area according to local guidance.  The Mycus must grow.",
     "category": [ "MYCUS" ],
@@ -268,6 +269,7 @@
   {
     "type": "mutation",
     "id": "M_FERTILE",
+    "builtin_activation": "spores",
     "name": { "str": "Mycus Sporogenesis" },
     "description": "Local organisms seem to regard overt spore dispersal as a danger, and attack the Mycus.  Accordingly, our local spore sacs remain quiescent, until local guidance determines that it is safe to germinate.  Rapid development taxes local nutrient reserves but ensures swift and effective growth.",
     "category": [ "MYCUS" ],
@@ -301,6 +303,7 @@
   {
     "type": "mutation",
     "id": "M_BLOOM",
+    "builtin_activation": "blossoms",
     "name": { "str": "Mycus Bloom" },
     "description": "Local organisms seem to regard overt spore dispersal as a danger, and attack the Mycus.  Accordingly, our local blossoms remain quiescent, until local guidance determines that it is safe to germinate.  Rapid development taxes local nutrient reserves but ensures swift and effective growth.",
     "category": [ "MYCUS" ],

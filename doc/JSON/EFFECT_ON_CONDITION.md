@@ -2482,7 +2482,9 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | EVENT              | Description | Context Variables | Talker(alpha/beta) |
 | ------------------ | ----------- | ----------------- | ------------------ |
 | activates_artifact | Not currently emitted: nothing in the game sends it (only `trigger_event` can). Meant for when the player activates an artifact | { "character", `character_id` },<br/> { "item_name", `string` }, | character / NONE |
+| activates_bionic | Triggers when a character (the avatar or an NPC) switches a bionic on, wherever its `activated_eocs` run, after them: the bionics menu, NPCs, `u_activate_bionic`, a bionic switched on by the game (`activated_on_install`, a bionic heart restarting). An `activate_remove_cbm` bionic sends `removes_cbm` instead. Statistics don't keep it | { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
 | activates_mininuke | Triggers when any character arms a mininuke | { "character", `character_id` } | character / NONE |
+| activates_mutation | Triggers when a character switches an active trait on (the mutations menu, NPCs, `u_activate_trait`), once its cost is paid and its `activated_eocs` have run without turning it back off; before its built-in effect or `transform`. Statistics don't keep it | { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
 | administers_mutagen |  | { "character", `character_id` },<br/> { "technique", `mutagen_technique` }, | character / NONE |
 | angers_amigara_horrors | Triggers when amigara horrors are spawned as part of a mine finale | NONE | avatar / NONE |
 | avatar_enters_omt | Triggers when player crosses the overmap boundary, including when player spawns | { "pos", `tripoint` },<br/> { "oter_id", `oter_id` },<br/> { "overmap_special", `overmap_special_id` }, empty if the OMT is in no special. This third field is new: a `trigger_event` for this event needs three arguments | avatar / NONE |
@@ -2545,6 +2547,8 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | crosses_mutation_threshold | | { "character", `character_id` },<br/> { "category", `mutation_category_id` }, | character / NONE |
 | crosses_mycus_threshold | | { "character", `character_id` } | character / NONE |
 | cuts_tree | Triggers when a character finishes chopping down a tree. Statistics don't keep `pos` | { "character", `character_id` },<br/> { "pos", `tripoint` } (the tree, map squares) | character / NONE |
+| deactivates_bionic | Triggers when a bionic is switched off, wherever its `deactivated_eocs` run, after them: the bionics menu, `u_deactivate_bionic`, and a bionic shutting down by itself (out of fuel or power, its weapon gone). Statistics don't keep it | { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
+| deactivates_mutation | Triggers when an active trait is switched off, after its `deactivated_eocs`: the mutations menu, `u_deactivate_trait`, its upkeep running out, or a trait that switches itself off after its pulse (`builtin_activation` `echolocation`). A trait that only works once per activation and is never on sends nothing. Statistics don't keep it | { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
 | dermatik_eggs_hatch | Not currently emitted: nothing in the game sends it (only `trigger_event` can) | { "character", `character_id` } | character / NONE |
 | dermatik_eggs_injected | Not currently emitted: nothing in the game sends it (only `trigger_event` can) | { "character", `character_id` } | character / NONE |
 | destroys_triffid_grove | Triggered *only* via spell with effect_str `ROOTS_DIE` (currently via death spell of triffid heart) | NONE | avatar / NONE |
@@ -2567,7 +2571,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | falls_asleep_from_exhaustion | | { "character", `character_id` } | character / NONE |
 | fuel_tank_explodes | Triggers when vehicle part (that is watertight container/magazine with magazine pocket/or is a reactor) is sufficiently damaged | { "vehicle_name", `string` }, | avatar / NONE |
 | gains_addiction | |  { "character", `character_id` },<br/> { "add_type", `addiction_id` }, | character / NONE |
-| gains_mutation | |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
+| gains_mutation | Triggers just before a character (the avatar or an NPC) gains a trait by mutating (`mutate_towards`, `u_mutate_towards`, mutagen), also when it evolves from another trait (after its `evolves_mutation` and `loses_mutation`) and when it crosses a threshold (the threshold trait), and from `u_add_trait` with `"send_event": true`. Other ways of gaining a trait (plain `u_add_trait`, character creation, a transform, an enchantment) don't send it |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
 | gains_proficiency | | { "character", `character_id` },<br/> { "proficiency", `proficiency_id` }, | character / NONE |
 | gains_skill_level | | { "character", `character_id` },<br/> { "skill", `skill_id` },<br/> { "new_level", `int` }, | character / NONE |
 | game_avatar_death | Triggers during bury screen with ASCII grave art is displayed (when avatar dies, obviously) | { "avatar_id", `character_id` },<br/> { "avatar_name", `string` },<br/> { "is_suicide", `bool` },<br/> { "last_words", `string` }, | avatar / NONE |
@@ -2577,11 +2581,11 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | game_over | Triggers after fully accepting death, epilogues etc. have played (probably not useable for eoc purposes?) | { "total_time_played", `chrono_seconds` }, | avatar / NONE |
 | game_save | | { "time_since_load", `chrono_seconds` },<br/> { "total_time_played", `chrono_seconds` }, | avatar / NONE |
 | game_start | Triggered only during new game character initialization | { "game_version", `string` }, | avatar / NONE |
-| installs_cbm | | { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
+| installs_cbm | Triggers when a CBM is successfully installed: an operation (self, autodoc, NPC surgeon) or `u_add_bionic` with `"as_surgery": true`; a plain `u_add_bionic` doesn't send it | { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
 | installs_faulty_cbm | | { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
 | learns_martial_art | |  { "character", `character_id` },<br/> { "martial_art", `matype_id` }, | character / NONE |
 | loses_addiction | | { "character", `character_id` },<br/> { "add_type", `addiction_id` }, | character / NONE |
-| loses_mutation | |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
+| loses_mutation | Triggers just before a character loses a trait by mutating (a trait the new one replaces or cancels), crossing a threshold (a trait it cancels, if the character had it), purifying, a CBM that cancels it, or `u_lose_trait` with `"send_event": true`. A plain `u_lose_trait` doesn't send it |  { "character", `character_id` },<br/> { "trait", `trait_id` }, | character / NONE |
 | mission_ends | Triggers when a mission ends: completed and reported (`success` true) or failed (false: the deadline passed, the giver died, it was abandoned), after the mission's own end or fail effects | { "character", `character_id` } (who it was assigned to),<br/> { "npc", `character_id` } (who gave it; invalid for none),<br/> { "mission", `string` } (the mission type id),<br/> { "success", `bool` } | the character it was assigned to / the NPC who gave it, if loaded, or NONE |
 | mod_setting_changed | Triggers when a [mod setting](MOD_SETTINGS.md) of the world changes in game, in the options menu or by an EOC; setting a value it already has doesn't. The values are text: the number (`"2.50"`), `true` or `false`, the choice id, the text. Statistics don't keep it. The order when several change, and when an EOC answering it changes a setting: [MOD_SETTINGS.md](MOD_SETTINGS.md#reacting-to-changes) | { "id", `string` },<br/> { "old_value", `string` },<br/> { "new_value", `string` }, | avatar / NONE |
 | npc_attitude_changed | Triggers whenever an NPC's attitude changes, whatever changes it: an effect, the avatar, the NPC's own decisions, including each switch of a hostile NPC between fleeing and fighting. `cause` says what; see [NPC attitude events](#npc-attitude-events). Not for the attitude an NPC is made with, nor for NPCs that aren't real (a template's, a hallucination). Not kept for statistics, scores or achievements | { "npc", `character_id` },<br/> { "npc_name", `string` },<br/> { "old_attitude", `string` }, an attitude id such as `NPCATT_KILL`<br/> { "new_attitude", `string` },<br/> { "cause", `string` }, | NPC / NONE |
@@ -2598,7 +2602,7 @@ Watch only what a statistic or an EOC needs: a statistic on `var_changed` keeps 
 | player_levels_spell | triggers when player changes it's spell level, either by casting a spell, reading spell book, or using EoC. Spawning a new character with spells defined by using `spells` in chargen option will also run an event | { "character", `character_id` },<br/>{ "spell", `spell_id` },<br/>{ "new_level", `int` },<br/>{ "school", `trait_id` } | character / NONE |
 | reads_book | | { "character", `character_id` },<br/> { "itype", `itype_id` } (the book) | character / NONE |
 | releases_subspace_specimens | Triggers when Release Specimens option is activated via ("old lab" finale's?) computer | NONE | avatar / NONE |
-| removes_cbm | |  { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
+| removes_cbm | Triggers when a CBM is successfully removed: an operation (self, autodoc, nurse bot), an `activate_remove_cbm` bionic, each bionic removed with one on a body part it replaced, or `u_lose_bionic` with `"as_surgery": true`; a plain `u_lose_bionic` doesn't send it |  { "character", `character_id` },<br/> { "bionic", `bionic_id` }, | character / NONE |
 | seals_hazardous_material_sarcophagus | Triggers via `srcf_seal_order` computer action | NONE | avatar / NONE |
 | spellcasting_finish | Triggers only once when a character finishes casting a spell. Statistics don't keep `target` | { "character", `character_id` },<br/> { "success", `bool` },<br/>  { "spell", `spell_id` },<br/> { "school", `trait_id` },<br/> { "difficulty", `int` },<br/> { "cost", `int` },<br/> { "cast_time", `int` },<br/> { "damage", `int` },<br/> { "target", `tripoint` } (where it was cast at, map squares) | character / NONE |
 | telefrags_creature | (Unimplemented) Not currently emitted: nothing in the game sends it (only `trigger_event` can) | { "character", `character_id` },<br/> { "victim_name", `string` }, | character / NONE |
@@ -4906,6 +4910,7 @@ You or NPC would have some bionic installed
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_add_bionic"/ "npc_add_bionic" | **mandatory** | string or [variable object](#variable-object) | Your character or the NPC will gain the bionic; Only one bionic per effect |
+| "as_surgery" | optional | bool | when true, the bionic is installed as a successful operation would: it replaces the bionic it upgrades (`upgraded_bionic`), removes its `canceled_mutations`, sends `installs_cbm` and shows the "Successfully installed" message. No slot, anesthesia or skill checks are made. Default false: the bionic is just added, with none of those |
 
 ##### Valid talkers:
 
@@ -4924,6 +4929,11 @@ Install 1 bionic, delivered from `bionic_id` context value, onto your character:
 { "u_add_bionic": { "context_val": "bionic_id" } }
 ```
 
+Install a `bio_power_storage_mkII` as surgery would (sending `installs_cbm`):
+```jsonc
+{ "u_add_bionic": "bio_power_storage_mkII", "as_surgery": true }
+```
+
 
 #### `u_lose_bionic`, `npc_lose_bionic`
 You or NPC would have some bionic uninstalled from your body
@@ -4931,6 +4941,7 @@ You or NPC would have some bionic uninstalled from your body
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_lose_bionic" / "npc_lose_bionic"  | **mandatory** | string or [variable object](#variable-object) | Your character or the NPC will lose the bionic |
+| "as_surgery" | optional | bool | when true, the bionic is removed as a successful operation would: it sends `removes_cbm`, also removes the bionics on the body parts it replaced (`replaced_bodyparts`), gives its `give_mut_on_removal` traits, and leaves the removed CBM (filthy, salvaged) on the ground, with the operation's messages. Default false: the bionic is just removed, with none of those |
 
 ##### Valid talkers:
 
@@ -4947,6 +4958,11 @@ Uninstall 1 `bio_power_storage` from your character:
 Uninstall 1 bionic, delivered from `bionic_id` context value, onto your character:
 ```jsonc
 { "u_lose_bionic": { "context_val": "bionic_id" } }
+```
+
+Take out a datacore as its removal would, giving the CBM back:
+```jsonc
+{ "u_lose_bionic": "xe_bio_dataslot_parkour", "as_surgery": true }
 ```
 
 #### `u_activate_bionic`, `npc_activate_bionic`, `u_deactivate_bionic`, `npc_deactivate_bionic`
@@ -4987,6 +5003,7 @@ Give character or NPC some mutation/trait
 | --- | --- | --- | --- |
 | "u_add_trait" / "npc_add_trait" | **mandatory** | string or [variable object](#variable-object) | id of trait that should be given |
 | "variant" | optional | string or [variable object](#variable-object) | id of the trait's variant |
+| "send_event" | optional | bool | when true, sends `gains_mutation` for the trait (if the character didn't have it) and `loses_mutation` for each trait it replaces (one of the same `types`), just before the change, as mutating does. These count as mutations for the statistics and the "Pure Blood" conduct. Default false: no events, so a haircut or a marker trait doesn't count as mutating; [`u_mutate_towards`](#u_mutate_towards-npc_mutate_towards) mutates with all the rules |
 
 ##### Valid talkers:
 
@@ -5010,6 +5027,11 @@ Adds `hair_mohawk` trait with the `purple` variant to the character:
 { "u_add_trait": "hair_mohawk", "variant": "purple" }
 ```
 
+Adds `STRONG`, and lets the EOCs listening to `gains_mutation` know:
+```jsonc
+{ "u_add_trait": "STRONG", "send_event": true }
+```
+
 
 #### `u_lose_trait`, `npc_lose_trait`
 Character or NPC got trait or mutation removed, if it has one
@@ -5017,6 +5039,7 @@ Character or NPC got trait or mutation removed, if it has one
 | Syntax | Optionality | Value  | Info |
 | --- | --- | --- | --- |
 | "u_lose_trait" / "npc_lose_trait" | **mandatory** | string or [variable object](#variable-object) | id of mutation to be removed; if character or NPC has no such mutation, nothing happens |
+| "send_event" | optional | bool | when true, sends `loses_mutation` (if the character had the trait) just before removing it, as losing a mutation does. Default false |
 
 ##### Valid talkers:
 
