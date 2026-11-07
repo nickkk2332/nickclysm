@@ -435,7 +435,7 @@ static void do_blast( map *m, const Creature *source, const tripoint_bub_ms &p, 
         }
         std::sort( blast_parts.begin(), blast_parts.end(),
         []( const blastable_part & a, const blastable_part & b ) {
-            return a.rank != b.rank ? a.rank < b.rank : a.bp.id().str() < b.bp.id().str();
+            return a.rank != b.rank ? a.rank < b.rank : a.bp.id().str().compare( b.bp.id().str() ) < 0;
         } );
 
         for( const blastable_part &blp : blast_parts ) {

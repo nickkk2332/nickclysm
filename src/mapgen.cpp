@@ -1926,11 +1926,10 @@ class mapgen_value
                 if( value == nullptr || value->is_empty() ) {
                     return Id( fallback );
                 }
-                const std::string text = value->is_str() ? value->str() : value->to_string();
-                const StringId read( text );
+                const StringId read( value->is_str() ? value->str() : value->to_string() );
                 if( !is_valid_helper( read ) ) {
                     debugmsg( "mapgen variable %s holds \"%s\", which is not a valid id here",
-                              var.name, text );
+                              var.name, cata_variant( read ).get_string() );
                     return Id( fallback );
                 }
                 return Id( read );
@@ -6994,11 +6993,11 @@ static void apply_with_place_rules( const mapgendata &dat, const jmapgen_place &
         const int attempts = one_tile ? 1 : where.place_on->attempts;
         bool found = false;
         for( int attempt = 0; attempt < attempts && !found; attempt++ ) {
-            const int px = where.x.get();
-            const int py = where.y.get();
-            if( where.place_on->test( dat.m, tripoint_bub_ms( px, py, dat.zlevel() + pz ) ) ) {
-                x = jmapgen_int( px );
-                y = jmapgen_int( py );
+            // braces: x is rolled before y, as before
+            const point p{ where.x.get(), where.y.get() };
+            if( where.place_on->test( dat.m, tripoint_bub_ms( p.x, p.y, dat.zlevel() + pz ) ) ) {
+                x = jmapgen_int( p.x );
+                y = jmapgen_int( p.y );
                 z = jmapgen_int( pz );
                 found = true;
             }

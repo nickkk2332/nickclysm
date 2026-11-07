@@ -756,7 +756,8 @@ static const ammunition_type *first_ammo_type_where( const item &gun, const Pred
     const ammunition_type *found = nullptr;
     std::string found_id;
     for( const ammotype &at : gun.ammo_types() ) {
-        if( at.is_valid() && pred( at.obj() ) && ( found == nullptr || at.str() < found_id ) ) {
+        if( at.is_valid() && pred( at.obj() ) && ( found == nullptr ||
+                at.str().compare( found_id ) < 0 ) ) {
             found = &at.obj();
             found_id = at.str();
         }
@@ -2699,7 +2700,7 @@ item::sound_data item::gun_noise( const bool burst ) const
             noise = std::max( *fire_sound->volume, 0 );
         }
         if( !fire_sound->message.empty() ) {
-            return { noise, burst&& !fire_sound->burst_message.empty() ?
+            return { noise, burst && !fire_sound->burst_message.empty() ?
                      fire_sound->burst_message.translated() : fire_sound->message.translated()
                    };
         }

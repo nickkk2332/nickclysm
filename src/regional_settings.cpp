@@ -1180,7 +1180,7 @@ void forest_biome_mapgen::finalize()
         if( lhs->sequence != rhs->sequence ) {
             return lhs->sequence < rhs->sequence;
         }
-        return lhs.str() < rhs.str();
+        return lhs.str().compare( rhs.str() ) < 0;
     } );
 }
 

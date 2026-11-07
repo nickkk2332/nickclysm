@@ -5417,10 +5417,13 @@ void spawn_data::deserialize_saved( const JsonObject &jo )
     }
     for( JsonArray a : jo.get_array( "patrol_ranges" ) ) {
         spawn_patrol_point pt;
-        const int x = a.next_int();
-        pt.x = jmapgen_int( x, a.next_int() );
-        const int y = a.next_int();
-        pt.y = jmapgen_int( y, a.next_int() );
+        // the x range, then the y range
+        std::array<int, 4> range{};
+        for( int &bound : range ) {
+            bound = a.next_int();
+        }
+        pt.x = jmapgen_int( range[0], range[1] );
+        pt.y = jmapgen_int( range[2], range[3] );
         patrol.push_back( pt );
     }
     for( JsonArray e : jo.get_array( "effects" ) ) {

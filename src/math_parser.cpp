@@ -276,7 +276,7 @@ double func::eval( const_dialogue const &d ) const
 }
 
 // MATH-J11: the arguments keep their type, so a jmath function can take strings and arrays
-static std::vector<diag_value> _jmath_args( std::vector<thingie> const &params,
+static std::vector<diag_value> jmath_call_args( std::vector<thingie> const &params,
         const_dialogue const &d )
 {
     std::vector<diag_value> args;
@@ -289,12 +289,12 @@ static std::vector<diag_value> _jmath_args( std::vector<thingie> const &params,
 
 double func_jmath::eval( const_dialogue const &d ) const
 {
-    return id->eval( d, _jmath_args( params, d ), scope );
+    return id->eval( d, jmath_call_args( params, d ), scope );
 }
 
 void func_jmath::assign( dialogue &d, double val ) const
 {
-    id->assign( d, _jmath_args( params, d ), scope, val );
+    id->assign( d, jmath_call_args( params, d ), scope, val );
 }
 
 double var::eval( const_dialogue const &d ) const

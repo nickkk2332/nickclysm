@@ -6,6 +6,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -113,9 +114,9 @@ int count_in( const queued_eocs &queue, const effect_on_condition_id &eoc )
     } ) );
 }
 
-bool contains( const std::string &text, const std::string &part )
+bool contains( std::string_view text, std::string_view part )
 {
-    return text.find( part ) != std::string::npos;
+    return text.find( part ) != std::string_view::npos;
 }
 } // namespace
 
@@ -414,7 +415,7 @@ TEST_CASE( "eoc-j10_add_and_remove_death_eocs", "[audit][eoc]" )
     avatar &u = get_avatar();
     npc &guy = spawn_npc( u.pos_bub().xy() + point::east, "thug" );
     const effect_on_condition_id &eoc = effect_on_condition_EOC_AUDIT_M01B_J10_NPC_DEATH;
-    const auto has = [&guy, &eoc]() {
+    const auto has = [&guy]() {
         return std::count( guy.death_eocs.begin(), guy.death_eocs.end(), eoc );
     };
     dialogue d( get_talker_for( guy ), nullptr );

@@ -374,7 +374,8 @@ const climbing_aid *climbing_aid::get_sheer_drop_aid( Character &you )
         }
         // The lowest slip chance, then the id, so the lookup's order doesn't matter
         if( choice == nullptr || aid.slip_chance_mod < choice->slip_chance_mod ||
-            ( aid.slip_chance_mod == choice->slip_chance_mod && aid.id.str() < choice->id.str() ) ) {
+            ( aid.slip_chance_mod == choice->slip_chance_mod &&
+              aid.id.str().compare( choice->id.str() ) < 0 ) ) {
             choice = &aid;
         }
     };

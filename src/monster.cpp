@@ -1936,7 +1936,7 @@ static std::optional<monster_attitude> apply_monster_relations(
     }
     std::sort( with_relations.begin(), with_relations.end(),
     []( const mutation_branch * a, const mutation_branch * b ) {
-        return a->id.str() < b->id.str();
+        return a->id.str().compare( b->id.str() ) < 0;
     } );
     const auto in_range = [&eff_anger]( const monster_relation & rel ) {
         return ( !rel.min_anger || eff_anger >= *rel.min_anger ) &&

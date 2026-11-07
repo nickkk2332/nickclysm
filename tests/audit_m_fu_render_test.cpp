@@ -14,6 +14,7 @@
 
 #if defined(TILES)
 #include <array>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -146,7 +147,7 @@ TEST_CASE( "rend-p02_tile_lookup_memo_int_id_tables", "[audit][tiles]" )
     memo.validate( tileset, 7 );
     const std::string no_variant;
     const auto find = [&]( size_t season, size_t category, int int_id, tile_lookup_suffix suffix,
-    int intensity, const std::string & variant ) {
+    int intensity, std::string_view variant ) {
         return memo.find_by_int_id( season, category, int_id, suffix, intensity, variant );
     };
 

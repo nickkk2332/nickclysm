@@ -194,6 +194,7 @@ struct timed_events_restorer {
         saved = os.str();
         get_timed_events() = timed_event_manager();
     }
+    // NOLINTNEXTLINE(bugprone-exception-escape): a save that can't be read back should end the test run
     ~timed_events_restorer() {
         get_timed_events() = timed_event_manager();
         timed_event_manager::unserialize_all( json_loader::from_string( saved ).get_array() );

@@ -1131,7 +1131,7 @@ constexpr bool key_is_nameable()
 }
 
 template<typename Key>
-bool key_matches( const Key &key, const std::string &name )
+bool key_matches( const Key &key, std::string_view name )
 {
     if constexpr( std::is_same_v<Key, std::string> ) {
         return key == name;

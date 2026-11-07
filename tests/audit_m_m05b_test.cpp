@@ -279,6 +279,7 @@ TEST_CASE( "loop-j06_a_weather_generator_sets_its_own_climate", "[audit][weather
 TEST_CASE( "loop-j06_the_temperature_sampler_matches_the_generator", "[audit][weather]" )
 {
     std::vector<time_point> times;
+    times.reserve( 12 );
     for( int i = 0; i < 12; ++i ) {
         times.push_back( calendar::turn_zero + 31_days * i + 8_hours );
     }

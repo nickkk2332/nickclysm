@@ -469,7 +469,7 @@ void queued_eocs::pop()
 void Character::queue_effects( const std::vector<effect_on_condition_id> &effects )
 {
     for( const effect_on_condition_id &eoc_id : effects ) {
-        effect_on_condition eoc = eoc_id.obj();
+        const effect_on_condition &eoc = eoc_id.obj();
         if( is_avatar() || eoc.run_for_npcs ) {
             queued_eoc new_eoc = queued_eoc{ eoc.id, calendar::turn_zero, {} };
             queued_effect_on_conditions.push( new_eoc );

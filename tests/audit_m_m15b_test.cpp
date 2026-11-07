@@ -186,7 +186,7 @@ TEST_CASE( "hlth-j11_addiction_lifecycle_comes_from_the_addiction_type", "[audit
     }
 
     SECTION( "math sets the intensity, capped at max_intensity" ) {
-        const auto set_intensity = [&u]( const std::string &value ) {
+        const auto set_intensity = [&u]( const std::string & value ) {
             dialogue d( get_talker_for( u ), nullptr );
             const std::string expr = "u_addiction_intensity('test_audit_m15b_short') = " + value;
             math_exp exp;

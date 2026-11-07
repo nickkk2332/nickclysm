@@ -2471,7 +2471,7 @@ bool talk_trial::roll( dialogue &d ) const
     if( speech_trial && d.actor( false )->get_character() ) {
         Character &u = *d.actor( false )->get_character();
         if( speech_practice ) {
-            const_dialogue how_it_went( d );
+            dialogue how_it_went( d );
             how_it_went.set_value( "chance", chance );
             how_it_went.set_value( "success", success ? 1 : 0 );
             const int amount = static_cast<int>( std::round( speech_practice->evaluate( how_it_went ) ) );
@@ -7134,8 +7134,8 @@ talk_effect_fun_t::func f_sound_effect( const JsonObject &jo, std::string_view m
 // EVT-J05: give_achievement completes an achievement and fail_conduct fails a conduct, if this
 // game tracks it and it's still pending.  A wrong id or kind is an error.  One the game doesn't
 // track (its mod was added to the save, and it doesn't allow late tracking) is left alone.
-static void finish_achievement( std::string_view effect, const achievement_id &id,
-                                const bool conduct )
+void finish_achievement( std::string_view effect, const achievement_id &id,
+                         const bool conduct )
 {
     if( !id.is_valid() ) {
         debugmsg( "%s: there is no achievement or conduct %s", effect, id.str() );

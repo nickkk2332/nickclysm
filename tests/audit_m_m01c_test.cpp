@@ -55,8 +55,8 @@ effect_on_condition_EOC_M01C_SET_CHATBIN( "EOC_M01C_SET_CHATBIN" );
 static const effect_on_condition_id
 effect_on_condition_EOC_M01C_TIME_LEFT( "EOC_M01C_TIME_LEFT" );
 
-static const matype_id style_test_style_m01c_training( "test_style_m01c_training" );
-static const matype_id style_test_style_ma1( "test_style_ma1" );
+static const matype_id test_style_m01c_training( "test_style_m01c_training" );
+static const matype_id test_style_ma1( "test_style_ma1" );
 
 static const npc_class_id test_m01c_stranger_class( "test_m01c_stranger_class" );
 
@@ -171,13 +171,13 @@ TEST_CASE( "eoc-j11_training_time_and_cost_come_from_json", "[audit][npc]" )
     REQUIRE( !teacher.is_player_ally() );
 
     SECTION( "a style's own time and price" ) {
-        CHECK( calc_ma_style_training_time( teacher, u, style_test_style_m01c_training ) ==
+        CHECK( calc_ma_style_training_time( teacher, u, test_style_m01c_training ) ==
                90_minutes );
-        CHECK( calc_ma_style_training_cost( teacher, u, style_test_style_m01c_training ) ==
+        CHECK( calc_ma_style_training_cost( teacher, u, test_style_m01c_training ) ==
                1234 + u.get_str() );
         // a style that doesn't say keeps the built-in ones
-        CHECK( calc_ma_style_training_time( teacher, u, style_test_style_ma1 ) == 30_minutes );
-        CHECK( calc_ma_style_training_cost( teacher, u, style_test_style_ma1 ) == 800 );
+        CHECK( calc_ma_style_training_time( teacher, u, test_style_ma1 ) == 30_minutes );
+        CHECK( calc_ma_style_training_cost( teacher, u, test_style_ma1 ) == 800 );
     }
     SECTION( "a spell's own time and price, by whether the student knows it" ) {
         teacher.magic->learn_spell( spell_test_spell_m01c_training, teacher, true );

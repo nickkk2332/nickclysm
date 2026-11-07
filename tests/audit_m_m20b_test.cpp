@@ -178,9 +178,15 @@ TEST_CASE( "mondt-b16_butchery_counts_tool_quality_as_skill_only_for_dissection"
 // the numbers of the old literals 0.5, 0.3 and 0.2.
 TEST_CASE( "mondt-b16_butchery_yield_weights_are_options", "[audit][butchery]" )
 {
-    for( const int skill : { 0, 2, 5, 10, 12 } ) {
-        for( const int dex : { 4, 8, 20 } ) {
-            for( const int tool : { 0, 20, 50 } ) {
+    for( const int skill : {
+             0, 2, 5, 10, 12
+         } ) {
+        for( const int dex : {
+                 4, 8, 20
+             } ) {
+            for( const int tool : {
+                     0, 20, 50
+                 } ) {
                 CAPTURE( skill, dex, tool );
                 const double old_mult = 0.5 * std::clamp( skill / 10.0, 0.0, 1.0 ) +
                                         0.3 * std::clamp( ( tool + 50.0 ) / 100.0, 0.0, 1.0 ) +

@@ -702,7 +702,8 @@ void MonsterGenerator::apply_species_attributes( mtype &mon )
                 it->second = std::max( it->second, immunity.second );
             }
         }
-        if( !mspec.bleed_effect.is_null() && ( !bleed_from || spec.str() < bleed_from->str() ) ) {
+        if( !mspec.bleed_effect.is_null() && ( !bleed_from ||
+                                               spec.str().compare( bleed_from->str() ) < 0 ) ) {
             bleed_from = spec;
         }
     }

@@ -148,9 +148,9 @@ time_duration calc_proficiency_training_time( const Character &teacher, const Ch
 int calc_proficiency_training_cost( const Character &teacher, const Character &student,
                                     const proficiency_id &proficiency );
 time_duration calc_ma_style_training_time( const Character &teacher, const Character &student,
-        const matype_id &id );
+        const matype_id &style );
 int calc_ma_style_training_cost( const Character &teacher, const Character &student,
-                                 const matype_id &id );
+                                 const matype_id &style );
 time_duration calc_spell_training_time( const Character &teacher, const Character &student,
                                         const spell_id &id );
 int calc_spell_training_cost( const Character &teacher, const Character &student,

@@ -328,12 +328,12 @@ TEST_CASE( "data-j08_monster_migration_renames_or_removes", "[audit][json][monst
     JsonOut jsout( os );
     zombie.serialize( jsout );
     const std::string saved = os.str();
-    const std::string type_key = "\"typeid\":\"mon_zombie\"";
+    const std::string type_key = R"("typeid":"mon_zombie")";
     const size_t at = saved.find( type_key );
     REQUIRE( at != std::string::npos );
 
     std::string renamed = saved;
-    renamed.replace( at, type_key.size(), "\"typeid\":\"mon_audit_m04a_old\"" );
+    renamed.replace( at, type_key.size(), R"("typeid":"mon_audit_m04a_old")" );
     const JsonObject renamed_jo = json_object( renamed );
     CHECK_FALSE( monster_migrations::removes( renamed_jo ) );
     monster loaded;
@@ -341,7 +341,7 @@ TEST_CASE( "data-j08_monster_migration_renames_or_removes", "[audit][json][monst
     CHECK( loaded.type->id == mon_zombie );
 
     std::string removed = saved;
-    removed.replace( at, type_key.size(), "\"typeid\":\"mon_audit_m04a_gone\"" );
+    removed.replace( at, type_key.size(), R"("typeid":"mon_audit_m04a_gone")" );
     // the loaders skip it; its members count as read
     CHECK( monster_migrations::removes( json_object( removed ) ) );
 }
