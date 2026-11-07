@@ -104,8 +104,6 @@ class iuse_transform : public iuse_actor
         /** Tool qualities needed, e.g. "fine bolt turning 1". **/
         std::map<quality_id, int> qualities_needed;
 
-        translation menu_text;
-
         explicit iuse_transform( const std::string &type = "transform" ) : iuse_actor( type ) {}
 
         ~iuse_transform() override = default;
@@ -116,7 +114,6 @@ class iuse_transform : public iuse_actor
         ret_val<void> can_use( const Character &, const item &, map *here,
                                const tripoint_bub_ms & ) const override;
         std::unique_ptr<iuse_actor> clone() const override;
-        std::string get_name() const override;
         void finalize( const itype_id &my_item_type ) override;
         void info( const item &, std::vector<iteminfo> & ) const override;
 };
@@ -1173,8 +1170,6 @@ class link_up_actor : public iuse_actor
         float efficiency = 0.85f;
         /** (Optional) The move cost to attach the cable. */
         int move_cost = 5;
-        /** (Optional) Text displayed in the activation screen, defaults to "Plug in / Manage cables". */
-        translation menu_text;
 
         std::set<link_state> targets;
         std::set<std::string> can_extend;
@@ -1190,7 +1185,6 @@ class link_up_actor : public iuse_actor
         ~link_up_actor() override = default;
         void load( const JsonObject &jo, const std::string & ) override;
         std::unique_ptr<iuse_actor> clone() const override;
-        std::string get_name() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
         using iuse_actor::use;
         std::optional<int> use( Character *p, item &it, map *here,
@@ -1269,7 +1263,6 @@ class effect_on_conditions_actor : public iuse_actor
     public:
         std::vector<effect_on_condition_id> eocs;
         translation description;
-        translation menu_text;
         /**does the item requires to be worn to be activable*/
         bool need_worn = false;
         /**does the item requires to be wielded to be activable*/
@@ -1292,7 +1285,6 @@ class effect_on_conditions_actor : public iuse_actor
                                const tripoint_bub_ms &pos ) const override;
         void finalize( const itype_id &my_item_type ) override;
         std::unique_ptr<iuse_actor> clone() const override;
-        std::string get_name() const override;
         void info( const item &, std::vector<iteminfo> & ) const override;
         // "consume" (or "_charges") on an item with no charges uses up the item.
         bool uses_up_item_without_charges() const override {

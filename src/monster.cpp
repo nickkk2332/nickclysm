@@ -960,7 +960,7 @@ int monster::print_info( const catacurses::window &w, int vStart, int vLines, in
 
         for( std::string food_category : type->petfood.food ) {
             std::vector<const itype *> food_items = Item_factory::find( [&]( const itype & t ) {
-                return t.use_methods.count( "PETFOOD" ) && t.comestible &&
+                return t.can_use( "PETFOOD" ) && t.comestible &&
                        t.comestible->petfood.count( food_category );
             } );
             for( const itype *food_item_type : food_items ) {
@@ -1158,7 +1158,7 @@ std::vector<std::string> monster::extended_description() const
 
         for( std::string food_category : type->petfood.food ) {
             std::vector<const itype *> food_items = Item_factory::find( [&]( const itype & t ) {
-                return t.use_methods.count( "PETFOOD" ) && t.comestible &&
+                return t.can_use( "PETFOOD" ) && t.comestible &&
                        t.comestible->petfood.count( food_category );
             } );
             for( const itype *food_item_type : food_items ) {

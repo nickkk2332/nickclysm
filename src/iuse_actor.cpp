@@ -333,7 +333,6 @@ void iuse_transform::load( const JsonObject &obj, const std::string & )
 
     optional( obj, false, "qualities_needed", qualities_needed );
 
-    optional( obj, false, "menu_text", menu_text );
 }
 
 std::optional<int> iuse_transform::use( Character *p, item &it, map *,
@@ -344,7 +343,7 @@ std::optional<int> iuse_transform::use( Character *p, item &it, map *,
     }
 
     int scale = 1;
-    auto iter = it.type->ammo_scale.find( type );
+    auto iter = it.type->ammo_scale.find( id );
     if( iter != it.type->ammo_scale.end() ) {
         scale = iter->second;
     }
@@ -502,14 +501,6 @@ ret_val<void> iuse_transform::can_use( const Character &p, const item &it,
     return ret_val<void>::make_failure( n_gettext( "You need a tool with %s.",
                                         "You need tools with %s.",
                                         unmet_reqs.size() ), unmet_reqs_string );
-}
-
-std::string iuse_transform::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void iuse_transform::finalize( const itype_id &my_item_type )
@@ -1704,7 +1695,7 @@ std::optional<int> firestarter_actor::use( Character *p, item &it,
     // skill gains are handled by the activity, but stored here in the index field
     const int potential_skill_gain = moves_modifier * ( std::min( 10.0, moves_cost_fast / 100.0 ) + 2 );
     p->assign_activity( fire_start_activity_actor( here->get_abs( pos ), form_loc( *p, here, pos, it ),
-                        potential_skill_gain, moves ) );
+                        potential_skill_gain, moves, false, id ) );
     // charges to use are handled by the activity
     return 0;
 }
@@ -1793,7 +1784,7 @@ bool firestarter_actor::npc_start_fire( npc &who, item &tool,
     item_location tool_loc( who, &tool );
     who.assign_activity( fire_start_activity_actor(
                              here.get_abs( fire_pos ), tool_loc,
-                             potential_skill_gain, moves, tinder_consumed ) );
+                             potential_skill_gain, moves, tinder_consumed, id ) );
     return true;
 }
 
@@ -3127,8 +3118,9 @@ std::optional<int> repair_item_actor::use( Character *p, item &it,
     }
 
     p->assign_activity( ACT_REPAIR_ITEM, 0, p->get_item_position( &it ), INT_MIN );
-    // We also need to store the repair actor subtype in the activity
-    p->activity.str_values.push_back( type );
+    // We also need to store which repair action this is in the activity: its id (its type, the
+    // item_action_type, unless it has an "id"; old saves have the type)
+    p->activity.str_values.push_back( id );
     // storing of item_location to support repairs by tools on the ground
     p->activity.targets.emplace_back( form_loc( *p, here, pos, it ) );
     // All repairs are done in the activity, including charge cost and target item selection
@@ -3729,7 +3721,7 @@ std::optional<int> heal_actor::use( Character *p, item &it, map *here,
     cost = p->has_proficiency( proficiency_prof_wound_care_expert ) ? cost / 2 : cost;
     cost = p->has_proficiency( proficiency_prof_wound_care ) ? cost / 2 : cost;
 
-    p->assign_activity( firstaid_activity_actor( cost, it.tname(), patient.getID() ) );
+    p->assign_activity( firstaid_activity_actor( cost, it.tname(), patient.getID(), true, id ) );
 
     // Player: Only time this item_location gets used in firstaid::finish() is when activating the item's
     // container from the inventory window, so an item_on_person impl is all that is needed.
@@ -4868,7 +4860,6 @@ void link_up_actor::load( const JsonObject &jo, const std::string & )
     optional( jo, false, "charge_rate", charge_rate, 0_W );
     optional( jo, false, "efficiency", efficiency, 0.85f );
     optional( jo, false, "move_cost", move_cost, 5 );
-    optional( jo, false, "menu_text", menu_text );
     optional( jo, false, "targets", targets, { link_state::no_link, link_state::vehicle_port } );
     optional( jo, false, "can_extend", can_extend );
 }
@@ -4876,14 +4867,6 @@ void link_up_actor::load( const JsonObject &jo, const std::string & )
 std::unique_ptr<iuse_actor> link_up_actor::clone() const
 {
     return std::make_unique<link_up_actor>( *this );
-}
-
-std::string link_up_actor::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void link_up_actor::info( const item &it, std::vector<iteminfo> &dump ) const
@@ -5130,7 +5113,7 @@ std::optional<int> link_up_actor::use( Character *p, item &it, map *here,
         // Selection: Detach & respool.
 
         // Reopen the menu after respooling.
-        p->assign_activity( invoke_item_activity_actor( item_location{*p, &it}, "link_up" ) );
+        p->assign_activity( invoke_item_activity_actor( item_location{*p, &it}, id ) );
         p->activity.auto_resume = true;
 
         if( t_veh ) {
@@ -6023,7 +6006,6 @@ void effect_on_conditions_actor::load( const JsonObject &obj, const std::string 
 {
     optional( obj, false, "consume", consume, false );
     optional( obj, false, "description", description );
-    optional( obj, false, "menu_text", menu_text );
     optional( obj, false, "need_worn", need_worn, false );
     optional( obj, false, "need_wielding", need_wielding, false );
     if( obj.has_member( "condition" ) ) {
@@ -6075,14 +6057,6 @@ ret_val<void> effect_on_conditions_actor::can_use( const Character &p, const ite
         }
     }
     return ret_val<void>::make_success();
-}
-
-std::string effect_on_conditions_actor::get_name() const
-{
-    if( !menu_text.empty() ) {
-        return menu_text.translated();
-    }
-    return iuse_actor::get_name();
 }
 
 void effect_on_conditions_actor::info( const item &, std::vector<iteminfo> &dump ) const
@@ -6187,16 +6161,9 @@ std::optional<int> effect_on_conditions_actor::use( Character *p, item &it,
     write_var_value( var_type::context, "id", &d, it.typeId().str() );
     // The tile the item is used at: u_activate's target_var, else the user's or item's tile.
     write_var_value( var_type::context, "use_location", &d, here->get_abs( pos ) );
-    // _method: the use action, by the name the item's use menu and u_activate give it (the key
-    // of its use_action entry; the actor type for a tick, countdown or drop action).
-    std::string method = type;
-    for( const std::pair<const std::string, use_function> &use : it.type->use_methods ) {
-        if( use.second.get_actor_ptr() == this ) {
-            method = use.first;
-            break;
-        }
-    }
-    write_var_value( var_type::context, "method", &d, method );
+    // _method: the use action's id, which the item's use menu and u_activate know it by (its
+    // type when it has no "id"; for a tick, countdown or drop action too).
+    write_var_value( var_type::context, "method", &d, id );
     // _item_pos: where the item is, its carrier's tile when carried
     write_var_value( var_type::context, "item_pos", &d, loc ? loc.pos_abs() : here->get_abs( pos ) );
     // Read before the EOCs run: they may destroy the item.

@@ -2712,7 +2712,7 @@ void item::book_info( std::vector<iteminfo> &info, const iteminfo_query *parts, 
                                   "read</info>.",
                                   "A chapter of this book takes <num> <info>minutes to "
                                   "read</info>.", to_minutes<int>( book.time ) );
-            if( type->use_methods.count( "MA_MANUAL" ) ) {
+            if( type->can_use( "MA_MANUAL" ) ) {
                 fmt = n_gettext(
                           "<info>A training session</info> with this book takes "
                           "<num> <info>minute</info>.",
