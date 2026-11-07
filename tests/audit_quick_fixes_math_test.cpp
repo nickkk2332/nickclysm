@@ -1,13 +1,15 @@
 #include <climits>
 #include <initializer_list>
+#include <map>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "avatar.h"
 #include "bodypart.h"
 #include "calendar.h"
 #include "cata_catch.h"
-#include "character.h"
 #include "condition.h"
 #include "coordinates.h"
 #include "creature.h"
