@@ -18,6 +18,7 @@
 #include "magic_enchantment.h"
 #include "map.h"
 #include "map_helpers.h"
+#include "math_parser.h"
 #include "math_parser_diag_value.h"
 #include "messages.h"
 #include "mutation.h"
@@ -182,6 +183,23 @@ TEST_CASE( "hlth-j11_addiction_lifecycle_comes_from_the_addiction_type", "[audit
         CHECK( u.addictions.front().intensity == 5 );
         u.add_addiction( addiction_test_audit_m15b_short, 100000 );
         CHECK( u.addictions.front().intensity == 5 );
+    }
+
+    SECTION( "math sets the intensity, capped at max_intensity" ) {
+        const auto set_intensity = [&u]( const std::string &value ) {
+            dialogue d( get_talker_for( u ), nullptr );
+            const std::string expr = "u_addiction_intensity('test_audit_m15b_short') = " + value;
+            math_exp exp;
+            REQUIRE( exp.parse( expr ) );
+            exp.eval( d );
+        };
+        set_intensity( "3" );
+        REQUIRE( u.addictions.size() == 1 );
+        CHECK( u.addictions.front().intensity == 3 );
+        set_intensity( "50" );
+        CHECK( u.addictions.front().intensity == 5 );
+        set_intensity( "0" );
+        CHECK( u.addictions.empty() );
     }
 
     SECTION( "recovery_time, intensity_decay and remove_below set the recovery" ) {

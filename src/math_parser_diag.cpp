@@ -298,6 +298,13 @@ double addiction_intensity_eval( const_dialogue const &d, char scope,
            ->get_addiction_intensity( addiction_id( params[0].str( d ) ) );
 }
 
+void addiction_intensity_ass( double val, dialogue &d, char scope,
+                              std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
+{
+    d.actor( is_beta( scope ) )->set_addiction_intensity( addiction_id( params[0].str( d ) ),
+            static_cast<int>( std::lround( val ) ) );
+}
+
 double addiction_turns_eval( const_dialogue const &d, char scope,
                              std::vector<diag_value> const &params,
                              diag_kwargs const & /* kwargs */ )
@@ -4541,7 +4548,7 @@ double climate_control_str_chill_eval( const_dialogue const &d, char scope,
 std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "_test_diag_", { "g", -1, test_diag, {}, { "1", "2", "3", "blorg" } } },
     { "_test_str_len_", { "g", -1, test_str_len, {}, { "1", "2", "3" } } },
-    { "addiction_intensity", { "un", 1, addiction_intensity_eval } },
+    { "addiction_intensity", { "un", 1, addiction_intensity_eval, addiction_intensity_ass } },
     { "addiction_turns", { "un", 1, addiction_turns_eval, addiction_turns_ass } },
     { "activity_moves_left", { "un", 0, activity_moves_left_eval, activity_moves_left_ass } },
     { "armor", { "un", 2, armor_eval, {}, { "source", "roll" } } },

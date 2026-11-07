@@ -319,6 +319,7 @@ class talker_character: virtual public talker
                          time_duration decay_started, bool capped ) override;
         void remove_morale( const morale_type &old_morale ) override;
         void set_addiction_turns( const addiction_id &add_id, int amount ) override;
+        void set_addiction_intensity( const addiction_id &add_id, int amount ) override;
         void mod_focus( int ) override;
         void set_rad( int ) override;
         void set_stim( int ) override;

@@ -1127,6 +1127,26 @@ void talker_character::set_addiction_turns( const addiction_id &add_id, int amou
     }
 }
 
+void talker_character::set_addiction_intensity( const addiction_id &add_id, int amount )
+{
+    if( add_id.is_null() || !add_id.is_valid() ) {
+        return;
+    }
+    // no more than the addiction's max_intensity (HLTH-J11); 0 or less ends it
+    const int intensity = std::min( amount, add_id->get_max_intensity() );
+    if( intensity <= 0 ) {
+        me_chr->rem_addiction( add_id );
+        return;
+    }
+    for( addiction &add : me_chr->addictions ) {
+        if( add.type == add_id ) {
+            add.intensity = intensity;
+            return;
+        }
+    }
+    me_chr->addictions.emplace_back( add_id, intensity );
+}
+
 void talker_character::set_stim( int amount )
 {
     me_chr->set_stim( amount );
