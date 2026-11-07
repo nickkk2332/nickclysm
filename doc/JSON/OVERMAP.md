@@ -324,7 +324,7 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 | `mondensity`      | Summed with values for adjacent overmap terrains to influence density of monsters spawned here.  |
 | `wind_factor`     | Optional, multiplier to the wind on this terrain (outdoors, before height and adjacent walls). Defaults to 0.5 for `forest` and `forest_water` and 1 for everything else. |
 | `spawns`          | Spawns added once at mapgen. Monster group, % chance, population range (min/max).                |
-| `flags`           | See `Overmap terrains` in [JSON_FLAGS.md](JSON_FLAGS.md).                                        |
+| `flags`           | See `Overmap terrains` in [JSON_FLAGS.md](JSON_FLAGS.md). Other names are the mod's own flags.   |
 | `uniform_terrain` | Specifies the terrain that should fill this overmap terrain in place of a JSON mapgen with fill ter for very common maps to save on load time. |
 | `mapgen`          | Specify a C++ mapgen function. Don't do this--use JSON.                                          |
 | `mapgen_straight` | Specify a C++ mapgen function for a LINEAR feature variation. Prefer JSON instead.               |
@@ -336,6 +336,42 @@ rotation for the referenced overmap terrains (e.g. the `_north` version for all)
 | `exit_eoc`        | An effect on condition ID that will run when you exit this location.  See [`entry_eoc` and `exit_eoc`](#entry_eoc-and-exit_eoc). |
 | `radio`           | A radio station worldgen puts on this terrain when it is on z-level 0, or a list of them to pick one from.  See [`radio`](#radio). |
 | `post_process_generators` | Array of `pp_generator` ids applied after mapgen completes.  See [Post-Process Generators](#post-process-generators).  Supports `copy-from` inheritance and `delete`. |
+| `bridge`          | Optional object: what the overmap generator builds around this terrain when it's on the ground (z = 0). See [Vertical terrain rules](#vertical-terrain-rules). |
+| `below`           | Optional object: terrain the overmap generator places one z-level below this terrain. See [Vertical terrain rules](#vertical-terrain-rules). |
+
+### Vertical terrain rules
+
+`bridge` and `below` let a mod's own terrain get the rules vanilla bridges and manholes have. Both are
+inherited by `copy-from`; `null` removes an inherited one.
+
+`bridge`:
+
+| Identifier          | Description                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------- |
+| `overpass`          | Overmap terrain type placed above the bridge (z = 1), rotated like it.                              |
+| `support`           | Optional overmap terrain type placed, rotated like the bridge, from the bridge's own tile downwards for as long as the tile there is water (`WATER` flag). Vanilla's `bridge` has no `WATER` flag, so for it this places nothing. |
+| `bridgehead_ground` | Optional (with `bridgehead_ramp`): the bridge's end tiles become this type, rotated to line up with the bridge, with `bridgehead_ramp` above them. Give both the `RAMP` flag so that overmap travel can use them. |
+| `bridgehead_ramp`   | See `bridgehead_ground`.                                                                            |
+
+`below`:
+
+| Identifier | Description                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `terrain`  | Overmap terrain id placed one z-level below.                                                               |
+| `network`  | Optional, `sewer` or `subway`: the placed tile is joined to the region's sewer or subway connection network. |
+
+```jsonc
+{
+  "type": "overmap_terrain",
+  "id": "bridge",
+  "bridge": { "overpass": "bridge_road", "support": "bridge", "bridgehead_ground": "bridgehead_ground", "bridgehead_ramp": "bridgehead_ramp" }
+},
+{
+  "type": "overmap_terrain",
+  "id": "road_nesw_manhole",
+  "below": { "terrain": "sewer_isolated", "network": "sewer" }
+}
+```
 
 ### `entry_eoc` and `exit_eoc`
 
@@ -692,8 +728,12 @@ as it corresponds to the way in which the JSON for mapgen is defined.
 ### Connections
 
 The overmap special can be connected to the road, subway or sewer networks. Specifying a connection
-point causes the appropriate connection to be automatically generated from the nearest matching terrain
-, unless `existing` is set to true.
+point causes the appropriate connection to be automatically generated, unless `existing` is set to true.
+By default it is built from the center of the nearest city (or, if the overmap has no city, from the
+overmap's fallback road point). `"target": "nearest_existing"` builds it from the nearest tile that already
+has that connection instead (e.g. the nearest forest trail), which suits connections that a city
+center can't be part of. The connection's own `special_target` (see [Overmap Connection](#overmap-connection))
+sets the default for every special.
 
 Connections with `existing` set to true are used to test the validity of an overmap special's
 placement. Unlike normal connection points these do not have to reference road/tunnel terrain types.
@@ -865,6 +905,8 @@ Depending on the subtype, there are further relevant fields:
 | `connection` | Id of the `overmap_connection` to build. Optional for now, but you should specify it explicitly.   |
 | `from`       | Optional point `[ x, y, z]` within the special to treat as the origin of the connection.           |
 | `existing`   | Boolean, default false. If the special requires a preexisting terrain to spawn.                    |
+| `target`     | Optional: `city` (the nearest city's center, or the overmap's fallback point if there is no city) or `nearest_existing` (the nearest tile outside the special that already has this connection; as `city` if there is none). Default: the connection's `special_target`, which is `city` unless set. |
+| `max_length` | Optional int. The connection is not built if its source is more than this many overmap tiles (square distance) from `point`; also how far `nearest_existing` looks. |
 
 ### Example mutable special
 
@@ -975,7 +1017,8 @@ Once the mutable special placement is complete, a `local_road` connection will
 be built from the north edge of this overmap (again, 'north' is a relative
 term, that will rotate as the overmap is rotated) in the same way as
 connections are built for fixed specials.  'Existing' connections are not
-supported for mutable specials.
+supported for mutable specials.  `target` and `max_length` work as for fixed
+specials, e.g. `{ "connection": "forest_trail", "target": "nearest_existing", "max_length": 20 }`.
 
 #### Layout phases
 
@@ -1383,6 +1426,21 @@ by the frequency assigned to the city building within the `region_settings`. Con
 | `type`     | Must be "overmap_connection".                                                                   |
 | `id`       | Unique id.                                                                                      |
 | `subtypes` | List of entries used to determine valid locations, terrain cost, and resulting overmap terrain. |
+| `special_target` | Optional, `city` (default) or `nearest_existing`: where overmap specials build this connection from when their connection has no `target` (see [Connections](#connections-1)). |
+
+The first subtype whose `terrain` or `locations` allow a tile is used there. A `copy-from` (e.g. of the
+same id, to change vanilla's connection) inherits `subtypes`; `"extend": { "subtypes": [ ... ] }` appends
+subtypes after the inherited ones, and `"delete": { "subtypes": [ { "terrain": "road", "locations": [ "swamp" ] } ] }`
+removes every subtype with that `terrain` (and exactly those `locations`, if given):
+
+```jsonc
+{
+  "type": "overmap_connection",
+  "id": "local_road",
+  "copy-from": "local_road",
+  "extend": { "subtypes": [ { "terrain": "road", "locations": [ "sand" ], "basic_cost": 10 } ] }
+}
+```
 
 
 ### Example
@@ -1427,6 +1485,14 @@ by the frequency assigned to the city building within the `region_settings`. Con
 | `type`     | Must be "overmap_location".                                             |
 | `id`       | Unique id.                                                              |
 | `terrains` | List of `overmap_terrain` that can be considered part of this location. |
+| `flags`    | List of overmap terrain flags: every `overmap_terrain` with one of them is also part of this location. Engine flags and a mod's own flags both work. |
+
+At least one of `terrains` and `flags` must be given. A `copy-from` of a location can `extend` or
+`delete` either list, e.g. a mod adding its own terrain to vanilla's `forest` location:
+
+```jsonc
+{ "type": "overmap_location", "id": "forest", "copy-from": "forest", "extend": { "terrains": [ "my_jungle" ] } }
+```
 
 
 ### Example

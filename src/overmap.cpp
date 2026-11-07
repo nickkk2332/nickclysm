@@ -11,7 +11,9 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "auto_note.h"
@@ -67,18 +69,14 @@ static const oter_str_id oter_forest( "forest" );
 static const oter_str_id oter_forest_thick( "forest_thick" );
 static const oter_str_id oter_forest_water( "forest_water" );
 static const oter_str_id oter_sewer_end_north( "sewer_end_north" );
-static const oter_str_id oter_sewer_isolated( "sewer_isolated" );
 static const oter_str_id oter_sewer_sub_station( "sewer_sub_station" );
 static const oter_str_id oter_solid_earth( "solid_earth" );
 static const oter_str_id oter_subway_end_north( "subway_end_north" );
 static const oter_str_id oter_subway_isolated( "subway_isolated" );
 static const oter_str_id oter_underground_sub_station( "underground_sub_station" );
 
-static const oter_type_str_id oter_type_bridge( "bridge" );
 static const oter_type_str_id oter_type_microlab_sub_connector( "microlab_sub_connector" );
-static const oter_type_str_id oter_type_railroad_bridge( "railroad_bridge" );
 static const oter_type_str_id oter_type_road( "road" );
-static const oter_type_str_id oter_type_road_nesw_manhole( "road_nesw_manhole" );
 static const oter_type_str_id oter_type_sewer_connector( "sewer_connector" );
 static const oter_type_str_id oter_type_sub_station( "sub_station" );
 
@@ -1061,18 +1059,6 @@ bool overmap::generate_sub( const int z )
     std::vector<city> ant_points;
     std::vector<city> goo_points;
 
-    std::unordered_map<oter_type_id, std::function<void( const tripoint_om_omt &p )>>
-    oter_above_actions = {
-        {
-            oter_type_road_nesw_manhole.id(),
-            [&]( const tripoint_om_omt & p )
-            {
-                ter_set( p, oter_sewer_isolated.id() );
-                sewer_points.emplace_back( p.xy() );
-            }
-        },
-    };
-
     for( int i = 0; i < OMAPX; i++ ) {
         for( int j = 0; j < OMAPY; j++ ) {
             tripoint_om_omt p( i, j, z );
@@ -1107,10 +1093,16 @@ bool overmap::generate_sub( const int z )
                 }
             }
 
-            auto above_action_it = oter_above_actions.find( oter_above->get_type_id().id() );
-
-            if( above_action_it != oter_above_actions.end() ) {
-                above_action_it->second( p );
+            // OMAP-J13: the terrain above may place terrain here (a manhole's sewer), joined to
+            // a tunnel network.
+            const std::optional<oter_below_rule> &below = oter_above->get_below_rule();
+            if( below ) {
+                ter_set( p, below->terrain.id() );
+                if( below->network == oter_below_rule::network_type::sewer ) {
+                    sewer_points.emplace_back( p.xy() );
+                } else if( below->network == oter_below_rule::network_type::subway ) {
+                    subway_points.emplace_back( p.xy() );
+                }
             }
         }
     }
@@ -1147,8 +1139,8 @@ bool overmap::generate_sub( const int z )
 bool overmap::generate_over( const int z )
 {
     bool requires_over = false;
-    std::vector<point_om_omt> bridge_points;
-    std::vector<point_om_omt> railroad_bridge_points;
+    // OMAP-J13: the tiles of each bridge terrain type, in the order the types were first met.
+    std::vector<std::pair<oter_type_str_id, std::vector<point_om_omt>>> bridge_points;
 
     // These are so common that it's worth checking first as int.
     const std::set<oter_id> skip_below = {
@@ -1168,29 +1160,42 @@ bool overmap::generate_over( const int z )
                     continue;
                 }
 
-                if( oter_ground->get_type_id() == oter_type_bridge ) {
-                    ter_set( p, oter_id( "bridge_road" + oter_get_rotation_string( oter_ground ) ) );
-                    bridge_points.push_back( p.xy() );
+                const std::optional<oter_bridge_rule> &bridge = oter_ground->get_bridge_rule();
+                if( !bridge ) {
+                    continue;
+                }
+                const std::string rotation = oter_get_rotation_string( oter_ground );
+                ter_set( p, oter_id( bridge->overpass.str() + rotation ) );
+                const oter_type_str_id &bridge_type = oter_ground->get_type_id();
+                auto points = std::find_if( bridge_points.begin(), bridge_points.end(),
+                [&bridge_type]( const std::pair<oter_type_str_id, std::vector<point_om_omt>> &e ) {
+                    return e.first == bridge_type;
+                } );
+                if( points == bridge_points.end() ) {
+                    bridge_points.emplace_back( bridge_type, std::vector<point_om_omt>() );
+                    points = bridge_points.end() - 1;
+                }
+                points->second.push_back( p.xy() );
+                if( bridge->support ) {
                     tripoint_om_omt support_point = p + tripoint::below;
                     int support_z = 0;
                     // place the rest of the support columns
                     while( ter( support_point ) -> is_water() && --support_z >= -OVERMAP_DEPTH ) {
-                        ter_set( support_point, oter_id( "bridge" + oter_get_rotation_string( oter_ground ) ) );
+                        ter_set( support_point, oter_id( bridge->support->str() + rotation ) );
                         support_point += tripoint::below;
                     }
-                }
-                if( oter_ground->get_type_id() == oter_type_railroad_bridge ) {
-                    ter_set( p, oter_id( "railroad_bridge_overpass" + oter_get_rotation_string( oter_ground ) ) );
-                    railroad_bridge_points.push_back( p.xy() );
                 }
             }
         }
     }
 
-    generate_bridgeheads( bridge_points, oter_type_bridge,
-                          "bridgehead_ground", "bridgehead_ramp" );
-    generate_bridgeheads( railroad_bridge_points, oter_type_railroad_bridge,
-                          "railroad_bridgehead_ground", "railroad_bridgehead_ramp" );
+    for( const std::pair<oter_type_str_id, std::vector<point_om_omt>> &bp : bridge_points ) {
+        const std::optional<oter_bridge_rule> &bridge = bp.first->bridge;
+        if( bridge && bridge->bridgehead_ground && bridge->bridgehead_ramp ) {
+            generate_bridgeheads( bp.second, bp.first, bridge->bridgehead_ground->str(),
+                                  bridge->bridgehead_ramp->str() );
+        }
+    }
 
     return requires_over;
 }
@@ -1899,17 +1904,30 @@ void overmap::populate_connections_out_from_neighbors( const std::vector<const o
     } );
 }
 
+// OMAP-J10: the region's forest terrain settings, or vanilla's if it has none (trails and swamp
+// monsters don't need forests to be generated).
+static const region_settings_forest &forest_settings_or_vanilla( const region_settings &region )
+{
+    static const region_settings_forest vanilla;
+    return region.overmap_forest ? region.get_settings_forest() : vanilla;
+}
+
 void overmap::place_forest_trails()
 {
     std::unordered_set<point_om_omt> visited;
 
+    // OMAP-J10: the region's forest terrain.
+    const region_settings_forest &settings_forest = forest_settings_or_vanilla( *settings );
+    const oter_id forest = settings_forest.forest_ter.id();
+    const oter_id forest_thick = settings_forest.forest_thick_ter.id();
+    const oter_id swamp = settings_forest.swamp_ter.id();
     const auto is_forest = [&]( const point_om_omt & p ) {
         if( !inbounds( p, 1 ) ) {
             return false;
         }
         const oter_id current_terrain = ter( tripoint_om_omt( p, 0 ) );
-        return current_terrain == oter_forest || current_terrain == oter_forest_thick ||
-               current_terrain == oter_forest_water;
+        return current_terrain == forest || current_terrain == forest_thick ||
+               current_terrain == swamp;
     };
     const region_settings_forest_trail &forest_trail = settings->get_settings_forest_trail();
 
@@ -1917,8 +1935,9 @@ void overmap::place_forest_trails()
         for( int j = 0; j < OMAPY; j++ ) {
             tripoint_om_omt seed_point( i, j, 0 );
 
-            oter_id oter = ter( seed_point );
-            if( !is_ot_match( "forest", oter, ot_match_type::prefix ) ) {
+            // A seed that isn't forest fills nothing (the flood fill tests it first), so this
+            // only skips work.
+            if( !is_forest( seed_point.xy() ) ) {
                 continue;
             }
 
@@ -2079,7 +2098,10 @@ void overmap::place_forests()
 {
     const region_settings_forest &settings_forest = settings->get_settings_forest();
     const oter_id default_oter_id( settings->default_oter[OVERMAP_DEPTH] );
-    const om_noise::om_noise_layer_forest f( global_base_point(), g->get_seed() );
+    const om_noise::om_noise_layer_forest f( global_base_point(), g->get_seed(),
+            settings_forest.forest_noise, settings_forest.forest_detail_noise );
+    const oter_id forest = settings_forest.forest_ter.id();
+    const oter_id forest_thick = settings_forest.forest_thick_ter.id();
 
     for( int x = 0; x < OMAPX; x++ ) {
         for( int y = 0; y < OMAPY; y++ ) {
@@ -2096,9 +2118,9 @@ void overmap::place_forests()
 
             // If the noise here meets our threshold, turn it into a forest.
             if( n + forest_size_adjust > settings_forest.noise_threshold_forest_thick ) {
-                ter_set( p, oter_forest_thick );
+                ter_set( p, forest_thick );
             } else if( n + forest_size_adjust > settings_forest.noise_threshold_forest ) {
-                ter_set( p, oter_forest );
+                ter_set( p, forest );
             }
         }
     }
@@ -2168,14 +2190,20 @@ void overmap::place_swamps()
     }
 
     // Get a layer of noise to use in conjunction with our river buffered floodplain.
-    const om_noise::om_noise_layer_floodplain f( global_base_point(), g->get_seed() );
+    const om_noise::om_noise_layer_floodplain f( global_base_point(), g->get_seed(),
+            settings_forest.floodplain_noise );
+    // OMAP-J10: the region's forest terrain (place_forests just placed these two).
+    const oter_id forest = settings_forest.forest_ter.id();
+    const oter_id forest_thick = settings_forest.forest_thick_ter.id();
+    const oter_id swamp = settings_forest.swamp_ter.id();
 
     for( int x = 0; x < OMAPX; x++ ) {
         for( int y = 0; y < OMAPY; y++ ) {
             const tripoint_om_omt pos( x, y, 0 );
             // If this location isn't a forest, there's nothing to do here. We'll only grow swamps in existing
             // forest terrain.
-            if( !is_ot_match( "forest", ter( pos ), ot_match_type::contains ) ) {
+            const oter_id &here = ter( pos );
+            if( here != forest && here != forest_thick ) {
                 continue;
             }
 
@@ -2189,7 +2217,7 @@ void overmap::place_swamps()
             const bool should_isolated_swamp = f.noise_at( pos.xy() ) >
                                                settings_forest.noise_threshold_swamp_isolated;
             if( should_flood || should_isolated_swamp )  {
-                ter_set( pos, oter_forest_water );
+                ter_set( pos, swamp );
             }
         }
     }
@@ -2453,10 +2481,10 @@ void overmap::place_ravines()
         return;
     }
 
-    const oter_id rift( "ravine" );
-    const oter_id rift_edge( "ravine_edge" );
+    const oter_id rift = settings_ravine.ravine_terrain.id();
+    const oter_id rift_edge = settings_ravine.ravine_edge_terrain.id();
     const oter_id rift_floor = settings_ravine.ravine_bottom_terrain_str_id.id();
-    const oter_id rift_floor_edge( "ravine_floor_edge" );
+    const oter_id rift_floor_edge = settings_ravine.ravine_floor_edge_terrain.id();
 
     std::set<point_om_omt> rift_points;
 
@@ -2676,6 +2704,37 @@ void overmap::build_connection(
     build_connection(
         connection, lay_out_connection( connection, source, dest, z, must_be_unexplored ),
         z, initial_dir );
+}
+
+void overmap::build_special_connection( const overmap_connection &connection,
+                                        const special_connection_route &route,
+                                        const tripoint_om_omt &dest, const cube_direction initial_dir,
+                                        const city &cit,
+                                        const std::vector<tripoint_om_omt> &special_omts,
+                                        const bool must_be_unexplored )
+{
+    const special_connection_target target = route.target.value_or( connection.special_target );
+    std::optional<point_om_omt> source;
+    if( target == special_connection_target::nearest_existing ) {
+        const int max_dist = route.max_length.value_or( std::max( OMAPX, OMAPY ) );
+        source = find_point_closest_first( dest.xy(), 1, max_dist, [&]( const point_om_omt & p ) {
+            const tripoint_om_omt tp( p, dest.z() );
+            return inbounds( tp ) && connection.has( ter( tp ) ) &&
+                   std::find( special_omts.begin(), special_omts.end(), tp ) == special_omts.end();
+        } );
+    }
+    if( !source ) {
+        // TODO: don't treat non roads like roads
+        if( cit ) {
+            source = cit.pos;
+        } else {
+            source = get_fallback_road_connection_point();
+        }
+    }
+    if( route.max_length && square_dist( *source, dest.xy() ) > *route.max_length ) {
+        return;
+    }
+    build_connection( *source, dest.xy(), dest.z(), connection, must_be_unexplored, initial_dir );
 }
 
 // connect the points to each other using a minimum spanning tree
@@ -3585,12 +3644,13 @@ void overmap::place_mongroups()
 
     if( get_option<bool>( "DISABLE_ANIMAL_CLASH" ) && !monsters.swamp().is_null() ) {
         // Figure out where swamps are, and place swamp monsters
+        const oter_id swamp = forest_settings_or_vanilla( *settings ).swamp_ter.id();
         for( int x = 3; x < OMAPX - 3; x += 7 ) {
             for( int y = 3; y < OMAPY - 3; y += 7 ) {
                 int swamp_count = 0;
                 for( int sx = x - 3; sx <= x + 3; sx++ ) {
                     for( int sy = y - 3; sy <= y + 3; sy++ ) {
-                        if( ter( { sx, sy, 0 } ) == oter_forest_water ) {
+                        if( ter( { sx, sy, 0 } ) == swamp ) {
                             swamp_count += 2;
                         }
                     }

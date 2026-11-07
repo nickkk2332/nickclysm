@@ -1530,6 +1530,18 @@ conditional_t::func f_map_omt_seen( const JsonObject &jo, std::string_view membe
     };
 }
 
+// OMAP-J12: whether the overmap tile has an overmap terrain flag (an engine flag or a mod's own).
+conditional_t::func f_map_omt_has_flag( const JsonObject &jo, std::string_view member )
+{
+    str_or_var flag = get_str_or_var( jo.get_member( member ), member, true );
+    std::optional<var_info> loc_var;
+    optional( jo, false, "loc", loc_var );
+    return [flag, loc_var]( const_dialogue const & d ) {
+        const oter_id &omt = overmap_buffer.ter( read_omt_or_alpha( loc_var, d ) );
+        return omt->has_flag( flag.evaluate( d ) );
+    };
+}
+
 conditional_t::func f_near_om_location( const JsonObject &jo, std::string_view member,
                                         bool is_npc )
 {
@@ -3871,6 +3883,7 @@ parsers = {
     {"map_in_overmap_special", jarg::member, &conditional_fun::f_map_in_overmap_special },
     {"map_has_extra", jarg::member, &conditional_fun::f_map_has_extra },
     {"map_omt_seen", jarg::member, &conditional_fun::f_map_omt_seen },
+    {"map_omt_has_flag", jarg::member, &conditional_fun::f_map_omt_has_flag },
     {"compare_string", jarg::member, &conditional_fun::f_compare_string },
     {"compare_string_match_all", jarg::member, &conditional_fun::f_compare_string_match_all },
     {"get_condition", jarg::member, &conditional_fun::f_get_condition },

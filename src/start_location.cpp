@@ -221,7 +221,8 @@ void start_location::check() const
                       id.c_str(), loc.omt );
         } else if( loc.omt_type == ot_match_type::subtype ||
                    loc.omt_type == ot_match_type::prefix ||
-                   loc.omt_type == ot_match_type::contains ) {
+                   loc.omt_type == ot_match_type::contains ||
+                   loc.omt_type == ot_match_type::flag ) {
             bool found = false;
             for( const oter_t &ter : overmap_terrains::get_all() ) {
                 if( is_ot_match( loc.omt, ter.id.id(), loc.omt_type ) ) {

@@ -1396,6 +1396,11 @@ See [Character](#character)
 
 ### Overmap terrains
 
+Any other name in an overmap terrain's `flags` is kept as a flag of the mod's own (e.g. `MOD_SAFEHOUSE`).
+The engine gives it no meaning, but overmap location `flags`, the `FLAG` value of `om_terrain_match_type`
+(mission targets, EOC `target_params`, start locations) and the EOC condition `map_omt_has_flag` test it
+like an engine flag. Since any name is accepted, check the spelling of engine flags.
+
 - ```KNOWN_DOWN``` There's a known way down.
 - ```KNOWN_UP``` There's a known way up.
 - ```LINEAR``` For roads etc, which use ID_straight, ID_curved, ID_tee, ID_four_way.
@@ -1410,6 +1415,7 @@ See [Character](#character)
 - ```PP_GENERATE_RIOT_DAMAGE``` **Deprecated.**  Use `"post_process_generators": ["riot_damage"]` on the overmap terrain instead.  See [Post-Process Generators](OVERMAP.md#post-process-generators).  Applies randomized riot damage to the local map as a last stage in generating it.  Furniture and terrain will be bashed, items moved around, blood spatters are placed, and rarely spawns fires.
 - ```RAVINE``` Terrain is part of a ravine, used to properly carve out the terrain for ravine floors.
 - ```RAVINE_EDGE``` Terrain is part of a ravine, used to properly carve out the terrain for ravine edges
+- ```RAMP``` Overmap travel pathing may change z-level on this terrain (bridgeheads).
 - ```SOURCE_FUEL``` For NPC AI, this location may contain fuel for looting.
 - ```SOURCE_FOOD``` For NPC AI, this location may contain food for looting.
 - ```SOURCE_FARMING``` For NPC AI, this location may contain useful farming supplies for looting.

@@ -4,6 +4,9 @@
 #include <cstring>
 #include <optional>
 #include <ostream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "cached_options.h"
@@ -349,6 +352,8 @@ bool is_ot_match( const std::string &name, const oter_id &oter,
             return is_ot_prefix( name, oter );
         case ot_match_type::contains:
             return is_ot_contains( name, oter );
+        case ot_match_type::flag:
+            return oter->has_flag( name );
         default:
             return false;
     }
@@ -429,6 +434,7 @@ std::string enum_to_string<oter_flags>( oter_flags data )
         case oter_flags::source_tailoring: return "SOURCE_TAILORING";
         case oter_flags::source_vehicles: return "SOURCE_VEHICLES";
         case oter_flags::source_weapon: return "SOURCE_WEAPON";
+        case oter_flags::ramp: return "RAMP";
         // *INDENT-ON*
         case oter_flags::num_oter_flags:
             break;
@@ -612,6 +618,88 @@ static string_id<map_data_summary> map_data_for_travel_cost( oter_travel_cost_ty
     return map_data_summary_full_omt;
 }
 
+namespace
+{
+// Reads overmap terrain flag names. As with the engine flag set this replaced, deleting a flag
+// the terrain doesn't have is not an error.
+class oter_flag_name_reader : public generic_typed_reader<oter_flag_name_reader>
+{
+    public:
+        std::string get_next( const JsonValue &jv ) const {
+            return jv.get_string();
+        }
+        template<typename C>
+        void erase_next( JsonValue &jv, C &container ) const {
+            container.erase( get_next( jv ) );
+        }
+};
+} // namespace
+
+bool oter_type_t::has_flag( const std::string_view flag ) const
+{
+    const std::unordered_map<std::string, oter_flags> &engine_flags =
+        io::get_enum_lookup_map<oter_flags>();
+    const std::string flag_name( flag );
+    const auto it = engine_flags.find( flag_name );
+    if( it != engine_flags.end() ) {
+        return has_flag( it->second );
+    }
+    return custom_flags.count( flag_name ) > 0;
+}
+
+void oter_bridge_rule::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "overpass", overpass );
+    optional( jo, false, "support", support );
+    optional( jo, false, "bridgehead_ground", bridgehead_ground );
+    optional( jo, false, "bridgehead_ramp", bridgehead_ramp );
+    if( bridgehead_ground.has_value() != bridgehead_ramp.has_value() ) {
+        jo.throw_error( R"("bridgehead_ground" and "bridgehead_ramp" go together)" );
+    }
+}
+
+void oter_below_rule::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "terrain", terrain );
+    std::string network_name;
+    optional( jo, false, "network", network_name );
+    if( network_name.empty() ) {
+        network = network_type::none;
+    } else if( network_name == "sewer" ) {
+        network = network_type::sewer;
+    } else if( network_name == "subway" ) {
+        network = network_type::subway;
+    } else {
+        jo.throw_error_at( "network", R"("network" must be "sewer" or "subway")" );
+    }
+}
+
+// OMAP-J12: "flags" takes the engine's flags and any other name, which is kept as a flag of the
+// mod's own for searches, overmap locations and EOC conditions. extend/delete work on both.
+void oter_type_t::load_flags( const JsonObject &jo )
+{
+    cata::flat_set<std::string> flag_names = custom_flags;
+    for( int i = 0; i < static_cast<int>( oter_flags::num_oter_flags ); ++i ) {
+        const oter_flags f = static_cast<oter_flags>( i );
+        if( flags[f] ) {
+            flag_names.insert( io::enum_to_string( f ) );
+        }
+    }
+    optional( jo, was_loaded, "flags", flag_names, oter_flag_name_reader{} );
+    const std::unordered_map<std::string, oter_flags> &engine_flags =
+        io::get_enum_lookup_map<oter_flags>();
+    flags.reset();
+    custom_flags.clear();
+    for( const std::string &name : flag_names ) {
+        const auto it = engine_flags.find( name );
+        if( it != engine_flags.end() ) {
+            flags.set( it->second );
+        } else {
+            custom_flags.insert( name );
+        }
+    }
+}
+
 void oter_type_t::load( const JsonObject &jo, const std::string_view )
 {
     optional( jo, was_loaded, "sym", symbol, unicode_codepoint_from_symbol_reader, NULL_UNICODE );
@@ -661,8 +749,9 @@ void oter_type_t::load( const JsonObject &jo, const std::string_view )
         looks_like.insert( looks_like.begin(), jo.get_string( "copy-from" ) );
     }
 
-    const auto flag_reader = typed_flag_reader<oter_flags>( "overmap terrain flag" );
-    optional( jo, was_loaded, "flags", flags, flag_reader );
+    load_flags( jo );
+    optional( jo, was_loaded, "bridge", bridge );
+    optional( jo, was_loaded, "below", below );
 
     optional( jo, was_loaded, "connect_group", connect_group, string_reader{} );
     optional( jo, was_loaded, "travel_cost_type", travel_cost_type, oter_travel_cost_type::other );
@@ -736,6 +825,21 @@ void oter_type_t::check() const
             debugmsg( "'%s' has a radio station with unknown snippet category '%s'", id.str(),
                       station.snippet_category );
         }
+    }
+
+    const auto check_bridge_terrain = [this]( const std::optional<oter_type_str_id> &t ) {
+        if( t && !t->is_valid() ) {
+            debugmsg( "Invalid bridge terrain '%s' for '%s'", t->str(), id.str() );
+        }
+    };
+    if( bridge ) {
+        check_bridge_terrain( bridge->overpass );
+        check_bridge_terrain( bridge->support );
+        check_bridge_terrain( bridge->bridgehead_ground );
+        check_bridge_terrain( bridge->bridgehead_ramp );
+    }
+    if( below && !below->terrain.is_valid() ) {
+        debugmsg( "Invalid below terrain '%s' for '%s'", below->terrain.str(), id.str() );
     }
     if( !post_process_generators.empty() && has_flag( oter_flags::road ) ) {
         debugmsg( "'%s' has post_process_generators but road flag; "
@@ -1030,6 +1134,7 @@ std::string enum_to_string<ot_match_type>( ot_match_type data )
         case ot_match_type::subtype: return "SUBTYPE";
         case ot_match_type::prefix: return "PREFIX";
         case ot_match_type::contains: return "CONTAINS";
+        case ot_match_type::flag: return "FLAG";
         // *INDENT-ON*
         case ot_match_type::num_ot_match_type:
             break;

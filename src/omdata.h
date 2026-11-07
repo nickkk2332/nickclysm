@@ -357,6 +357,7 @@ enum class oter_flags : int {
     source_tailoring,
     source_vehicles,
     source_weapon,
+    ramp, // travel pathing may change z-level here (bridgeheads)
     num_oter_flags
 };
 
@@ -436,6 +437,33 @@ class oter_vision
         std::vector<level> levels;
 };
 
+// OMAP-J13: what the overmap generator builds above and below a bridge terrain.
+struct oter_bridge_rule {
+    // Placed, rotated like the bridge, on the z-level above (z = 1).
+    oter_type_str_id overpass;
+    // If set, placed (rotated like the bridge) from the bridge's own tile downwards for as long
+    // as the tile there is water. Vanilla's bridge has no WATER flag, so it gets none.
+    std::optional<oter_type_str_id> support;
+    // If set (both or neither), the bridge's end tiles become bridgehead_ground, with
+    // bridgehead_ramp above them, rotated to line up with the bridge.
+    std::optional<oter_type_str_id> bridgehead_ground;
+    std::optional<oter_type_str_id> bridgehead_ramp;
+
+    void deserialize( const JsonObject &jo );
+};
+
+// OMAP-J13: terrain the overmap generator places on the z-level below a terrain.
+struct oter_below_rule {
+    enum class network_type : int { none, sewer, subway };
+
+    oter_str_id terrain;
+    // The region's tunnel connection (sewer_connection or subway_connection) that the placed
+    // tile is joined to, if any.
+    network_type network = network_type::none;
+
+    void deserialize( const JsonObject &jo );
+};
+
 struct oter_type_t {
     public:
         static const oter_type_t null_type;
@@ -484,6 +512,9 @@ struct oter_type_t {
 
         // The radio stations worldgen picks from for this terrain, if any (OMAP-J08)
         std::vector<oter_radio_station> radio_stations;
+        // OMAP-J13: vertical terrain rules.
+        std::optional<oter_bridge_rule> bridge;
+        std::optional<oter_below_rule> below;
 
         std::string get_symbol() const;
 
@@ -503,6 +534,12 @@ struct oter_type_t {
 
         bool has_flag( oter_flags flag ) const {
             return flags[flag];
+        }
+        // An engine flag or a flag of a mod's own, by name.
+        bool has_flag( std::string_view flag ) const;
+        // The flags that are not engine flags, which mods use to tag their terrain.
+        const cata::flat_set<std::string> &get_custom_flags() const {
+            return custom_flags;
         }
 
         void set_flag( oter_flags flag, bool value = true ) {
@@ -531,10 +568,12 @@ struct oter_type_t {
 
     private:
         enum_bitset<oter_flags> flags;
+        cata::flat_set<std::string> custom_flags;
         std::vector<oter_id> directional_peers;
         std::string connect_group; // Group for connection when rendering overmap tiles
 
         void register_terrain( const oter_t &peer, size_t n, size_t max_n );
+        void load_flags( const JsonObject &jo );
 };
 
 template<>
@@ -626,6 +665,13 @@ struct oter_t {
             return type->post_process_generators;
         }
 
+        const std::optional<oter_bridge_rule> &get_bridge_rule() const {
+            return type->bridge;
+        }
+        const std::optional<oter_below_rule> &get_below_rule() const {
+            return type->below;
+        }
+
         overmap_land_use_code_id get_land_use_code() const {
             return type->land_use_code;
         }
@@ -636,6 +682,9 @@ struct oter_t {
         bool has_connection( om_direction::type dir ) const;
 
         bool has_flag( oter_flags flag ) const {
+            return type->has_flag( flag );
+        }
+        bool has_flag( std::string_view flag ) const {
             return type->has_flag( flag );
         }
 
@@ -770,6 +819,37 @@ struct overmap_special_terrain : overmap_special_locations {
     void deserialize( const JsonObject &om );
 };
 
+// OMAP-J11: where an overmap special's connection is built from.
+enum class special_connection_target : int {
+    // The nearest city's center, or the overmap's fallback road point if there is no city.
+    city,
+    // The nearest tile (outside the special) that already has this connection; as `city` if
+    // there is none.
+    nearest_existing,
+    last
+};
+
+template<>
+struct enum_traits<special_connection_target> {
+    static constexpr special_connection_target last = special_connection_target::last;
+};
+
+namespace io
+{
+template<>
+std::string enum_to_string<special_connection_target>( special_connection_target );
+} // namespace io
+
+struct special_connection_route {
+    // Unset: the connection's own `special_target`.
+    std::optional<special_connection_target> target;
+    // If set, the connection isn't built from a source farther than this (overmap tiles,
+    // square distance) from its end point; it also bounds the nearest_existing search.
+    std::optional<int> max_length;
+
+    void load( const JsonObject &jo );
+};
+
 struct overmap_special_connection {
     tripoint_rel_omt p;
     std::optional<tripoint_rel_omt> from;
@@ -778,6 +858,7 @@ struct overmap_special_connection {
     string_id<oter_type_t> terrain;
     string_id<overmap_connection> connection;
     bool existing = false;
+    special_connection_route route;
 
     void deserialize( const JsonObject &jo );
 };
@@ -1056,9 +1137,11 @@ struct mutable_overmap_terrain_join {
 
 struct mutable_special_connection {
     string_id<overmap_connection> connection;
+    special_connection_route route;
 
     void deserialize( const JsonObject &jo ) {
         jo.read( "connection", connection );
+        route.load( jo );
     }
 
     void check( const std::string &context ) const;

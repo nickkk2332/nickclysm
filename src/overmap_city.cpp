@@ -31,7 +31,6 @@
 #include "weighted_list.h"
 
 static const oter_str_id oter_road_nesw( "road_nesw" );
-static const oter_str_id oter_road_nesw_manhole( "road_nesw_manhole" );
 
 static const oter_type_str_id oter_type_road( "road" );
 
@@ -447,9 +446,12 @@ void overmap::build_city_street(
                                town, placed_unique_buildings, new_width );
 
             const oter_id &oter = ter( rp );
-            // TODO: Get rid of the hardcoded terrain ids.
-            if( one_in( 2 ) && oter->get_line() == 15 && oter->type_is( oter_type_id( "road" ) ) ) {
-                ter_set( rp, oter_road_nesw_manhole.id() );
+            // OMAP-J13: the region sets the manhole chance and terrain.
+            // TODO: Get rid of the hardcoded road terrain id.
+            const region_settings_city &city_settings = settings->get_settings_city();
+            if( city_settings.manhole_chance > 0 && one_in( city_settings.manhole_chance ) &&
+                oter->get_line() == 15 && oter->type_is( oter_type_road.id() ) ) {
+                ter_set( rp, city_settings.manhole_terrain.id() );
             }
         }
 

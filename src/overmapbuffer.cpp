@@ -57,9 +57,6 @@
 #include "vehicle.h"
 #include "worldfactory.h"
 
-static const oter_type_str_id oter_type_bridgehead_ground( "bridgehead_ground" );
-static const oter_type_str_id oter_type_bridgehead_ramp( "bridgehead_ramp" );
-
 static const int default_search_range = OMAPX * 5;
 // How many rings of overmaps around the origin's a search for a mission's overmap special may
 // generate when no overmap made so far holds one (1: the eight around it at most).
@@ -1107,11 +1104,11 @@ static int get_terrain_cost( const tripoint_abs_omt &omt_pos, const overmap_path
     return params.get_cost( oter->get_travel_cost_type() );
 }
 
+// OMAP-J13: terrain flagged RAMP (bridgeheads), not a fixed list of ids.
 static bool is_ramp( const tripoint_abs_omt &omt_pos )
 {
     const oter_id &oter = overmap_buffer.ter_existing( omt_pos );
-    return ( oter->get_type_id() == oter_type_bridgehead_ground ) ||
-           ( oter->get_type_id() == oter_type_bridgehead_ramp );
+    return oter->has_flag( oter_flags::ramp );
 }
 
 pf::simple_path<tripoint_abs_omt> overmapbuffer::get_travel_path(

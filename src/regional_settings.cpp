@@ -30,10 +30,21 @@ static const mongroup_id GROUP_SUBWAY_CITY( "GROUP_SUBWAY_CITY" );
 static const mongroup_id GROUP_SWAMP( "GROUP_SWAMP" );
 static const mongroup_id GROUP_ZOMBIE_HORDE( "GROUP_ZOMBIE_HORDE" );
 
+static const oter_str_id oter_forest( "forest" );
+static const oter_str_id oter_forest_thick( "forest_thick" );
+static const oter_str_id oter_forest_water( "forest_water" );
 static const oter_str_id oter_lake_bed( "lake_bed" );
 static const oter_str_id oter_lake_shore( "lake_shore" );
 static const oter_str_id oter_lake_surface( "lake_surface" );
 static const oter_str_id oter_lake_water_cube( "lake_water_cube" );
+static const oter_str_id oter_ocean_bed( "ocean_bed" );
+static const oter_str_id oter_ocean_shore( "ocean_shore" );
+static const oter_str_id oter_ocean_surface( "ocean_surface" );
+static const oter_str_id oter_ocean_water_cube( "ocean_water_cube" );
+static const oter_str_id oter_ravine( "ravine" );
+static const oter_str_id oter_ravine_edge( "ravine_edge" );
+static const oter_str_id oter_ravine_floor_edge( "ravine_floor_edge" );
+static const oter_str_id oter_road_nesw_manhole( "road_nesw_manhole" );
 
 static const pp_generator_id pp_generator_riot_damage_road( "riot_damage_road" );
 
@@ -461,7 +472,34 @@ void region_settings_forest::load( const JsonObject &jo, std::string_view )
 
     optional( jo, was_loaded, "forest_threshold_limit", max_forest, 0.395 );
     optional( jo, was_loaded, "forest_threshold_increase", forest_increase, { 0, 0, 0, 0 } );
+    optional( jo, was_loaded, "forest_ter", forest_ter, oter_forest );
+    optional( jo, was_loaded, "forest_thick_ter", forest_thick_ter, oter_forest_thick );
+    optional( jo, was_loaded, "swamp_ter", swamp_ter, oter_forest_water );
+    optional( jo, was_loaded, "noise", forest_noise, om_noise::om_noise_params::forest() );
+    optional( jo, was_loaded, "noise_detail", forest_detail_noise,
+              om_noise::om_noise_params::forest_detail() );
+    optional( jo, was_loaded, "floodplain_noise", floodplain_noise,
+              om_noise::om_noise_params::floodplain() );
 }
+
+region_settings_forest::region_settings_forest() :
+    forest_ter( oter_forest ),
+    forest_thick_ter( oter_forest_thick ),
+    swamp_ter( oter_forest_water )
+{}
+
+region_settings_ocean::region_settings_ocean() :
+    surface( oter_ocean_surface ),
+    shore( oter_ocean_shore ),
+    interior( oter_ocean_water_cube ),
+    bed( oter_ocean_bed )
+{}
+
+region_settings_ravine::region_settings_ravine() :
+    ravine_terrain( oter_ravine ),
+    ravine_edge_terrain( oter_ravine_edge ),
+    ravine_floor_edge_terrain( oter_ravine_floor_edge )
+{}
 
 void region_settings_ravine::load( const JsonObject &jo, std::string_view )
 {
@@ -471,6 +509,10 @@ void region_settings_ravine::load( const JsonObject &jo, std::string_view )
               ravine_range );
     optional( jo, was_loaded, "ravine_depth", ravine_depth );
     optional( jo, true, "ravine_bottom_terrain_id", ravine_bottom_terrain_str_id );
+    optional( jo, was_loaded, "ravine_terrain_id", ravine_terrain, oter_ravine );
+    optional( jo, was_loaded, "ravine_edge_terrain_id", ravine_edge_terrain, oter_ravine_edge );
+    optional( jo, was_loaded, "ravine_floor_edge_terrain_id", ravine_floor_edge_terrain,
+              oter_ravine_floor_edge );
 }
 
 void region_settings_overmap_connection::deserialize( const JsonObject &jo )
@@ -543,6 +585,10 @@ void region_settings_ocean::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "mapgen_shallow_water", mapgen_shallow_water );
     optional( jo, was_loaded, "mapgen_surf", mapgen_surf );
     optional( jo, was_loaded, "mapgen_beach", mapgen_beach );
+    optional( jo, was_loaded, "surface_ter", surface, oter_ocean_surface );
+    optional( jo, was_loaded, "shore_ter", shore, oter_ocean_shore );
+    optional( jo, was_loaded, "interior_ter", interior, oter_ocean_water_cube );
+    optional( jo, was_loaded, "bed_ter", bed, oter_ocean_bed );
 }
 
 void region_settings_highway::load( const JsonObject &jo, std::string_view )
@@ -616,6 +662,8 @@ void region_settings_city::load( const JsonObject &jo, std::string_view )
     optional( jo, true, "extra_branch_chance", extra_branch_chance );
     optional( jo, true, "megacity_size", megacity_size );
     optional( jo, true, "megacity_seeds", megacity_seeds );
+    optional( jo, was_loaded, "manhole_chance", manhole_chance, 2 );
+    optional( jo, was_loaded, "manhole_terrain", manhole_terrain, oter_road_nesw_manhole );
 }
 
 void region_settings_city::size_variation::deserialize( const JsonObject &jo )

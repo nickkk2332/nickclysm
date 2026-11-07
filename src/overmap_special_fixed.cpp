@@ -314,15 +314,9 @@ special_placement_result fixed_overmap_special_data::place(
             if( initial_dir != cube_direction::last ) {
                 initial_dir = initial_dir + dir;
             }
-            // TODO: JSONification of logic + don't treat non roads like roads
-            point_om_omt target;
-            if( cit ) {
-                target = cit.pos;
-            } else {
-                target = om.get_fallback_road_connection_point();
-            }
-            om.build_connection( target, rp.xy(), elem.p.z(), *elem.connection, must_be_unexplored,
-                                 initial_dir );
+            om.build_special_connection( *elem.connection, elem.route,
+                                         tripoint_om_omt( rp.xy(), elem.p.z() ), initial_dir, cit,
+                                         result.omts_used, must_be_unexplored );
         }
     }
 

@@ -17,6 +17,7 @@
 #include "mapdata.h"
 #include "memory_fast.h"
 #include "point.h"
+#include "overmap_noise.h"
 #include "type_id.h"
 #include "weighted_list.h"
 
@@ -98,6 +99,10 @@ struct region_settings_city {
         { OMAPX / 4, OMAPY / 4 }, { OMAPX / 4, OMAPY / 4 * 3 }, { OMAPX / 4 * 2, OMAPY / 4 * 2 },
         { OMAPX / 4 * 3, OMAPY / 4 }, { OMAPX / 4 * 3, OMAPY / 4 * 3 }
     };
+    // OMAP-J13: one in manhole_chance four-way road crossings of a city street becomes
+    // manhole_terrain (0: none).
+    int manhole_chance = 2;
+    oter_str_id manhole_terrain;
 
     building_bin houses;
     building_bin shops;
@@ -275,13 +280,22 @@ struct region_settings_forest {
     // increase nesw
     std::array<float, 4> forest_increase;
 
+    // OMAP-J10: the terrain placed for forests, thick forests and swamps. Trails are laid through
+    // these three, and swamps grow in the first two.
+    oter_str_id forest_ter;
+    oter_str_id forest_thick_ter;
+    oter_str_id swamp_ter;
+    om_noise::om_noise_params forest_noise = om_noise::om_noise_params::forest();
+    om_noise::om_noise_params forest_detail_noise = om_noise::om_noise_params::forest_detail();
+    om_noise::om_noise_params floodplain_noise = om_noise::om_noise_params::floodplain();
+
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
     void finalize();
 
     static void load_region_settings_forest( const JsonObject &jo, const std::string &src );
     static void reset();
-    region_settings_forest() = default;
+    region_settings_forest();
 };
 
 struct shore_extendable_overmap_terrain_alias {
@@ -357,6 +371,11 @@ struct region_settings_ocean {
     ter_str_id mapgen_shallow_water;
     ter_str_id mapgen_surf;
     ter_str_id mapgen_beach;
+    // OMAP-J10: as for lakes.
+    oter_str_id surface;
+    oter_str_id shore;
+    oter_str_id interior;
+    oter_str_id bed;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
@@ -364,7 +383,7 @@ struct region_settings_ocean {
 
     static void load_region_settings_ocean( const JsonObject &jo, const std::string &src );
     static void reset();
-    region_settings_ocean() = default;
+    region_settings_ocean();
 };
 
 struct region_settings_ravine {
@@ -375,6 +394,11 @@ struct region_settings_ravine {
     int ravine_width = 1;
     int ravine_depth = -3;
     oter_str_id ravine_bottom_terrain_str_id = oter_ravine_floor;
+    // OMAP-J10: the terrain of the ravine's inner tiles and edge tiles above the bottom, and of
+    // the bottom's edge tiles.
+    oter_str_id ravine_terrain;
+    oter_str_id ravine_edge_terrain;
+    oter_str_id ravine_floor_edge_terrain;
 
     bool was_loaded = false;
     void load( const JsonObject &jo, std::string_view );
@@ -383,7 +407,7 @@ struct region_settings_ravine {
 
     static void load_region_settings_ravine( const JsonObject &jo, const std::string &src );
     static void reset();
-    region_settings_ravine() = default;
+    region_settings_ravine();
 };
 
 struct region_settings_overmap_connection {
