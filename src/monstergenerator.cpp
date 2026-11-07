@@ -185,6 +185,22 @@ std::string enum_to_string<mdeath_type>( mdeath_type data )
     cata_fatal( "Invalid mdeath_type" );
 }
 
+template<>
+std::string enum_to_string<monster_safemode>( monster_safemode data )
+{
+    switch( data ) {
+        case monster_safemode::rules:
+            return "rules";
+        case monster_safemode::always:
+            return "always";
+        case monster_safemode::ignore:
+            return "ignore";
+        case monster_safemode::last:
+            break;
+    }
+    cata_fatal( "Invalid monster_safemode" );
+}
+
 } // namespace io
 
 template<>
@@ -1227,6 +1243,7 @@ void mtype::load( const JsonObject &jo, const std::string_view src )
               mtype_id() );
 
     optional( jo, was_loaded, "aggro_character", aggro_character, true );
+    optional( jo, was_loaded, "safemode", safemode, monster_safemode::rules );
 
     optional( jo, was_loaded, "attack_effs", atk_effs );
 

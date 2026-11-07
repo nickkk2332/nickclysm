@@ -125,6 +125,7 @@ linked sections:
 | field                   | type                  | description
 | --                      | --                    | --
 | arrange                 | string                | For "layout" style, display child widgets as "rows", "columns" or "minimum_columns"; for ["graph style"](#graph-style) draw vertical ("rows") or horizontal ("columns")
+| [beta](#beta)           | string                | What clause conditions and custom vars get as beta (`npc_`/`n_`): "driven_vehicle", "wielded_item", "aim_target" or "mount". Children inherit it
 | bodypart                | string                | For "bp_*" variables, body part id like "leg_r" or "torso"
 | separator               | string                | The string used to separate the label from the widget data. Children will inherit if this is not defined. Mandatory if style is "sidebar".
 | padding                 | int                   | Amount of padding between columns for this widget. Children will inherit if this is not defined. Mandatory if style is "sidebar".
@@ -878,6 +879,37 @@ Here are the flags that can be included:
 | `W_DYNAMIC_HEIGHT`      | Allows certain multi-line widgets to dynamically adjust their height
 | `W_NO_PADDING`          | Prevents the sidebar from doing any sort of whitespace-based alignment. All widgets are packed as tightly as possible. Use this flag only if you plan to align things yourself.
 
+## beta
+
+Clause conditions and custom variables run with the character the widget is shown for as alpha
+(`u_`): the avatar on the sidebar, the follower in the follower panel (see [UI slots](#ui-slots)).
+Without `beta` there is no beta talker, and an `npc_` condition is an error. `beta` gives them one:
+
+| value              | beta talker
+|---                 |---
+| `"driven_vehicle"` | the vehicle you control remotely, or the one you are in (a vehicle talker)
+| `"wielded_item"`   | the item you wield (an item talker)
+| `"aim_target"`     | the creature you last aimed at, while it is alive and you can see it
+| `"mount"`          | the monster you ride
+| `"none"`           | no beta talker, also for children of a widget that has one
+
+Child widgets, and widgets in a layout's clauses, use their parent's `beta` unless they set their own.
+While the target is missing (you are on foot, your hands are empty...) the widget is empty: it
+shows only its label, or nothing with `W_DISABLED_WHEN_EMPTY`; a layout shows nothing.
+
+```jsonc
+{
+  "id": "mech_heat_num",
+  "type": "widget",
+  "label": "Heat",
+  "style": "number",
+  "beta": "mount",
+  "var": "custom",
+  "custom_var": { "value": { "math": [ "n_heat" ] }, "range": [ 0, 100 ] },
+  "flags": [ "W_DISABLED_WHEN_EMPTY" ]
+}
+```
+
 
 # Clauses and conditions
 
@@ -1115,6 +1147,34 @@ math expression. The first element specifies the minimum value, the middle eleme
 normal range, and the last element specifies the maximum value, as descibed in [Variable ranges](#variable-ranges).
 
 All custom variables are numeric and must use style "number" or style "graph".
+
+
+# UI slots
+
+A few screens besides the sidebar show a widget a mod defines under a fixed id, for the character
+that screen is about. The widget is drawn like a sidebar section and each non-empty line is added;
+vanilla defines none of them, so nothing changes until a mod does. Use a "layout" with
+`"arrange": "rows"` to add several lines. A mod that finds one another mod already defined can
+`copy-from` it and `extend` its `widgets`.
+
+| widget id            | where                                      | shown for
+|---                   |---                                         |---
+| `follower_needs`     | Follower panel (faction menu), under hunger, thirst and sleepiness | the follower
+| `consume_menu_needs` | Eat/drink menu, after Food, Drink, Pain, Rest and Weight | you
+
+Widget vars that only exist for the avatar (`overmap_text`, `mood_text`, `move_count_mode_text`,
+`carry_weight_text`, `carry_weight_value`, `power_balance_text`, `move`, `log_power_balance` and
+the manual combat mark of `style_text`) show nothing, or 0, for a follower.
+
+```jsonc
+{
+  "id": "follower_needs",
+  "type": "widget",
+  "style": "layout",
+  "arrange": "rows",
+  "widgets": [ "xe_blood_desc" ]
+}
+```
 
 
 # Predefined widgets

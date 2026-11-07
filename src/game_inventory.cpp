@@ -79,6 +79,7 @@
 #include "units_utility.h"
 #include "value_ptr.h"
 #include "vitamin.h"
+#include "widget.h"
 
 static const bionic_id bio_painkiller( "bio_painkiller" );
 
@@ -99,6 +100,8 @@ static const requirement_id requirement_data_anesthetic( "anesthetic" );
 static const skill_id skill_computer( "computer" );
 
 static const trait_id trait_DEBUG_BIONICS( "DEBUG_BIONICS" );
+
+static const widget_id widget_consume_menu_needs( "consume_menu_needs" );
 
 using item_filter = std::function<bool ( const item & )>;
 using item_location_filter = std::function<bool ( const item_location & )>;
@@ -968,6 +971,12 @@ static std::string get_consume_needs_hint( Character &you )
     hint.append( string_format( " %s ", LINE_XOXO_S ) );
     hint.append( string_format( "%s %s", _( "Weight:" ), display::weight_string( you ) ) );
     hint.append( string_format( " %s ", LINE_XOXO_S ) );
+    // A mod's "consume_menu_needs" widget adds its lines here (doc/WIDGETS.md, UI slots)
+    for( const std::string &line : widget::slot_lines( widget_consume_menu_needs, you,
+            FULL_SCREEN_WIDTH ) ) {
+        hint.append( line );
+        hint.append( string_format( " %s ", LINE_XOXO_S ) );
+    }
 
     int kcal_ingested_today = you.as_avatar()->get_daily_ingested_kcal( false );
     int kcal_ingested_yesterday = you.as_avatar()->get_daily_ingested_kcal( true );

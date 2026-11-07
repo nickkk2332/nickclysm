@@ -1237,6 +1237,7 @@ void memorial_logger::notify( const cata::event &e )
         case event_type::monster_milked:
         case event_type::monster_sheared:
         case event_type::character_mounts_monster:
+        case event_type::avatar_spots_hostile:
         case event_type::companion_mission_finished:
         case event_type::companion_mission_started:
             break;

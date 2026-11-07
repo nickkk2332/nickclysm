@@ -2303,6 +2303,37 @@ double moon_phase_eval( const_dialogue const & /* d */, char /* scope */,
     return static_cast<int>( get_moon_phase( calendar::turn ) );
 }
 
+// UIHUD-J07: 0 safe mode off, 1 on, 2 on and stopped by a hostile in view
+double safe_mode_eval( const_dialogue const & /* d */, char /* scope */,
+                       std::vector<diag_value> const & /* params */,
+                       diag_kwargs const & /* kwargs */ )
+{
+    return static_cast<int>( g->safe_mode );
+}
+
+void safe_mode_ass( double val, dialogue & /* d */, char /* scope */,
+                    std::vector<diag_value> const & /* params */, diag_kwargs const & /* kwargs */ )
+{
+    const int mode = std::clamp( static_cast<int>( std::lround( val ) ),
+                                 static_cast<int>( SAFE_MODE_OFF ), static_cast<int>( SAFE_MODE_STOP ) );
+    g->set_safe_mode( static_cast<safe_mode_type>( mode ) );
+}
+
+// UIHUD-J08: the sunlight falling on the talker, in W/m2; 0 when it is sheltered (indoors, under
+// a roof, below ground or inside a vehicle). Above 87 counts as in sunlight (u_in_sunlight).
+double sun_irradiance_eval( const_dialogue const &d, char scope,
+                            std::vector<diag_value> const & /* params */,
+                            diag_kwargs const & /* kwargs */ )
+{
+    map &here = get_map();
+    const tripoint_abs_ms loc = d.const_actor( is_beta( scope ) )->pos_abs();
+    const tripoint_bub_ms pos = here.get_bub( loc );
+    if( here.inbounds( pos ) && g->is_sheltered( &here, pos ) ) {
+        return 0.0;
+    }
+    return incident_sun_irradiance( current_weather( loc, calendar::turn ), calendar::turn );
+}
+
 // oracle('name'): a literal name must be a named score.
 void oracle_check( std::vector<diag_value> const &params )
 {
@@ -4651,6 +4682,8 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "city_distance", { "g", 1, city_distance_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
     { "city_size", { "g", 1, city_size_eval, {}, { "known", "min_size", "max_size", "max_distance", "name" } } },
     { "moon_phase", { "g", 0, moon_phase_eval } },
+    { "safe_mode", { "g", 0, safe_mode_eval, safe_mode_ass } },
+    { "sun_irradiance", { "un", 0, sun_irradiance_eval } },
     { "morale", { "un", 0, morale_eval, morale_ass, { "raw" } } },
     { "morale_value", { "un", 1, morale_value_eval } },
     { "stomach", { "un", 1, stomach_eval, {}, { "organ" } } },

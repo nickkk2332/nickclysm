@@ -2366,6 +2366,20 @@ conditional_t::func f_tile_is_outside( const JsonObject &jo, std::string_view me
     };
 }
 
+// UIHUD-J08: in sunlight, as traits that react to the sun count it (math: sun_irradiance)
+conditional_t::func f_in_sunlight( bool is_npc )
+{
+    return [is_npc]( const_dialogue const & d ) {
+        const Creature *c = require_creature( d, is_npc, "in_sunlight" );
+        if( c == nullptr ) {
+            return false;
+        }
+        map &here = get_map();
+        const tripoint_bub_ms pos = c->pos_bub( here );
+        return here.inbounds( pos ) && g->is_in_sunlight( &here, pos );
+    };
+}
+
 conditional_t::func f_is_underwater( bool is_npc )
 {
     return [is_npc]( const_dialogue const & d ) {
@@ -3965,6 +3979,7 @@ parsers_simple = {
     {"u_has_stolen_item", "npc_has_stolen_item", &conditional_fun::f_has_stolen_item },
     {"u_is_outside", "npc_is_outside", &conditional_fun::f_is_outside },
     {"u_is_underwater", "npc_is_underwater", &conditional_fun::f_is_underwater },
+    {"u_in_sunlight", "npc_in_sunlight", &conditional_fun::f_in_sunlight },
     {"u_is_swimming", "npc_is_swimming", &conditional_fun::f_is_swimming },
     {"u_is_bleeding", "npc_is_bleeding", &conditional_fun::f_is_bleeding },
     {"u_has_camp", &conditional_fun::f_u_has_camp },

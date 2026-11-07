@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <numeric>
+#include <utility>
 
 #include "avatar.h"
 #include "cata_utility.h"
@@ -24,8 +26,11 @@
 #include "enum_conversions.h"
 #include "flexbuffer_json.h"
 #include "generic_factory.h"
+#include "item_location.h"
 #include "magic.h"
 #include "magic_enchantment.h"
+#include "map.h"
+#include "monster.h"
 #include "npc.h"
 #include "output.h"
 #include "panels.h"
@@ -35,6 +40,8 @@
 #include "talker.h"
 #include "translations.h"
 #include "units.h"
+#include "vehicle.h"
+#include "vpart_position.h"
 
 const static flag_id json_flag_W_DISABLED_BY_DEFAULT( "W_DISABLED_BY_DEFAULT" );
 const static flag_id json_flag_W_DISABLED_WHEN_EMPTY( "W_DISABLED_WHEN_EMPTY" );
@@ -302,6 +309,29 @@ std::string enum_to_string<bodypart_status>( bodypart_status stat )
 }
 
 template<>
+std::string enum_to_string<widget_beta>( widget_beta beta )
+{
+    switch( beta ) {
+        case widget_beta::inherit:
+            return "inherit";
+        case widget_beta::none:
+            return "none";
+        case widget_beta::driven_vehicle:
+            return "driven_vehicle";
+        case widget_beta::wielded_item:
+            return "wielded_item";
+        case widget_beta::aim_target:
+            return "aim_target";
+        case widget_beta::mount:
+            return "mount";
+        case widget_beta::num_widget_betas:
+        default:
+            break;
+    }
+    cata_fatal( "Invalid widget_beta" );
+}
+
+template<>
 std::string enum_to_string<widget_alignment>( widget_alignment align )
 {
     switch( align ) {
@@ -318,6 +348,134 @@ std::string enum_to_string<widget_alignment>( widget_alignment align )
     cata_fatal( "Invalid widget_alignment" );
 }
 } // namespace io
+
+namespace
+{
+// Who the widget being drawn is about: the character it is shown for (alpha) and the target its
+// "beta" field picks. layout() and show() open one for as long as they run, so clause conditions
+// and custom vars anywhere below them see the same talkers; a widget without "beta" uses its
+// parent's.
+class widget_subject
+{
+    public:
+        widget_subject( const Character &who, widget_beta beta );
+        ~widget_subject();
+        widget_subject( const widget_subject & ) = delete;
+        widget_subject &operator=( const widget_subject & ) = delete;
+
+        // The "beta" field asks for a target that isn't there: the widget counts as empty
+        bool target_missing() const;
+        // alpha is the shown character, beta the target (no beta without "beta")
+        const_dialogue make_dialogue() const;
+
+        const Character &who;
+    private:
+        const widget_subject *outer;
+        widget_beta beta;
+        vehicle *veh = nullptr;
+        item_location wielded;
+        const Creature *critter = nullptr;
+};
+
+// The innermost widget_subject, nullptr while no widget is being drawn
+const widget_subject *current_subject = nullptr;
+
+widget_subject::widget_subject( const Character &who, widget_beta beta_in )
+    : who( who ), outer( current_subject ), beta( beta_in )
+{
+    if( beta == widget_beta::inherit ) {
+        beta = outer != nullptr ? outer->beta : widget_beta::none;
+    }
+    if( outer != nullptr && &outer->who == &who && outer->beta == beta ) {
+        // A child drawn for the same character with the same beta: same target
+        veh = outer->veh;
+        wielded = outer->wielded;
+        critter = outer->critter;
+    } else {
+        map &here = get_map();
+        switch( beta ) {
+            case widget_beta::driven_vehicle:
+                if( who.is_avatar() ) {
+                    veh = display::vehicle_driven( who );
+                } else if( who.in_vehicle ) {
+                    veh = veh_pointer_or_null( here.veh_at( who.pos_bub( here ) ) );
+                }
+                break;
+            case widget_beta::wielded_item:
+                wielded = who.get_wielded_item();
+                break;
+            case widget_beta::aim_target: {
+                const shared_ptr_fast<Creature> target = who.last_target.lock();
+                if( target && !target->is_dead_state() && who.sees( here, *target ) ) {
+                    critter = target.get();
+                }
+                break;
+            }
+            case widget_beta::mount:
+                if( who.is_mounted() ) {
+                    critter = who.mounted_creature.get();
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    current_subject = this;
+}
+
+widget_subject::~widget_subject()
+{
+    current_subject = outer;
+}
+
+bool widget_subject::target_missing() const
+{
+    switch( beta ) {
+        case widget_beta::driven_vehicle:
+            return veh == nullptr;
+        case widget_beta::wielded_item:
+            return !wielded;
+        case widget_beta::aim_target:
+        case widget_beta::mount:
+            return critter == nullptr;
+        default:
+            return false;
+    }
+}
+
+const_dialogue widget_subject::make_dialogue() const
+{
+    std::unique_ptr<const_talker> beta_talker;
+    if( !target_missing() ) {
+        switch( beta ) {
+            case widget_beta::driven_vehicle:
+                beta_talker = get_talker_for( std::as_const( *veh ) );
+                break;
+            case widget_beta::wielded_item:
+                beta_talker = get_const_talker_for( wielded );
+                break;
+            case widget_beta::aim_target:
+            case widget_beta::mount:
+                beta_talker = get_const_talker_for( *critter );
+                break;
+            default:
+                break;
+        }
+    }
+    return const_dialogue( get_const_talker_for( who ), std::move( beta_talker ) );
+}
+
+// The talkers a clause condition or custom var is evaluated with: those of the widget being drawn
+// (for `who`, if given), else `who` (or the avatar) with no beta
+const_dialogue widget_dialogue( const Character *who = nullptr )
+{
+    if( current_subject != nullptr && ( who == nullptr || who == &current_subject->who ) ) {
+        return current_subject->make_dialogue();
+    }
+    const Character &alpha = who != nullptr ? *who : static_cast<const Character &>( get_avatar() );
+    return const_dialogue( get_const_talker_for( alpha ), nullptr );
+}
+} // namespace
 
 void widget_clause::load( const JsonObject &jo )
 {
@@ -343,10 +501,13 @@ void widget_clause::load( const JsonObject &jo )
 
 bool widget_clause::meets_condition( const std::string &opt_var ) const
 {
-    dialogue d( get_talker_for( get_avatar() ), nullptr );
+    if( !has_condition ) {
+        return true;
+    }
+    const_dialogue d = widget_dialogue();
     d.reason = opt_var; // TODO: remove since it's replaced by context var
-    write_var_value( var_type::context, "widget", &d, opt_var );
-    return !has_condition || condition( d );
+    d.set_value( "widget", opt_var );
+    return condition( d );
 }
 
 bool widget_clause::meets_condition( const std::set<bodypart_id> &bps ) const
@@ -458,18 +619,18 @@ void widget_custom_var::deserialize( const JsonObject &jo )
     }
 }
 
-void widget_custom_var::set_widget_var_range( const avatar &ava, widget &wgt ) const
+void widget_custom_var::set_widget_var_range( const Character &ava, widget &wgt ) const
 {
-    const_dialogue d( get_const_talker_for( ava ), nullptr );
+    const_dialogue d = widget_dialogue( &ava );
     wgt._var_min = static_cast<int>( min.evaluate( d ) );
     wgt._var_max = static_cast<int>( max.evaluate( d ) );
     wgt._var_norm.first = static_cast<int>( norm.first.evaluate( d ) );
     wgt._var_norm.second = static_cast<int>( norm.second.evaluate( d ) );
 }
 
-int widget_custom_var::get_var_value( const avatar &ava ) const
+int widget_custom_var::get_var_value( const Character &ava ) const
 {
-    const_dialogue d( get_const_talker_for( ava ), nullptr );
+    const_dialogue d = widget_dialogue( &ava );
     return static_cast<int>( value.evaluate( d ) );
 }
 
@@ -487,6 +648,7 @@ void widget::load( const JsonObject &jo, std::string_view )
     optional( jo, was_loaded, "direction", _direction, cardinal_direction::num_cardinal_directions );
     optional( jo, was_loaded, "text_align", _text_align, widget_alignment::LEFT );
     optional( jo, was_loaded, "label_align", _label_align, widget_alignment::LEFT );
+    optional( jo, was_loaded, "beta", _beta, widget_beta::inherit );
     // Row layouts and non-layout widgets default to true
     optional( jo, was_loaded, "pad_labels", _pad_labels, _style != "layout" || _arrange == "rows" );
     optional( jo, was_loaded, "flags", _flags );
@@ -668,7 +830,7 @@ const bodypart_id &widget::only_bp() const
     return _bps.empty() ? bp_null : *_bps.begin();
 }
 
-void widget::set_default_var_range( const avatar &ava )
+void widget::set_default_var_range( const Character &ava )
 {
     _var_min = INT_MIN;
     _var_max = INT_MAX;
@@ -844,7 +1006,7 @@ void widget::set_default_var_range( const avatar &ava )
     }
 }
 
-int widget::get_var_value( const avatar &ava ) const
+int widget::get_var_value( const Character &ava ) const
 {
     // Numeric value to be rendered in the widget
     int value = 0;
@@ -870,11 +1032,14 @@ int widget::get_var_value( const avatar &ava ) const
                     ava.get_max_power_level().value() : 0;
             break;
         case widget_var::log_power_balance: {
-            int value_abs = std::abs( ava.power_balance.value() );
+            // Only the avatar keeps a power balance
+            const avatar *u = ava.as_avatar();
+            const int64_t balance = u != nullptr ? u->power_balance.value() : 0;
+            int value_abs = std::abs( balance );
             if( value_abs < 500 ) {
                 value = 0;
             } else {
-                int sign = ava.power_balance.value() > 0 ? 1 : -1;
+                int sign = balance > 0 ? 1 : -1;
                 value = ( sign * 100.0 * std::log10( value_abs / 500.0 ) );
             }
             value += 600;
@@ -914,7 +1079,7 @@ int widget::get_var_value( const avatar &ava ) const
             value = ava.get_speed();
             break;
         case widget_var::move:
-            value = ava.movecounter;
+            value = ava.as_avatar() != nullptr ? ava.as_avatar()->movecounter : 0;
             break;
         case widget_var::move_remainder:
             value = ava.get_moves();
@@ -991,8 +1156,12 @@ bool widget::has_flag( const std::string &flag ) const
     return has_flag( flag_id( flag ) );
 }
 
-std::string widget::show( const avatar &ava, const unsigned int max_width )
+std::string widget::show( const Character &ava, const unsigned int max_width )
 {
+    const widget_subject subject( ava, _beta );
+    if( subject.target_missing() ) {
+        return "";
+    }
     set_default_var_range( ava );
     if( uses_text_function() ) {
         // Text functions are a carry-over from before widgets, with existing functions generating
@@ -1056,7 +1225,11 @@ static int custom_draw_func( const draw_args &args )
     } else if( wgt->_style == "layout" ) {
         if( wgt->_arrange == "rows" ) {
             // Layout widgets in rows
-            std::vector<string_id<widget>> widgets = wgt->widgets( !wgt->_clauses.empty() );
+            const widget_subject subject( u, wgt->_beta );
+            std::vector<string_id<widget>> widgets;
+            if( !subject.target_missing() ) {
+                widgets = wgt->widgets( !wgt->_clauses.empty() );
+            }
             int row_num = 0;
             for( const widget_id &row_wid : widgets ) {
                 widget row_widget = row_wid.obj();
@@ -1206,7 +1379,7 @@ static void set_height_for_widget( const widget_id &id, int height )
 }
 
 // NOTE: Use max_width to split multi-line widgets across lines
-std::string widget::color_text_function_string( const avatar &ava, unsigned int max_width )
+std::string widget::color_text_function_string( const Character &ava, unsigned int max_width )
 {
     std::string ret;
     // Most text variables have both a string and a color.
@@ -1218,6 +1391,8 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
     bool apply_color = true;
     // Don't bother updating the widget's height by default
     bool update_height = false;
+    // A few text vars only exist for the avatar; they show nothing for anyone else
+    const avatar *you = ava.as_avatar();
     // Some helper display:: functions do their own internal colorization of the string.
     // For those, desc.first is the already-colorized string, and apply_color is set to false.
     switch( _var ) {
@@ -1259,10 +1434,14 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             apply_color = false; // Item name already colorized by tname
             break;
         case widget_var::carry_weight_text:
-            desc = display::carry_weight_text_color( ava );
+            if( you != nullptr ) {
+                desc = display::carry_weight_text_color( *you );
+            }
             break;
         case widget_var::carry_weight_value:
-            desc = display::carry_weight_value_color( ava );
+            if( you != nullptr ) {
+                desc = display::carry_weight_value_color( *you );
+            }
             break;
             break;
         case widget_var::date_text:
@@ -1275,10 +1454,14 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             desc = display::faction_text( ava );
             break;
         case widget_var::mood_text:
-            desc = display::morale_face_color( ava );
+            if( you != nullptr ) {
+                desc = display::morale_face_color( *you );
+            }
             break;
         case widget_var::move_count_mode_text:
-            desc = display::move_count_and_mode_text_color( ava );
+            if( you != nullptr ) {
+                desc = display::move_count_and_mode_text_color( *you );
+            }
             break;
         case widget_var::pain_text:
             desc = display::pain_text_color( ava );
@@ -1287,7 +1470,10 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             desc.first = display::overmap_position_text( ava.pos_abs_omt() );
             break;
         case widget_var::overmap_text:
-            desc.first = display::colorized_overmap_text( ava, _width == 0 ? max_width : _width, _height );
+            if( you != nullptr ) {
+                desc.first = display::colorized_overmap_text( *you, _width == 0 ? max_width : _width,
+                             _height );
+            }
             apply_color = false;
             break;
         case widget_var::place_text:
@@ -1297,7 +1483,9 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             desc = display::power_text_color( ava );
             break;
         case widget_var::power_balance_text:
-            desc = display::power_balance_text_color( ava );
+            if( you != nullptr ) {
+                desc = display::power_balance_text_color( *you );
+            }
             break;
         case widget_var::safe_mode_text:
             desc = display::safe_mode_text_color( false );
@@ -1307,7 +1495,7 @@ std::string widget::color_text_function_string( const avatar &ava, unsigned int 
             break;
         case widget_var::style_text:
             desc.first = ava.martial_arts_data->selected_style_name( ava );
-            if( ava.manual_combat_mode ) {
+            if( you != nullptr && you->manual_combat_mode ) {
                 //~ After the martial art's name in the sidebar while manual combat mode is on
                 desc.first += _( " (manual)" );
             }
@@ -1845,10 +2033,19 @@ static std::string append_line( const std::string &line, bool first_row, int max
     return ret;
 }
 
-std::string widget::layout( const avatar &ava, unsigned int max_width, int label_width,
+std::string widget::layout( const Character &ava, unsigned int max_width, int label_width,
                             bool skip_pad )
 {
+    // Clause conditions and custom vars below see `ava` and this widget's beta target
+    const widget_subject subject( ava, _beta );
     std::string ret;
+    if( _style == "layout" && subject.target_missing() ) {
+        if( has_flag( json_flag_W_DYNAMIC_HEIGHT ) ) {
+            _height = 0;
+            set_height_for_widget( id, 0 );
+        }
+        return ret;
+    }
     if( _style == "layout" ) {
         std::vector<string_id<widget>> wgts = widgets( !_clauses.empty() );
         int layout_label_width = ( label_width == 0 || ! _pad_labels ) ? _label_width : label_width;
@@ -2013,6 +2210,22 @@ std::string widget::layout( const avatar &ava, unsigned int max_width, int label
     }
     return ret.find( '\n' ) != std::string::npos || max_width == 0 ?
            ret : trim_by_length( ret, max_width );
+}
+
+std::vector<std::string> widget::slot_lines( const widget_id &slot, const Character &who,
+        unsigned int max_width )
+{
+    std::vector<std::string> lines;
+    if( !slot.is_valid() ) {
+        return lines;
+    }
+    widget wgt = slot.obj();
+    for( std::string &line : string_split( wgt.layout( who, max_width, 0, true ), '\n' ) ) {
+        if( !string_empty_or_whitespace( remove_color_tags( line ) ) ) {
+            lines.emplace_back( std::move( line ) );
+        }
+    }
+    return lines;
 }
 
 std::string format_widget_multiline( const std::vector<std::string> &keys, int max_height,

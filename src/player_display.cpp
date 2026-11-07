@@ -57,6 +57,8 @@
 #include "units_utility.h"
 #include "weather.h"
 
+static const json_character_flag json_flag_DAYFEAR( "DAYFEAR" );
+
 static const skill_id skill_dodge( "dodge" );
 
 static const trait_id trait_TROGLO( "TROGLO" );
@@ -1586,6 +1588,12 @@ void Character::disp_info( bool customize_character )
                                            _( "The sunlight irritates you.\n"
                                               "Strength - 1;    Dexterity - 1;    Intelligence - 1;    Perception - 1" )
                                          );
+    }
+    // UIHUD-J08: DAYFEAR's sunlight penalty (suffer.cpp) had no entry; it adds to TROGLO's
+    if( has_flag( json_flag_DAYFEAR ) && g->is_in_sunlight( pos_bub() ) ) {
+        effect_name_and_text.emplace_back( _( "Afraid of Sunlight" ),
+                                           _( "You fear the sunlight!\n"
+                                              "Strength - 2;    Dexterity - 2;    Intelligence - 2;    Perception - 2" ) );
     }
 
     for( addiction &elem : addictions ) {
