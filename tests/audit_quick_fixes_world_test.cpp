@@ -1,4 +1,7 @@
 #include <functional>
+#include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -12,6 +15,7 @@
 #include "debug.h"
 #include "dialogue.h"
 #include "effect_on_condition.h"
+#include "enums.h"
 #include "game.h"
 #include "global_vars.h"
 #include "map.h"
