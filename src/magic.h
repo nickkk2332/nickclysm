@@ -701,6 +701,8 @@ class spell
         int heal( const tripoint_bub_ms &target, Creature &caster ) const;
 
         // casts the spell effect from an item.  less functionality compared to creature casting.
+        // The casts without a caster below build one fake caster at the target, which the spell
+        // and every spell it casts in turn share.
         void cast_spell_effect( const tripoint_bub_ms &target ) const;
         // casts the spell effect. returns true if successful
         void cast_spell_effect( Creature &source, const tripoint_bub_ms &target ) const;
@@ -712,6 +714,8 @@ class spell
         void cast_extra_spell_effects( const tripoint_bub_ms &target ) const;
         // goes through the spell effect and all of its internal spells
         void cast_extra_spell_effects( Creature &source, const tripoint_bub_ms &target ) const;
+        // how many fake casters the casts without a caster have built so far (for tests)
+        static int casterless_casters_built();
         // uses up the components in @guy's inventory
         void use_components( Character &guy ) const;
         // checks if the spell's component is in the @guy's hand

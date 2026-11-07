@@ -1905,27 +1905,33 @@ double npc_panic_eval( const_dialogue const &d, char scope,
     return guy == nullptr ? 0.0 : guy->mem_combat.panic;
 }
 
-constexpr const char *need_goals = "drink_water, eat_food, go_to_sleep or regulate_temperature";
+constexpr const char *need_goals =
+    "drink_water, eat_food, go_to_sleep, regulate_temperature or an npc_need";
 
 void npc_need_urgency_check( std::vector<diag_value> const &params )
 {
-    if( params[0].is_str() && !npc::goal_id_for( params[0].str() ) ) {
+    // a custom need may load after the math that names it: then it is checked once data loaded
+    if( params[0].is_str() && !npc_custom_needs::may_name_need( params[0].str() ) ) {
         throw math::syntax_error( R"(npc_need_urgency(): "%s" isn't %s)", params[0].str(), need_goals );
     }
 }
 
 // npc_need_urgency('drink_water'): the need's urgency, 0 to 1, as the arbitration and the
-// built-in scores have it
+// built-in scores have it; a custom need's (npc_need) as its own urgency gives it
 double npc_need_urgency_eval( const_dialogue const &d, char scope,
                               std::vector<diag_value> const &params, diag_kwargs const & /* kwargs */ )
 {
     const std::string need( params[0].str( d ) );
     const std::optional<npc::need_goal_id> id = npc::goal_id_for( need );
-    if( !id ) {
+    const npc_custom_need *custom = id ? nullptr : npc_custom_needs::find( need );
+    if( !id && custom == nullptr ) {
         throw math::runtime_error( R"(npc_need_urgency(): "%s" isn't %s)", need, need_goals );
     }
     const npc *guy = scoped_npc( d, scope );
-    return guy == nullptr ? 0.0 : guy->current_need_urgency( *id );
+    if( guy == nullptr ) {
+        return 0.0;
+    }
+    return id ? guy->current_need_urgency( *id ) : custom->urgency_for( *guy );
 }
 
 double npc_trust_eval( const_dialogue const &d, char scope,

@@ -631,6 +631,7 @@ void DynamicDataLoader::initialize()
     add( "talk_topic", &load_talk_topic );
     add( "behavior", &behavior::load_behavior );
     add( "npc_decision_category", &npc_decision_category::load_category );
+    add( "npc_need", &npc_custom_needs::load );
 
     add( "MONSTER_FACTION", &monfactions::load_monster_faction );
 
@@ -839,6 +840,7 @@ void DynamicDataLoader::unload_data()
     bash_damage_profile::reset();
     behavior::reset();
     npc_json_goals::reset();
+    npc_custom_needs::reset();
     npc_decision_category::reset();
     body_part_type::reset();
     butchery_requirements::reset();
@@ -1092,6 +1094,8 @@ void DynamicDataLoader::finalize_loaded_data()
             { _( "Morale Types" ), &morale_type_data::finalize_all },
             { _( "Mapgen weights" ), &calculate_mapgen_weights },
             { _( "Mapgen parameters" ), &overmap_specials::finalize_mapgen_parameters },
+            // before the behaviors, which add a leaf for each need
+            { _( "NPC needs" ), &npc_custom_needs::finalize },
             { _( "Behaviors" ), &behavior::finalize },
             { _( "NPC decision categories" ), &npc_decision_category::finalize_all },
             {
@@ -1239,6 +1243,7 @@ void DynamicDataLoader::check_consistency()
             { _( "NPC classes" ), &npc_class::check_consistency },
             { _( "Behaviors" ), &behavior::check_consistency },
             { _( "NPC decision categories" ), &npc_decision_category::check_consistency },
+            { _( "NPC needs" ), &npc_custom_needs::check_consistency },
             { _( "Mission types" ), &mission_type::check_consistency },
             {
                 _( "Item actions" ), []()

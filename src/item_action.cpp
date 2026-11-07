@@ -278,7 +278,7 @@ void game::item_action_menu( item_location loc )
     if( !loc ) {
         use_player_inventory = true;
         // Ugly const_cast because the menu needs non-const pointers
-        std::vector<const item *> pseudo_items = get_player_character().get_pseudo_items();
+        const std::vector<const item *> &pseudo_items = get_player_character().get_pseudo_items();
         pseudos.reserve( pseudo_items.size() );
         for( const item *pseudo : pseudo_items ) {
             pseudos.push_back( const_cast<item *>( pseudo ) );

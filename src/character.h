@@ -1853,7 +1853,10 @@ class Character : public Creature, public visitable
         /** Handles bionic activation effects of the entered bionic, returns if anything activated */
         bool activate_bionic( bionic &bio, bool eff_only = false, bool *close_bionics_ui = nullptr );
         std::vector<bionic_id> get_bionics() const;
-        std::vector<const item *> get_pseudo_items() const;
+        // The pseudo items the installed bionics expose, cached until invalidate_pseudo_items().
+        // The reference stays valid until the next call after an invalidation, so don't hold it
+        // across code that can install, remove, activate or deactivate a bionic.
+        const std::vector<const item *> &get_pseudo_items() const;
         // Innate items a craft can draw: exposed pseudo items plus the hard-coded
         // digging pair.
         std::vector<item> crafting_pseudo_items() const;

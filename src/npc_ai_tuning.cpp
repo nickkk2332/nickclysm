@@ -14,6 +14,7 @@
 #include "npc_arbitration.h"
 #include "npc_class.h"
 #include "string_formatter.h"
+#include "weather.h"
 
 // The defaults are the constants the code had before tuning (npc_arbitration.h and elsewhere).
 npc_ai_tuning::npc_ai_tuning()
@@ -39,15 +40,19 @@ npc_ai_tuning::npc_ai_tuning()
     camp_work = 0.4f;
     return_to_camp = 0.5f;
     free_time = 0.35f;
+    embark = 0.6f;
+    embark_seated = 0.15f;
 
     starvation_hunger = 300;
     camp_meal_kcal = 500;
+    cold_body_temperature = BODYTEMP_VERY_COLD;
 
     settle_interval = 3_minutes;
     settle_timeout = 30_minutes;
     stall_wakes = 3;
     stall_window = 30_minutes;
     stall_duration = 30_minutes;
+    restless_window = 30_minutes;
 }
 
 const npc_ai_tuning &npc_ai_tuning::defaults()
@@ -115,9 +120,12 @@ void npc_ai_tuning::load( const JsonObject &jo )
         optional( urgency, true, "camp_work", camp_work );
         optional( urgency, true, "return_to_camp", return_to_camp );
         optional( urgency, true, "free_time", free_time );
+        optional( urgency, true, "embark", embark );
+        optional( urgency, true, "embark_seated", embark_seated );
     }
     optional( jo, true, "starvation_hunger", starvation_hunger );
     optional( jo, true, "camp_meal_kcal", camp_meal_kcal );
+    optional( jo, true, "cold_body_temperature", cold_body_temperature );
     if( jo.has_object( "sleep" ) ) {
         const JsonObject sleep = jo.get_object( "sleep" );
         optional( sleep, true, "settle_interval", settle_interval );
@@ -125,6 +133,7 @@ void npc_ai_tuning::load( const JsonObject &jo )
         optional( sleep, true, "stall_wakes", stall_wakes );
         optional( sleep, true, "stall_window", stall_window );
         optional( sleep, true, "stall_duration", stall_duration );
+        optional( sleep, true, "restless_window", restless_window );
     }
     const std::string wrong = problems();
     if( !wrong.empty() ) {
@@ -161,6 +170,8 @@ std::string npc_ai_tuning::problems() const
     in_range( "urgency.camp_work", camp_work );
     in_range( "urgency.return_to_camp", return_to_camp );
     in_range( "urgency.free_time", free_time );
+    in_range( "urgency.embark", embark );
+    in_range( "urgency.embark_seated", embark_seated );
     if( duty > duty_max ) {
         wrong.push_back( string_format( "urgency.duty (%g) is above urgency.duty_max (%g)", duty,
                                         duty_max ) );
@@ -175,7 +186,8 @@ std::string npc_ai_tuning::problems() const
              std::pair<const char *, time_duration>( "sleep.settle_interval", settle_interval ),
              std::pair<const char *, time_duration>( "sleep.settle_timeout", settle_timeout ),
              std::pair<const char *, time_duration>( "sleep.stall_window", stall_window ),
-             std::pair<const char *, time_duration>( "sleep.stall_duration", stall_duration )
+             std::pair<const char *, time_duration>( "sleep.stall_duration", stall_duration ),
+             std::pair<const char *, time_duration>( "sleep.restless_window", restless_window )
          } ) {
         if( dur.second < 1_turns ) {
             wrong.push_back( string_format( "%s must be a turn or longer", dur.first ) );

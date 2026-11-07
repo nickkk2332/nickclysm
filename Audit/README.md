@@ -223,7 +223,7 @@ Every item in "Fix first" groups 1-3 has been fixed on this branch, one commit p
 | MONAI-B03 | fixed | `bd329db5`, `128718b5` | `tests/audit_monsters_test.cpp`. The test then showed absorb_meat never used the meat up (a range-0 flood fill returned no tiles); fixed in `128718b5` |
 | MONDT-B01 | fixed | `d9408762` | `tests/audit_monsters_test.cpp` |
 | MONDT-B03 | fixed | `9266be1f` | `tests/audit_monsters_test.cpp` |
-| MONDT-B04 | partial | `956ea6d4` | `tests/audit_monsters_test.cpp`. Still open: signals still visit every horde bucket (performance only) |
+| MONDT-B04 | fixed | `956ea6d4`, PR D | `tests/audit_monsters_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`. A signal looks up only the horde buckets within its reach (volume - 1 submaps in x, y and z, clipped to the overmap) when that box holds fewer submaps than the map has buckets, and walks the map otherwise. `overmap::signal_hordes` walks only the zone-group columns within reach, in the same sorted order, so the same groups get the same random numbers. Every entity ends the same as before; when one signal wakes idle entities in several buckets, the order they join the active map can differ, as hash-map order already differs between platforms |
 | NPC-B02 | fixed | `c3fdf56f`, `c7f4aafa` | `tests/audit_npc_magic_test.cpp` |
 | NPC-B03 | fixed | `5320ff5d` | `tests/audit_npc_magic_test.cpp` |
 | MAGIC-B02 | fixed | `75ebd188`, `a55bad1a` | `tests/audit_npc_magic_test.cpp` |
@@ -290,7 +290,7 @@ Four fixes have no regression test, because the code is only reachable through i
 | CRAFT-P01 | fixed | `6fdaa74c`, `9805272f` | benchmark `craft_unattended_wait`. A tool or heat source lost during a waiting step is noticed at the next one-minute poll, as with other steps |
 | ACT-P02 | fixed | `81616d1d`, `6917bd82`, `4ad151f9` | `tests/audit_perf_world_activities_test.cpp`; benchmark `farm_scan` can't show it |
 | TERR-P01 | fixed | `a0fce99f`, `1d0f11f6` | benchmark `blueprint_build_reqs` |
-| MAGIC-P01 | partial | `d3f7852b`, `7738db12` | `tests/audit_perf_ui_test.cpp`; benchmark `spellbook_damage_preview`. Still open: one shared fake caster for casterless spell casts |
+| MAGIC-P01 | fixed | `d3f7852b`, `7738db12`, PR D | `tests/audit_perf_ui_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`; benchmark `spellbook_damage_preview`. A cast with no caster builds one fake caster and shares it with every spell it casts in turn (a spell with two extra spells built nine). Once a spell's effect has run, the caster is put back as built (place, moves, hit points, pain, stamina, effects and variables) before the next spell uses it. Each fake avatar drew one random number for its blood type, so a casterless WONDER spell's picks follow another random sequence for the same seed |
 | UIHUD-P01 | fixed | `5521c271` | none: needs a display |
 | REND-P01 | fixed | `32187d3e` | none: tiles renderer; compile-checked with `-DTILES` |
 
@@ -490,7 +490,7 @@ With this batch the full suite passes, 2656 of 2656 test cases with seed 4242 an
 | EVT-P01 | fixed | `209d2263`, `b3fb580f` | `tests/audit_perf_load_test.cpp`; benchmark `stats_overmap_special_history` |
 | MAP-P03 | fixed | `334b707a`, `74477812` | `tests/audit_perf_load_test.cpp`; benchmarks `mapbuffer_save_uniform`, `mapbuffer_lookup_missing` |
 | INV-P01 | fixed | `baed3534`, `e0f68119`, `0555b3a8` | `tests/audit_perf_load_test.cpp`; benchmark `item_nested_deserialize` |
-| INV-P02 | partial | `445dec4e`, `380292c3` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `inventory_queries`. Still open: the header-level steps (a bitmask pocket set in the visit APIs, `get_pseudo_items()` by reference, a public raw visitor). After this change they would gain little, and they need a near-full rebuild |
+| INV-P02 | fixed | `445dec4e`, `380292c3`, PR D | `tests/audit_perf_world_inventory_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`; benchmark `inventory_queries`. The visit APIs and `item_pocket::is_type` take a `pocket_type_set` bitmask, built from the same braced lists, so callers are unchanged; `get_pseudo_items()` returns the cached list by reference; `visit_items_raw()` is the public raw visitor, which `has_item` and `has_item_with` use |
 | MGEN-P01 | fixed | `fdaaf2e6`, `8f06ed83` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `phase_change_lake_thawed`, `phase_change_lake_frozen` |
 | OMAP-P02 | fixed | `e30b243a`, `5e472856` | `tests/audit_perf_world_inventory_test.cpp`; benchmarks `omt_find_closest_miss`, `omt_find_npc_goals` |
 | ACT-P03 | fixed | `fbabc40e` | `tests/audit_perf_world_inventory_test.cpp`; benchmark `zone_job_missing_tool` |
@@ -594,7 +594,7 @@ For modders (documented in `doc/JSON/EFFECT_ON_CONDITION.md`, `NPCs.md`, `NPC_BE
 |---|---|---|---|
 | NPC-J04 | fixed | `c1e9b5fa`, `6ba4f89e`, `3b3f2823` | `tests/npc_ai_events_test.cpp` |
 | NPC-J05 | fixed | `e58bc280` (section H), `e0be4807`, `dbaf7c8b` | `tests/npc_ai_eoc_test.cpp` |
-| NPC-J10 | partial | `28437d7e` | `tests/npc_ai_tuning_test.cpp`. Still open: custom needs (the need set is a fixed enum), and the embark urgency, noise-wake window and temperature predicate |
+| NPC-J10 | fixed | `28437d7e`, PR D | `tests/npc_ai_tuning_test.cpp`, `tests/audit_partial_perf_ai_test.cpp`. `ai_tuning` also sets `urgency.embark` and `urgency.embark_seated` (0.6 and 0.15), `cold_body_temperature` (31 C) and `sleep.restless_window` (30 minutes); vanilla classes keep these. The new type `npc_need` adds a need: an urgency (a number, a variable or math), the urgency it acts from, a condition and a JSON goal's hooks. Each becomes a leaf under `npc_needs` (or a parent it names) next to the built-in needs, which stay as they were, and `npc_need_urgency()` reads it |
 | EOC-B06 to EOC-B15 | fixed | `8c0da604` to `ff0b0985`, follow-ups `dae7c28f` to `db21dfb9` | `tests/audit_eoc_dialogue_test.cpp` (EOC-B09's UI path and EOC-B10's hotkey read are checked by reading) |
 | MATH-B03 to MATH-B11, LOOP-B10 | fixed | `eb2fd836` to `94250384`, follow-ups `242c90f2` to `a4106430` | `tests/audit_math_talkers_test.cpp` |
 | MATH-B12 | already fixed | by LOOP-J01 (`a17a8639`, `e1b3f7ef`) | existing `loop-j01_eoc_weather_overrides_hold_until_they_run_out` |

@@ -11,16 +11,19 @@
 #include "avatar.h"
 #include "behavior.h"
 #include "calendar.h"
+#include "cata_scope_helpers.h"
 #include "character_oracle.h"
 #include "condition.h"
 #include "creature.h"
 #include "debug.h"
 #include "dialogue.h"
+#include "dialogue_helpers.h"
 #include "effect_on_condition.h"
 #include "errand.h"
 #include "event.h"
 #include "event_bus.h"
 #include "flexbuffer_json.h"
+#include "generic_factory.h"
 #include "line.h"
 #include "global_vars.h"
 #include "math_parser_diag_value.h"
@@ -35,7 +38,10 @@ static const efftype_id effect_sleep( "sleep" );
 
 static const json_character_flag json_flag_CANNOT_SLEEP( "CANNOT_SLEEP" );
 
+static const npc_decision_category_id npc_decision_category_needs( "needs" );
+
 static const string_id<behavior::node_t> behavior_node_t_npc_decision( "npc_decision" );
+static const string_id<behavior::node_t> behavior_node_t_npc_needs( "npc_needs" );
 
 int npc_goal_runtime::reaction_tree_walks = 0;
 
@@ -44,6 +50,14 @@ namespace
 npc_goal_registry loaded_goals;
 int loaded_best_rank = std::numeric_limits<int>::max();
 std::optional<string_id<behavior::node_t>> test_tree_root;
+
+generic_factory<npc_custom_need> custom_need_factory( "npc_need" );
+// the needs are all loaded and finalized
+bool custom_needs_ready = false;
+// names npc_need_urgency() math gave before the needs were all known, for check_consistency()
+std::set<std::string> need_names_to_check;
+// the needs whose urgency is being worked out, so one that reads its own is caught
+std::vector<std::string> needs_in_evaluation;
 
 std::vector<effect_on_condition_id> load_hooks( const JsonObject &jo, std::string_view member,
         std::string_view src )
@@ -195,6 +209,29 @@ bool npc_goal_registry::load_node( const JsonObject &jo, const string_id<behavio
     return true;
 }
 
+std::string npc_goal_registry::add_goal( npc_json_goal goal, const std::string &source )
+{
+    claims_.erase( std::remove_if( claims_.begin(), claims_.end(),
+    [&source]( const npc_goal_claim & claim ) {
+        return claim.source == source;
+    } ), claims_.end() );
+    for( auto it = goals_.begin(); it != goals_.end(); ) {
+        it = it->second.node == goal.node ? goals_.erase( it ) : std::next( it );
+    }
+    if( is_builtin_npc_goal( goal.id ) ) {
+        return string_format( "%s is a built-in goal", goal.id );
+    }
+    const auto other = goals_.find( goal.id );
+    if( other != goals_.end() ) {
+        return string_format( "goal %s is defined by behavior %s already", goal.id,
+                              other->second.node.str() );
+    }
+    claims_.push_back( { goal.id, goal.category, source } );
+    const std::string id = goal.id;
+    goals_.emplace( id, std::move( goal ) );
+    return std::string();
+}
+
 const npc_json_goal *npc_goal_registry::find( std::string_view id ) const
 {
     const auto it = goals_.find( id );
@@ -261,6 +298,188 @@ void npc_json_goals::swap_registry_for_test( npc_goal_registry &other )
 {
     std::swap( loaded_goals, other );
     refresh_ranks();
+}
+
+/** @relates string_id */
+template<>
+bool string_id<npc_custom_need>::is_valid() const
+{
+    return custom_need_factory.is_valid( *this );
+}
+
+template<>
+const npc_custom_need &string_id<npc_custom_need>::obj() const
+{
+    return custom_need_factory.obj( *this );
+}
+
+void npc_custom_need::load( const JsonObject &jo, const std::string_view src )
+{
+    if( !was_loaded || jo.has_member( "urgency" ) ) {
+        dbl_or_var read_urgency;
+        mandatory( jo, false, "urgency", read_urgency );
+        urgency = [read_urgency]( const_dialogue const & d ) {
+            return read_urgency.evaluate( d );
+        };
+    }
+    optional( jo, was_loaded, "act", act, 0.5f );
+    if( !( act >= 0.0f && act <= 1.0f ) ) {
+        jo.throw_error_at( "act", string_format( "act is %g, not between 0 and 1", act ) );
+    }
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition, true );
+    }
+    optional( jo, was_loaded, "category", category, npc_decision_category_needs );
+    optional( jo, was_loaded, "parent", parent, behavior_node_t_npc_needs );
+    for( const std::pair<const char *, std::vector<effect_on_condition_id> *> &hook : {
+             std::make_pair( "on_start", &on_start ), std::make_pair( "on_turn", &on_turn ),
+             std::make_pair( "on_end", &on_end ), std::make_pair( "on_interrupt", &on_interrupt ),
+             std::make_pair( "on_timeout", &on_timeout )
+         } ) {
+        if( jo.has_member( hook.first ) ) {
+            *hook.second = load_hooks( jo, hook.first, src );
+        }
+    }
+    if( jo.has_member( "until" ) ) {
+        read_condition( jo, "until", until, false );
+    }
+    if( jo.has_member( "timeout" ) ) {
+        time_duration read_timeout;
+        jo.read( "timeout", read_timeout, true );
+        if( read_timeout <= 0_turns ) {
+            jo.throw_error_at( "timeout", "timeout must be more than 0 turns" );
+        }
+        timeout = read_timeout;
+    }
+}
+
+void npc_custom_need::check() const
+{
+    if( !urgency ) {
+        debugmsg( "npc_need %s has no urgency", id.str() );
+    }
+}
+
+float npc_custom_need::urgency_for( const Creature &who ) const
+{
+    if( !who.is_npc() || !urgency ) {
+        return 0.0f;
+    }
+    const std::string &need = id.str();
+    if( std::find( needs_in_evaluation.begin(), needs_in_evaluation.end(),
+                   need ) != needs_in_evaluation.end() ) {
+        debugmsg( "npc_need %s: its urgency reads its own urgency", need );
+        return 0.0f;
+    }
+    needs_in_evaluation.push_back( need );
+    const on_out_of_scope done( []() {
+        needs_in_evaluation.pop_back();
+    } );
+    const const_dialogue d( get_const_talker_for( who ), std::make_unique<talker>() );
+    const double value = urgency( d );
+    if( !( value > 0.0 ) ) {
+        return 0.0f;
+    }
+    return value >= 1.0 ? 1.0f : static_cast<float>( value );
+}
+
+bool npc_custom_need::felt_by( const Creature &who ) const
+{
+    if( !who.is_npc() ) {
+        return false;
+    }
+    if( condition ) {
+        const const_dialogue d( get_const_talker_for( who ), std::make_unique<talker>() );
+        if( !condition( d ) ) {
+            return false;
+        }
+    }
+    return urgency_for( who ) >= act;
+}
+
+string_id<behavior::node_t> npc_custom_need::node_id() const
+{
+    return string_id<behavior::node_t>( "npc_need_" + id.str() );
+}
+
+npc_json_goal npc_custom_need::goal() const
+{
+    npc_json_goal ret;
+    ret.id = id.str();
+    ret.node = node_id();
+    ret.category = category;
+    ret.on_start = on_start;
+    ret.on_turn = on_turn;
+    ret.on_end = on_end;
+    ret.on_interrupt = on_interrupt;
+    ret.on_timeout = on_timeout;
+    ret.timeout = timeout;
+    if( until ) {
+        ret.until = until;
+    } else {
+        // done once the need isn't felt
+        const std::string need = id.str();
+        ret.until = [need]( const_dialogue const & d ) {
+            const npc_custom_need *found = npc_custom_needs::find( need );
+            const Creature *who = d.has_actor( false ) ? d.const_actor( false )->get_const_creature() :
+                                  nullptr;
+            return found == nullptr || who == nullptr || !found->felt_by( *who );
+        };
+    }
+    return ret;
+}
+
+void npc_custom_needs::load( const JsonObject &jo, const std::string &src )
+{
+    custom_need_factory.load( jo, src );
+}
+
+void npc_custom_needs::finalize()
+{
+    custom_need_factory.finalize();
+    custom_needs_ready = true;
+}
+
+void npc_custom_needs::check_consistency()
+{
+    custom_need_factory.check();
+    for( const std::string &name : need_names_to_check ) {
+        if( !npc::goal_id_for( name ) && find( name ) == nullptr ) {
+            debugmsg( R"(npc_need_urgency(): "%s" isn't drink_water, eat_food, go_to_sleep, )"
+                      "regulate_temperature or an npc_need", name );
+        }
+    }
+    need_names_to_check.clear();
+}
+
+void npc_custom_needs::reset()
+{
+    custom_need_factory.reset();
+    custom_needs_ready = false;
+    need_names_to_check.clear();
+}
+
+const std::vector<npc_custom_need> &npc_custom_needs::get_all()
+{
+    return custom_need_factory.get_all();
+}
+
+const npc_custom_need *npc_custom_needs::find( const std::string_view id )
+{
+    const string_id<npc_custom_need> need{ std::string( id ) };
+    return custom_need_factory.is_valid( need ) ? &custom_need_factory.obj( need ) : nullptr;
+}
+
+bool npc_custom_needs::may_name_need( const std::string &name )
+{
+    if( npc::goal_id_for( name ) || find( name ) != nullptr ) {
+        return true;
+    }
+    if( !custom_needs_ready ) {
+        need_names_to_check.insert( name );
+        return true;
+    }
+    return false;
 }
 
 const behavior::node_t &npc_decision_tree()
