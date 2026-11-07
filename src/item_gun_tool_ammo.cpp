@@ -1451,24 +1451,9 @@ int item::ammo_remaining( const map &here, const std::set<ammotype> &ammo, const
 
     int ret = 0;
 
-    // Sum ammo across every loaded MAGAZINE_WELL pocket; per-well callers use the indexed
-    // overload. With more than one ammo pocket (multimag: a battery well next to the rounds),
-    // only the magazines loaded with an asked-for ammo type count, so a battery's charges aren't
-    // added to the rounds (IINF-B05). One magazine always counts, whatever its ammo: a modular
-    // gun's own ammo types can be a placeholder its magazines don't match.
-    const std::vector<const item *> mags = magazines_current();
-    const bool filter_by_ammo = !ammo.empty() && !mags.empty() &&
-    get_pockets( []( const item_pocket & p ) {
-        return p.is_type( pocket_type::MAGAZINE ) || p.is_type( pocket_type::MAGAZINE_WELL );
-    } ).size() > 1;
-    for( const item *mag : mags ) {
-        if( filter_by_ammo ) {
-            const itype *loaded = mag->ammo_data();
-            if( loaded != nullptr && loaded->ammo &&
-                ammo.find( loaded->ammo->type ) == ammo.end() ) {
-                continue;
-            }
-        }
+    // Sum ammo across every loaded MAGAZINE_WELL pocket.
+    // TODO(multimag): aggregate; per-well callers use the indexed overload.
+    for( const item *mag : magazines_current() ) {
         ret += mag->ammo_remaining( );
     }
 

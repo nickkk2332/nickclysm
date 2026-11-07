@@ -355,7 +355,7 @@ Bug sweep:
 | ITEM-B09 | fixed | `755dc3f8`, `3aba34c5` | `tests/audit_items_sweep_test.cpp` |
 | IINF-B03 | fixed | `032ba713` | `tests/audit_items_sweep_test.cpp` |
 | IINF-B04 | fixed | `fc6dbacb` | `tests/audit_items_sweep_test.cpp` |
-| IINF-B05 | fixed | `459fe6a2`, PR D | `tests/audit_items_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. With several ammo pockets, `ammo_remaining()` counts only magazines loaded with an asked-for ammo type (no battery charge as rounds); one magazine always counts, since modular guns such as the robofac gun have a placeholder ammo type |
+| IINF-B05 | fixed | `459fe6a2`, PR D | `tests/audit_items_sweep_test.cpp`, `tests/audit_partial_data_test.cpp`. `is_reloadable()` reads the pocket itself (`459fe6a2`). The suggested ammo-type filter on the summed `ammo_remaining()` is not done, on purpose: the multimag design counts every well (`multimag_integral_pocket_skips_casings` pins it), and `ammo_remaining_in_pocket()` gives a per-type count. The PR D test pins both |
 | HLTH-B02 | fixed | `dd7947b4` | `tests/audit_health_test.cpp` |
 | HLTH-B03 | fixed | `69cc6806` | `tests/audit_health_test.cpp` |
 | HLTH-B04 | fixed | `56649dbb` | `tests/audit_health_test.cpp` |
