@@ -74,6 +74,7 @@ Use the `Home` key to return to the top.
       - [`achievement`](#achievement)
       - [`conduct`](#conduct)
     - [Skills](#skills)
+    - [Speech](#speech)
     - [Speed Description](#speed-description)
     - [Mood Face](#mood-face)
     - [Tool Qualities](#tool-qualities)
@@ -1520,16 +1521,25 @@ Using `damage_info_order` we can reorder how these are shown, and even determine
 | `messages` | List of potential dreams.
 | `category` | Mutation category needed to dream.
 | `strength` | Mutation category strength required (1 = 20-34, 2 = 35-49, 3 = 50+).
+| `id` | (optional) Lets later JSON change or copy the dream.  Vanilla dreams are named `dream_<category>_<strength>`.
 
 ```jsonc
 {
+    "type" : "dream",
+    "id" : "dream_BIRD_1",
     "messages" : [
         "You have a strange dream about birds.",
         "Your dreams give you a strange feathered feeling."
     ],
-    "category" : "MUTCAT_BIRD",
+    "category" : "BIRD",
     "strength" : 1
 }
+```
+
+A dream with an `id` can `copy-from` another one (or an `abstract` one), and a later mod changes it by copying it under the same id: it keeps every member it doesn't name, and `messages` takes `extend` and `delete`.  A second definition of the id without `copy-from` replaces the dream.  A dream without an `id` is added to the others, and nothing can change it later.
+
+```jsonc
+{ "type" : "dream", "id" : "dream_BIRD_1", "copy-from" : "dream_BIRD_1", "extend" : { "messages" : [ "You dream of flying south." ] } }
 ```
 
 ### Disease
@@ -2652,8 +2662,8 @@ it is present to help catch errors.
       { "level": 4, "description": "xyz" }
   ],
   "companion_skill_practice": [ { "skill": "hunting", "weight": 25 } ],
-  "required_traits": [ "THINSKIN", "HORNS" ],
-  "allowed_traits": [ "PAWS", "SKIN_DARK" ]
+  "requires_all_traits": [ "THINSKIN", "HORNS" ],
+  "requires_any_traits": [ "PAWS", "SKIN_DARK" ]
 }
 ```
 
@@ -2675,8 +2685,32 @@ it is present to help catch errors.
 | `companion_industry_rank_factor` | _(int)_ Affects an NPC's rank when determining the success rate for industry missions. |
 | `requires_all_traits` | Traits that the player is required to have to display the skill in the character tab. All traits are required |
 | `requires_any_traits` | Traits that the player needs at least one of to display the skill in the character tab. At least one trait is required |
+| `obsolete` | (Boolean) The skill is kept for old saves but isn't shown or used. (Default = false) |
 
 If neither `requires_all_traits` or `requires_any_traits` are defined, the skill will always display in the character tab
+
+A skill can `copy-from` another skill (or an `abstract` one), and a later mod changes a skill by copying it under the same id: it keeps every member it doesn't name.  `tags`, `requires_all_traits` and `requires_any_traits` take `extend` and `delete`; `time_to_attack` changes only the members it names; `companion_skill_practice` and the level descriptions, when given, replace the copied ones.  A second definition of an id without `copy-from` replaces the first one entirely (and moves the skill to the end of the skill list, as it always did).
+
+```jsonc
+{ "type": "skill", "id": "spellcraft", "copy-from": "spellcraft", "sort_rank": 9000, "extend": { "tags": [ "combat_skill" ] } }
+```
+
+### Speech
+
+A line that monsters, items and other speakers can say (see `PARROT` in [MONSTER_SPECIAL_ATTACKS.md](MONSTER_SPECIAL_ATTACKS.md)); a speaker picks one of its lines at random.
+
+| Identifier | Description
+|---         |---
+| `speaker`  | The speaker id, or a list of them (usually monster or item ids), that can say the line.
+| `sound`    | The text heard.
+| `volume`   | How loud the line is.
+| `id`       | (optional) Lets later JSON change or copy the line.
+
+```jsonc
+{ "type": "speech", "speaker": [ "mon_mi_go", "mon_mi_go_slaver" ], "sound": "\"Papaya!\"", "volume": 32 }
+```
+
+A line with an `id` can `copy-from` another one (or an `abstract` one), and a later mod changes it by copying it under the same id: it keeps every member it doesn't name, and `speaker` takes `extend` and `delete`.  A second definition of the id without `copy-from` replaces the line.  A line without an `id` (like every vanilla line) is added to its speakers' lines, and nothing can change it later.
 
 ### Speed Description
 
@@ -2867,6 +2901,21 @@ See [MUTATIONS.md](MUTATIONS.md)
   ["car", 4700],
   ["road_roller", 300]
 ]
+```
+
+Every vehicle prototype is also a group of its own id that holds only that vehicle.
+
+A second definition of a group that already exists (from vanilla or an earlier mod) adds its `vehicles` to the group, like a `monstergroup`.  To change the group instead:
+
+| Identifier | Description
+|---         |---
+| `override` | (optional, bool) `true` makes this definition replace the existing group instead of adding to it.
+| `copy-from` | (optional) starts from the named group (or `abstract`); its `vehicles`, if present, replace the copied ones.
+| `extend` | (optional) `{ "vehicles": [ [ "car", 100 ] ] }` adds entries, in a copy or a second definition.
+| `delete` | (optional) `{ "vehicles": [ "car" ] }` removes every entry of each listed vehicle, in a copy or a second definition; naming a vehicle the group doesn't have is an error.
+
+```jsonc
+{ "type": "vehicle_group", "id": "city_parked", "delete": { "vehicles": [ "road_roller" ] }, "extend": { "vehicles": [ [ "bicycle", 200 ] ] } }
 ```
 
 ### Vehicle Parts

@@ -1350,7 +1350,7 @@ void vehicle_prototype::zone_def::deserialize( const JsonObject &jo )
 
 void vehicle_prototype::load( const JsonObject &jo, std::string_view )
 {
-    vgroups[vgroup_id( id.str() )].add_vehicle( id, 100 );
+    VehicleGroup::add_to_group( vgroup_id( id.str() ), id, 100 );
     optional( jo, was_loaded, "name", name );
 
     if( jo.has_member( "blueprint" ) ) {

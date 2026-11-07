@@ -1,5 +1,6 @@
 #include "vehicle_group.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -10,6 +11,7 @@
 #include "debug.h"
 #include "enums.h"
 #include "flexbuffer_json.h"
+#include "generic_factory.h"
 #include "map.h"
 #include "memory_fast.h"
 #include "point.h"
@@ -20,7 +22,10 @@ using vplacement_id = string_id<VehiclePlacement>;
 
 static const vgroup_id VehicleGroup_parkinglot( "parkinglot" );
 
-std::unordered_map<vgroup_id, VehicleGroup> vgroups;
+namespace
+{
+generic_factory<VehicleGroup> vgroup_factory( "vehicle group" );
+} // namespace
 static std::unordered_map<vplacement_id, VehiclePlacement> vplacements;
 static std::unordered_map<vspawn_id, VehicleSpawn> vspawns;
 
@@ -28,13 +33,7 @@ static std::unordered_map<vspawn_id, VehicleSpawn> vspawns;
 template<>
 const VehicleGroup &string_id<VehicleGroup>::obj() const
 {
-    const auto iter = vgroups.find( *this );
-    if( iter == vgroups.end() ) {
-        debugmsg( "invalid vehicle group id %s", c_str() );
-        static const VehicleGroup dummy{};
-        return dummy;
-    }
-    return iter->second;
+    return vgroup_factory.obj( *this );
 }
 
 point_bub_ms VehicleLocation::pick_point() const
@@ -46,7 +45,7 @@ point_bub_ms VehicleLocation::pick_point() const
 template<>
 bool string_id<VehicleGroup>::is_valid() const
 {
-    return vgroups.count( *this ) > 0;
+    return vgroup_factory.is_valid( *this );
 }
 
 template<>
@@ -77,18 +76,76 @@ std::vector<vproto_id> VehicleGroup::all_possible_results() const
     return result;
 }
 
-void VehicleGroup::load( const JsonObject &jo )
+void VehicleGroup::load_all( const JsonObject &jo, const std::string &src )
 {
-    VehicleGroup &group = vgroups[vgroup_id( jo.get_string( "id" ) )];
+    vgroup_factory.load( jo, src );
+}
 
-    for( JsonArray pair : jo.get_array( "vehicles" ) ) {
-        group.add_vehicle( vproto_id( pair.get_string( 0 ) ), pair.get_int( 1 ) );
+// "vehicles": [ [ prototype, weight ], ... ]
+static void add_vehicles( const JsonArray &ja, weighted_int_list<vproto_id> &vehicles )
+{
+    for( JsonArray pair : ja ) {
+        vehicles.add( vproto_id( pair.get_string( 0 ) ), pair.get_int( 1 ) );
     }
+}
+
+void VehicleGroup::load( const JsonObject &jo, std::string_view )
+{
+    // A definition of a group that exists, without "copy-from", adds its vehicles to the
+    // group, as it always has (like monstergroup); "override": true makes it replace the
+    // group instead (DATA-J02).
+    const bool override_group = jo.get_bool( "override", false );
+    const bool adds = !was_loaded && !override_group && vgroup_factory.is_valid( id );
+    if( adds ) {
+        vehicles = vgroup_factory.obj( id ).vehicles;
+    }
+    if( !was_loaded && !adds ) {
+        warn_disabled_feature( jo, "extend", "vehicles", "no copy-from" );
+        warn_disabled_feature( jo, "delete", "vehicles", "no copy-from" );
+    } else if( jo.has_object( "delete" ) ) {
+        // "delete": { "vehicles": [ prototype ids ] } removes every entry of each prototype
+        JsonObject del = jo.get_object( "delete" );
+        del.allow_omitted_members();
+        for( const JsonValue jv : del.get_array( "vehicles" ) ) {
+            const vproto_id doomed( jv.get_string() );
+            if( std::none_of( vehicles.begin(), vehicles.end(),
+            [&doomed]( const std::pair<vproto_id, int> &entry ) {
+            return entry.first == doomed;
+        } ) ) {
+                jv.throw_error( "the vehicle group has no such vehicle to delete" );
+            }
+            vehicles.remove( doomed );
+        }
+    }
+    if( was_loaded && jo.has_member( "vehicles" ) ) {
+        // a copy's "vehicles" replaces the ones it copied
+        vehicles.clear();
+    }
+    add_vehicles( jo.get_array( "vehicles" ), vehicles );
+    if( ( was_loaded || adds ) && jo.has_object( "extend" ) ) {
+        JsonObject ext = jo.get_object( "extend" );
+        ext.allow_omitted_members();
+        add_vehicles( ext.get_array( "vehicles" ), vehicles );
+    }
+}
+
+void VehicleGroup::add_to_group( const vgroup_id &group, const vproto_id &type,
+                                 const int probability )
+{
+    VehicleGroup changed = group.is_valid() ? group.obj() : VehicleGroup();
+    changed.id = group;
+    changed.add_vehicle( type, probability );
+    vgroup_factory.insert( changed );
+}
+
+void VehicleGroup::finalize_all()
+{
+    vgroup_factory.finalize();
 }
 
 void VehicleGroup::reset()
 {
-    vgroups.clear();
+    vgroup_factory.reset();
 }
 
 VehicleFacings::VehicleFacings( const JsonObject &jo, std::string_view key )
