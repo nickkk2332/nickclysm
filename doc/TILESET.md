@@ -219,6 +219,32 @@ Only "Smooth filtered" reads this field.  "Smooth" lights each sprite from its o
     ],
 ```
 
+An option with a weight of 0 is left out, and a negative weight is a load error.  Which option is shown depends on what the sprite is for:
+
+- terrain, fields, items, traps, furniture that can't be moved, and the sprite of a graffiti's own text: by the absolute map position, so it stays when the map shifts;
+- the plain `graffiti` sprite: by the text;
+- vehicle parts: by the part's place in the vehicle;
+- monsters: by the monster's persistent id, which the save keeps;
+- the player, NPCs and their worn, wielded, mutation and bionic overlays, and a monster's effect overlays: by who it is, the character's id or the monster's persistent id, wherever it is drawn (the map, the overmap, on a mount);
+- overmap tiles: by their overmap position;
+- portraits and weather: at random each time;
+- anything else (furniture that can be moved, so it doesn't change while dragged, bullets, hit effects and other markers): always the first option.
+
+#### Idle animations
+
+`"animated": true` (default `false`) turns the weighted options of `fg` (or of `bg`, when `fg` has one sprite or none) into the frames of a loop that plays on its own.  Each option is a frame shown for as many ticks of about 17 ms (60 a second) as its weight, in the order listed; each tile starts the loop at its own point, so tiles don't all change at once.
+```jsonc
+    {
+        "id": "fd_fire",
+        "animated": true,
+        "fg": [
+            { "weight": 6, "sprite": "fd_fire_1" },   // shown for about 0.1 s
+            { "weight": 6, "sprite": "fd_fire_2" },
+            { "weight": 6, "sprite": "fd_fire_3" }
+        ]
+    }
+```
+
 #### Multitile
 
 `"multitile": true` signifies that there is an `additional_tiles` object (redundant? [probably](https://github.com/CleverRaven/Cataclysm-DDA/issues/46253)) with one or more objects that define sprites for game entities associated with this tile, such as broken versions of an item, or wall connections.  Each object in the array has an `id` field, as above, and an `fg` field, which can be a single [root name](#root-name), an array of root names, or an array of objects as above. `"rotates": true` is implied with it and can be omitted.
@@ -574,7 +600,7 @@ An optional file called `layering.json` can be provided. This file defines "laye
 
 In this example, we provide the context tile `f_desk` and multiple items that will display differently while placed on it -- a pen using `desk_pen_1` or `desk_pen_2`, and a laptop using `desk_laptop`. `fd_fire`, a field, will use the sprite `desk_fd_fire` on `f_desk`.
 
-`"context": "f_desk"` the furniture or terrain that this should apply to. `"context"` can also be exactly one JSON flag placed in an array, which will display the given sprite for any furniture/terrain that has that flag. 
+`"context": "f_desk"` the furniture or terrain that this should apply to. `"context"` can also be exactly one JSON flag placed in an array, which will display the given sprite for any furniture/terrain that has that flag.  For items and fields alike, the game tries the furniture's id, then its flags, then the terrain's id, then its flags, and uses the first context that lists the item or field.  Give a context's `"item_variants"` and its `"field_variants"` in one entry each: a later entry with the same `"context"` and the same kind of variants is ignored.
 
 `"append_variants"`: an additional suffix automatically appended to sprite names from the item name, e.g. "_postup" for sprites of items posted on walls. The suffix must begin with an underscore '\_'. The expected sprite name format (see Hardcoded IDs above for sprite name formats) for using `"append_variants"` is:
 
@@ -600,7 +626,7 @@ Example usage of flag `context` and `append_variants`:
 
 `"layer": 100` this defines the order the sprites will draw in. 1 drawing first 100 drawing last (so 100 ends up on top). This only works for items, Fields are instead drawn in the order they are stacked on the tile.
 
-`"sprite": [{"id": "desk_pen_1", "weight": 2}, {"id": "desk_pen_2", "weight": 2}]` an array of the possible sprites that can display. Multiple sprites can be provided with specific weights and will be selected at random for each item. If not provided, defaults to item name.
+`"sprite": [{"id": "desk_pen_1", "weight": 2}, {"id": "desk_pen_2", "weight": 2}]` an array of the possible sprites that can display. Multiple sprites can be provided with specific weights and will be selected at random for each item. If not provided, defaults to item name.  `"weight"` defaults to 1 and must be above 0: a sprite with a weight of 0 or less is left out, and a variant with no sprite left is left out with an error in the debug log.  A sprite listed twice gets both weights.
 
 `"offset_x": 16`, `"offset_y": -48` optional sprite offset. Defaults to 0 if not provided.
 
@@ -610,7 +636,9 @@ Example usage of flag `context` and `append_variants`:
 
 `"field": "fd_fire"` the field id. (only supported in field_variants)
 
-`"sprite": [{"id": "desk_fd_fire", "weight": 1}]` an array of the possible sprites that can display. Multiple sprites can be provided with specific weights and will be selected at random based on map position.
+`"sprite": [{"id": "desk_fd_fire", "weight": 1}]` an array of the possible sprites that can display. Multiple sprites can be provided with specific weights and will be selected at random based on the absolute map position. The weights work as for items.
+
+Only the fields a context lists get a layering sprite: any other field on that furniture or terrain is drawn with its usual sprite.  Each field on a tile is drawn on its own, with its own variant.  The sprite is drawn as a field (it can have `_int<N>` intensity variants and rotations); if the tileset has no sprite of that id, its unknown sprite is drawn.
 
 `"offset_x": 16`, `"offset_y": -48` optional sprite offset. Defaults to 0 if not provided.
 
@@ -809,6 +837,8 @@ Each legacy tileset has a `tile_config.json` describing how to map the contents 
     ]
   }
 ```
+
+`"overlay_ordering"` (also in a mod tileset) is read from the main tileset, the `TILES` option: the distant (`DISTANT_TILES`), portrait and overmap tilesets' are ignored.  An order here replaces the game's own `overlay_order` for that id.
 
 ### decompose.py
 

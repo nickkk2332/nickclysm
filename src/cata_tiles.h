@@ -101,6 +101,13 @@ struct tile_type {
     std::vector<std::pair<const std::string *, const tile_type *>> subtiles_by_season;
 };
 
+// The pick (weighted_int_list::pick) into the fg and bg of an idle animation ("animated":
+// true) `ms` milliseconds into the steady clock: each sprite shows for as many ~17 ms frames
+// as its weight, and the loop is the fg's total weight, or the bg's for a tile with one fg
+// sprite or none.  `offset` shifts the loop, so tiles don't all blink at once.  A tile with
+// no sprites at all isn't animated: `offset` is returned as it is.
+unsigned int idle_animation_pick( int fg_weight, int bg_weight, int64_t ms, unsigned int offset );
+
 // Make sure to change TILE_CATEGORY_IDS if this changes!
 enum class TILE_CATEGORY {
     NONE,
@@ -391,9 +398,9 @@ class layer_context_sprites
         std::string id;
         std::map<std::string, int> sprite;
         //draw order is sorted by layer
-        int layer;
+        int layer = 0;
         point offset;
-        int total_weight;
+        int total_weight = 0;
         //if set, appends to the sprite name for handling contexts
         std::string append_suffix;
 };
@@ -469,6 +476,9 @@ class tileset
 
         std::unordered_set<std::string> duplicate_ids;
 
+        // "overlay_ordering" of the tileset and its mod tilesets, by mutation or bionic id
+        std::map<std::string, int> mutation_overlay_ordering;
+
         std::unordered_map<std::string, tile_type> tile_ids;
         // caches both "default" and "_season_XXX" tile variants (to reduce the number of lookups)
         // either variant can be either a `nullptr` or a pointer/reference to the real value (stored inside `tile_ids`)
@@ -539,6 +549,9 @@ class tileset
 
         const std::unordered_set<std::string> &get_duplicate_ids() const {
             return duplicate_ids;
+        }
+        const std::map<std::string, int> &get_mutation_overlay_ordering() const {
+            return mutation_overlay_ordering;
         }
 
         std::unordered_set<std::string> get_all_portrait_tile_ids( bool male ) const;
@@ -1228,6 +1241,9 @@ class cata_tiles
         // its subtile and fallback calls reuse it
         bool m_anchor_decided = false;
         std::optional<smooth_lighting::light_anchor> m_shown_anchor;
+        // while draw_entity_with_overlays draws a character or monster: the seed its sprite
+        // and overlays pick their weighted variants with (get_variant_seed), from who it is
+        std::optional<unsigned int> m_entity_variant_seed;
         // test seam: draw_sprite_at records each sprite's id, light policy and
         // anchor
         std::vector<drawn_sprite_record> *test_draw_light_log = nullptr;

@@ -174,9 +174,11 @@ pixel_minimap_mode pixel_minimap_mode_from_string( const std::string &mode )
 }
 
 // Generic function for hashing points. Untype them to use them.
+// Unsigned, so an absolute position far from the origin wraps instead of overflowing; the
+// value is the one the signed sum had wherever that didn't overflow.
 auto simple_point_hash = []( const point &p )
 {
-    return p.x + p.y * 65536;
+    return static_cast<unsigned int>( p.x ) + static_cast<unsigned int>( p.y ) * 65536U;
 };
 
 } // namespace
@@ -309,6 +311,7 @@ void tileset::clear()
     renderer_instance_generation_at_upload = 0;
     gpu_textures_generation_at_upload = 0;
     duplicate_ids.clear();
+    mutation_overlay_ordering.clear();
     tile_ids.clear();
     for( std::unordered_map<std::string, season_tile_value> &m : tile_ids_by_season ) {
         m.clear();
@@ -509,14 +512,6 @@ void cata_tiles::load_tileset( const std::string &tileset_id, const bool prechec
         == compute_tileset_filter_fingerprint( memory_map_mode ) ) {
         return;
     }
-    // Snapshot the global mutation-overlay ordering before the candidate parse
-    // rewrites it: the ordering must match the bound tileset, so restore it if
-    // the load aborts without publishing a new one.
-    const std::map<std::string, int> overlay_ordering_snapshot = tileset_mutation_overlay_ordering;
-    // TODO: move into clear or somewhere else.
-    // reset the overlay ordering from the previous loaded tileset
-    tileset_mutation_overlay_ordering.clear();
-
     // A reset/loss/pause mid-upload aborts the load and quarantines the partial
     // candidate; the live tileset stays bound. Drain outside the upload scope
     // (drains are refused while it owns candidate textures), dispose the
@@ -552,10 +547,12 @@ void cata_tiles::load_tileset( const std::string &tileset_id, const bool prechec
         gens = renderer_coordinator.texture_generations();
     }
 
-    if( !published ) {
-        // The load aborted with the previous tileset still bound; restore the
-        // overlay ordering that matched it.
-        tileset_mutation_overlay_ordering = overlay_ordering_snapshot;
+    // REND-B07: the mutation-overlay ordering is the main tileset's.  Only the main (TILES)
+    // context publishes it, from the bundle it bound, parsed now or found in the cache; the
+    // distant, portrait and overmap loads leave it alone.  An aborted load leaves the ordering
+    // of the tileset still bound.
+    if( published && tileset_ptr && this == closetilecontext.get() ) {
+        tileset_mutation_overlay_ordering = tileset_ptr->get_mutation_overlay_ordering();
     }
 
     set_draw_scale( 16 );
@@ -2802,8 +2799,13 @@ unsigned int cata_tiles::get_variant_seed( const tile_type &display_tile, TILE_C
             seed = simple_point_hash( pos.raw().xy() );
             break;
         case TILE_CATEGORY::NONE:
-            // graffiti
-            if( found_id == "graffiti" ) {
+            if( m_entity_variant_seed ) {
+                // REND-B05: a character or monster draw_entity_with_overlays draws (the
+                // player, an NPC, their worn, wielded and mutation overlays, a monster's
+                // effect overlays): who it is picks the variant, wherever it is drawn
+                seed = *m_entity_variant_seed;
+            } else if( found_id == "graffiti" ) {
+                // graffiti
                 seed = std::hash<std::string> {}( here.graffiti_at( pos ) );
             } else if( string_starts_with( found_id, "graffiti" ) ) {
                 seed = simple_point_hash( here.get_abs( pos ).raw().xy() );
@@ -2811,6 +2813,9 @@ unsigned int cata_tiles::get_variant_seed( const tile_type &display_tile, TILE_C
             break;
         case TILE_CATEGORY::ITEM:
         case TILE_CATEGORY::TRAP:
+            // REND-B05: stationary on the map, seeded like terrain by the absolute position
+            seed = simple_point_hash( here.get_abs( pos ).raw().xy() );
+            break;
         case TILE_CATEGORY::BULLET:
         case TILE_CATEGORY::HIT_ENTITY:
             // TODO: come up with ways to make random sprites consistent for these types
@@ -2820,24 +2825,21 @@ unsigned int cata_tiles::get_variant_seed( const tile_type &display_tile, TILE_C
             seed = rng_bits(); // Doesn't need to be deterministic
             break;
         case TILE_CATEGORY::MONSTER:
-            // FIXME: add persistent id to Creature type, instead of using monster pointer address
-            if( monster_override.find( tripoint_bub_ms( pos ) ) == monster_override.end() ) {
-                seed = reinterpret_cast<uintptr_t>( creatures.creature_at<monster>( pos ) );
+            if( m_entity_variant_seed ) {
+                // a character drawn with a monster's look (override_look)
+                seed = *m_entity_variant_seed;
+            } else if( monster_override.find( tripoint_bub_ms( pos ) ) == monster_override.end() ) {
+                // REND-B05: the monster's persistent id, which a save keeps, not its address,
+                // so a monster shows the same variant after a reload
+                if( const monster *const mon = creatures.creature_at<monster>( pos ) ) {
+                    seed = static_cast<unsigned int>( mon->persistent_id() );
+                }
             }
             break;
         default:
-            // player
-            if( string_starts_with( found_id, "player_" ) ) {
-                seed = std::hash<std::string> {}( get_player_character().name );
-                break;
-            }
-            // NPC
-            if( string_starts_with( found_id, "npc_" ) ) {
-                if( npc *const guy = creatures.creature_at<npc>( pos ) ) {
-                    seed = guy->getID().get_value();
-                    break;
-                }
-            }
+            // REND-B05: players and NPCs are drawn as NONE, seeded above; nothing else here
+            // has a seed
+            break;
     }
 
     unsigned int loc_rand = 0;
@@ -2873,21 +2875,30 @@ unsigned int cata_tiles::get_variant_seed( const tile_type &display_tile, TILE_C
         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
         auto now_ms = std::chrono::time_point_cast<std::chrono::milliseconds>( now );
         std::chrono::milliseconds value = now_ms.time_since_epoch();
-        // aiming roughly at the standard 60 frames per second:
-        int animation_frame = value.count() / 17;
-        // offset by log_rand so that everything does not blink at the same time:
-        animation_frame += loc_rand;
-        int frames_in_loop = display_tile.fg.get_weight();
-        if( frames_in_loop == 1 ) {
-            frames_in_loop = display_tile.bg.get_weight();
-        }
-        // loc_rand is actually the weighed index of the selected tile, and
-        // for animations the "weight" is the number of frames to show the tile for:
-        loc_rand = animation_frame % frames_in_loop;
-
+        // offset by loc_rand so that everything does not blink at the same time
+        loc_rand = idle_animation_pick( display_tile.fg.get_weight(), display_tile.bg.get_weight(),
+                                        static_cast<int64_t>( value.count() ), loc_rand );
     }
 
     return loc_rand;
+}
+
+unsigned int idle_animation_pick( const int fg_weight, const int bg_weight, const int64_t ms,
+                                  const unsigned int offset )
+{
+    // REND-B04: the loop is the fg's frames, or the bg's for a tile with one fg sprite or none
+    // (a bg-only tile divided by zero, as did a one-sprite tile with no bg)
+    const int frames_in_loop = fg_weight > 1 ? fg_weight : std::max( fg_weight, bg_weight );
+    if( frames_in_loop <= 0 ) {
+        return offset;
+    }
+    // aiming roughly at the standard 60 frames per second.  Unsigned, so the offset never
+    // makes it negative: a negative remainder became a pick past the end of the loop, which
+    // skipped a frame and showed the first twice.
+    const uint32_t frame = static_cast<uint32_t>( ms / 17 ) + offset;
+    // the pick is the weighted index of the sprite, and for animations the "weight" is the
+    // number of frames to show the sprite for
+    return frame % static_cast<uint32_t>( frames_in_loop );
 }
 
 std::optional<texture_draw_data> cata_tiles::get_texture_draw_data( const std::string &id,
@@ -3079,9 +3090,13 @@ bool cata_tiles::draw_from_id_string_internal( const std::string &id, TILE_CATEG
                 debugmsg( "invalid vpart_id '%s'", vpid.str() );
             }
         } else if( category == TILE_CATEGORY::FIELD ) {
-            const field_type_id fid = field_type_id( found_id );
-            sym = fid->get_intensity_level().symbol;
-            col = fid->get_intensity_level().color;
+            // REND-B03: a layering sprite missing from the tileset gets here with its own id,
+            // which is no field id
+            const field_type_str_id fid( found_id );
+            if( fid.is_valid() ) {
+                sym = fid->get_intensity_level().symbol;
+                col = fid->get_intensity_level().color;
+            }
         } else if( category == TILE_CATEGORY::TRAP ) {
             const trap_str_id tmp( found_id );
             if( tmp.is_valid() ) {
@@ -4099,38 +4114,73 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
     bool ret_draw_field = false;
     bool ret_draw_items = false;
 
-    auto draw_layer_field = [&]( const std::string & terfurn_key,
-    const lit_level & ll, const field_entry & fe, const std::array<int, 4> &neighborhood ) {
-        auto itt = tileset_ptr->field_layer_data.find( terfurn_key );
-        if( itt != tileset_ptr->field_layer_data.end() ) {
+    // Draws the layering sprite (layering.json "field_variants") of the field `field_id` for
+    // the context `terfurn_key` (a furniture or terrain id or flag).  REND-B03: true only
+    // when the context lists that field and its sprite was drawn, so any other field there is
+    // drawn as usual; and the field is the one being drawn, not the tile's displayed one.
+    auto draw_layer_field = [&]( const std::string & terfurn_key, const field_type_id & field_id,
+    const lit_level & field_ll, const field_entry & fe, const std::array<int, 4> &neighborhood ) {
+        const auto itt = tileset_ptr->field_layer_data.find( terfurn_key );
+        if( itt == tileset_ptr->field_layer_data.end() ) {
+            return false;
+        }
+        // go through all the layer variants
+        for( const layer_context_sprites &layer_var : itt->second ) {
+            // the loader keeps only variants with a weight
+            if( field_id.id().str() != layer_var.id || layer_var.total_weight <= 0 ) {
+                continue;
+            }
             const bool nv = nv_goggles_activated;
             int subtile = 0;
             int rotation = 0;
-            get_tile_values( fld.to_i(), neighborhood, subtile, rotation, 0 );
+            get_tile_values( field_id.to_i(), neighborhood, subtile, rotation, 0 );
 
-            // go through all the layer variants
-            for( const layer_context_sprites &layer_var : itt->second ) {
-                if( fld.id().str() == layer_var.id ) {
-
-                    // get the sprite to draw
-                    // roll is based on the maptile seed to keep visuals consistent
-                    int roll = simple_point_hash( p.xy().raw() ) % layer_var.total_weight;
-                    std::string sprite_to_draw;
-                    for( const auto &sprite_list : layer_var.sprite ) {
-                        roll = roll - sprite_list.second;
-                        if( roll < 0 ) {
-                            sprite_to_draw = sprite_list.first;
-                            break;
-                        }
-                    }
-
-                    // if we have found info on the item go through and draw its stuff
-                    ret_draw_field = draw_from_id_string( sprite_to_draw, TILE_CATEGORY::FIELD, empty_string, p,
-                                                          subtile, rotation, ll, nv, height_3d, fe.get_field_intensity(), "", layer_var.offset );
+            // get the sprite to draw: the roll is seeded by the absolute position, so the
+            // sprite stays when the map shifts
+            const unsigned int seed = simple_point_hash( here.get_abs( p ).raw().xy() );
+            int roll = static_cast<int>( seed % static_cast<unsigned int>( layer_var.total_weight ) );
+            const std::string *sprite_to_draw = nullptr;
+            for( const auto &sprite_list : layer_var.sprite ) {
+                roll = roll - sprite_list.second;
+                if( roll < 0 ) {
+                    sprite_to_draw = &sprite_list.first;
                     break;
                 }
             }
+            if( sprite_to_draw == nullptr ) {
+                return false;
+            }
+            ret_draw_field = draw_from_id_string( *sprite_to_draw, TILE_CATEGORY::FIELD, empty_string, p,
+                                                  subtile, rotation, field_ll, nv, height_3d, fe.get_field_intensity(), "",
+                                                  layer_var.offset );
+            return ret_draw_field;
+        }
+        return false;
+    };
+    // the context of a field's layering sprite: the furniture's id, then its flags, then the
+    // terrain's id, then its flags, as for items
+    auto draw_layer_field_in_context = [&]( const maptile & field_tile, const field_type_id & field_id,
+    const lit_level & field_ll, const field_entry & fe, const std::array<int, 4> &neighborhood ) {
+        if( tileset_ptr->field_layer_data.empty() ) {
+            return false;
+        }
+        const furn_t &furn = field_tile.get_furn_t();
+        if( draw_layer_field( furn.id.str(), field_id, field_ll, fe, neighborhood ) ) {
             return true;
+        }
+        for( const std::string &flag : furn.get_flags() ) {
+            if( draw_layer_field( flag, field_id, field_ll, fe, neighborhood ) ) {
+                return true;
+            }
+        }
+        const ter_t &ter = field_tile.get_ter_t();
+        if( draw_layer_field( ter.id.str(), field_id, field_ll, fe, neighborhood ) ) {
+            return true;
+        }
+        for( const std::string &flag : ter.get_flags() ) {
+            if( draw_layer_field( flag, field_id, field_ll, fe, neighborhood ) ) {
+                return true;
+            }
         }
         return false;
     };
@@ -4225,12 +4275,8 @@ bool cata_tiles::draw_field_or_item( const tripoint_bub_ms &p, const lit_level l
                 int intensity = fd_pr.second.get_field_intensity();
 
                 // start by drawing the layering data if available
-                bool has_drawn_field = draw_layer_field( tile.get_furn_t().id.str(), lit, fd_pr.second,
-                                       neighborhood );
-                if( !has_drawn_field ) {
-                    has_drawn_field = draw_layer_field( tile.get_ter_t().id.str(), lit, fd_pr.second,
-                                                        neighborhood );
-                }
+                const bool has_drawn_field = draw_layer_field_in_context( tile, fld, lit, fd_pr.second,
+                                             neighborhood );
                 if( !has_drawn_field ) {
                     draw_from_int_id( fld.id().str(), fld.to_i(), TILE_CATEGORY::FIELD,
                                       p, subtile, rotation, ll, nv_goggles_activated, height_3d, intensity );
@@ -4855,6 +4901,11 @@ void cata_tiles::draw_entity_with_overlays( const Character &ch, const tripoint_
     const FacingDirection facing = facing_override == FacingDirection::NONE ? ch.facing :
                                    facing_override;
 
+    // REND-B05: the character's id picks the weighted variants of its sprite and overlays,
+    // so they stay the same wherever it is drawn (the map, the overmap, on a mount)
+    restore_on_out_of_scope<std::optional<unsigned int>> restore_seed( m_entity_variant_seed );
+    m_entity_variant_seed = static_cast<unsigned int>( ch.getID().get_value() );
+
     // first draw the character itself(i guess this means a tileset that
     // takes this seriously needs a naked sprite)
     int prev_height_3d = height_3d;
@@ -4917,6 +4968,11 @@ void cata_tiles::draw_entity_with_overlays( const monster &mon, const tripoint_b
         lit_level ll, int &height_3d )
 {
     // TODO: move drawing the monster from draw_critter_at() here
+
+    // REND-B05: the monster's persistent id picks the weighted variants of its overlays, as
+    // it does for its sprite
+    restore_on_out_of_scope<std::optional<unsigned int>> restore_seed( m_entity_variant_seed );
+    m_entity_variant_seed = static_cast<unsigned int>( mon.persistent_id() );
 
     std::vector<std::pair<std::string, std::string>> overlays = mon.get_overlay_ids();
     for( const std::pair<std::string, std::string> &overlay : overlays ) {
