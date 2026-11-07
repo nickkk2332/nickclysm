@@ -2746,6 +2746,10 @@ void Item_factory::check_definitions() const
             msg +=  "item has unknown ascii_picture.";
         }
 
+        if( type->disassembly_sub ) {
+            msg += type->disassembly_sub->check();
+        }
+
         for( const pocket_data &data : type->pockets ) {
             std::string pocket_error = data.check_definition();
             if( !pocket_error.empty() ) {
@@ -5050,6 +5054,12 @@ void itype::load( const JsonObject &jo, std::string_view src )
     optional( jo, was_loaded, "color", color, nc_color_reader{} );
 
     optional( jo, was_loaded, "repairs_like", repairs_like );
+
+    if( jo.has_object( "disassembly_substitute" ) ) {
+        std::shared_ptr<disassembly_substitute> sub = std::make_shared<disassembly_substitute>();
+        sub->load( jo.get_object( "disassembly_substitute" ) );
+        disassembly_sub = std::move( sub );
+    }
 
     optional( jo, true, "weapon_category", weapon_category, auto_flags_reader<weapon_category_id> {} );
 

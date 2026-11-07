@@ -1,6 +1,7 @@
 [
   {
     "id": "press",
+    "disassembly_substitute": { "qualities": [ { "id": "PULL", "level": 1 } ], "drop_tools": [ "fire" ] },
     "type": "ITEM",
     "subtypes": [ "TOOL" ],
     "name": { "str": "hand press", "str_pl": "hand presses" },

@@ -920,6 +920,7 @@ These flags can be applied via JSON item definition to most items.  Not to be co
 - ```NO_REPAIR``` Prevents repairing of this item even if otherwise suitable tools exist.
 - ```NO_SALVAGE``` Item cannot be broken down through a salvage process.  Best used when something should not be able to be broken down (i.e. base components like leather patches).
 - ```NO_STERILE``` This item is not sterile.  Only applies to CBMs.
+- ```NO_UNCRAFT``` This item cannot be disassembled, even if a recipe for it is reversible, an `uncraft` recipe names it or it is a book (which otherwise disassembles into paper).
 - ```NPC_ACTIVATE``` NPCs can activate this item as an alternative attack.  Currently done by throwing it right after activation.  `BOMB` implies this.
 - ```NPC_ALT_ATTACK``` Shouldn't be set directly.  Implied by `NPC_ACTIVATE` and `NPC_THROWN`.
 - ```NPC_DRINKABLE``` On a liquid: NPCs drink it straight from terrain whose endless `liquid_source` it is (a river, a well), a sip a turn, if they could drink it themselves (their diet and mutations agree).  Each sip brings its share of the liquid's water and nutrients, and the first sip of each charge runs its `consumption_effect_on_conditions` and the `character_eats_item` and `character_consumes_item` events.  Vanilla gives it to `water_clean` and `water` (`water_murky` deletes it).
@@ -1470,6 +1471,8 @@ like an engine flag. Since any name is accepted, check the spelling of engine fl
 
 
 ## Recipes
+
+Recipe flags are the ones below and the camp building ones further on; any other flag on a recipe is a load error.
 
 - ```ALLOW_ROTTEN``` Explicitly allow rotten components when crafting non-perishables.
 - ```BLIND_EASY``` Easy to craft with little to no light.

@@ -9,6 +9,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -55,6 +56,7 @@
 #include "handle_liquid.h"
 #include "input_popup.h"
 #include "iexamine.h"
+#include "inventory.h"
 #include "item.h"
 #include "item_components.h"
 #include "item_location.h"
@@ -114,8 +116,6 @@ static const efftype_id effect_transition_contacts( "transition_contacts" );
 static const furn_str_id furn_f_fake_bench_hands( "f_fake_bench_hands" );
 static const furn_str_id furn_f_ground_crafting_spot( "f_ground_crafting_spot" );
 
-static const itype_id itype_brick_oven_pseudo( "brick_oven_pseudo" );
-static const itype_id itype_butchery_tree_pseudo( "butchery_tree_pseudo" );
 static const itype_id itype_disassembly( "disassembly" );
 static const itype_id itype_fire( "fire" );
 static const itype_id itype_pickaxe( "pickaxe" );
@@ -134,8 +134,6 @@ static const quality_id qual_BOIL( "BOIL" );
 
 static const skill_id skill_electronics( "electronics" );
 static const skill_id skill_tailor( "tailor" );
-
-static const ter_str_id ter_t_brick_oven( "t_brick_oven" );
 
 static const trait_id trait_BURROW( "BURROW" );
 static const trait_id trait_BURROWLARGE( "BURROWLARGE" );
@@ -1576,15 +1574,18 @@ static std::vector<provider_candidate> enumerate_admitted_providers(
         }
     }
 
-    // Terrain has no pseudo item field, so trees and brick ovens reach the pool through
-    // the same hardcoded pair form_from_map uses.
+    // CRAFT-J08: terrain and furniture "crafting_pseudo_items", read as form_from_map reads them
+    // (trees and the brick oven used to be a hardcoded pair in both places).
+    const auto pseudo_lit = [&m]( const tripoint_bub_ms & p, const itype_id & pseudo ) {
+        return pseudo.is_valid() && ( !pseudo->has_flag( flag_NEEDS_SUNLIGHT ) ||
+                                      tile_has_sufficient_sunlight( m, p ) );
+    };
     for( const tripoint_bub_ms &p : reachable ) {
         const ter_id &t = m.ter( p );
-        const itype_id terrain_pseudo =
-            t->has_flag( ter_furn_flag::TFLAG_TREE ) ? itype_butchery_tree_pseudo
-            : t == ter_t_brick_oven ? itype_brick_oven_pseudo
-            : itype_id::NULL_ID();
-        if( !terrain_pseudo.is_null() ) {
+        for( const itype_id &terrain_pseudo : t->crafting_pseudo_tools() ) {
+            if( !pseudo_lit( p, terrain_pseudo ) ) {
+                continue;
+            }
             provider_candidate cand;
             cand.kind = craft_reservation::provider_kind::terrain;
             cand.tile = m.get_abs( p );
@@ -1598,8 +1599,22 @@ static std::vector<provider_candidate> enumerate_admitted_providers(
     // Unlike ground items, these face no accessibility or ownership check.
     for( const tripoint_bub_ms &p : reachable ) {
         const furn_id &f = m.furn( p );
-        if( f != furn_str_id::NULL_ID() && !f->crafting_pseudo_item.is_empty() &&
-            furniture_pseudo_available( m, p, f ) ) {
+        if( f == furn_str_id::NULL_ID() ) {
+            continue;
+        }
+        for( const itype_id &extra : f->crafting_pseudo_tools() ) {
+            if( !pseudo_lit( p, extra ) ) {
+                continue;
+            }
+            provider_candidate cand;
+            cand.kind = craft_reservation::provider_kind::furniture;
+            cand.tile = m.get_abs( p );
+            cand.furn = f;
+            cand.pseudo_type = extra;
+            cand.synthesized = item( extra, calendar::turn );
+            out.push_back( cand );
+        }
+        if( !f->crafting_pseudo_item.is_empty() && furniture_pseudo_available( m, p, f ) ) {
             provider_candidate cand;
             cand.kind = craft_reservation::provider_kind::furniture;
             cand.tile = m.get_abs( p );
@@ -2580,6 +2595,68 @@ static void park_craft_for_collection( item &craft )
     get_item_wakeups().cancel_all( craft.uid().get_value() );
 }
 
+// CRAFT-B02: a craft left past its step's max_time and grace used to vanish without a word.  The
+// crafter now hears of it as of a finished step, and the step's "on_ruin" runs its EOCs (alpha
+// the crafter, beta the craft) and names what is left where the craft was.
+static std::list<item> ruin_unattended_craft( item &craft, const item_location &loc )
+{
+    const recipe &rec = craft.get_making();
+    const int step_idx = craft.get_current_step();
+    const recipe_step *step = step_idx >= 0 && step_idx < static_cast<int>( rec.steps().size() ) ?
+                              &rec.steps()[step_idx] : nullptr;
+    Character *crafter = resolve_crafter( craft.get_crafter_id() );
+    if( crafter == nullptr && !craft.get_crafter_id().is_valid() ) {
+        // A craft with no crafter recorded can only be the avatar's.
+        crafter = &get_avatar();
+    }
+    const bool custom_message = step != nullptr && !step->ruin_message.empty();
+    if( crafter != nullptr && crafter->is_avatar() ) {
+        const std::string msg = custom_message ? step->ruin_message.translated() :
+                                string_format( _( "Your %s was ruined while unattended." ),
+                                               rec.result_name() );
+        add_msg( m_bad, msg );
+        if( !activity_targets_loc( get_avatar(), loc ) && uistate.distraction_craft_step_complete ) {
+            g->cancel_activity_or_ignore_query( distraction_type::craft_step_complete, msg );
+        }
+    } else if( loc ) {
+        const std::string msg = custom_message ? step->ruin_message.translated() :
+                                crafter != nullptr ?
+                                //~ %1$s: NPC name, %2$s: the craft's result
+                                string_format( _( "%1$s's %2$s was ruined while unattended." ),
+                                               crafter->get_name(), rec.result_name() ) :
+                                string_format( _( "The %s was ruined while unattended." ),
+                                               rec.result_name() );
+        add_msg_if_player_sees( loc.pos_bub( get_map() ), m_bad, msg );
+    }
+
+    std::list<item> left;
+    if( step == nullptr ) {
+        return left;
+    }
+    if( !step->ruin_eocs.empty() ) {
+        item_location craft_loc = loc;
+        dialogue d( crafter != nullptr ? get_talker_for( *crafter ) : nullptr,
+                    get_talker_for( craft_loc ) );
+        d.set_value( "recipe_id", rec.ident().str() );
+        d.set_value( "batch_size", craft.get_making_batch_size() );
+        d.set_value( "step", step_idx );
+        for( const effect_on_condition_id &eoc : step->ruin_eocs ) {
+            eoc->activate_activation_only( d, "a recipe step", "ruin", "on_ruin" );
+        }
+    }
+    if( !step->ruin_result.is_null() ) {
+        const int count = step->ruin_count * std::max( craft.get_making_batch_size(), 1 );
+        item ruined( step->ruin_result, calendar::turn );
+        if( ruined.count_by_charges() ) {
+            ruined.charges = count;
+            left.push_back( ruined );
+        } else {
+            left.insert( left.end(), static_cast<size_t>( count ), ruined );
+        }
+    }
+    return left;
+}
+
 static void craft_actualize_fail( item &craft, time_point now,
                                   const item_location &loc )
 {
@@ -2589,11 +2666,24 @@ static void craft_actualize_fail( item &craft, time_point now,
     if( now < craft.get_fail_at() ) {
         return;
     }
+    const std::optional<tripoint_bub_ms> ruin_pos = craft_loc_for_complete( loc );
+    std::list<item> left = ruin_unattended_craft( craft, loc );
     release_step_resources( craft );
     end_live_wait_for( loc );
     get_item_wakeups().cancel_all( craft.uid().get_value() );
+    // Held by a character when there is no tile: the ruin is theirs.
+    Character *holder = ruin_pos ? nullptr : loc.carrier();
     item_location mut_loc = loc;
-    mut_loc.remove_item();
+    if( mut_loc ) {
+        mut_loc.remove_item();
+    }
+    for( item &it : left ) {
+        if( ruin_pos ) {
+            get_map().add_item_or_charges( *ruin_pos, it );
+        } else if( holder != nullptr ) {
+            holder->i_add_or_drop( it );
+        }
+    }
 }
 
 static void finalize_passive_craft( item &craft, const item_location &loc )
@@ -5276,9 +5366,16 @@ void Character::consume_tools( map &m, const comp_selection<tool_comp> &tool, in
     int quantity = tool.comp.count * batch * tmp->charge_factor();
 
     if( tool.use_from == usage_from::player || tool.use_from == usage_from::both ) {
-        use_charges( tool.comp.type, quantity, unreserved_filter );
+        // CRAFT-B06: Character::use_charges takes the count by value, so take off what it
+        // drew (charges and the carried UPS) or the map draws the whole amount again.
+        const units::energy ups_before = available_ups();
+        for( const item &used : use_charges( tool.comp.type, quantity, unreserved_filter ) ) {
+            quantity -= used.charges;
+        }
+        quantity -= static_cast<int>( units::to_kilojoule( ups_before - available_ups() ) );
+        quantity = std::max( quantity, 0 );
     }
-    if( tool.use_from == usage_from::map || tool.use_from == usage_from::both ) {
+    if( ( tool.use_from == usage_from::map || tool.use_from == usage_from::both ) && quantity > 0 ) {
         m.use_charges( reachable_pts, tool.comp.type, quantity, unreserved_filter, bcp );
         // Map::use_charges() does not handle UPS charges.
         if( quantity > 0 ) {
@@ -5343,12 +5440,15 @@ ret_val<void> Character::can_disassemble( const item &obj,
     }
     const requirement_data &dis = r.disassembly_requirements();
 
+    // CRAFT-B04: a group lists alternatives, as zone disassembly reads it
     for( const auto &opts : dis.get_qualities() ) {
-        for( const quality_requirement &qual : opts ) {
-            if( !qual.has( this, inv, return_true<item> ) ) {
-                // Here should be no dot at the end of the string as 'to_string()' provides it.
-                return ret_val<void>::make_failure( _( "You need %s" ), qual.to_string() );
-            }
+        const bool found = opts.empty() || std::any_of( opts.begin(), opts.end(),
+        [&]( const quality_requirement & qual ) {
+            return qual.has( this, inv, return_true<item> );
+        } );
+        if( !found ) {
+            // Here should be no dot at the end of the string as 'to_string()' provides it.
+            return ret_val<void>::make_failure( _( "You need %s" ), opts.front().to_string() );
         }
     }
 
@@ -5751,8 +5851,9 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
                 recover_tally[it_type_id] += newit.count();
             }
 
-            // Use item from components list, or (if not contained)
-            // use newit, the default constructed.
+            // CRAFT-B05: newit is the stored component itself (`components` copies them, with
+            // the inherited faults) or a default one, so the adjustments below land on what is
+            // dropped.  Swapping in the stored copy afterwards threw them all away.
             item act_item = newit;
 
             if( act_item.has_temperature() ) {
@@ -5771,11 +5872,6 @@ void Character::complete_disassemble( item_location &target, const recipe &dis )
 
             act_item.set_relative_rot( dis_item.get_relative_rot() );
             act_item.set_owner( *this );
-
-            ret_val<item> removed = dis_item.components.remove( newit.typeId() );
-            if( removed.success() ) {
-                act_item = removed.value();
-            }
 
             if( act_item.made_of( phase_id::LIQUID ) ) {
                 liquid_handler::handle_all_or_npc_liquid( *this, act_item, PICKUP_RANGE );

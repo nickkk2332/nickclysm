@@ -59,8 +59,11 @@ Crafting recipes are defined as a JSON object with the following fields:
 "difficulty": 3,             // Difficulty of success check
 "time": "5 m",               // Preferred time to perform recipe, can specify in minutes, hours etc.
 "morale_modifier": [ -5, "2 hours" ], // Optional (int, time duration). Any morale penalty or bonus conferred by crafting this recipe. Penalties are conferred at the start of crafting, bonuses upon completion. The second member of the pair is how long the morale will last. Decay always starts after half of the total time.
-"reversible": true,          // Can be disassembled. Time taken is as long as to craft the item.
+"reversible": true,          // Can be disassembled. Time taken is as long as to craft the item (for a recipe with steps, the steps that are not unattended).
 "reversible": { "time": "30 s" }, // Can be disassembled. Time to disassemble as specified.
+"reversible": { "primary": true }, // Optional "primary": when several reversible recipes make the same result, this one gives its disassembly (see Reversible crafting recipes).
+"condition": { "u_has_var": "schematic_found", "value": "yes" }, // Optional dialogue condition, with the crafter as alpha (`u_`; context value `_recipe_id`).  The recipe cannot be started while it is false.  Given, it replaces an inherited one.
+"condition_fail_message": "You need the schematic in front of you.", // Optional, shown in the recipe's requirements while the condition is false.
 "autolearn": true,           // Automatically learned upon gaining required skills
 "autolearn" : [              // Automatically learned upon gaining listed skills
     [ "survival", 2 ],
@@ -87,9 +90,9 @@ Crafting recipes are defined as a JSON object with the following fields:
 "batch_time_factors": ..., // See below for details
 "charges": 2,                // (Optional, default 1) Number of resulting items/charges per craft. If a container is set, this is the amount that gets put inside it, capped by container capacity.
 "result_mult": 2,            // Multiplier for resulting items. Also multiplies container items.
-"flags": [                   // A set of strings describing boolean features of the recipe
+"flags": [                   // A set of strings describing boolean features of the recipe; see the Recipes and Camp building recipes sections of JSON_FLAGS.md.  An unknown flag is a load error.
   "BLIND_EASY",
-  "ANOTHERFLAG"
+  "SECRET"
 ],
 "result_eocs": [ {"id": "TEST", "effect": { "u_message": "You feel Test" } } // List of inline effect_on_conditions or effect_on_condition ids that attempt to activate when this recipe is successfully finished, once per batch unit (a batch of 3 runs them 3 times).  The crafter is the alpha talker; there is no beta talker.  Context values: `_recipe_id`, `_batch_size`, and `_batch_index` (0 for the first unit).  If a value is provided a result becomes optional, though a name and id will be needed if it is missing.  If no result is provided and a description is present, "description" will be displayed as the result on the crafting gui.  Not allowed on uncraft recipes (use `disassembly_eocs`).
 ], 
@@ -159,6 +162,17 @@ Each member is an integer minimum:
 A value of `0` is valid but has no effect. The recipe cannot be started while any effective requirement is unmet.
 
 When a recipe with `copy-from` defines `character_requirements`, the entire inherited object is replaced. Members omitted from the child object are not inherited individually.
+
+#### `condition`
+
+`condition` gates a recipe on game state: a variable, the time, the weather, an effect, a trait. It is a [dialogue condition](NPCs.md#dialogue-conditions) evaluated with the crafter as the alpha talker, and the context value `_recipe_id`. While it is false the recipe cannot be started (from the crafting menu, by an NPC, a camp, or an EOC) and its requirements list `condition_fail_message`, or "The conditions for this recipe are not met.". It is checked when a craft starts, not while one goes on, and not for disassembly.
+
+```jsonc
+"condition": { "is_season": "winter" },
+"condition_fail_message": "The lake ice is only thick enough to cut in winter."
+```
+
+Unlocking a recipe is still done by teaching it (`u_learn_recipe`); `condition` is for recipes that are known but only sometimes possible.
 
 #### Changing proficiencies and requirements with `copy-from`
 
@@ -263,9 +277,18 @@ Each entry in the `"steps"` array is an object with these fields:
                       //             Only allowed when "max_time" is set.
 "unattend_message":   // (Optional)  Translatable string.  Shown when an unattended step finishes
                       //             while the player is elsewhere.  Has a generic fallback.
+"on_ruin": {          // (Optional)  What happens when the craft is ruined past "max_time" + "grace_period".
+                      //             Only allowed when "max_time" is set.  Every member is optional.
+  "result": "dough_ruined", // An item left where the craft was (or with whoever held it).
+  "count": 1,         //             How many per batch unit (default 1); charges for an item counted by charges.
+  "message": "The dough over-proofed.", // Shown instead of "Your <result> was ruined while unattended.".
+  "eocs": [ "EOC_DOUGH_RUINED" ] // Inline EOCs or ids, run before the craft is removed.  The crafter
+                      //             is the alpha talker (none if they are not loaded), the craft the beta
+                      //             talker.  Context values: `_recipe_id`, `_batch_size`, `_step` (0-based).
+}
 ```
 
-`"components"` at step level is not allowed.
+`"components"` at step level is not allowed.  Every member of a step is read: an unknown one (a typo such as `"max_tme"`) is a load error.
 
 ### Example
 
@@ -339,7 +362,7 @@ When the wall-clock deadline elapses:
 
 - Non-terminal: step advances, distraction fires with `unattend_message` (or a vague log line without a timepiece).  Suppressed if the player is already on this craft.
 - Terminal: craft auto-finalizes at the deadline, so morale, EOCs, heat, and birthday use in-game completion time.
-- `max_time + grace_period` past start: craft is destroyed.  This deadline is batch-scaled the same way as completion, so the ruin window tracks the batch-scaled completion time rather than staying a flat per-unit duration.
+- `max_time + grace_period` past start: craft is destroyed.  This deadline is batch-scaled the same way as completion, so the ruin window tracks the batch-scaled completion time rather than staying a flat per-unit duration.  The crafter is told ("Your <result> was ruined while unattended.", or the step's `on_ruin` `message`; an NPC's ruin is shown if you can see the craft), it interrupts what you are doing like a finished step, and the step's `on_ruin` result and EOCs follow.  A craft whose submap was unloaded is ruined when it loads again past its deadline.
 
 If the step's tools or qualities become unavailable, or a charged tool runs short on charges, the step pauses and the deadline slides forward once the requirement is restored.  `crafter_id` is remembered so env-check picks up the crafter's pseudo-tools, bionics, and trait qualities when they are next to the craft.
 
@@ -823,14 +846,35 @@ Reversible crafting recipes also have their time, skills used, difficulty, and t
 
 Things to note:
 - **Reversible crafting recipes cannot have byproducts!** Trying to make a recipe with byproducts reversible will not work.
-- On the other hand, it is possible to make recipes using ``result_mult`` reversible, but this will inadvertently cause infinite resource generation, as full recipe ingredients will be obtained from disassembling a single result item
+- A reversible recipe with a ``result_mult`` above 1 is a load error: disassembling one result would give back the components of all of them
 - All items used to craft the item will be obtained through the disassembly, with the exception of items with the ``UNRECOVERABLE`` flag
 - While unlike with uncraft recipes it is impossible to transmute materials through those, it is very easy to make nonsensical disassemblies through this method when it comes to required tools. Consider using the two methods alongside one another.
 - Making a recipe that crafts a specific item variant reversible will result in all variants of this item using the same disassembly
+- A recipe with steps disassembles in one go: it takes ``reversible.time`` if given, otherwise the time of its steps that are not unattended
+- When several reversible recipes make the same item and there is no uncraft recipe for it, the one with ``"reversible": { "primary": true }`` gives the disassembly; without one, the one loaded first (the game's before a mod's; in one file, the earlier one; a redefinition keeps the place of the first definition of its id). Two primary recipes for one item are a load error
+- An item with the ``NO_UNCRAFT`` flag cannot be disassembled at all
+
+**Tools and qualities a disassembly does not need.** The recipe's tools and qualities are what the disassembly needs, with substitutions from JSON (``disassembly_substitute``):
+
+```jsonc
+// on an item (a tool): a tool group naming it is dropped and a fine metal saw needed instead
+"disassembly_substitute": { "qualities": [ { "id": "SAW_M_FINE", "level": 1 } ] }
+// a hand press: needs bullet pulling instead, and tool groups naming "fire" are dropped too
+"disassembly_substitute": { "qualities": [ { "id": "PULL", "level": 1 } ], "drop_tools": [ "fire" ] }
+// on a tool_quality: sewing is needed as cutting, at the level the recipe asked of sewing
+"disassembly_substitute": { "qualities": [ { "id": "CUT" } ] }
+// dropped with nothing in its place (a crucible, glare protection, knitting)
+"disassembly_substitute": {  }
+```
+
+``qualities`` entries take an ``id`` and an optional ``level``: on a tool_quality, no level (or 0) is the level the recipe asked of the replaced quality; on an item, 1. Each substitute quality is needed in its own right, not as an alternative to another group, and a quality needed several times is needed once at the highest level. Vanilla gives it to the welders, oxy-torch, forges, crucible and hand press, and to the SEW, GLARE and KNIT qualities. An item with ``copy-from`` inherits it. This applies to reversible recipes only; an uncraft recipe names its own tools.
 
 **Using uncrafts and reversible crafting together:**
 - Either of those methods will work alone, but they also interact if both are defined
 - If a crafting recipe has ``reversible: true``, *and* the item has a manually defined uncraft recipe, what will happen is the uncraft recipe will be able to return components used to craft the specific item. In a case like this, the uncraft will supply all information exception for the components used to craft that item - this means that this combination can remember components (overcoming uncraft's weakness) **AND** avoid nonsensical tool requirements or difficulty levels (overcoming reversible crafting's weakness)
+
+### Books
+A book with no uncraft or reversible recipe disassembles into paper: its weight in sheets of ``paper``, taking 10 moves a sheet, with no tools or skill. Only a book at least half made of ``paper`` or ``cardboard`` (by material portion; one with no material counts) gets this, so a stone tablet or a leather scroll does not. For another yield or time, write an uncraft recipe for the book; to have none, give it the ``NO_UNCRAFT`` flag.
 
 ### Salvaging / Cutting Up
 This process is largely hardcoded, with the JSON side only consisting of defining whether a specific material is salvageable, and possible per-item salvaging disabling through flags. The only way to make an item that's normally salvageable not-salvageable is by either editing its material or adding the ``NO_SALVAGE`` flag.

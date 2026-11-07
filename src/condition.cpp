@@ -2838,13 +2838,12 @@ conditional_t::func f_roll_contested( const JsonObject &jo, std::string_view mem
     };
 }
 
-conditional_t::func f_u_know_recipe( const JsonObject &jo, std::string_view member )
+conditional_t::func f_know_recipe( const JsonObject &jo, std::string_view member, bool is_npc )
 {
     str_or_var known_recipe_id = get_str_or_var( jo.get_member( member ), member, true );
-    return [known_recipe_id]( const_dialogue const & d ) {
-        const recipe &rep = recipe_id( known_recipe_id.evaluate( d ) ).obj();
-        // should be a talker function but recipes aren't in Character:: yet
-        return get_player_character().knows_recipe( &rep );
+    return [known_recipe_id, is_npc]( const_dialogue const & d ) {
+        // CRAFT-J06: the talker's recipes, not always the avatar's
+        return d.const_actor( is_npc )->has_recipe( recipe_id( known_recipe_id.evaluate( d ) ) );
     };
 }
 
@@ -3860,7 +3859,7 @@ parsers = {
     {"u_mission_goal", "mission_goal", jarg::member, &conditional_fun::f_mission_goal },
     {"u_mission_goal", "npc_mission_goal", jarg::member, &conditional_fun::f_mission_goal },
     {"roll_contested", jarg::member, &conditional_fun::f_roll_contested },
-    {"u_know_recipe", jarg::member, &conditional_fun::f_u_know_recipe },
+    {"u_know_recipe", "npc_know_recipe", jarg::member, &conditional_fun::f_know_recipe },
     {"one_in_chance", jarg::member | jarg::array, &conditional_fun::f_one_in_chance },
     {"x_in_y_chance", jarg::object, &conditional_fun::f_x_in_y_chance },
     {"line_of_sight", jarg::member, &conditional_fun::f_line_of_sight },

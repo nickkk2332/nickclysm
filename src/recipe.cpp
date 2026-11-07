@@ -20,8 +20,10 @@
 #include "cata_variant.h"
 #include "character.h"
 #include "color.h"
+#include "condition.h"
 #include "crafting_gui.h"
 #include "debug.h"
+#include "dialogue.h"
 #include "effect_on_condition.h"
 #include "enum_traits.h"
 #include "flag.h"
@@ -49,6 +51,7 @@
 #include "skill.h"
 #include "string_formatter.h"
 #include "string_id_utils.h"
+#include "talker.h"
 #include "temp_crafting_inventory.h"
 #include "translations.h"
 #include "type_id.h"
@@ -534,6 +537,13 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         }
     }
 
+    // CRAFT-J06: game state a recipe needs, with the crafter as alpha; replaces an inherited one
+    if( jo.has_member( "condition" ) ) {
+        read_condition( jo, "condition", condition_, false );
+        has_condition_ = true;
+    }
+    optional( jo, was_loaded, "condition_fail_message", condition_fail_message_ );
+
     if( !effectively_step_recipe ) {
         jo.read( "proficiencies", proficiencies );
         load_proficiency_extend_delete( jo, was_loaded, proficiencies );
@@ -620,9 +630,15 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
             mandatory( jo, was_loaded, "reversible", reversible );
         } else if( jo.has_object( "reversible" ) ) {
             reversible = true;
-            // Convert duration to time in moves
-            uncraft_time = to_moves<int>( read_from_json_string<time_duration>
-                                          ( jo.get_object( "reversible" ).get_member( "time" ), time_duration::units ) );
+            const JsonObject jrev = jo.get_object( "reversible" );
+            if( jrev.has_member( "time" ) ) {
+                // Convert duration to time in moves
+                uncraft_time = to_moves<int>( read_from_json_string<time_duration>
+                                              ( jrev.get_member( "time" ), time_duration::units ) );
+            }
+            // CRAFT-J05: this one gives the disassembly when several reversible recipes
+            // make the same result
+            optional( jrev, false, "primary", uncraft_primary, false );
         }
 
         if( jo.has_member( "byproducts" ) ) {
@@ -742,7 +758,7 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
         int step_index = 0;
         for( JsonObject step_jo : jo.get_array( "steps" ) ) {
             recipe_step step;
-            step.load( step_jo, id.str(), step_index++ );
+            step.load( step_jo, id.str(), step_index++, src );
             steps_.emplace_back( std::move( step ) );
         }
         if( steps_.empty() ) {
@@ -751,10 +767,10 @@ void recipe::load( const JsonObject &jo, const std::string_view src )
     }
 }
 
-void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, int step_index )
+void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, int step_index,
+                        const std::string_view src )
 {
-    jo.allow_omitted_members();
-
+    // CRAFT-B02: every member is read, so a typo ("max_tme") is a load error
     mandatory( jo, false, "name", name );
     mandatory( jo, false, "time", time, time_duration_as_moves_reader{} );
     if( time <= 0 ) {
@@ -815,6 +831,22 @@ void recipe_step::load( const JsonObject &jo, const std::string &recipe_name, in
         grace_period = d;
     }
     optional( jo, false, "unattend_message", unattend_message );
+
+    if( jo.has_member( "on_ruin" ) ) {
+        if( !max_time.has_value() ) {
+            jo.throw_error_at( "on_ruin", "on_ruin requires max_time" );
+        }
+        const JsonObject ruin = jo.get_object( "on_ruin" );
+        optional( ruin, false, "result", ruin_result, itype_id::NULL_ID() );
+        optional( ruin, false, "count", ruin_count, 1 );
+        if( ruin_count < 1 ) {
+            ruin.throw_error_at( "count", "count must be at least 1" );
+        }
+        optional( ruin, false, "message", ruin_message );
+        for( const JsonValue jv : ruin.get_array( "eocs" ) ) {
+            ruin_eocs.push_back( effect_on_conditions::load_inline_eoc( jv, src ) );
+        }
+    }
 }
 
 static cata::value_ptr<parameterized_build_reqs> calculate_all_blueprint_reqs(
@@ -1852,12 +1884,30 @@ bool recipe::character_meets_requirements( const Character &character ) const
             return false;
         }
     }
-    return true;
+    return meets_condition( character );
 }
 
 bool recipe::has_character_requirements() const
 {
-    return !character_requirements_.empty();
+    return !character_requirements_.empty() || has_condition_;
+}
+
+bool recipe::meets_condition( const Character &crafter ) const
+{
+    if( !has_condition_ ) {
+        return true;
+    }
+    const_dialogue d( get_const_talker_for( crafter ), nullptr );
+    d.set_value( "recipe_id", id.str() );
+    return condition_( d );
+}
+
+std::string recipe::condition_fail_text() const
+{
+    if( !condition_fail_message_.empty() ) {
+        return condition_fail_message_.translated();
+    }
+    return _( "The conditions for this recipe are not met." );
 }
 
 const std::map<scaling_stat, int> &recipe::get_character_requirements() const

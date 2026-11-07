@@ -31,6 +31,7 @@ class item;
 class item_components;
 class recipe;
 class temp_crafting_inventory;
+struct const_dialogue;
 template <typename E> struct enum_traits;
 
 enum scaling_stat : int;
@@ -158,7 +159,16 @@ struct recipe_step {
     std::optional<time_duration> grace_period;
     translation unattend_message;
 
-    void load( const JsonObject &jo, const std::string &recipe_name, int step_index );
+    // CRAFT-B02: "on_ruin", for a step left past max_time and its grace (requires max_time).
+    // What is left where the craft was (ruin_count per batch unit), what the crafter is told,
+    // and the EOCs run (alpha the crafter, beta the craft; context recipe_id, batch_size, step).
+    itype_id ruin_result = itype_id::NULL_ID();
+    int ruin_count = 1;
+    translation ruin_message;
+    std::vector<effect_on_condition_id> ruin_eocs;
+
+    void load( const JsonObject &jo, const std::string &recipe_name, int step_index,
+               std::string_view src );
 };
 
 // Pre-computed environment data for recipe cost calculations.
@@ -329,12 +339,20 @@ class recipe
 
         std::set<flag_id> flags_to_delete; // Flags to delete from the resultant item.
 
-        // Returns true if the character satisfies all configured stat requirements.
+        // Returns true if the character satisfies all configured stat requirements, and the
+        // recipe's condition (CRAFT-J06).
         bool character_meets_requirements( const Character &character ) const;
-        // Returns true if the recipe has any character stat requirements.
+        // Returns true if the recipe has any character stat requirements or a condition.
         bool has_character_requirements() const;
         // Returns the character stat requirements configured for this recipe.
         const std::map<scaling_stat, int> &get_character_requirements() const;
+        // CRAFT-J06: the recipe's "condition", with the crafter as alpha; true when it has none
+        bool meets_condition( const Character &crafter ) const;
+        bool has_condition() const {
+            return has_condition_;
+        }
+        // "condition_fail_message", or a default
+        std::string condition_fail_text() const;
 
         // Create a string list to describe the skill requirements for this recipe
         // Format: skill_name(level/amount), skill_name(level/amount)
@@ -506,6 +524,11 @@ class recipe
         /** Time (in moves) to disassemble if different to assembly. Requires `reversible = true` */
         int64_t uncraft_time = 0;
 
+        /** CRAFT-J05: gives the disassembly when several reversible recipes make one result */
+        bool uncraft_primary = false;
+        /** CRAFT-J05: when this recipe id was first loaded; without a primary, the earliest wins */
+        int64_t load_order = 0;
+
         /** External requirements (via "using" syntax) where second field is multiplier */
         std::vector<std::pair<requirement_id, int>> reqs_external;
 
@@ -514,6 +537,11 @@ class recipe
 
         /** Character stat requirements. */
         std::map<scaling_stat, int> character_requirements_;
+
+        /** CRAFT-J06: "condition" and "condition_fail_message" */
+        std::function<bool( const_dialogue const & )> condition_;
+        bool has_condition_ = false;
+        translation condition_fail_message_;
 
         /** Combined requirements cached when recipe finalized */
         requirement_data requirements_;

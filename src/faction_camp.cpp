@@ -2722,7 +2722,7 @@ point_rel_omt connection_direction_of( const point_rel_omt &dir, const recipe &m
     if( making.has_flag( "MAP_MIRROR_HORIZONTAL_IF_" + suffix ) ) {
         connection_dir.x() = -connection_dir.x();
     }
-    if( making.has_flag( "MAP_MIRROR_VERTICALL_IF_" + suffix ) ) {
+    if( making.has_flag( "MAP_MIRROR_VERTICAL_IF_" + suffix ) ) {
         connection_dir.y() = -connection_dir.y();
     }
 
