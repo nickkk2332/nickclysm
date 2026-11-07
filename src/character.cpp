@@ -120,6 +120,7 @@
 #include "vitamin.h"
 #include "vpart_position.h"
 #include "weather.h"
+#include "weather_gen.h"
 
 static const activity_id ACT_AUTODRIVE( "ACT_AUTODRIVE" );
 static const activity_id ACT_EXECUTION( "ACT_EXECUTION" );
@@ -6767,11 +6768,17 @@ std::vector<run_cost_effect> Character::run_cost_effects( float &movecost ) cons
 
     // Snow depth movement penalty (outdoor, unroofed tiles only)
     if( here.is_outside( pos_bub() ) && !here.is_roofed( pos_bub() ) ) {
-        const double snow_mm = get_weather().get_snow_depth_mm( pos_abs_omt() );
-        if( snow_mm >= 100 && !has_flag( json_flag_LEVITATION )
+        const weather_manager &weather = get_weather();
+        const double snow_mm = weather.get_snow_depth_mm( pos_abs_omt() );
+        if( snow_mm > 0.0 && !has_flag( json_flag_LEVITATION )
             && !has_flag( json_flag_SNOWWALKING ) ) {
-            const int penalty = snow_mm >= 500 ? 100 : ( snow_mm >= 250 ? 50 : 20 );
-            run_cost_effect_add( penalty, _( "Snow" ) );
+            // The region's snow move_cost table (by default +20 from 100 mm, +50 from 250 mm
+            // and +100 from 500 mm)
+            const snow_settings &snow = weather.get_cur_weather_gen().snow;
+            const snow_move_cost *step = snow.move_cost_at( snow_mm );
+            if( step != nullptr && step->character > 0 ) {
+                run_cost_effect_add( step->character, _( "Snow" ) );
+            }
         }
     }
 

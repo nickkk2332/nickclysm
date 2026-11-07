@@ -464,6 +464,15 @@ double precip_mm_per_hour( precip_class const p )
         0;
 }
 
+double snow_mm_per_hour( const weather_type &w, const snow_settings &snow )
+{
+    if( w.snow_rate ) {
+        return *w.snow_rate;
+    }
+    const bool is_snowing = w.precip != precip_class::none && !w.rains;
+    return is_snowing ? precip_mm_per_hour( w.precip ) * snow.water_ratio : 0.0;
+}
+
 void handle_weather_effects( const weather_type_id &w )
 {
     //Possible TODO, make npc/monsters affected
@@ -1205,14 +1214,9 @@ void weather_manager::update_weather()
 // Maximum time delta to apply in a single catch-up update (1 hour).
 // Beyond this, weather has certainly changed and the approximation is too coarse.
 static constexpr time_duration max_snow_catchup = 1_hours;
-// Snow-water equivalent ratio: 1mm liquid precipitation = 12mm snow depth
-static constexpr double snow_water_ratio = 12.0;
-// Melt rate in mm snow per degree-C above freezing per hour.
-// Derived from degree-day factor ~4 mm SWE/C/day at 12:1 ratio:
-// 4/24 * 12 = 2.0.  Real-world range is 1.5-3.0 for open ground.
-static constexpr double melt_rate_per_deg_per_hour = 2.0;
-// Maximum snow depth in mm
-static constexpr double max_snow_depth = 800.0;
+// The snow-to-water ratio (12:1), melt rate (2 mm per degree C per hour: a degree-day factor
+// of about 4 mm water per degree C per day at 12:1, 4/24 * 12; 1.5-3.0 for open ground in
+// reality) and maximum depth (800 mm) are the region's, in weather_generator::snow.
 
 // Snow depth is tracked at z=0 only; weather is uniform across z-levels.
 static tripoint_abs_omt ground_level_omt( const tripoint_abs_omt &omt )
@@ -1256,12 +1260,10 @@ void weather_manager::update_snow_depth()
         snow_depth_map[player_omt] = seeded;
     }
 
-    const bool is_snowing = weather_id->precip != precip_class::none && !weather_id->rains;
-    const double accum_rate = is_snowing ?
-                              precip_mm_per_hour( weather_id->precip ) * snow_water_ratio : 0.0;
+    const snow_settings &snow = get_cur_weather_gen().snow;
+    const double accum_rate = snow_mm_per_hour( *weather_id, snow );
     const bool is_melting = temperature > 0_C;
-    const double melt_rate = is_melting ?
-                             melt_rate_per_deg_per_hour * units::to_celsius( temperature ) : 0.0;
+    const double melt_rate = is_melting ? snow.melt_rate * units::to_celsius( temperature ) : 0.0;
 
     for( auto &pair : snow_depth_map ) {
         omt_snow_state &state = pair.second;
@@ -1284,9 +1286,21 @@ void weather_manager::update_snow_depth()
             state.depth_mm -= melt_rate * hours;
         }
 
-        state.depth_mm = std::clamp( state.depth_mm, 0.0, max_snow_depth );
+        state.depth_mm = std::clamp( state.depth_mm, 0.0, snow.max_depth );
         state.last_update = calendar::turn;
     }
+}
+
+void weather_manager::set_snow_depth_mm( const tripoint_abs_omt &omt_pos, const double depth_mm )
+{
+    omt_snow_state &state = snow_depth_map[ground_level_omt( omt_pos )];
+    state.depth_mm = std::clamp( depth_mm, 0.0, get_cur_weather_gen().snow.max_depth );
+    state.last_update = calendar::turn;
+}
+
+double weather_manager::snow_rate_mm_per_hour() const
+{
+    return snow_mm_per_hour( *weather_id, get_cur_weather_gen().snow );
 }
 
 double weather_manager::get_snow_depth_mm( const tripoint_abs_omt &omt_pos ) const

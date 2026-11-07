@@ -88,6 +88,9 @@ struct rl_vec2d;
 struct trap;
 
 double precip_mm_per_hour( precip_class p );
+// mm of snow per hour weather of this type adds to the ground: its snow_rate, else for snow
+// (precipitation that isn't rain) the precipitation rate times the region's water_ratio
+double snow_mm_per_hour( const weather_type &w, const snow_settings &snow );
 void handle_weather_effects( const weather_type_id &w );
 
 /**
@@ -239,6 +242,10 @@ class weather_manager
         void update_snow_depth();
         // Snow depth in mm at a given OMT (0 if no data)
         double get_snow_depth_mm( const tripoint_abs_omt &omt_pos ) const;
+        // Sets the snow depth at a given OMT, up to the region's max_depth
+        void set_snow_depth_mm( const tripoint_abs_omt &omt_pos, double depth_mm );
+        // mm of snow per hour the current weather adds to the ground
+        double snow_rate_mm_per_hour() const;
         // The air temperature
         units::temperature temperature = 0_K;
         bool lightning_active = false;

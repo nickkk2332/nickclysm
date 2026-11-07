@@ -132,6 +132,10 @@ void weather_type::load( const JsonObject &jo, std::string_view )
     mandatory( jo, was_loaded, "dangerous", dangerous );
     mandatory( jo, was_loaded, "precip", precip );
     mandatory( jo, was_loaded, "rains", rains );
+    optional( jo, was_loaded, "snow_rate", snow_rate );
+    if( snow_rate && *snow_rate < 0.0 ) {
+        jo.throw_error_at( "snow_rate", "snow_rate can't be negative" );
+    }
     optional( jo, was_loaded, "tiles_animation", tiles_animation, "" );
     optional( jo, was_loaded, "sound_category", sound_category, weather_sound_category::silent );
     optional( jo, was_loaded, "duration_min", duration_min, 5_minutes );

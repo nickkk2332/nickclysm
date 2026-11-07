@@ -3172,11 +3172,33 @@ double warmth_eval( const_dialogue const &d, char scope, std::vector<diag_value>
                d.const_actor( is_beta( scope ) )->get_cur_part_temp( bp ) );
 }
 
+// The OMT weather('snow_depth') is about: the 'location' kwarg (a location, or "u" / "npc" as in
+// omt_distance()), else the avatar's. Other aspects are the same everywhere and take no 'location'.
+tripoint_abs_omt _weather_omt( const_dialogue const &d, std::string const &aspect,
+                               diag_kwargs const &kwargs )
+{
+    diag_value const loc = kwargs.kwarg_or( "location" );
+    if( aspect != "snow_depth" ) {
+        if( !loc.is_empty() ) {
+            throw math::runtime_error( "weather('%s') can't take a 'location'", aspect );
+        }
+        return tripoint_abs_omt::invalid;
+    }
+    return loc.is_empty() ? get_player_character().pos_abs_omt() : _omt_of( d, loc );
+}
+
 double weather_eval( const_dialogue const &d, char /* scope */,
                      std::vector<diag_value> const &params, diag_kwargs const &kwargs )
 {
     weather_manager const &weather = get_weather_const();
     std::string const &aspect = params[0].str( d );
+    tripoint_abs_omt const omt = _weather_omt( d, aspect, kwargs );
+    if( aspect == "snow_depth" ) {
+        return weather.get_snow_depth_mm( omt );
+    }
+    if( aspect == "snow_rate" ) {
+        return weather.snow_rate_mm_per_hour();
+    }
     if( aspect == "temperature" ) {
         return units::to_kelvin( weather.weather_precise->temperature );
     }
@@ -3255,6 +3277,15 @@ void weather_ass( double val, dialogue &d, char /* scope */, std::vector<diag_va
     weather_manager &weather = get_weather();
     std::string const &aspect = params[0].str( d );
     std::optional<time_point> const end = _weather_override_end( d, kwargs );
+    tripoint_abs_omt const omt = _weather_omt( d, aspect, kwargs );
+    if( aspect == "snow_depth" ) {
+        // Snow on the ground, not weather: it stays and melts or grows from there
+        if( end ) {
+            throw math::runtime_error( "weather('snow_depth') can't take a 'duration'" );
+        }
+        weather.set_snow_depth_mm( omt, val );
+        return;
+    }
     if( aspect == "temperature" ) {
         units::temperature const temp = units::from_kelvin( val );
         weather.weather_precise->temperature = temp;
@@ -3488,7 +3519,7 @@ std::map<std::string_view, dialogue_func> const dialogue_funcs{
     { "remaining_volume", { "un", 0, remaining_volume_eval } },
     { "remaining_weight", { "un", 0, remaining_weight_eval } },
     { "warmth", { "un", 1, warmth_eval } },
-    { "weather", { "g", 1, weather_eval, weather_ass, { "duration", "unit" } } },
+    { "weather", { "g", 1, weather_eval, weather_ass, { "duration", "unit", "location" } } },
     { "climate_control_str_heat", { "un", 0, climate_control_str_heat_eval } },
     { "climate_control_str_chill", { "un", 0, climate_control_str_chill_eval } },
     { "vehicle_battery", { "un", 0, vehicle_battery_eval, vehicle_battery_ass } },

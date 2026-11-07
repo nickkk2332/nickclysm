@@ -25,6 +25,35 @@ struct w_point {
     tripoint_abs_ms location;
 };
 
+// One row of a region's snow move-cost table: the cost from this depth up to the next row's
+struct snow_move_cost {
+    // Snow depth in mm at which this row starts
+    double depth = 0.0;
+    // Added to a character's move cost
+    int character = 0;
+    // Added to a monster's terrain cost for the step (each point is 25 move points)
+    int monster = 0;
+    void deserialize( const JsonObject &jo );
+};
+
+// How snow piles up, melts and slows movement in a region (weather_generator "snow")
+struct snow_settings {
+    // mm of snow per mm of precipitation, for weather without its own snow_rate
+    double water_ratio = 12.0;
+    // mm of snow that melt per hour for each degree Celsius above 0
+    double melt_rate = 2.0;
+    // Deepest snow can get, in mm
+    double max_depth = 800.0;
+    // Sorted by depth, shallowest first
+    std::vector<snow_move_cost> move_cost = {
+        { 100.0, 20, 1 }, { 250.0, 50, 2 }, { 500.0, 100, 4 }
+    };
+    // Reads the members given; the others keep their value
+    void deserialize( const JsonObject &jo );
+    // The deepest row this depth reaches; nullptr below the first
+    const snow_move_cost *move_cost_at( double depth_mm ) const;
+};
+
 class weather_generator
 {
     public:
@@ -55,6 +84,8 @@ class weather_generator
         // TODO: Use std::vector<weather_type_id> and finalise in region settings instead?
         std::vector<std::string> weather_black_list;
         std::vector<std::string> weather_white_list;
+        // Snow build-up, melt and move costs
+        snow_settings snow;
         /** All the current weather types based on white or black list and sorted by load order */
         std::vector<weather_type_id> sorted_weather;
         weather_generator();
